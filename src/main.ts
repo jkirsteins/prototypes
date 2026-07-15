@@ -1,6 +1,6 @@
 import "./styles.css";
 import { items } from "./game/content";
-import { createInitialState, getCurrentRoom, getVisibleItems, runCommand } from "./game/engine";
+import { createInitialState, getCurrentRoom, getVisibleRoomItems, runCommand } from "./game/engine";
 import { verbs, type Command, type GameItem, type GameState, type ItemId, type Verb } from "./game/types";
 import { splitRoomItemsByDescription } from "./ui/reachableItems";
 
@@ -18,7 +18,7 @@ let pendingUseTarget: ItemId | undefined;
 
 function render(): void {
   const room = getCurrentRoom(state);
-  const roomItems = getVisibleRoomItems();
+  const roomItems = getVisibleRoomItems(state);
   const splitRoomItems = splitRoomItemsByDescription(room.description, roomItems);
   const inventoryItems = state.inventory.map((itemId) => items[itemId]);
 
@@ -153,11 +153,6 @@ function formatCommand(command: Command): string {
   }
 
   return `> ${command.verb} ${items[command.targetId].label}`;
-}
-
-function getVisibleRoomItems(): GameItem[] {
-  const visibleIds = new Set(getVisibleItems(state).map((item) => item.id));
-  return getCurrentRoom(state).itemIds.filter((itemId) => visibleIds.has(itemId)).map((itemId) => items[itemId]);
 }
 
 function renderDescription(description: string, roomItems: GameItem[]): string {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createInitialState, getVisibleItems, runCommand } from "./engine";
+import { createInitialState, getVisibleItems, getVisibleRoomItems, runCommand } from "./engine";
 import type { Command, GameState } from "./types";
 
 function play(state: GameState, command: Command): GameState {
@@ -164,6 +164,19 @@ describe("escape castle game engine", () => {
     expect(state.inventory).not.toContain("brass-plaque");
     expect(state.flags.plaqueRemoved).toBe(false);
     expect(lastLog(state)).toBe("You cannot reach that from here.");
+  });
+
+  it("keeps inventory items out of room-visible items", () => {
+    let state = createInitialState();
+    state = play(state, { verb: "Push", targetId: "coffin-lid" });
+
+    expect(getVisibleRoomItems(state).map((item) => item.id)).toContain("loose-nail");
+
+    state = play(state, { verb: "Take", targetId: "loose-nail" });
+
+    expect(state.inventory).toContain("loose-nail");
+    expect(getVisibleRoomItems(state).map((item) => item.id)).not.toContain("loose-nail");
+    expect(getVisibleItems(state).map((item) => item.id)).not.toContain("loose-nail");
   });
 
   it("describes wardrobe contents only after using the key", () => {

@@ -37,19 +37,19 @@ export function getCurrentRoom(state: GameState): Room {
 }
 
 export function getVisibleItems(state: GameState): GameItem[] {
+  return getVisibleRoomItems(state);
+}
+
+export function getVisibleRoomItems(state: GameState): GameItem[] {
   const visibleIds = new Set<ItemId>();
   const room = getCurrentRoom(state);
 
   for (const itemId of room.itemIds) {
     const item = items[itemId];
 
-    if (!item.visibleWhen || state.flags[item.visibleWhen]) {
+    if ((!item.visibleWhen || state.flags[item.visibleWhen]) && !state.inventory.includes(itemId)) {
       visibleIds.add(itemId);
     }
-  }
-
-  for (const itemId of state.inventory) {
-    visibleIds.add(itemId);
   }
 
   return [...visibleIds].map((itemId) => items[itemId]);
@@ -75,7 +75,7 @@ export function runCommand(state: GameState, command: Command): { state: GameSta
 }
 
 function canReachPrimaryTarget(state: GameState, itemId: ItemId): boolean {
-  return getVisibleItemIds(state).has(itemId);
+  return getVisibleRoomItemIds(state).has(itemId) || state.inventory.includes(itemId);
 }
 
 function canReachSecondaryTarget(state: GameState, itemId: ItemId): boolean {
@@ -86,17 +86,13 @@ function isUntakenPortablePrimaryTarget(state: GameState, itemId: ItemId): boole
   return Boolean(items[itemId].portable) && !state.inventory.includes(itemId);
 }
 
-function getVisibleItemIds(state: GameState): Set<ItemId> {
-  return new Set(getVisibleItems(state).map((item) => item.id));
-}
-
 function getVisibleRoomItemIds(state: GameState): Set<ItemId> {
   const visibleIds = new Set<ItemId>();
 
   for (const itemId of getCurrentRoom(state).itemIds) {
     const item = items[itemId];
 
-    if (!item.visibleWhen || state.flags[item.visibleWhen]) {
+    if ((!item.visibleWhen || state.flags[item.visibleWhen]) && !state.inventory.includes(itemId)) {
       visibleIds.add(itemId);
     }
   }
