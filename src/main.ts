@@ -73,8 +73,8 @@ function render(): void {
         <button type="button" data-reset="true">Reset</button>
       </section>
 
-      <ol class="log" aria-label="Command log">
-        ${state.log.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}
+      <ol class="log" aria-label="Command log, newest first" reversed start="${state.log.length}">
+        ${[...state.log].reverse().map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}
       </ol>
     </main>
   `;

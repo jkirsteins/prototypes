@@ -238,7 +238,7 @@ button:focus-visible {
   color: #8d7b5e;
 }
 
-.log li:last-child {
+.log li:first-child {
   color: #f4ead7;
 }
 
