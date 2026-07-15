@@ -2,6 +2,7 @@ import "./styles.css";
 import { items } from "./game/content";
 import { createInitialState, getCurrentRoom, getVisibleRoomItems, runCommand } from "./game/engine";
 import { verbs, type Command, type GameItem, type GameState, type ItemId, type Verb } from "./game/types";
+import { getVerbForKeyboardShortcut, verbKeyboardShortcuts } from "./ui/keyboardShortcuts";
 import { splitRoomItemsByDescription } from "./ui/reachableItems";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -48,6 +49,7 @@ function render(): void {
                 class="verb-button${verb === selectedVerb ? " is-selected" : ""}"
                 data-verb="${escapeHtml(verb)}"
                 aria-pressed="${verb === selectedVerb ? "true" : "false"}"
+                aria-keyshortcuts="${escapeHtml(verbKeyboardShortcuts[verb])}"
               >
                 ${escapeHtml(verb)}
               </button>
@@ -85,9 +87,7 @@ function render(): void {
 function bindEvents(): void {
   for (const button of appElement.querySelectorAll<HTMLButtonElement>("[data-verb]")) {
     button.addEventListener("click", () => {
-      selectedVerb = button.dataset.verb as Verb;
-      pendingUseTarget = undefined;
-      render();
+      selectVerb(button.dataset.verb as Verb);
     });
   }
 
@@ -103,6 +103,35 @@ function bindEvents(): void {
     pendingUseTarget = undefined;
     render();
   });
+}
+
+function selectVerb(verb: Verb): void {
+  selectedVerb = verb;
+  pendingUseTarget = undefined;
+  render();
+}
+
+function handleKeyboardShortcut(event: KeyboardEvent): void {
+  if (isEditableTarget(event.target)) {
+    return;
+  }
+
+  const verb = getVerbForKeyboardShortcut(event);
+
+  if (!verb) {
+    return;
+  }
+
+  event.preventDefault();
+  selectVerb(verb);
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return target.isContentEditable || target.matches("input, textarea, select");
 }
 
 function chooseItem(itemId: ItemId): void {
@@ -205,5 +234,7 @@ function escapeHtml(value: string): string {
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+window.addEventListener("keydown", handleKeyboardShortcut);
 
 render();
