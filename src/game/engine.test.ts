@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { items } from "./content";
 import { createInitialState, getVisibleItems, getVisibleRoomItems, runCommand } from "./engine";
 import type { Command, GameState } from "./types";
 
@@ -39,6 +40,12 @@ function reachUpstairs(state = reachCorridor()): GameState {
 }
 
 describe("escape castle game engine", () => {
+  it("defines a look description for every item", () => {
+    for (const item of Object.values(items)) {
+      expect(item.description.trim(), item.id).not.toBe("");
+    }
+  });
+
   it("escapes the coffin tutorial", () => {
     let state = createInitialState();
 
@@ -177,6 +184,16 @@ describe("escape castle game engine", () => {
     expect(state.inventory).toContain("loose-nail");
     expect(getVisibleRoomItems(state).map((item) => item.id)).not.toContain("loose-nail");
     expect(getVisibleItems(state).map((item) => item.id)).not.toContain("loose-nail");
+  });
+
+  it("uses item descriptions for look actions without bespoke rules", () => {
+    let state = createInitialState();
+    state = play(state, { verb: "Push", targetId: "coffin-lid" });
+
+    state = play(state, { verb: "Look at", targetId: "rosary-bead" });
+
+    expect(lastLog(state)).toBe(items["rosary-bead"].description);
+    expect(lastLog(state)).not.toBe("That does not seem useful right now.");
   });
 
   it("describes wardrobe contents only after using the key", () => {

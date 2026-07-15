@@ -223,14 +223,14 @@ button:focus-visible {
   max-height: 34vh;
   min-height: 130px;
   margin: 0;
-  padding: 16px 20px 20px 38px;
+  padding: 16px 20px 20px;
   overflow: auto;
   color: #cfc2a9;
   line-height: 1.55;
+  list-style-position: inside;
 }
 
 .log li {
-  padding-left: 4px;
   overflow-wrap: anywhere;
 }
 

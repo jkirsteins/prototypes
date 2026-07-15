@@ -69,7 +69,7 @@ export function runCommand(state: GameState, command: Command): { state: GameSta
   }
 
   const guardedResult = getGuardedResult(state, command);
-  const result = guardedResult ?? actions[toActionKey(command)] ?? { message: defaultActionMessage };
+  const result = guardedResult ?? actions[toActionKey(command)] ?? getDefaultLookResult(command) ?? { message: defaultActionMessage };
 
   return applyResult(state, result);
 }
@@ -151,6 +151,14 @@ function getGuardedResult(state: GameState, command: Command): ActionResult | un
   }
 
   return undefined;
+}
+
+function getDefaultLookResult(command: Command): ActionResult | undefined {
+  if (command.verb !== "Look at") {
+    return undefined;
+  }
+
+  return { message: items[command.targetId].description };
 }
 
 function toActionKey(command: Command): ActionKey {

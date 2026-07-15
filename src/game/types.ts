@@ -51,6 +51,7 @@ export type Flag =
 export type GameItem = {
   id: ItemId;
   label: string;
+  description: string;
   portable?: boolean;
   visibleWhen?: Flag;
 };
