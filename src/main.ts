@@ -24,7 +24,7 @@ function render(): void {
     <main class="shell">
       <section class="room" aria-labelledby="room-title">
         <h1 id="room-title">${escapeHtml(room.title)}</h1>
-        <p class="description">${renderDescription(room.description, roomItems)}</p>
+        <div class="description">${renderDescription(room.description, roomItems)}</div>
       </section>
 
       <section class="verbs" aria-label="Verbs">
