@@ -122,6 +122,10 @@ function getGuardedResult(state: GameState, command: Command): ActionResult | un
     };
   }
 
+  if (command.verb === "Look at" && command.targetId === "wardrobe" && state.flags.wardrobeOpen) {
+    return { message: "Inside the wardrobe hang a moth-eaten cloak and a servant note." };
+  }
+
   if (command.verb === "Pull" && command.targetId === "chain") {
     if (!state.flags.moonDialCrescent) {
       return { message: "The chain rattles, but the moon mechanism stays locked." };

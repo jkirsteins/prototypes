@@ -155,13 +155,25 @@ describe("escape castle game engine", () => {
     expect(lastLog(state)).toBe("You cannot reach that from here.");
   });
 
-  it("does not reveal wardrobe contents by looking before using the key", () => {
+  it("describes wardrobe contents only after using the key", () => {
     let state = escapeCoffin();
 
     state = play(state, { verb: "Look at", targetId: "wardrobe" });
 
     expect(state.flags.wardrobeOpen).toBe(false);
+    expect(lastLog(state)).toContain("locked");
     expect(visibleItemIds(state)).not.toContain("moth-eaten-cloak");
     expect(visibleItemIds(state)).not.toContain("servant-note");
+
+    state = play(state, { verb: "Look at", targetId: "bed" });
+    state = play(state, { verb: "Open", targetId: "loose-floorboard" });
+    state = play(state, { verb: "Use", targetId: "small-iron-key", secondaryTargetId: "wardrobe" });
+    state = play(state, { verb: "Look at", targetId: "wardrobe" });
+
+    expect(state.flags.wardrobeOpen).toBe(true);
+    expect(lastLog(state)).toContain("moth-eaten cloak");
+    expect(lastLog(state)).toContain("servant note");
+    expect(visibleItemIds(state)).toContain("moth-eaten-cloak");
+    expect(visibleItemIds(state)).toContain("servant-note");
   });
 });
