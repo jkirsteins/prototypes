@@ -37,6 +37,7 @@ export type RoomId = "coffin" | "bedroom" | "corridor" | "upstairs" | "downstair
 
 export type Flag =
   | "coffinLidLoosened"
+  | "liningInspected"
   | "plaqueRemoved"
   | "hingeWedged"
   | "floorboardRevealed"

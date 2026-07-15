@@ -30,7 +30,7 @@ export const items: Record<ItemId, GameItem> = {
     label: "loose nail",
     description: "A bent nail with a sharp enough point to worry soft metal.",
     portable: true,
-    visibleWhen: "coffinLidLoosened",
+    visibleWhen: "liningInspected",
   },
   hinge: {
     id: "hinge",
@@ -42,7 +42,7 @@ export const items: Record<ItemId, GameItem> = {
     id: "rosary-bead",
     label: "rosary bead",
     description: "A single rosary bead is sewn into the lining. It is warm against your fingertip.",
-    visibleWhen: "coffinLidLoosened",
+    visibleWhen: "liningInspected",
   },
   bed: {
     id: "bed",
@@ -221,7 +221,7 @@ export const actions: Partial<Record<ActionKey, ActionResult>> = {
   },
   "Look at:velvet-lining": {
     message: "The velvet lining is torn around a bent loose nail.",
-    setFlags: { coffinLidLoosened: true },
+    setFlags: { liningInspected: true },
   },
   "Take:loose-nail": {
     message: "You work the loose nail free and pocket it.",

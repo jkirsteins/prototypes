@@ -11,6 +11,7 @@ import type { ActionResult, Command, Flag, GameItem, GameState, ItemId, Room } f
 
 const initialFlags: Record<Flag, boolean> = {
   coffinLidLoosened: false,
+  liningInspected: false,
   plaqueRemoved: false,
   hingeWedged: false,
   floorboardRevealed: false,

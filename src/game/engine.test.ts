@@ -53,8 +53,12 @@ describe("escape castle game engine", () => {
     expect(getVisibleItems(state).map((item) => item.id)).toContain("coffin-lid");
 
     state = play(state, { verb: "Push", targetId: "coffin-lid" });
+    expect(getVisibleItems(state).map((item) => item.id)).not.toContain("loose-nail");
+    expect(getVisibleItems(state).map((item) => item.id)).not.toContain("rosary-bead");
+
     state = play(state, { verb: "Look at", targetId: "velvet-lining" });
     expect(getVisibleItems(state).map((item) => item.id)).toContain("loose-nail");
+    expect(getVisibleItems(state).map((item) => item.id)).toContain("rosary-bead");
 
     state = play(state, { verb: "Take", targetId: "loose-nail" });
     state = play(state, { verb: "Look at", targetId: "brass-plaque" });
@@ -176,6 +180,7 @@ describe("escape castle game engine", () => {
   it("keeps inventory items out of room-visible items", () => {
     let state = createInitialState();
     state = play(state, { verb: "Push", targetId: "coffin-lid" });
+    state = play(state, { verb: "Look at", targetId: "velvet-lining" });
 
     expect(getVisibleRoomItems(state).map((item) => item.id)).toContain("loose-nail");
 
@@ -189,6 +194,7 @@ describe("escape castle game engine", () => {
   it("uses item descriptions for look actions without bespoke rules", () => {
     let state = createInitialState();
     state = play(state, { verb: "Push", targetId: "coffin-lid" });
+    state = play(state, { verb: "Look at", targetId: "velvet-lining" });
 
     state = play(state, { verb: "Look at", targetId: "rosary-bead" });
 
