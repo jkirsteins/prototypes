@@ -9,12 +9,6 @@ import {
 } from "./content";
 import type { ActionResult, Command, Flag, GameItem, GameState, ItemId, Room } from "./types";
 
-declare global {
-  interface Array<T> {
-    at(index: number): T | undefined;
-  }
-}
-
 const initialFlags: Record<Flag, boolean> = {
   coffinLidLoosened: false,
   plaqueRemoved: false,
@@ -65,6 +59,10 @@ export function runCommand(state: GameState, command: Command): { state: GameSta
     return withMessage(state, unreachableTargetMessage);
   }
 
+  if (command.verb === "Use" && isUntakenPortablePrimaryTarget(state, command.targetId)) {
+    return withMessage(state, unreachableTargetMessage);
+  }
+
   if (command.verb === "Use" && !canReachSecondaryTarget(state, command.secondaryTargetId)) {
     return withMessage(state, unreachableSecondaryTargetMessage);
   }
@@ -81,6 +79,10 @@ function canReachPrimaryTarget(state: GameState, itemId: ItemId): boolean {
 
 function canReachSecondaryTarget(state: GameState, itemId: ItemId): boolean {
   return getVisibleRoomItemIds(state).has(itemId);
+}
+
+function isUntakenPortablePrimaryTarget(state: GameState, itemId: ItemId): boolean {
+  return Boolean(items[itemId].portable) && !state.inventory.includes(itemId);
 }
 
 function getVisibleItemIds(state: GameState): Set<ItemId> {
@@ -123,6 +125,10 @@ function getGuardedResult(state: GameState, command: Command): ActionResult | un
   if (command.verb === "Pull" && command.targetId === "chain") {
     if (!state.flags.moonDialCrescent) {
       return { message: "The chain rattles, but the moon mechanism stays locked." };
+    }
+
+    if (!state.flags.crescentRevealed) {
+      return { message: "The chain rattles, but the moonlight has not revealed the lock's crescent." };
     }
 
     return {
