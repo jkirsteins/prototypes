@@ -149,8 +149,7 @@ export const actions: Partial<Record<ActionKey, ActionResult>> = {
     setFlags: { wardrobeOpen: true },
   },
   "Look at:wardrobe": {
-    message: "The wardrobe creaks open, showing a moth-eaten cloak and a servant note.",
-    setFlags: { wardrobeOpen: true },
+    message: "The wardrobe is locked. A tiny keyhole waits below the handle.",
   },
   "Take:moth-eaten-cloak": {
     message: "You take the moth-eaten cloak.",

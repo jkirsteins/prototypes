@@ -10,6 +10,10 @@ function lastLog(state: GameState): string | undefined {
   return state.log[state.log.length - 1];
 }
 
+function visibleItemIds(state: GameState): string[] {
+  return getVisibleItems(state).map((item) => item.id);
+}
+
 function escapeCoffin(state = createInitialState()): GameState {
   state = play(state, { verb: "Push", targetId: "coffin-lid" });
   state = play(state, { verb: "Look at", targetId: "velvet-lining" });
@@ -149,5 +153,15 @@ describe("escape castle game engine", () => {
     expect(state.inventory).not.toContain("brass-plaque");
     expect(state.flags.plaqueRemoved).toBe(false);
     expect(lastLog(state)).toBe("You cannot reach that from here.");
+  });
+
+  it("does not reveal wardrobe contents by looking before using the key", () => {
+    let state = escapeCoffin();
+
+    state = play(state, { verb: "Look at", targetId: "wardrobe" });
+
+    expect(state.flags.wardrobeOpen).toBe(false);
+    expect(visibleItemIds(state)).not.toContain("moth-eaten-cloak");
+    expect(visibleItemIds(state)).not.toContain("servant-note");
   });
 });
