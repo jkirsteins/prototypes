@@ -20,6 +20,8 @@ export type ItemId =
   | "small-iron-key"
   | "moth-eaten-cloak"
   | "servant-note"
+  | "guest-chamber"
+  | "branching-corridor"
   | "upstairs"
   | "downstairs"
   | "roof-hatch"
@@ -47,12 +49,16 @@ export type Flag =
   | "moonLockSeen"
   | "crescentRevealed"
   | "moonDialCrescent"
-  | "roofHatchUnlocked";
+  | "roofHatchUnlocked"
+  | "roofHatchOpen";
+
+export type ItemKind = "portable" | "fixed" | "container" | "door" | "route" | "mechanism" | "intangible";
 
 export type GameItem = {
   id: ItemId;
   label: string;
   description: string;
+  kind: ItemKind;
   portable?: boolean;
   visibleWhen?: Flag;
 };

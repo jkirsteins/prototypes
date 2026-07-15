@@ -71,6 +71,22 @@ function render(): void {
 
       <section class="command-preview" aria-live="polite">${escapeHtml(getCommandPreview())}</section>
 
+      ${
+        state.flags.roofHatchOpen
+          ? `
+            <section class="win-panel" aria-live="polite">
+              <h2>Trial Complete</h2>
+              <p>The roof hatch flies open. You stagger into the moonlight, cape-less, coffin-sore, and legally distinct from several better-funded adventurers.</p>
+              <p><strong>CONGRATULATIONS, CASTLE ESCAPIST!</strong></p>
+              <p>You have completed this trial-sized portion of BLOODKEEP ADVENTURE DISK ONE.</p>
+              <p>To continue swashing buckles, dodging vampires, and discovering why every castle has this many keys, call:</p>
+              <p class="phone-number">1-800-BUY-A-GAME</p>
+              <p>Operators are standing by in shoulder pads. Have your parents' credit card ready.</p>
+            </section>
+          `
+          : ""
+      }
+
       <section class="controls">
         <button type="button" data-reset="true">Reset</button>
       </section>
