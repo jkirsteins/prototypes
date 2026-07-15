@@ -81,8 +81,7 @@ button:focus-visible {
   line-height: 1.2;
 }
 
-.description,
-.room p {
+.description {
   max-width: 70ch;
   margin: 0;
   color: #ded2bc;
@@ -98,16 +97,14 @@ button:focus-visible {
   align-self: start;
 }
 
-.verb-button,
-.verb {
+.verb-button {
   min-height: 42px;
   padding: 9px 12px;
   overflow-wrap: anywhere;
   text-align: center;
 }
 
-.verb-button.is-selected,
-.verb.selected {
+.verb-button.is-selected {
   border-color: #f1cf82;
   color: #171108;
   background: #d6a84e;
@@ -144,8 +141,7 @@ button:focus-visible {
   color: #8d7b5e;
 }
 
-.noun-button,
-.noun {
+.noun-button {
   min-height: 34px;
   padding: 5px 9px;
   color: #ffe2a0;
@@ -153,9 +149,7 @@ button:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.description .noun-button,
-.room p .noun-button,
-.inline-noun {
+.description .noun-button {
   display: inline;
   min-height: 0;
   margin: 0 2px;
@@ -171,8 +165,7 @@ button:focus-visible {
   background: #173018;
 }
 
-.command-preview,
-.preview {
+.command-preview {
   grid-column: 1 / -1;
   min-height: 42px;
   padding: 10px 12px;
@@ -187,8 +180,7 @@ button:focus-visible {
   padding: 12px;
 }
 
-.controls button,
-.reset-button {
+.controls button {
   width: 100%;
   min-height: 42px;
   padding: 9px 12px;
@@ -273,9 +265,7 @@ button:focus-visible {
   }
 
   .verb-button,
-  .verb,
-  .controls button,
-  .reset-button {
+  .controls button {
     min-height: 46px;
   }
 
