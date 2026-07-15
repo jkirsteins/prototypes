@@ -1,11 +1,20 @@
 :root {
-  color: #e8dfc8;
-  background: #111111;
+  color: #eadfcb;
+  background: #12100d;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 16px;
+  line-height: 1.5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: #12100d;
 }
 
 body {
@@ -15,10 +24,267 @@ body {
 }
 
 button {
+  max-width: 100%;
+  border: 1px solid #7f6844;
+  color: #f0e2c6;
+  background: #211a12;
   font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: #c89d4c;
+  background: #2b2217;
+}
+
+button:focus-visible {
+  outline: 2px solid #93d7a3;
+  outline-offset: 2px;
 }
 
 .shell {
-  min-height: 100vh;
-  padding: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(250px, 0.65fr);
+  gap: 16px;
+  width: min(1040px, calc(100% - 32px));
+  min-height: calc(100vh - 32px);
+  margin: 16px auto;
+  padding: 18px;
+  border: 1px solid #6e5c3f;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    #18140f;
+  background-size: 100% 4px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+
+.room,
+.verbs,
+.inventory,
+.command-preview,
+.controls,
+.log {
+  border: 1px solid #4d402d;
+  background: rgba(15, 13, 10, 0.82);
+}
+
+.room {
+  grid-column: 1;
+  padding: 22px;
+  color: #e7dcc8;
+}
+
+.room h1 {
+  margin: 0 0 18px;
+  color: #f4ead7;
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+
+.description,
+.room p {
+  max-width: 70ch;
+  margin: 0;
+  color: #ded2bc;
+  line-height: 1.8;
+}
+
+.verbs {
+  grid-column: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 8px;
+  padding: 12px;
+  align-self: start;
+}
+
+.verb-button,
+.verb {
+  min-height: 42px;
+  padding: 9px 12px;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.verb-button.is-selected,
+.verb.selected {
+  border-color: #f1cf82;
+  color: #171108;
+  background: #d6a84e;
+}
+
+.inventory {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
+  padding: 16px;
+  color: #bda97f;
+}
+
+.inventory h2 {
+  margin: 0 0 12px;
+  color: #f4ead7;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.inventory-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 42px;
+  align-items: flex-start;
+}
+
+.empty-inventory {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  color: #8d7b5e;
+}
+
+.noun-button,
+.noun {
+  min-height: 34px;
+  padding: 5px 9px;
+  color: #ffe2a0;
+  background: #2a2115;
+  overflow-wrap: anywhere;
+}
+
+.description .noun-button,
+.room p .noun-button,
+.inline-noun {
+  display: inline;
+  min-height: 0;
+  margin: 0 2px;
+  padding: 1px 5px;
+  line-height: 1.35;
+  vertical-align: baseline;
+  white-space: normal;
+}
+
+.noun-button.is-pending {
+  border-color: #93d7a3;
+  color: #d5ffe0;
+  background: #173018;
+}
+
+.command-preview,
+.preview {
+  grid-column: 1 / -1;
+  min-height: 42px;
+  padding: 10px 12px;
+  border-color: #415c3b;
+  color: #93d7a3;
+  background: #0f160f;
+  overflow-wrap: anywhere;
+}
+
+.controls {
+  grid-column: 2;
+  padding: 12px;
+}
+
+.controls button,
+.reset-button {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 12px;
+  overflow-wrap: anywhere;
+}
+
+.controls button {
+  border-color: #8a5549;
+  color: #f2d7cf;
+  background: #241412;
+}
+
+.controls button:hover {
+  border-color: #d48a72;
+  background: #311c19;
+}
+
+.log {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 9px;
+  max-height: 34vh;
+  min-height: 130px;
+  margin: 0;
+  padding: 16px 20px 20px 38px;
+  overflow: auto;
+  color: #cfc2a9;
+  line-height: 1.55;
+}
+
+.log li {
+  padding-left: 4px;
+  overflow-wrap: anywhere;
+}
+
+.log li::marker {
+  color: #8d7b5e;
+}
+
+.log li:last-child {
+  color: #f4ead7;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    grid-template-columns: 1fr;
+    width: min(100%, calc(100% - 20px));
+    margin: 10px auto;
+    padding: 12px;
+  }
+
+  .room,
+  .verbs,
+  .inventory,
+  .controls,
+  .command-preview,
+  .log {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .room {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    font-size: 15px;
+  }
+
+  .shell {
+    width: 100%;
+    min-height: 100vh;
+    margin: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+
+  .verbs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .verb-button,
+  .verb,
+  .controls button,
+  .reset-button {
+    min-height: 46px;
+  }
+
+  .room h1 {
+    font-size: 1.25rem;
+  }
+
+  .log {
+    max-height: 40vh;
+    padding-left: 34px;
+  }
 }
