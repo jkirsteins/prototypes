@@ -2,6 +2,7 @@ import "./styles.css";
 import { items } from "./game/content";
 import { createInitialState, getCurrentRoom, getVisibleItems, runCommand } from "./game/engine";
 import { verbs, type Command, type GameItem, type GameState, type ItemId, type Verb } from "./game/types";
+import { splitRoomItemsByDescription } from "./ui/reachableItems";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -18,13 +19,24 @@ let pendingUseTarget: ItemId | undefined;
 function render(): void {
   const room = getCurrentRoom(state);
   const roomItems = getVisibleRoomItems();
+  const splitRoomItems = splitRoomItemsByDescription(room.description, roomItems);
   const inventoryItems = state.inventory.map((itemId) => items[itemId]);
 
   appElement.innerHTML = `
     <main class="shell">
       <section class="room" aria-labelledby="room-title">
         <h1 id="room-title">${escapeHtml(room.title)}</h1>
-        <div class="description">${renderDescription(room.description, roomItems)}</div>
+        <div class="description">${renderDescription(room.description, splitRoomItems.inline)}</div>
+        ${
+          splitRoomItems.additional.length > 0
+            ? `
+              <div class="visible-nouns" aria-label="Visible objects">
+                <span>Visible</span>
+                ${splitRoomItems.additional.map((item) => renderNounButton(item, "room")).join("")}
+              </div>
+            `
+            : ""
+        }
       </section>
 
       <section class="verbs" aria-label="Verbs">

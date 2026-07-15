@@ -157,6 +157,7 @@ export const actions: Partial<Record<ActionKey, ActionResult>> = {
   },
   "Look at:servant-note": {
     message: "The servant note says the bell pull releases the corridor latch after midnight.",
+    setFlags: { servantNoteRead: true },
   },
   "Pull:bell-pull": {
     message: "Somewhere inside the wall, the corridor latch clicks open.",

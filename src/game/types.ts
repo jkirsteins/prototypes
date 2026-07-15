@@ -41,6 +41,7 @@ export type Flag =
   | "hingeWedged"
   | "floorboardRevealed"
   | "wardrobeOpen"
+  | "servantNoteRead"
   | "doorUnlatched"
   | "moonLockSeen"
   | "crescentRevealed"

@@ -15,6 +15,7 @@ const initialFlags: Record<Flag, boolean> = {
   hingeWedged: false,
   floorboardRevealed: false,
   wardrobeOpen: false,
+  servantNoteRead: false,
   doorUnlatched: false,
   moonLockSeen: false,
   crescentRevealed: false,
@@ -124,6 +125,10 @@ function getGuardedResult(state: GameState, command: Command): ActionResult | un
 
   if (command.verb === "Look at" && command.targetId === "wardrobe" && state.flags.wardrobeOpen) {
     return { message: "Inside the wardrobe hang a moth-eaten cloak and a servant note." };
+  }
+
+  if (command.verb === "Pull" && command.targetId === "bell-pull" && !state.flags.servantNoteRead) {
+    return { message: "The bell pull twitches, but you do not hear any servant coming." };
   }
 
   if (command.verb === "Pull" && command.targetId === "chain") {

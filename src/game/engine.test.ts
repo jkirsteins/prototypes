@@ -24,6 +24,12 @@ function escapeCoffin(state = createInitialState()): GameState {
 }
 
 function reachCorridor(state = escapeCoffin()): GameState {
+  state = play(state, { verb: "Look at", targetId: "bed" });
+  state = play(state, { verb: "Open", targetId: "loose-floorboard" });
+  state = play(state, { verb: "Use", targetId: "small-iron-key", secondaryTargetId: "wardrobe" });
+  state = play(state, { verb: "Look at", targetId: "wardrobe" });
+  state = play(state, { verb: "Take", targetId: "moth-eaten-cloak" });
+  state = play(state, { verb: "Look at", targetId: "servant-note" });
   state = play(state, { verb: "Pull", targetId: "bell-pull" });
   return play(state, { verb: "Open", targetId: "locked-door" });
 }
@@ -90,6 +96,7 @@ describe("escape castle game engine", () => {
     state = play(state, { verb: "Open", targetId: "loose-floorboard" });
     state = play(state, { verb: "Use", targetId: "small-iron-key", secondaryTargetId: "wardrobe" });
     state = play(state, { verb: "Take", targetId: "moth-eaten-cloak" });
+    state = play(state, { verb: "Look at", targetId: "servant-note" });
     state = play(state, { verb: "Pull", targetId: "bell-pull" });
     state = play(state, { verb: "Open", targetId: "locked-door" });
 
@@ -115,6 +122,10 @@ describe("escape castle game engine", () => {
     state = play(state, { verb: "Use", targetId: "loose-nail", secondaryTargetId: "brass-plaque" });
     state = play(state, { verb: "Use", targetId: "brass-plaque", secondaryTargetId: "hinge" });
     state = play(state, { verb: "Push", targetId: "coffin-lid" });
+    state = play(state, { verb: "Look at", targetId: "bed" });
+    state = play(state, { verb: "Open", targetId: "loose-floorboard" });
+    state = play(state, { verb: "Use", targetId: "small-iron-key", secondaryTargetId: "wardrobe" });
+    state = play(state, { verb: "Look at", targetId: "servant-note" });
     state = play(state, { verb: "Pull", targetId: "bell-pull" });
     state = play(state, { verb: "Open", targetId: "locked-door" });
     state = play(state, { verb: "Open", targetId: "downstairs" });
@@ -175,5 +186,16 @@ describe("escape castle game engine", () => {
     expect(lastLog(state)).toContain("servant note");
     expect(visibleItemIds(state)).toContain("moth-eaten-cloak");
     expect(visibleItemIds(state)).toContain("servant-note");
+  });
+
+  it("does not release the bedroom latch before reading the servant note", () => {
+    let state = escapeCoffin();
+
+    state = play(state, { verb: "Pull", targetId: "bell-pull" });
+    state = play(state, { verb: "Open", targetId: "locked-door" });
+
+    expect(state.roomId).toBe("bedroom");
+    expect(state.flags.doorUnlatched).toBe(false);
+    expect(lastLog(state)).toBe("The locked door will not budge.");
   });
 });
