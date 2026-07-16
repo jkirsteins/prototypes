@@ -1,4 +1,4 @@
-import { Story } from "inkjs";
+import { InkList, Story } from "inkjs";
 import coffinStoryContent from "./coffin.json";
 
 export type CoffinBuild = "undetermined" | "strength" | "cautious" | "ingenious";
@@ -19,6 +19,8 @@ export type CoffinSnapshot = {
   escaped: boolean;
   imageId: string;
   paragraphs: string[];
+  spotted: string[];
+  inventory: string[];
 };
 
 export class CoffinScene {
@@ -45,6 +47,8 @@ export class CoffinScene {
       escaped: this.booleanVariable("escaped"),
       imageId: this.imageId,
       paragraphs: this.paragraphs,
+      spotted: this.listVariable("spotted"),
+      inventory: this.listVariable("inventory"),
     };
   }
 
@@ -89,5 +93,17 @@ export class CoffinScene {
 
   private stringVariable(name: string): string {
     return String(this.story.variablesState.$(name));
+  }
+
+  private listVariable(name: string): string[] {
+    const value = this.story.variablesState.$(name);
+
+    if (!(value instanceof InkList)) {
+      return [];
+    }
+
+    return value.orderedItems
+      .map((entry) => entry.Key.itemName)
+      .filter((itemName): itemName is string => itemName !== null);
   }
 }

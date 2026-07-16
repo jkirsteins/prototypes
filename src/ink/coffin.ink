@@ -11,6 +11,14 @@ VAR caution = 0
 VAR ingenuity = 0
 VAR escaped = false
 
+LIST items = table, drawer, tinderbox, candle, hanging, cage, bucket
+VAR spotted = ()
+VAR inventory = ()
+VAR drawer_open = false
+VAR candle_lit = false
+VAR room_scanned = false
+VAR light_scanned = false
+
 -> start
 
 === start ===
@@ -139,15 +147,28 @@ Whoever kept this room loved it once. Nobody has loved it for a long time.
 
 === cell_room ===
 # image:cell-room
+~ spotted += candle
 Cold rises through the flagstones and finds your bare ankles at once.
 
 Grey light leans in through a barred window, strained through the ribbons of a curtain long past its duty. A heavy door stands shut in the far wall, banded in iron, with a small grille set at eye height. Along the stone, chains hang slack and patient, and a low pallet holds a blanket someone left twisted, as if they got up in a hurry.
 
-A single candle burns in a sconce by the door. Somebody expects to come back.
+A single candle sits cold in a sconce by the door, its wick a black curl. Nobody has needed light here for a long time.
 
 -> cell_room_loop
 
 === cell_room_loop ===
 + [Look around.]
-    You look, and look again. Nothing in particular catches your eye.
+    { not room_scanned:
+        ~ room_scanned = true
+        ~ spotted += table
+        Under the window, half-lost in the curtain's shadow, stands a small wooden table. Something about its squat, stubborn shape says it was dragged here from a better room.
+    - else:
+        { candle_lit and not light_scanned:
+            ~ light_scanned = true
+            ~ spotted += (hanging, cage, bucket)
+            The candlelight pushes the shadows back to the corners, and the room gives up more of itself: a faded hanging on the wall, its picture worn to a ghost; an iron cage hanging still from a beam; a wooden bucket waiting in the far corner.
+        - else:
+            You look, and look again. Nothing in particular catches your eye.
+        }
+    }
     -> cell_room_loop

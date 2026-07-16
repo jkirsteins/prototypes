@@ -19,6 +19,13 @@ function choose(scene: CoffinScene, text: string): void {
   expectNoFictionBreak(scene);
 }
 
+function enterRoomByForce(scene: CoffinScene): void {
+  for (let push = 0; push < 5; push += 1) {
+    choose(scene, "Push against the wood above you.");
+  }
+  choose(scene, "Step into the room.");
+}
+
 function visibleText(scene: CoffinScene): string {
   const snapshot = scene.snapshot;
   return [...snapshot.paragraphs, ...snapshot.choices.map((choice) => choice.text)].join(" ");
@@ -118,7 +125,31 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
   });
 
-  it("keeps the room open after looking around finds nothing", () => {
+  it("spots the cold candle on entering the room", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+
+    expect(scene.snapshot.spotted).toContain("candle");
+    expect(scene.snapshot.inventory).toEqual([]);
+    expect(scene.snapshot.paragraphs.join(" ").toLowerCase()).not.toContain("burn");
+  });
+
+  it("spots the table on the first look around", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+
+    choose(scene, "Look around.");
+    expect(scene.snapshot.spotted).toContain("table");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("table");
+
+    choose(scene, "Look around.");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain(
+      "Nothing in particular catches your eye.",
+    );
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
+  });
+
+  it("keeps the room open after looking around finds nothing new", () => {
     const scene = new CoffinScene();
 
     choose(scene, "Feel along the velvet.");
@@ -128,12 +159,10 @@ describe("opening ink scene", () => {
     choose(scene, "Step into the room.");
 
     choose(scene, "Look around.");
+    choose(scene, "Look around.");
     expect(scene.snapshot.paragraphs.join(" ")).toContain(
       "Nothing in particular catches your eye.",
     );
-    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
-
-    choose(scene, "Look around.");
     expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
   });
 
