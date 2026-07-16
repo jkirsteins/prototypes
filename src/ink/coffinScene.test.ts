@@ -55,7 +55,10 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.escaped).toBe(true);
     expect(scene.snapshot.build).toBe("strength");
     expect(scene.snapshot.attributes.strength).toBe(2);
-    expect(scene.snapshot.imageId).toBe("coffin-break");
+    expect(scene.snapshot.imageId).toBe("lid-open");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain(
+      "Step into the room.",
+    );
   });
 
   it("keeps the story going when calling out brings no answer", () => {
@@ -83,6 +86,38 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.escaped).toBe(true);
     expect(scene.snapshot.build).toBe("ingenious");
     expect(scene.snapshot.attributes.ingenuity).toBe(2);
+    expect(scene.snapshot.imageId).toBe("lid-open");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain(
+      "Step into the room.",
+    );
+  });
+
+  it("ends the scene after stepping into the room", () => {
+    const scene = new CoffinScene();
+
+    choose(scene, "Feel along the velvet.");
+    choose(scene, "Work the loose nail free.");
+    choose(scene, "Trace where the wood resists.");
+    choose(scene, "Force the hinge with the nail.");
+    choose(scene, "Step into the room.");
+
+    expect(scene.snapshot.paragraphs.length).toBeGreaterThan(0);
+    expect(scene.snapshot.choices).toHaveLength(0);
+  });
+
+  it("offers only the step choice once the lid is open by force", () => {
+    const scene = new CoffinScene();
+
+    for (let push = 0; push < 5; push += 1) {
+      choose(scene, "Push against the wood above you.");
+    }
+
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toEqual([
+      "Step into the room.",
+    ]);
+
+    choose(scene, "Step into the room.");
+    expect(scene.snapshot.choices).toHaveLength(0);
   });
 
   it("keeps the escape unreachable until both nail and hinge are found", () => {

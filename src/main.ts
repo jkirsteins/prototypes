@@ -11,8 +11,16 @@ const appElement = app;
 let scene = new CoffinScene();
 let debugVisible = false;
 
+const BACKGROUNDS: Record<string, string> = {
+  "lid-open": `${import.meta.env.BASE_URL}backgrounds/lid-open.png`,
+};
+
+const DEFAULT_BACKGROUND = `${import.meta.env.BASE_URL}backgrounds/awakening.png`;
+
 function render(): void {
   const snapshot = scene.snapshot;
+
+  document.body.style.backgroundImage = `url("${BACKGROUNDS[snapshot.imageId] ?? DEFAULT_BACKGROUND}")`;
 
   appElement.innerHTML = `
     <main class="stage">

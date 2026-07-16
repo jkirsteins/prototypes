@@ -52,14 +52,13 @@ The bent nail rests in your fist, ugly and useful.
                 # image:coffin-strain
                 It doesn't budge.
             - else:
-                # image:coffin-break
                 ~ escaped = true
                 ~ build = "strength"
                 ~ strength = strength + 2
                 The fifth shove is not elegant. It is not clever. It is a declaration.
 
-                Metal screams, the wood above you bursts open, and you roll out onto cold stone with splinters in your palms.
-                -> END
+                Metal screams. The wood above you tears loose and swings wide, and cold air pours in over the splinters in your palms.
+                -> lid_open
             }
         }
     }
@@ -110,7 +109,7 @@ The bent nail rests in your fist, ugly and useful.
     You slide the nail into the hinge gap and twist until the metal complains.
 
     It is not a key. It is not a tool. But it is enough. The hinge buckles, and the wood above you swings open with the offended groan of old carpentry.
-    -> END
+    -> lid_open
 
 + {lining_seen and not nail_taken} [Think about the loose nail.]
     # image:coffin-nail
@@ -123,3 +122,17 @@ The bent nail rests in your fist, ugly and useful.
 
     A prisoner who announces himself is either rescued or collected. You do not yet know which story this is.
     -> coffin_loop
+
+=== lid_open ===
+# image:lid-open
+Above you, the dark gives way to a room.
+
+Grey light finds gilt mouldings gone green with age, a tall mirror clouded like a dead eye, a chaise whose upholstery has split and spilled its stuffing. Cobwebs sag from the cornices. Nothing moves.
+
+Whoever kept this room loved it once. Nobody has loved it for a long time.
+
++ [Step into the room.]
+    You take hold of the worn edges and pull yourself up and over. Your legs are slow to remember their work, but they hold.
+
+    Dust stirs around your feet and settles. The room accepts you without a sound.
+    -> END
