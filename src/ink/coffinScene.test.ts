@@ -35,7 +35,7 @@ function enterRoomByForce(scene: CoffinScene): void {
 
 function enterRoomByWits(scene: CoffinScene): void {
   interact(scene, "look", "lining");
-  interact(scene, "use", "nail");
+  interact(scene, "take", "nail");
   choose(scene, "Trace where the wood resists.");
   interact(scene, "use", "hinge");
   choose(scene, "Step into the room.");
@@ -122,7 +122,7 @@ describe("opening ink scene", () => {
     interact(scene, "look", "lining");
     expect(scene.snapshot.spotted).toContain("nail");
 
-    interact(scene, "use", "nail");
+    interact(scene, "take", "nail");
     expect(scene.snapshot.inventory).toContain("nail");
     expect(scene.snapshot.spotted).not.toContain("nail");
 
@@ -209,7 +209,7 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.escaped).toBe(false);
 
     interact(scene, "look", "lining");
-    interact(scene, "use", "nail");
+    interact(scene, "take", "nail");
     scene.interact("use", "hinge");
     expect(scene.snapshot.escaped).toBe(false);
 
@@ -254,7 +254,7 @@ describe("opening ink scene", () => {
     interact(scene, "look", "lining");
     expect(scene.snapshot.paragraphs.join(" ")).toContain("given up all it knows");
 
-    interact(scene, "use", "nail");
+    interact(scene, "take", "nail");
     expect(scene.snapshot.inventory).toContain("nail");
 
     interact(scene, "look", "nail");
@@ -311,7 +311,7 @@ describe("opening ink scene", () => {
     choose(scene, "Look around.");
     interact(scene, "look", "table");
     interact(scene, "use", "drawer");
-    interact(scene, "use", "tinderbox");
+    interact(scene, "take", "tinderbox");
     interact(scene, "use", "candle");
     choose(scene, "Look around.");
 
@@ -350,14 +350,14 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.paragraphs.join(" ")).toContain("jams");
   });
 
-  it("moves the tin to hand when used in the drawer", () => {
+  it("moves the tin to hand when taken from the drawer", () => {
     const scene = new CoffinScene();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
     interact(scene, "look", "table");
     interact(scene, "use", "drawer");
 
-    interact(scene, "use", "tinderbox");
+    interact(scene, "take", "tinderbox");
 
     expect(scene.snapshot.inventory).toContain("tinderbox");
     expect(scene.snapshot.spotted).not.toContain("tinderbox");
@@ -379,7 +379,7 @@ describe("opening ink scene", () => {
     choose(scene, "Look around.");
     interact(scene, "look", "table");
     interact(scene, "use", "drawer");
-    interact(scene, "use", "tinderbox");
+    interact(scene, "take", "tinderbox");
 
     interact(scene, "use", "candle");
 
@@ -396,7 +396,7 @@ describe("opening ink scene", () => {
     choose(scene, "Look around.");
     interact(scene, "look", "table");
     interact(scene, "use", "drawer");
-    interact(scene, "use", "tinderbox");
+    interact(scene, "take", "tinderbox");
     interact(scene, "use", "candle");
 
     choose(scene, "Look around.");
@@ -455,7 +455,7 @@ describe("opening ink scene", () => {
       "sits in the ruined drawer",
     );
 
-    interact(scene, "use", "tinderbox");
+    interact(scene, "take", "tinderbox");
     expect(scene.snapshot.inventory).toContain("tinderbox");
 
     interact(scene, "look", "tinderbox");
@@ -494,7 +494,7 @@ describe("opening ink scene", () => {
     const scene = new CoffinScene();
 
     interact(scene, "look", "lining");
-    interact(scene, "use", "nail");
+    interact(scene, "take", "nail");
     for (let push = 0; push < 5; push += 1) {
       choose(scene, "Push against the wood above you.");
     }
@@ -510,6 +510,42 @@ describe("opening ink scene", () => {
     choose(scene, "Step into the room.");
     expect(scene.snapshot.inventory).toContain("nail");
     expect(scene.snapshot.spotted).toContain("candle");
+  });
+
+  it("does not pick up a spotted item with use, only with take", () => {
+    const scene = new CoffinScene();
+
+    interact(scene, "look", "lining");
+    interact(scene, "use", "nail");
+
+    expect(scene.snapshot.inventory).not.toContain("nail");
+    expect(scene.snapshot.spotted).toContain("nail");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("in your fist first");
+
+    interact(scene, "take", "nail");
+    expect(scene.snapshot.inventory).toContain("nail");
+  });
+
+  it("shrugs off taking a fixed object", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+    choose(scene, "Look around.");
+
+    interact(scene, "take", "table");
+
+    expect(scene.snapshot.spotted).toContain("table");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("stays where it is");
+  });
+
+  it("flavors taking an item already in hand", () => {
+    const scene = new CoffinScene();
+    interact(scene, "look", "lining");
+    interact(scene, "take", "nail");
+
+    interact(scene, "take", "nail");
+
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("already in your fist");
+    expect(scene.snapshot.inventory).toContain("nail");
   });
 });
 

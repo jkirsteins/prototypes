@@ -3,7 +3,7 @@ import coffinStoryContent from "./coffin.json";
 
 export type CoffinBuild = "undetermined" | "strength" | "cautious" | "ingenious";
 
-export type ItemVerb = "look" | "use";
+export type ItemVerb = "look" | "use" | "take";
 
 export type CoffinChoice = {
   index: number;

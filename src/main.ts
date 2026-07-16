@@ -72,7 +72,7 @@ function renderStrip(snapshot: CoffinSnapshot): string {
     return "";
   }
 
-  const verbs = (["look", "use"] as const)
+  const verbs = (["look", "use", "take"] as const)
     .map(
       (verb) => `
         <button type="button" class="verb${verb === selectedVerb ? " is-selected" : ""}" data-verb="${verb}">
@@ -132,7 +132,8 @@ function bindEvents(): void {
 
   for (const button of appElement.querySelectorAll<HTMLButtonElement>("[data-verb]")) {
     button.addEventListener("click", () => {
-      selectedVerb = button.dataset.verb === "use" ? "use" : "look";
+      const verb = button.dataset.verb;
+      selectedVerb = verb === "use" || verb === "take" ? verb : "look";
       render();
     });
   }

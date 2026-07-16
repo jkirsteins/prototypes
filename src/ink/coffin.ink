@@ -159,6 +159,7 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
 { verb == "look" and item == "lining": -> look_lining }
 { verb == "look" and item == "nail": -> look_nail }
 { verb == "use" and item == "nail": -> use_nail }
+{ verb == "take" and item == "nail": -> take_nail }
 { verb == "look" and item == "hinge": -> look_hinge }
 { verb == "use" and item == "hinge": -> use_hinge }
 { verb == "look" and item == "table": -> look_table }
@@ -167,6 +168,7 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
 { verb == "use" and item == "drawer": -> use_drawer }
 { verb == "look" and item == "tinderbox": -> look_tinderbox }
 { verb == "use" and item == "tinderbox": -> use_tinderbox }
+{ verb == "take" and item == "tinderbox": -> take_tinderbox }
 { verb == "look" and item == "candle": -> look_candle }
 { verb == "use" and item == "candle": -> use_candle }
 { verb == "look" and item == "hanging": -> look_hanging }
@@ -197,6 +199,15 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
 # image:coffin-nail
 { inventory ? nail:
     You turn the nail over in your fingers. It is waiting for something worth prying.
+- else:
+    The nail is still snagged in its seam. Your fingers want it in your fist first.
+}
+-> room_return
+
+= take_nail
+# image:coffin-nail
+{ inventory ? nail:
+    The nail is already in your fist, right where you want it.
 - else:
     ~ spotted -= nail
     ~ inventory += nail
@@ -275,6 +286,14 @@ You crouch and feel along the table's underside. There, set flush in its frame: 
 { inventory ? tinderbox:
     You turn the tin over in your hand. It wants something worth lighting.
 - else:
+    The tin lies in the drawer where you found it. Better in your hand first.
+}
+-> room_return
+
+= take_tinderbox
+{ inventory ? tinderbox:
+    The tin is already in your hand, its weight a small comfort.
+- else:
     ~ spotted -= tinderbox
     ~ inventory += tinderbox
     You lift the tin out of the drawer. It has a satisfying weight, like a promise kept.
@@ -317,9 +336,12 @@ The bucket has been mended twice with wire, and is dry as bone at the bottom.
 -> room_return
 
 === interact_fallback(verb, item) ===
-{ verb == "look":
-    You study it a while longer. It tells you nothing new.
-- else:
-    You try it this way and that, and nothing comes of it.
+{
+    - verb == "look":
+        You study it a while longer. It tells you nothing new.
+    - verb == "take":
+        You take hold of it, but it stays where it is.
+    - else:
+        You try it this way and that, and nothing comes of it.
 }
 -> room_return
