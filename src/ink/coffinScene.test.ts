@@ -252,12 +252,49 @@ describe("opening ink scene", () => {
     const scene = new CoffinScene();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
+    interact(scene, "look", "table");
+    interact(scene, "use", "drawer");
+    interact(scene, "use", "tinderbox");
+    interact(scene, "use", "candle");
+    choose(scene, "Look around.");
+
+    interact(scene, "use", "bucket");
+
+    expect(scene.snapshot.spotted).toContain("bucket");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("nothing comes of it");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
+  });
+
+  it("forces the drawer straight from the table with enough strength", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+    choose(scene, "Look around.");
 
     interact(scene, "use", "table");
 
-    expect(scene.snapshot.spotted).toContain("table");
-    expect(scene.snapshot.paragraphs.join(" ")).toContain("nothing comes of it");
-    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
+    expect(scene.snapshot.spotted).not.toContain("table");
+    expect(scene.snapshot.spotted).toContain("drawer");
+    expect(scene.snapshot.spotted).toContain("tinderbox");
+    const text = scene.snapshot.paragraphs.join(" ");
+    expect(text).toContain("gives all at once");
+    expect(text).toContain("tin");
+  });
+
+  it("finds the drawer under the table but cannot force it weak-handed", () => {
+    const scene = new CoffinScene();
+    choose(scene, "Feel along the velvet.");
+    choose(scene, "Work the loose nail free.");
+    choose(scene, "Trace where the wood resists.");
+    choose(scene, "Force the hinge with the nail.");
+    choose(scene, "Step into the room.");
+    choose(scene, "Look around.");
+
+    interact(scene, "use", "table");
+
+    expect(scene.snapshot.spotted).not.toContain("table");
+    expect(scene.snapshot.spotted).toContain("drawer");
+    expect(scene.snapshot.spotted).not.toContain("tinderbox");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("jams");
   });
 
   it("moves the tin to hand when used in the drawer", () => {

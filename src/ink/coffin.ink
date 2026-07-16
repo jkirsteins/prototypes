@@ -175,6 +175,7 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
 
 === interact(verb, item) ===
 { verb == "look" and item == "table": -> look_table }
+{ verb == "use" and item == "table": -> use_table }
 { verb == "look" and item == "drawer": -> look_drawer }
 { verb == "use" and item == "drawer": -> use_drawer }
 { verb == "look" and item == "tinderbox": -> look_tinderbox }
@@ -200,19 +201,28 @@ The table has one drawer, set slightly proud of its frame, as if it started to o
 }
 -> cell_room_loop
 
+= use_table
+~ spotted -= table
+~ spotted += drawer
+You crouch and feel along the table's underside. There, set flush in its frame: a drawer.
+-> force_drawer
+
 = use_drawer
 { drawer_open:
     You slide the drawer back and forth on its runners. It has given you everything it had.
-- else:
-    { strength >= 2:
-        ~ drawer_open = true
-        ~ spotted += tinderbox
-        You set your feet, take the drawer's lip in both hands, and yank. The wood shrieks, surrenders, and the drawer jumps its runners into your grip.
+    -> cell_room_loop
+}
+-> force_drawer
 
-        Inside, wrapped in a scrap of waxed cloth: a small tin, and in it flint, steel, and a pinch of char cloth that has kept itself dry all this time.
-    - else:
-        You pull at the drawer. It shifts a hair's breadth and jams, as if a hand inside were holding it shut. Whatever it wants from you, you do not have it yet.
-    }
+= force_drawer
+{ strength >= 2:
+    ~ drawer_open = true
+    ~ spotted += tinderbox
+    The drawer is swollen into its frame and means to stay there. You set your feet, take its lip in both hands, and haul until your arms shake and the wood howls. It fights you the whole way, then gives all at once, jumping its runners into your grip.
+
+    Inside, wrapped in a scrap of waxed cloth: a small tin, and in it flint, steel, and a pinch of char cloth that has kept itself dry all this time.
+- else:
+    You pull at the drawer. It shifts a hair's breadth and jams, as if a hand inside were holding it shut. Whatever it wants from you, you do not have it yet.
 }
 -> cell_room_loop
 
