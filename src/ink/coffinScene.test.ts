@@ -3,7 +3,6 @@ import { CoffinScene } from "./coffinScene";
 
 const FICTION_BREAKING_TERMS = [
   "coffin",
-  "prison",
   "dungeon",
   "tutorial",
   "build set",
@@ -31,6 +30,7 @@ function expectNoFictionBreak(scene: CoffinScene): void {
     expect(text, `player-visible text must not contain "${term}"`).not.toContain(term);
   }
   expect(text, 'player-visible text must not contain "cell"').not.toMatch(/\bcells?\b/);
+  expect(text, 'player-visible text must not contain "prison"').not.toMatch(/\bprisons?\b/);
 }
 
 describe("opening ink scene", () => {
@@ -76,6 +76,15 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.build).toBe("undetermined");
     expect(scene.snapshot.attributes.caution).toBe(-1);
     expect(scene.snapshot.choices.length).toBeGreaterThan(0);
+  });
+
+  it("keeps the fiction intact when remembering the danger of calling out", () => {
+    const scene = new CoffinScene();
+
+    choose(scene, "Call for help.");
+    choose(scene, "Remember why calling out felt dangerous.");
+
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("either rescued or collected");
   });
 
   it("sets an ingenuity build by finding the nail and forcing the hinge", () => {
