@@ -172,3 +172,47 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
         }
     }
     -> cell_room_loop
+
+=== interact(verb, item) ===
+{ verb == "look" and item == "table": -> look_table }
+{ verb == "look" and item == "drawer": -> look_drawer }
+{ verb == "use" and item == "drawer": -> use_drawer }
+-> interact_fallback(verb, item)
+
+= look_table
+~ spotted -= table
+~ spotted += drawer
+The table has one drawer, set slightly proud of its frame, as if it started to open once and thought better of it. The rest is scarred wood and old candle grease.
+-> cell_room_loop
+
+= look_drawer
+{ drawer_open:
+    The drawer sags open on its runners, empty now but for dust and a smell of old iron.
+- else:
+    The drawer sits crooked in its housing. Swollen wood, or something jammed; either way, it does not mean to come out politely.
+}
+-> cell_room_loop
+
+= use_drawer
+{ drawer_open:
+    You slide the drawer back and forth on its runners. It has given you everything it had.
+- else:
+    { strength >= 2:
+        ~ drawer_open = true
+        ~ spotted += tinderbox
+        You set your feet, take the drawer's lip in both hands, and yank. The wood shrieks, surrenders, and the drawer jumps its runners into your grip.
+
+        Inside, wrapped in a scrap of waxed cloth: a small tin, and in it flint, steel, and a pinch of char cloth that has kept itself dry all this time.
+    - else:
+        You pull at the drawer. It shifts a hair's breadth and jams, as if a hand inside were holding it shut. Whatever it wants from you, you do not have it yet.
+    }
+}
+-> cell_room_loop
+
+=== interact_fallback(verb, item) ===
+{ verb == "look":
+    You study it a while longer. It tells you nothing new.
+- else:
+    You try it this way and that, and nothing comes of it.
+}
+-> cell_room_loop

@@ -3,6 +3,8 @@ import coffinStoryContent from "./coffin.json";
 
 export type CoffinBuild = "undetermined" | "strength" | "cautious" | "ingenious";
 
+export type ItemVerb = "look" | "use";
+
 export type CoffinChoice = {
   index: number;
   text: string;
@@ -54,6 +56,12 @@ export class CoffinScene {
 
   choose(choiceIndex: number): CoffinSnapshot {
     this.story.ChooseChoiceIndex(choiceIndex);
+    this.continueStory();
+    return this.snapshot;
+  }
+
+  interact(verb: ItemVerb, item: string): CoffinSnapshot {
+    this.story.ChoosePathString("interact", true, [verb, item]);
     this.continueStory();
     return this.snapshot;
   }

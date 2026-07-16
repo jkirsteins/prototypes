@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CoffinScene } from "./coffinScene";
+import { CoffinScene, type ItemVerb } from "./coffinScene";
 
 const FICTION_BREAKING_TERMS = [
   "coffin",
@@ -16,6 +16,11 @@ function choose(scene: CoffinScene, text: string): void {
   const choice = scene.snapshot.choices.find((candidate) => candidate.text === text);
   expect(choice, `choice available: ${text}`).toBeDefined();
   scene.choose(choice!.index);
+  expectNoFictionBreak(scene);
+}
+
+function interact(scene: CoffinScene, verb: ItemVerb, item: string): void {
+  scene.interact(verb, item);
   expectNoFictionBreak(scene);
 }
 
@@ -194,5 +199,62 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.choices.map((choice) => choice.text)).not.toContain(
       "Force the hinge with the nail.",
     );
+  });
+
+  it("reveals the drawer when looking at the table", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+    choose(scene, "Look around.");
+
+    interact(scene, "look", "table");
+
+    expect(scene.snapshot.spotted).toContain("drawer");
+    expect(scene.snapshot.spotted).not.toContain("table");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("drawer");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
+  });
+
+  it("opens the drawer with enough strength and reveals the tin", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+    choose(scene, "Look around.");
+    interact(scene, "look", "table");
+
+    expect(scene.snapshot.attributes.strength).toBe(2);
+    interact(scene, "use", "drawer");
+
+    expect(scene.snapshot.spotted).toContain("tinderbox");
+    expect(scene.snapshot.spotted).toContain("drawer");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("tin");
+  });
+
+  it("keeps the drawer stuck without strength", () => {
+    const scene = new CoffinScene();
+    choose(scene, "Feel along the velvet.");
+    choose(scene, "Work the loose nail free.");
+    choose(scene, "Trace where the wood resists.");
+    choose(scene, "Force the hinge with the nail.");
+    choose(scene, "Step into the room.");
+    choose(scene, "Look around.");
+    interact(scene, "look", "table");
+
+    expect(scene.snapshot.attributes.strength).toBe(0);
+    interact(scene, "use", "drawer");
+
+    expect(scene.snapshot.spotted).not.toContain("tinderbox");
+    expect(scene.snapshot.spotted).toContain("drawer");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("jams");
+  });
+
+  it("answers unauthored combinations with quiet flavor", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+    choose(scene, "Look around.");
+
+    interact(scene, "use", "table");
+
+    expect(scene.snapshot.spotted).toContain("table");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("nothing comes of it");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
   });
 });
