@@ -1,19 +1,47 @@
 import { describe, expect, it } from "vitest";
 import { CoffinScene } from "./coffinScene";
 
+const FICTION_BREAKING_TERMS = [
+  "coffin",
+  "tutorial",
+  "build set",
+  "clue found",
+  "item gained",
+  "memory gained",
+  "deduction",
+];
+
 function choose(scene: CoffinScene, text: string): void {
   const choice = scene.snapshot.choices.find((candidate) => candidate.text === text);
-  expect(choice, text).toBeDefined();
+  expect(choice, `choice available: ${text}`).toBeDefined();
   scene.choose(choice!.index);
+  expectNoFictionBreak(scene);
 }
 
-describe("coffin ink scene", () => {
-  it("sets a strength build after pushing the lid three times", () => {
+function visibleText(scene: CoffinScene): string {
+  const snapshot = scene.snapshot;
+  return [...snapshot.paragraphs, ...snapshot.choices.map((choice) => choice.text)].join(" ");
+}
+
+function expectNoFictionBreak(scene: CoffinScene): void {
+  const text = visibleText(scene).toLowerCase();
+  for (const term of FICTION_BREAKING_TERMS) {
+    expect(text, `player-visible text must not contain "${term}"`).not.toContain(term);
+  }
+}
+
+describe("opening ink scene", () => {
+  it("never breaks the fiction in the opening beat", () => {
+    const scene = new CoffinScene();
+    expectNoFictionBreak(scene);
+  });
+
+  it("sets a strength build after pushing three times", () => {
     const scene = new CoffinScene();
 
-    choose(scene, "Push the coffin lid.");
-    choose(scene, "Push the coffin lid.");
-    choose(scene, "Push the coffin lid.");
+    choose(scene, "Push against the wood above you.");
+    choose(scene, "Push against the wood above you.");
+    choose(scene, "Push against the wood above you.");
 
     expect(scene.snapshot.escaped).toBe(true);
     expect(scene.snapshot.build).toBe("strength");
@@ -21,33 +49,45 @@ describe("coffin ink scene", () => {
     expect(scene.snapshot.imageId).toBe("coffin-break");
   });
 
-  it("sets a caution build after calling for help despite the warning memory", () => {
+  it("sets a caution build after calling out despite the hesitation", () => {
     const scene = new CoffinScene();
 
     choose(scene, "Call for help.");
 
-    expect(scene.snapshot.discoveries.map((discovery) => discovery.id)).toContain("unsafe-call");
-    expect(scene.snapshot.paragraphs.join(" ")).toContain("Maybe this is unsafe");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("what might answer");
 
-    choose(scene, "Call for help anyway.");
+    choose(scene, "Call out anyway.");
 
     expect(scene.snapshot.escaped).toBe(true);
     expect(scene.snapshot.build).toBe("cautious");
     expect(scene.snapshot.attributes.caution).toBe(2);
   });
 
-  it("sets an ingenuity build by finding a nail and breaking the hinge", () => {
+  it("sets an ingenuity build by finding the nail and forcing the hinge", () => {
     const scene = new CoffinScene();
 
-    choose(scene, "Feel along the velvet lining.");
-    choose(scene, "Unscrew the loose nail.");
-    choose(scene, "Search for the hinge.");
-    choose(scene, "Break the hinge with the nail.");
+    choose(scene, "Feel along the velvet.");
+    choose(scene, "Work the loose nail free.");
+    choose(scene, "Trace where the wood resists.");
+    choose(scene, "Force the hinge with the nail.");
 
     expect(scene.snapshot.escaped).toBe(true);
     expect(scene.snapshot.build).toBe("ingenious");
     expect(scene.snapshot.attributes.ingenuity).toBe(2);
-    expect(scene.snapshot.discoveries.map((discovery) => discovery.id)).toContain("loose-nail");
-    expect(scene.snapshot.discoveries.map((discovery) => discovery.id)).toContain("hinge-weak-point");
+  });
+
+  it("keeps the escape unreachable until both nail and hinge are found", () => {
+    const scene = new CoffinScene();
+
+    expect(scene.snapshot.choices.map((choice) => choice.text)).not.toContain(
+      "Force the hinge with the nail.",
+    );
+
+    choose(scene, "Feel along the velvet.");
+    choose(scene, "Work the loose nail free.");
+
+    expect(scene.snapshot.choices.map((choice) => choice.text)).not.toContain(
+      "Force the hinge with the nail.",
+    );
   });
 });
