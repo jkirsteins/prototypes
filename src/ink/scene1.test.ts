@@ -61,6 +61,13 @@ describe("opening ink scene", () => {
     expectNoFictionBreak(scene);
   });
 
+  it("tracks perception and sanity, held at zero", () => {
+    const scene = new Scene1();
+
+    expect(scene.snapshot.attributes.perception).toBe(0);
+    expect(scene.snapshot.attributes.sanity).toBe(0);
+  });
+
   it("spots the velvet lining from the first beat and keeps the plate unnamed", () => {
     const scene = new Scene1();
 

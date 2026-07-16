@@ -6,6 +6,8 @@ VAR build = "undetermined"
 VAR strength = 0
 VAR caution = 0
 VAR ingenuity = 0
+VAR perception = 0
+VAR sanity = 0
 VAR escaped = false
 
 LIST items = lining, nail, hinge, table, drawer, tinderbox, candle, hanging, cage, bucket

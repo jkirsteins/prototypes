@@ -14,6 +14,8 @@ export type Scene1Snapshot = {
   attributes: {
     caution: number;
     ingenuity: number;
+    perception: number;
+    sanity: number;
     strength: number;
   };
   build: Scene1Build;
@@ -39,6 +41,8 @@ export class Scene1 {
       attributes: {
         caution: this.numberVariable("caution"),
         ingenuity: this.numberVariable("ingenuity"),
+        perception: this.numberVariable("perception"),
+        sanity: this.numberVariable("sanity"),
         strength: this.numberVariable("strength"),
       },
       build: this.stringVariable("build") as Scene1Build,
