@@ -11,7 +11,7 @@ VAR caution = 0
 VAR ingenuity = 0
 VAR escaped = false
 
-LIST items = table, drawer, tinderbox, candle, hanging, cage, bucket
+LIST items = lining, nail, hinge, table, drawer, tinderbox, candle, hanging, cage, bucket
 VAR spotted = ()
 VAR inventory = ()
 VAR drawer_open = false
@@ -24,9 +24,10 @@ VAR current_room = "coffin"
 
 === start ===
 # image:coffin
+~ spotted += lining
 Darkness. The air is stale and tastes of dust.
 
-Velvet presses against your shoulders. Wood waits inches above your face. Somewhere near your right hand, a small brass plate rasps softly when you breathe.
+Velvet presses against your shoulders. Wood waits inches above your face.
 
 { push_count > 0:
 Your arms remember the weight above you.

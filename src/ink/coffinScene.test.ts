@@ -53,6 +53,13 @@ describe("opening ink scene", () => {
     expectNoFictionBreak(scene);
   });
 
+  it("spots the velvet lining from the first beat and keeps the plate unnamed", () => {
+    const scene = new CoffinScene();
+
+    expect(scene.snapshot.spotted).toEqual(["lining"]);
+    expect(scene.snapshot.paragraphs.join(" ").toLowerCase()).not.toContain("brass");
+  });
+
   it("sets a strength build after five persistent pushes", () => {
     const scene = new CoffinScene();
 
