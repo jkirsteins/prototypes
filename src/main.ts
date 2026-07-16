@@ -14,6 +14,21 @@ let debugVisible = false;
 
 let selectedVerb: ItemVerb = "look";
 
+// Display labels (with keyboard hint) for the verb strip. The internal verb ids
+// stay "look"/"use"/"take" so the ink dispatch and tests are unaffected.
+const VERB_LABELS: Record<ItemVerb, string> = {
+  look: "look at (l)",
+  use: "interact with (u)",
+  take: "take (t)",
+};
+
+// Keyboard shortcut -> verb id.
+const VERB_KEYS: Record<string, ItemVerb> = {
+  l: "look",
+  u: "use",
+  t: "take",
+};
+
 const COFFIN_BACKGROUND = `${import.meta.env.BASE_URL}backgrounds/coffin.png`;
 
 // Keyed by the imageId the scene derives from room state (see Scene1.imageId).
@@ -74,7 +89,7 @@ function renderStrip(snapshot: Scene1Snapshot): string {
     .map(
       (verb) => `
         <button type="button" class="verb${verb === selectedVerb ? " is-selected" : ""}" data-verb="${verb}">
-          ${verb}
+          ${VERB_LABELS[verb]}
         </button>
       `,
     )
@@ -157,6 +172,16 @@ document.addEventListener("keydown", (event) => {
     debugVisible = !debugVisible;
     render();
     return;
+  }
+
+  if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+    const verb = VERB_KEYS[event.key.toLowerCase()];
+
+    if (verb) {
+      selectedVerb = verb;
+      render();
+      return;
+    }
   }
 
   if (/^[1-9]$/.test(event.key)) {
