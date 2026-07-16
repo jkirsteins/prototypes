@@ -27,14 +27,18 @@ body {
 
 .stage {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
   min-height: 100vh;
-  background: linear-gradient(
-    to top,
-    rgba(5, 3, 2, 0.92) 0%,
-    rgba(5, 3, 2, 0.6) 34%,
-    rgba(5, 3, 2, 0) 68%
-  );
+  background:
+    linear-gradient(to bottom, rgba(5, 3, 2, 0.72) 0%, rgba(5, 3, 2, 0) 18%),
+    linear-gradient(
+      to top,
+      rgba(5, 3, 2, 0.92) 0%,
+      rgba(5, 3, 2, 0.6) 34%,
+      rgba(5, 3, 2, 0) 68%
+    );
 }
 
 .story {
@@ -73,6 +77,56 @@ body {
 }
 
 .choice:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 26px;
+  padding: 18px 44px 0;
+}
+
+.strip-verbs,
+.strip-items,
+.strip-carried {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.strip-carried {
+  margin-left: auto;
+}
+
+.verb,
+.strip-item {
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: rgba(210, 191, 154, 0.55);
+  font: inherit;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.verb.is-selected {
+  color: #f6edda;
+}
+
+.verb:hover,
+.verb:focus-visible,
+.strip-item:hover,
+.strip-item:focus-visible {
+  color: #f6edda;
+}
+
+.verb:focus-visible,
+.strip-item:focus-visible {
   outline: none;
   text-decoration: underline;
   text-underline-offset: 4px;
@@ -136,5 +190,9 @@ body {
   .story {
     max-width: 100%;
     padding: 28px 20px 36px;
+  }
+
+  .strip {
+    padding: 16px 20px 0;
   }
 }

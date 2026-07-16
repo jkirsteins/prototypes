@@ -1,5 +1,5 @@
 import "./styles.css";
-import { CoffinScene, type CoffinSnapshot } from "./ink/coffinScene";
+import { CoffinScene, type CoffinSnapshot, type ItemVerb } from "./ink/coffinScene";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -11,9 +11,22 @@ const appElement = app;
 let scene = new CoffinScene();
 let debugVisible = false;
 
+let selectedVerb: ItemVerb = "look";
+
+const ITEM_LABELS: Record<string, string> = {
+  table: "table",
+  drawer: "drawer",
+  tinderbox: "small tin",
+  candle: "candle",
+  hanging: "wall hanging",
+  cage: "iron cage",
+  bucket: "bucket",
+};
+
 const BACKGROUNDS: Record<string, string> = {
   "lid-open": `${import.meta.env.BASE_URL}backgrounds/lid-open.png`,
   "cell-room": `${import.meta.env.BASE_URL}backgrounds/cell-room.png`,
+  "cell-room-lit": `${import.meta.env.BASE_URL}backgrounds/cell-room-lit.png`,
 };
 
 const DEFAULT_BACKGROUND = `${import.meta.env.BASE_URL}backgrounds/awakening.png`;
@@ -25,6 +38,7 @@ function render(): void {
 
   appElement.innerHTML = `
     <main class="stage">
+      ${renderStrip(snapshot)}
       <div class="story">
         ${snapshot.paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}
         ${
@@ -54,6 +68,41 @@ function render(): void {
   bindEvents();
 }
 
+function renderStrip(snapshot: CoffinSnapshot): string {
+  if (snapshot.spotted.length === 0 && snapshot.inventory.length === 0) {
+    return "";
+  }
+
+  const verbs = (["look", "use"] as const)
+    .map(
+      (verb) => `
+        <button type="button" class="verb${verb === selectedVerb ? " is-selected" : ""}" data-verb="${verb}">
+          ${verb}
+        </button>
+      `,
+    )
+    .join("");
+
+  const items = (ids: string[]) =>
+    ids
+      .map(
+        (id) => `
+          <button type="button" class="strip-item" data-item-id="${id}">
+            ${escapeHtml(ITEM_LABELS[id] ?? id)}
+          </button>
+        `,
+      )
+      .join("");
+
+  return `
+    <div class="strip">
+      <span class="strip-verbs">${verbs}</span>
+      <span class="strip-items">${items(snapshot.spotted)}</span>
+      <span class="strip-carried">${items(snapshot.inventory)}</span>
+    </div>
+  `;
+}
+
 function renderDebug(snapshot: CoffinSnapshot): string {
   return `
     <aside class="debug" aria-label="Debug information">
@@ -65,6 +114,9 @@ function renderDebug(snapshot: CoffinSnapshot): string {
         <div><dt>ingenuity</dt><dd>${snapshot.attributes.ingenuity}</dd></div>
         <div><dt>escaped</dt><dd>${snapshot.escaped}</dd></div>
         <div><dt>image</dt><dd>${escapeHtml(snapshot.imageId)}</dd></div>
+        <div><dt>spotted</dt><dd>${escapeHtml(snapshot.spotted.join(", ") || "-")}</dd></div>
+        <div><dt>inventory</dt><dd>${escapeHtml(snapshot.inventory.join(", ") || "-")}</dd></div>
+        <div><dt>verb</dt><dd>${escapeHtml(selectedVerb)}</dd></div>
       </dl>
       <button type="button" data-reset="true">Reset story</button>
     </aside>
@@ -79,8 +131,23 @@ function bindEvents(): void {
     });
   }
 
+  for (const button of appElement.querySelectorAll<HTMLButtonElement>("[data-verb]")) {
+    button.addEventListener("click", () => {
+      selectedVerb = button.dataset.verb === "use" ? "use" : "look";
+      render();
+    });
+  }
+
+  for (const button of appElement.querySelectorAll<HTMLButtonElement>("[data-item-id]")) {
+    button.addEventListener("click", () => {
+      scene.interact(selectedVerb, button.dataset.itemId ?? "");
+      render();
+    });
+  }
+
   appElement.querySelector<HTMLButtonElement>("[data-reset]")?.addEventListener("click", () => {
     scene = new CoffinScene();
+    selectedVerb = "look";
     render();
   });
 }
