@@ -555,6 +555,31 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.inventory).toContain("nail");
   });
 
+  it("keeps the room's background when interacting with a carried item", () => {
+    const scene = new Scene1();
+    enterRoomByWits(scene);
+
+    expect(scene.snapshot.imageId).toBe("cell-room");
+
+    interact(scene, "use", "nail");
+    expect(scene.snapshot.imageId).toBe("cell-room");
+
+    interact(scene, "look", "nail");
+    expect(scene.snapshot.imageId).toBe("cell-room");
+  });
+
+  it("keeps the niche background when interacting with the carried nail there", () => {
+    const scene = new Scene1();
+    enterRoomByWits(scene);
+    interact(scene, "use", "window");
+    choose(scene, "Squeeze through the gap.");
+
+    expect(scene.snapshot.imageId).toBe("guard-niche");
+
+    interact(scene, "use", "nail");
+    expect(scene.snapshot.imageId).toBe("guard-niche");
+  });
+
   it("keeps the door shut and arms nothing but a warning on the first try", () => {
     const scene = new Scene1();
     enterRoomByForce(scene);

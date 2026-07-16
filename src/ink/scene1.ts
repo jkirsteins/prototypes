@@ -30,10 +30,30 @@ export type Scene1Snapshot = {
 export class Scene1 {
   private readonly story = new Story(scene1Content);
   private paragraphs: string[] = [];
-  private imageId = "coffin";
 
   constructor() {
     this.continueStory();
+  }
+
+  // The background is a pure function of where the player is standing (plus a
+  // couple of room states), never of which item they last touched. Deriving it
+  // here - rather than tracking a mutable image id that any knot could set -
+  // makes it impossible for interacting with a carried item to desync the
+  // background from the current room.
+  private get imageId(): string {
+    const room = this.stringVariable("current_room");
+
+    if (room === "cell") {
+      return this.booleanVariable("candle_lit") ? "cell-room-lit" : "cell-room";
+    }
+    if (room === "niche") {
+      return "guard-niche";
+    }
+    if (room === "corridor") {
+      return "corridor";
+    }
+    // Still in the coffin's room: the open lid once escaped, the box before.
+    return this.booleanVariable("escaped") ? "lid-open" : "coffin";
   }
 
   get snapshot(): Scene1Snapshot {
@@ -83,22 +103,9 @@ export class Scene1 {
 
     while (this.story.canContinue) {
       const text = this.story.Continue()?.trim() ?? "";
-      this.applyTags(this.story.currentTags ?? []);
 
       if (text) {
         this.paragraphs.push(text);
-      }
-    }
-  }
-
-  private applyTags(tags: string[]): void {
-    for (const tag of tags) {
-      const [rawKey, ...rawValue] = tag.split(":");
-      const key = rawKey.trim();
-      const value = rawValue.join(":").trim();
-
-      if (key === "image" && value) {
-        this.imageId = value;
       }
     }
   }

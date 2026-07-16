@@ -16,13 +16,9 @@ let selectedVerb: ItemVerb = "look";
 
 const COFFIN_BACKGROUND = `${import.meta.env.BASE_URL}backgrounds/coffin.png`;
 
+// Keyed by the imageId the scene derives from room state (see Scene1.imageId).
 const BACKGROUNDS: Record<string, string> = {
   coffin: COFFIN_BACKGROUND,
-  "coffin-strain": COFFIN_BACKGROUND,
-  "coffin-echo": COFFIN_BACKGROUND,
-  "coffin-lining": COFFIN_BACKGROUND,
-  "coffin-nail": COFFIN_BACKGROUND,
-  "coffin-hinge": COFFIN_BACKGROUND,
   "lid-open": `${import.meta.env.BASE_URL}backgrounds/lid-open.png`,
   "cell-room": `${import.meta.env.BASE_URL}backgrounds/cell-room.png`,
   "cell-room-lit": `${import.meta.env.BASE_URL}backgrounds/cell-room-lit.png`,
