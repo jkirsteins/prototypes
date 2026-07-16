@@ -1,9 +1,5 @@
 import "./styles.css";
-import { items } from "./game/content";
-import { createInitialState, getCurrentRoom, getVisibleRoomItems, runCommand } from "./game/engine";
-import { verbs, type Command, type GameItem, type GameState, type ItemId, type Verb } from "./game/types";
-import { getVerbForKeyboardShortcut, verbKeyboardShortcuts } from "./ui/keyboardShortcuts";
-import { splitRoomItemsByDescription } from "./ui/reachableItems";
+import { CoffinScene, type CoffinDiscovery, type CoffinSnapshot } from "./ink/coffinScene";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -12,220 +8,200 @@ if (!app) {
 }
 
 const appElement = app;
-
-let state: GameState = createInitialState();
-let selectedVerb: Verb = "Look at";
-let pendingUseTarget: ItemId | undefined;
+let scene = new CoffinScene();
+let selectedDiscoveryId: string | undefined;
 
 function render(): void {
-  const room = getCurrentRoom(state);
-  const roomItems = getVisibleRoomItems(state);
-  const splitRoomItems = splitRoomItemsByDescription(room.description, roomItems);
-  const inventoryItems = state.inventory.map((itemId) => items[itemId]);
+  const snapshot = scene.snapshot;
 
   appElement.innerHTML = `
     <main class="shell">
-      <section class="room" aria-labelledby="room-title">
-        <h1 id="room-title">${escapeHtml(room.title)}</h1>
-        <div class="description">${renderDescription(room.description, splitRoomItems.inline)}</div>
+      <section class="scene" aria-labelledby="scene-title">
+        <div class="scene-copy">
+          <p class="eyebrow">Coffin Tutorial</p>
+          <h1 id="scene-title">Inside the Coffin</h1>
+          <div class="story-text">
+            ${snapshot.paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}
+          </div>
+        </div>
+
+        <figure class="flavor-image flavor-image--${escapeHtml(snapshot.imageId)}" aria-label="${escapeHtml(snapshot.mood)}">
+          <div class="coffin-plate"></div>
+          <figcaption>${escapeHtml(snapshot.mood)}</figcaption>
+        </figure>
+      </section>
+
+      <section class="choices" aria-label="Available choices">
         ${
-          splitRoomItems.additional.length > 0
-            ? `
-              <div class="visible-nouns" aria-label="Visible objects">
-                <span>Visible</span>
-                ${splitRoomItems.additional.map((item) => renderNounButton(item, "room")).join("")}
-              </div>
-            `
-            : ""
+          snapshot.choices.length > 0
+            ? snapshot.choices
+                .map(
+                  (choice) => `
+                    <button type="button" data-choice-index="${choice.index}">
+                      ${escapeHtml(choice.text)}
+                    </button>
+                  `,
+                )
+                .join("")
+            : `<p class="empty-state">The coffin scene is complete.</p>`
         }
       </section>
 
-      <section class="verbs" aria-label="Verbs">
-        ${verbs
-          .map(
-            (verb) => `
-              <button
-                type="button"
-                class="verb-button${verb === selectedVerb ? " is-selected" : ""}"
-                data-verb="${escapeHtml(verb)}"
-                aria-pressed="${verb === selectedVerb ? "true" : "false"}"
-                aria-keyshortcuts="${escapeHtml(verbKeyboardShortcuts[verb])}"
-              >
-                ${escapeHtml(verb)}
-              </button>
-            `,
-          )
-          .join("")}
-      </section>
-
-      <section class="inventory" aria-label="Inventory">
-        <h2>Inventory</h2>
-        <div class="inventory-row">
-          ${
-            inventoryItems.length > 0
-              ? inventoryItems.map((item) => renderNounButton(item, "inventory")).join("")
-              : '<span class="empty-inventory">Empty</span>'
-          }
-        </div>
-      </section>
-
-      <section class="command-preview" aria-live="polite">${escapeHtml(getCommandPreview())}</section>
-
-      ${
-        state.flags.roofHatchOpen
-          ? `
-            <section class="win-panel" aria-live="polite">
-              <h2>Trial Complete</h2>
-              <p>The roof hatch flies open. You stagger into the moonlight, cape-less, coffin-sore, and legally distinct from several better-funded adventurers.</p>
-              <p><strong>CONGRATULATIONS, CASTLE ESCAPIST!</strong></p>
-              <p>You have completed this trial-sized portion of BLOODKEEP ADVENTURE DISK ONE.</p>
-              <p>To continue swashing buckles, dodging vampires, and discovering why every castle has this many keys, call:</p>
-              <p class="phone-number">1-800-BUY-A-GAME</p>
-              <p>Operators are standing by in shoulder pads. Have your parents' credit card ready.</p>
-            </section>
-          `
-          : ""
-      }
+      <aside class="side-panel">
+        ${renderBuild(snapshot)}
+        ${renderDiscoveries(snapshot.discoveries, selectedDiscoveryId)}
+      </aside>
 
       <section class="controls">
         <button type="button" data-reset="true">Reset</button>
       </section>
-
-      <ol class="log" aria-label="Command log, newest first" reversed start="${state.log.length}">
-        ${[...state.log].reverse().map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}
-      </ol>
     </main>
   `;
 
   bindEvents();
 }
 
+function renderBuild(snapshot: CoffinSnapshot): string {
+  return `
+    <section class="build-panel" aria-label="Starting build">
+      <h2>Starting Build</h2>
+      <p class="build-name">${escapeHtml(formatBuild(snapshot.build))}</p>
+      <dl class="stats">
+        <div>
+          <dt>Strength</dt>
+          <dd>${snapshot.attributes.strength}</dd>
+        </div>
+        <div>
+          <dt>Caution</dt>
+          <dd>${snapshot.attributes.caution}</dd>
+        </div>
+        <div>
+          <dt>Ingenuity</dt>
+          <dd>${snapshot.attributes.ingenuity}</dd>
+        </div>
+      </dl>
+    </section>
+  `;
+}
+
+function renderDiscoveries(discoveries: CoffinDiscovery[], selectedId: string | undefined): string {
+  return `
+    <section class="discoveries" aria-label="Discoveries">
+      <h2>Items, Clues, Memories</h2>
+      ${selectedId ? `<p class="combine-hint">Choose another discovery to combine it with.</p>` : ""}
+      ${
+        discoveries.length > 0
+          ? discoveries
+              .map(
+                (discovery) => `
+                  <button
+                    type="button"
+                    class="discovery discovery--${discovery.kind}${selectedId === discovery.id ? " is-selected" : ""}"
+                    data-discovery-id="${escapeHtml(discovery.id)}"
+                  >
+                    <span>${escapeHtml(discovery.kind)}</span>
+                    ${escapeHtml(discovery.label)}
+                  </button>
+                `,
+              )
+              .join("")
+          : `<p class="empty-state">Nothing useful has surfaced yet.</p>`
+      }
+    </section>
+  `;
+}
+
 function bindEvents(): void {
-  for (const button of appElement.querySelectorAll<HTMLButtonElement>("[data-verb]")) {
+  for (const button of appElement.querySelectorAll<HTMLButtonElement>("[data-choice-index]")) {
     button.addEventListener("click", () => {
-      selectVerb(button.dataset.verb as Verb);
+      scene.choose(Number(button.dataset.choiceIndex));
+      selectedDiscoveryId = undefined;
+      render();
     });
   }
 
-  for (const button of appElement.querySelectorAll<HTMLButtonElement>("[data-item-id]")) {
+  for (const button of appElement.querySelectorAll<HTMLButtonElement>("[data-discovery-id]")) {
     button.addEventListener("click", () => {
-      chooseItem(button.dataset.itemId as ItemId);
+      showDiscovery(button.dataset.discoveryId ?? "");
     });
   }
 
   appElement.querySelector<HTMLButtonElement>("[data-reset]")?.addEventListener("click", () => {
-    state = createInitialState();
-    selectedVerb = "Look at";
-    pendingUseTarget = undefined;
+    scene = new CoffinScene();
+    selectedDiscoveryId = undefined;
     render();
   });
 }
 
-function selectVerb(verb: Verb): void {
-  selectedVerb = verb;
-  pendingUseTarget = undefined;
-  render();
-}
+function showDiscovery(discoveryId: string): void {
+  const discovery = scene.snapshot.discoveries.find((candidate) => candidate.id === discoveryId);
 
-function handleKeyboardShortcut(event: KeyboardEvent): void {
-  if (isEditableTarget(event.target)) {
+  if (!discovery) {
     return;
   }
 
-  const verb = getVerbForKeyboardShortcut(event);
-
-  if (!verb) {
+  if (!selectedDiscoveryId) {
+    selectedDiscoveryId = discoveryId;
+    render();
+    insertInspection(discovery.description);
     return;
   }
 
-  event.preventDefault();
-  selectVerb(verb);
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return target.isContentEditable || target.matches("input, textarea, select");
-}
-
-function chooseItem(itemId: ItemId): void {
-  if (selectedVerb !== "Use") {
-    execute({ verb: selectedVerb, targetId: itemId });
-    return;
-  }
-
-  if (!pendingUseTarget) {
-    pendingUseTarget = itemId;
+  if (selectedDiscoveryId === discoveryId) {
+    selectedDiscoveryId = undefined;
     render();
     return;
   }
 
-  if (pendingUseTarget === itemId) {
-    pendingUseTarget = undefined;
+  if (tryCombineDiscoveries(selectedDiscoveryId, discoveryId)) {
+    selectedDiscoveryId = undefined;
     render();
     return;
   }
 
-  execute({ verb: "Use", targetId: pendingUseTarget, secondaryTargetId: itemId });
-}
-
-function execute(command: Command): void {
-  const commandText = formatCommand(command);
-  const commandState: GameState = {
-    ...state,
-    log: [...state.log, commandText],
-  };
-  const outcome = runCommand(commandState, command);
-
-  state = outcome.state;
-  pendingUseTarget = undefined;
+  const firstDiscovery = scene.snapshot.discoveries.find((candidate) => candidate.id === selectedDiscoveryId);
+  selectedDiscoveryId = discoveryId;
   render();
+  insertInspection(
+    firstDiscovery
+      ? `You compare ${firstDiscovery.label.toLowerCase()} with ${discovery.label.toLowerCase()}, but no useful deduction lands.`
+      : discovery.description,
+  );
 }
 
-function getCommandPreview(): string {
-  if (selectedVerb === "Use" && pendingUseTarget) {
-    return `> Use ${items[pendingUseTarget].label} with ...`;
+function tryCombineDiscoveries(firstId: string, secondId: string): boolean {
+  const pair = new Set([firstId, secondId]);
+
+  if (pair.has("loose-nail") && pair.has("hinge-weak-point")) {
+    const choice = scene.snapshot.choices.find((candidate) => candidate.text === "Break the hinge with the nail.");
+
+    if (choice) {
+      scene.choose(choice.index);
+      return true;
+    }
   }
 
-  return `> ${selectedVerb} ...`;
+  return false;
 }
 
-function formatCommand(command: Command): string {
-  if (command.verb === "Use") {
-    return `> Use ${items[command.targetId].label} with ${items[command.secondaryTargetId].label}`;
+function insertInspection(description: string): void {
+  appElement.querySelector(".story-text")?.insertAdjacentHTML(
+    "afterbegin",
+    `<p class="inspection">${escapeHtml(description)}</p>`,
+  );
+}
+
+function formatBuild(build: CoffinSnapshot["build"]): string {
+  switch (build) {
+    case "strength":
+      return "Strength-oriented";
+    case "cautious":
+      return "Caution-oriented";
+    case "ingenious":
+      return "Ingenuity-oriented";
+    case "undetermined":
+      return "Undetermined";
   }
-
-  return `> ${command.verb} ${items[command.targetId].label}`;
-}
-
-function renderDescription(description: string, roomItems: GameItem[]): string {
-  let rendered = escapeHtml(description);
-  const sortedItems = [...roomItems].sort((left, right) => right.label.length - left.label.length);
-
-  for (const item of sortedItems) {
-    const escapedLabel = escapeHtml(item.label);
-    const labelPattern = new RegExp(`\\b${escapeRegExp(escapedLabel)}\\b`, "gi");
-    rendered = rendered.replace(labelPattern, (match) => renderNounButton(item, "room", match));
-  }
-
-  return rendered;
-}
-
-function renderNounButton(item: GameItem, source: "room" | "inventory", label = item.label): string {
-  const isPending = selectedVerb === "Use" && pendingUseTarget === item.id;
-
-  return `
-    <button
-      type="button"
-      class="noun-button${isPending ? " is-pending" : ""}"
-      data-item-id="${escapeHtml(item.id)}"
-      data-source="${source}"
-    >
-      ${escapeHtml(label)}
-    </button>
-  `;
 }
 
 function escapeHtml(value: string): string {
@@ -246,11 +222,5 @@ function escapeHtml(value: string): string {
     }
   });
 }
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-window.addEventListener("keydown", handleKeyboardShortcut);
 
 render();

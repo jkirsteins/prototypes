@@ -4,9 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "compile:ink": "inkjs-compiler src/ink/coffin.ink -o src/ink/coffin.json",
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc && vite build",
-    "test": "vitest run"
+    "build": "npm run compile:ink && tsc && vite build",
+    "test": "npm run compile:ink && vitest run"
+  },
+  "dependencies": {
+    "inkjs": "^2.4.0"
   },
   "devDependencies": {
     "typescript": "^5.5.4",
