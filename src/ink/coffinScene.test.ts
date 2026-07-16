@@ -33,6 +33,14 @@ function enterRoomByForce(scene: CoffinScene): void {
   choose(scene, "Step into the room.");
 }
 
+function enterRoomByWits(scene: CoffinScene): void {
+  interact(scene, "look", "lining");
+  interact(scene, "use", "nail");
+  choose(scene, "Trace where the wood resists.");
+  interact(scene, "use", "hinge");
+  choose(scene, "Step into the room.");
+}
+
 function visibleText(scene: CoffinScene): string {
   const snapshot = scene.snapshot;
   return [...snapshot.paragraphs, ...snapshot.choices.map((choice) => choice.text)].join(" ");
@@ -111,10 +119,17 @@ describe("opening ink scene", () => {
   it("sets an ingenuity build by finding the nail and forcing the hinge", () => {
     const scene = new CoffinScene();
 
-    choose(scene, "Feel along the velvet.");
-    choose(scene, "Work the loose nail free.");
+    interact(scene, "look", "lining");
+    expect(scene.snapshot.spotted).toContain("nail");
+
+    interact(scene, "use", "nail");
+    expect(scene.snapshot.inventory).toContain("nail");
+    expect(scene.snapshot.spotted).not.toContain("nail");
+
     choose(scene, "Trace where the wood resists.");
-    choose(scene, "Force the hinge with the nail.");
+    expect(scene.snapshot.spotted).toContain("hinge");
+
+    interact(scene, "use", "hinge");
 
     expect(scene.snapshot.escaped).toBe(true);
     expect(scene.snapshot.build).toBe("ingenious");
@@ -128,11 +143,7 @@ describe("opening ink scene", () => {
   it("reveals the room after stepping in", () => {
     const scene = new CoffinScene();
 
-    choose(scene, "Feel along the velvet.");
-    choose(scene, "Work the loose nail free.");
-    choose(scene, "Trace where the wood resists.");
-    choose(scene, "Force the hinge with the nail.");
-    choose(scene, "Step into the room.");
+    enterRoomByWits(scene);
 
     expect(scene.snapshot.paragraphs.length).toBeGreaterThan(0);
     expect(scene.snapshot.imageId).toBe("cell-room");
@@ -166,11 +177,7 @@ describe("opening ink scene", () => {
   it("keeps the room open after looking around finds nothing new", () => {
     const scene = new CoffinScene();
 
-    choose(scene, "Feel along the velvet.");
-    choose(scene, "Work the loose nail free.");
-    choose(scene, "Trace where the wood resists.");
-    choose(scene, "Force the hinge with the nail.");
-    choose(scene, "Step into the room.");
+    enterRoomByWits(scene);
 
     choose(scene, "Look around.");
     choose(scene, "Look around.");
@@ -195,19 +202,66 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.imageId).toBe("cell-room");
   });
 
-  it("keeps the escape unreachable until both nail and hinge are found", () => {
+  it("keeps the escape unreachable until the hinge is found and the nail is carried", () => {
     const scene = new CoffinScene();
 
-    expect(scene.snapshot.choices.map((choice) => choice.text)).not.toContain(
-      "Force the hinge with the nail.",
-    );
+    scene.interact("use", "hinge");
+    expect(scene.snapshot.escaped).toBe(false);
 
-    choose(scene, "Feel along the velvet.");
-    choose(scene, "Work the loose nail free.");
+    interact(scene, "look", "lining");
+    interact(scene, "use", "nail");
+    scene.interact("use", "hinge");
+    expect(scene.snapshot.escaped).toBe(false);
 
-    expect(scene.snapshot.choices.map((choice) => choice.text)).not.toContain(
-      "Force the hinge with the nail.",
+    choose(scene, "Trace where the wood resists.");
+    interact(scene, "use", "hinge");
+    expect(scene.snapshot.escaped).toBe(true);
+  });
+
+  it("refuses the hinge to bare fingers", () => {
+    const scene = new CoffinScene();
+
+    choose(scene, "Trace where the wood resists.");
+    interact(scene, "use", "hinge");
+
+    expect(scene.snapshot.escaped).toBe(false);
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("Flesh loses to iron");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain(
+      "Push against the wood above you.",
     );
+  });
+
+  it("answers unauthored combinations in the dark and stays in the dark", () => {
+    const scene = new CoffinScene();
+
+    interact(scene, "use", "lining");
+
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("nothing comes of it");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain(
+      "Push against the wood above you.",
+    );
+  });
+
+  it("covers the lining and nail look/use branches at every stage", () => {
+    const scene = new CoffinScene();
+
+    interact(scene, "look", "lining");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("loose in its post");
+
+    interact(scene, "look", "nail");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("not made to hold you");
+
+    interact(scene, "look", "lining");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("given up all it knows");
+
+    interact(scene, "use", "nail");
+    expect(scene.snapshot.inventory).toContain("nail");
+
+    interact(scene, "look", "nail");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("rides your fist");
+
+    interact(scene, "use", "nail");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("worth prying");
   });
 
   it("reveals the drawer when looking at the table", () => {
@@ -239,11 +293,7 @@ describe("opening ink scene", () => {
 
   it("keeps the drawer stuck without strength", () => {
     const scene = new CoffinScene();
-    choose(scene, "Feel along the velvet.");
-    choose(scene, "Work the loose nail free.");
-    choose(scene, "Trace where the wood resists.");
-    choose(scene, "Force the hinge with the nail.");
-    choose(scene, "Step into the room.");
+    enterRoomByWits(scene);
     choose(scene, "Look around.");
     interact(scene, "look", "table");
 
@@ -289,11 +339,7 @@ describe("opening ink scene", () => {
 
   it("finds the drawer under the table but cannot force it weak-handed", () => {
     const scene = new CoffinScene();
-    choose(scene, "Feel along the velvet.");
-    choose(scene, "Work the loose nail free.");
-    choose(scene, "Trace where the wood resists.");
-    choose(scene, "Force the hinge with the nail.");
-    choose(scene, "Step into the room.");
+    enterRoomByWits(scene);
     choose(scene, "Look around.");
 
     interact(scene, "use", "table");

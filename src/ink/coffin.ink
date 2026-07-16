@@ -1,8 +1,5 @@
 VAR push_count = 0
 VAR call_count = 0
-VAR lining_seen = false
-VAR nail_seen = false
-VAR nail_taken = false
 VAR hinge_seen = false
 VAR unsafe_memory = false
 VAR build = "undetermined"
@@ -35,7 +32,7 @@ Your arms remember the weight above you.
 { unsafe_memory:
 Your own half-shout still hangs in your mind: maybe something out there heard.
 }
-{ nail_taken:
+{ inventory ? nail:
 The bent nail rests in your fist, ugly and useful.
 }
 
@@ -92,38 +89,11 @@ The bent nail rests in your fist, ugly and useful.
     Nothing answers. Not a footstep, not a breath. The silence afterward feels like it is listening.
     -> coffin_loop
 
-+ {not lining_seen} [Feel along the velvet.]
-    # image:coffin-lining
-    ~ lining_seen = true
-    ~ nail_seen = true
-    Your fingers find a torn seam in the velvet, then a rough nub of metal beneath it. A nail, loose in its post.
-    -> coffin_loop
-
-+ {nail_seen and not nail_taken} [Work the loose nail free.]
-    # image:coffin-nail
-    ~ nail_taken = true
-    You worry the nail back and forth until it gives up its tiny post. It is bent, sharp, and mean enough to matter.
-    -> coffin_loop
-
 + {not hinge_seen} [Trace where the wood resists.]
     # image:coffin-hinge
     ~ hinge_seen = true
-    You follow the resistance to one side. There: a cramped hinge, half-hidden behind the edge of the brass plate.
-    -> coffin_loop
-
-+ {nail_taken and hinge_seen} [Force the hinge with the nail.]
-    # image:coffin-hinge
-    ~ escaped = true
-    ~ build = "ingenious"
-    ~ ingenuity = ingenuity + 2
-    You slide the nail into the hinge gap and twist until the metal complains.
-
-    It is not a key. It is not a tool. But it is enough. The hinge buckles, and the wood above you swings open with the offended groan of old carpentry.
-    -> lid_open
-
-+ {lining_seen and not nail_taken} [Think about the loose nail.]
-    # image:coffin-nail
-    It is small, but it is the only thing in here that was not made to hold you.
+    ~ spotted += hinge
+    You follow the resistance to one side, past a small brass plate that rasps under your knuckles. There: a cramped hinge, half-hidden behind the plate's edge.
     -> coffin_loop
 
 + {unsafe_memory} [Remember why calling out felt dangerous.]
@@ -185,6 +155,11 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
 -> coffin_loop
 
 === interact(verb, item) ===
+{ verb == "look" and item == "lining": -> look_lining }
+{ verb == "look" and item == "nail": -> look_nail }
+{ verb == "use" and item == "nail": -> use_nail }
+{ verb == "look" and item == "hinge": -> look_hinge }
+{ verb == "use" and item == "hinge": -> use_hinge }
 { verb == "look" and item == "table": -> look_table }
 { verb == "use" and item == "table": -> use_table }
 { verb == "look" and item == "drawer": -> look_drawer }
@@ -197,6 +172,56 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
 { verb == "look" and item == "cage": -> look_cage }
 { verb == "look" and item == "bucket": -> look_bucket }
 -> interact_fallback(verb, item)
+
+= look_lining
+# image:coffin-lining
+{ (spotted ? nail) or (inventory ? nail):
+    You go over the seam again, corner to corner. The velvet has given up all it knows.
+- else:
+    ~ spotted += nail
+    Your fingers find a torn seam in the velvet, then a rough nub of metal beneath it. A nail, loose in its post.
+}
+-> room_return
+
+= look_nail
+# image:coffin-nail
+{ inventory ? nail:
+    Bent, sharp, and mean enough to matter. It rides your fist like it belongs there.
+- else:
+    It is small, but it is the only thing in here that was not made to hold you.
+}
+-> room_return
+
+= use_nail
+# image:coffin-nail
+{ inventory ? nail:
+    You turn the nail over in your fingers. It is waiting for something worth prying.
+- else:
+    ~ spotted -= nail
+    ~ inventory += nail
+    You worry the nail back and forth until it gives up its tiny post. It is bent, sharp, and mean enough to matter.
+}
+-> room_return
+
+= look_hinge
+# image:coffin-hinge
+The hinge is cramped and stiff, its pin barely proud of the leaf. It was made to swing for someone standing outside.
+-> room_return
+
+= use_hinge
+# image:coffin-hinge
+{ inventory ? nail:
+    ~ escaped = true
+    ~ build = "ingenious"
+    ~ ingenuity = ingenuity + 2
+    You slide the nail into the hinge gap and twist until the metal complains.
+
+    It is not a key. It is not a tool. But it is enough. The hinge buckles, and the wood above you swings open with the offended groan of old carpentry.
+    -> lid_open
+- else:
+    You work a fingertip into the hinge gap and pry. Flesh loses to iron, the way it always has.
+}
+-> room_return
 
 = look_table
 ~ spotted -= table
