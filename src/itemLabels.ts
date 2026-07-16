@@ -1,0 +1,10 @@
+// Maps ink LIST item ids (src/ink/coffin.ink `LIST items`) to player-facing labels.
+export const ITEM_LABELS: Record<string, string> = {
+  table: "table",
+  drawer: "drawer",
+  tinderbox: "small tin",
+  candle: "candle",
+  hanging: "wall hanging",
+  cage: "iron cage",
+  bucket: "bucket",
+};

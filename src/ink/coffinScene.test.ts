@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CoffinScene, type ItemVerb } from "./coffinScene";
+import coffinStoryContent from "./coffin.json";
+import { ITEM_LABELS } from "../itemLabels";
 
 const FICTION_BREAKING_TERMS = [
   "coffin",
@@ -321,5 +323,78 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.paragraphs.join(" ")).toContain(
       "Nothing in particular catches your eye.",
     );
+  });
+
+  it("ignores interact() calls for items that have not been discovered yet", () => {
+    const scene = new CoffinScene();
+
+    scene.interact("use", "tinderbox");
+
+    expect(scene.snapshot.inventory).toEqual([]);
+    expect(scene.snapshot.imageId).toBe("coffin");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain(
+      "Push against the wood above you.",
+    );
+  });
+
+  it("covers the drawer, tinderbox, and candle look/use branches at every stage", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+    choose(scene, "Look around.");
+
+    interact(scene, "look", "table");
+
+    interact(scene, "look", "drawer");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain(
+      "does not mean to come out politely",
+    );
+
+    interact(scene, "use", "drawer");
+    expect(scene.snapshot.spotted).toContain("tinderbox");
+
+    interact(scene, "use", "drawer");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain(
+      "given you everything it had",
+    );
+
+    interact(scene, "look", "drawer");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("sags open");
+
+    interact(scene, "look", "tinderbox");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain(
+      "sits in the ruined drawer",
+    );
+
+    interact(scene, "use", "tinderbox");
+    expect(scene.snapshot.inventory).toContain("tinderbox");
+
+    interact(scene, "look", "tinderbox");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain(
+      "Small, dry, and willing",
+    );
+
+    interact(scene, "use", "tinderbox");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain(
+      "wants something worth lighting",
+    );
+
+    interact(scene, "look", "candle");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("tallow");
+
+    interact(scene, "use", "candle");
+    expect(scene.snapshot.imageId).toBe("cell-room-lit");
+
+    interact(scene, "look", "candle");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain(
+      "flame stands small and straight",
+    );
+  });
+});
+
+describe("item labels", () => {
+  it("has exactly one label per item defined in the ink LIST", () => {
+    const listItemIds = Object.keys((coffinStoryContent as any).listDefs.items);
+
+    expect(Object.keys(ITEM_LABELS).sort()).toEqual(listItemIds.sort());
   });
 });

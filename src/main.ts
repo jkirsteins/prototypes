@@ -1,5 +1,6 @@
 import "./styles.css";
 import { CoffinScene, type CoffinSnapshot, type ItemVerb } from "./ink/coffinScene";
+import { ITEM_LABELS } from "./itemLabels";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -12,16 +13,6 @@ let scene = new CoffinScene();
 let debugVisible = false;
 
 let selectedVerb: ItemVerb = "look";
-
-const ITEM_LABELS: Record<string, string> = {
-  table: "table",
-  drawer: "drawer",
-  tinderbox: "small tin",
-  candle: "candle",
-  hanging: "wall hanging",
-  cage: "iron cage",
-  bucket: "bucket",
-};
 
 const BACKGROUNDS: Record<string, string> = {
   "lid-open": `${import.meta.env.BASE_URL}backgrounds/lid-open.png`,

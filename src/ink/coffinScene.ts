@@ -61,6 +61,14 @@ export class CoffinScene {
   }
 
   interact(verb: ItemVerb, item: string): CoffinSnapshot {
+    const isDiscovered =
+      this.listVariable("spotted").includes(item) ||
+      this.listVariable("inventory").includes(item);
+
+    if (!isDiscovered) {
+      return this.snapshot;
+    }
+
     this.story.ChoosePathString("interact", true, [verb, item]);
     this.continueStory();
     return this.snapshot;
