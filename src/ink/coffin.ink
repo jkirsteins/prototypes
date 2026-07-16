@@ -46,18 +46,21 @@ The bent nail rests in your fist, ugly and useful.
     - else:
         { push_count == 2:
             # image:coffin-strain
-            You push again, harder. Dust falls into your mouth. Off to one side, metal gives a tired click, but the wood holds.
-
-            The sensible part of you suggests saving your strength. The rest of you disagrees.
+            You push again, harder. Dust falls into your mouth. The wood holds.
         - else:
-            # image:coffin-break
-            ~ escaped = true
-            ~ build = "strength"
-            ~ strength = strength + 2
-            The third shove is not elegant. It is not clever. It is a declaration.
+            { push_count < 5:
+                # image:coffin-strain
+                It doesn't budge.
+            - else:
+                # image:coffin-break
+                ~ escaped = true
+                ~ build = "strength"
+                ~ strength = strength + 2
+                The fifth shove is not elegant. It is not clever. It is a declaration.
 
-            Metal screams, the wood above you bursts open, and you roll out onto cold stone with splinters in your palms.
-            -> END
+                Metal screams, the wood above you bursts open, and you roll out onto cold stone with splinters in your palms.
+                -> END
+            }
         }
     }
     -> coffin_loop
@@ -74,13 +77,11 @@ The bent nail rests in your fist, ugly and useful.
 + {call_count == 1} [Call out anyway.]
     # image:coffin-echo
     ~ call_count = call_count + 1
-    ~ escaped = true
-    ~ build = "cautious"
-    ~ caution = caution + 2
-    You call out, but not loudly. Not blindly. You shape the sound and listen between each word.
+    ~ caution = caution - 1
+    You call out anyway, louder, the word cracking against the wood.
 
-    A bolt scrapes somewhere outside. You go still before the wood above you swings away, already measuring where the listener stands.
-    -> END
+    Nothing answers. Not a footstep, not a breath. The silence afterward feels like it is listening.
+    -> coffin_loop
 
 + {not lining_seen} [Feel along the velvet.]
     # image:coffin-lining

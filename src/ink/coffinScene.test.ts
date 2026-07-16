@@ -36,11 +36,20 @@ describe("opening ink scene", () => {
     expectNoFictionBreak(scene);
   });
 
-  it("sets a strength build after pushing three times", () => {
+  it("sets a strength build after five persistent pushes", () => {
     const scene = new CoffinScene();
 
     choose(scene, "Push against the wood above you.");
     choose(scene, "Push against the wood above you.");
+
+    choose(scene, "Push against the wood above you.");
+    expect(scene.snapshot.paragraphs).toContain("It doesn't budge.");
+    expect(scene.snapshot.escaped).toBe(false);
+
+    choose(scene, "Push against the wood above you.");
+    expect(scene.snapshot.paragraphs).toContain("It doesn't budge.");
+    expect(scene.snapshot.escaped).toBe(false);
+
     choose(scene, "Push against the wood above you.");
 
     expect(scene.snapshot.escaped).toBe(true);
@@ -49,18 +58,18 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.imageId).toBe("coffin-break");
   });
 
-  it("sets a caution build after calling out despite the hesitation", () => {
+  it("keeps the story going when calling out brings no answer", () => {
     const scene = new CoffinScene();
 
     choose(scene, "Call for help.");
-
     expect(scene.snapshot.paragraphs.join(" ")).toContain("what might answer");
 
     choose(scene, "Call out anyway.");
 
-    expect(scene.snapshot.escaped).toBe(true);
-    expect(scene.snapshot.build).toBe("cautious");
-    expect(scene.snapshot.attributes.caution).toBe(2);
+    expect(scene.snapshot.escaped).toBe(false);
+    expect(scene.snapshot.build).toBe("undetermined");
+    expect(scene.snapshot.attributes.caution).toBe(-1);
+    expect(scene.snapshot.choices.length).toBeGreaterThan(0);
   });
 
   it("sets an ingenuity build by finding the nail and forcing the hinge", () => {
