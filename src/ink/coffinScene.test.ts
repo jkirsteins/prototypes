@@ -479,6 +479,38 @@ describe("opening ink scene", () => {
       "flame stands small and straight",
     );
   });
+
+  it("leaves the dark's objects behind when the way opens", () => {
+    const scene = new CoffinScene();
+    enterRoomByWits(scene);
+
+    expect(scene.snapshot.spotted).not.toContain("lining");
+    expect(scene.snapshot.spotted).not.toContain("nail");
+    expect(scene.snapshot.spotted).not.toContain("hinge");
+    expect(scene.snapshot.inventory).toContain("nail");
+  });
+
+  it("carries the nail through a forced escape", () => {
+    const scene = new CoffinScene();
+
+    interact(scene, "look", "lining");
+    interact(scene, "use", "nail");
+    for (let push = 0; push < 5; push += 1) {
+      choose(scene, "Push against the wood above you.");
+    }
+
+    expect(scene.snapshot.spotted).toEqual([]);
+    expect(scene.snapshot.inventory).toContain("nail");
+
+    interact(scene, "look", "nail");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toEqual([
+      "Step into the room.",
+    ]);
+
+    choose(scene, "Step into the room.");
+    expect(scene.snapshot.inventory).toContain("nail");
+    expect(scene.snapshot.spotted).toContain("candle");
+  });
 });
 
 describe("item labels", () => {

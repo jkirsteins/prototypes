@@ -105,6 +105,7 @@ The bent nail rests in your fist, ugly and useful.
 
 === lid_open ===
 # image:lid-open
+~ spotted -= (lining, nail, hinge)
 Above you, the dark gives way to a room.
 
 Grey light finds gilt mouldings gone green with age, a tall mirror clouded like a dead eye, a chaise whose upholstery has split and spilled its stuffing. Cobwebs sag from the cornices. Nothing moves.
