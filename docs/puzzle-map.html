@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Escape Castle - Puzzle Map</title>
+  <!--
+    Puzzle dependency map for the game (Ron Gilbert style).
+    To update the diagram, edit the mermaid source in the <pre class="mermaid"> block below.
+    Open this file directly in a browser to view (mermaid is loaded from a CDN, so the
+    first open needs an internet connection).
+  -->
+  <style>
+    body { margin: 0; background: #14110d; }
+    .mermaid { padding: 24px; }
+  </style>
+</head>
+<body>
+  <pre class="mermaid">
+graph LR
+  classDef goal fill:#2e2a22,stroke:#c9a227,color:#f5e9c9,stroke-width:2px
+  classDef item fill:#1f2d36,stroke:#6fa0b8,color:#dbeaf0
+  classDef caution fill:#33211f,stroke:#b5643c,color:#f0d9c0,stroke-dasharray:5 3
+
+  START([Wake in the dark]):::goal
+
+  subgraph OUT [Out of the box]
+    direction TB
+    PUSH["Push the lid x5<br/>STRENGTH +2"]
+    LOOKLIN["Look at the lining"] --> NAIL(["nail"]):::item
+    NAIL --> TAKE["Take the nail"]
+    TRACE["Trace the resistance"] --> HINGE(["hinge"]):::item
+    TAKE --> PRY["Nail in the hinge<br/>INGENUITY +2"]
+    HINGE --> PRY
+  end
+
+  START --> PUSH
+  START --> LOOKLIN
+  START --> TRACE
+  START -.->|optional| CALL["Call out anyway<br/>caution -1"]:::caution
+
+  PUSH --> LID([Lid opens])
+  PRY --> LID
+  LID --> CELL([A locked door is the way out]):::goal
+
+  subgraph RA [Route A - strength and light]
+    direction TB
+    TABLE["Look around: table, drawer"] -->|"STRENGTH 2+"| TIN(["tinderbox"]):::item
+    TIN --> CANDLE["Light the candle"]
+    CANDLE --> PINS["Look at door by candlelight<br/>door becomes weak-hinged"]
+  end
+
+  subgraph RB [Route B - ingenuity]
+    direction TB
+    WINDOW["Pry the window bars"] -->|"needs nail"| NICHE([Guard-niche])
+    NICHE --> KEY(["iron key"]):::item
+    KEY --> CARRY["Carry it back"]
+  end
+
+  subgraph RC [Route C - caution]
+    direction TB
+    TRY["Try the door - locked"] --> WEIGHT["Throw your weight<br/>caution -1"]:::caution
+  end
+
+  CELL --> TABLE
+  CELL --> WINDOW
+  CELL --> TRY
+
+  PINS -->|"STRENGTH 2+"| DOOR([Door opens]):::goal
+  CARRY -->|unlock| DOOR
+  WEIGHT -->|break it| DOOR
+
+  DOOR --> CORRIDOR([The gallery... to be continued]):::goal
+  </pre>
+
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      securityLevel: "loose",
+      theme: "base",
+      themeVariables: {
+        primaryColor: "#241f18",
+        primaryTextColor: "#ece3d0",
+        primaryBorderColor: "#4a3f2e",
+        lineColor: "#8a7c5c",
+        clusterBkg: "#191510",
+        clusterBorder: "#3a3122",
+        edgeLabelBackground: "#14110d",
+        titleColor: "#c9a227"
+      }
+    });
+  </script>
+</body>
+</html>
