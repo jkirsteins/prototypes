@@ -10,4 +10,8 @@ export const ITEM_LABELS: Record<string, string> = {
   hanging: "wall hanging",
   cage: "iron cage",
   bucket: "bucket",
+  door: "door",
+  weak_door: "weak-hinged door",
+  window: "window",
+  key: "iron key",
 };

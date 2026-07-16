@@ -26,6 +26,8 @@ const BACKGROUNDS: Record<string, string> = {
   "lid-open": `${import.meta.env.BASE_URL}backgrounds/lid-open.png`,
   "cell-room": `${import.meta.env.BASE_URL}backgrounds/cell-room.png`,
   "cell-room-lit": `${import.meta.env.BASE_URL}backgrounds/cell-room-lit.png`,
+  corridor: `${import.meta.env.BASE_URL}backgrounds/corridor.png`,
+  "guard-niche": `${import.meta.env.BASE_URL}backgrounds/guard-niche.png`,
 };
 
 const DEFAULT_BACKGROUND = `${import.meta.env.BASE_URL}backgrounds/awakening.png`;
@@ -111,6 +113,8 @@ function renderDebug(snapshot: Scene1Snapshot): string {
         <div><dt>strength</dt><dd>${snapshot.attributes.strength}</dd></div>
         <div><dt>caution</dt><dd>${snapshot.attributes.caution}</dd></div>
         <div><dt>ingenuity</dt><dd>${snapshot.attributes.ingenuity}</dd></div>
+        <div><dt>perception</dt><dd>${snapshot.attributes.perception}</dd></div>
+        <div><dt>sanity</dt><dd>${snapshot.attributes.sanity}</dd></div>
         <div><dt>escaped</dt><dd>${snapshot.escaped}</dd></div>
         <div><dt>image</dt><dd>${escapeHtml(snapshot.imageId)}</dd></div>
         <div><dt>spotted</dt><dd>${escapeHtml(snapshot.spotted.join(", ") || "-")}</dd></div>
