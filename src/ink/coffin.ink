@@ -18,6 +18,7 @@ VAR drawer_open = false
 VAR candle_lit = false
 VAR room_scanned = false
 VAR light_scanned = false
+VAR current_room = "coffin"
 
 -> start
 
@@ -139,6 +140,9 @@ Grey light finds gilt mouldings gone green with age, a tall mirror clouded like 
 
 Whoever kept this room loved it once. Nobody has loved it for a long time.
 
+-> lid_open_loop
+
+=== lid_open_loop ===
 + [Step into the room.]
     You take hold of the worn edges and pull yourself up and over. Your legs are slow to remember their work, but they hold.
 
@@ -147,6 +151,7 @@ Whoever kept this room loved it once. Nobody has loved it for a long time.
 
 === cell_room ===
 # image:cell-room
+~ current_room = "cell"
 ~ spotted += candle
 Cold rises through the flagstones and finds your bare ankles at once.
 
@@ -173,6 +178,11 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
     }
     -> cell_room_loop
 
+=== room_return ===
+{ current_room == "cell": -> cell_room_loop }
+{ escaped: -> lid_open_loop }
+-> coffin_loop
+
 === interact(verb, item) ===
 { verb == "look" and item == "table": -> look_table }
 { verb == "use" and item == "table": -> use_table }
@@ -191,7 +201,7 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
 ~ spotted -= table
 ~ spotted += drawer
 The table has one drawer, set slightly proud of its frame, as if it started to open once and thought better of it. The rest is scarred wood and old candle grease.
--> cell_room_loop
+-> room_return
 
 = look_drawer
 { drawer_open:
@@ -199,7 +209,7 @@ The table has one drawer, set slightly proud of its frame, as if it started to o
 - else:
     The drawer sits crooked in its housing. Swollen wood, or something jammed; either way, it does not mean to come out politely.
 }
--> cell_room_loop
+-> room_return
 
 = use_table
 ~ spotted -= table
@@ -210,7 +220,7 @@ You crouch and feel along the table's underside. There, set flush in its frame: 
 = use_drawer
 { drawer_open:
     You slide the drawer back and forth on its runners. It has given you everything it had.
-    -> cell_room_loop
+    -> room_return
 }
 -> force_drawer
 
@@ -224,7 +234,7 @@ You crouch and feel along the table's underside. There, set flush in its frame: 
 - else:
     You pull at the drawer. It shifts a hair's breadth and jams, as if a hand inside were holding it shut. Whatever it wants from you, you do not have it yet.
 }
--> cell_room_loop
+-> room_return
 
 = look_tinderbox
 { inventory ? tinderbox:
@@ -232,7 +242,7 @@ You crouch and feel along the table's underside. There, set flush in its frame: 
 - else:
     The tin sits in the ruined drawer, dented but shut tight against the years.
 }
--> cell_room_loop
+-> room_return
 
 = use_tinderbox
 { inventory ? tinderbox:
@@ -242,7 +252,7 @@ You crouch and feel along the table's underside. There, set flush in its frame: 
     ~ inventory += tinderbox
     You lift the tin out of the drawer. It has a satisfying weight, like a promise kept.
 }
--> cell_room_loop
+-> room_return
 
 = look_candle
 { candle_lit:
@@ -250,7 +260,7 @@ You crouch and feel along the table's underside. There, set flush in its frame: 
 - else:
     A hand's length of tallow in an iron sconce. It has been waiting longer than you have.
 }
--> cell_room_loop
+-> room_return
 
 = use_candle
 { candle_lit:
@@ -265,19 +275,19 @@ You crouch and feel along the table's underside. There, set flush in its frame: 
         You pinch the dead wick. Cold. You have nothing to wake it with.
     }
 }
--> cell_room_loop
+-> room_return
 
 = look_hanging
 Up close the hanging is all ghost: a garden, maybe, or a procession, worn down to brown breath on cloth.
--> cell_room_loop
+-> room_return
 
 = look_cage
 The cage is bird-sized, its little door ajar. Whatever it held left long ago, one way or another.
--> cell_room_loop
+-> room_return
 
 = look_bucket
 The bucket has been mended twice with wire, and is dry as bone at the bottom.
--> cell_room_loop
+-> room_return
 
 === interact_fallback(verb, item) ===
 { verb == "look":
@@ -285,4 +295,4 @@ The bucket has been mended twice with wire, and is dry as bone at the bottom.
 - else:
     You try it this way and that, and nothing comes of it.
 }
--> cell_room_loop
+-> room_return
