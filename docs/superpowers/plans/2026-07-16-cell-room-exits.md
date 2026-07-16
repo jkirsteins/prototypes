@@ -247,7 +247,7 @@ In `src/ink/scene1.ink`, add these knots immediately after the `= look_bucket` s
 = look_door
 { candle_lit:
     ~ pins_seen = true
-    By the candlelight you can see what the dark kept hidden: the great hinges sit on this side, their pins seated but never peened over. Drive them up and out, and the slab itself becomes the way through.
+    By the candlelight you can see what the dark kept hidden: the great hinge pins sit on this side, seated but never peened over. Drive them up and out, and the slab itself becomes the way through.
 - else:
     Iron-banded oak, a grille at eye height, a keyhole gone black with age. It was built to keep something in, and it has not forgotten the work.
 }
