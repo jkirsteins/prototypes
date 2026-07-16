@@ -257,4 +257,69 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.paragraphs.join(" ")).toContain("nothing comes of it");
     expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
   });
+
+  it("moves the tin to hand when used in the drawer", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+    choose(scene, "Look around.");
+    interact(scene, "look", "table");
+    interact(scene, "use", "drawer");
+
+    interact(scene, "use", "tinderbox");
+
+    expect(scene.snapshot.inventory).toContain("tinderbox");
+    expect(scene.snapshot.spotted).not.toContain("tinderbox");
+  });
+
+  it("cannot light the candle empty-handed", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+
+    interact(scene, "use", "candle");
+
+    expect(scene.snapshot.imageId).toBe("cell-room");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("nothing to wake it with");
+  });
+
+  it("lights the candle with the tin and brightens the room", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+    choose(scene, "Look around.");
+    interact(scene, "look", "table");
+    interact(scene, "use", "drawer");
+    interact(scene, "use", "tinderbox");
+
+    interact(scene, "use", "candle");
+
+    expect(scene.snapshot.imageId).toBe("cell-room-lit");
+
+    interact(scene, "use", "candle");
+    expect(scene.snapshot.imageId).toBe("cell-room-lit");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("needs nothing more");
+  });
+
+  it("reveals more of the room to a second look once lit", () => {
+    const scene = new CoffinScene();
+    enterRoomByForce(scene);
+    choose(scene, "Look around.");
+    interact(scene, "look", "table");
+    interact(scene, "use", "drawer");
+    interact(scene, "use", "tinderbox");
+    interact(scene, "use", "candle");
+
+    choose(scene, "Look around.");
+
+    expect(scene.snapshot.spotted).toContain("hanging");
+    expect(scene.snapshot.spotted).toContain("cage");
+    expect(scene.snapshot.spotted).toContain("bucket");
+
+    interact(scene, "look", "hanging");
+    interact(scene, "look", "cage");
+    interact(scene, "look", "bucket");
+
+    choose(scene, "Look around.");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain(
+      "Nothing in particular catches your eye.",
+    );
+  });
 });

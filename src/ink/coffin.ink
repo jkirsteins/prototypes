@@ -177,6 +177,13 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
 { verb == "look" and item == "table": -> look_table }
 { verb == "look" and item == "drawer": -> look_drawer }
 { verb == "use" and item == "drawer": -> use_drawer }
+{ verb == "look" and item == "tinderbox": -> look_tinderbox }
+{ verb == "use" and item == "tinderbox": -> use_tinderbox }
+{ verb == "look" and item == "candle": -> look_candle }
+{ verb == "use" and item == "candle": -> use_candle }
+{ verb == "look" and item == "hanging": -> look_hanging }
+{ verb == "look" and item == "cage": -> look_cage }
+{ verb == "look" and item == "bucket": -> look_bucket }
 -> interact_fallback(verb, item)
 
 = look_table
@@ -207,6 +214,59 @@ The table has one drawer, set slightly proud of its frame, as if it started to o
         You pull at the drawer. It shifts a hair's breadth and jams, as if a hand inside were holding it shut. Whatever it wants from you, you do not have it yet.
     }
 }
+-> cell_room_loop
+
+= look_tinderbox
+{ inventory ? tinderbox:
+    Flint, steel, char cloth. Small, dry, and willing.
+- else:
+    The tin sits in the ruined drawer, dented but shut tight against the years.
+}
+-> cell_room_loop
+
+= use_tinderbox
+{ inventory ? tinderbox:
+    You turn the tin over in your hand. It wants something worth lighting.
+- else:
+    ~ spotted -= tinderbox
+    ~ inventory += tinderbox
+    You lift the tin out of the drawer. It has a satisfying weight, like a promise kept.
+}
+-> cell_room_loop
+
+= look_candle
+{ candle_lit:
+    The flame stands small and straight, minding its own business. Its light leans on the stone and stays there.
+- else:
+    A hand's length of tallow in an iron sconce. It has been waiting longer than you have.
+}
+-> cell_room_loop
+
+= use_candle
+{ candle_lit:
+    The flame needs nothing more from you.
+- else:
+    { inventory ? tinderbox:
+        ~ candle_lit = true
+        You strike steel against flint until a spark takes in the char cloth, coax it aglow, and touch it to the wick. # image:cell-room-lit
+
+        The flame climbs and steadies, and the room steps closer: stone and iron and old cloth, all leaning into the light.
+    - else:
+        You pinch the dead wick. Cold. You have nothing to wake it with.
+    }
+}
+-> cell_room_loop
+
+= look_hanging
+Up close the hanging is all ghost: a garden, maybe, or a procession, worn down to brown breath on cloth.
+-> cell_room_loop
+
+= look_cage
+The cage is bird-sized, its little door ajar. Whatever it held left long ago, one way or another.
+-> cell_room_loop
+
+= look_bucket
+The bucket has been mended twice with wire, and is dry as bone at the bottom.
 -> cell_room_loop
 
 === interact_fallback(verb, item) ===
