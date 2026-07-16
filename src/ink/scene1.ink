@@ -26,7 +26,6 @@ VAR current_room = "coffin"
 -> start
 
 === start ===
-# image:coffin
 ~ spotted += lining
 Darkness, stale and tasting of dust. Velvet presses at your shoulders, and wood waits inches above your face.
 
@@ -50,15 +49,12 @@ The bent nail rests in your fist, ugly and useful.
 + {not escaped} [Push against the wood above you.]
     ~ push_count = push_count + 1
     { push_count == 1:
-        # image:coffin-strain
         You shove upward. The wood shifts just enough to prove it can move, then settles back with a creak like a low wooden laugh.
     - else:
         { push_count == 2:
-            # image:coffin-strain
             You push again, harder. Dust falls into your mouth. The wood holds.
         - else:
             { push_count < 5:
-                # image:coffin-strain
                 It doesn't budge.
             - else:
                 ~ escaped = true
@@ -72,33 +68,28 @@ The bent nail rests in your fist, ugly and useful.
     -> coffin_loop
 
 + {call_count == 0} [Call for help.]
-    # image:coffin-echo
     ~ call_count = call_count + 1
     ~ unsafe_memory = true
     You draw breath to shout, then stop halfway through the word. You do not know where you are, who put you here, or what might answer.
     -> coffin_loop
 
 + {call_count == 1} [Call out anyway.]
-    # image:coffin-echo
     ~ call_count = call_count + 1
     ~ caution = caution - 1
     You call out anyway, louder, the word cracking against the wood. Nothing answers - not a footstep, not a breath - and the silence afterward feels like it is listening.
     -> coffin_loop
 
 + {not hinge_seen} [Trace where the wood resists.]
-    # image:coffin-hinge
     ~ hinge_seen = true
     ~ spotted += hinge
     You follow the resistance to one side, past a brass plate that rasps under your knuckles. There: a cramped hinge, half-hidden behind the plate's edge.
     -> coffin_loop
 
 + {unsafe_memory} [Remember why calling out felt dangerous.]
-    # image:coffin-echo
     You remember stopping yourself mid-shout. A prisoner who announces himself is either rescued or collected, and you do not yet know which story this is.
     -> coffin_loop
 
 === lid_open ===
-# image:lid-open
 ~ spotted -= (lining, nail, hinge)
 Above you, the dark gives way to a room. Grey light finds gilt mouldings gone green, a tall mirror clouded like a dead eye, a split chaise spilling its stuffing. Whoever kept this room loved it once, and no one has for a long time.
 
@@ -110,7 +101,6 @@ Above you, the dark gives way to a room. Grey light finds gilt mouldings gone gr
     -> cell_room
 
 === cell_room ===
-# image:cell-room
 ~ current_room = "cell"
 ~ spotted += (candle, door, window)
 Cold rises through the flagstones into your bare ankles. Grey light leans through a barred window in ribbons of rotten curtain, and a heavy iron-banded door stands shut in the far wall, a grille at eye height. Beside it a single candle sits cold in its sconce, the wick a black curl.
@@ -147,7 +137,6 @@ You hurl your weight at the door again and again, until the wormed wood splinter
 -> corridor
 
 === corridor ===
-# image:corridor
 ~ current_room = "corridor"
 ~ spotted = ()
 You step out onto a gallery of grey stone, where a staircase curls up toward a high window and thin daylight lies across the steps. Portraits watch from the walls, pale men whose painted eyes seem to follow you toward a door at the far end. Out of the dark that held you, at last, and nowhere near out of the castle.
@@ -168,7 +157,6 @@ You step out onto a gallery of grey stone, where a staircase curls up toward a h
 -> guard_niche
 
 === guard_niche ===
-# image:guard-niche
 You fold yourself through the gap into a space barely wider than your shoulders, where a blade of pale daylight falls from a slit high in the wall. The air is colder here, and older.
 { not (inventory ? key):
     On the near wall, hung from an iron ring: a key, big and black with rust, cut for a lock that matters.
@@ -183,9 +171,9 @@ You fold yourself through the gap into a space barely wider than your shoulders,
     ~ spotted = saved_spotted
     ~ saved_spotted = ()
     { candle_lit:
-        You fold yourself back through the gap into the low light. # image:cell-room-lit
+        You fold yourself back through the gap into the low light.
     - else:
-        You fold yourself back through the gap into the dark. # image:cell-room
+        You fold yourself back through the gap into the dark.
     }
     -> cell_room_loop
 
@@ -227,7 +215,6 @@ You fold yourself through the gap into a space barely wider than your shoulders,
 -> interact_fallback(verb, item)
 
 = look_lining
-# image:coffin-lining
 { (spotted ? nail) or (inventory ? nail):
     You go over the seam again, corner to corner. The velvet has given up all it knows.
 - else:
@@ -237,7 +224,6 @@ You fold yourself through the gap into a space barely wider than your shoulders,
 -> room_return
 
 = look_nail
-# image:coffin-nail
 { inventory ? nail:
     Bent, sharp, and mean enough to matter. It rides your fist like it belongs there.
 - else:
@@ -246,7 +232,6 @@ You fold yourself through the gap into a space barely wider than your shoulders,
 -> room_return
 
 = use_nail
-# image:coffin-nail
 { inventory ? nail:
     You turn the nail over in your fingers. It is waiting for something worth prying.
 - else:
@@ -255,7 +240,6 @@ You fold yourself through the gap into a space barely wider than your shoulders,
 -> room_return
 
 = take_nail
-# image:coffin-nail
 { inventory ? nail:
     The nail is already in your fist, right where you want it.
 - else:
@@ -266,12 +250,10 @@ You fold yourself through the gap into a space barely wider than your shoulders,
 -> room_return
 
 = look_hinge
-# image:coffin-hinge
 The hinge is cramped and stiff, its pin barely proud of the leaf. It was made to swing for someone standing outside.
 -> room_return
 
 = use_hinge
-# image:coffin-hinge
 { inventory ? nail:
     ~ escaped = true
     ~ build = "ingenious"
@@ -360,7 +342,7 @@ You feel along the table's underside and find a drawer set flush in the frame.
 - else:
     { inventory ? tinderbox:
         ~ candle_lit = true
-        You strike steel on flint until a spark takes in the char cloth, then touch it to the wick. # image:cell-room-lit
+        You strike steel on flint until a spark takes in the char cloth, then touch it to the wick.
 
         The flame climbs and steadies, and the room steps closer: stone and iron and old cloth, leaning into the light.
     - else:
