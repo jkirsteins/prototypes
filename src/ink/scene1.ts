@@ -1,23 +1,23 @@
 import { InkList, Story } from "inkjs";
-import coffinStoryContent from "./coffin.json";
+import scene1Content from "./scene1.json";
 
-export type CoffinBuild = "undetermined" | "strength" | "cautious" | "ingenious";
+export type Scene1Build = "undetermined" | "strength" | "cautious" | "ingenious";
 
 export type ItemVerb = "look" | "use" | "take";
 
-export type CoffinChoice = {
+export type Scene1Choice = {
   index: number;
   text: string;
 };
 
-export type CoffinSnapshot = {
+export type Scene1Snapshot = {
   attributes: {
     caution: number;
     ingenuity: number;
     strength: number;
   };
-  build: CoffinBuild;
-  choices: CoffinChoice[];
+  build: Scene1Build;
+  choices: Scene1Choice[];
   escaped: boolean;
   imageId: string;
   paragraphs: string[];
@@ -25,8 +25,8 @@ export type CoffinSnapshot = {
   inventory: string[];
 };
 
-export class CoffinScene {
-  private readonly story = new Story(coffinStoryContent);
+export class Scene1 {
+  private readonly story = new Story(scene1Content);
   private paragraphs: string[] = [];
   private imageId = "coffin";
 
@@ -34,14 +34,14 @@ export class CoffinScene {
     this.continueStory();
   }
 
-  get snapshot(): CoffinSnapshot {
+  get snapshot(): Scene1Snapshot {
     return {
       attributes: {
         caution: this.numberVariable("caution"),
         ingenuity: this.numberVariable("ingenuity"),
         strength: this.numberVariable("strength"),
       },
-      build: this.stringVariable("build") as CoffinBuild,
+      build: this.stringVariable("build") as Scene1Build,
       choices: this.story.currentChoices.map((choice, index) => ({
         index,
         text: choice.text,
@@ -54,13 +54,13 @@ export class CoffinScene {
     };
   }
 
-  choose(choiceIndex: number): CoffinSnapshot {
+  choose(choiceIndex: number): Scene1Snapshot {
     this.story.ChooseChoiceIndex(choiceIndex);
     this.continueStory();
     return this.snapshot;
   }
 
-  interact(verb: ItemVerb, item: string): CoffinSnapshot {
+  interact(verb: ItemVerb, item: string): Scene1Snapshot {
     const isDiscovered =
       this.listVariable("spotted").includes(item) ||
       this.listVariable("inventory").includes(item);

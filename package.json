@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "compile:ink": "inkjs-compiler src/ink/coffin.ink -o src/ink/coffin.json",
+    "compile:ink": "inkjs-compiler src/ink/scene1.ink -o src/ink/scene1.json",
     "dev": "vite --host 127.0.0.1",
     "build": "npm run compile:ink && tsc && vite build",
     "test": "npm run compile:ink && vitest run"

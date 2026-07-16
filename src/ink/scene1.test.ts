@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CoffinScene, type ItemVerb } from "./coffinScene";
-import coffinStoryContent from "./coffin.json";
+import { Scene1, type ItemVerb } from "./scene1";
+import scene1Content from "./scene1.json";
 import { ITEM_LABELS } from "../itemLabels";
 
 const FICTION_BREAKING_TERMS = [
@@ -14,26 +14,26 @@ const FICTION_BREAKING_TERMS = [
   "deduction",
 ];
 
-function choose(scene: CoffinScene, text: string): void {
+function choose(scene: Scene1, text: string): void {
   const choice = scene.snapshot.choices.find((candidate) => candidate.text === text);
   expect(choice, `choice available: ${text}`).toBeDefined();
   scene.choose(choice!.index);
   expectNoFictionBreak(scene);
 }
 
-function interact(scene: CoffinScene, verb: ItemVerb, item: string): void {
+function interact(scene: Scene1, verb: ItemVerb, item: string): void {
   scene.interact(verb, item);
   expectNoFictionBreak(scene);
 }
 
-function enterRoomByForce(scene: CoffinScene): void {
+function enterRoomByForce(scene: Scene1): void {
   for (let push = 0; push < 5; push += 1) {
     choose(scene, "Push against the wood above you.");
   }
   choose(scene, "Step into the room.");
 }
 
-function enterRoomByWits(scene: CoffinScene): void {
+function enterRoomByWits(scene: Scene1): void {
   interact(scene, "look", "lining");
   interact(scene, "take", "nail");
   choose(scene, "Trace where the wood resists.");
@@ -41,12 +41,12 @@ function enterRoomByWits(scene: CoffinScene): void {
   choose(scene, "Step into the room.");
 }
 
-function visibleText(scene: CoffinScene): string {
+function visibleText(scene: Scene1): string {
   const snapshot = scene.snapshot;
   return [...snapshot.paragraphs, ...snapshot.choices.map((choice) => choice.text)].join(" ");
 }
 
-function expectNoFictionBreak(scene: CoffinScene): void {
+function expectNoFictionBreak(scene: Scene1): void {
   const text = visibleText(scene).toLowerCase();
   for (const term of FICTION_BREAKING_TERMS) {
     expect(text, `player-visible text must not contain "${term}"`).not.toContain(term);
@@ -57,19 +57,19 @@ function expectNoFictionBreak(scene: CoffinScene): void {
 
 describe("opening ink scene", () => {
   it("never breaks the fiction in the opening beat", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     expectNoFictionBreak(scene);
   });
 
   it("spots the velvet lining from the first beat and keeps the plate unnamed", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     expect(scene.snapshot.spotted).toEqual(["lining"]);
     expect(scene.snapshot.paragraphs.join(" ").toLowerCase()).not.toContain("brass");
   });
 
   it("sets a strength build after five persistent pushes", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     choose(scene, "Push against the wood above you.");
     choose(scene, "Push against the wood above you.");
@@ -94,7 +94,7 @@ describe("opening ink scene", () => {
   });
 
   it("keeps the story going when calling out brings no answer", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     choose(scene, "Call for help.");
     expect(scene.snapshot.paragraphs.join(" ")).toContain("what might answer");
@@ -108,7 +108,7 @@ describe("opening ink scene", () => {
   });
 
   it("keeps the fiction intact when remembering the danger of calling out", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     choose(scene, "Call for help.");
     choose(scene, "Remember why calling out felt dangerous.");
@@ -117,7 +117,7 @@ describe("opening ink scene", () => {
   });
 
   it("sets an ingenuity build by finding the nail and forcing the hinge", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     interact(scene, "look", "lining");
     expect(scene.snapshot.spotted).toContain("nail");
@@ -141,7 +141,7 @@ describe("opening ink scene", () => {
   });
 
   it("reveals the room after stepping in", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     enterRoomByWits(scene);
 
@@ -151,7 +151,7 @@ describe("opening ink scene", () => {
   });
 
   it("spots the cold candle on entering the room", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
 
     expect(scene.snapshot.spotted).toContain("candle");
@@ -160,7 +160,7 @@ describe("opening ink scene", () => {
   });
 
   it("spots the table on the first look around", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
 
     choose(scene, "Look around.");
@@ -175,7 +175,7 @@ describe("opening ink scene", () => {
   });
 
   it("keeps the room open after looking around finds nothing new", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     enterRoomByWits(scene);
 
@@ -188,7 +188,7 @@ describe("opening ink scene", () => {
   });
 
   it("offers only the step choice once the lid is open by force", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     for (let push = 0; push < 5; push += 1) {
       choose(scene, "Push against the wood above you.");
@@ -203,7 +203,7 @@ describe("opening ink scene", () => {
   });
 
   it("keeps the escape unreachable until the hinge is found and the nail is carried", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     scene.interact("use", "hinge");
     expect(scene.snapshot.escaped).toBe(false);
@@ -219,7 +219,7 @@ describe("opening ink scene", () => {
   });
 
   it("refuses the hinge to bare fingers", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     choose(scene, "Trace where the wood resists.");
     interact(scene, "use", "hinge");
@@ -232,7 +232,7 @@ describe("opening ink scene", () => {
   });
 
   it("answers unauthored combinations in the dark and stays in the dark", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     interact(scene, "use", "lining");
 
@@ -243,7 +243,7 @@ describe("opening ink scene", () => {
   });
 
   it("covers the lining and nail look/use branches at every stage", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     interact(scene, "look", "lining");
     expect(scene.snapshot.paragraphs.join(" ")).toContain("loose in its post");
@@ -265,7 +265,7 @@ describe("opening ink scene", () => {
   });
 
   it("reveals the drawer when looking at the table", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
 
@@ -278,7 +278,7 @@ describe("opening ink scene", () => {
   });
 
   it("opens the drawer with enough strength and reveals the tin", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
     interact(scene, "look", "table");
@@ -292,7 +292,7 @@ describe("opening ink scene", () => {
   });
 
   it("keeps the drawer stuck without strength", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByWits(scene);
     choose(scene, "Look around.");
     interact(scene, "look", "table");
@@ -306,7 +306,7 @@ describe("opening ink scene", () => {
   });
 
   it("answers unauthored combinations with quiet flavor", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
     interact(scene, "look", "table");
@@ -323,7 +323,7 @@ describe("opening ink scene", () => {
   });
 
   it("forces the drawer straight from the table with enough strength", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
 
@@ -338,7 +338,7 @@ describe("opening ink scene", () => {
   });
 
   it("finds the drawer under the table but cannot force it weak-handed", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByWits(scene);
     choose(scene, "Look around.");
 
@@ -351,7 +351,7 @@ describe("opening ink scene", () => {
   });
 
   it("moves the tin to hand when taken from the drawer", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
     interact(scene, "look", "table");
@@ -364,7 +364,7 @@ describe("opening ink scene", () => {
   });
 
   it("cannot light the candle empty-handed", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
 
     interact(scene, "use", "candle");
@@ -374,7 +374,7 @@ describe("opening ink scene", () => {
   });
 
   it("lights the candle with the tin and brightens the room", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
     interact(scene, "look", "table");
@@ -391,7 +391,7 @@ describe("opening ink scene", () => {
   });
 
   it("reveals more of the room to a second look once lit", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
     interact(scene, "look", "table");
@@ -416,7 +416,7 @@ describe("opening ink scene", () => {
   });
 
   it("ignores interact() calls for items that have not been discovered yet", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     scene.interact("use", "tinderbox");
 
@@ -428,7 +428,7 @@ describe("opening ink scene", () => {
   });
 
   it("covers the drawer, tinderbox, and candle look/use branches at every stage", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
 
@@ -481,7 +481,7 @@ describe("opening ink scene", () => {
   });
 
   it("leaves the dark's objects behind when the way opens", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByWits(scene);
 
     expect(scene.snapshot.spotted).not.toContain("lining");
@@ -491,7 +491,7 @@ describe("opening ink scene", () => {
   });
 
   it("carries the nail through a forced escape", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     interact(scene, "look", "lining");
     interact(scene, "take", "nail");
@@ -513,7 +513,7 @@ describe("opening ink scene", () => {
   });
 
   it("does not pick up a spotted item with use, only with take", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
 
     interact(scene, "look", "lining");
     interact(scene, "use", "nail");
@@ -527,7 +527,7 @@ describe("opening ink scene", () => {
   });
 
   it("shrugs off taking a fixed object", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     enterRoomByForce(scene);
     choose(scene, "Look around.");
 
@@ -538,7 +538,7 @@ describe("opening ink scene", () => {
   });
 
   it("flavors taking an item already in hand", () => {
-    const scene = new CoffinScene();
+    const scene = new Scene1();
     interact(scene, "look", "lining");
     interact(scene, "take", "nail");
 
@@ -551,7 +551,7 @@ describe("opening ink scene", () => {
 
 describe("item labels", () => {
   it("has exactly one label per item defined in the ink LIST", () => {
-    const listItemIds = Object.keys((coffinStoryContent as any).listDefs.items);
+    const listItemIds = Object.keys((scene1Content as any).listDefs.items);
 
     expect(Object.keys(ITEM_LABELS).sort()).toEqual(listItemIds.sort());
   });

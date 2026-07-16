@@ -1,5 +1,5 @@
 import "./styles.css";
-import { CoffinScene, type CoffinSnapshot, type ItemVerb } from "./ink/coffinScene";
+import { Scene1, type Scene1Snapshot, type ItemVerb } from "./ink/scene1";
 import { ITEM_LABELS } from "./itemLabels";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -9,7 +9,7 @@ if (!app) {
 }
 
 const appElement = app;
-let scene = new CoffinScene();
+let scene = new Scene1();
 let debugVisible = false;
 
 let selectedVerb: ItemVerb = "look";
@@ -67,7 +67,7 @@ function render(): void {
   bindEvents();
 }
 
-function renderStrip(snapshot: CoffinSnapshot): string {
+function renderStrip(snapshot: Scene1Snapshot): string {
   if (snapshot.spotted.length === 0 && snapshot.inventory.length === 0) {
     return "";
   }
@@ -102,7 +102,7 @@ function renderStrip(snapshot: CoffinSnapshot): string {
   `;
 }
 
-function renderDebug(snapshot: CoffinSnapshot): string {
+function renderDebug(snapshot: Scene1Snapshot): string {
   return `
     <aside class="debug" aria-label="Debug information">
       <h2>DEBUG - not player-facing, remove before release</h2>
@@ -146,7 +146,7 @@ function bindEvents(): void {
   }
 
   appElement.querySelector<HTMLButtonElement>("[data-reset]")?.addEventListener("click", () => {
-    scene = new CoffinScene();
+    scene = new Scene1();
     selectedVerb = "look";
     render();
   });
