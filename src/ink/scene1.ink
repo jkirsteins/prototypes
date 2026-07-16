@@ -11,6 +11,8 @@ VAR sanity = 0
 VAR door_tried = false
 VAR pins_seen = false
 VAR door_open = false
+VAR bars_pried = false
+VAR saved_spotted = ()
 VAR escaped = false
 
 LIST items = lining, nail, hinge, table, drawer, tinderbox, candle, hanging, cage, bucket, door, window, key
@@ -158,6 +160,9 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
 + { door_tried && not door_open } [Throw your weight against the door.]
     -> caution_door
 
++ { bars_pried } [Squeeze through the gap.]
+    -> enter_niche
+
 === caution_door ===
 ~ door_open = true
 ~ caution = caution - 1
@@ -180,7 +185,36 @@ Out of the dark that held you, at last. Nowhere near out of the castle.
     Your bare feet find the cold carpet, and the castle takes the sound without an echo.
     -> END
 
+=== enter_niche ===
+~ current_room = "niche"
+~ saved_spotted = spotted
+~ spotted = ()
+{ not (inventory ? key):
+    ~ spotted += key
+}
+-> guard_niche
+
+=== guard_niche ===
+# image:guard-niche
+You fold yourself through the gap and drop into a space barely wider than your shoulders. A blade of pale daylight falls from a slit high in the far wall, thick with drifting dust. The air is colder here, and older.
+
+Behind you, the barred gap gives back onto the dark you crawled out of. A three-legged stool waits under a plank shelf, where a dented tin cup keeps company with a candle-stub gone to a hard grey lump. And on the near wall, hung from an iron ring and catching what little light there is: a key. Big, black with rust, and cut for a lock that matters.
+-> guard_niche_loop
+
+=== guard_niche_loop ===
++ [Slip back through the gap.]
+    ~ current_room = "cell"
+    ~ spotted = saved_spotted
+    ~ saved_spotted = ()
+    { candle_lit:
+        You fold yourself back through the gap into the low light. # image:cell-room-lit
+    - else:
+        You fold yourself back through the gap into the dark. # image:cell-room
+    }
+    -> cell_room_loop
+
 === room_return ===
+{ current_room == "niche": -> guard_niche_loop }
 { current_room == "corridor": -> corridor_loop }
 { current_room == "cell": -> cell_room_loop }
 { escaped: -> lid_open_loop }
@@ -207,6 +241,11 @@ Out of the dark that held you, at last. Nowhere near out of the castle.
 { verb == "look" and item == "bucket": -> look_bucket }
 { verb == "look" and item == "door": -> look_door }
 { verb == "use" and item == "door": -> use_door }
+{ verb == "look" and item == "window": -> look_window }
+{ verb == "use" and item == "window": -> use_window }
+{ verb == "look" and item == "key": -> look_key }
+{ verb == "use" and item == "key": -> use_key }
+{ verb == "take" and item == "key": -> take_key }
 -> interact_fallback(verb, item)
 
 = look_lining
@@ -393,6 +432,53 @@ The bucket has been mended twice with wire, and is dry as bone at the bottom.
 }
 ~ door_tried = true
 You try the door. It does not give a hair. The lock is a heavy warded thing, and there is no key in it - whoever turned it last carried the key away.
+-> room_return
+
+= look_window
+{ bars_pried:
+    One bar hangs loose where you worked it out of the stone. The gap behind it breathes cold, older air.
+- else:
+    A row of iron bars, thick with rust, set into a low opening in the wall. The space behind them is not the outside - it is close, and dim, and long forgotten.
+}
+-> room_return
+
+= use_window
+{ bars_pried:
+    The bar is already out. The gap is there for the taking.
+    -> room_return
+}
+{ inventory ? nail:
+    ~ bars_pried = true
+    You wedge the nail behind the most corroded of the bars and lever, throwing your weight against it until the old iron tears free of the crumbling mortar. A gap opens - narrow, but enough.
+    -> room_return
+}
+You haul on the bars. They are set deep and mean to stay, and your fingers are no match for them.
+-> room_return
+
+= look_key
+{ inventory ? key:
+    A gaoler's key, heavy and black with rust. Cut for a single lock, and you can guess which.
+- else:
+    It hangs from an iron ring on the wall, catching the thin light. Big, rust-black, and cut for a lock that matters.
+}
+-> room_return
+
+= use_key
+{ inventory ? key:
+    The key is no use in your fist alone. It wants the lock it was cut for.
+- else:
+    Better in your hand first.
+}
+-> room_return
+
+= take_key
+{ inventory ? key:
+    The key is already in your fist, cold and heavy.
+- else:
+    ~ spotted -= key
+    ~ inventory += key
+    You lift the key off its ring. It is heavier than it looks, and cold straight through.
+}
 -> room_return
 
 === interact_fallback(verb, item) ===

@@ -27,6 +27,7 @@ const BACKGROUNDS: Record<string, string> = {
   "cell-room": `${import.meta.env.BASE_URL}backgrounds/cell-room.png`,
   "cell-room-lit": `${import.meta.env.BASE_URL}backgrounds/cell-room-lit.png`,
   corridor: `${import.meta.env.BASE_URL}backgrounds/corridor.png`,
+  "guard-niche": `${import.meta.env.BASE_URL}backgrounds/guard-niche.png`,
 };
 
 const DEFAULT_BACKGROUND = `${import.meta.env.BASE_URL}backgrounds/awakening.png`;

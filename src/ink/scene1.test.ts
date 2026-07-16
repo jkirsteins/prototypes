@@ -608,6 +608,56 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.attributes.caution).toBe(-1);
     expect(scene.snapshot.imageId).toBe("corridor");
   });
+
+  it("prises the bars, fetches the key from the niche, and unlocks the door", () => {
+    const scene = new Scene1();
+    enterRoomByWits(scene);
+
+    interact(scene, "use", "window");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain(
+      "Squeeze through the gap.",
+    );
+
+    choose(scene, "Squeeze through the gap.");
+    expect(scene.snapshot.imageId).toBe("guard-niche");
+    expect(scene.snapshot.spotted).toContain("key");
+
+    interact(scene, "take", "key");
+    expect(scene.snapshot.inventory).toContain("key");
+
+    choose(scene, "Slip back through the gap.");
+    expect(scene.snapshot.imageId).toBe("cell-room");
+    expect(scene.snapshot.spotted).toContain("door");
+    expect(scene.snapshot.spotted).not.toContain("key");
+
+    interact(scene, "use", "door");
+    expect(scene.snapshot.imageId).toBe("corridor");
+  });
+
+  it("cannot prise the bars bare-handed and offers no way through", () => {
+    const scene = new Scene1();
+    enterRoomByForce(scene);
+
+    interact(scene, "use", "window");
+
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("no match for them");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).not.toContain(
+      "Squeeze through the gap.",
+    );
+  });
+
+  it("keeps perception and sanity at zero along the ingenuity route", () => {
+    const scene = new Scene1();
+    enterRoomByWits(scene);
+    interact(scene, "use", "window");
+    choose(scene, "Squeeze through the gap.");
+    interact(scene, "take", "key");
+    choose(scene, "Slip back through the gap.");
+    interact(scene, "use", "door");
+
+    expect(scene.snapshot.attributes.perception).toBe(0);
+    expect(scene.snapshot.attributes.sanity).toBe(0);
+  });
 });
 
 describe("item labels", () => {
