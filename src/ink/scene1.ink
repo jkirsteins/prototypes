@@ -169,7 +169,12 @@ You step out onto a gallery of grey stone, where a staircase curls up toward a h
 
 === guard_niche ===
 # image:guard-niche
-You fold yourself through the gap into a space barely wider than your shoulders, where a blade of pale daylight falls from a slit high in the wall. The air is colder here, and older. On the near wall, hung from an iron ring: a key, big and black with rust, cut for a lock that matters.
+You fold yourself through the gap into a space barely wider than your shoulders, where a blade of pale daylight falls from a slit high in the wall. The air is colder here, and older.
+{ not (inventory ? key):
+    On the near wall, hung from an iron ring: a key, big and black with rust, cut for a lock that matters.
+- else:
+    The iron ring on the wall hangs empty now.
+}
 -> guard_niche_loop
 
 === guard_niche_loop ===
