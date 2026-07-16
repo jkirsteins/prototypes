@@ -578,8 +578,10 @@ describe("opening ink scene", () => {
 
     interact(scene, "look", "door");
     expect(scene.snapshot.paragraphs.join(" ")).toContain("hinge pins");
+    expect(scene.snapshot.spotted).toContain("weak_door");
+    expect(scene.snapshot.spotted).not.toContain("door");
 
-    interact(scene, "use", "door");
+    interact(scene, "use", "weak_door");
     expect(scene.snapshot.imageId).toBe("corridor");
     expect(scene.snapshot.paragraphs.join(" ")).toContain("gallery of grey stone");
 

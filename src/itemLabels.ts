@@ -11,6 +11,7 @@ export const ITEM_LABELS: Record<string, string> = {
   cage: "iron cage",
   bucket: "bucket",
   door: "door",
+  weak_door: "weak-hinged door",
   window: "window",
   key: "iron key",
 };
