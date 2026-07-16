@@ -3,6 +3,8 @@ import { CoffinScene } from "./coffinScene";
 
 const FICTION_BREAKING_TERMS = [
   "coffin",
+  "prison",
+  "dungeon",
   "tutorial",
   "build set",
   "clue found",
@@ -28,6 +30,7 @@ function expectNoFictionBreak(scene: CoffinScene): void {
   for (const term of FICTION_BREAKING_TERMS) {
     expect(text, `player-visible text must not contain "${term}"`).not.toContain(term);
   }
+  expect(text, 'player-visible text must not contain "cell"').not.toMatch(/\bcells?\b/);
 }
 
 describe("opening ink scene", () => {
@@ -92,7 +95,7 @@ describe("opening ink scene", () => {
     );
   });
 
-  it("ends the scene after stepping into the room", () => {
+  it("reveals the room after stepping in", () => {
     const scene = new CoffinScene();
 
     choose(scene, "Feel along the velvet.");
@@ -102,7 +105,27 @@ describe("opening ink scene", () => {
     choose(scene, "Step into the room.");
 
     expect(scene.snapshot.paragraphs.length).toBeGreaterThan(0);
-    expect(scene.snapshot.choices).toHaveLength(0);
+    expect(scene.snapshot.imageId).toBe("cell-room");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
+  });
+
+  it("keeps the room open after looking around finds nothing", () => {
+    const scene = new CoffinScene();
+
+    choose(scene, "Feel along the velvet.");
+    choose(scene, "Work the loose nail free.");
+    choose(scene, "Trace where the wood resists.");
+    choose(scene, "Force the hinge with the nail.");
+    choose(scene, "Step into the room.");
+
+    choose(scene, "Look around.");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain(
+      "Nothing in particular catches your eye.",
+    );
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
+
+    choose(scene, "Look around.");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain("Look around.");
   });
 
   it("offers only the step choice once the lid is open by force", () => {
@@ -117,7 +140,7 @@ describe("opening ink scene", () => {
     ]);
 
     choose(scene, "Step into the room.");
-    expect(scene.snapshot.choices).toHaveLength(0);
+    expect(scene.snapshot.imageId).toBe("cell-room");
   });
 
   it("keeps the escape unreachable until both nail and hinge are found", () => {

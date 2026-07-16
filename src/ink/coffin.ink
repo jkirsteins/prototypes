@@ -135,4 +135,19 @@ Whoever kept this room loved it once. Nobody has loved it for a long time.
     You take hold of the worn edges and pull yourself up and over. Your legs are slow to remember their work, but they hold.
 
     Dust stirs around your feet and settles. The room accepts you without a sound.
-    -> END
+    -> cell_room
+
+=== cell_room ===
+# image:cell-room
+Cold rises through the flagstones and finds your bare ankles at once.
+
+Grey light leans in through a barred window, strained through the ribbons of a curtain long past its duty. A heavy door stands shut in the far wall, banded in iron, with a small grille set at eye height. Along the stone, chains hang slack and patient, and a low pallet holds a blanket someone left twisted, as if they got up in a hurry.
+
+A single candle burns in a sconce by the door. Somebody expects to come back.
+
+-> cell_room_loop
+
+=== cell_room_loop ===
++ [Look around.]
+    You look, and look again. Nothing in particular catches your eye.
+    -> cell_room_loop
