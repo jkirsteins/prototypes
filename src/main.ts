@@ -18,7 +18,7 @@ let selectedVerb: ItemVerb = "look";
 // stay "look"/"use"/"take" so the ink dispatch and tests are unaffected.
 const VERB_LABELS: Record<ItemVerb, string> = {
   look: "look at (l)",
-  use: "interact with (u)",
+  use: "use (u)",
   take: "take (t)",
 };
 
