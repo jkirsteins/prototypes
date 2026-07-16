@@ -554,6 +554,60 @@ describe("opening ink scene", () => {
     expect(scene.snapshot.paragraphs.join(" ")).toContain("already in your fist");
     expect(scene.snapshot.inventory).toContain("nail");
   });
+
+  it("keeps the door shut and arms nothing but a warning on the first try", () => {
+    const scene = new Scene1();
+    enterRoomByForce(scene);
+
+    interact(scene, "use", "door");
+
+    expect(scene.snapshot.imageId).toBe("cell-room");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("carried the key away");
+    expect(scene.snapshot.choices.map((choice) => choice.text)).toContain(
+      "Throw your weight against the door.",
+    );
+  });
+
+  it("opens the door by candlelight and strength, into the gallery beyond", () => {
+    const scene = new Scene1();
+    enterRoomByForce(scene);
+    choose(scene, "Look around.");
+    interact(scene, "use", "table");
+    interact(scene, "take", "tinderbox");
+    interact(scene, "use", "candle");
+
+    interact(scene, "look", "door");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("hinge pins");
+
+    interact(scene, "use", "door");
+    expect(scene.snapshot.imageId).toBe("corridor");
+    expect(scene.snapshot.paragraphs.join(" ")).toContain("gallery of grey stone");
+
+    choose(scene, "Start down the gallery.");
+    expect(scene.snapshot.choices).toEqual([]);
+  });
+
+  it("does not reveal the hinge pins until the candle is lit", () => {
+    const scene = new Scene1();
+    enterRoomByForce(scene);
+
+    interact(scene, "look", "door");
+    expect(scene.snapshot.paragraphs.join(" ")).not.toContain("hinge pins");
+
+    interact(scene, "use", "door");
+    expect(scene.snapshot.imageId).toBe("cell-room");
+  });
+
+  it("bursts the door open recklessly at the cost of caution", () => {
+    const scene = new Scene1();
+    enterRoomByWits(scene);
+
+    interact(scene, "use", "door");
+    choose(scene, "Throw your weight against the door.");
+
+    expect(scene.snapshot.attributes.caution).toBe(-1);
+    expect(scene.snapshot.imageId).toBe("corridor");
+  });
 });
 
 describe("item labels", () => {

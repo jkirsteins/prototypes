@@ -8,9 +8,12 @@ VAR caution = 0
 VAR ingenuity = 0
 VAR perception = 0
 VAR sanity = 0
+VAR door_tried = false
+VAR pins_seen = false
+VAR door_open = false
 VAR escaped = false
 
-LIST items = lining, nail, hinge, table, drawer, tinderbox, candle, hanging, cage, bucket
+LIST items = lining, nail, hinge, table, drawer, tinderbox, candle, hanging, cage, bucket, door, window, key
 VAR spotted = ()
 VAR inventory = ()
 VAR drawer_open = false
@@ -126,7 +129,7 @@ Whoever kept this room loved it once. Nobody has loved it for a long time.
 === cell_room ===
 # image:cell-room
 ~ current_room = "cell"
-~ spotted += candle
+~ spotted += (candle, door, window)
 Cold rises through the flagstones and finds your bare ankles at once.
 
 Grey light leans in through a barred window, strained through the ribbons of a curtain long past its duty. A heavy door stands shut in the far wall, banded in iron, with a small grille set at eye height. Along the stone, chains hang slack and patient, and a low pallet holds a blanket someone left twisted, as if they got up in a hurry.
@@ -152,7 +155,33 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
     }
     -> cell_room_loop
 
++ { door_tried && not door_open } [Throw your weight against the door.]
+    -> caution_door
+
+=== caution_door ===
+~ door_open = true
+~ caution = caution - 1
+You back off a step and hurl your whole weight at the door. The iron holds - but the wood around it is old and worm-run, and on the third blow the frame lets go with a crack and the whole slab bursts outward.
+-> corridor
+
+=== corridor ===
+# image:corridor
+~ current_room = "corridor"
+~ spotted = ()
+The door gives, and the cold breath of a far larger place moves past you.
+
+You step out onto a gallery of grey stone. A staircase curls up toward a high window where real daylight - thin, but daylight - lies across the steps. Tall arched panes march down one wall, and beyond them: open sky, and the blue suggestion of hills a long way off. A strip of red carpet, worn to its threads, runs the length of the floor. Portraits watch from their frames, pale men in old collars, their painted eyes turned toward a door at the far end. A suit of armour stands sentinel beside it, and does not move.
+
+Out of the dark that held you, at last. Nowhere near out of the castle.
+-> corridor_loop
+
+=== corridor_loop ===
++ [Start down the gallery.]
+    Your bare feet find the cold carpet, and the castle takes the sound without an echo.
+    -> END
+
 === room_return ===
+{ current_room == "corridor": -> corridor_loop }
 { current_room == "cell": -> cell_room_loop }
 { escaped: -> lid_open_loop }
 -> coffin_loop
@@ -176,6 +205,8 @@ A single candle sits cold in a sconce by the door, its wick a black curl. Nobody
 { verb == "look" and item == "hanging": -> look_hanging }
 { verb == "look" and item == "cage": -> look_cage }
 { verb == "look" and item == "bucket": -> look_bucket }
+{ verb == "look" and item == "door": -> look_door }
+{ verb == "use" and item == "door": -> use_door }
 -> interact_fallback(verb, item)
 
 = look_lining
@@ -335,6 +366,33 @@ The cage is bird-sized, its little door ajar. Whatever it held left long ago, on
 
 = look_bucket
 The bucket has been mended twice with wire, and is dry as bone at the bottom.
+-> room_return
+
+= look_door
+{ candle_lit:
+    ~ pins_seen = true
+    By the candlelight you can see what the dark kept hidden: the great hinge pins sit on this side, seated but never peened over. Drive them up and out, and the slab itself becomes the way through.
+- else:
+    Iron-banded oak, a grille at eye height, a keyhole gone black with age. It was built to keep something in, and it has not forgotten the work.
+}
+-> room_return
+
+= use_door
+{ door_open:
+    -> corridor
+}
+{ pins_seen && strength >= 2:
+    ~ door_open = true
+    You set your shoulder beneath the door's edge and drive the hinge pins up out of their seats, one and then the other. The whole slab tips loose of its frame, and you walk it aside far enough to pass.
+    -> corridor
+}
+{ inventory ? key:
+    ~ door_open = true
+    You fit the rust-black key to the keyhole. It bites, resists, then turns with a deep iron clunk, and the lock lets go.
+    -> corridor
+}
+~ door_tried = true
+You try the door. It does not give a hair. The lock is a heavy warded thing, and there is no key in it - whoever turned it last carried the key away.
 -> room_return
 
 === interact_fallback(verb, item) ===
