@@ -132,11 +132,7 @@ Whoever kept this room loved it once. Nobody has loved it for a long time.
 # image:cell-room
 ~ current_room = "cell"
 ~ spotted += (candle, door, window)
-Cold rises through the flagstones and finds your bare ankles at once.
-
-Grey light leans in through a barred window, strained through the ribbons of a curtain long past its duty. A heavy door stands shut in the far wall, banded in iron, with a small grille set at eye height. Along the stone, chains hang slack and patient, and a low pallet holds a blanket someone left twisted, as if they got up in a hurry.
-
-A single candle sits cold in a sconce by the door, its wick a black curl. Nobody has needed light here for a long time.
+Cold rises through the flagstones and finds your bare ankles. Grey light leans through a barred window hung with the ribbons of a rotten curtain. A heavy door stands shut in the far wall, banded in iron, a small grille at eye height. Beside it a single candle sits cold in its sconce, the wick a black curl.
 
 -> cell_room_loop
 
@@ -173,11 +169,9 @@ You back off a step and hurl your whole weight at the door. The iron holds - but
 # image:corridor
 ~ current_room = "corridor"
 ~ spotted = ()
-The door gives, and the cold breath of a far larger place moves past you.
+The door gives, and cold air pours in from a far larger place.
 
-You step out onto a gallery of grey stone. A staircase curls up toward a high window where real daylight - thin, but daylight - lies across the steps. Tall arched panes march down one wall, and beyond them: open sky, and the blue suggestion of hills a long way off. A strip of red carpet, worn to its threads, runs the length of the floor. Portraits watch from their frames, pale men in old collars, their painted eyes turned toward a door at the far end. A suit of armour stands sentinel beside it, and does not move.
-
-Out of the dark that held you, at last. Nowhere near out of the castle.
+You step out onto a gallery of grey stone, where a staircase curls up toward a high window and thin daylight lies across the steps. Portraits watch from the walls, pale men whose painted eyes seem to follow you toward a door at the far end. Out of the dark that held you, at last, and nowhere near out of the castle.
 -> corridor_loop
 
 === corridor_loop ===
@@ -196,9 +190,7 @@ Out of the dark that held you, at last. Nowhere near out of the castle.
 
 === guard_niche ===
 # image:guard-niche
-You fold yourself through the gap and drop into a space barely wider than your shoulders. A blade of pale daylight falls from a slit high in the far wall, thick with drifting dust. The air is colder here, and older.
-
-Behind you, the barred gap gives back onto the dark you crawled out of. A three-legged stool waits under a plank shelf, where a dented tin cup keeps company with a candle-stub gone to a hard grey lump. And on the near wall, hung from an iron ring and catching what little light there is: a key. Big, black with rust, and cut for a lock that matters.
+You fold yourself through the gap into a space barely wider than your shoulders, where a blade of pale daylight falls from a slit high in the wall. The air is colder here, and older. On the near wall, hung from an iron ring and catching what little light there is: a key, big and black with rust, and cut for a lock that matters.
 -> guard_niche_loop
 
 === guard_niche_loop ===
@@ -457,7 +449,7 @@ You haul on the bars. They are set deep and mean to stay, and your fingers are n
 
 = look_key
 { inventory ? key:
-    A gaoler's key, heavy and black with rust. Cut for a single lock, and you can guess which.
+    Heavy and black with rust, cut for a single lock, and you can guess which.
 - else:
     It hangs from an iron ring on the wall, catching the thin light. Big, rust-black, and cut for a lock that matters.
 }
