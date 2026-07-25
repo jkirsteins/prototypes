@@ -41,7 +41,7 @@ describe("renderMap", () => {
     expect(svg.querySelectorAll("path.neighbor").length).toBe(
       data.neighbors.length,
     );
-    for (const kind of ["people", "people-minor", "neighbor", "title", "subtitle"]) {
+    for (const kind of ["people", "people-minor", "neighbor", "river", "title", "subtitle"]) {
       const expected = data.labels.filter((l) => l.kind === kind);
       const rendered = svg.querySelectorAll(`text.label-${kind}`);
       expect(rendered.length).toBe(expected.length);
@@ -51,6 +51,39 @@ describe("renderMap", () => {
     const regionIdx = groups.findIndex((g) => g.classList.contains("regions"));
     expect(neighborIdx).toBeGreaterThanOrEqual(0);
     expect(neighborIdx).toBeLessThan(regionIdx);
+  });
+
+  it("renders rivers above regions and below settlements and labels", () => {
+    const container = document.createElement("div");
+    const { svg } = renderMap(data, container);
+    expect(svg.querySelectorAll("path.river").length).toBe(data.rivers.length);
+    expect(svg.querySelectorAll("path.river-major").length).toBe(
+      data.rivers.filter((r) => r.major).length,
+    );
+    const groups = Array.from(svg.querySelectorAll("g")).map((g) => g.getAttribute("class"));
+    expect(groups.indexOf("regions")).toBeLessThan(groups.indexOf("rivers"));
+    expect(groups.indexOf("rivers")).toBeLessThan(groups.indexOf("settlements"));
+    expect(groups.indexOf("settlements")).toBeLessThan(groups.indexOf("labels"));
+  });
+
+  it("renders settlement dots and labels", () => {
+    const container = document.createElement("div");
+    const { svg, settlementDots } = renderMap(data, container);
+    expect(settlementDots.size).toBe(data.settlements.length);
+    expect(svg.querySelectorAll("circle.settlement").length).toBe(
+      data.settlements.length,
+    );
+    expect(svg.querySelectorAll("text.settlement-label").length).toBe(
+      data.settlements.length,
+    );
+    const daugmale = settlementDots.get("daugmale")!;
+    expect(daugmale.getAttribute("data-settlement-id")).toBe("daugmale");
+    const s = data.settlements.find((x) => x.id === "daugmale")!;
+    expect(daugmale.getAttribute("cx")).toBe(String(s.x));
+    expect(daugmale.getAttribute("cy")).toBe(String(s.y));
+    expect(svg.querySelectorAll("text.label-river").length).toBe(
+      data.labels.filter((l) => l.kind === "river").length,
+    );
   });
 
   it("adds the attribution line to the container", () => {
