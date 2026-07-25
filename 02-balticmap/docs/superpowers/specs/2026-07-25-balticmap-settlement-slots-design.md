@@ -20,6 +20,7 @@ can be unlocked later. Also close a coverage gap: Estonia's interior rivers.
   rendered; no unlock mechanic yet (YAGNI - data model only).
 - Seven new primary settlements fill the lands that had none.
 - Rivers addendum: add Emajogi and Parnu to the river whitelist.
+- Border fix: move "Lääne-Harju vald" from harjumaa to ravala.
 
 ## Data model (`src/types.ts`)
 
@@ -73,6 +74,24 @@ Result: 25 authored settlements, exactly 20 unlocked - one per land.
 - Rivers: add `emajogi` (match: emajogi, emajõgi) and `parnu` (match:
   parnu, pärnu) as minor rivers, warn-and-skip semantics like the others.
 
+## Border fix: Harjumaa contiguity
+
+Harjumaa currently renders as two disconnected polygons: Ravala's "Saue
+vald" (which absorbed the old Nissi parish) severs "Lääne-Harju vald"
+(the Paldiski/Padise coast, incl. the Pakri islands) from the rest of
+Harjumaa. Historically the ca. 1100 coastal county of Ravala (Revala) ran
+along the northwest coast, while ancient Harjumaa was the inland country
+around Varbola - so the coastal strip belongs with Ravala on both counts.
+
+- LANDS roster: move "Lääne-Harju vald" from harjumaa.lau to ravala.lau.
+- Population shift with the territory: ravala 10000 -> 15000, harjumaa
+  20000 -> 15000 (map total stays 650000).
+- Flavor: extend Ravala's flavor to mention the coast running west past
+  Paldiski Bay; trim Harjumaa's to a purely inland framing if needed
+  (both stay in the established understated tone).
+- Slot effect via the formula: ravala maxSettlements 1 -> 2 (1.5 rounds
+  up), harjumaa stays 2.
+
 ## Rendering and UI
 
 - `map-render.ts`: only `unlocked` settlements get dots and labels.
@@ -89,8 +108,11 @@ Result: 25 authored settlements, exactly 20 unlocked - one per land.
 - data.test.ts: 25 authored / 20 unlocked / one unlocked per land; every
   settlement's land resolves; maxSettlements matches the formula for
   every region (recompute in test); per-land authored count <= max; spot
-  checks (ravala max 1, eastern-aukstaitija max 9, kursa max 5); rivers
-  list may now include emajogi/parnu (test range widens accordingly).
+  checks (ravala max 2, harjumaa max 2, eastern-aukstaitija max 9,
+  kursa max 5); populations ravala/harjumaa 15000 each, total still
+  650000; harjumaa contiguity - every subpath of its path except the
+  largest is islet-scale (< 300 path characters); rivers list may now
+  include emajogi/parnu (test range widens accordingly).
 - render.test.ts: dots/labels rendered = unlocked count only; a locked id
   (e.g. ikskile) has no dot.
 - panel.test.ts: settlements line text for a sample region.
