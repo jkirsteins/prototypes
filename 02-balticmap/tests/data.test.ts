@@ -277,4 +277,24 @@ describe("map.json (anno 1100)", () => {
     expect(adj("zemgale")).toContain("zemaitija");
     expect(adj("dainava")).toContain("suduva");
   });
+
+  it("known non-adjacent pairs stay non-adjacent", () => {
+    // Guards the point-sharing fallback: these pairs are geographically far
+    // apart and must never be linked, even if a future cache refresh
+    // perturbs vertex data enough to trip a coincidental shared point.
+    const adj = (id: string) =>
+      data.regions.find((r) => r.id === id)!.adjacent;
+    const NON_ADJACENT_PAIRS: [string, string][] = [
+      ["ravala", "dainava"],
+      ["saaremaa", "lietuva"],
+      ["virumaa", "zemgale"],
+      ["harjumaa", "suduva"],
+      ["kursa", "ugandi"],
+      ["pilsotas", "virumaa"],
+    ];
+    for (const [a, b] of NON_ADJACENT_PAIRS) {
+      expect(adj(a)).not.toContain(b);
+      expect(adj(b)).not.toContain(a);
+    }
+  });
 });

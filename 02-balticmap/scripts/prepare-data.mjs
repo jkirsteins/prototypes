@@ -694,10 +694,15 @@ const landArcs = new Map(
 // different vertex densities, so the shared international border does not
 // always dedupe into shared arcs even though the lines coincide). Compare
 // quantized raw coordinates of the pre-topology member geometries instead:
-// two lands are adjacent if they share any vertex at 1e-6 degree precision
-// (~0.1m). Verified against known non-adjacent pairs to produce zero false
+// two lands are adjacent if they share at least MIN_SHARED_POINTS vertices
+// at 1e-6 degree precision (~0.1m). A minimum of 1 shared point is not
+// enough to trust: a corner touch or tripoint can coincidentally put a
+// single vertex in common without a real shared border, so this requires
+// 2+ to guard against a silent false border if the source data changes.
+// Verified against known non-adjacent pairs to produce zero false
 // positives before relying on it.
 const COORD_PRECISION = 6;
+const MIN_SHARED_POINTS = 2;
 function flattenCoords(geometry) {
   const pts = [];
   const depth =
@@ -740,8 +745,12 @@ for (let i = 0; i < landIds.length; i++) {
       const pa = landPoints.get(landIds[i]);
       const pb = landPoints.get(landIds[j]);
       const [smaller, larger] = pa.size <= pb.size ? [pa, pb] : [pb, pa];
+      let sharedPoints = 0;
       for (const p of smaller) {
-        if (larger.has(p)) { shared = true; break; }
+        if (larger.has(p)) {
+          sharedPoints++;
+          if (sharedPoints >= MIN_SHARED_POINTS) { shared = true; break; }
+        }
       }
     }
     if (shared) {
