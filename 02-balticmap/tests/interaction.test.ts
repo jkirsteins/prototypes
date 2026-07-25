@@ -10,11 +10,16 @@ const data = raw as MapData;
 function setup() {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  const { svg, regionPaths } = renderMap(data, container);
+  const { svg, regionPaths, settlementDots } = renderMap(data, container);
   const onHover = vi.fn();
   const onSelect = vi.fn();
-  const handle = attachInteraction(svg, regionPaths, data, { onHover, onSelect });
-  return { svg, regionPaths, onHover, onSelect, handle };
+  const onHoverSettlement = vi.fn();
+  const handle = attachInteraction(svg, regionPaths, settlementDots, data, {
+    onHover,
+    onSelect,
+    onHoverSettlement,
+  });
+  return { svg, regionPaths, settlementDots, onHover, onSelect, onHoverSettlement, handle };
 }
 
 const mouse = (type: string, init: MouseEventInit = {}) =>
@@ -80,5 +85,31 @@ describe("attachInteraction", () => {
     handle.deselect();
     expect(el.classList.contains("selected")).toBe(false);
     expect(onSelect).toHaveBeenLastCalledWith(null);
+  });
+
+  it("hovering a settlement dot fires onHoverSettlement with the settlement", () => {
+    const { settlementDots, onHoverSettlement } = setup();
+    const dot = settlementDots.get("daugmale")!;
+    dot.dispatchEvent(mouse("pointerenter", { clientX: 3, clientY: 4 }));
+    expect(onHoverSettlement).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "daugmale", name: "Daugmale" }), 3, 4,
+    );
+    dot.dispatchEvent(mouse("pointerleave"));
+    expect(onHoverSettlement).toHaveBeenLastCalledWith(null, 0, 0);
+  });
+
+  it("clicking a settlement dot does not change the selection", () => {
+    const { regionPaths, settlementDots, onSelect } = setup();
+    const region = regionPaths.get("livzeme")!;
+    region.dispatchEvent(mouse("pointerdown", { clientX: 10, clientY: 10 }));
+    region.dispatchEvent(mouse("pointerup", { clientX: 10, clientY: 10 }));
+    expect(region.classList.contains("selected")).toBe(true);
+    const dot = settlementDots.get("daugmale")!;
+    dot.dispatchEvent(mouse("pointerdown", { clientX: 12, clientY: 12 }));
+    dot.dispatchEvent(mouse("pointerup", { clientX: 12, clientY: 12 }));
+    expect(region.classList.contains("selected")).toBe(true);
+    expect(onSelect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "livzeme" }),
+    );
   });
 });

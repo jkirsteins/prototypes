@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import { createPanel, createTooltip, formatPopulation, formatFactionType, tooltipText } from "../src/panel";
+import { createPanel, createTooltip, formatPopulation, formatFactionType, tooltipText, settlementTooltipText } from "../src/panel";
 import type { Faction, People, Region } from "../src/types";
 
 const peoples: People[] = [
@@ -134,5 +134,13 @@ describe("population helpers", () => {
       "regional confederacy",
     );
     expect(formatFactionType("county")).toBe("county");
+  });
+
+  it("settlementTooltipText shows name and note", () => {
+    const s = {
+      id: "daugmale", name: "Daugmale", note: "Great Liv hillfort.",
+      x: 100, y: 200,
+    };
+    expect(settlementTooltipText(s)).toBe("Daugmale\nGreat Liv hillfort.");
   });
 });
