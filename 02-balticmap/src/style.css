@@ -22,6 +22,7 @@ svg.map {
   height: 100%;
   touch-action: none;
   cursor: grab;
+  background: #e8eef2;
 }
 
 svg.map.dragging {

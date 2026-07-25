@@ -35,8 +35,10 @@ export function attachInteraction(
   apply();
 
   window.addEventListener("resize", () => {
+    const wasAtBase =
+      view.x === base.x && view.y === base.y && view.w === base.w && view.h === base.h;
     base = fitView(data.width, data.height, vpW(), vpH());
-    view = clampView(view, base);
+    view = wasAtBase ? base : clampView(view, base);
     apply();
   });
 
