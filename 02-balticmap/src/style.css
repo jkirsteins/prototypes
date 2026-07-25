@@ -148,26 +148,23 @@ svg.map.dragging {
   padding-right: 20px;
 }
 
-.panel-country {
+.panel-peoples {
   font-size: 13px;
-  color: #777;
-  margin-bottom: 12px;
+  color: #8a7f6f;
+  margin-top: 6px;
 }
 
-.panel-fields div {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-top: 1px solid #eee;
+.panel-flavor {
+  font-size: 14px;
+  color: #333;
+  line-height: 1.5;
+  margin-top: 11px;
+}
+
+.panel-places {
   font-size: 13px;
-}
-
-.panel-fields dt {
-  color: #555;
-}
-
-.panel-fields dd {
-  color: #999;
+  color: #8a7f6f;
+  margin-top: 11px;
 }
 
 .attribution {
