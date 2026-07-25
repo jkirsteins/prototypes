@@ -1,5 +1,5 @@
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
-import { geoAzimuthalEqualArea, geoPath } from "d3-geo";
+import { geoAzimuthalEqualArea, geoPath, geoArea } from "d3-geo";
 import { topology } from "topojson-server";
 import { merge } from "topojson-client";
 import polygonClipping from "polygon-clipping";
@@ -401,10 +401,25 @@ const [lau, nuts, countries] = await Promise.all([
 const toMultiCoords = (geom) =>
   geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
 
+// polygon-clipping winds rings opposite to the GISCO/d3-geo spherical
+// convention; an inverted ring reads as "the whole globe minus a hole"
+// (geoArea ~ 4*PI). Rewind: exterior rings must enclose a small area,
+// holes the complement.
+const ringGeoArea = (ring) =>
+  geoArea({ type: "Polygon", coordinates: [ring] });
+function rewind(multiPolygonCoords) {
+  return multiPolygonCoords.map((poly) =>
+    poly.map((ring, i) => {
+      const a = ringGeoArea(ring);
+      const inverted = i === 0 ? a > 2 * Math.PI : a < 2 * Math.PI;
+      return inverted ? [...ring].reverse() : ring;
+    }),
+  );
+}
 function splitByDaugava(feature) {
   const coords = toMultiCoords(feature.geometry);
-  const north = polygonClipping.intersection(coords, NORTH_BANK_MASK);
-  const south = polygonClipping.difference(coords, NORTH_BANK_MASK);
+  const north = rewind(polygonClipping.intersection(coords, NORTH_BANK_MASK));
+  const south = rewind(polygonClipping.difference(coords, NORTH_BANK_MASK));
   if (!north.length || !south.length) {
     throw new Error(
       `Daugava split produced an empty part for ${feature.properties.LAU_NAME}`,
@@ -552,6 +567,18 @@ const landFeatures = LANDS.map((land) => {
   }
   return { type: "Feature", properties: { land }, geometry: merge(topo, members) };
 });
+
+// Guard against inverted ring winding: every land is a tiny fraction of
+// the sphere. 0.05 sr is ~2,000,000 km^2 - far above any Baltic land.
+for (const f of landFeatures) {
+  const a = geoArea(f);
+  if (a > 0.05) {
+    throw new Error(
+      `Suspicious geometry for ${f.properties.land.id}: geoArea ${a} - ` +
+        `check ring winding of split/merged members`,
+    );
+  }
+}
 
 const neighborFeatures = countries.features.filter((f) =>
   NEIGHBORS.includes(f.properties.CNTR_ID),
