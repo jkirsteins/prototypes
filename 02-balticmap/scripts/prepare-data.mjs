@@ -95,7 +95,7 @@ const SETTLEMENTS = [
   { id: "ikskile", name: "Ikšķile", lon: 24.5, lat: 56.84, labelDy: 16, note: "Liv riverside village; nothing yet marks it out from its neighbours." },
   { id: "impiltis", name: "Impiltis", lon: 21.22, lat: 56.05, note: "Stronghold of the coastal Curonians above the lagoon shore." },
   { id: "jersika", name: "Jersika", lon: 26.2, lat: 56.27, note: "Seat of the Latgalian princes of the Daugava, looking east to Polotsk." },
-  { id: "kernave", name: "Kernavė", lon: 24.85, lat: 54.89, note: "Cluster of hillforts above the Neris, chief seat of the dukes of Lietuva." },
+  { id: "kernave", name: "Kernavė", lon: 24.85, lat: 54.89, note: "Cluster of hillforts above the Neris, foremost among the strongholds of Lietuva." },
   { id: "koknese", name: "Koknese", lon: 25.44, lat: 56.64, note: "Fortified town on the Daugava's right bank, tollgate of the river road." },
   { id: "lindanise", name: "Lindanise", lon: 24.74, lat: 59.44, note: "Harbour below the fort where the Gotland run turns east for Novgorod." },
   { id: "mezotne", name: "Mežotne", lon: 24.05, lat: 56.44, note: "Semigallian stronghold guarding the Lielupe river road." },
