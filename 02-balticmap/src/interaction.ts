@@ -61,7 +61,7 @@ export function attachInteraction(
     });
   }
 
-  let down: { x: number; y: number } | null = null;
+  let down: { x: number; y: number; pointerId: number | undefined } | null = null;
   let dragged = false;
 
   function endDrag(): void {
@@ -72,16 +72,9 @@ export function attachInteraction(
 
   svg.addEventListener("pointerdown", (e) => {
     const me = e as MouseEvent;
-    down = { x: me.clientX, y: me.clientY };
-    dragged = false;
     const pe = e as PointerEvent;
-    if (typeof pe.pointerId === "number" && typeof svg.setPointerCapture === "function") {
-      try {
-        svg.setPointerCapture(pe.pointerId);
-      } catch {
-        // capture is best-effort; drag still works without it
-      }
-    }
+    down = { x: me.clientX, y: me.clientY, pointerId: pe.pointerId };
+    dragged = false;
   });
 
   svg.addEventListener("pointermove", (e) => {
@@ -91,9 +84,16 @@ export function attachInteraction(
     const dy = me.clientY - down.y;
     if (!dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
     dragged = true;
+    if (typeof down.pointerId === "number" && typeof svg.setPointerCapture === "function") {
+      try {
+        svg.setPointerCapture(down.pointerId);
+      } catch {
+        // capture is best-effort; drag still works without it
+      }
+    }
     svg.classList.add("dragging");
     view = panBy(view, base, dx, dy, vpW());
-    down = { x: me.clientX, y: me.clientY };
+    down = { x: me.clientX, y: me.clientY, pointerId: down.pointerId };
     apply();
   });
 
