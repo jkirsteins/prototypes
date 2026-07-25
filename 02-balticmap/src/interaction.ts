@@ -73,6 +73,7 @@ export function attachInteraction(
   }
 
   svg.addEventListener("pointerdown", (e) => {
+    if ((e as PointerEvent).button !== 0) return;
     const me = e as MouseEvent;
     const pe = e as PointerEvent;
     down = { x: me.clientX, y: me.clientY, pointerId: pe.pointerId };
@@ -81,6 +82,10 @@ export function attachInteraction(
 
   svg.addEventListener("pointermove", (e) => {
     if (!down) return;
+    if ((e as MouseEvent).buttons === 0) {
+      endDrag();
+      return;
+    }
     const me = e as MouseEvent;
     const dx = me.clientX - down.x;
     const dy = me.clientY - down.y;

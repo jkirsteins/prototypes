@@ -63,7 +63,7 @@ describe("attachInteraction", () => {
     const el = regionPaths.get("EE001")!;
     const before = svg.getAttribute("viewBox");
     el.dispatchEvent(mouse("pointerdown", { clientX: 100, clientY: 100 }));
-    el.dispatchEvent(mouse("pointermove", { clientX: 160, clientY: 100 }));
+    el.dispatchEvent(mouse("pointermove", { clientX: 160, clientY: 100, buttons: 1 }));
     el.dispatchEvent(mouse("pointerup", { clientX: 160, clientY: 100 }));
     expect(onSelect).not.toHaveBeenCalled();
     // at 1x the pan is clamped back, so the viewBox may be unchanged,
