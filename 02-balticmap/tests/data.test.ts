@@ -249,4 +249,32 @@ describe("map.json (anno 1100)", () => {
     expect(region("zemaitija").maxSettlements).toBe(7);
     expect(region("eastern-aukstaitija").maxSettlements).toBe(9);
   });
+
+  it("adjacency is symmetric, non-self, sorted, and never empty", () => {
+    const byId = new Map(data.regions.map((r) => [r.id, r]));
+    for (const r of data.regions) {
+      expect(r.adjacent.length).toBeGreaterThan(0);
+      expect(r.adjacent).toEqual([...r.adjacent].sort());
+      expect(new Set(r.adjacent).size).toBe(r.adjacent.length);
+      for (const a of r.adjacent) {
+        expect(a).not.toBe(r.id);
+        expect(byId.has(a)).toBe(true);
+        expect(byId.get(a)!.adjacent).toContain(r.id);
+      }
+    }
+  });
+
+  it("saaremaa connects by sea to laanemaa and kursa", () => {
+    const saaremaa = data.regions.find((r) => r.id === "saaremaa")!;
+    expect(saaremaa.adjacent).toContain("laanemaa");
+    expect(saaremaa.adjacent).toContain("kursa");
+  });
+
+  it("known land borders are present", () => {
+    const adj = (id: string) =>
+      data.regions.find((r) => r.id === id)!.adjacent;
+    expect(adj("harjumaa")).toContain("ravala");
+    expect(adj("zemgale")).toContain("zemaitija");
+    expect(adj("dainava")).toContain("suduva");
+  });
 });

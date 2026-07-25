@@ -658,6 +658,113 @@ for (const f of landFeatures) {
   }
 }
 
+// --- Region adjacency from shared topology arcs. Two lands are adjacent
+// iff some member of one and some member of the other trace the same arc.
+// Island factions get authored sea links (they share no land border).
+const SEA_LINKS = [
+  ["saaremaa", "laanemaa"],
+  ["saaremaa", "kursa"],
+];
+
+function arcIdsOf(geometry) {
+  const out = new Set();
+  const walk = (a) => {
+    if (typeof a === "number") out.add(a < 0 ? ~a : a);
+    else for (const x of a) walk(x);
+  };
+  if (geometry.arcs) walk(geometry.arcs);
+  return out;
+}
+
+const landArcs = new Map(
+  LANDS.map((land) => {
+    const keys = new Set([...(land.lau ?? []), ...(land.nuts ?? [])]);
+    const arcs = new Set();
+    for (const g of topo.objects.members.geometries) {
+      if (keys.has(g.properties.key)) {
+        for (const id of arcIdsOf(g)) arcs.add(id);
+      }
+    }
+    return [land.id, arcs];
+  }),
+);
+
+// Fallback for borders arc-sharing misses at the LAU/NUTS seam (Latvia's
+// LAU municipalities vs Lithuania's NUTS regions are generalized at
+// different vertex densities, so the shared international border does not
+// always dedupe into shared arcs even though the lines coincide). Compare
+// quantized raw coordinates of the pre-topology member geometries instead:
+// two lands are adjacent if they share any vertex at 1e-6 degree precision
+// (~0.1m). Verified against known non-adjacent pairs to produce zero false
+// positives before relying on it.
+const COORD_PRECISION = 6;
+function flattenCoords(geometry) {
+  const pts = [];
+  const depth =
+    geometry.type === "Polygon" ? 2 : geometry.type === "MultiPolygon" ? 3 : -1;
+  if (depth < 0) return pts;
+  const walk = (a, d) => {
+    if (d === 0) { pts.push(a); return; }
+    for (const x of a) walk(x, d - 1);
+  };
+  walk(geometry.coordinates, depth);
+  return pts;
+}
+
+const landPoints = new Map(
+  LANDS.map((land) => {
+    const keys = new Set([...(land.lau ?? []), ...(land.nuts ?? [])]);
+    const points = new Set();
+    for (const m of memberFeatures) {
+      if (keys.has(m.key)) {
+        for (const [lon, lat] of flattenCoords(m.geometry)) {
+          points.add(`${lon.toFixed(COORD_PRECISION)},${lat.toFixed(COORD_PRECISION)}`);
+        }
+      }
+    }
+    return [land.id, points];
+  }),
+);
+
+const adjacency = new Map(LANDS.map((l) => [l.id, new Set()]));
+const landIds = LANDS.map((l) => l.id);
+for (let i = 0; i < landIds.length; i++) {
+  for (let j = i + 1; j < landIds.length; j++) {
+    const a = landArcs.get(landIds[i]);
+    const b = landArcs.get(landIds[j]);
+    let shared = false;
+    for (const id of a) {
+      if (b.has(id)) { shared = true; break; }
+    }
+    if (!shared) {
+      const pa = landPoints.get(landIds[i]);
+      const pb = landPoints.get(landIds[j]);
+      const [smaller, larger] = pa.size <= pb.size ? [pa, pb] : [pb, pa];
+      for (const p of smaller) {
+        if (larger.has(p)) { shared = true; break; }
+      }
+    }
+    if (shared) {
+      adjacency.get(landIds[i]).add(landIds[j]);
+      adjacency.get(landIds[j]).add(landIds[i]);
+    }
+  }
+}
+for (const [a, b] of SEA_LINKS) {
+  if (!adjacency.has(a) || !adjacency.has(b)) {
+    throw new Error(`Unknown region in sea link ${a}-${b}`);
+  }
+  adjacency.get(a).add(b);
+  adjacency.get(b).add(a);
+}
+for (const [id, set] of adjacency) {
+  if (set.size === 0) throw new Error(`Region ${id} has no adjacency`);
+}
+console.log(
+  "Adjacency:",
+  [...adjacency].map(([id, s]) => `${id}: ${[...s].sort().join(",")}`).join("; "),
+);
+
 // --- Settlement validation: known land, exactly one unlocked per land,
 // authored count within the land's slot cap, and the coordinates really
 // fall inside the claimed land (curation guard).
@@ -808,6 +915,7 @@ const data = {
         population: land.population,
         cohesion: land.cohesion,
         maxSettlements: maxSettlementsFor(land.population),
+        adjacent: [...adjacency.get(land.id)].sort(),
         flavor: land.flavor,
         places: land.places,
         path: path(f),
