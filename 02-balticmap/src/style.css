@@ -355,6 +355,18 @@ svg.map.dragging {
   opacity: 0.225;
 }
 
+.region.target-valid {
+  cursor: pointer;
+  stroke: #fdfaf4;
+  stroke-width: 2;
+  opacity: 1;
+}
+
+.region.target-invalid {
+  opacity: 0.12;
+  pointer-events: auto;
+}
+
 .region.owned:not(.selected) {
   stroke: var(--owned-stroke);
   stroke-width: 2.2;
