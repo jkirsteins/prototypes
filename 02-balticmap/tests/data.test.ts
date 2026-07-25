@@ -151,6 +151,17 @@ describe("map.json (anno 1100)", () => {
     expect(total).toBe(650000);
   });
 
+  it("ravala holds the northwest coast and harjumaa is contiguous", () => {
+    const region = (id: string) => data.regions.find((r) => r.id === id)!;
+    expect(region("ravala").population).toBe(15000);
+    expect(region("harjumaa").population).toBe(15000);
+    const rings = region("harjumaa").path.split("M").filter(Boolean);
+    const sorted = [...rings].sort((a, b) => b.length - a.length);
+    for (const ring of sorted.slice(1)) {
+      expect(ring.length).toBeLessThan(300);
+    }
+  });
+
   it("has the main rivers as path data", () => {
     const ids = data.rivers.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);

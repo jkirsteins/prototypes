@@ -152,19 +152,21 @@ const LANDS = [
     lau: [
       "Tallinn", "Viimsi vald", "Maardu linn", "Jõelähtme vald", "Rae vald",
       "Kiili vald", "Saku vald", "Saue vald", "Harku vald", "Keila linn",
+      "Lääne-Harju vald",
     ],
     flavor:
-      "The small coastal land around the harbour below the fort of " +
-      "Lindanise, where traders bound for Novgorod and the Gotland run " +
-      "put in. Its elders grow rich on the sea-road.",
+      "The coastal land around the harbour below the fort of Lindanise, " +
+      "running west past the bay of Paldiski, where traders bound for " +
+      "Novgorod and the Gotland run put in. Its elders grow rich on the " +
+      "sea-road.",
     places: ["Lindanise", "Iru"],
-    population: 10000, cohesion: "medium",
+    population: 15000, cohesion: "medium",
   },
   {
     id: "harjumaa", name: "Harjumaa", faction: "harjuans",
     peoples: ["estonians"],
     lau: [
-      "Lääne-Harju vald", "Kuusalu vald", "Loksa linn", "Anija vald",
+      "Kuusalu vald", "Loksa linn", "Anija vald",
       "Raasiku vald", "Kose vald", "Kehtna vald", "Kohila vald",
       "Märjamaa vald", "Rapla vald",
     ],
@@ -173,7 +175,7 @@ const LANDS = [
       "hillforts - none greater than the ringfort of Varbola, the " +
       "mightiest stronghold of the Estonian lands.",
     places: ["Varbola", "Lohu"],
-    population: 20000, cohesion: "medium",
+    population: 15000, cohesion: "medium",
   },
   {
     id: "virumaa", name: "Virumaa", faction: "vironians",
