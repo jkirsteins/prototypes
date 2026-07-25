@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import { createHud, type HudCallbacks } from "../src/hud";
-import { newGame, startGame, pickFaction, endTurn, playCard } from "../src/game";
+import { newGame, startGame, pickFaction, endTurn, playCard, aiTurn } from "../src/game";
 import type { Rng } from "../src/cards";
 
 function seededRng(seed: number): Rng {
@@ -104,5 +104,71 @@ describe("createHud", () => {
     expect(card.disabled).toBe(true);
     card.click();
     expect(cb.onPlayCard).not.toHaveBeenCalled();
+  });
+});
+
+describe("activity log", () => {
+  function playing() {
+    return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+  }
+
+  it("is hidden outside the playing phase and visible during it", () => {
+    const { container, hud } = setup();
+    hud.update(newGame(FACTIONS));
+    expect(q(container, ".activity-log").classList.contains("hidden")).toBe(true);
+    hud.update(playing());
+    expect(q(container, ".activity-log").classList.contains("hidden")).toBe(false);
+  });
+
+  it("names your cards, hides AI draws, and shows AI plays", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = playCard(g, 0);
+    g = endTurn(g, seededRng(2)); // player 2 draws
+    g = aiTurn(g); // player 2 plays
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    expect(texts).toEqual([
+      "You drew Grow crops",
+      "You played Grow crops",
+      "Player 2 drew a card",
+      "Player 2 played Grow crops",
+    ]);
+  });
+
+  it("appends only new entries across updates and inserts turn separators", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    hud.update(g);
+    for (let i = 0; i < FACTIONS.length; i++) g = endTurn(g, seededRng(3));
+    hud.update(g); // back to the human: turn 2 draw happened
+    expect(container.querySelectorAll(".log-entry")).toHaveLength(4);
+    const seps = [...container.querySelectorAll(".log-turn")].map(
+      (el) => el.textContent,
+    );
+    expect(seps).toEqual(["Turn 1", "Turn 2"]);
+  });
+
+  it("resets the entries when a new game starts", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = playCard(g, 0);
+    hud.update(g);
+    expect(container.querySelectorAll(".log-entry")).toHaveLength(2);
+    hud.update(playing()); // fresh game: log has only the opening draw
+    expect(container.querySelectorAll(".log-entry")).toHaveLength(1);
+  });
+
+  it("collapses to a tab and expands again", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const panel = q(container, ".activity-log");
+    expect(panel.classList.contains("collapsed")).toBe(false);
+    q(container, ".activity-log-toggle").click();
+    expect(panel.classList.contains("collapsed")).toBe(true);
+    q(container, ".activity-log-toggle").click();
+    expect(panel.classList.contains("collapsed")).toBe(false);
   });
 });
