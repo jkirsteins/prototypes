@@ -44,8 +44,8 @@ Two parts, cleanly separated:
    statistical maps) into a fixed internal coordinate space
    (e.g. 1000 x 1400 units, portrait).
 4. Writes `src/data/map.json`: per region - id (NUTS code), name, country,
-   projected polygon rings; plus neighbor geometries and the coordinate-space
-   bounds.
+   projected geometry as SVG path data (neighbor countries clipped to the
+   canvas); plus country label positions and the coordinate-space bounds.
 
 The output JSON is committed, so app builds never touch the network and the
 runtime app has zero npm dependencies.
