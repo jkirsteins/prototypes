@@ -21,11 +21,11 @@ const FACTION_TYPES = [
   "chiefdom", "land-coalition",
 ];
 
-describe("map.json (anno 1184)", () => {
+describe("map.json (anno 1100)", () => {
   it("has canvas bounds, year, and attribution", () => {
     expect(data.width).toBe(1000);
     expect(data.height).toBe(1400);
-    expect(data.year).toBe(1184);
+    expect(data.year).toBe(1100);
     expect(data.attribution).toBe(
       "(c) EuroGeographics for the administrative boundaries",
     );
@@ -161,7 +161,7 @@ describe("map.json (anno 1184)", () => {
       "SAMOGITIANS", "SELONIANS", "SEMIGALLIANS", "YOTVINGIANS",
     ]);
     expect(byKind("people-minor")).toEqual([]);
-    expect(byKind("title")).toEqual(["Anno Domini 1184"]);
+    expect(byKind("title")).toEqual(["Anno Domini 1100"]);
     expect(byKind("subtitle")).toEqual(["the lands of the eastern Baltic"]);
     expect(byKind("neighbor").length).toBeGreaterThanOrEqual(2);
     for (const l of data.labels) {

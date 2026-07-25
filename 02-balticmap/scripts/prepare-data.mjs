@@ -16,10 +16,10 @@ const CACHE_DIR = "scripts/.cache";
 const WIDTH = 1000;
 const HEIGHT = 1400;
 const PAD = 40;
-const YEAR = 1184;
+const YEAR = 1100;
 const NEIGHBORS = ["FI", "SE", "RU", "BY", "PL", "DK"];
 
-// Peoples of the eastern Baltic, ca. 1184. Colors are each family's base
+// Peoples of the eastern Baltic, ca. 1100. Colors are each family's base
 // hue; faction fills are shades within the family (see FACTIONS).
 const PEOPLES = [
   { id: "estonians", name: "Estonians", color: "#b8cf9b" },
@@ -83,10 +83,11 @@ const SPLIT_MUNICIPALITIES = ["Aizkraukles novads", "Jēkabpils novads"];
 
 // 20 lands. `lau` lists LAU_NAME members (EE/LV, LAU 2023); `nuts` lists
 // NUTS-2021 level-3 members (LT). Provenance lives here only. The grouping
-// of municipalities into 1184 lands is a deliberate game abstraction.
+// of municipalities into 1100 lands is a deliberate game abstraction.
 
 // population/cohesion are deliberate GAME ESTIMATES, not historical facts:
-// anchored to ~180k for the Estonian lands (common ~1200 estimate) and
+// anchored to ~180k for the Estonian lands (a common estimate for the
+// era, held flat for 1100 - these are game numbers, not a census) and
 // 650,000 for the whole map, rounded to the nearest 5,000. Cohesion is
 // political concentration - a cohesive 45k land can outweigh a fragmented
 // 150k neighbourhood.
@@ -216,10 +217,10 @@ const LANDS = [
     ],
     flavor:
       "The Liv lands at the mouths of the Daugava and the Gauja, grown " +
-      "rich on river trade with the Rus' towns and Gotland. At Ikšķile the " +
-      "monk Meinhard has this very year raised a church of stone - the " +
-      "first in these lands.",
-    places: ["Ikšķile", "Mārtiņsala", "Turaida"],
+      "rich on river trade with the Rus' towns and Gotland. The hillfort " +
+      "town of Daugmale above the river crossing is the busiest market " +
+      "on this coast.",
+    places: ["Daugmale", "Turaida"],
     population: 20000, cohesion: "medium",
   },
   {
@@ -319,8 +320,8 @@ const LANDS = [
     nuts: ["LT022", "LT011"],
     flavor:
       "The land of Lietuva between the Neris and the Nemunas, whose " +
-      "war-bands ride yearly against the Rus' towns. Its rival dukes are " +
-      "slowly, grudgingly, learning to ride under one banner.",
+      "war-bands ride yearly against the Rus' towns. Its rival dukes " +
+      "feud among themselves as readily as they raid abroad.",
     places: ["Kernavė", "Vilnia"],
     population: 60000, cohesion: "medium",
   },
@@ -374,7 +375,7 @@ const LABELS = [
   { text: "Lands of Rus'", lon: 28.0, lat: 57.2, kind: "neighbor" },
   { text: "Prussian lands", lon: 21.3, lat: 54.15, kind: "neighbor" },
   { text: "Finnic lands", lon: 21.8, lat: 59.85, kind: "neighbor" },
-  { text: "Anno Domini 1184", lon: 23.55, lat: 57.75, kind: "title" },
+  { text: `Anno Domini ${YEAR}`, lon: 23.55, lat: 57.75, kind: "title" },
   { text: "the lands of the eastern Baltic", lon: 23.55, lat: 57.58, kind: "subtitle" },
 ];
 
