@@ -208,8 +208,17 @@ export function playCard(
 
 export function endTurn(state: GameState, rng: Rng): GameState {
   if (state.phase !== "playing") return state;
-  const current = (state.current + 1) % state.players.length;
-  const turn = current === 0 ? state.turn + 1 : state.turn;
+  const overlords = overlordsOf(state);
+  const inert = (i: number): boolean => {
+    const f = state.players[i].factionId;
+    return overlords.has(f) || f in state.incorporated;
+  };
+  let current = state.current;
+  let turn = state.turn;
+  do {
+    current = (current + 1) % state.players.length;
+    if (current === 0) turn += 1;
+  } while (current !== 0 && inert(current));
   return beginTurn({ ...state, current, turn }, rng);
 }
 

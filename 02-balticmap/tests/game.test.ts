@@ -343,3 +343,36 @@ describe("targeted card play", () => {
     expect(g.incorporated).toEqual({});
   });
 });
+
+describe("turn skipping", () => {
+  it("skips subjugated players and still increments the turn on wrap", () => {
+    let g = playingState(); // players: beta(you), alpha, gamma, delta
+    g = { ...g, relations: bumpMight(g.relations, "gamma", "alpha") };
+    const after = endTurn(g, seededRng(7)); // alpha (index 1) is a vassal
+    expect(after.current).toBe(2); // gamma acts next
+    expect(after.players[1].hand).toHaveLength(0); // no draw for alpha
+    let wrapped = endTurn(after, seededRng(7)); // delta
+    wrapped = endTurn(wrapped, seededRng(7)); // back to you
+    expect(wrapped.current).toBe(0);
+    expect(wrapped.turn).toBe(2);
+  });
+
+  it("skips incorporated players", () => {
+    let g = playingState();
+    g = { ...g, incorporated: { alpha: "beta" } };
+    const after = endTurn(g, seededRng(7));
+    expect(after.current).toBe(2);
+  });
+
+  it("wraps to the human even when every AI is inert", () => {
+    let g = playingState();
+    let rel = g.relations;
+    rel = bumpMight(rel, "beta", "alpha");
+    rel = bumpMight(rel, "beta", "gamma");
+    rel = bumpMight(rel, "beta", "delta");
+    g = { ...g, relations: rel };
+    const after = endTurn(g, seededRng(7));
+    expect(after.current).toBe(0);
+    expect(after.turn).toBe(2);
+  });
+});
