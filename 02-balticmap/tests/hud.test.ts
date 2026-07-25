@@ -35,7 +35,8 @@ describe("createHud", () => {
     expect(q(container, ".menu-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".status-bar").classList.contains("hidden")).toBe(true);
     expect(q(container, ".hand").classList.contains("hidden")).toBe(true);
-    expect(q(container, ".piles").classList.contains("hidden")).toBe(true);
+    expect(q(container, ".pile-deck").classList.contains("hidden")).toBe(true);
+    expect(q(container, ".pile-discard").classList.contains("hidden")).toBe(true);
     q(container, ".menu-new-game").click();
     expect(cb.onNewGame).toHaveBeenCalledOnce();
   });
@@ -55,8 +56,10 @@ describe("createHud", () => {
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - your turn");
     expect(q(container, ".end-turn").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".pile-deck").textContent).toBe("Deck: 19");
-    expect(q(container, ".pile-discard").textContent).toBe("Discard: 0");
+    expect(q(container, ".pile-deck .pile-count").textContent).toBe("19");
+    expect(q(container, ".pile-deck .pile-label").textContent).toBe("Deck");
+    expect(q(container, ".pile-discard .pile-count").textContent).toBe("0");
+    expect(q(container, ".pile-discard .pile-label").textContent).toBe("Discard");
     const cards = container.querySelectorAll(".card");
     expect(cards).toHaveLength(1);
     expect(cards[0].textContent).toBe("Grow crops");
@@ -104,6 +107,27 @@ describe("createHud", () => {
     expect(card.disabled).toBe(true);
     card.click();
     expect(cb.onPlayCard).not.toHaveBeenCalled();
+  });
+});
+
+describe("visual piles", () => {
+  it("renders layered card backs scaled to the count, dashed when empty", () => {
+    const { container, hud } = setup();
+    const g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    hud.update(g); // deck 19, discard 0
+    expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(4);
+    expect(container.querySelectorAll(".pile-discard .card-back")).toHaveLength(0);
+    expect(
+      q(container, ".pile-discard .pile-stack").classList.contains("empty"),
+    ).toBe(true);
+    expect(
+      q(container, ".pile-deck .pile-stack").classList.contains("empty"),
+    ).toBe(false);
+    hud.update(playCard(g, 0)); // discard 1
+    expect(container.querySelectorAll(".pile-discard .card-back")).toHaveLength(1);
+    expect(
+      q(container, ".pile-discard .pile-stack").classList.contains("empty"),
+    ).toBe(false);
   });
 });
 

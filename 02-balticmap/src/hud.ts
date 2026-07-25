@@ -33,6 +33,15 @@ function eventText(e: GameEvent): string {
   }
 }
 
+/** Cosmetic stack depth: more cards -> visibly thicker pile, capped at 4. */
+function pileLayers(count: number): number {
+  if (count <= 0) return 0;
+  if (count < 4) return 1;
+  if (count < 8) return 2;
+  if (count < 13) return 3;
+  return 4;
+}
+
 export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
   const menu = document.createElement("div");
   menu.className = "menu-overlay";
@@ -55,13 +64,22 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
   endTurnBtn.addEventListener("click", () => cb.onEndTurn());
   status.append(statusText, endTurnBtn);
 
-  const piles = document.createElement("div");
-  piles.className = "piles hidden";
-  const deckPile = document.createElement("div");
-  deckPile.className = "pile pile-deck";
-  const discardPile = document.createElement("div");
-  discardPile.className = "pile pile-discard";
-  piles.append(deckPile, discardPile);
+  function makePile(kind: string, label: string) {
+    const root = document.createElement("div");
+    root.className = `pile pile-${kind} hidden`;
+    const stack = document.createElement("div");
+    stack.className = "pile-stack";
+    const count = document.createElement("div");
+    count.className = "pile-count";
+    const lbl = document.createElement("div");
+    lbl.className = "pile-label";
+    lbl.textContent = label;
+    root.append(stack, count, lbl);
+    return { root, stack, count };
+  }
+
+  const deckPile = makePile("deck", "Deck");
+  const discardPile = makePile("discard", "Discard");
 
   const hand = document.createElement("div");
   hand.className = "hand hidden";
@@ -85,7 +103,7 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
   logEntries.className = "activity-log-entries";
   logPanel.append(logHeader, logEntries);
 
-  container.append(menu, status, piles, hand, logPanel);
+  container.append(menu, status, deckPile.root, discardPile.root, hand, logPanel);
 
   let renderedEvents = 0;
   let lastRenderedTurn = 0;
@@ -117,6 +135,21 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
     return fresh;
   }
 
+  function renderPile(
+    pile: { stack: HTMLElement; count: HTMLElement },
+    n: number,
+  ): void {
+    pile.count.textContent = String(n);
+    pile.stack.classList.toggle("empty", n === 0);
+    pile.stack.replaceChildren();
+    for (let i = 0; i < pileLayers(n); i++) {
+      const back = document.createElement("div");
+      back.className = "card-back";
+      back.style.translate = `${-2 * i}px ${-2 * i}px`;
+      pile.stack.appendChild(back);
+    }
+  }
+
   function renderHand(state: GameState): void {
     hand.replaceChildren();
     const human = state.players[0];
@@ -141,7 +174,8 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
     update(state) {
       menu.classList.toggle("hidden", state.phase !== "main-menu");
       status.classList.toggle("hidden", state.phase === "main-menu");
-      piles.classList.toggle("hidden", state.phase !== "playing");
+      deckPile.root.classList.toggle("hidden", state.phase !== "playing");
+      discardPile.root.classList.toggle("hidden", state.phase !== "playing");
       hand.classList.toggle("hidden", state.phase !== "playing");
       logPanel.classList.toggle("hidden", state.phase !== "playing");
 
@@ -158,8 +192,8 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
           endTurnBtn.classList.add("hidden");
         }
         const human = state.players[0];
-        deckPile.textContent = `Deck: ${human.deck.length}`;
-        discardPile.textContent = `Discard: ${human.discard.length}`;
+        renderPile(deckPile, human.deck.length);
+        renderPile(discardPile, human.discard.length);
         renderHand(state);
         renderLog(state);
       }
