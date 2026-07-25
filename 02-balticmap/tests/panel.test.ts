@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import { createPanel, createTooltip, formatPopulation, formatFactionType, tooltipText, settlementTooltipText } from "../src/panel";
-import type { Faction, People, Region } from "../src/types";
+import type { Faction, People, Region, Settlement } from "../src/types";
 
 const peoples: People[] = [
   { id: "latgalians", name: "Latgalians", color: "#e5b28e" },
@@ -26,6 +26,7 @@ const talava: Region = {
   faction: "talavians",
   population: 30000,
   cohesion: "high",
+  maxSettlements: 3,
   flavor: "Latgalian land on the upper Gauja.",
   places: ["Beverīna", "Trikāta"],
   path: "M0 0Z",
@@ -38,15 +39,27 @@ const jersika: Region = {
   faction: "jersikans",
   population: 35000,
   cohesion: "high",
+  maxSettlements: 4,
   flavor: "A principality on the Daugava.",
   places: ["Koknese"],
   path: "M0 0Z",
 };
 
+const settlements: Settlement[] = [
+  {
+    id: "trikata", name: "Trikāta", note: "Latgalian chief's fort.",
+    land: "talava", unlocked: true, x: 10, y: 20,
+  },
+  {
+    id: "jersika-town", name: "Jersika", note: "Seat of the princes.",
+    land: "jersika", unlocked: true, x: 30, y: 40,
+  },
+];
+
 describe("panel", () => {
   it("is hidden initially, shows land details on show()", () => {
     const container = document.createElement("div");
-    const panel = createPanel(container, () => {}, peoples, factions);
+    const panel = createPanel(container, () => {}, peoples, factions, settlements);
     const root = container.querySelector(".panel")!;
     expect(root.classList.contains("hidden")).toBe(true);
 
@@ -78,7 +91,7 @@ describe("panel", () => {
 
   it("names a single people plainly, without 'Predominantly'", () => {
     const container = document.createElement("div");
-    const panel = createPanel(container, () => {}, peoples, factions);
+    const panel = createPanel(container, () => {}, peoples, factions, settlements);
     panel.show(jersika);
     expect(container.querySelector(".panel-peoples")!.textContent).toBe(
       "Latgalians",
@@ -88,10 +101,19 @@ describe("panel", () => {
   it("invokes onClose when the close button is clicked", () => {
     const container = document.createElement("div");
     const onClose = vi.fn();
-    const panel = createPanel(container, onClose, peoples, factions);
+    const panel = createPanel(container, onClose, peoples, factions, settlements);
     panel.show(talava);
     (container.querySelector(".panel-close") as HTMLButtonElement).click();
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("shows the settlements line with the unlocked settlement and slot cap", () => {
+    const container = document.createElement("div");
+    const panel = createPanel(container, () => {}, peoples, factions, settlements);
+    panel.show(talava);
+    expect(container.querySelector(".panel-settlements")!.textContent).toBe(
+      "Settlements: Trikāta (1/3)",
+    );
   });
 });
 
@@ -139,7 +161,7 @@ describe("population helpers", () => {
   it("settlementTooltipText shows name and note", () => {
     const s = {
       id: "daugmale", name: "Daugmale", note: "Great Liv hillfort.",
-      x: 100, y: 200,
+      land: "livzeme", unlocked: true, x: 100, y: 200,
     };
     expect(settlementTooltipText(s)).toBe("Daugmale\nGreat Liv hillfort.");
   });

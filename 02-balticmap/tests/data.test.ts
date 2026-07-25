@@ -151,12 +151,23 @@ describe("map.json (anno 1100)", () => {
     expect(total).toBe(650000);
   });
 
+  it("ravala holds the northwest coast and harjumaa is contiguous", () => {
+    const region = (id: string) => data.regions.find((r) => r.id === id)!;
+    expect(region("ravala").population).toBe(15000);
+    expect(region("harjumaa").population).toBe(15000);
+    const rings = region("harjumaa").path.split("M").filter(Boolean);
+    const sorted = [...rings].sort((a, b) => b.length - a.length);
+    for (const ring of sorted.slice(1)) {
+      expect(ring.length).toBeLessThan(300);
+    }
+  });
+
   it("has the main rivers as path data", () => {
     const ids = data.rivers.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([...ids].sort());
     expect(ids.length).toBeGreaterThanOrEqual(5);
-    expect(ids.length).toBeLessThanOrEqual(9);
+    expect(ids.length).toBeLessThanOrEqual(10);
     expect(ids).toContain("daugava");
     expect(ids).toContain("nemunas");
     for (const r of data.rivers) {
@@ -190,26 +201,52 @@ describe("map.json (anno 1100)", () => {
     }
   });
 
-  it("has 18 curated settlements valid for 1100", () => {
-    expect(data.settlements.length).toBe(18);
+  it("has 25 authored settlements, exactly one unlocked per land", () => {
+    expect(data.settlements.length).toBe(25);
     const ids = data.settlements.map((s) => s.id);
-    expect(new Set(ids).size).toBe(18);
+    expect(new Set(ids).size).toBe(25);
     expect(ids).toEqual([...ids].sort());
+    const landIds = new Set(data.regions.map((r) => r.id));
+    const unlockedPerLand = new Map<string, number>();
     for (const s of data.settlements) {
       expect(s.name.length).toBeGreaterThan(0);
       expect(s.note.length).toBeGreaterThan(20);
+      expect(landIds.has(s.land)).toBe(true);
+      expect(typeof s.unlocked).toBe("boolean");
       expect(s.x).toBeGreaterThan(0);
       expect(s.x).toBeLessThan(1000);
       expect(s.y).toBeGreaterThan(0);
       expect(s.y).toBeLessThan(1400);
-      // Riga does not exist in 1100
       expect(s.name.toLowerCase()).not.toContain("riga");
       expect(s.name.toLowerCase()).not.toContain("rīga");
+      if (s.unlocked) {
+        unlockedPerLand.set(s.land, (unlockedPerLand.get(s.land) ?? 0) + 1);
+      }
     }
-    const names = data.settlements.map((s) => s.name);
-    expect(names).toContain("Lindanise");
-    expect(names).toContain("Daugmale");
-    expect(names).toContain("Kernavė");
-    expect(names).toContain("Tērvete");
+    expect(data.settlements.filter((s) => s.unlocked).length).toBe(20);
+    for (const r of data.regions) {
+      expect(unlockedPerLand.get(r.id)).toBe(1);
+    }
+    const locked = data.settlements.filter((s) => !s.unlocked).map((s) => s.id);
+    expect(locked.sort()).toEqual(["apuole", "ikskile", "koknese", "mezotne", "otepaa"]);
+  });
+
+  it("maxSettlements follows the population formula and bounds authored counts", () => {
+    const authoredPerLand = new Map<string, number>();
+    for (const s of data.settlements) {
+      authoredPerLand.set(s.land, (authoredPerLand.get(s.land) ?? 0) + 1);
+    }
+    for (const r of data.regions) {
+      const expected = Math.min(10, Math.max(1, Math.round(r.population / 10000)));
+      expect(r.maxSettlements).toBe(expected);
+      expect(authoredPerLand.get(r.id) ?? 0).toBeGreaterThanOrEqual(1);
+      expect(authoredPerLand.get(r.id) ?? 0).toBeLessThanOrEqual(r.maxSettlements);
+    }
+    const region = (id: string) => data.regions.find((r) => r.id === id)!;
+    expect(region("ravala").maxSettlements).toBe(2);
+    expect(region("harjumaa").maxSettlements).toBe(2);
+    expect(region("kursa").maxSettlements).toBe(5);
+    expect(region("zemaitija").maxSettlements).toBe(7);
+    expect(region("eastern-aukstaitija").maxSettlements).toBe(9);
   });
 });

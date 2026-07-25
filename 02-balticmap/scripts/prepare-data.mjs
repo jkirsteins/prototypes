@@ -1,5 +1,5 @@
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
-import { geoAzimuthalEqualArea, geoPath, geoArea } from "d3-geo";
+import { geoAzimuthalEqualArea, geoPath, geoArea, geoContains } from "d3-geo";
 import { topology } from "topojson-server";
 import { merge } from "topojson-client";
 import polygonClipping from "polygon-clipping";
@@ -86,33 +86,44 @@ const RIVERS = [
   { id: "venta", name: "Venta", major: false, match: ["venta"] },
   { id: "musa", name: "Mūša", major: false, match: ["musa", "mūša"] },
   { id: "memele", name: "Mēmele", major: false, match: ["memele", "mēmele", "nemunelis", "nemunėlis"] },
+  { id: "emajogi", name: "Emajõgi", major: false, match: ["emajogi", "emajõgi"] },
+  { id: "parnu", name: "Pärnu", major: false, match: ["parnu", "pärnu"] },
   { id: "narva", name: "Narva", major: false, match: ["narva"] },
 ];
 
 // Attested or archaeologically grounded sites ca. 1100, at the modern
 // coordinates of their hillforts/harbours. Notes are one-line tooltips
 // and must hold for 1100 specifically (hence Daugmale at its peak, an
-// unremarkable Ikskile, and no Riga - it does not exist yet). labelDy
-// drops a label below its dot where neighbours would collide.
+// unremarkable Ikskile, and no Riga - it does not exist yet). Each land
+// starts with exactly one unlocked settlement; locked entries are
+// authored ahead for future unlocks and are not rendered. labelDy drops
+// a label below its dot where neighbours would collide.
 const SETTLEMENTS = [
-  { id: "apuole", name: "Apuolė", lon: 21.55, lat: 56.17, note: "Old Curonian stronghold in the north of the land, besieged by sea-kings in centuries past." },
-  { id: "daugmale", name: "Daugmale", lon: 24.43, lat: 56.84, note: "Great Liv hillfort and market above the Daugava crossing, at the height of its power." },
-  { id: "ikskile", name: "Ikšķile", lon: 24.5, lat: 56.84, labelDy: 16, note: "Liv riverside village; nothing yet marks it out from its neighbours." },
-  { id: "impiltis", name: "Impiltis", lon: 21.22, lat: 56.05, note: "Stronghold of the coastal Curonians above the lagoon shore." },
-  { id: "jersika", name: "Jersika", lon: 26.2, lat: 56.27, note: "Seat of the Latgalian princes of the Daugava, looking east to Polotsk." },
-  { id: "kernave", name: "Kernavė", lon: 24.85, lat: 54.89, note: "Cluster of hillforts above the Neris, foremost among the strongholds of Lietuva." },
-  { id: "koknese", name: "Koknese", lon: 25.44, lat: 56.64, note: "Fortified town on the Daugava's right bank, tollgate of the river road." },
-  { id: "lindanise", name: "Lindanise", lon: 24.74, lat: 59.44, note: "Harbour below the fort where the Gotland run turns east for Novgorod." },
-  { id: "mezotne", name: "Mežotne", lon: 24.05, lat: 56.44, note: "Semigallian stronghold guarding the Lielupe river road." },
-  { id: "otepaa", name: "Otepää", lon: 26.46, lat: 58.06, note: "Upland stronghold of Ugandi on the road from the Rus' towns." },
-  { id: "selpils", name: "Sēlpils", lon: 25.68, lat: 56.6, labelDy: 16, note: "Old fort of the Selonians on the Daugava's wooded left bank." },
-  { id: "soontagana", name: "Soontagana", lon: 24.08, lat: 58.55, note: "Stronghold of the western Estonians amid bogs, reachable only on winter roads." },
-  { id: "talsi", name: "Talsi", lon: 22.59, lat: 57.24, note: "Curonian hillfort town among the lakes of Vanema." },
-  { id: "tarbatu", name: "Tarbatu", lon: 26.72, lat: 58.38, note: "Estonian hillfort above the Emajõgi crossing, key to the eastern road." },
-  { id: "tervete", name: "Tērvete", lon: 23.38, lat: 56.48, note: "Chief hillfort of the Semigallians, seat of their strongest chiefs." },
-  { id: "trikata", name: "Trikāta", lon: 25.7, lat: 57.54, note: "Latgalian chief's fort on the upper Gauja, heart of Tālava." },
-  { id: "valjala", name: "Valjala", lon: 22.79, lat: 58.4, note: "Chief ringfort of the Osilians, lords of the island sea-roads." },
-  { id: "varbola", name: "Varbola", lon: 24.47, lat: 59.03, note: "Great ringfort of Harjumaa, mightiest stronghold of the Estonian lands." },
+  { id: "apuole", name: "Apuolė", land: "pilsotas", unlocked: false, lon: 21.55, lat: 56.17, note: "Old Curonian stronghold in the north of the land, besieged by sea-kings in centuries past." },
+  { id: "daugmale", name: "Daugmale", land: "livzeme", unlocked: true, lon: 24.43, lat: 56.84, note: "Great Liv hillfort and market above the Daugava crossing, at the height of its power." },
+  { id: "ikskile", name: "Ikšķile", land: "livzeme", unlocked: false, lon: 24.5, lat: 56.84, labelDy: 16, note: "Liv riverside village; nothing yet marks it out from its neighbours." },
+  { id: "impiltis", name: "Impiltis", land: "pilsotas", unlocked: true, lon: 21.22, lat: 56.05, note: "Stronghold of the coastal Curonians above the lagoon shore." },
+  { id: "jersika", name: "Jersika", land: "jersika", unlocked: true, lon: 26.2, lat: 56.27, note: "Seat of the Latgalian princes of the Daugava, looking east to Polotsk." },
+  { id: "kareda", name: "Kareda", land: "jarvamaa", unlocked: true, lon: 25.75, lat: 58.93, note: "Village among the fields at the heart of the causeway country, where the elders meet." },
+  { id: "kernave", name: "Kernavė", land: "lietuva", unlocked: true, lon: 24.85, lat: 54.89, note: "Cluster of hillforts above the Neris, foremost among the strongholds of Lietuva." },
+  { id: "koknese", name: "Koknese", land: "jersika", unlocked: false, lon: 25.44, lat: 56.64, note: "Fortified town on the Daugava's right bank, tollgate of the river road." },
+  { id: "lindanise", name: "Lindanise", land: "ravala", unlocked: true, lon: 24.74, lat: 59.44, note: "Harbour below the fort where the Gotland run turns east for Novgorod." },
+  { id: "medvegalis", name: "Medvėgalis", land: "zemaitija", unlocked: true, lon: 22.11, lat: 55.635, note: "Highest of the Samogitian hillforts, refuge of the lineages around it." },
+  { id: "mezotne", name: "Mežotne", land: "zemgale", unlocked: false, lon: 24.05, lat: 56.44, note: "Semigallian stronghold guarding the Lielupe river road." },
+  { id: "otepaa", name: "Otepää", land: "ugandi", unlocked: false, lon: 26.46, lat: 58.06, note: "Upland stronghold of Ugandi on the road from the Rus' towns." },
+  { id: "punia", name: "Punia", land: "dainava", unlocked: true, lon: 24.09, lat: 54.513, note: "Hillfort above the Nemunas bend, chief refuge of the Dainava bands." },
+  { id: "selpils", name: "Sēlpils", land: "selija", unlocked: true, lon: 25.68, lat: 56.6, labelDy: 16, note: "Old fort of the Selonians on the Daugava's wooded left bank." },
+  { id: "soontagana", name: "Soontagana", land: "laanemaa", unlocked: true, lon: 24.08, lat: 58.55, note: "Stronghold of the western Estonians amid bogs, reachable only on winter roads." },
+  { id: "sudargas", name: "Sudargas", land: "suduva", unlocked: true, lon: 22.63, lat: 55.04, note: "Line of hillforts above the Nemunas, watching the river road to the west." },
+  { id: "talsi", name: "Talsi", land: "kursa", unlocked: true, lon: 22.59, lat: 57.24, note: "Curonian hillfort town among the lakes of Vanema." },
+  { id: "tarbatu", name: "Tarbatu", land: "ugandi", unlocked: true, lon: 26.72, lat: 58.38, note: "Estonian hillfort above the Emajõgi crossing, key to the eastern road." },
+  { id: "tarvanpea", name: "Tarvanpea", land: "virumaa", unlocked: true, lon: 26.355, lat: 59.346, note: "Chief hillfort of the Vironians where the coast road turns toward the east." },
+  { id: "tervete", name: "Tērvete", land: "zemgale", unlocked: true, lon: 23.38, lat: 56.48, note: "Chief hillfort of the Semigallians, seat of their strongest chiefs." },
+  { id: "trikata", name: "Trikāta", land: "talava", unlocked: true, lon: 25.7, lat: 57.54, note: "Latgalian chief's fort on the upper Gauja, heart of Tālava." },
+  { id: "utena", name: "Utena", land: "eastern-aukstaitija", unlocked: true, lon: 25.6, lat: 55.49, note: "Old hillfort seat among the eastern lakes." },
+  { id: "valjala", name: "Valjala", land: "saaremaa", unlocked: true, lon: 22.79, lat: 58.4, note: "Chief ringfort of the Osilians, lords of the island sea-roads." },
+  { id: "varbola", name: "Varbola", land: "harjumaa", unlocked: true, lon: 24.47, lat: 59.03, note: "Great ringfort of Harjumaa, mightiest stronghold of the Estonian lands." },
+  { id: "viliende", name: "Viliende", land: "sakala", unlocked: true, lon: 25.6, lat: 58.363, note: "Stronghold on the Sakala upland, seat of its strongest elders." },
 ];
 
 // The Daugava, west-to-east, as a hand-traced polyline (lon/lat). Closing
@@ -152,19 +163,21 @@ const LANDS = [
     lau: [
       "Tallinn", "Viimsi vald", "Maardu linn", "Jõelähtme vald", "Rae vald",
       "Kiili vald", "Saku vald", "Saue vald", "Harku vald", "Keila linn",
+      "Lääne-Harju vald",
     ],
     flavor:
-      "The small coastal land around the harbour below the fort of " +
-      "Lindanise, where traders bound for Novgorod and the Gotland run " +
-      "put in. Its elders grow rich on the sea-road.",
+      "The coastal land around the harbour below the fort of Lindanise, " +
+      "running west past the bay of Paldiski, where traders bound for " +
+      "Novgorod and the Gotland run put in. Its elders grow rich on the " +
+      "sea-road.",
     places: ["Lindanise", "Iru"],
-    population: 10000, cohesion: "medium",
+    population: 15000, cohesion: "medium",
   },
   {
     id: "harjumaa", name: "Harjumaa", faction: "harjuans",
     peoples: ["estonians"],
     lau: [
-      "Lääne-Harju vald", "Kuusalu vald", "Loksa linn", "Anija vald",
+      "Kuusalu vald", "Loksa linn", "Anija vald",
       "Raasiku vald", "Kose vald", "Kehtna vald", "Kohila vald",
       "Märjamaa vald", "Rapla vald",
     ],
@@ -173,7 +186,7 @@ const LANDS = [
       "hillforts - none greater than the ringfort of Varbola, the " +
       "mightiest stronghold of the Estonian lands.",
     places: ["Varbola", "Lohu"],
-    population: 20000, cohesion: "medium",
+    population: 15000, cohesion: "medium",
   },
   {
     id: "virumaa", name: "Virumaa", faction: "vironians",
@@ -566,6 +579,12 @@ for (const f of FACTIONS) {
 const usedFactions = new Set();
 const COHESION_TIERS = new Set(["low", "medium", "high"]);
 const EXPECTED_TOTAL_POPULATION = 650000;
+
+// Population-correlated settlement slots ("max cities"): one slot per
+// ~10k people, clamped to 1..10. Deliberate game math, not demography.
+const maxSettlementsFor = (population) =>
+  Math.min(10, Math.max(1, Math.round(population / 10000)));
+
 let totalPopulation = 0;
 for (const land of LANDS) {
   const faction = factionById.get(land.faction);
@@ -639,6 +658,40 @@ for (const f of landFeatures) {
   }
 }
 
+// --- Settlement validation: known land, exactly one unlocked per land,
+// authored count within the land's slot cap, and the coordinates really
+// fall inside the claimed land (curation guard).
+const landIdSet = new Set(LANDS.map((l) => l.id));
+const unlockedPerLand = new Map();
+const authoredPerLand = new Map();
+for (const s of SETTLEMENTS) {
+  if (!landIdSet.has(s.land)) {
+    throw new Error(`Settlement ${s.id} claims unknown land ${s.land}`);
+  }
+  authoredPerLand.set(s.land, (authoredPerLand.get(s.land) ?? 0) + 1);
+  if (s.unlocked) {
+    unlockedPerLand.set(s.land, (unlockedPerLand.get(s.land) ?? 0) + 1);
+  }
+}
+const landFeatureById = new Map(
+  landFeatures.map((f) => [f.properties.land.id, f]),
+);
+for (const s of SETTLEMENTS) {
+  if (!geoContains(landFeatureById.get(s.land), [s.lon, s.lat])) {
+    throw new Error(
+      `Settlement ${s.id} at ${s.lon},${s.lat} is not inside land ${s.land}`,
+    );
+  }
+}
+for (const land of LANDS) {
+  if ((unlockedPerLand.get(land.id) ?? 0) !== 1) {
+    throw new Error(`Land ${land.id} must have exactly one unlocked settlement`);
+  }
+  if ((authoredPerLand.get(land.id) ?? 0) > maxSettlementsFor(land.population)) {
+    throw new Error(`Land ${land.id} has more authored settlements than slots`);
+  }
+}
+
 const neighborFeatures = countries.features.filter((f) =>
   NEIGHBORS.includes(f.properties.CNTR_ID),
 );
@@ -707,6 +760,8 @@ const settlements = SETTLEMENTS.map((s) => {
     id: s.id,
     name: s.name,
     note: s.note,
+    land: s.land,
+    unlocked: s.unlocked,
     x: Math.round(p[0]),
     y: Math.round(p[1]),
     ...(s.labelDy !== undefined ? { labelDy: s.labelDy } : {}),
@@ -752,6 +807,7 @@ const data = {
         faction: land.faction,
         population: land.population,
         cohesion: land.cohesion,
+        maxSettlements: maxSettlementsFor(land.population),
         flavor: land.flavor,
         places: land.places,
         path: path(f),

@@ -578,7 +578,115 @@ git commit -m "feat(balticmap): settlements line in region panel"
 
 ---
 
-### Task 6: E2E visual verification in Chrome (main session)
+### Task 6: Globally non-selectable text
+
+(User request added mid-plan.) Map dragging and clicking currently lets the
+browser select label/panel text, which looks broken during pan gestures.
+
+**Files:**
+- Modify: `src/style.css`
+
+**Interfaces:**
+- Consumes: nothing from other tasks.
+- Produces: no text anywhere in the app is selectable.
+
+- [ ] **Step 1: Add the rule**
+
+In `src/style.css`, extend the universal reset block at the top of the file to:
+
+```css
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+}
+```
+
+- [ ] **Step 2: Run tests**
+
+Run: `npm run test`
+Expected: PASS (CSS-only change; behavior is verified in the Chrome task: attempting to drag-select over labels and the panel must select nothing).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/style.css
+git commit -m "feat(balticmap): make all text non-selectable"
+```
+
+---
+
+### Task 7: Auto-discover prototypes in the Pages workflow
+
+(User request added mid-plan.) GitHub Pages deployment already exists at the
+repo root: `.github/workflows/pages.yml` builds `01-escapecastle` and
+`02-balticmap` and deploys `_site/01`, `_site/02` plus a landing index. But
+the build and assemble steps hardcode both directories, so a future
+`03-something` would silently not deploy. Generalize to auto-discovery.
+
+**Files:**
+- Modify: `../.github/workflows/pages.yml` (repo root - path from the
+  02-balticmap working directory)
+
+**Interfaces:**
+- Consumes: repo convention - every deployable prototype lives in a
+  root directory matching `NN-*` (two digits, dash, name) containing a
+  `package.json` with a `build` script that outputs to `dist/`, and a
+  vite `base` of `/prototypes/NN/`.
+- Produces: a workflow whose build/assemble steps loop over `[0-9][0-9]-*/`
+  directories; `.github/pages-index.html` stays hand-maintained.
+
+- [ ] **Step 1: Replace the per-prototype steps with a loop**
+
+In `.github/workflows/pages.yml`, replace the two named build steps
+("Build escapecastle", "Build balticmap") and the "Assemble site" step with:
+
+```yaml
+      - name: Build and assemble prototypes
+        run: |
+          mkdir -p _site
+          for dir in [0-9][0-9]-*/; do
+            dir="${dir%/}"
+            num="${dir%%-*}"
+            echo "Building $dir -> _site/$num"
+            (cd "$dir" && npm ci && npm run build)
+            mkdir -p "_site/$num"
+            cp -R "$dir/dist/." "_site/$num/"
+          done
+          cp .github/pages-index.html _site/index.html
+```
+
+Keep everything else (triggers, permissions, concurrency, node setup with
+npm cache, upload-pages-artifact, deploy job) unchanged.
+
+- [ ] **Step 2: Verify the loop logic locally**
+
+From the repo root, dry-run the discovery and assembly (without npm):
+
+```bash
+cd .. && for dir in [0-9][0-9]-*/; do dir="${dir%/}"; echo "$dir -> _site/${dir%%-*}"; done
+```
+
+Expected output:
+```
+01-escapecastle -> _site/01
+02-balticmap -> _site/02
+```
+
+Also sanity-check the YAML parses: `node -e "console.log(require('js-yaml'))"` is NOT available - instead rely on `python3 -c "import yaml,sys; yaml.safe_load(open('../.github/workflows/pages.yml')); print('yaml ok')"` (python3 with pyyaml is present on macOS; if pyyaml is missing, `npx --yes yaml-lint ../.github/workflows/pages.yml` or careful visual inspection is acceptable - say which you used).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add ../.github/workflows/pages.yml
+git commit -m "ci: auto-discover prototype directories in Pages deploy"
+```
+
+---
+
+### Task 8: E2E visual verification in Chrome (main session)
 
 Performed by the MAIN agent (standing user rule: Chrome pass before done). Chrome DevTools MCP tools; the dev server may pick a port other than 5173.
 
@@ -596,6 +704,7 @@ Performed by the MAIN agent (standing user rule: Chrome pass before done). Chrom
 4. Emajõgi/Pärnu visible in Estonia if matched in Task 3.
 5. Panel: selecting a land shows `Settlements: <name> (1/<max>)` with correct numbers (spot-check Rävala 1/2 - Lindanise; Eastern Aukštaitija 1/9 - Utena).
 6. Tooltips (settlement + region), selection, dot-click guard, zoom/pan still work; console clean.
+7. Text is not selectable: a drag-select gesture across labels and the open panel selects nothing (window.getSelection() stays empty).
 
 - [ ] **Step 3: Fix what the screenshot disproves** (labelDy/lon-lat nudges or CSS), regenerate, re-verify.
 

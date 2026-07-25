@@ -2,6 +2,8 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 html,
@@ -181,7 +183,8 @@ svg.map.dragging {
 }
 
 .panel-population,
-.panel-cohesion {
+.panel-cohesion,
+.panel-settlements {
   font-size: 13px;
   color: #8a7f6f;
   margin-top: 2px;

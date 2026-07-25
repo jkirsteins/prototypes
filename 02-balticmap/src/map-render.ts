@@ -69,6 +69,7 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   settlementsGroup.classList.add("settlements");
   const settlementDots = new Map<string, SVGCircleElement>();
   for (const s of data.settlements) {
+    if (!s.unlocked) continue;
     const c = el("circle") as SVGCircleElement;
     c.classList.add("settlement");
     c.setAttribute("cx", String(s.x));
