@@ -189,4 +189,27 @@ describe("map.json (anno 1100)", () => {
       expect(l.y).toBeLessThan(1400);
     }
   });
+
+  it("has 18 curated settlements valid for 1100", () => {
+    expect(data.settlements.length).toBe(18);
+    const ids = data.settlements.map((s) => s.id);
+    expect(new Set(ids).size).toBe(18);
+    expect(ids).toEqual([...ids].sort());
+    for (const s of data.settlements) {
+      expect(s.name.length).toBeGreaterThan(0);
+      expect(s.note.length).toBeGreaterThan(20);
+      expect(s.x).toBeGreaterThan(0);
+      expect(s.x).toBeLessThan(1000);
+      expect(s.y).toBeGreaterThan(0);
+      expect(s.y).toBeLessThan(1400);
+      // Riga does not exist in 1100
+      expect(s.name.toLowerCase()).not.toContain("riga");
+      expect(s.name.toLowerCase()).not.toContain("rīga");
+    }
+    const names = data.settlements.map((s) => s.name);
+    expect(names).toContain("Lindanise");
+    expect(names).toContain("Daugmale");
+    expect(names).toContain("Kernavė");
+    expect(names).toContain("Tērvete");
+  });
 });

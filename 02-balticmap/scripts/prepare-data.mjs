@@ -84,6 +84,32 @@ const RIVERS = [
   { id: "narva", name: "Narva", major: false, match: ["narva"] },
 ];
 
+// Attested or archaeologically grounded sites ca. 1100, at the modern
+// coordinates of their hillforts/harbours. Notes are one-line tooltips
+// and must hold for 1100 specifically (hence Daugmale at its peak, an
+// unremarkable Ikskile, and no Riga - it does not exist yet). labelDy
+// drops a label below its dot where neighbours would collide.
+const SETTLEMENTS = [
+  { id: "apuole", name: "Apuolė", lon: 21.55, lat: 56.17, note: "Old Curonian stronghold in the north of the land, besieged by sea-kings in centuries past." },
+  { id: "daugmale", name: "Daugmale", lon: 24.43, lat: 56.84, note: "Great Liv hillfort and market above the Daugava crossing, at the height of its power." },
+  { id: "ikskile", name: "Ikšķile", lon: 24.5, lat: 56.84, labelDy: 16, note: "Liv riverside village; nothing yet marks it out from its neighbours." },
+  { id: "impiltis", name: "Impiltis", lon: 21.22, lat: 56.05, note: "Stronghold of the coastal Curonians above the lagoon shore." },
+  { id: "jersika", name: "Jersika", lon: 26.2, lat: 56.27, note: "Seat of the Latgalian princes of the Daugava, looking east to Polotsk." },
+  { id: "kernave", name: "Kernavė", lon: 24.85, lat: 54.89, note: "Cluster of hillforts above the Neris, chief seat of the dukes of Lietuva." },
+  { id: "koknese", name: "Koknese", lon: 25.44, lat: 56.64, note: "Fortified town on the Daugava's right bank, tollgate of the river road." },
+  { id: "lindanise", name: "Lindanise", lon: 24.74, lat: 59.44, note: "Harbour below the fort where the Gotland run turns east for Novgorod." },
+  { id: "mezotne", name: "Mežotne", lon: 24.05, lat: 56.44, note: "Semigallian stronghold guarding the Lielupe river road." },
+  { id: "otepaa", name: "Otepää", lon: 26.46, lat: 58.06, note: "Upland stronghold of Ugandi on the road from the Rus' towns." },
+  { id: "selpils", name: "Sēlpils", lon: 25.68, lat: 56.6, note: "Old fort of the Selonians on the Daugava's wooded left bank." },
+  { id: "soontagana", name: "Soontagana", lon: 24.08, lat: 58.55, note: "Stronghold of the western Estonians amid bogs, reachable only on winter roads." },
+  { id: "talsi", name: "Talsi", lon: 22.59, lat: 57.24, note: "Curonian hillfort town among the lakes of Vanema." },
+  { id: "tarbatu", name: "Tarbatu", lon: 26.72, lat: 58.38, note: "Estonian hillfort above the Emajõgi crossing, key to the eastern road." },
+  { id: "tervete", name: "Tērvete", lon: 23.38, lat: 56.48, note: "Chief hillfort of the Semigallians, seat of their strongest chiefs." },
+  { id: "trikata", name: "Trikāta", lon: 25.7, lat: 57.54, note: "Latgalian chief's fort on the upper Gauja, heart of Tālava." },
+  { id: "valjala", name: "Valjala", lon: 22.79, lat: 58.4, note: "Chief ringfort of the Osilians, lords of the island sea-roads." },
+  { id: "varbola", name: "Varbola", lon: 24.47, lat: 59.03, note: "Great ringfort of Harjumaa, mightiest stronghold of the Estonian lands." },
+];
+
 // The Daugava, west-to-east, as a hand-traced polyline (lon/lat). Closing
 // it far to the north yields a mask for the right/north bank. Verified:
 // Koknese, Aizkraukle town and Krustpils fall north; Jaunjelgava, Selpils,
@@ -661,6 +687,21 @@ const rivers = RIVERS.flatMap((r) => {
   return [{ id: r.id, name: r.name, major: r.major, path: d }];
 }).sort((a, b) => a.id.localeCompare(b.id));
 
+const settlements = SETTLEMENTS.map((s) => {
+  const p = projection([s.lon, s.lat]);
+  const inBounds =
+    p && p[0] > 0 && p[0] < WIDTH && p[1] > 0 && p[1] < HEIGHT;
+  if (!inBounds) throw new Error(`Settlement outside canvas: ${s.id}`);
+  return {
+    id: s.id,
+    name: s.name,
+    note: s.note,
+    x: Math.round(p[0]),
+    y: Math.round(p[1]),
+    ...(s.labelDy !== undefined ? { labelDy: s.labelDy } : {}),
+  };
+}).sort((a, b) => a.id.localeCompare(b.id));
+
 const labels = LABELS.flatMap((l) => {
   const projected = projection([l.lon, l.lat]);
   const inBounds =
@@ -711,6 +752,7 @@ const data = {
     .filter((n) => n.path)
     .sort((a, b) => a.id.localeCompare(b.id)),
   rivers,
+  settlements,
   labels,
 };
 
@@ -724,5 +766,5 @@ console.log(
   `Wrote src/data/map.json: ${data.regions.length} lands, ` +
     `${data.factions.length} factions, ${data.peoples.length} peoples, ` +
     `${data.neighbors.length} neighbors, ${data.rivers.length} rivers, ` +
-    `${data.labels.length} labels`,
+    `${data.settlements.length} settlements, ${data.labels.length} labels`,
 );

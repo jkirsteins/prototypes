@@ -46,6 +46,15 @@ export interface River {
   path: string;
 }
 
+export interface Settlement {
+  id: string;
+  name: string;
+  note: string; // one-line tooltip, valid for ca. 1100
+  x: number;
+  y: number;
+  labelDy?: number; // label offset override to dodge a colliding neighbour
+}
+
 export type LabelKind =
   | "people"
   | "people-minor"
@@ -71,5 +80,6 @@ export interface MapData {
   regions: Region[];
   neighbors: Neighbor[];
   rivers: River[];
+  settlements: Settlement[];
   labels: MapLabel[];
 }
