@@ -64,10 +64,24 @@ export function attachInteraction(
   let down: { x: number; y: number } | null = null;
   let dragged = false;
 
+  function endDrag(): void {
+    down = null;
+    dragged = false;
+    svg.classList.remove("dragging");
+  }
+
   svg.addEventListener("pointerdown", (e) => {
     const me = e as MouseEvent;
     down = { x: me.clientX, y: me.clientY };
     dragged = false;
+    const pe = e as PointerEvent;
+    if (typeof pe.pointerId === "number" && typeof svg.setPointerCapture === "function") {
+      try {
+        svg.setPointerCapture(pe.pointerId);
+      } catch {
+        // capture is best-effort; drag still works without it
+      }
+    }
   });
 
   svg.addEventListener("pointermove", (e) => {
@@ -85,14 +99,14 @@ export function attachInteraction(
 
   svg.addEventListener("pointerup", (e) => {
     const wasDrag = dragged;
-    down = null;
-    dragged = false;
-    svg.classList.remove("dragging");
+    endDrag();
     if (wasDrag) return;
     const target = (e.target as Element).closest?.("[data-id]") ?? null;
     state = withClick(state, target?.getAttribute("data-id") ?? null);
     applySelection();
   });
+
+  svg.addEventListener("pointercancel", endDrag);
 
   svg.addEventListener(
     "wheel",
