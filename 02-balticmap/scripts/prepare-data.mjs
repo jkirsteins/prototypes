@@ -68,17 +68,22 @@ const FACTIONS = [
 ];
 
 // Main trade arteries ca. 1100. `match` lists Natural Earth naming
-// variants, compared case-insensitively against each feature's name,
-// name_en and name_alt. `major` = wider stroke (the two great rivers).
-// A missing minor river is warned and skipped (spec: accept the gap);
-// Daugava and Nemunas are required.
+// variants, compared case-insensitively against each feature's primary
+// name only (properties.name, falling back to name_en) - see
+// riverFeatureNames. Matching is exclusive: a feature is assigned to at
+// most the first whitelist entry it matches, so no feature's path is
+// ever duplicated across two rivers. `major` = wider stroke (the two
+// great rivers). A missing minor river is warned and skipped (spec:
+// accept the gap); Daugava and Nemunas are required.
+// No separate "lielupe" entry: Natural Earth carries the Lielupe only
+// as the name_alt of its combined Musa feature (the two rivers share one
+// course below their confluence), so the "musa" entry below covers it.
 const RIVERS = [
-  { id: "daugava", name: "Daugava", major: true, match: ["daugava", "zapadnaya dvina", "western dvina", "dvina"] },
+  { id: "daugava", name: "Daugava", major: true, match: ["daugava", "zapadnaya dvina", "western dvina"] },
   { id: "nemunas", name: "Nemunas", major: true, match: ["neman", "nemunas", "nyoman", "nioman"] },
   { id: "neris", name: "Neris", major: false, match: ["neris", "viliya", "vilija"] },
   { id: "gauja", name: "Gauja", major: false, match: ["gauja"] },
   { id: "venta", name: "Venta", major: false, match: ["venta"] },
-  { id: "lielupe", name: "Lielupe", major: false, match: ["lielupe"] },
   { id: "musa", name: "Mūša", major: false, match: ["musa", "mūša"] },
   { id: "memele", name: "Mēmele", major: false, match: ["memele", "mēmele", "nemunelis", "nemunėlis"] },
   { id: "narva", name: "Narva", major: false, match: ["narva"] },
@@ -653,11 +658,17 @@ const path = geoPath(projection).digits(1);
 // them to the canvas.
 function riverFeatureNames(f) {
   const p = f.properties ?? {};
-  return [p.name, p.name_en, p.name_alt]
-    .filter((n) => typeof n === "string" && n.length > 0)
-    .flatMap((n) => n.split(/[\/,()]/))
-    .map((n) => n.trim().toLowerCase())
-    .filter((n) => n.length > 0);
+  // Primary name only (name_en as fallback when name is absent) - never
+  // name_alt, which on Natural Earth can carry an entirely different
+  // river's name (e.g. a combined-course feature) and would otherwise
+  // pull that feature into two whitelist entries at once.
+  const primary = typeof p.name === "string" && p.name.length > 0 ? p.name : p.name_en;
+  return typeof primary === "string"
+    ? primary
+        .split(/[\/,()]/)
+        .map((n) => n.trim().toLowerCase())
+        .filter((n) => n.length > 0)
+    : [];
 }
 const toLineCoords = (geom) =>
   geom.type === "LineString" ? [geom.coordinates]
@@ -666,10 +677,10 @@ const toLineCoords = (geom) =>
 const riverSegments = new Map(RIVERS.map((r) => [r.id, []]));
 for (const f of [...neRivers.features, ...neRiversEu.features]) {
   const names = riverFeatureNames(f);
-  for (const r of RIVERS) {
-    if (r.match.some((m) => names.includes(m))) {
-      riverSegments.get(r.id).push(...toLineCoords(f.geometry));
-    }
+  // First whitelist match wins - each feature belongs to at most one river.
+  const river = RIVERS.find((r) => r.match.some((m) => names.includes(m)));
+  if (river) {
+    riverSegments.get(river.id).push(...toLineCoords(f.geometry));
   }
 }
 const rivers = RIVERS.flatMap((r) => {
