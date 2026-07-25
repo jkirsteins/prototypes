@@ -106,9 +106,12 @@ A `peoples` table with 9 entries replaces the 3 countries:
 - The ESTONIA / LATVIA / LITHUANIA labels are removed. In the same
   typographic style, people labels are placed over their areas: ESTONIANS,
   LIVS, LATGALIANS, CURONIANS, SEMIGALLIANS, SELONIANS (smaller, along the
-  lower Daugava south bank), SAMOGITIANS, LITHUANIANS (over Aukštaitija),
-  YOTVINGIANS. Label positions are hand-tuned coordinates in the data-prep
-  script, like the current country labels.
+  lower Daugava south bank), SAMOGITIANS, AUKŠTAITIANS (over Aukštaitija),
+  YOTVINGIANS. "Aukštaitians" is used everywhere (label, peoples table,
+  panel) rather than "Lithuanians": labeling only the eastern group
+  Lithuanians would imply the Samogitians are not Lithuanian. Label
+  positions are hand-tuned coordinates in the data-prep script, like the
+  current country labels.
 - Neighbor territories get atmospheric geographic labels that claim no
   polity: "Lands of Rus'" (spanning the RU and BY shapes, one label), 
   "Prussian lands" (the PL shape - the adjacent territory in 1184 is

@@ -72,7 +72,7 @@ describe("map.json (anno 1184)", () => {
     const byKind = (k: string) =>
       data.labels.filter((l) => l.kind === k).map((l) => l.text);
     expect(byKind("people").sort()).toEqual([
-      "CURONIANS", "ESTONIANS", "LATGALIANS", "LITHUANIANS", "LIVS",
+      "AUKŠTAITIANS", "CURONIANS", "ESTONIANS", "LATGALIANS", "LIVS",
       "SAMOGITIANS", "SEMIGALLIANS", "YOTVINGIANS",
     ]);
     expect(byKind("people-minor")).toEqual(["SELONIANS"]);

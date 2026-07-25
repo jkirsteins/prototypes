@@ -175,7 +175,7 @@ const LABELS = [
   { text: "SEMIGALLIANS", lon: 23.6, lat: 56.45, kind: "people" },
   { text: "SELONIANS", lon: 25.6, lat: 56.15, kind: "people-minor" },
   { text: "SAMOGITIANS", lon: 22.6, lat: 55.65, kind: "people" },
-  { text: "LITHUANIANS", lon: 25.15, lat: 55.3, kind: "people" },
+  { text: "AUKŠTAITIANS", lon: 25.15, lat: 55.3, kind: "people" },
   { text: "YOTVINGIANS", lon: 23.6, lat: 54.5, kind: "people" },
   { text: "Lands of Rus'", lon: 28.0, lat: 57.2, kind: "neighbor" },
   { text: "Prussian lands", lon: 21.3, lat: 54.15, kind: "neighbor" },
