@@ -19,6 +19,24 @@ function playingState(): GameState {
   return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
 }
 
+function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
+  const p = { ...g.players[playerIdx], hand };
+  return { ...g, players: g.players.map((pl, i) => (i === playerIdx ? p : pl)) };
+}
+
+/** Neutralize deck randomness for tests about cycling, not card identity. */
+function allGrowCrops(g: GameState): GameState {
+  return {
+    ...g,
+    players: g.players.map((p) => ({
+      ...p,
+      deck: p.deck.map(() => "grow-crops"),
+      hand: p.hand.map(() => "grow-crops"),
+      discard: p.discard.map(() => "grow-crops"),
+    })),
+  };
+}
+
 describe("newGame / startGame", () => {
   it("starts at the main menu with no players", () => {
     const g = newGame(FACTIONS);
@@ -93,7 +111,7 @@ describe("draw and reshuffle", () => {
 
 describe("playCard", () => {
   it("moves the card from hand to discard and blocks a second play", () => {
-    const g = playingState();
+    const g = withHand(playingState(), 0, ["grow-crops"]);
     const played = playCard(g, 0);
     expect(played.players[0].hand).toHaveLength(0);
     expect(played.players[0].discard).toEqual(["grow-crops"]);
@@ -102,7 +120,7 @@ describe("playCard", () => {
   });
 
   it("ignores out-of-range indices and does not mutate input", () => {
-    const g = playingState();
+    const g = withHand(playingState(), 0, ["grow-crops"]);
     const handBefore = [...g.players[0].hand];
     expect(playCard(g, 5)).toBe(g);
     expect(playCard(g, -1)).toBe(g);
@@ -139,7 +157,7 @@ describe("endTurn / turn cycle", () => {
 
 describe("aiTurn", () => {
   it("plays the AI's first card", () => {
-    const g = endTurn(playingState(), seededRng(6));
+    const g = withHand(endTurn(playingState(), seededRng(6)), 1, ["grow-crops"]);
     const after = aiTurn(g);
     expect(after.players[1].hand).toHaveLength(0);
     expect(after.players[1].discard).toHaveLength(1);
@@ -153,7 +171,7 @@ describe("aiTurn", () => {
   });
 
   it("the full cycle keeps decks cycling far past deck depletion", () => {
-    let g = playingState();
+    let g = allGrowCrops(playingState());
     const rng = seededRng(9);
     // 4 players x 60 full rounds = every player draws and plays 60 times
     for (let round = 0; round < 60; round++) {
@@ -174,13 +192,14 @@ describe("event log", () => {
     expect(newGame(FACTIONS).log).toEqual([]);
     const g = playingState();
     expect(g.log).toEqual([
-      { turn: 1, playerId: 1, type: "draw", cardId: "grow-crops" },
+      { turn: 1, playerId: 1, type: "draw", cardId: g.players[0].hand[0] },
     ]);
   });
 
   it("records plays with the card id", () => {
-    const g = playCard(playingState(), 0);
-    expect(g.log.at(-1)).toEqual({
+    const g = withHand(playingState(), 0, ["grow-crops"]);
+    const played = playCard(g, 0);
+    expect(played.log.at(-1)).toEqual({
       turn: 1, playerId: 1, type: "play", cardId: "grow-crops",
     });
   });
@@ -188,7 +207,7 @@ describe("event log", () => {
   it("records AI draws on endTurn", () => {
     const g = endTurn(playingState(), seededRng(3));
     expect(g.log.at(-1)).toEqual({
-      turn: 1, playerId: 2, type: "draw", cardId: "grow-crops",
+      turn: 1, playerId: 2, type: "draw", cardId: g.players[1].hand.at(-1),
     });
   });
 

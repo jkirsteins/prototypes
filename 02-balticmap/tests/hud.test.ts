@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import { createHud, type HudCallbacks } from "../src/hud";
-import { newGame, startGame, pickFaction, endTurn, playCard, aiTurn, beginTurn } from "../src/game";
+import {
+  newGame, startGame, pickFaction, endTurn, playCard, aiTurn, beginTurn,
+  type GameState,
+} from "../src/game";
 import type { Rng } from "../src/cards";
 
 function seededRng(seed: number): Rng {
@@ -28,6 +31,11 @@ function setup() {
 
 const q = (c: HTMLElement, sel: string) => c.querySelector(sel) as HTMLElement;
 
+function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
+  const p = { ...g.players[playerIdx], hand };
+  return { ...g, players: g.players.map((pl, i) => (i === playerIdx ? p : pl)) };
+}
+
 describe("createHud", () => {
   it("shows only the menu at main-menu, and New game fires onNewGame", () => {
     const { container, cb, hud } = setup();
@@ -52,7 +60,7 @@ describe("createHud", () => {
 
   it("renders the human turn: status, piles, fanned hand, End Turn", () => {
     const { container, cb, hud } = setup();
-    const g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    const g = withHand(pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0, ["grow-crops"]);
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - your turn");
     expect(q(container, ".end-turn").classList.contains("hidden")).toBe(false);
@@ -101,6 +109,7 @@ describe("createHud", () => {
     let g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
     // run one full round so the human holds 2 cards on their next turn
     for (let i = 0; i < FACTIONS.length; i++) g = endTurn(g, seededRng(4));
+    g = withHand(g, 0, ["grow-crops", "grow-crops"]);
     g = playCard(g, 0); // 1 card left, playedThisTurn = true
     hud.update(g);
     const card = q(container, ".card") as HTMLButtonElement;
@@ -147,19 +156,19 @@ describe("activity log", () => {
   it("names your cards, hides AI draws, and shows AI plays", () => {
     const { container, hud } = setup();
     let g = playing();
+    g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0);
     g = endTurn(g, seededRng(2)); // player 2 draws
+    g = withHand(g, 1, ["grow-crops"]);
     g = aiTurn(g); // player 2 plays
     hud.update(g);
     const texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
     );
-    expect(texts).toEqual([
-      "You drew Grow crops",
-      "You played Grow crops",
-      "Player 2 drew a card",
-      "Player 2 played Grow crops",
-    ]);
+    expect(texts[0]).toMatch(/^You drew /);
+    expect(texts[1]).toBe("You played Grow crops");
+    expect(texts[2]).toBe("Player 2 drew a card");
+    expect(texts[3]).toMatch(/^Player 2 played /);
   });
 
   it("appends only new entries across updates and inserts turn separators", () => {
@@ -178,6 +187,7 @@ describe("activity log", () => {
   it("resets the entries when a new game starts", () => {
     const { container, hud } = setup();
     let g = playing();
+    g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0);
     hud.update(g);
     expect(container.querySelectorAll(".log-entry")).toHaveLength(2);
@@ -232,6 +242,7 @@ describe("card animations", () => {
     let g = playing();
     hud.update(g);
     vi.runAllTimers();
+    g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0);
     hud.update(g);
     const flying = container.querySelectorAll(".flying-card");
@@ -247,6 +258,7 @@ describe("card animations", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
     let g = playing();
+    g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0);
     hud.update(g); // consumes your draw + play events
     vi.runAllTimers();

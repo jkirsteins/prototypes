@@ -10,14 +10,21 @@ function seededRng(seed: number): Rng {
 }
 
 describe("cards", () => {
-  it("defines the grow-crops card", () => {
-    expect(CARDS["grow-crops"]).toEqual({ id: "grow-crops", name: "Grow crops" });
+  it("defines the four card types with targeting flags", () => {
+    expect(CARDS["grow-crops"]).toEqual({ id: "grow-crops", name: "Grow crops", targeted: false });
+    expect(CARDS["raid"]).toEqual({ id: "raid", name: "Raid", targeted: true });
+    expect(CARDS["shrewd-marriage"]).toEqual({ id: "shrewd-marriage", name: "Shrewd marriage", targeted: true });
+    expect(CARDS["incorporate"]).toEqual({ id: "incorporate", name: "Incorporate", targeted: true });
   });
 
-  it("builds a deck of 20 grow-crops cards", () => {
+  it("builds a 20-card deck: 10 grow-crops, 5 raid, 3 marriage, 2 incorporate", () => {
     const deck = buildDeck();
     expect(deck).toHaveLength(DECK_SIZE);
-    expect(deck.every((c) => c === "grow-crops")).toBe(true);
+    const count = (id: string) => deck.filter((c) => c === id).length;
+    expect(count("grow-crops")).toBe(10);
+    expect(count("raid")).toBe(5);
+    expect(count("shrewd-marriage")).toBe(3);
+    expect(count("incorporate")).toBe(2);
   });
 
   it("shuffle returns a permutation and leaves the input untouched", () => {
