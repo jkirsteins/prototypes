@@ -41,7 +41,7 @@ describe("renderMap", () => {
     expect(svg.querySelectorAll("path.neighbor").length).toBe(
       data.neighbors.length,
     );
-    for (const kind of ["people", "people-minor", "neighbor", "river", "title", "subtitle"]) {
+    for (const kind of ["people", "people-minor", "neighbor", "river"]) {
       const expected = data.labels.filter((l) => l.kind === kind);
       const rendered = svg.querySelectorAll(`text.label-${kind}`);
       expect(rendered.length).toBe(expected.length);

@@ -127,26 +127,6 @@ svg.map.dragging {
   opacity: 0.85;
 }
 
-.label-title {
-  font-size: 44px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  fill: #4c4234;
-  text-anchor: middle;
-  pointer-events: none;
-  opacity: 0.85;
-}
-
-.label-subtitle {
-  font-size: 20px;
-  font-style: italic;
-  letter-spacing: 0.18em;
-  fill: #6f6250;
-  text-anchor: middle;
-  pointer-events: none;
-  opacity: 0.7;
-}
-
 .tooltip {
   position: fixed;
   background: rgba(30, 30, 30, 0.85);
