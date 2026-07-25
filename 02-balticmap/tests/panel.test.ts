@@ -1,35 +1,69 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import { createPanel, createTooltip } from "../src/panel";
-import type { Region } from "../src/types";
+import type { People, Region } from "../src/types";
 
-const kurzeme: Region = { id: "LV003", name: "Kurzeme", country: "LV", path: "M0 0Z" };
+const peoples: People[] = [
+  { id: "latgalians", name: "Latgalians", color: "#e5b28e" },
+  { id: "livs", name: "Livs", color: "#a8c8cf" },
+];
+
+const talava: Region = {
+  id: "talava",
+  name: "Tālava",
+  peoples: ["latgalians", "livs"],
+  flavor: "Latgalian land on the upper Gauja.",
+  places: ["Beverīna", "Trikāta"],
+  path: "M0 0Z",
+};
+
+const jersika: Region = {
+  id: "jersika",
+  name: "Jersika",
+  peoples: ["latgalians"],
+  flavor: "A principality on the Daugava.",
+  places: ["Koknese"],
+  path: "M0 0Z",
+};
 
 describe("panel", () => {
-  it("is hidden initially, shows region details on show()", () => {
+  it("is hidden initially, shows land details on show()", () => {
     const container = document.createElement("div");
-    const panel = createPanel(container, () => {});
+    const panel = createPanel(container, () => {}, peoples);
     const root = container.querySelector(".panel")!;
     expect(root.classList.contains("hidden")).toBe(true);
 
-    panel.show(kurzeme);
+    panel.show(talava);
     expect(root.classList.contains("hidden")).toBe(false);
-    expect(container.querySelector(".panel-name")!.textContent).toBe("Kurzeme");
-    expect(container.querySelector(".panel-country")!.textContent).toBe("Latvia");
-    const fields = Array.from(container.querySelectorAll(".panel-fields dt"));
-    expect(fields.map((f) => f.textContent)).toEqual([
-      "Population", "Area", "GDP per capita",
-    ]);
+    expect(container.querySelector(".panel-name")!.textContent).toBe("Tālava");
+    expect(container.querySelector(".panel-peoples")!.textContent).toBe(
+      "Predominantly Latgalians, with Livs",
+    );
+    expect(container.querySelector(".panel-flavor")!.textContent).toBe(
+      "Latgalian land on the upper Gauja.",
+    );
+    expect(container.querySelector(".panel-places")!.textContent).toBe(
+      "Notable places: Beverīna, Trikāta",
+    );
 
     panel.hide();
     expect(root.classList.contains("hidden")).toBe(true);
   });
 
+  it("names a single people plainly, without 'Predominantly'", () => {
+    const container = document.createElement("div");
+    const panel = createPanel(container, () => {}, peoples);
+    panel.show(jersika);
+    expect(container.querySelector(".panel-peoples")!.textContent).toBe(
+      "Latgalians",
+    );
+  });
+
   it("invokes onClose when the close button is clicked", () => {
     const container = document.createElement("div");
     const onClose = vi.fn();
-    const panel = createPanel(container, onClose);
-    panel.show(kurzeme);
+    const panel = createPanel(container, onClose, peoples);
+    panel.show(talava);
     (container.querySelector(".panel-close") as HTMLButtonElement).click();
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -42,9 +76,9 @@ describe("tooltip", () => {
     const el = container.querySelector(".tooltip") as HTMLElement;
     expect(el.classList.contains("hidden")).toBe(true);
 
-    tooltip.show("Kurzeme", 100, 200);
+    tooltip.show("Kursa", 100, 200);
     expect(el.classList.contains("hidden")).toBe(false);
-    expect(el.textContent).toBe("Kurzeme");
+    expect(el.textContent).toBe("Kursa");
     expect(el.style.left).toBe("112px");
     expect(el.style.top).toBe("212px");
 

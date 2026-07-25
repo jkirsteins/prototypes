@@ -32,11 +32,11 @@ describe("attachInteraction", () => {
 
   it("hover toggles the hovered class and fires onHover", () => {
     const { regionPaths, onHover } = setup();
-    const el = regionPaths.get("LV003")!;
+    const el = regionPaths.get("kursa")!;
     el.dispatchEvent(mouse("pointerenter", { clientX: 5, clientY: 7 }));
     expect(el.classList.contains("hovered")).toBe(true);
     expect(onHover).toHaveBeenLastCalledWith(
-      expect.objectContaining({ id: "LV003", name: "Kurzeme" }), 5, 7,
+      expect.objectContaining({ id: "kursa", name: "Kursa" }), 5, 7,
     );
     el.dispatchEvent(mouse("pointerleave"));
     expect(el.classList.contains("hovered")).toBe(false);
@@ -45,12 +45,12 @@ describe("attachInteraction", () => {
 
   it("click on a region selects it; clicking again deselects", () => {
     const { regionPaths, onSelect } = setup();
-    const el = regionPaths.get("LT001")!;
+    const el = regionPaths.get("dainava")!;
     el.dispatchEvent(mouse("pointerdown", { clientX: 10, clientY: 10 }));
     el.dispatchEvent(mouse("pointerup", { clientX: 10, clientY: 10 }));
     expect(el.classList.contains("selected")).toBe(true);
     expect(onSelect).toHaveBeenLastCalledWith(
-      expect.objectContaining({ id: "LT001" }),
+      expect.objectContaining({ id: "dainava" }),
     );
     el.dispatchEvent(mouse("pointerdown", { clientX: 10, clientY: 10 }));
     el.dispatchEvent(mouse("pointerup", { clientX: 10, clientY: 10 }));
@@ -60,7 +60,7 @@ describe("attachInteraction", () => {
 
   it("a drag beyond the threshold pans and does not select", () => {
     const { svg, regionPaths, onSelect } = setup();
-    const el = regionPaths.get("EE001")!;
+    const el = regionPaths.get("ravala")!;
     const before = svg.getAttribute("viewBox");
     el.dispatchEvent(mouse("pointerdown", { clientX: 100, clientY: 100 }));
     el.dispatchEvent(mouse("pointermove", { clientX: 160, clientY: 100, buttons: 1 }));
@@ -73,7 +73,7 @@ describe("attachInteraction", () => {
 
   it("deselect() clears the selection and fires onSelect(null)", () => {
     const { regionPaths, onSelect, handle } = setup();
-    const el = regionPaths.get("LV006")!;
+    const el = regionPaths.get("livzeme")!;
     el.dispatchEvent(mouse("pointerdown", { clientX: 10, clientY: 10 }));
     el.dispatchEvent(mouse("pointerup", { clientX: 10, clientY: 10 }));
     expect(el.classList.contains("selected")).toBe(true);
