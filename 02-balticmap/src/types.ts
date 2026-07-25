@@ -32,6 +32,7 @@ export interface Region {
   flavor: string;
   places: string[];
   path: string;
+  maxSettlements: number; // population-correlated slot cap, baked by the pipeline
 }
 
 export interface Neighbor {
@@ -50,6 +51,8 @@ export interface Settlement {
   id: string;
   name: string;
   note: string; // one-line tooltip, valid for ca. 1100
+  land: string; // id into MapData.regions
+  unlocked: boolean; // locked settlements are authored but not rendered
   x: number;
   y: number;
   labelDy?: number; // label offset override to dodge a colliding neighbour

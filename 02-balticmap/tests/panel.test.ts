@@ -26,6 +26,7 @@ const talava: Region = {
   faction: "talavians",
   population: 30000,
   cohesion: "high",
+  maxSettlements: 3,
   flavor: "Latgalian land on the upper Gauja.",
   places: ["Beverīna", "Trikāta"],
   path: "M0 0Z",
@@ -38,6 +39,7 @@ const jersika: Region = {
   faction: "jersikans",
   population: 35000,
   cohesion: "high",
+  maxSettlements: 4,
   flavor: "A principality on the Daugava.",
   places: ["Koknese"],
   path: "M0 0Z",
@@ -139,7 +141,7 @@ describe("population helpers", () => {
   it("settlementTooltipText shows name and note", () => {
     const s = {
       id: "daugmale", name: "Daugmale", note: "Great Liv hillfort.",
-      x: 100, y: 200,
+      land: "livzeme", unlocked: true, x: 100, y: 200,
     };
     expect(settlementTooltipText(s)).toBe("Daugmale\nGreat Liv hillfort.");
   });
