@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import { createPanel, createTooltip } from "../src/panel";
+import { createPanel, createTooltip, formatPopulation, tooltipText } from "../src/panel";
 import type { People, Region } from "../src/types";
 
 const peoples: People[] = [
@@ -42,6 +42,12 @@ describe("panel", () => {
     expect(container.querySelector(".panel-name")!.textContent).toBe("Tālava");
     expect(container.querySelector(".panel-peoples")!.textContent).toBe(
       "Predominantly Latgalians, with Livs",
+    );
+    expect(container.querySelector(".panel-population")!.textContent).toBe(
+      "Population: ~30k",
+    );
+    expect(container.querySelector(".panel-cohesion")!.textContent).toBe(
+      "Cohesion: high",
     );
     expect(container.querySelector(".panel-flavor")!.textContent).toBe(
       "Latgalian land on the upper Gauja.",
@@ -88,5 +94,18 @@ describe("tooltip", () => {
 
     tooltip.hide();
     expect(el.classList.contains("hidden")).toBe(true);
+  });
+});
+
+describe("population helpers", () => {
+  it("formats populations as 5k-rounded bands", () => {
+    expect(formatPopulation(30000)).toBe("~30k");
+    expect(formatPopulation(45000)).toBe("~45k");
+    expect(formatPopulation(150000)).toBe("~150k");
+  });
+
+  it("builds a two-line tooltip with name, band, and cohesion", () => {
+    expect(tooltipText(talava)).toBe("Tālava\n~30k - high cohesion");
+    expect(tooltipText(jersika)).toBe("Jersika\n~35k - high cohesion");
   });
 });

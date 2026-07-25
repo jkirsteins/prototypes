@@ -115,6 +115,7 @@ svg.map.dragging {
   border-radius: 4px;
   font-size: 13px;
   pointer-events: none;
+  white-space: pre-line;
   z-index: 10;
 }
 
@@ -152,6 +153,17 @@ svg.map.dragging {
   font-size: 13px;
   color: #8a7f6f;
   margin-top: 6px;
+}
+
+.panel-population,
+.panel-cohesion {
+  font-size: 13px;
+  color: #8a7f6f;
+  margin-top: 2px;
+}
+
+.panel-population {
+  margin-top: 8px;
 }
 
 .panel-flavor {
