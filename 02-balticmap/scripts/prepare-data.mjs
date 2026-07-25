@@ -11,6 +11,12 @@ const NUTS_URL =
   "https://gisco-services.ec.europa.eu/distribution/v2/nuts/geojson/NUTS_RG_01M_2021_4326_LEVL_3.geojson";
 const CNTR_URL =
   "https://gisco-services.ec.europa.eu/distribution/v2/countries/geojson/CNTR_RG_01M_2020_4326.geojson";
+// Natural Earth 10m river centerlines (public domain). The Europe
+// supplement carries the smaller regional rivers (Gauja, Venta, Musa...).
+const NE_RIVERS_URL =
+  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_rivers_lake_centerlines.geojson";
+const NE_RIVERS_EU_URL =
+  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_rivers_europe.geojson";
 const CACHE_DIR = "scripts/.cache";
 
 const WIDTH = 1000;
@@ -59,6 +65,23 @@ const FACTIONS = [
   { id: "eastern-aukstaitian-confederacy", name: "Eastern Aukštaitian Confederacy", ethnicity: "aukstaitians", type: "land-coalition", color: "#e6d9b8" },
   { id: "sudovians", name: "Sudovians", ethnicity: "yotvingians", type: "land-coalition", color: "#d1a3a0" },
   { id: "dainavians", name: "Dainavians", ethnicity: "yotvingians", type: "land-coalition", color: "#bd8a87" },
+];
+
+// Main trade arteries ca. 1100. `match` lists Natural Earth naming
+// variants, compared case-insensitively against each feature's name,
+// name_en and name_alt. `major` = wider stroke (the two great rivers).
+// A missing minor river is warned and skipped (spec: accept the gap);
+// Daugava and Nemunas are required.
+const RIVERS = [
+  { id: "daugava", name: "Daugava", major: true, match: ["daugava", "zapadnaya dvina", "western dvina", "dvina"] },
+  { id: "nemunas", name: "Nemunas", major: true, match: ["neman", "nemunas", "nyoman", "nioman"] },
+  { id: "neris", name: "Neris", major: false, match: ["neris", "viliya", "vilija"] },
+  { id: "gauja", name: "Gauja", major: false, match: ["gauja"] },
+  { id: "venta", name: "Venta", major: false, match: ["venta"] },
+  { id: "lielupe", name: "Lielupe", major: false, match: ["lielupe"] },
+  { id: "musa", name: "Mūša", major: false, match: ["musa", "mūša"] },
+  { id: "memele", name: "Mēmele", major: false, match: ["memele", "mēmele", "nemunelis", "nemunėlis"] },
+  { id: "narva", name: "Narva", major: false, match: ["narva"] },
 ];
 
 // The Daugava, west-to-east, as a hand-traced polyline (lon/lat). Closing
@@ -361,7 +384,7 @@ const LANDS = [
 ];
 
 // Label positions are hand-tuned lon/lat, projected below.
-// kinds: people | people-minor | neighbor | title | subtitle
+// kinds: people | people-minor | neighbor | river | title | subtitle
 const LABELS = [
   { text: "ESTONIANS", lon: 25.3, lat: 58.8, kind: "people" },
   { text: "LIVS", lon: 24.35, lat: 57.05, kind: "people" },
@@ -375,6 +398,10 @@ const LABELS = [
   { text: "Lands of Rus'", lon: 28.0, lat: 57.2, kind: "neighbor" },
   { text: "Prussian lands", lon: 21.3, lat: 54.15, kind: "neighbor" },
   { text: "Finnic lands", lon: 21.8, lat: 59.85, kind: "neighbor" },
+  { text: "Daugava", lon: 25.62, lat: 56.47, kind: "river" },
+  { text: "Nemunas", lon: 23.9, lat: 54.93, kind: "river" },
+  { text: "Gauja", lon: 25.35, lat: 57.28, kind: "river" },
+  { text: "Venta", lon: 22.1, lat: 56.85, kind: "river" },
 ];
 
 async function fetchJsonCached(url) {
@@ -388,10 +415,12 @@ async function fetchJsonCached(url) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
-const [lau, nuts, countries] = await Promise.all([
+const [lau, nuts, countries, neRivers, neRiversEu] = await Promise.all([
   fetchJsonCached(LAU_URL),
   fetchJsonCached(NUTS_URL),
   fetchJsonCached(CNTR_URL),
+  fetchJsonCached(NE_RIVERS_URL),
+  fetchJsonCached(NE_RIVERS_EU_URL),
 ]);
 
 // --- Assemble the member-feature pool: EE/LV municipalities (with the two
@@ -593,6 +622,45 @@ const projection = geoAzimuthalEqualArea()
 projection.clipExtent([[0, 0], [WIDTH, HEIGHT]]);
 const path = geoPath(projection).digits(1);
 
+// --- Rivers: collect every Natural Earth segment matching a whitelisted
+// name into one MultiLineString per river; geoPath's clipExtent trims
+// them to the canvas.
+function riverFeatureNames(f) {
+  const p = f.properties ?? {};
+  return [p.name, p.name_en, p.name_alt]
+    .filter((n) => typeof n === "string" && n.length > 0)
+    .flatMap((n) => n.split(/[\/,()]/))
+    .map((n) => n.trim().toLowerCase())
+    .filter((n) => n.length > 0);
+}
+const toLineCoords = (geom) =>
+  geom.type === "LineString" ? [geom.coordinates]
+  : geom.type === "MultiLineString" ? geom.coordinates
+  : [];
+const riverSegments = new Map(RIVERS.map((r) => [r.id, []]));
+for (const f of [...neRivers.features, ...neRiversEu.features]) {
+  const names = riverFeatureNames(f);
+  for (const r of RIVERS) {
+    if (r.match.some((m) => names.includes(m))) {
+      riverSegments.get(r.id).push(...toLineCoords(f.geometry));
+    }
+  }
+}
+const rivers = RIVERS.flatMap((r) => {
+  const segs = riverSegments.get(r.id);
+  const d = segs.length
+    ? path({ type: "MultiLineString", coordinates: segs })
+    : null;
+  if (!d) {
+    if (r.major) {
+      throw new Error(`Natural Earth match failed for required river ${r.id}`);
+    }
+    console.warn(`River ${r.id}: no usable Natural Earth geometry - skipped`);
+    return [];
+  }
+  return [{ id: r.id, name: r.name, major: r.major, path: d }];
+}).sort((a, b) => a.id.localeCompare(b.id));
+
 const labels = LABELS.flatMap((l) => {
   const projected = projection([l.lon, l.lat]);
   const inBounds =
@@ -617,7 +685,8 @@ const labels = LABELS.flatMap((l) => {
 const data = {
   width: WIDTH,
   height: HEIGHT,
-  attribution: "(c) EuroGeographics for the administrative boundaries",
+  attribution:
+    "(c) EuroGeographics for the administrative boundaries; rivers: Natural Earth",
   year: YEAR,
   peoples: PEOPLES,
   factions: FACTIONS,
@@ -641,6 +710,7 @@ const data = {
     .map((f) => ({ id: f.properties.CNTR_ID, path: path(f) }))
     .filter((n) => n.path)
     .sort((a, b) => a.id.localeCompare(b.id)),
+  rivers,
   labels,
 };
 
@@ -653,5 +723,6 @@ writeFileSync("src/data/map.json", JSON.stringify(data));
 console.log(
   `Wrote src/data/map.json: ${data.regions.length} lands, ` +
     `${data.factions.length} factions, ${data.peoples.length} peoples, ` +
-    `${data.neighbors.length} neighbors, ${data.labels.length} labels`,
+    `${data.neighbors.length} neighbors, ${data.rivers.length} rivers, ` +
+    `${data.labels.length} labels`,
 );

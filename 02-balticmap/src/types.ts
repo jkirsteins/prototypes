@@ -39,10 +39,18 @@ export interface Neighbor {
   path: string;
 }
 
+export interface River {
+  id: string;
+  name: string;
+  major: boolean; // wider stroke for the great trade rivers
+  path: string;
+}
+
 export type LabelKind =
   | "people"
   | "people-minor"
   | "neighbor"
+  | "river"
   | "title"
   | "subtitle";
 
@@ -62,5 +70,6 @@ export interface MapData {
   factions: Faction[];
   regions: Region[];
   neighbors: Neighbor[];
+  rivers: River[];
   labels: MapLabel[];
 }

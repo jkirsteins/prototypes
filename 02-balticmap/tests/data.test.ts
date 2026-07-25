@@ -27,7 +27,7 @@ describe("map.json (anno 1100)", () => {
     expect(data.height).toBe(1400);
     expect(data.year).toBe(1100);
     expect(data.attribution).toBe(
-      "(c) EuroGeographics for the administrative boundaries",
+      "(c) EuroGeographics for the administrative boundaries; rivers: Natural Earth",
     );
   });
 
@@ -151,11 +151,29 @@ describe("map.json (anno 1100)", () => {
     expect(total).toBe(650000);
   });
 
+  it("has the main rivers as path data", () => {
+    const ids = data.rivers.map((r) => r.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual([...ids].sort());
+    expect(ids.length).toBeGreaterThanOrEqual(5);
+    expect(ids.length).toBeLessThanOrEqual(9);
+    expect(ids).toContain("daugava");
+    expect(ids).toContain("nemunas");
+    for (const r of data.rivers) {
+      expect(r.name.length).toBeGreaterThan(0);
+      expect(typeof r.major).toBe("boolean");
+      expect(r.path.startsWith("M")).toBe(true);
+    }
+    const major = data.rivers.filter((r) => r.major).map((r) => r.id);
+    expect(major.sort()).toEqual(["daugava", "nemunas"]);
+  });
+
   it("has neighbor geometry and the full label set inside bounds", () => {
     expect(data.neighbors.length).toBeGreaterThanOrEqual(3);
     for (const n of data.neighbors) expect(n.path.startsWith("M")).toBe(true);
     const byKind = (k: string) =>
       data.labels.filter((l) => l.kind === k).map((l) => l.text);
+    expect(byKind("river").sort()).toEqual(["Daugava", "Gauja", "Nemunas", "Venta"]);
     expect(byKind("people").sort()).toEqual([
       "AUKŠTAITIANS", "CURONIANS", "ESTONIANS", "LATGALIANS", "LIVS",
       "SAMOGITIANS", "SELONIANS", "SEMIGALLIANS", "YOTVINGIANS",
