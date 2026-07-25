@@ -12,7 +12,7 @@ function el<K extends string>(name: K): SVGElement {
 }
 
 export function renderMap(data: MapData, container: HTMLElement): RenderResult {
-  const peopleColors = new Map(data.peoples.map((p) => [p.id, p.color]));
+  const factionColors = new Map(data.factions.map((f) => [f.id, f.color]));
 
   const svg = el("svg") as SVGSVGElement;
   svg.classList.add("map");
@@ -41,8 +41,8 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   regionsGroup.classList.add("regions");
   const regionPaths = new Map<string, SVGPathElement>();
   for (const r of data.regions) {
-    const fill = peopleColors.get(r.peoples[0]);
-    if (!fill) throw new Error(`Unknown people ${r.peoples[0]} for ${r.id}`);
+    const fill = factionColors.get(r.faction);
+    if (!fill) throw new Error(`Unknown faction ${r.faction} for ${r.id}`);
     const p = el("path") as SVGPathElement;
     p.classList.add("region");
     p.setAttribute("d", r.path);

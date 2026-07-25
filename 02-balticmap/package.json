@@ -13,6 +13,7 @@
   "devDependencies": {
     "d3-geo": "^3.1.1",
     "happy-dom": "^15.11.0",
+    "polygon-clipping": "^0.15.7",
     "topojson-client": "^3.1.0",
     "topojson-server": "^3.0.1",
     "typescript": "^5.5.4",

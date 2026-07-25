@@ -5,14 +5,20 @@ import raw from "../src/data/map.json";
 const data = raw as MapData;
 
 const EXPECTED_IDS = [
-  "aukstaitija", "dainava", "jarvamaa", "jersika", "kursa",
-  "laanemaa-saaremaa", "livzeme", "pilsotas", "ravala", "suduva",
-  "talava", "ugandi-sakala", "virumaa", "zemaitija", "zemgale-selija",
+  "dainava", "eastern-aukstaitija", "harjumaa", "jarvamaa", "jersika",
+  "kursa", "laanemaa", "lietuva", "livzeme", "pilsotas", "ravala",
+  "saaremaa", "sakala", "selija", "suduva", "talava", "ugandi",
+  "virumaa", "zemaitija", "zemgale",
 ];
 
 const EXPECTED_PEOPLE_IDS = [
   "aukstaitians", "curonians", "estonians", "latgalians", "livs",
   "samogitians", "selonians", "semigallians", "yotvingians",
+];
+
+const FACTION_TYPES = [
+  "county", "island-league", "regional-confederacy", "principality",
+  "chiefdom", "land-coalition",
 ];
 
 describe("map.json (anno 1184)", () => {
@@ -25,7 +31,7 @@ describe("map.json (anno 1184)", () => {
     );
   });
 
-  it("contains exactly the 15 lands, sorted by id", () => {
+  it("contains exactly the 20 lands, sorted by id", () => {
     expect(data.regions.map((r) => r.id)).toEqual(EXPECTED_IDS);
   });
 
@@ -49,24 +55,91 @@ describe("map.json (anno 1184)", () => {
     }
   });
 
-  it("uses compound names and diacritics where the spec requires", () => {
+  it("uses native names with diacritics where the spec requires", () => {
     const byId = new Map(data.regions.map((r) => [r.id, r.name]));
-    expect(byId.get("laanemaa-saaremaa")).toBe("Läänemaa-Saaremaa");
-    expect(byId.get("ugandi-sakala")).toBe("Ugandi-Sakala");
-    expect(byId.get("zemgale-selija")).toBe("Zemgale-Sēlija");
+    expect(byId.get("ravala")).toBe("Rävala");
+    expect(byId.get("laanemaa")).toBe("Läänemaa");
+    expect(byId.get("jarvamaa")).toBe("Järvamaa");
+    expect(byId.get("selija")).toBe("Sēlija");
     expect(byId.get("talava")).toBe("Tālava");
     expect(byId.get("zemaitija")).toBe("Žemaitija");
     expect(byId.get("suduva")).toBe("Sūduva");
-    expect(byId.get("jersika")).toBe("Jersika");
     expect(byId.get("livzeme")).toBe("Līvzeme");
+    expect(byId.get("eastern-aukstaitija")).toBe("Eastern Aukštaitija");
   });
 
-  it("zemgale-selija carries both Semigallians and Selonians", () => {
-    const z = data.regions.find((r) => r.id === "zemgale-selija")!;
-    expect(z.peoples).toEqual(["semigallians", "selonians"]);
+  it("has 20 factions in 1:1 correspondence with regions", () => {
+    expect(data.factions.length).toBe(20);
+    const factionIds = data.factions.map((f) => f.id);
+    expect(new Set(factionIds).size).toBe(20);
+    const used = data.regions.map((r) => r.faction).sort();
+    expect(used).toEqual([...factionIds].sort());
   });
 
-  it("every region has a game-estimate population and a cohesion tier", () => {
+  it("faction ethnicity matches its region's primary people", () => {
+    const byId = new Map(data.factions.map((f) => [f.id, f]));
+    for (const r of data.regions) {
+      const f = byId.get(r.faction)!;
+      expect(f).toBeDefined();
+      expect(f.ethnicity).toBe(r.peoples[0]);
+    }
+  });
+
+  it("faction types are valid and colors are unique hex", () => {
+    const colors = new Set<string>();
+    for (const f of data.factions) {
+      expect(f.name.length).toBeGreaterThan(0);
+      expect(FACTION_TYPES).toContain(f.type);
+      expect(f.color).toMatch(/^#[0-9a-f]{6}$/);
+      colors.add(f.color);
+    }
+    expect(colors.size).toBe(20);
+  });
+
+  it("single-faction ethnicities keep the people color exactly", () => {
+    const peopleColor = new Map(data.peoples.map((p) => [p.id, p.color]));
+    const byEthnicity = new Map<string, typeof data.factions>();
+    for (const f of data.factions) {
+      const arr = byEthnicity.get(f.ethnicity) ?? [];
+      arr.push(f);
+      byEthnicity.set(f.ethnicity, arr);
+    }
+    for (const [eth, factions] of byEthnicity) {
+      if (factions.length === 1) {
+        expect(factions[0].color).toBe(peopleColor.get(eth));
+      }
+    }
+  });
+
+  it("roster spot checks match the spec", () => {
+    const region = (id: string) => data.regions.find((r) => r.id === id)!;
+    const faction = (id: string) => data.factions.find((f) => f.id === id)!;
+    expect(region("kursa")).toMatchObject({
+      faction: "curonian-confederacy", population: 45000, cohesion: "high",
+    });
+    expect(faction("curonian-confederacy")).toMatchObject({
+      name: "Curonian Confederacy", type: "regional-confederacy",
+      ethnicity: "curonians",
+    });
+    expect(region("lietuva")).toMatchObject({
+      faction: "lietuva", population: 60000, cohesion: "medium",
+    });
+    expect(faction("lietuva").type).toBe("land-coalition");
+    expect(region("eastern-aukstaitija")).toMatchObject({
+      faction: "eastern-aukstaitian-confederacy",
+      population: 90000, cohesion: "low",
+    });
+    expect(region("selija")).toMatchObject({
+      faction: "selonians", population: 15000, cohesion: "low",
+    });
+    expect(region("selija").peoples).toEqual(["selonians"]);
+    expect(region("zemgale").peoples).toEqual(["semigallians"]);
+    expect(region("talava").peoples).toEqual(["latgalians", "livs"]);
+    expect(faction("osilians")).toMatchObject({ type: "island-league" });
+    expect(region("saaremaa")).toMatchObject({ cohesion: "high" });
+  });
+
+  it("populations are 5k multiples totalling 650k", () => {
     let total = 0;
     for (const r of data.regions) {
       expect(Number.isInteger(r.population)).toBe(true);
@@ -76,10 +149,6 @@ describe("map.json (anno 1184)", () => {
       total += r.population;
     }
     expect(total).toBe(650000);
-    const byId = new Map(data.regions.map((r) => [r.id, r]));
-    expect(byId.get("kursa")).toMatchObject({ population: 45000, cohesion: "high" });
-    expect(byId.get("aukstaitija")).toMatchObject({ population: 150000, cohesion: "low" });
-    expect(byId.get("livzeme")).toMatchObject({ population: 20000, cohesion: "medium" });
   });
 
   it("has neighbor geometry and the full label set inside bounds", () => {
@@ -89,9 +158,9 @@ describe("map.json (anno 1184)", () => {
       data.labels.filter((l) => l.kind === k).map((l) => l.text);
     expect(byKind("people").sort()).toEqual([
       "AUKŠTAITIANS", "CURONIANS", "ESTONIANS", "LATGALIANS", "LIVS",
-      "SAMOGITIANS", "SEMIGALLIANS", "YOTVINGIANS",
+      "SAMOGITIANS", "SELONIANS", "SEMIGALLIANS", "YOTVINGIANS",
     ]);
-    expect(byKind("people-minor")).toEqual(["SELONIANS"]);
+    expect(byKind("people-minor")).toEqual([]);
     expect(byKind("title")).toEqual(["Anno Domini 1184"]);
     expect(byKind("subtitle")).toEqual(["the lands of the eastern Baltic"]);
     expect(byKind("neighbor").length).toBeGreaterThanOrEqual(2);

@@ -10,12 +10,18 @@ const app = document.getElementById("app")!;
 
 const { svg, regionPaths } = renderMap(data, app);
 const tooltip = createTooltip(app);
-const panel = createPanel(app, () => interaction.deselect(), data.peoples);
+const factionById = new Map(data.factions.map((f) => [f.id, f]));
+const panel = createPanel(app, () => interaction.deselect(), data.peoples, data.factions);
 
 const interaction = attachInteraction(svg, regionPaths, data, {
   onHover(region, clientX, clientY) {
-    if (region) tooltip.show(tooltipText(region), clientX, clientY);
-    else tooltip.hide();
+    if (region) {
+      tooltip.show(
+        tooltipText(region, factionById.get(region.faction)!),
+        clientX,
+        clientY,
+      );
+    } else tooltip.hide();
   },
   onSelect(region) {
     if (region) panel.show(region);
