@@ -1,0 +1,145 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#app {
+  position: relative;
+}
+
+svg.map {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+
+svg.map.dragging {
+  cursor: grabbing;
+}
+
+.sea {
+  fill: #e8eef2;
+}
+
+.neighbor {
+  fill: #d9d9d9;
+  stroke: #c0c0c0;
+  stroke-width: 0.5;
+}
+
+.region {
+  stroke: #7a6a55;
+  stroke-width: 0.8;
+  transition: filter 120ms ease;
+}
+
+.region.hovered {
+  filter: brightness(1.09);
+  stroke: #3f3428;
+  stroke-width: 1.4;
+}
+
+.region.selected {
+  stroke: #1d4ed8;
+  stroke-width: 2;
+  filter: brightness(1.05);
+}
+
+.country-label {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.35em;
+  fill: #6f6250;
+  text-anchor: middle;
+  pointer-events: none;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.tooltip {
+  position: fixed;
+  background: rgba(30, 30, 30, 0.85);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 260px;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 16px;
+  z-index: 5;
+}
+
+.panel-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: none;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #666;
+}
+
+.panel-name {
+  font-size: 18px;
+  margin-bottom: 2px;
+  padding-right: 20px;
+}
+
+.panel-country {
+  font-size: 13px;
+  color: #777;
+  margin-bottom: 12px;
+}
+
+.panel-fields div {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-top: 1px solid #eee;
+  font-size: 13px;
+}
+
+.panel-fields dt {
+  color: #555;
+}
+
+.panel-fields dd {
+  color: #999;
+}
+
+.attribution {
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
+  font-size: 11px;
+  color: #8a8a8a;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.hidden {
+  display: none;
+}
