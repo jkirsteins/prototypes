@@ -86,6 +86,8 @@ const RIVERS = [
   { id: "venta", name: "Venta", major: false, match: ["venta"] },
   { id: "musa", name: "Mūša", major: false, match: ["musa", "mūša"] },
   { id: "memele", name: "Mēmele", major: false, match: ["memele", "mēmele", "nemunelis", "nemunėlis"] },
+  { id: "emajogi", name: "Emajõgi", major: false, match: ["emajogi", "emajõgi"] },
+  { id: "parnu", name: "Pärnu", major: false, match: ["parnu", "pärnu"] },
   { id: "narva", name: "Narva", major: false, match: ["narva"] },
 ];
 

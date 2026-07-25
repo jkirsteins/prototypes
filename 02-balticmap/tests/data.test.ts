@@ -167,7 +167,7 @@ describe("map.json (anno 1100)", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([...ids].sort());
     expect(ids.length).toBeGreaterThanOrEqual(5);
-    expect(ids.length).toBeLessThanOrEqual(9);
+    expect(ids.length).toBeLessThanOrEqual(10);
     expect(ids).toContain("daugava");
     expect(ids).toContain("nemunas");
     for (const r of data.rivers) {
