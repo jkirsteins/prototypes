@@ -150,13 +150,14 @@ const hud = createHud(
         }
         armed = index;
         if (armedTargets().length === 0) {
-          armed = null;
+          disarm();
           return;
         }
         applyTargeting();
         hud.setArmed(index, card.name);
         return;
       }
+      disarm();
       game = playCard(game, index);
       refresh();
     },
