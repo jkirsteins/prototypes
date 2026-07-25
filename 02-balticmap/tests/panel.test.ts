@@ -137,6 +137,28 @@ describe("tooltip", () => {
   });
 });
 
+describe("relations block", () => {
+  it("renders the lines from relationsInfo, hidden when empty", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    let lines: string[] = [];
+    const panel = createPanel(
+      container, vi.fn(), peoples, factions, [],
+      () => lines,
+    );
+    panel.show(talava);
+    const el = container.querySelector(".panel-relations") as HTMLElement;
+    expect(el.classList.contains("hidden")).toBe(true);
+
+    lines = ["Status: yours 1 / theirs 0", "Might: yours 0 / theirs 0", "Your vassal"];
+    panel.show(talava);
+    expect(el.classList.contains("hidden")).toBe(false);
+    expect(el.textContent).toBe(
+      "Status: yours 1 / theirs 0\nMight: yours 0 / theirs 0\nYour vassal",
+    );
+  });
+});
+
 describe("population helpers", () => {
   it("formats populations as 5k-rounded bands", () => {
     expect(formatPopulation(30000)).toBe("~30k");

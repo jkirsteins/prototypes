@@ -207,6 +207,10 @@ svg.map.dragging {
   margin-top: 11px;
 }
 
+.panel-relations {
+  white-space: pre-line;
+}
+
 .attribution {
   position: absolute;
   bottom: 6px;
