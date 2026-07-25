@@ -1,19 +1,23 @@
-import type { Region } from "./types";
-
-const COUNTRY_NAMES: Record<string, string> = {
-  EE: "Estonia",
-  LV: "Latvia",
-  LT: "Lithuania",
-};
-
-const PLACEHOLDER_FIELDS = ["Population", "Area", "GDP per capita"];
+import type { People, Region } from "./types";
 
 export interface Panel {
   show(region: Region): void;
   hide(): void;
 }
 
-export function createPanel(container: HTMLElement, onClose: () => void): Panel {
+function formatPeoples(ids: string[], peoples: People[]): string {
+  const names = ids.map(
+    (id) => peoples.find((p) => p.id === id)?.name ?? id,
+  );
+  if (names.length === 1) return names[0];
+  return `Predominantly ${names[0]}, with ${names.slice(1).join(" and ")}`;
+}
+
+export function createPanel(
+  container: HTMLElement,
+  onClose: () => void,
+  peoples: People[],
+): Panel {
   const root = document.createElement("aside");
   root.className = "panel hidden";
 
@@ -25,28 +29,22 @@ export function createPanel(container: HTMLElement, onClose: () => void): Panel 
 
   const name = document.createElement("h2");
   name.className = "panel-name";
-  const country = document.createElement("p");
-  country.className = "panel-country";
-  const fields = document.createElement("dl");
-  fields.className = "panel-fields";
+  const peoplesLine = document.createElement("p");
+  peoplesLine.className = "panel-peoples";
+  const flavor = document.createElement("p");
+  flavor.className = "panel-flavor";
+  const places = document.createElement("p");
+  places.className = "panel-places";
 
-  root.append(close, name, country, fields);
+  root.append(close, name, peoplesLine, flavor, places);
   container.appendChild(root);
 
   return {
     show(region) {
       name.textContent = region.name;
-      country.textContent = COUNTRY_NAMES[region.country] ?? region.country;
-      fields.textContent = "";
-      for (const label of PLACEHOLDER_FIELDS) {
-        const row = document.createElement("div");
-        const dt = document.createElement("dt");
-        dt.textContent = label;
-        const dd = document.createElement("dd");
-        dd.textContent = "(placeholder)";
-        row.append(dt, dd);
-        fields.appendChild(row);
-      }
+      peoplesLine.textContent = formatPeoples(region.peoples, peoples);
+      flavor.textContent = region.flavor;
+      places.textContent = `Notable places: ${region.places.join(", ")}`;
       root.classList.remove("hidden");
     },
     hide() {

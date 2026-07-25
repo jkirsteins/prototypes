@@ -57,8 +57,8 @@ svg.map.dragging {
   filter: brightness(1.05);
 }
 
-.country-label {
-  font-size: 30px;
+.label-people,
+.label-people-minor {
   font-weight: 600;
   letter-spacing: 0.35em;
   fill: #6f6250;
@@ -66,6 +66,45 @@ svg.map.dragging {
   pointer-events: none;
   text-transform: uppercase;
   opacity: 0.75;
+}
+
+.label-people {
+  font-size: 30px;
+}
+
+.label-people-minor {
+  font-size: 18px;
+  opacity: 0.65;
+}
+
+.label-neighbor {
+  font-size: 22px;
+  font-style: italic;
+  letter-spacing: 0.2em;
+  fill: #8a7f6f;
+  text-anchor: middle;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.label-title {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  fill: #4c4234;
+  text-anchor: middle;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.label-subtitle {
+  font-size: 20px;
+  font-style: italic;
+  letter-spacing: 0.18em;
+  fill: #6f6250;
+  text-anchor: middle;
+  pointer-events: none;
+  opacity: 0.7;
 }
 
 .tooltip {
@@ -109,26 +148,23 @@ svg.map.dragging {
   padding-right: 20px;
 }
 
-.panel-country {
+.panel-peoples {
   font-size: 13px;
-  color: #777;
-  margin-bottom: 12px;
+  color: #8a7f6f;
+  margin-top: 6px;
 }
 
-.panel-fields div {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-top: 1px solid #eee;
+.panel-flavor {
+  font-size: 14px;
+  color: #333;
+  line-height: 1.5;
+  margin-top: 11px;
+}
+
+.panel-places {
   font-size: 13px;
-}
-
-.panel-fields dt {
-  color: #555;
-}
-
-.panel-fields dd {
-  color: #999;
+  color: #8a7f6f;
+  margin-top: 11px;
 }
 
 .attribution {

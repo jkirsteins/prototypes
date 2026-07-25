@@ -10,7 +10,7 @@ const app = document.getElementById("app")!;
 
 const { svg, regionPaths } = renderMap(data, app);
 const tooltip = createTooltip(app);
-const panel = createPanel(app, () => interaction.deselect());
+const panel = createPanel(app, () => interaction.deselect(), data.peoples);
 
 const interaction = attachInteraction(svg, regionPaths, data, {
   onHover(region, clientX, clientY) {
