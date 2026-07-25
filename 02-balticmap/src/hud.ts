@@ -6,10 +6,13 @@ export interface HudCallbacks {
   onNewGame(): void;
   onPlayCard(index: number): void;
   onEndTurn(): void;
+  /** Optional gate for cards that need a valid target; default: playable. */
+  canPlayCard?(cardId: string): boolean;
 }
 
 export interface Hud {
   update(state: GameState): void;
+  setArmed(index: number | null, cardName?: string): void;
 }
 
 const FAN_ANGLE_DEG = 5;
@@ -27,26 +30,6 @@ const RESHUFFLE_PULSE_MS = 450;
 const cardName = (id: string | undefined): string =>
   (id && CARDS[id]?.name) ?? id ?? "";
 
-function eventText(e: GameEvent): string {
-  const you = e.playerId === 1;
-  switch (e.type) {
-    case "draw":
-      return you ? `You drew ${cardName(e.cardId)}` : `Player ${e.playerId} drew a card`;
-    case "play":
-      return you
-        ? `You played ${cardName(e.cardId)}`
-        : `Player ${e.playerId} played ${cardName(e.cardId)}`;
-    case "reshuffle":
-      return you
-        ? "You reshuffled your discard"
-        : `Player ${e.playerId} reshuffled their discard`;
-    // "subjugated" | "released" | "incorporated" | "game-over" activity log
-    // copy is out of scope for this change; render nothing for now.
-    default:
-      return "";
-  }
-}
-
 /** Cosmetic stack depth: more cards -> visibly thicker pile, capped at 4. */
 function pileLayers(count: number): number {
   if (count <= 0) return 0;
@@ -56,7 +39,42 @@ function pileLayers(count: number): number {
   return 4;
 }
 
-export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
+export function createHud(
+  container: HTMLElement,
+  cb: HudCallbacks,
+  factionNames: Map<string, string> = new Map(),
+): Hud {
+  const factionName = (id: string | undefined): string =>
+    (id !== undefined ? factionNames.get(id) : undefined) ?? id ?? "";
+
+  function eventText(e: GameEvent): string {
+    const you = e.playerId === 1;
+    switch (e.type) {
+      case "draw":
+        return you ? `You drew ${cardName(e.cardId)}` : `Player ${e.playerId} drew a card`;
+      case "play": {
+        const target = e.targetFactionId !== undefined
+          ? ` on ${factionName(e.targetFactionId)}`
+          : "";
+        return you
+          ? `You played ${cardName(e.cardId)}${target}`
+          : `Player ${e.playerId} played ${cardName(e.cardId)}${target}`;
+      }
+      case "reshuffle":
+        return you
+          ? "You reshuffled your discard"
+          : `Player ${e.playerId} reshuffled their discard`;
+      case "subjugated":
+        return `${factionName(e.targetFactionId)} submits to ${factionName(e.overlordFactionId)}`;
+      case "released":
+        return `${factionName(e.targetFactionId)} breaks free`;
+      case "incorporated":
+        return `${factionName(e.targetFactionId)} is incorporated into ${factionName(e.overlordFactionId)}`;
+      case "game-over":
+        return `Your realm has been subjugated by ${factionName(e.overlordFactionId)}`;
+    }
+  }
+
   const menu = document.createElement("div");
   menu.className = "menu-overlay";
   const title = document.createElement("h1");
@@ -67,6 +85,19 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
   newGameBtn.textContent = "New game";
   newGameBtn.addEventListener("click", () => cb.onNewGame());
   menu.append(title, newGameBtn);
+
+  const gameover = document.createElement("div");
+  gameover.className = "gameover-overlay hidden";
+  const goTitle = document.createElement("h1");
+  goTitle.className = "menu-title gameover-title";
+  goTitle.textContent = "Game over";
+  const goReason = document.createElement("p");
+  goReason.className = "gameover-reason";
+  const goNewGame = document.createElement("button");
+  goNewGame.className = "menu-new-game";
+  goNewGame.textContent = "New game";
+  goNewGame.addEventListener("click", () => cb.onNewGame());
+  gameover.append(goTitle, goReason, goNewGame);
 
   const status = document.createElement("div");
   status.className = "status-bar hidden";
@@ -119,7 +150,9 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
   logEntries.className = "activity-log-entries";
   logPanel.append(logHeader, logEntries);
 
-  container.append(menu, status, deckPile.root, discardPile.root, hand, logPanel);
+  container.append(
+    menu, gameover, status, deckPile.root, discardPile.root, hand, logPanel,
+  );
 
   let pendingPlayRect: DOMRect | null = null;
   let renderedEvents = 0;
@@ -173,6 +206,7 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
     if (!human) return;
     const n = human.hand.length;
     const canPlay = isHumanTurn(state) && !state.playedThisTurn;
+    const canPlayCardCb = cb.canPlayCard ?? (() => true);
     human.hand.forEach((cardId, i) => {
       const card = document.createElement("button");
       card.className = "card";
@@ -181,8 +215,10 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
       card.style.transform =
         `rotate(${offset * FAN_ANGLE_DEG}deg) ` +
         `translateY(${Math.abs(offset) * FAN_DROP_PX}px)`;
-      card.disabled = !canPlay;
-      if (canPlay)
+      const playable = canPlay && canPlayCardCb(cardId);
+      card.disabled = !playable;
+      card.classList.toggle("unplayable", canPlay && !canPlayCardCb(cardId));
+      if (playable)
         card.addEventListener("click", () => {
           pendingPlayRect = card.getBoundingClientRect();
           cb.onPlayCard(i);
@@ -247,35 +283,62 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
       if (e.playerId !== 1) continue;
       if (e.type === "draw") animateDraw();
       else if (e.type === "play") animatePlay(e.cardId ?? "");
-      else pulseDeck();
+      else if (e.type === "reshuffle") pulseDeck();
+    }
+  }
+
+  let lastState: GameState | null = null;
+
+  function renderStatus(state: GameState): void {
+    if (state.phase === "pick-faction") {
+      statusText.textContent = "Choose your faction";
+      endTurnBtn.classList.add("hidden");
+    } else if (state.phase === "playing") {
+      if (isHumanTurn(state)) {
+        statusText.textContent = `Turn ${state.turn} - your turn`;
+        endTurnBtn.classList.remove("hidden");
+      } else {
+        statusText.textContent = "Waiting on other players...";
+        endTurnBtn.classList.add("hidden");
+      }
     }
   }
 
   return {
     update(state) {
+      lastState = state;
       menu.classList.toggle("hidden", state.phase !== "main-menu");
       status.classList.toggle("hidden", state.phase === "main-menu");
       deckPile.root.classList.toggle("hidden", state.phase !== "playing");
       discardPile.root.classList.toggle("hidden", state.phase !== "playing");
       hand.classList.toggle("hidden", state.phase !== "playing");
-      logPanel.classList.toggle("hidden", state.phase !== "playing");
+      logPanel.classList.toggle(
+        "hidden", state.phase !== "playing" && state.phase !== "game-over",
+      );
+      gameover.classList.toggle("hidden", state.phase !== "game-over");
 
-      if (state.phase === "pick-faction") {
-        statusText.textContent = "Choose your faction";
-        endTurnBtn.classList.add("hidden");
-      } else if (state.phase === "playing") {
-        if (isHumanTurn(state)) {
-          statusText.textContent = `Turn ${state.turn} - your turn`;
-          endTurnBtn.classList.remove("hidden");
-        } else {
-          statusText.textContent = "Waiting on other players...";
-          endTurnBtn.classList.add("hidden");
-        }
+      renderStatus(state);
+
+      if (state.phase === "playing") {
         const human = state.players[0];
         renderPile(deckPile, human.deck.length);
         renderPile(discardPile, human.discard.length);
         renderHand(state);
         animateEvents(renderLog(state));
+      } else if (state.phase === "game-over") {
+        const e = [...state.log].reverse().find((ev) => ev.type === "game-over");
+        goReason.textContent = e ? eventText(e) : "";
+        renderLog(state); // final entries still appear in the log
+      }
+    },
+    setArmed(index, cardNameText) {
+      [...hand.children].forEach((el, i) =>
+        el.classList.toggle("card-armed", i === index),
+      );
+      if (index !== null && cardNameText !== undefined) {
+        statusText.textContent = `Choose a target for ${cardNameText}`;
+      } else if (lastState) {
+        renderStatus(lastState);
       }
     },
   };

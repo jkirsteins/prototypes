@@ -17,15 +17,18 @@ function seededRng(seed: number): Rng {
 
 const FACTIONS = ["alpha", "beta", "gamma"];
 
-function setup() {
+function setup(canPlayCard?: (cardId: string) => boolean) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const cb: HudCallbacks = {
     onNewGame: vi.fn(),
     onPlayCard: vi.fn(),
     onEndTurn: vi.fn(),
+    ...(canPlayCard ? { canPlayCard } : {}),
   };
-  const hud = createHud(container, cb);
+  const hud = createHud(container, cb, new Map([
+    ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
+  ]));
   return { container, cb, hud };
 }
 
@@ -284,5 +287,67 @@ describe("card animations", () => {
     vi.runAllTimers();
     expect(q(container, ".pile-deck").classList.contains("pulse")).toBe(false);
     vi.useRealTimers();
+  });
+});
+
+describe("subjugation HUD", () => {
+  function playing() {
+    return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+  }
+
+  it("renders targeted play and subjugation log texts with faction names", () => {
+    const { container, hud } = setup();
+    let g = withHand(playing(), 0, ["raid"]);
+    g = playCard(g, 0, "alpha");
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    expect(texts).toContain("You played Raid on Alpha");
+    expect(texts).toContain("Alpha submits to Beta");
+  });
+
+  it("marks cards the callback rejects as unplayable", () => {
+    const { container, cb, hud } = setup((id) => id !== "incorporate");
+    const g = withHand(playing(), 0, ["incorporate", "grow-crops"]);
+    hud.update(g);
+    const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
+    expect(cards[0].disabled).toBe(true);
+    expect(cards[0].classList.contains("unplayable")).toBe(true);
+    expect(cards[1].disabled).toBe(false);
+    cards[0].click();
+    expect(cb.onPlayCard).not.toHaveBeenCalled();
+  });
+
+  it("setArmed highlights the card and prompts for a target", () => {
+    const { container, hud } = setup();
+    const g = withHand(playing(), 0, ["raid", "grow-crops"]);
+    hud.update(g);
+    hud.setArmed(0, "Raid");
+    expect(q(container, ".status-text").textContent).toBe(
+      "Choose a target for Raid",
+    );
+    expect(q(container, ".card").classList.contains("card-armed")).toBe(true);
+    hud.setArmed(null);
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - your turn");
+    expect(q(container, ".card").classList.contains("card-armed")).toBe(false);
+  });
+
+  it("shows the game-over overlay naming the overlord", () => {
+    const { container, cb, hud } = setup();
+    let g = playing();
+    g = { ...g, current: 2 };
+    g = withHand(g, 2, ["raid"]);
+    g = playCard(g, 0, "beta"); // gamma subjugates the human
+    expect(g.phase).toBe("game-over");
+    hud.update(g);
+    const overlay = q(container, ".gameover-overlay");
+    expect(overlay.classList.contains("hidden")).toBe(false);
+    expect(q(container, ".gameover-reason").textContent).toBe(
+      "Your realm has been subjugated by Gamma",
+    );
+    expect(q(container, ".menu-overlay").classList.contains("hidden")).toBe(true);
+    (overlay.querySelector(".menu-new-game") as HTMLElement).click();
+    expect(cb.onNewGame).toHaveBeenCalledOnce();
   });
 });
