@@ -8,6 +8,16 @@ export interface RenderResult {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+/** Darkens a "#rrggbb" hex color by multiplying each channel by `factor`
+ *  (values are floored to the nearest integer). Handles only 6-digit hex. */
+export function darkenColor(hex: string, factor: number): string {
+  const channel = (start: number): string => {
+    const value = Math.floor(parseInt(hex.slice(start, start + 2), 16) * factor);
+    return value.toString(16).padStart(2, "0");
+  };
+  return `#${channel(1)}${channel(3)}${channel(5)}`;
+}
+
 function el<K extends string>(name: K): SVGElement {
   return document.createElementNS(SVG_NS, name) as SVGElement;
 }
