@@ -149,10 +149,15 @@ svg.map.dragging {
   padding-right: 20px;
 }
 
+.panel-faction,
 .panel-peoples {
   font-size: 13px;
   color: #8a7f6f;
   margin-top: 6px;
+}
+
+.panel-faction {
+  margin-top: 8px;
 }
 
 .panel-population,

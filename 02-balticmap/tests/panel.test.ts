@@ -1,11 +1,22 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import { createPanel, createTooltip, formatPopulation, tooltipText } from "../src/panel";
-import type { People, Region } from "../src/types";
+import { createPanel, createTooltip, formatPopulation, formatFactionType, tooltipText } from "../src/panel";
+import type { Faction, People, Region } from "../src/types";
 
 const peoples: People[] = [
   { id: "latgalians", name: "Latgalians", color: "#e5b28e" },
   { id: "livs", name: "Livs", color: "#a8c8cf" },
+];
+
+const factions: Faction[] = [
+  {
+    id: "talavians", name: "Talavians", ethnicity: "latgalians",
+    type: "chiefdom", color: "#e5b28e",
+  },
+  {
+    id: "jersikans", name: "Jersikans", ethnicity: "latgalians",
+    type: "principality", color: "#cd9468",
+  },
 ];
 
 const talava: Region = {
@@ -35,13 +46,16 @@ const jersika: Region = {
 describe("panel", () => {
   it("is hidden initially, shows land details on show()", () => {
     const container = document.createElement("div");
-    const panel = createPanel(container, () => {}, peoples);
+    const panel = createPanel(container, () => {}, peoples, factions);
     const root = container.querySelector(".panel")!;
     expect(root.classList.contains("hidden")).toBe(true);
 
     panel.show(talava);
     expect(root.classList.contains("hidden")).toBe(false);
     expect(container.querySelector(".panel-name")!.textContent).toBe("Tālava");
+    expect(container.querySelector(".panel-faction")!.textContent).toBe(
+      "Faction: Talavians (chiefdom)",
+    );
     expect(container.querySelector(".panel-peoples")!.textContent).toBe(
       "Predominantly Latgalians, with Livs",
     );
@@ -64,7 +78,7 @@ describe("panel", () => {
 
   it("names a single people plainly, without 'Predominantly'", () => {
     const container = document.createElement("div");
-    const panel = createPanel(container, () => {}, peoples);
+    const panel = createPanel(container, () => {}, peoples, factions);
     panel.show(jersika);
     expect(container.querySelector(".panel-peoples")!.textContent).toBe(
       "Latgalians",
@@ -74,7 +88,7 @@ describe("panel", () => {
   it("invokes onClose when the close button is clicked", () => {
     const container = document.createElement("div");
     const onClose = vi.fn();
-    const panel = createPanel(container, onClose, peoples);
+    const panel = createPanel(container, onClose, peoples, factions);
     panel.show(talava);
     (container.querySelector(".panel-close") as HTMLButtonElement).click();
     expect(onClose).toHaveBeenCalledOnce();
@@ -106,8 +120,19 @@ describe("population helpers", () => {
     expect(formatPopulation(150000)).toBe("~150k");
   });
 
-  it("builds a two-line tooltip with name, band, and cohesion", () => {
-    expect(tooltipText(talava)).toBe("Tālava\n~30k - high cohesion");
-    expect(tooltipText(jersika)).toBe("Jersika\n~35k - high cohesion");
+  it("builds a two-line tooltip with name, faction, band, and cohesion", () => {
+    expect(tooltipText(talava, factions[0])).toBe(
+      "Tālava\nTalavians - ~30k - high cohesion",
+    );
+    expect(tooltipText(jersika, factions[1])).toBe(
+      "Jersika\nJersikans - ~35k - high cohesion",
+    );
+  });
+
+  it("formats faction types with spaces", () => {
+    expect(formatFactionType("regional-confederacy")).toBe(
+      "regional confederacy",
+    );
+    expect(formatFactionType("county")).toBe("county");
   });
 });

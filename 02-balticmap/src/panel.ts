@@ -1,4 +1,4 @@
-import type { People, Region } from "./types";
+import type { Faction, FactionType, People, Region } from "./types";
 
 export interface Panel {
   show(region: Region): void;
@@ -17,14 +17,22 @@ export function formatPopulation(population: number): string {
   return `~${population / 1000}k`;
 }
 
-export function tooltipText(region: Region): string {
-  return `${region.name}\n${formatPopulation(region.population)} - ${region.cohesion} cohesion`;
+export function formatFactionType(type: FactionType): string {
+  return type.replace(/-/g, " ");
+}
+
+export function tooltipText(region: Region, faction: Faction): string {
+  return (
+    `${region.name}\n${faction.name} - ` +
+    `${formatPopulation(region.population)} - ${region.cohesion} cohesion`
+  );
 }
 
 export function createPanel(
   container: HTMLElement,
   onClose: () => void,
   peoples: People[],
+  factions: Faction[],
 ): Panel {
   const root = document.createElement("aside");
   root.className = "panel hidden";
@@ -37,6 +45,8 @@ export function createPanel(
 
   const name = document.createElement("h2");
   name.className = "panel-name";
+  const factionLine = document.createElement("p");
+  factionLine.className = "panel-faction";
   const peoplesLine = document.createElement("p");
   peoplesLine.className = "panel-peoples";
   const population = document.createElement("p");
@@ -48,12 +58,18 @@ export function createPanel(
   const places = document.createElement("p");
   places.className = "panel-places";
 
-  root.append(close, name, peoplesLine, population, cohesion, flavor, places);
+  const factionById = new Map(factions.map((f) => [f.id, f]));
+
+  root.append(close, name, factionLine, peoplesLine, population, cohesion, flavor, places);
   container.appendChild(root);
 
   return {
     show(region) {
       name.textContent = region.name;
+      const faction = factionById.get(region.faction);
+      factionLine.textContent = faction
+        ? `Faction: ${faction.name} (${formatFactionType(faction.type)})`
+        : "";
       peoplesLine.textContent = formatPeoples(region.peoples, peoples);
       population.textContent = `Population: ${formatPopulation(region.population)}`;
       cohesion.textContent = `Cohesion: ${region.cohesion}`;
