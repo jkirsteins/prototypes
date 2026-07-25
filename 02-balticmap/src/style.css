@@ -282,24 +282,6 @@ svg.map.dragging {
   background: #f1e9da;
 }
 
-.piles {
-  position: absolute;
-  bottom: 16px;
-  left: 16px;
-  display: flex;
-  gap: 8px;
-  z-index: 6;
-}
-
-.pile {
-  background: #fff;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
-  color: #3f3428;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
 
 .hand {
   position: absolute;
@@ -342,6 +324,190 @@ svg.map.dragging {
 .region.owned:not(.selected) {
   stroke: var(--owned-stroke);
   stroke-width: 2.2;
+}
+
+.activity-log {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 230px;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid #eee;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3f3428;
+}
+
+.activity-log.collapsed {
+  width: auto;
+}
+
+.activity-log.collapsed .activity-log-entries,
+.activity-log.collapsed .activity-log-title {
+  display: none;
+}
+
+.activity-log.collapsed .activity-log-header {
+  border-bottom: none;
+}
+
+.activity-log-toggle {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #666;
+  padding: 2px 4px;
+}
+
+.activity-log-entries {
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #3f3428;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.log-turn {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8a7f6f;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.log-entry.log-new {
+  animation: log-flash 900ms ease-out;
+}
+
+@keyframes log-flash {
+  from {
+    background: #f1e9da;
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.pile {
+  position: absolute;
+  bottom: 16px;
+  width: 64px;
+  text-align: center;
+  z-index: 6;
+}
+
+.pile-deck {
+  right: 16px;
+}
+
+.pile-discard {
+  left: 16px;
+}
+
+.pile-stack {
+  position: relative;
+  width: 56px;
+  height: 80px;
+  margin: 0 auto;
+}
+
+.pile-stack.empty {
+  border: 1px dashed #a89a84;
+  border-radius: 6px;
+}
+
+.card-back {
+  position: absolute;
+  inset: 0;
+  border: 1px solid #7a6a55;
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(122, 106, 85, 0.18) 0 4px,
+      transparent 4px 8px
+    ),
+    #f1e9da;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.pile-count {
+  position: absolute;
+  top: -8px;
+  right: -2px;
+  background: #3f3428;
+  color: #fdfaf4;
+  font-size: 11px;
+  border-radius: 999px;
+  min-width: 18px;
+  padding: 2px 4px;
+  z-index: 1;
+}
+
+.pile-label {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #3f3428;
+  text-shadow: 0 1px 2px rgba(253, 250, 244, 0.8);
+}
+
+.flying-card {
+  position: fixed;
+  z-index: 30;
+  pointer-events: none;
+  border: 1px solid #7a6a55;
+  border-radius: 8px;
+  background: #fdfaf4;
+  color: #3f3428;
+  font-size: 13px;
+  padding: 8px 4px;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transition-property: transform;
+  transition-timing-function: ease;
+}
+
+.flying-card.back {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(122, 106, 85, 0.18) 0 4px,
+      transparent 4px 8px
+    ),
+    #f1e9da;
+}
+
+.card-incoming {
+  visibility: hidden;
+}
+
+.pile-deck.pulse .pile-stack {
+  animation: pile-pulse 400ms ease;
+}
+
+@keyframes pile-pulse {
+  50% {
+    transform: scale(1.12);
+  }
 }
 
 /* Must stay last: wins the cascade tie against any earlier
