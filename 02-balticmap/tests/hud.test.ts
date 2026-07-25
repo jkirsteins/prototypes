@@ -87,7 +87,7 @@ describe("createHud", () => {
     // human keeps their 1 card; endTurn hands control to player 2 (AI)
     g = endTurn(g, seededRng(3));
     hud.update(g);
-    expect(q(container, ".status-text").textContent).toBe("Waiting on player 2...");
+    expect(q(container, ".status-text").textContent).toBe("Waiting on other players...");
     expect(q(container, ".end-turn").classList.contains("hidden")).toBe(true);
     const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
     expect(cards).toHaveLength(1);

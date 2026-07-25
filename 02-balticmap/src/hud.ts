@@ -262,8 +262,7 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
           statusText.textContent = `Turn ${state.turn} - your turn`;
           endTurnBtn.classList.remove("hidden");
         } else {
-          const player = state.players[state.current];
-          statusText.textContent = `Waiting on player ${player.id}...`;
+          statusText.textContent = "Waiting on other players...";
           endTurnBtn.classList.add("hidden");
         }
         const human = state.players[0];

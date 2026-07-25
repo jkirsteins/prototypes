@@ -10,8 +10,6 @@ import {
 import { createHud } from "./hud";
 import "./style.css";
 
-const AI_TURN_MS = 300;
-
 const data = rawData as MapData;
 const app = document.getElementById("app")!;
 
@@ -39,14 +37,16 @@ function applyOwnership(): void {
   }
 }
 
+/** Runs every AI turn back to back. The setTimeout(0) lets the HUD paint
+ *  the waiting label first; there is no artificial per-turn delay. */
 function runAiTurns(): void {
   if (game.phase !== "playing" || isHumanTurn(game)) return;
   setTimeout(() => {
-    if (game.phase !== "playing" || isHumanTurn(game)) return;
-    game = endTurn(aiTurn(game), rng);
+    while (game.phase === "playing" && !isHumanTurn(game)) {
+      game = endTurn(aiTurn(game), rng);
+    }
     hud.update(game);
-    runAiTurns();
-  }, AI_TURN_MS);
+  }, 0);
 }
 
 const hud = createHud(app, {
