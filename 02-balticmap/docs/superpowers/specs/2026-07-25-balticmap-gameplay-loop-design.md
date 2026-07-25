@@ -92,7 +92,8 @@ New files:
   - `playCard(state, cardIndex)` -> moves card hand -> discard; at most one
     play per turn enforced.
   - `endTurn(state, rng)` -> advances to next player and begins their turn.
-  - `aiTurn(state, rng)` -> draw + play first card, for the current AI.
+  - `aiTurn(state)` -> plays the current AI's first card, if any; the draw
+    already happened in `beginTurn` via `endTurn`.
 - `src/hud.ts` - DOM: main menu overlay, hand fan, deck/discard counters,
   status bar, End Turn button. Exposes an `update(state)` render function and
   callbacks (`onNewGame`, `onPlayCard`, `onEndTurn`).

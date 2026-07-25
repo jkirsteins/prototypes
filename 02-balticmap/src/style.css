@@ -336,7 +336,12 @@ svg.map.dragging {
 }
 
 .region.dimmed {
-  opacity: 0.45;
+  opacity: 0.225;
+}
+
+.region.owned:not(.selected) {
+  stroke: var(--owned-stroke);
+  stroke-width: 2.2;
 }
 
 /* Must stay last: wins the cascade tie against any earlier

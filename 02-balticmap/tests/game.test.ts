@@ -34,6 +34,13 @@ describe("newGame / startGame", () => {
   });
 });
 
+describe("beginTurn", () => {
+  it("returns the same state reference when there are no players yet", () => {
+    const g = newGame(FACTIONS);
+    expect(beginTurn(g, seededRng(1))).toBe(g);
+  });
+});
+
 describe("pickFaction", () => {
   it("assigns the human to the picked faction and AIs to the rest in order", () => {
     const g = playingState();

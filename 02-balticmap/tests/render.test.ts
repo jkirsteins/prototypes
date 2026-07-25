@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from "vitest";
-import { renderMap } from "../src/map-render";
+import { renderMap, darkenColor } from "../src/map-render";
 import type { MapData } from "../src/types";
 import raw from "../src/data/map.json";
 
@@ -91,5 +91,19 @@ describe("renderMap", () => {
     expect(container.querySelector(".attribution")!.textContent).toBe(
       data.attribution,
     );
+  });
+});
+
+describe("darkenColor", () => {
+  it("halves each channel and floors it", () => {
+    expect(darkenColor("#ffffff", 0.5)).toBe("#7f7f7f");
+  });
+
+  it("computes each channel with Math.floor for an arbitrary faction color", () => {
+    expect(darkenColor("#c8b98a", 0.55)).toBe("#6e654b");
+  });
+
+  it("always pads each channel to 2 hex digits", () => {
+    expect(darkenColor("#101010", 0.05)).toBe("#000000");
   });
 });

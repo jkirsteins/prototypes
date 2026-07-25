@@ -60,6 +60,7 @@ export function pickFaction(
 /** Current player draws 1: reshuffle discard into deck if the deck is empty;
  *  skip the draw entirely if both are empty. Resets the play-per-turn flag. */
 export function beginTurn(state: GameState, rng: Rng): GameState {
+  if (state.players.length === 0) return state;
   const p = state.players[state.current];
   let { deck, discard } = p;
   if (deck.length === 0 && discard.length > 0) {

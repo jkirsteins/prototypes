@@ -1,6 +1,6 @@
 import rawData from "./data/map.json";
 import type { MapData } from "./types";
-import { renderMap } from "./map-render";
+import { renderMap, darkenColor } from "./map-render";
 import { createPanel, createTooltip, tooltipText, settlementTooltipText } from "./panel";
 import { attachInteraction } from "./interaction";
 import {
@@ -27,14 +27,22 @@ let game: GameState = newGame(data.factions.map((f) => f.id));
 function applyOwnership(): void {
   const human = game.players[0];
   for (const [id, el] of regionPaths) {
-    const owned = human !== undefined && regionById.get(id)!.faction === human.factionId;
+    const region = regionById.get(id)!;
+    const owned = human !== undefined && region.faction === human.factionId;
     el.classList.toggle("dimmed", game.phase === "playing" && !owned);
+    el.classList.toggle("owned", owned);
+    if (owned) {
+      el.style.setProperty("--owned-stroke", darkenColor(factionById.get(region.faction)!.color, 0.55));
+    } else {
+      el.style.removeProperty("--owned-stroke");
+    }
   }
 }
 
 function runAiTurns(): void {
   if (game.phase !== "playing" || isHumanTurn(game)) return;
   setTimeout(() => {
+    if (game.phase !== "playing" || isHumanTurn(game)) return;
     game = endTurn(aiTurn(game), rng);
     hud.update(game);
     runAiTurns();
