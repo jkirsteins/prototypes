@@ -1,10 +1,15 @@
-import type { MapData, Region } from "./types";
+import type { MapData, Region, Settlement } from "./types";
 import { fitView, clampView, panBy, zoomAt, type View } from "./view";
 import { initialState, withHover, withClick, type SelectionState } from "./state";
 
 export interface InteractionCallbacks {
   onHover(region: Region | null, clientX: number, clientY: number): void;
   onSelect(region: Region | null): void;
+  onHoverSettlement(
+    settlement: Settlement | null,
+    clientX: number,
+    clientY: number,
+  ): void;
 }
 
 export interface InteractionHandle {
@@ -17,6 +22,7 @@ const WHEEL_ZOOM_BASE = 1.0015;
 export function attachInteraction(
   svg: SVGSVGElement,
   regionPaths: Map<string, SVGPathElement>,
+  settlementDots: Map<string, SVGCircleElement>,
   data: MapData,
   cb: InteractionCallbacks,
 ): InteractionHandle {
@@ -60,6 +66,17 @@ export function attachInteraction(
       state = withHover(state, null);
       el.classList.remove("hovered");
       cb.onHover(null, 0, 0);
+    });
+  }
+
+  const settlementById = new Map(data.settlements.map((s) => [s.id, s]));
+  for (const [id, dot] of settlementDots) {
+    dot.addEventListener("pointerenter", (e) => {
+      const me = e as MouseEvent;
+      cb.onHoverSettlement(settlementById.get(id)!, me.clientX, me.clientY);
+    });
+    dot.addEventListener("pointerleave", () => {
+      cb.onHoverSettlement(null, 0, 0);
     });
   }
 
@@ -108,6 +125,7 @@ export function attachInteraction(
     const wasDrag = dragged;
     endDrag();
     if (wasDrag) return;
+    if ((e.target as Element).closest?.("[data-settlement-id]")) return;
     const target = (e.target as Element).closest?.("[data-id]") ?? null;
     state = withClick(state, target?.getAttribute("data-id") ?? null);
     applySelection();

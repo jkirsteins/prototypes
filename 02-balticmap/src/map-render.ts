@@ -3,6 +3,7 @@ import type { MapData } from "./types";
 export interface RenderResult {
   svg: SVGSVGElement;
   regionPaths: Map<string, SVGPathElement>;
+  settlementDots: Map<string, SVGCircleElement>;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -53,6 +54,38 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   }
   svg.appendChild(regionsGroup);
 
+  const riversGroup = el("g");
+  riversGroup.classList.add("rivers");
+  for (const r of data.rivers) {
+    const p = el("path");
+    p.classList.add("river");
+    if (r.major) p.classList.add("river-major");
+    p.setAttribute("d", r.path);
+    riversGroup.appendChild(p);
+  }
+  svg.appendChild(riversGroup);
+
+  const settlementsGroup = el("g");
+  settlementsGroup.classList.add("settlements");
+  const settlementDots = new Map<string, SVGCircleElement>();
+  for (const s of data.settlements) {
+    const c = el("circle") as SVGCircleElement;
+    c.classList.add("settlement");
+    c.setAttribute("cx", String(s.x));
+    c.setAttribute("cy", String(s.y));
+    c.setAttribute("r", "3.5");
+    c.setAttribute("data-settlement-id", s.id);
+    settlementsGroup.appendChild(c);
+    settlementDots.set(s.id, c);
+    const t = el("text");
+    t.classList.add("settlement-label");
+    t.setAttribute("x", String(s.x));
+    t.setAttribute("y", String(s.y + (s.labelDy ?? -7)));
+    t.textContent = s.name;
+    settlementsGroup.appendChild(t);
+  }
+  svg.appendChild(settlementsGroup);
+
   const labelsGroup = el("g");
   labelsGroup.classList.add("labels");
   for (const l of data.labels) {
@@ -72,5 +105,5 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   attribution.textContent = data.attribution;
   container.appendChild(attribution);
 
-  return { svg, regionPaths };
+  return { svg, regionPaths, settlementDots };
 }

@@ -11,15 +11,21 @@ const NUTS_URL =
   "https://gisco-services.ec.europa.eu/distribution/v2/nuts/geojson/NUTS_RG_01M_2021_4326_LEVL_3.geojson";
 const CNTR_URL =
   "https://gisco-services.ec.europa.eu/distribution/v2/countries/geojson/CNTR_RG_01M_2020_4326.geojson";
+// Natural Earth 10m river centerlines (public domain). The Europe
+// supplement carries the smaller regional rivers (Gauja, Venta, Musa...).
+const NE_RIVERS_URL =
+  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_rivers_lake_centerlines.geojson";
+const NE_RIVERS_EU_URL =
+  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_rivers_europe.geojson";
 const CACHE_DIR = "scripts/.cache";
 
 const WIDTH = 1000;
 const HEIGHT = 1400;
 const PAD = 40;
-const YEAR = 1184;
+const YEAR = 1100;
 const NEIGHBORS = ["FI", "SE", "RU", "BY", "PL", "DK"];
 
-// Peoples of the eastern Baltic, ca. 1184. Colors are each family's base
+// Peoples of the eastern Baltic, ca. 1100. Colors are each family's base
 // hue; faction fills are shades within the family (see FACTIONS).
 const PEOPLES = [
   { id: "estonians", name: "Estonians", color: "#b8cf9b" },
@@ -61,6 +67,54 @@ const FACTIONS = [
   { id: "dainavians", name: "Dainavians", ethnicity: "yotvingians", type: "land-coalition", color: "#bd8a87" },
 ];
 
+// Main trade arteries ca. 1100. `match` lists Natural Earth naming
+// variants, compared case-insensitively against each feature's primary
+// name only (properties.name, falling back to name_en) - see
+// riverFeatureNames. Matching is exclusive: a feature is assigned to at
+// most the first whitelist entry it matches, so no feature's path is
+// ever duplicated across two rivers. `major` = wider stroke (the two
+// great rivers). A missing minor river is warned and skipped (spec:
+// accept the gap); Daugava and Nemunas are required.
+// No separate "lielupe" entry: Natural Earth carries the Lielupe only
+// as the name_alt of its combined Musa feature (the two rivers share one
+// course below their confluence), so the "musa" entry below covers it.
+const RIVERS = [
+  { id: "daugava", name: "Daugava", major: true, match: ["daugava", "zapadnaya dvina", "western dvina"] },
+  { id: "nemunas", name: "Nemunas", major: true, match: ["neman", "nemunas", "nyoman", "nioman"] },
+  { id: "neris", name: "Neris", major: false, match: ["neris", "viliya", "vilija"] },
+  { id: "gauja", name: "Gauja", major: false, match: ["gauja"] },
+  { id: "venta", name: "Venta", major: false, match: ["venta"] },
+  { id: "musa", name: "Mūša", major: false, match: ["musa", "mūša"] },
+  { id: "memele", name: "Mēmele", major: false, match: ["memele", "mēmele", "nemunelis", "nemunėlis"] },
+  { id: "narva", name: "Narva", major: false, match: ["narva"] },
+];
+
+// Attested or archaeologically grounded sites ca. 1100, at the modern
+// coordinates of their hillforts/harbours. Notes are one-line tooltips
+// and must hold for 1100 specifically (hence Daugmale at its peak, an
+// unremarkable Ikskile, and no Riga - it does not exist yet). labelDy
+// drops a label below its dot where neighbours would collide.
+const SETTLEMENTS = [
+  { id: "apuole", name: "Apuolė", lon: 21.55, lat: 56.17, note: "Old Curonian stronghold in the north of the land, besieged by sea-kings in centuries past." },
+  { id: "daugmale", name: "Daugmale", lon: 24.43, lat: 56.84, note: "Great Liv hillfort and market above the Daugava crossing, at the height of its power." },
+  { id: "ikskile", name: "Ikšķile", lon: 24.5, lat: 56.84, labelDy: 16, note: "Liv riverside village; nothing yet marks it out from its neighbours." },
+  { id: "impiltis", name: "Impiltis", lon: 21.22, lat: 56.05, note: "Stronghold of the coastal Curonians above the lagoon shore." },
+  { id: "jersika", name: "Jersika", lon: 26.2, lat: 56.27, note: "Seat of the Latgalian princes of the Daugava, looking east to Polotsk." },
+  { id: "kernave", name: "Kernavė", lon: 24.85, lat: 54.89, note: "Cluster of hillforts above the Neris, foremost among the strongholds of Lietuva." },
+  { id: "koknese", name: "Koknese", lon: 25.44, lat: 56.64, note: "Fortified town on the Daugava's right bank, tollgate of the river road." },
+  { id: "lindanise", name: "Lindanise", lon: 24.74, lat: 59.44, note: "Harbour below the fort where the Gotland run turns east for Novgorod." },
+  { id: "mezotne", name: "Mežotne", lon: 24.05, lat: 56.44, note: "Semigallian stronghold guarding the Lielupe river road." },
+  { id: "otepaa", name: "Otepää", lon: 26.46, lat: 58.06, note: "Upland stronghold of Ugandi on the road from the Rus' towns." },
+  { id: "selpils", name: "Sēlpils", lon: 25.68, lat: 56.6, labelDy: 16, note: "Old fort of the Selonians on the Daugava's wooded left bank." },
+  { id: "soontagana", name: "Soontagana", lon: 24.08, lat: 58.55, note: "Stronghold of the western Estonians amid bogs, reachable only on winter roads." },
+  { id: "talsi", name: "Talsi", lon: 22.59, lat: 57.24, note: "Curonian hillfort town among the lakes of Vanema." },
+  { id: "tarbatu", name: "Tarbatu", lon: 26.72, lat: 58.38, note: "Estonian hillfort above the Emajõgi crossing, key to the eastern road." },
+  { id: "tervete", name: "Tērvete", lon: 23.38, lat: 56.48, note: "Chief hillfort of the Semigallians, seat of their strongest chiefs." },
+  { id: "trikata", name: "Trikāta", lon: 25.7, lat: 57.54, note: "Latgalian chief's fort on the upper Gauja, heart of Tālava." },
+  { id: "valjala", name: "Valjala", lon: 22.79, lat: 58.4, note: "Chief ringfort of the Osilians, lords of the island sea-roads." },
+  { id: "varbola", name: "Varbola", lon: 24.47, lat: 59.03, note: "Great ringfort of Harjumaa, mightiest stronghold of the Estonian lands." },
+];
+
 // The Daugava, west-to-east, as a hand-traced polyline (lon/lat). Closing
 // it far to the north yields a mask for the right/north bank. Verified:
 // Koknese, Aizkraukle town and Krustpils fall north; Jaunjelgava, Selpils,
@@ -83,10 +137,11 @@ const SPLIT_MUNICIPALITIES = ["Aizkraukles novads", "Jēkabpils novads"];
 
 // 20 lands. `lau` lists LAU_NAME members (EE/LV, LAU 2023); `nuts` lists
 // NUTS-2021 level-3 members (LT). Provenance lives here only. The grouping
-// of municipalities into 1184 lands is a deliberate game abstraction.
+// of municipalities into 1100 lands is a deliberate game abstraction.
 
 // population/cohesion are deliberate GAME ESTIMATES, not historical facts:
-// anchored to ~180k for the Estonian lands (common ~1200 estimate) and
+// anchored to ~180k for the Estonian lands (a common estimate for the
+// era, held flat for 1100 - these are game numbers, not a census) and
 // 650,000 for the whole map, rounded to the nearest 5,000. Cohesion is
 // political concentration - a cohesive 45k land can outweigh a fragmented
 // 150k neighbourhood.
@@ -216,10 +271,10 @@ const LANDS = [
     ],
     flavor:
       "The Liv lands at the mouths of the Daugava and the Gauja, grown " +
-      "rich on river trade with the Rus' towns and Gotland. At Ikšķile the " +
-      "monk Meinhard has this very year raised a church of stone - the " +
-      "first in these lands.",
-    places: ["Ikšķile", "Mārtiņsala", "Turaida"],
+      "rich on river trade with the Rus' towns and Gotland. The hillfort " +
+      "town of Daugmale above the river crossing is the busiest market " +
+      "on this coast.",
+    places: ["Daugmale", "Turaida"],
     population: 20000, cohesion: "medium",
   },
   {
@@ -319,8 +374,8 @@ const LANDS = [
     nuts: ["LT022", "LT011"],
     flavor:
       "The land of Lietuva between the Neris and the Nemunas, whose " +
-      "war-bands ride yearly against the Rus' towns. Its rival dukes are " +
-      "slowly, grudgingly, learning to ride under one banner.",
+      "war-bands ride yearly against the Rus' towns. Its rival dukes " +
+      "feud among themselves as readily as they raid abroad.",
     places: ["Kernavė", "Vilnia"],
     population: 60000, cohesion: "medium",
   },
@@ -360,7 +415,7 @@ const LANDS = [
 ];
 
 // Label positions are hand-tuned lon/lat, projected below.
-// kinds: people | people-minor | neighbor | title | subtitle
+// kinds: people | people-minor | neighbor | river | title | subtitle
 const LABELS = [
   { text: "ESTONIANS", lon: 25.3, lat: 58.8, kind: "people" },
   { text: "LIVS", lon: 24.35, lat: 57.05, kind: "people" },
@@ -374,8 +429,10 @@ const LABELS = [
   { text: "Lands of Rus'", lon: 28.0, lat: 57.2, kind: "neighbor" },
   { text: "Prussian lands", lon: 21.3, lat: 54.15, kind: "neighbor" },
   { text: "Finnic lands", lon: 21.8, lat: 59.85, kind: "neighbor" },
-  { text: "Anno Domini 1184", lon: 23.55, lat: 57.75, kind: "title" },
-  { text: "the lands of the eastern Baltic", lon: 23.55, lat: 57.58, kind: "subtitle" },
+  { text: "Daugava", lon: 25.08, lat: 56.5, kind: "river" },
+  { text: "Nemunas", lon: 23.9, lat: 54.93, kind: "river" },
+  { text: "Gauja", lon: 25.35, lat: 57.28, kind: "river" },
+  { text: "Venta", lon: 22.1, lat: 56.85, kind: "river" },
 ];
 
 async function fetchJsonCached(url) {
@@ -389,10 +446,12 @@ async function fetchJsonCached(url) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
-const [lau, nuts, countries] = await Promise.all([
+const [lau, nuts, countries, neRivers, neRiversEu] = await Promise.all([
   fetchJsonCached(LAU_URL),
   fetchJsonCached(NUTS_URL),
   fetchJsonCached(CNTR_URL),
+  fetchJsonCached(NE_RIVERS_URL),
+  fetchJsonCached(NE_RIVERS_EU_URL),
 ]);
 
 // --- Assemble the member-feature pool: EE/LV municipalities (with the two
@@ -594,6 +653,66 @@ const projection = geoAzimuthalEqualArea()
 projection.clipExtent([[0, 0], [WIDTH, HEIGHT]]);
 const path = geoPath(projection).digits(1);
 
+// --- Rivers: collect every Natural Earth segment matching a whitelisted
+// name into one MultiLineString per river; geoPath's clipExtent trims
+// them to the canvas.
+function riverFeatureNames(f) {
+  const p = f.properties ?? {};
+  // Primary name only (name_en as fallback when name is absent) - never
+  // name_alt, which on Natural Earth can carry an entirely different
+  // river's name (e.g. a combined-course feature) and would otherwise
+  // pull that feature into two whitelist entries at once.
+  const primary = typeof p.name === "string" && p.name.length > 0 ? p.name : p.name_en;
+  return typeof primary === "string"
+    ? primary
+        .split(/[\/,()]/)
+        .map((n) => n.trim().toLowerCase())
+        .filter((n) => n.length > 0)
+    : [];
+}
+const toLineCoords = (geom) =>
+  geom.type === "LineString" ? [geom.coordinates]
+  : geom.type === "MultiLineString" ? geom.coordinates
+  : [];
+const riverSegments = new Map(RIVERS.map((r) => [r.id, []]));
+for (const f of [...neRivers.features, ...neRiversEu.features]) {
+  const names = riverFeatureNames(f);
+  // First whitelist match wins - each feature belongs to at most one river.
+  const river = RIVERS.find((r) => r.match.some((m) => names.includes(m)));
+  if (river) {
+    riverSegments.get(river.id).push(...toLineCoords(f.geometry));
+  }
+}
+const rivers = RIVERS.flatMap((r) => {
+  const segs = riverSegments.get(r.id);
+  const d = segs.length
+    ? path({ type: "MultiLineString", coordinates: segs })
+    : null;
+  if (!d) {
+    if (r.major) {
+      throw new Error(`Natural Earth match failed for required river ${r.id}`);
+    }
+    console.warn(`River ${r.id}: no usable Natural Earth geometry - skipped`);
+    return [];
+  }
+  return [{ id: r.id, name: r.name, major: r.major, path: d }];
+}).sort((a, b) => a.id.localeCompare(b.id));
+
+const settlements = SETTLEMENTS.map((s) => {
+  const p = projection([s.lon, s.lat]);
+  const inBounds =
+    p && p[0] > 0 && p[0] < WIDTH && p[1] > 0 && p[1] < HEIGHT;
+  if (!inBounds) throw new Error(`Settlement outside canvas: ${s.id}`);
+  return {
+    id: s.id,
+    name: s.name,
+    note: s.note,
+    x: Math.round(p[0]),
+    y: Math.round(p[1]),
+    ...(s.labelDy !== undefined ? { labelDy: s.labelDy } : {}),
+  };
+}).sort((a, b) => a.id.localeCompare(b.id));
+
 const labels = LABELS.flatMap((l) => {
   const projected = projection([l.lon, l.lat]);
   const inBounds =
@@ -618,7 +737,8 @@ const labels = LABELS.flatMap((l) => {
 const data = {
   width: WIDTH,
   height: HEIGHT,
-  attribution: "(c) EuroGeographics for the administrative boundaries",
+  attribution:
+    "(c) EuroGeographics for the administrative boundaries; rivers: Natural Earth",
   year: YEAR,
   peoples: PEOPLES,
   factions: FACTIONS,
@@ -642,6 +762,8 @@ const data = {
     .map((f) => ({ id: f.properties.CNTR_ID, path: path(f) }))
     .filter((n) => n.path)
     .sort((a, b) => a.id.localeCompare(b.id)),
+  rivers,
+  settlements,
   labels,
 };
 
@@ -654,5 +776,6 @@ writeFileSync("src/data/map.json", JSON.stringify(data));
 console.log(
   `Wrote src/data/map.json: ${data.regions.length} lands, ` +
     `${data.factions.length} factions, ${data.peoples.length} peoples, ` +
-    `${data.neighbors.length} neighbors, ${data.labels.length} labels`,
+    `${data.neighbors.length} neighbors, ${data.rivers.length} rivers, ` +
+    `${data.settlements.length} settlements, ${data.labels.length} labels`,
 );

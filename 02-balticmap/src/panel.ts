@@ -1,4 +1,4 @@
-import type { Faction, FactionType, People, Region } from "./types";
+import type { Faction, FactionType, People, Region, Settlement } from "./types";
 
 export interface Panel {
   show(region: Region): void;
@@ -26,6 +26,10 @@ export function tooltipText(region: Region, faction: Faction): string {
     `${region.name}\n${faction.name} - ` +
     `${formatPopulation(region.population)} - ${region.cohesion} cohesion`
   );
+}
+
+export function settlementTooltipText(s: Settlement): string {
+  return `${s.name}\n${s.note}`;
 }
 
 export function createPanel(
