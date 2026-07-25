@@ -161,8 +161,8 @@ describe("map.json (anno 1100)", () => {
       "SAMOGITIANS", "SELONIANS", "SEMIGALLIANS", "YOTVINGIANS",
     ]);
     expect(byKind("people-minor")).toEqual([]);
-    expect(byKind("title")).toEqual(["Anno Domini 1100"]);
-    expect(byKind("subtitle")).toEqual(["the lands of the eastern Baltic"]);
+    expect(byKind("title")).toEqual([]);
+    expect(byKind("subtitle")).toEqual([]);
     expect(byKind("neighbor").length).toBeGreaterThanOrEqual(2);
     for (const l of data.labels) {
       expect(l.x).toBeGreaterThan(0);

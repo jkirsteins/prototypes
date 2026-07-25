@@ -375,8 +375,6 @@ const LABELS = [
   { text: "Lands of Rus'", lon: 28.0, lat: 57.2, kind: "neighbor" },
   { text: "Prussian lands", lon: 21.3, lat: 54.15, kind: "neighbor" },
   { text: "Finnic lands", lon: 21.8, lat: 59.85, kind: "neighbor" },
-  { text: `Anno Domini ${YEAR}`, lon: 23.55, lat: 57.75, kind: "title" },
-  { text: "the lands of the eastern Baltic", lon: 23.55, lat: 57.58, kind: "subtitle" },
 ];
 
 async function fetchJsonCached(url) {

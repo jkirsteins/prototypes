@@ -46,8 +46,6 @@ describe("renderMap", () => {
       const rendered = svg.querySelectorAll(`text.label-${kind}`);
       expect(rendered.length).toBe(expected.length);
     }
-    const title = svg.querySelector("text.label-title")!;
-    expect(title.textContent).toBe("Anno Domini 1100");
     const groups = Array.from(svg.querySelectorAll("g"));
     const neighborIdx = groups.findIndex((g) => g.classList.contains("neighbors"));
     const regionIdx = groups.findIndex((g) => g.classList.contains("regions"));
