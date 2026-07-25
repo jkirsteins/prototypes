@@ -186,6 +186,67 @@ describe("aiTurn", () => {
       expect(p.deck.length + p.hand.length + p.discard.length).toBe(DECK_SIZE);
     }
   });
+
+  it("incorporates its first vassal before anything else", () => {
+    let g = endTurn(playingState(), seededRng(6)); // alpha (player 2) acts
+    g = { ...g, relations: bumpMight(g.relations, "alpha", "gamma") };
+    g = withHand(g, 1, ["raid", "incorporate"]);
+    const after = aiTurn(g);
+    expect(after.incorporated).toEqual({ gamma: "alpha" });
+  });
+
+  it("raids the target closest to a new subjugation", () => {
+    let g = endTurn(playingState(), seededRng(6)); // alpha (player 2) acts
+    // beta raided alpha earlier, so alpha's might deficit vs beta is 2
+    // while gamma and delta stay at 1. (This makes alpha beta's vassal;
+    // aiTurn does not skip - only endTurn does - so the policy is still
+    // exercised directly.)
+    g = { ...g, relations: bumpMight(g.relations, "beta", "alpha") };
+    g = withHand(g, 1, ["raid"]);
+    const after = aiTurn(g);
+    // equal smallest deficits (gamma, delta) fall back to faction order
+    expect(after.log.filter((e) => e.type === "play").at(-1)).toMatchObject({
+      cardId: "raid", targetFactionId: "gamma",
+    });
+  });
+
+  it("prefers raid over marriage at equal deficit", () => {
+    let g = endTurn(playingState(), seededRng(6)); // alpha acts
+    g = withHand(g, 1, ["shrewd-marriage", "raid"]);
+    const after = aiTurn(g);
+    // all deficits equal 1 -> first faction in order (beta), raid first;
+    // beta is the human, so this play also flips the phase to game-over
+    expect(after.log.filter((e) => e.type === "play").at(-1)).toMatchObject({
+      cardId: "raid", targetFactionId: "beta",
+    });
+    expect(after.phase).toBe("game-over");
+  });
+
+  it("expands instead of reinforcing its own vassals", () => {
+    let g = endTurn(playingState(), seededRng(6)); // alpha acts
+    g = { ...g, relations: bumpMight(g.relations, "alpha", "gamma") };
+    g = withHand(g, 1, ["raid"]);
+    const after = aiTurn(g);
+    // own vassal gamma is skipped; beta is next in faction order
+    expect(after.log.filter((e) => e.type === "play").at(-1)).toMatchObject({
+      cardId: "raid", targetFactionId: "beta",
+    });
+  });
+
+  it("falls back to grow-crops when incorporate has no vassal", () => {
+    let g = endTurn(playingState(), seededRng(6));
+    g = withHand(g, 1, ["incorporate", "grow-crops"]);
+    const after = aiTurn(g);
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "grow-crops",
+    });
+  });
+
+  it("passes when nothing is playable", () => {
+    let g = endTurn(playingState(), seededRng(6));
+    g = withHand(g, 1, ["incorporate"]);
+    expect(aiTurn(g)).toBe(g);
+  });
 });
 
 describe("event log", () => {

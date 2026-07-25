@@ -1,6 +1,6 @@
 import { buildDeck, shuffle, CARDS, type Rng } from "./cards";
 import {
-  bumpMight, bumpStatus, computeOverlords, validTargets,
+  bumpMight, bumpStatus, computeOverlords, getRel, validTargets,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
 
@@ -222,10 +222,64 @@ export function endTurn(state: GameState, rng: Rng): GameState {
   return beginTurn({ ...state, current, turn }, rng);
 }
 
-/** The current (AI) player plays their first card, if any.
- *  Their draw already happened in beginTurn via endTurn. */
+/** Greedy, deterministic AI: incorporate a vassal; else the raid/marriage
+ *  closest to a NEW subjugation (own vassals excluded); else grow crops;
+ *  else the first playable card; else pass. */
 export function aiTurn(state: GameState): GameState {
-  return playCard(state, 0);
+  if (state.phase !== "playing") return state;
+  const p = state.players[state.current];
+  if (p.hand.length === 0) return state;
+  const overlords = overlordsOf(state);
+  const targetsFor = (cardId: string): string[] =>
+    validTargets(
+      p.factionId, cardId, overlords, state.incorporated,
+      state.adjacency, state.factionIds,
+    );
+
+  const vassals = state.factionIds.filter(
+    (f) => overlords.get(f) === p.factionId,
+  );
+  if (p.hand.includes("incorporate") && vassals.length > 0) {
+    return playCard(state, p.hand.indexOf("incorporate"), vassals[0]);
+  }
+
+  const tracks = [
+    { cardId: "raid", field: "might" as const },
+    { cardId: "shrewd-marriage", field: "status" as const },
+  ];
+  let best: { cardId: string; targetId: string; deficit: number; order: number } | null = null;
+  for (const t of tracks) {
+    if (!p.hand.includes(t.cardId)) continue;
+    for (const targetId of targetsFor(t.cardId)) {
+      if (overlords.get(targetId) === p.factionId) continue; // expand, not reinforce
+      const mine = getRel(state.relations, p.factionId, targetId)[t.field];
+      const theirs = getRel(state.relations, targetId, p.factionId)[t.field];
+      const deficit = theirs - mine + 1;
+      const order = state.factionIds.indexOf(targetId);
+      if (
+        best === null ||
+        deficit < best.deficit ||
+        (deficit === best.deficit && order < best.order)
+      ) {
+        best = { cardId: t.cardId, targetId, deficit, order };
+      }
+    }
+  }
+  if (best !== null) {
+    return playCard(state, p.hand.indexOf(best.cardId), best.targetId);
+  }
+
+  if (p.hand.includes("grow-crops")) {
+    return playCard(state, p.hand.indexOf("grow-crops"));
+  }
+
+  for (let i = 0; i < p.hand.length; i++) {
+    const card = CARDS[p.hand[i]];
+    if (!card?.targeted) return playCard(state, i);
+    const targets = targetsFor(p.hand[i]);
+    if (targets.length > 0) return playCard(state, i, targets[0]);
+  }
+  return state;
 }
 
 export function isHumanTurn(state: GameState): boolean {
