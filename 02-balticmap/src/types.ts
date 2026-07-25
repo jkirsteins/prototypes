@@ -4,10 +4,14 @@ export interface People {
   color: string;
 }
 
+export type Cohesion = "low" | "medium" | "high";
+
 export interface Region {
   id: string;
   name: string;
   peoples: string[]; // ids into MapData.peoples; first = primary = fill color
+  population: number; // deliberate game estimate; positive multiple of 5000
+  cohesion: Cohesion; // political concentration - NOT derivable from population
   flavor: string;
   places: string[];
   path: string;

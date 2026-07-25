@@ -33,6 +33,12 @@ const PEOPLES = [
 // 15 lands. `nuts` lists the NUTS-2013 level-3 members merged into each
 // land (provenance lives here only, not in the output). Compound names are
 // deliberate cartographic compromises - see the design spec.
+
+// population/cohesion are deliberate GAME ESTIMATES, not historical facts:
+// anchored to ~180k for the Estonian lands (common ~1200 estimate) and
+// 650,000 for the whole map, rounded to the nearest 5,000. Cohesion is
+// political concentration - it will later govern mobilization, so a
+// cohesive 45k land can outweigh a fragmented 150k one.
 const LANDS = [
   {
     id: "ravala", name: "Rävala", nuts: ["EE001"], peoples: ["estonians"],
@@ -42,6 +48,7 @@ const LANDS = [
       "run. Elders of Rävala and Harju rule from hillforts scattered " +
       "through the woods.",
     places: ["Lindanise", "Iru", "Varbola"],
+    population: 30000, cohesion: "medium",
   },
   {
     id: "virumaa", name: "Virumaa", nuts: ["EE007"], peoples: ["estonians"],
@@ -50,6 +57,7 @@ const LANDS = [
       "the Estonian lands to sight ships from the west. Its districts " +
       "answer to their own elders and to no common lord.",
     places: ["Tarvanpea", "Mahu"],
+    population: 35000, cohesion: "medium",
   },
   {
     id: "jarvamaa", name: "Järvamaa", nuts: ["EE006"], peoples: ["estonians"],
@@ -57,6 +65,7 @@ const LANDS = [
       "A small inland land of fields and bogs at the crossroads of the " +
       "Estonian interior; armies and traders alike must pass its causeways.",
     places: ["Kareda"],
+    population: 25000, cohesion: "medium",
   },
   {
     id: "laanemaa-saaremaa", name: "Läänemaa-Saaremaa", nuts: ["EE004"],
@@ -67,6 +76,7 @@ const LANDS = [
       "Danish and Swedish coasts; the mainland districts till quieter " +
       "fields.",
     places: ["Valjala", "Soontagana"],
+    population: 40000, cohesion: "medium",
   },
   {
     id: "ugandi-sakala", name: "Ugandi-Sakala", nuts: ["EE008"],
@@ -76,6 +86,7 @@ const LANDS = [
       "and Ugandi east of it, each with its own strongholds and elders. " +
       "Through Ugandi runs the road from the Rus' towns to the coast.",
     places: ["Tarbatu", "Otepää", "Viliende"],
+    population: 50000, cohesion: "medium",
   },
   {
     id: "livzeme", name: "Līvzeme", nuts: ["LV006", "LV007"],
@@ -86,6 +97,7 @@ const LANDS = [
       "monk Meinhard has this very year raised a church of stone - the " +
       "first in these lands.",
     places: ["Ikšķile", "Mārtiņsala", "Turaida"],
+    population: 20000, cohesion: "medium",
   },
   {
     id: "kursa", name: "Kursa", nuts: ["LV003"], peoples: ["curonians"],
@@ -94,6 +106,7 @@ const LANDS = [
       "war-boats. Its lands - Vanema, Ventava, Bandava and the rest - " +
       "follow their own kings in war and in raid.",
     places: ["Talsi", "Embūte", "Grobiņa"],
+    population: 45000, cohesion: "high",
   },
   {
     id: "zemgale-selija", name: "Zemgale-Sēlija", nuts: ["LV009"],
@@ -103,6 +116,7 @@ const LANDS = [
       "the Daugava the wooded hills of the Selonians. Both peoples guard " +
       "the river roads jealously.",
     places: ["Tērvete", "Mežotne", "Sēlpils"],
+    population: 45000, cohesion: "medium",
   },
   {
     id: "talava", name: "Tālava", nuts: ["LV008"],
@@ -112,6 +126,7 @@ const LANDS = [
       "Pskov, while Liv settlements hold the river's lower reaches. Its " +
       "chiefs rule from timber forts above the valley.",
     places: ["Beverīna", "Trikāta"],
+    population: 30000, cohesion: "high",
   },
   {
     id: "jersika", name: "Jersika", nuts: ["LV005"], peoples: ["latgalians"],
@@ -120,6 +135,7 @@ const LANDS = [
       "leaning toward Polotsk and the eastern church. Fortified towns " +
       "watch the river crossings.",
     places: ["Jersika", "Koknese"],
+    population: 35000, cohesion: "high",
   },
   {
     id: "pilsotas", name: "Pilsotas", nuts: ["LT003"], peoples: ["curonians"],
@@ -128,6 +144,7 @@ const LANDS = [
       "living from fishing, amber, and the sea-road south to the " +
       "Prussians.",
     places: ["Palanga", "Impiltis"],
+    population: 15000, cohesion: "medium",
   },
   {
     id: "zemaitija", name: "Žemaitija", nuts: ["LT006", "LT007", "LT008"],
@@ -137,6 +154,7 @@ const LANDS = [
       "dense forest, sacred groves, and rival lineages - Karšuva among " +
       "them - who unite only when raiders come.",
     places: ["Medvėgalis", "Karšuva", "Saulė"],
+    population: 70000, cohesion: "low",
   },
   {
     id: "aukstaitija", name: "Aukštaitija",
@@ -147,6 +165,7 @@ const LANDS = [
       "another and their neighbours alike. From here war-bands ride " +
       "against the Rus' towns.",
     places: ["Kernavė", "Deltuva", "Upytė"],
+    population: 150000, cohesion: "low",
   },
   {
     id: "suduva", name: "Sūduva", nuts: ["LT004"], peoples: ["yotvingians"],
@@ -154,6 +173,7 @@ const LANDS = [
       "Land of the Yotvingian Sudovians, horse-breeders and raiders of the " +
       "western forests, pressed between Mazovian and Rus' spears.",
     places: ["Šešupė valley"],
+    population: 30000, cohesion: "low",
   },
   {
     id: "dainava", name: "Dainava", nuts: ["LT001"], peoples: ["yotvingians"],
@@ -162,6 +182,7 @@ const LANDS = [
       "Nemunas bend; its bands raid into Rus' and Mazovia and are raided " +
       "in turn.",
     places: ["Merkinė", "Punia"],
+    population: 30000, cohesion: "low",
   },
 ];
 
@@ -209,6 +230,30 @@ const available = nutsFeatures.map((f) => f.properties.NUTS_ID).sort();
 if (JSON.stringify([...claimed].sort()) !== JSON.stringify(available)) {
   throw new Error(
     `LANDS config does not partition the NUTS set.\nclaimed: ${[...claimed].sort()}\navailable: ${available}`,
+  );
+}
+
+// Population/cohesion sanity: game estimates must stay coherent.
+const COHESION_TIERS = new Set(["low", "medium", "high"]);
+const EXPECTED_TOTAL_POPULATION = 650000;
+let totalPopulation = 0;
+for (const land of LANDS) {
+  if (
+    !Number.isInteger(land.population) ||
+    land.population <= 0 ||
+    land.population % 5000 !== 0
+  ) {
+    throw new Error(`Population for ${land.id} must be a positive multiple of 5000`);
+  }
+  if (!COHESION_TIERS.has(land.cohesion)) {
+    throw new Error(`Unknown cohesion "${land.cohesion}" for ${land.id}`);
+  }
+  totalPopulation += land.population;
+}
+if (totalPopulation !== EXPECTED_TOTAL_POPULATION) {
+  throw new Error(
+    `Total population ${totalPopulation} != ${EXPECTED_TOTAL_POPULATION} - ` +
+      `update EXPECTED_TOTAL_POPULATION intentionally when the roster changes`,
   );
 }
 
@@ -276,6 +321,8 @@ const data = {
         id: land.id,
         name: land.name,
         peoples: land.peoples,
+        population: land.population,
+        cohesion: land.cohesion,
         flavor: land.flavor,
         places: land.places,
         path: path(f),

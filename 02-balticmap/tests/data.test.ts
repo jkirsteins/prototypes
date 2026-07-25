@@ -66,6 +66,22 @@ describe("map.json (anno 1184)", () => {
     expect(z.peoples).toEqual(["semigallians", "selonians"]);
   });
 
+  it("every region has a game-estimate population and a cohesion tier", () => {
+    let total = 0;
+    for (const r of data.regions) {
+      expect(Number.isInteger(r.population)).toBe(true);
+      expect(r.population).toBeGreaterThan(0);
+      expect(r.population % 5000).toBe(0);
+      expect(["low", "medium", "high"]).toContain(r.cohesion);
+      total += r.population;
+    }
+    expect(total).toBe(650000);
+    const byId = new Map(data.regions.map((r) => [r.id, r]));
+    expect(byId.get("kursa")).toMatchObject({ population: 45000, cohesion: "high" });
+    expect(byId.get("aukstaitija")).toMatchObject({ population: 150000, cohesion: "low" });
+    expect(byId.get("livzeme")).toMatchObject({ population: 20000, cohesion: "medium" });
+  });
+
   it("has neighbor geometry and the full label set inside bounds", () => {
     expect(data.neighbors.length).toBeGreaterThanOrEqual(3);
     for (const n of data.neighbors) expect(n.path.startsWith("M")).toBe(true);

@@ -1,7 +1,7 @@
 import rawData from "./data/map.json";
 import type { MapData } from "./types";
 import { renderMap } from "./map-render";
-import { createPanel, createTooltip } from "./panel";
+import { createPanel, createTooltip, tooltipText } from "./panel";
 import { attachInteraction } from "./interaction";
 import "./style.css";
 
@@ -14,7 +14,7 @@ const panel = createPanel(app, () => interaction.deselect(), data.peoples);
 
 const interaction = attachInteraction(svg, regionPaths, data, {
   onHover(region, clientX, clientY) {
-    if (region) tooltip.show(region.name, clientX, clientY);
+    if (region) tooltip.show(tooltipText(region), clientX, clientY);
     else tooltip.hide();
   },
   onSelect(region) {
