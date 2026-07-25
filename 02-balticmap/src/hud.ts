@@ -40,6 +40,10 @@ function eventText(e: GameEvent): string {
       return you
         ? "You reshuffled your discard"
         : `Player ${e.playerId} reshuffled their discard`;
+    // "subjugated" | "released" | "incorporated" | "game-over" activity log
+    // copy is out of scope for this change; render nothing for now.
+    default:
+      return "";
   }
 }
 

@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, pickFaction, beginTurn, playCard, endTurn, aiTurn,
-  isHumanTurn, type GameState,
+  isHumanTurn, overlordsOf, type GameState,
 } from "../src/game";
 import { DECK_SIZE, type Rng } from "../src/cards";
+import { getRel, bumpMight } from "../src/relations";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -246,5 +247,99 @@ describe("event log", () => {
     playCard(g, 0);
     endTurn(g, seededRng(5));
     expect(g.log).toHaveLength(len);
+  });
+});
+
+describe("targeted card play", () => {
+  const LINE_ADJ = {
+    alpha: ["beta"],
+    beta: ["alpha", "gamma"],
+    gamma: ["beta", "delta"],
+    delta: ["gamma"],
+  };
+
+  function lineState(): GameState {
+    return pickFaction(
+      startGame(newGame(FACTIONS, LINE_ADJ)), "beta", seededRng(1),
+    );
+  }
+
+  it("raid bumps might and subjugates on a positive lead", () => {
+    const g = withHand(lineState(), 0, ["raid"]);
+    const after = playCard(g, 0, "alpha");
+    expect(getRel(after.relations, "beta", "alpha").might).toBe(1);
+    expect(overlordsOf(after).get("alpha")).toBe("beta");
+    expect(after.log.at(-2)).toMatchObject({
+      type: "play", cardId: "raid", targetFactionId: "alpha",
+    });
+    expect(after.log.at(-1)).toMatchObject({
+      type: "subjugated", targetFactionId: "alpha", overlordFactionId: "beta",
+    });
+  });
+
+  it("shrewd marriage bumps status the same way", () => {
+    const g = withHand(lineState(), 0, ["shrewd-marriage"]);
+    const after = playCard(g, 0, "gamma");
+    expect(getRel(after.relations, "beta", "gamma").status).toBe(1);
+    expect(overlordsOf(after).get("gamma")).toBe("beta");
+  });
+
+  it("rejects a targeted card without a target or out of reach", () => {
+    const g = withHand(lineState(), 0, ["raid"]);
+    expect(playCard(g, 0)).toBe(g);
+    expect(playCard(g, 0, "delta")).toBe(g); // not adjacent to beta's realm
+    expect(playCard(g, 0, "beta")).toBe(g); // never self
+  });
+
+  it("incorporate annexes a vassal permanently, with a log entry", () => {
+    let g = lineState();
+    g = { ...g, relations: bumpMight(g.relations, "beta", "alpha") };
+    g = withHand(g, 0, ["incorporate"]);
+    const after = playCard(g, 0, "alpha");
+    expect(after.incorporated).toEqual({ alpha: "beta" });
+    expect(overlordsOf(after).has("alpha")).toBe(false);
+    const types = after.log.map((e) => e.type);
+    expect(types).toContain("incorporated");
+    expect(types.filter((t) => t === "released")).toHaveLength(0);
+  });
+
+  it("incorporate rejects non-vassals", () => {
+    const g = withHand(lineState(), 0, ["incorporate"]);
+    expect(playCard(g, 0, "alpha")).toBe(g);
+  });
+
+  it("poaching logs a subjugated event with the new overlord", () => {
+    let g = lineState();
+    // gamma starts as alpha's vassal (relations can be seeded directly;
+    // adjacency only constrains card play, not stored numbers)
+    g = { ...g, relations: bumpMight(g.relations, "alpha", "gamma") };
+    g = withHand(g, 0, ["raid"]);
+    let after = playCard(g, 0, "gamma"); // beta 1 vs alpha 1: alpha keeps (order)
+    expect(overlordsOf(after).get("gamma")).toBe("alpha");
+    after = { ...after, playedThisTurn: false };
+    after = withHand(after, 0, ["raid"]);
+    after = playCard(after, 0, "gamma"); // beta lead 2 beats alpha lead 1
+    expect(overlordsOf(after).get("gamma")).toBe("beta");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "subjugated", targetFactionId: "gamma", overlordFactionId: "beta",
+    });
+  });
+
+  it("subjugating the human ends the game", () => {
+    let g = lineState();
+    g = { ...g, current: 2 }; // player 3 = gamma
+    g = withHand(g, 2, ["raid"]);
+    const after = playCard(g, 0, "beta");
+    expect(after.phase).toBe("game-over");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "game-over", targetFactionId: "beta", overlordFactionId: "gamma",
+    });
+  });
+
+  it("newGame without adjacency connects everyone (test default)", () => {
+    const g = newGame(FACTIONS);
+    expect(g.adjacency["alpha"].sort()).toEqual(["beta", "delta", "gamma"]);
+    expect(g.relations).toEqual({});
+    expect(g.incorporated).toEqual({});
   });
 });

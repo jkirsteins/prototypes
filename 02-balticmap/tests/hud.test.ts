@@ -122,7 +122,12 @@ describe("createHud", () => {
 describe("visual piles", () => {
   it("renders layered card backs scaled to the count, dashed when empty", () => {
     const { container, hud } = setup();
-    const g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    // force a non-targeted card so playCard(g, 0) below succeeds regardless
+    // of what the seeded shuffle happened to deal
+    const g = withHand(
+      pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0,
+      ["grow-crops"],
+    );
     hud.update(g); // deck 19, discard 0
     expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(4);
     expect(container.querySelectorAll(".pile-discard .card-back")).toHaveLength(0);
