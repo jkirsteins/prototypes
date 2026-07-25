@@ -49,8 +49,9 @@ export function leadOf(rel: Relations, a: string, b: string): number {
 }
 
 /** Greedy descending-lead overlord assignment. Biggest lead wins contested
- *  targets, overlords are always free factions, and a faction that becomes
- *  subjugated releases its own vassals back into the pool. */
+ *  targets. Overlords are always free factions (never incorporated or vassal
+ *  to another). A faction that becomes subjugated releases its vassals back
+ *  into the pool, ensuring chains never form. */
 export function computeOverlords(
   rel: Relations,
   incorporated: Incorporated,
@@ -77,6 +78,9 @@ export function computeOverlords(
     if (overlords.has(e.target)) continue; // already claimed by a bigger lead
     if (overlords.has(e.actor)) continue; // the subjugated hold no vassals
     overlords.set(e.target, e.actor);
+    for (const [vassal, lord] of overlords) {
+      if (lord === e.target) overlords.delete(vassal);
+    }
   }
   return overlords;
 }

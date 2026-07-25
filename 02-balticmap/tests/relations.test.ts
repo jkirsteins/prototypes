@@ -71,17 +71,17 @@ describe("computeOverlords", () => {
     rel = bumpMight(rel, "alpha", "beta");
     rel = bumpMight(rel, "gamma", "alpha");
     const o = computeOverlords(rel, {}, ORDER);
-    expect(o.get("beta")).toBe("alpha");
+    // alpha claimed beta first, then got subjugated itself: beta released
     expect(o.get("alpha")).toBe("gamma");
-    // alpha kept beta because gamma's smaller lead was processed after -
-    // now flip the magnitudes so the release path runs:
+    expect(o.has("beta")).toBe(false);
+    // same outcome when the subjugating edge is processed first
     let rel2: Relations = {};
     rel2 = bumpMight(rel2, "alpha", "beta"); // alpha -> beta lead 1
     rel2 = bumpMight(rel2, "gamma", "alpha");
     rel2 = bumpMight(rel2, "gamma", "alpha"); // gamma -> alpha lead 2, first
     const o2 = computeOverlords(rel2, {}, ORDER);
     expect(o2.get("alpha")).toBe("gamma");
-    expect(o2.has("beta")).toBe(false); // alpha is subjugated, cannot keep beta
+    expect(o2.has("beta")).toBe(false);
   });
 
   it("mutual leads: the larger lead wins, the loser gets nothing", () => {
