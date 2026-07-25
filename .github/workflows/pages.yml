@@ -1,0 +1,55 @@
+name: Deploy prototypes to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
+      - name: Build escapecastle
+        working-directory: 01-escapecastle
+        run: |
+          npm ci
+          npm run build
+      - name: Build balticmap
+        working-directory: 02-balticmap
+        run: |
+          npm ci
+          npm run build
+      - name: Assemble site
+        run: |
+          mkdir -p _site/01 _site/02
+          cp -R 01-escapecastle/dist/. _site/01/
+          cp -R 02-balticmap/dist/. _site/02/
+          cp .github/pages-index.html _site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
