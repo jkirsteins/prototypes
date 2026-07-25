@@ -94,8 +94,10 @@ runtime app has zero npm dependencies.
     `map.json`),
   - selection state transitions (hover/select/deselect),
   - viewBox math for pan/zoom (clamping, wheel zoom around cursor).
-- Visual behavior (rendering, palette, panel) verified manually in the
-  browser.
+- Visual behavior (rendering, palette, hover highlight, panel, pan/zoom)
+  verified end-to-end in Chrome: drive the running app with browser
+  automation (navigate, hover, click, screenshot) and confirm each
+  interaction visually.
 
 ## Out of scope
 
