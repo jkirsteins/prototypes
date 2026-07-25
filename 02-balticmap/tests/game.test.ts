@@ -168,3 +168,64 @@ describe("aiTurn", () => {
     }
   });
 });
+
+describe("event log", () => {
+  it("starts empty and records the opening draw", () => {
+    expect(newGame(FACTIONS).log).toEqual([]);
+    const g = playingState();
+    expect(g.log).toEqual([
+      { turn: 1, playerId: 1, type: "draw", cardId: "grow-crops" },
+    ]);
+  });
+
+  it("records plays with the card id", () => {
+    const g = playCard(playingState(), 0);
+    expect(g.log.at(-1)).toEqual({
+      turn: 1, playerId: 1, type: "play", cardId: "grow-crops",
+    });
+  });
+
+  it("records AI draws on endTurn", () => {
+    const g = endTurn(playingState(), seededRng(3));
+    expect(g.log.at(-1)).toEqual({
+      turn: 1, playerId: 2, type: "draw", cardId: "grow-crops",
+    });
+  });
+
+  it("records a reshuffle before the draw when the deck is empty", () => {
+    let g = playingState();
+    const p0 = {
+      ...g.players[0],
+      deck: [] as string[],
+      hand: [] as string[],
+      discard: ["grow-crops", "grow-crops"],
+    };
+    g = { ...g, players: [p0, ...g.players.slice(1)] };
+    const after = beginTurn(g, seededRng(2));
+    expect(after.log.slice(-2)).toEqual([
+      { turn: 1, playerId: 1, type: "reshuffle" },
+      { turn: 1, playerId: 1, type: "draw", cardId: "grow-crops" },
+    ]);
+  });
+
+  it("records no event when deck and discard are both empty", () => {
+    let g = playingState();
+    const p0 = {
+      ...g.players[0],
+      deck: [] as string[],
+      hand: [] as string[],
+      discard: [] as string[],
+    };
+    g = { ...g, players: [p0, ...g.players.slice(1)] };
+    const before = g.log.length;
+    expect(beginTurn(g, seededRng(2)).log).toHaveLength(before);
+  });
+
+  it("does not mutate the input state's log", () => {
+    const g = playingState();
+    const len = g.log.length;
+    playCard(g, 0);
+    endTurn(g, seededRng(5));
+    expect(g.log).toHaveLength(len);
+  });
+});

@@ -1,5 +1,14 @@
 import { buildDeck, shuffle, type Rng } from "./cards";
 
+export type GameEventType = "draw" | "play" | "reshuffle";
+
+export interface GameEvent {
+  turn: number;
+  playerId: number; // 1 = human
+  type: GameEventType;
+  cardId?: string; // present for draw and play
+}
+
 export type GamePhase = "main-menu" | "pick-faction" | "playing";
 
 export interface PlayerState {
@@ -17,6 +26,7 @@ export interface GameState {
   current: number; // index into players
   playedThisTurn: boolean;
   factionIds: string[];
+  log: GameEvent[];
 }
 
 export function newGame(factionIds: string[]): GameState {
@@ -27,6 +37,7 @@ export function newGame(factionIds: string[]): GameState {
     current: 0,
     playedThisTurn: false,
     factionIds,
+    log: [],
   };
 }
 
@@ -63,12 +74,15 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   if (state.players.length === 0) return state;
   const p = state.players[state.current];
   let { deck, discard } = p;
+  const log = [...state.log];
   if (deck.length === 0 && discard.length > 0) {
     deck = shuffle(discard, rng);
     discard = [];
+    log.push({ turn: state.turn, playerId: p.id, type: "reshuffle" });
   }
   let hand = p.hand;
   if (deck.length > 0) {
+    log.push({ turn: state.turn, playerId: p.id, type: "draw", cardId: deck[0] });
     hand = [...hand, deck[0]];
     deck = deck.slice(1);
   }
@@ -76,7 +90,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   const players = state.players.map((pl, i) =>
     i === state.current ? updated : pl,
   );
-  return { ...state, players, playedThisTurn: false };
+  return { ...state, players, log, playedThisTurn: false };
 }
 
 export function playCard(state: GameState, cardIndex: number): GameState {
@@ -91,7 +105,11 @@ export function playCard(state: GameState, cardIndex: number): GameState {
   const players = state.players.map((pl, i) =>
     i === state.current ? updated : pl,
   );
-  return { ...state, players, playedThisTurn: true };
+  const log = [
+    ...state.log,
+    { turn: state.turn, playerId: p.id, type: "play" as const, cardId: p.hand[cardIndex] },
+  ];
+  return { ...state, players, log, playedThisTurn: true };
 }
 
 export function endTurn(state: GameState, rng: Rng): GameState {
