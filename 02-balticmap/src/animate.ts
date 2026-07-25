@@ -10,7 +10,7 @@ export interface FlightStage {
   holdMs?: number; // pause after arriving, before the next stage
 }
 
-/** Spawns an absolutely positioned card element and flies it through the
+/** Spawns a fixed-position card element and flies it through the
  *  given stages with CSS transforms, then removes it. Timing is driven by
  *  setTimeout, not transitionend: happy-dom never fires transition events,
  *  and a dropped event must not leak the element. */

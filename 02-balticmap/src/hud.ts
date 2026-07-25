@@ -107,6 +107,8 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
   logToggle.addEventListener("click", () => {
     const collapsed = logPanel.classList.toggle("collapsed");
     logToggle.textContent = collapsed ? "<" : ">";
+    // entries have display:none while collapsed, so scrolls no-op until now
+    if (!collapsed) logEntries.scrollTop = logEntries.scrollHeight;
   });
   logHeader.append(logTitle, logToggle);
   const logEntries = document.createElement("div");
