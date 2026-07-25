@@ -69,13 +69,12 @@ describe("renderMap", () => {
   it("renders settlement dots and labels", () => {
     const container = document.createElement("div");
     const { svg, settlementDots } = renderMap(data, container);
-    expect(settlementDots.size).toBe(data.settlements.length);
-    expect(svg.querySelectorAll("circle.settlement").length).toBe(
-      data.settlements.length,
-    );
-    expect(svg.querySelectorAll("text.settlement-label").length).toBe(
-      data.settlements.length,
-    );
+    const unlocked = data.settlements.filter((s) => s.unlocked);
+    expect(unlocked.length).toBeLessThan(data.settlements.length);
+    expect(settlementDots.size).toBe(unlocked.length);
+    expect(svg.querySelectorAll("circle.settlement").length).toBe(unlocked.length);
+    expect(svg.querySelectorAll("text.settlement-label").length).toBe(unlocked.length);
+    expect(settlementDots.has("ikskile")).toBe(false);
     const daugmale = settlementDots.get("daugmale")!;
     expect(daugmale.getAttribute("data-settlement-id")).toBe("daugmale");
     const s = data.settlements.find((x) => x.id === "daugmale")!;
