@@ -470,6 +470,46 @@ svg.map.dragging {
   text-shadow: 0 1px 2px rgba(253, 250, 244, 0.8);
 }
 
+.flying-card {
+  position: fixed;
+  z-index: 30;
+  pointer-events: none;
+  border: 1px solid #7a6a55;
+  border-radius: 8px;
+  background: #fdfaf4;
+  color: #3f3428;
+  font-size: 13px;
+  padding: 8px 4px;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transition-property: transform;
+  transition-timing-function: ease;
+}
+
+.flying-card.back {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(122, 106, 85, 0.18) 0 4px,
+      transparent 4px 8px
+    ),
+    #f1e9da;
+}
+
+.card-incoming {
+  visibility: hidden;
+}
+
+.pile-deck.pulse .pile-stack {
+  animation: pile-pulse 400ms ease;
+}
+
+@keyframes pile-pulse {
+  50% {
+    transform: scale(1.12);
+  }
+}
+
 /* Must stay last: wins the cascade tie against any earlier
    single-class rule (e.g. .menu-overlay, .status-bar) that also
    sets display, so toggling "hidden" always actually hides. */

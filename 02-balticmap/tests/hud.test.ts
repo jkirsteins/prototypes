@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import { createHud, type HudCallbacks } from "../src/hud";
-import { newGame, startGame, pickFaction, endTurn, playCard, aiTurn } from "../src/game";
+import { newGame, startGame, pickFaction, endTurn, playCard, aiTurn, beginTurn } from "../src/game";
 import type { Rng } from "../src/cards";
 
 function seededRng(seed: number): Rng {
@@ -194,5 +194,78 @@ describe("activity log", () => {
     expect(panel.classList.contains("collapsed")).toBe(true);
     q(container, ".activity-log-toggle").click();
     expect(panel.classList.contains("collapsed")).toBe(false);
+  });
+});
+
+describe("card animations", () => {
+  function playing() {
+    return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+  }
+
+  it("flies a card back from the deck on your draw, exactly once", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update(g); // log contains your opening draw
+    expect(container.querySelectorAll(".flying-card.back")).toHaveLength(1);
+    hud.update(g); // same state again: no duplicate animation
+    expect(container.querySelectorAll(".flying-card.back")).toHaveLength(1);
+    vi.runAllTimers();
+    expect(container.querySelectorAll(".flying-card")).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  it("hides the newest hand card while the draw flight is in progress", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    hud.update(playing());
+    const card = q(container, ".card");
+    expect(card.classList.contains("card-incoming")).toBe(true);
+    vi.runAllTimers();
+    expect(card.classList.contains("card-incoming")).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("flies the played card face-up on your play", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    let g = playing();
+    hud.update(g);
+    vi.runAllTimers();
+    g = playCard(g, 0);
+    hud.update(g);
+    const flying = container.querySelectorAll(".flying-card");
+    expect(flying).toHaveLength(1);
+    expect(flying[0].classList.contains("back")).toBe(false);
+    expect(flying[0].textContent).toBe("Grow crops");
+    vi.runAllTimers();
+    expect(container.querySelectorAll(".flying-card")).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  it("does not animate AI actions, but pulses the deck on your reshuffle", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    let g = playing();
+    g = playCard(g, 0);
+    hud.update(g); // consumes your draw + play events
+    vi.runAllTimers();
+    g = endTurn(g, seededRng(2)); // AI draw event
+    hud.update(g);
+    expect(container.querySelectorAll(".flying-card")).toHaveLength(0);
+
+    // force a human reshuffle: empty deck, cards in discard
+    const p0 = {
+      ...g.players[0],
+      deck: [] as string[],
+      discard: ["grow-crops", "grow-crops"],
+    };
+    let g2 = { ...g, players: [p0, ...g.players.slice(1)], current: 0 };
+    g2 = beginTurn(g2, seededRng(3));
+    hud.update(g2);
+    expect(q(container, ".pile-deck").classList.contains("pulse")).toBe(true);
+    vi.runAllTimers();
+    expect(q(container, ".pile-deck").classList.contains("pulse")).toBe(false);
+    vi.useRealTimers();
   });
 });

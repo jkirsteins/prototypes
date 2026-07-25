@@ -1,5 +1,6 @@
 import { CARDS } from "./cards";
 import { isHumanTurn, type GameEvent, type GameState } from "./game";
+import { flyCard } from "./animate";
 
 export interface HudCallbacks {
   onNewGame(): void;
@@ -13,6 +14,15 @@ export interface Hud {
 
 const FAN_ANGLE_DEG = 5;
 const FAN_DROP_PX = 6;
+
+const CARD_W = 88; // matches .card in style.css
+const CARD_H = 126;
+const DRAW_MS = 350;
+const PLAY_TO_CENTER_MS = 350;
+const PLAY_HOLD_MS = 700;
+const PLAY_TO_DISCARD_MS = 350;
+const PLAY_CENTER_SCALE = 1.6;
+const RESHUFFLE_PULSE_MS = 450;
 
 const cardName = (id: string | undefined): string =>
   (id && CARDS[id]?.name) ?? id ?? "";
@@ -105,6 +115,7 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
 
   container.append(menu, status, deckPile.root, discardPile.root, hand, logPanel);
 
+  let pendingPlayRect: DOMRect | null = null;
   let renderedEvents = 0;
   let lastRenderedTurn = 0;
 
@@ -165,9 +176,73 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
         `rotate(${offset * FAN_ANGLE_DEG}deg) ` +
         `translateY(${Math.abs(offset) * FAN_DROP_PX}px)`;
       card.disabled = !canPlay;
-      if (canPlay) card.addEventListener("click", () => cb.onPlayCard(i));
+      if (canPlay)
+        card.addEventListener("click", () => {
+          pendingPlayRect = card.getBoundingClientRect();
+          cb.onPlayCard(i);
+        });
       hand.appendChild(card);
     });
+  }
+
+  const center = (r: DOMRect): { x: number; y: number } => ({
+    x: r.x + r.width / 2,
+    y: r.y + r.height / 2,
+  });
+
+  function animateDraw(): void {
+    const from = deckPile.root.getBoundingClientRect();
+    flyCard(
+      container,
+      "back",
+      "",
+      { x: from.x, y: from.y, width: CARD_W, height: CARD_H },
+      [{ to: center(hand.getBoundingClientRect()), scale: 1, durationMs: DRAW_MS }],
+    );
+    const newest = hand.lastElementChild;
+    if (newest) {
+      newest.classList.add("card-incoming");
+      setTimeout(() => newest.classList.remove("card-incoming"), DRAW_MS + 40);
+    }
+  }
+
+  function animatePlay(cardId: string): void {
+    const from = pendingPlayRect ?? hand.getBoundingClientRect();
+    pendingPlayRect = null;
+    flyCard(
+      container,
+      "",
+      cardName(cardId),
+      { x: from.x, y: from.y, width: CARD_W, height: CARD_H },
+      [
+        {
+          to: center(container.getBoundingClientRect()),
+          scale: PLAY_CENTER_SCALE,
+          durationMs: PLAY_TO_CENTER_MS,
+          holdMs: PLAY_HOLD_MS,
+        },
+        {
+          to: center(discardPile.root.getBoundingClientRect()),
+          scale: 0.6,
+          durationMs: PLAY_TO_DISCARD_MS,
+        },
+      ],
+    );
+  }
+
+  function pulseDeck(): void {
+    deckPile.root.classList.add("pulse");
+    setTimeout(() => deckPile.root.classList.remove("pulse"), RESHUFFLE_PULSE_MS);
+  }
+
+  /** Human-only: AI actions surface as log entries, nothing moves on screen. */
+  function animateEvents(fresh: GameEvent[]): void {
+    for (const e of fresh) {
+      if (e.playerId !== 1) continue;
+      if (e.type === "draw") animateDraw();
+      else if (e.type === "play") animatePlay(e.cardId ?? "");
+      else pulseDeck();
+    }
   }
 
   return {
@@ -195,7 +270,7 @@ export function createHud(container: HTMLElement, cb: HudCallbacks): Hud {
         renderPile(deckPile, human.deck.length);
         renderPile(discardPile, human.discard.length);
         renderHand(state);
-        renderLog(state);
+        animateEvents(renderLog(state));
       }
     },
   };
