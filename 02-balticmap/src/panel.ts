@@ -37,6 +37,7 @@ export function createPanel(
   onClose: () => void,
   peoples: People[],
   factions: Faction[],
+  settlements: Settlement[],
 ): Panel {
   const root = document.createElement("aside");
   root.className = "panel hidden";
@@ -57,6 +58,8 @@ export function createPanel(
   population.className = "panel-population";
   const cohesion = document.createElement("p");
   cohesion.className = "panel-cohesion";
+  const settlementsLine = document.createElement("p");
+  settlementsLine.className = "panel-settlements";
   const flavor = document.createElement("p");
   flavor.className = "panel-flavor";
   const places = document.createElement("p");
@@ -64,7 +67,7 @@ export function createPanel(
 
   const factionById = new Map(factions.map((f) => [f.id, f]));
 
-  root.append(close, name, factionLine, peoplesLine, population, cohesion, flavor, places);
+  root.append(close, name, factionLine, peoplesLine, population, cohesion, settlementsLine, flavor, places);
   container.appendChild(root);
 
   return {
@@ -77,6 +80,10 @@ export function createPanel(
       peoplesLine.textContent = formatPeoples(region.peoples, peoples);
       population.textContent = `Population: ${formatPopulation(region.population)}`;
       cohesion.textContent = `Cohesion: ${region.cohesion}`;
+      const home = settlements.find((s) => s.land === region.id && s.unlocked);
+      settlementsLine.textContent = home
+        ? `Settlements: ${home.name} (1/${region.maxSettlements})`
+        : "";
       flavor.textContent = region.flavor;
       places.textContent = `Notable places: ${region.places.join(", ")}`;
       root.classList.remove("hidden");

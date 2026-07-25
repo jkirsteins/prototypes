@@ -11,7 +11,7 @@ const app = document.getElementById("app")!;
 const { svg, regionPaths, settlementDots } = renderMap(data, app);
 const tooltip = createTooltip(app);
 const factionById = new Map(data.factions.map((f) => [f.id, f]));
-const panel = createPanel(app, () => interaction.deselect(), data.peoples, data.factions);
+const panel = createPanel(app, () => interaction.deselect(), data.peoples, data.factions, data.settlements);
 
 const interaction = attachInteraction(svg, regionPaths, settlementDots, data, {
   onHover(region, clientX, clientY) {
