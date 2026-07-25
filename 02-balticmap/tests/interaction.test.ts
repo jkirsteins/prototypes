@@ -7,7 +7,7 @@ import raw from "../src/data/map.json";
 
 const data = raw as MapData;
 
-function setup() {
+function setup(interceptClick?: (id: string | null) => boolean) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const { svg, regionPaths, settlementDots } = renderMap(data, container);
@@ -18,6 +18,7 @@ function setup() {
     onHover,
     onSelect,
     onHoverSettlement,
+    interceptClick,
   });
   return { svg, regionPaths, settlementDots, onHover, onSelect, onHoverSettlement, handle };
 }
@@ -111,5 +112,26 @@ describe("attachInteraction", () => {
     expect(onSelect).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: "livzeme" }),
     );
+  });
+
+  it("interceptClick returning true consumes the click: no selection", () => {
+    const intercept = vi.fn(() => true);
+    const { regionPaths, onSelect } = setup(intercept);
+    const el = regionPaths.get("kursa")!;
+    el.dispatchEvent(mouse("pointerdown", { clientX: 10, clientY: 10 }));
+    el.dispatchEvent(mouse("pointerup", { clientX: 10, clientY: 10 }));
+    expect(intercept).toHaveBeenCalledWith("kursa");
+    expect(el.classList.contains("selected")).toBe(false);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("interceptClick returning false lets selection proceed", () => {
+    const intercept = vi.fn(() => false);
+    const { regionPaths, onSelect } = setup(intercept);
+    const el = regionPaths.get("kursa")!;
+    el.dispatchEvent(mouse("pointerdown", { clientX: 10, clientY: 10 }));
+    el.dispatchEvent(mouse("pointerup", { clientX: 10, clientY: 10 }));
+    expect(el.classList.contains("selected")).toBe(true);
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ id: "kursa" }));
   });
 });

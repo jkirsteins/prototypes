@@ -217,10 +217,6 @@ svg.map.dragging {
   pointer-events: none;
 }
 
-.hidden {
-  display: none;
-}
-
 .menu-overlay {
   position: absolute;
   inset: 0;
@@ -337,4 +333,15 @@ svg.map.dragging {
 .card:disabled {
   cursor: default;
   filter: saturate(0.6) brightness(0.96);
+}
+
+.region.dimmed {
+  opacity: 0.45;
+}
+
+/* Must stay last: wins the cascade tie against any earlier
+   single-class rule (e.g. .menu-overlay, .status-bar) that also
+   sets display, so toggling "hidden" always actually hides. */
+.hidden {
+  display: none;
 }

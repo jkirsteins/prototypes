@@ -10,6 +10,9 @@ export interface InteractionCallbacks {
     clientX: number,
     clientY: number,
   ): void;
+  /** Return true to consume the click (e.g. during faction picking):
+   *  selection state is left untouched and onSelect does not fire. */
+  interceptClick?(regionId: string | null): boolean;
 }
 
 export interface InteractionHandle {
@@ -127,7 +130,9 @@ export function attachInteraction(
     if (wasDrag) return;
     if ((e.target as Element).closest?.("[data-settlement-id]")) return;
     const target = (e.target as Element).closest?.("[data-id]") ?? null;
-    state = withClick(state, target?.getAttribute("data-id") ?? null);
+    const id = target?.getAttribute("data-id") ?? null;
+    if (cb.interceptClick?.(id)) return;
+    state = withClick(state, id);
     applySelection();
   });
 
