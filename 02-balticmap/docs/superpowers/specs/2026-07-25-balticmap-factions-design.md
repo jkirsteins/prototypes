@@ -1,4 +1,4 @@
-# Baltic Map 1184 - Factions and 21-Land Roster - Design
+# Baltic Map 1184 - Factions and 20-Land Roster - Design
 
 Date: 2026-07-25
 Status: Approved pending user review
@@ -10,12 +10,12 @@ Add a political layer on top of ethnicity: every polygon is the territory of
 exactly one faction, drawn from the polygon's primary ethnicity. Polygon fill
 color becomes per-faction, with faction colors chosen as shades within each
 ethnicity's hue family (the classic historical-atlas convention), so ethnic
-geography stays readable at a glance. The map grows from 15 to 21 lands so
+geography stays readable at a glance. The map grows from 15 to 20 lands so
 that historically conspicuous actors (Saaremaa, Ugandi, Sakala, Harjumaa,
 Selonians, Lietuva) do not disappear inside merged polygons. Treat each
 polygon as the territory of a regional coalition, not a unified state.
 
-## The 21-land roster
+## The 20-land roster
 
 Population stays anchored at 650,000 total (180k Estonian lands, 175k
 modern-Latvia area, 295k modern-Lithuania area), all multiples of 5,000.
@@ -141,7 +141,7 @@ Each ethnicity keeps its hue; its factions get distinct shades of it.
   lowercase with spaces, in the same muted style as the peoples line.
 - Tooltip line 2 becomes `Curonian Confederacy - ~45k - high cohesion`.
 - Map labels: ethnic-group labels stay (hue families keep them truthful);
-  positions re-tuned for the 21 polygons; SELONIANS becomes a normal people
+  positions re-tuned for the 20 polygons; SELONIANS becomes a normal people
   label over its own polygon.
 - Every split or absorbing land gets new or edited flavor text mentioning
   its absorbed smaller lands (see roster section).
@@ -158,7 +158,7 @@ Prepare-script hard checks (throw on violation):
 
 Tests updated/added:
 
-- data test: 21 regions; the checks above mirrored as assertions.
+- data test: 20 regions; the checks above mirrored as assertions.
 - panel test: faction line renders name plus spaced lowercase type.
 - tooltip test: line 2 is `<faction> - ~<pop>k - <cohesion> cohesion`.
 - Full suite and build green; e2e verify in Chrome before claiming done
