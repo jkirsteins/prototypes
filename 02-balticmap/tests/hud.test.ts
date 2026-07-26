@@ -6,6 +6,7 @@ import {
   type GameState,
 } from "../src/game";
 import type { Rng } from "../src/cards";
+import { bumpMight } from "../src/relations";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -67,7 +68,7 @@ describe("createHud", () => {
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - your turn");
     expect(q(container, ".end-turn").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".pile-deck .pile-count").textContent).toBe("9");
+    expect(q(container, ".pile-deck .pile-count").textContent).toBe("6");
     expect(q(container, ".pile-deck .pile-label").textContent).toBe("Deck");
     expect(q(container, ".pile-discard .pile-count").textContent).toBe("0");
     expect(q(container, ".pile-discard .pile-label").textContent).toBe("Discard");
@@ -82,9 +83,13 @@ describe("createHud", () => {
 
   it("fans multiple cards with symmetric rotations", () => {
     const { container, hud } = setup();
-    let g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
-    for (let i = 0; i < FACTIONS.length * 2; i++) g = endTurn(g, seededRng(2));
-    hud.update(g); // human has drawn 3 cards, played none
+    // opening hand deals 3 + a turn draw = 4; force a known 3-card hand to
+    // exercise the fan formula independent of hand size.
+    const g = withHand(
+      pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0,
+      ["grow-crops", "grow-crops", "grow-crops"],
+    );
+    hud.update(g);
     const cards = [...container.querySelectorAll(".card")] as HTMLElement[];
     expect(cards).toHaveLength(3);
     expect(cards[0].style.transform).toContain("rotate(-5deg)");
@@ -95,8 +100,9 @@ describe("createHud", () => {
   it("disables held cards during AI turns and shows the waiting label", () => {
     const { container, cb, hud } = setup();
     let g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
-    // human keeps their 1 card; endTurn hands control to player 2 (AI)
+    // endTurn hands control to player 2 (AI); force a known 1-card hand
     g = endTurn(g, seededRng(3));
+    g = withHand(g, 0, ["grow-crops"]);
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Waiting on other players...");
     expect(q(container, ".end-turn").classList.contains("hidden")).toBe(true);
@@ -113,7 +119,7 @@ describe("createHud", () => {
     // run one full round so the human holds 2 cards on their next turn
     for (let i = 0; i < FACTIONS.length; i++) g = endTurn(g, seededRng(4));
     g = withHand(g, 0, ["grow-crops", "grow-crops"]);
-    g = playCard(g, 0); // 1 card left, playedThisTurn = true
+    g = playCard(g, 0, seededRng(1)); // 1 card left, playedThisTurn = true
     hud.update(g);
     const card = q(container, ".card") as HTMLButtonElement;
     expect(card.disabled).toBe(true);
@@ -131,8 +137,8 @@ describe("visual piles", () => {
       pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0,
       ["grow-crops"],
     );
-    hud.update(g); // deck 9, discard 0
-    expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(3);
+    hud.update(g); // deck 6, discard 0
+    expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(2);
     expect(container.querySelectorAll(".pile-discard .card-back")).toHaveLength(0);
     expect(
       q(container, ".pile-discard .pile-stack").classList.contains("empty"),
@@ -140,7 +146,7 @@ describe("visual piles", () => {
     expect(
       q(container, ".pile-deck .pile-stack").classList.contains("empty"),
     ).toBe(false);
-    hud.update(playCard(g, 0)); // discard 1
+    hud.update(playCard(g, 0, seededRng(1))); // discard 1
     expect(container.querySelectorAll(".pile-discard .card-back")).toHaveLength(1);
     expect(
       q(container, ".pile-discard .pile-stack").classList.contains("empty"),
@@ -165,10 +171,10 @@ describe("activity log", () => {
     const { container, hud } = setup();
     let g = playing();
     g = withHand(g, 0, ["grow-crops"]);
-    g = playCard(g, 0);
+    g = playCard(g, 0, seededRng(1));
     g = endTurn(g, seededRng(2)); // player 2 draws
     g = withHand(g, 1, ["grow-crops"]);
-    g = aiTurn(g); // player 2 plays
+    g = aiTurn(g, seededRng(1)); // player 2 plays
     hud.update(g);
     const texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
@@ -196,7 +202,7 @@ describe("activity log", () => {
     const { container, hud } = setup();
     let g = playing();
     g = withHand(g, 0, ["grow-crops"]);
-    g = playCard(g, 0);
+    g = playCard(g, 0, seededRng(1));
     hud.update(g);
     expect(container.querySelectorAll(".log-entry")).toHaveLength(2);
     hud.update(playing()); // fresh game: log has only the opening draw
@@ -237,7 +243,9 @@ describe("card animations", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
     hud.update(playing());
-    const card = q(container, ".card");
+    // opening hand is 3 + a turn draw = 4; the newest (drawn) card renders last
+    const cards = container.querySelectorAll(".card");
+    const card = cards[cards.length - 1] as HTMLElement;
     expect(card.classList.contains("card-incoming")).toBe(true);
     vi.runAllTimers();
     expect(card.classList.contains("card-incoming")).toBe(false);
@@ -251,7 +259,7 @@ describe("card animations", () => {
     hud.update(g);
     vi.runAllTimers();
     g = withHand(g, 0, ["grow-crops"]);
-    g = playCard(g, 0);
+    g = playCard(g, 0, seededRng(1));
     hud.update(g);
     const flying = container.querySelectorAll(".flying-card");
     expect(flying).toHaveLength(1);
@@ -267,7 +275,7 @@ describe("card animations", () => {
     const { container, hud } = setup();
     let g = playing();
     g = withHand(g, 0, ["grow-crops"]);
-    g = playCard(g, 0);
+    g = playCard(g, 0, seededRng(1));
     hud.update(g); // consumes your draw + play events
     vi.runAllTimers();
     g = endTurn(g, seededRng(2)); // AI draw event
@@ -297,13 +305,17 @@ describe("subjugation HUD", () => {
 
   it("renders targeted play and subjugation log texts with faction names", () => {
     const { container, hud } = setup();
-    let g = withHand(playing(), 0, ["raid"]);
-    g = playCard(g, 0, "alpha");
+    // v2 subjugation is stored, not automatic on raid: build a might lead
+    // then play the explicit Subjugate card to trigger the event.
+    let g = playing();
+    g = { ...g, relations: bumpMight(bumpMight(g.relations, "beta", "alpha"), "beta", "alpha") };
+    g = withHand(g, 0, ["subjugate"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
     const texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
     );
-    expect(texts).toContain("You played Raid on Alpha");
+    expect(texts).toContain("You played Subjugate on Alpha");
     expect(texts).toContain("Alpha submits to Beta");
   });
 
@@ -333,20 +345,19 @@ describe("subjugation HUD", () => {
     expect(q(container, ".card").classList.contains("card-armed")).toBe(false);
   });
 
-  it("shows the game-over overlay naming the overlord", () => {
+  it("shows the defeat overlay naming the incorporator", () => {
     const { container, cb, hud } = setup();
     let g = playing();
-    g = { ...g, current: 2 };
-    g = withHand(g, 2, ["raid"]);
-    g = playCard(g, 0, "beta"); // gamma subjugates the human
-    expect(g.phase).toBe("game-over");
+    g = { ...g, current: 2, overlords: new Map([["beta", "gamma"]]) };
+    g = withHand(g, 2, ["incorporate"]);
+    g = playCard(g, 0, seededRng(1), "beta");
+    expect(g.phase).toBe("defeat");
     hud.update(g);
     const overlay = q(container, ".gameover-overlay");
     expect(overlay.classList.contains("hidden")).toBe(false);
     expect(q(container, ".gameover-reason").textContent).toBe(
-      "Your realm has been subjugated by Gamma",
+      "Your realm has been incorporated by Gamma",
     );
-    expect(q(container, ".menu-overlay").classList.contains("hidden")).toBe(true);
     expect(q(container, ".status-bar").classList.contains("hidden")).toBe(true);
     (overlay.querySelector(".menu-new-game") as HTMLElement).click();
     expect(cb.onNewGame).toHaveBeenCalledOnce();

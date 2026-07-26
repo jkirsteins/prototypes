@@ -70,8 +70,18 @@ export function createHud(
         return `${factionName(e.targetFactionId)} breaks free`;
       case "incorporated":
         return `${factionName(e.targetFactionId)} is incorporated into ${factionName(e.overlordFactionId)}`;
-      case "game-over":
-        return `Your realm has been subjugated by ${factionName(e.overlordFactionId)}`;
+      case "discard":
+        return you
+          ? "You discarded a card"
+          : `Player ${e.playerId} discarded a card`;
+      case "reclaimed":
+        return `${factionName(e.targetFactionId)} reclaims independence from ${factionName(e.overlordFactionId)}`;
+      case "tribute":
+        return `${factionName(e.targetFactionId)} pays tribute to ${factionName(e.overlordFactionId)}`;
+      case "victory":
+        return "You rule the Baltic";
+      case "defeat":
+        return `Your realm has been incorporated by ${factionName(e.overlordFactionId)}`;
     }
   }
 
@@ -309,15 +319,15 @@ export function createHud(
       lastState = state;
       menu.classList.toggle("hidden", state.phase !== "main-menu");
       status.classList.toggle(
-        "hidden", state.phase === "main-menu" || state.phase === "game-over",
+        "hidden", state.phase === "main-menu" || state.phase === "defeat",
       );
       deckPile.root.classList.toggle("hidden", state.phase !== "playing");
       discardPile.root.classList.toggle("hidden", state.phase !== "playing");
       hand.classList.toggle("hidden", state.phase !== "playing");
       logPanel.classList.toggle(
-        "hidden", state.phase !== "playing" && state.phase !== "game-over",
+        "hidden", state.phase !== "playing" && state.phase !== "defeat",
       );
-      gameover.classList.toggle("hidden", state.phase !== "game-over");
+      gameover.classList.toggle("hidden", state.phase !== "defeat");
 
       renderStatus(state);
 
@@ -327,8 +337,8 @@ export function createHud(
         renderPile(discardPile, human.discard.length);
         renderHand(state);
         animateEvents(renderLog(state));
-      } else if (state.phase === "game-over") {
-        const e = [...state.log].reverse().find((ev) => ev.type === "game-over");
+      } else if (state.phase === "defeat") {
+        const e = [...state.log].reverse().find((ev) => ev.type === "defeat");
         goReason.textContent = e ? eventText(e) : "";
         renderLog(state); // final entries still appear in the log
       }

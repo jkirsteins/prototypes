@@ -33,7 +33,7 @@ let game: GameState = newGame(data.factions.map((f) => f.id), factionAdjacency);
 let armed: number | null = null; // hand index of the armed targeted card
 
 function inPlay(): boolean {
-  return game.phase === "playing" || game.phase === "game-over";
+  return game.phase === "playing" || game.phase === "defeat";
 }
 
 function relationsInfo(region: Region): string[] {
@@ -125,7 +125,7 @@ function runAiTurns(): void {
   if (game.phase !== "playing" || isHumanTurn(game)) return;
   setTimeout(() => {
     while (game.phase === "playing" && !isHumanTurn(game)) {
-      game = endTurn(aiTurn(game), rng);
+      game = endTurn(aiTurn(game, rng), rng);
     }
     refresh();
   }, 0);
@@ -158,7 +158,7 @@ const hud = createHud(
         return;
       }
       disarm();
-      game = playCard(game, index);
+      game = playCard(game, index, rng);
       refresh();
     },
     onEndTurn() {
@@ -218,7 +218,7 @@ const interaction = attachInteraction(svg, regionPaths, settlementDots, data, {
       const valid = faction !== undefined && armedTargets().includes(faction);
       disarm();
       if (valid) {
-        game = playCard(game, idx, faction);
+        game = playCard(game, idx, rng, faction);
         refresh();
       }
       return true;
