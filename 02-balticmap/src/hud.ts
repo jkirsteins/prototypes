@@ -308,7 +308,9 @@ export function createHud(
     update(state) {
       lastState = state;
       menu.classList.toggle("hidden", state.phase !== "main-menu");
-      status.classList.toggle("hidden", state.phase === "main-menu");
+      status.classList.toggle(
+        "hidden", state.phase === "main-menu" || state.phase === "game-over",
+      );
       deckPile.root.classList.toggle("hidden", state.phase !== "playing");
       discardPile.root.classList.toggle("hidden", state.phase !== "playing");
       hand.classList.toggle("hidden", state.phase !== "playing");

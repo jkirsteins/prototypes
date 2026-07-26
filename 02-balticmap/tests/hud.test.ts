@@ -347,6 +347,7 @@ describe("subjugation HUD", () => {
       "Your realm has been subjugated by Gamma",
     );
     expect(q(container, ".menu-overlay").classList.contains("hidden")).toBe(true);
+    expect(q(container, ".status-bar").classList.contains("hidden")).toBe(true);
     (overlay.querySelector(".menu-new-game") as HTMLElement).click();
     expect(cb.onNewGame).toHaveBeenCalledOnce();
   });
