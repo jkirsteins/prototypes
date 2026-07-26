@@ -76,12 +76,22 @@ describe("validTargetsFor", () => {
     expect(validTargetsFor(sub, "beta", "incorporate")).toEqual([]);
   });
 
+  it("a vassal's neighbors extend the realm's reach", () => {
+    const v = view({ overlords: new Map([["gamma", "beta"]]) });
+    expect(validTargetsFor(v, "beta", "raid")).toEqual(["alpha", "gamma", "delta"]);
+  });
+
+  it("incorporated factions are never targets but extend reach", () => {
+    const v = view({ incorporated: { gamma: "beta" } });
+    expect(validTargetsFor(v, "beta", "raid")).toEqual(["alpha", "delta"]);
+  });
+
   it("vassals and poach targets stay raidable; incorporated lands are not", () => {
     const v = view({
       overlords: new Map([["gamma", "beta"]]),
       incorporated: { alpha: "delta" },
     });
-    expect(validTargetsFor(v, "beta", "raid")).toEqual(["gamma"]);
+    expect(validTargetsFor(v, "beta", "raid")).toEqual(["gamma", "delta"]);
   });
 });
 

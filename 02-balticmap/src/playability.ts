@@ -17,8 +17,11 @@ export interface RulesView {
 }
 
 function reachOf(view: RulesView, factionId: string): Set<string> {
+  const realm = realmOf(factionId, view.overlords, view.incorporated);
   const reach = new Set<string>();
-  for (const adj of view.adjacency[factionId] ?? []) reach.add(adj);
+  for (const member of realm) {
+    for (const adj of view.adjacency[member] ?? []) reach.add(adj);
+  }
   return reach;
 }
 
