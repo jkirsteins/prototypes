@@ -61,11 +61,6 @@ export function viewOf(state: GameState): RulesView {
   };
 }
 
-/** SHIM until Task 7: main.ts still reads overlords through this. */
-export function overlordsOf(state: GameState): Overlords {
-  return state.overlords;
-}
-
 export function newGame(
   factionIds: string[],
   adjacency?: Record<string, string[]>,
@@ -169,6 +164,7 @@ export function playCard(
   tributeTrack?: TributeTrack,
 ): GameState {
   if (state.phase !== "playing") return state;
+  if (state.playedThisTurn) return state;
   const p = state.players[state.current];
   const set = playableSet(viewOf(state), p.factionId, p.hand);
   if (set.mode !== "play" || !set.cardIndexes.includes(cardIndex)) return state;
@@ -322,6 +318,7 @@ export function playCard(
 /** Forced discard when nothing in hand is playable. */
 export function discardCard(state: GameState, cardIndex: number): GameState {
   if (state.phase !== "playing") return state;
+  if (state.playedThisTurn) return state;
   const p = state.players[state.current];
   const set = playableSet(viewOf(state), p.factionId, p.hand);
   if (set.mode !== "discard" || !set.cardIndexes.includes(cardIndex)) return state;
@@ -359,13 +356,6 @@ export function advance(state: GameState, rng: Rng): GameState {
     if (current === 0) turn += 1;
   } while (current !== 0 && inert(current));
   return beginTurn({ ...state, current, turn }, rng);
-}
-
-/** SHIM until Task 7: legacy alias for the old UI wiring; advances even
- *  when nothing was played. */
-export function endTurn(state: GameState, rng: Rng): GameState {
-  if (state.phase !== "playing") return state;
-  return advance({ ...state, playedThisTurn: true }, rng);
 }
 
 export function isHumanTurn(state: GameState): boolean {

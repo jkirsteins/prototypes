@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, pickFaction, beginTurn, playCard, discardCard, advance,
-  endTurn, isHumanTurn, viewOf,
+  isHumanTurn, viewOf,
   OPENING_HAND, VICTORY_REALM_SIZE, type GameState,
 } from "../src/game";
 import { DECK_SIZE, type Rng } from "../src/cards";
@@ -317,9 +317,11 @@ describe("discard and advance", () => {
     expect(wrap.turn).toBe(2);
   });
 
-  it("legacy endTurn shim advances without the played guard", () => {
-    const g = playingState(LINE_ADJ);
-    expect(endTurn(g, seededRng(3)).current).toBe(1);
+  it("playCard and discardCard reject a second action in the same turn", () => {
+    const g = withHand(playingState(LINE_ADJ), 0, ["grow-crops", "grow-crops"]);
+    const once = playCard(g, 0, rng());
+    expect(playCard(once, 0, rng())).toBe(once);
+    expect(discardCard(once, 0)).toBe(once);
   });
 });
 

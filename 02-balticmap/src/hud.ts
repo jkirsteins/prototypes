@@ -6,8 +6,6 @@ import { leadsOf, realmOf } from "./relations";
 export interface HudCallbacks {
   onNewGame(): void;
   onPlayCard(index: number): void;
-  /** @deprecated dead; removed in Task 7. */
-  onEndTurn?(): void;
   /** Optional gate for cards that need a valid target; default: playable. */
   canPlayCard?(cardId: string): boolean;
   onTributeTrack?(track: "status" | "might"): void;

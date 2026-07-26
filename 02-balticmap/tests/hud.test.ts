@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createHud, type HudCallbacks } from "../src/hud";
 import {
-  newGame, startGame, pickFaction, endTurn, playCard, beginTurn,
+  newGame, startGame, pickFaction, advance, playCard, beginTurn,
   type GameState,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
@@ -101,8 +101,8 @@ describe("createHud", () => {
   it("disables held cards during AI turns and shows the waiting label", () => {
     const { container, cb, hud } = setup();
     let g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
-    // endTurn hands control to player 2 (AI); force a known 1-card hand
-    g = endTurn(g, seededRng(3));
+    // advance hands control to player 2 (AI); force a known 1-card hand
+    g = advance({ ...g, playedThisTurn: true }, seededRng(3));
     g = withHand(g, 0, ["grow-crops"]);
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Waiting on other players...");
@@ -117,7 +117,7 @@ describe("createHud", () => {
     const { container, cb, hud } = setup();
     let g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
     // run one full round so the human holds 2 cards on their next turn
-    for (let i = 0; i < FACTIONS.length; i++) g = endTurn(g, seededRng(4));
+    for (let i = 0; i < FACTIONS.length; i++) g = advance({ ...g, playedThisTurn: true }, seededRng(4));
     g = withHand(g, 0, ["grow-crops", "grow-crops"]);
     g = playCard(g, 0, seededRng(1)); // 1 card left, playedThisTurn = true
     hud.update(g);
@@ -172,7 +172,7 @@ describe("activity log", () => {
     let g = playing();
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
-    g = endTurn(g, seededRng(2)); // player 2 draws
+    g = advance({ ...g, playedThisTurn: true }, seededRng(2)); // player 2 draws
     g = withHand(g, 1, ["grow-crops"]);
     g = aiTakeTurn(g, seededRng(1)); // player 2 plays
     hud.update(g);
@@ -189,7 +189,7 @@ describe("activity log", () => {
     const { container, hud } = setup();
     let g = playing();
     hud.update(g);
-    for (let i = 0; i < FACTIONS.length; i++) g = endTurn(g, seededRng(3));
+    for (let i = 0; i < FACTIONS.length; i++) g = advance({ ...g, playedThisTurn: true }, seededRng(3));
     hud.update(g); // back to the human: turn 2 draw happened
     expect(container.querySelectorAll(".log-entry")).toHaveLength(4);
     const seps = [...container.querySelectorAll(".log-turn")].map(
@@ -278,7 +278,7 @@ describe("card animations", () => {
     g = playCard(g, 0, seededRng(1));
     hud.update(g); // consumes your draw + play events
     vi.runAllTimers();
-    g = endTurn(g, seededRng(2)); // AI draw event
+    g = advance({ ...g, playedThisTurn: true }, seededRng(2)); // AI draw event
     hud.update(g);
     expect(container.querySelectorAll(".flying-card")).toHaveLength(0);
 

@@ -141,6 +141,14 @@ svg.map.dragging {
   z-index: 10;
 }
 
+.tooltip-line.tone-good {
+  color: #7cb06a;
+}
+
+.tooltip-line.tone-bad {
+  color: #e08a80;
+}
+
 .panel {
   position: absolute;
   top: 16px;
@@ -422,6 +430,31 @@ svg.map.dragging {
 .region.target-invalid {
   opacity: 0.12;
   pointer-events: auto;
+}
+
+.region.threat-1 {
+  stroke: #c9807a;
+  stroke-width: 1.4;
+}
+
+.region.threat-2 {
+  stroke: #b5544c;
+  stroke-width: 2;
+}
+
+.region.threat-3 {
+  stroke: #992f27;
+  stroke-width: 2.6;
+}
+
+.region.advantage {
+  stroke: #5d8a55;
+  stroke-width: 1.4;
+}
+
+.realm-outline path {
+  stroke-width: 6;
+  stroke-linejoin: round;
 }
 
 .region.owned:not(.selected) {
