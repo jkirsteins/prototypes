@@ -368,26 +368,6 @@ export function endTurn(state: GameState, rng: Rng): GameState {
   return advance({ ...state, playedThisTurn: true }, rng);
 }
 
-/** SHIM until Task 5 replaces it with the real policy in ai.ts:
- *  plays the first playable card on its first valid target (tribute goes
- *  to might), else discards the leftmost card. */
-export function aiTurn(state: GameState, rng: Rng): GameState {
-  if (state.phase !== "playing") return state;
-  const p = state.players[state.current];
-  const set = playableSet(viewOf(state), p.factionId, p.hand);
-  if (set.mode === "discard") {
-    return discardCard(state, set.cardIndexes[0]);
-  }
-  const i = set.cardIndexes[0];
-  const cardId = p.hand[i];
-  if (CARDS[cardId]?.targeted) {
-    const t = validTargetsFor(viewOf(state), p.factionId, cardId)[0];
-    return playCard(state, i, rng, t);
-  }
-  if (cardId === "pay-tribute") return playCard(state, i, rng, undefined, "might");
-  return playCard(state, i, rng);
-}
-
 export function isHumanTurn(state: GameState): boolean {
   return state.phase === "playing" && state.current === 0;
 }

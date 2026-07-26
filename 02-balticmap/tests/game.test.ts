@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, pickFaction, beginTurn, playCard, discardCard, advance,
-  endTurn, aiTurn, isHumanTurn, viewOf,
+  endTurn, isHumanTurn, viewOf,
   OPENING_HAND, VICTORY_REALM_SIZE, type GameState,
 } from "../src/game";
 import { DECK_SIZE, type Rng } from "../src/cards";
@@ -320,18 +320,6 @@ describe("discard and advance", () => {
   it("legacy endTurn shim advances without the played guard", () => {
     const g = playingState(LINE_ADJ);
     expect(endTurn(g, seededRng(3)).current).toBe(1);
-  });
-});
-
-describe("aiTurn shim", () => {
-  it("makes a legal move: plays something playable or discards", () => {
-    let g = playingState(LINE_ADJ);
-    g = advance({ ...g, playedThisTurn: true }, seededRng(4)); // alpha's turn
-    const after = aiTurn(g, seededRng(5));
-    expect(after).not.toBe(g);
-    expect(after.playedThisTurn).toBe(true);
-    const types = after.log.slice(-1)[0].type;
-    expect(["play", "discard", "subjugated", "released", "tribute", "reclaimed", "incorporated", "victory", "defeat"]).toContain(types);
   });
 });
 

@@ -4,9 +4,10 @@ import { renderMap, darkenColor } from "./map-render";
 import { createPanel, createTooltip, tooltipText, settlementTooltipText } from "./panel";
 import { attachInteraction } from "./interaction";
 import {
-  newGame, startGame, pickFaction, playCard, endTurn, aiTurn, isHumanTurn,
+  newGame, startGame, pickFaction, playCard, endTurn, isHumanTurn,
   overlordsOf, type GameState,
 } from "./game";
+import { aiTakeTurn } from "./ai";
 import { getRel, realmOf, validTargets } from "./relations";
 import { CARDS } from "./cards";
 import { createHud } from "./hud";
@@ -125,7 +126,7 @@ function runAiTurns(): void {
   if (game.phase !== "playing" || isHumanTurn(game)) return;
   setTimeout(() => {
     while (game.phase === "playing" && !isHumanTurn(game)) {
-      game = endTurn(aiTurn(game, rng), rng);
+      game = endTurn(aiTakeTurn(game, rng), rng);
     }
     refresh();
   }, 0);

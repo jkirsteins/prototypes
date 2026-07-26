@@ -2,9 +2,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { createHud, type HudCallbacks } from "../src/hud";
 import {
-  newGame, startGame, pickFaction, endTurn, playCard, aiTurn, beginTurn,
+  newGame, startGame, pickFaction, endTurn, playCard, beginTurn,
   type GameState,
 } from "../src/game";
+import { aiTakeTurn } from "../src/ai";
 import type { Rng } from "../src/cards";
 import { bumpMight } from "../src/relations";
 
@@ -174,7 +175,7 @@ describe("activity log", () => {
     g = playCard(g, 0, seededRng(1));
     g = endTurn(g, seededRng(2)); // player 2 draws
     g = withHand(g, 1, ["grow-crops"]);
-    g = aiTurn(g, seededRng(1)); // player 2 plays
+    g = aiTakeTurn(g, seededRng(1)); // player 2 plays
     hud.update(g);
     const texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
