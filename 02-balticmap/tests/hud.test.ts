@@ -19,14 +19,18 @@ function seededRng(seed: number): Rng {
 
 const FACTIONS = ["alpha", "beta", "gamma"];
 
-function setup(canPlayCard?: (cardId: string) => boolean) {
+function setup(opts?: {
+  canPlayCard?: (cardId: string) => boolean;
+  isDiscardMode?: () => boolean;
+}) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const cb: HudCallbacks = {
     onNewGame: vi.fn(),
     onPlayCard: vi.fn(),
-    onEndTurn: vi.fn(),
-    ...(canPlayCard ? { canPlayCard } : {}),
+    onTributeTrack: vi.fn(),
+    ...(opts?.canPlayCard ? { canPlayCard: opts.canPlayCard } : {}),
+    ...(opts?.isDiscardMode ? { isDiscardMode: opts.isDiscardMode } : {}),
   };
   const hud = createHud(container, cb, new Map([
     ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
@@ -54,21 +58,19 @@ describe("createHud", () => {
     expect(cb.onNewGame).toHaveBeenCalledOnce();
   });
 
-  it("prompts for a faction during pick-faction, no End Turn button", () => {
+  it("prompts for a faction during pick-faction", () => {
     const { container, hud } = setup();
     hud.update(startGame(newGame(FACTIONS)));
     expect(q(container, ".menu-overlay").classList.contains("hidden")).toBe(true);
     expect(q(container, ".status-bar").classList.contains("hidden")).toBe(false);
     expect(q(container, ".status-text").textContent).toBe("Choose your faction");
-    expect(q(container, ".end-turn").classList.contains("hidden")).toBe(true);
   });
 
-  it("renders the human turn: status, piles, fanned hand, End Turn", () => {
+  it("renders the human turn: status, piles, fanned hand", () => {
     const { container, cb, hud } = setup();
     const g = withHand(pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0, ["grow-crops"]);
     hud.update(g);
-    expect(q(container, ".status-text").textContent).toBe("Turn 1 - your turn");
-    expect(q(container, ".end-turn").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
     expect(q(container, ".pile-deck .pile-count").textContent).toBe("6");
     expect(q(container, ".pile-deck .pile-label").textContent).toBe("Deck");
     expect(q(container, ".pile-discard .pile-count").textContent).toBe("0");
@@ -78,8 +80,6 @@ describe("createHud", () => {
     expect(cards[0].textContent).toBe("Grow crops");
     (cards[0] as HTMLElement).click();
     expect(cb.onPlayCard).toHaveBeenCalledWith(0);
-    q(container, ".end-turn").click();
-    expect(cb.onEndTurn).toHaveBeenCalledOnce();
   });
 
   it("fans multiple cards with symmetric rotations", () => {
@@ -106,7 +106,6 @@ describe("createHud", () => {
     g = withHand(g, 0, ["grow-crops"]);
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Waiting on other players...");
-    expect(q(container, ".end-turn").classList.contains("hidden")).toBe(true);
     const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
     expect(cards).toHaveLength(1);
     expect(cards[0].disabled).toBe(true);
@@ -321,7 +320,7 @@ describe("subjugation HUD", () => {
   });
 
   it("marks cards the callback rejects as unplayable", () => {
-    const { container, cb, hud } = setup((id) => id !== "incorporate");
+    const { container, cb, hud } = setup({ canPlayCard: (id) => id !== "incorporate" });
     const g = withHand(playing(), 0, ["incorporate", "grow-crops"]);
     hud.update(g);
     const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
@@ -342,25 +341,90 @@ describe("subjugation HUD", () => {
     );
     expect(q(container, ".card").classList.contains("card-armed")).toBe(true);
     hud.setArmed(null);
-    expect(q(container, ".status-text").textContent).toBe("Turn 1 - your turn");
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
     expect(q(container, ".card").classList.contains("card-armed")).toBe(false);
   });
+});
 
-  it("shows the defeat overlay naming the incorporator", () => {
+describe("hud v2", () => {
+  function playing() {
+    return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+  }
+
+  it("has no End Turn button", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    expect(container.querySelector(".end-turn")).toBeNull();
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
+  });
+
+  it("discard mode enables all cards and prompts", () => {
+    const { container, cb, hud } = setup({ isDiscardMode: () => true });
+    const g = withHand(playing(), 0, ["subjugate", "incorporate"]);
+    hud.update(g);
+    expect(q(container, ".status-text").textContent).toBe(
+      "No playable card - discard one",
+    );
+    const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
+    expect(cards.every((c) => !c.disabled)).toBe(true);
+    expect(cards.every((c) => c.classList.contains("discard-hint"))).toBe(true);
+    cards[1].click();
+    expect(cb.onPlayCard).toHaveBeenCalledWith(1);
+  });
+
+  it("tribute prompt swaps the status bar to track buttons", () => {
+    const { container, cb, hud } = setup();
+    hud.update(playing());
+    hud.setTributePrompt(true);
+    const buttons = [...container.querySelectorAll(".tribute-btn")];
+    expect(buttons.map((b) => b.textContent)).toEqual(["Might", "Status"]);
+    (buttons[1] as HTMLElement).click();
+    expect(cb.onTributeTrack).toHaveBeenCalledWith("status");
+    hud.setTributePrompt(false);
+    // buttons stay in the DOM, hidden via the codebase's .hidden convention
+    expect(
+      q(container, ".tribute-buttons").classList.contains("hidden"),
+    ).toBe(true);
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
+  });
+
+  it("defeat shows the post-mortem with cause, build-up, seen cards, and log", () => {
     const { container, cb, hud } = setup();
     let g = playing();
     g = { ...g, current: 2, overlords: new Map([["beta", "gamma"]]) };
+    g = withHand(g, 2, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "beta"); // gamma raids you (seen)
+    g = { ...g, playedThisTurn: false };
     g = withHand(g, 2, ["incorporate"]);
     g = playCard(g, 0, seededRng(1), "beta");
     expect(g.phase).toBe("defeat");
     hud.update(g);
-    const overlay = q(container, ".gameover-overlay");
-    expect(overlay.classList.contains("hidden")).toBe(false);
-    expect(q(container, ".gameover-reason").textContent).toBe(
-      "Your realm has been incorporated by Gamma",
-    );
+    const pm = q(container, ".postmortem-overlay");
+    expect(pm.classList.contains("hidden")).toBe(false);
+    expect(q(container, ".pm-title").textContent).toBe("Game over");
+    expect(q(container, ".pm-cause").textContent).toBe("Incorporated by Gamma");
+    expect(q(container, ".pm-buildup").textContent).toContain("Raid");
+    expect(q(container, ".pm-seen").textContent).toContain("Raid");
+    expect(q(container, ".pm-log .log-entry").textContent?.length).toBeGreaterThan(0);
     expect(q(container, ".status-bar").classList.contains("hidden")).toBe(true);
-    (overlay.querySelector(".menu-new-game") as HTMLElement).click();
+    (pm.querySelector(".menu-new-game") as HTMLElement).click();
     expect(cb.onNewGame).toHaveBeenCalledOnce();
+  });
+
+  it("victory names the realm size", () => {
+    const { container, hud } = setup();
+    const many = Array.from({ length: 20 }, (_, i) => `f${i}`);
+    let g = pickFaction(startGame(newGame(many)), "f0", seededRng(1));
+    const inc: Record<string, string> = {};
+    for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
+    g = { ...g, incorporated: inc };
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(g.phase).toBe("victory");
+    hud.update(g);
+    expect(q(container, ".pm-title").textContent).toBe("Victory");
+    expect(q(container, ".pm-cause").textContent).toBe(
+      "You rule the Baltic - 11 of 20 lands",
+    );
   });
 });

@@ -272,21 +272,6 @@ svg.map.dragging {
   z-index: 6;
 }
 
-.end-turn {
-  font-size: 13px;
-  padding: 4px 14px;
-  border: 1px solid #7a6a55;
-  border-radius: 5px;
-  background: #fdfaf4;
-  color: #3f3428;
-  cursor: pointer;
-}
-
-.end-turn:hover {
-  background: #f1e9da;
-}
-
-
 .hand {
   position: absolute;
   bottom: -30px;
@@ -333,22 +318,94 @@ svg.map.dragging {
   z-index: 7;
 }
 
-.gameover-overlay {
+.postmortem-overlay {
   position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   gap: 24px;
-  background: rgba(24, 32, 38, 0.72);
+  align-items: stretch;
+  justify-content: center;
+  padding: 48px;
+  background: rgba(24, 32, 38, 0.88);
   z-index: 20;
 }
 
-.gameover-reason {
-  font-size: 18px;
+.pm-summary {
+  flex: 1.2;
+  max-width: 460px;
   color: #fdfaf4;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+}
+
+.pm-cause {
+  font-size: 18px;
+}
+
+.pm-deltas {
+  font-size: 13px;
+  color: #d8cfc0;
+}
+
+.pm-buildup-entry {
+  font-size: 12px;
+  color: #e8b0a8;
+}
+
+.pm-seen-label {
+  font-size: 11px;
+  color: #b8b0a2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pm-seen {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pm-card {
+  width: 72px;
+  height: 100px;
+  border: 1px dashed #b8b0a2;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #fdfaf4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 4px;
+}
+
+.pm-log {
+  flex: 1;
+  max-width: 380px;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: #3f3428;
+}
+
+.tribute-btn {
+  font-size: 13px;
+  padding: 4px 14px;
+  margin-left: 8px;
+  border: 1px solid #7a6a55;
+  border-radius: 5px;
+  background: #fdfaf4;
+  color: #3f3428;
+  cursor: pointer;
+}
+
+.card.discard-hint {
+  outline: 2px dashed #b5544c;
+  outline-offset: -2px;
 }
 
 .region.dimmed {
