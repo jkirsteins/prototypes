@@ -1770,7 +1770,10 @@ describe("hud v2", () => {
     (buttons[1] as HTMLElement).click();
     expect(cb.onTributeTrack).toHaveBeenCalledWith("status");
     hud.setTributePrompt(false);
-    expect(container.querySelectorAll(".tribute-btn")).toHaveLength(0);
+    // buttons stay in the DOM, hidden via the codebase's .hidden convention
+    expect(
+      q(container, ".tribute-buttons").classList.contains("hidden"),
+    ).toBe(true);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
   });
 
