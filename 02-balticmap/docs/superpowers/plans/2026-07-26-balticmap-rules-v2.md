@@ -341,7 +341,8 @@ describe("validTargetsFor", () => {
       overlords: new Map([["gamma", "beta"]]),
       incorporated: { alpha: "delta" },
     });
-    expect(validTargetsFor(v, "beta", "raid")).toEqual(["gamma"]);
+    // delta is reachable through the vassal gamma (realm-union reach)
+    expect(validTargetsFor(v, "beta", "raid")).toEqual(["gamma", "delta"]);
   });
 });
 
