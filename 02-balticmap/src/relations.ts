@@ -48,6 +48,28 @@ export function leadOf(rel: Relations, a: string, b: string): number {
   return Math.max(ab.status - ba.status, ab.might - ba.might);
 }
 
+/** Per-track margins of A over B; positive = A is ahead on that track. */
+export function leadsOf(
+  rel: Relations,
+  a: string,
+  b: string,
+): { status: number; might: number } {
+  const ab = getRel(rel, a, b);
+  const ba = getRel(rel, b, a);
+  return { status: ab.status - ba.status, might: ab.might - ba.might };
+}
+
+/** +1 might from actor toward every id in others (the Fortify effect). */
+export function bumpMightAll(
+  rel: Relations,
+  actor: string,
+  others: string[],
+): Relations {
+  let out = rel;
+  for (const target of others) out = bumpMight(out, actor, target);
+  return out;
+}
+
 /** Greedy descending-lead overlord assignment. Biggest lead wins contested
  *  targets. Overlords are always free factions (never incorporated or vassal
  *  to another). A faction that becomes subjugated releases its vassals back
