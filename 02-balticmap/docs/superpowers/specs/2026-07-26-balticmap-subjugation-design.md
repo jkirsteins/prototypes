@@ -130,8 +130,8 @@ union over realm members minus the realm itself, computed at runtime.
   target regions highlight, all other regions dim further, and the status
   bar shows "Choose a target for <card name>".
 - Clicking a valid region resolves the card. Esc, clicking the background,
-  or clicking the armed card again cancels. Clicks on invalid regions do
-  nothing (no panel opening while armed).
+  or clicking the armed card again cancels. Clicking an invalid region
+  cancels targeting (and does not open the panel).
 - Unplayable cards (e.g. Incorporate with no vassal) render grayed and do
   not arm. Grow Crops plays immediately on click, as today.
 - Armed-card state is transient UI state in `main.ts`, not part of

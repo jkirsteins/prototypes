@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import { createHud, type HudCallbacks } from "../src/hud";
-import { newGame, startGame, pickFaction, endTurn, playCard, aiTurn, beginTurn } from "../src/game";
+import {
+  newGame, startGame, pickFaction, endTurn, playCard, aiTurn, beginTurn,
+  type GameState,
+} from "../src/game";
 import type { Rng } from "../src/cards";
 
 function seededRng(seed: number): Rng {
@@ -14,19 +17,27 @@ function seededRng(seed: number): Rng {
 
 const FACTIONS = ["alpha", "beta", "gamma"];
 
-function setup() {
+function setup(canPlayCard?: (cardId: string) => boolean) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const cb: HudCallbacks = {
     onNewGame: vi.fn(),
     onPlayCard: vi.fn(),
     onEndTurn: vi.fn(),
+    ...(canPlayCard ? { canPlayCard } : {}),
   };
-  const hud = createHud(container, cb);
+  const hud = createHud(container, cb, new Map([
+    ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
+  ]));
   return { container, cb, hud };
 }
 
 const q = (c: HTMLElement, sel: string) => c.querySelector(sel) as HTMLElement;
+
+function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
+  const p = { ...g.players[playerIdx], hand };
+  return { ...g, players: g.players.map((pl, i) => (i === playerIdx ? p : pl)) };
+}
 
 describe("createHud", () => {
   it("shows only the menu at main-menu, and New game fires onNewGame", () => {
@@ -52,7 +63,7 @@ describe("createHud", () => {
 
   it("renders the human turn: status, piles, fanned hand, End Turn", () => {
     const { container, cb, hud } = setup();
-    const g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    const g = withHand(pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0, ["grow-crops"]);
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - your turn");
     expect(q(container, ".end-turn").classList.contains("hidden")).toBe(false);
@@ -101,6 +112,7 @@ describe("createHud", () => {
     let g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
     // run one full round so the human holds 2 cards on their next turn
     for (let i = 0; i < FACTIONS.length; i++) g = endTurn(g, seededRng(4));
+    g = withHand(g, 0, ["grow-crops", "grow-crops"]);
     g = playCard(g, 0); // 1 card left, playedThisTurn = true
     hud.update(g);
     const card = q(container, ".card") as HTMLButtonElement;
@@ -113,7 +125,12 @@ describe("createHud", () => {
 describe("visual piles", () => {
   it("renders layered card backs scaled to the count, dashed when empty", () => {
     const { container, hud } = setup();
-    const g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    // force a non-targeted card so playCard(g, 0) below succeeds regardless
+    // of what the seeded shuffle happened to deal
+    const g = withHand(
+      pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0,
+      ["grow-crops"],
+    );
     hud.update(g); // deck 19, discard 0
     expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(4);
     expect(container.querySelectorAll(".pile-discard .card-back")).toHaveLength(0);
@@ -147,19 +164,19 @@ describe("activity log", () => {
   it("names your cards, hides AI draws, and shows AI plays", () => {
     const { container, hud } = setup();
     let g = playing();
+    g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0);
     g = endTurn(g, seededRng(2)); // player 2 draws
+    g = withHand(g, 1, ["grow-crops"]);
     g = aiTurn(g); // player 2 plays
     hud.update(g);
     const texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
     );
-    expect(texts).toEqual([
-      "You drew Grow crops",
-      "You played Grow crops",
-      "Player 2 drew a card",
-      "Player 2 played Grow crops",
-    ]);
+    expect(texts[0]).toMatch(/^You drew /);
+    expect(texts[1]).toBe("You played Grow crops");
+    expect(texts[2]).toBe("Player 2 drew a card");
+    expect(texts[3]).toMatch(/^Player 2 played /);
   });
 
   it("appends only new entries across updates and inserts turn separators", () => {
@@ -178,6 +195,7 @@ describe("activity log", () => {
   it("resets the entries when a new game starts", () => {
     const { container, hud } = setup();
     let g = playing();
+    g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0);
     hud.update(g);
     expect(container.querySelectorAll(".log-entry")).toHaveLength(2);
@@ -232,6 +250,7 @@ describe("card animations", () => {
     let g = playing();
     hud.update(g);
     vi.runAllTimers();
+    g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0);
     hud.update(g);
     const flying = container.querySelectorAll(".flying-card");
@@ -247,6 +266,7 @@ describe("card animations", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
     let g = playing();
+    g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0);
     hud.update(g); // consumes your draw + play events
     vi.runAllTimers();
@@ -267,5 +287,68 @@ describe("card animations", () => {
     vi.runAllTimers();
     expect(q(container, ".pile-deck").classList.contains("pulse")).toBe(false);
     vi.useRealTimers();
+  });
+});
+
+describe("subjugation HUD", () => {
+  function playing() {
+    return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+  }
+
+  it("renders targeted play and subjugation log texts with faction names", () => {
+    const { container, hud } = setup();
+    let g = withHand(playing(), 0, ["raid"]);
+    g = playCard(g, 0, "alpha");
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    expect(texts).toContain("You played Raid on Alpha");
+    expect(texts).toContain("Alpha submits to Beta");
+  });
+
+  it("marks cards the callback rejects as unplayable", () => {
+    const { container, cb, hud } = setup((id) => id !== "incorporate");
+    const g = withHand(playing(), 0, ["incorporate", "grow-crops"]);
+    hud.update(g);
+    const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
+    expect(cards[0].disabled).toBe(true);
+    expect(cards[0].classList.contains("unplayable")).toBe(true);
+    expect(cards[1].disabled).toBe(false);
+    cards[0].click();
+    expect(cb.onPlayCard).not.toHaveBeenCalled();
+  });
+
+  it("setArmed highlights the card and prompts for a target", () => {
+    const { container, hud } = setup();
+    const g = withHand(playing(), 0, ["raid", "grow-crops"]);
+    hud.update(g);
+    hud.setArmed(0, "Raid");
+    expect(q(container, ".status-text").textContent).toBe(
+      "Choose a target for Raid",
+    );
+    expect(q(container, ".card").classList.contains("card-armed")).toBe(true);
+    hud.setArmed(null);
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - your turn");
+    expect(q(container, ".card").classList.contains("card-armed")).toBe(false);
+  });
+
+  it("shows the game-over overlay naming the overlord", () => {
+    const { container, cb, hud } = setup();
+    let g = playing();
+    g = { ...g, current: 2 };
+    g = withHand(g, 2, ["raid"]);
+    g = playCard(g, 0, "beta"); // gamma subjugates the human
+    expect(g.phase).toBe("game-over");
+    hud.update(g);
+    const overlay = q(container, ".gameover-overlay");
+    expect(overlay.classList.contains("hidden")).toBe(false);
+    expect(q(container, ".gameover-reason").textContent).toBe(
+      "Your realm has been subjugated by Gamma",
+    );
+    expect(q(container, ".menu-overlay").classList.contains("hidden")).toBe(true);
+    expect(q(container, ".status-bar").classList.contains("hidden")).toBe(true);
+    (overlay.querySelector(".menu-new-game") as HTMLElement).click();
+    expect(cb.onNewGame).toHaveBeenCalledOnce();
   });
 });

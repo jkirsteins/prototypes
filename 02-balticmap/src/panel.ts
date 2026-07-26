@@ -38,6 +38,7 @@ export function createPanel(
   peoples: People[],
   factions: Faction[],
   settlements: Settlement[],
+  relationsInfo?: (region: Region) => string[],
 ): Panel {
   const root = document.createElement("aside");
   root.className = "panel hidden";
@@ -52,6 +53,8 @@ export function createPanel(
   name.className = "panel-name";
   const factionLine = document.createElement("p");
   factionLine.className = "panel-faction";
+  const relations = document.createElement("p");
+  relations.className = "panel-relations hidden";
   const peoplesLine = document.createElement("p");
   peoplesLine.className = "panel-peoples";
   const population = document.createElement("p");
@@ -67,7 +70,7 @@ export function createPanel(
 
   const factionById = new Map(factions.map((f) => [f.id, f]));
 
-  root.append(close, name, factionLine, peoplesLine, population, cohesion, settlementsLine, flavor, places);
+  root.append(close, name, factionLine, relations, peoplesLine, population, cohesion, settlementsLine, flavor, places);
   container.appendChild(root);
 
   return {
@@ -77,6 +80,9 @@ export function createPanel(
       factionLine.textContent = faction
         ? `Faction: ${faction.name} (${formatFactionType(faction.type)})`
         : "";
+      const lines = relationsInfo?.(region) ?? [];
+      relations.textContent = lines.join("\n");
+      relations.classList.toggle("hidden", lines.length === 0);
       peoplesLine.textContent = formatPeoples(region.peoples, peoples);
       population.textContent = `Population: ${formatPopulation(region.population)}`;
       cohesion.textContent = `Cohesion: ${region.cohesion}`;

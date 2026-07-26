@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, pickFaction, beginTurn, playCard, endTurn, aiTurn,
-  isHumanTurn, type GameState,
+  isHumanTurn, overlordsOf, type GameState,
 } from "../src/game";
 import { DECK_SIZE, type Rng } from "../src/cards";
+import { getRel, bumpMight } from "../src/relations";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -17,6 +18,24 @@ const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
 function playingState(): GameState {
   return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+}
+
+function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
+  const p = { ...g.players[playerIdx], hand };
+  return { ...g, players: g.players.map((pl, i) => (i === playerIdx ? p : pl)) };
+}
+
+/** Neutralize deck randomness for tests about cycling, not card identity. */
+function allGrowCrops(g: GameState): GameState {
+  return {
+    ...g,
+    players: g.players.map((p) => ({
+      ...p,
+      deck: p.deck.map(() => "grow-crops"),
+      hand: p.hand.map(() => "grow-crops"),
+      discard: p.discard.map(() => "grow-crops"),
+    })),
+  };
 }
 
 describe("newGame / startGame", () => {
@@ -93,7 +112,7 @@ describe("draw and reshuffle", () => {
 
 describe("playCard", () => {
   it("moves the card from hand to discard and blocks a second play", () => {
-    const g = playingState();
+    const g = withHand(playingState(), 0, ["grow-crops"]);
     const played = playCard(g, 0);
     expect(played.players[0].hand).toHaveLength(0);
     expect(played.players[0].discard).toEqual(["grow-crops"]);
@@ -102,7 +121,7 @@ describe("playCard", () => {
   });
 
   it("ignores out-of-range indices and does not mutate input", () => {
-    const g = playingState();
+    const g = withHand(playingState(), 0, ["grow-crops"]);
     const handBefore = [...g.players[0].hand];
     expect(playCard(g, 5)).toBe(g);
     expect(playCard(g, -1)).toBe(g);
@@ -139,7 +158,7 @@ describe("endTurn / turn cycle", () => {
 
 describe("aiTurn", () => {
   it("plays the AI's first card", () => {
-    const g = endTurn(playingState(), seededRng(6));
+    const g = withHand(endTurn(playingState(), seededRng(6)), 1, ["grow-crops"]);
     const after = aiTurn(g);
     expect(after.players[1].hand).toHaveLength(0);
     expect(after.players[1].discard).toHaveLength(1);
@@ -153,7 +172,7 @@ describe("aiTurn", () => {
   });
 
   it("the full cycle keeps decks cycling far past deck depletion", () => {
-    let g = playingState();
+    let g = allGrowCrops(playingState());
     const rng = seededRng(9);
     // 4 players x 60 full rounds = every player draws and plays 60 times
     for (let round = 0; round < 60; round++) {
@@ -167,6 +186,67 @@ describe("aiTurn", () => {
       expect(p.deck.length + p.hand.length + p.discard.length).toBe(DECK_SIZE);
     }
   });
+
+  it("incorporates its first vassal before anything else", () => {
+    let g = endTurn(playingState(), seededRng(6)); // alpha (player 2) acts
+    g = { ...g, relations: bumpMight(g.relations, "alpha", "gamma") };
+    g = withHand(g, 1, ["raid", "incorporate"]);
+    const after = aiTurn(g);
+    expect(after.incorporated).toEqual({ gamma: "alpha" });
+  });
+
+  it("raids the target closest to a new subjugation", () => {
+    let g = endTurn(playingState(), seededRng(6)); // alpha (player 2) acts
+    // beta raided alpha earlier, so alpha's might deficit vs beta is 2
+    // while gamma and delta stay at 1. (This makes alpha beta's vassal;
+    // aiTurn does not skip - only endTurn does - so the policy is still
+    // exercised directly.)
+    g = { ...g, relations: bumpMight(g.relations, "beta", "alpha") };
+    g = withHand(g, 1, ["raid"]);
+    const after = aiTurn(g);
+    // equal smallest deficits (gamma, delta) fall back to faction order
+    expect(after.log.filter((e) => e.type === "play").at(-1)).toMatchObject({
+      cardId: "raid", targetFactionId: "gamma",
+    });
+  });
+
+  it("prefers raid over marriage at equal deficit", () => {
+    let g = endTurn(playingState(), seededRng(6)); // alpha acts
+    g = withHand(g, 1, ["shrewd-marriage", "raid"]);
+    const after = aiTurn(g);
+    // all deficits equal 1 -> first faction in order (beta), raid first;
+    // beta is the human, so this play also flips the phase to game-over
+    expect(after.log.filter((e) => e.type === "play").at(-1)).toMatchObject({
+      cardId: "raid", targetFactionId: "beta",
+    });
+    expect(after.phase).toBe("game-over");
+  });
+
+  it("expands instead of reinforcing its own vassals", () => {
+    let g = endTurn(playingState(), seededRng(6)); // alpha acts
+    g = { ...g, relations: bumpMight(g.relations, "alpha", "gamma") };
+    g = withHand(g, 1, ["raid"]);
+    const after = aiTurn(g);
+    // own vassal gamma is skipped; beta is next in faction order
+    expect(after.log.filter((e) => e.type === "play").at(-1)).toMatchObject({
+      cardId: "raid", targetFactionId: "beta",
+    });
+  });
+
+  it("falls back to grow-crops when incorporate has no vassal", () => {
+    let g = endTurn(playingState(), seededRng(6));
+    g = withHand(g, 1, ["incorporate", "grow-crops"]);
+    const after = aiTurn(g);
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "grow-crops",
+    });
+  });
+
+  it("passes when nothing is playable", () => {
+    let g = endTurn(playingState(), seededRng(6));
+    g = withHand(g, 1, ["incorporate"]);
+    expect(aiTurn(g)).toBe(g);
+  });
 });
 
 describe("event log", () => {
@@ -174,13 +254,14 @@ describe("event log", () => {
     expect(newGame(FACTIONS).log).toEqual([]);
     const g = playingState();
     expect(g.log).toEqual([
-      { turn: 1, playerId: 1, type: "draw", cardId: "grow-crops" },
+      { turn: 1, playerId: 1, type: "draw", cardId: g.players[0].hand[0] },
     ]);
   });
 
   it("records plays with the card id", () => {
-    const g = playCard(playingState(), 0);
-    expect(g.log.at(-1)).toEqual({
+    const g = withHand(playingState(), 0, ["grow-crops"]);
+    const played = playCard(g, 0);
+    expect(played.log.at(-1)).toEqual({
       turn: 1, playerId: 1, type: "play", cardId: "grow-crops",
     });
   });
@@ -188,7 +269,7 @@ describe("event log", () => {
   it("records AI draws on endTurn", () => {
     const g = endTurn(playingState(), seededRng(3));
     expect(g.log.at(-1)).toEqual({
-      turn: 1, playerId: 2, type: "draw", cardId: "grow-crops",
+      turn: 1, playerId: 2, type: "draw", cardId: g.players[1].hand.at(-1),
     });
   });
 
@@ -227,5 +308,132 @@ describe("event log", () => {
     playCard(g, 0);
     endTurn(g, seededRng(5));
     expect(g.log).toHaveLength(len);
+  });
+});
+
+describe("targeted card play", () => {
+  const LINE_ADJ = {
+    alpha: ["beta"],
+    beta: ["alpha", "gamma"],
+    gamma: ["beta", "delta"],
+    delta: ["gamma"],
+  };
+
+  function lineState(): GameState {
+    return pickFaction(
+      startGame(newGame(FACTIONS, LINE_ADJ)), "beta", seededRng(1),
+    );
+  }
+
+  it("raid bumps might and subjugates on a positive lead", () => {
+    const g = withHand(lineState(), 0, ["raid"]);
+    const after = playCard(g, 0, "alpha");
+    expect(getRel(after.relations, "beta", "alpha").might).toBe(1);
+    expect(overlordsOf(after).get("alpha")).toBe("beta");
+    expect(after.log.at(-2)).toMatchObject({
+      type: "play", cardId: "raid", targetFactionId: "alpha",
+    });
+    expect(after.log.at(-1)).toMatchObject({
+      type: "subjugated", targetFactionId: "alpha", overlordFactionId: "beta",
+    });
+  });
+
+  it("shrewd marriage bumps status the same way", () => {
+    const g = withHand(lineState(), 0, ["shrewd-marriage"]);
+    const after = playCard(g, 0, "gamma");
+    expect(getRel(after.relations, "beta", "gamma").status).toBe(1);
+    expect(overlordsOf(after).get("gamma")).toBe("beta");
+  });
+
+  it("rejects a targeted card without a target or out of reach", () => {
+    const g = withHand(lineState(), 0, ["raid"]);
+    expect(playCard(g, 0)).toBe(g);
+    expect(playCard(g, 0, "delta")).toBe(g); // not adjacent to beta's realm
+    expect(playCard(g, 0, "beta")).toBe(g); // never self
+  });
+
+  it("incorporate annexes a vassal permanently, with a log entry", () => {
+    let g = lineState();
+    g = { ...g, relations: bumpMight(g.relations, "beta", "alpha") };
+    g = withHand(g, 0, ["incorporate"]);
+    const after = playCard(g, 0, "alpha");
+    expect(after.incorporated).toEqual({ alpha: "beta" });
+    expect(overlordsOf(after).has("alpha")).toBe(false);
+    const types = after.log.map((e) => e.type);
+    expect(types).toContain("incorporated");
+    expect(types.filter((t) => t === "released")).toHaveLength(0);
+  });
+
+  it("incorporate rejects non-vassals", () => {
+    const g = withHand(lineState(), 0, ["incorporate"]);
+    expect(playCard(g, 0, "alpha")).toBe(g);
+  });
+
+  it("poaching logs a subjugated event with the new overlord", () => {
+    let g = lineState();
+    // gamma starts as alpha's vassal (relations can be seeded directly;
+    // adjacency only constrains card play, not stored numbers)
+    g = { ...g, relations: bumpMight(g.relations, "alpha", "gamma") };
+    g = withHand(g, 0, ["raid"]);
+    let after = playCard(g, 0, "gamma"); // beta 1 vs alpha 1: alpha keeps (order)
+    expect(overlordsOf(after).get("gamma")).toBe("alpha");
+    after = { ...after, playedThisTurn: false };
+    after = withHand(after, 0, ["raid"]);
+    after = playCard(after, 0, "gamma"); // beta lead 2 beats alpha lead 1
+    expect(overlordsOf(after).get("gamma")).toBe("beta");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "subjugated", targetFactionId: "gamma", overlordFactionId: "beta",
+    });
+  });
+
+  it("subjugating the human ends the game", () => {
+    let g = lineState();
+    g = { ...g, current: 2 }; // player 3 = gamma
+    g = withHand(g, 2, ["raid"]);
+    const after = playCard(g, 0, "beta");
+    expect(after.phase).toBe("game-over");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "game-over", targetFactionId: "beta", overlordFactionId: "gamma",
+    });
+  });
+
+  it("newGame without adjacency connects everyone (test default)", () => {
+    const g = newGame(FACTIONS);
+    expect(g.adjacency["alpha"].sort()).toEqual(["beta", "delta", "gamma"]);
+    expect(g.relations).toEqual({});
+    expect(g.incorporated).toEqual({});
+  });
+});
+
+describe("turn skipping", () => {
+  it("skips subjugated players and still increments the turn on wrap", () => {
+    let g = playingState(); // players: beta(you), alpha, gamma, delta
+    g = { ...g, relations: bumpMight(g.relations, "gamma", "alpha") };
+    const after = endTurn(g, seededRng(7)); // alpha (index 1) is a vassal
+    expect(after.current).toBe(2); // gamma acts next
+    expect(after.players[1].hand).toHaveLength(0); // no draw for alpha
+    let wrapped = endTurn(after, seededRng(7)); // delta
+    wrapped = endTurn(wrapped, seededRng(7)); // back to you
+    expect(wrapped.current).toBe(0);
+    expect(wrapped.turn).toBe(2);
+  });
+
+  it("skips incorporated players", () => {
+    let g = playingState();
+    g = { ...g, incorporated: { alpha: "beta" } };
+    const after = endTurn(g, seededRng(7));
+    expect(after.current).toBe(2);
+  });
+
+  it("wraps to the human even when every AI is inert", () => {
+    let g = playingState();
+    let rel = g.relations;
+    rel = bumpMight(rel, "beta", "alpha");
+    rel = bumpMight(rel, "beta", "gamma");
+    rel = bumpMight(rel, "beta", "delta");
+    g = { ...g, relations: rel };
+    const after = endTurn(g, seededRng(7));
+    expect(after.current).toBe(0);
+    expect(after.turn).toBe(2);
   });
 });

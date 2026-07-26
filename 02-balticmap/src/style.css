@@ -207,6 +207,10 @@ svg.map.dragging {
   margin-top: 11px;
 }
 
+.panel-relations {
+  white-space: pre-line;
+}
+
 .attribution {
   position: absolute;
   bottom: 6px;
@@ -317,8 +321,50 @@ svg.map.dragging {
   filter: saturate(0.6) brightness(0.96);
 }
 
+.card.unplayable {
+  filter: grayscale(0.85) brightness(0.92);
+  opacity: 0.65;
+}
+
+.card.card-armed {
+  translate: 0 -26px;
+  outline: 2px solid #fdfaf4;
+  outline-offset: -1px;
+  z-index: 7;
+}
+
+.gameover-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  background: rgba(24, 32, 38, 0.72);
+  z-index: 20;
+}
+
+.gameover-reason {
+  font-size: 18px;
+  color: #fdfaf4;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
 .region.dimmed {
   opacity: 0.225;
+}
+
+.region.target-valid {
+  cursor: pointer;
+  stroke: #fdfaf4;
+  stroke-width: 2;
+  opacity: 1;
+}
+
+.region.target-invalid {
+  opacity: 0.12;
+  pointer-events: auto;
 }
 
 .region.owned:not(.selected) {

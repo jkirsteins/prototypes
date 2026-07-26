@@ -27,6 +27,7 @@ const talava: Region = {
   population: 30000,
   cohesion: "high",
   maxSettlements: 3,
+  adjacent: [],
   flavor: "Latgalian land on the upper Gauja.",
   places: ["Beverīna", "Trikāta"],
   path: "M0 0Z",
@@ -40,6 +41,7 @@ const jersika: Region = {
   population: 35000,
   cohesion: "high",
   maxSettlements: 4,
+  adjacent: [],
   flavor: "A principality on the Daugava.",
   places: ["Koknese"],
   path: "M0 0Z",
@@ -132,6 +134,28 @@ describe("tooltip", () => {
 
     tooltip.hide();
     expect(el.classList.contains("hidden")).toBe(true);
+  });
+});
+
+describe("relations block", () => {
+  it("renders the lines from relationsInfo, hidden when empty", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    let lines: string[] = [];
+    const panel = createPanel(
+      container, vi.fn(), peoples, factions, [],
+      () => lines,
+    );
+    panel.show(talava);
+    const el = container.querySelector(".panel-relations") as HTMLElement;
+    expect(el.classList.contains("hidden")).toBe(true);
+
+    lines = ["Status: yours 1 / theirs 0", "Might: yours 0 / theirs 0", "Your vassal"];
+    panel.show(talava);
+    expect(el.classList.contains("hidden")).toBe(false);
+    expect(el.textContent).toBe(
+      "Status: yours 1 / theirs 0\nMight: yours 0 / theirs 0\nYour vassal",
+    );
   });
 });
 

@@ -33,6 +33,7 @@ export interface Region {
   places: string[];
   path: string;
   maxSettlements: number; // population-correlated slot cap, baked by the pipeline
+  adjacent: string[]; // region ids sharing a border or an authored sea link
 }
 
 export interface Neighbor {
