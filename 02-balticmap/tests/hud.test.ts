@@ -67,7 +67,7 @@ describe("createHud", () => {
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - your turn");
     expect(q(container, ".end-turn").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".pile-deck .pile-count").textContent).toBe("19");
+    expect(q(container, ".pile-deck .pile-count").textContent).toBe("9");
     expect(q(container, ".pile-deck .pile-label").textContent).toBe("Deck");
     expect(q(container, ".pile-discard .pile-count").textContent).toBe("0");
     expect(q(container, ".pile-discard .pile-label").textContent).toBe("Discard");
@@ -131,8 +131,8 @@ describe("visual piles", () => {
       pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0,
       ["grow-crops"],
     );
-    hud.update(g); // deck 19, discard 0
-    expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(4);
+    hud.update(g); // deck 9, discard 0
+    expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(3);
     expect(container.querySelectorAll(".pile-discard .card-back")).toHaveLength(0);
     expect(
       q(container, ".pile-discard .pile-stack").classList.contains("empty"),
