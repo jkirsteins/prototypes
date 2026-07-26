@@ -233,7 +233,12 @@ function afterHumanAction(): void {
   refresh();
   if (game.phase !== "playing" || isHumanTurn(game)) return;
   setTimeout(() => {
+    let iterations = 0;
     while (game.phase === "playing" && !isHumanTurn(game)) {
+      if (++iterations > 1000) {
+        console.error("AI chain stalled - breaking");
+        break;
+      }
       game = advance(aiTakeTurn(game, rng), rng);
     }
     refresh();
@@ -245,8 +250,8 @@ const hud = createHud(
   {
     onNewGame() {
       game = startGame(newGame(data.factions.map((f) => f.id), factionAdjacency));
-      armed = null;
-      pendingTribute = null;
+      cancelTribute();
+      disarm();
       refresh();
     },
     onPlayCard(index) {

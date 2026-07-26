@@ -226,10 +226,10 @@ export function playCard(
   } else if (cardId === "subjugate" && targetId !== undefined) {
     freeVassalsOf(targetId);
     overlords.set(targetId, p.factionId);
-    players = updateFaction(players, targetId, (pl) => ({
-      ...pl,
-      deck: shuffle([...pl.deck, "pay-tribute", "pay-tribute"], rng),
-    }));
+    players = updateFaction(players, targetId, (pl) => {
+      const clean = stripTribute(pl);
+      return { ...clean, deck: shuffle([...clean.deck, "pay-tribute", "pay-tribute"], rng) };
+    });
     events.push({
       turn: state.turn, playerId: p.id, type: "subjugated",
       targetFactionId: targetId, overlordFactionId: p.factionId,
@@ -280,9 +280,10 @@ export function playCard(
     !seenThisRun.includes(cardId)
   ) {
     const humanRealm = realmOf(human.factionId, overlords, incorporated);
+    const humanRealmBefore = realmOf(human.factionId, state.overlords, state.incorporated);
     let seen = false;
     if (card.targeted && targetId !== undefined) {
-      seen = humanRealm.includes(targetId);
+      seen = humanRealm.includes(targetId) || humanRealmBefore.includes(targetId);
     } else if (!card.targeted) {
       const actorRealm = realmOf(p.factionId, overlords, incorporated);
       const humanSet = new Set(humanRealm);
@@ -294,6 +295,7 @@ export function playCard(
   }
 
   // endings
+  // defeat is checked before victory; the spec notes the two cannot coincide
   if (incorporated[human.factionId] !== undefined) {
     phase = "defeat";
     events.push({

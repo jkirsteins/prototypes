@@ -156,6 +156,22 @@ describe("card effects", () => {
     expect(after.log.some((e) => e.type === "released" && e.targetFactionId === "delta")).toBe(true);
   });
 
+  it("poaching replaces tribute copies instead of stacking them", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
+    let gammaP = g.players.find((p) => p.factionId === "gamma")!;
+    gammaP = { ...gammaP, deck: [...gammaP.deck, "pay-tribute", "pay-tribute"] };
+    g = { ...g, players: g.players.map((p) => (p.factionId === "gamma" ? gammaP : p)) };
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    const poached = after.players.find((p) => p.factionId === "gamma")!;
+    expect(
+      [...poached.deck, ...poached.hand, ...poached.discard]
+        .filter((c) => c === "pay-tribute"),
+    ).toHaveLength(2);
+  });
+
   it("incorporate is permanent and ends the game when the human falls", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
@@ -280,6 +296,15 @@ describe("seenThisRun", () => {
     g2 = { ...g2, current: 2 };
     g2 = withHand(g2, 2, ["raid"]);
     expect(playCard(g2, 0, rng(), "delta").seenThisRun).toEqual([]);
+  });
+
+  it("records a poach of the human's own vassal", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, current: 3, overlords: new Map([["gamma", "beta"]]) };
+    g = withRel(g, mightLead(g.relations, "delta", "gamma", 2));
+    g = withHand(g, 3, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after.seenThisRun).toEqual(["subjugate"]);
   });
 });
 

@@ -420,18 +420,6 @@ svg.map.dragging {
   opacity: 0.225;
 }
 
-.region.target-valid {
-  cursor: pointer;
-  stroke: #fdfaf4;
-  stroke-width: 2;
-  opacity: 1;
-}
-
-.region.target-invalid {
-  opacity: 0.12;
-  pointer-events: auto;
-}
-
 .region.threat-1 {
   stroke: #c9807a;
   stroke-width: 1.4;
@@ -450,6 +438,18 @@ svg.map.dragging {
 .region.advantage {
   stroke: #5d8a55;
   stroke-width: 1.4;
+}
+
+.region.target-valid {
+  cursor: pointer;
+  stroke: #fdfaf4;
+  stroke-width: 2;
+  opacity: 1;
+}
+
+.region.target-invalid {
+  opacity: 0.12;
+  pointer-events: auto;
 }
 
 .realm-outline path {
