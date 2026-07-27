@@ -86,6 +86,12 @@ describe("leading", () => {
   it("resolves an unanswered lead and discards it", () => {
     const state = started();
     stage(state, { playerHand: ["stallHim"], convictHand: [] });
+    // A real run always has cards left in the deck at this hand size; a
+    // completely empty deck+discard is a test-only degenerate case that
+    // would make the next-turn draw reshuffle the card we are about to
+    // discard right back into hand. Seed one filler card so the draw at
+    // the end of this call has something else to find.
+    state.playerPile.deck = ["flinch"];
     const before = state.convict.willpower;
     playerLead(state, "stallHim");
     expect(state.convict.willpower).toBe(before - 2);
@@ -109,6 +115,18 @@ describe("leading", () => {
     playerPass(state);
     expect(state.log.some((e) => e.kind === "pass")).toBe(true);
     expect(state.playerPile.hand.length).toBeGreaterThanOrEqual(handBefore);
+  });
+
+  it("draws on the next turn even when leading from a full hand", () => {
+    const state = started();
+    stage(state, {
+      playerHand: ["stallHim", "stoic", "flinch", "talkHimDown", "takeItForHer"],
+      convictHand: [],
+    });
+    state.playerPile.deck = ["kickHisKnee"];
+    playerLead(state, "stallHim");
+    expect(state.playerPile.hand).toHaveLength(5);
+    expect(state.playerPile.hand).toContain("kickHisKnee");
   });
 });
 
@@ -198,6 +216,36 @@ describe("answering and coercion", () => {
     expect(state.phase).toBe("gameOver");
     expect(state.outcome).toBe("lossSecrets");
   });
+
+  it("logs an ending line exactly once when the run is lost to secrets", () => {
+    const state = started();
+    state.secretsRemaining = ["secretFloorboard"];
+    stage(state, { playerHand: ["stallHim"], convictHand: ["backhand"] });
+    playerLead(state, "stallHim");
+    playerAnswer(state, "secretFloorboard");
+    expect(state.phase).toBe("gameOver");
+    const endings = state.log.filter((e) => e.kind === "outcome");
+    expect(endings).toHaveLength(1);
+    expect(endings[0].text.length).toBeGreaterThan(0);
+  });
+
+  it("gives the same distraction whether a secret is surrendered under coercion or answered voluntarily", () => {
+    const coerced = started();
+    coerced.player.willpower = 2;
+    stage(coerced, { playerHand: ["stallHim"], convictHand: ["whereIsIt"] });
+    playerLead(coerced, "stallHim");
+    playerAnswer(coerced, null);
+    expect(coerced.phase).toBe("forcedSurrender");
+    playerSurrender(coerced, "secretFreezer");
+
+    const voluntary = started();
+    stage(voluntary, { playerHand: ["stallHim"], convictHand: ["backhand"] });
+    playerLead(voluntary, "stallHim");
+    playerAnswer(voluntary, "secretFreezer");
+
+    expect(coerced.convict.distracted).toBe(2);
+    expect(voluntary.convict.distracted).toBe(2);
+  });
 });
 
 describe("toppled interrupt", () => {
@@ -211,6 +259,15 @@ describe("toppled interrupt", () => {
     expect(state.convict.offBalance).toBe(true);
     expect(state.phase).toBe("playerLead");
     expect(state.log.some((e) => e.kind === "haulUp")).toBe(true);
+  });
+});
+
+describe("distraction ticking", () => {
+  it("ticks down once at the end of the convict's turn", () => {
+    const state = started();
+    stage(state, { playerHand: ["lieAboutTheMoney"], convictHand: [] });
+    playerLead(state, "lieAboutTheMoney");
+    expect(state.convict.distracted).toBe(1);
   });
 });
 

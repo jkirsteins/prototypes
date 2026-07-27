@@ -80,21 +80,21 @@ function assertPlayable(state: GameState): void {
 }
 
 function checkEnd(state: GameState): boolean {
-  if (state.outcome !== null) {
-    state.phase = "gameOver";
-    return true;
+  // An outcome may already be set by an effect (loseRun, or the fixture
+  // victory) before this runs; only look for a fresh vigor-based outcome
+  // when nothing has claimed the ending yet. Either way, there is exactly
+  // one exit point below, so the ending line is logged exactly once.
+  if (state.outcome === null) {
+    if (state.player.vigor <= 0) {
+      state.outcome = "lossVigor";
+    } else if (state.wife.vigor <= 0) {
+      state.outcome = "lossWife";
+    }
   }
-  if (state.player.vigor <= 0) {
-    state.outcome = "lossVigor";
-  } else if (state.wife.vigor <= 0) {
-    state.outcome = "lossWife";
-  }
-  if (state.outcome !== null) {
-    state.phase = "gameOver";
-    logNote(state, "system", "outcome", endingLine(state));
-    return true;
-  }
-  return false;
+  if (state.outcome === null) return false;
+  state.phase = "gameOver";
+  logNote(state, "system", "outcome", endingLine(state));
+  return true;
 }
 
 function endingLine(state: GameState): string {
@@ -242,6 +242,7 @@ export function playerLead(state: GameState, cardId: string): void {
   const legality = canLead(state, "player", card);
   if (!legality.ok) throw new Error(`Card ${cardId} is not legal: ${legality.reason}`);
 
+  if (!isFixture) discardCard(state.playerPile, cardId);
   logCard(state, "player", "lead", cardId, []);
 
   const answerId = convictAnswerFor(state, card);
@@ -254,12 +255,7 @@ export function playerLead(state: GameState, cardId: string): void {
     state.phase = "gameOver";
     return;
   }
-  // The led card stays in hand until the whole exchange (including any
-  // convict turn this call drives forward) has resolved. Discarding it
-  // earlier would let a same-call draw immediately reshuffle it back out
-  // of the discard pile when this pile's economy has nothing else in it.
   afterPlayerAction(state);
-  if (!isFixture) discardCard(state.playerPile, cardId);
 }
 
 export function playerPass(state: GameState): void {
@@ -290,6 +286,12 @@ export function playerAnswer(state: GameState, cardId: string | null): void {
     logNote(state, "player", "decline", "You take it.");
   }
 
+  // The convict's turn that produced this lead concludes here, exactly
+  // once, before the answering card (or lack of one) resolves against it.
+  // This must fire even when the exchange turns out to force a surrender:
+  // playerSurrender is a continuation of this same turn, not a new one, so
+  // it must not tick distraction again.
+  endConvictTurn(state);
   const mods = resolveExchange(state, lead, "convict", cardId);
   state.pendingLead = null;
 
@@ -307,7 +309,6 @@ export function playerAnswer(state: GameState, cardId: string | null): void {
     state.coercionDefused = true;
   }
 
-  endConvictTurn(state);
   startPlayerTurn(state);
 }
 
@@ -320,12 +321,9 @@ export function playerSurrender(state: GameState, secretId: string): void {
   state.secretsRemaining = state.secretsRemaining.filter((id) => id !== secretId);
   state.stats.secretsGiven.push({ cardId: secretId, coerced: true });
 
-  // The convict's turn that produced this demand concludes here. Tick down
-  // whatever distraction carried into this moment before the secret's own
-  // effects (which may set fresh distraction) are applied, so a secret that
-  // distracts him is not immediately docked a turn by its own resolution.
-  endConvictTurn(state);
-
+  // No endConvictTurn here: this call is the deferred conclusion of the
+  // same convict turn that playerAnswer already ticked once, immediately
+  // before resolving the coercive lead that led to this forced surrender.
   const mods = newMods();
   const deltas: string[] = [];
   for (const effect of card.effects) {
