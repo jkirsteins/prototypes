@@ -22,6 +22,8 @@ const FACTIONS = ["alpha", "beta", "gamma"];
 function setup(opts?: {
   canPlayCard?: (cardId: string) => boolean;
   isDiscardMode?: () => boolean;
+  lootInfo?: () => { id: string; isNew: boolean }[];
+  onResetProgress?: () => void;
 }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -31,6 +33,8 @@ function setup(opts?: {
     onTributeTrack: vi.fn(),
     ...(opts?.canPlayCard ? { canPlayCard: opts.canPlayCard } : {}),
     ...(opts?.isDiscardMode ? { isDiscardMode: opts.isDiscardMode } : {}),
+    ...(opts?.lootInfo ? { lootInfo: opts.lootInfo } : {}),
+    ...(opts?.onResetProgress ? { onResetProgress: opts.onResetProgress } : {}),
   };
   const hud = createHud(container, cb, new Map([
     ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
@@ -428,5 +432,66 @@ describe("hud v2", () => {
     expect(q(container, ".pm-cause").textContent).toBe(
       "You rule the Baltic - 11 of 20 lands",
     );
+  });
+});
+
+describe("learning loop hud", () => {
+  function playing() {
+    return pickFaction(
+      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()),
+      "beta", seededRng(1),
+    );
+  }
+
+  function defeated() {
+    let g = playing();
+    g = { ...g, current: 2, overlords: new Map([["beta", "gamma"]]) };
+    g = withHand(g, 2, ["incorporate"]);
+    g = playCard(g, 0, seededRng(1), "beta");
+    return { ...g, seenThisRun: ["raid", "subjugate"] };
+  }
+
+  it("renders loot from lootInfo with NEW tags and the unlock caption", () => {
+    const { container, hud } = setup({
+      lootInfo: () => [
+        { id: "raid", isNew: true },
+        { id: "subjugate", isNew: false },
+      ],
+    });
+    hud.update(defeated());
+    const cards = [...container.querySelectorAll(".pm-card")];
+    expect(cards.map((c) => c.textContent)).toEqual(["RaidNEW", "Subjugate"]);
+    expect(cards[0].querySelector(".pm-card-new")?.textContent).toBe("NEW");
+    expect(q(container, ".pm-seen-label").textContent).toBe(
+      "Unlock one of these when you start your next game.",
+    );
+  });
+
+  it("hides the loot row when lootInfo returns nothing", () => {
+    const { container, hud } = setup({ lootInfo: () => [] });
+    hud.update(defeated());
+    expect(q(container, ".pm-seen-label").classList.contains("hidden")).toBe(true);
+    expect(container.querySelectorAll(".pm-card")).toHaveLength(0);
+  });
+
+  it("reset progress arms on first click and fires on second", () => {
+    const onResetProgress = vi.fn();
+    const { container, hud } = setup({ onResetProgress });
+    hud.update(newGame(FACTIONS));
+    const reset = q(container, ".menu-reset");
+    expect(reset.textContent).toBe("Reset progress");
+    reset.click();
+    expect(onResetProgress).not.toHaveBeenCalled();
+    expect(reset.textContent).toBe("Really reset?");
+    expect(reset.classList.contains("confirm")).toBe(true);
+    reset.click();
+    expect(onResetProgress).toHaveBeenCalledOnce();
+    expect(reset.textContent).toBe("Reset progress");
+  });
+
+  it("omits the reset control without the callback", () => {
+    const { container, hud } = setup();
+    hud.update(newGame(FACTIONS));
+    expect(container.querySelector(".menu-reset")).toBeNull();
   });
 });
