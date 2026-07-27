@@ -13,11 +13,11 @@ import {
 import { aiTakeTurn } from "./ai";
 import { getRel, leadsOf, realmOf } from "./relations";
 import { playableSet, validTargetsFor } from "./playability";
-import { CARDS, buildDeck } from "./cards";
+import { CARDS } from "./cards";
 import { createHud } from "./hud";
 import { createDeckScreen } from "./deck-screen";
 import {
-  buildPlayerDeck, initialMeta, loadMeta, memoryStorage, mergeSeen,
+  buildPlayerDeck, loadMeta, memoryStorage, mergeSeen,
   resetMeta, saveMeta, unlockCard, type MetaRecord, type MetaStorage,
 } from "./meta";
 import "./style.css";
@@ -41,17 +41,19 @@ const factionAdjacency = Object.fromEntries(
 );
 
 const rng = Math.random;
-const storage: MetaStorage = (() => {
+const { storage, storageIsPersistent } = ((): {
+  storage: MetaStorage;
+  storageIsPersistent: boolean;
+} => {
   try {
     const probe = "balticmap-meta-probe";
     window.localStorage.setItem(probe, "1");
     window.localStorage.removeItem(probe);
-    return window.localStorage;
+    return { storage: window.localStorage, storageIsPersistent: true };
   } catch {
-    return memoryStorage();
+    return { storage: memoryStorage(), storageIsPersistent: false };
   }
 })();
-const storageIsPersistent = storage === window.localStorage;
 let meta: MetaRecord = loadMeta(storage);
 let unlockUsedThisGame = false;
 let seenMerged = false;
