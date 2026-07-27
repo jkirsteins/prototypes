@@ -100,8 +100,14 @@ export function createPanel(
   };
 }
 
+export interface TooltipLine {
+  text: string;
+  tone?: "good" | "bad" | "neutral";
+}
+
 export interface Tooltip {
   show(text: string, clientX: number, clientY: number): void;
+  showLines(lines: TooltipLine[], clientX: number, clientY: number): void;
   hide(): void;
 }
 
@@ -112,6 +118,19 @@ export function createTooltip(container: HTMLElement): Tooltip {
   return {
     show(text, clientX, clientY) {
       el.textContent = text;
+      el.style.left = `${clientX + 12}px`;
+      el.style.top = `${clientY + 12}px`;
+      el.classList.remove("hidden");
+    },
+    showLines(lines, clientX, clientY) {
+      el.replaceChildren(
+        ...lines.map((l) => {
+          const div = document.createElement("div");
+          div.className = `tooltip-line tone-${l.tone ?? "neutral"}`;
+          div.textContent = l.text;
+          return div;
+        }),
+      );
       el.style.left = `${clientX + 12}px`;
       el.style.top = `${clientY + 12}px`;
       el.classList.remove("hidden");

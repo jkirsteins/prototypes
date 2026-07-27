@@ -1,23 +1,29 @@
 import { buildDeck, shuffle, CARDS, type Rng } from "./cards";
 import {
-  bumpMight, bumpStatus, computeOverlords, getRel, validTargets,
+  bumpMight, bumpMightAll, bumpStatus, realmOf,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
+import { playableSet, validTargetsFor, type RulesView } from "./playability";
 
 export type GameEventType =
-  | "draw" | "play" | "reshuffle"
-  | "subjugated" | "released" | "incorporated" | "game-over";
+  | "draw" | "play" | "reshuffle" | "discard"
+  | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
+  | "victory" | "defeat";
 
 export interface GameEvent {
   turn: number;
   playerId: number; // 1 = human
   type: GameEventType;
-  cardId?: string; // present for draw and play
-  targetFactionId?: string; // play target / affected faction
-  overlordFactionId?: string; // subjugated, incorporated, game-over
+  cardId?: string; // draw, play, discard
+  targetFactionId?: string;
+  overlordFactionId?: string;
+  track?: "status" | "might"; // tribute
 }
 
-export type GamePhase = "main-menu" | "pick-faction" | "playing" | "game-over";
+export type GamePhase =
+  | "main-menu" | "pick-faction" | "playing" | "victory" | "defeat";
+
+export type TributeTrack = "status" | "might";
 
 export interface PlayerState {
   id: number; // 1 = human, 2..N = AI
@@ -31,13 +37,28 @@ export interface GameState {
   phase: GamePhase;
   turn: number; // 1-based
   players: PlayerState[]; // index 0 = human
-  current: number; // index into players
+  current: number;
   playedThisTurn: boolean;
   factionIds: string[];
   relations: Relations;
+  overlords: Overlords; // STORED vassal -> overlord map
   incorporated: Incorporated;
-  adjacency: Record<string, string[]>; // faction id -> adjacent faction ids
+  adjacency: Record<string, string[]>;
+  seenThisRun: string[]; // non-basic enemy cards witnessed (learning loop)
   log: GameEvent[];
+}
+
+export const OPENING_HAND = 3;
+export const VICTORY_REALM_SIZE = 11;
+
+export function viewOf(state: GameState): RulesView {
+  return {
+    relations: state.relations,
+    overlords: state.overlords,
+    incorporated: state.incorporated,
+    adjacency: state.adjacency,
+    factionIds: state.factionIds,
+  };
 }
 
 export function newGame(
@@ -52,18 +73,16 @@ export function newGame(
     playedThisTurn: false,
     factionIds,
     relations: {},
+    overlords: new Map(),
     incorporated: {},
     adjacency:
       adjacency ??
       Object.fromEntries(
         factionIds.map((id) => [id, factionIds.filter((o) => o !== id)]),
       ),
+    seenThisRun: [],
     log: [],
   };
-}
-
-export function overlordsOf(state: GameState): Overlords {
-  return computeOverlords(state.relations, state.incorporated, state.factionIds);
 }
 
 export function startGame(state: GameState): GameState {
@@ -72,7 +91,15 @@ export function startGame(state: GameState): GameState {
 }
 
 function makePlayer(id: number, factionId: string, rng: Rng): PlayerState {
-  return { id, factionId, deck: shuffle(buildDeck(), rng), hand: [], discard: [] };
+  const deck = shuffle(buildDeck(), rng);
+  // opening hand: dealt silently (no log events)
+  return {
+    id,
+    factionId,
+    hand: deck.slice(0, OPENING_HAND),
+    deck: deck.slice(OPENING_HAND),
+    discard: [],
+  };
 }
 
 export function pickFaction(
@@ -87,14 +114,10 @@ export function pickFaction(
     makePlayer(1, factionId, rng),
     ...others.map((id, i) => makePlayer(i + 2, id, rng)),
   ];
-  return beginTurn(
-    { ...state, phase: "playing", players, current: 0 },
-    rng,
-  );
+  return beginTurn({ ...state, phase: "playing", players, current: 0 }, rng);
 }
 
-/** Current player draws 1: reshuffle discard into deck if the deck is empty;
- *  skip the draw entirely if both are empty. Resets the play-per-turn flag. */
+/** Current player draws 1 (reshuffle rule); resets the play flag. */
 export function beginTurn(state: GameState, rng: Rng): GameState {
   if (state.players.length === 0) return state;
   const p = state.players[state.current];
@@ -118,101 +141,219 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   return { ...state, players, log, playedThisTurn: false };
 }
 
+const stripTribute = (p: PlayerState): PlayerState => ({
+  ...p,
+  deck: p.deck.filter((c) => c !== "pay-tribute"),
+  hand: p.hand.filter((c) => c !== "pay-tribute"),
+  discard: p.discard.filter((c) => c !== "pay-tribute"),
+});
+
+function updateFaction(
+  players: PlayerState[],
+  factionId: string,
+  fn: (p: PlayerState) => PlayerState,
+): PlayerState[] {
+  return players.map((p) => (p.factionId === factionId ? fn(p) : p));
+}
+
 export function playCard(
   state: GameState,
   cardIndex: number,
+  rng: Rng,
   targetId?: string,
+  tributeTrack?: TributeTrack,
 ): GameState {
-  if (state.phase !== "playing" || state.playedThisTurn) return state;
+  if (state.phase !== "playing") return state;
+  if (state.playedThisTurn) return state;
   const p = state.players[state.current];
-  if (cardIndex < 0 || cardIndex >= p.hand.length) return state;
+  const set = playableSet(viewOf(state), p.factionId, p.hand);
+  if (set.mode !== "play" || !set.cardIndexes.includes(cardIndex)) return state;
   const cardId = p.hand[cardIndex];
   const card = CARDS[cardId];
-  const before = overlordsOf(state);
+  if (card === undefined) return state;
+  if (card.targeted) {
+    const targets = validTargetsFor(viewOf(state), p.factionId, cardId);
+    if (targetId === undefined || !targets.includes(targetId)) return state;
+  }
+  if (cardId === "pay-tribute" && tributeTrack === undefined) return state;
 
   let relations = state.relations;
+  const overlords = new Map(state.overlords);
   let incorporated = state.incorporated;
-  if (card?.targeted) {
-    const targets = validTargets(
-      p.factionId, cardId, before, incorporated, state.adjacency, state.factionIds,
-    );
-    if (targetId === undefined || !targets.includes(targetId)) return state;
-    if (cardId === "raid") {
-      relations = bumpMight(relations, p.factionId, targetId);
-    } else if (cardId === "shrewd-marriage") {
-      relations = bumpStatus(relations, p.factionId, targetId);
-    } else if (cardId === "incorporate") {
-      incorporated = { ...incorporated, [targetId]: p.factionId };
-    }
-  }
-
-  const updated = {
-    ...p,
-    hand: p.hand.filter((_, i) => i !== cardIndex),
-    discard: [...p.discard, cardId],
-  };
-  const players = state.players.map((pl, i) =>
-    i === state.current ? updated : pl,
-  );
-
+  let phase: GamePhase = state.phase;
   const events: GameEvent[] = [
     {
       turn: state.turn, playerId: p.id, type: "play", cardId,
-      ...(card?.targeted && targetId !== undefined
+      ...(card.targeted && targetId !== undefined
         ? { targetFactionId: targetId }
         : {}),
     },
   ];
-  if (cardId === "incorporate" && targetId !== undefined) {
+
+  // move the played card out of hand first, then apply effects to players
+  let players = state.players.map((pl, i) =>
+    i === state.current
+      ? {
+          ...pl,
+          hand: pl.hand.filter((_, j) => j !== cardIndex),
+          discard: [...pl.discard, cardId],
+        }
+      : pl,
+  );
+
+  const freeVassalsOf = (lord: string): void => {
+    for (const [vassal, l] of [...overlords]) {
+      if (l === lord) {
+        overlords.delete(vassal);
+        players = updateFaction(players, vassal, stripTribute);
+        events.push({
+          turn: state.turn, playerId: p.id, type: "released",
+          targetFactionId: vassal,
+        });
+      }
+    }
+  };
+
+  if (cardId === "raid" && targetId !== undefined) {
+    relations = bumpMight(relations, p.factionId, targetId);
+  } else if (cardId === "shrewd-marriage" && targetId !== undefined) {
+    relations = bumpStatus(relations, p.factionId, targetId);
+  } else if (cardId === "fortify") {
+    const living = state.factionIds.filter(
+      (f) => f !== p.factionId && !(f in incorporated),
+    );
+    relations = bumpMightAll(relations, p.factionId, living);
+  } else if (cardId === "subjugate" && targetId !== undefined) {
+    freeVassalsOf(targetId);
+    overlords.set(targetId, p.factionId);
+    players = updateFaction(players, targetId, (pl) => {
+      const clean = stripTribute(pl);
+      return { ...clean, deck: shuffle([...clean.deck, "pay-tribute", "pay-tribute"], rng) };
+    });
+    events.push({
+      turn: state.turn, playerId: p.id, type: "subjugated",
+      targetFactionId: targetId, overlordFactionId: p.factionId,
+    });
+  } else if (cardId === "incorporate" && targetId !== undefined) {
+    overlords.delete(targetId);
+    freeVassalsOf(targetId); // defensive: chains never exist
+    incorporated = { ...incorporated, [targetId]: p.factionId };
+    for (const [land, owner] of Object.entries(incorporated)) {
+      if (owner === targetId) incorporated = { ...incorporated, [land]: p.factionId };
+    }
+    players = updateFaction(players, targetId, stripTribute);
     events.push({
       turn: state.turn, playerId: p.id, type: "incorporated",
       targetFactionId: targetId, overlordFactionId: p.factionId,
     });
-  }
-
-  const after = computeOverlords(relations, incorporated, state.factionIds);
-  for (const f of state.factionIds) {
-    if (f in incorporated) continue; // annexation logged above, not a release
-    const was = before.get(f);
-    const is = after.get(f);
-    if (was === is) continue;
-    if (is !== undefined) {
-      events.push({
-        turn: state.turn, playerId: p.id, type: "subjugated",
-        targetFactionId: f, overlordFactionId: is,
-      });
-    } else {
-      events.push({
-        turn: state.turn, playerId: p.id, type: "released", targetFactionId: f,
-      });
-    }
-  }
-
-  let phase: GamePhase = state.phase;
-  const humanFaction = players[0]?.factionId;
-  const humanOverlord =
-    humanFaction !== undefined ? after.get(humanFaction) : undefined;
-  if (humanOverlord !== undefined) {
-    phase = "game-over";
+  } else if (cardId === "reclaim-independence") {
+    const former = overlords.get(p.factionId);
+    if (former === undefined) return state;
+    overlords.delete(p.factionId);
+    players = updateFaction(players, p.factionId, stripTribute);
     events.push({
-      turn: state.turn, playerId: p.id, type: "game-over",
-      targetFactionId: humanFaction, overlordFactionId: humanOverlord,
+      turn: state.turn, playerId: p.id, type: "reclaimed",
+      targetFactionId: p.factionId, overlordFactionId: former,
+    });
+  } else if (cardId === "pay-tribute") {
+    const lord = overlords.get(p.factionId);
+    if (lord === undefined || tributeTrack === undefined) return state;
+    const beneficiaries = [
+      lord,
+      ...state.factionIds.filter((f) => incorporated[f] === lord),
+    ];
+    const bump = tributeTrack === "might" ? bumpMight : bumpStatus;
+    for (const b of beneficiaries) {
+      relations = bump(relations, b, p.factionId);
+    }
+    events.push({
+      turn: state.turn, playerId: p.id, type: "tribute",
+      targetFactionId: p.factionId, overlordFactionId: lord,
+      track: tributeTrack,
     });
   }
 
+  // learning hook: enemy non-basic cards witnessed by the human
+  let seenThisRun = state.seenThisRun;
+  const human = players[0];
+  if (
+    p.id !== 1 &&
+    card.deckBuildable &&
+    card.maxPerDeck !== null &&
+    !seenThisRun.includes(cardId)
+  ) {
+    const humanRealm = realmOf(human.factionId, overlords, incorporated);
+    const humanRealmBefore = realmOf(human.factionId, state.overlords, state.incorporated);
+    let seen = false;
+    if (card.targeted && targetId !== undefined) {
+      seen = humanRealm.includes(targetId) || humanRealmBefore.includes(targetId);
+    } else if (!card.targeted) {
+      const actorRealm = realmOf(p.factionId, overlords, incorporated);
+      const humanSet = new Set(humanRealm);
+      seen = actorRealm.some((m) =>
+        (state.adjacency[m] ?? []).some((a) => humanSet.has(a)),
+      );
+    }
+    if (seen) seenThisRun = [...seenThisRun, cardId];
+  }
+
+  // endings
+  // defeat is checked before victory; the spec notes the two cannot coincide
+  if (incorporated[human.factionId] !== undefined) {
+    phase = "defeat";
+    events.push({
+      turn: state.turn, playerId: p.id, type: "defeat",
+      targetFactionId: human.factionId,
+      overlordFactionId: incorporated[human.factionId],
+    });
+  } else if (
+    realmOf(human.factionId, overlords, incorporated).length >=
+    VICTORY_REALM_SIZE
+  ) {
+    phase = "victory";
+    events.push({ turn: state.turn, playerId: p.id, type: "victory" });
+  }
+
   return {
-    ...state, phase, players, relations, incorporated,
+    ...state, phase, players, relations, overlords, incorporated, seenThisRun,
     log: [...state.log, ...events], playedThisTurn: true,
   };
 }
 
-export function endTurn(state: GameState, rng: Rng): GameState {
+/** Forced discard when nothing in hand is playable. */
+export function discardCard(state: GameState, cardIndex: number): GameState {
   if (state.phase !== "playing") return state;
-  const overlords = overlordsOf(state);
-  const inert = (i: number): boolean => {
-    const f = state.players[i].factionId;
-    return overlords.has(f) || f in state.incorporated;
+  if (state.playedThisTurn) return state;
+  const p = state.players[state.current];
+  const set = playableSet(viewOf(state), p.factionId, p.hand);
+  if (set.mode !== "discard" || !set.cardIndexes.includes(cardIndex)) return state;
+  const cardId = p.hand[cardIndex];
+  const players = state.players.map((pl, i) =>
+    i === state.current
+      ? {
+          ...pl,
+          hand: pl.hand.filter((_, j) => j !== cardIndex),
+          discard: [...pl.discard, cardId],
+        }
+      : pl,
+  );
+  return {
+    ...state,
+    players,
+    log: [
+      ...state.log,
+      { turn: state.turn, playerId: p.id, type: "discard", cardId },
+    ],
+    playedThisTurn: true,
   };
+}
+
+/** Moves to the next non-incorporated player after a completed turn.
+ *  The human (index 0) is never skipped; the turn counter bumps on wrap. */
+export function advance(state: GameState, rng: Rng): GameState {
+  if (state.phase !== "playing" || !state.playedThisTurn) return state;
+  const inert = (i: number): boolean =>
+    state.players[i].factionId in state.incorporated;
   let current = state.current;
   let turn = state.turn;
   do {
@@ -220,66 +361,6 @@ export function endTurn(state: GameState, rng: Rng): GameState {
     if (current === 0) turn += 1;
   } while (current !== 0 && inert(current));
   return beginTurn({ ...state, current, turn }, rng);
-}
-
-/** Greedy, deterministic AI: incorporate a vassal; else the raid/marriage
- *  closest to a NEW subjugation (own vassals excluded); else grow crops;
- *  else the first playable card; else pass. */
-export function aiTurn(state: GameState): GameState {
-  if (state.phase !== "playing") return state;
-  const p = state.players[state.current];
-  if (p.hand.length === 0) return state;
-  const overlords = overlordsOf(state);
-  const targetsFor = (cardId: string): string[] =>
-    validTargets(
-      p.factionId, cardId, overlords, state.incorporated,
-      state.adjacency, state.factionIds,
-    );
-
-  const vassals = state.factionIds.filter(
-    (f) => overlords.get(f) === p.factionId,
-  );
-  if (p.hand.includes("incorporate") && vassals.length > 0) {
-    return playCard(state, p.hand.indexOf("incorporate"), vassals[0]);
-  }
-
-  const tracks = [
-    { cardId: "raid", field: "might" as const },
-    { cardId: "shrewd-marriage", field: "status" as const },
-  ];
-  let best: { cardId: string; targetId: string; deficit: number; order: number } | null = null;
-  for (const t of tracks) {
-    if (!p.hand.includes(t.cardId)) continue;
-    for (const targetId of targetsFor(t.cardId)) {
-      if (overlords.get(targetId) === p.factionId) continue; // expand, not reinforce
-      const mine = getRel(state.relations, p.factionId, targetId)[t.field];
-      const theirs = getRel(state.relations, targetId, p.factionId)[t.field];
-      const deficit = theirs - mine + 1;
-      const order = state.factionIds.indexOf(targetId);
-      if (
-        best === null ||
-        deficit < best.deficit ||
-        (deficit === best.deficit && order < best.order)
-      ) {
-        best = { cardId: t.cardId, targetId, deficit, order };
-      }
-    }
-  }
-  if (best !== null) {
-    return playCard(state, p.hand.indexOf(best.cardId), best.targetId);
-  }
-
-  if (p.hand.includes("grow-crops")) {
-    return playCard(state, p.hand.indexOf("grow-crops"));
-  }
-
-  for (let i = 0; i < p.hand.length; i++) {
-    const card = CARDS[p.hand[i]];
-    if (!card?.targeted) return playCard(state, i);
-    const targets = targetsFor(p.hand[i]);
-    if (targets.length > 0) return playCard(state, i, targets[0]);
-  }
-  return state;
 }
 
 export function isHumanTurn(state: GameState): boolean {

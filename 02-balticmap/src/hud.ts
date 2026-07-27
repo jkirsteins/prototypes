@@ -1,18 +1,21 @@
 import { CARDS } from "./cards";
 import { isHumanTurn, type GameEvent, type GameState } from "./game";
 import { flyCard } from "./animate";
+import { leadsOf, realmOf } from "./relations";
 
 export interface HudCallbacks {
   onNewGame(): void;
   onPlayCard(index: number): void;
-  onEndTurn(): void;
   /** Optional gate for cards that need a valid target; default: playable. */
   canPlayCard?(cardId: string): boolean;
+  onTributeTrack?(track: "status" | "might"): void;
+  isDiscardMode?(): boolean;
 }
 
 export interface Hud {
   update(state: GameState): void;
   setArmed(index: number | null, cardName?: string): void;
+  setTributePrompt(show: boolean): void;
 }
 
 const FAN_ANGLE_DEG = 5;
@@ -70,8 +73,18 @@ export function createHud(
         return `${factionName(e.targetFactionId)} breaks free`;
       case "incorporated":
         return `${factionName(e.targetFactionId)} is incorporated into ${factionName(e.overlordFactionId)}`;
-      case "game-over":
-        return `Your realm has been subjugated by ${factionName(e.overlordFactionId)}`;
+      case "discard":
+        return you
+          ? "You discarded a card"
+          : `Player ${e.playerId} discarded a card`;
+      case "reclaimed":
+        return `${factionName(e.targetFactionId)} reclaims independence from ${factionName(e.overlordFactionId)}`;
+      case "tribute":
+        return `${factionName(e.targetFactionId)} pays tribute to ${factionName(e.overlordFactionId)}`;
+      case "victory":
+        return "You rule the Baltic";
+      case "defeat":
+        return `Your realm has been incorporated by ${factionName(e.overlordFactionId)}`;
     }
   }
 
@@ -86,28 +99,46 @@ export function createHud(
   newGameBtn.addEventListener("click", () => cb.onNewGame());
   menu.append(title, newGameBtn);
 
-  const gameover = document.createElement("div");
-  gameover.className = "gameover-overlay hidden";
-  const goTitle = document.createElement("h1");
-  goTitle.className = "menu-title gameover-title";
-  goTitle.textContent = "Game over";
-  const goReason = document.createElement("p");
-  goReason.className = "gameover-reason";
-  const goNewGame = document.createElement("button");
-  goNewGame.className = "menu-new-game";
-  goNewGame.textContent = "New game";
-  goNewGame.addEventListener("click", () => cb.onNewGame());
-  gameover.append(goTitle, goReason, goNewGame);
+  const postmortem = document.createElement("div");
+  postmortem.className = "postmortem-overlay hidden";
+  const pmSummary = document.createElement("div");
+  pmSummary.className = "pm-summary";
+  const pmTitle = document.createElement("h1");
+  pmTitle.className = "menu-title pm-title";
+  const pmCause = document.createElement("p");
+  pmCause.className = "pm-cause";
+  const pmDeltas = document.createElement("p");
+  pmDeltas.className = "pm-deltas";
+  const pmBuildup = document.createElement("div");
+  pmBuildup.className = "pm-buildup";
+  const pmSeenLabel = document.createElement("p");
+  pmSeenLabel.className = "pm-seen-label";
+  pmSeenLabel.textContent = "Cards seen this run:";
+  const pmSeen = document.createElement("div");
+  pmSeen.className = "pm-seen";
+  const pmNewGame = document.createElement("button");
+  pmNewGame.className = "menu-new-game";
+  pmNewGame.textContent = "New game";
+  pmNewGame.addEventListener("click", () => cb.onNewGame());
+  pmSummary.append(pmTitle, pmCause, pmDeltas, pmBuildup, pmSeenLabel, pmSeen, pmNewGame);
+  const pmLog = document.createElement("div");
+  pmLog.className = "pm-log";
+  postmortem.append(pmSummary, pmLog);
 
   const status = document.createElement("div");
   status.className = "status-bar hidden";
   const statusText = document.createElement("span");
   statusText.className = "status-text";
-  const endTurnBtn = document.createElement("button");
-  endTurnBtn.className = "end-turn hidden";
-  endTurnBtn.textContent = "End turn";
-  endTurnBtn.addEventListener("click", () => cb.onEndTurn());
-  status.append(statusText, endTurnBtn);
+  const tributeButtons = document.createElement("span");
+  tributeButtons.className = "tribute-buttons hidden";
+  for (const track of ["might", "status"] as const) {
+    const b = document.createElement("button");
+    b.className = "tribute-btn";
+    b.textContent = track === "might" ? "Might" : "Status";
+    b.addEventListener("click", () => cb.onTributeTrack?.(track));
+    tributeButtons.appendChild(b);
+  }
+  status.append(statusText, tributeButtons);
 
   function makePile(kind: string, label: string) {
     const root = document.createElement("div");
@@ -151,7 +182,7 @@ export function createHud(
   logPanel.append(logHeader, logEntries);
 
   container.append(
-    menu, gameover, status, deckPile.root, discardPile.root, hand, logPanel,
+    menu, postmortem, status, deckPile.root, discardPile.root, hand, logPanel,
   );
 
   let pendingPlayRect: DOMRect | null = null;
@@ -215,9 +246,13 @@ export function createHud(
       card.style.transform =
         `rotate(${offset * FAN_ANGLE_DEG}deg) ` +
         `translateY(${Math.abs(offset) * FAN_DROP_PX}px)`;
-      const playable = canPlay && canPlayCardCb(cardId);
+      const discardMode = canPlay && (cb.isDiscardMode?.() ?? false);
+      const playable = canPlay && (discardMode || canPlayCardCb(cardId));
       card.disabled = !playable;
-      card.classList.toggle("unplayable", canPlay && !canPlayCardCb(cardId));
+      card.classList.toggle("discard-hint", discardMode);
+      card.classList.toggle(
+        "unplayable", canPlay && !discardMode && !canPlayCardCb(cardId),
+      );
       if (playable)
         card.addEventListener("click", () => {
           pendingPlayRect = card.getBoundingClientRect();
@@ -292,32 +327,88 @@ export function createHud(
   function renderStatus(state: GameState): void {
     if (state.phase === "pick-faction") {
       statusText.textContent = "Choose your faction";
-      endTurnBtn.classList.add("hidden");
     } else if (state.phase === "playing") {
       if (isHumanTurn(state)) {
-        statusText.textContent = `Turn ${state.turn} - your turn`;
-        endTurnBtn.classList.remove("hidden");
+        statusText.textContent = (cb.isDiscardMode?.() ?? false)
+          ? "No playable card - discard one"
+          : `Turn ${state.turn} - play a card`;
       } else {
         statusText.textContent = "Waiting on other players...";
-        endTurnBtn.classList.add("hidden");
       }
     }
+  }
+
+  function renderPostmortem(state: GameState): void {
+    const human = state.players[0];
+    const won = state.phase === "victory";
+    pmTitle.textContent = won ? "Victory" : "Game over";
+    if (won) {
+      const size = realmOf(
+        human.factionId, state.overlords, state.incorporated,
+      ).length;
+      pmCause.textContent = `You rule the Baltic - ${size} of 20 lands`;
+      pmDeltas.textContent = "";
+      pmBuildup.replaceChildren();
+    } else {
+      const defeatEvent = [...state.log].reverse().find((e) => e.type === "defeat");
+      const killer = defeatEvent?.overlordFactionId;
+      pmCause.textContent = `Incorporated by ${factionName(killer)}`;
+      if (killer !== undefined) {
+        const l = leadsOf(state.relations, killer, human.factionId);
+        const line = (label: string, n: number) =>
+          `${label}: ${n > 0 ? `they led by ${n}` : n < 0 ? `you led by ${-n}` : "even"}`;
+        pmDeltas.textContent = `${line("Might", l.might)} / ${line("Status", l.status)}`;
+        const killerPlayer = state.players.find((p) => p.factionId === killer);
+        const plays = state.log
+          .filter(
+            (e) =>
+              e.type === "play" &&
+              e.playerId === killerPlayer?.id &&
+              e.targetFactionId === human.factionId,
+          )
+          .slice(-5);
+        pmBuildup.replaceChildren(
+          ...plays.map((e) => {
+            const d = document.createElement("div");
+            d.className = "pm-buildup-entry";
+            d.textContent = `${cardName(e.cardId)} (turn ${e.turn})`;
+            return d;
+          }),
+        );
+      }
+    }
+    pmSeen.replaceChildren(
+      ...state.seenThisRun.map((id) => {
+        const d = document.createElement("div");
+        d.className = "pm-card";
+        d.textContent = cardName(id);
+        return d;
+      }),
+    );
+    pmSeenLabel.classList.toggle("hidden", state.seenThisRun.length === 0);
+    pmLog.replaceChildren(
+      ...state.log.map((e) => {
+        const d = document.createElement("div");
+        d.className = "log-entry";
+        d.textContent = eventText(e);
+        return d;
+      }),
+    );
   }
 
   return {
     update(state) {
       lastState = state;
+      const ended = state.phase === "victory" || state.phase === "defeat";
       menu.classList.toggle("hidden", state.phase !== "main-menu");
       status.classList.toggle(
-        "hidden", state.phase === "main-menu" || state.phase === "game-over",
+        "hidden", state.phase === "main-menu" || ended,
       );
       deckPile.root.classList.toggle("hidden", state.phase !== "playing");
       discardPile.root.classList.toggle("hidden", state.phase !== "playing");
       hand.classList.toggle("hidden", state.phase !== "playing");
-      logPanel.classList.toggle(
-        "hidden", state.phase !== "playing" && state.phase !== "game-over",
-      );
-      gameover.classList.toggle("hidden", state.phase !== "game-over");
+      logPanel.classList.toggle("hidden", state.phase !== "playing");
+      postmortem.classList.toggle("hidden", !ended);
 
       renderStatus(state);
 
@@ -327,10 +418,8 @@ export function createHud(
         renderPile(discardPile, human.discard.length);
         renderHand(state);
         animateEvents(renderLog(state));
-      } else if (state.phase === "game-over") {
-        const e = [...state.log].reverse().find((ev) => ev.type === "game-over");
-        goReason.textContent = e ? eventText(e) : "";
-        renderLog(state); // final entries still appear in the log
+      } else if (ended) {
+        renderPostmortem(state);
       }
     },
     setArmed(index, cardNameText) {
@@ -342,6 +431,11 @@ export function createHud(
       } else if (lastState) {
         renderStatus(lastState);
       }
+    },
+    setTributePrompt(show) {
+      tributeButtons.classList.toggle("hidden", !show);
+      if (show) statusText.textContent = "Pay tribute with:";
+      else if (lastState) renderStatus(lastState);
     },
   };
 }

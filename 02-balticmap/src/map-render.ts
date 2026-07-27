@@ -4,6 +4,9 @@ export interface RenderResult {
   svg: SVGSVGElement;
   regionPaths: Map<string, SVGPathElement>;
   settlementDots: Map<string, SVGCircleElement>;
+  realmOutlineGroup: SVGGElement;
+  vassalOverlayGroup: SVGGElement;
+  vassalStripe: SVGElement;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -13,6 +16,17 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 export function darkenColor(hex: string, factor: number): string {
   const channel = (start: number): string => {
     const value = Math.floor(parseInt(hex.slice(start, start + 2), 16) * factor);
+    return value.toString(16).padStart(2, "0");
+  };
+  return `#${channel(1)}${channel(3)}${channel(5)}`;
+}
+
+/** Brightens a "#rrggbb" color by moving each channel toward 255 by
+ *  `factor` (0..1). Used for the realm halo. */
+export function brightenColor(hex: string, factor: number): string {
+  const channel = (start: number): string => {
+    const v = parseInt(hex.slice(start, start + 2), 16);
+    const value = Math.round(v + (255 - v) * factor);
     return value.toString(16).padStart(2, "0");
   };
   return `#${channel(1)}${channel(3)}${channel(5)}`;
@@ -29,6 +43,22 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   svg.classList.add("map");
   svg.setAttribute("viewBox", `0 0 ${data.width} ${data.height}`);
   svg.setAttribute("preserveAspectRatio", "xMidYMid slice");
+
+  const defs = el("defs");
+  const pattern = el("pattern");
+  pattern.setAttribute("id", "vassal-stripes");
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  pattern.setAttribute("width", "8");
+  pattern.setAttribute("height", "8");
+  pattern.setAttribute("patternTransform", "rotate(45)");
+  const stripe = el("rect");
+  stripe.setAttribute("width", "4");
+  stripe.setAttribute("height", "8");
+  stripe.setAttribute("fill", "#000000");
+  stripe.setAttribute("opacity", "0.45");
+  pattern.appendChild(stripe);
+  defs.appendChild(pattern);
+  svg.appendChild(defs);
 
   const sea = el("rect");
   sea.classList.add("sea");
@@ -48,6 +78,10 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   }
   svg.appendChild(neighborsGroup);
 
+  const realmOutlineGroup = el("g") as SVGGElement;
+  realmOutlineGroup.classList.add("realm-outline");
+  svg.appendChild(realmOutlineGroup);
+
   const regionsGroup = el("g");
   regionsGroup.classList.add("regions");
   const regionPaths = new Map<string, SVGPathElement>();
@@ -63,6 +97,10 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     regionPaths.set(r.id, p);
   }
   svg.appendChild(regionsGroup);
+
+  const vassalOverlayGroup = el("g") as SVGGElement;
+  vassalOverlayGroup.classList.add("vassal-overlay");
+  svg.appendChild(vassalOverlayGroup);
 
   const riversGroup = el("g");
   riversGroup.classList.add("rivers");
@@ -116,5 +154,5 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   attribution.textContent = data.attribution;
   container.appendChild(attribution);
 
-  return { svg, regionPaths, settlementDots };
+  return { svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, vassalStripe: stripe };
 }
