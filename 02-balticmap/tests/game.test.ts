@@ -192,6 +192,18 @@ describe("card effects", () => {
     });
   });
 
+  it("incorporating a faction transfers its incorporated lands", () => {
+    let g = playingState(LINE_ADJ);
+    g = {
+      ...g,
+      overlords: new Map([["gamma", "beta"]]),
+      incorporated: { delta: "gamma" },
+    };
+    g = withHand(g, 0, ["incorporate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after.incorporated).toEqual({ delta: "beta", gamma: "beta" });
+  });
+
   it("reclaim frees the player and strips tribute copies", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["beta", "gamma"]]) };

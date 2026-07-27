@@ -35,6 +35,8 @@ activity log carry over.
   - Reclaim Independence removes the player's own entry.
   - Incorporate removes the entry and writes `incorporated` (permanent),
     as today.
+  - Lands already incorporated into the target transfer to the new owner
+    (a conquered realm's annexations come with it).
   - When a faction F gains an overlord, every entry naming F as overlord
     is removed (F's vassals are freed; chains never exist).
   - When a faction F is incorporated, every entry naming F as overlord is
@@ -46,6 +48,10 @@ activity log carry over.
 - Effective region color follows incorporation first, then that owner's
   overlord: a land incorporated into V renders V's color unless V itself
   has overlord O, then O's color.
+- The human's own region, while the human is subjugated, keeps its own
+  fill under a diagonal stripe overlay in the overlord's color (halo and
+  undimmed treatment unchanged); AI vassals render in their overlord's
+  flat color as above.
 
 ## Card roster
 

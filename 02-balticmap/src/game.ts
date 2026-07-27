@@ -238,6 +238,9 @@ export function playCard(
     overlords.delete(targetId);
     freeVassalsOf(targetId); // defensive: chains never exist
     incorporated = { ...incorporated, [targetId]: p.factionId };
+    for (const [land, owner] of Object.entries(incorporated)) {
+      if (owner === targetId) incorporated = { ...incorporated, [land]: p.factionId };
+    }
     players = updateFaction(players, targetId, stripTribute);
     events.push({
       turn: state.turn, playerId: p.id, type: "incorporated",

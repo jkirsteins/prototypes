@@ -20,7 +20,9 @@ import "./style.css";
 const data = rawData as MapData;
 const app = document.getElementById("app")!;
 
-const { svg, regionPaths, settlementDots, realmOutlineGroup } = renderMap(data, app);
+const {
+  svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, vassalStripe,
+} = renderMap(data, app);
 const tooltip = createTooltip(app);
 const factionById = new Map(data.factions.map((f) => [f.id, f]));
 const regionById = new Map(data.regions.map((r) => [r.id, r]));
@@ -100,6 +102,7 @@ function effectiveFaction(regionFaction: string): string {
 
 function applyOwnership(): void {
   const human = game.players[0];
+  const humanOverlord = human ? game.overlords.get(human.factionId) : undefined;
   const humanRealm = new Set(
     inPlay() && human
       ? realmOf(human.factionId, game.overlords, game.incorporated)
@@ -107,7 +110,11 @@ function applyOwnership(): void {
   );
   for (const [id, el] of regionPaths) {
     const region = regionById.get(id)!;
-    const effective = inPlay() ? effectiveFaction(region.faction) : region.faction;
+    const isSubjugatedHuman =
+      inPlay() && region.faction === human?.factionId && humanOverlord !== undefined;
+    const effective = isSubjugatedHuman
+      ? human!.factionId
+      : inPlay() ? effectiveFaction(region.faction) : region.faction;
     el.setAttribute("fill", factionById.get(effective)!.color);
     const owned = humanRealm.has(region.faction);
     el.classList.toggle("dimmed", inPlay() && !owned);
@@ -123,6 +130,24 @@ function applyOwnership(): void {
     applyThreat(el, region.faction, human?.factionId, humanRealm);
   }
   renderRealmHalo(human?.factionId, humanRealm);
+  renderVassalOverlay(human, humanOverlord);
+}
+
+function renderVassalOverlay(
+  human: GameState["players"][number] | undefined,
+  humanOverlord: string | undefined,
+): void {
+  vassalOverlayGroup.replaceChildren();
+  if (!inPlay() || !human || humanOverlord === undefined) return;
+  vassalStripe.setAttribute("fill", factionById.get(humanOverlord)!.color);
+  const regionId = regionByFaction.get(human.factionId);
+  const region = regionId !== undefined ? regionById.get(regionId) : undefined;
+  if (!region) return;
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  p.setAttribute("d", region.path);
+  p.setAttribute("fill", "url(#vassal-stripes)");
+  p.setAttribute("pointer-events", "none");
+  vassalOverlayGroup.appendChild(p);
 }
 
 function applyThreat(

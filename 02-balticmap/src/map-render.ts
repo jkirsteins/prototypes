@@ -5,6 +5,8 @@ export interface RenderResult {
   regionPaths: Map<string, SVGPathElement>;
   settlementDots: Map<string, SVGCircleElement>;
   realmOutlineGroup: SVGGElement;
+  vassalOverlayGroup: SVGGElement;
+  vassalStripe: SVGElement;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -41,6 +43,22 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   svg.classList.add("map");
   svg.setAttribute("viewBox", `0 0 ${data.width} ${data.height}`);
   svg.setAttribute("preserveAspectRatio", "xMidYMid slice");
+
+  const defs = el("defs");
+  const pattern = el("pattern");
+  pattern.setAttribute("id", "vassal-stripes");
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  pattern.setAttribute("width", "8");
+  pattern.setAttribute("height", "8");
+  pattern.setAttribute("patternTransform", "rotate(45)");
+  const stripe = el("rect");
+  stripe.setAttribute("width", "4");
+  stripe.setAttribute("height", "8");
+  stripe.setAttribute("fill", "#000000");
+  stripe.setAttribute("opacity", "0.45");
+  pattern.appendChild(stripe);
+  defs.appendChild(pattern);
+  svg.appendChild(defs);
 
   const sea = el("rect");
   sea.classList.add("sea");
@@ -79,6 +97,10 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     regionPaths.set(r.id, p);
   }
   svg.appendChild(regionsGroup);
+
+  const vassalOverlayGroup = el("g") as SVGGElement;
+  vassalOverlayGroup.classList.add("vassal-overlay");
+  svg.appendChild(vassalOverlayGroup);
 
   const riversGroup = el("g");
   riversGroup.classList.add("rivers");
@@ -132,5 +154,5 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   attribution.textContent = data.attribution;
   container.appendChild(attribution);
 
-  return { svg, regionPaths, settlementDots, realmOutlineGroup };
+  return { svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, vassalStripe: stripe };
 }

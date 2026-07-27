@@ -85,6 +85,22 @@ describe("renderMap", () => {
     );
   });
 
+  it("exposes the vassal overlay group and stripe pattern", () => {
+    const container = document.createElement("div");
+    const { svg, vassalOverlayGroup, vassalStripe } = renderMap(data, container);
+    expect(svg.contains(vassalOverlayGroup)).toBe(true);
+    expect(vassalOverlayGroup.classList.contains("vassal-overlay")).toBe(true);
+
+    const groups = Array.from(svg.querySelectorAll("g")).map((g) => g.getAttribute("class"));
+    expect(groups.indexOf("regions")).toBeLessThan(groups.indexOf("vassal-overlay"));
+    expect(groups.indexOf("vassal-overlay")).toBeLessThan(groups.indexOf("rivers"));
+
+    const pattern = svg.querySelector("defs pattern#vassal-stripes");
+    expect(pattern).not.toBeNull();
+    expect(vassalStripe.tagName.toLowerCase()).toBe("rect");
+    expect(pattern!.contains(vassalStripe)).toBe(true);
+  });
+
   it("adds the attribution line to the container", () => {
     const container = document.createElement("div");
     renderMap(data, container);
