@@ -219,16 +219,6 @@ svg.map.dragging {
   white-space: pre-line;
 }
 
-.attribution {
-  position: absolute;
-  bottom: 6px;
-  left: 8px;
-  font-size: 11px;
-  color: #8a8a8a;
-  z-index: 5;
-  pointer-events: none;
-}
-
 .menu-overlay {
   position: absolute;
   inset: 0;

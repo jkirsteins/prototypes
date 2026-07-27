@@ -101,12 +101,10 @@ describe("renderMap", () => {
     expect(pattern!.contains(vassalStripe)).toBe(true);
   });
 
-  it("adds the attribution line to the container", () => {
+  it("renders no attribution line (internal prototype)", () => {
     const container = document.createElement("div");
     renderMap(data, container);
-    expect(container.querySelector(".attribution")!.textContent).toBe(
-      data.attribution,
-    );
+    expect(container.querySelector(".attribution")).toBeNull();
   });
 });
 
