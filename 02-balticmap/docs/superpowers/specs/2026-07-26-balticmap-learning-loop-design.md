@@ -99,7 +99,9 @@ The "Seen this run" row (static in rules v2) becomes the loot display:
   known-only).
 - `src/game.ts`: `GameState.seenThisRun` + the seen-detection hook in
   card resolution (pure - adjacency and realm data are already in
-  state); `newGame` accepts the human deck.
+  state); the human deck is locked in via the `chooseDeck(state,
+  deckCards)` transition (`deck-building -> pick-faction`), stored on
+  `GameState.humanDeck`.
 - `src/deck-screen.ts` (new, DOM): the deck screen; callbacks
   `onUnlock(cardId)`, `onStart(selectedIds)`.
 - `src/hud.ts`: post-mortem loot row tags + caption; main menu gains
