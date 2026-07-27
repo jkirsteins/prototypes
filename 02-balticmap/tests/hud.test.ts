@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { createHud, type HudCallbacks } from "../src/hud";
 import {
   newGame, startGame, chooseDeck, pickFaction, advance, playCard, beginTurn,
-  type GameState,
+  type GameState, type GameEvent,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
 import { buildDeck, type Rng } from "../src/cards";
@@ -493,5 +493,94 @@ describe("learning loop hud", () => {
     const { container, hud } = setup();
     hud.update(newGame(FACTIONS));
     expect(container.querySelector(".menu-reset")).toBeNull();
+  });
+});
+
+describe("notice modal", () => {
+  function playing() {
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+  }
+
+  function withEvents(g: GameState, events: GameEvent[]): GameState {
+    return { ...g, log: [...g.log, ...events] };
+  }
+
+  const subjugatedYou: GameEvent = {
+    turn: 1, playerId: 2, type: "subjugated",
+    targetFactionId: "beta", overlordFactionId: "alpha",
+  };
+  const releasedYou: GameEvent = {
+    turn: 1, playerId: 3, type: "released", targetFactionId: "beta",
+  };
+
+  it("shows a mandatory modal when an AI subjugates you", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [subjugatedYou]));
+    const overlay = q(container, ".notice-overlay");
+    expect(overlay.classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("Beneath the Yoke");
+    expect(q(container, ".notice-what").textContent).toBe(
+      "Alpha played Subjugate against Beta.",
+    );
+    expect(q(container, ".notice-flavor").textContent).toContain("bow their heads");
+    expect(q(container, ".notice-consequence").textContent).toContain(
+      "Two Pay Tribute cards",
+    );
+  });
+
+  it("dismisses on Continue and stays dismissed on re-render", () => {
+    const { container, hud } = setup();
+    const g = withEvents(playing(), [subjugatedYou]);
+    hud.update(g);
+    q(container, ".notice-continue").click();
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    hud.update(g); // same state: no new events, no re-show
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+  });
+
+  it("queues multiple notices and shows them in order", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [subjugatedYou, releasedYou]));
+    expect(q(container, ".notice-title").textContent).toBe("Beneath the Yoke");
+    q(container, ".notice-continue").click();
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("The Yoke Is Broken");
+    q(container, ".notice-continue").click();
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+  });
+
+  it("dismisses on Escape", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [subjugatedYou]));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+  });
+
+  it("shows nothing for your own plays or AI-vs-AI events", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [
+      { turn: 1, playerId: 1, type: "subjugated", targetFactionId: "alpha", overlordFactionId: "beta" },
+      { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "gamma", overlordFactionId: "alpha" },
+    ]));
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+  });
+
+  it("clears the queue and overlay when a new game starts", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [subjugatedYou, releasedYou]));
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    hud.update(playing()); // fresh game: shorter log resets renderLog
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    // a later dismiss must not resurface stale queued notices
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+  });
+
+  it("does not show notices once the game has ended", () => {
+    const { container, hud } = setup();
+    let g = withEvents(playing(), [subjugatedYou]);
+    g = { ...g, phase: "defeat" };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
 });

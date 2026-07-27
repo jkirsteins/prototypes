@@ -751,3 +751,65 @@ svg.map.dragging {
 .hidden {
   display: none;
 }
+
+.notice-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(30, 24, 16, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+
+.notice-overlay.hidden {
+  display: none;
+}
+
+.notice-card {
+  width: min(420px, calc(100% - 48px));
+  background: #fdf9f1;
+  border: 1px solid #c9b896;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  padding: 22px 24px;
+  text-align: center;
+  color: #3f3428;
+}
+
+.notice-title {
+  font-size: 22px;
+  margin-bottom: 10px;
+}
+
+.notice-what {
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.notice-flavor {
+  font-size: 13px;
+  font-style: italic;
+  color: #6b5d49;
+  margin-bottom: 10px;
+}
+
+.notice-consequence {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.notice-continue {
+  font-size: 14px;
+  padding: 8px 22px;
+  border: 1px solid #a89468;
+  border-radius: 6px;
+  background: #efe3c8;
+  color: #3f3428;
+  cursor: pointer;
+}
+
+.notice-continue:hover {
+  background: #e6d6b4;
+}
