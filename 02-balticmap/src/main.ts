@@ -7,13 +7,13 @@ import {
 } from "./panel";
 import { attachInteraction } from "./interaction";
 import {
-  newGame, startGame, pickFaction, playCard, discardCard, advance,
+  newGame, startGame, chooseDeck, pickFaction, playCard, discardCard, advance,
   isHumanTurn, viewOf, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { getRel, leadsOf, realmOf } from "./relations";
 import { playableSet, validTargetsFor } from "./playability";
-import { CARDS } from "./cards";
+import { CARDS, buildDeck } from "./cards";
 import { createHud } from "./hud";
 import "./style.css";
 
@@ -274,7 +274,11 @@ const hud = createHud(
   app,
   {
     onNewGame() {
-      game = startGame(newGame(data.factions.map((f) => f.id), factionAdjacency));
+      // TEMP until the deck screen lands (learning-loop Task 5)
+      game = chooseDeck(
+        startGame(newGame(data.factions.map((f) => f.id), factionAdjacency)),
+        buildDeck(),
+      );
       cancelTribute();
       disarm();
       refresh();

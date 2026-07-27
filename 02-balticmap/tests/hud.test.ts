@@ -2,11 +2,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { createHud, type HudCallbacks } from "../src/hud";
 import {
-  newGame, startGame, pickFaction, advance, playCard, beginTurn,
+  newGame, startGame, chooseDeck, pickFaction, advance, playCard, beginTurn,
   type GameState,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
-import type { Rng } from "../src/cards";
+import { buildDeck, type Rng } from "../src/cards";
 import { bumpMight } from "../src/relations";
 
 function seededRng(seed: number): Rng {
@@ -60,7 +60,7 @@ describe("createHud", () => {
 
   it("prompts for a faction during pick-faction", () => {
     const { container, hud } = setup();
-    hud.update(startGame(newGame(FACTIONS)));
+    hud.update(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()));
     expect(q(container, ".menu-overlay").classList.contains("hidden")).toBe(true);
     expect(q(container, ".status-bar").classList.contains("hidden")).toBe(false);
     expect(q(container, ".status-text").textContent).toBe("Choose your faction");
@@ -68,7 +68,7 @@ describe("createHud", () => {
 
   it("renders the human turn: status, piles, fanned hand", () => {
     const { container, cb, hud } = setup();
-    const g = withHand(pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0, ["grow-crops"]);
+    const g = withHand(pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1)), 0, ["grow-crops"]);
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
     expect(q(container, ".pile-deck .pile-count").textContent).toBe("6");
@@ -87,7 +87,7 @@ describe("createHud", () => {
     // opening hand deals 3 + a turn draw = 4; force a known 3-card hand to
     // exercise the fan formula independent of hand size.
     const g = withHand(
-      pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0,
+      pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1)), 0,
       ["grow-crops", "grow-crops", "grow-crops"],
     );
     hud.update(g);
@@ -100,7 +100,7 @@ describe("createHud", () => {
 
   it("disables held cards during AI turns and shows the waiting label", () => {
     const { container, cb, hud } = setup();
-    let g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    let g = pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
     // advance hands control to player 2 (AI); force a known 1-card hand
     g = advance({ ...g, playedThisTurn: true }, seededRng(3));
     g = withHand(g, 0, ["grow-crops"]);
@@ -115,7 +115,7 @@ describe("createHud", () => {
 
   it("disables remaining cards after playing one this turn", () => {
     const { container, cb, hud } = setup();
-    let g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    let g = pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
     // run one full round so the human holds 2 cards on their next turn
     for (let i = 0; i < FACTIONS.length; i++) g = advance({ ...g, playedThisTurn: true }, seededRng(4));
     g = withHand(g, 0, ["grow-crops", "grow-crops"]);
@@ -134,7 +134,7 @@ describe("visual piles", () => {
     // force a non-targeted card so playCard(g, 0) below succeeds regardless
     // of what the seeded shuffle happened to deal
     const g = withHand(
-      pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1)), 0,
+      pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1)), 0,
       ["grow-crops"],
     );
     hud.update(g); // deck 6, discard 0
@@ -156,7 +156,7 @@ describe("visual piles", () => {
 
 describe("activity log", () => {
   function playing() {
-    return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
   }
 
   it("is hidden outside the playing phase and visible during it", () => {
@@ -223,7 +223,7 @@ describe("activity log", () => {
 
 describe("card animations", () => {
   function playing() {
-    return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
   }
 
   it("flies a card back from the deck on your draw, exactly once", () => {
@@ -300,7 +300,7 @@ describe("card animations", () => {
 
 describe("subjugation HUD", () => {
   function playing() {
-    return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
   }
 
   it("renders targeted play and subjugation log texts with faction names", () => {
@@ -348,7 +348,7 @@ describe("subjugation HUD", () => {
 
 describe("hud v2", () => {
   function playing() {
-    return pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
   }
 
   it("has no End Turn button", () => {
@@ -414,7 +414,9 @@ describe("hud v2", () => {
   it("victory names the realm size", () => {
     const { container, hud } = setup();
     const many = Array.from({ length: 20 }, (_, i) => `f${i}`);
-    let g = pickFaction(startGame(newGame(many)), "f0", seededRng(1));
+    let g = pickFaction(
+      chooseDeck(startGame(newGame(many)), buildDeck()), "f0", seededRng(1),
+    );
     const inc: Record<string, string> = {};
     for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
     g = { ...g, incorporated: inc };

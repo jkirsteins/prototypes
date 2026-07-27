@@ -402,7 +402,8 @@ export function createHud(
       const ended = state.phase === "victory" || state.phase === "defeat";
       menu.classList.toggle("hidden", state.phase !== "main-menu");
       status.classList.toggle(
-        "hidden", state.phase === "main-menu" || ended,
+        "hidden",
+        state.phase === "main-menu" || state.phase === "deck-building" || ended,
       );
       deckPile.root.classList.toggle("hidden", state.phase !== "playing");
       discardPile.root.classList.toggle("hidden", state.phase !== "playing");
