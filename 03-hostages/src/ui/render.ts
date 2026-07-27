@@ -16,5 +16,6 @@ export interface Actions {
   pass(): void;
   answer(id: string | null): void;
   surrender(id: string): void;
+  discard(id: string): void;
   restart(): void;
 }

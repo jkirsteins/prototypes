@@ -1,5 +1,5 @@
 import { cardById } from "../content/cards";
-import { legalPlayerAnswers, legalPlayerLeads } from "../game";
+import { legalPlayerAnswers, legalPlayerDiscards, legalPlayerLeads } from "../game";
 import { el, clear } from "./render";
 import type { Actions } from "./render";
 import type { GameState } from "../types";
@@ -79,6 +79,7 @@ function cardButton(
 function bannerText(state: GameState): string {
   if (state.phase === "playerAnswer") return "HE IS WAITING - answer or decline";
   if (state.phase === "forcedSurrender") return "HE HAS YOU - give up a secret";
+  if (state.phase === "discardDown") return "YOUR HAND IS FULL - discard one";
   return "YOUR TURN - lead a card";
 }
 
@@ -131,6 +132,11 @@ export function renderDuel(root: HTMLElement, state: GameState, actions: Actions
     screen.append(el("p", "prompt", "You have nothing left to hold onto. Give him something."));
     for (const secretId of state.secretsRemaining) {
       hand.append(cardButton(secretId, true, undefined, () => actions.surrender(secretId)));
+    }
+  } else if (state.phase === "discardDown") {
+    screen.append(el("p", "prompt", "Your hand is full. Choose a card to throw away."));
+    for (const cardId of legalPlayerDiscards(state)) {
+      hand.append(cardButton(cardId, true, undefined, () => actions.discard(cardId)));
     }
   }
 

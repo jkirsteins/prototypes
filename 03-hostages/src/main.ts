@@ -2,6 +2,7 @@ import {
   chooseOpening,
   newRun,
   playerAnswer,
+  playerDiscard,
   playerLead,
   playerPass,
   playerSurrender,
@@ -44,6 +45,10 @@ const actions: Actions = {
   },
   surrender(id) {
     if (state) playerSurrender(state, id);
+    draw();
+  },
+  discard(id) {
+    if (state) playerDiscard(state, id);
     draw();
   },
   restart() {

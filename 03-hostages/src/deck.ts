@@ -1,5 +1,4 @@
 import { shuffle } from "./rng";
-import { HAND_CAP } from "./types";
 import type { Pile, RngState } from "./types";
 
 export function newPile(deckIds: readonly string[], rng: RngState): Pile {
@@ -7,7 +6,6 @@ export function newPile(deckIds: readonly string[], rng: RngState): Pile {
 }
 
 export function drawCard(pile: Pile, rng: RngState): string | null {
-  if (pile.hand.length >= HAND_CAP) return null;
   if (pile.deck.length === 0) {
     if (pile.discard.length === 0) return null;
     pile.deck = shuffle(rng, pile.discard);

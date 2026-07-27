@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chooseConvictAnswer, chooseConvictLead } from "../src/ai";
+import { chooseConvictAnswer, chooseConvictDiscard, chooseConvictLead } from "../src/ai";
 import { cardById } from "../src/content/cards";
 import { newRun, chooseOpening } from "../src/game";
 import type { GameState } from "../src/types";
@@ -108,5 +108,26 @@ describe("chooseConvictAnswer", () => {
     const s = state();
     s.convictPile.hand = ["backhand"];
     expect(chooseConvictAnswer(s, cardById("stallHim"))).toBeNull();
+  });
+});
+
+describe("chooseConvictDiscard", () => {
+  it("throws away the first card he cannot lead", () => {
+    const s = state();
+    s.convictPile.hand = ["backhand", "brace", "snatchItBack"];
+    expect(chooseConvictDiscard(s)).toBe("brace");
+  });
+
+  it("falls back to the first card when everything is legal", () => {
+    const s = state();
+    s.convictPile.hand = ["backhand", "whereIsIt"];
+    expect(chooseConvictDiscard(s)).toBe("backhand");
+  });
+
+  it("does not mutate the hand", () => {
+    const s = state();
+    s.convictPile.hand = ["backhand", "brace"];
+    chooseConvictDiscard(s);
+    expect(s.convictPile.hand).toEqual(["backhand", "brace"]);
   });
 });

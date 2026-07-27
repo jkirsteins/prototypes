@@ -1,4 +1,4 @@
-import { chooseConvictAnswer, chooseConvictLead } from "./ai";
+import { chooseConvictAnswer, chooseConvictDiscard, chooseConvictLead } from "./ai";
 import {
   CONVICT_DECK,
   NOT_YET_ID,
@@ -16,6 +16,7 @@ import type { Legality } from "./legality";
 import { logCard, logNote } from "./log";
 import { createRng } from "./rng";
 import {
+  HAND_CAP,
   INCAPACITATED_CLEAR_AT,
   INCAPACITATED_RECOVERY,
   STARTING_HAND,
@@ -198,6 +199,13 @@ function convictTurn(state: GameState): boolean {
   }
 
   drawCard(state.convictPile, state.rng);
+  while (state.convictPile.hand.length > HAND_CAP) {
+    const discardId = chooseConvictDiscard(state);
+    discardCard(state.convictPile, discardId);
+    logNote(state, "convict", "discard", "He drops something he cannot use.", [
+      `He discards ${cardById(discardId).name}`,
+    ]);
+  }
   const leadId = chooseConvictLead(state);
   if (leadId === null) {
     logNote(state, "convict", "pass", "He paces and says nothing.");
@@ -215,10 +223,20 @@ function endConvictTurn(state: GameState): void {
   if (state.convict.distracted > 0) state.convict.distracted -= 1;
 }
 
+/**
+ * Draw a card for the player, then decide whether the hand fits under the
+ * cap. Every path that lands the player back at their own turn goes through
+ * this so the discard prompt appears at the one predictable moment: the
+ * start of the player's turn, however many draws led up to it.
+ */
+function drawThenDecidePlayerPhase(state: GameState): void {
+  drawCard(state.playerPile, state.rng);
+  state.phase = state.playerPile.hand.length > HAND_CAP ? "discardDown" : "playerLead";
+}
+
 function startPlayerTurn(state: GameState): void {
   state.turn += 1;
-  drawCard(state.playerPile, state.rng);
-  state.phase = "playerLead";
+  drawThenDecidePlayerPhase(state);
 }
 
 /** After a player lead resolves: run the convict's turn until input is needed. */
@@ -310,6 +328,20 @@ export function playerAnswer(state: GameState, cardId: string | null): void {
   }
 
   startPlayerTurn(state);
+}
+
+export function playerDiscard(state: GameState, cardId: string): void {
+  assertPlayable(state);
+  if (state.phase !== "discardDown") throw new Error("You are not discarding");
+  if (!state.playerPile.hand.includes(cardId)) {
+    throw new Error(`Card ${cardId} is not in hand`);
+  }
+  discardCard(state.playerPile, cardId);
+  state.phase = state.playerPile.hand.length > HAND_CAP ? "discardDown" : "playerLead";
+}
+
+export function legalPlayerDiscards(state: GameState): string[] {
+  return [...state.playerPile.hand];
 }
 
 export function playerSurrender(state: GameState, secretId: string): void {

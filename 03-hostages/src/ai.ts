@@ -65,6 +65,18 @@ function effectiveDamageToConvict(state: GameState, lead: CardDef): number {
   return total;
 }
 
+/**
+ * The card the convict throws away when he draws over the hand cap. He
+ * discards the first card in hand that he currently cannot lead; if
+ * everything in hand is legal to lead, he discards the first card instead.
+ * Deterministic and does not mutate state.
+ */
+export function chooseConvictDiscard(state: GameState): string {
+  const hand = state.convictPile.hand;
+  const deadCard = hand.find((id) => !canLead(state, "convict", cardById(id)).ok);
+  return deadCard ?? hand[0];
+}
+
 export function chooseConvictAnswer(state: GameState, lead: CardDef): string | null {
   const candidates = state.notYetSpent
     ? [...state.convictPile.hand]

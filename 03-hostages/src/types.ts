@@ -89,6 +89,7 @@ export type Phase =
   | "playerLead"
   | "playerAnswer"
   | "forcedSurrender"
+  | "discardDown"
   | "gameOver";
 
 export type Outcome = "victory" | "lossSecrets" | "lossVigor" | "lossWife";
@@ -104,6 +105,7 @@ export type LogKind =
   | "recover"
   | "haulUp"
   | "pass"
+  | "discard"
   | "outcome";
 
 export interface LogEntry {

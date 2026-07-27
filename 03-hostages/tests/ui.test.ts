@@ -17,6 +17,7 @@ const actions: Actions = {
   pass: () => calls.push("pass"),
   answer: (id) => calls.push(`answer:${id}`),
   surrender: (id) => calls.push(`surrender:${id}`),
+  discard: (id) => calls.push(`discard:${id}`),
   restart: () => calls.push("restart"),
 };
 
@@ -101,6 +102,22 @@ describe("duel screen", () => {
       (b) => (b as HTMLElement).dataset.cardId,
     );
     expect(ids).toEqual(["secretSafe", "secretFloorboard"]);
+  });
+
+  it("shows the discard banner and offers every held card", () => {
+    const state = started();
+    state.phase = "discardDown";
+    state.playerPile.hand = ["stoic", "stallHim"];
+    renderDuel(root, state, actions);
+    expect(root.querySelector("#turn-banner")?.textContent).toBe(
+      "YOUR HAND IS FULL - discard one",
+    );
+    const ids = [...root.querySelectorAll("button.card")].map(
+      (b) => (b as HTMLElement).dataset.cardId,
+    );
+    expect(ids).toEqual(["stoic", "stallHim"]);
+    root.querySelector<HTMLButtonElement>("button.card[data-card-id='stoic']")?.click();
+    expect(calls).toEqual(["discard:stoic"]);
   });
 });
 

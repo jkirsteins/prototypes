@@ -6,9 +6,12 @@ import {
   playerPass,
   playerAnswer,
   playerSurrender,
+  playerDiscard,
   legalPlayerAnswers,
   legalPlayerLeads,
+  legalPlayerDiscards,
 } from "../src/game";
+import { HAND_CAP } from "../src/types";
 import type { GameState } from "../src/types";
 
 function started(seed = 1, choice = "shield"): GameState {
@@ -345,6 +348,71 @@ describe("defeat conditions", () => {
     const state = started();
     state.phase = "gameOver";
     expect(() => playerLead(state, "stallHim")).toThrow(/over/);
+  });
+});
+
+describe("discarding down", () => {
+  it("stops for a discard when the hand goes over the cap", () => {
+    const state = started();
+    state.playerPile.hand = ["stoic", "flinch", "flinch", "stoic", "talkHimDown"];
+    state.playerPile.deck = ["stallHim"];
+    state.playerPile.discard = [];
+    state.convictPile.hand = [];
+    state.convictPile.deck = [];
+    state.convictPile.discard = [];
+    playerPass(state);
+    expect(state.phase).toBe("discardDown");
+    expect(state.playerPile.hand.length).toBeGreaterThan(HAND_CAP);
+  });
+
+  it("returns to the lead phase once the hand is back at the cap", () => {
+    const state = started();
+    state.phase = "discardDown";
+    state.playerPile.hand = ["stoic", "flinch", "flinch", "stoic", "talkHimDown", "stallHim"];
+    playerDiscard(state, "stoic");
+    expect(state.playerPile.hand).toHaveLength(HAND_CAP);
+    expect(state.playerPile.discard).toContain("stoic");
+    expect(state.phase).toBe("playerLead");
+  });
+
+  it("stays in the discard phase while still over the cap", () => {
+    const state = started();
+    state.phase = "discardDown";
+    state.playerPile.hand = ["stoic", "flinch", "flinch", "stoic", "talkHimDown", "stallHim", "wiggleOut"];
+    playerDiscard(state, "stoic");
+    expect(state.phase).toBe("discardDown");
+    playerDiscard(state, "flinch");
+    expect(state.phase).toBe("playerLead");
+  });
+
+  it("refuses a discard outside the discard phase", () => {
+    const state = started();
+    expect(() => playerDiscard(state, state.playerPile.hand[0])).toThrow(/not discarding/);
+  });
+
+  it("refuses to discard a card that is not in hand", () => {
+    const state = started();
+    state.phase = "discardDown";
+    expect(() => playerDiscard(state, "lampCord")).toThrow(/not in hand/);
+  });
+
+  it("lists every held card as discardable", () => {
+    const state = started();
+    state.playerPile.hand = ["stoic", "stallHim"];
+    expect(legalPlayerDiscards(state)).toEqual(["stoic", "stallHim"]);
+  });
+
+  it("has the convict discard without pausing the game", () => {
+    const state = started();
+    state.playerPile.hand = ["stallHim"];
+    state.playerPile.deck = [];
+    state.playerPile.discard = [];
+    state.convictPile.hand = ["brace", "expertKnots", "brace", "heardThatBefore", "expertKnots"];
+    state.convictPile.deck = ["backhand"];
+    state.convictPile.discard = [];
+    playerLead(state, "stallHim");
+    expect(state.convictPile.hand.length).toBeLessThanOrEqual(HAND_CAP);
+    expect(state.phase).not.toBe("discardDown");
   });
 });
 

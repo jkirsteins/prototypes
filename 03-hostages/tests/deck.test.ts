@@ -21,14 +21,12 @@ describe("deck", () => {
     expect(pile.deck).toHaveLength(1);
   });
 
-  it("refuses to draw past the hand cap", () => {
+  it("draws past the hand cap, leaving the caller to discard down", () => {
     const pile: Pile = { deck: ["a", "b", "c", "d", "e", "f"], discard: [], hand: [] };
     const rng = createRng(1);
-    for (let i = 0; i < HAND_CAP; i += 1) drawCard(pile, rng);
-    expect(pile.hand).toHaveLength(HAND_CAP);
-    expect(drawCard(pile, rng)).toBeNull();
-    expect(pile.hand).toHaveLength(HAND_CAP);
-    expect(pile.deck).toHaveLength(1);
+    for (let i = 0; i < HAND_CAP + 1; i += 1) drawCard(pile, rng);
+    expect(pile.hand).toHaveLength(HAND_CAP + 1);
+    expect(pile.deck).toHaveLength(0);
   });
 
   it("reshuffles the discard when the deck runs dry", () => {
