@@ -584,3 +584,48 @@ describe("notice modal", () => {
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
 });
+
+describe("log highlighting", () => {
+  function playing() {
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+  }
+
+  it("marks entries involving the human faction with log-you", () => {
+    const { container, hud } = setup();
+    let g = playing(); // log: your opening draw (playerId 1)
+    g = {
+      ...g,
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 2, type: "draw", cardId: "raid" },
+        { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
+        { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "gamma", overlordFactionId: "alpha" },
+        { turn: 1, playerId: 3, type: "reclaimed", targetFactionId: "gamma", overlordFactionId: "beta" },
+      ],
+    };
+    hud.update(g);
+    // dismiss the modal the subjugation raised; this test is about the log
+    q(container, ".notice-continue").click();
+    const entries = [...container.querySelectorAll(".activity-log .log-entry")];
+    const flags = entries.map((el) => el.classList.contains("log-you"));
+    // your draw, AI draw, you subjugated, AI-vs-AI, AI reclaims from you
+    expect(flags).toEqual([true, false, true, false, true]);
+  });
+
+  it("marks postmortem log entries the same way", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = {
+      ...g,
+      phase: "defeat",
+      log: [
+        ...g.log,
+        { turn: 2, playerId: 2, type: "defeat", targetFactionId: "beta", overlordFactionId: "alpha" },
+      ],
+    };
+    hud.update(g);
+    const entries = [...container.querySelectorAll(".pm-log .log-entry")];
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries[entries.length - 1].classList.contains("log-you")).toBe(true);
+  });
+});

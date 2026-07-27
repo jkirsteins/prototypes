@@ -93,6 +93,15 @@ export function createHud(
     }
   }
 
+  function involvesHuman(e: GameEvent, humanFactionId: string | undefined): boolean {
+    if (humanFactionId === undefined) return false;
+    return (
+      e.playerId === 1 ||
+      e.targetFactionId === humanFactionId ||
+      e.overlordFactionId === humanFactionId
+    );
+  }
+
   const menu = document.createElement("div");
   menu.className = "menu-overlay";
   const title = document.createElement("h1");
@@ -297,6 +306,7 @@ export function createHud(
       clearNotices();
     }
     const fresh = state.log.slice(renderedEvents);
+    const humanFactionId = state.players[0]?.factionId;
     for (const e of fresh) {
       if (e.turn !== lastRenderedTurn) {
         const sep = document.createElement("div");
@@ -308,6 +318,7 @@ export function createHud(
       const entry = document.createElement("div");
       entry.className = "log-entry log-new";
       entry.textContent = eventText(e);
+      entry.classList.toggle("log-you", involvesHuman(e, humanFactionId));
       logEntries.appendChild(entry);
     }
     renderedEvents = state.log.length;
@@ -502,6 +513,7 @@ export function createHud(
         const d = document.createElement("div");
         d.className = "log-entry";
         d.textContent = eventText(e);
+        d.classList.toggle("log-you", involvesHuman(e, human?.factionId));
         return d;
       }),
     );

@@ -813,3 +813,10 @@ svg.map.dragging {
 .notice-continue:hover {
   background: #e6d6b4;
 }
+
+.log-entry.log-you {
+  border-left: 3px solid #a8542f;
+  background: #f7ecdc;
+  padding-left: 6px;
+  font-weight: 600;
+}
