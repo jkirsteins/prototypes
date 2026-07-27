@@ -135,7 +135,7 @@ subjugated (human target):
 released (human target):
 
 - title: "The Yoke Is Broken"
-- what: "{actor}'s conquest of your overlord releases you from vassalage."
+- what: "The fall of your overlord to {actor} releases you from vassalage."
 - flavor: "The lord you paid is lord no longer. No riders come for tribute
   this season - you stand free."
 - consequence: "All Pay Tribute cards were removed from your deck, hand, and

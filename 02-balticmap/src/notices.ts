@@ -57,7 +57,7 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       const actor = ctx.factionName(ctx.factionOf(e.playerId));
       return {
         title: "The Yoke Is Broken",
-        what: `${actor}'s conquest of your overlord releases you from vassalage.`,
+        what: `The fall of your overlord to ${actor} releases you from vassalage.`,
         flavor:
           "The lord you paid is lord no longer. No riders come for tribute " +
           "this season - you stand free.",

@@ -86,8 +86,14 @@ describe("noticeFor", () => {
     );
     expect(n).not.toBeNull();
     expect(n!.title).toBe("The Yoke Is Broken");
-    expect(n!.what).toContain("Latgalians");
-    expect(n!.consequence).toContain("removed from your deck, hand, and discard");
+    expect(n!.what).toBe("The fall of your overlord to Latgalians releases you from vassalage.");
+    expect(n!.flavor).toBe(
+      "The lord you paid is lord no longer. No riders come for tribute " +
+      "this season - you stand free.",
+    );
+    expect(n!.consequence).toBe(
+      "All Pay Tribute cards were removed from your deck, hand, and discard.",
+    );
   });
 
   it("is null for a release that frees another faction", () => {
