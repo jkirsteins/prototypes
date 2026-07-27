@@ -10,6 +10,10 @@ export interface HudCallbacks {
   canPlayCard?(cardId: string): boolean;
   onTributeTrack?(track: "status" | "might"): void;
   isDiscardMode?(): boolean;
+  /** Post-mortem loot row: unlockable cards seen this run. */
+  lootInfo?(): { id: string; isNew: boolean }[];
+  /** Renders the main-menu Reset progress control when provided. */
+  onResetProgress?(): void;
 }
 
 export interface Hud {
@@ -98,6 +102,30 @@ export function createHud(
   newGameBtn.textContent = "New game";
   newGameBtn.addEventListener("click", () => cb.onNewGame());
   menu.append(title, newGameBtn);
+
+  if (cb.onResetProgress) {
+    const reset = document.createElement("button");
+    reset.className = "menu-reset";
+    reset.textContent = "Reset progress";
+    let armedReset = false;
+    const disarmReset = () => {
+      armedReset = false;
+      reset.textContent = "Reset progress";
+      reset.classList.remove("confirm");
+    };
+    reset.addEventListener("click", () => {
+      if (!armedReset) {
+        armedReset = true;
+        reset.textContent = "Really reset?";
+        reset.classList.add("confirm");
+        return;
+      }
+      disarmReset();
+      cb.onResetProgress!();
+    });
+    newGameBtn.addEventListener("click", disarmReset);
+    menu.appendChild(reset);
+  }
 
   const postmortem = document.createElement("div");
   postmortem.className = "postmortem-overlay hidden";
@@ -377,15 +405,27 @@ export function createHud(
         );
       }
     }
+    const loot =
+      cb.lootInfo?.() ??
+      state.seenThisRun.map((id) => ({ id, isNew: false }));
+    pmSeenLabel.textContent = cb.lootInfo
+      ? "Unlock one of these when you start your next game."
+      : "Cards seen this run:";
     pmSeen.replaceChildren(
-      ...state.seenThisRun.map((id) => {
+      ...loot.map(({ id, isNew }) => {
         const d = document.createElement("div");
         d.className = "pm-card";
         d.textContent = cardName(id);
+        if (isNew) {
+          const tag = document.createElement("span");
+          tag.className = "pm-card-new";
+          tag.textContent = "NEW";
+          d.appendChild(tag);
+        }
         return d;
       }),
     );
-    pmSeenLabel.classList.toggle("hidden", state.seenThisRun.length === 0);
+    pmSeenLabel.classList.toggle("hidden", loot.length === 0);
     pmLog.replaceChildren(
       ...state.log.map((e) => {
         const d = document.createElement("div");
@@ -402,7 +442,8 @@ export function createHud(
       const ended = state.phase === "victory" || state.phase === "defeat";
       menu.classList.toggle("hidden", state.phase !== "main-menu");
       status.classList.toggle(
-        "hidden", state.phase === "main-menu" || ended,
+        "hidden",
+        state.phase === "main-menu" || state.phase === "deck-building" || ended,
       );
       deckPile.root.classList.toggle("hidden", state.phase !== "playing");
       discardPile.root.classList.toggle("hidden", state.phase !== "playing");

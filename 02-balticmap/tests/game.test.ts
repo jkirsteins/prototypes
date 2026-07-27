@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  newGame, startGame, pickFaction, beginTurn, playCard, discardCard, advance,
-  isHumanTurn, viewOf,
+  newGame, startGame, chooseDeck, pickFaction, beginTurn, playCard, discardCard,
+  advance, isHumanTurn, viewOf,
   OPENING_HAND, VICTORY_REALM_SIZE, type GameState,
 } from "../src/game";
-import { DECK_SIZE, type Rng } from "../src/cards";
+import { DECK_SIZE, buildDeck, type Rng } from "../src/cards";
 import { bumpMight, bumpStatus, getRel, leadsOf, type Relations } from "../src/relations";
 
 function seededRng(seed: number): Rng {
@@ -24,7 +24,11 @@ const LINE_ADJ = {
 };
 
 function playingState(adj?: Record<string, string[]>): GameState {
-  return pickFaction(startGame(newGame(FACTIONS, adj)), "beta", seededRng(1));
+  return pickFaction(
+    chooseDeck(startGame(newGame(FACTIONS, adj)), buildDeck()),
+    "beta",
+    seededRng(1),
+  );
 }
 
 function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
@@ -266,7 +270,9 @@ describe("card effects", () => {
     expect(after.phase).toBe("playing");
     // and by direct construction: 11 of 20 factions incorporated
     const many = Array.from({ length: 20 }, (_, i) => `f${i}`);
-    let big = pickFaction(startGame(newGame(many)), "f0", seededRng(1));
+    let big = pickFaction(
+      chooseDeck(startGame(newGame(many)), buildDeck()), "f0", seededRng(1),
+    );
     const inc: Record<string, string> = {};
     for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
     big = { ...big, incorporated: inc };
@@ -372,5 +378,38 @@ describe("immutability", () => {
     expect(g.log).toHaveLength(logLen);
     expect(g.playedThisTurn).toBe(false);
     expect(g.overlords.size).toBe(0);
+  });
+});
+
+describe("deck building", () => {
+  it("startGame enters deck-building; chooseDeck moves to pick-faction", () => {
+    const g = startGame(newGame(FACTIONS));
+    expect(g.phase).toBe("deck-building");
+    const picked = chooseDeck(g, buildDeck());
+    expect(picked.phase).toBe("pick-faction");
+    expect(picked.humanDeck).toEqual(buildDeck());
+  });
+
+  it("chooseDeck rejects wrong phases and wrong deck sizes", () => {
+    const menu = newGame(FACTIONS);
+    expect(chooseDeck(menu, buildDeck())).toBe(menu);
+    const g = startGame(menu);
+    expect(chooseDeck(g, ["grow-crops"])).toBe(g);
+  });
+
+  it("the human is dealt from humanDeck, AIs from the default deck", () => {
+    const custom = Array.from({ length: 10 }, () => "grow-crops");
+    let g = chooseDeck(startGame(newGame(FACTIONS)), custom);
+    g = pickFaction(g, "beta", seededRng(1));
+    const human = g.players[0];
+    expect(
+      [...human.deck, ...human.hand, ...human.discard].every(
+        (c) => c === "grow-crops",
+      ),
+    ).toBe(true);
+    const ai = g.players[1];
+    expect(
+      [...ai.deck, ...ai.hand].filter((c) => c === "raid"),
+    ).toHaveLength(1);
   });
 });

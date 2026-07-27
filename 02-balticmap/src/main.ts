@@ -7,7 +7,7 @@ import {
 } from "./panel";
 import { attachInteraction } from "./interaction";
 import {
-  newGame, startGame, pickFaction, playCard, discardCard, advance,
+  newGame, startGame, chooseDeck, pickFaction, playCard, discardCard, advance,
   isHumanTurn, viewOf, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
@@ -15,6 +15,11 @@ import { getRel, leadsOf, realmOf } from "./relations";
 import { playableSet, validTargetsFor } from "./playability";
 import { CARDS } from "./cards";
 import { createHud } from "./hud";
+import { createDeckScreen } from "./deck-screen";
+import {
+  buildPlayerDeck, loadMeta, memoryStorage, mergeSeen,
+  resetMeta, saveMeta, unlockCard, type MetaRecord, type MetaStorage,
+} from "./meta";
 import "./style.css";
 
 const data = rawData as MapData;
@@ -36,6 +41,23 @@ const factionAdjacency = Object.fromEntries(
 );
 
 const rng = Math.random;
+const { storage, storageIsPersistent } = ((): {
+  storage: MetaStorage;
+  storageIsPersistent: boolean;
+} => {
+  try {
+    const probe = "balticmap-meta-probe";
+    window.localStorage.setItem(probe, "1");
+    window.localStorage.removeItem(probe);
+    return { storage: window.localStorage, storageIsPersistent: true };
+  } catch {
+    return { storage: memoryStorage(), storageIsPersistent: false };
+  }
+})();
+let meta: MetaRecord = loadMeta(storage);
+let unlockUsedThisGame = false;
+let seenMerged = false;
+let poolAtRunStart: string[] = meta.seenPool;
 let game: GameState = newGame(data.factions.map((f) => f.id), factionAdjacency);
 let armed: number | null = null; // hand index of the armed targeted card
 let pendingTribute: number | null = null; // hand index awaiting a track choice
@@ -251,10 +273,22 @@ function refresh(): void {
   hud.update(game);
 }
 
+/** Banks this run's seen cards into the persistent pool, once per run. */
+function bankSeen(): void {
+  if (seenMerged || game.players.length === 0) return;
+  seenMerged = true;
+  const next = mergeSeen(meta, game.seenThisRun);
+  if (next !== meta) {
+    meta = next;
+    saveMeta(storage, meta);
+  }
+}
+
 /** After a completed human action: advance, then run every AI turn back to
  *  back (each AI plays or discards; the loop stops on an ending phase). */
 function afterHumanAction(): void {
   game = advance(game, rng);
+  if (game.phase === "victory" || game.phase === "defeat") bankSeen();
   refresh();
   if (game.phase !== "playing" || isHumanTurn(game)) return;
   setTimeout(() => {
@@ -266,6 +300,7 @@ function afterHumanAction(): void {
       }
       game = advance(aiTakeTurn(game, rng), rng);
     }
+    if (game.phase === "victory" || game.phase === "defeat") bankSeen();
     refresh();
   }, 0);
 }
@@ -274,9 +309,14 @@ const hud = createHud(
   app,
   {
     onNewGame() {
+      bankSeen();
       game = startGame(newGame(data.factions.map((f) => f.id), factionAdjacency));
       cancelTribute();
       disarm();
+      unlockUsedThisGame = false;
+      seenMerged = false;
+      poolAtRunStart = meta.seenPool;
+      deckScreen.update(deckScreenView(true));
       refresh();
     },
     onPlayCard(index) {
@@ -332,9 +372,50 @@ const hud = createHud(
     isDiscardMode() {
       return game.players.length > 0 && discardMode();
     },
+    lootInfo() {
+      return game.seenThisRun
+        .filter((id) => !meta.knownCards.includes(id))
+        .map((id) => ({ id, isNew: !poolAtRunStart.includes(id) }));
+    },
+    ...(storageIsPersistent
+      ? {
+          onResetProgress() {
+            meta = resetMeta(storage);
+            poolAtRunStart = meta.seenPool;
+            deckScreen.update(deckScreenView(game.phase === "deck-building"));
+          },
+        }
+      : {}),
   },
   new Map(data.factions.map((f) => [f.id, f.name])),
 );
+
+function deckScreenView(visible: boolean) {
+  return {
+    visible,
+    knownCards: meta.knownCards,
+    seenPool: meta.seenPool,
+    unlockUsed: unlockUsedThisGame,
+  };
+}
+
+const deckScreen = createDeckScreen(app, {
+  onUnlock(cardId) {
+    if (unlockUsedThisGame) return;
+    const next = unlockCard(meta, cardId);
+    if (next === meta) return;
+    meta = next;
+    unlockUsedThisGame = true;
+    saveMeta(storage, meta);
+    deckScreen.update(deckScreenView(true));
+  },
+  onStart(selectedIds) {
+    game = chooseDeck(game, buildPlayerDeck(meta.knownCards, selectedIds));
+    deckScreen.update(deckScreenView(false));
+    refresh();
+  },
+});
+
 hud.update(game);
 
 window.addEventListener("keydown", (e) => {

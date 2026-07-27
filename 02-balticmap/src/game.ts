@@ -1,4 +1,4 @@
-import { buildDeck, shuffle, CARDS, type Rng } from "./cards";
+import { buildDeck, shuffle, CARDS, DECK_SIZE, type Rng } from "./cards";
 import {
   bumpMight, bumpMightAll, bumpStatus, realmOf,
   type Incorporated, type Overlords, type Relations,
@@ -21,7 +21,8 @@ export interface GameEvent {
 }
 
 export type GamePhase =
-  | "main-menu" | "pick-faction" | "playing" | "victory" | "defeat";
+  | "main-menu" | "deck-building" | "pick-faction" | "playing"
+  | "victory" | "defeat";
 
 export type TributeTrack = "status" | "might";
 
@@ -44,6 +45,7 @@ export interface GameState {
   overlords: Overlords; // STORED vassal -> overlord map
   incorporated: Incorporated;
   adjacency: Record<string, string[]>;
+  humanDeck: string[];
   seenThisRun: string[]; // non-basic enemy cards witnessed (learning loop)
   log: GameEvent[];
 }
@@ -80,6 +82,7 @@ export function newGame(
       Object.fromEntries(
         factionIds.map((id) => [id, factionIds.filter((o) => o !== id)]),
       ),
+    humanDeck: buildDeck(),
     seenThisRun: [],
     log: [],
   };
@@ -87,11 +90,23 @@ export function newGame(
 
 export function startGame(state: GameState): GameState {
   if (state.phase !== "main-menu") return state;
-  return { ...state, phase: "pick-faction" };
+  return { ...state, phase: "deck-building" };
 }
 
-function makePlayer(id: number, factionId: string, rng: Rng): PlayerState {
-  const deck = shuffle(buildDeck(), rng);
+/** Locks in the human deck and proceeds to faction picking. */
+export function chooseDeck(state: GameState, deckCards: string[]): GameState {
+  if (state.phase !== "deck-building") return state;
+  if (deckCards.length !== DECK_SIZE) return state;
+  return { ...state, phase: "pick-faction", humanDeck: [...deckCards] };
+}
+
+function makePlayer(
+  id: number,
+  factionId: string,
+  rng: Rng,
+  deckCards: string[] = buildDeck(),
+): PlayerState {
+  const deck = shuffle(deckCards, rng);
   // opening hand: dealt silently (no log events)
   return {
     id,
@@ -111,7 +126,7 @@ export function pickFaction(
   if (!state.factionIds.includes(factionId)) return state;
   const others = state.factionIds.filter((id) => id !== factionId);
   const players = [
-    makePlayer(1, factionId, rng),
+    makePlayer(1, factionId, rng, state.humanDeck),
     ...others.map((id, i) => makePlayer(i + 2, id, rng)),
   ];
   return beginTurn({ ...state, phase: "playing", players, current: 0 }, rng);

@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { chooseAction } from "../src/ai";
 import {
-  newGame, startGame, pickFaction, type GameState,
+  newGame, startGame, chooseDeck, pickFaction, type GameState,
 } from "../src/game";
 import { bumpMight, bumpStatus, type Relations } from "../src/relations";
-import type { Rng } from "../src/cards";
+import { buildDeck, type Rng } from "../src/cards";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -18,7 +18,9 @@ const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
 function base(): GameState {
   // human is beta; make alpha (player 2, index 1) the actor
-  const g = pickFaction(startGame(newGame(FACTIONS)), "beta", seededRng(1));
+  const g = pickFaction(
+    chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
+  );
   return { ...g, current: 1 };
 }
 
