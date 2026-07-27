@@ -735,9 +735,9 @@ svg.map.dragging {
   }
 }
 
-/* Must stay last: wins the cascade tie against any earlier
-   single-class rule (e.g. .menu-overlay, .status-bar) that also
-   sets display, so toggling "hidden" always actually hides. */
+/* Cascade tie-breaker for hidden panels. Rules appended after this point
+   must pair display overrides with their own .x.hidden rule (as
+   .notice-overlay.hidden does), since equal-specificity later rules win. */
 .hidden {
   display: none;
 }
