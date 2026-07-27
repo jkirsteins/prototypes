@@ -99,7 +99,10 @@ describe("noticeFor", () => {
     expect(n).not.toBeNull();
     expect(n!.title).toBe("Beneath the Yoke");
     expect(n!.what).toBe("Jersikans played Subjugate against Lower Daugava Livs.");
-    expect(n!.flavor).toContain("Jersikans name the tribute");
+    expect(n!.flavor).toBe(
+      "Armed riders gather before your halls. Your elders count spears, " +
+      "then bow their heads. The victors name the tribute; you will pay it.",
+    );
     expect(n!.consequence).toContain("Two Pay Tribute cards were shuffled into your deck");
   });
 
@@ -231,7 +234,7 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
         what: `${actor} played Subjugate against ${ctx.factionName(e.targetFactionId)}.`,
         flavor:
           "Armed riders gather before your halls. Your elders count spears, " +
-          `then bow their heads. ${actor} name the tribute; you will pay it.`,
+          "then bow their heads. The victors name the tribute; you will pay it.",
         consequence:
           "Two Pay Tribute cards were shuffled into your deck. When one is " +
           "in hand, it must be played before anything else.",
@@ -277,8 +280,6 @@ export function noticeFor(e: GameEvent, ctx: NoticeCtx): Notice | null {
   return rule.build(e, ctx);
 }
 ```
-
-Note the subjugated flavor says "{actor} name the tribute" (plural verb - faction names are plural peoples, e.g. "Jersikans name the tribute"). The test asserts this exact phrasing.
 
 - [ ] **Step 4: Run test to verify it passes**
 

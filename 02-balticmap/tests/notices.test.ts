@@ -56,7 +56,10 @@ describe("noticeFor", () => {
     expect(n).not.toBeNull();
     expect(n!.title).toBe("Beneath the Yoke");
     expect(n!.what).toBe("Jersikans played Subjugate against Lower Daugava Livs.");
-    expect(n!.flavor).toContain("Jersikans name the tribute");
+    expect(n!.flavor).toBe(
+      "Armed riders gather before your halls. Your elders count spears, " +
+      "then bow their heads. The victors name the tribute; you will pay it.",
+    );
     expect(n!.consequence).toContain("Two Pay Tribute cards were shuffled into your deck");
   });
 

@@ -128,7 +128,7 @@ subjugated (human target):
 - title: "Beneath the Yoke"
 - what: "{actor} played Subjugate against {human faction}."
 - flavor: "Armed riders gather before your halls. Your elders count spears,
-  then bow their heads. {actor} names the tribute; you will pay it."
+  then bow their heads. The victors name the tribute; you will pay it."
 - consequence: "Two Pay Tribute cards were shuffled into your deck. When one
   is in hand, it must be played before anything else."
 
