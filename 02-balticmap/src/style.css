@@ -400,6 +400,76 @@ svg.map.dragging {
   color: #3f3428;
 }
 
+.deck-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(24, 32, 38, 0.88);
+  z-index: 20;
+}
+
+.ds-label {
+  font-size: 11px;
+  color: #b8b0a2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ds-unlock,
+.ds-deck {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 640px;
+}
+
+.ds-card {
+  width: 84px;
+  height: 118px;
+  border: 1px solid #7a6a55;
+  border-radius: 8px;
+  background: #fdfaf4;
+  color: #3f3428;
+  font-size: 12px;
+  padding: 6px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.ds-card.selected {
+  opacity: 1;
+  outline: 2px solid #7cb06a;
+  outline-offset: -2px;
+}
+
+.ds-card.ds-locked {
+  background: #3a4148;
+  color: #d8cfc0;
+  border-style: dashed;
+  border-color: #d4af37;
+  opacity: 1;
+}
+
+.ds-card.ds-filler {
+  background: #f1e9da;
+  cursor: default;
+  opacity: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.ds-counter {
+  font-size: 13px;
+  color: #fdfaf4;
+}
+
 .tribute-btn {
   font-size: 13px;
   padding: 4px 14px;
