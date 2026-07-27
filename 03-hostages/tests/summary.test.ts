@@ -52,6 +52,15 @@ describe("summarize", () => {
     expect(text).toMatch(/because you chose to/i);
   });
 
+  it("composes secret sentences with correct grammar", () => {
+    const state = finished("victory");
+    state.stats.secretsGiven = [
+      { cardId: "secretFreezer", coerced: true },
+    ];
+    const lines = summarize(state).lines;
+    expect(lines).toContain('You gave up "There\'s a jar in the freezer" because he made you.');
+  });
+
   it("reports how close she came", () => {
     const state = finished("victory");
     state.stats.wifeLowestVigor = 1;

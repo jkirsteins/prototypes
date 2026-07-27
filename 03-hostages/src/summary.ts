@@ -24,7 +24,11 @@ export function summarize(state: GameState): RunSummary {
     lines.push("You told him nothing.");
   } else {
     for (const entry of given) {
-      const name = cardById(entry.cardId).name;
+      let name = cardById(entry.cardId).name;
+      // Strip period before closing quote for proper grammar
+      if (name.endsWith('."')) {
+        name = name.slice(0, -2) + '"';
+      }
       const why = entry.coerced ? "because he made you" : "because you chose to";
       lines.push(`You gave up ${name} ${why}.`);
     }
