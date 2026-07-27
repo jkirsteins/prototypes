@@ -1,21 +1,90 @@
-import { canAnswer, canLead } from "./legality";
-import { cardById } from "./content/cards";
-import { NOT_YET_ID } from "./content/cards-convict";
+import { NOT_YET_ID, cardById } from "./content/cards";
+import { canAnswer, canLead, leadDamageTo } from "./legality";
 import type { CardDef, GameState } from "./types";
 
-export function chooseConvictLead(state: GameState): string | null {
-  for (const id of state.convictPile.hand) {
-    if (canLead(state, "convict", cardById(id)).ok) return id;
+function legalLeads(state: GameState): CardDef[] {
+  return state.convictPile.hand
+    .map((id) => cardById(id))
+    .filter((card) => canLead(state, "convict", card).ok);
+}
+
+function firstWithId(cards: CardDef[], id: string): CardDef | undefined {
+  return cards.find((card) => card.id === id);
+}
+
+function willpowerCost(card: CardDef): number {
+  let total = 0;
+  for (const effect of card.effects) {
+    if (effect.kind === "willpower" && effect.target === "player" && effect.amount < 0) {
+      total += -effect.amount;
+    }
   }
-  return null;
+  return total;
+}
+
+export function chooseConvictLead(state: GameState): string | null {
+  const legal = legalLeads(state);
+  if (legal.length === 0) return null;
+
+  const snatch = firstWithId(legal, "snatchItBack");
+  if (state.convict.weaponDown && snatch) return snatch.id;
+
+  if (state.player.willpower <= 2) {
+    const demands = legal.filter((card) => card.coercion);
+    if (demands.length > 0) {
+      demands.sort((a, b) => willpowerCost(b) - willpowerCost(a));
+      return demands[0].id;
+    }
+  }
+
+  const tighten = firstWithId(legal, "tightenTheRopes");
+  if (!state.player.bound && tighten) return tighten.id;
+
+  const fingers = firstWithId(legal, "breakHerFingers");
+  if (state.coercionDefused && fingers && state.player.willpower > 4) return fingers.id;
+
+  const ransack = firstWithId(legal, "ransackTheRoom");
+  if (ransack && state.player.willpower > 3) return ransack.id;
+
+  const ranked = [...legal].sort(
+    (a, b) => leadDamageTo(b, "player") - leadDamageTo(a, "player"),
+  );
+  return ranked[0].id;
+}
+
+/** Damage a lead would actually do to him right now, bonus included. */
+function effectiveDamageToConvict(state: GameState, lead: CardDef): number {
+  let total = 0;
+  for (const effect of lead.effects) {
+    if (effect.kind !== "damage" || effect.target !== "convict") continue;
+    total += effect.amount;
+    if (effect.offBalanceBonus !== undefined && state.convict.offBalance) {
+      total += effect.offBalanceBonus;
+    }
+  }
+  return total;
 }
 
 export function chooseConvictAnswer(state: GameState, lead: CardDef): string | null {
   const candidates = state.notYetSpent
-    ? state.convictPile.hand
+    ? [...state.convictPile.hand]
     : [NOT_YET_ID, ...state.convictPile.hand];
-  for (const id of candidates) {
-    if (canAnswer(state, "convict", cardById(id), lead).ok) return id;
-  }
+  const legal = candidates
+    .map((id) => cardById(id))
+    .filter((card) => canAnswer(state, "convict", card, lead).ok);
+  if (legal.length === 0) return null;
+
+  const notYet = firstWithId(legal, NOT_YET_ID);
+  if (notYet) return notYet.id;
+
+  const knots = firstWithId(legal, "expertKnots");
+  if (knots) return knots.id;
+
+  const heard = firstWithId(legal, "heardThatBefore");
+  if (heard && state.convict.willpower <= 3) return heard.id;
+
+  const brace = firstWithId(legal, "brace");
+  if (brace && effectiveDamageToConvict(state, lead) > 3) return brace.id;
+
   return null;
 }
