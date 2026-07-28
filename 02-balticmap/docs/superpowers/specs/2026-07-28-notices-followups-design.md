@@ -244,8 +244,10 @@ Three new deck-buildable cards (all maxPerDeck 1, in the random AI pool):
   between actor and target for 5 turns (expires at `turn + 5`). While
   active, NEITHER side may target the other with hostile cards (Raid,
   Shrewd marriage, Subjugate, Assassinate ruler) - enforced in
-  validTargetsFor, so the AI obeys automatically. Card text: "Seal a pact
-  with one faction in reach: no hostile cards between you for 5 turns."
+  validTargetsFor, so the AI obeys automatically. Re-targeting an existing
+  ally renews the pact (expiry overwritten; a diplomacy boost applies).
+  Card text: "Seal a pact with one faction in reach: no hostile cards
+  between you for 5 turns."
 - **Extended diplomacy** (untargeted, always playable): the actor's NEXT
   Alliance lasts 10 turns instead of 5 (one-shot flag, consumed on use).
   Card text: "Patient envoys: your next Alliance lasts twice as long."

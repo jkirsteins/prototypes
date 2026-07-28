@@ -38,9 +38,10 @@ export function buildDeck(): string[] {
   const nonBasics = Object.values(CARDS)
     .filter((c) => c.deckBuildable && c.maxPerDeck !== null)
     .map((c) => c.id);
+  const picked = nonBasics.slice(0, DECK_SIZE);
   return [
-    ...nonBasics,
-    ...Array.from({ length: DECK_SIZE - nonBasics.length }, () => "grow-crops"),
+    ...picked,
+    ...Array.from({ length: DECK_SIZE - picked.length }, () => "grow-crops"),
   ];
 }
 

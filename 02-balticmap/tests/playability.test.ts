@@ -251,13 +251,14 @@ describe("alliances", () => {
     expect(validTargetsFor(expired, "beta", "raid")).toContain("gamma");
   });
 
-  it("alliance targets reach like marriage (overlord always courtable) but exclude existing allies", () => {
+  it("alliance targets reach like marriage (overlord always courtable) and allow renewal targeting existing allies", () => {
     const alliances = { [allianceKey("beta", "gamma")]: 10 };
     const v = view({ overlords: new Map([["delta", "alpha"]]), alliances, turn: 1 });
     // delta's overlord alpha is courtable though not adjacent to delta's realm
     expect(validTargetsFor(v, "delta", "alliance")).toContain("alpha");
-    // beta is already allied with gamma: gamma is excluded as an alliance target
-    expect(validTargetsFor(view({ alliances, turn: 1 }), "beta", "alliance")).not.toContain("gamma");
+    // beta is already allied with gamma: re-targeting gamma renews the pact,
+    // so it remains a valid alliance target rather than being excluded.
+    expect(validTargetsFor(view({ alliances, turn: 1 }), "beta", "alliance")).toContain("gamma");
     expect(validTargetsFor(view({ alliances, turn: 1 }), "beta", "alliance")).toContain("alpha");
   });
 

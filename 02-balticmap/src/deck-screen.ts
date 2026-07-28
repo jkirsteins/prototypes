@@ -96,7 +96,8 @@ export function createDeckScreen(
         (id) => !discovered.has(id),
       ).length;
       undiscovered.classList.toggle("hidden", undiscoveredCount === 0);
-      undiscovered.textContent = `${undiscoveredCount} cards still undiscovered`;
+      undiscovered.textContent =
+        `${undiscoveredCount} ${undiscoveredCount === 1 ? "card" : "cards"} still undiscovered`;
 
       unlockSection.classList.toggle(
         "hidden", view.seenPool.length === 0 || view.unlockUsed,

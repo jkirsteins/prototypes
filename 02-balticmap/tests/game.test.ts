@@ -598,6 +598,25 @@ describe("diplomacy cards", () => {
     expect(boosted.diplomacyBoost).not.toContain("beta");
   });
 
+  it("alliance can re-target an active ally to renew the pact, overwriting the expiry", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, alliances: { [allianceKey("beta", "alpha")]: g.turn + 1 } };
+    g = withHand(g, 0, ["alliance"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(after.alliances[allianceKey("beta", "alpha")]).toBe(g.turn + 5);
+
+    let g2 = playingState(LINE_ADJ);
+    g2 = {
+      ...g2,
+      alliances: { [allianceKey("beta", "alpha")]: g2.turn + 1 },
+      diplomacyBoost: ["beta"],
+    };
+    g2 = withHand(g2, 0, ["alliance"]);
+    const boosted = playCard(g2, 0, rng(), "alpha");
+    expect(boosted.alliances[allianceKey("beta", "alpha")]).toBe(g2.turn + 10);
+    expect(boosted.diplomacyBoost).not.toContain("beta");
+  });
+
   it("extended-diplomacy adds the actor to diplomacyBoost, once", () => {
     let g = playingState(LINE_ADJ);
     g = withHand(g, 0, ["extended-diplomacy"]);

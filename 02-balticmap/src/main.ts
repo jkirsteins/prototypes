@@ -68,6 +68,7 @@ let poolAtRunStart: string[] = meta.seenPool;
 let game: GameState = newGame(data.factions.map((f) => f.id), factionAdjacency);
 let armed: number | null = null; // hand index of the armed targeted card
 let pendingTribute: number | null = null; // hand index awaiting a track choice
+let hoveredRegion: Region | null = null; // region under the cursor, for hover re-apply on refresh
 
 function inPlay(): boolean {
   return (
@@ -404,6 +405,7 @@ function refresh(): void {
   applyTargeting();
   renderThreatBadges();
   hud.update(game);
+  applyRealmHover(hoveredRegion);
 }
 
 /** Banks this run's seen cards into the persistent pool, once per run. */
@@ -564,6 +566,7 @@ const interaction = attachInteraction(svg, regionPaths, settlementDots, data, {
   onHover(region, clientX, clientY) {
     if (region) tooltip.showLines(hoverLines(region), clientX, clientY);
     else tooltip.hide();
+    hoveredRegion = region;
     applyRealmHover(region);
   },
   onHoverSettlement(settlement, clientX, clientY) {

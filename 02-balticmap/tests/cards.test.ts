@@ -83,6 +83,22 @@ describe("cards", () => {
     expect(count("pay-tribute")).toBe(0);
   });
 
+  it("guards against overflow: buildDeck stays at DECK_SIZE even if CARDS grows past 10 non-basics", () => {
+    // Simulate CARDS gaining an 11th deck-buildable non-basic without anyone
+    // remembering to bump DECK_SIZE. buildDeck() must slice to DECK_SIZE
+    // rather than silently returning an oversized deck that chooseDeck rejects.
+    const overflowId = "__test-overflow-card";
+    (CARDS as Record<string, (typeof CARDS)[string]>)[overflowId] = {
+      id: overflowId, name: "Overflow", targeted: false,
+      maxPerDeck: 1, deckBuildable: true, forced: false, text: "",
+    };
+    try {
+      expect(buildDeck().length).toBe(DECK_SIZE);
+    } finally {
+      delete (CARDS as Record<string, (typeof CARDS)[string]>)[overflowId];
+    }
+  });
+
   it("shuffle returns a permutation and leaves the input untouched", () => {
     const input = ["a", "b", "c", "d", "e"];
     const copy = [...input];

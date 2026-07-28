@@ -130,6 +130,23 @@ describe("createDeckScreen", () => {
     expect(q(container, ".ds-undiscovered").textContent).toBe("7 cards still undiscovered");
   });
 
+  it("uses the singular 'card' when exactly one non-basic is undiscovered", () => {
+    const { container, screen } = setup();
+    screen.update({
+      visible: true,
+      knownCards: [
+        "grow-crops", "raid", "shrewd-marriage", "fortify", "subjugate",
+        "incorporate", "reclaim-independence", "revolt", "assassinate-ruler",
+        "extended-diplomacy",
+      ],
+      seenPool: [],
+      unlockUsed: false,
+    });
+    const undiscovered = q(container, ".ds-undiscovered");
+    expect(undiscovered.classList.contains("hidden")).toBe(false);
+    expect(undiscovered.textContent).toBe("1 card still undiscovered");
+  });
+
   it("hides the undiscovered counter once every non-basic is known or in the pool", () => {
     const { container, screen } = setup();
     screen.update({

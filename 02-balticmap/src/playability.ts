@@ -56,9 +56,14 @@ export function validTargetsFor(
       // faction currently allied with the actor.
       return view.factionIds.filter((id) => inReach(id) && id !== overlord && notAllied(id));
     }
-    // Shrewd marriage / Alliance: the overlord is always courtable, adjacent
-    // or not; Alliance additionally excludes existing allies (hostile-card
-    // rule applies uniformly to marriage too).
+    if (cardId === "alliance") {
+      // The overlord is always courtable, adjacent or not. Re-targeting an
+      // existing ally is allowed: it renews the pact (expiry overwritten,
+      // an Extended diplomacy boost applies to the renewal too).
+      return view.factionIds.filter((id) => inReach(id) || id === overlord);
+    }
+    // Shrewd marriage: the overlord is always courtable, adjacent or not;
+    // excludes existing allies (hostile-card rule applies to marriage too).
     return view.factionIds.filter((id) => (inReach(id) || id === overlord) && notAllied(id));
   }
   if (cardId === "subjugate") {
