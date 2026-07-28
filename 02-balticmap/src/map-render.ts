@@ -65,10 +65,10 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
 
   const sea = el("rect");
   sea.classList.add("sea");
-  sea.setAttribute("x", "0");
-  sea.setAttribute("y", "0");
-  sea.setAttribute("width", String(data.width));
-  sea.setAttribute("height", String(data.height));
+  sea.setAttribute("x", String(-data.margin));
+  sea.setAttribute("y", String(-data.margin));
+  sea.setAttribute("width", String(data.width + 2 * data.margin));
+  sea.setAttribute("height", String(data.height + 2 * data.margin));
   svg.appendChild(sea);
 
   const neighborsGroup = el("g");

@@ -75,6 +75,9 @@ export interface MapLabel {
 export interface MapData {
   width: number;
   height: number;
+  /** How far past the canvas the sea and neighbor geometry are baked, so
+   *  letterboxed views at the zoom floor stay painted. */
+  margin: number;
   attribution: string;
   year: number;
   peoples: People[];

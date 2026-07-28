@@ -1299,7 +1299,17 @@ const projection = geoAzimuthalEqualArea()
     [[PAD, PAD], [WIDTH - PAD, HEIGHT - PAD]],
     { type: "FeatureCollection", features: landFeatures },
   );
-projection.clipExtent([[0, 0], [WIDTH, HEIGHT]]);
+// Geometry is baked well past the canvas: at the zoom floor a wide viewport
+// letterboxes far beyond the 1000x1400 frame, and a neighbor clipped at the
+// canvas edge shows as a straight cut through land with bare sea beyond it.
+// 1200 covers viewport aspects up to ~3.4:1 at the floor; anything wider
+// falls back to the sea-colored page background. Lands, settlements and
+// labels are all inside the canvas, so only neighbors and rivers grow.
+const CLIP_MARGIN = 1200;
+projection.clipExtent([
+  [-CLIP_MARGIN, -CLIP_MARGIN],
+  [WIDTH + CLIP_MARGIN, HEIGHT + CLIP_MARGIN],
+]);
 const path = geoPath(projection).digits(1);
 
 // Sub-pixel land fragments render as stroke dots and dashes. Two kinds, both
@@ -1427,6 +1437,7 @@ const labels = LABELS.flatMap((l) => {
 const data = {
   width: WIDTH,
   height: HEIGHT,
+  margin: CLIP_MARGIN,
   attribution:
     "(c) EuroGeographics for the administrative boundaries; " +
     "Poland and Kaliningrad: geoBoundaries / OpenStreetMap contributors (ODbL); " +
