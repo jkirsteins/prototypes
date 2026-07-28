@@ -19,6 +19,7 @@ export interface GameEvent {
   overlordFactionId?: string;
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
   track?: "status" | "might"; // tribute
+  prevented?: boolean; // play: a nullified Assassinate ruler (Bodyguard)
 }
 
 export type GamePhase =
@@ -48,6 +49,7 @@ export interface GameState {
   adjacency: Record<string, string[]>;
   alliances: Record<string, number>; // sorted-pair key -> expiry turn
   diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
+  bodyguards: string[]; // faction ids holding an unused Bodyguard guard
   humanDeck: string[];
   seenThisRun: string[]; // non-basic enemy cards witnessed (learning loop)
   log: GameEvent[];
@@ -65,6 +67,7 @@ export function viewOf(state: GameState): RulesView {
     factionIds: state.factionIds,
     alliances: state.alliances,
     turn: state.turn,
+    bodyguards: state.bodyguards,
   };
 }
 
@@ -84,6 +87,7 @@ export function newGame(
     incorporated: {},
     alliances: {},
     diplomacyBoost: [],
+    bodyguards: [],
     adjacency:
       adjacency ??
       Object.fromEntries(
@@ -204,7 +208,9 @@ export function playCard(
   let incorporated = state.incorporated;
   let alliances = state.alliances;
   let diplomacyBoost = state.diplomacyBoost;
+  let bodyguards = state.bodyguards;
   let phase: GamePhase = state.phase;
+  let prevented = false;
   const events: GameEvent[] = [
     {
       turn: state.turn, playerId: p.id, type: "play", cardId,
@@ -248,7 +254,16 @@ export function playCard(
     );
     relations = bumpMightAll(relations, p.factionId, living);
   } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
-    relations = levelStatus(relations, p.factionId, targetId);
+    if (bodyguards.includes(targetId)) {
+      bodyguards = bodyguards.filter((f) => f !== targetId);
+      prevented = true;
+    } else {
+      relations = levelStatus(relations, p.factionId, targetId);
+    }
+  } else if (cardId === "bodyguard") {
+    if (!bodyguards.includes(p.factionId)) {
+      bodyguards = [...bodyguards, p.factionId];
+    }
   } else if (cardId === "alliance" && targetId !== undefined) {
     const boosted = diplomacyBoost.includes(p.factionId);
     alliances = {
@@ -329,6 +344,8 @@ export function playCard(
     });
   }
 
+  if (prevented) events[0] = { ...events[0], prevented: true };
+
   // learning hook: enemy non-basic cards witnessed by the human
   let seenThisRun = state.seenThisRun;
   const human = players[0];
@@ -372,7 +389,7 @@ export function playCard(
 
   return {
     ...state, phase, players, relations, overlords, incorporated,
-    alliances, diplomacyBoost, seenThisRun,
+    alliances, diplomacyBoost, bodyguards, seenThisRun,
     log: [...state.log, ...events], playedThisTurn: true,
   };
 }

@@ -60,6 +60,7 @@ describe("setup", () => {
     expect(g.adjacency["alpha"].sort()).toEqual(["beta", "delta", "gamma"]);
     expect(g.alliances).toEqual({});
     expect(g.diplomacyBoost).toEqual([]);
+    expect(g.bodyguards).toEqual([]);
   });
 
   it("pickFaction deals opening hands of 3 plus the first draw, without opening-draw log spam", () => {
@@ -75,7 +76,7 @@ describe("setup", () => {
 const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
   "incorporate", "reclaim-independence", "revolt",
-  "assassinate-ruler", "alliance", "extended-diplomacy",
+  "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
 ];
 
 function pickAt(seed: number): GameState {
@@ -639,5 +640,71 @@ describe("diplomacy cards", () => {
     g2 = withHand(g2, 0, ["extended-diplomacy"]);
     const again = playCard(g2, 0, rng());
     expect(again.diplomacyBoost).toEqual(["beta"]); // not duplicated
+  });
+});
+
+describe("bodyguard", () => {
+  it("play appends the actor faction to bodyguards", () => {
+    let g = playingState(LINE_ADJ);
+    g = withHand(g, 0, ["bodyguard"]);
+    const after = playCard(g, 0, rng());
+    expect(after.bodyguards).toEqual(["beta"]);
+  });
+
+  it("is unplayable while already guarded (no stacking)", () => {
+    let g = { ...playingState(LINE_ADJ), bodyguards: ["beta"] };
+    g = withHand(g, 0, ["bodyguard"]);
+    expect(playCard(g, 0, rng())).toBe(g); // rejected: not in the playable set
+  });
+
+  it("assassinate-ruler against a guarded target is nullified: guard consumed, relations untouched, event stamped prevented", () => {
+    let g = { ...playingState(LINE_ADJ), bodyguards: ["alpha"] };
+    let rel: Relations = {};
+    rel = bumpStatus(rel, "beta", "alpha");
+    rel = bumpStatus(rel, "beta", "alpha"); // beta leads alpha by 2 status
+    g = withRel(g, rel);
+    g = withHand(g, 0, ["assassinate-ruler"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(after.bodyguards).not.toContain("alpha");
+    expect(getRel(after.relations, "beta", "alpha").status).toBe(2); // untouched
+    expect(getRel(after.relations, "alpha", "beta").status).toBe(0); // untouched
+    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(2); // lead survives
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "assassinate-ruler", targetFactionId: "alpha",
+      prevented: true,
+    });
+  });
+
+  it("a second assassinate-ruler after the guard is consumed succeeds normally", () => {
+    let g = { ...playingState(LINE_ADJ), bodyguards: ["alpha"] };
+    let rel: Relations = {};
+    rel = bumpStatus(rel, "beta", "alpha");
+    rel = bumpStatus(rel, "beta", "alpha");
+    g = withRel(g, rel);
+    g = withHand(g, 0, ["assassinate-ruler"]);
+    let after = playCard(g, 0, rng(), "alpha"); // 1st: nullified
+    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(2);
+    expect(after.log.at(-1)?.prevented).toBe(true);
+
+    after = { ...after, playedThisTurn: false };
+    after = withHand(after, 0, ["assassinate-ruler"]);
+    after = playCard(after, 0, rng(), "alpha"); // 2nd: guard already spent, succeeds
+    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "assassinate-ruler", targetFactionId: "alpha",
+    });
+    expect(after.log.at(-1)?.prevented).toBeUndefined();
+  });
+
+  it("assassinate-ruler against an unguarded target still levels status as before", () => {
+    let g = { ...playingState(LINE_ADJ), bodyguards: [] as string[] };
+    let rel: Relations = {};
+    rel = bumpStatus(rel, "beta", "alpha");
+    g = withRel(g, rel);
+    g = withHand(g, 0, ["assassinate-ruler"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
+    expect(after.bodyguards).toEqual([]);
+    expect(after.log.at(-1)?.prevented).toBeUndefined();
   });
 });

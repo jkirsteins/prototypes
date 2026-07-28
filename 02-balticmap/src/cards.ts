@@ -25,6 +25,7 @@ export const CARDS: Record<string, CardDef> = {
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Even the score: the Status lead between you and one faction in reach resets to none." },
   "alliance": { id: "alliance", name: "Alliance", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns." },
   "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Patient envoys: your next Alliance lasts twice as long." },
+  "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking." },
 };
 
 export const DECK_SIZE = 10;
@@ -52,7 +53,7 @@ export function buildAiDeck(rng: Rng): string[] {
   const nonBasics = Object.values(CARDS)
     .filter((c) => c.deckBuildable && c.maxPerDeck !== null)
     .map((c) => c.id);
-  const included = nonBasics.filter(() => rng() < 0.5);
+  const included = nonBasics.filter(() => rng() < 0.5).slice(0, DECK_SIZE);
   return [
     ...included,
     ...Array.from({ length: DECK_SIZE - included.length }, () => "grow-crops"),

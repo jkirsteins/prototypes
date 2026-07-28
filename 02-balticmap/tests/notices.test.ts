@@ -258,6 +258,21 @@ describe("buildNotices: single-event scenarios", () => {
     ]);
   });
 
+  it("a prevented assassinate-ruler against the human raises its own modal", () => {
+    leadsTable = { jersika: { might: -2, status: 0 } };
+    const n = oneNotice(
+      ev({
+        type: "play", cardId: "assassinate-ruler", targetFactionId: "livs",
+        prevented: true,
+      }),
+    )!;
+    expect(n.title).toBe("Assassination Prevented");
+    expect(n.what).toBe("Jersikans played Assassinate ruler against Lower Daugava Livs.");
+    expect(n.details).toEqual([
+      "Your bodyguard turned the blade - your Status lead is unchanged.",
+    ]);
+  });
+
   it("alliance with the human raises a modal naming the pact expiry", () => {
     allianceExpiryTable = { jersika: 8 };
     const n = oneNotice(
@@ -353,6 +368,46 @@ describe("buildNotices: batch grouping", () => {
       "Jersikans - Might: they lead by 2; Status: even - a lead of 2 subjugates you",
       "Latgalians - Might: even; Status: they lead by 1",
     ]);
+  });
+
+  it("collapses 2 prevented assassinate-ruler plays into one Assassination Prevented notice", () => {
+    const events: GameEvent[] = [
+      ev({
+        turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler",
+        targetFactionId: "livs", prevented: true,
+      }),
+      ev({
+        turn: 2, playerId: 3, type: "play", cardId: "assassinate-ruler",
+        targetFactionId: "livs", prevented: true,
+      }),
+    ];
+    const notices = buildNotices(events, ctx);
+    expect(notices).toHaveLength(1);
+    const n = notices[0];
+    expect(n.title).toBe("Assassination Prevented");
+    expect(n.what).toBe("2 players played Assassinate ruler against you:");
+    expect(n.details).toEqual([
+      "Jersikans - prevented by your bodyguard",
+      "Latgalians - prevented by your bodyguard",
+    ]);
+  });
+
+  it("a round with both a prevented and a successful assassination raises one modal of each kind", () => {
+    leadsTable = { jersika: { might: -2, status: 0 } };
+    const events: GameEvent[] = [
+      ev({
+        turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler",
+        targetFactionId: "livs", prevented: true,
+      }),
+      ev({
+        turn: 2, playerId: 3, type: "play", cardId: "assassinate-ruler",
+        targetFactionId: "livs",
+      }),
+    ];
+    const notices = buildNotices(events, ctx);
+    expect(notices).toHaveLength(2);
+    expect(notices[0].title).toBe("Assassination Prevented");
+    expect(notices[1].title).toBe("A Ruler Falls"); // successful case unaffected
   });
 
   it("collapses 2 alliances sealed in one round into one notice", () => {

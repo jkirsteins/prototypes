@@ -328,6 +328,28 @@ describe("subjugation HUD", () => {
     expect(texts).toContain("Alpha submits to Beta");
   });
 
+  it("appends '- prevented' to a nullified Assassinate ruler play, for both the actor and the victim", () => {
+    const { container, hud } = setup();
+    let g = { ...playing(), bodyguards: ["alpha"] };
+    g = withHand(g, 0, ["assassinate-ruler"]);
+    g = playCard(g, 0, seededRng(1), "alpha"); // you (beta) are the actor
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    expect(texts).toContain("You played Assassinate ruler on Alpha - prevented");
+
+    const { container: container2, hud: hud2 } = setup();
+    let g2 = { ...playing(), bodyguards: ["beta"], current: 1 }; // alpha acts against you
+    g2 = withHand(g2, 1, ["assassinate-ruler"]);
+    g2 = playCard(g2, 0, seededRng(1), "beta");
+    hud2.update(g2);
+    const texts2 = [...container2.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    expect(texts2).toContain("Player 2 played Assassinate ruler on Beta - prevented");
+  });
+
   it("marks cards the callback rejects as unplayable", () => {
     const { container, cb, hud } = setup({ canPlayCard: (id) => id !== "incorporate" });
     const g = withHand(playing(), 0, ["incorporate", "grow-crops"]);

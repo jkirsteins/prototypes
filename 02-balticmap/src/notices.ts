@@ -122,6 +122,30 @@ function buildAssassinateNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
   return buildRelationPlayNotice(events, ctx, "A Ruler Falls", "Assassinate ruler");
 }
 
+/** Assassinate ruler against the human, nullified by a Bodyguard: the "what"
+ *  line matches the successful case's shape, but the details report the
+ *  block instead of a standing/threat line. */
+function buildAssassinatePreventedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  if (events.length === 1) {
+    const e = events[0];
+    const actor = ctx.factionName(ctx.factionOf(e.playerId));
+    return {
+      title: "Assassination Prevented",
+      what: `${actor} played Assassinate ruler against ${ctx.factionName(e.targetFactionId)}.`,
+      details: ["Your bodyguard turned the blade - your Status lead is unchanged."],
+    };
+  }
+
+  const details = events.map(
+    (e) => `${ctx.factionName(ctx.factionOf(e.playerId))} - prevented by your bodyguard`,
+  );
+  return {
+    title: "Assassination Prevented",
+    what: `${events.length} players played Assassinate ruler against you:`,
+    details,
+  };
+}
+
 /** Alliance sealed with the human: single actor keeps "played Alliance
  *  WITH you" (not against); N actors collapse into one notice with one
  *  "actor - until turn N" bullet each. */
@@ -247,7 +271,9 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       e.playerId !== 1,
     build: (e, ctx) =>
       e.cardId === "assassinate-ruler"
-        ? buildAssassinateNotice([e], ctx)
+        ? e.prevented
+          ? buildAssassinatePreventedNotice([e], ctx)
+          : buildAssassinateNotice([e], ctx)
         : e.cardId === "alliance"
           ? buildAllianceNotice([e], ctx)
           : buildPlayNotice([e], ctx),
@@ -298,7 +324,7 @@ export function buildNotices(events: GameEvent[], ctx: NoticeCtx): Notice[] {
   for (const e of events) {
     const rule = NOTICE_RULES[e.type];
     if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) continue;
-    const key = `${e.type}:${e.cardId ?? ""}`;
+    const key = `${e.type}:${e.cardId ?? ""}:${e.prevented ? "prevented" : ""}`;
     let idx = indexByKey.get(key);
     if (idx === undefined) {
       idx = order.length;
@@ -311,7 +337,11 @@ export function buildNotices(events: GameEvent[], ctx: NoticeCtx): Notice[] {
     switch (type) {
       case "play": {
         const cardId = groupEvents[0].cardId;
-        if (cardId === "assassinate-ruler") return buildAssassinateNotice(groupEvents, ctx);
+        if (cardId === "assassinate-ruler") {
+          return groupEvents[0].prevented
+            ? buildAssassinatePreventedNotice(groupEvents, ctx)
+            : buildAssassinateNotice(groupEvents, ctx);
+        }
         if (cardId === "alliance") return buildAllianceNotice(groupEvents, ctx);
         return buildPlayNotice(groupEvents, ctx);
       }

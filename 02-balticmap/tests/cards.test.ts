@@ -4,7 +4,7 @@ import { CARDS, DECK_SIZE, buildDeck, buildAiDeck, shuffle, type Rng } from "../
 const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
   "incorporate", "reclaim-independence", "revolt",
-  "assassinate-ruler", "alliance", "extended-diplomacy",
+  "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
 ];
 
 function seededRng(seed: number): Rng {
@@ -70,15 +70,23 @@ describe("cards", () => {
       "extended-diplomacy", "Extended diplomacy", false, 1, true, false,
       "Patient envoys: your next Alliance lasts twice as long.",
     );
+    expectProps(
+      "bodyguard", "Bodyguard", false, 1, true, false,
+      "Post a bodyguard: the next Assassinate ruler against you fails. No stacking.",
+    );
   });
 
   it("builds the 10-card default deck: 10 non-basics once each, no filler", () => {
     const deck = buildDeck();
     expect(deck).toHaveLength(DECK_SIZE);
     const count = (id: string) => deck.filter((c) => c === id).length;
-    for (const id of NON_BASICS) {
+    // 11 non-basics now exist for a 10-card deck; buildDeck's overflow guard
+    // (slice to DECK_SIZE) drops the 11th in CARDS order - bodyguard, added
+    // last - rather than growing the deck past DECK_SIZE.
+    for (const id of NON_BASICS.filter((id) => id !== "bodyguard")) {
       expect(count(id)).toBe(1);
     }
+    expect(count("bodyguard")).toBe(0);
     expect(count("grow-crops")).toBe(0);
     expect(count("pay-tribute")).toBe(0);
   });
@@ -142,10 +150,16 @@ describe("buildAiDeck", () => {
     expect(deck).toEqual(Array.from({ length: DECK_SIZE }, () => "grow-crops"));
   });
 
-  it("an rng that always returns < 0.5 includes every non-basic once", () => {
+  it("an rng that always returns < 0.5 includes non-basics up to DECK_SIZE, guarding overflow", () => {
+    // 11 non-basics now exist; an rng that includes all of them must still
+    // be capped at DECK_SIZE (same overflow guard as buildDeck), dropping
+    // bodyguard (last in CARDS order) rather than returning 11 cards.
     const deck = buildAiDeck(() => 0);
     const count = (id: string) => deck.filter((c) => c === id).length;
-    for (const id of NON_BASICS) expect(count(id)).toBe(1);
+    for (const id of NON_BASICS.filter((id) => id !== "bodyguard")) {
+      expect(count(id)).toBe(1);
+    }
+    expect(count("bodyguard")).toBe(0);
     expect(deck).toHaveLength(DECK_SIZE);
   });
 });

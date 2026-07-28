@@ -23,6 +23,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     factionIds: ORDER,
     alliances: {},
     turn: 1,
+    bodyguards: [],
     ...partial,
   };
 }
@@ -238,6 +239,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       factionIds: ["me", "deadland", "owner"],
       alliances: {},
       turn: 1,
+      bodyguards: [],
     };
     const targets = validTargetsFor(v, "me", "raid");
     expect(targets).toContain("owner");
@@ -254,6 +256,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       factionIds: ["me", "target", "land"],
       alliances: {},
       turn: 1,
+      bodyguards: [],
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "me", "target");
@@ -272,6 +275,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       factionIds: ["me", "lord", "land"],
       alliances: {},
       turn: 1,
+      bodyguards: [],
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "lord", "me");
@@ -324,5 +328,14 @@ describe("alliances", () => {
 
   it("extended-diplomacy is always playable, like grow-crops/fortify", () => {
     expect(isCardPlayable(view(), "beta", "extended-diplomacy")).toBe(true);
+  });
+});
+
+describe("bodyguard", () => {
+  it("playable only when the actor is not already guarded (no stacking)", () => {
+    expect(isCardPlayable(view({ bodyguards: [] }), "beta", "bodyguard")).toBe(true);
+    expect(isCardPlayable(view({ bodyguards: ["beta"] }), "beta", "bodyguard")).toBe(false);
+    // another faction's guard does not block beta
+    expect(isCardPlayable(view({ bodyguards: ["gamma"] }), "beta", "bodyguard")).toBe(true);
   });
 });

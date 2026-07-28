@@ -67,9 +67,10 @@ export function createHud(
         const target = e.targetFactionId !== undefined
           ? ` on ${factionName(e.targetFactionId)}`
           : "";
+        const suffix = e.prevented ? " - prevented" : "";
         return you
-          ? `You played ${cardName(e.cardId)}${target}`
-          : `Player ${e.playerId} played ${cardName(e.cardId)}${target}`;
+          ? `You played ${cardName(e.cardId)}${target}${suffix}`
+          : `Player ${e.playerId} played ${cardName(e.cardId)}${target}${suffix}`;
       }
       case "reshuffle":
         return you
