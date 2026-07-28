@@ -107,6 +107,8 @@ function relationsInfo(region: Region): string[] {
     `Might: yours ${mine.might} / theirs ${theirs.might}`,
   ];
   lines.push(relationshipLine(f, human.factionId));
+  const pact = allianceLine(f, human.factionId);
+  if (pact !== null) lines.push(pact);
   if (validTargetsFor(viewOf(game), human.factionId, "subjugate").includes(f)) {
     lines.push("Subjugate available");
   }
@@ -122,6 +124,13 @@ function relationshipLine(f: string, humanFaction: string): string {
   if (game.overlords.get(humanFaction) === f) return "Your overlord";
   if (lord === undefined) return "Independent";
   return `Vassal of ${factionById.get(lord)!.name}`;
+}
+
+/** The pact line, when one binds the human and this faction. */
+function allianceLine(f: string, humanFaction: string): string | null {
+  if (!inPlay() || !allianceActive(game, humanFaction, f)) return null;
+  const until = game.alliances[allianceKey(humanFaction, f)];
+  return `Allied until turn ${until} - no hostile cards between you`;
 }
 
 const panel = createPanel(
@@ -346,6 +355,8 @@ function hoverLines(region: Region): TooltipLine[] {
     f,
     relationshipLine(f, human.factionId),
   ));
+  const pact = allianceLine(f, human.factionId);
+  if (pact !== null) base.push({ text: pact, tone: "good" });
   if (validTargetsFor(viewOf(game), human.factionId, "subjugate").includes(f)) {
     base.push({ text: "Subjugate available", tone: "good" });
   }
@@ -367,6 +378,7 @@ function applyTargeting(): void {
     el.classList.toggle("target-valid", valid);
     el.classList.toggle("target-invalid", armed !== null && !valid);
   }
+  if (armed !== null) applyRealmHover(null); // targeting cues win the map
 }
 
 /** Every polygon belonging to the hovered region's realm root (owner if
@@ -375,7 +387,9 @@ function applyTargeting(): void {
  *  classes cleared) when there is no hover or the phase is not in play. */
 function applyRealmHover(region: Region | null): void {
   const members = new Set<string>();
-  if (region && inPlay()) {
+  // while a card is armed, targeting owns the map: a realm halo here would
+  // outrank the valid/invalid cues and make blocked targets look clickable
+  if (region && inPlay() && armed === null) {
     let root = game.incorporated[region.faction] ?? region.faction;
     root = game.overlords.get(root) ?? root;
     for (const member of realmOf(root, game.overlords, game.incorporated)) {

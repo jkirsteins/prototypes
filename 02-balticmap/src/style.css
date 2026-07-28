@@ -548,17 +548,9 @@ svg.map.dragging {
   stroke-width: 1.4;
 }
 
-.region.target-valid {
-  cursor: pointer;
-  stroke: #fdfaf4;
-  stroke-width: 2;
-  opacity: 1;
-}
-
-.region.target-invalid {
-  opacity: 0.12;
-  pointer-events: auto;
-}
+/* Targeting cues live at the END of this file on purpose: while a card is
+   armed they must outrank the hover and threat strokes, which are later
+   rules of equal specificity. See ".region.target-*" below. */
 
 .realm-outline path {
   stroke-width: 6;
@@ -992,4 +984,24 @@ svg.map.dragging {
 .realm-hover-halo.own path {
   stroke: #d4af37;
   stroke-width: 11;
+}
+
+/* --- targeting cues: last in the file so they win over hover/threat --- */
+.region.target-valid {
+  cursor: pointer;
+  stroke: #fdfaf4;
+  stroke-width: 2;
+  opacity: 1;
+  filter: brightness(1.05);
+}
+
+.region.target-invalid,
+.region.target-invalid.hovered,
+.region.target-invalid.dimmed {
+  opacity: 0.12;
+  cursor: not-allowed;
+  filter: none;
+  stroke: #7a6a55;
+  stroke-width: 0.8;
+  pointer-events: auto;
 }
