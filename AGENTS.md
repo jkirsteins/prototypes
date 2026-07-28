@@ -62,6 +62,24 @@ in each prototype and assemble the `dist/` directories the way
 - Prototype-specific instructions, specs and plans live under that prototype's
   own `docs/`. Read them before changing its code.
 
+## Card changes must revisit AI and balance evidence
+
+For prototypes with card-playing AI, adding a card or changing a card's effect,
+legality, targeting, deck availability, or interactions must revisit the AI in
+the same change. The change must:
+
+- Review legal-action generation and strategic evaluation for the card.
+- Add or update AI tests for useful, harmful, and competing-card situations.
+- Add or update simulation metrics that can reveal whether the card is ignored,
+  wasted, dominant, or targeted with an unintended bias.
+- Run the prototype's seeded AI balance benchmark and compare it with the
+  committed baseline.
+- Document why no AI change is needed when the review concludes that existing
+  behavior is intentionally sufficient.
+
+Falling through to the first playable card or first legal target is not complete
+AI support.
+
 ## Housekeeping
 
 - Several sessions may work in this repo at once, sometimes on the same branch
