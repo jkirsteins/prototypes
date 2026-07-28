@@ -292,14 +292,14 @@ function renderThreatBadges(): void {
     text.appendChild(mightTspan);
     const statusTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
     statusTspan.classList.add(leadClass(l.status));
-    statusTspan.setAttribute("dx", "6");
+    statusTspan.setAttribute("dx", "9");
     statusTspan.textContent = formatLead("S", l.status);
     text.appendChild(statusTspan);
     g.appendChild(text);
     badgeGroup.appendChild(g);
 
     const textBox = text.getBBox();
-    const pad = 4;
+    const pad = 6;
     rect.setAttribute("x", String(textBox.x - pad));
     rect.setAttribute("y", String(textBox.y - pad));
     rect.setAttribute("width", String(textBox.width + pad * 2));
