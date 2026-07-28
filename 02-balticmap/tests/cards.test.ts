@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { CARDS, DECK_SIZE, buildDeck, shuffle, type Rng } from "../src/cards";
+import { CARDS, DECK_SIZE, buildDeck, buildAiDeck, shuffle, type Rng } from "../src/cards";
+
+const NON_BASICS = [
+  "raid", "shrewd-marriage", "fortify", "subjugate",
+  "incorporate", "reclaim-independence", "revolt",
+];
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -84,5 +89,37 @@ describe("cards", () => {
   it("shuffle actually reorders (seed chosen to produce a change)", () => {
     const input = ["a", "b", "c", "d", "e", "f", "g"];
     expect(shuffle(input, seededRng(1))).not.toEqual(input);
+  });
+});
+
+describe("buildAiDeck", () => {
+  it("returns DECK_SIZE cards drawn only from valid deck-buildable ids", () => {
+    const deck = buildAiDeck(seededRng(3));
+    expect(deck).toHaveLength(DECK_SIZE);
+    for (const id of deck) {
+      expect(["grow-crops", ...NON_BASICS]).toContain(id);
+    }
+  });
+
+  it("is deterministic for the same seed", () => {
+    expect(buildAiDeck(seededRng(11))).toEqual(buildAiDeck(seededRng(11)));
+  });
+
+  it("different seeds can produce different decks", () => {
+    const decks = [1, 2, 3, 4, 5, 6, 7, 8].map((s) => buildAiDeck(seededRng(s)));
+    const unique = new Set(decks.map((d) => JSON.stringify([...d].sort())));
+    expect(unique.size).toBeGreaterThan(1);
+  });
+
+  it("an rng that always returns >= 0.5 yields an all-filler deck", () => {
+    const deck = buildAiDeck(() => 0.5);
+    expect(deck).toEqual(Array.from({ length: DECK_SIZE }, () => "grow-crops"));
+  });
+
+  it("an rng that always returns < 0.5 includes every non-basic once", () => {
+    const deck = buildAiDeck(() => 0);
+    const count = (id: string) => deck.filter((c) => c === id).length;
+    for (const id of NON_BASICS) expect(count(id)).toBe(1);
+    expect(deck).toHaveLength(DECK_SIZE);
   });
 });

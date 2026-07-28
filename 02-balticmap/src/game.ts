@@ -1,4 +1,4 @@
-import { buildDeck, shuffle, CARDS, DECK_SIZE, type Rng } from "./cards";
+import { buildDeck, buildAiDeck, shuffle, CARDS, DECK_SIZE, type Rng } from "./cards";
 import {
   bumpMight, bumpMightAll, bumpStatus, realmOf,
   type Incorporated, type Overlords, type Relations,
@@ -128,7 +128,7 @@ export function pickFaction(
   const others = state.factionIds.filter((id) => id !== factionId);
   const players = [
     makePlayer(1, factionId, rng, state.humanDeck),
-    ...others.map((id, i) => makePlayer(i + 2, id, rng)),
+    ...others.map((id, i) => makePlayer(i + 2, id, rng, buildAiDeck(rng))),
   ];
   return beginTurn({ ...state, phase: "playing", players, current: 0 }, rng);
 }

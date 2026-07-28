@@ -109,4 +109,37 @@ describe("createDeckScreen", () => {
     expect(deckCard.querySelector(".ds-card-name")!.textContent).toBe("Subjugate");
     expect(deckCard.querySelector(".ds-card-text")!.textContent?.length).toBeGreaterThan(0);
   });
+
+  it("shows the undiscovered counter when neither known nor pool cover every non-basic", () => {
+    const { container, screen } = setup();
+    screen.update({
+      visible: true, knownCards: ["grow-crops"], seenPool: [], unlockUsed: false,
+    });
+    const undiscovered = q(container, ".ds-undiscovered");
+    expect(undiscovered.classList.contains("hidden")).toBe(false);
+    expect(undiscovered.textContent).toBe("7 cards still undiscovered");
+  });
+
+  it("deducts known and pool cards from the undiscovered count", () => {
+    const { container, screen } = setup();
+    screen.update({
+      visible: true, knownCards: ["grow-crops", "raid", "subjugate"],
+      seenPool: ["fortify"], unlockUsed: false,
+    });
+    // 7 non-basics total - raid, subjugate (known) - fortify (pool) = 4 left
+    expect(q(container, ".ds-undiscovered").textContent).toBe("4 cards still undiscovered");
+  });
+
+  it("hides the undiscovered counter once every non-basic is known or in the pool", () => {
+    const { container, screen } = setup();
+    screen.update({
+      visible: true,
+      knownCards: [
+        "grow-crops", "raid", "shrewd-marriage", "fortify", "subjugate",
+      ],
+      seenPool: ["incorporate", "reclaim-independence", "revolt"],
+      unlockUsed: false,
+    });
+    expect(q(container, ".ds-undiscovered").classList.contains("hidden")).toBe(true);
+  });
 });

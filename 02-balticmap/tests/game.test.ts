@@ -4,7 +4,7 @@ import {
   advance, isHumanTurn, viewOf,
   OPENING_HAND, VICTORY_REALM_SIZE, type GameState,
 } from "../src/game";
-import { DECK_SIZE, buildDeck, type Rng } from "../src/cards";
+import { DECK_SIZE, buildDeck, CARDS, type Rng } from "../src/cards";
 import { bumpMight, bumpStatus, getRel, leadsOf, type Relations } from "../src/relations";
 
 function seededRng(seed: number): Rng {
@@ -65,6 +65,52 @@ describe("setup", () => {
     expect(g.players[0].deck).toHaveLength(DECK_SIZE - OPENING_HAND - 1);
     expect(g.players[1].hand).toHaveLength(OPENING_HAND);
     expect(g.log.filter((e) => e.type === "draw")).toHaveLength(1); // only the turn draw
+  });
+});
+
+const NON_BASICS = [
+  "raid", "shrewd-marriage", "fortify", "subjugate",
+  "incorporate", "reclaim-independence", "revolt",
+];
+
+function pickAt(seed: number): GameState {
+  return pickFaction(
+    chooseDeck(startGame(newGame(FACTIONS)), buildDeck()),
+    "beta",
+    seededRng(seed),
+  );
+}
+
+describe("pickFaction AI decks", () => {
+  it("AI players' cards are drawn only from valid deck-buildable ids, DECK_SIZE total", () => {
+    const g = pickAt(3);
+    for (const p of g.players.slice(1)) {
+      const all = [...p.hand, ...p.deck, ...p.discard];
+      expect(all).toHaveLength(DECK_SIZE);
+      for (const id of all) {
+        expect(["grow-crops", ...NON_BASICS]).toContain(id);
+      }
+    }
+  });
+
+  it("AI decks are randomized: some seed yields an AI non-basic set unlike the exhaustive default", () => {
+    let sawDifference = false;
+    for (let seed = 1; seed <= 40 && !sawDifference; seed++) {
+      const g = pickAt(seed);
+      for (const p of g.players.slice(1)) {
+        const nonBasicIds = [...p.hand, ...p.deck, ...p.discard]
+          .filter((id) => CARDS[id]?.maxPerDeck !== null);
+        if (new Set(nonBasicIds).size !== NON_BASICS.length) sawDifference = true;
+      }
+    }
+    expect(sawDifference).toBe(true);
+  });
+
+  it("human deck is unaffected by AI randomization: same multiset as the chosen humanDeck", () => {
+    const g = pickAt(5);
+    const human = g.players[0];
+    const humanCards = [...human.hand, ...human.deck, ...human.discard];
+    expect(humanCards.sort()).toEqual(buildDeck().sort());
   });
 });
 
@@ -458,7 +504,7 @@ describe("deck building", () => {
     expect(chooseDeck(g, ["grow-crops"])).toBe(g);
   });
 
-  it("the human is dealt from humanDeck, AIs from the default deck", () => {
+  it("the human is dealt from humanDeck, AIs from a randomized deck", () => {
     const custom = Array.from({ length: 10 }, () => "grow-crops");
     let g = chooseDeck(startGame(newGame(FACTIONS)), custom);
     g = pickFaction(g, "beta", seededRng(1));
@@ -469,9 +515,11 @@ describe("deck building", () => {
       ),
     ).toBe(true);
     const ai = g.players[1];
-    expect(
-      [...ai.deck, ...ai.hand].filter((c) => c === "raid"),
-    ).toHaveLength(1);
+    const aiCards = [...ai.deck, ...ai.hand, ...ai.discard];
+    expect(aiCards).toHaveLength(DECK_SIZE);
+    for (const id of aiCards) {
+      expect(["grow-crops", ...NON_BASICS]).toContain(id);
+    }
   });
 });
 

@@ -490,6 +490,13 @@ svg.map.dragging {
   color: #fdfaf4;
 }
 
+.ds-undiscovered {
+  font-size: 11px;
+  color: #b8b0a2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .tribute-btn {
   font-size: 13px;
   padding: 4px 14px;

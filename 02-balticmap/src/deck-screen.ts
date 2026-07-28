@@ -22,6 +22,11 @@ const cardName = (id: string): string => CARDS[id]?.name ?? id;
 const nonBasics = (ids: string[]): string[] =>
   ids.filter((id) => CARDS[id]?.maxPerDeck !== null);
 
+/** Every deck-buildable non-basic card id, in stable CARDS order. */
+const ALL_DECK_BUILDABLE_NON_BASICS = Object.values(CARDS)
+  .filter((c) => c.deckBuildable && c.maxPerDeck !== null)
+  .map((c) => c.id);
+
 export function createDeckScreen(
   container: HTMLElement,
   cb: DeckScreenCallbacks,
@@ -50,11 +55,14 @@ export function createDeckScreen(
   const counter = document.createElement("p");
   counter.className = "ds-counter";
 
+  const undiscovered = document.createElement("p");
+  undiscovered.className = "ds-undiscovered";
+
   const start = document.createElement("button");
   start.className = "menu-new-game ds-start";
   start.textContent = "Choose your lands";
 
-  root.append(title, unlockSection, deckLabel, deckRow, counter, start);
+  root.append(title, unlockSection, deckLabel, deckRow, counter, undiscovered, start);
   container.appendChild(root);
 
   /** Toggle state survives update() calls; pruned to known cards each render. */
@@ -82,6 +90,13 @@ export function createDeckScreen(
         }
       }
       selected = new Set(known.filter((id) => selected.has(id)));
+
+      const discovered = new Set([...view.knownCards, ...view.seenPool]);
+      const undiscoveredCount = ALL_DECK_BUILDABLE_NON_BASICS.filter(
+        (id) => !discovered.has(id),
+      ).length;
+      undiscovered.classList.toggle("hidden", undiscoveredCount === 0);
+      undiscovered.textContent = `${undiscoveredCount} cards still undiscovered`;
 
       unlockSection.classList.toggle(
         "hidden", view.seenPool.length === 0 || view.unlockUsed,

@@ -41,6 +41,20 @@ export function buildDeck(): string[] {
   ];
 }
 
+/** Randomized AI deck: each deck-buildable non-basic is included with
+ *  probability 0.5 (rolled per card, in stable CARDS order so a seeded rng
+ *  is deterministic), grow-crops filling the remaining slots. */
+export function buildAiDeck(rng: Rng): string[] {
+  const nonBasics = Object.values(CARDS)
+    .filter((c) => c.deckBuildable && c.maxPerDeck !== null)
+    .map((c) => c.id);
+  const included = nonBasics.filter(() => rng() < 0.5);
+  return [
+    ...included,
+    ...Array.from({ length: DECK_SIZE - included.length }, () => "grow-crops"),
+  ];
+}
+
 /** Fisher-Yates; returns a new array, input untouched. */
 export function shuffle(cards: string[], rng: Rng): string[] {
   const out = [...cards];
