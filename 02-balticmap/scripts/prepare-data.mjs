@@ -136,15 +136,20 @@ const DAUGAVA = [
   [25.43, 56.635], [25.72, 56.615], [25.86, 56.50], [26.10, 56.40],
   [26.35, 56.22], [26.60, 56.05],
 ];
-const NORTH_BANK_MASK = [
-  [...DAUGAVA, [26.60, 58.5], [24.60, 58.5], DAUGAVA[0]],
-];
+const DAUGAVA_CLOSING = [[26.60, 58.5], [24.60, 58.5]];
 
 // Two municipalities straddle the Daugava; split them so Selija is the
 // left/south bank (Selonia proper) and the right/north bank - including
 // Koknese and Krustpils - runs with Jersika. Pseudo-members "<name>#north"
 // and "<name>#south" are what LANDS reference below.
 const SPLIT_MUNICIPALITIES = ["Aizkraukles novads", "Jēkabpils novads"];
+
+// A land's members come from three sources: `lau` (EE/LV municipalities, and
+// the Lithuanian counties taken at municipality level), `nuts` (NUTS-3), and
+// `pieces` (parts of a member cut by a hand-traced line). Always read them
+// through memberKeysOf.
+const memberKeysOf = (land) =>
+  new Set([...(land.lau ?? []), ...(land.nuts ?? []), ...(land.pieces ?? [])]);
 
 // 20 lands. `lau` lists LAU_NAME members (EE/LV, LAU 2023); `nuts` lists
 // NUTS-2021 level-3 members (LT). Provenance lives here only. The grouping
@@ -488,19 +493,35 @@ function rewind(multiPolygonCoords) {
     }),
   );
 }
-function splitByDaugava(feature) {
+// A cut is a hand-traced polyline plus a `closing` path that shuts it into a
+// ring. The ring is a mask: piece "#a" is what falls inside it, "#b" is the
+// rest. Closing points normally run over water or over land the feature does
+// not reach, so only the traced line matters. Every cut below documents the
+// towns that must land on each side; those are checked in verifyCuts().
+function maskRing(line, closing) {
+  return [[...line, ...closing, line[0]]];
+}
+
+function splitByLine(feature, name, line, closing) {
   const coords = toMultiCoords(feature.geometry);
-  const north = rewind(polygonClipping.intersection(coords, NORTH_BANK_MASK));
-  const south = rewind(polygonClipping.difference(coords, NORTH_BANK_MASK));
-  if (!north.length || !south.length) {
-    throw new Error(
-      `Daugava split produced an empty part for ${feature.properties.LAU_NAME}`,
-    );
+  const mask = maskRing(line, closing);
+  const a = rewind(polygonClipping.intersection(coords, mask));
+  const b = rewind(polygonClipping.difference(coords, mask));
+  if (!a.length || !b.length) {
+    throw new Error(`Cut "${name}" produced an empty part`);
   }
-  const name = feature.properties.LAU_NAME;
   return [
-    { key: `${name}#north`, geometry: { type: "MultiPolygon", coordinates: north } },
-    { key: `${name}#south`, geometry: { type: "MultiPolygon", coordinates: south } },
+    { key: `${name}#a`, geometry: { type: "MultiPolygon", coordinates: a } },
+    { key: `${name}#b`, geometry: { type: "MultiPolygon", coordinates: b } },
+  ];
+}
+
+function splitByDaugava(feature) {
+  const name = feature.properties.LAU_NAME;
+  const [north, south] = splitByLine(feature, name, DAUGAVA, DAUGAVA_CLOSING);
+  return [
+    { key: `${name}#north`, geometry: north.geometry },
+    { key: `${name}#south`, geometry: south.geometry },
   ];
 }
 
@@ -528,7 +549,7 @@ for (const f of nuts.features) {
 }
 
 // Sanity: LANDS partition the member pool exactly.
-const claimed = LANDS.flatMap((l) => [...(l.lau ?? []), ...(l.nuts ?? [])]);
+const claimed = LANDS.flatMap((l) => [...memberKeysOf(l)]);
 const availableKeys = memberFeatures.map((m) => m.key).sort();
 if (JSON.stringify([...claimed].sort()) !== JSON.stringify(availableKeys)) {
   const claimedSet = new Set(claimed);
@@ -636,7 +657,7 @@ const memberCollection = {
 };
 const topo = topology({ members: memberCollection }, 1e5);
 const landFeatures = LANDS.map((land) => {
-  const keys = new Set([...(land.lau ?? []), ...(land.nuts ?? [])]);
+  const keys = memberKeysOf(land);
   const members = topo.objects.members.geometries.filter((g) =>
     keys.has(g.properties.key),
   );
@@ -660,10 +681,13 @@ for (const f of landFeatures) {
 
 // --- Region adjacency from shared topology arcs. Two lands are adjacent
 // iff some member of one and some member of the other trace the same arc.
-// Island factions get authored sea links (they share no land border).
-const SEA_LINKS = [
-  ["saaremaa", "laanemaa"],
-  ["saaremaa", "kursa"],
+// Adjacencies that cannot be derived from shared arcs or shared vertices.
+// Two causes: island lands share no land border at all, and lands whose
+// members come from different source files (LAU, NUTS, CNTR) meet on a
+// border that each file generalizes independently, so no vertex coincides.
+const AUTHORED_LINKS = [
+  ["saaremaa", "laanemaa"], // island
+  ["saaremaa", "kursa"],    // island
 ];
 
 function arcIdsOf(geometry) {
@@ -678,7 +702,7 @@ function arcIdsOf(geometry) {
 
 const landArcs = new Map(
   LANDS.map((land) => {
-    const keys = new Set([...(land.lau ?? []), ...(land.nuts ?? [])]);
+    const keys = memberKeysOf(land);
     const arcs = new Set();
     for (const g of topo.objects.members.geometries) {
       if (keys.has(g.properties.key)) {
@@ -718,7 +742,7 @@ function flattenCoords(geometry) {
 
 const landPoints = new Map(
   LANDS.map((land) => {
-    const keys = new Set([...(land.lau ?? []), ...(land.nuts ?? [])]);
+    const keys = memberKeysOf(land);
     const points = new Set();
     for (const m of memberFeatures) {
       if (keys.has(m.key)) {
@@ -759,9 +783,9 @@ for (let i = 0; i < landIds.length; i++) {
     }
   }
 }
-for (const [a, b] of SEA_LINKS) {
+for (const [a, b] of AUTHORED_LINKS) {
   if (!adjacency.has(a) || !adjacency.has(b)) {
-    throw new Error(`Unknown region in sea link ${a}-${b}`);
+    throw new Error(`Unknown region in authored link ${a}-${b}`);
   }
   adjacency.get(a).add(b);
   adjacency.get(b).add(a);
@@ -933,7 +957,16 @@ const data = {
     .sort((a, b) => a.id.localeCompare(b.id)),
   neighbors: neighborFeatures
     .map((f) => ({ id: f.properties.CNTR_ID, path: path(f) }))
-    .filter((n) => n.path)
+    .filter((n) => {
+      if (!n.path) {
+        console.warn(
+          `Neighbor ${n.id} is entirely off-canvas - drop it from NEIGHBORS ` +
+            `or widen the frame`,
+        );
+        return false;
+      }
+      return true;
+    })
     .sort((a, b) => a.id.localeCompare(b.id)),
   rivers,
   settlements,
