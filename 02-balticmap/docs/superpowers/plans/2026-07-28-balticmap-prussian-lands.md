@@ -1,6 +1,6 @@
 # Prussian Lands Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Extend the 1100 map from 20 to 26 lands by adding six Old Prussian lands, re-cutting three existing lands, and giving the map a zoom floor so covering more ground does not shrink every land.
 
@@ -86,7 +86,7 @@ The whole map is currently visible at default zoom, which makes `panBy` inert. A
 - Consumes: nothing from earlier tasks.
 - Produces: `MIN_ZOOM: number` exported from `src/view.ts`. `clampView(view: View, base: View): View` keeps its signature; only its width cap changes.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/view.test.ts`. Note the existing import block already pulls from `../src/view`; add `MIN_ZOOM` to it.
 
@@ -121,12 +121,12 @@ describe("zoom floor", () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test -- tests/view.test.ts`
 Expected: FAIL. `MIN_ZOOM` is not exported, so the import fails and the whole file errors.
 
-- [ ] **Step 3: Add the constant and cap the width**
+- [x] **Step 3: Add the constant and cap the width**
 
 In `src/view.ts`, next to `MAX_ZOOM`:
 
@@ -153,12 +153,12 @@ export function clampView(view: View, base: View): View {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test -- tests/view.test.ts`
 Expected: PASS, including the pre-existing `fitView` and `zoomAt` cases.
 
-- [ ] **Step 5: Use the home view in interaction.ts**
+- [x] **Step 5: Use the home view in interaction.ts**
 
 Replace `src/interaction.ts:38-52`:
 
@@ -185,12 +185,12 @@ Replace `src/interaction.ts:38-52`:
   });
 ```
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `npm test`
 Expected: PASS. If `tests/interaction.test.ts` asserts an initial viewBox equal to the full map, update it to the home view - that is the intended behaviour change, not a regression.
 
-- [ ] **Step 7: Build and commit**
+- [x] **Step 7: Build and commit**
 
 ```bash
 npm run build
@@ -213,7 +213,7 @@ git commit -m "feat(balticmap): zoom floor so panning is live at every zoom leve
 
 **Watch out:** `ceil(0.55 * 20) = 11`, exactly the old constant, so every 20-faction fixture keeps its current behaviour - including `tests/hud.test.ts:485`, which builds a 20-faction roster and a realm of 11, and whose `"11 of 20 lands"` assertion therefore still holds. The risk is confined to the 4-faction `playingState(LINE_ADJ)` fixtures in `tests/game.test.ts`, where the threshold drops from an unreachable 11 to 3. Any of those that builds a realm of 3 now trips victory mid-scenario. That is correct behaviour for a 4-faction game and is fixed in the fixtures, not worked around in the production code.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Replace the assertion at `tests/game.test.ts:388` and add coverage. Update the import on line 5 from `VICTORY_REALM_SIZE` to `victoryRealmSize`.
 
@@ -225,12 +225,12 @@ Replace the assertion at `tests/game.test.ts:388` and add coverage. Update the i
   });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npm test -- tests/game.test.ts`
 Expected: FAIL, `victoryRealmSize` is not exported.
 
-- [ ] **Step 3: Replace the constant**
+- [x] **Step 3: Replace the constant**
 
 In `src/game.ts`, replace line 59:
 
@@ -251,7 +251,7 @@ At `src/game.ts:382-384`, replace the comparison:
   ) {
 ```
 
-- [ ] **Step 4: Make the victory copy data-driven**
+- [x] **Step 4: Make the victory copy data-driven**
 
 In `src/hud.ts`, `renderPostmortem` already has `state` in scope. Replace line 515:
 
@@ -260,7 +260,7 @@ In `src/hud.ts`, `renderPostmortem` already has `state` in scope. Replace line 5
         `You rule the Baltic - ${size} of ${state.factionIds.length} lands`;
 ```
 
-- [ ] **Step 5: Run the full suite and fix the fallout**
+- [x] **Step 5: Run the full suite and fix the fallout**
 
 Run: `npm test`
 
@@ -268,7 +268,7 @@ Run: `npm test`
 
 The expected failures are in `tests/game.test.ts`: any `playingState(LINE_ADJ)` case that ends with a realm of 3 or more now reaches victory and its `expect(after.phase).toBe("playing")` fails. Fix by giving that fixture a roster large enough to put the threshold out of reach, matching the existing comment style at line 389. Do **not** special-case the production code to keep a test green.
 
-- [ ] **Step 6: Build and commit**
+- [x] **Step 6: Build and commit**
 
 ```bash
 npm run build
@@ -290,7 +290,7 @@ Pure refactor. The regenerated `map.json` must be byte-identical, which is the t
   - `splitByLine(feature, name, line, closing)` -> `[{key, geometry}, {key, geometry}]`, returning `<name>#a` for the piece inside the closed mask and `<name>#b` for the piece outside it.
   - `AUTHORED_LINKS: [string, string][]`, replacing `SEA_LINKS`.
 
-- [ ] **Step 1: Capture the current output as the baseline**
+- [x] **Step 1: Capture the current output as the baseline**
 
 ```bash
 cd 02-balticmap
@@ -298,7 +298,7 @@ npm run prepare-data
 shasum src/data/map.json | tee /tmp/mapjson-baseline.txt
 ```
 
-- [ ] **Step 2: Generalize the split helper**
+- [x] **Step 2: Generalize the split helper**
 
 Replace `splitByDaugava` and the `NORTH_BANK_MASK` constant with a helper that builds the mask from a line plus a closing path. Keep `DAUGAVA` and `SPLIT_MUNICIPALITIES` as they are.
 
@@ -342,7 +342,7 @@ function splitByDaugava(feature) {
 }
 ```
 
-- [ ] **Step 3: Rename SEA_LINKS to AUTHORED_LINKS**
+- [x] **Step 3: Rename SEA_LINKS to AUTHORED_LINKS**
 
 ```js
 // Adjacencies that cannot be derived from shared arcs or shared vertices.
@@ -357,7 +357,7 @@ const AUTHORED_LINKS = [
 
 Update the loop at `:762` to iterate `AUTHORED_LINKS` and change its error message to `Unknown region in authored link ${a}-${b}`.
 
-- [ ] **Step 4: Add a `pieces` member list and one helper for reading member keys**
+- [x] **Step 4: Add a `pieces` member list and one helper for reading member keys**
 
 Cut-derived members are neither LAU municipalities nor NUTS regions, so they get their own list rather than being smuggled into `lau`. The key lists are currently read in four places, which is four chances to forget the new one.
 
@@ -378,7 +378,7 @@ Replace all four readers with it:
 - the `landArcs` map at `:681`: same
 - the `landPoints` map at `:721`: same
 
-- [ ] **Step 5: Warn on neighbors that contribute nothing**
+- [x] **Step 5: Warn on neighbors that contribute nothing**
 
 Replace the silent `.filter((n) => n.path)` in the `neighbors` block:
 
@@ -398,7 +398,7 @@ Replace the silent `.filter((n) => n.path)` in the `neighbors` block:
     .sort((a, b) => a.id.localeCompare(b.id)),
 ```
 
-- [ ] **Step 6: Verify the output is unchanged**
+- [x] **Step 6: Verify the output is unchanged**
 
 ```bash
 npm run prepare-data
@@ -407,7 +407,7 @@ shasum -c /tmp/mapjson-baseline.txt
 
 Expected: `src/data/map.json: OK`. The warning should now name `SE` and `DK`. If the checksum differs, the refactor changed behaviour - fix it rather than accepting a new baseline.
 
-- [ ] **Step 7: Run the suite, build, commit**
+- [x] **Step 7: Run the suite, build, commit**
 
 ```bash
 npm test && npm run build
@@ -433,7 +433,7 @@ Adds the second geometry source and the first three Prussian lands. Kaliningrad 
   - A third member-key list on a land, `adm2`, read by `memberKeysOf`. **Rename Task 3's unused `pieces` list to `adm2`** - nothing uses `pieces`, and `adm2` is what it actually holds.
   - Land ids `semba`, `notanga`, `nadrawa`; faction ids `sembians`, `natangians`, `nadruvians`; people id `prussians`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `tests/data.test.ts`, extend the two sorted id lists:
 
@@ -453,12 +453,12 @@ const EXPECTED_PEOPLE_IDS = [
 
 Bump the land-count title and the faction assertions from 20 to 23, and the unlocked-settlement assertion from 20 to 23.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npm test -- tests/data.test.ts`
 Expected: FAIL - the built map still has 20 lands and 9 peoples.
 
-- [ ] **Step 3: Add the geoBoundaries source**
+- [x] **Step 3: Add the geoBoundaries source**
 
 Next to the existing source URLs:
 
@@ -475,7 +475,7 @@ const GB_RUS_URL = `${GB_BASE}/RUS/ADM2/geoBoundaries-RUS-ADM2_simplified.geojso
 
 Add both to the existing `Promise.all` of `fetchJsonCached` calls, as `gbPol` and `gbRus`. The two files have distinct basenames, so the existing cache-filename scheme needs no change. The RUS file is about 26 MB; the first run will take a moment.
 
-- [ ] **Step 4: Load, rewind and clip**
+- [x] **Step 4: Load, rewind and clip**
 
 ```js
 // geoBoundaries winds rings opposite to the GISCO and d3-geo convention, so an
@@ -507,7 +507,7 @@ const polUnits = adm2Units(gbPol, "PL");
 const rusUnits = adm2Units(gbRus, "RU");
 ```
 
-- [ ] **Step 5: Select the Kaliningrad units by Prussian place**
+- [x] **Step 5: Select the Kaliningrad units by Prussian place**
 
 ```js
 // The oblast's units carry Soviet-era names honouring Bagration, Chernyakhovsky
@@ -599,7 +599,7 @@ if (takenUnits.size !== kaliningradUnits.length) {
 
 Add `geoBounds` to the `d3-geo` import at the top of the file, alongside `geoContains`.
 
-- [ ] **Step 6: Rename the `pieces` key list to `adm2`**
+- [x] **Step 6: Rename the `pieces` key list to `adm2`**
 
 Task 3 added a third member-key list called `pieces` that nothing uses. It now holds geoBoundaries units, so rename it in `memberKeysOf` and in the comment above `LANDS`:
 
@@ -610,7 +610,7 @@ const memberKeysOf = (land) =>
 
 Also fix the comment near `maskRing`/`splitByLine` that cites a function `verifyCuts()`, which does not exist. `splitByLine` is now used only for the Daugava split, so the comment should say so rather than pointing at a function that was never written.
 
-- [ ] **Step 7: Add the people, factions, lands and settlements**
+- [x] **Step 7: Add the people, factions, lands and settlements**
 
 `PEOPLES` gains one entry. The nine existing base colors are greens, blues, oranges, yellows and purples:
 
@@ -676,7 +676,7 @@ Also fix the comment near `maskRing`/`splitByLine` that cites a function `verify
   { id: "ragaine", name: "Ragaine", land: "nadrawa", unlocked: true, lon: 22.03, lat: 55.03, note: "Fort above the Nemunas where the river road turns inland toward the Samogitian forests." },
 ```
 
-- [ ] **Step 8: Update the population total and add the authored links**
+- [x] **Step 8: Update the population total and add the authored links**
 
 `EXPECTED_TOTAL_POPULATION` becomes `735000` (650,000 + 35,000 + 30,000 + 20,000).
 
@@ -691,7 +691,7 @@ The Kaliningrad units come from geoBoundaries while their Lithuanian neighbours 
   ["nadrawa", "suduva"],
 ```
 
-- [ ] **Step 9: Bake**
+- [x] **Step 9: Bake**
 
 Run: `npm run prepare-data`
 
@@ -699,7 +699,7 @@ Expected: `23 lands, 23 factions, 10 peoples`. Read the printed adjacency line a
 
 If a Prussian place resolves to 0 units it is in the sea or outside the clipped coastline - move it inland, do not delete the guard. If a unit is left unclaimed, add a place for it to the correct land.
 
-- [ ] **Step 10: Run the tests, build, commit**
+- [x] **Step 10: Run the tests, build, commit**
 
 ```bash
 npm test && npm run build
@@ -723,7 +723,7 @@ Migrates LT023 and LT027 from NUTS-3 to their LAU municipalities so Silute, Neri
 
 **Watch out:** LAU names in this file are truncated at 28 characters. `Salcininku rajono savivaldyb` and `Radviliskio rajono savivaldyb` really are missing their final `e` in the source data. Copy every key verbatim. None of the eleven below is affected, but the next person to add one needs to know.
 
-- [ ] **Step 1: Swap the two counties from NUTS to LAU in the member pool**
+- [x] **Step 1: Swap the two counties from NUTS to LAU in the member pool**
 
 Replace the LT block that pushes NUTS members:
 
@@ -761,7 +761,7 @@ if (ltLauFound !== LT_LAU_MEMBERS.length) {
 }
 ```
 
-- [ ] **Step 2: Redistribute the members across the three lands**
+- [x] **Step 2: Redistribute the members across the three lands**
 
 `pilsotas` drops `nuts: ["LT023"]` and gains:
 
@@ -791,7 +791,7 @@ if (ltLauFound !== LT_LAU_MEMBERS.length) {
     ],
 ```
 
-- [ ] **Step 3: Adjust the populations and the flavor text**
+- [x] **Step 3: Adjust the populations and the flavor text**
 
 `pilsotas` population `15000` -> `10000`. `nadrawa` population `20000` -> `25000`. `EXPECTED_TOTAL_POPULATION` stays `735000`.
 
@@ -809,7 +809,7 @@ Update the `pilsotas` flavor, which currently claims the whole coast down to the
       "living from fishing, amber, and the sea-road south to the Prussians.",
 ```
 
-- [ ] **Step 4: Bake and check the seams**
+- [x] **Step 4: Bake and check the seams**
 
 Run: `npm run prepare-data`
 
@@ -817,7 +817,7 @@ Expected: still `23 lands`. The partition check is the real test - if a municipa
 
 Read the printed adjacency line. `zemaitija` and `pilsotas` now mix LAU and NUTS members, so their borders with NUTS-only neighbours may not resolve. Any land that lost an expected neighbour gets an entry in `AUTHORED_LINKS` with a comment naming the cause.
 
-- [ ] **Step 5: Run the tests, build, commit**
+- [x] **Step 5: Run the tests, build, commit**
 
 ```bash
 npm test && npm run build
@@ -840,7 +840,7 @@ The Polish core: 22 whole powiats and city-counties, no cuts.
 - Consumes: `polUnits` and `adm2Units` from Task 4.
 - Produces: land ids `warmi`, `pamede`, `galinda`; faction ids `warmians`, `pomesanians`, `galindians`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add `"galinda"`, `"pamede"` and `"warmi"` to `EXPECTED_IDS`, keeping it sorted. The full 26-land list:
 
@@ -856,12 +856,12 @@ const EXPECTED_IDS = [
 
 Bump the land, faction and unlocked-settlement counts from 23 to 26.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npm test -- tests/data.test.ts`
 Expected: FAIL - the built map has 23 lands.
 
-- [ ] **Step 3: Add the Polish powiats to the member pool**
+- [x] **Step 3: Add the Polish powiats to the member pool**
 
 Every name below was verified present in the geoBoundaries POL ADM2 file under exactly this spelling. `powiat nowodworski` is deliberately absent: the Vistula delta is Zulawy marsh, Pomerelian rather than Pomesanian in 1100.
 
@@ -893,7 +893,7 @@ for (const name of POLISH_MEMBERS) {
 }
 ```
 
-- [ ] **Step 4: Add the factions, lands and settlements**
+- [x] **Step 4: Add the factions, lands and settlements**
 
 `FACTIONS` gains three, colors unique across the whole roster and within the Prussian blue family:
 
@@ -969,11 +969,11 @@ for (const name of POLISH_MEMBERS) {
   { id: "staswiny", name: "Staswiny", land: "galinda", unlocked: true, lon: 21.86, lat: 53.94, note: "Hillfort among the Galindian lakes, reached by causeway and abandoned to the forest in bad years." },
 ```
 
-- [ ] **Step 5: Update the population total**
+- [x] **Step 5: Update the population total**
 
 `EXPECTED_TOTAL_POPULATION` becomes `810000` (735,000 + 30,000 + 30,000 + 15,000).
 
-- [ ] **Step 6: Bake**
+- [x] **Step 6: Bake**
 
 Run: `npm run prepare-data`
 
@@ -983,7 +983,7 @@ The settlement containment guard is what verifies the powiat groupings put each 
 
 Confirm from the adjacency line that Warmi, Pamede and Galinda each border their expected neighbours, and add authored links for any Poland-to-Kaliningrad seam that did not resolve.
 
-- [ ] **Step 7: Run the tests, build, commit**
+- [x] **Step 7: Run the tests, build, commit**
 
 ```bash
 npm test && npm run build
@@ -1003,7 +1003,7 @@ git commit -m "feat(balticmap): add Warmi, Pamede and Galinda"
 - Consumes: `POLISH_MEMBERS` and `polByName` from Task 6.
 - Produces: no new ids.
 
-- [ ] **Step 1: Add six more powiats to the pool**
+- [x] **Step 1: Add six more powiats to the pool**
 
 Append to `POLISH_MEMBERS`:
 
@@ -1013,7 +1013,7 @@ Append to `POLISH_MEMBERS`:
   "powiat sejneński", "powiat augustowski",
 ```
 
-- [ ] **Step 2: Attach them and raise the populations**
+- [x] **Step 2: Attach them and raise the populations**
 
 `suduva` keeps `nuts: ["LT024"]` and gains:
 
@@ -1030,7 +1030,7 @@ Both populations go `30000` -> `35000`. `EXPECTED_TOTAL_POPULATION` becomes `820
 
 Both flavor texts currently describe lands hemmed in by Mazovia and Rus'. They now hold the ground they raid from, so soften the "pressed between" framing in `suduva`. `dainava`'s raiding line is still true - leave it.
 
-- [ ] **Step 3: Bake, test, build, commit**
+- [x] **Step 3: Bake, test, build, commit**
 
 ```bash
 npm run prepare-data && npm test && npm run build
@@ -1053,7 +1053,7 @@ Expected: still `26 lands`. `suduva` and `dainava` now mix GISCO NUTS with geoBo
 - Consumes: `memberFeatures`, `claimed`, `polByName` from Tasks 4, 6 and 7.
 - Produces: nothing consumed by later tasks.
 
-- [ ] **Step 1: Add the three rivers**
+- [x] **Step 1: Add the three rivers**
 
 Minor rivers whose Natural Earth geometry is missing are warned and skipped, so a miss is not a build failure. The Vistula is `major`.
 
@@ -1063,7 +1063,7 @@ Minor rivers whose Natural Earth geometry is missing are warned and skipped, so 
   { id: "lyna", name: "Alna", major: false, match: ["lyna", "łyna", "lava", "alle"] },
 ```
 
-- [ ] **Step 2: Credit geoBoundaries**
+- [x] **Step 2: Credit geoBoundaries**
 
 ODbL requires attribution. Update the `attribution` string:
 
@@ -1076,7 +1076,7 @@ ODbL requires attribution. Update the `attribution` string:
 
 `tests/data.test.ts` asserts this string exactly - update it to match in the same commit.
 
-- [ ] **Step 3: Subtract playable land from the neighbor polygons**
+- [x] **Step 3: Subtract playable land from the neighbor polygons**
 
 A neighbor is the non-playable remainder of the world. Letting the region fills paint over an overlap would leave the data wrong even though the render looks right, and would hide a stale duplicate of every Prussian land inside `RU` and `PL`.
 
@@ -1121,11 +1121,11 @@ const neighborFeatures = countries.features
 
 `claimed` is the array the partition check already builds, so this block must sit after it. Move the `neighborFeatures` assignment down if it currently sits earlier.
 
-- [ ] **Step 4: Prune NEIGHBORS to what renders**
+- [x] **Step 4: Prune NEIGHBORS to what renders**
 
 Run `npm run prepare-data` and read the warnings. Today `SE` and `DK` are dead entries, but the frame has moved west and meridians converge, so Gotland and Oland may now be inside the canvas. **Derive the list from this run's warnings, not from the old evidence.** Remove from `NEIGHBORS` exactly those the bake warns about, and leave the rest.
 
-- [ ] **Step 5: Fix the labels**
+- [x] **Step 5: Fix the labels**
 
 Remove the `Prussian lands` neighbor label - that ground is on the map now. Add:
 
@@ -1137,7 +1137,7 @@ Remove the `Prussian lands` neighbor label - that ground is on the map now. Add:
 
 People labels throw when off-canvas while neighbor labels only warn, so if `PRUSSIANS` throws, move it rather than changing its kind.
 
-- [ ] **Step 6: Pin the neighbor set in the tests**
+- [x] **Step 6: Pin the neighbor set in the tests**
 
 In `tests/data.test.ts`, replace the loose `toBeGreaterThanOrEqual(3)` neighbor assertion with the derived set, so a neighbor cannot silently vanish again:
 
@@ -1147,7 +1147,7 @@ In `tests/data.test.ts`, replace the loose `toBeGreaterThanOrEqual(3)` neighbor 
 
 Define `EXPECTED_NEIGHBOR_IDS` at the top of the file from what Step 4 actually produced, sorted.
 
-- [ ] **Step 7: Confirm no neighbor overlaps a land**
+- [x] **Step 7: Confirm no neighbor overlaps a land**
 
 An overlap is invisible under the region fills, so check the data rather than the render:
 
@@ -1163,7 +1163,7 @@ for (const id of ['RU','PL']) {
 
 Both should be materially shorter than before the subtraction.
 
-- [ ] **Step 8: Bake, test, build, commit**
+- [x] **Step 8: Bake, test, build, commit**
 
 ```bash
 npm run prepare-data && npm test && npm run build
@@ -1181,7 +1181,7 @@ Nothing here is optional. happy-dom does not render SVG geometry, so every geome
 - Modify: `src/view.ts` (`MIN_ZOOM` value only, if tuning is needed)
 - Modify: `scripts/prepare-data.mjs` (label and cut coordinates only, if tuning is needed)
 
-- [ ] **Step 1: Start the root dev server**
+- [x] **Step 1: Start the root dev server**
 
 ```bash
 cd /Users/janis.kirsteins/Projects/prototypes
@@ -1190,7 +1190,7 @@ npm run dev
 
 Open `http://127.0.0.1:4173/prototypes/` and follow the link to the Baltic map. Do not open a bare prototype root - it hides landing-page problems and makes asset paths resolve by accident.
 
-- [ ] **Step 2: Check the map**
+- [x] **Step 2: Check the map**
 
 - All 26 lands render, each with a distinct fill. The six Prussian blues must be separable from each other and from the Liv blue at `#a8c8cf`.
 - No gap or sliver where a Prussian land meets a Baltic one. Borders internal to Poland or internal to Kaliningrad come from a single source and should be seamless; the seams to watch are Prussia-to-Lithuania, where geoBoundaries meets GISCO and the two generalize the same border independently.
@@ -1198,23 +1198,23 @@ Open `http://127.0.0.1:4173/prototypes/` and follow the link to the Baltic map. 
 - The Pregolya, Vistula and Alna draw, and their labels sit on them.
 - `PRUSSIANS`, `Mazovians` and `Pomeranians` sit where they belong and do not collide with settlement labels.
 
-- [ ] **Step 3: Tune MIN_ZOOM**
+- [x] **Step 3: Tune MIN_ZOOM**
 
 At the home view, judge whether lands read slightly larger than they did before this work. `1.3` is arithmetic, not judgement: it works out to roughly 12 percent larger than the pre-Prussian map. Adjust and reload until it looks right, then re-run `npm test -- tests/view.test.ts`, which asserts only that the floor is above 1 and so tolerates any sensible value.
 
-- [ ] **Step 4: Check panning and zooming**
+- [x] **Step 4: Check panning and zooming**
 
 Drag at the home view - the map must move, which it could not before Task 1. Confirm it cannot be dragged past the map edge, that scroll-zoom holds the point under the cursor, and that zooming out stops at the home view rather than revealing the whole map.
 
-- [ ] **Step 5: Play far enough to judge pacing**
+- [x] **Step 5: Play far enough to judge pacing**
 
 Start a run, pick a Prussian land, and play about ten turns. Rounds are now 26 turns rather than 20. If AI turns drag, say so and propose a pacing change as separate work - do not change animation timings inside this plan.
 
-- [ ] **Step 6: Check settlement placement**
+- [x] **Step 6: Check settlement placement**
 
 Every land shows exactly one settlement dot with a readable label. Kaup, Honeda, Ragaine, Lecbarg, Kwedis and Staswiny sit inside their lands and their labels do not collide. Use `labelDy` to drop a colliding label, as the existing data does for Ikskile and Selpils.
 
-- [ ] **Step 7: Final full check and commit any tuning**
+- [x] **Step 7: Final full check and commit any tuning**
 
 ```bash
 cd 02-balticmap
@@ -1229,19 +1229,57 @@ git commit -m "fix(balticmap): tune the zoom floor and label placement in the br
 
 Run at the end. Every item is a spec requirement.
 
-- [ ] 26 lands, 26 factions, 10 peoples in the bake output
-- [ ] `EXPECTED_TOTAL_POPULATION` is `820000` and the bake agrees
-- [ ] Every land has exactly one unlocked settlement, inside its own polygon
-- [ ] Every Prussian place resolves to exactly one Kaliningrad unit, none twice, none left over - and no guard was weakened to make it pass
-- [ ] Every land has at least one adjacency, and each authored link carries a comment saying why it cannot be derived
-- [ ] Every Prussian land is a union of whole administrative units - no hand-traced coordinates anywhere
-- [ ] `RU` no longer contains the claimed Kaliningrad units, `PL` no longer contains the claimed powiats, and Masovia and Pomerelia are still neighbors
-- [ ] The attribution string credits geoBoundaries and OpenStreetMap under ODbL
-- [ ] `NEIGHBORS` contains only entries that produce a path, pinned by a test
-- [ ] Victory needs 15 of 26, and the victory copy names the real roster size
-- [ ] The whole map cannot be seen at once, and panning works at the home view
-- [ ] `npm test` and `npm run build` pass
-- [ ] Verified in Chrome through `http://127.0.0.1:4173/prototypes/`
+- [x] 26 lands, 26 factions, 10 peoples in the bake output
+- [x] `EXPECTED_TOTAL_POPULATION` is `820000` and the bake agrees
+- [x] Every land has exactly one unlocked settlement, inside its own polygon
+- [x] Every Prussian place resolves to exactly one Kaliningrad unit, none twice, none left over - and no guard was weakened to make it pass
+- [x] Every land has at least one adjacency, and each authored link carries a comment saying why it cannot be derived
+- [x] Every Prussian land is a union of whole administrative units - no hand-traced coordinates anywhere
+- [x] `RU` no longer contains the claimed Kaliningrad units, `PL` no longer contains the claimed powiats, and Masovia and Pomerelia are still neighbors
+- [x] The attribution string credits geoBoundaries and OpenStreetMap under ODbL
+- [x] `NEIGHBORS` contains only entries that produce a path, pinned by a test
+- [x] Victory needs 15 of 26, and the victory copy names the real roster size
+- [x] The whole map cannot be seen at once, and panning works at the home view
+- [x] `npm test` and `npm run build` pass
+- [x] Verified in Chrome through `http://127.0.0.1:4173/prototypes/`
+
+## As built
+
+Done. Where the work departed from the plan above, and why:
+
+- **The bake was unusably slow, and that is what stalled this work.** Clipping
+  all 2,327 Russian ADM2 units against the 82k-vertex GISCO Russia outline cost
+  about 8 minutes per run at ~200ms a unit, and a `polygon-clipping` crash sat
+  after it, so every config fix cost a full 8 minutes before showing its error.
+  `adm2Units` now takes a bbox, skips units outside it, and crops the outline
+  once. The bake runs in about 2 seconds.
+- **The `RU` neighbor subtracts the Kaliningrad bbox rectangle**, not the union
+  of the 22 clipped rayons. Every rayon is claimed - the one-to-one guard proves
+  it - so the result is identical, and the union shares coastline edges with the
+  outline, which triggered polygon-clipping's "Unable to complete output ring".
+- **`powiat sejneński` went to Dainava, not Sūduva.** Task 7 assigned it to
+  Sūduva, which left Dainava in two pieces: `powiat augustowski` does not touch
+  Alytus county, and Sejny is the ground between them.
+- **Merged lands are re-unioned and sub-pixel fragments dropped.** `merge()`
+  only dissolves borders that dedupe into shared arcs, so every land mixing
+  sources kept an internal border line. A single-argument union fixes it;
+  the pinch-offs and lens holes it leaves behind are filtered below 0.9 px2.
+- **The Prussian blues are a deeper ramp than Task 4 and 6 specify.** The
+  lightest shades were within a hair of the sea, so the re-cut Nemunas delta
+  and the spit read as water and Lithuania appeared to lose its southwest.
+- **The canvas gained a 1200px bake margin.** At the zoom floor a wide or tall
+  viewport letterboxes past the 1000x1400 frame, and geometry clipped at the
+  canvas edge showed as bare background bands. `map.json` carries `margin`.
+- **`Apuolė` was dropped.** Pilsotas at 10,000 people has one settlement slot.
+- **`DK` left `NEIGHBORS`, `SE` stayed.** As Task 8 Step 4 required, derived
+  from this build's warnings: the wider frame brought Gotland into view.
+- **`MIN_ZOOM` stays 1.3.** Measured: the extended map shrinks lands to 0.840
+  of their old canvas size, so the floor leaves them 9 percent larger than
+  before rather than 16 percent smaller.
+- **Round length needed no change.** It is the roster size already. Measured in
+  Chrome over ten turns, a 25-faction AI round takes 150-700ms.
+- **The Pregolya is skipped.** Natural Earth carries no usable geometry for it,
+  which the plan already accepts for a minor river. The Vistula and Alna draw.
 
 ## Out of scope
 
