@@ -1708,6 +1708,7 @@ export function createBeats(hooks: BeatHooks): BeatDriver {
   let busy = false;
   let queue: GameEvent[] = [];
   let segment: GameEvent[] | null = null;
+  let lastLog: readonly GameEvent[] | null = null;
 
   /** Closes the open segment against `closing` and returns the notice, if
    *  any. Always leaves the segment closed. */
@@ -1758,12 +1759,17 @@ export function createBeats(hooks: BeatHooks): BeatDriver {
 
   return {
     run(state: GameState): void {
-      // A shorter log than we have rendered means a fresh run replaced the
-      // old one under us; start over rather than slicing past the end.
-      if (state.log.length < rendered) {
+      // A different log array means a fresh run replaced the old one under
+      // us; start over rather than slicing past the end. Identity, not
+      // length: the seed is deterministic, so a new run reproduces a log of
+      // exactly the same length and a length check would never fire. An
+      // ongoing run pushes onto one array in place, while newRun allocates
+      // a fresh one, so identity separates the two cases exactly.
+      if (state.log !== lastLog) {
         rendered = 0;
         segment = null;
       }
+      lastLog = state.log;
       queue = state.log.slice(rendered);
       rendered = state.log.length;
       busy = true;
