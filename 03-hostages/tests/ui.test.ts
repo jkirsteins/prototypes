@@ -59,6 +59,7 @@ describe("duel screen", () => {
     expect(root.querySelector("#turn-banner")?.textContent).toBe("YOUR TURN - lead a card");
     expect(root.querySelector("[data-stat='player-vigor']")?.textContent).toBe("Your vigor 5");
     expect(root.querySelector("[data-stat='secrets']")?.textContent).toBe("Secrets left 3");
+    expect(root.querySelector("[data-scene='zone']")?.textContent).toBe("Location: Living room");
     expect(root.querySelectorAll("#log li.log-entry").length).toBeGreaterThan(0);
   });
 

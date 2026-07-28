@@ -22,7 +22,11 @@ function renderStatus(state: GameState): HTMLElement {
   stat(board, "convict-vigor", "His vigor", String(state.convict.vigor));
   stat(board, "secrets", "Secrets left", String(state.secretsRemaining.length));
 
-  const zone = el("span", "scene-bit", state.scene.zone === "bedroom" ? "Bedroom" : "Living room");
+  const zone = el(
+    "span",
+    "scene-bit",
+    `Location: ${state.scene.zone === "bedroom" ? "Bedroom" : "Living room"}`,
+  );
   zone.dataset.scene = "zone";
   const range = el("span", "scene-bit", state.scene.range === "near" ? "He is near" : "He is away");
   range.dataset.scene = "range";

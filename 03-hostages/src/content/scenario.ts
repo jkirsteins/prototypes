@@ -17,11 +17,13 @@ export interface OpeningChoice {
 
 export const OPENING = {
   prose:
-    "The door comes in at twenty past nine. He is thin and grey-faced and there is a " +
-    "kitchen knife in his hand that is not yours. He does not want to be here any more " +
-    "than you want him here, and that is the most frightening thing about him. Your wife " +
-    "is standing by the couch with a dish towel still in her hands. He looks at you and " +
-    "says one word: money.",
+    "The door comes in at twenty past nine. He is thin and grey-faced and he brought his " +
+    "own knife, which means he planned this. Your wife is standing by the couch with a " +
+    "dish towel still in her hands. He does not ask who you are. He says a number, and it " +
+    "is close enough to what is actually in this house that you feel it in your legs. " +
+    "Then he tells you he got your address from someone who knows you, and he does not " +
+    "say who. He knows the money is here. He does not know where. He has all night to " +
+    "fix that.",
   choices: [
     {
       id: "phone",
