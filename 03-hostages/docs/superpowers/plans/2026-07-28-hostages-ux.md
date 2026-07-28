@@ -677,6 +677,19 @@ Add the turn markers:
 - In `convictTurn`, immediately after `state.turn += 1;` add `logTurn(state, "convict");`
 - In `startPlayerTurn`, immediately after `state.turn += 1;` add `logTurn(state, "player");`
 
+Make the `surrender` kind reachable. `playerSurrender` currently logs the forced
+giving-up of a secret as `logCard(state, "player", "answer", secretId, deltas)`.
+Change that one call's kind to `"surrender"`, and widen `logCard`'s `kind`
+parameter in `src/log.ts` from `"lead" | "answer"` to
+`"lead" | "answer" | "surrender"`. Keep it a narrow union rather than the full
+`EventKind`, so no caller can log a card event under a kind that carries no card.
+
+The voluntary path stays as it is: answering a coercive lead by handing over a
+secret goes through `spendPlayerAnswer` and is logged as an ordinary `answer`
+event by `resolveExchange`. That case folds into the report for his exchange,
+which is the intended presentation. Only the forced path gets its own kind, and
+therefore its own box.
+
 Leave every other line of `game.ts` alone.
 
 - [ ] **Step 7: Fix the type-name references**
