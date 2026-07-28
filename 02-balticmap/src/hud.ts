@@ -374,6 +374,7 @@ export function createHud(
       name.textContent = CARDS[cardId]?.name ?? cardId;
       const tip = document.createElement("div");
       tip.className = "card-tip";
+      tip.addEventListener("click", (event) => event.stopPropagation());
       const description = document.createElement("div");
       description.className = "card-tip-description";
       description.textContent = CARDS[cardId]?.text ?? "";

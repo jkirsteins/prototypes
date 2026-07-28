@@ -366,6 +366,21 @@ describe("subjugation HUD", () => {
     expect(cb.onPlayCard).not.toHaveBeenCalled();
   });
 
+  it("does not play a card when its target popup is clicked", () => {
+    const { container, cb, hud } = setup({
+      targetExplanations: () => [{
+        factionId: "gamma",
+        available: true,
+        lines: ["Gamma", "Available."],
+      }],
+    });
+    hud.update(withHand(playing(), 0, ["subjugate"]));
+
+    q(container, ".card-tip").click();
+
+    expect(cb.onPlayCard).not.toHaveBeenCalled();
+  });
+
   it("setArmed highlights the card and prompts for a target", () => {
     const { container, hud } = setup();
     const g = withHand(playing(), 0, ["raid", "grow-crops"]);
