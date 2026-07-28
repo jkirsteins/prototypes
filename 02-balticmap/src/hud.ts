@@ -227,6 +227,8 @@ export function createHud(
   noticeTitle.className = "notice-title";
   const noticeWhat = document.createElement("p");
   noticeWhat.className = "notice-what";
+  const noticeDetails = document.createElement("div");
+  noticeDetails.className = "notice-details";
   const noticeFlavor = document.createElement("p");
   noticeFlavor.className = "notice-flavor";
   const noticeConsequence = document.createElement("p");
@@ -236,7 +238,7 @@ export function createHud(
   noticeContinue.textContent = "Continue";
   noticeContinue.addEventListener("click", () => dismissNotice());
   noticeCard.append(
-    noticeTitle, noticeWhat, noticeFlavor, noticeConsequence, noticeContinue,
+    noticeTitle, noticeWhat, noticeDetails, noticeFlavor, noticeConsequence, noticeContinue,
   );
   noticeOverlay.appendChild(noticeCard);
 
@@ -245,6 +247,15 @@ export function createHud(
   function showNotice(n: Notice): void {
     noticeTitle.textContent = n.title;
     noticeWhat.textContent = n.what;
+    noticeDetails.replaceChildren(
+      ...n.details.map((line) => {
+        const p = document.createElement("p");
+        p.className = "notice-detail";
+        p.textContent = line;
+        return p;
+      }),
+    );
+    noticeDetails.classList.toggle("hidden", n.details.length === 0);
     noticeFlavor.textContent = n.flavor;
     noticeConsequence.textContent = n.consequence ?? "";
     noticeConsequence.classList.toggle("hidden", n.consequence === undefined);
@@ -352,7 +363,13 @@ export function createHud(
     human.hand.forEach((cardId, i) => {
       const card = document.createElement("button");
       card.className = "card";
-      card.textContent = CARDS[cardId]?.name ?? cardId;
+      const name = document.createElement("span");
+      name.className = "card-name";
+      name.textContent = CARDS[cardId]?.name ?? cardId;
+      const tip = document.createElement("div");
+      tip.className = "card-tip";
+      tip.textContent = CARDS[cardId]?.text ?? "";
+      card.append(name, tip);
       const offset = i - (n - 1) / 2;
       card.style.transform =
         `rotate(${offset * FAN_ANGLE_DEG}deg) ` +

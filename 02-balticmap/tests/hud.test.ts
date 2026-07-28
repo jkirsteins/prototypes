@@ -81,7 +81,7 @@ describe("createHud", () => {
     expect(q(container, ".pile-discard .pile-label").textContent).toBe("Discard");
     const cards = container.querySelectorAll(".card");
     expect(cards).toHaveLength(1);
-    expect(cards[0].textContent).toBe("Grow crops");
+    expect(cards[0].querySelector(".card-name")!.textContent).toBe("Grow crops");
     (cards[0] as HTMLElement).click();
     expect(cb.onPlayCard).toHaveBeenCalledWith(0);
   });
@@ -630,5 +630,44 @@ describe("log highlighting", () => {
     const entries = [...container.querySelectorAll(".pm-log .log-entry")];
     expect(entries.length).toBeGreaterThan(0);
     expect(entries[entries.length - 1].classList.contains("log-you")).toBe(true);
+  });
+});
+
+describe("notice details and hand tips", () => {
+  function playing() {
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+  }
+
+  it("renders detail lines for a subjugation notice", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = { ...g, log: [...g.log, { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" }] };
+    hud.update(g);
+    const lines = [...container.querySelectorAll(".notice-details .notice-detail")].map(
+      (el) => el.textContent,
+    );
+    expect(lines[0]).toBe("You now owe fealty to Alpha.");
+    expect(lines[1]).toMatch(/^Standing vs Alpha: Might - /);
+    expect(q(container, ".notice-details").classList.contains("hidden")).toBe(false);
+  });
+
+  it("hides the details block when a notice has no details", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = { ...g, log: [...g.log, { turn: 1, playerId: 3, type: "released", targetFactionId: "beta", overlordFactionId: "alpha" }] };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-details").classList.contains("hidden")).toBe(true);
+  });
+
+  it("hand cards carry a name span and a rules tip", () => {
+    const { container, hud } = setup();
+    const g = withHand(playing(), 0, ["fortify"]);
+    hud.update(g);
+    const card = q(container, ".hand .card");
+    expect(card.querySelector(".card-name")!.textContent).toBe("Fortify");
+    expect(card.querySelector(".card-tip")!.textContent).toBe(
+      "Gain +1 Might over every other living faction at once.",
+    );
   });
 });

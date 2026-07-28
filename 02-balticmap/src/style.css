@@ -280,6 +280,7 @@ svg.map.dragging {
 }
 
 .card {
+  position: relative;
   width: 88px;
   height: 126px;
   margin: 0 -14px;
@@ -824,4 +825,37 @@ svg.map.dragging {
   font-size: 11px;
   line-height: 1.35;
   color: #6b5d49;
+}
+
+.notice-details {
+  margin-bottom: 10px;
+}
+
+.notice-detail {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.card .card-tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 180px;
+  background: #fdf9f1;
+  border: 1px solid #c9b896;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #3f3428;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.card:hover .card-tip,
+.card:focus-visible .card-tip {
+  display: block;
 }
