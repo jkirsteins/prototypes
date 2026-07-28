@@ -46,16 +46,24 @@ export function buildDeck(): string[] {
   ];
 }
 
-/** Randomized AI deck: each deck-buildable non-basic is included with
- *  probability 0.5 (rolled per card, in stable CARDS order so a seeded rng
- *  is deterministic), grow-crops filling the remaining slots.
+/** Cards every enemy deck carries. A world where nobody holds Subjugate lets
+ *  a passive player sit undisturbed for tens of turns; since falling is how a
+ *  new player discovers the rest of the deck, sitting undisturbed is the worst
+ *  outcome. Measured effect: see the 2026-07-29 new-player simulation spec. */
+export const AI_DECK_GUARANTEED = ["subjugate", "raid"];
+
+/** Randomized AI deck: every card in `guaranteed` plus each remaining
+ *  deck-buildable non-basic at probability 0.5 (rolled per card, in stable
+ *  CARDS order so a seeded rng is deterministic), grow-crops filling the rest.
  *
- *  `guaranteed` card ids are always included, and are listed first so the
- *  DECK_SIZE cap can never drop one. Every non-basic is still rolled for,
- *  guaranteed or not, so a given seed consumes the same rng values whatever
- *  the guarantee list is and simulation arms stay comparable. With no
- *  guarantee list the result is the plain randomized deck. */
-export function buildAiDeck(rng: Rng, guaranteed: string[] = []): string[] {
+ *  Guaranteed ids are listed first so the DECK_SIZE cap can never drop one.
+ *  Every non-basic is still rolled for, guaranteed or not, so a given seed
+ *  consumes the same rng values whatever the guarantee list is and simulation
+ *  arms stay comparable. Pass [] for the unarmed deck. */
+export function buildAiDeck(
+  rng: Rng,
+  guaranteed: string[] = AI_DECK_GUARANTEED,
+): string[] {
   const nonBasics = Object.values(CARDS)
     .filter((c) => c.deckBuildable && c.maxPerDeck !== null)
     .map((c) => c.id);

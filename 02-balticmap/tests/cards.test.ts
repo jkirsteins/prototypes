@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { CARDS, DECK_SIZE, buildDeck, buildAiDeck, shuffle, type Rng } from "../src/cards";
+import {
+  AI_DECK_GUARANTEED, CARDS, DECK_SIZE, buildDeck, buildAiDeck, shuffle,
+  type Rng,
+} from "../src/cards";
 
 const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
@@ -145,9 +148,24 @@ describe("buildAiDeck", () => {
     expect(unique.size).toBeGreaterThan(1);
   });
 
-  it("an rng that always returns >= 0.5 yields an all-filler deck", () => {
+  it("an rng that always returns >= 0.5 yields the guaranteed cards over filler", () => {
     const deck = buildAiDeck(() => 0.5);
+    expect(deck).toEqual([
+      "raid", "subjugate",
+      ...Array.from({ length: DECK_SIZE - 2 }, () => "grow-crops"),
+    ]);
+  });
+
+  it("an empty guarantee list gives the unarmed all-filler deck", () => {
+    const deck = buildAiDeck(() => 0.5, []);
     expect(deck).toEqual(Array.from({ length: DECK_SIZE }, () => "grow-crops"));
+  });
+
+  it("every deck carries the guaranteed aggression cards", () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const deck = buildAiDeck(seededRng(seed));
+      for (const id of AI_DECK_GUARANTEED) expect(deck).toContain(id);
+    }
   });
 
   it("an rng that always returns < 0.5 includes non-basics up to DECK_SIZE, guarding overflow", () => {

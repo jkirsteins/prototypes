@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "simulate": "vite-node scripts/simulate.ts",
+    "simulate:check": "vite-node scripts/check-scenarios.ts",
     "prepare-data": "node scripts/prepare-data.mjs"
   },
   "devDependencies": {

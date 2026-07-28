@@ -42,16 +42,24 @@ describe("sim map", () => {
 });
 
 describe("deck arms", () => {
-  it("leaves the shipped deck builder untouched", () => {
-    expect(buildAiDeck(seededRng(7))).toEqual(buildAiDeck(seededRng(7), []));
+  it("gives the shipped arm the game's own deck builder", () => {
+    expect(DECK_ARMS.shipped(seededRng(7), "x")).toEqual(buildAiDeck(seededRng(7)));
   });
 
-  it("always arms the aggressive deck with Subjugate and Raid", () => {
+  it("always arms the shipped deck with Subjugate and Raid", () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const deck = DECK_ARMS.aggressive(seededRng(seed), "x");
+      const deck = DECK_ARMS.shipped(seededRng(seed), "x");
       expect(deck).toContain("subjugate");
       expect(deck).toContain("raid");
     }
+  });
+
+  it("leaves the unarmed arm free of guaranteed aggression", () => {
+    const armed = [1, 2, 3, 4, 5, 6, 7, 8].filter((seed) => {
+      const deck = DECK_ARMS.unarmed(seededRng(seed), "x");
+      return deck.includes("subjugate") && deck.includes("raid");
+    });
+    expect(armed.length).toBeLessThan(8);
   });
 
   it("keeps every arm at deck size and within maxPerDeck", () => {
@@ -119,8 +127,8 @@ describe("runGame", () => {
 
   it("gives different arms different games", () => {
     const opts = { seed: 42, humanFaction: HUMAN, turnCap: 60 };
-    const a = runGame({ ...opts, aiDeckFor: DECK_ARMS.baseline });
-    const b = runGame({ ...opts, aiDeckFor: DECK_ARMS.aggressive });
+    const a = runGame({ ...opts, aiDeckFor: DECK_ARMS.shipped });
+    const b = runGame({ ...opts, aiDeckFor: DECK_ARMS.unarmed });
     expect(a).not.toEqual(b);
   });
 
@@ -142,7 +150,7 @@ describe("runGame", () => {
 
 describe("runBatch", () => {
   it("rotates the starting land and walks the seeds", () => {
-    const games = runBatch({ games: 3, turnCap: 5, firstSeed: 10, arm: "baseline" });
+    const games = runBatch({ games: 3, turnCap: 5, firstSeed: 10, arm: "shipped" });
     expect(games.map((g) => g.seed)).toEqual([10, 11, 12]);
     expect(games.map((g) => g.humanFaction)).toEqual(SIM_FACTION_IDS.slice(0, 3));
   });

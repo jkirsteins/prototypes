@@ -1,7 +1,7 @@
 /** Headless balance run: how fast does a new player get subjugated, and does
  *  arming enemy decks with Subjugate and Raid change that?
  *
- *  npm run simulate -- --games=500 --cap=150 --seed=1 --arms=baseline,aggressive,control
+ *  npm run simulate -- --games=500 --cap=150 --seed=1 --arms=shipped,unarmed,defensive
  */
 import { writeFileSync } from "node:fs";
 import {
@@ -26,7 +26,7 @@ function num(name: string, fallback: number): number {
 const games = num("games", 500);
 const turnCap = num("cap", 150);
 const firstSeed = num("seed", 1);
-const arms = flag("arms", "baseline,aggressive,control").split(",");
+const arms = flag("arms", "shipped,unarmed,defensive").split(",");
 const jsonPath = flag("json", "");
 
 for (const arm of arms) {

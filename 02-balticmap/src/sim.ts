@@ -1,7 +1,7 @@
 import rawData from "./data/map.json";
 import type { MapData } from "./types";
 import { factionAdjacencyOf } from "./adjacency";
-import { buildAiDeck, CARDS, DECK_SIZE, type Rng } from "./cards";
+import { buildAiDeck, buildDeck, CARDS, DECK_SIZE, type Rng } from "./cards";
 import {
   advance, chooseDeck, discardCard, newGame, pickFaction, playCard, startGame,
   viewOf, type GameState, type TributeTrack,
@@ -32,11 +32,13 @@ export function seededRng(seed: number): Rng {
 
 export type AiDeckFor = (rng: Rng, factionId: string) => string[];
 
-/** Enemy deck variants under comparison. `baseline` is what the game ships. */
+/** Enemy deck variants. `shipped` is what the game builds today; the other two
+ *  exist to attribute a difference to the guaranteed cards rather than to deck
+ *  density, and to keep the pre-2026-07-29 world measurable. */
 export const DECK_ARMS: Record<string, AiDeckFor> = {
-  baseline: (rng) => buildAiDeck(rng),
-  aggressive: (rng) => buildAiDeck(rng, ["subjugate", "raid"]),
-  control: (rng) => buildAiDeck(rng, ["alliance", "bodyguard"]),
+  shipped: (rng) => buildAiDeck(rng),
+  unarmed: (rng) => buildAiDeck(rng, []),
+  defensive: (rng) => buildAiDeck(rng, ["alliance", "bodyguard"]),
 };
 
 /** The new player: no plan, just plays whatever the rules allow, first come.
@@ -55,6 +57,22 @@ export function naiveHumanTurn(state: GameState, rng: Rng): GameState {
     cardId === "pay-tribute" ? (rng() < 0.5 ? "might" : "status") : undefined;
   return playCard(state, i, rng, targetId, track);
 }
+
+/** How the human seat plays. `naive` is the new player; `competent` runs the
+ *  same policy the enemies use, standing in for a player who knows the rules. */
+export type HumanTurn = (state: GameState, rng: Rng) => GameState;
+
+export const HUMAN_POLICIES: Record<string, HumanTurn> = {
+  naive: naiveHumanTurn,
+  competent: aiTakeTurn,
+};
+
+/** Human deck variants. `potatoes` is the new player's opening mistake;
+ *  `full` is the default build offered by the deck screen. */
+export const HUMAN_DECKS: Record<string, () => string[]> = {
+  potatoes: potatoDeck,
+  full: buildDeck,
+};
 
 export type Outcome = "defeat" | "victory" | "cap";
 
@@ -110,6 +128,7 @@ export interface RunOptions {
   aiDeckFor?: AiDeckFor;
   turnCap: number;
   humanDeck?: string[];
+  humanTurn?: HumanTurn;
 }
 
 /** Plays one complete headless game. Throws rather than spinning if a turn
@@ -124,12 +143,13 @@ export function runGame(opts: RunOptions): GameSummary {
     ),
     humanFaction,
     rng,
-    opts.aiDeckFor ?? DECK_ARMS.baseline,
+    opts.aiDeckFor ?? DECK_ARMS.shipped,
   );
+  const humanTurn = opts.humanTurn ?? naiveHumanTurn;
   while (state.phase === "playing" && state.turn <= turnCap) {
     const actor = state.players[state.current].factionId;
     const next =
-      state.current === 0 ? naiveHumanTurn(state, rng) : aiTakeTurn(state, rng);
+      state.current === 0 ? humanTurn(state, rng) : aiTakeTurn(state, rng);
     if (!next.playedThisTurn) {
       throw new Error(
         `stuck turn: seed ${seed}, turn ${state.turn}, actor ${actor}, ` +
