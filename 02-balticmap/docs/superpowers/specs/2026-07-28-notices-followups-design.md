@@ -312,6 +312,38 @@ today) and returns `peopleLabels: Map<string, SVGTextElement[]>`; main.ts
 toggles `.hidden` per people from `game.incorporated` on every refresh, and
 shows all labels outside play.
 
+## 12. Bodyguard (user ruling, 2026-07-28)
+
+A counter to Assassinate ruler.
+
+- New card `bodyguard` (name "Bodyguard", untargeted, maxPerDeck 1,
+  deckBuildable, not forced). Card text: "Post a bodyguard: the next
+  Assassinate ruler against you fails. No stacking."
+- State: `GameState.bodyguards: string[]` - faction ids holding an unused
+  guard (same shape as `diplomacyBoost`), reset by `newGame`.
+- Playability: playable only when the actor is NOT already guarded (no
+  stacking). `RulesView` gains `bodyguards: string[]`; `isCardPlayable`
+  returns `!view.bodyguards.includes(factionId)` for the card.
+- Effect on Assassinate ruler: when the target is guarded, the guard is
+  consumed and the status leveling does NOT happen - relations are
+  untouched. The next Assassinate against that faction succeeds unless a
+  fresh Bodyguard was played.
+- The guard is silent in the sense that it gets no map badge or panel
+  indicator; the card play itself is logged like every other card.
+- `GameEvent` gains `prevented?: boolean`, set on the `play` event of a
+  nullified Assassinate ruler. Activity-log text for such a play appends
+  " - prevented" (both when the human is the assassin and when the human
+  is the victim).
+- Notices: prevented assassinations against the human get their own modal,
+  title "Assassination Prevented", detail line "Your bodyguard turned the
+  blade - your Status lead is unchanged." The batch grouping key for
+  `play` events includes the `prevented` flag, so a round holding both a
+  prevented and a successful assassination raises one modal of each kind
+  rather than mixing them. Human-initiated plays stay silent as always -
+  the log line carries the outcome.
+- AI: no deliberate strategy; Bodyguard lands in the existing last-resort
+  filler branch like the other new cards.
+
 ## Non-goals
 
 - No change to Subjugate/poach legality or AI behavior (balance is a
