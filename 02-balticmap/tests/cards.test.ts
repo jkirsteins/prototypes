@@ -4,6 +4,7 @@ import { CARDS, DECK_SIZE, buildDeck, buildAiDeck, shuffle, type Rng } from "../
 const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
   "incorporate", "reclaim-independence", "revolt",
+  "assassinate-ruler", "alliance", "extended-diplomacy",
 ];
 
 function seededRng(seed: number): Rng {
@@ -57,19 +58,28 @@ describe("cards", () => {
       "revolt", "Revolt", false, 1, true, false,
       "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you.",
     );
+    expectProps(
+      "assassinate-ruler", "Assassinate ruler", true, 1, true, false,
+      "Even the score: the Status lead between you and one faction in reach resets to none.",
+    );
+    expectProps(
+      "alliance", "Alliance", true, 1, true, false,
+      "Seal a pact with one faction in reach: no hostile cards between you for 5 turns.",
+    );
+    expectProps(
+      "extended-diplomacy", "Extended diplomacy", false, 1, true, false,
+      "Patient envoys: your next Alliance lasts twice as long.",
+    );
   });
 
-  it("builds the 10-card default deck: 7 non-basics once each + 3 grow-crops", () => {
+  it("builds the 10-card default deck: 10 non-basics once each, no filler", () => {
     const deck = buildDeck();
     expect(deck).toHaveLength(DECK_SIZE);
     const count = (id: string) => deck.filter((c) => c === id).length;
-    for (const id of [
-      "raid", "shrewd-marriage", "fortify", "subjugate",
-      "incorporate", "reclaim-independence", "revolt",
-    ]) {
+    for (const id of NON_BASICS) {
       expect(count(id)).toBe(1);
     }
-    expect(count("grow-crops")).toBe(3);
+    expect(count("grow-crops")).toBe(0);
     expect(count("pay-tribute")).toBe(0);
   });
 

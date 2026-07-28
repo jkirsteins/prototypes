@@ -22,6 +22,9 @@ export const CARDS: Record<string, CardDef> = {
   "reclaim-independence": { id: "reclaim-independence", name: "Reclaim independence", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Cast off your overlord. Playable while their lead in Might and Status is under 2 per land of their other holdings." },
   "pay-tribute": { id: "pay-tribute", name: "Pay tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true, text: "Forced: while a vassal, grant your overlord +1 Might or +1 Status." },
   "revolt": { id: "revolt", name: "Revolt", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you." },
+  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Even the score: the Status lead between you and one faction in reach resets to none." },
+  "alliance": { id: "alliance", name: "Alliance", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns." },
+  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Patient envoys: your next Alliance lasts twice as long." },
 };
 
 export const DECK_SIZE = 10;

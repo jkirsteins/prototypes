@@ -130,4 +130,18 @@ describe("chooseAction priorities", () => {
       type: "play", cardIndex: 1, targetId: "beta",
     });
   });
+
+  it("9: unrecognized diplomacy cards (no dedicated priority) fall through as a last resort without crashing", () => {
+    let g = base();
+    g = withHand(g, ["alliance"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0, targetId: "beta" });
+
+    let g2 = base();
+    g2 = withHand(g2, ["assassinate-ruler"]);
+    expect(chooseAction(g2)).toEqual({ type: "play", cardIndex: 0, targetId: "beta" });
+
+    let g3 = base();
+    g3 = withHand(g3, ["extended-diplomacy"]);
+    expect(chooseAction(g3)).toEqual({ type: "play", cardIndex: 0 });
+  });
 });

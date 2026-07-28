@@ -5,7 +5,9 @@ import {
   OPENING_HAND, VICTORY_REALM_SIZE, type GameState,
 } from "../src/game";
 import { DECK_SIZE, buildDeck, CARDS, type Rng } from "../src/cards";
-import { bumpMight, bumpStatus, getRel, leadsOf, type Relations } from "../src/relations";
+import {
+  allianceKey, bumpMight, bumpStatus, getRel, leadsOf, type Relations,
+} from "../src/relations";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -56,6 +58,8 @@ describe("setup", () => {
     expect(g.overlords.size).toBe(0);
     expect(g.seenThisRun).toEqual([]);
     expect(g.adjacency["alpha"].sort()).toEqual(["beta", "delta", "gamma"]);
+    expect(g.alliances).toEqual({});
+    expect(g.diplomacyBoost).toEqual([]);
   });
 
   it("pickFaction deals opening hands of 3 plus the first draw, without opening-draw log spam", () => {
@@ -71,6 +75,7 @@ describe("setup", () => {
 const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
   "incorporate", "reclaim-independence", "revolt",
+  "assassinate-ruler", "alliance", "extended-diplomacy",
 ];
 
 function pickAt(seed: number): GameState {
@@ -555,5 +560,53 @@ describe("event enrichment", () => {
     const rel = after.log.find((e) => e.type === "released");
     expect(rel?.targetFactionId).toBe("delta");
     expect(rel?.overlordFactionId).toBe("gamma");
+  });
+});
+
+describe("diplomacy cards", () => {
+  it("assassinate-ruler levels the status lead to 0 both ways; might is untouched", () => {
+    let g = playingState(LINE_ADJ);
+    let rel: Relations = {};
+    rel = bumpStatus(rel, "beta", "alpha");
+    rel = bumpStatus(rel, "beta", "alpha");
+    rel = bumpStatus(rel, "beta", "alpha"); // beta leads alpha by 3 status
+    rel = bumpMight(rel, "alpha", "beta"); // might should be untouched
+    g = withRel(g, rel);
+    g = withHand(g, 0, ["assassinate-ruler"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(getRel(after.relations, "beta", "alpha").status).toBe(3);
+    expect(getRel(after.relations, "alpha", "beta").status).toBe(3);
+    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
+    expect(getRel(after.relations, "alpha", "beta").might).toBe(1); // untouched
+    expect(getRel(after.relations, "beta", "alpha").might).toBe(0); // untouched
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "assassinate-ruler", targetFactionId: "alpha",
+    });
+  });
+
+  it("alliance sets expiry to turn + 5, or turn + 10 with a consumed diplomacyBoost", () => {
+    let g = playingState(LINE_ADJ);
+    g = withHand(g, 0, ["alliance"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(after.alliances[allianceKey("beta", "alpha")]).toBe(g.turn + 5);
+
+    let g2 = playingState(LINE_ADJ);
+    g2 = { ...g2, diplomacyBoost: ["beta"] };
+    g2 = withHand(g2, 0, ["alliance"]);
+    const boosted = playCard(g2, 0, rng(), "alpha");
+    expect(boosted.alliances[allianceKey("beta", "alpha")]).toBe(g2.turn + 10);
+    expect(boosted.diplomacyBoost).not.toContain("beta");
+  });
+
+  it("extended-diplomacy adds the actor to diplomacyBoost, once", () => {
+    let g = playingState(LINE_ADJ);
+    g = withHand(g, 0, ["extended-diplomacy"]);
+    const after = playCard(g, 0, rng());
+    expect(after.diplomacyBoost).toEqual(["beta"]);
+
+    let g2 = { ...playingState(LINE_ADJ), diplomacyBoost: ["beta"] };
+    g2 = withHand(g2, 0, ["extended-diplomacy"]);
+    const again = playCard(g2, 0, rng());
+    expect(again.diplomacyBoost).toEqual(["beta"]); // not duplicated
   });
 });

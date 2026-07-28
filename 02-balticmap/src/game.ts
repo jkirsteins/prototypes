@@ -1,6 +1,6 @@
 import { buildDeck, buildAiDeck, shuffle, CARDS, DECK_SIZE, type Rng } from "./cards";
 import {
-  bumpMight, bumpMightAll, bumpStatus, realmOf,
+  allianceKey, bumpMight, bumpMightAll, bumpStatus, levelStatus, realmOf,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import { playableSet, validTargetsFor, type RulesView } from "./playability";
@@ -46,6 +46,8 @@ export interface GameState {
   overlords: Overlords; // STORED vassal -> overlord map
   incorporated: Incorporated;
   adjacency: Record<string, string[]>;
+  alliances: Record<string, number>; // sorted-pair key -> expiry turn
+  diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
   humanDeck: string[];
   seenThisRun: string[]; // non-basic enemy cards witnessed (learning loop)
   log: GameEvent[];
@@ -61,6 +63,8 @@ export function viewOf(state: GameState): RulesView {
     incorporated: state.incorporated,
     adjacency: state.adjacency,
     factionIds: state.factionIds,
+    alliances: state.alliances,
+    turn: state.turn,
   };
 }
 
@@ -78,6 +82,8 @@ export function newGame(
     relations: {},
     overlords: new Map(),
     incorporated: {},
+    alliances: {},
+    diplomacyBoost: [],
     adjacency:
       adjacency ??
       Object.fromEntries(
@@ -196,6 +202,8 @@ export function playCard(
   let relations = state.relations;
   const overlords = new Map(state.overlords);
   let incorporated = state.incorporated;
+  let alliances = state.alliances;
+  let diplomacyBoost = state.diplomacyBoost;
   let phase: GamePhase = state.phase;
   const events: GameEvent[] = [
     {
@@ -239,6 +247,19 @@ export function playCard(
       (f) => f !== p.factionId && !(f in incorporated),
     );
     relations = bumpMightAll(relations, p.factionId, living);
+  } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
+    relations = levelStatus(relations, p.factionId, targetId);
+  } else if (cardId === "alliance" && targetId !== undefined) {
+    const boosted = diplomacyBoost.includes(p.factionId);
+    alliances = {
+      ...alliances,
+      [allianceKey(p.factionId, targetId)]: state.turn + (boosted ? 10 : 5),
+    };
+    if (boosted) diplomacyBoost = diplomacyBoost.filter((f) => f !== p.factionId);
+  } else if (cardId === "extended-diplomacy") {
+    if (!diplomacyBoost.includes(p.factionId)) {
+      diplomacyBoost = [...diplomacyBoost, p.factionId];
+    }
   } else if (cardId === "subjugate" && targetId !== undefined) {
     const formerLord = overlords.get(targetId);
     freeVassalsOf(targetId);
@@ -350,7 +371,8 @@ export function playCard(
   }
 
   return {
-    ...state, phase, players, relations, overlords, incorporated, seenThisRun,
+    ...state, phase, players, relations, overlords, incorporated,
+    alliances, diplomacyBoost, seenThisRun,
     log: [...state.log, ...events], playedThisTurn: true,
   };
 }

@@ -1,6 +1,6 @@
 import { CARDS } from "./cards";
 import {
-  leadsOf, realmOf,
+  allianceActive, leadsOf, realmOf,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
 
@@ -14,6 +14,8 @@ export interface RulesView {
   incorporated: Incorporated;
   adjacency: Record<string, string[]>; // faction id -> adjacent faction ids
   factionIds: string[];
+  alliances: Record<string, number>; // sorted-pair key -> expiry turn
+  turn: number;
 }
 
 function reachOf(view: RulesView, factionId: string): Set<string> {
@@ -35,19 +37,27 @@ export function validTargetsFor(
 ): string[] {
   const overlord = view.overlords.get(factionId);
   const subjugated = overlord !== undefined;
+  const notAllied = (id: string) => !allianceActive(view, factionId, id);
   if (cardId === "incorporate") {
     if (subjugated) return [];
     return view.factionIds.filter((id) => view.overlords.get(id) === factionId);
   }
-  if (cardId === "raid" || cardId === "shrewd-marriage") {
+  if (
+    cardId === "raid" || cardId === "shrewd-marriage" ||
+    cardId === "assassinate-ruler" || cardId === "alliance"
+  ) {
     const reach = reachOf(view, factionId);
     const inReach = (id: string) =>
       id !== factionId && !(id in view.incorporated) && reach.has(id);
-    if (cardId === "raid") {
-      return view.factionIds.filter((id) => inReach(id) && id !== overlord);
+    if (cardId === "raid" || cardId === "assassinate-ruler") {
+      // Same reach rule as Raid: excludes the actor's overlord and any
+      // faction currently allied with the actor.
+      return view.factionIds.filter((id) => inReach(id) && id !== overlord && notAllied(id));
     }
-    // Marriage: the overlord is always courtable, adjacent or not.
-    return view.factionIds.filter((id) => inReach(id) || id === overlord);
+    // Shrewd marriage / Alliance: the overlord is always courtable, adjacent
+    // or not; Alliance additionally excludes existing allies (hostile-card
+    // rule applies uniformly to marriage too).
+    return view.factionIds.filter((id) => (inReach(id) || id === overlord) && notAllied(id));
   }
   if (cardId === "subjugate") {
     if (subjugated) return [];
@@ -55,6 +65,7 @@ export function validTargetsFor(
     return view.factionIds.filter((id) => {
       if (id === factionId || id in view.incorporated || !reach.has(id)) return false;
       if (view.overlords.get(id) === factionId) return false; // already yours
+      if (!notAllied(id)) return false;
       const l = leadsOf(view.relations, factionId, id);
       const needed =
         SUBJUGATE_THRESHOLD * realmOf(id, view.overlords, view.incorporated).length;
@@ -72,7 +83,7 @@ export function isCardPlayable(
   const card = CARDS[cardId];
   if (!card) return false;
   const overlord = view.overlords.get(factionId);
-  if (cardId === "grow-crops" || cardId === "fortify") return true;
+  if (cardId === "grow-crops" || cardId === "fortify" || cardId === "extended-diplomacy") return true;
   if (cardId === "pay-tribute") return overlord !== undefined;
   if (cardId === "revolt") return overlord !== undefined;
   if (cardId === "reclaim-independence") {

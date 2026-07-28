@@ -117,7 +117,7 @@ describe("createDeckScreen", () => {
     });
     const undiscovered = q(container, ".ds-undiscovered");
     expect(undiscovered.classList.contains("hidden")).toBe(false);
-    expect(undiscovered.textContent).toBe("7 cards still undiscovered");
+    expect(undiscovered.textContent).toBe("10 cards still undiscovered");
   });
 
   it("deducts known and pool cards from the undiscovered count", () => {
@@ -126,8 +126,8 @@ describe("createDeckScreen", () => {
       visible: true, knownCards: ["grow-crops", "raid", "subjugate"],
       seenPool: ["fortify"], unlockUsed: false,
     });
-    // 7 non-basics total - raid, subjugate (known) - fortify (pool) = 4 left
-    expect(q(container, ".ds-undiscovered").textContent).toBe("4 cards still undiscovered");
+    // 10 non-basics total - raid, subjugate (known) - fortify (pool) = 7 left
+    expect(q(container, ".ds-undiscovered").textContent).toBe("7 cards still undiscovered");
   });
 
   it("hides the undiscovered counter once every non-basic is known or in the pool", () => {
@@ -137,7 +137,10 @@ describe("createDeckScreen", () => {
       knownCards: [
         "grow-crops", "raid", "shrewd-marriage", "fortify", "subjugate",
       ],
-      seenPool: ["incorporate", "reclaim-independence", "revolt"],
+      seenPool: [
+        "incorporate", "reclaim-independence", "revolt",
+        "assassinate-ruler", "alliance", "extended-diplomacy",
+      ],
       unlockUsed: false,
     });
     expect(q(container, ".ds-undiscovered").classList.contains("hidden")).toBe(true);

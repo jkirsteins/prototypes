@@ -77,3 +77,34 @@ export function realmOf(
   }
   return out;
 }
+
+/** Raises BOTH directions' status counters to the max of the two, so the
+ *  status lead becomes 0 (relation counters only grow; Assassinate ruler). */
+export function levelStatus(rel: Relations, a: string, b: string): Relations {
+  const ab = getRel(rel, a, b);
+  const ba = getRel(rel, b, a);
+  const max = Math.max(ab.status, ba.status);
+  if (ab.status === max && ba.status === max) return rel;
+  return {
+    ...rel,
+    [relKey(a, b)]: { ...ab, status: max },
+    [relKey(b, a)]: { ...ba, status: max },
+  };
+}
+
+/** Sorted pair key for symmetric per-pair state keyed by two faction ids
+ *  (e.g. GameState.alliances), order-independent. */
+export function allianceKey(a: string, b: string): string {
+  return [a, b].sort().join("|");
+}
+
+/** True while a pact between a and b (recorded in `alliances`, sorted-pair
+ *  key -> expiry turn) has not yet expired. */
+export function allianceActive(
+  view: { alliances: Record<string, number>; turn: number },
+  a: string,
+  b: string,
+): boolean {
+  const expiry = view.alliances[allianceKey(a, b)];
+  return expiry !== undefined && view.turn < expiry;
+}

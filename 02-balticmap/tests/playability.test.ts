@@ -3,7 +3,7 @@ import {
   SUBJUGATE_THRESHOLD, isCardPlayable, playableSet, validTargetsFor,
   type RulesView,
 } from "../src/playability";
-import { bumpMight, bumpStatus, type Relations } from "../src/relations";
+import { allianceKey, bumpMight, bumpStatus, type Relations } from "../src/relations";
 
 const ORDER = ["alpha", "beta", "gamma", "delta"];
 const LINE_ADJ = {
@@ -20,6 +20,8 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     incorporated: {},
     adjacency: LINE_ADJ,
     factionIds: ORDER,
+    alliances: {},
+    turn: 1,
     ...partial,
   };
 }
@@ -162,6 +164,8 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       incorporated: { deadland: "owner" },
       adjacency: { me: ["deadland"], deadland: ["me", "owner"], owner: ["deadland"] },
       factionIds: ["me", "deadland", "owner"],
+      alliances: {},
+      turn: 1,
     };
     const targets = validTargetsFor(v, "me", "raid");
     expect(targets).toContain("owner");
@@ -176,6 +180,8 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       incorporated: { land: "target" },
       adjacency: { me: ["target"], target: ["me"], land: ["me"] },
       factionIds: ["me", "target", "land"],
+      alliances: {},
+      turn: 1,
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "me", "target");
@@ -192,11 +198,58 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       incorporated: { land: "lord" },
       adjacency: { me: ["lord"], lord: ["me"], land: ["me"] },
       factionIds: ["me", "lord", "land"],
+      alliances: {},
+      turn: 1,
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "lord", "me");
     expect(isCardPlayable({ ...v, relations: rel }, "me", "reclaim-independence")).toBe(true);
     rel = bumpMight(rel, "lord", "me"); // lead 4 meets the scaled grip
     expect(isCardPlayable({ ...v, relations: rel }, "me", "reclaim-independence")).toBe(false);
+  });
+});
+
+describe("alliances", () => {
+  it("blocks hostile targeted cards both directions while active", () => {
+    const alliances = { [allianceKey("beta", "gamma")]: 10 };
+    const v = view({ alliances, turn: 1 });
+    expect(validTargetsFor(v, "beta", "raid")).not.toContain("gamma");
+    expect(validTargetsFor(v, "gamma", "raid")).not.toContain("beta");
+    expect(validTargetsFor(v, "beta", "shrewd-marriage")).not.toContain("gamma");
+    expect(validTargetsFor(v, "gamma", "shrewd-marriage")).not.toContain("beta");
+    expect(validTargetsFor(v, "beta", "assassinate-ruler")).not.toContain("gamma");
+    expect(validTargetsFor(v, "gamma", "assassinate-ruler")).not.toContain("beta");
+    const rel = mightLead("beta", "gamma", 2);
+    expect(
+      validTargetsFor({ ...v, relations: rel }, "beta", "subjugate"),
+    ).not.toContain("gamma");
+  });
+
+  it("assassinate-ruler and raid share the same reach rule (excludes the actor's overlord)", () => {
+    const v = view({ overlords: new Map([["beta", "gamma"]]) });
+    expect(validTargetsFor(v, "beta", "raid")).toEqual(["alpha"]);
+    expect(validTargetsFor(v, "beta", "assassinate-ruler")).toEqual(["alpha"]);
+  });
+
+  it("expires at turn >= expiry, freeing both sides again", () => {
+    const alliances = { [allianceKey("beta", "gamma")]: 5 };
+    const stillActive = view({ alliances, turn: 4 });
+    expect(validTargetsFor(stillActive, "beta", "raid")).not.toContain("gamma");
+    const expired = view({ alliances, turn: 5 });
+    expect(validTargetsFor(expired, "beta", "raid")).toContain("gamma");
+  });
+
+  it("alliance targets reach like marriage (overlord always courtable) but exclude existing allies", () => {
+    const alliances = { [allianceKey("beta", "gamma")]: 10 };
+    const v = view({ overlords: new Map([["delta", "alpha"]]), alliances, turn: 1 });
+    // delta's overlord alpha is courtable though not adjacent to delta's realm
+    expect(validTargetsFor(v, "delta", "alliance")).toContain("alpha");
+    // beta is already allied with gamma: gamma is excluded as an alliance target
+    expect(validTargetsFor(view({ alliances, turn: 1 }), "beta", "alliance")).not.toContain("gamma");
+    expect(validTargetsFor(view({ alliances, turn: 1 }), "beta", "alliance")).toContain("alpha");
+  });
+
+  it("extended-diplomacy is always playable, like grow-crops/fortify", () => {
+    expect(isCardPlayable(view(), "beta", "extended-diplomacy")).toBe(true);
   });
 });
