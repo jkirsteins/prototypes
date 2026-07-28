@@ -106,3 +106,44 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
     repeating-linear-gradient(45deg, rgba(216, 212, 204, 0.08) 0 3px, transparent 3px 6px),
     var(--panel);
 }
+
+/* --- stat plates ------------------------------------------------------- */
+
+.plate {
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  padding: 0.4rem 0.6rem;
+  min-width: 8rem;
+}
+
+.plate.spent { border-color: var(--warn); opacity: 0.7; }
+
+.plate-name {
+  display: block;
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  color: var(--dim);
+}
+
+.plate-stats { display: flex; gap: 0.6rem; }
+
+.plate-stat {
+  font-size: 0.95rem;
+  transition: color 120ms ease;
+}
+
+.plate-stat.pop {
+  color: var(--warn);
+  animation: stat-pop 220ms ease;
+}
+
+@keyframes stat-pop {
+  50% { transform: scale(1.35); }
+}
+
+.plate-line {
+  font-size: 0.7rem;
+  color: var(--dim);
+  margin-top: 0.15rem;
+  min-height: 1em;
+}
