@@ -459,7 +459,6 @@ const LANDS = [
     nuts: ["LT024"],
     adm2: [
       "powiat gołdapski", "powiat olecki", "powiat suwalski", "Suwałki",
-      "powiat sejneński",
     ],
     flavor:
       "Land of the Yotvingian Sudovians, horse-breeders and raiders of the " +
@@ -471,7 +470,11 @@ const LANDS = [
     id: "dainava", name: "Dainava", faction: "dainavians",
     peoples: ["yotvingians"],
     nuts: ["LT021"],
-    adm2: ["powiat augustowski"],
+    // Sejny goes with Dainava, not Suduva: powiat augustowski does not touch
+    // Alytus county, so without the Sejny corridor between them Dainava would
+    // be two disjoint pieces (measured: LT021+augustowski union has 2 parts,
+    // LT021+sejnenski+augustowski has 1).
+    adm2: ["powiat sejneński", "powiat augustowski"],
     flavor:
       "The southern Yotvingian land of lakes and pine forest along the " +
       "Nemunas bend; its bands raid into Rus' and Mazovia and are raided " +
@@ -1048,7 +1051,40 @@ const landFeatures = LANDS.map((land) => {
   if (members.length !== keys.size) {
     throw new Error(`Missing members for land ${land.id}`);
   }
-  return { type: "Feature", properties: { land }, geometry: merge(topo, members) };
+  // merge() dissolves only borders that dedupe into shared topology arcs,
+  // which needs identical vertex sequences. Where a land mixes sources
+  // (GISCO NUTS/LAU against geoBoundaries), the two files draw the same
+  // border with different vertex spacing, so the seam survives merge() and
+  // renders as a border line cutting through the land. A single-argument
+  // union re-sweeps the rings and dissolves every coincident internal edge;
+  // single-source lands pass through unchanged.
+  const merged = merge(topo, members);
+  const dissolved = rewind(polygonClipping.union(toMultiCoords(merged)));
+  // The union splits seam pinch-points into their own tiny polygons -
+  // hairline slivers of well under a tenth of a km2 that would render as a
+  // dotted ghost of the very seam the union dissolved. Drop them. The
+  // smallest real feature on the map (an islet of the Saaremaa archipelago)
+  // is over 1 km2, an order of magnitude above the threshold, and every
+  // drop is logged so a real loss cannot pass silently.
+  const MIN_POLY_KM2 = 0.1;
+  const EARTH_KM2 = 6371 * 6371;
+  const polyKm2 = (poly) =>
+    geoArea({ type: "Polygon", coordinates: poly }) * EARTH_KM2;
+  const kept = dissolved.filter((poly) => polyKm2(poly) >= MIN_POLY_KM2);
+  if (kept.length !== dissolved.length) {
+    const dropped = dissolved.filter((poly) => polyKm2(poly) < MIN_POLY_KM2);
+    const largest = Math.max(...dropped.map(polyKm2));
+    console.log(
+      `Land ${land.id}: dropped ${dropped.length} seam sliver(s), ` +
+        `largest ${largest.toFixed(3)} km2`,
+    );
+  }
+  if (!kept.length) throw new Error(`Sliver filter emptied land ${land.id}`);
+  return {
+    type: "Feature",
+    properties: { land },
+    geometry: { type: "MultiPolygon", coordinates: kept },
+  };
 });
 
 // Guard against inverted ring winding: every land is a tiny fraction of
