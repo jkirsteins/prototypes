@@ -348,6 +348,37 @@ function applyTargeting(): void {
   }
 }
 
+/** Every polygon belonging to the hovered region's realm root (owner if
+ *  incorporated, else that faction's overlord), including vassals' own
+ *  incorporated holdings that `realmOf` alone would miss. No-op (all
+ *  classes cleared) when there is no hover or the phase is not in play. */
+function applyRealmHover(region: Region | null): void {
+  const members = new Set<string>();
+  if (region && inPlay()) {
+    let root = game.incorporated[region.faction] ?? region.faction;
+    root = game.overlords.get(root) ?? root;
+    for (const member of realmOf(root, game.overlords, game.incorporated)) {
+      members.add(member);
+    }
+    for (const member of [...members]) {
+      for (const [land, owner] of Object.entries(game.incorporated)) {
+        if (owner === member) members.add(land);
+      }
+    }
+  }
+  for (const [id, el] of regionPaths) {
+    const f = factionByRegion.get(id)!;
+    el.classList.toggle("realm-hover", members.has(f));
+    el.classList.toggle(
+      "vassal-hover",
+      region !== null &&
+        id === region.id &&
+        game.overlords.has(region.faction) &&
+        !(region.faction in game.incorporated),
+    );
+  }
+}
+
 function disarm(): void {
   armed = null;
   applyTargeting();
@@ -524,6 +555,7 @@ const interaction = attachInteraction(svg, regionPaths, settlementDots, data, {
   onHover(region, clientX, clientY) {
     if (region) tooltip.showLines(hoverLines(region), clientX, clientY);
     else tooltip.hide();
+    applyRealmHover(region);
   },
   onHoverSettlement(settlement, clientX, clientY) {
     if (settlement) {

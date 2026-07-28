@@ -907,3 +907,17 @@ svg.map.dragging {
 .card:focus-visible .card-tip {
   display: block;
 }
+
+.region.realm-hover {
+  stroke: #3f3428;
+  stroke-width: 1.8;
+}
+
+.region.realm-hover.dimmed {
+  opacity: 1;
+}
+
+.region.vassal-hover {
+  stroke-dasharray: 6 3;
+  stroke-width: 2.2;
+}
