@@ -100,6 +100,66 @@ per-game report; generated reports are local artifacts and are not committed.
 - the naive policy plays forced Pay tribute ahead of Grow potatoes;
 - `summarize` extracts the right turns from a synthetic log.
 
+## Results, 2026-07-29
+
+Command:
+
+```
+npm run simulate -- --games=500 --cap=150 --seed=1 --arms=baseline,aggressive,control
+```
+
+500 games per arm, seeds 1..500, 150-turn cap, the human faction rotating
+through all 26 lands (19 or 20 games each), human deck ten Grow potatoes.
+
+| Arm | ever subjugated | median first subjugation | mean | never | defeated | median defeat |
+| --- | --- | --- | --- | --- | --- | --- |
+| baseline | 99.4% | turn 15 | 22.2 | 3 | 94.4% | turn 26.5 |
+| aggressive | 100% | turn 9 | 10.2 | 0 | 99.8% | turn 17 |
+| control | 99.2% | turn 16 | 22.1 | 4 | 94.2% | turn 28 |
+
+Share of games where the human is already a vassal by a given turn:
+
+| Arm | by turn 5 | by turn 10 | by turn 20 | by turn 40 |
+| --- | --- | --- | --- | --- |
+| baseline | 6.0% | 27.2% | 63.4% | 85.4% |
+| aggressive | 21.8% | 61.8% | 93.2% | 99.4% |
+| control | 5.0% | 26.6% | 65.4% | 87.4% |
+
+Paired against baseline on the same seed and starting land:
+
+- aggressive: 12.03 turns sooner on average, 95% CI [10.40, 13.66], n=497.
+  Sooner in 77.5% of paired games, unchanged in 9.3%, later in 13.3%.
+- control: 0.10 turns later on average, 95% CI [-1.08, +1.29], n=494. Sooner
+  in 47.6%, later in 44.7% - a coin flip.
+
+### Findings
+
+1. **A potato deck is not survivable, and never was.** Under the shipped
+   enemy decks the new player is somebody's vassal by turn 15 and incorporated
+   by turn 26.5 at the median; 94.4% lose outright inside 150 turns. Only 3
+   games in 500 ended with the player never having been a vassal. The
+   prototype does not currently need help killing a passive player.
+2. **Guaranteed Subjugate and Raid roughly halve that clock.** Median first
+   subjugation falls 15 -> 9, median defeat 26.5 -> 17, and the share already
+   subjugated by turn 10 goes 27.2% -> 61.8%.
+3. **The effect is aggression, not deck density.** The control arm holds the
+   same number of non-potato cards as the aggressive arm but guarantees
+   Alliance and Bodyguard, and lands within noise of baseline. Without this
+   arm the aggressive result could not be told apart from "enemies simply hold
+   fewer potatoes".
+4. **Starting land matters more than the deck arm.** Lower Daugava Livs fall
+   at a median of turn 8 under baseline; Pomesanians hold to turn 41. The
+   spread between best and worst land is wider than the gap between arms,
+   which points at map position, not card mix, as the dominant difficulty
+   dial for a first game.
+
+### Decision
+
+Not taken here. The measurement says the aggressive default would make an
+already lethal opening lethal faster, which is a design question rather than a
+correctness one. `buildAiDeck` still ships its current behaviour, and any
+change to it should carry its own evidence note against this baseline.
+
 ## Out of scope
 
 - The scoring AI, faction styles, and per-card metric suite from the AI
