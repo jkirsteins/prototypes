@@ -200,11 +200,38 @@ Rivers added: Pregolya, Vistula, Lyna. Whitelist entries follow the existing
 `match` convention with Natural Earth naming variants. All three are minor
 except the Vistula, which is major.
 
-The `NEIGHBORS` country list is unchanged: PL and RU are already in it, and
-no German territory borders the new lands. The neighbor polygons are drawn
-beneath the region polygons, so the parts of PL and RU that are now playable
-land are simply painted over. No subtraction from the neighbor paths is
-needed, and none is done.
+### Neighbors
+
+A neighbor is the non-playable remainder of the world, so it must not overlap
+playable land. Relying on the region polygons to paint over it would leave
+the data wrong even though the render looks right, and would put a stale
+duplicate of every Prussian land inside the `RU` and `PL` paths.
+
+Two rules:
+
+- **Subtract playable land.** The extracted Kaliningrad polygon is subtracted
+  from `RU`, and the claimed NUTS-3 regions are subtracted from `PL`, using
+  the same `polygon-clipping` difference and winding-rewind path as the land
+  cuts. What remains is the Pskov and Novgorod frontier for `RU` and Masovia
+  and Pomerelia for `PL`.
+- **Keep only neighbors that render.** Verified against the current built
+  `map.json`: of the six configured neighbors, only `BY`, `FI`, `PL` and `RU`
+  produce a path at all. `SE` and `DK` fall entirely outside the canvas and
+  are silently discarded today by the `.filter(n => n.path)` step, so the
+  config has been carrying two dead entries.
+
+The silent filter becomes a warning, so a configured neighbor that
+contributes nothing is visible at build time instead of rotting unnoticed.
+
+`NEIGHBORS` is then pruned to exactly the set that contributes geometry
+**under the new framing**, re-derived from the built output rather than from
+today's. This is deliberately not decided in advance: the reframe extends the
+canvas west, and because meridians converge, the western edge reaches further
+west at Baltic latitudes than at the Vistula. Gotland and Oland may come into
+view, in which case `SE` is kept rather than dropped. Dropping it on today's
+evidence would leave a hole in the sea.
+
+No German territory borders the new lands, so `DE` is not added.
 
 Labels: the `Prussian lands` neighbor label is removed, since that territory
 is now on the map. A `PRUSSIANS` people label is added, along with
@@ -266,6 +293,9 @@ minimap or a realm-overview panel is the fix, not a lower floor.
 - the single-faction-ethnicity color rule still holds: `prussians` has six
   factions, so it is exempt from the reuse-the-people-color rule the way
   `estonians` is
+- the existing neighbor assertions at line 182 are loose enough to survive
+  the prune, but the neighbor id set is pinned to the derived list so a
+  neighbor cannot silently disappear again
 
 Other suites reference faction ids only through the data, so they follow
 automatically. `tests/view.test.ts` gains cases for the zoom floor and for
@@ -277,6 +307,11 @@ panning being available at minimum zoom.
 - `npm run prepare-data` runs clean, with its own guards passing: the
   partition check, the population total, the geometry winding check, the
   settlement containment check, and the every-region-has-adjacency check.
+- No configured neighbor yields an empty path, and no neighbor polygon
+  overlaps a playable land: `RU` no longer contains Kaliningrad and `PL` no
+  longer contains the Prussian NUTS-3 regions. Confirmed by inspecting the
+  built `map.json`, not only by eye in the browser, since an overlap is
+  invisible under the region fills.
 - Verified in Chrome through the root dev server at
   `http://127.0.0.1:4173/prototypes/`, not through a bare prototype root: all
   26 lands render with distinct fills, panning works at minimum zoom, the new
