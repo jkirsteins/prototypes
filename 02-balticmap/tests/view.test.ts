@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  fitView, clampView, hoverRelationLines, panBy, politicalFactionForPolygon,
+  fitView, clampView, homeView, hoverRelationLines, panBy, politicalFactionForPolygon,
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
 } from "../src/view";
@@ -24,6 +24,46 @@ describe("fitView", () => {
     close(v.h, (2000 / 500) * 1000);
     close(v.x, 0);
     close(v.y, (1400 - v.h) / 2);
+  });
+});
+
+describe("homeView", () => {
+  it("centers on the map, not on the near corner of the letterboxed fit", () => {
+    // Landscape viewport, portrait map: the fit letterboxes to the left and
+    // right, so base.x is negative. The home view must sit in the middle of
+    // that letterbox, or the east of the map is cut off on screen.
+    const base = fitView(1000, 1400, 800, 600);
+    const home = homeView(base);
+    close(home.x + home.w / 2, base.x + base.w / 2);
+    close(home.y + home.h / 2, base.y + base.h / 2);
+    close(home.x + home.w / 2, 500);
+    close(home.y + home.h / 2, 700);
+  });
+
+  it("centers a tall narrow viewport the same way", () => {
+    const base = fitView(1000, 1400, 500, 2000);
+    const home = homeView(base);
+    close(home.x + home.w / 2, 500);
+    close(home.y + home.h / 2, 700);
+  });
+
+  it("sits exactly at the zoom floor and inside the base", () => {
+    const base = fitView(1000, 1400, 800, 600);
+    const home = homeView(base);
+    close(base.w / home.w, MIN_ZOOM);
+    expect(home.x).toBeGreaterThanOrEqual(base.x);
+    expect(home.y).toBeGreaterThanOrEqual(base.y);
+    expect(home.x + home.w).toBeLessThanOrEqual(base.x + base.w + 1e-9);
+    expect(home.y + home.h).toBeLessThanOrEqual(base.y + base.h + 1e-9);
+  });
+
+  it("shows the whole map width when the viewport is wider than the map", () => {
+    // The regression this guards: a 1000x1400 map in a roughly square window
+    // used to clip everything east of x=856.
+    const base = fitView(1000, 1400, 945, 1000);
+    const home = homeView(base);
+    expect(home.x).toBeLessThanOrEqual(0);
+    expect(home.x + home.w).toBeGreaterThanOrEqual(1000);
   });
 });
 

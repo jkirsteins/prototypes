@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderMap } from "../src/map-render";
 import { attachInteraction } from "../src/interaction";
-import { fitView, clampView } from "../src/view";
+import { fitView, homeView } from "../src/view";
 import type { MapData } from "../src/types";
 import raw from "../src/data/map.json";
 
@@ -35,7 +35,7 @@ describe("attachInteraction", () => {
     const { svg } = setup();
     const [x, y, w, h] = svg.getAttribute("viewBox")!.split(" ").map(Number);
     const base = fitView(data.width, data.height, data.width, data.height);
-    const home = clampView(base, base);
+    const home = homeView(base);
     expect(w).toBeCloseTo(home.w, 6);
     expect(h).toBeCloseTo(home.h, 6);
     expect(x).toBeCloseTo(home.x, 6);
@@ -80,9 +80,10 @@ describe("attachInteraction", () => {
     el.dispatchEvent(mouse("pointermove", { clientX: 160, clientY: 100, buttons: 1 }));
     el.dispatchEvent(mouse("pointerup", { clientX: 160, clientY: 100 }));
     expect(onSelect).not.toHaveBeenCalled();
-    // at 1x the pan is clamped back, so the viewBox may be unchanged,
-    // but selection must not fire; dragging is the observable contract here
-    expect(svg.getAttribute("viewBox")).toBe(before);
+    // The home view is centered rather than pinned to a corner, so there is
+    // room to pan in both directions and the drag moves the view west.
+    const x = Number(svg.getAttribute("viewBox")!.split(" ")[0]);
+    expect(x).toBeLessThan(Number(before!.split(" ")[0]));
   });
 
   it("deselect() clears the selection and fires onSelect(null)", () => {

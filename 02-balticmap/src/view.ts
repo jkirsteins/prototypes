@@ -63,6 +63,22 @@ export function clampView(view: View, base: View): View {
   return { x, y, w, h };
 }
 
+/** The starting view: the zoom floor, centered on the map.
+ *
+ *  Centering has to be explicit. `clampView(base, base)` shrinks the view to
+ *  the floor but leaves its top-left pinned to base's, and base's top-left is
+ *  the corner of the letterboxed fit - negative on the axis that does not
+ *  bind. In a window wider than the map's aspect that pinned the view against
+ *  the west sea and cut the eastern lands off screen. */
+export function homeView(base: View): View {
+  const w = base.w / MIN_ZOOM;
+  const h = base.h / MIN_ZOOM;
+  return clampView(
+    { x: base.x + (base.w - w) / 2, y: base.y + (base.h - h) / 2, w, h },
+    base,
+  );
+}
+
 export function panBy(view: View, base: View, dxPx: number, dyPx: number, vpW: number): View {
   const unitsPerPx = view.w / vpW;
   return clampView(

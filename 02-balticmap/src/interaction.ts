@@ -1,5 +1,5 @@
 import type { MapData, Region, Settlement } from "./types";
-import { fitView, clampView, panBy, zoomAt, type View } from "./view";
+import { fitView, clampView, homeView, panBy, zoomAt, type View } from "./view";
 import { initialState, withHover, withClick, type SelectionState } from "./state";
 
 export interface InteractionCallbacks {
@@ -37,8 +37,7 @@ export function attachInteraction(
 
   let base: View = fitView(data.width, data.height, vpW(), vpH());
   // The home view is the most zoomed-out the player may go, which is closer
-  // than the whole-map fit - see MIN_ZOOM.
-  const homeView = (b: View): View => clampView(b, b);
+  // than the whole-map fit - see MIN_ZOOM - and centered on the map.
   let view: View = homeView(base);
 
   function apply(): void {
