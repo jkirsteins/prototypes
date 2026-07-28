@@ -4,7 +4,7 @@ export type Range = "near" | "away";
 export type Zone = "livingRoom" | "bedroom";
 
 export type CardKind = "offensive" | "defensive";
-export type CardTag = "deception" | "threatensWife" | "secret" | "fixture" | "physical";
+export type CardTag = "deception" | "threatensWife" | "secret" | "fixture" | "physical" | "event";
 
 export interface PlayerState {
   willpower: number;

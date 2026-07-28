@@ -26,7 +26,7 @@ Pages workflow picks it up.
 | --- | --- | --- | --- |
 | You | 6 | 6 | starts `Bound` |
 | Wife | - | 4 | Bond 3 |
-| The Convict | 6 | 8 | armed (`WeaponDown` false) |
+| The Convict | 6 | 3 | armed (`WeaponDown` false) |
 
 Willpower is the mental track and the coercion lever. Vigor is the physical track.
 The wife has no Willpower; she is not an agent.
@@ -86,7 +86,7 @@ type Effect =
 
 The same objects drive resolution, log narration, and assertions in tests.
 
-### 3.1 Player deck (16 cards, 13 unique)
+### 3.1 Player deck (19 cards, 16 unique)
 
 Offensive:
 
@@ -95,16 +95,32 @@ Offensive:
 | Wiggle Out of the Ropes | `Bound` | clear `Bound` | Expert Knots |
 | Rock the Chair | `Bound` | you gain `Toppled` | - |
 | Headbutt | his `Near` + `Distracted` | his Vigor -3 | - (Brace needs him undistracted) |
-| Kick His Knee | not `Bound`, his `Near` | his Vigor -1, he gains `Off-balance` | Brace |
+| Kick His Knee | not `Bound`, his `Near` | his Vigor -3, he gains `Off-balance` | Brace |
 | Shoulder Charge | not `Bound`, his `Near` | his Vigor -2, or -5 if `Off-balance` (consumes it) | Brace |
 | Grab for the Knife | not `Bound`, his `Near`, not `WeaponDown`, (`Distracted` or `Off-balance`) | set `WeaponDown` | - |
 | Stall Him With Questions x2 | - | his Willpower -2 | I've Heard That Before |
 | Lie About the Money | - | he gains `Distracted(2)`, range -> `Away` | I've Heard That Before |
-| Lamp Cord | zone `Bedroom`, not `Bound`, his `Near` | his Vigor -2, he gains `Off-balance` | Brace |
+| Lamp Cord | zone `Bedroom`, not `Bound`, his `Near` | his Vigor -3, he gains `Off-balance` | Brace |
+| The Phone Rings | - | he gains `Distracted(2)` | - |
+| Headlights in the Window | - | he gains `Distracted(1)`, his Willpower -2 | - |
+| The Dog Next Door | - | he gains `Distracted(1)` | - |
 
 `Stall Him With Questions` and `Lie About the Money` carry the `deception` tag.
 `Headbutt` is the only physical offensive legal while you are still `Bound`, which
 is what makes the first secret's `Distracted(2)` worth spending early.
+
+**Event cards.** `The Phone Rings`, `Headlights in the Window`, and `The Dog Next
+Door` carry the `event` tag and represent chance, not agency: something happens to
+the room rather than something you chose to do, and none of them checks whether you
+are `Bound`. Every other source of `Distracted` also relocates him in the same card
+(`Lie About the Money` and both secrets send him `Away`; his own `Ransack the Room`
+does too), while `Headbutt` and `Grab for the Knife`, the two cards that reward a
+distracted convict, both require him `Near`. Event cards are the only source of
+`Distracted` that does not also move him, so they are the one path to that opening
+while you are still `Bound` and cannot yet close the distance yourself. They have no
+requirements, deal no damage, and are not tagged `deception`, so nothing in his deck
+(`Brace`, `I've Heard That Before`, `Expert Knots`, `Not Yet`) can legally answer
+one.
 
 Defensive:
 

@@ -32,7 +32,7 @@ export function newRun(seed: number): GameState {
     wife: { vigor: 4, bond: 3 },
     convict: {
       willpower: 6,
-      vigor: 6,
+      vigor: 3,
       distracted: 0,
       offBalance: false,
       weaponDown: false,

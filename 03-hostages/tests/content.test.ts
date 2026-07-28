@@ -38,7 +38,7 @@ describe("content", () => {
   });
 
   it("has decks of the specified size referencing real cards", () => {
-    expect(PLAYER_DECK).toHaveLength(16);
+    expect(PLAYER_DECK).toHaveLength(19);
     expect(CONVICT_DECK).toHaveLength(15);
     for (const id of [...PLAYER_DECK, ...CONVICT_DECK]) {
       expect(() => cardById(id)).not.toThrow();

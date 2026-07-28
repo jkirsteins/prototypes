@@ -45,7 +45,7 @@ describe("newRun and chooseOpening", () => {
   it("starts at the opening event with shuffled piles", () => {
     const state = newRun(7);
     expect(state.phase).toBe("openingEvent");
-    expect(state.playerPile.deck).toHaveLength(16);
+    expect(state.playerPile.deck).toHaveLength(19);
     expect(state.convictPile.deck).toHaveLength(15);
     expect(state.playerPile.hand).toEqual([]);
   });
