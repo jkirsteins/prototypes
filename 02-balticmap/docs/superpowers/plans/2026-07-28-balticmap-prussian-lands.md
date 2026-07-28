@@ -4,7 +4,7 @@
 
 **Goal:** Extend the 1100 map from 20 to 26 lands by adding six Old Prussian lands, re-cutting three existing lands, and giving the map a zoom floor so covering more ground does not shrink every land.
 
-**Architecture:** All geometry work happens in the bake step, `scripts/prepare-data.mjs`, which writes `src/data/map.json`. New territory comes from two sources that need cutting: the Kaliningrad polygon inside the `RU` country feature, and five Polish NUTS-3 regions. Cuts reuse the `polygon-clipping` machinery that already splits the two Daugava-straddling municipalities, generalized into one helper. The runtime reads the baked JSON and needs only a zoom-floor change and a roster-derived victory threshold.
+**Architecture:** All geometry work happens in the bake step, `scripts/prepare-data.mjs`, which writes `src/data/map.json`. New territory comes from a second boundary source, geoBoundaries ADM2, supplying whole Polish powiats and Kaliningrad rayons - the administrative levels GISCO does not publish. Units are rewound and clipped to the GISCO country outlines, then grouped into lands exactly as the existing LAU and NUTS members are. The runtime reads the baked JSON and needs only a zoom-floor change and a roster-derived victory threshold.
 
 **Tech Stack:** Node ESM bake script, `d3-geo`, `topojson-server`/`topojson-client`, `polygon-clipping`. Vite + TypeScript app, vitest with happy-dom.
 
@@ -22,20 +22,43 @@
 - Regenerate with `npm run prepare-data` after any bake-script change, and commit the regenerated `src/data/map.json` alongside it.
 - Verify in Chrome through the root dev server at `http://127.0.0.1:4173/prototypes/` (run `npm run dev` from the repo root). Never verify by serving this prototype at a bare root.
 
-## Two corrections to the spec
+## The geometry source, and why it changed
 
-Found while deriving the actual cut geometry. Both are folded into the tasks below.
+An earlier revision of this plan hand-traced eight cut lines through Kaliningrad
+and Poland. That approach is dead. Hand-drawn borders cannot be verified against
+anything, do not survive contact with the source data, and would have made every
+future edit an act of cartography.
 
-1. **The spec lists four Polish NUTS-3 regions. It needs five.** Pomesania's core - Kwidzyn, Sztum, Malbork - is in pomorskie, not warminsko-mazurskie. Verified by point-containment: Kwidzyn `[18.93, 53.73]` falls in **PL638 Starogardzki**, not PL621. Without PL638 there is no Pamede, and the settlement Kwedis has nowhere to sit.
-2. **Pagegiai is in LT027, not LT023.** Verified by centroid containment: LT023 is exactly the seven Klaipeda-county municipalities, and `Pagegiu savivaldybe` sits in LT027 Taurage county, which `zemaitija` currently claims. Taking Pagegiai for Nadrawa therefore means migrating LT027 to LAU as well as LT023.
+Instead the Prussian lands come from **geoBoundaries ADM2** (OpenStreetMap-derived,
+ODbL), which publishes exactly the levels GISCO lacks: 380 Polish powiats and the
+22 units of Kaliningrad Oblast. Every Prussian land is a union of whole
+administrative units, like every existing land on the map. There is not one
+hand-traced coordinate in tasks 4 through 8.
 
-PL638 also differs from the other four in kind: its western half is Pomerelia, which is **not** Prussian and must not become playable land. It is the only cut that discards a piece.
+Three things about the new source, all measured rather than assumed:
+
+- **It winds rings the other way.** geoBoundaries winds opposite to the GISCO and
+  d3-geo convention, so an unrewound ring reads as the whole globe minus a hole.
+  This silently produced garbage in every measurement taken during design until
+  `rewind` was applied. Apply it on load.
+- **Its borders disagree with GISCO's slightly.** Worst measured case: `powiat
+  elblaski` strays 3.0 km2 outside the GISCO Poland outline, on a 1310 km2 unit,
+  or 0.23%. Each unit is intersected with its GISCO country polygon so every
+  international border and coastline still comes from GISCO exactly as today.
+- **Its Kaliningrad names are useless here.** Soviet-era names honouring
+  Bagration, Chernyakhovsky and Nesterov, five of them Cyrillic and truncated in
+  the source. Those units are selected by a point at the Prussian place each
+  contains, so no Cyrillic and no Soviet toponym enters the configuration.
+
+`splitByLine` from Task 3 survives and is still what splits the two
+Daugava-straddling municipalities. Its third member-key list, added as `pieces`
+and never used, is renamed `adm2` in Task 4 to hold geoBoundaries units.
 
 ## File Structure
 
 | File | Responsibility | Change |
 |---|---|---|
-| `scripts/prepare-data.mjs` | Bakes `map.json` from GISCO and Natural Earth | Heavily modified: cut helper, Kaliningrad extraction, PL and LT members, six lands, neighbors |
+| `scripts/prepare-data.mjs` | Bakes `map.json` from GISCO, geoBoundaries and Natural Earth | Heavily modified: geoBoundaries loader, six lands, LT re-cut, neighbors, attribution |
 | `src/data/map.json` | Baked output, committed | Regenerated by every bake task |
 | `src/view.ts` | Pure view maths | Add `MIN_ZOOM`, cap width in `clampView` |
 | `src/interaction.ts` | Wires view maths to the SVG | Initial view and resize handler use the zoom floor |
@@ -394,22 +417,25 @@ git commit -m "refactor(balticmap): generalize the cut helper and warn on dead n
 
 ---
 
-### Task 4: Prussians, and the three Kaliningrad lands
+### Task 4: geoBoundaries, the Prussians, and the three Kaliningrad lands
 
-Adds the `prussians` people and Semba, Notanga and Nadrawa. Nadrawa is Kaliningrad-only here; it gains its Lithuanian half in Task 5. The pipeline validates factions, populations and settlements together, so they all land in one commit or the build throws.
+Adds the second geometry source and the first three Prussian lands. Kaliningrad is a union of whole rayons, selected by Prussian-place points. No hand-traced geometry.
 
 **Files:**
-- Modify: `scripts/prepare-data.mjs` (PEOPLES, FACTIONS, LANDS, SETTLEMENTS, member pool, AUTHORED_LINKS, EXPECTED_TOTAL_POPULATION)
+- Modify: `scripts/prepare-data.mjs` (sources, loader, PEOPLES, FACTIONS, LANDS, SETTLEMENTS, AUTHORED_LINKS, EXPECTED_TOTAL_POPULATION)
 - Modify: `src/data/map.json` (regenerated)
-- Test: `tests/data.test.ts:7-20`
+- Test: `tests/data.test.ts`
 
 **Interfaces:**
-- Consumes: `splitByLine`, `AUTHORED_LINKS` from Task 3.
-- Produces: land ids `semba`, `notanga`, `nadrawa`; faction ids `sembians`, `natangians`, `nadruvians`; people id `prussians`. Member keys `kaliningrad#a`/`#b` and `kaliningrad-east#a`/`#b`.
+- Consumes: `splitByLine`, `AUTHORED_LINKS`, `memberKeysOf`, `rewind`, `toMultiCoords` from Task 3.
+- Produces:
+  - `adm2Units(collection, cntrId)` -> `[{name, geometry}]`, rewound and clipped to the GISCO country outline.
+  - A third member-key list on a land, `adm2`, read by `memberKeysOf`. **Rename Task 3's unused `pieces` list to `adm2`** - nothing uses `pieces`, and `adm2` is what it actually holds.
+  - Land ids `semba`, `notanga`, `nadrawa`; faction ids `sembians`, `natangians`, `nadruvians`; people id `prussians`.
 
 - [ ] **Step 1: Write the failing test**
 
-In `tests/data.test.ts`, extend the two id lists. Both are sorted.
+In `tests/data.test.ts`, extend the two sorted id lists:
 
 ```ts
 const EXPECTED_IDS = [
@@ -425,93 +451,168 @@ const EXPECTED_PEOPLE_IDS = [
 ];
 ```
 
-Update the three counts in the same file: the land-count test title and the faction assertions at lines 71-96 go from 20 to 23, and the unlocked-settlement assertion at line 226 goes from 20 to 23.
+Bump the land-count title and the faction assertions from 20 to 23, and the unlocked-settlement assertion from 20 to 23.
 
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npm test -- tests/data.test.ts`
-Expected: FAIL, the built map still has 20 lands and 9 peoples.
+Expected: FAIL - the built map still has 20 lands and 9 peoples.
 
-- [ ] **Step 3: Extract Kaliningrad and cut it**
+- [ ] **Step 3: Add the geoBoundaries source**
 
-After the `memberFeatures` assembly for LT, add:
+Next to the existing source URLs:
 
 ```js
-// Kaliningrad has no LAU or NUTS coverage: it exists only as part of the RU
-// country polygon. Selected by bounding box - verified as one exterior ring
-// of 509 points spanning 19.80E..22.89E and 54.32N..55.29N, plus the tip of
-// the Vistula Spit.
-const KALININGRAD_BBOX = [19.0, 54.0, 23.2, 55.6];
-function inBbox(ring, [w, s, e, n]) {
-  return ring.every(([x, y]) => x > w && x < e && y > s && y < n);
+// geoBoundaries ADM2 (OpenStreetMap-derived, ODbL). GISCO publishes no powiat
+// level and no Kaliningrad subdivision at all, so the Prussian lands come from
+// here. Pinned to a release commit so the build stays reproducible.
+const GB_COMMIT = "9469f09";
+const GB_BASE =
+  `https://github.com/wmgeolab/geoBoundaries/raw/${GB_COMMIT}/releaseData/gbOpen`;
+const GB_POL_URL = `${GB_BASE}/POL/ADM2/geoBoundaries-POL-ADM2_simplified.geojson`;
+const GB_RUS_URL = `${GB_BASE}/RUS/ADM2/geoBoundaries-RUS-ADM2_simplified.geojson`;
+```
+
+Add both to the existing `Promise.all` of `fetchJsonCached` calls, as `gbPol` and `gbRus`. The two files have distinct basenames, so the existing cache-filename scheme needs no change. The RUS file is about 26 MB; the first run will take a moment.
+
+- [ ] **Step 4: Load, rewind and clip**
+
+```js
+// geoBoundaries winds rings opposite to the GISCO and d3-geo convention, so an
+// unrewound ring reads as the whole globe minus a hole. It is also OSM-derived,
+// so its outer borders disagree slightly with GISCO's - measured worst case,
+// powiat elblaski strays 3.0 km2 outside the GISCO Poland outline on a 1310 km2
+// unit (0.23%). Intersecting each unit with its GISCO country polygon keeps
+// every international border and coastline coming from GISCO exactly as before,
+// leaving geoBoundaries responsible only for the internal divisions.
+function adm2Units(collection, cntrId) {
+  const outline = toMultiCoords(
+    countries.features.find((f) => f.properties.CNTR_ID === cntrId).geometry,
+  );
+  const units = [];
+  for (const f of collection.features) {
+    const clipped = polygonClipping.intersection(
+      toMultiCoords(f.geometry),
+      outline,
+    );
+    if (!clipped.length) continue;
+    units.push({
+      name: f.properties.shapeName,
+      geometry: { type: "MultiPolygon", coordinates: rewind(clipped) },
+    });
+  }
+  return units;
 }
-const ruFeature = countries.features.find((f) => f.properties.CNTR_ID === "RU");
-const kaliningradCoords = ruFeature.geometry.coordinates.filter((poly) =>
-  inBbox(poly[0], KALININGRAD_BBOX),
-);
-if (kaliningradCoords.length === 0) {
-  throw new Error("Kaliningrad not found in the RU polygon - check CNTR vintage");
-}
-const kaliningrad = {
-  properties: { LAU_NAME: "kaliningrad" },
-  geometry: { type: "MultiPolygon", coordinates: kaliningradCoords },
+const polUnits = adm2Units(gbPol, "PL");
+const rusUnits = adm2Units(gbRus, "RU");
+```
+
+- [ ] **Step 5: Select the Kaliningrad units by Prussian place**
+
+```js
+// The oblast's units carry Soviet-era names honouring Bagration, Chernyakhovsky
+// and Nesterov, and five are Cyrillic and truncated in the source. None of that
+// belongs in a map of 1100, so each unit is selected by a point at the Prussian
+// or Baltic place it is centred on. Where no Baltic form of a name is attested,
+// the older German toponym stands in - never the Soviet one. Verified: these 22
+// points resolve to 22 distinct units covering the whole oblast.
+const KALININGRAD_PLACES = {
+  semba: {
+    Twangste: [20.51, 54.71],     // Konigsberg
+    Kaup: [20.53, 54.93],         // Zelenogradsk
+    Rusemoter: [20.15, 54.94],    // Svetlogorsk
+    Pioneru: [20.22, 54.95],      // Pionersky
+    Palweniken: [19.96, 54.87],   // Yantarny, the amber works
+    Kaimen: [20.61, 54.77],       // Guryevsk
+    Zimmerbude: [20.14, 54.68],   // Svetly
+    Pillau: [19.91, 54.65],       // Baltiysk
+  },
+  notanga: {
+    Ilava: [20.64, 54.39],        // Preussisch Eylau, Bagrationovsk
+    Sventomest: [19.94, 54.46],   // Heiligenbeil, Mamonovo
+    Ludwigsort: [20.17, 54.57],   // Ladushkin
+    Friedland: [21.01, 54.44],    // Pravdinsk
+    Tapiow: [21.05, 54.65],       // Tapiau, Gvardeysk
+  },
+  nadrawa: {
+    Instrutis: [21.81, 54.63],    // Insterburg, Chernyakhovsk
+    Gumbe: [22.20, 54.59],        // Gumbinnen, Gusev
+    Stalupenai: [22.57, 54.63],   // Nesterov
+    Lazdynai: [22.47, 54.94],     // Krasnoznamensk
+    Darkiemis: [22.01, 54.41],    // Ozyorsk
+    Ragaine: [22.03, 55.03],      // Ragnit, Neman
+    Gastos: [21.68, 55.05],       // Slavsk
+    Tilze: [21.88, 55.08],        // Tilsit, Sovetsk
+    Labguva: [21.11, 54.86],      // Labiau, Polessk
+  },
 };
 
-// Semba is the peninsula north of the Pregolya and west of the Deima. The
-// line runs up the Deima from Gvardeysk to Polessk, then west down the
-// Pregolya to the lagoon. Verified: Zelenogradsk, Svetlogorsk and
-// Kaliningrad fall in Semba; Gvardeysk, Bagrationovsk, Balga and
-// Chernyakhovsk do not. The Russian half of the Vistula Spit falls outside
-// Semba - a sandbar a couple of km wide, invisible at map scale.
-const SEMBA_CUT = [
-  [20.30, 54.68], [20.51, 54.68], [20.75, 54.66], [21.02, 54.64],
-  [21.08, 54.75], [21.12, 54.88],
-];
-const SEMBA_CLOSING = [[21.12, 55.60], [19.20, 55.60], [19.20, 54.62]];
+// The oblast is everything in the RU set inside this box - the exclave, well
+// separated from the rest of Russia.
+const KALININGRAD_BBOX = [19.0, 54.0, 23.2, 55.6];
+const kaliningradUnits = rusUnits.filter((u) => {
+  const b = geoBounds(u.geometry);
+  return b[0][0] > KALININGRAD_BBOX[0] && b[1][0] < KALININGRAD_BBOX[2] &&
+    b[0][1] > KALININGRAD_BBOX[1] && b[1][1] < KALININGRAD_BBOX[3];
+});
 
-// Natangia and Bartia west, Nadruvia and Skalvia east, on a line a little
-// east of the Alle. Verified: Bagrationovsk, Pravdinsk and Gvardeysk fall
-// west; Chernyakhovsk, Gusev, Nesterov, Sovetsk and Neman fall east.
-const NOTANGA_CUT = [[21.30, 54.72], [21.32, 54.55], [21.28, 54.35]];
-const NOTANGA_CLOSING = [[19.20, 54.35], [19.20, 54.72]];
-
-const [sembaPiece, kaliningradRest] =
-  splitByLine(kaliningrad, "kaliningrad", SEMBA_CUT, SEMBA_CLOSING);
-const [notangaRu, nadrawaRu] = splitByLine(
-  { properties: {}, geometry: kaliningradRest.geometry },
-  "kaliningrad-east", NOTANGA_CUT, NOTANGA_CLOSING,
-);
-memberFeatures.push(sembaPiece, notangaRu, nadrawaRu);
-```
-
-- [ ] **Step 4: Add a cut verification harness**
-
-Cut lines are hand-traced, so assert them rather than trusting them. Add after the land features are built, next to the existing settlement containment check:
-
-```js
-// Every hand-traced cut states the towns that must fall on each side. A cut
-// that drifts fails the build instead of silently redrawing a land.
-const CUT_CHECKS = [
-  { land: "semba", inside: [[20.48, 54.96], [20.15, 54.94], [20.51, 54.71]] },
-  { land: "notanga", inside: [[20.64, 54.39], [21.01, 54.44], [21.05, 54.65], [19.97, 54.57]] },
-  { land: "nadrawa", inside: [[21.81, 54.63], [22.20, 54.59], [22.57, 54.63], [21.88, 55.08]] },
-];
-for (const check of CUT_CHECKS) {
-  const feature = landFeatureById.get(check.land);
-  if (!feature) throw new Error(`Cut check names unknown land ${check.land}`);
-  for (const point of check.inside) {
-    if (!geoContains(feature, point)) {
+// Resolve each place to exactly one unit, and account for every unit. This is
+// the guard: a place that lands in the sea, two places in one unit, or a unit
+// nobody claimed all fail the build.
+const kaliningradByLand = new Map();
+const takenUnits = new Map();
+for (const [landId, places] of Object.entries(KALININGRAD_PLACES)) {
+  const keys = [];
+  for (const [place, point] of Object.entries(places)) {
+    const hits = kaliningradUnits.filter((u) =>
+      geoContains({ type: "Feature", geometry: u.geometry }, point),
+    );
+    if (hits.length !== 1) {
       throw new Error(
-        `Cut check failed: ${point.join(",")} is not inside ${check.land}`,
+        `Prussian place ${place} at ${point} resolves to ${hits.length} ` +
+          `Kaliningrad units - expected exactly 1`,
       );
     }
+    const unit = hits[0];
+    if (takenUnits.has(unit.name)) {
+      throw new Error(
+        `${place} and ${takenUnits.get(unit.name)} both resolve to the same ` +
+          `Kaliningrad unit`,
+      );
+    }
+    takenUnits.set(unit.name, place);
+    memberFeatures.push({ key: place, geometry: unit.geometry });
+    keys.push(place);
   }
+  kaliningradByLand.set(landId, keys);
+}
+if (takenUnits.size !== kaliningradUnits.length) {
+  const missed = kaliningradUnits
+    .filter((u) => !takenUnits.has(u.name))
+    .map((u) => u.name);
+  throw new Error(
+    `${missed.length} Kaliningrad units claimed by no Prussian place: ` +
+      `${missed.join(", ")}`,
+  );
 }
 ```
 
-- [ ] **Step 5: Add the people, factions, lands and settlements**
+Add `geoBounds` to the `d3-geo` import at the top of the file, alongside `geoContains`.
 
-`PEOPLES` gains one entry. Pick a hue not already in use - the nine existing base colors are greens, blues, oranges, yellows and purples:
+- [ ] **Step 6: Rename the `pieces` key list to `adm2`**
+
+Task 3 added a third member-key list called `pieces` that nothing uses. It now holds geoBoundaries units, so rename it in `memberKeysOf` and in the comment above `LANDS`:
+
+```js
+const memberKeysOf = (land) =>
+  new Set([...(land.lau ?? []), ...(land.nuts ?? []), ...(land.adm2 ?? [])]);
+```
+
+Also fix the comment near `maskRing`/`splitByLine` that cites a function `verifyCuts()`, which does not exist. `splitByLine` is now used only for the Daugava split, so the comment should say so rather than pointing at a function that was never written.
+
+- [ ] **Step 7: Add the people, factions, lands and settlements**
+
+`PEOPLES` gains one entry. The nine existing base colors are greens, blues, oranges, yellows and purples:
 
 ```js
   { id: "prussians", name: "Prussians", color: "#9fb8d6" },
@@ -525,13 +626,16 @@ for (const check of CUT_CHECKS) {
   { id: "nadruvians", name: "Nadruvians", ethnicity: "prussians", type: "land-coalition", color: "#c2d3e8" },
 ```
 
-`LANDS` gains three. Cut-derived members go in `pieces`, per the Task 3 refactor:
+`LANDS` gains three. Their `adm2` lists are the place keys from Step 5 - write them out literally rather than reading `kaliningradByLand`, so the configuration stays declarative and greppable:
 
 ```js
   {
     id: "semba", name: "Semba", faction: "sembians",
     peoples: ["prussians"],
-    pieces: ["kaliningrad#a"],
+    adm2: [
+      "Twangste", "Kaup", "Rusemoter", "Pioneru", "Palweniken", "Kaimen",
+      "Zimmerbude", "Pillau",
+    ],
     flavor:
       "The amber peninsula between the sea and the lagoons, thickest-settled " +
       "of all the Prussian lands. Its shore yields amber traded as far as " +
@@ -542,7 +646,7 @@ for (const check of CUT_CHECKS) {
   {
     id: "notanga", name: "Notanga", faction: "natangians",
     peoples: ["prussians"],
-    pieces: ["kaliningrad-east#a"],
+    adm2: ["Ilava", "Sventomest", "Ludwigsort", "Friedland", "Tapiow"],
     flavor:
       "The open country south of the Pregolya, running east to Barta: good " +
       "plough land and horse pasture, watched over by forts above the Alle.",
@@ -552,7 +656,10 @@ for (const check of CUT_CHECKS) {
   {
     id: "nadrawa", name: "Nadrawa", faction: "nadruvians",
     peoples: ["prussians"],
-    pieces: ["kaliningrad-east#b"],
+    adm2: [
+      "Instrutis", "Gumbe", "Stalupenai", "Lazdynai", "Darkiemis", "Ragaine",
+      "Gastos", "Tilze", "Labguva",
+    ],
     flavor:
       "Deep forest and marsh along the lower Nemunas, the least settled of " +
       "the Prussian lands and the road by which Samogitian raiders come.",
@@ -561,38 +668,38 @@ for (const check of CUT_CHECKS) {
   },
 ```
 
-`SETTLEMENTS` gains three, one unlocked each:
+`SETTLEMENTS` gains three, one unlocked each. Note Honeda's coordinate: Balga's true position on its headland at 19.97, 54.57 falls outside the simplified geoBoundaries coastline, so the dot sits a little inland. That is under two kilometres and is the only place the simplified geometry is visibly coarser than GISCO.
 
 ```js
   { id: "kaup", name: "Kaup", land: "semba", unlocked: true, lon: 20.53, lat: 54.93, note: "Trading place on the lagoon shore where Prussian amber meets the Baltic sea-road." },
-  { id: "honeda", name: "Honeda", land: "notanga", unlocked: true, lon: 19.97, lat: 54.57, note: "Prussian stronghold on the headland above the Vistula Lagoon, watching the shallow crossing." },
+  { id: "honeda", name: "Honeda", land: "notanga", unlocked: true, lon: 19.99, lat: 54.55, note: "Prussian stronghold on the headland above the Vistula Lagoon, watching the shallow crossing." },
   { id: "ragaine", name: "Ragaine", land: "nadrawa", unlocked: true, lon: 22.03, lat: 55.03, note: "Fort above the Nemunas where the river road turns inland toward the Samogitian forests." },
 ```
 
-- [ ] **Step 6: Update the population total and add the authored links**
+- [ ] **Step 8: Update the population total and add the authored links**
 
 `EXPECTED_TOTAL_POPULATION` becomes `735000` (650,000 + 35,000 + 30,000 + 20,000).
 
-The Kaliningrad pieces come from the countries file while their Polish and Lithuanian neighbours come from LAU and NUTS, so no vertex coincides. Add to `AUTHORED_LINKS`:
+The Kaliningrad units come from geoBoundaries while their Lithuanian neighbours come from GISCO, so no vertex is shared and the coordinate fallback cannot fire. Clipping to the GISCO outline aligns the outer edge of the union, not individual vertices. Add to `AUTHORED_LINKS`:
 
 ```js
-  // Kaliningrad comes from the countries file; its neighbours come from LAU
-  // and NUTS. The same border is generalized differently in each, so no arc
-  // and no vertex is shared.
+  // The Prussian lands come from geoBoundaries, their Baltic neighbours from
+  // GISCO. The same border is generalized differently in each source, so no
+  // arc and no vertex is shared.
   ["nadrawa", "pilsotas"],
   ["nadrawa", "zemaitija"],
   ["nadrawa", "suduva"],
 ```
 
-- [ ] **Step 7: Bake and iterate on the cuts**
+- [ ] **Step 9: Bake**
 
 Run: `npm run prepare-data`
 
-Expected on success: `23 lands, 23 factions, 10 peoples`. Read the printed adjacency line and confirm Semba borders Notanga, Notanga borders Nadrawa, and none of the three is isolated.
+Expected: `23 lands, 23 factions, 10 peoples`. Read the printed adjacency line and confirm Semba borders Notanga, Notanga borders Nadrawa, and none of the three is isolated.
 
-If a cut check throws, adjust that cut's coordinates and re-run. Do not weaken the check to make it pass.
+If a Prussian place resolves to 0 units it is in the sea or outside the clipped coastline - move it inland, do not delete the guard. If a unit is left unclaimed, add a place for it to the correct land.
 
-- [ ] **Step 8: Run the tests, build, commit**
+- [ ] **Step 10: Run the tests, build, commit**
 
 ```bash
 npm test && npm run build
@@ -604,7 +711,7 @@ git commit -m "feat(balticmap): add the Prussians and the three Kaliningrad land
 
 ### Task 5: Skalvia and Lamata, re-cutting Pilsotas
 
-Migrates LT023 and LT027 from NUTS-3 to their LAU municipalities so Silute, Neringa and Pagegiai can join Nadrawa. Net population change is zero.
+Migrates LT023 and LT027 from NUTS-3 to their LAU municipalities so Silute, Neringa and Pagegiai can join Nadrawa. Net population change is zero. This is all GISCO; geoBoundaries is not involved.
 
 **Files:**
 - Modify: `scripts/prepare-data.mjs` (member pool, `pilsotas`, `zemaitija`, `nadrawa`)
@@ -614,17 +721,17 @@ Migrates LT023 and LT027 from NUTS-3 to their LAU municipalities so Silute, Neri
 - Consumes: land `nadrawa` from Task 4.
 - Produces: no new ids. `pilsotas` and `zemaitija` change their member key lists.
 
-**Watch out:** LAU names in this file are truncated at 28 characters. `Salcininku rajono savivaldyb` and `Radviliskio rajono savivaldyb` really are missing their final `e` in the source data. Copy every key verbatim from the file. None of the eleven keys below is affected, but the next person to add one needs to know.
+**Watch out:** LAU names in this file are truncated at 28 characters. `Salcininku rajono savivaldyb` and `Radviliskio rajono savivaldyb` really are missing their final `e` in the source data. Copy every key verbatim. None of the eleven below is affected, but the next person to add one needs to know.
 
 - [ ] **Step 1: Swap the two counties from NUTS to LAU in the member pool**
 
-Replace the LT block at `scripts/prepare-data.mjs:525-528`:
+Replace the LT block that pushes NUTS members:
 
 ```js
 // Klaipeda (LT023) and Taurage (LT027) are taken at municipality level so
 // Silute, Neringa and Pagegiai - Skalvian and Lamatan ground, not Curonian -
-// can be split away from Pilsotas and Zemaitija. Every other Lithuanian
-// county stays at NUTS-3.
+// can be split away from Pilsotas and Zemaitija. Every other Lithuanian county
+// stays at NUTS-3.
 const LT_LAU_COUNTIES = ["LT023", "LT027"];
 for (const f of nuts.features) {
   if (f.properties.CNTR_CODE !== "LT") continue;
@@ -666,7 +773,7 @@ if (ltLauFound !== LT_LAU_MEMBERS.length) {
     ],
 ```
 
-`zemaitija` drops `LT027` from its `nuts` list, leaving `nuts: ["LT026", "LT028"]`, and gains:
+`zemaitija` drops `LT027`, leaving `nuts: ["LT026", "LT028"]`, and gains:
 
 ```js
     lau: [
@@ -675,7 +782,7 @@ if (ltLauFound !== LT_LAU_MEMBERS.length) {
     ],
 ```
 
-`nadrawa` keeps `pieces: ["kaliningrad-east#b"]` and gains the three Skalvian and Lamatan municipalities:
+`nadrawa` keeps its `adm2` list and gains:
 
 ```js
     lau: [
@@ -694,7 +801,7 @@ if (ltLauFound !== LT_LAU_MEMBERS.length) {
     peoples: ["prussians", "curonians", "samogitians"],
 ```
 
-Update the `pilsotas` flavor, which currently claims the whole coast down to the Prussians. It now ends at the Skalvian frontier:
+Update the `pilsotas` flavor, which currently claims the whole coast down to the Prussians:
 
 ```js
     flavor:
@@ -706,9 +813,9 @@ Update the `pilsotas` flavor, which currently claims the whole coast down to the
 
 Run: `npm run prepare-data`
 
-Expected: still `23 lands`. The partition check is the real test here - if a municipality is claimed twice or left unclaimed, it names it.
+Expected: still `23 lands`. The partition check is the real test - if a municipality is claimed twice or left unclaimed, it names it.
 
-Read the printed adjacency line. `zemaitija` and `pilsotas` now mix LAU and NUTS members, so their border with NUTS-only neighbours may not resolve. Any land that lost an expected neighbour gets an entry in `AUTHORED_LINKS` with a comment naming the cause.
+Read the printed adjacency line. `zemaitija` and `pilsotas` now mix LAU and NUTS members, so their borders with NUTS-only neighbours may not resolve. Any land that lost an expected neighbour gets an entry in `AUTHORED_LINKS` with a comment naming the cause.
 
 - [ ] **Step 5: Run the tests, build, commit**
 
@@ -722,7 +829,7 @@ git commit -m "feat(balticmap): give Skalvia and Lamata to Nadrawa, shrink Pilso
 
 ### Task 6: Warmi, Pamede and Galinda
 
-The Polish core. Five NUTS-3 regions, five cuts. PL638 is the only one that discards a piece.
+The Polish core: 22 whole powiats and city-counties, no cuts.
 
 **Files:**
 - Modify: `scripts/prepare-data.mjs`
@@ -730,12 +837,12 @@ The Polish core. Five NUTS-3 regions, five cuts. PL638 is the only one that disc
 - Test: `tests/data.test.ts`
 
 **Interfaces:**
-- Consumes: `splitByLine` from Task 3, `CUT_CHECKS` from Task 4.
+- Consumes: `polUnits` and `adm2Units` from Task 4.
 - Produces: land ids `warmi`, `pamede`, `galinda`; faction ids `warmians`, `pomesanians`, `galindians`.
 
 - [ ] **Step 1: Write the failing test**
 
-Add `"galinda"`, `"pamede"` and `"warmi"` to `EXPECTED_IDS`, keeping it sorted. The full 26-land list is:
+Add `"galinda"`, `"pamede"` and `"warmi"` to `EXPECTED_IDS`, keeping it sorted. The full 26-land list:
 
 ```ts
 const EXPECTED_IDS = [
@@ -752,101 +859,41 @@ Bump the land, faction and unlocked-settlement counts from 23 to 26.
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npm test -- tests/data.test.ts`
-Expected: FAIL, the built map has 23 lands.
+Expected: FAIL - the built map has 23 lands.
 
-- [ ] **Step 3: Add the Polish members and their cuts**
+- [ ] **Step 3: Add the Polish powiats to the member pool**
 
-Verified by point containment, so these assignments are facts not guesses: Kwidzyn, Sztum and Malbork are in **PL638**; Elblag, Braniewo, Ostroda, Ilawa and Dzialdowo in **PL621**; Lidzbark Warminski, Olsztyn, Mragowo, Bartoszyce, Ketrzyn, Nidzica and Szczytno in **PL622**; Gizycko, Pisz, Elk, Olecko, Goldap and Wegorzewo in **PL623**.
+Every name below was verified present in the geoBoundaries POL ADM2 file under exactly this spelling. `powiat nowodworski` is deliberately absent: the Vistula delta is Zulawy marsh, Pomerelian rather than Pomesanian in 1100.
 
 ```js
-// Poland at NUTS-3, hand-cut. PL gminas are unusable as keys: LAU_ID is the
-// constant "1.0042" for every Polish feature, GISCO_ID does not decode to a
-// verifiable TERYT powiat, and 22 gmina names collide in this area alone.
-const PL_NUTS = ["PL621", "PL622", "PL623", "PL638", "PL843"];
-const plFeatures = new Map();
-for (const f of nuts.features) {
-  if (PL_NUTS.includes(f.properties.NUTS_ID)) plFeatures.set(f.properties.NUTS_ID, f);
-}
-if (plFeatures.size !== PL_NUTS.length) {
-  throw new Error(`Missing Polish NUTS-3 regions: expected ${PL_NUTS.join(",")}`);
-}
-
-// PL638: the Vistula and the Nogat. East is Pomesania, west is Pomerelia and
-// is NOT Prussian - it is the one cut piece that is discarded. Verified:
-// Kwidzyn, Sztum and Malbork fall east; Tczew and Starogard Gdanski fall west.
-const VISTULA_CUT = [
-  [18.95, 54.35], [18.90, 54.10], [18.80, 53.85], [18.75, 53.60], [18.80, 53.35],
+// Poland at powiat level, from geoBoundaries. Whole units, no cuts. The pool is
+// this whitelist rather than all 380 Polish powiats, so the partition check
+// guards that the whitelist is exactly claimed - it catches a typo or a double
+// claim, but cannot catch a Prussian powiat nobody thought to list.
+const POLISH_MEMBERS = [
+  // Warmia and Pogesania
+  "powiat braniewski", "powiat lidzbarski", "powiat elbląski",
+  "powiat olsztyński", "Elbląg", "Olsztyn",
+  // Pomesania and Sasna
+  "powiat kwidzyński", "powiat sztumski", "powiat malborski",
+  "powiat iławski", "powiat ostródzki", "powiat nowomiejski",
+  "powiat działdowski",
+  // Galindia
+  "powiat mrągowski", "powiat giżycki", "powiat piski",
+  "powiat szczycieński", "powiat ełcki", "powiat węgorzewski",
+  "powiat nidzicki",
+  // Barta, which runs with Notanga
+  "powiat bartoszycki", "powiat kętrzyński",
 ];
-const VISTULA_CLOSING = [[20.50, 53.35], [20.50, 54.35]];
-
-// PL621: Warmia and Pogesania north, Pomesania and Sasna south. Verified:
-// Elblag and Braniewo fall north; Ostroda, Ilawa and Dzialdowo fall south.
-const PL621_CUT = [[19.10, 53.95], [19.50, 53.92], [19.95, 53.88], [20.45, 53.85]];
-const PL621_CLOSING = [[20.45, 54.60], [19.10, 54.60]];
-
-// PL622 first cut: the Bartian strip in the north joins Notanga. Verified:
-// Bartoszyce and Ketrzyn fall north; Lidzbark Warminski and Olsztyn do not.
-const BARTA_CUT = [
-  [20.30, 54.35], [20.65, 54.20], [21.00, 54.05], [21.45, 53.95], [21.75, 53.92],
-];
-const BARTA_CLOSING = [[21.75, 54.60], [20.30, 54.60]];
-
-// PL622 second cut: Warmia west, Galindia east, bending west in the south so
-// Nidzica falls to Galindia. Verified: Olsztyn and Lidzbark Warminski fall
-// west; Mragowo, Szczytno and Nidzica fall east.
-const WARMI_CUT = [[20.85, 54.10], [20.80, 53.80], [20.35, 53.55], [20.20, 53.20]];
-const WARMI_CLOSING = [[19.00, 53.20], [19.00, 54.10]];
-
-// PL623: Galindia west, the Sudovian border country east. Verified: Goldap
-// and Olecko fall east; Elk, Gizycko, Pisz and Wegorzewo fall west.
-const GALINDA_CUT = [[22.10, 54.40], [22.20, 54.10], [22.60, 53.95], [22.80, 53.60]];
-const GALINDA_CLOSING = [[20.50, 53.60], [20.50, 54.40]];
+const polByName = new Map(polUnits.map((u) => [u.name, u]));
+for (const name of POLISH_MEMBERS) {
+  const unit = polByName.get(name);
+  if (!unit) throw new Error(`Polish unit not found in geoBoundaries: ${name}`);
+  memberFeatures.push({ key: name, geometry: unit.geometry });
+}
 ```
 
-Apply the cuts and push the pieces. `PL622` is cut twice, so the second cut runs on the remainder of the first:
-
-```js
-memberFeatures.push(
-  ...splitByLine(plFeatures.get("PL638"), "pl638", VISTULA_CUT, VISTULA_CLOSING),
-  ...splitByLine(plFeatures.get("PL621"), "pl621", PL621_CUT, PL621_CLOSING),
-  ...splitByLine(plFeatures.get("PL623"), "pl623", GALINDA_CUT, GALINDA_CLOSING),
-);
-const [bartaPiece, pl622Rest] =
-  splitByLine(plFeatures.get("PL622"), "pl622-barta", BARTA_CUT, BARTA_CLOSING);
-memberFeatures.push(
-  bartaPiece,
-  ...splitByLine(
-    { properties: {}, geometry: pl622Rest.geometry },
-    "pl622", WARMI_CUT, WARMI_CLOSING,
-  ),
-);
-```
-
-Key mapping, for reference while writing `LANDS`: `pl638#a` is east of the Vistula (Pamede) and `pl638#b` is Pomerelia (discarded). `pl621#a` is north (Warmi), `#b` south (Pamede). `pl622-barta#a` is the Bartian strip (Notanga). `pl622#a` is west (Warmi), `#b` east (Galinda). `pl623#a` is east (Suduva, Task 7) and `#b` west (Galinda).
-
-- [ ] **Step 4: Allow the one discarded piece**
-
-The partition check must stay meaningful, so discards are explicit rather than implied:
-
-```js
-// Cut pieces that deliberately belong to no land. Only Pomerelia, west of
-// the Vistula: Slavic ground, never Prussian. Anything else appearing here
-// is a bug, not a shortcut.
-const UNCLAIMED_PIECES = ["pl638#b"];
-```
-
-In the partition check at `:530-544`, compare against the available keys minus the allowlist:
-
-```js
-const availableKeys = memberFeatures
-  .map((m) => m.key)
-  .filter((k) => !UNCLAIMED_PIECES.includes(k))
-  .sort();
-```
-
-Keep the rest of that block untouched, so an unknown key or a twice-claimed key still throws.
-
-- [ ] **Step 5: Add the factions, lands and settlements**
+- [ ] **Step 4: Add the factions, lands and settlements**
 
 `FACTIONS` gains three, colors unique across the whole roster and within the Prussian blue family:
 
@@ -862,7 +909,10 @@ Keep the rest of that block untouched, so an unknown key or a twice-claimed key 
   {
     id: "warmi", name: "Warmi", faction: "warmians",
     peoples: ["prussians"],
-    pieces: ["pl621#a", "pl622#a"],
+    adm2: [
+      "powiat braniewski", "powiat lidzbarski", "powiat elbląski",
+      "powiat olsztyński", "Elbląg", "Olsztyn",
+    ],
     flavor:
       "Warmia and Pogesania, between the lagoon and the lakes: the richest " +
       "farmland of the Prussian interior, and the country the sea-traders " +
@@ -873,7 +923,11 @@ Keep the rest of that block untouched, so an unknown key or a twice-claimed key 
   {
     id: "pamede", name: "Pamede", faction: "pomesanians",
     peoples: ["prussians"],
-    pieces: ["pl638#a", "pl621#b"],
+    adm2: [
+      "powiat kwidzyński", "powiat sztumski", "powiat malborski",
+      "powiat iławski", "powiat ostródzki", "powiat nowomiejski",
+      "powiat działdowski",
+    ],
     flavor:
       "The westernmost Prussian land, running to the Vistula. Across the " +
       "river lie the Poles, and Pamede's chiefs raid over it and are raided " +
@@ -884,7 +938,11 @@ Keep the rest of that block untouched, so an unknown key or a twice-claimed key 
   {
     id: "galinda", name: "Galinda", faction: "galindians",
     peoples: ["prussians"],
-    pieces: ["pl622#b", "pl623#b"],
+    adm2: [
+      "powiat mrągowski", "powiat giżycki", "powiat piski",
+      "powiat szczycieński", "powiat ełcki", "powiat węgorzewski",
+      "powiat nidzicki",
+    ],
     flavor:
       "The lake country: more water and forest than field, thinly held by " +
       "scattered lineages. Armies that march into Galinda tend not to find " +
@@ -894,7 +952,14 @@ Keep the rest of that block untouched, so an unknown key or a twice-claimed key 
   },
 ```
 
-`notanga` gains the Bartian strip: `pieces: ["kaliningrad-east#a", "pl622-barta#a"]`.
+`notanga` gains Barta - append to its existing `adm2` list:
+
+```js
+    adm2: [
+      "Ilava", "Sventomest", "Ludwigsort", "Friedland", "Tapiow",
+      "powiat bartoszycki", "powiat kętrzyński",
+    ],
+```
 
 `SETTLEMENTS` gains three:
 
@@ -904,32 +969,21 @@ Keep the rest of that block untouched, so an unknown key or a twice-claimed key 
   { id: "staswiny", name: "Staswiny", land: "galinda", unlocked: true, lon: 21.86, lat: 53.94, note: "Hillfort among the Galindian lakes, reached by causeway and abandoned to the forest in bad years." },
 ```
 
-- [ ] **Step 6: Extend the cut checks and the population total**
+- [ ] **Step 5: Update the population total**
 
 `EXPECTED_TOTAL_POPULATION` becomes `810000` (735,000 + 30,000 + 30,000 + 15,000).
 
-Add to `CUT_CHECKS`:
-
-```js
-  { land: "warmi", inside: [[19.40, 54.16], [19.82, 54.38], [20.58, 54.13], [20.48, 53.78]] },
-  { land: "pamede", inside: [[18.93, 53.73], [19.03, 53.92], [19.03, 54.04], [19.97, 53.70], [19.57, 53.60], [20.18, 53.24]] },
-  { land: "galinda", inside: [[21.30, 53.87], [20.99, 53.56], [20.43, 53.36], [21.76, 54.04], [21.81, 53.63], [22.36, 53.83], [21.74, 54.21]] },
-  { land: "notanga", inside: [[20.81, 54.25], [21.38, 54.07]] },
-```
-
-The existing `notanga` entry from Task 4 already lists its Kaliningrad towns - merge these two points into that entry rather than adding a second one.
-
-- [ ] **Step 7: Bake and iterate**
+- [ ] **Step 6: Bake**
 
 Run: `npm run prepare-data`
 
 Expected: `26 lands, 26 factions, 10 peoples`.
 
-Cut checks are the iteration loop. Several of these lines pass within a few hundredths of a degree of a town - Ketrzyn against `BARTA_CUT` and Olecko against `GALINDA_CUT` are the tightest. If one throws, move that cut's coordinates and re-run.
+The settlement containment guard is what verifies the powiat groupings put each site in the right land. If Lecbarg, Kwedis or Staswiny is reported outside its land, the powiat lists are wrong - fix the lists, not the coordinates.
 
-Confirm from the adjacency line that Warmi, Pamede and Galinda each border their expected neighbours, and add authored links for any Polish-to-Kaliningrad seam that did not resolve - those cross the countries-file border and will not share vertices.
+Confirm from the adjacency line that Warmi, Pamede and Galinda each border their expected neighbours, and add authored links for any Poland-to-Kaliningrad seam that did not resolve.
 
-- [ ] **Step 8: Run the tests, build, commit**
+- [ ] **Step 7: Run the tests, build, commit**
 
 ```bash
 npm test && npm run build
@@ -942,43 +996,41 @@ git commit -m "feat(balticmap): add Warmi, Pamede and Galinda"
 ### Task 7: The Yotvingians reach their real southern extent
 
 **Files:**
-- Modify: `scripts/prepare-data.mjs` (`suduva`, `dainava`, PL843 cut)
+- Modify: `scripts/prepare-data.mjs` (`POLISH_MEMBERS`, `suduva`, `dainava`)
 - Modify: `src/data/map.json` (regenerated)
 
 **Interfaces:**
-- Consumes: `splitByLine`, `plFeatures`, `CUT_CHECKS` from Task 6.
-- Produces: no new ids. Member keys `pl843#a` and `pl843#b`.
+- Consumes: `POLISH_MEMBERS` and `polByName` from Task 6.
+- Produces: no new ids.
 
-- [ ] **Step 1: Add the PL843 cut**
+- [ ] **Step 1: Add six more powiats to the pool**
+
+Append to `POLISH_MEMBERS`:
 
 ```js
-// PL843: Suduva north, Dainava south. Verified: Suwalki and Sejny fall
-// north; Augustow falls south.
-const SUDUVA_CUT = [[22.55, 54.05], [23.00, 54.03], [23.50, 54.05]];
-const SUDUVA_CLOSING = [[23.50, 54.60], [22.55, 54.60]];
-memberFeatures.push(
-  ...splitByLine(plFeatures.get("PL843"), "pl843", SUDUVA_CUT, SUDUVA_CLOSING),
-);
+  // Sudovia, south of the modern border
+  "powiat gołdapski", "powiat olecki", "powiat suwalski", "Suwałki",
+  "powiat sejneński", "powiat augustowski",
 ```
 
-- [ ] **Step 2: Attach the pieces and raise the populations**
+- [ ] **Step 2: Attach them and raise the populations**
 
-`suduva` keeps `nuts: ["LT024"]` and gains `pieces: ["pl843#a", "pl623#a"]`. `pl623#a` is the Sudovian border country around Goldap and Olecko, cut away from Galindia in Task 6.
+`suduva` keeps `nuts: ["LT024"]` and gains:
 
-`dainava` keeps `nuts: ["LT021"]` and gains `pieces: ["pl843#b"]`.
+```js
+    adm2: [
+      "powiat gołdapski", "powiat olecki", "powiat suwalski", "Suwałki",
+      "powiat sejneński",
+    ],
+```
+
+`dainava` keeps `nuts: ["LT021"]` and gains `adm2: ["powiat augustowski"]`.
 
 Both populations go `30000` -> `35000`. `EXPECTED_TOTAL_POPULATION` becomes `820000`, matching the spec's budget.
 
-Both flavor texts currently describe lands hemmed in by Mazovia and Rus'. They now hold the ground they raid from, so soften the "pressed between" framing in `suduva` and keep `dainava`'s raiding line, which is still true.
+Both flavor texts currently describe lands hemmed in by Mazovia and Rus'. They now hold the ground they raid from, so soften the "pressed between" framing in `suduva`. `dainava`'s raiding line is still true - leave it.
 
-- [ ] **Step 3: Extend the cut checks**
-
-```js
-  { land: "suduva", inside: [[22.93, 54.10], [23.35, 54.11], [22.31, 54.31], [22.51, 54.03]] },
-  { land: "dainava", inside: [[22.98, 53.84]] },
-```
-
-- [ ] **Step 4: Bake, test, build, commit**
+- [ ] **Step 3: Bake, test, build, commit**
 
 ```bash
 npm run prepare-data && npm test && npm run build
@@ -986,19 +1038,19 @@ git add scripts/prepare-data.mjs src/data/map.json
 git commit -m "feat(balticmap): extend Suduva and Dainava to their southern extent"
 ```
 
-Expected: still `26 lands`. `suduva` and `dainava` now mix NUTS and cut pieces across the LT/PL border, so check the adjacency line and add authored links for any lost neighbour.
+Expected: still `26 lands`. `suduva` and `dainava` now mix GISCO NUTS with geoBoundaries powiats across the LT/PL border, so check the adjacency line and add authored links for any lost neighbour.
 
 ---
 
-### Task 8: Rivers, labels and honest neighbors
+### Task 8: Rivers, labels, attribution and honest neighbors
 
 **Files:**
-- Modify: `scripts/prepare-data.mjs` (`RIVERS`, `LABELS`, `NEIGHBORS`, neighbor geometry)
+- Modify: `scripts/prepare-data.mjs` (`RIVERS`, `LABELS`, `NEIGHBORS`, neighbor geometry, attribution)
 - Modify: `src/data/map.json` (regenerated)
-- Test: `tests/data.test.ts:182-195`
+- Test: `tests/data.test.ts`
 
 **Interfaces:**
-- Consumes: `kaliningradCoords` from Task 4, `plFeatures` and `PL_NUTS` from Task 6.
+- Consumes: `memberFeatures`, `claimed`, `polByName` from Tasks 4, 6 and 7.
 - Produces: nothing consumed by later tasks.
 
 - [ ] **Step 1: Add the three rivers**
@@ -1011,28 +1063,35 @@ Minor rivers whose Natural Earth geometry is missing are warned and skipped, so 
   { id: "lyna", name: "Alna", major: false, match: ["lyna", "łyna", "lava", "alle"] },
 ```
 
-- [ ] **Step 2: Subtract playable land from the neighbor polygons**
+- [ ] **Step 2: Credit geoBoundaries**
 
-A neighbor is the non-playable remainder of the world. Letting the region fills paint over an overlap would leave the data wrong even though the render looks right.
-
-Subtract the **claimed cut pieces**, not the uncut source regions. Subtracting the whole of PL638 would take Pomerelia out of `PL` too, and Pomerelia is Slavic ground that must stay a neighbor. Listing the pieces by key makes that impossible to get wrong by accident, and the guard below refuses to subtract anything no land claims.
-
-Replace the `neighborFeatures` assignment:
+ODbL requires attribution. Update the `attribution` string:
 
 ```js
-// Neighbors are what is left of the world after the playable lands are taken
-// out, so no neighbor polygon hides a stale duplicate of a Prussian land.
-// Listed by cut-piece key, never by source region: pl638#b is Pomerelia and
-// must survive, so subtracting the whole of PL638 would be wrong.
-const NEIGHBOR_SUBTRACTIONS = {
-  RU: ["kaliningrad#a", "kaliningrad-east#a", "kaliningrad-east#b"],
-  PL: [
-    "pl638#a", "pl621#a", "pl621#b", "pl622-barta#a", "pl622#a", "pl622#b",
-    "pl623#a", "pl623#b", "pl843#a", "pl843#b",
-  ],
-};
+  attribution:
+    "(c) EuroGeographics for the administrative boundaries; " +
+    "Poland and Kaliningrad: geoBoundaries / OpenStreetMap contributors (ODbL); " +
+    "rivers: Natural Earth",
+```
+
+`tests/data.test.ts` asserts this string exactly - update it to match in the same commit.
+
+- [ ] **Step 3: Subtract playable land from the neighbor polygons**
+
+A neighbor is the non-playable remainder of the world. Letting the region fills paint over an overlap would leave the data wrong even though the render looks right, and would hide a stale duplicate of every Prussian land inside `RU` and `PL`.
+
+Subtract the **claimed member units**, which is also what keeps Pomerelia - claimed by no land - a neighbor:
+
+```js
+// Neighbors are what is left of the world once the playable lands are taken out.
+// Subtract the claimed member geometries, never whole source regions: the
+// Polish powiats nobody claimed are Masovia and Pomerelia and must survive.
 const memberByKey = new Map(memberFeatures.map((m) => [m.key, m]));
 const claimedKeys = new Set(claimed);
+const NEIGHBOR_SUBTRACTIONS = {
+  RU: [...Object.values(KALININGRAD_PLACES).flatMap((p) => Object.keys(p))],
+  PL: POLISH_MEMBERS,
+};
 const neighborFeatures = countries.features
   .filter((f) => NEIGHBORS.includes(f.properties.CNTR_ID))
   .map((f) => {
@@ -1041,7 +1100,7 @@ const neighborFeatures = countries.features
     let coords = toMultiCoords(f.geometry);
     for (const key of keys) {
       const member = memberByKey.get(key);
-      if (!member) throw new Error(`Neighbor subtraction names unknown piece ${key}`);
+      if (!member) throw new Error(`Neighbor subtraction names unknown member ${key}`);
       if (!claimedKeys.has(key)) {
         throw new Error(
           `Refusing to subtract ${key} from ${f.properties.CNTR_ID}: no land ` +
@@ -1060,13 +1119,13 @@ const neighborFeatures = countries.features
   });
 ```
 
-`claimed` is the array the partition check already builds at `:531`. This block must therefore sit after it - move the `neighborFeatures` assignment down if it currently sits earlier.
+`claimed` is the array the partition check already builds, so this block must sit after it. Move the `neighborFeatures` assignment down if it currently sits earlier.
 
-- [ ] **Step 3: Prune NEIGHBORS to what renders**
+- [ ] **Step 4: Prune NEIGHBORS to what renders**
 
 Run `npm run prepare-data` and read the warnings. Today `SE` and `DK` are dead entries, but the frame has moved west and meridians converge, so Gotland and Oland may now be inside the canvas. **Derive the list from this run's warnings, not from the old evidence.** Remove from `NEIGHBORS` exactly those the bake warns about, and leave the rest.
 
-- [ ] **Step 4: Fix the labels**
+- [ ] **Step 5: Fix the labels**
 
 Remove the `Prussian lands` neighbor label - that ground is on the map now. Add:
 
@@ -1078,32 +1137,33 @@ Remove the `Prussian lands` neighbor label - that ground is on the map now. Add:
 
 People labels throw when off-canvas while neighbor labels only warn, so if `PRUSSIANS` throws, move it rather than changing its kind.
 
-- [ ] **Step 5: Pin the neighbor set in the tests**
+- [ ] **Step 6: Pin the neighbor set in the tests**
 
-In `tests/data.test.ts`, replace the loose `toBeGreaterThanOrEqual(3)` at line 183 with the derived set, so a neighbor cannot silently vanish again:
+In `tests/data.test.ts`, replace the loose `toBeGreaterThanOrEqual(3)` neighbor assertion with the derived set, so a neighbor cannot silently vanish again:
 
 ```ts
     expect(data.neighbors.map((n) => n.id)).toEqual(EXPECTED_NEIGHBOR_IDS);
 ```
 
-Define `EXPECTED_NEIGHBOR_IDS` at the top of the file from what Step 3 actually produced, sorted.
+Define `EXPECTED_NEIGHBOR_IDS` at the top of the file from what Step 4 actually produced, sorted.
 
-- [ ] **Step 6: Confirm no neighbor overlaps a land**
+- [ ] **Step 7: Confirm no neighbor overlaps a land**
 
 An overlap is invisible under the region fills, so check the data rather than the render:
 
 ```bash
 node -e "
 const d=require('./src/data/map.json');
-const ru=d.neighbors.find(n=>n.id==='RU');
-const pl=d.neighbors.find(n=>n.id==='PL');
-console.log('RU path chars', ru.path.length, 'PL path chars', pl.path.length);
+for (const id of ['RU','PL']) {
+  const n=d.neighbors.find(x=>x.id===id);
+  console.log(id, n ? n.path.length + ' path chars' : 'ABSENT');
+}
 "
 ```
 
-Both should be materially shorter than before the subtraction. Then confirm in Chrome that no neighbor-grey shows through where a Prussian land sits.
+Both should be materially shorter than before the subtraction.
 
-- [ ] **Step 7: Bake, test, build, commit**
+- [ ] **Step 8: Bake, test, build, commit**
 
 ```bash
 npm run prepare-data && npm test && npm run build
@@ -1133,7 +1193,7 @@ Open `http://127.0.0.1:4173/prototypes/` and follow the link to the Baltic map. 
 - [ ] **Step 2: Check the map**
 
 - All 26 lands render, each with a distinct fill. The six Prussian blues must be separable from each other and from the Liv blue at `#a8c8cf`.
-- No gap or sliver where a cut piece meets its neighbour, especially at the Kaliningrad-to-Poland and Kaliningrad-to-Lithuania seams, which come from different source files.
+- No gap or sliver where a Prussian land meets a Baltic one. Borders internal to Poland or internal to Kaliningrad come from a single source and should be seamless; the seams to watch are Prussia-to-Lithuania, where geoBoundaries meets GISCO and the two generalize the same border independently.
 - No neighbor-grey showing through a Prussian land.
 - The Pregolya, Vistula and Alna draw, and their labels sit on them.
 - `PRUSSIANS`, `Mazovians` and `Pomeranians` sit where they belong and do not collide with settlement labels.
@@ -1172,10 +1232,11 @@ Run at the end. Every item is a spec requirement.
 - [ ] 26 lands, 26 factions, 10 peoples in the bake output
 - [ ] `EXPECTED_TOTAL_POPULATION` is `820000` and the bake agrees
 - [ ] Every land has exactly one unlocked settlement, inside its own polygon
-- [ ] Every cut check passes, and no check was weakened to make it pass
+- [ ] Every Prussian place resolves to exactly one Kaliningrad unit, none twice, none left over - and no guard was weakened to make it pass
 - [ ] Every land has at least one adjacency, and each authored link carries a comment saying why it cannot be derived
-- [ ] Only `pl638#b` is in `UNCLAIMED_PIECES`
-- [ ] `RU` no longer contains Kaliningrad, `PL` no longer contains the claimed Prussian regions, and Pomerelia is still a neighbor
+- [ ] Every Prussian land is a union of whole administrative units - no hand-traced coordinates anywhere
+- [ ] `RU` no longer contains the claimed Kaliningrad units, `PL` no longer contains the claimed powiats, and Masovia and Pomerelia are still neighbors
+- [ ] The attribution string credits geoBoundaries and OpenStreetMap under ODbL
 - [ ] `NEIGHBORS` contains only entries that produce a path, pinned by a test
 - [ ] Victory needs 15 of 26, and the victory copy names the real roster size
 - [ ] The whole map cannot be seen at once, and panning works at the home view
