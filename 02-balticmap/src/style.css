@@ -451,7 +451,9 @@ svg.map.dragging {
 
 .ds-card {
   width: 84px;
-  height: 118px;
+  /* rules text sets the height: a fixed box spilled its own copy */
+  min-height: 118px;
+  align-self: stretch;
   border: 1px solid #7a6a55;
   border-radius: 8px;
   background: #fdfaf4;
@@ -460,12 +462,20 @@ svg.map.dragging {
   padding: 6px;
   cursor: pointer;
   opacity: 0.6;
+  overflow-wrap: anywhere;
 }
 
 .ds-card.selected {
   opacity: 1;
   outline: 2px solid #7cb06a;
   outline-offset: -2px;
+}
+
+/* deck full: the leftovers read as "swap one out", not as dead buttons */
+.ds-card.deck-full {
+  opacity: 0.3;
+  cursor: not-allowed;
+  border-style: dashed;
 }
 
 .ds-card.ds-locked {

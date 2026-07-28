@@ -49,7 +49,8 @@ export function createDeckScreen(
 
   const deckLabel = document.createElement("p");
   deckLabel.className = "ds-label";
-  deckLabel.textContent = "Your deck (click to include, max 1 each):";
+  deckLabel.textContent =
+    `Choose the cards you take (up to ${DECK_SIZE}, 1 copy each):`;
   const deckRow = document.createElement("div");
   deckRow.className = "ds-deck";
   const counter = document.createElement("p");
@@ -65,9 +66,9 @@ export function createDeckScreen(
   root.append(title, unlockSection, deckLabel, deckRow, counter, undiscovered, start);
   container.appendChild(root);
 
-  /** Toggle state survives update() calls; pruned to known cards each render. */
+  /** Toggle state survives update() calls; pruned to known cards each render.
+   *  Nothing is ever selected for the player: the loadout is their call. */
   let selected = new Set<string>();
-  let everKnown = new Set<string>();
 
   start.addEventListener("click", () => cb.onStart([...selected]));
 
@@ -82,13 +83,6 @@ export function createDeckScreen(
       if (!view.visible) return;
 
       const known = nonBasics(view.knownCards);
-      // newly known cards arrive pre-selected; stale selections are pruned
-      for (const id of known) {
-        if (!everKnown.has(id)) {
-          everKnown.add(id);
-          selected.add(id);
-        }
-      }
       selected = new Set(known.filter((id) => selected.has(id)));
 
       const discovered = new Set([...view.knownCards, ...view.seenPool]);
@@ -120,31 +114,39 @@ export function createDeckScreen(
 
       const filler = document.createElement("div");
       filler.className = "ds-card ds-filler";
-      deckRow.replaceChildren(
-        ...known.map((id) => {
-          const card = document.createElement("button");
-          card.className = "ds-card";
-          card.classList.toggle("selected", selected.has(id));
-          const name = document.createElement("span");
-          name.className = "ds-card-name";
-          name.textContent = cardName(id);
-          const text = document.createElement("span");
-          text.className = "ds-card-text";
-          text.textContent = CARDS[id]?.text ?? "";
-          card.append(name, text);
-          card.addEventListener("click", () => {
-            if (selected.has(id)) selected.delete(id);
-            else if (selected.size < DECK_SIZE) selected.add(id);
-            card.classList.toggle("selected", selected.has(id));
-            renderCounter(selected.size);
-            filler.textContent = `Grow potatoes x${DECK_SIZE - selected.size}`;
-          });
-          return card;
-        }),
-        filler,
-      );
-      filler.textContent = `Grow potatoes x${DECK_SIZE - selected.size}`;
-      renderCounter(selected.size);
+      const cards = known.map((id) => {
+        const card = document.createElement("button");
+        card.className = "ds-card";
+        const name = document.createElement("span");
+        name.className = "ds-card-name";
+        name.textContent = cardName(id);
+        const text = document.createElement("span");
+        text.className = "ds-card-text";
+        text.textContent = CARDS[id]?.text ?? "";
+        card.append(name, text);
+        card.addEventListener("click", () => {
+          if (selected.has(id)) selected.delete(id);
+          else if (selected.size < DECK_SIZE) selected.add(id);
+          renderPicks();
+        });
+        return { id, card };
+      });
+
+      /** Repaints every toggle: the cap has to read as "swap one out", not
+       *  as a dead click. */
+      function renderPicks(): void {
+        const atCap = selected.size >= DECK_SIZE;
+        for (const { id, card } of cards) {
+          const taken = selected.has(id);
+          card.classList.toggle("selected", taken);
+          card.classList.toggle("deck-full", atCap && !taken);
+        }
+        filler.textContent = `Grow potatoes x${DECK_SIZE - selected.size}`;
+        renderCounter(selected.size);
+      }
+
+      deckRow.replaceChildren(...cards.map((c) => c.card), filler);
+      renderPicks();
     },
   };
 }
