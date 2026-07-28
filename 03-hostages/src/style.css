@@ -1,0 +1,83 @@
+:root {
+  color-scheme: dark;
+  --ink: #d8d4cc;
+  --dim: #8b857c;
+  --bg: #14130f;
+  --panel: #1e1c17;
+  --edge: #35322a;
+  --warn: #c46a4a;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.screen {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.title { font-size: 2rem; letter-spacing: 0.2em; margin: 0; }
+.prose, .blurb { color: var(--dim); margin: 0; }
+
+.banner {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  font-size: 0.9rem;
+  letter-spacing: 0.15em;
+}
+
+.status { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.stat, .scene-bit, .flag {
+  border: 1px solid var(--edge);
+  padding: 0.15rem 0.5rem;
+  font-size: 0.8rem;
+}
+.flag { color: var(--warn); border-color: var(--warn); }
+
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  max-height: 18rem;
+  overflow-y: auto;
+}
+.log-entry { display: block; padding: 0.2rem 0; }
+.log-entry[data-side="convict"] { color: var(--warn); }
+.log-entry[data-side="system"] { color: var(--dim); font-style: italic; }
+.log-deltas { display: block; color: var(--dim); font-size: 0.8rem; }
+
+.hand, .choices { display: flex; flex-direction: column; gap: 0.5rem; }
+
+button {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--ink); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.card-name { display: block; }
+.card-rules { display: block; color: var(--dim); font-size: 0.85rem; }
+.card-flavor { display: block; color: var(--dim); font-size: 0.8rem; font-style: italic; }
+.card-reason { display: block; color: var(--warn); font-size: 0.8rem; }
+
+.prompt { margin: 0; color: var(--warn); }
+.summary { list-style: none; padding: 0; margin: 0; color: var(--dim); }
+.summary-line { padding: 0.2rem 0; }
+.headline { margin: 0; }

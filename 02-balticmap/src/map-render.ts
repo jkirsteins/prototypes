@@ -149,10 +149,5 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
 
   container.appendChild(svg);
 
-  const attribution = document.createElement("div");
-  attribution.className = "attribution";
-  attribution.textContent = data.attribution;
-  container.appendChild(attribution);
-
   return { svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, vassalStripe: stripe };
 }

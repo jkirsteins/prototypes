@@ -2,6 +2,7 @@ import { CARDS } from "./cards";
 import { isHumanTurn, type GameEvent, type GameState } from "./game";
 import { flyCard } from "./animate";
 import { leadsOf, realmOf } from "./relations";
+import { noticeFor, type Notice, type NoticeCtx } from "./notices";
 
 export interface HudCallbacks {
   onNewGame(): void;
@@ -90,6 +91,15 @@ export function createHud(
       case "defeat":
         return `Your realm has been incorporated by ${factionName(e.overlordFactionId)}`;
     }
+  }
+
+  function involvesHuman(e: GameEvent, humanFactionId: string | undefined): boolean {
+    if (humanFactionId === undefined) return false;
+    return (
+      e.playerId === 1 ||
+      e.targetFactionId === humanFactionId ||
+      e.overlordFactionId === humanFactionId
+    );
   }
 
   const menu = document.createElement("div");
@@ -209,8 +219,77 @@ export function createHud(
   logEntries.className = "activity-log-entries";
   logPanel.append(logHeader, logEntries);
 
+  const noticeOverlay = document.createElement("div");
+  noticeOverlay.className = "notice-overlay hidden";
+  const noticeCard = document.createElement("div");
+  noticeCard.className = "notice-card";
+  const noticeTitle = document.createElement("h2");
+  noticeTitle.className = "notice-title";
+  const noticeWhat = document.createElement("p");
+  noticeWhat.className = "notice-what";
+  const noticeFlavor = document.createElement("p");
+  noticeFlavor.className = "notice-flavor";
+  const noticeConsequence = document.createElement("p");
+  noticeConsequence.className = "notice-consequence";
+  const noticeContinue = document.createElement("button");
+  noticeContinue.className = "notice-continue";
+  noticeContinue.textContent = "Continue";
+  noticeContinue.addEventListener("click", () => dismissNotice());
+  noticeCard.append(
+    noticeTitle, noticeWhat, noticeFlavor, noticeConsequence, noticeContinue,
+  );
+  noticeOverlay.appendChild(noticeCard);
+
+  let noticeQueue: Notice[] = [];
+
+  function showNotice(n: Notice): void {
+    noticeTitle.textContent = n.title;
+    noticeWhat.textContent = n.what;
+    noticeFlavor.textContent = n.flavor;
+    noticeConsequence.textContent = n.consequence ?? "";
+    noticeConsequence.classList.toggle("hidden", n.consequence === undefined);
+    noticeOverlay.classList.remove("hidden");
+  }
+
+  function dismissNotice(): void {
+    const next = noticeQueue.shift();
+    if (next !== undefined) showNotice(next);
+    else noticeOverlay.classList.add("hidden");
+  }
+
+  function clearNotices(): void {
+    noticeQueue = [];
+    noticeOverlay.classList.add("hidden");
+  }
+
+  /** Player-affecting events interrupt: queue one modal per fresh notice. */
+  function enqueueNotices(state: GameState, fresh: GameEvent[]): void {
+    if (state.phase !== "playing") return;
+    const human = state.players[0];
+    if (!human) return;
+    const ctx: NoticeCtx = {
+      humanFactionId: human.factionId,
+      factionName,
+      factionOf: (playerId) =>
+        state.players.find((pl) => pl.id === playerId)?.factionId,
+    };
+    for (const e of fresh) {
+      const n = noticeFor(e, ctx);
+      if (n === null) continue;
+      if (noticeOverlay.classList.contains("hidden")) showNotice(n);
+      else noticeQueue.push(n);
+    }
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !noticeOverlay.classList.contains("hidden")) {
+      dismissNotice();
+    }
+  });
+
   container.append(
     menu, postmortem, status, deckPile.root, discardPile.root, hand, logPanel,
+    noticeOverlay,
   );
 
   let pendingPlayRect: DOMRect | null = null;
@@ -224,8 +303,10 @@ export function createHud(
       logEntries.replaceChildren();
       renderedEvents = 0;
       lastRenderedTurn = 0;
+      clearNotices();
     }
     const fresh = state.log.slice(renderedEvents);
+    const humanFactionId = state.players[0]?.factionId;
     for (const e of fresh) {
       if (e.turn !== lastRenderedTurn) {
         const sep = document.createElement("div");
@@ -237,6 +318,7 @@ export function createHud(
       const entry = document.createElement("div");
       entry.className = "log-entry log-new";
       entry.textContent = eventText(e);
+      entry.classList.toggle("log-you", involvesHuman(e, humanFactionId));
       logEntries.appendChild(entry);
     }
     renderedEvents = state.log.length;
@@ -431,6 +513,7 @@ export function createHud(
         const d = document.createElement("div");
         d.className = "log-entry";
         d.textContent = eventText(e);
+        d.classList.toggle("log-you", involvesHuman(e, human?.factionId));
         return d;
       }),
     );
@@ -439,6 +522,7 @@ export function createHud(
   return {
     update(state) {
       lastState = state;
+      if (state.phase !== "playing") clearNotices();
       const ended = state.phase === "victory" || state.phase === "defeat";
       menu.classList.toggle("hidden", state.phase !== "main-menu");
       status.classList.toggle(
@@ -458,7 +542,9 @@ export function createHud(
         renderPile(deckPile, human.deck.length);
         renderPile(discardPile, human.discard.length);
         renderHand(state);
-        animateEvents(renderLog(state));
+        const fresh = renderLog(state);
+        enqueueNotices(state, fresh);
+        animateEvents(fresh);
       } else if (ended) {
         renderPostmortem(state);
       }
