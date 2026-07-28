@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  SUBJUGATE_THRESHOLD, isCardPlayable, playableSet, validTargetsFor,
+  SUBJUGATE_THRESHOLD, isCardPlayable, playableSet, targetEligibilityFor,
+  validTargetsFor,
   type RulesView,
 } from "../src/playability";
 import { allianceKey, bumpMight, bumpStatus, type Relations } from "../src/relations";
@@ -32,6 +33,65 @@ function mightLead(actor: string, target: string, n: number): Relations {
   for (let i = 0; i < n; i++) rel = bumpMight(rel, actor, target);
   return rel;
 }
+
+describe("targetEligibilityFor", () => {
+  it("keeps another overlord's vassal as its own Raid candidate", () => {
+    const v = view({ overlords: new Map([["gamma", "delta"]]) });
+    expect(targetEligibilityFor(v, "beta", "raid")).toContainEqual({
+      state: "available",
+      factionId: "gamma",
+    });
+  });
+
+  it("reports every visible Subjugate blocker in stable order", () => {
+    const alliances = { [allianceKey("beta", "gamma")]: 9 };
+    const v = view({
+      overlords: new Map([["gamma", "delta"]]),
+      alliances,
+      turn: 4,
+    });
+    expect(targetEligibilityFor(v, "beta", "subjugate")).toContainEqual({
+      state: "blocked",
+      factionId: "gamma",
+      reasons: [
+        { code: "alliance", expiresTurn: 9 },
+        {
+          code: "insufficient-lead",
+          requiredLead: 2,
+          mightLead: 0,
+          statusLead: 0,
+          realmSize: 1,
+        },
+      ],
+    });
+  });
+
+  it("reports scaled Subjugate values", () => {
+    let relations: Relations = {};
+    relations = bumpMight(relations, "beta", "gamma");
+    const v = view({
+      relations,
+      incorporated: { alpha: "gamma" },
+    });
+    expect(targetEligibilityFor(v, "beta", "subjugate")).toContainEqual({
+      state: "blocked",
+      factionId: "gamma",
+      reasons: [{
+        code: "insufficient-lead",
+        requiredLead: 4,
+        mightLead: 1,
+        statusLead: 0,
+        realmSize: 2,
+      }],
+    });
+  });
+
+  it("omits faraway factions as irrelevant candidates", () => {
+    const result = targetEligibilityFor(view(), "beta", "subjugate");
+    expect(result.find((entry) => entry.factionId === "delta")?.state)
+      .toBe("irrelevant");
+  });
+});
 
 describe("validTargetsFor", () => {
   it("raid and marriage reach adjacency; raid excludes the overlord, marriage includes it", () => {

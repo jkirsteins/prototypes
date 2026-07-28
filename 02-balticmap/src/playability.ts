@@ -1,6 +1,6 @@
 import { CARDS } from "./cards";
 import {
-  allianceActive, leadsOf, realmOf,
+  allianceActive, allianceKey, leadsOf, realmOf,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
 
@@ -29,57 +29,134 @@ function reachOf(view: RulesView, factionId: string): Set<string> {
   return reach;
 }
 
+export type TargetBlockReason =
+  | { code: "alliance"; expiresTurn: number }
+  | {
+      code: "insufficient-lead";
+      requiredLead: number;
+      mightLead: number;
+      statusLead: number;
+      realmSize: number;
+    }
+  | { code: "already-vassal" }
+  | { code: "actor-subjugated" }
+  | { code: "overlord-prohibited" }
+  | { code: "incorporated" }
+  | { code: "self" }
+  | { code: "not-your-vassal" };
+
+export type TargetEligibility =
+  | { state: "irrelevant"; factionId: string }
+  | { state: "available"; factionId: string }
+  | {
+      state: "blocked";
+      factionId: string;
+      reasons: TargetBlockReason[];
+    };
+
+function allianceExpiry(
+  view: RulesView,
+  actor: string,
+  candidate: string,
+): number | undefined {
+  const expiry = view.alliances[allianceKey(actor, candidate)];
+  return expiry !== undefined && allianceActive(view, actor, candidate)
+    ? expiry
+    : undefined;
+}
+
+/** Structured eligibility for every faction, in faction order. */
+export function targetEligibilityFor(
+  view: RulesView,
+  actorFactionId: string,
+  cardId: string,
+): TargetEligibility[] {
+  if (!CARDS[cardId]?.targeted) {
+    return view.factionIds.map((factionId) => ({
+      state: "irrelevant",
+      factionId,
+    }));
+  }
+
+  const actorOverlord = view.overlords.get(actorFactionId);
+  const reach = reachOf(view, actorFactionId);
+  const hostile = cardId !== "alliance";
+
+  return view.factionIds.map((factionId): TargetEligibility => {
+    const specialOverlord =
+      (cardId === "shrewd-marriage" || cardId === "alliance") &&
+      factionId === actorOverlord;
+    const relevant = cardId === "incorporate" || reach.has(factionId) ||
+      specialOverlord;
+    if (!relevant) return { state: "irrelevant", factionId };
+
+    const reasons: TargetBlockReason[] = [];
+    if (factionId === actorFactionId) reasons.push({ code: "self" });
+    if (factionId in view.incorporated) reasons.push({ code: "incorporated" });
+    if (
+      actorOverlord !== undefined &&
+      (cardId === "subjugate" || cardId === "incorporate")
+    ) {
+      reasons.push({ code: "actor-subjugated" });
+    }
+    if (
+      factionId === actorOverlord &&
+      (cardId === "raid" || cardId === "assassinate-ruler")
+    ) {
+      reasons.push({ code: "overlord-prohibited" });
+    }
+    if (
+      cardId === "subjugate" &&
+      view.overlords.get(factionId) === actorFactionId
+    ) {
+      reasons.push({ code: "already-vassal" });
+    } else if (
+      cardId === "incorporate" &&
+      view.overlords.get(factionId) !== actorFactionId
+    ) {
+      reasons.push({ code: "not-your-vassal" });
+    }
+
+    const expiry = allianceExpiry(view, actorFactionId, factionId);
+    if (hostile && expiry !== undefined) {
+      reasons.push({ code: "alliance", expiresTurn: expiry });
+    }
+
+    if (cardId === "subjugate") {
+      const realmSize =
+        realmOf(factionId, view.overlords, view.incorporated).length;
+      const requiredLead = SUBJUGATE_THRESHOLD * realmSize;
+      const lead = leadsOf(view.relations, actorFactionId, factionId);
+      if (Math.max(lead.status, lead.might) < requiredLead) {
+        reasons.push({
+          code: "insufficient-lead",
+          requiredLead,
+          mightLead: lead.might,
+          statusLead: lead.status,
+          realmSize,
+        });
+      }
+    }
+
+    return reasons.length === 0
+      ? { state: "available", factionId }
+      : { state: "blocked", factionId, reasons };
+  });
+}
+
 /** Valid targets for a targeted card, in faction order. */
 export function validTargetsFor(
   view: RulesView,
   factionId: string,
   cardId: string,
 ): string[] {
-  const overlord = view.overlords.get(factionId);
-  const subjugated = overlord !== undefined;
-  const notAllied = (id: string) => !allianceActive(view, factionId, id);
-  if (cardId === "incorporate") {
-    if (subjugated) return [];
-    return view.factionIds.filter(
-      (id) => view.overlords.get(id) === factionId && notAllied(id),
-    );
-  }
-  if (
-    cardId === "raid" || cardId === "shrewd-marriage" ||
-    cardId === "assassinate-ruler" || cardId === "alliance"
-  ) {
-    const reach = reachOf(view, factionId);
-    const inReach = (id: string) =>
-      id !== factionId && !(id in view.incorporated) && reach.has(id);
-    if (cardId === "raid" || cardId === "assassinate-ruler") {
-      // Same reach rule as Raid: excludes the actor's overlord and any
-      // faction currently allied with the actor.
-      return view.factionIds.filter((id) => inReach(id) && id !== overlord && notAllied(id));
-    }
-    if (cardId === "alliance") {
-      // The overlord is always courtable, adjacent or not. Re-targeting an
-      // existing ally is allowed: it renews the pact (expiry overwritten,
-      // an Extended diplomacy boost applies to the renewal too).
-      return view.factionIds.filter((id) => inReach(id) || id === overlord);
-    }
-    // Shrewd marriage: the overlord is always courtable, adjacent or not;
-    // excludes existing allies (hostile-card rule applies to marriage too).
-    return view.factionIds.filter((id) => (inReach(id) || id === overlord) && notAllied(id));
-  }
-  if (cardId === "subjugate") {
-    if (subjugated) return [];
-    const reach = reachOf(view, factionId);
-    return view.factionIds.filter((id) => {
-      if (id === factionId || id in view.incorporated || !reach.has(id)) return false;
-      if (view.overlords.get(id) === factionId) return false; // already yours
-      if (!notAllied(id)) return false;
-      const l = leadsOf(view.relations, factionId, id);
-      const needed =
-        SUBJUGATE_THRESHOLD * realmOf(id, view.overlords, view.incorporated).length;
-      return Math.max(l.status, l.might) >= needed;
-    });
-  }
-  return [];
+  if (!CARDS[cardId]?.targeted) return [];
+  return targetEligibilityFor(view, factionId, cardId)
+    .filter(
+      (entry): entry is Extract<TargetEligibility, { state: "available" }> =>
+        entry.state === "available",
+    )
+    .map((entry) => entry.factionId);
 }
 
 export function isCardPlayable(
