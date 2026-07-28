@@ -80,7 +80,9 @@ Rules change (user ruling, 2026-07-28):
   realm needs a lead of 4).
 - **Reclaim scales with the overlord's realm:** playable while the
   overlord's lead on both tracks is under
-  `SUBJUGATE_THRESHOLD * realmOf(overlord).length`.
+  `SUBJUGATE_THRESHOLD * (realmOf(overlord) minus the reclaiming vassal itself).length`.
+  Excluding the vassal keeps a lone vassal at the historical flat threshold
+  of 2; only the overlord's OTHER holdings tighten the grip.
 - Targeting UI (main.ts): while a targeted card is armed, clicking an
   incorporated polygon acts on its owner, and target-valid highlighting
   covers every polygon whose effective owner is a valid target.

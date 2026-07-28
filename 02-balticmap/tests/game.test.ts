@@ -147,7 +147,9 @@ describe("card effects", () => {
     let deltaP = g.players.find((p) => p.factionId === "delta")!;
     deltaP = { ...deltaP, deck: [...deltaP.deck, "pay-tribute", "pay-tribute"] };
     g = { ...g, players: g.players.map((p) => (p.factionId === "delta" ? deltaP : p)) };
-    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    // gamma's realm (self + vassal delta) is size 2, so the scaled subjugate
+    // threshold here is 4, not the flat 2.
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 4));
     g = withHand(g, 0, ["subjugate"]);
     const after = playCard(g, 0, rng(), "gamma");
     expect(after.overlords.get("gamma")).toBe("beta");
@@ -438,7 +440,9 @@ describe("event enrichment", () => {
   it("stamps the fallen lord on released events", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["delta", "gamma"]]) };
-    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    // gamma's realm (self + vassal delta) is size 2, so the scaled subjugate
+    // threshold here is 4, not the flat 2.
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 4));
     g = withHand(g, 0, ["subjugate"]);
     const after = playCard(g, 0, rng(), "gamma");
     const rel = after.log.find((e) => e.type === "released");
