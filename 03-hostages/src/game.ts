@@ -13,7 +13,7 @@ import { applyAnswerEffect, applyLeadEffect, newMods } from "./effects";
 import type { ExchangeMods } from "./effects";
 import { canAnswer, canLead } from "./legality";
 import type { Legality } from "./legality";
-import { logCard, logNote } from "./log";
+import { logCard, logDraw, logNote, logReshuffle, logTurn } from "./log";
 import { createRng } from "./rng";
 import {
   HAND_CAP,
@@ -68,8 +68,8 @@ export function chooseOpening(state: GameState, choiceId: string): void {
   state.scene.range = choice.apply.range;
   state.turn = 1;
   for (let i = 0; i < STARTING_HAND; i += 1) {
-    drawCard(state.playerPile, state.rng);
-    drawCard(state.convictPile, state.rng);
+    draw(state, "player");
+    draw(state, "convict");
   }
   logNote(state, "system", "scene", choice.text);
   state.phase = "playerLead";
@@ -182,6 +182,7 @@ function spendPlayerAnswer(state: GameState, answerId: string, coerced: boolean)
 /** The convict acts. Returns true if the player must now answer. */
 function convictTurn(state: GameState): boolean {
   state.turn += 1;
+  logTurn(state, "convict");
 
   if (state.convict.incapacitated) {
     state.convict.vigor += INCAPACITATED_RECOVERY;
@@ -209,7 +210,7 @@ function convictTurn(state: GameState): boolean {
     return false;
   }
 
-  drawCard(state.convictPile, state.rng);
+  draw(state, "convict");
   while (state.convictPile.hand.length > HAND_CAP) {
     const discardId = chooseConvictDiscard(state);
     discardCard(state.convictPile, discardId);
@@ -234,6 +235,14 @@ function endConvictTurn(state: GameState): void {
   if (state.convict.distracted > 0) state.convict.distracted -= 1;
 }
 
+/** Every draw in the game goes through here so the event stream always shows
+ *  the reshuffle that preceded a draw, in that order. */
+function draw(state: GameState, side: Side): void {
+  const pile = side === "player" ? state.playerPile : state.convictPile;
+  const cardId = drawCard(pile, state.rng, () => logReshuffle(state, side));
+  if (cardId !== null) logDraw(state, side, cardId);
+}
+
 /**
  * Draw a card for the player, then decide whether the hand fits under the
  * cap. Every path that lands the player back at their own turn goes through
@@ -241,12 +250,13 @@ function endConvictTurn(state: GameState): void {
  * start of the player's turn, however many draws led up to it.
  */
 function drawThenDecidePlayerPhase(state: GameState): void {
-  drawCard(state.playerPile, state.rng);
+  draw(state, "player");
   state.phase = state.playerPile.hand.length > HAND_CAP ? "discardDown" : "playerLead";
 }
 
 function startPlayerTurn(state: GameState): void {
   state.turn += 1;
+  logTurn(state, "player");
   drawThenDecidePlayerPhase(state);
 }
 
@@ -290,7 +300,7 @@ export function playerLead(state: GameState, cardId: string): void {
 export function playerPass(state: GameState): void {
   assertPlayable(state);
   if (state.phase !== "playerLead") throw new Error("It is not your turn to lead");
-  drawCard(state.playerPile, state.rng);
+  draw(state, "player");
   logNote(state, "player", "pass", "You keep still and wait for an opening.");
   afterPlayerAction(state);
 }

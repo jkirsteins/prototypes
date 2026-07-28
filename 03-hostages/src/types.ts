@@ -1,3 +1,5 @@
+import type { Vitals } from "./vitals";
+
 export type Side = "player" | "convict";
 export type Target = "player" | "convict" | "wife";
 export type Range = "near" | "away";
@@ -93,8 +95,9 @@ export type Phase =
 
 export type Outcome = "victory" | "lossSecrets" | "lossVigor" | "lossWife";
 
-export type LogKind =
+export type EventKind =
   | "scene"
+  | "turn"
   | "lead"
   | "answer"
   | "decline"
@@ -105,15 +108,27 @@ export type LogKind =
   | "haulUp"
   | "pass"
   | "discard"
+  | "draw"
+  | "reshuffle"
   | "outcome";
 
-export interface LogEntry {
+/** Pile sizes and the player's hand as they stood when the event fired. The
+ *  UI draws from these rather than from final state, so a chain of events
+ *  animates through the intermediate positions instead of snapping. */
+export interface EventPiles {
+  player: { deck: number; discard: number; hand: readonly string[] };
+  convict: { deck: number; discard: number; hand: number };
+}
+
+export interface GameEvent {
   turn: number;
   side: Side | "system";
-  kind: LogKind;
+  kind: EventKind;
   cardId?: string;
   text: string;
   deltas: string[];
+  vitals: Vitals;
+  piles: EventPiles;
 }
 
 export interface Pile {
@@ -152,7 +167,7 @@ export interface GameState {
   notYetSpent: boolean;
   coercionDefused: boolean;
   pendingLead: PendingLead | null;
-  log: LogEntry[];
+  log: GameEvent[];
   outcome: Outcome | null;
   stats: RunStats;
   rng: RngState;

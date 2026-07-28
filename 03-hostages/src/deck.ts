@@ -5,11 +5,16 @@ export function newPile(deckIds: readonly string[], rng: RngState): Pile {
   return { deck: shuffle(rng, deckIds), discard: [], hand: [] };
 }
 
-export function drawCard(pile: Pile, rng: RngState): string | null {
+export function drawCard(
+  pile: Pile,
+  rng: RngState,
+  onReshuffle?: () => void,
+): string | null {
   if (pile.deck.length === 0) {
     if (pile.discard.length === 0) return null;
     pile.deck = shuffle(rng, pile.discard);
     pile.discard = [];
+    onReshuffle?.();
   }
   const card = pile.deck.shift();
   if (card === undefined) return null;
