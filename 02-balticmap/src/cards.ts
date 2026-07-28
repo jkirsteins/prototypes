@@ -48,12 +48,23 @@ export function buildDeck(): string[] {
 
 /** Randomized AI deck: each deck-buildable non-basic is included with
  *  probability 0.5 (rolled per card, in stable CARDS order so a seeded rng
- *  is deterministic), grow-crops filling the remaining slots. */
-export function buildAiDeck(rng: Rng): string[] {
+ *  is deterministic), grow-crops filling the remaining slots.
+ *
+ *  `guaranteed` card ids are always included, and are listed first so the
+ *  DECK_SIZE cap can never drop one. Every non-basic is still rolled for,
+ *  guaranteed or not, so a given seed consumes the same rng values whatever
+ *  the guarantee list is and simulation arms stay comparable. With no
+ *  guarantee list the result is the plain randomized deck. */
+export function buildAiDeck(rng: Rng, guaranteed: string[] = []): string[] {
   const nonBasics = Object.values(CARDS)
     .filter((c) => c.deckBuildable && c.maxPerDeck !== null)
     .map((c) => c.id);
-  const included = nonBasics.filter(() => rng() < 0.5).slice(0, DECK_SIZE);
+  const rolled = nonBasics.filter(() => rng() < 0.5);
+  const forced = nonBasics.filter((id) => guaranteed.includes(id));
+  const included = [
+    ...forced,
+    ...rolled.filter((id) => !forced.includes(id)),
+  ].slice(0, DECK_SIZE);
   return [
     ...included,
     ...Array.from({ length: DECK_SIZE - included.length }, () => "grow-crops"),

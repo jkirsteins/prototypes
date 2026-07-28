@@ -24,6 +24,7 @@ import {
   resetMeta, saveMeta, unlockCard, type MetaRecord, type MetaStorage,
 } from "./meta";
 import { hoverRelationLines, politicalFactionForPolygon } from "./view";
+import { factionAdjacencyOf } from "./adjacency";
 import "./style.css";
 
 const data = rawData as MapData;
@@ -45,12 +46,7 @@ const factionById = new Map(data.factions.map((f) => [f.id, f]));
 const regionById = new Map(data.regions.map((r) => [r.id, r]));
 const factionByRegion = new Map(data.regions.map((r) => [r.id, r.faction]));
 const regionByFaction = new Map(data.regions.map((r) => [r.faction, r.id]));
-const factionAdjacency = Object.fromEntries(
-  data.regions.map((r) => [
-    r.faction,
-    r.adjacent.map((id) => factionByRegion.get(id)!),
-  ]),
-);
+const factionAdjacency = factionAdjacencyOf(data);
 
 const rng = Math.random;
 const { storage, storageIsPersistent } = ((): {

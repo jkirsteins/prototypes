@@ -133,17 +133,20 @@ function makePlayer(
   };
 }
 
+/** `aiDeckFor` overrides how enemy decks are built; the app leaves it out and
+ *  gets the standard randomized deck. Simulations pass a variant builder. */
 export function pickFaction(
   state: GameState,
   factionId: string,
   rng: Rng,
+  aiDeckFor: (rng: Rng, factionId: string) => string[] = (r) => buildAiDeck(r),
 ): GameState {
   if (state.phase !== "pick-faction") return state;
   if (!state.factionIds.includes(factionId)) return state;
   const others = state.factionIds.filter((id) => id !== factionId);
   const players = [
     makePlayer(1, factionId, rng, state.humanDeck),
-    ...others.map((id, i) => makePlayer(i + 2, id, rng, buildAiDeck(rng))),
+    ...others.map((id, i) => makePlayer(i + 2, id, rng, aiDeckFor(rng, id))),
   ];
   return beginTurn({ ...state, phase: "playing", players, current: 0 }, rng);
 }
