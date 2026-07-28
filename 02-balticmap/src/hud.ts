@@ -4,12 +4,14 @@ import { flyCard } from "./animate";
 import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
 import { buildNotices, type Notice, type NoticeCtx } from "./notices";
 import { SUBJUGATE_THRESHOLD } from "./playability";
+import type { TargetExplanation } from "./target-explanations";
 
 export interface HudCallbacks {
   onNewGame(): void;
   onPlayCard(index: number): void;
   /** Optional gate for cards that need a valid target; default: playable. */
   canPlayCard?(cardId: string): boolean;
+  targetExplanations?(cardId: string): TargetExplanation[];
   onTributeTrack?(track: "status" | "might"): void;
   isDiscardMode?(): boolean;
   /** Post-mortem loot row: unlockable cards seen this run. */
@@ -372,18 +374,48 @@ export function createHud(
       name.textContent = CARDS[cardId]?.name ?? cardId;
       const tip = document.createElement("div");
       tip.className = "card-tip";
-      tip.textContent = CARDS[cardId]?.text ?? "";
+      const description = document.createElement("div");
+      description.className = "card-tip-description";
+      description.textContent = CARDS[cardId]?.text ?? "";
+      tip.appendChild(description);
+      const explanations = CARDS[cardId]?.targeted
+        ? cb.targetExplanations?.(cardId) ?? []
+        : [];
+      if (explanations.length > 0) {
+        const targets = document.createElement("section");
+        targets.className = "card-tip-targets";
+        const heading = document.createElement("div");
+        heading.className = "card-tip-targets-heading";
+        heading.textContent = "Potential targets";
+        targets.appendChild(heading);
+        for (const explanation of explanations) {
+          const candidate = document.createElement("div");
+          candidate.className = explanation.available
+            ? "card-tip-candidate available"
+            : "card-tip-candidate blocked";
+          for (const lineText of explanation.lines) {
+            const line = document.createElement("div");
+            line.className = "card-tip-candidate-line";
+            line.textContent = lineText;
+            candidate.appendChild(line);
+          }
+          targets.appendChild(candidate);
+        }
+        tip.appendChild(targets);
+      }
       card.append(name, tip);
       const offset = i - (n - 1) / 2;
       card.style.transform =
         `rotate(${offset * FAN_ANGLE_DEG}deg) ` +
         `translateY(${Math.abs(offset) * FAN_DROP_PX}px)`;
       const discardMode = canPlay && (cb.isDiscardMode?.() ?? false);
-      const playable = canPlay && (discardMode || canPlayCardCb(cardId));
-      card.disabled = !playable;
+      const cardAllowed = !canPlay || canPlayCardCb(cardId);
+      const playable = canPlay && (discardMode || cardAllowed);
+      card.disabled = !canPlay;
+      card.setAttribute("aria-disabled", String(!playable));
       card.classList.toggle("discard-hint", discardMode);
       card.classList.toggle(
-        "unplayable", canPlay && !discardMode && !canPlayCardCb(cardId),
+        "unplayable", canPlay && !discardMode && !cardAllowed,
       );
       if (playable)
         card.addEventListener("click", () => {

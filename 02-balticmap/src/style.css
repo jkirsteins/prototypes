@@ -308,6 +308,7 @@ svg.map.dragging {
 .card.unplayable {
   filter: grayscale(0.85) brightness(0.92);
   opacity: 0.65;
+  cursor: help;
 }
 
 .card.card-armed {
@@ -901,7 +902,9 @@ svg.map.dragging {
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  width: 180px;
+  width: min(260px, 70vw);
+  max-height: min(360px, 55vh);
+  overflow-y: auto;
   background: #fdf9f1;
   border: 1px solid #c9b896;
   border-radius: 6px;
@@ -912,6 +915,40 @@ svg.map.dragging {
   color: #3f3428;
   z-index: 20;
   pointer-events: none;
+}
+
+.card-tip-targets {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid #d8c9ad;
+  text-align: left;
+}
+
+.card-tip-targets-heading {
+  margin-bottom: 5px;
+  font-weight: 700;
+}
+
+.card-tip-candidate {
+  margin-top: 5px;
+  padding: 5px 6px;
+  border-left: 3px solid;
+  border-radius: 3px;
+}
+
+.card-tip-candidate.available {
+  border-color: #557a45;
+  background: #edf4e9;
+}
+
+.card-tip-candidate.blocked {
+  border-color: #9b5a4c;
+  background: #f7eae6;
+  color: #68443b;
+}
+
+.card-tip-candidate-line:first-child {
+  font-weight: 700;
 }
 
 .card:hover .card-tip,

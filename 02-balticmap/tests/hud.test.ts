@@ -8,6 +8,7 @@ import {
 import { aiTakeTurn } from "../src/ai";
 import { buildDeck, type Rng } from "../src/cards";
 import { allianceKey, bumpMight } from "../src/relations";
+import type { TargetExplanation } from "../src/target-explanations";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -21,6 +22,7 @@ const FACTIONS = ["alpha", "beta", "gamma"];
 
 function setup(opts?: {
   canPlayCard?: (cardId: string) => boolean;
+  targetExplanations?: (cardId: string) => TargetExplanation[];
   isDiscardMode?: () => boolean;
   lootInfo?: () => { id: string; isNew: boolean }[];
   onResetProgress?: () => void;
@@ -32,6 +34,9 @@ function setup(opts?: {
     onPlayCard: vi.fn(),
     onTributeTrack: vi.fn(),
     ...(opts?.canPlayCard ? { canPlayCard: opts.canPlayCard } : {}),
+    ...(opts?.targetExplanations
+      ? { targetExplanations: opts.targetExplanations }
+      : {}),
     ...(opts?.isDiscardMode ? { isDiscardMode: opts.isDiscardMode } : {}),
     ...(opts?.lootInfo ? { lootInfo: opts.lootInfo } : {}),
     ...(opts?.onResetProgress ? { onResetProgress: opts.onResetProgress } : {}),
@@ -328,10 +333,36 @@ describe("subjugation HUD", () => {
     const g = withHand(playing(), 0, ["incorporate", "grow-crops"]);
     hud.update(g);
     const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
-    expect(cards[0].disabled).toBe(true);
+    expect(cards[0].disabled).toBe(false);
+    expect(cards[0].getAttribute("aria-disabled")).toBe("true");
     expect(cards[0].classList.contains("unplayable")).toBe(true);
     expect(cards[1].disabled).toBe(false);
     cards[0].click();
+    expect(cb.onPlayCard).not.toHaveBeenCalled();
+  });
+
+  it("keeps blocked targeted cards inspectable and explains candidates", () => {
+    const { container, cb, hud } = setup({
+      canPlayCard: () => false,
+      targetExplanations: () => [{
+        factionId: "gamma",
+        available: false,
+        lines: [
+          "Gamma",
+          "Blocked by Alliance until turn 12.",
+        ],
+      }],
+    });
+    hud.update(withHand(playing(), 0, ["subjugate"]));
+
+    const card = q(container, ".card") as HTMLButtonElement;
+    expect(card.disabled).toBe(false);
+    expect(card.getAttribute("aria-disabled")).toBe("true");
+    expect(q(container, ".card-tip").textContent).toContain("Potential targets");
+    expect(q(container, ".card-tip").textContent)
+      .toContain("Blocked by Alliance until turn 12.");
+
+    card.click();
     expect(cb.onPlayCard).not.toHaveBeenCalled();
   });
 

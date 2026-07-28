@@ -12,7 +12,10 @@ import {
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
-import { playableSet, validTargetsFor, SUBJUGATE_THRESHOLD } from "./playability";
+import {
+  playableSet, validTargetsFor, targetEligibilityFor, SUBJUGATE_THRESHOLD,
+} from "./playability";
+import { explainTargetEligibility } from "./target-explanations";
 import { CARDS } from "./cards";
 import { createHud } from "./hud";
 import { createDeckScreen } from "./deck-screen";
@@ -504,6 +507,14 @@ const hud = createHud(
       const set = humanPlayableSet();
       if (set.mode === "discard") return true;
       return set.cardIndexes.some((i) => human.hand[i] === cardId);
+    },
+    targetExplanations(cardId) {
+      const human = game.players[0];
+      if (!human || !CARDS[cardId]?.targeted) return [];
+      return explainTargetEligibility(
+        targetEligibilityFor(viewOf(game), human.factionId, cardId),
+        (id) => factionById.get(id)?.name ?? id,
+      );
     },
     isDiscardMode() {
       return game.players.length > 0 && discardMode();
