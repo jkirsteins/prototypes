@@ -512,7 +512,8 @@ export function createHud(
       const size = realmOf(
         human.factionId, state.overlords, state.incorporated,
       ).length;
-      pmCause.textContent = `You rule the Baltic - ${size} of 20 lands`;
+      pmCause.textContent =
+        `You rule the Baltic - ${size} of ${state.factionIds.length} lands`;
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();
     } else {

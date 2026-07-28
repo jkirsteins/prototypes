@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, chooseDeck, pickFaction, beginTurn, playCard, discardCard,
   advance, isHumanTurn, viewOf,
-  OPENING_HAND, VICTORY_REALM_SIZE, type GameState,
+  OPENING_HAND, victoryRealmSize, type GameState,
 } from "../src/game";
 import { DECK_SIZE, buildDeck, CARDS, type Rng } from "../src/cards";
 import {
@@ -384,10 +384,15 @@ describe("card effects", () => {
     });
   });
 
-  it("victory triggers at VICTORY_REALM_SIZE realm polygons", () => {
-    expect(VICTORY_REALM_SIZE).toBe(11);
-    // 4-faction fixture: victory needs 11, unreachable here - verify the check
-    // by lowering the bar structurally: subjugating gamma makes realm 2 < 11.
+  it("victory needs a 55 percent majority of the roster", () => {
+    expect(victoryRealmSize(20)).toBe(11); // the old hardcoded value
+    expect(victoryRealmSize(26)).toBe(15); // the Prussian roster
+    expect(victoryRealmSize(4)).toBe(3);
+  });
+
+  it("victory triggers when the realm reaches the roster threshold", () => {
+    // 4-faction fixture: victory needs 3, unreachable here - verify the check
+    // by lowering the bar structurally: subjugating gamma makes realm 2 < 3.
     let g = playingState(LINE_ADJ);
     g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
     g = withHand(g, 0, ["subjugate"]);

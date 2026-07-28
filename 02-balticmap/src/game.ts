@@ -56,7 +56,12 @@ export interface GameState {
 }
 
 export const OPENING_HAND = 3;
-export const VICTORY_REALM_SIZE = 11;
+
+/** Lands needed to win: a 55 percent majority of the roster, rounded up.
+ *  Derived rather than hardcoded so it cannot rot when the map changes. */
+export function victoryRealmSize(factionCount: number): number {
+  return Math.ceil(0.55 * factionCount);
+}
 
 export function viewOf(state: GameState): RulesView {
   return {
@@ -381,7 +386,7 @@ export function playCard(
     });
   } else if (
     realmOf(human.factionId, overlords, incorporated).length >=
-    VICTORY_REALM_SIZE
+    victoryRealmSize(state.factionIds.length)
   ) {
     phase = "victory";
     events.push({ turn: state.turn, playerId: p.id, type: "victory" });
