@@ -77,7 +77,7 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
             flavor: "Riders came at dawn; granaries burn. Word of your weakness spreads.",
           }
         : {
-            title: "Bound by Marriage",
+            title: "A Shrewd Marriage",
             what: `${actor} played Shrewd marriage against ${ctx.factionName(e.targetFactionId)}.`,
             details,
             flavor: "A wedding feast beyond your borders. Their standing grows at your expense.",

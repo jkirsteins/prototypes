@@ -218,7 +218,7 @@ describe("noticeFor", () => {
       ev({ type: "play", cardId: "shrewd-marriage", targetFactionId: "livs" }),
       ctx,
     )!;
-    expect(n.title).toBe("Bound by Marriage");
+    expect(n.title).toBe("A Shrewd Marriage");
     expect(n.details).toEqual([
       "Standing vs Jersikans: Might - even; Status - they lead by 1.",
     ]);

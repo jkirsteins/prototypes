@@ -127,7 +127,7 @@ with a predicate; all other plays stay silent through the same predicate):
   their dedicated events already modal (or end the game).
 - raid: title "Raided"; what "{actor} played Raid against {human}."; flavor
   "Riders came at dawn; granaries burn. Word of your weakness spreads."
-- shrewd-marriage: title "Bound by Marriage"; what "{actor} played Shrewd
+- shrewd-marriage: title "A Shrewd Marriage"; what "{actor} played Shrewd
   marriage against {human}."; flavor "A wedding feast beyond your borders.
   Their standing grows at your expense."
 - details: "Standing vs {actor}: ..." (post-bump leads), plus a warning line
