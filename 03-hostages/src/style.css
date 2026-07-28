@@ -182,3 +182,79 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 @keyframes pile-pulse {
   50% { transform: scale(1.14); }
 }
+
+/* --- hand -------------------------------------------------------------- */
+
+.hand {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 0.25rem;
+  min-height: 8rem;
+}
+
+.hand .card {
+  position: relative;
+  width: 7rem;
+  height: 7.5rem;
+  padding: 0.4rem 0.45rem;
+  text-align: left;
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  transform-origin: bottom center;
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+
+.hand .card:hover:not(:disabled),
+.hand .card:focus-visible {
+  border-color: var(--ink);
+  transform: translateY(-0.7rem) rotate(0deg) !important;
+  z-index: 5;
+}
+
+.hand .card.unplayable {
+  opacity: 0.38;
+  filter: grayscale(1);
+}
+
+.card-name { display: block; font-size: 0.75rem; line-height: 1.25; }
+.card-summary {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--dim);
+}
+
+.card-detail {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--edge);
+  background: var(--bg);
+  z-index: 10;
+}
+
+.hand .card:hover .card-detail,
+.hand .card:focus-visible .card-detail { display: block; }
+
+.card-rules { display: block; font-size: 0.75rem; }
+.card-requires { display: block; margin-top: 0.3rem; font-size: 0.7rem; color: var(--dim); }
+.card-flavor {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  font-style: italic;
+  color: var(--dim);
+}
+.card-reason { display: block; margin-top: 0.3rem; font-size: 0.7rem; color: var(--warn); }
+
+.hand-backs { min-height: 3rem; gap: 0.15rem; }
+.hand-backs .card-back {
+  position: static;
+  width: 1.6rem;
+  height: 2.4rem;
+}
