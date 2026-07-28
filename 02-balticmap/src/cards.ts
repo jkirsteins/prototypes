@@ -13,7 +13,7 @@ export interface CardDef {
 }
 
 export const CARDS: Record<string, CardDef> = {
-  "grow-crops": { id: "grow-crops", name: "Grow crops", targeted: false, maxPerDeck: null, deckBuildable: true, forced: false, text: "No effect - a quiet season. Fills out the deck." },
+  "grow-crops": { id: "grow-crops", name: "Grow potatoes", targeted: false, maxPerDeck: null, deckBuildable: true, forced: false, text: "No effect - a quiet season. Fills out the deck." },
   "raid": { id: "raid", name: "Raid", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Might over one faction in reach of your realm." },
   "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
   "fortify": { id: "fortify", name: "Fortify", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Might over every other living faction at once." },

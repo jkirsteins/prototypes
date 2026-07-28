@@ -65,7 +65,7 @@ export function createDeckScreen(
 
   function renderCounter(pickCount: number): void {
     counter.textContent =
-      `${pickCount} picked + ${DECK_SIZE - pickCount} Grow Crops = ${DECK_SIZE}`;
+      `${pickCount} picked + ${DECK_SIZE - pickCount} Grow potatoes = ${DECK_SIZE}`;
   }
 
   return {
@@ -121,13 +121,13 @@ export function createDeckScreen(
             else if (selected.size < DECK_SIZE) selected.add(id);
             card.classList.toggle("selected", selected.has(id));
             renderCounter(selected.size);
-            filler.textContent = `Grow crops x${DECK_SIZE - selected.size}`;
+            filler.textContent = `Grow potatoes x${DECK_SIZE - selected.size}`;
           });
           return card;
         }),
         filler,
       );
-      filler.textContent = `Grow crops x${DECK_SIZE - selected.size}`;
+      filler.textContent = `Grow potatoes x${DECK_SIZE - selected.size}`;
       renderCounter(selected.size);
     },
   };

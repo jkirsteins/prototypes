@@ -102,7 +102,7 @@ export function mergeSeen(meta: MetaRecord, seen: string[]): MetaRecord {
   return { ...meta, seenPool: [...meta.seenPool, ...fresh] };
 }
 
-/** The human deck: selected known non-basics (max 1 each) plus Grow Crops
+/** The human deck: selected known non-basics (max 1 each) plus Grow potatoes
  *  filler to exactly DECK_SIZE. Invalid selections are dropped, not thrown. */
 export function buildPlayerDeck(
   knownCards: string[],

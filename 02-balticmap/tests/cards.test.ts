@@ -17,7 +17,7 @@ describe("cards", () => {
     ) =>
       expect(CARDS[id]).toEqual({ id, name, targeted, maxPerDeck, deckBuildable, forced, text });
     expectProps(
-      "grow-crops", "Grow crops", false, null, true, false,
+      "grow-crops", "Grow potatoes", false, null, true, false,
       "No effect - a quiet season. Fills out the deck.",
     );
     expectProps(

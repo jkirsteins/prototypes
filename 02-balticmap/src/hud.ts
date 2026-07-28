@@ -106,7 +106,7 @@ export function createHud(
   menu.className = "menu-overlay";
   const title = document.createElement("h1");
   title.className = "menu-title";
-  title.textContent = "Baltic Lands";
+  title.textContent = "Baltic Tribes";
   const newGameBtn = document.createElement("button");
   newGameBtn.className = "menu-new-game";
   newGameBtn.textContent = "New game";

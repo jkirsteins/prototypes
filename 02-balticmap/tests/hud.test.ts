@@ -81,7 +81,7 @@ describe("createHud", () => {
     expect(q(container, ".pile-discard .pile-label").textContent).toBe("Discard");
     const cards = container.querySelectorAll(".card");
     expect(cards).toHaveLength(1);
-    expect(cards[0].querySelector(".card-name")!.textContent).toBe("Grow crops");
+    expect(cards[0].querySelector(".card-name")!.textContent).toBe("Grow potatoes");
     (cards[0] as HTMLElement).click();
     expect(cb.onPlayCard).toHaveBeenCalledWith(0);
   });
@@ -184,7 +184,7 @@ describe("activity log", () => {
       (el) => el.textContent,
     );
     expect(texts[0]).toMatch(/^You drew /);
-    expect(texts[1]).toBe("You played Grow crops");
+    expect(texts[1]).toBe("You played Grow potatoes");
     expect(texts[2]).toBe("Player 2 drew a card");
     expect(texts[3]).toMatch(/^Player 2 played /);
   });
@@ -268,7 +268,7 @@ describe("card animations", () => {
     const flying = container.querySelectorAll(".flying-card");
     expect(flying).toHaveLength(1);
     expect(flying[0].classList.contains("back")).toBe(false);
-    expect(flying[0].textContent).toBe("Grow crops");
+    expect(flying[0].textContent).toBe("Grow potatoes");
     vi.runAllTimers();
     expect(container.querySelectorAll(".flying-card")).toHaveLength(0);
     vi.useRealTimers();

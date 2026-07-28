@@ -23,7 +23,7 @@ describe("createDeckScreen", () => {
     expect(q(container, ".ds-unlock-section").classList.contains("hidden")).toBe(true);
     expect(container.querySelectorAll(".ds-deck .ds-card")).toHaveLength(1); // filler only
     expect(q(container, ".ds-counter").textContent).toBe(
-      "0 picked + 10 Grow Crops = 10",
+      "0 picked + 10 Grow potatoes = 10",
     );
     q(container, ".ds-start").click();
     expect(cb.onStart).toHaveBeenCalledWith([]);
@@ -62,12 +62,12 @@ describe("createDeckScreen", () => {
     ]);
     expect(toggles.every((c) => c.classList.contains("selected"))).toBe(true);
     expect(q(container, ".ds-counter").textContent).toBe(
-      "2 picked + 8 Grow Crops = 10",
+      "2 picked + 8 Grow potatoes = 10",
     );
     toggles[1].click(); // deselect fortify
     expect(toggles[1].classList.contains("selected")).toBe(false);
     expect(q(container, ".ds-counter").textContent).toBe(
-      "1 picked + 9 Grow Crops = 10",
+      "1 picked + 9 Grow potatoes = 10",
     );
     q(container, ".ds-start").click();
     expect(cb.onStart).toHaveBeenCalledWith(["raid"]);
