@@ -147,3 +147,38 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   margin-top: 0.15rem;
   min-height: 1em;
 }
+
+/* --- piles ------------------------------------------------------------- */
+
+.pile { width: 3.4rem; text-align: center; }
+
+.pile-stack {
+  position: relative;
+  width: 3rem;
+  height: 4.2rem;
+  margin: 0 auto;
+}
+
+.pile-stack.empty {
+  border: 1px dashed var(--edge);
+  border-radius: 3px;
+}
+
+.card-back {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(45deg, rgba(216, 212, 204, 0.08) 0 3px, transparent 3px 6px),
+    var(--panel);
+}
+
+.pile-count { font-size: 0.75rem; margin-top: 0.2rem; }
+.pile-label { font-size: 0.65rem; color: var(--dim); letter-spacing: 0.1em; }
+
+.pile.pulse .pile-stack { animation: pile-pulse 260ms ease; }
+
+@keyframes pile-pulse {
+  50% { transform: scale(1.14); }
+}
