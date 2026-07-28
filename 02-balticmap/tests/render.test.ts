@@ -85,9 +85,9 @@ describe("renderMap", () => {
     );
   });
 
-  it("exposes the vassal overlay group and stripe pattern", () => {
+  it("exposes the vassal overlay group and one stripe pattern per faction", () => {
     const container = document.createElement("div");
-    const { svg, vassalOverlayGroup, vassalStripe } = renderMap(data, container);
+    const { svg, vassalOverlayGroup } = renderMap(data, container);
     expect(svg.contains(vassalOverlayGroup)).toBe(true);
     expect(vassalOverlayGroup.classList.contains("vassal-overlay")).toBe(true);
 
@@ -95,10 +95,36 @@ describe("renderMap", () => {
     expect(groups.indexOf("regions")).toBeLessThan(groups.indexOf("vassal-overlay"));
     expect(groups.indexOf("vassal-overlay")).toBeLessThan(groups.indexOf("rivers"));
 
-    const pattern = svg.querySelector("defs pattern#vassal-stripes");
-    expect(pattern).not.toBeNull();
-    expect(vassalStripe.tagName.toLowerCase()).toBe("rect");
-    expect(pattern!.contains(vassalStripe)).toBe(true);
+    const patterns = svg.querySelectorAll("defs pattern[id^='vassal-stripes-']");
+    expect(patterns.length).toBe(data.factions.length);
+    for (const f of data.factions) {
+      const pattern = svg.querySelector(`defs pattern#vassal-stripes-${f.id}`);
+      expect(pattern).not.toBeNull();
+      const rect = pattern!.querySelector("rect")!;
+      expect(rect.getAttribute("fill")).toBe(f.color);
+    }
+  });
+
+  it("tags people labels with data-people and collects them in peopleLabels", () => {
+    const container = document.createElement("div");
+    const { svg, peopleLabels } = renderMap(data, container);
+    const peopleLabelKinds = data.labels.filter(
+      (l) => l.kind === "people" || l.kind === "people-minor",
+    );
+    for (const l of peopleLabelKinds) {
+      const people = data.peoples.find((p) => p.name.toUpperCase() === l.text);
+      expect(people).toBeDefined();
+    }
+    // Every people should have at least one matching label (all nine match today).
+    for (const p of data.peoples) {
+      expect(peopleLabels.has(p.id)).toBe(true);
+      const labels = peopleLabels.get(p.id)!;
+      expect(labels.length).toBeGreaterThan(0);
+      for (const label of labels) {
+        expect(label.getAttribute("data-people")).toBe(p.id);
+        expect(svg.contains(label)).toBe(true);
+      }
+    }
   });
 
   it("renders no attribution line (internal prototype)", () => {

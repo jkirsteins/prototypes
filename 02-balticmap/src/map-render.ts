@@ -6,7 +6,7 @@ export interface RenderResult {
   settlementDots: Map<string, SVGCircleElement>;
   realmOutlineGroup: SVGGElement;
   vassalOverlayGroup: SVGGElement;
-  vassalStripe: SVGElement;
+  peopleLabels: Map<string, SVGTextElement[]>;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -45,19 +45,21 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   svg.setAttribute("preserveAspectRatio", "xMidYMid slice");
 
   const defs = el("defs");
-  const pattern = el("pattern");
-  pattern.setAttribute("id", "vassal-stripes");
-  pattern.setAttribute("patternUnits", "userSpaceOnUse");
-  pattern.setAttribute("width", "8");
-  pattern.setAttribute("height", "8");
-  pattern.setAttribute("patternTransform", "rotate(45)");
-  const stripe = el("rect");
-  stripe.setAttribute("width", "4");
-  stripe.setAttribute("height", "8");
-  stripe.setAttribute("fill", "#000000");
-  stripe.setAttribute("opacity", "0.45");
-  pattern.appendChild(stripe);
-  defs.appendChild(pattern);
+  for (const f of data.factions) {
+    const pattern = el("pattern");
+    pattern.setAttribute("id", `vassal-stripes-${f.id}`);
+    pattern.setAttribute("patternUnits", "userSpaceOnUse");
+    pattern.setAttribute("width", "8");
+    pattern.setAttribute("height", "8");
+    pattern.setAttribute("patternTransform", "rotate(45)");
+    const stripe = el("rect");
+    stripe.setAttribute("width", "4");
+    stripe.setAttribute("height", "8");
+    stripe.setAttribute("fill", f.color);
+    stripe.setAttribute("opacity", "0.45");
+    pattern.appendChild(stripe);
+    defs.appendChild(pattern);
+  }
   svg.appendChild(defs);
 
   const sea = el("rect");
@@ -137,17 +139,29 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
 
   const labelsGroup = el("g");
   labelsGroup.classList.add("labels");
+  const peopleLabels = new Map<string, SVGTextElement[]>();
   for (const l of data.labels) {
-    const t = el("text");
+    const t = el("text") as SVGTextElement;
     t.classList.add(`label-${l.kind}`);
     t.setAttribute("x", String(l.x));
     t.setAttribute("y", String(l.y));
     t.textContent = l.text;
+    if (l.kind === "people" || l.kind === "people-minor") {
+      const people = data.peoples.find((p) => p.name.toUpperCase() === l.text);
+      if (people) {
+        t.setAttribute("data-people", people.id);
+        const list = peopleLabels.get(people.id) ?? [];
+        list.push(t);
+        peopleLabels.set(people.id, list);
+      }
+    }
     labelsGroup.appendChild(t);
   }
   svg.appendChild(labelsGroup);
 
   container.appendChild(svg);
 
-  return { svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, vassalStripe: stripe };
+  return {
+    svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, peopleLabels,
+  };
 }

@@ -30,7 +30,7 @@ const data = rawData as MapData;
 const app = document.getElementById("app")!;
 
 const {
-  svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, vassalStripe,
+  svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, peopleLabels,
 } = renderMap(data, app);
 // map-render.ts doesn't expose a badge group; appended here, last in the SVG
 // (after realm-outline/vassal-overlay, on top of the whole map stack).
@@ -128,10 +128,8 @@ const panel = createPanel(
   data.settlements, relationsInfo,
 );
 
-function effectiveFaction(regionFaction: string): string {
-  const owner = game.incorporated[regionFaction];
-  if (owner !== undefined) return game.overlords.get(owner) ?? owner;
-  return game.overlords.get(regionFaction) ?? regionFaction;
+function effectiveFaction(f: string): string {
+  return game.incorporated[f] ?? f;
 }
 
 function applyOwnership(): void {
@@ -149,11 +147,7 @@ function applyOwnership(): void {
   );
   for (const [id, el] of regionPaths) {
     const region = regionById.get(id)!;
-    const isSubjugatedHuman =
-      inPlay() && region.faction === human?.factionId && humanOverlord !== undefined;
-    const effective = isSubjugatedHuman
-      ? human!.factionId
-      : inPlay() ? effectiveFaction(region.faction) : region.faction;
+    const effective = inPlay() ? effectiveFaction(region.faction) : region.faction;
     el.setAttribute("fill", factionById.get(effective)!.color);
     const owned = humanRealm.has(region.faction);
     el.classList.toggle(
@@ -172,25 +166,40 @@ function applyOwnership(): void {
     applyThreat(el, region.faction, human?.factionId, humanRealm);
   }
   renderRealmHalo(human?.factionId, humanRealm);
-  renderVassalOverlay(human, humanOverlord);
+  renderVassalOverlay();
+  applyPeopleLabels();
 }
 
-function renderVassalOverlay(
-  human: GameState["players"][number] | undefined,
-  humanOverlord: string | undefined,
-): void {
+/** Every vassal's whole realm (itself plus lands it has incorporated) gets a
+ *  stripe overlay in its overlord's color - not just the human's realm. */
+function renderVassalOverlay(): void {
   vassalOverlayGroup.replaceChildren();
-  if (!inPlay() || !human || humanOverlord === undefined) return;
-  vassalStripe.setAttribute("fill", factionById.get(humanOverlord)!.color);
-  for (const factionId of realmOf(human.factionId, game.overlords, game.incorporated)) {
-    const regionId = regionByFaction.get(factionId);
-    const region = regionId !== undefined ? regionById.get(regionId) : undefined;
-    if (!region) continue;
-    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    p.setAttribute("d", region.path);
-    p.setAttribute("fill", "url(#vassal-stripes)");
-    p.setAttribute("pointer-events", "none");
-    vassalOverlayGroup.appendChild(p);
+  if (!inPlay()) return;
+  for (const [vassal, lord] of game.overlords) {
+    for (const factionId of realmOf(vassal, game.overlords, game.incorporated)) {
+      const regionId = regionByFaction.get(factionId);
+      const region = regionId !== undefined ? regionById.get(regionId) : undefined;
+      if (!region) continue;
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", region.path);
+      p.setAttribute("fill", `url(#vassal-stripes-${lord})`);
+      p.setAttribute("pointer-events", "none");
+      vassalOverlayGroup.appendChild(p);
+    }
+  }
+}
+
+/** A people's label hides once every faction of that ethnicity is
+ *  incorporated - the polity is gone and its fill has flipped to its
+ *  owner's color, so the ethnonym stops floating over another realm. */
+function applyPeopleLabels(): void {
+  for (const [peopleId, labels] of peopleLabels) {
+    const hidden =
+      inPlay() &&
+      data.factions
+        .filter((f) => f.ethnicity === peopleId)
+        .every((f) => f.id in game.incorporated);
+    for (const label of labels) label.classList.toggle("hidden", hidden);
   }
 }
 
