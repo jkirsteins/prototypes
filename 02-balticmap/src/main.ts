@@ -30,7 +30,8 @@ const data = rawData as MapData;
 const app = document.getElementById("app")!;
 
 const {
-  svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, peopleLabels,
+  svg, regionPaths, settlementDots, realmOutlineGroup, realmHoverGroup,
+  vassalOverlayGroup, peopleLabels,
 } = renderMap(data, app);
 // map-render.ts doesn't expose a badge group; appended here, last in the SVG
 // (after realm-outline/vassal-overlay, on top of the whole map stack).
@@ -396,6 +397,26 @@ function applyRealmHover(region: Region | null): void {
         game.overlords.has(region.faction) &&
         !(region.faction in game.incorporated),
     );
+  }
+  renderRealmHoverHalo(members);
+}
+
+/** One outline around the hovered realm: the paths sit under the region
+ *  fills, so only the realm's outer edge survives. */
+function renderRealmHoverHalo(members: Set<string>): void {
+  realmHoverGroup.replaceChildren();
+  const human = game.players[0];
+  realmHoverGroup.classList.toggle(
+    "own", human !== undefined && members.has(human.factionId),
+  );
+  for (const factionId of members) {
+    const regionId = regionByFaction.get(factionId);
+    const region = regionId !== undefined ? regionById.get(regionId) : undefined;
+    if (!region) continue;
+    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", region.path);
+    p.setAttribute("pointer-events", "none");
+    realmHoverGroup.appendChild(p);
   }
 }
 

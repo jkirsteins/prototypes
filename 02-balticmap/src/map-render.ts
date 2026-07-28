@@ -5,6 +5,7 @@ export interface RenderResult {
   regionPaths: Map<string, SVGPathElement>;
   settlementDots: Map<string, SVGCircleElement>;
   realmOutlineGroup: SVGGElement;
+  realmHoverGroup: SVGGElement;
   vassalOverlayGroup: SVGGElement;
   peopleLabels: Map<string, SVGTextElement[]>;
 }
@@ -84,6 +85,12 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   realmOutlineGroup.classList.add("realm-outline");
   svg.appendChild(realmOutlineGroup);
 
+  // under the regions: a thick stroke here reads as one outline around a
+  // whole realm, because the fills above cover every shared inner edge
+  const realmHoverGroup = el("g") as SVGGElement;
+  realmHoverGroup.classList.add("realm-hover-halo");
+  svg.appendChild(realmHoverGroup);
+
   const regionsGroup = el("g");
   regionsGroup.classList.add("regions");
   const regionPaths = new Map<string, SVGPathElement>();
@@ -162,6 +169,7 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   container.appendChild(svg);
 
   return {
-    svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, peopleLabels,
+    svg, regionPaths, settlementDots, realmOutlineGroup, realmHoverGroup,
+    vassalOverlayGroup, peopleLabels,
   };
 }

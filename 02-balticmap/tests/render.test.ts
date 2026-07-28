@@ -95,6 +95,10 @@ describe("renderMap", () => {
     expect(groups.indexOf("regions")).toBeLessThan(groups.indexOf("vassal-overlay"));
     expect(groups.indexOf("vassal-overlay")).toBeLessThan(groups.indexOf("rivers"));
 
+    // the hover halo hides its inner edges behind the region fills
+    expect(groups).toContain("realm-hover-halo");
+    expect(groups.indexOf("realm-hover-halo")).toBeLessThan(groups.indexOf("regions"));
+
     const patterns = svg.querySelectorAll("defs pattern[id^='vassal-stripes-']");
     expect(patterns.length).toBe(data.factions.length);
     for (const f of data.factions) {

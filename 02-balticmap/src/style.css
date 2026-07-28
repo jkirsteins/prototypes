@@ -979,3 +979,17 @@ svg.map.dragging {
   stroke-dasharray: 6 3;
   stroke-width: 2.2;
 }
+
+.realm-hover-halo path {
+  fill: none;
+  stroke: #2b2318;
+  stroke-width: 9;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* your own realm gets the gold treatment - "this is mine" at a glance */
+.realm-hover-halo.own path {
+  stroke: #d4af37;
+  stroke-width: 11;
+}

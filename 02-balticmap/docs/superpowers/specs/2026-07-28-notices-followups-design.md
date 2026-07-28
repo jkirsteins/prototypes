@@ -203,6 +203,14 @@ unreadable. On hovering any polygon during play:
   `.realm-hover` / `.vassal-hover`. Cleared when the hover leaves or the
   phase is not in play. e2e-verified (main.ts convention).
 
+Amendment (user feedback, 2026-07-28): per-polygon borders read too close to
+the normal outline. The hovered realm additionally gets ONE outline around
+its outer edge: map-render.ts adds a `realm-hover-halo` group BELOW the
+regions layer, main.ts fills it with the realm members' paths, and the
+region fills above cover every shared inner edge - so a thick stroke there
+renders as a single union outline without any polygon clipping. Your own
+realm strokes gold (#d4af37, 11), foreign realms dark (#2b2318, 9).
+
 ## 8. Vassal-loss penalty (user ruling, 2026-07-28)
 
 When a vassal is torn away from its overlord - by a rival's Subjugate
