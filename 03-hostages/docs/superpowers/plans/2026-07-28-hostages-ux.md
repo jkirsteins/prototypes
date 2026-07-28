@@ -1564,7 +1564,6 @@ describe("beat driver", () => {
   it("holds the chain open until the notice is dismissed, then settles", () => {
     const r = recorder();
     const beats = createBeats(r.hooks);
-    const events: GameEvent[] = [];
     const state = started();
     beats.run(state);
     vi.advanceTimersByTime(10000);
@@ -1582,7 +1581,6 @@ describe("beat driver", () => {
       side: "player",
       vitals: { ...base.vitals, playerVigor: base.vitals.playerVigor - 2 },
     });
-    void events;
 
     beats.run(state);
     vi.advanceTimersByTime(10000);
@@ -3447,13 +3445,25 @@ describe("table", () => {
     expect(calls).toEqual(["answer:null"]);
   });
 
-  it("makes held secrets pickable only while he is pressing you", () => {
+  it("makes held secrets inert on your own turn", () => {
     const state = started();
     const { table } = settled(state);
     const held = table.root.querySelector<HTMLButtonElement>(
       `[data-secrets='held'] .secret[data-card-id='${SECRETS[0]}']`,
     );
     expect(held?.disabled).toBe(true);
+  });
+
+  it("keeps secrets out of the fan so they only live in their own row", () => {
+    const state = started();
+    state.playerPile.hand = ["stallHim"];
+    state.convictPile.hand = ["whereIsIt"];
+    playerLead(state, "stallHim");
+    const { table } = settled(state);
+    // A secret is a legal answer to his demand, but it belongs to the row.
+    for (const secretId of SECRETS) {
+      expect(table.root.querySelector(`.hand .card[data-card-id='${secretId}']`)).toBeNull();
+    }
   });
 
   it("fires surrender for a held secret during forced surrender", () => {
@@ -3677,13 +3687,38 @@ export function createTable(actions: Actions): Table {
     leadSlot.append(face);
   }
 
+  /** Secrets live in their own row for the whole run, so they are filtered
+   *  out of the fan even when they are legal answers. Showing a card in two
+   *  places at once would make the row look like a duplicate rather than the
+   *  place the secret actually lives. */
+  const notSecret = (option: HandOption): boolean =>
+    !cardById(option.cardId).tags.includes("secret");
+
   function handOptions(state: GameState): HandOption[] {
-    if (state.phase === "playerLead") return legalPlayerLeads(state);
-    if (state.phase === "playerAnswer") return legalPlayerAnswers(state);
+    if (state.phase === "playerLead") return legalPlayerLeads(state).filter(notSecret);
+    if (state.phase === "playerAnswer") return legalPlayerAnswers(state).filter(notSecret);
     if (state.phase === "discardDown") {
       return legalPlayerDiscards(state).map((cardId) => ({ cardId, legality: { ok: true } }));
     }
     return [];
+  }
+
+  /** The secrets row is where a secret is ever played from: as an answer
+   *  while he is pressing you, or as the forced surrender when your
+   *  willpower is gone. It is inert the rest of the time. */
+  function secretHandler(state: GameState, locked: boolean): ((id: string) => void) | null {
+    if (locked) return null;
+    if (state.phase === "forcedSurrender") return (id) => actions.surrender(id);
+    if (state.phase !== "playerAnswer") return null;
+    const legal = new Set(
+      legalPlayerAnswers(state)
+        .filter((o) => o.legality.ok && !notSecret(o))
+        .map((o) => o.cardId),
+    );
+    if (legal.size === 0) return null;
+    return (id) => {
+      if (legal.has(id)) actions.answer(id);
+    };
   }
 
   function pickFor(state: GameState): (cardId: string) => void {
@@ -3716,10 +3751,7 @@ export function createTable(actions: Actions): Table {
     renderChoices(state, locked);
     renderCenter(state);
     taken.update(state.secretsRemaining);
-    secrets.update(
-      state.secretsRemaining,
-      !locked && state.phase === "forcedSurrender" ? (id) => actions.surrender(id) : null,
-    );
+    secrets.update(state.secretsRemaining, secretHandler(state, locked));
   }
 
   let current: GameState | null = null;
