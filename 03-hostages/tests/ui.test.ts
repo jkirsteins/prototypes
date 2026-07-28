@@ -4,9 +4,16 @@ import { renderEvent } from "../src/ui/event";
 import { renderEnding } from "../src/ui/ending";
 import { createTable, bannerText } from "../src/ui/table";
 import { chooseOpening, newRun, playerAnswer, playerLead } from "../src/game";
-import { SECRETS } from "../src/content/cards";
+import { SECRETS, cardById } from "../src/content/cards";
 import type { Actions } from "../src/ui/render";
-import type { GameState } from "../src/types";
+import type { GameState, PendingLead } from "../src/types";
+
+/** happy-dom performs no layout, so a rect only carries information if the
+ *  test puts it there. */
+function stubRect(x: number, y: number): DOMRect {
+  const rect = { x, y, width: 112, height: 120, top: y, left: x, right: x + 112, bottom: y + 120 };
+  return { ...rect, toJSON: () => rect } as DOMRect;
+}
 
 let root: HTMLElement;
 const calls: string[] = [];
@@ -224,6 +231,69 @@ describe("table", () => {
     expect(
       table.root.querySelector<HTMLButtonElement>(".card[data-card-id='stallHim']")?.disabled,
     ).toBe(false);
+  });
+
+  // A chain must not put its own end result on screen before the beats have
+  // played it. The center slot is where that shows worst: his answering lead
+  // would sit face-up in [data-slot='lead'] while the player's own card was
+  // still flying into that same slot.
+  it("holds the center slot, the banner and the fan until the chain settles", () => {
+    const state = started();
+    state.playerPile.hand = ["stallHim"];
+    state.convictPile.hand = ["whereIsIt"];
+    const table = createTable(actions);
+    root.append(table.root);
+    table.present(state, () => {});
+    vi.advanceTimersByTime(20000);
+
+    const slot = table.root.querySelector("[data-slot='lead']") as HTMLElement;
+    const banner = table.root.querySelector("[data-banner]") as HTMLElement;
+    expect(slot.textContent).toBe("");
+    expect(banner.textContent).toContain("YOUR TURN");
+
+    playerLead(state, "stallHim");
+    expect(state.phase).toBe("playerAnswer");
+    table.present(state, () => {});
+
+    // Mid-chain: still the position you acted from, with input taken away.
+    expect(slot.textContent).toBe("");
+    expect(banner.textContent).toContain("YOUR TURN");
+    const cards = [...table.root.querySelectorAll<HTMLButtonElement>(".hand .card")];
+    expect(cards.length).toBeGreaterThan(0);
+    expect(cards.every((c) => c.disabled)).toBe(true);
+    expect(table.root.querySelector("#pass")).toBeNull();
+
+    vi.advanceTimersByTime(20000);
+    expect(slot.querySelector(".card-name")?.textContent).toBe(
+      cardById((state.pendingLead as PendingLead).cardId).name,
+    );
+    expect(banner.textContent).toContain("HE IS WAITING");
+  });
+
+  // Only reachable because the fan is not rebuilt when the chain starts: the
+  // led card is still in it, so its flight begins where the player saw it
+  // rather than at the fan container's corner.
+  it("flies your lead out of that card's own place in the fan", () => {
+    const state = started();
+    state.playerPile.hand = ["stallHim"];
+    const table = createTable(actions);
+    root.append(table.root);
+    table.present(state, () => {});
+    vi.advanceTimersByTime(20000);
+
+    // happy-dom lays nothing out, so every rect is zero unless it is stood
+    // in for. Only the led card gets a distinctive one: if animate() fell
+    // back to the container the flight would start at 0,0 instead.
+    const card = table.root.querySelector(".card[data-card-id='stallHim']") as HTMLElement;
+    card.getBoundingClientRect = () => stubRect(500, 600);
+
+    playerLead(state, "stallHim");
+    table.present(state, () => {});
+    const flying = table.root.querySelector(".flying-card") as HTMLElement;
+    expect(flying).not.toBeNull();
+    expect(flying.textContent).toBe(cardById("stallHim").name);
+    expect(flying.style.left).toBe("500px");
+    expect(flying.style.top).toBe("600px");
   });
 
   // His lead is emitted at the END of one input slice and only resolves in

@@ -71,15 +71,36 @@ export function createTable(actions: Actions): Table {
   answerSlot.dataset.slot = "answer";
   center.append(leadSlot, answerSlot);
 
+  // Your piles sit beside your plate, the way his sit beside his in the top
+  // row. That leaves the hand row holding nothing but the fan, and the
+  // choices a row of their own below it.
+  //
+  // The fan is the widest thing on the board and it changes width constantly:
+  // 7 cards at 112px plus gaps is 808px against a board of 878px (the 72rem
+  // shell less the 16rem drawer and its gap). Seven is the real ceiling -
+  // HAND_CAP is 5, but playerPass draws without a cap check, so a turn can
+  // start at 6 and draw to 7 before discardDown. Sharing the row with the
+  // two piles (109px) and a button as wide as "Wait and watch (draw a card)"
+  // (278px) overran that badly enough to wrap, which reflowed the surface
+  // the player is aiming at every time their hand size changed.
   const youRow = el("div", "table-row table-you");
-  youRow.append(playerPlate.root, wifePlate.root, secrets.root);
+  youRow.append(
+    playerPlate.root,
+    wifePlate.root,
+    piles["player-deck"].root,
+    piles["player-discard"].root,
+    secrets.root,
+  );
 
   const handRow = el("div", "table-row table-hand");
+  handRow.append(hand.root);
+
+  const choicesRow = el("div", "table-row table-choices");
   const choices = el("div", "choices");
-  handRow.append(piles["player-deck"].root, hand.root, choices, piles["player-discard"].root);
+  choicesRow.append(choices);
 
   const board = el("div", "board");
-  board.append(topRow, banner, center, youRow, handRow);
+  board.append(topRow, banner, center, youRow, handRow, choicesRow);
 
   const shell = el("div", "table-shell");
   shell.append(board, log.root);
@@ -183,8 +204,7 @@ export function createTable(actions: Actions): Table {
   /** The secrets row is where a secret is ever played from: as an answer
    *  while he is pressing you, or as the forced surrender when your
    *  willpower is gone. It is inert the rest of the time. */
-  function secretHandler(state: GameState, locked: boolean): ((id: string) => void) | null {
-    if (locked) return null;
+  function secretHandler(state: GameState): ((id: string) => void) | null {
     if (state.phase === "forcedSurrender") return (id) => actions.surrender(id);
     if (state.phase !== "playerAnswer") return null;
     const legal = new Set(
@@ -204,9 +224,8 @@ export function createTable(actions: Actions): Table {
     return (id) => actions.lead(id);
   }
 
-  function renderChoices(state: GameState, locked: boolean): void {
+  function renderChoices(state: GameState): void {
     choices.textContent = "";
-    if (locked) return;
     if (state.phase === "playerLead") {
       const pass = el("button", "secondary", "Wait and watch (draw a card)") as HTMLButtonElement;
       pass.type = "button";
@@ -222,13 +241,28 @@ export function createTable(actions: Actions): Table {
     }
   }
 
-  function paintState(state: GameState, locked: boolean): void {
+  /** The one full paint, and only ever at rest. Painting mid-chain would put
+   *  the end of the exchange on screen before the beats have shown it: his
+   *  answering lead would appear in the center slot while your own card was
+   *  still flying into that same slot, and the banner would say he is
+   *  waiting before he had visibly done anything. */
+  function paintState(state: GameState): void {
     banner.textContent = bannerText(state);
-    hand.update(handOptions(state), pickFor(state), locked);
-    renderChoices(state, locked);
+    hand.update(handOptions(state), pickFor(state), false);
+    renderChoices(state);
     renderCenter(state);
     taken.update(state.secretsRemaining);
-    secrets.update(state.secretsRemaining, secretHandler(state, locked));
+    secrets.update(state.secretsRemaining, secretHandler(state));
+  }
+
+  /** Takes input away for the length of a chain without redrawing anything:
+   *  what is on screen is the position the player just acted from, and it
+   *  stays until the beats have caught up with it. The fan keeps its cards,
+   *  which is also what lets a lead animate out of its real place in it. */
+  function lockInput(): void {
+    for (const button of hand.root.querySelectorAll("button")) button.disabled = true;
+    for (const button of secrets.root.querySelectorAll("button")) button.disabled = true;
+    choices.textContent = "";
   }
 
   let current: GameState | null = null;
@@ -244,7 +278,7 @@ export function createTable(actions: Actions): Table {
       notice.show(n, done);
     },
     settled() {
-      if (current !== null) paintState(current, false);
+      if (current !== null) paintState(current);
       const done = settledCallback;
       settledCallback = null;
       done?.();
@@ -256,7 +290,9 @@ export function createTable(actions: Actions): Table {
     present(state, onSettled): void {
       current = state;
       settledCallback = onSettled;
-      paintState(state, true);
+      lockInput();
+      // On first mount there is nothing on screen to keep: an empty queue
+      // settles synchronously inside run(), so paintState still lands here.
       beats.run(state);
     },
   };

@@ -352,7 +352,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .notice-continue:hover { border-color: var(--ink); }
 
-/* --- table layout ------------------------------------------------------ */
+/* --- table layout ------------------------------------------------------
+   `.choices` is shared with the opening event screen and is declared once,
+   near the top of this file, rather than again here. */
 
 .table { display: block; padding: 1rem; }
 .table-shell {
@@ -374,7 +376,10 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .table-top { border-bottom: 1px solid var(--edge); padding-bottom: 0.6rem; }
 .table-you { border-top: 1px solid var(--edge); padding-top: 0.6rem; }
-.table-hand { align-items: flex-end; justify-content: space-between; }
+/* The fan and its buttons have these rows to themselves, so they centre on
+   the board instead of being pushed to one edge as the hand grows. */
+.table-hand,
+.table-choices { align-items: flex-end; justify-content: center; }
 
 .center {
   display: flex;
@@ -393,8 +398,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   border: 1px solid var(--warn);
   background: var(--panel);
 }
-
-.choices { display: flex; flex-direction: column; gap: 0.4rem; }
 
 @media (max-width: 900px) {
   .table-shell { flex-direction: column; }
