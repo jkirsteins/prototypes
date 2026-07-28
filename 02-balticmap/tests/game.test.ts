@@ -413,3 +413,36 @@ describe("deck building", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("event enrichment", () => {
+  it("stamps formerOverlordFactionId when a vassal is poached", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    const ev = after.log.find((e) => e.type === "subjugated");
+    expect(ev?.overlordFactionId).toBe("beta");
+    expect(ev?.formerOverlordFactionId).toBe("alpha");
+  });
+
+  it("omits formerOverlordFactionId on a first subjugation", () => {
+    let g = playingState(LINE_ADJ);
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    const ev = after.log.find((e) => e.type === "subjugated");
+    expect(ev?.formerOverlordFactionId).toBeUndefined();
+  });
+
+  it("stamps the fallen lord on released events", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["delta", "gamma"]]) };
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    const rel = after.log.find((e) => e.type === "released");
+    expect(rel?.targetFactionId).toBe("delta");
+    expect(rel?.overlordFactionId).toBe("gamma");
+  });
+});

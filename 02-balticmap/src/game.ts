@@ -17,6 +17,7 @@ export interface GameEvent {
   cardId?: string; // draw, play, discard
   targetFactionId?: string;
   overlordFactionId?: string;
+  formerOverlordFactionId?: string; // subjugated: prior lord of the target
   track?: "status" | "might"; // tribute
 }
 
@@ -223,7 +224,7 @@ export function playCard(
         players = updateFaction(players, vassal, stripTribute);
         events.push({
           turn: state.turn, playerId: p.id, type: "released",
-          targetFactionId: vassal,
+          targetFactionId: vassal, overlordFactionId: lord,
         });
       }
     }
@@ -239,6 +240,7 @@ export function playCard(
     );
     relations = bumpMightAll(relations, p.factionId, living);
   } else if (cardId === "subjugate" && targetId !== undefined) {
+    const formerLord = overlords.get(targetId);
     freeVassalsOf(targetId);
     overlords.set(targetId, p.factionId);
     players = updateFaction(players, targetId, (pl) => {
@@ -248,6 +250,7 @@ export function playCard(
     events.push({
       turn: state.turn, playerId: p.id, type: "subjugated",
       targetFactionId: targetId, overlordFactionId: p.factionId,
+      ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
   } else if (cardId === "incorporate" && targetId !== undefined) {
     overlords.delete(targetId);
