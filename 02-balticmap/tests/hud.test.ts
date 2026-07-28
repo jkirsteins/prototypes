@@ -460,8 +460,11 @@ describe("learning loop hud", () => {
     });
     hud.update(defeated());
     const cards = [...container.querySelectorAll(".pm-card")];
-    expect(cards.map((c) => c.textContent)).toEqual(["RaidNEW", "Subjugate"]);
+    expect(cards.map((c) => c.querySelector(".pm-card-name")?.textContent)).toEqual([
+      "Raid", "Subjugate",
+    ]);
     expect(cards[0].querySelector(".pm-card-new")?.textContent).toBe("NEW");
+    expect(cards[0].querySelector(".pm-card-text")?.textContent?.length).toBeGreaterThan(0);
     expect(q(container, ".pm-seen-label").textContent).toBe(
       "Unlock one of these when you start your next game.",
     );

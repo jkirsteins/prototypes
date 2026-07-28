@@ -810,3 +810,18 @@ svg.map.dragging {
   padding-left: 6px;
   font-weight: 600;
 }
+
+.ds-card-name,
+.pm-card-name {
+  display: block;
+  font-weight: 600;
+}
+
+.ds-card-text,
+.pm-card-text {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #6b5d49;
+}

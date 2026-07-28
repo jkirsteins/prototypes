@@ -36,7 +36,9 @@ describe("createDeckScreen", () => {
       seenPool: ["raid", "fortify"], unlockUsed: false,
     });
     const locked = [...container.querySelectorAll(".ds-unlock .ds-card")];
-    expect(locked.map((c) => c.textContent)).toEqual(["Raid", "Fortify"]);
+    expect(locked.map((c) => c.querySelector(".ds-card-name")?.textContent)).toEqual([
+      "Raid", "Fortify",
+    ]);
     (locked[0] as HTMLElement).click();
     expect(cb.onUnlock).toHaveBeenCalledWith("raid");
     screen.update({
@@ -55,7 +57,9 @@ describe("createDeckScreen", () => {
     const toggles = [...container.querySelectorAll(".ds-deck .ds-card")].filter(
       (c) => !c.classList.contains("ds-filler"),
     ) as HTMLElement[];
-    expect(toggles.map((c) => c.textContent)).toEqual(["Raid", "Fortify"]);
+    expect(toggles.map((c) => c.querySelector(".ds-card-name")?.textContent)).toEqual([
+      "Raid", "Fortify",
+    ]);
     expect(toggles.every((c) => c.classList.contains("selected"))).toBe(true);
     expect(q(container, ".ds-counter").textContent).toBe(
       "2 picked + 8 Grow Crops = 10",
@@ -76,7 +80,7 @@ describe("createDeckScreen", () => {
       seenPool: ["fortify"], unlockUsed: false,
     });
     const raid = [...container.querySelectorAll(".ds-deck .ds-card")].find(
-      (c) => c.textContent === "Raid",
+      (c) => c.querySelector(".ds-card-name")?.textContent === "Raid",
     ) as HTMLElement;
     raid.click(); // deselect raid
     screen.update({
@@ -85,8 +89,24 @@ describe("createDeckScreen", () => {
     });
     const cards = [...container.querySelectorAll(".ds-deck .ds-card")];
     const byText = (t: string) =>
-      cards.find((c) => c.textContent === t) as HTMLElement;
+      cards.find((c) => c.querySelector(".ds-card-name")?.textContent === t) as HTMLElement;
     expect(byText("Raid").classList.contains("selected")).toBe(false);
     expect(byText("Fortify").classList.contains("selected")).toBe(true);
+  });
+
+  it("shows rules text on unlock and deck cards", () => {
+    const { container, screen } = setup();
+    screen.update({
+      visible: true, knownCards: ["grow-crops", "subjugate"],
+      seenPool: ["raid"], unlockUsed: false,
+    });
+    const unlock = container.querySelector(".ds-unlock .ds-card")!;
+    expect(unlock.querySelector(".ds-card-name")!.textContent).toBe("Raid");
+    expect(unlock.querySelector(".ds-card-text")!.textContent).toBe(
+      "Gain +1 Might over one faction in reach of your realm.",
+    );
+    const deckCard = container.querySelector(".ds-deck .ds-card")!;
+    expect(deckCard.querySelector(".ds-card-name")!.textContent).toBe("Subjugate");
+    expect(deckCard.querySelector(".ds-card-text")!.textContent?.length).toBeGreaterThan(0);
   });
 });

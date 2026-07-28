@@ -13,17 +13,41 @@ describe("cards", () => {
   it("defines the eight card types with v2 properties", () => {
     const expectProps = (
       id: string, name: string, targeted: boolean,
-      maxPerDeck: number | null, deckBuildable: boolean, forced: boolean,
+      maxPerDeck: number | null, deckBuildable: boolean, forced: boolean, text: string,
     ) =>
-      expect(CARDS[id]).toEqual({ id, name, targeted, maxPerDeck, deckBuildable, forced });
-    expectProps("grow-crops", "Grow crops", false, null, true, false);
-    expectProps("raid", "Raid", true, 1, true, false);
-    expectProps("shrewd-marriage", "Shrewd marriage", true, 1, true, false);
-    expectProps("fortify", "Fortify", false, 1, true, false);
-    expectProps("subjugate", "Subjugate", true, 1, true, false);
-    expectProps("incorporate", "Incorporate", true, 1, true, false);
-    expectProps("reclaim-independence", "Reclaim independence", false, 1, true, false);
-    expectProps("pay-tribute", "Pay tribute", false, null, false, true);
+      expect(CARDS[id]).toEqual({ id, name, targeted, maxPerDeck, deckBuildable, forced, text });
+    expectProps(
+      "grow-crops", "Grow crops", false, null, true, false,
+      "No effect - a quiet season. Fills out the deck.",
+    );
+    expectProps(
+      "raid", "Raid", true, 1, true, false,
+      "Gain +1 Might over one faction in reach of your realm.",
+    );
+    expectProps(
+      "shrewd-marriage", "Shrewd marriage", true, 1, true, false,
+      "Gain +1 Status over one faction in reach; your overlord is always courtable.",
+    );
+    expectProps(
+      "fortify", "Fortify", false, 1, true, false,
+      "Gain +1 Might over every other living faction at once.",
+    );
+    expectProps(
+      "subjugate", "Subjugate", true, 1, true, false,
+      "Turn a faction in reach into your vassal. Needs a lead of 2 in Might or Status. Vassals pay tribute.",
+    );
+    expectProps(
+      "incorporate", "Incorporate", true, 1, true, false,
+      "Permanently absorb one of your vassals into your realm.",
+    );
+    expectProps(
+      "reclaim-independence", "Reclaim independence", false, 1, true, false,
+      "Cast off your overlord. Playable while their lead in Might and Status is both under 2.",
+    );
+    expectProps(
+      "pay-tribute", "Pay tribute", false, null, false, true,
+      "Forced: while a vassal, grant your overlord +1 Might or +1 Status.",
+    );
   });
 
   it("builds the 10-card default deck: 6 non-basics once each + 4 grow-crops", () => {

@@ -90,7 +90,13 @@ export function createDeckScreen(
         ...view.seenPool.map((id) => {
           const card = document.createElement("button");
           card.className = "ds-card ds-locked";
-          card.textContent = cardName(id);
+          const name = document.createElement("span");
+          name.className = "ds-card-name";
+          name.textContent = cardName(id);
+          const text = document.createElement("span");
+          text.className = "ds-card-text";
+          text.textContent = CARDS[id]?.text ?? "";
+          card.append(name, text);
           card.addEventListener("click", () => cb.onUnlock(id));
           return card;
         }),
@@ -103,7 +109,13 @@ export function createDeckScreen(
           const card = document.createElement("button");
           card.className = "ds-card";
           card.classList.toggle("selected", selected.has(id));
-          card.textContent = cardName(id);
+          const name = document.createElement("span");
+          name.className = "ds-card-name";
+          name.textContent = cardName(id);
+          const text = document.createElement("span");
+          text.className = "ds-card-text";
+          text.textContent = CARDS[id]?.text ?? "";
+          card.append(name, text);
           card.addEventListener("click", () => {
             if (selected.has(id)) selected.delete(id);
             else if (selected.size < DECK_SIZE) selected.add(id);

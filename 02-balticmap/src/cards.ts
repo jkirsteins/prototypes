@@ -8,17 +8,19 @@ export interface CardDef {
   deckBuildable: boolean;
   /** While in hand, it is the only playable card. */
   forced: boolean;
+  /** One-line rules text shown to the player. */
+  text: string;
 }
 
 export const CARDS: Record<string, CardDef> = {
-  "grow-crops": { id: "grow-crops", name: "Grow crops", targeted: false, maxPerDeck: null, deckBuildable: true, forced: false },
-  "raid": { id: "raid", name: "Raid", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false },
-  "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false },
-  "fortify": { id: "fortify", name: "Fortify", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false },
-  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false },
-  "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false },
-  "reclaim-independence": { id: "reclaim-independence", name: "Reclaim independence", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false },
-  "pay-tribute": { id: "pay-tribute", name: "Pay tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true },
+  "grow-crops": { id: "grow-crops", name: "Grow crops", targeted: false, maxPerDeck: null, deckBuildable: true, forced: false, text: "No effect - a quiet season. Fills out the deck." },
+  "raid": { id: "raid", name: "Raid", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Might over one faction in reach of your realm." },
+  "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
+  "fortify": { id: "fortify", name: "Fortify", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Might over every other living faction at once." },
+  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Turn a faction in reach into your vassal. Needs a lead of 2 in Might or Status. Vassals pay tribute." },
+  "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Permanently absorb one of your vassals into your realm." },
+  "reclaim-independence": { id: "reclaim-independence", name: "Reclaim independence", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Cast off your overlord. Playable while their lead in Might and Status is both under 2." },
+  "pay-tribute": { id: "pay-tribute", name: "Pay tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true, text: "Forced: while a vassal, grant your overlord +1 Might or +1 Status." },
 };
 
 export const DECK_SIZE = 10;

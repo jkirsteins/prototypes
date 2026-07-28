@@ -497,13 +497,20 @@ export function createHud(
       ...loot.map(({ id, isNew }) => {
         const d = document.createElement("div");
         d.className = "pm-card";
-        d.textContent = cardName(id);
+        const name = document.createElement("span");
+        name.className = "pm-card-name";
+        name.textContent = cardName(id);
+        d.appendChild(name);
         if (isNew) {
           const tag = document.createElement("span");
           tag.className = "pm-card-new";
           tag.textContent = "NEW";
           d.appendChild(tag);
         }
+        const text = document.createElement("span");
+        text.className = "pm-card-text";
+        text.textContent = CARDS[id]?.text ?? "";
+        d.appendChild(text);
         return d;
       }),
     );
