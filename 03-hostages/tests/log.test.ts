@@ -60,6 +60,14 @@ describe("log", () => {
     );
   });
 
+  it("does not double the full stop when a secret's name is itself a quoted sentence", () => {
+    const state = stateWithTurn(1);
+    logCard(state, "player", "answer", "secretSafe", []);
+    expect(state.log[0].text).toBe(
+      'You play "The safe is behind the headboard". You tell him about the safe.',
+    );
+  });
+
   it("records notes with an empty delta list by default", () => {
     const state = stateWithTurn(2);
     logNote(state, "system", "outcome", "He goes still.");

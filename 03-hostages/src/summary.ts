@@ -1,4 +1,4 @@
-import { cardById } from "./content/cards";
+import { cardById, cardNameInProse } from "./content/cards";
 import type { GameState, Outcome } from "./types";
 
 export interface RunSummary {
@@ -24,11 +24,7 @@ export function summarize(state: GameState): RunSummary {
     lines.push("You told him nothing.");
   } else {
     for (const entry of given) {
-      let name = cardById(entry.cardId).name;
-      // Strip period before closing quote for proper grammar
-      if (name.endsWith('."')) {
-        name = name.slice(0, -2) + '"';
-      }
+      const name = cardNameInProse(cardById(entry.cardId).name);
       const why = entry.coerced ? "because he made you" : "because you chose to";
       lines.push(`You gave up ${name} ${why}.`);
     }

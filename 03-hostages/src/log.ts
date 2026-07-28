@@ -1,4 +1,4 @@
-import { cardById } from "./content/cards";
+import { cardById, cardNameInProse } from "./content/cards";
 import type { GameState, LogEntry, LogKind, Side } from "./types";
 
 export function actorName(side: Side | "system"): string {
@@ -23,7 +23,7 @@ export function logCard(
     side,
     kind,
     cardId,
-    text: `${actorName(side)} play${side === "player" ? "" : "s"} ${card.name}. ${card.narration}`,
+    text: `${actorName(side)} play${side === "player" ? "" : "s"} ${cardNameInProse(card.name)}. ${card.narration}`,
     deltas,
   });
 }

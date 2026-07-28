@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   ALL_CARDS,
   cardById,
+  cardNameInProse,
   CONVICT_DECK,
   NOT_YET_ID,
   PLAYER_DECK,
@@ -79,5 +80,24 @@ describe("content", () => {
 
   it("throws on an unknown id", () => {
     expect(() => cardById("nope")).toThrow(/Unknown card/);
+  });
+
+  it("strips the sentence-ending period inside the closing quote for each secret name", () => {
+    expect(cardNameInProse(cardById("secretFreezer").name)).toBe(
+      '"There\'s a jar in the freezer"',
+    );
+    expect(cardNameInProse(cardById("secretSafe").name)).toBe(
+      '"The safe is behind the headboard"',
+    );
+    expect(cardNameInProse(cardById("secretFloorboard").name)).toBe(
+      '"It\'s under the floorboard in the nursery"',
+    );
+  });
+
+  it("leaves every ordinary card name unchanged, since none end in a quoted period", () => {
+    for (const card of ALL_CARDS) {
+      if (SECRETS.includes(card.id)) continue;
+      expect(cardNameInProse(card.name), card.id).toBe(card.name);
+    }
   });
 });
