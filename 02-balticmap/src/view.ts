@@ -1,4 +1,5 @@
-import type { Incorporated } from "./relations";
+import { leadsOf, type Incorporated, type Relations } from "./relations";
+import type { TooltipLine } from "./panel";
 
 export interface View {
   x: number;
@@ -14,6 +15,26 @@ export function politicalFactionForPolygon(
   incorporated: Incorporated,
 ): string {
   return incorporated[polygonFactionId] ?? polygonFactionId;
+}
+
+export function hoverRelationLines(
+  relations: Relations,
+  humanFactionId: string,
+  hoveredFactionId: string,
+  relationship: string,
+): TooltipLine[] {
+  const delta = (label: string, n: number): TooltipLine =>
+    n > 0
+      ? { text: `${label}: +${n} (you lead)`, tone: "good" }
+      : n < 0
+        ? { text: `${label}: ${n} (they lead)`, tone: "bad" }
+        : { text: `${label}: even`, tone: "neutral" };
+  const yours = leadsOf(relations, humanFactionId, hoveredFactionId);
+  return [
+    delta("Might", yours.might),
+    delta("Status", yours.status),
+    { text: relationship },
+  ];
 }
 
 /** Smallest view that covers the whole map, centered, with the viewport's aspect. */

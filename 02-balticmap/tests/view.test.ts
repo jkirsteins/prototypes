@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  fitView, clampView, panBy, politicalFactionForPolygon, zoomAt, MAX_ZOOM,
+  fitView, clampView, hoverRelationLines, panBy, politicalFactionForPolygon,
+  zoomAt, MAX_ZOOM,
   type View,
 } from "../src/view";
+import { bumpMight, type Relations } from "../src/relations";
 
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 6);
 
@@ -91,5 +93,29 @@ describe("politicalFactionForPolygon", () => {
       "gamma",
       { gamma: "delta" },
     )).toBe("delta");
+  });
+});
+
+describe("hoverRelationLines", () => {
+  it("shows a Raid against a vassal without changing the overlord hover", () => {
+    const beforeRaid: Relations = bumpMight({}, "overlord", "actor");
+    const overlordBefore = hoverRelationLines(
+      beforeRaid, "actor", "overlord", "Independent",
+    );
+    const afterRaid = bumpMight(beforeRaid, "actor", "vassal");
+
+    expect(hoverRelationLines(afterRaid, "actor", "vassal", "Your vassal")).toEqual([
+      { text: "Might: +1 (you lead)", tone: "good" },
+      { text: "Status: even", tone: "neutral" },
+      { text: "Your vassal" },
+    ]);
+    expect(hoverRelationLines(afterRaid, "actor", "overlord", "Independent")).toEqual([
+      { text: "Might: -1 (they lead)", tone: "bad" },
+      { text: "Status: even", tone: "neutral" },
+      { text: "Independent" },
+    ]);
+    expect(hoverRelationLines(
+      afterRaid, "actor", "overlord", "Independent",
+    )).toEqual(overlordBefore);
   });
 });

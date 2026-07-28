@@ -23,7 +23,7 @@ import {
   buildPlayerDeck, loadMeta, memoryStorage, mergeSeen,
   resetMeta, saveMeta, unlockCard, type MetaRecord, type MetaStorage,
 } from "./meta";
-import { politicalFactionForPolygon } from "./view";
+import { hoverRelationLines, politicalFactionForPolygon } from "./view";
 import "./style.css";
 
 const data = rawData as MapData;
@@ -330,15 +330,12 @@ function hoverLines(region: Region): TooltipLine[] {
     .split("\n")
     .map((text) => ({ text }));
   if (!inPlay() || !human || f === human.factionId) return base;
-  const delta = (label: string, n: number): TooltipLine =>
-    n > 0
-      ? { text: `${label}: +${n} (you lead)`, tone: "good" }
-      : n < 0
-        ? { text: `${label}: ${n} (they lead)`, tone: "bad" }
-        : { text: `${label}: even`, tone: "neutral" };
-  const yours = leadsOf(game.relations, human.factionId, f);
-  base.push(delta("Might", yours.might), delta("Status", yours.status));
-  base.push({ text: relationshipLine(f, human.factionId) });
+  base.push(...hoverRelationLines(
+    game.relations,
+    human.factionId,
+    f,
+    relationshipLine(f, human.factionId),
+  ));
   if (validTargetsFor(viewOf(game), human.factionId, "subjugate").includes(f)) {
     base.push({ text: "Subjugate available", tone: "good" });
   }
