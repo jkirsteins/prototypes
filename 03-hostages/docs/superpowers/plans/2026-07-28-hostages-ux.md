@@ -2562,6 +2562,10 @@ Append to `src/style.css`:
 
 .hand {
   display: flex;
+  /* Explicit, not inherited: the old duel screen's `.hand, .choices` rule
+     sets column at the same specificity, and whichever property this block
+     does not contest keeps the old value. */
+  flex-direction: row;
   justify-content: center;
   align-items: flex-end;
   gap: 0.25rem;
