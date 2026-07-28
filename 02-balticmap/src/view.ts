@@ -12,7 +12,10 @@ export const MAX_ZOOM = 8;
 
 /** The most zoomed-out view allowed, as a factor of the whole-map fit.
  *  Above 1 the whole map never fits on screen and the player pans instead,
- *  so lands keep their size as the map grows. */
+ *  so lands keep their size as the map grows. Measured against the map
+ *  before the Prussian lands were added: extending it shrank every land to
+ *  0.840 of its old canvas size, so 1.3 leaves them 9 percent larger than
+ *  they were rather than 16 percent smaller. */
 export const MIN_ZOOM = 1.3;
 
 export function politicalFactionForPolygon(
