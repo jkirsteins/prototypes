@@ -552,6 +552,45 @@ svg.map.dragging {
   stroke-width: 2.2;
 }
 
+.threat-badges {
+  pointer-events: none;
+}
+
+.threat-badge .badge-bg {
+  fill: #ffffff;
+  opacity: 0.85;
+  stroke: #7a6a55;
+  stroke-width: 0.75;
+}
+
+.threat-badge.danger .badge-bg {
+  stroke: #992f27;
+  stroke-width: 1.6;
+}
+
+.threat-badge .badge-text {
+  font-size: 11px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.threat-badge .badge-danger-mark {
+  fill: #992f27;
+  font-weight: 700;
+}
+
+.lead-good {
+  fill: #2e7d32;
+}
+
+.lead-bad {
+  fill: #b3402a;
+}
+
+.lead-even {
+  fill: #6b5d49;
+}
+
 .activity-log {
   position: absolute;
   right: 16px;

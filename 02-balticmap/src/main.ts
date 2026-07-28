@@ -12,7 +12,7 @@ import {
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { getRel, leadsOf, realmOf } from "./relations";
-import { playableSet, validTargetsFor } from "./playability";
+import { playableSet, validTargetsFor, SUBJUGATE_THRESHOLD } from "./playability";
 import { CARDS } from "./cards";
 import { createHud } from "./hud";
 import { createDeckScreen } from "./deck-screen";
@@ -28,6 +28,13 @@ const app = document.getElementById("app")!;
 const {
   svg, regionPaths, settlementDots, realmOutlineGroup, vassalOverlayGroup, vassalStripe,
 } = renderMap(data, app);
+// map-render.ts doesn't expose a badge group; appended here, last in the SVG
+// (after realm-outline/vassal-overlay, on top of the whole map stack).
+const badgeGroup = document.createElementNS(
+  "http://www.w3.org/2000/svg", "g",
+) as SVGGElement;
+badgeGroup.classList.add("threat-badges");
+svg.appendChild(badgeGroup);
 const tooltip = createTooltip(app);
 const factionById = new Map(data.factions.map((f) => [f.id, f]));
 const regionById = new Map(data.regions.map((r) => [r.id, r]));
@@ -130,6 +137,11 @@ function applyOwnership(): void {
       ? realmOf(human.factionId, game.overlords, game.incorporated)
       : [],
   );
+  const overlordRealm = new Set(
+    inPlay() && humanOverlord !== undefined
+      ? realmOf(humanOverlord, game.overlords, game.incorporated)
+      : [],
+  );
   for (const [id, el] of regionPaths) {
     const region = regionById.get(id)!;
     const isSubjugatedHuman =
@@ -139,7 +151,10 @@ function applyOwnership(): void {
       : inPlay() ? effectiveFaction(region.faction) : region.faction;
     el.setAttribute("fill", factionById.get(effective)!.color);
     const owned = humanRealm.has(region.faction);
-    el.classList.toggle("dimmed", inPlay() && !owned);
+    el.classList.toggle(
+      "dimmed",
+      inPlay() && !owned && !overlordRealm.has(region.faction),
+    );
     el.classList.toggle("owned", owned);
     if (owned) {
       el.style.setProperty(
@@ -162,14 +177,16 @@ function renderVassalOverlay(
   vassalOverlayGroup.replaceChildren();
   if (!inPlay() || !human || humanOverlord === undefined) return;
   vassalStripe.setAttribute("fill", factionById.get(humanOverlord)!.color);
-  const regionId = regionByFaction.get(human.factionId);
-  const region = regionId !== undefined ? regionById.get(regionId) : undefined;
-  if (!region) return;
-  const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  p.setAttribute("d", region.path);
-  p.setAttribute("fill", "url(#vassal-stripes)");
-  p.setAttribute("pointer-events", "none");
-  vassalOverlayGroup.appendChild(p);
+  for (const factionId of realmOf(human.factionId, game.overlords, game.incorporated)) {
+    const regionId = regionByFaction.get(factionId);
+    const region = regionId !== undefined ? regionById.get(regionId) : undefined;
+    if (!region) continue;
+    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", region.path);
+    p.setAttribute("fill", "url(#vassal-stripes)");
+    p.setAttribute("pointer-events", "none");
+    vassalOverlayGroup.appendChild(p);
+  }
 }
 
 function applyThreat(
@@ -215,6 +232,78 @@ function renderRealmHalo(
     p.setAttribute("stroke", color);
     p.setAttribute("fill", color);
     realmOutlineGroup.appendChild(p);
+  }
+}
+
+/** From the human's perspective: "M0" when even, else signed e.g. "M+2"/"M-1". */
+function formatLead(label: string, n: number): string {
+  if (n === 0) return `${label}0`;
+  return n > 0 ? `${label}+${n}` : `${label}${n}`;
+}
+
+function leadClass(n: number): string {
+  return n > 0 ? "lead-good" : n < 0 ? "lead-bad" : "lead-even";
+}
+
+/** One badge per living faction outside the human's realm with a non-zero
+ *  lead on either track, anchored at that faction's home region bbox. */
+function renderThreatBadges(): void {
+  badgeGroup.replaceChildren();
+  const human = game.players[0];
+  if (!inPlay() || !human) return;
+  const humanRealm = new Set(
+    realmOf(human.factionId, game.overlords, game.incorporated),
+  );
+  const grip = SUBJUGATE_THRESHOLD * humanRealm.size;
+  for (const factionId of game.factionIds) {
+    if (factionId in game.incorporated) continue; // dead (absorbed)
+    if (humanRealm.has(factionId)) continue; // human, its vassals, its lands
+    const l = leadsOf(game.relations, human.factionId, factionId);
+    if (l.might === 0 && l.status === 0) continue;
+    const regionId = regionByFaction.get(factionId);
+    const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
+    if (!pathEl) continue;
+    const bbox = pathEl.getBBox();
+    const cx = bbox.x + bbox.width / 2;
+    const cy = bbox.y + bbox.height / 2;
+    const danger = Math.max(-l.might, -l.status) >= grip;
+
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.classList.add("threat-badge");
+    if (danger) g.classList.add("danger");
+    g.setAttribute("transform", `translate(${cx}, ${cy})`);
+
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.classList.add("badge-bg");
+    rect.setAttribute("rx", "4");
+    g.appendChild(rect);
+
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.classList.add("badge-text");
+    if (danger) {
+      const bang = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+      bang.classList.add("badge-danger-mark");
+      bang.textContent = "! ";
+      text.appendChild(bang);
+    }
+    const mightTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+    mightTspan.classList.add(leadClass(l.might));
+    mightTspan.textContent = formatLead("M", l.might);
+    text.appendChild(mightTspan);
+    const statusTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+    statusTspan.classList.add(leadClass(l.status));
+    statusTspan.setAttribute("dx", "6");
+    statusTspan.textContent = formatLead("S", l.status);
+    text.appendChild(statusTspan);
+    g.appendChild(text);
+    badgeGroup.appendChild(g);
+
+    const textBox = text.getBBox();
+    const pad = 4;
+    rect.setAttribute("x", String(textBox.x - pad));
+    rect.setAttribute("y", String(textBox.y - pad));
+    rect.setAttribute("width", String(textBox.width + pad * 2));
+    rect.setAttribute("height", String(textBox.height + pad * 2));
   }
 }
 
@@ -273,6 +362,7 @@ function cancelTribute(): void {
 function refresh(): void {
   applyOwnership();
   applyTargeting();
+  renderThreatBadges();
   hud.update(game);
 }
 
