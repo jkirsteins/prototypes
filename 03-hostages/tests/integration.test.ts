@@ -86,7 +86,7 @@ describe("full runs", () => {
     expect(summarize(state).headline).toMatch(/You win/);
   });
 
-  it("reaches the third-secret loss", () => {
+  it("reaches the secrets loss once the count of remaining secrets hits zero", () => {
     const state = newRun(6);
     chooseOpening(state, "comply");
     state.secretsRemaining = ["secretFloorboard"];

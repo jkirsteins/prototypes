@@ -235,7 +235,7 @@ describe("answering and coercion", () => {
     expect(state.stats.secretsGiven).toEqual([{ cardId: "secretFreezer", coerced: false }]);
   });
 
-  it("giving up the third secret loses the run", () => {
+  it("giving up the last remaining secret loses the run, because the count reached zero", () => {
     const state = started();
     state.secretsRemaining = ["secretFloorboard"];
     stage(state, { playerHand: ["stallHim"], convictHand: ["backhand"] });
@@ -273,6 +273,63 @@ describe("answering and coercion", () => {
 
     expect(coerced.convict.distracted).toBe(2);
     expect(voluntary.convict.distracted).toBe(2);
+  });
+
+  it("playing the floorboard secret first does not end the run - no single secret is fatal", () => {
+    const state = started();
+    stage(state, { playerHand: ["stallHim"], convictHand: ["ransackTheRoom"] });
+    playerLead(state, "stallHim");
+    playerAnswer(state, "secretFloorboard");
+    expect(state.phase).not.toBe("gameOver");
+    expect(state.outcome).toBeNull();
+    expect(state.secretsRemaining).toEqual(["secretFreezer", "secretSafe"]);
+  });
+
+  it("surrendering two secrets, in any order, leaves the run alive with one left", () => {
+    const state = started();
+    // ransackTheRoom has no scene requirements, so it stays a legal convict
+    // lead no matter how the secrets have moved range and zone around.
+    stage(state, { playerHand: ["stallHim"], convictHand: ["ransackTheRoom"] });
+    playerLead(state, "stallHim");
+    playerAnswer(state, "secretFloorboard");
+    expect(state.phase).toBe("playerLead");
+
+    stage(state, { playerHand: ["stallHim"], convictHand: ["ransackTheRoom"] });
+    playerLead(state, "stallHim");
+    playerAnswer(state, "secretSafe");
+
+    expect(state.phase).not.toBe("gameOver");
+    expect(state.outcome).toBeNull();
+    expect(state.secretsRemaining).toEqual(["secretFreezer"]);
+  });
+
+  it("loses with lossSecrets once all three are surrendered in a non-default order", () => {
+    const state = started();
+    stage(state, { playerHand: ["stallHim"], convictHand: ["ransackTheRoom"] });
+    playerLead(state, "stallHim");
+    playerAnswer(state, "secretFloorboard");
+    expect(state.phase).not.toBe("gameOver");
+
+    stage(state, { playerHand: ["stallHim"], convictHand: ["ransackTheRoom"] });
+    playerLead(state, "stallHim");
+    playerAnswer(state, "secretSafe");
+    expect(state.phase).not.toBe("gameOver");
+
+    stage(state, { playerHand: ["stallHim"], convictHand: ["ransackTheRoom"] });
+    playerLead(state, "stallHim");
+    playerAnswer(state, "secretFreezer");
+
+    expect(state.phase).toBe("gameOver");
+    expect(state.outcome).toBe("lossSecrets");
+    expect(state.secretsRemaining).toEqual([]);
+    expect(state.stats.secretsGiven.map((s) => s.cardId)).toEqual([
+      "secretFloorboard",
+      "secretSafe",
+      "secretFreezer",
+    ]);
+
+    const endings = state.log.filter((e) => e.kind === "outcome");
+    expect(endings).toHaveLength(1);
   });
 });
 

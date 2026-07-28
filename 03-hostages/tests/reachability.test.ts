@@ -86,8 +86,14 @@ describe("reachability", () => {
       const state = newRun(seed);
       chooseOpening(state, "shield");
       playWell(state);
+      // A finished run - win or loss - has already been decided and is not
+      // "stranded"; only an active run that has painted itself into this
+      // corner would be. Since secretFloorboard now also relocates the
+      // convict (setRange away) as part of the count-based secrets rule,
+      // a run that ends in lossSecrets can legitimately finish with this
+      // exact zone/range combination.
       const stranded =
-        state.outcome !== "victory" &&
+        state.phase !== "gameOver" &&
         state.scene.zone === "bedroom" &&
         state.scene.range === "away" &&
         !state.player.bound &&

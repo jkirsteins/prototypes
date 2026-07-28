@@ -225,12 +225,6 @@ describe("applyAnswerEffect", () => {
     expect(mods.coercionStripped).toBe(true);
   });
 
-  it("flags a lost run", () => {
-    const mods = newMods();
-    applyAnswerEffect(baseState(), { kind: "loseRun" }, mods);
-    expect(mods.runLost).toBe(true);
-  });
-
   it("restores willpower to a fixed value", () => {
     const state = baseState();
     state.player.willpower = 0;

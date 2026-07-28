@@ -48,8 +48,7 @@ export type Effect =
   | { kind: "negateLead" }
   | { kind: "halveIncomingDamage" }
   | { kind: "interposeForWife"; selfDamage: number }
-  | { kind: "stripCoercion" }
-  | { kind: "loseRun" };
+  | { kind: "stripCoercion" };
 
 export interface CardRequirement {
   bound?: boolean;

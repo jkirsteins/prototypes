@@ -5,7 +5,6 @@ export interface ExchangeMods {
   damageFactor: number;
   interposed: boolean;
   coercionStripped: boolean;
-  runLost: boolean;
 }
 
 export function newMods(): ExchangeMods {
@@ -14,7 +13,6 @@ export function newMods(): ExchangeMods {
     damageFactor: 1,
     interposed: false,
     coercionStripped: false,
-    runLost: false,
   };
 }
 
@@ -158,9 +156,6 @@ function applyCommon(
       break;
     case "stripCoercion":
       mods.coercionStripped = true;
-      break;
-    case "loseRun":
-      mods.runLost = true;
       break;
   }
 }

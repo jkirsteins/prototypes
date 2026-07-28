@@ -80,10 +80,11 @@ function assertPlayable(state: GameState): void {
 }
 
 function checkEnd(state: GameState): boolean {
-  // An outcome may already be set by an effect (loseRun, or the fixture
-  // victory) before this runs; only look for a fresh vigor-based outcome
-  // when nothing has claimed the ending yet. Either way, there is exactly
-  // one exit point below, so the ending line is logged exactly once.
+  // An outcome may already be set before this runs - by the caller noticing
+  // secretsRemaining hit zero, or by the fixture victory - so only look for
+  // a fresh vigor-based outcome when nothing has claimed the ending yet.
+  // Either way, there is exactly one exit point below, so the ending line
+  // is logged exactly once.
   if (state.outcome === null) {
     if (state.player.vigor <= 0) {
       state.outcome = "lossVigor";
@@ -95,6 +96,18 @@ function checkEnd(state: GameState): boolean {
   state.phase = "gameOver";
   logNote(state, "system", "outcome", endingLine(state));
   return true;
+}
+
+/**
+ * All three secrets are equal in weight: none is individually fatal, only
+ * running out of them is. Call this right after a secret leaves
+ * secretsRemaining, on every path that can remove one, then let checkEnd do
+ * the one logging pass.
+ */
+function markSecretsLossIfDepleted(state: GameState): void {
+  if (state.secretsRemaining.length === 0 && state.outcome === null) {
+    state.outcome = "lossSecrets";
+  }
 }
 
 function endingLine(state: GameState): string {
@@ -137,7 +150,6 @@ function resolveExchange(
   } else if (mods.negated) {
     logNote(state, leadBy, "effect", "It comes to nothing.");
   }
-  if (mods.runLost) state.outcome = "lossSecrets";
   return mods;
 }
 
@@ -312,6 +324,7 @@ export function playerAnswer(state: GameState, cardId: string | null): void {
   const mods = resolveExchange(state, lead, "convict", cardId);
   state.pendingLead = null;
 
+  markSecretsLossIfDepleted(state);
   if (checkEnd(state)) return;
 
   if (pending.coercion && !mods.coercionStripped) {
@@ -368,8 +381,8 @@ export function playerSurrender(state: GameState, secretId: string): void {
     deltas.push(...applyAnswerEffect(state, effect, mods, card.name));
   }
   logCard(state, "player", "answer", secretId, deltas);
-  if (mods.runLost) state.outcome = "lossSecrets";
 
+  markSecretsLossIfDepleted(state);
   if (checkEnd(state)) return;
   startPlayerTurn(state);
 }

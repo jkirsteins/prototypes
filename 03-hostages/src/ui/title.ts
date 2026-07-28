@@ -10,8 +10,8 @@ export function renderTitle(root: HTMLElement, actions: Actions): void {
     el(
       "p",
       "blurb",
-      "A man with a knife wants to know where the money is. You have three answers " +
-        "and only two of them are survivable.",
+      "A man with a knife wants to know where the money is. You have three secrets. " +
+        "He needs all three. Each one you give up brings him closer, and the third ends it.",
     ),
   );
   const start = el("button", "primary", "New game");

@@ -138,19 +138,23 @@ Duplicated cards: `Stall Him With Questions`, `Stoic`, `Flinch`.
 Three unique defensive fixtures, permanently in hand, never drawn or discarded, and
 always a legal answer to any lead. Playing one as an answer negates the lead
 outright, restores your Willpower to 3, applies its state, and removes the card from
-the run.
+the run. All three are equal in weight: none of them is individually fatal, and
+there is no meaningful order among them.
 
 1. **"There's a jar in the freezer."** He walks to the kitchen. Range -> `Away`, he
    gains `Distracted(2)`. Buys distance and time.
 2. **"The safe is behind the headboard."** He moves the whole scene. Zone ->
    `Bedroom`, range -> `Near`, he gains `Off-balance` while he claws at the wall.
    Buys a strike window and turns on `Lamp Cord`.
-3. **"It's under the floorboard in the nursery."** He has what he came for.
-   Immediate loss, resolved before any other effect.
+3. **"It's under the floorboard in the nursery."** He goes to the nursery, the
+   furthest room. Range -> `Away`, he gains `Distracted(3)`. Buys the most time,
+   fitting for the last one anyone spends.
 
-So two are genuinely spendable and the third is the run. When surrendered under
-coercion (section 5) the negation does not apply, because there is no lead left to
-negate; the Willpower restore and the state still do.
+The loss is a count, not a card: it fires only once all three have left
+`secretsRemaining`, in whatever order the player gave them up. Giving up one, or
+two, is always survivable on its own. When surrendered under coercion (section 5)
+the negation does not apply, because there is no lead left to negate; the Willpower
+restore and the state still do.
 
 ### 3.3 Convict deck (15 cards, 12 unique)
 
@@ -250,11 +254,13 @@ opens a window of roughly two of your turns.
 `Not Yet` he plays it, surging to Vigor 3 and clearing `Incapacitated`; you must put
 him down a second time, and the second time he has no answer. Landing it wins.
 
-**Defeat**, checked in this order:
+**Defeat**, any of:
 
-1. The third secret is played.
-2. Your Vigor reaches 0.
-3. Your wife's Vigor reaches 0.
+- All three secrets have been surrendered (`secretsRemaining` reaches zero), in
+  whatever order. No secret is more or less important than the others; the count is
+  what matters, not which card was last.
+- Your Vigor reaches 0.
+- Your wife's Vigor reaches 0.
 
 ## 7. Opening event
 
@@ -369,7 +375,7 @@ Vitest, one test file per module, mirroring `02-balticmap/tests`.
 - `ai` - each priority rule in isolation.
 - `summary` - an account generated from a scripted log.
 - Integration - two seeded full runs asserted end to end: one reaching victory
-  through `Not Yet`, one losing to the third secret.
+  through `Not Yet`, one losing once the count of secrets held reaches zero.
 - DOM smoke tests under happy-dom: each screen renders, illegal cards are disabled
   with reasons, the turn banner matches the phase.
 
