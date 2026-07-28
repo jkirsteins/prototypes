@@ -11,7 +11,7 @@ import {
   isHumanTurn, viewOf, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
-import { getRel, leadsOf, realmOf } from "./relations";
+import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
 import { playableSet, validTargetsFor, SUBJUGATE_THRESHOLD } from "./playability";
 import { CARDS } from "./cards";
 import { createHud } from "./hud";
@@ -259,7 +259,8 @@ function renderThreatBadges(): void {
     if (factionId in game.incorporated) continue; // dead (absorbed)
     if (humanRealm.has(factionId)) continue; // human, its vassals, its lands
     const l = leadsOf(game.relations, human.factionId, factionId);
-    if (l.might === 0 && l.status === 0) continue;
+    const allied = allianceActive(game, human.factionId, factionId);
+    if (l.might === 0 && l.status === 0 && !allied) continue;
     const regionId = regionByFaction.get(factionId);
     const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
     if (!pathEl) continue;
@@ -295,6 +296,14 @@ function renderThreatBadges(): void {
     statusTspan.setAttribute("dx", "9");
     statusTspan.textContent = formatLead("S", l.status);
     text.appendChild(statusTspan);
+    if (allied) {
+      const turnsLeft = game.alliances[allianceKey(human.factionId, factionId)] - game.turn;
+      const allyTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+      allyTspan.classList.add("lead-ally");
+      allyTspan.setAttribute("dx", "9");
+      allyTspan.textContent = `A${turnsLeft}`;
+      text.appendChild(allyTspan);
+    }
     g.appendChild(text);
     badgeGroup.appendChild(g);
 

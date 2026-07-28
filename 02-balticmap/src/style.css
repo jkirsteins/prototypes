@@ -599,6 +599,10 @@ svg.map.dragging {
   fill: #6b5d49;
 }
 
+.lead-ally {
+  fill: #1d4ed8;
+}
+
 .activity-log {
   position: absolute;
   right: 16px;

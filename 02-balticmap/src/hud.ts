@@ -1,7 +1,7 @@
 import { CARDS } from "./cards";
 import { isHumanTurn, type GameEvent, type GameState } from "./game";
 import { flyCard } from "./animate";
-import { leadsOf, realmOf } from "./relations";
+import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
 import { buildNotices, type Notice, type NoticeCtx } from "./notices";
 import { SUBJUGATE_THRESHOLD } from "./playability";
 
@@ -286,6 +286,10 @@ export function createHud(
       subjugationGrip: () =>
         SUBJUGATE_THRESHOLD *
         realmOf(human.factionId, state.overlords, state.incorporated).length,
+      allianceExpiry: (other) =>
+        allianceActive(state, human.factionId, other)
+          ? state.alliances[allianceKey(human.factionId, other)]
+          : undefined,
     };
     for (const n of buildNotices(fresh, ctx)) {
       if (noticeOverlay.classList.contains("hidden")) showNotice(n);

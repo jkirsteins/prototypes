@@ -18,6 +18,9 @@ export interface NoticeCtx {
   /** The lead an enemy needs over the human to subjugate them (scaled by
    *  the human realm's size). */
   subjugationGrip(): number;
+  /** Expiry turn of an active alliance between the human and otherFactionId;
+   *  undefined when no pact is active. */
+  allianceExpiry(otherFactionId: string): number | undefined;
 }
 
 /** Every GameEventType must decide: interrupt the human, or stay silent
@@ -61,14 +64,16 @@ const RELEASE_CONSEQUENCE =
 const actorName = (e: GameEvent, ctx: NoticeCtx): string =>
   ctx.factionName(ctx.factionOf(e.playerId));
 
-/** Raid / Shrewd marriage against the human: single actor keeps the plain
- *  sentence; N actors collapse into one "N players played X against you"
- *  notice with one standing bullet per actor. */
-function buildPlayNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  const raid = events[0].cardId === "raid";
-  const title = raid ? "Raided" : "A Shrewd Marriage";
-  const cardLabel = raid ? "Raid" : "Shrewd marriage";
-
+/** Shared shape for hostile targeted plays against the human (Raid, Shrewd
+ *  marriage, Assassinate ruler): single actor keeps the plain sentence; N
+ *  actors collapse into one "N players played X against you" notice with
+ *  one standing bullet per actor. */
+function buildRelationPlayNotice(
+  events: GameEvent[],
+  ctx: NoticeCtx,
+  title: string,
+  cardLabel: string,
+): Notice {
   if (events.length === 1) {
     const e = events[0];
     const actorId = ctx.factionOf(e.playerId);
@@ -99,6 +104,52 @@ function buildPlayNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
   return {
     title,
     what: `${events.length} players played ${cardLabel} against you:`,
+    details,
+  };
+}
+
+/** Raid / Shrewd marriage against the human. */
+function buildPlayNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  const raid = events[0].cardId === "raid";
+  const title = raid ? "Raided" : "A Shrewd Marriage";
+  const cardLabel = raid ? "Raid" : "Shrewd marriage";
+  return buildRelationPlayNotice(events, ctx, title, cardLabel);
+}
+
+/** Assassinate ruler against the human: same shape as Raid/Marriage (the
+ *  standing line already shows Status even, post-effect). */
+function buildAssassinateNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  return buildRelationPlayNotice(events, ctx, "A Ruler Falls", "Assassinate ruler");
+}
+
+/** Alliance sealed with the human: single actor keeps "played Alliance
+ *  WITH you" (not against); N actors collapse into one notice with one
+ *  "actor - until turn N" bullet each. */
+function buildAllianceNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  if (events.length === 1) {
+    const e = events[0];
+    const actorId = ctx.factionOf(e.playerId);
+    const actor = ctx.factionName(actorId);
+    const expiry = actorId !== undefined ? ctx.allianceExpiry(actorId) : undefined;
+    const details = expiry !== undefined
+      ? [`No hostile cards between you and ${actor} until turn ${expiry}.`]
+      : [];
+    return {
+      title: "An Alliance Sealed",
+      what: `${actor} played Alliance with ${ctx.factionName(e.targetFactionId)}.`,
+      details,
+    };
+  }
+
+  const details = events.map((e) => {
+    const actorId = ctx.factionOf(e.playerId);
+    const actor = ctx.factionName(actorId);
+    const expiry = actorId !== undefined ? ctx.allianceExpiry(actorId) : undefined;
+    return expiry !== undefined ? `${actor} - until turn ${expiry}` : actor;
+  });
+  return {
+    title: "An Alliance Sealed",
+    what: `${events.length} players sealed alliances with you:`,
     details,
   };
 }
@@ -188,10 +239,18 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   play: {
     kind: "modal",
     appliesToHuman: (e, ctx) =>
-      (e.cardId === "raid" || e.cardId === "shrewd-marriage") &&
+      (e.cardId === "raid" ||
+        e.cardId === "shrewd-marriage" ||
+        e.cardId === "assassinate-ruler" ||
+        e.cardId === "alliance") &&
       e.targetFactionId === ctx.humanFactionId &&
       e.playerId !== 1,
-    build: (e, ctx) => buildPlayNotice([e], ctx),
+    build: (e, ctx) =>
+      e.cardId === "assassinate-ruler"
+        ? buildAssassinateNotice([e], ctx)
+        : e.cardId === "alliance"
+          ? buildAllianceNotice([e], ctx)
+          : buildPlayNotice([e], ctx),
   },
   discard: { kind: "silent", reason: "routine; visible in log" },
   reshuffle: { kind: "silent", reason: "routine; deck pulse animation" },
@@ -250,8 +309,12 @@ export function buildNotices(events: GameEvent[], ctx: NoticeCtx): Notice[] {
   }
   return order.map(({ type, events: groupEvents }) => {
     switch (type) {
-      case "play":
+      case "play": {
+        const cardId = groupEvents[0].cardId;
+        if (cardId === "assassinate-ruler") return buildAssassinateNotice(groupEvents, ctx);
+        if (cardId === "alliance") return buildAllianceNotice(groupEvents, ctx);
         return buildPlayNotice(groupEvents, ctx);
+      }
       case "subjugated":
         return buildSubjugatedNotice(groupEvents, ctx);
       case "released":

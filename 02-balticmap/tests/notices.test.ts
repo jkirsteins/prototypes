@@ -21,6 +21,7 @@ const FACTION_BY_PLAYER: Record<number, string> = {
 
 let leadsTable: Record<string, { might: number; status: number }> = {};
 let grip = 2;
+let allianceExpiryTable: Record<string, number | undefined> = {};
 
 const ctx: NoticeCtx = {
   humanFactionId: "livs",
@@ -28,6 +29,7 @@ const ctx: NoticeCtx = {
   factionOf: (playerId) => FACTION_BY_PLAYER[playerId],
   leads: (other) => leadsTable[other] ?? { might: 0, status: 0 },
   subjugationGrip: () => grip,
+  allianceExpiry: (other) => allianceExpiryTable[other],
 };
 
 const ev = (partial: Partial<GameEvent> & { type: GameEvent["type"] }): GameEvent => ({
@@ -60,6 +62,7 @@ describe("buildNotices: single-event scenarios", () => {
   beforeEach(() => {
     leadsTable = {};
     grip = 2;
+    allianceExpiryTable = {};
   });
 
   it("builds a subjugation notice when an AI subjugates the human", () => {
@@ -241,12 +244,57 @@ describe("buildNotices: single-event scenarios", () => {
       expect(oneNotice(e), `expected null for ${e.cardId}`).toBeNull();
     }
   });
+
+  it("assassinate-ruler against the human raises a modal with standing and threat warning", () => {
+    leadsTable = { jersika: { might: -2, status: 0 } };
+    const n = oneNotice(
+      ev({ type: "play", cardId: "assassinate-ruler", targetFactionId: "livs" }),
+    )!;
+    expect(n.title).toBe("A Ruler Falls");
+    expect(n.what).toBe("Jersikans played Assassinate ruler against Lower Daugava Livs.");
+    expect(n.details).toEqual([
+      "Standing vs Jersikans: Might - they lead by 2; Status - even.",
+      "A lead of 2 is enough to subjugate.",
+    ]);
+  });
+
+  it("alliance with the human raises a modal naming the pact expiry", () => {
+    allianceExpiryTable = { jersika: 8 };
+    const n = oneNotice(
+      ev({ type: "play", cardId: "alliance", targetFactionId: "livs" }),
+    )!;
+    expect(n.title).toBe("An Alliance Sealed");
+    expect(n.what).toBe("Jersikans played Alliance with Lower Daugava Livs.");
+    expect(n.details).toEqual([
+      "No hostile cards between you and Jersikans until turn 8.",
+    ]);
+  });
+
+  it("alliance modal omits the expiry line when allianceExpiry is undefined", () => {
+    const n = oneNotice(
+      ev({ type: "play", cardId: "alliance", targetFactionId: "livs" }),
+    )!;
+    expect(n.details).toEqual([]);
+  });
+
+  it("extended-diplomacy play stays silent (untargeted, self-initiated)", () => {
+    const n = oneNotice(ev({ type: "play", cardId: "extended-diplomacy" }));
+    expect(n).toBeNull();
+  });
+
+  it("alliance played by the human stays silent", () => {
+    const n = oneNotice(
+      ev({ type: "play", playerId: 1, cardId: "alliance", targetFactionId: "jersika" }),
+    );
+    expect(n).toBeNull();
+  });
 });
 
 describe("buildNotices: batch grouping", () => {
   beforeEach(() => {
     leadsTable = {};
     grip = 2;
+    allianceExpiryTable = {};
   });
 
   it("collapses 3 raids by different actors into one notice", () => {
@@ -285,6 +333,43 @@ describe("buildNotices: batch grouping", () => {
     expect(notices[0].what).toBe("Jersikans played Raid against Lower Daugava Livs.");
     expect(notices[1].title).toBe("A Shrewd Marriage");
     expect(notices[1].what).toBe("Latgalians played Shrewd marriage against Lower Daugava Livs.");
+  });
+
+  it("collapses 2 assassinate-ruler plays by different actors into one notice", () => {
+    leadsTable = {
+      jersika: { might: -2, status: 0 }, // qualifies: max(2, 0) >= grip(2)
+      latgale: { might: 0, status: -1 }, // below grip
+    };
+    const events: GameEvent[] = [
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler", targetFactionId: "livs" }),
+      ev({ turn: 2, playerId: 3, type: "play", cardId: "assassinate-ruler", targetFactionId: "livs" }),
+    ];
+    const notices = buildNotices(events, ctx);
+    expect(notices).toHaveLength(1);
+    const n = notices[0];
+    expect(n.title).toBe("A Ruler Falls");
+    expect(n.what).toBe("2 players played Assassinate ruler against you:");
+    expect(n.details).toEqual([
+      "Jersikans - Might: they lead by 2; Status: even - a lead of 2 subjugates you",
+      "Latgalians - Might: even; Status: they lead by 1",
+    ]);
+  });
+
+  it("collapses 2 alliances sealed in one round into one notice", () => {
+    allianceExpiryTable = { jersika: 6, latgale: 11 };
+    const events: GameEvent[] = [
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "alliance", targetFactionId: "livs" }),
+      ev({ turn: 2, playerId: 3, type: "play", cardId: "alliance", targetFactionId: "livs" }),
+    ];
+    const notices = buildNotices(events, ctx);
+    expect(notices).toHaveLength(1);
+    const n = notices[0];
+    expect(n.title).toBe("An Alliance Sealed");
+    expect(n.what).toBe("2 players sealed alliances with you:");
+    expect(n.details).toEqual([
+      "Jersikans - until turn 6",
+      "Latgalians - until turn 11",
+    ]);
   });
 
   it("collapses a fealty-then-poach chain into one notice with two transitions", () => {

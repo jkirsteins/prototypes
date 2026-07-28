@@ -7,7 +7,7 @@ import {
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
 import { buildDeck, type Rng } from "../src/cards";
-import { bumpMight } from "../src/relations";
+import { allianceKey, bumpMight } from "../src/relations";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -567,6 +567,27 @@ describe("notice modal", () => {
     expect(q(container, ".notice-details").classList.contains("multi")).toBe(true);
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+  });
+
+  it("shows an alliance modal with the until-turn detail when an AI seals a pact", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = {
+      ...g,
+      alliances: { [allianceKey("beta", "alpha")]: 8 },
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 2, type: "play", cardId: "alliance", targetFactionId: "beta" },
+      ],
+    };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("An Alliance Sealed");
+    expect(q(container, ".notice-what").textContent).toBe("Alpha played Alliance with Beta.");
+    const lines = [...container.querySelectorAll(".notice-details .notice-detail")].map(
+      (el) => el.textContent,
+    );
+    expect(lines).toEqual(["No hostile cards between you and Alpha until turn 8."]);
   });
 
   it("dismisses on Escape", () => {
