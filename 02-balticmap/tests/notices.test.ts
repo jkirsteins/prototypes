@@ -165,6 +165,7 @@ describe("buildNotices: single-event scenarios", () => {
       "Your allegiance shifts from Latgalians to Jersikans.",
       "Standing vs Jersikans: Might - they lead by 2; Status - even.",
       "Standing vs Latgalians: Might - even; Status - they lead by 1.",
+      "Latgalians loses 1 Might and 1 Status against you.",
     ]);
   });
 
@@ -310,6 +311,7 @@ describe("buildNotices: batch grouping", () => {
       "Jersikans subjugated you",
       "Latgalians tore you from Jersikans",
       "Standing vs Latgalians: Might - they lead by 1; Status - you lead by 2.",
+      "Jersikans loses 1 Might and 1 Status against you.",
     ]);
     expect(n.consequence).toBe(
       "Two Pay Tribute cards were shuffled into your deck. When one is in hand, it must be played before anything else.",

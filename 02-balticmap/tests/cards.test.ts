@@ -10,7 +10,7 @@ function seededRng(seed: number): Rng {
 }
 
 describe("cards", () => {
-  it("defines the eight card types with v2 properties", () => {
+  it("defines the nine card types with v2 properties", () => {
     const expectProps = (
       id: string, name: string, targeted: boolean,
       maxPerDeck: number | null, deckBuildable: boolean, forced: boolean, text: string,
@@ -48,19 +48,23 @@ describe("cards", () => {
       "pay-tribute", "Pay tribute", false, null, false, true,
       "Forced: while a vassal, grant your overlord +1 Might or +1 Status.",
     );
+    expectProps(
+      "revolt", "Revolt", false, 1, true, false,
+      "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you.",
+    );
   });
 
-  it("builds the 10-card default deck: 6 non-basics once each + 4 grow-crops", () => {
+  it("builds the 10-card default deck: 7 non-basics once each + 3 grow-crops", () => {
     const deck = buildDeck();
     expect(deck).toHaveLength(DECK_SIZE);
     const count = (id: string) => deck.filter((c) => c === id).length;
     for (const id of [
       "raid", "shrewd-marriage", "fortify", "subjugate",
-      "incorporate", "reclaim-independence",
+      "incorporate", "reclaim-independence", "revolt",
     ]) {
       expect(count(id)).toBe(1);
     }
-    expect(count("grow-crops")).toBe(4);
+    expect(count("grow-crops")).toBe(3);
     expect(count("pay-tribute")).toBe(0);
   });
 

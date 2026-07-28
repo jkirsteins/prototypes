@@ -74,6 +74,7 @@ export function isCardPlayable(
   const overlord = view.overlords.get(factionId);
   if (cardId === "grow-crops" || cardId === "fortify") return true;
   if (cardId === "pay-tribute") return overlord !== undefined;
+  if (cardId === "revolt") return overlord !== undefined;
   if (cardId === "reclaim-independence") {
     if (overlord === undefined) return false;
     const l = leadsOf(view.relations, overlord, factionId);

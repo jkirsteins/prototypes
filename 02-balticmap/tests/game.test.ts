@@ -162,6 +162,25 @@ describe("card effects", () => {
     expect(after.log.some((e) => e.type === "released" && e.targetFactionId === "delta")).toBe(true);
   });
 
+  it("poaching bumps the vassal's lead over the former lord by +1 Might and +1 Status", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    const l = leadsOf(after.relations, "gamma", "alpha");
+    expect(l.might).toBe(1);
+    expect(l.status).toBe(1);
+  });
+
+  it("does not apply the vassal-loss penalty on a first subjugation (no former lord)", () => {
+    let g = playingState(LINE_ADJ);
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(leadsOf(after.relations, "gamma", "alpha")).toEqual({ might: 0, status: 0 });
+  });
+
   it("poaching replaces tribute copies instead of stacking them", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
@@ -241,6 +260,46 @@ describe("card effects", () => {
     // reclaim unplayable -> hand of 1 means discard mode
     expect(playCard(g, 0, rng())).toBe(g);
     expect(discardCard(g, 0)).not.toBe(g);
+  });
+
+  it("revolt is not playable while free (no overlord)", () => {
+    const g = withHand(playingState(LINE_ADJ), 0, ["revolt"]);
+    expect(playCard(g, 0, rng())).toBe(g);
+  });
+
+  it("revolt is playable as a vassal even under an overwhelming overlord lead", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["beta", "gamma"]]) };
+    g = withRel(g, mightLead(g.relations, "gamma", "beta", 10));
+    g = withHand(g, 0, ["revolt"]);
+    const after = playCard(g, 0, rng());
+    expect(after).not.toBe(g);
+    expect(after.overlords.has("beta")).toBe(false);
+  });
+
+  it("revolt strips tribute, frees the vassal, applies the vassal-loss penalty, and emits reclaimed", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["beta", "gamma"]]) };
+    let p0 = g.players[0];
+    p0 = {
+      ...p0,
+      deck: [...p0.deck, "pay-tribute"],
+      discard: ["pay-tribute"],
+      hand: ["revolt"],
+    };
+    g = { ...g, players: [p0, ...g.players.slice(1)] };
+    const after = playCard(g, 0, rng());
+    expect(after.overlords.has("beta")).toBe(false);
+    const freed = after.players[0];
+    expect(
+      [...freed.deck, ...freed.hand, ...freed.discard].filter((c) => c === "pay-tribute"),
+    ).toHaveLength(0);
+    const l = leadsOf(after.relations, "beta", "gamma");
+    expect(l.might).toBe(1);
+    expect(l.status).toBe(1);
+    expect(after.log.at(-1)).toMatchObject({
+      type: "reclaimed", targetFactionId: "beta", overlordFactionId: "gamma",
+    });
   });
 
   it("tribute feeds the overlord and its incorporated lands on the chosen track", () => {

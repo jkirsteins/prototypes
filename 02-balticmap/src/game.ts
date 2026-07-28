@@ -247,6 +247,11 @@ export function playCard(
       const clean = stripTribute(pl);
       return { ...clean, deck: shuffle([...clean.deck, "pay-tribute", "pay-tribute"], rng) };
     });
+    if (formerLord !== undefined) {
+      // vassal-loss penalty (section 8): the poached vassal gains +1/+1
+      // over the former lord (relation counters only grow).
+      relations = bumpStatus(bumpMight(relations, targetId, formerLord), targetId, formerLord);
+    }
     events.push({
       turn: state.turn, playerId: p.id, type: "subjugated",
       targetFactionId: targetId, overlordFactionId: p.factionId,
@@ -269,6 +274,18 @@ export function playCard(
     if (former === undefined) return state;
     overlords.delete(p.factionId);
     players = updateFaction(players, p.factionId, stripTribute);
+    events.push({
+      turn: state.turn, playerId: p.id, type: "reclaimed",
+      targetFactionId: p.factionId, overlordFactionId: former,
+    });
+  } else if (cardId === "revolt") {
+    const former = overlords.get(p.factionId);
+    if (former === undefined) return state;
+    overlords.delete(p.factionId);
+    players = updateFaction(players, p.factionId, stripTribute);
+    // vassal-loss penalty (section 8): the revolting vassal gains +1/+1
+    // over the former lord (relation counters only grow).
+    relations = bumpStatus(bumpMight(relations, p.factionId, former), p.factionId, former);
     events.push({
       turn: state.turn, playerId: p.id, type: "reclaimed",
       targetFactionId: p.factionId, overlordFactionId: former,

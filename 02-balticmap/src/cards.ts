@@ -21,6 +21,7 @@ export const CARDS: Record<string, CardDef> = {
   "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Permanently absorb one of your vassals into your realm." },
   "reclaim-independence": { id: "reclaim-independence", name: "Reclaim independence", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Cast off your overlord. Playable while their lead in Might and Status is under 2 per land of their other holdings." },
   "pay-tribute": { id: "pay-tribute", name: "Pay tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true, text: "Forced: while a vassal, grant your overlord +1 Might or +1 Status." },
+  "revolt": { id: "revolt", name: "Revolt", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you." },
 };
 
 export const DECK_SIZE = 10;

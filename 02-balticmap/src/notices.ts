@@ -117,7 +117,10 @@ function buildSubjugatedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
         : `You now owe fealty to ${actor}.`,
       ...(e.overlordFactionId !== undefined ? [standingLine(ctx, e.overlordFactionId)] : []),
       ...(former !== undefined && former !== e.overlordFactionId
-        ? [standingLine(ctx, former)]
+        ? [
+            standingLine(ctx, former),
+            `${ctx.factionName(former)} loses 1 Might and 1 Status against you.`,
+          ]
         : []),
     ];
     return {
@@ -135,10 +138,15 @@ function buildSubjugatedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
       ? `${actor} tore you from ${ctx.factionName(former)}`
       : `${actor} subjugated you`;
   });
-  const finalOverlord = events[events.length - 1].overlordFactionId;
+  const finalEvent = events[events.length - 1];
+  const finalOverlord = finalEvent.overlordFactionId;
+  const finalFormer = finalEvent.formerOverlordFactionId;
   const details = [
     ...bullets,
     ...(finalOverlord !== undefined ? [standingLine(ctx, finalOverlord)] : []),
+    ...(finalFormer !== undefined
+      ? [`${ctx.factionName(finalFormer)} loses 1 Might and 1 Status against you.`]
+      : []),
   ];
   return {
     title: "Beneath the Yoke",
