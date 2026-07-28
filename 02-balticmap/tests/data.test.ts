@@ -5,11 +5,17 @@ import raw from "../src/data/map.json";
 const data = raw as MapData;
 
 const EXPECTED_IDS = [
-  "dainava", "eastern-aukstaitija", "harjumaa", "jarvamaa", "jersika",
-  "kursa", "laanemaa", "lietuva", "livzeme", "nadrawa", "notanga",
-  "pilsotas", "ravala", "saaremaa", "sakala", "selija", "semba", "suduva",
-  "talava", "ugandi", "virumaa", "zemaitija", "zemgale",
+  "dainava", "eastern-aukstaitija", "galinda", "harjumaa", "jarvamaa",
+  "jersika", "kursa", "laanemaa", "lietuva", "livzeme", "nadrawa",
+  "notanga", "pamede", "pilsotas", "ravala", "saaremaa", "sakala",
+  "selija", "semba", "suduva", "talava", "ugandi", "virumaa", "warmi",
+  "zemaitija", "zemgale",
 ];
+
+// Pinned to what the bake derives, so a neighbor cannot silently vanish the
+// way SE and DK once did. DK is gone (off-canvas even on the wider frame);
+// SE joined when the frame moved west and Gotland came into view.
+const EXPECTED_NEIGHBOR_IDS = ["BY", "FI", "PL", "RU", "SE"];
 
 const EXPECTED_PEOPLE_IDS = [
   "aukstaitians", "curonians", "estonians", "latgalians", "livs",
@@ -27,11 +33,13 @@ describe("map.json (anno 1100)", () => {
     expect(data.height).toBe(1400);
     expect(data.year).toBe(1100);
     expect(data.attribution).toBe(
-      "(c) EuroGeographics for the administrative boundaries; rivers: Natural Earth",
+      "(c) EuroGeographics for the administrative boundaries; " +
+        "Poland and Kaliningrad: geoBoundaries / OpenStreetMap contributors (ODbL); " +
+        "rivers: Natural Earth",
     );
   });
 
-  it("contains exactly the 23 lands, sorted by id", () => {
+  it("contains exactly the 26 lands, sorted by id", () => {
     expect(data.regions.map((r) => r.id)).toEqual(EXPECTED_IDS);
   });
 
@@ -68,10 +76,10 @@ describe("map.json (anno 1100)", () => {
     expect(byId.get("eastern-aukstaitija")).toBe("Eastern Aukštaitija");
   });
 
-  it("has 23 factions in 1:1 correspondence with regions", () => {
-    expect(data.factions.length).toBe(23);
+  it("has 26 factions in 1:1 correspondence with regions", () => {
+    expect(data.factions.length).toBe(26);
     const factionIds = data.factions.map((f) => f.id);
-    expect(new Set(factionIds).size).toBe(23);
+    expect(new Set(factionIds).size).toBe(26);
     const used = data.regions.map((r) => r.faction).sort();
     expect(used).toEqual([...factionIds].sort());
   });
@@ -93,7 +101,7 @@ describe("map.json (anno 1100)", () => {
       expect(f.color).toMatch(/^#[0-9a-f]{6}$/);
       colors.add(f.color);
     }
-    expect(colors.size).toBe(23);
+    expect(colors.size).toBe(26);
   });
 
   it("single-faction ethnicities keep the people color exactly", () => {
@@ -139,7 +147,7 @@ describe("map.json (anno 1100)", () => {
     expect(region("saaremaa")).toMatchObject({ cohesion: "high" });
   });
 
-  it("populations are 5k multiples totalling 735k", () => {
+  it("populations are 5k multiples totalling 820k", () => {
     let total = 0;
     for (const r of data.regions) {
       expect(Number.isInteger(r.population)).toBe(true);
@@ -148,7 +156,7 @@ describe("map.json (anno 1100)", () => {
       expect(["low", "medium", "high"]).toContain(r.cohesion);
       total += r.population;
     }
-    expect(total).toBe(735000);
+    expect(total).toBe(820000);
   });
 
   it("ravala holds the northwest coast and harjumaa is contiguous", () => {
@@ -167,20 +175,21 @@ describe("map.json (anno 1100)", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([...ids].sort());
     expect(ids.length).toBeGreaterThanOrEqual(5);
-    expect(ids.length).toBeLessThanOrEqual(10);
+    expect(ids.length).toBeLessThanOrEqual(13);
     expect(ids).toContain("daugava");
     expect(ids).toContain("nemunas");
+    expect(ids).toContain("vistula");
     for (const r of data.rivers) {
       expect(r.name.length).toBeGreaterThan(0);
       expect(typeof r.major).toBe("boolean");
       expect(r.path.startsWith("M")).toBe(true);
     }
     const major = data.rivers.filter((r) => r.major).map((r) => r.id);
-    expect(major.sort()).toEqual(["daugava", "nemunas"]);
+    expect(major.sort()).toEqual(["daugava", "nemunas", "vistula"]);
   });
 
   it("has neighbor geometry and the full label set inside bounds", () => {
-    expect(data.neighbors.length).toBeGreaterThanOrEqual(3);
+    expect(data.neighbors.map((n) => n.id)).toEqual(EXPECTED_NEIGHBOR_IDS);
     for (const n of data.neighbors) expect(n.path.startsWith("M")).toBe(true);
     const byKind = (k: string) =>
       data.labels.filter((l) => l.kind === k).map((l) => l.text);
@@ -201,10 +210,10 @@ describe("map.json (anno 1100)", () => {
     }
   });
 
-  it("has 28 authored settlements, exactly one unlocked per land", () => {
-    expect(data.settlements.length).toBe(28);
+  it("has 30 authored settlements, exactly one unlocked per land", () => {
+    expect(data.settlements.length).toBe(30);
     const ids = data.settlements.map((s) => s.id);
-    expect(new Set(ids).size).toBe(28);
+    expect(new Set(ids).size).toBe(30);
     expect(ids).toEqual([...ids].sort());
     const landIds = new Set(data.regions.map((r) => r.id));
     const unlockedPerLand = new Map<string, number>();
@@ -223,12 +232,13 @@ describe("map.json (anno 1100)", () => {
         unlockedPerLand.set(s.land, (unlockedPerLand.get(s.land) ?? 0) + 1);
       }
     }
-    expect(data.settlements.filter((s) => s.unlocked).length).toBe(23);
+    expect(data.settlements.filter((s) => s.unlocked).length).toBe(26);
     for (const r of data.regions) {
       expect(unlockedPerLand.get(r.id)).toBe(1);
     }
+    // Apuole is gone: Pilsotas at 10,000 people supports a single slot.
     const locked = data.settlements.filter((s) => !s.unlocked).map((s) => s.id);
-    expect(locked.sort()).toEqual(["apuole", "ikskile", "koknese", "mezotne", "otepaa"]);
+    expect(locked.sort()).toEqual(["ikskile", "koknese", "mezotne", "otepaa"]);
   });
 
   it("maxSettlements follows the population formula and bounds authored counts", () => {

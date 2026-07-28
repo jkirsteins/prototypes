@@ -12,8 +12,8 @@ describe("renderMap", () => {
     const { svg, regionPaths } = renderMap(data, container);
     expect(container.contains(svg)).toBe(true);
     const paths = svg.querySelectorAll("path.region");
-    expect(paths.length).toBe(23);
-    expect(regionPaths.size).toBe(23);
+    expect(paths.length).toBe(26);
+    expect(regionPaths.size).toBe(26);
     const kursa = regionPaths.get("kursa")!;
     expect(kursa.getAttribute("data-id")).toBe("kursa");
     const curonianConfederacy = data.factions.find(
