@@ -18,8 +18,8 @@ Follow-ups to 2026-07-27-player-event-notices-design.md from live play feedback.
 
 ## Rules facts that shape the design
 
-- A played Subjugate always succeeds; legality (reach + lead of 2) is checked
-  before the card is playable. There is no "attempted" state - the modal
+- A played Subjugate always succeeds; legality (reach + the scaled lead of
+  section 2b) is checked before the card is playable. There is no "attempted" state - the modal
   always reports a real change of allegiance.
 - Poaching is legal: a rival's vassal is a valid Subjugate target; the new
   overlord overwrites the old. No `released` event fires for the poached
