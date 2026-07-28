@@ -789,7 +789,9 @@ svg.map.dragging {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 30;
+  /* above .flying-card (30): mid-flight card animations must not cover
+     a notice that interrupts the same batch */
+  z-index: 40;
 }
 
 .notice-overlay.hidden {
