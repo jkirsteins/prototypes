@@ -564,6 +564,7 @@ describe("notice modal", () => {
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe("Raided");
     expect(q(container, ".notice-what").textContent).toBe("2 players played Raid against you:");
+    expect(q(container, ".notice-details").classList.contains("multi")).toBe(true);
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
