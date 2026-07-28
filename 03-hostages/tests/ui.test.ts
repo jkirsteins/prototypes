@@ -62,6 +62,34 @@ describe("duel screen", () => {
     expect(root.querySelectorAll("#log li.log-entry").length).toBeGreaterThan(0);
   });
 
+  it("scrolls the log to the newest entry after render", () => {
+    // happy-dom never performs real layout, so scrollHeight/clientHeight are
+    // permanently 0 on every element. A naive `expect(log.scrollTop).toBe(
+    // log.scrollHeight)` would pass against that (0 === 0) even if the
+    // production code never touched scrollTop at all. To make the assertion
+    // load-bearing, stub scrollHeight to a distinctive non-zero value at the
+    // Element.prototype level (where happy-dom defines the getter) so the
+    // only way scrollTop can end up at that value is if renderDuel actually
+    // set it from scrollHeight after the log was attached to the document.
+    const stubbedScrollHeight = 4242;
+    const original = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight");
+    Object.defineProperty(Element.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => stubbedScrollHeight,
+    });
+    try {
+      const state = started();
+      renderDuel(root, state, actions);
+      const log = root.querySelector<HTMLElement>("#log");
+      expect(log).not.toBeNull();
+      expect(log?.scrollTop).toBe(stubbedScrollHeight);
+    } finally {
+      if (original) {
+        Object.defineProperty(Element.prototype, "scrollHeight", original);
+      }
+    }
+  });
+
   it("disables illegal cards and states the reason", () => {
     const state = started();
     state.playerPile.hand = ["kickHisKnee"];

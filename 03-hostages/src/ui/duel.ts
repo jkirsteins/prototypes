@@ -92,7 +92,8 @@ export function renderDuel(root: HTMLElement, state: GameState, actions: Actions
   banner.id = "turn-banner";
   screen.append(banner);
   screen.append(renderStatus(state));
-  screen.append(renderLog(state));
+  const log = renderLog(state);
+  screen.append(log);
 
   const hand = el("div", "hand");
 
@@ -142,4 +143,9 @@ export function renderDuel(root: HTMLElement, state: GameState, actions: Actions
 
   screen.append(hand);
   root.append(screen);
+
+  // The log has layout only once it is attached to the document, so the
+  // scroll-to-bottom has to happen after this append, not while building
+  // the element above.
+  log.scrollTop = log.scrollHeight;
 }
