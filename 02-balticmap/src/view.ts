@@ -10,6 +10,11 @@ export interface View {
 
 export const MAX_ZOOM = 8;
 
+/** The most zoomed-out view allowed, as a factor of the whole-map fit.
+ *  Above 1 the whole map never fits on screen and the player pans instead,
+ *  so lands keep their size as the map grows. */
+export const MIN_ZOOM = 1.3;
+
 export function politicalFactionForPolygon(
   polygonFactionId: string,
   incorporated: Incorporated,
@@ -45,9 +50,10 @@ export function fitView(mapW: number, mapH: number, vpW: number, vpH: number): V
   return { x: (mapW - w) / 2, y: (mapH - h) / 2, w, h };
 }
 
-/** Clamp zoom to [1x, MAX_ZOOM] relative to base and keep the view inside base. */
+/** Clamp zoom to [MIN_ZOOM, MAX_ZOOM] relative to base and keep the view
+ *  inside base. */
 export function clampView(view: View, base: View): View {
-  const w = Math.min(Math.max(view.w, base.w / MAX_ZOOM), base.w);
+  const w = Math.min(Math.max(view.w, base.w / MAX_ZOOM), base.w / MIN_ZOOM);
   const h = w * (base.h / base.w);
   const x = Math.min(Math.max(view.x, base.x), base.x + base.w - w);
   const y = Math.min(Math.max(view.y, base.y), base.y + base.h - h);

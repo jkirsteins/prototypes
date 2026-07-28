@@ -36,7 +36,10 @@ export function attachInteraction(
   const vpH = () => svg.clientHeight || data.height;
 
   let base: View = fitView(data.width, data.height, vpW(), vpH());
-  let view: View = base;
+  // The home view is the most zoomed-out the player may go, which is closer
+  // than the whole-map fit - see MIN_ZOOM.
+  const homeView = (b: View): View => clampView(b, b);
+  let view: View = homeView(base);
 
   function apply(): void {
     svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
@@ -44,10 +47,12 @@ export function attachInteraction(
   apply();
 
   window.addEventListener("resize", () => {
-    const wasAtBase =
-      view.x === base.x && view.y === base.y && view.w === base.w && view.h === base.h;
+    const home = homeView(base);
+    const wasAtHome =
+      view.x === home.x && view.y === home.y &&
+      view.w === home.w && view.h === home.h;
     base = fitView(data.width, data.height, vpW(), vpH());
-    view = wasAtBase ? base : clampView(view, base);
+    view = wasAtHome ? homeView(base) : clampView(view, base);
     apply();
   });
 

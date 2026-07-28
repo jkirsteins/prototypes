@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderMap } from "../src/map-render";
 import { attachInteraction } from "../src/interaction";
+import { fitView, clampView } from "../src/view";
 import type { MapData } from "../src/types";
 import raw from "../src/data/map.json";
 
@@ -27,13 +28,20 @@ const mouse = (type: string, init: MouseEventInit = {}) =>
   new MouseEvent(type, { bubbles: true, ...init });
 
 describe("attachInteraction", () => {
-  it("sets the initial viewBox to a view covering the map", () => {
+  it("sets the initial viewBox to the home view, not the whole-map fit", () => {
+    // The zoom floor (MIN_ZOOM) means the player starts closer than a full
+    // fit of the map, so lands keep their size as the map grows - see
+    // src/view.ts.
     const { svg } = setup();
     const [x, y, w, h] = svg.getAttribute("viewBox")!.split(" ").map(Number);
-    expect(w).toBeGreaterThanOrEqual(data.width);
-    expect(h).toBeGreaterThanOrEqual(data.height);
-    expect(x).toBeLessThanOrEqual(0);
-    expect(y).toBeLessThanOrEqual(0);
+    const base = fitView(data.width, data.height, data.width, data.height);
+    const home = clampView(base, base);
+    expect(w).toBeCloseTo(home.w, 6);
+    expect(h).toBeCloseTo(home.h, 6);
+    expect(x).toBeCloseTo(home.x, 6);
+    expect(y).toBeCloseTo(home.y, 6);
+    expect(w).toBeLessThan(data.width);
+    expect(h).toBeLessThan(data.height);
   });
 
   it("hover toggles the hovered class and fires onHover", () => {

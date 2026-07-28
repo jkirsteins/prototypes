@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   fitView, clampView, hoverRelationLines, panBy, politicalFactionForPolygon,
-  zoomAt, MAX_ZOOM,
+  zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
 } from "../src/view";
 import { bumpMight, type Relations } from "../src/relations";
@@ -48,17 +48,22 @@ describe("zoomAt", () => {
     close(base.w / v.w, MAX_ZOOM);
   });
 
-  it("never zooms out past the base view", () => {
-    const v = zoomAt(base, base, 400, 300, 0.5, 800, 600);
-    expect(v).toEqual(base);
+  it("never zooms out past the home view (the zoom floor, not the raw base fit)", () => {
+    const home = clampView(base, base);
+    const v = zoomAt(home, base, 400, 300, 0.5, 800, 600);
+    expect(v).toEqual(home);
   });
 });
 
 describe("panBy", () => {
   const base: View = fitView(1000, 1400, 800, 600);
 
-  it("does nothing at 1x (view already covers the base)", () => {
-    expect(panBy(base, base, 100, 100, 800)).toEqual(base);
+  it("does nothing when already pinned at the base's near corner", () => {
+    // The zoom floor means the home view no longer covers the whole base
+    // rect, but its near (top-left) corner is still pinned to base's, since
+    // clamping only opens up room on the far corner as the view shrinks.
+    const home = clampView(base, base);
+    expect(panBy(home, base, 100, 100, 800)).toEqual(home);
   });
 
   it("moves opposite to cursor delta when zoomed in", () => {
@@ -74,6 +79,35 @@ describe("panBy", () => {
     const panned = panBy(zoomed, base, 1e9, 1e9, 800);
     close(panned.x, base.x);
     close(panned.y, base.y);
+  });
+});
+
+describe("zoom floor", () => {
+  const base: View = fitView(1000, 1400, 800, 600);
+
+  it("never lets the view widen past base.w / MIN_ZOOM", () => {
+    const v = clampView({ ...base, w: base.w * 10, h: base.h * 10 }, base);
+    close(v.w, base.w / MIN_ZOOM);
+    close(v.h, (base.w / MIN_ZOOM) * (base.h / base.w));
+  });
+
+  it("is a real floor above 1, so the whole map never fits", () => {
+    expect(MIN_ZOOM).toBeGreaterThan(1);
+  });
+
+  it("clampView(base, base) is the home view and sits inside base", () => {
+    const home = clampView(base, base);
+    close(home.w, base.w / MIN_ZOOM);
+    expect(home.x).toBeGreaterThanOrEqual(base.x);
+    expect(home.y).toBeGreaterThanOrEqual(base.y);
+    expect(home.x + home.w).toBeLessThanOrEqual(base.x + base.w + 1e-9);
+    expect(home.y + home.h).toBeLessThanOrEqual(base.y + base.h + 1e-9);
+  });
+
+  it("pans at the home view, which the old fit-to-map behaviour could not", () => {
+    const home = clampView(base, base);
+    const panned = panBy(home, base, -50, 0, 800);
+    expect(panned.x).toBeGreaterThan(home.x);
   });
 });
 
