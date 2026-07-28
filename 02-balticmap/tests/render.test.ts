@@ -12,8 +12,8 @@ describe("renderMap", () => {
     const { svg, regionPaths } = renderMap(data, container);
     expect(container.contains(svg)).toBe(true);
     const paths = svg.querySelectorAll("path.region");
-    expect(paths.length).toBe(20);
-    expect(regionPaths.size).toBe(20);
+    expect(paths.length).toBe(23);
+    expect(regionPaths.size).toBe(23);
     const kursa = regionPaths.get("kursa")!;
     expect(kursa.getAttribute("data-id")).toBe("kursa");
     const curonianConfederacy = data.factions.find(
@@ -119,7 +119,7 @@ describe("renderMap", () => {
       const people = data.peoples.find((p) => p.name.toUpperCase() === l.text);
       expect(people).toBeDefined();
     }
-    // Every people should have at least one matching label (all nine match today).
+    // Every people should have at least one matching label (all ten match today).
     for (const p of data.peoples) {
       expect(peopleLabels.has(p.id)).toBe(true);
       const labels = peopleLabels.get(p.id)!;

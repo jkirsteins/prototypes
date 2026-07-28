@@ -6,14 +6,14 @@ const data = raw as MapData;
 
 const EXPECTED_IDS = [
   "dainava", "eastern-aukstaitija", "harjumaa", "jarvamaa", "jersika",
-  "kursa", "laanemaa", "lietuva", "livzeme", "pilsotas", "ravala",
-  "saaremaa", "sakala", "selija", "suduva", "talava", "ugandi",
-  "virumaa", "zemaitija", "zemgale",
+  "kursa", "laanemaa", "lietuva", "livzeme", "nadrawa", "notanga",
+  "pilsotas", "ravala", "saaremaa", "sakala", "selija", "semba", "suduva",
+  "talava", "ugandi", "virumaa", "zemaitija", "zemgale",
 ];
 
 const EXPECTED_PEOPLE_IDS = [
   "aukstaitians", "curonians", "estonians", "latgalians", "livs",
-  "samogitians", "selonians", "semigallians", "yotvingians",
+  "prussians", "samogitians", "selonians", "semigallians", "yotvingians",
 ];
 
 const FACTION_TYPES = [
@@ -31,11 +31,11 @@ describe("map.json (anno 1100)", () => {
     );
   });
 
-  it("contains exactly the 20 lands, sorted by id", () => {
+  it("contains exactly the 23 lands, sorted by id", () => {
     expect(data.regions.map((r) => r.id)).toEqual(EXPECTED_IDS);
   });
 
-  it("has exactly 9 peoples with names and hex colors", () => {
+  it("has exactly 10 peoples with names and hex colors", () => {
     expect(data.peoples.map((p) => p.id).sort()).toEqual(EXPECTED_PEOPLE_IDS);
     for (const p of data.peoples) {
       expect(p.name.length).toBeGreaterThan(0);
@@ -68,10 +68,10 @@ describe("map.json (anno 1100)", () => {
     expect(byId.get("eastern-aukstaitija")).toBe("Eastern Aukštaitija");
   });
 
-  it("has 20 factions in 1:1 correspondence with regions", () => {
-    expect(data.factions.length).toBe(20);
+  it("has 23 factions in 1:1 correspondence with regions", () => {
+    expect(data.factions.length).toBe(23);
     const factionIds = data.factions.map((f) => f.id);
-    expect(new Set(factionIds).size).toBe(20);
+    expect(new Set(factionIds).size).toBe(23);
     const used = data.regions.map((r) => r.faction).sort();
     expect(used).toEqual([...factionIds].sort());
   });
@@ -93,7 +93,7 @@ describe("map.json (anno 1100)", () => {
       expect(f.color).toMatch(/^#[0-9a-f]{6}$/);
       colors.add(f.color);
     }
-    expect(colors.size).toBe(20);
+    expect(colors.size).toBe(23);
   });
 
   it("single-faction ethnicities keep the people color exactly", () => {
@@ -139,7 +139,7 @@ describe("map.json (anno 1100)", () => {
     expect(region("saaremaa")).toMatchObject({ cohesion: "high" });
   });
 
-  it("populations are 5k multiples totalling 650k", () => {
+  it("populations are 5k multiples totalling 735k", () => {
     let total = 0;
     for (const r of data.regions) {
       expect(Number.isInteger(r.population)).toBe(true);
@@ -148,7 +148,7 @@ describe("map.json (anno 1100)", () => {
       expect(["low", "medium", "high"]).toContain(r.cohesion);
       total += r.population;
     }
-    expect(total).toBe(650000);
+    expect(total).toBe(735000);
   });
 
   it("ravala holds the northwest coast and harjumaa is contiguous", () => {
@@ -187,7 +187,7 @@ describe("map.json (anno 1100)", () => {
     expect(byKind("river").sort()).toEqual(["Daugava", "Gauja", "Nemunas", "Venta"]);
     expect(byKind("people").sort()).toEqual([
       "AUKŠTAITIANS", "CURONIANS", "ESTONIANS", "LATGALIANS", "LIVS",
-      "SAMOGITIANS", "SELONIANS", "SEMIGALLIANS", "YOTVINGIANS",
+      "PRUSSIANS", "SAMOGITIANS", "SELONIANS", "SEMIGALLIANS", "YOTVINGIANS",
     ]);
     expect(byKind("people-minor")).toEqual([]);
     expect(byKind("title")).toEqual([]);
@@ -201,10 +201,10 @@ describe("map.json (anno 1100)", () => {
     }
   });
 
-  it("has 25 authored settlements, exactly one unlocked per land", () => {
-    expect(data.settlements.length).toBe(25);
+  it("has 28 authored settlements, exactly one unlocked per land", () => {
+    expect(data.settlements.length).toBe(28);
     const ids = data.settlements.map((s) => s.id);
-    expect(new Set(ids).size).toBe(25);
+    expect(new Set(ids).size).toBe(28);
     expect(ids).toEqual([...ids].sort());
     const landIds = new Set(data.regions.map((r) => r.id));
     const unlockedPerLand = new Map<string, number>();
@@ -223,7 +223,7 @@ describe("map.json (anno 1100)", () => {
         unlockedPerLand.set(s.land, (unlockedPerLand.get(s.land) ?? 0) + 1);
       }
     }
-    expect(data.settlements.filter((s) => s.unlocked).length).toBe(20);
+    expect(data.settlements.filter((s) => s.unlocked).length).toBe(23);
     for (const r of data.regions) {
       expect(unlockedPerLand.get(r.id)).toBe(1);
     }

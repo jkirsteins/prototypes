@@ -1,5 +1,7 @@
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
-import { geoAzimuthalEqualArea, geoPath, geoArea, geoContains } from "d3-geo";
+import {
+  geoAzimuthalEqualArea, geoPath, geoArea, geoBounds, geoContains,
+} from "d3-geo";
 import { topology } from "topojson-server";
 import { merge } from "topojson-client";
 import polygonClipping from "polygon-clipping";
@@ -17,6 +19,14 @@ const NE_RIVERS_URL =
   "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_rivers_lake_centerlines.geojson";
 const NE_RIVERS_EU_URL =
   "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_rivers_europe.geojson";
+// geoBoundaries ADM2 (OpenStreetMap-derived, ODbL). GISCO publishes no powiat
+// level and no Kaliningrad subdivision at all, so the Prussian lands come from
+// here. Pinned to a release commit so the build stays reproducible.
+const GB_COMMIT = "9469f09";
+const GB_BASE =
+  `https://github.com/wmgeolab/geoBoundaries/raw/${GB_COMMIT}/releaseData/gbOpen`;
+const GB_POL_URL = `${GB_BASE}/POL/ADM2/geoBoundaries-POL-ADM2_simplified.geojson`;
+const GB_RUS_URL = `${GB_BASE}/RUS/ADM2/geoBoundaries-RUS-ADM2_simplified.geojson`;
 const CACHE_DIR = "scripts/.cache";
 
 const WIDTH = 1000;
@@ -37,13 +47,14 @@ const PEOPLES = [
   { id: "samogitians", name: "Samogitians", color: "#c9b17f" },
   { id: "aukstaitians", name: "Aukštaitians", color: "#e6d9b8" },
   { id: "yotvingians", name: "Yotvingians", color: "#d1a3a0" },
+  { id: "prussians", name: "Prussians", color: "#9fb8d6" },
 ];
 
 // One faction per land, drawn from the land's primary ethnicity. Types are
 // descriptive only. Colors are hue-family shades: single-faction
-// ethnicities reuse the people color exactly; the 8 Estonian greens are
-// spread so neighbouring lands differ clearly in lightness (final tuning
-// is done visually in Chrome - keep hexes unique).
+// ethnicities reuse the people color exactly; the 8 Estonian greens and the
+// 3 Prussian blues are spread so neighbouring lands differ clearly in
+// lightness (final tuning is done visually in Chrome - keep hexes unique).
 const FACTIONS = [
   { id: "ravalans", name: "Ravalans", ethnicity: "estonians", type: "county", color: "#93b371" },
   { id: "harjuans", name: "Harjuans", ethnicity: "estonians", type: "county", color: "#d7e5bb" },
@@ -65,6 +76,9 @@ const FACTIONS = [
   { id: "eastern-aukstaitian-confederacy", name: "Eastern Aukštaitian Confederacy", ethnicity: "aukstaitians", type: "land-coalition", color: "#e6d9b8" },
   { id: "sudovians", name: "Sudovians", ethnicity: "yotvingians", type: "land-coalition", color: "#d1a3a0" },
   { id: "dainavians", name: "Dainavians", ethnicity: "yotvingians", type: "land-coalition", color: "#bd8a87" },
+  { id: "sembians", name: "Sembians", ethnicity: "prussians", type: "land-coalition", color: "#9fb8d6" },
+  { id: "natangians", name: "Natangians", ethnicity: "prussians", type: "land-coalition", color: "#7f9cc0" },
+  { id: "nadruvians", name: "Nadruvians", ethnicity: "prussians", type: "land-coalition", color: "#c2d3e8" },
 ];
 
 // Main trade arteries ca. 1100. `match` lists Natural Earth naming
@@ -101,10 +115,17 @@ const RIVERS = [
 const SETTLEMENTS = [
   { id: "apuole", name: "Apuolė", land: "pilsotas", unlocked: false, lon: 21.55, lat: 56.17, note: "Old Curonian stronghold in the north of the land, besieged by sea-kings in centuries past." },
   { id: "daugmale", name: "Daugmale", land: "livzeme", unlocked: true, lon: 24.43, lat: 56.84, note: "Great Liv hillfort and market above the Daugava crossing, at the height of its power." },
+  // Balga sits at 19.969,54.568 on a headland that GISCO's 1:1M coastline does
+  // not resolve, so the true site clips into the lagoon. Placed 4.0 km inland
+  // instead, with 1.1 km of clearance from the coast - the nearest inside point
+  // is only 220 m clear and would flip out on any source update. Same
+  // compromise as the Pionersky and Svetly selection points.
+  { id: "honeda", name: "Honeda", land: "notanga", unlocked: true, lon: 19.995, lat: 54.535, note: "Prussian stronghold on the headland above the Vistula Lagoon, watching the shallow crossing." },
   { id: "ikskile", name: "Ikšķile", land: "livzeme", unlocked: false, lon: 24.5, lat: 56.84, labelDy: 16, note: "Liv riverside village; nothing yet marks it out from its neighbours." },
   { id: "impiltis", name: "Impiltis", land: "pilsotas", unlocked: true, lon: 21.22, lat: 56.05, note: "Stronghold of the coastal Curonians above the lagoon shore." },
   { id: "jersika", name: "Jersika", land: "jersika", unlocked: true, lon: 26.2, lat: 56.27, note: "Seat of the Latgalian princes of the Daugava, looking east to Polotsk." },
   { id: "kareda", name: "Kareda", land: "jarvamaa", unlocked: true, lon: 25.75, lat: 58.93, note: "Village among the fields at the heart of the causeway country, where the elders meet." },
+  { id: "kaup", name: "Kaup", land: "semba", unlocked: true, lon: 20.53, lat: 54.93, note: "Trading place on the lagoon shore where Prussian amber meets the Baltic sea-road." },
   { id: "kernave", name: "Kernavė", land: "lietuva", unlocked: true, lon: 24.85, lat: 54.89, note: "Cluster of hillforts above the Neris, foremost among the strongholds of Lietuva." },
   { id: "koknese", name: "Koknese", land: "jersika", unlocked: false, lon: 25.44, lat: 56.64, note: "Fortified town on the Daugava's right bank, tollgate of the river road." },
   { id: "lindanise", name: "Lindanise", land: "ravala", unlocked: true, lon: 24.74, lat: 59.44, note: "Harbour below the fort where the Gotland run turns east for Novgorod." },
@@ -112,6 +133,7 @@ const SETTLEMENTS = [
   { id: "mezotne", name: "Mežotne", land: "zemgale", unlocked: false, lon: 24.05, lat: 56.44, note: "Semigallian stronghold guarding the Lielupe river road." },
   { id: "otepaa", name: "Otepää", land: "ugandi", unlocked: false, lon: 26.46, lat: 58.06, note: "Upland stronghold of Ugandi on the road from the Rus' towns." },
   { id: "punia", name: "Punia", land: "dainava", unlocked: true, lon: 24.09, lat: 54.513, note: "Hillfort above the Nemunas bend, chief refuge of the Dainava bands." },
+  { id: "ragaine", name: "Ragaine", land: "nadrawa", unlocked: true, lon: 22.03, lat: 55.03, note: "Fort above the Nemunas where the river road turns inland toward the Samogitian forests." },
   { id: "selpils", name: "Sēlpils", land: "selija", unlocked: true, lon: 25.68, lat: 56.6, labelDy: 16, note: "Old fort of the Selonians on the Daugava's wooded left bank." },
   { id: "soontagana", name: "Soontagana", land: "laanemaa", unlocked: true, lon: 24.08, lat: 58.55, note: "Stronghold of the western Estonians amid bogs, reachable only on winter roads." },
   { id: "sudargas", name: "Sudargas", land: "suduva", unlocked: true, lon: 22.63, lat: 55.04, note: "Line of hillforts above the Nemunas, watching the river road to the west." },
@@ -146,19 +168,22 @@ const SPLIT_MUNICIPALITIES = ["Aizkraukles novads", "Jēkabpils novads"];
 
 // A land's members come from three sources: `lau` (EE/LV municipalities, and
 // the Lithuanian counties taken at municipality level), `nuts` (NUTS-3), and
-// `pieces` (parts of a member cut by a hand-traced line). Always read them
-// through memberKeysOf.
+// `adm2` (geoBoundaries ADM2 units, keyed by the Prussian place each one is
+// selected by). Always read them through memberKeysOf.
 const memberKeysOf = (land) =>
-  new Set([...(land.lau ?? []), ...(land.nuts ?? []), ...(land.pieces ?? [])]);
+  new Set([...(land.lau ?? []), ...(land.nuts ?? []), ...(land.adm2 ?? [])]);
 
-// 20 lands. `lau` lists LAU_NAME members (EE/LV, LAU 2023); `nuts` lists
-// NUTS-2021 level-3 members (LT). Provenance lives here only. The grouping
-// of municipalities into 1100 lands is a deliberate game abstraction.
+// 23 lands. `lau` lists LAU_NAME members (EE/LV, LAU 2023); `nuts` lists
+// NUTS-2021 level-3 members (LT); `adm2` lists geoBoundaries ADM2 members
+// (the Kaliningrad rayons of the Prussian lands), named for the Prussian
+// place that selects each one - see KALININGRAD_PLACES. Provenance lives
+// here only. Every member is a whole administrative unit; the grouping of
+// those units into 1100 lands is a deliberate game abstraction.
 
 // population/cohesion are deliberate GAME ESTIMATES, not historical facts:
 // anchored to ~180k for the Estonian lands (a common estimate for the
 // era, held flat for 1100 - these are game numbers, not a census) and
-// 650,000 for the whole map, rounded to the nearest 5,000. Cohesion is
+// 735,000 for the whole map, rounded to the nearest 5,000. Cohesion is
 // political concentration - a cohesive 45k land can outweigh a fragmented
 // 150k neighbourhood.
 const LANDS = [
@@ -430,6 +455,43 @@ const LANDS = [
     places: ["Merkinė", "Punia"],
     population: 30000, cohesion: "low",
   },
+  {
+    id: "semba", name: "Semba", faction: "sembians",
+    peoples: ["prussians"],
+    adm2: [
+      "Twangste", "Kaup", "Rusemoter", "Pioneru", "Palweniken", "Kaimen",
+      "Zimmerbude", "Pillau",
+    ],
+    flavor:
+      "The amber peninsula between the sea and the lagoons, thickest-settled " +
+      "of all the Prussian lands. Its shore yields amber traded as far as " +
+      "the Rus' towns, and its elders answer to no one beyond the Pregolya.",
+    places: ["Kaup", "Twangste"],
+    population: 35000, cohesion: "high",
+  },
+  {
+    id: "notanga", name: "Notanga", faction: "natangians",
+    peoples: ["prussians"],
+    adm2: ["Ilava", "Sventomest", "Ludwigsort", "Friedland", "Tapiow"],
+    flavor:
+      "The open country south of the Pregolya, running east to Barta: good " +
+      "plough land and horse pasture, watched over by forts above the Alle.",
+    places: ["Honeda", "Barta"],
+    population: 30000, cohesion: "medium",
+  },
+  {
+    id: "nadrawa", name: "Nadrawa", faction: "nadruvians",
+    peoples: ["prussians"],
+    adm2: [
+      "Instrutis", "Gumbe", "Stalupenai", "Lazdynai", "Darkiemis", "Ragaine",
+      "Gastos", "Tilze", "Labguva",
+    ],
+    flavor:
+      "Deep forest and marsh along the lower Nemunas, the least settled of " +
+      "the Prussian lands and the road by which Samogitian raiders come.",
+    places: ["Ragaine", "Skalva"],
+    population: 20000, cohesion: "low",
+  },
 ];
 
 // Label positions are hand-tuned lon/lat, projected below.
@@ -444,6 +506,12 @@ const LABELS = [
   { text: "SAMOGITIANS", lon: 22.6, lat: 55.65, kind: "people" },
   { text: "AUKŠTAITIANS", lon: 25.15, lat: 55.3, kind: "people" },
   { text: "YOTVINGIANS", lon: 23.6, lat: 54.5, kind: "people" },
+  // Every people needs at least one label (tests/render.test.ts asserts it),
+  // so this lands with the Prussians rather than with a later label pass.
+  // Placed over the middle of the three Kaliningrad lands, clear of the
+  // "Prussian lands" neighbor label, which still marks the Prussian ground
+  // south of them that is not on the map yet.
+  { text: "PRUSSIANS", lon: 21.35, lat: 54.7, kind: "people" },
   { text: "Lands of Rus'", lon: 28.0, lat: 57.2, kind: "neighbor" },
   { text: "Prussian lands", lon: 21.3, lat: 54.15, kind: "neighbor" },
   { text: "Finnic lands", lon: 21.8, lat: 59.85, kind: "neighbor" },
@@ -464,13 +532,16 @@ async function fetchJsonCached(url) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
-const [lau, nuts, countries, neRivers, neRiversEu] = await Promise.all([
-  fetchJsonCached(LAU_URL),
-  fetchJsonCached(NUTS_URL),
-  fetchJsonCached(CNTR_URL),
-  fetchJsonCached(NE_RIVERS_URL),
-  fetchJsonCached(NE_RIVERS_EU_URL),
-]);
+const [lau, nuts, countries, neRivers, neRiversEu, gbPol, gbRus] =
+  await Promise.all([
+    fetchJsonCached(LAU_URL),
+    fetchJsonCached(NUTS_URL),
+    fetchJsonCached(CNTR_URL),
+    fetchJsonCached(NE_RIVERS_URL),
+    fetchJsonCached(NE_RIVERS_EU_URL),
+    fetchJsonCached(GB_POL_URL),
+    fetchJsonCached(GB_RUS_URL),
+  ]);
 
 // --- Assemble the member-feature pool: EE/LV municipalities (with the two
 // Daugava straddlers split) plus LT NUTS-3 counties. Every member gets a
@@ -496,8 +567,9 @@ function rewind(multiPolygonCoords) {
 // A cut is a hand-traced polyline plus a `closing` path that shuts it into a
 // ring. The ring is a mask: piece "#a" is what falls inside it, "#b" is the
 // rest. Closing points normally run over water or over land the feature does
-// not reach, so only the traced line matters. Every cut below documents the
-// towns that must land on each side; those are checked in verifyCuts().
+// not reach, so only the traced line matters. The Daugava split below is the
+// only cut on the map - every other member is a whole administrative unit -
+// and the towns that must land on each bank are named with DAUGAVA itself.
 function maskRing(line, closing) {
   return [[...line, ...closing, line[0]]];
 }
@@ -546,6 +618,146 @@ if (lauCounts.EE !== 79 || lauCounts.LV !== 43) {
 for (const f of nuts.features) {
   if (f.properties.CNTR_CODE !== "LT") continue;
   memberFeatures.push({ key: f.properties.NUTS_ID, geometry: f.geometry });
+}
+
+// geoBoundaries winds rings opposite to the GISCO and d3-geo convention, so an
+// unrewound ring reads as the whole globe minus a hole. It is also OSM-derived,
+// so its outer borders disagree slightly with GISCO's - measured worst case,
+// powiat elblaski strays 3.0 km2 outside the GISCO Poland outline on a 1310 km2
+// unit (0.23%). Intersecting each unit with its GISCO country polygon keeps
+// every international border and coastline coming from GISCO exactly as before,
+// leaving geoBoundaries responsible only for the internal divisions.
+function adm2Units(collection, cntrId) {
+  const outline = toMultiCoords(
+    countries.features.find((f) => f.properties.CNTR_ID === cntrId).geometry,
+  );
+  const units = [];
+  for (const f of collection.features) {
+    const clipped = polygonClipping.intersection(
+      toMultiCoords(f.geometry),
+      outline,
+    );
+    if (!clipped.length) continue;
+    units.push({
+      name: f.properties.shapeName,
+      geometry: { type: "MultiPolygon", coordinates: rewind(clipped) },
+    });
+  }
+  return units;
+}
+// polUnits carries the Polish powiats; the lands built from them arrive with
+// the next slice of the map. Both sets are checked for emptiness here so a
+// truncated download or a moved release commit fails on the source rather
+// than as a confusing "place resolves to 0 units" further down.
+const polUnits = adm2Units(gbPol, "PL");
+const rusUnits = adm2Units(gbRus, "RU");
+if (!polUnits.length || !rusUnits.length) {
+  throw new Error(
+    `geoBoundaries ADM2 yielded ${polUnits.length} PL and ${rusUnits.length} ` +
+      `RU units - check the pinned release commit ${GB_COMMIT}`,
+  );
+}
+
+// The oblast's units carry Soviet-era names honouring Bagration, Chernyakhovsky
+// and Nesterov, and five are Cyrillic and truncated in the source. None of that
+// belongs in a map of 1100, so each unit is selected by a point at the Prussian
+// or Baltic place it is centred on. Where no Baltic form of a name is attested,
+// the older German toponym stands in - never the Soviet one. Verified: these 22
+// points resolve to 22 distinct units covering the whole oblast.
+// Two points sit inland of the place they are named for. GISCO's 1:1M coastline
+// runs inland of the lagoon shore, so clipping puts the waterfront of Pionersky
+// and of Svetly in water; the points are moved to the widest inland part of
+// those two units (0.75 km and 2.5 km of clearance) rather than to a neighbour.
+const KALININGRAD_PLACES = {
+  semba: {
+    Twangste: [20.51, 54.71],     // Konigsberg
+    Kaup: [20.53, 54.93],         // Zelenogradsk
+    Rusemoter: [20.15, 54.94],    // Svetlogorsk
+    Pioneru: [20.217, 54.943],    // Pionersky
+    Palweniken: [19.96, 54.87],   // Yantarny, the amber works
+    Kaimen: [20.61, 54.77],       // Guryevsk
+    Zimmerbude: [20.255, 54.715], // Svetly
+    Pillau: [19.91, 54.65],       // Baltiysk
+  },
+  notanga: {
+    Ilava: [20.64, 54.39],        // Preussisch Eylau, Bagrationovsk
+    Sventomest: [19.94, 54.46],   // Heiligenbeil, Mamonovo
+    Ludwigsort: [20.17, 54.57],   // Ladushkin
+    Friedland: [21.01, 54.44],    // Pravdinsk
+    Tapiow: [21.05, 54.65],       // Tapiau, Gvardeysk
+  },
+  nadrawa: {
+    Instrutis: [21.81, 54.63],    // Insterburg, Chernyakhovsk
+    Gumbe: [22.20, 54.59],        // Gumbinnen, Gusev
+    Stalupenai: [22.57, 54.63],   // Nesterov
+    Lazdynai: [22.47, 54.94],     // Krasnoznamensk
+    Darkiemis: [22.01, 54.41],    // Ozyorsk
+    Ragaine: [22.03, 55.03],      // Ragnit, Neman
+    Gastos: [21.68, 55.05],       // Slavsk
+    Tilze: [21.88, 55.08],        // Tilsit, Sovetsk
+    Labguva: [21.11, 54.86],      // Labiau, Polessk
+  },
+};
+
+// The oblast is everything in the RU set inside this box - the exclave, well
+// separated from the rest of Russia.
+const KALININGRAD_BBOX = [19.0, 54.0, 23.2, 55.6];
+const kaliningradUnits = rusUnits.filter((u) => {
+  const b = geoBounds(u.geometry);
+  return b[0][0] > KALININGRAD_BBOX[0] && b[1][0] < KALININGRAD_BBOX[2] &&
+    b[0][1] > KALININGRAD_BBOX[1] && b[1][1] < KALININGRAD_BBOX[3];
+});
+
+// Resolve each place to exactly one unit, and account for every unit. This is
+// the guard: a place that lands in the sea, two places in one unit, or a unit
+// nobody claimed all fail the build.
+const takenUnits = new Map();
+for (const places of Object.values(KALININGRAD_PLACES)) {
+  for (const [place, point] of Object.entries(places)) {
+    const hits = kaliningradUnits.filter((u) =>
+      geoContains({ type: "Feature", geometry: u.geometry }, point),
+    );
+    if (hits.length !== 1) {
+      throw new Error(
+        `Prussian place ${place} at ${point} resolves to ${hits.length} ` +
+          `Kaliningrad units - expected exactly 1`,
+      );
+    }
+    const unit = hits[0];
+    if (takenUnits.has(unit.name)) {
+      throw new Error(
+        `${place} and ${takenUnits.get(unit.name)} both resolve to the same ` +
+          `Kaliningrad unit`,
+      );
+    }
+    takenUnits.set(unit.name, place);
+    memberFeatures.push({ key: place, geometry: unit.geometry });
+  }
+}
+if (takenUnits.size !== kaliningradUnits.length) {
+  const missed = kaliningradUnits
+    .filter((u) => !takenUnits.has(u.name))
+    .map((u) => u.name);
+  throw new Error(
+    `${missed.length} Kaliningrad units claimed by no Prussian place: ` +
+      `${missed.join(", ")}`,
+  );
+}
+// KALININGRAD_PLACES groups the places by land, and so does each land's `adm2`
+// list; keep the two from drifting apart. The partition check further down
+// sees only the flat key set, so a place filed under the wrong land in one of
+// the two would otherwise pass silently.
+for (const [landId, places] of Object.entries(KALININGRAD_PLACES)) {
+  const land = LANDS.find((l) => l.id === landId);
+  if (!land) throw new Error(`KALININGRAD_PLACES names unknown land ${landId}`);
+  const byPlace = Object.keys(places).sort().join(",");
+  const byLand = [...(land.adm2 ?? [])].sort().join(",");
+  if (byPlace !== byLand) {
+    throw new Error(
+      `Land ${landId} adm2 list disagrees with KALININGRAD_PLACES:\n` +
+        `  places: ${byPlace}\n  adm2:   ${byLand}`,
+    );
+  }
 }
 
 // Sanity: LANDS partition the member pool exactly.
@@ -599,7 +811,7 @@ for (const f of FACTIONS) {
 }
 const usedFactions = new Set();
 const COHESION_TIERS = new Set(["low", "medium", "high"]);
-const EXPECTED_TOTAL_POPULATION = 650000;
+const EXPECTED_TOTAL_POPULATION = 735000;
 
 // Population-correlated settlement slots ("max cities"): one slot per
 // ~10k people, clamped to 1..10. Deliberate game math, not demography.
@@ -683,11 +895,18 @@ for (const f of landFeatures) {
 // iff some member of one and some member of the other trace the same arc.
 // Adjacencies that cannot be derived from shared arcs or shared vertices.
 // Two causes: island lands share no land border at all, and lands whose
-// members come from different source files (LAU, NUTS, CNTR) meet on a
-// border that each file generalizes independently, so no vertex coincides.
+// members come from different source files (LAU, NUTS, geoBoundaries) meet
+// on a border that each file generalizes independently, so no vertex
+// coincides.
 const AUTHORED_LINKS = [
   ["saaremaa", "laanemaa"], // island
   ["saaremaa", "kursa"],    // island
+  // The Prussian lands come from geoBoundaries, their Baltic neighbours from
+  // GISCO. The same border is generalized differently in each source, so no
+  // arc and no vertex is shared.
+  ["nadrawa", "pilsotas"],
+  ["nadrawa", "zemaitija"],
+  ["nadrawa", "suduva"],
 ];
 
 function arcIdsOf(geometry) {
