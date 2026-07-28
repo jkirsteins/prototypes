@@ -272,6 +272,46 @@ Badges: while a pact between the human and a badge's faction is active,
 the badge text gains a third segment "A{turnsLeft}" (e.g. "M-1 S0 A3") in
 a distinct color (#1d4ed8), so active alliances are visible at a glance.
 
+## 11. Vassal fill/stripes for every realm, and retired people labels (user ruling, 2026-07-28)
+
+Today a vassal polygon takes its overlord's fill outright, so vassalage and
+permanent annexation look identical, and only the HUMAN's realm gets the
+stripe treatment. The visual language becomes:
+
+- **Subjugated (vassal) = both colors.** Every vassal keeps its OWN fill and
+  gains a stripe overlay in its overlord's color - the treatment the human
+  already gets - so a vassal reads as "still itself, under someone's yoke".
+  The overlay covers the vassal's whole realm (itself plus lands it has
+  incorporated).
+- **Incorporated = color flips entirely.** `effectiveFaction` reduces to
+  `incorporated[f] ?? f`: annexed lands take their owner's fill (the owner's
+  OWN color even when the owner is itself a vassal, whose stripes then cover
+  the land too), and nothing else recolors.
+- The human-specific `isSubjugatedHuman` special case in `applyOwnership`
+  and the human-only branch of `renderVassalOverlay` disappear - the general
+  rule subsumes both.
+
+Implementation:
+- map-render.ts pre-creates one stripe pattern per faction,
+  `id="vassal-stripes-{factionId}"`, filled with that faction's color
+  (replacing the single mutable `vassal-stripes` pattern and the
+  `vassalStripe` handle in `RenderResult`).
+- main.ts `renderVassalOverlay()` takes no arguments: for every
+  `[vassal, lord]` in `game.overlords`, every polygon of `realmOf(vassal)`
+  gets a path filled with `url(#vassal-stripes-{lord})`.
+
+**People labels retire on annexation.** A `people` / `people-minor` label is
+hidden once EVERY faction of that people is incorporated - the polity is
+gone, its fill has flipped, so the ethnonym stops floating over another
+realm's territory. Vassalage does NOT hide a label (the people still holds
+its own colors).
+
+Implementation: map-render.ts tags people labels with `data-people` by
+matching the label text to `people.name.toUpperCase()` (all nine match
+today) and returns `peopleLabels: Map<string, SVGTextElement[]>`; main.ts
+toggles `.hidden` per people from `game.incorporated` on every refresh, and
+shows all labels outside play.
+
 ## Non-goals
 
 - No change to Subjugate/poach legality or AI behavior (balance is a
