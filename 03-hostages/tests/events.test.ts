@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newRun, chooseOpening, playerLead, playerPass, playerSurrender } from "../src/game";
+import { newRun, chooseOpening, playerLead, playerPass, playerAnswer, playerSurrender } from "../src/game";
 import { drawCard } from "../src/deck";
 import type { EventKind, GameState } from "../src/types";
 
@@ -83,11 +83,20 @@ describe("event stream", () => {
     expect(surrenders[0].side).toBe("player");
   });
 
-  it("logs a secret given as an answer under the answer kind, not surrender", () => {
+  it("logs a secret given voluntarily to a coercive lead as an answer, not a surrender", () => {
     const state = started();
-    const before = state.log.filter((e) => e.kind === "surrender").length;
-    // a voluntary secret answer is an ordinary answer event
-    expect(before).toBe(0);
+    state.player.willpower = 2;
+    state.playerPile.hand = ["stallHim"];
+    state.playerPile.deck = [];
+    state.playerPile.discard = [];
+    state.convictPile.hand = ["whereIsIt"];
+    state.convictPile.deck = [];
+    state.convictPile.discard = [];
+    playerLead(state, "stallHim");
+    playerAnswer(state, "secretFreezer");
+    const answers = state.log.filter((e) => e.kind === "answer" && e.cardId === "secretFreezer");
+    expect(answers).toHaveLength(1);
+    expect(state.log.some((e) => e.kind === "surrender")).toBe(false);
   });
 });
 
