@@ -25,7 +25,8 @@ import {
   resetMeta, saveMeta, unlockCard, type MetaRecord, type MetaStorage,
 } from "./meta";
 import {
-  formatLead, hoverRelationLines, politicalFactionForPolygon, relationshipLine,
+  formatLead, holderOf, hoverRelationLines, politicalFactionForPolygon,
+  relationshipLine,
 } from "./view";
 import { factionAdjacencyOf } from "./adjacency";
 import "./style.css";
@@ -403,9 +404,17 @@ function applyRealmHover(region: Region | null): void {
       }
     }
   }
+  // The polygon of the faction that holds the hovered land - who took it -
+  // marked on its own, not its whole realm. Suppressed while a card is armed,
+  // for the same reason the realm halo is.
+  const holder =
+    region && inPlay() && armed === null
+      ? holderOf(region.faction, game.overlords, game.incorporated)
+      : null;
   for (const [id, el] of regionPaths) {
     const f = factionByRegion.get(id)!;
     el.classList.toggle("realm-hover", members.has(f));
+    el.classList.toggle("holder-hover", holder !== null && f === holder);
     el.classList.toggle(
       "vassal-hover",
       region !== null &&

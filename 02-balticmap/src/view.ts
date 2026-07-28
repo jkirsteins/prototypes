@@ -64,6 +64,20 @@ export function relationshipLine(
   return `Vassal of ${factionName(lord)}`;
 }
 
+/** The faction whose OWN polygon holds this land: the realm that absorbed it,
+ *  or the overlord it owes fealty to. Null when it answers to nobody.
+ *
+ *  Deliberately the immediate holder, not the top of the chain: hovering a
+ *  land marks one polygon - who took this - while the tooltip spells out any
+ *  further fealty above it. */
+export function holderOf(
+  polygonFactionId: string,
+  overlords: Overlords,
+  incorporated: Incorporated,
+): string | null {
+  return incorporated[polygonFactionId] ?? overlords.get(polygonFactionId) ?? null;
+}
+
 /** One track for a map badge: "M+2" on its own, "M+2/4" against a bar to
  *  clear. Zero is unsigned; the bar is omitted when no requirement applies. */
 export function formatLead(

@@ -874,6 +874,17 @@ svg.map.dragging {
   font-size: 11px;
   line-height: 1.35;
   color: #6b5d49;
+  /* the ink colour above is for the parchment cards; the two dark contexts
+     below (locked unlock row, postmortem overlay) must override it or the
+     rules text goes dark-on-dark */
+}
+
+.ds-card.ds-locked .ds-card-text {
+  color: #bdb4a5;
+}
+
+.pm-card-text {
+  color: #cac2b5;
 }
 
 .notice-details {
@@ -970,6 +981,19 @@ svg.map.dragging {
 .region.vassal-hover {
   stroke-dasharray: 6 3;
   stroke-width: 2.2;
+}
+
+/* the polygon of whoever holds the hovered land: after .realm-hover, since
+   the holder is usually inside the hovered realm and equal specificity means
+   the later rule wins */
+.region.holder-hover {
+  stroke: #a8322f;
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+
+.region.holder-hover.dimmed {
+  opacity: 1;
 }
 
 .realm-hover-halo path {

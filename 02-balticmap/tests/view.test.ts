@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  fitView, clampView, formatLead, homeView, hoverRelationLines, panBy,
+  fitView, clampView, formatLead, holderOf, homeView, hoverRelationLines, panBy,
   politicalFactionForPolygon, relationshipLine,
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
@@ -186,6 +186,33 @@ describe("politicalFactionForPolygon", () => {
       "gamma",
       { gamma: "delta" },
     )).toBe("delta");
+  });
+});
+
+describe("holderOf", () => {
+  const held = (
+    polygonFaction: string,
+    overlords: [string, string][] = [],
+    incorporated: Record<string, string> = {},
+  ) => holderOf(polygonFaction, new Map(overlords), incorporated);
+
+  it("points a vassal at its overlord", () => {
+    expect(held("zemgale", [["zemgale", "lietuva"]])).toBe("lietuva");
+  });
+
+  it("points an absorbed land at the realm that took it", () => {
+    expect(held("semba", [], { semba: "nadruvians" })).toBe("nadruvians");
+  });
+
+  it("names the immediate holder, not the top of the chain", () => {
+    // Semba answers to Nadruvians directly; the tooltip carries the rest of
+    // the chain, so the map marks one polygon rather than a whole hierarchy.
+    expect(held("semba", [["nadruvians", "natangians"]], { semba: "nadruvians" }))
+      .toBe("nadruvians");
+  });
+
+  it("is null for a land that answers to nobody", () => {
+    expect(held("zemgale")).toBeNull();
   });
 });
 
