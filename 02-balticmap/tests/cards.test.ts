@@ -34,7 +34,7 @@ describe("cards", () => {
     );
     expectProps(
       "subjugate", "Subjugate", true, 1, true, false,
-      "Turn a faction in reach into your vassal. Needs a lead of 2 in Might or Status. Vassals pay tribute.",
+      "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute.",
     );
     expectProps(
       "incorporate", "Incorporate", true, 1, true, false,
@@ -42,7 +42,7 @@ describe("cards", () => {
     );
     expectProps(
       "reclaim-independence", "Reclaim independence", false, 1, true, false,
-      "Cast off your overlord. Playable while their lead in Might and Status is both under 2.",
+      "Cast off your overlord. Playable while their lead in Might and Status is under 2 per land of their other holdings.",
     );
     expectProps(
       "pay-tribute", "Pay tribute", false, null, false, true,

@@ -96,9 +96,9 @@ cards.ts: `CardDef` gains `text: string` - one concise rules line each:
 - raid: "Gain +1 Might over one faction in reach of your realm."
 - shrewd-marriage: "Gain +1 Status over one faction in reach; your overlord is always courtable."
 - fortify: "Gain +1 Might over every other living faction at once."
-- subjugate: "Turn a faction in reach into your vassal. Needs a lead of 2 in Might or Status. Vassals pay tribute."
+- subjugate: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute."
 - incorporate: "Permanently absorb one of your vassals into your realm."
-- reclaim-independence: "Cast off your overlord. Playable while their lead in Might and Status is both under 2."
+- reclaim-independence: "Cast off your overlord. Playable while their lead in Might and Status is under 2 per land of their other holdings."
 - pay-tribute: "Forced: while a vassal, grant your overlord +1 Might or +1 Status."
 
 Rendering: `.ds-card` (unlock row and deck row) and `.pm-card` (postmortem
@@ -131,8 +131,9 @@ with a predicate; all other plays stay silent through the same predicate):
   marriage against {human}."; flavor "A wedding feast beyond your borders.
   Their standing grows at your expense."
 - details: "Standing vs {actor}: ..." (post-bump leads), plus a warning line
-  "A lead of 2 is enough to subjugate." when their best lead over you is >=
-  SUBJUGATE_THRESHOLD (imported from playability.ts).
+  "A lead of {grip} is enough to subjugate." when their best lead over you is
+  >= the SCALED grip (SUBJUGATE_THRESHOLD x human realm size, via
+  NoticeCtx.subjugationGrip()).
 
 Known risk, accepted for now: several such plays can land per AI round, so
 these modals will be frequent. If play feedback says it is spammy, the

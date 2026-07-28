@@ -3,6 +3,7 @@ import { isHumanTurn, type GameEvent, type GameState } from "./game";
 import { flyCard } from "./animate";
 import { leadsOf, realmOf } from "./relations";
 import { noticeFor, type Notice, type NoticeCtx } from "./notices";
+import { SUBJUGATE_THRESHOLD } from "./playability";
 
 export interface HudCallbacks {
   onNewGame(): void;
@@ -284,6 +285,9 @@ export function createHud(
       factionOf: (playerId) =>
         state.players.find((pl) => pl.id === playerId)?.factionId,
       leads: (other) => leadsOf(state.relations, human.factionId, other),
+      subjugationGrip: () =>
+        SUBJUGATE_THRESHOLD *
+        realmOf(human.factionId, state.overlords, state.incorporated).length,
     };
     for (const e of fresh) {
       const n = noticeFor(e, ctx);

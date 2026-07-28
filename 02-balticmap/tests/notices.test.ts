@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { NOTICE_RULES, noticeFor, type NoticeCtx } from "../src/notices";
 import type { GameEvent, GameEventType } from "../src/game";
 
@@ -19,12 +19,14 @@ const FACTION_BY_PLAYER: Record<number, string> = {
 };
 
 let leadsTable: Record<string, { might: number; status: number }> = {};
+let grip = 2;
 
 const ctx: NoticeCtx = {
   humanFactionId: "livs",
   factionName: (id) => (id !== undefined ? NAMES[id] ?? id : ""),
   factionOf: (playerId) => FACTION_BY_PLAYER[playerId],
   leads: (other) => leadsTable[other] ?? { might: 0, status: 0 },
+  subjugationGrip: () => grip,
 };
 
 const ev = (partial: Partial<GameEvent> & { type: GameEvent["type"] }): GameEvent => ({
@@ -51,6 +53,11 @@ describe("NOTICE_RULES registry", () => {
 });
 
 describe("noticeFor", () => {
+  beforeEach(() => {
+    leadsTable = {};
+    grip = 2;
+  });
+
   it("builds a subjugation notice when an AI subjugates the human", () => {
     leadsTable = { jersika: { might: -2, status: 1 } };
     const n = noticeFor(
@@ -214,6 +221,31 @@ describe("noticeFor", () => {
     expect(n.title).toBe("Bound by Marriage");
     expect(n.details).toEqual([
       "Standing vs Jersikans: Might - even; Status - they lead by 1.",
+    ]);
+  });
+
+  it("scaled grip: no warning when the lead is below a bumped-up threshold", () => {
+    grip = 4;
+    leadsTable = { jersika: { might: -2, status: 0 } };
+    const n = noticeFor(
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs" }),
+      ctx,
+    )!;
+    expect(n.details).toEqual([
+      "Standing vs Jersikans: Might - they lead by 2; Status - even.",
+    ]);
+  });
+
+  it("scaled grip: warning text reflects the bumped-up threshold", () => {
+    grip = 4;
+    leadsTable = { jersika: { might: -4, status: 0 } };
+    const n = noticeFor(
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs" }),
+      ctx,
+    )!;
+    expect(n.details).toEqual([
+      "Standing vs Jersikans: Might - they lead by 4; Status - even.",
+      "A lead of 4 is enough to subjugate.",
     ]);
   });
 

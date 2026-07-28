@@ -1,5 +1,4 @@
 import type { GameEvent, GameEventType } from "./game";
-import { SUBJUGATE_THRESHOLD } from "./playability";
 
 /** A player-facing interruption for an event that changed the human's state. */
 export interface Notice {
@@ -16,6 +15,9 @@ export interface NoticeCtx {
   factionOf(playerId: number): string | undefined;
   /** The human's leads over otherFactionId; positive = you lead. */
   leads(otherFactionId: string): { might: number; status: number };
+  /** The lead an enemy needs over the human to subjugate them (scaled by
+   *  the human realm's size). */
+  subjugationGrip(): number;
 }
 
 /** Every GameEventType must decide: interrupt the human, or stay silent
@@ -44,7 +46,7 @@ const standingLine = (ctx: NoticeCtx, otherId: string): string => {
 /** Their best lead over the human meets the subjugation threshold. */
 const subjugationRisk = (ctx: NoticeCtx, otherId: string): boolean => {
   const l = ctx.leads(otherId);
-  return Math.max(-l.might, -l.status) >= SUBJUGATE_THRESHOLD;
+  return Math.max(-l.might, -l.status) >= ctx.subjugationGrip();
 };
 
 export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
@@ -63,7 +65,7 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
         ? [
             standingLine(ctx, actorId),
             ...(subjugationRisk(ctx, actorId)
-              ? [`A lead of ${SUBJUGATE_THRESHOLD} is enough to subjugate.`]
+              ? [`A lead of ${ctx.subjugationGrip()} is enough to subjugate.`]
               : []),
           ]
         : [];
