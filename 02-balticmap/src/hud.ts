@@ -272,6 +272,7 @@ export function createHud(
       factionName,
       factionOf: (playerId) =>
         state.players.find((pl) => pl.id === playerId)?.factionId,
+      leads: (other) => leadsOf(state.relations, human.factionId, other),
     };
     for (const e of fresh) {
       const n = noticeFor(e, ctx);

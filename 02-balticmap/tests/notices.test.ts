@@ -18,10 +18,13 @@ const FACTION_BY_PLAYER: Record<number, string> = {
   1: "livs", 2: "jersika", 3: "latgale",
 };
 
+let leadsTable: Record<string, { might: number; status: number }> = {};
+
 const ctx: NoticeCtx = {
   humanFactionId: "livs",
   factionName: (id) => (id !== undefined ? NAMES[id] ?? id : ""),
   factionOf: (playerId) => FACTION_BY_PLAYER[playerId],
+  leads: (other) => leadsTable[other] ?? { might: 0, status: 0 },
 };
 
 const ev = (partial: Partial<GameEvent> & { type: GameEvent["type"] }): GameEvent => ({
@@ -49,6 +52,7 @@ describe("NOTICE_RULES registry", () => {
 
 describe("noticeFor", () => {
   it("builds a subjugation notice when an AI subjugates the human", () => {
+    leadsTable = { jersika: { might: -2, status: 1 } };
     const n = noticeFor(
       ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
       ctx,
@@ -61,6 +65,10 @@ describe("noticeFor", () => {
       "then bow their heads. The victors name the tribute; you will pay it.",
     );
     expect(n!.consequence).toContain("Two Pay Tribute cards were shuffled into your deck");
+    expect(n!.details).toEqual([
+      "You now owe fealty to Jersikans.",
+      "Standing vs Jersikans: Might - they lead by 2; Status - you lead by 1.",
+    ]);
   });
 
   it("is null when the human subjugates someone else", () => {
@@ -83,6 +91,7 @@ describe("noticeFor", () => {
   });
 
   it("builds a release notice when another player frees the human", () => {
+    leadsTable = {};
     const n = noticeFor(
       ev({ type: "released", playerId: 3, targetFactionId: "livs" }),
       ctx,
@@ -97,6 +106,7 @@ describe("noticeFor", () => {
     expect(n!.consequence).toBe(
       "All Pay Tribute cards were removed from your deck, hand, and discard.",
     );
+    expect(n!.details).toEqual([]);
   });
 
   it("is null for a release that frees another faction", () => {
@@ -110,7 +120,7 @@ describe("noticeFor", () => {
   it("is null for every silent event type", () => {
     const silent: GameEvent[] = [
       ev({ type: "draw", playerId: 1, cardId: "raid" }),
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs" }),
+      ev({ type: "play", playerId: 1, cardId: "raid", targetFactionId: "livs" }),
       ev({ type: "reshuffle", playerId: 1 }),
       ev({ type: "discard", playerId: 1, cardId: "raid" }),
       ev({ type: "incorporated", targetFactionId: "livs", overlordFactionId: "jersika" }),
@@ -132,5 +142,90 @@ describe("noticeFor", () => {
     expect(n).not.toBeNull();
     // playerId 9 has no faction: factionOf returns undefined, factionName("")
     expect(n!.what).toBe(" played Subjugate against Lower Daugava Livs.");
+  });
+
+  it("first subjugation: fealty line and standing vs the new overlord", () => {
+    leadsTable = { jersika: { might: -2, status: 1 } };
+    const n = noticeFor(
+      ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+      ctx,
+    )!;
+    expect(n.details).toEqual([
+      "You now owe fealty to Jersikans.",
+      "Standing vs Jersikans: Might - they lead by 2; Status - you lead by 1.",
+    ]);
+  });
+
+  it("poach: allegiance shift and standing vs both lords", () => {
+    leadsTable = {
+      jersika: { might: -2, status: 0 },
+      latgale: { might: 0, status: -1 },
+    };
+    const n = noticeFor(
+      ev({
+        type: "subjugated", targetFactionId: "livs",
+        overlordFactionId: "jersika", formerOverlordFactionId: "latgale",
+      }),
+      ctx,
+    )!;
+    expect(n.details).toEqual([
+      "Your allegiance shifts from Latgalians to Jersikans.",
+      "Standing vs Jersikans: Might - they lead by 2; Status - even.",
+      "Standing vs Latgalians: Might - even; Status - they lead by 1.",
+    ]);
+  });
+
+  it("released names the fallen lord when the event carries it", () => {
+    const n = noticeFor(
+      ev({ type: "released", playerId: 3, targetFactionId: "livs", overlordFactionId: "jersika" }),
+      ctx,
+    )!;
+    expect(n.what).toBe("The fall of Jersikans to Latgalians releases you from vassalage.");
+  });
+
+  it("released falls back when the lord field is absent", () => {
+    const n = noticeFor(
+      ev({ type: "released", playerId: 3, targetFactionId: "livs" }),
+      ctx,
+    )!;
+    expect(n.what).toBe("The fall of your overlord to Latgalians releases you from vassalage.");
+  });
+
+  it("raid against the human raises a modal with standing and threat warning", () => {
+    leadsTable = { jersika: { might: -2, status: 0 } };
+    const n = noticeFor(
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs" }),
+      ctx,
+    )!;
+    expect(n.title).toBe("Raided");
+    expect(n.what).toBe("Jersikans played Raid against Lower Daugava Livs.");
+    expect(n.details).toEqual([
+      "Standing vs Jersikans: Might - they lead by 2; Status - even.",
+      "A lead of 2 is enough to subjugate.",
+    ]);
+  });
+
+  it("marriage against the human raises a modal without warning below threshold", () => {
+    leadsTable = { jersika: { might: 0, status: -1 } };
+    const n = noticeFor(
+      ev({ type: "play", cardId: "shrewd-marriage", targetFactionId: "livs" }),
+      ctx,
+    )!;
+    expect(n.title).toBe("Bound by Marriage");
+    expect(n.details).toEqual([
+      "Standing vs Jersikans: Might - even; Status - they lead by 1.",
+    ]);
+  });
+
+  it("play modals do not fire for own plays, AI-vs-AI, or other cards", () => {
+    for (const e of [
+      ev({ type: "play", playerId: 1, cardId: "raid", targetFactionId: "jersika" }),
+      ev({ type: "play", cardId: "raid", targetFactionId: "latgale" }),
+      ev({ type: "play", cardId: "subjugate", targetFactionId: "livs" }),
+      ev({ type: "play", cardId: "fortify" }),
+      ev({ type: "play", cardId: "grow-crops" }),
+    ]) {
+      expect(noticeFor(e, ctx), `expected null for ${e.cardId}`).toBeNull();
+    }
   });
 });
