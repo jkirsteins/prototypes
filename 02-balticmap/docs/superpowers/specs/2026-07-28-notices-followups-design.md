@@ -183,6 +183,26 @@ human realm, anchored at the faction's home-region path bbox center:
 - e2e-verified in Chrome (getBBox is unavailable in happy-dom, so this
   stays in main.ts by convention).
 
+## 7. Hover highlights the whole realm (user ruling, 2026-07-28)
+
+Vassal polygons are painted in their overlord's color, so vassal and
+incorporated lands are visually indistinguishable and realm boundaries are
+unreadable. On hovering any polygon during play:
+
+- Resolve the realm root of the hovered polygon: owner if incorporated,
+  then that faction's overlord if it is a vassal (chains cannot exist).
+- Highlight EVERY polygon of that root's realm - root, its vassals, its
+  incorporated lands, plus incorporated lands owned by its vassals - with a
+  distinct realm-hover border and full opacity (undimmed while hovered,
+  even if normally dimmed).
+- The hovered polygon itself additionally gets a dashed border when its
+  faction is subjugated but NOT incorporated (a vassal that could yet break
+  free), so vassalage reads differently from permanent absorption.
+- Implemented in main.ts (onHover already receives the region; add a
+  realm-hover applier next to applyOwnership) + style.css classes
+  `.realm-hover` / `.vassal-hover`. Cleared when the hover leaves or the
+  phase is not in play. e2e-verified (main.ts convention).
+
 ## Non-goals
 
 - No change to Subjugate/poach legality or AI behavior (balance is a
