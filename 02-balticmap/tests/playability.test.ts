@@ -78,6 +78,18 @@ describe("validTargetsFor", () => {
     expect(validTargetsFor(sub, "beta", "incorporate")).toEqual([]);
   });
 
+  it("incorporate excludes a vassal allied with its overlord while the pact holds", () => {
+    const alliances = { [allianceKey("beta", "gamma")]: 5 };
+    const allied = view({
+      overlords: new Map([["gamma", "beta"]]), alliances, turn: 4,
+    });
+    expect(validTargetsFor(allied, "beta", "incorporate")).toEqual([]);
+    const expired = view({
+      overlords: new Map([["gamma", "beta"]]), alliances, turn: 5,
+    });
+    expect(validTargetsFor(expired, "beta", "incorporate")).toEqual(["gamma"]);
+  });
+
   it("a vassal's neighbors extend the realm's reach", () => {
     const v = view({ overlords: new Map([["gamma", "beta"]]) });
     expect(validTargetsFor(v, "beta", "raid")).toEqual(["alpha", "gamma", "delta"]);

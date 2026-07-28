@@ -40,7 +40,9 @@ export function validTargetsFor(
   const notAllied = (id: string) => !allianceActive(view, factionId, id);
   if (cardId === "incorporate") {
     if (subjugated) return [];
-    return view.factionIds.filter((id) => view.overlords.get(id) === factionId);
+    return view.factionIds.filter(
+      (id) => view.overlords.get(id) === factionId && notAllied(id),
+    );
   }
   if (
     cardId === "raid" || cardId === "shrewd-marriage" ||
