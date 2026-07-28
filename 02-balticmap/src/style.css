@@ -899,7 +899,7 @@ svg.map.dragging {
 .card .card-tip {
   display: none;
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
   width: min(260px, 70vw);
