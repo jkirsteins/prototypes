@@ -1,5 +1,5 @@
 import { CARDS, type Rng } from "./cards";
-import { leadsOf } from "./relations";
+import { leadsOf, realmOf } from "./relations";
 import {
   SUBJUGATE_THRESHOLD, playableSet, validTargetsFor,
 } from "./playability";
@@ -71,7 +71,9 @@ export function chooseAction(state: GameState): AiAction {
     if (i === undefined) continue;
     for (const t of validTargetsFor(v, p.factionId, cardId)) {
       if (state.overlords.get(t) === p.factionId) continue;
-      if (leadsOf(state.relations, p.factionId, t)[field] === SUBJUGATE_THRESHOLD - 1) {
+      const needed =
+        SUBJUGATE_THRESHOLD * realmOf(t, state.overlords, state.incorporated).length;
+      if (leadsOf(state.relations, p.factionId, t)[field] === needed - 1) {
         return { type: "play", cardIndex: i, targetId: t };
       }
     }
@@ -97,7 +99,9 @@ export function chooseAction(state: GameState): AiAction {
     if (i === undefined) continue;
     for (const t of validTargetsFor(v, p.factionId, cardId)) {
       if (state.overlords.get(t) === p.factionId) continue;
-      const deficit = SUBJUGATE_THRESHOLD - leadsOf(state.relations, p.factionId, t)[field];
+      const needed =
+        SUBJUGATE_THRESHOLD * realmOf(t, state.overlords, state.incorporated).length;
+      const deficit = needed - leadsOf(state.relations, p.factionId, t)[field];
       const order = state.factionIds.indexOf(t);
       if (
         build === null ||

@@ -150,3 +150,53 @@ describe("playableSet", () => {
     expect(set).toEqual({ mode: "discard", cardIndexes: [0] });
   });
 });
+
+describe("reach through incorporated lands and scaled thresholds", () => {
+  it("adjacency to an incorporated land grants reach to its owner", () => {
+    // map: me -adjacent- deadland; deadland incorporated into owner;
+    // owner's home NOT adjacent to me. Raid targets must include owner,
+    // never deadland.
+    const v: RulesView = {
+      relations: {},
+      overlords: new Map(),
+      incorporated: { deadland: "owner" },
+      adjacency: { me: ["deadland"], deadland: ["me", "owner"], owner: ["deadland"] },
+      factionIds: ["me", "deadland", "owner"],
+    };
+    const targets = validTargetsFor(v, "me", "raid");
+    expect(targets).toContain("owner");
+    expect(targets).not.toContain("deadland");
+  });
+
+  it("subjugate threshold scales with the target realm size", () => {
+    // target owns one incorporated land -> realm size 2 -> needs lead 4
+    const base: RulesView = {
+      relations: {},
+      overlords: new Map(),
+      incorporated: { land: "target" },
+      adjacency: { me: ["target"], target: ["me"], land: ["me"] },
+      factionIds: ["me", "target", "land"],
+    };
+    let rel: Relations = {};
+    for (let i = 0; i < 3; i++) rel = bumpMight(rel, "me", "target");
+    expect(validTargetsFor({ ...base, relations: rel }, "me", "subjugate")).not.toContain("target");
+    rel = bumpMight(rel, "me", "target"); // lead 4 = 2 x realm size 2
+    expect(validTargetsFor({ ...base, relations: rel }, "me", "subjugate")).toContain("target");
+  });
+
+  it("reclaim scales with the overlord realm size", () => {
+    // overlord realm size 2 -> grip threshold 4: leads of 3 still reclaimable
+    const v: RulesView = {
+      relations: {},
+      overlords: new Map([["me", "lord"]]),
+      incorporated: { land: "lord" },
+      adjacency: { me: ["lord"], lord: ["me"], land: ["me"] },
+      factionIds: ["me", "lord", "land"],
+    };
+    let rel: Relations = {};
+    for (let i = 0; i < 3; i++) rel = bumpMight(rel, "lord", "me");
+    expect(isCardPlayable({ ...v, relations: rel }, "me", "reclaim-independence")).toBe(true);
+    rel = bumpMight(rel, "lord", "me"); // lead 4 meets the scaled grip
+    expect(isCardPlayable({ ...v, relations: rel }, "me", "reclaim-independence")).toBe(false);
+  });
+});

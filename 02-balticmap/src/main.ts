@@ -249,10 +249,13 @@ function armedTargets(): string[] {
 }
 
 function applyTargeting(): void {
-  const targets = new Set(armedTargets().map((f) => regionByFaction.get(f)!));
+  const targets = new Set(armedTargets());
   for (const [id, el] of regionPaths) {
-    el.classList.toggle("target-valid", armed !== null && targets.has(id));
-    el.classList.toggle("target-invalid", armed !== null && !targets.has(id));
+    const f = factionByRegion.get(id)!;
+    const effective = game.incorporated[f] ?? f;
+    const valid = armed !== null && targets.has(effective);
+    el.classList.toggle("target-valid", valid);
+    el.classList.toggle("target-invalid", armed !== null && !valid);
   }
 }
 
@@ -450,7 +453,8 @@ const interaction = attachInteraction(svg, regionPaths, settlementDots, data, {
     }
     if (game.phase === "playing" && armed !== null) {
       const idx = armed;
-      const faction = regionId !== null ? factionByRegion.get(regionId) : undefined;
+      const raw = regionId !== null ? factionByRegion.get(regionId) : undefined;
+      const faction = raw !== undefined ? (game.incorporated[raw] ?? raw) : undefined;
       const valid = faction !== undefined && armedTargets().includes(faction);
       disarm();
       if (valid) {

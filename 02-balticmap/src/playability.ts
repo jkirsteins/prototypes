@@ -20,7 +20,9 @@ function reachOf(view: RulesView, factionId: string): Set<string> {
   const realm = realmOf(factionId, view.overlords, view.incorporated);
   const reach = new Set<string>();
   for (const member of realm) {
-    for (const adj of view.adjacency[member] ?? []) reach.add(adj);
+    for (const adj of view.adjacency[member] ?? []) {
+      reach.add(view.incorporated[adj] ?? adj);
+    }
   }
   return reach;
 }
@@ -54,7 +56,9 @@ export function validTargetsFor(
       if (id === factionId || id in view.incorporated || !reach.has(id)) return false;
       if (view.overlords.get(id) === factionId) return false; // already yours
       const l = leadsOf(view.relations, factionId, id);
-      return Math.max(l.status, l.might) >= SUBJUGATE_THRESHOLD;
+      const needed =
+        SUBJUGATE_THRESHOLD * realmOf(id, view.overlords, view.incorporated).length;
+      return Math.max(l.status, l.might) >= needed;
     });
   }
   return [];
@@ -73,7 +77,13 @@ export function isCardPlayable(
   if (cardId === "reclaim-independence") {
     if (overlord === undefined) return false;
     const l = leadsOf(view.relations, overlord, factionId);
-    return l.status < SUBJUGATE_THRESHOLD && l.might < SUBJUGATE_THRESHOLD;
+    // The overlord's realm always includes factionId itself (as its vassal);
+    // the grip strength is the overlord's OTHER holdings, excluding the
+    // very vassal weighing whether to leave.
+    const overlordRealm = realmOf(overlord, view.overlords, view.incorporated)
+      .filter((id) => id !== factionId);
+    const grip = SUBJUGATE_THRESHOLD * overlordRealm.length;
+    return l.status < grip && l.might < grip;
   }
   if (card.targeted) return validTargetsFor(view, factionId, cardId).length > 0;
   return false;
