@@ -820,13 +820,6 @@ svg.map.dragging {
   margin-bottom: 10px;
 }
 
-.notice-flavor {
-  font-size: 13px;
-  font-style: italic;
-  color: #6b5d49;
-  margin-bottom: 10px;
-}
-
 .notice-consequence {
   font-size: 13px;
   font-weight: 600;
@@ -876,6 +869,19 @@ svg.map.dragging {
 .notice-detail {
   font-size: 13px;
   margin-bottom: 4px;
+}
+
+/* 2+ actor lines (a batched raid/subjugation/release round) read better as a
+   left-aligned bulleted list; a single detail line stays centered as today. */
+.notice-details.multi {
+  text-align: left;
+}
+
+.notice-details.multi .notice-detail {
+  display: list-item;
+  list-style-type: disc;
+  list-style-position: inside;
+  margin-left: 4px;
 }
 
 .card .card-tip {

@@ -2,7 +2,7 @@ import { CARDS } from "./cards";
 import { isHumanTurn, type GameEvent, type GameState } from "./game";
 import { flyCard } from "./animate";
 import { leadsOf, realmOf } from "./relations";
-import { noticeFor, type Notice, type NoticeCtx } from "./notices";
+import { buildNotices, type Notice, type NoticeCtx } from "./notices";
 import { SUBJUGATE_THRESHOLD } from "./playability";
 
 export interface HudCallbacks {
@@ -230,8 +230,6 @@ export function createHud(
   noticeWhat.className = "notice-what";
   const noticeDetails = document.createElement("div");
   noticeDetails.className = "notice-details";
-  const noticeFlavor = document.createElement("p");
-  noticeFlavor.className = "notice-flavor";
   const noticeConsequence = document.createElement("p");
   noticeConsequence.className = "notice-consequence";
   const noticeContinue = document.createElement("button");
@@ -239,7 +237,7 @@ export function createHud(
   noticeContinue.textContent = "Continue";
   noticeContinue.addEventListener("click", () => dismissNotice());
   noticeCard.append(
-    noticeTitle, noticeWhat, noticeDetails, noticeFlavor, noticeConsequence, noticeContinue,
+    noticeTitle, noticeWhat, noticeDetails, noticeConsequence, noticeContinue,
   );
   noticeOverlay.appendChild(noticeCard);
 
@@ -257,7 +255,7 @@ export function createHud(
       }),
     );
     noticeDetails.classList.toggle("hidden", n.details.length === 0);
-    noticeFlavor.textContent = n.flavor;
+    noticeDetails.classList.toggle("multi", n.details.length > 1);
     noticeConsequence.textContent = n.consequence ?? "";
     noticeConsequence.classList.toggle("hidden", n.consequence === undefined);
     noticeOverlay.classList.remove("hidden");
@@ -289,9 +287,7 @@ export function createHud(
         SUBJUGATE_THRESHOLD *
         realmOf(human.factionId, state.overlords, state.incorporated).length,
     };
-    for (const e of fresh) {
-      const n = noticeFor(e, ctx);
-      if (n === null) continue;
+    for (const n of buildNotices(fresh, ctx)) {
       if (noticeOverlay.classList.contains("hidden")) showNotice(n);
       else noticeQueue.push(n);
     }

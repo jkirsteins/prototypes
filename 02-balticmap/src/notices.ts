@@ -1,10 +1,10 @@
 import type { GameEvent, GameEventType } from "./game";
 
-/** A player-facing interruption for an event that changed the human's state. */
+/** A player-facing interruption for an event (or batch of same-kind events)
+ *  that changed the human's state. Factual only: no flavor text. */
 export interface Notice {
   title: string;
   what: string; // factual: who did what
-  flavor: string; // period-tone line, rendered italic
   consequence?: string; // mechanical effect on the human player
   details: string[]; // standing/allegiance context lines, always present
 }
@@ -27,6 +27,8 @@ export type NoticeRule =
   | {
       kind: "modal";
       appliesToHuman(e: GameEvent, ctx: NoticeCtx): boolean;
+      /** Per-event build, used by the single-event internal path (noticeFor)
+       *  and as the base case inside the batch group builders. */
       build(e: GameEvent, ctx: NoticeCtx): Notice;
     }
   | { kind: "silent"; reason: string };
@@ -49,6 +51,130 @@ const subjugationRisk = (ctx: NoticeCtx, otherId: string): boolean => {
   return Math.max(-l.might, -l.status) >= ctx.subjugationGrip();
 };
 
+const PAY_TRIBUTE_CONSEQUENCE =
+  "Two Pay Tribute cards were shuffled into your deck. When one is " +
+  "in hand, it must be played before anything else.";
+
+const RELEASE_CONSEQUENCE =
+  "All Pay Tribute cards were removed from your deck, hand, and discard.";
+
+const actorName = (e: GameEvent, ctx: NoticeCtx): string =>
+  ctx.factionName(ctx.factionOf(e.playerId));
+
+/** Raid / Shrewd marriage against the human: single actor keeps the plain
+ *  sentence; N actors collapse into one "N players played X against you"
+ *  notice with one standing bullet per actor. */
+function buildPlayNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  const raid = events[0].cardId === "raid";
+  const title = raid ? "Raided" : "A Shrewd Marriage";
+  const cardLabel = raid ? "Raid" : "Shrewd marriage";
+
+  if (events.length === 1) {
+    const e = events[0];
+    const actorId = ctx.factionOf(e.playerId);
+    const actor = ctx.factionName(actorId);
+    const details = actorId !== undefined
+      ? [
+          standingLine(ctx, actorId),
+          ...(subjugationRisk(ctx, actorId)
+            ? [`A lead of ${ctx.subjugationGrip()} is enough to subjugate.`]
+            : []),
+        ]
+      : [];
+    return {
+      title,
+      what: `${actor} played ${cardLabel} against ${ctx.factionName(e.targetFactionId)}.`,
+      details,
+    };
+  }
+
+  const details = events.map((e) => {
+    const actorId = ctx.factionOf(e.playerId);
+    const actor = ctx.factionName(actorId);
+    const l = actorId !== undefined ? ctx.leads(actorId) : { might: 0, status: 0 };
+    const line = `${actor} - Might: ${fmtLead(l.might)}; Status: ${fmtLead(l.status)}`;
+    const risk = actorId !== undefined && subjugationRisk(ctx, actorId);
+    return risk ? `${line} - a lead of ${ctx.subjugationGrip()} subjugates you` : line;
+  });
+  return {
+    title,
+    what: `${events.length} players played ${cardLabel} against you:`,
+    details,
+  };
+}
+
+/** Subjugated: single event keeps the fealty/shift + standing format;
+ *  a poach chain in one batch lists each transition, then the standing line
+ *  for the FINAL overlord only, then the consequence once. */
+function buildSubjugatedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  if (events.length === 1) {
+    const e = events[0];
+    const actor = actorName(e, ctx);
+    const former = e.formerOverlordFactionId;
+    const details = [
+      former !== undefined
+        ? `Your allegiance shifts from ${ctx.factionName(former)} to ${actor}.`
+        : `You now owe fealty to ${actor}.`,
+      ...(e.overlordFactionId !== undefined ? [standingLine(ctx, e.overlordFactionId)] : []),
+      ...(former !== undefined && former !== e.overlordFactionId
+        ? [standingLine(ctx, former)]
+        : []),
+    ];
+    return {
+      title: "Beneath the Yoke",
+      what: `${actor} played Subjugate against ${ctx.factionName(e.targetFactionId)}.`,
+      details,
+      consequence: PAY_TRIBUTE_CONSEQUENCE,
+    };
+  }
+
+  const bullets = events.map((e) => {
+    const actor = actorName(e, ctx);
+    const former = e.formerOverlordFactionId;
+    return former !== undefined
+      ? `${actor} tore you from ${ctx.factionName(former)}`
+      : `${actor} subjugated you`;
+  });
+  const finalOverlord = events[events.length - 1].overlordFactionId;
+  const details = [
+    ...bullets,
+    ...(finalOverlord !== undefined ? [standingLine(ctx, finalOverlord)] : []),
+  ];
+  return {
+    title: "Beneath the Yoke",
+    what: "Your allegiance changed this round:",
+    details,
+    consequence: PAY_TRIBUTE_CONSEQUENCE,
+  };
+}
+
+/** Released: single event keeps the plain sentence; N events in one batch
+ *  collapse into one notice with a bullet per release. */
+function buildReleasedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  const lordName = (e: GameEvent): string =>
+    e.overlordFactionId !== undefined ? ctx.factionName(e.overlordFactionId) : "your overlord";
+
+  if (events.length === 1) {
+    const e = events[0];
+    return {
+      title: "The Yoke Is Broken",
+      what: `The fall of ${lordName(e)} to ${actorName(e, ctx)} releases you from vassalage.`,
+      details: [],
+      consequence: RELEASE_CONSEQUENCE,
+    };
+  }
+
+  const bullets = events.map(
+    (e) => `The fall of ${lordName(e)} to ${actorName(e, ctx)} set you free`,
+  );
+  return {
+    title: "The Yoke Is Broken",
+    what: "You were released this round:",
+    details: bullets,
+    consequence: RELEASE_CONSEQUENCE,
+  };
+}
+
 export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   draw: { kind: "silent", reason: "routine; visible in hand and log" },
   play: {
@@ -57,81 +183,19 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       (e.cardId === "raid" || e.cardId === "shrewd-marriage") &&
       e.targetFactionId === ctx.humanFactionId &&
       e.playerId !== 1,
-    build: (e, ctx) => {
-      const actorId = ctx.factionOf(e.playerId);
-      const actor = ctx.factionName(actorId);
-      const raid = e.cardId === "raid";
-      const details = actorId !== undefined
-        ? [
-            standingLine(ctx, actorId),
-            ...(subjugationRisk(ctx, actorId)
-              ? [`A lead of ${ctx.subjugationGrip()} is enough to subjugate.`]
-              : []),
-          ]
-        : [];
-      return raid
-        ? {
-            title: "Raided",
-            what: `${actor} played Raid against ${ctx.factionName(e.targetFactionId)}.`,
-            details,
-            flavor: "Riders came at dawn; granaries burn. Word of your weakness spreads.",
-          }
-        : {
-            title: "A Shrewd Marriage",
-            what: `${actor} played Shrewd marriage against ${ctx.factionName(e.targetFactionId)}.`,
-            details,
-            flavor: "A wedding feast beyond your borders. Their standing grows at your expense.",
-          };
-    },
+    build: (e, ctx) => buildPlayNotice([e], ctx),
   },
   discard: { kind: "silent", reason: "routine; visible in log" },
   reshuffle: { kind: "silent", reason: "routine; deck pulse animation" },
   subjugated: {
     kind: "modal",
     appliesToHuman: victimOfOther,
-    build: (e, ctx) => {
-      const actor = ctx.factionName(ctx.factionOf(e.playerId));
-      const former = e.formerOverlordFactionId;
-      const details = [
-        former !== undefined
-          ? `Your allegiance shifts from ${ctx.factionName(former)} to ${actor}.`
-          : `You now owe fealty to ${actor}.`,
-        ...(e.overlordFactionId !== undefined ? [standingLine(ctx, e.overlordFactionId)] : []),
-        ...(former !== undefined && former !== e.overlordFactionId
-          ? [standingLine(ctx, former)]
-          : []),
-      ];
-      return {
-        title: "Beneath the Yoke",
-        what: `${actor} played Subjugate against ${ctx.factionName(e.targetFactionId)}.`,
-        details,
-        flavor:
-          "Armed riders gather before your halls. Your elders count spears, " +
-          "then bow their heads. The victors name the tribute; you will pay it.",
-        consequence:
-          "Two Pay Tribute cards were shuffled into your deck. When one is " +
-          "in hand, it must be played before anything else.",
-      };
-    },
+    build: (e, ctx) => buildSubjugatedNotice([e], ctx),
   },
   released: {
     kind: "modal",
     appliesToHuman: victimOfOther,
-    build: (e, ctx) => {
-      const actor = ctx.factionName(ctx.factionOf(e.playerId));
-      return {
-        title: "The Yoke Is Broken",
-        what: `The fall of ${
-          e.overlordFactionId !== undefined ? ctx.factionName(e.overlordFactionId) : "your overlord"
-        } to ${actor} releases you from vassalage.`,
-        details: [],
-        flavor:
-          "The lord you paid is lord no longer. No riders come for tribute " +
-          "this season - you stand free.",
-        consequence:
-          "All Pay Tribute cards were removed from your deck, hand, and discard.",
-      };
-    },
+    build: (e, ctx) => buildReleasedNotice([e], ctx),
   },
   incorporated: {
     kind: "silent",
@@ -149,9 +213,43 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   defeat: { kind: "silent", reason: "postmortem overlay covers it" },
 };
 
-/** The single entry point the HUD uses per fresh log event. */
+/** Single-event internal path, kept for direct per-event use in tests/debug.
+ *  The HUD calls buildNotices instead. */
 export function noticeFor(e: GameEvent, ctx: NoticeCtx): Notice | null {
   const rule = NOTICE_RULES[e.type];
   if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) return null;
   return rule.build(e, ctx);
+}
+
+/** The HUD's entry point: given a batch of fresh log events, groups the
+ *  noticeable ones by event type + cardId (so e.g. three Raids against the
+ *  human in one AI round collapse into a single modal) and returns one
+ *  Notice per group, ordered by first occurrence in the log. */
+export function buildNotices(events: GameEvent[], ctx: NoticeCtx): Notice[] {
+  const order: { type: GameEventType; events: GameEvent[] }[] = [];
+  const indexByKey = new Map<string, number>();
+  for (const e of events) {
+    const rule = NOTICE_RULES[e.type];
+    if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) continue;
+    const key = `${e.type}:${e.cardId ?? ""}`;
+    let idx = indexByKey.get(key);
+    if (idx === undefined) {
+      idx = order.length;
+      indexByKey.set(key, idx);
+      order.push({ type: e.type, events: [] });
+    }
+    order[idx].events.push(e);
+  }
+  return order.map(({ type, events: groupEvents }) => {
+    switch (type) {
+      case "play":
+        return buildPlayNotice(groupEvents, ctx);
+      case "subjugated":
+        return buildSubjugatedNotice(groupEvents, ctx);
+      case "released":
+        return buildReleasedNotice(groupEvents, ctx);
+      default:
+        throw new Error(`no batch notice builder for grouped event type: ${type}`);
+    }
+  });
 }

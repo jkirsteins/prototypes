@@ -525,7 +525,7 @@ describe("notice modal", () => {
     expect(q(container, ".notice-what").textContent).toBe(
       "Alpha played Subjugate against Beta.",
     );
-    expect(q(container, ".notice-flavor").textContent).toContain("bow their heads");
+    expect(container.querySelector(".notice-flavor")).toBeNull();
     expect(q(container, ".notice-consequence").textContent).toContain(
       "Two Pay Tribute cards",
     );
@@ -548,6 +548,22 @@ describe("notice modal", () => {
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe("The Yoke Is Broken");
+    q(container, ".notice-continue").click();
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+  });
+
+  it("collapses 2 raid events in one update into a single modal", () => {
+    const { container, hud } = setup();
+    const raidByAlpha: GameEvent = {
+      turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta",
+    };
+    const raidByGamma: GameEvent = {
+      turn: 1, playerId: 3, type: "play", cardId: "raid", targetFactionId: "beta",
+    };
+    hud.update(withEvents(playing(), [raidByAlpha, raidByGamma]));
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("Raided");
+    expect(q(container, ".notice-what").textContent).toBe("2 players played Raid against you:");
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
