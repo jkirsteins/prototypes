@@ -36,29 +36,7 @@ body {
   letter-spacing: 0.15em;
 }
 
-.status { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.stat, .scene-bit, .flag {
-  border: 1px solid var(--edge);
-  padding: 0.15rem 0.5rem;
-  font-size: 0.8rem;
-}
-.flag { color: var(--warn); border-color: var(--warn); }
-
-.log {
-  list-style: none;
-  margin: 0;
-  padding: 0.75rem;
-  border: 1px solid var(--edge);
-  background: var(--panel);
-  max-height: 18rem;
-  overflow-y: auto;
-}
-.log-entry { display: block; padding: 0.2rem 0; }
-.log-entry[data-side="convict"] { color: var(--warn); }
-.log-entry[data-side="system"] { color: var(--dim); font-style: italic; }
-.log-deltas { display: block; color: var(--dim); font-size: 0.8rem; }
-
-.hand, .choices { display: flex; flex-direction: column; gap: 0.5rem; }
+.choices { display: flex; flex-direction: column; gap: 0.5rem; }
 
 button {
   font: inherit;
@@ -72,12 +50,6 @@ button {
 button:hover:not(:disabled) { border-color: var(--ink); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.card-name { display: block; }
-.card-rules { display: block; color: var(--dim); font-size: 0.85rem; }
-.card-flavor { display: block; color: var(--dim); font-size: 0.8rem; font-style: italic; }
-.card-reason { display: block; color: var(--warn); font-size: 0.8rem; }
-
-.prompt { margin: 0; color: var(--warn); }
 .summary { list-style: none; padding: 0; margin: 0; color: var(--dim); }
 .summary-line { padding: 0.2rem 0; }
 .headline { margin: 0; }
@@ -331,6 +303,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .log-entry { font-size: 0.72rem; padding: 0.15rem 0; }
 .log-entry[data-side="convict"] { color: var(--warn); }
 .log-entry[data-side="system"] { color: var(--dim); font-style: italic; }
+/* Owned here, not by the retired duel screen: the deltas annotate the entry
+   they hang under, so they sit a step below it rather than above it. */
+.log-deltas { font-size: 0.7rem; color: var(--dim); display: block; }
 
 /* --- notice modal ------------------------------------------------------ */
 
@@ -376,5 +351,55 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 
 .notice-continue:hover { border-color: var(--ink); }
+
+/* --- table layout ------------------------------------------------------ */
+
+.table { display: block; padding: 1rem; }
+.table-shell {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.board { flex: 1; display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+
+.table-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.table-top { border-bottom: 1px solid var(--edge); padding-bottom: 0.6rem; }
+.table-you { border-top: 1px solid var(--edge); padding-top: 0.6rem; }
+.table-hand { align-items: flex-end; justify-content: space-between; }
+
+.center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  min-height: 8rem;
+}
+
+.slot { width: 7rem; min-height: 7.5rem; }
+
+.center-card {
+  width: 7rem;
+  min-height: 7.5rem;
+  padding: 0.4rem 0.45rem;
+  border: 1px solid var(--warn);
+  background: var(--panel);
+}
+
+.choices { display: flex; flex-direction: column; gap: 0.4rem; }
+
+@media (max-width: 900px) {
+  .table-shell { flex-direction: column; }
+  .log-drawer { width: 100%; max-height: 12rem; }
+  .hand .card { width: 5.5rem; height: 6.5rem; }
+}
 
 .hidden { display: none; }

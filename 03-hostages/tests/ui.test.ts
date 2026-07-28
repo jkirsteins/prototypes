@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderTitle } from "../src/ui/title";
 import { renderEvent } from "../src/ui/event";
-import { renderDuel } from "../src/ui/duel";
 import { renderEnding } from "../src/ui/ending";
-import { chooseOpening, newRun, playerLead } from "../src/game";
+import { createTable, bannerText } from "../src/ui/table";
+import { chooseOpening, newRun, playerAnswer, playerLead } from "../src/game";
+import { SECRETS } from "../src/content/cards";
 import type { Actions } from "../src/ui/render";
 import type { GameState } from "../src/types";
 
@@ -27,10 +28,27 @@ function started(): GameState {
   return state;
 }
 
+/** Mounts a table and runs every pending beat so it is at rest. */
+function settled(state: GameState) {
+  const table = createTable(actions);
+  root.append(table.root);
+  let done = 0;
+  table.present(state, () => {
+    done += 1;
+  });
+  vi.advanceTimersByTime(20000);
+  return { table, settledCount: () => done };
+}
+
 beforeEach(() => {
+  vi.useFakeTimers();
   document.body.innerHTML = "<div id='app'></div>";
   root = document.querySelector<HTMLElement>("#app") as HTMLElement;
   calls.length = 0;
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("title screen", () => {
@@ -52,101 +70,208 @@ describe("event screen", () => {
   });
 });
 
-describe("duel screen", () => {
-  it("shows the lead banner, status and log", () => {
+describe("bannerText", () => {
+  it("names the phase without shouting a wall of text", () => {
     const state = started();
-    renderDuel(root, state, actions);
-    expect(root.querySelector("#turn-banner")?.textContent).toBe("YOUR TURN - lead a card");
-    expect(root.querySelector("[data-stat='player-vigor']")?.textContent).toBe("Your vigor 5");
-    expect(root.querySelector("[data-stat='secrets']")?.textContent).toBe("Secrets left 3");
-    expect(root.querySelector("[data-scene='zone']")?.textContent).toBe("Location: Living room");
-    expect(root.querySelectorAll("#log li.log-entry").length).toBeGreaterThan(0);
+    expect(bannerText(state)).toContain("YOUR TURN");
+    state.phase = "playerAnswer";
+    expect(bannerText(state)).toContain("HE IS WAITING");
+    state.phase = "forcedSurrender";
+    expect(bannerText(state)).toContain("HE HAS YOU");
+    state.phase = "discardDown";
+    expect(bannerText(state)).toContain("HAND IS FULL");
   });
+});
 
-  it("scrolls the log to the newest entry after render", () => {
-    // happy-dom never performs real layout, so scrollHeight/clientHeight are
-    // permanently 0 on every element. A naive `expect(log.scrollTop).toBe(
-    // log.scrollHeight)` would pass against that (0 === 0) even if the
-    // production code never touched scrollTop at all. To make the assertion
-    // load-bearing, stub scrollHeight to a distinctive non-zero value at the
-    // Element.prototype level (where happy-dom defines the getter) so the
-    // only way scrollTop can end up at that value is if renderDuel actually
-    // set it from scrollHeight after the log was attached to the document.
-    const stubbedScrollHeight = 4242;
-    const original = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight");
-    Object.defineProperty(Element.prototype, "scrollHeight", {
-      configurable: true,
-      get: () => stubbedScrollHeight,
-    });
-    try {
-      const state = started();
-      renderDuel(root, state, actions);
-      const log = root.querySelector<HTMLElement>("#log");
-      expect(log).not.toBeNull();
-      expect(log?.scrollTop).toBe(stubbedScrollHeight);
-    } finally {
-      if (original) {
-        Object.defineProperty(Element.prototype, "scrollHeight", original);
-      }
+describe("table", () => {
+  it("builds the three plates, four piles and both hands", () => {
+    const { table } = settled(started());
+    for (const who of ["convict", "player", "wife"]) {
+      expect(table.root.querySelector(`[data-plate='${who}']`)).not.toBeNull();
     }
+    for (const key of ["player-deck", "player-discard", "convict-deck", "convict-discard"]) {
+      expect(table.root.querySelector(`[data-pile='${key}']`)).not.toBeNull();
+    }
+    expect(table.root.querySelector("[data-hand='player']")).not.toBeNull();
+    expect(table.root.querySelector("[data-hand='convict']")).not.toBeNull();
+    expect(table.root.querySelector("[data-log]")).not.toBeNull();
+    expect(table.root.querySelector("[data-notice]")).not.toBeNull();
   });
 
-  it("disables illegal cards and states the reason", () => {
+  it("reports settled once the opening deal has played out", () => {
+    const { settledCount } = settled(started());
+    expect(settledCount()).toBe(1);
+  });
+
+  it("shows your current stats once at rest", () => {
     const state = started();
-    state.playerPile.hand = ["kickHisKnee"];
-    renderDuel(root, state, actions);
-    const button = root.querySelector<HTMLButtonElement>("button.card[data-card-id='kickHisKnee']");
-    expect(button?.disabled).toBe(true);
-    expect(button?.querySelector(".card-reason")?.textContent).toBe("needs: you are not bound");
+    const { table } = settled(state);
+    expect(table.root.querySelector("[data-stat='player-vigor']")?.textContent).toBe(
+      `VIG ${state.player.vigor}`,
+    );
+  });
+
+  it("shows the real pile counts once at rest", () => {
+    const state = started();
+    const { table } = settled(state);
+    expect(
+      table.root.querySelector("[data-pile='player-deck'] .pile-count")?.textContent,
+    ).toBe(String(state.playerPile.deck.length));
+  });
+
+  it("offers your hand plus a wait option on your turn", () => {
+    const state = started();
+    state.playerPile.hand = ["stallHim"];
+    const { table } = settled(state);
+    expect(table.root.querySelector(".card[data-card-id='stallHim']")).not.toBeNull();
+    expect(table.root.querySelector("#pass")).not.toBeNull();
   });
 
   it("fires the lead action for a legal card", () => {
     const state = started();
     state.playerPile.hand = ["stallHim"];
-    renderDuel(root, state, actions);
-    root.querySelector<HTMLButtonElement>("button.card[data-card-id='stallHim']")?.click();
+    const { table } = settled(state);
+    table.root.querySelector<HTMLButtonElement>(".card[data-card-id='stallHim']")?.click();
     expect(calls).toEqual(["lead:stallHim"]);
   });
 
-  it("switches to the answer banner and offers decline", () => {
+  it("keeps an illegal card in the fan, dimmed, with a reason", () => {
+    const state = started();
+    state.playerPile.hand = ["kickHisKnee"];
+    const { table } = settled(state);
+    const card = table.root.querySelector<HTMLButtonElement>(".card[data-card-id='kickHisKnee']");
+    expect(card).not.toBeNull();
+    expect(card?.disabled).toBe(true);
+    expect(card?.querySelector(".card-reason")?.textContent).toBe("needs: you are not bound");
+  });
+
+  it("offers a decline while answering, and shows his lead in the center", () => {
     const state = started();
     state.playerPile.hand = ["stallHim"];
     state.convictPile.hand = ["backhand"];
     playerLead(state, "stallHim");
-    renderDuel(root, state, actions);
-    expect(root.querySelector("#turn-banner")?.textContent).toBe(
-      "HE IS WAITING - answer or decline",
-    );
-    root.querySelector<HTMLButtonElement>("#decline")?.click();
+    const { table } = settled(state);
+    expect(table.root.querySelector("[data-banner]")?.textContent).toContain("HE IS WAITING");
+    expect(
+      table.root.querySelector("[data-slot='lead'] .card-name")?.textContent,
+    ).not.toBeUndefined();
+    table.root.querySelector<HTMLButtonElement>("#decline")?.click();
     expect(calls).toEqual(["answer:null"]);
   });
 
-  it("shows the surrender banner and only the remaining secrets", () => {
+  it("makes held secrets inert on your own turn", () => {
     const state = started();
-    state.phase = "forcedSurrender";
-    state.secretsRemaining = ["secretSafe", "secretFloorboard"];
-    renderDuel(root, state, actions);
-    expect(root.querySelector("#turn-banner")?.textContent).toBe("HE HAS YOU - give up a secret");
-    const ids = [...root.querySelectorAll("button.card")].map(
-      (b) => (b as HTMLElement).dataset.cardId,
+    const { table } = settled(state);
+    const held = table.root.querySelector<HTMLButtonElement>(
+      `[data-secrets='held'] .secret[data-card-id='${SECRETS[0]}']`,
     );
-    expect(ids).toEqual(["secretSafe", "secretFloorboard"]);
+    expect(held?.disabled).toBe(true);
   });
 
-  it("shows the discard banner and offers every held card", () => {
+  it("keeps secrets out of the fan so they only live in their own row", () => {
+    const state = started();
+    state.playerPile.hand = ["stallHim"];
+    state.convictPile.hand = ["whereIsIt"];
+    playerLead(state, "stallHim");
+    const { table } = settled(state);
+    // A secret is a legal answer to his demand, but it belongs to the row.
+    for (const secretId of SECRETS) {
+      expect(table.root.querySelector(`.hand .card[data-card-id='${secretId}']`)).toBeNull();
+    }
+  });
+
+  it("fires surrender for a held secret during forced surrender", () => {
+    const state = started();
+    state.phase = "forcedSurrender";
+    const { table } = settled(state);
+    table.root
+      .querySelector<HTMLButtonElement>(
+        `[data-secrets='held'] .secret[data-card-id='${SECRETS[0]}']`,
+      )
+      ?.click();
+    expect(calls).toEqual([`surrender:${SECRETS[0]}`]);
+  });
+
+  it("offers every held card when discarding down", () => {
     const state = started();
     state.phase = "discardDown";
     state.playerPile.hand = ["stoic", "stallHim"];
-    renderDuel(root, state, actions);
-    expect(root.querySelector("#turn-banner")?.textContent).toBe(
-      "YOUR HAND IS FULL - discard one",
-    );
-    const ids = [...root.querySelectorAll("button.card")].map(
-      (b) => (b as HTMLElement).dataset.cardId,
+    const { table } = settled(state);
+    const ids = [...table.root.querySelectorAll(".hand .card")].map(
+      (c) => (c as HTMLElement).dataset.cardId,
     );
     expect(ids).toEqual(["stoic", "stallHim"]);
-    root.querySelector<HTMLButtonElement>("button.card[data-card-id='stoic']")?.click();
+    table.root.querySelector<HTMLButtonElement>(".card[data-card-id='stoic']")?.click();
     expect(calls).toEqual(["discard:stoic"]);
+  });
+
+  it("writes the whole event stream into the log drawer", () => {
+    const state = started();
+    const { table } = settled(state);
+    expect(table.root.querySelectorAll(".log-entry")).toHaveLength(state.log.length);
+  });
+
+  it("locks the hand while beats are still playing", () => {
+    const state = started();
+    state.playerPile.hand = ["stallHim"];
+    const table = createTable(actions);
+    root.append(table.root);
+    table.present(state, () => {});
+    // mid-chain: the opening deal has not drained yet
+    const card = table.root.querySelector<HTMLButtonElement>(".card[data-card-id='stallHim']");
+    if (card !== null) expect(card.disabled).toBe(true);
+    vi.advanceTimersByTime(20000);
+    expect(
+      table.root.querySelector<HTMLButtonElement>(".card[data-card-id='stallHim']")?.disabled,
+    ).toBe(false);
+  });
+
+  // His lead is emitted at the END of one input slice and only resolves in
+  // the NEXT one, because you answer it in between. The segment that becomes
+  // his modal therefore has to stay open across a settle. Segments are not
+  // per-slice: this must produce exactly one modal, at the end of the second
+  // chain - not one per slice, and not none.
+  it("reports his exchange in one modal, from the settle that closes it", () => {
+    const state = started();
+    state.playerPile.hand = ["stallHim"];
+    state.convictPile.hand = ["whereIsIt"];
+    const table = createTable(actions);
+    root.append(table.root);
+    const overlay = table.root.querySelector(".notice-overlay") as HTMLElement;
+    let settledCount = 0;
+    const onSettled = (): void => {
+      settledCount += 1;
+    };
+
+    table.present(state, onSettled);
+    vi.advanceTimersByTime(20000);
+    expect(settledCount).toBe(1);
+    expect(overlay.classList.contains("hidden")).toBe(true);
+
+    // Slice one: you lead, he takes his turn and leads back at you. The
+    // queue genuinely drains here - the timers are fully advanced before the
+    // second present().
+    playerLead(state, "stallHim");
+    expect(state.phase).toBe("playerAnswer");
+    table.present(state, onSettled);
+    vi.advanceTimersByTime(20000);
+    expect(settledCount).toBe(2);
+    // His lead has played, but the exchange is not over, so nothing has
+    // interrupted you yet.
+    expect(overlay.classList.contains("hidden")).toBe(true);
+
+    // Slice two: you take it, and only now does his exchange close.
+    playerAnswer(state, null);
+    table.present(state, onSettled);
+    vi.advanceTimersByTime(20000);
+    expect(overlay.classList.contains("hidden")).toBe(false);
+    expect(settledCount).toBe(2); // the chain is held open by the modal
+
+    overlay.querySelector<HTMLButtonElement>(".notice-continue")?.click();
+    vi.advanceTimersByTime(20000);
+    // Exactly one: dismissing it does not reveal a second box behind it.
+    expect(overlay.classList.contains("hidden")).toBe(true);
+    expect(settledCount).toBe(3);
   });
 });
 

@@ -7,16 +7,19 @@ import {
   playerPass,
   playerSurrender,
 } from "./game";
-import { renderDuel } from "./ui/duel";
+import { createTable } from "./ui/table";
+import type { Table } from "./ui/table";
 import { renderEnding } from "./ui/ending";
 import { renderEvent } from "./ui/event";
 import { renderTitle } from "./ui/title";
+import { clear } from "./ui/render";
 import type { Actions } from "./ui/render";
 import type { GameState } from "./types";
 import "./style.css";
 
 const root = document.querySelector<HTMLDivElement>("#app");
 let state: GameState | null = null;
+let table: Table | null = null;
 
 function nextSeed(): number {
   return Math.floor(performance.now() * 1000) % 2147483647;
@@ -57,21 +60,36 @@ const actions: Actions = {
   },
 };
 
+/** The table is kept alive across turns so its elements can animate; every
+ *  other screen is a plain re-render and drops it. */
+function leaveTable(): void {
+  table = null;
+}
+
 function draw(): void {
   if (!root) return;
-  if (state === null) {
+  const current = state;
+  if (current === null) {
+    leaveTable();
     renderTitle(root, actions);
     return;
   }
-  if (state.phase === "openingEvent") {
+  if (current.phase === "openingEvent") {
+    leaveTable();
     renderEvent(root, actions);
     return;
   }
-  if (state.phase === "gameOver") {
-    renderEnding(root, state, actions);
-    return;
+  if (table === null) {
+    clear(root);
+    table = createTable(actions);
+    root.append(table.root);
   }
-  renderDuel(root, state, actions);
+  table.present(current, () => {
+    if (current.phase !== "gameOver") return;
+    leaveTable();
+    clear(root);
+    renderEnding(root, current, actions);
+  });
 }
 
 draw();

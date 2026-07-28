@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import css from "../src/style.css?inline";
 import { createHand } from "../src/ui/hand";
+import { el } from "../src/ui/render";
 
 // Unit tests in hand.test.ts only assert the inline `transform` string on
 // each card, which happy-dom is happy to report correctly even when the
@@ -33,5 +34,17 @@ describe("hand layout (computed style, not inline)", () => {
     const hand = createHand();
     document.body.appendChild(hand.root);
     expect(getComputedStyle(hand.root).flexDirection).toBe("row");
+  });
+
+  // `.choices` was the other half of that rule and is still shared: the
+  // opening event screen stacks its three choices with it, and the table
+  // stacks its Wait/Take It button with it. Both want a column, so the two
+  // rules agree on the property that mattered for the fan; this pins that
+  // they still do, and that the later table block's gap is what lands.
+  it("still stacks the choices column, from the table block's rule", () => {
+    const choices = el("div", "choices");
+    document.body.appendChild(choices);
+    expect(getComputedStyle(choices).flexDirection).toBe("column");
+    expect(getComputedStyle(choices).gap).toBe("0.4rem");
   });
 });
