@@ -140,6 +140,32 @@ these modals will be frequent. If play feedback says it is spammy, the
 dial-back is one registry edit (predicate or kind), which is the point of
 the registry design.
 
+## 5b. Consolidated batch notices, flavor removed (user ruling, 2026-07-28)
+
+Play feedback: flavor text hurts parseability and per-event modals are
+annoying to dismiss. Amendments to sections 1 and 5:
+
+- `Notice` loses `flavor` entirely (field, DOM element, CSS). Modals are
+  factual only: title, what-line, detail lines, consequence.
+- Notices are built per BATCH, not per event: the HUD hands the whole
+  fresh-event diff to `buildNotices(events, ctx): Notice[]`, which groups
+  noticeable events by kind (event type + cardId) and emits ONE notice per
+  group, so one AI round produces at most one modal per kind.
+- Raid group: single actor keeps "{actor} played Raid against you."; N > 1
+  becomes what "N players played Raid against you:" with one detail bullet
+  per actor: "{actor} - Might: {fmt}; Status: {fmt}" plus the suffix
+  " - a lead of {grip} subjugates you" on actors whose best lead over you
+  meets the scaled grip. Same shape for Shrewd marriage.
+- Subjugated group: single event keeps the fealty/shift + standing format;
+  multiple subjugations in one round (poach chains) list each transition as
+  a bullet in log order; the Pay Tribute consequence line appears once.
+- Released group: same collapsing; each release is one bullet when N > 1.
+- The per-event registry (`NOTICE_RULES`) remains the compile-time
+  modal-or-silent enforcement point; grouping is a presentation layer on
+  top of it.
+- Detail lines render as a bulleted list when the notice has more than one
+  actor line (CSS list styling on `.notice-details`).
+
 ## 6. On-map Might/Status badges for enemy factions
 
 Threat borders are too subtle; the player cannot see at a glance whom to
