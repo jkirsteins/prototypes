@@ -1060,30 +1060,10 @@ const landFeatures = LANDS.map((land) => {
   // single-source lands pass through unchanged.
   const merged = merge(topo, members);
   const dissolved = rewind(polygonClipping.union(toMultiCoords(merged)));
-  // The union splits seam pinch-points into their own tiny polygons -
-  // hairline slivers of well under a tenth of a km2 that would render as a
-  // dotted ghost of the very seam the union dissolved. Drop them. The
-  // smallest real feature on the map (an islet of the Saaremaa archipelago)
-  // is over 1 km2, an order of magnitude above the threshold, and every
-  // drop is logged so a real loss cannot pass silently.
-  const MIN_POLY_KM2 = 0.1;
-  const EARTH_KM2 = 6371 * 6371;
-  const polyKm2 = (poly) =>
-    geoArea({ type: "Polygon", coordinates: poly }) * EARTH_KM2;
-  const kept = dissolved.filter((poly) => polyKm2(poly) >= MIN_POLY_KM2);
-  if (kept.length !== dissolved.length) {
-    const dropped = dissolved.filter((poly) => polyKm2(poly) < MIN_POLY_KM2);
-    const largest = Math.max(...dropped.map(polyKm2));
-    console.log(
-      `Land ${land.id}: dropped ${dropped.length} seam sliver(s), ` +
-        `largest ${largest.toFixed(3)} km2`,
-    );
-  }
-  if (!kept.length) throw new Error(`Sliver filter emptied land ${land.id}`);
   return {
     type: "Feature",
     properties: { land },
-    geometry: { type: "MultiPolygon", coordinates: kept },
+    geometry: { type: "MultiPolygon", coordinates: dissolved },
   };
 });
 
@@ -1321,6 +1301,45 @@ const projection = geoAzimuthalEqualArea()
   );
 projection.clipExtent([[0, 0], [WIDTH, HEIGHT]]);
 const path = geoPath(projection).digits(1);
+
+// Sub-pixel land fragments render as stroke dots and dashes. Two kinds, both
+// left behind by the seam dissolve above: pinch-offs that became their own
+// tiny polygons, and lens-shaped holes where the two sources' lines cross
+// back and forth - together they trace a dashed ghost of the very seam the
+// dissolve removed. A few speck polygons the sources carry fall out with
+// them. Measured on the projected map: every such sliver is 0.7 px2 or less,
+// while the smallest real feature kept (an islet of the Saaremaa
+// archipelago) is 1.1 px2, so the cut sits between the two clusters. Every
+// drop is logged so a real loss cannot pass silently.
+const MIN_POLY_PX2 = 0.9;
+for (const f of landFeatures) {
+  // A hole ring measured alone reads as globe-minus-hole; reverse it into an
+  // exterior ring to measure the area it encloses.
+  const holePx2 = (ring) =>
+    path.area({ type: "Polygon", coordinates: [[...ring].reverse()] });
+  let droppedPolys = 0;
+  let droppedHoles = 0;
+  const kept = [];
+  for (const poly of f.geometry.coordinates) {
+    if (path.area({ type: "Polygon", coordinates: poly }) < MIN_POLY_PX2) {
+      droppedPolys++;
+      continue;
+    }
+    const holes = poly.slice(1).filter((h) => holePx2(h) >= MIN_POLY_PX2);
+    droppedHoles += poly.length - 1 - holes.length;
+    kept.push([poly[0], ...holes]);
+  }
+  if (!kept.length) {
+    throw new Error(`Sliver filter emptied land ${f.properties.land.id}`);
+  }
+  if (droppedPolys || droppedHoles) {
+    console.log(
+      `Land ${f.properties.land.id}: dropped ${droppedPolys} sub-pixel ` +
+        `sliver(s) and ${droppedHoles} sub-pixel hole(s)`,
+    );
+  }
+  f.geometry.coordinates = kept;
+}
 
 // --- Rivers: collect every Natural Earth segment matching a whitelisted
 // name into one MultiLineString per river; geoPath's clipExtent trims
