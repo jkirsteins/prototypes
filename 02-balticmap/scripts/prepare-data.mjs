@@ -50,7 +50,7 @@ const PEOPLES = [
   { id: "samogitians", name: "Samogitians", color: "#c9b17f" },
   { id: "aukstaitians", name: "Aukštaitians", color: "#e6d9b8" },
   { id: "yotvingians", name: "Yotvingians", color: "#d1a3a0" },
-  { id: "prussians", name: "Prussians", color: "#9fb8d6" },
+  { id: "prussians", name: "Prussians", color: "#90a8c9" },
 ];
 
 // One faction per land, drawn from the land's primary ethnicity. Types are
@@ -79,12 +79,12 @@ const FACTIONS = [
   { id: "eastern-aukstaitian-confederacy", name: "Eastern Aukštaitian Confederacy", ethnicity: "aukstaitians", type: "land-coalition", color: "#e6d9b8" },
   { id: "sudovians", name: "Sudovians", ethnicity: "yotvingians", type: "land-coalition", color: "#d1a3a0" },
   { id: "dainavians", name: "Dainavians", ethnicity: "yotvingians", type: "land-coalition", color: "#bd8a87" },
-  { id: "sembians", name: "Sembians", ethnicity: "prussians", type: "land-coalition", color: "#9fb8d6" },
-  { id: "natangians", name: "Natangians", ethnicity: "prussians", type: "land-coalition", color: "#7f9cc0" },
-  { id: "nadruvians", name: "Nadruvians", ethnicity: "prussians", type: "land-coalition", color: "#c2d3e8" },
-  { id: "warmians", name: "Warmians", ethnicity: "prussians", type: "land-coalition", color: "#8aa9cb" },
-  { id: "pomesanians", name: "Pomesanians", ethnicity: "prussians", type: "chiefdom", color: "#b3c8de" },
-  { id: "galindians", name: "Galindians", ethnicity: "prussians", type: "land-coalition", color: "#6d8cb2" },
+  { id: "sembians", name: "Sembians", ethnicity: "prussians", type: "land-coalition", color: "#90a8c9" },
+  { id: "natangians", name: "Natangians", ethnicity: "prussians", type: "land-coalition", color: "#7089b0" },
+  { id: "nadruvians", name: "Nadruvians", ethnicity: "prussians", type: "land-coalition", color: "#b1c5de" },
+  { id: "warmians", name: "Warmians", ethnicity: "prussians", type: "land-coalition", color: "#8098bd" },
+  { id: "pomesanians", name: "Pomesanians", ethnicity: "prussians", type: "chiefdom", color: "#a1b7d3" },
+  { id: "galindians", name: "Galindians", ethnicity: "prussians", type: "land-coalition", color: "#5f7aa3" },
 ];
 
 // Main trade arteries ca. 1100. `match` lists Natural Earth naming
