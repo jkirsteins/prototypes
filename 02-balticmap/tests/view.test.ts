@@ -204,6 +204,24 @@ describe("relationshipLine", () => {
     expect(line("zemgale", [], { zemgale: "lietuva" })).toBe("Incorporated into LIETUVA");
   });
 
+  it("follows the chain when the absorbing realm is itself a vassal", () => {
+    // The confusion this fixes: every land of a vassal's realm is striped in
+    // the overlord's colour, but an absorbed land used to name only its
+    // absorber, so neighbouring polygons of one realm read as two stories.
+    expect(line("semba", [["nadruvians", "natangians"]], { semba: "nadruvians" }))
+      .toBe("Incorporated into NADRUVIANS, itself a vassal of NATANGIANS");
+  });
+
+  it("says so in the second person when that realm is your vassal", () => {
+    expect(line("semba", [["nadruvians", "me"]], { semba: "nadruvians" }))
+      .toBe("Incorporated into NADRUVIANS, itself your vassal");
+  });
+
+  it("leaves a free absorber unqualified", () => {
+    expect(line("semba", [], { semba: "nadruvians" }))
+      .toBe("Incorporated into NADRUVIANS");
+  });
+
   it("calls out the human's own absorbed lands", () => {
     expect(line("zemgale", [], { zemgale: "me" })).toBe("Part of your realm (incorporated)");
   });

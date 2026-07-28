@@ -45,7 +45,19 @@ export function relationshipLine(
   const owner = incorporated[polygonFactionId];
   const lord = overlords.get(polygonFactionId);
   if (owner === humanFactionId) return "Part of your realm (incorporated)";
-  if (owner !== undefined) return `Incorporated into ${factionName(owner)}`;
+  if (owner !== undefined) {
+    // Follow the chain. Every land of a vassal's realm carries the overlord's
+    // stripes, so naming only the absorber leaves the stripes unexplained and
+    // makes one realm read as two unrelated stories.
+    const ownersLord = overlords.get(owner);
+    const suffix =
+      ownersLord === undefined
+        ? ""
+        : ownersLord === humanFactionId
+          ? ", itself your vassal"
+          : `, itself a vassal of ${factionName(ownersLord)}`;
+    return `Incorporated into ${factionName(owner)}${suffix}`;
+  }
   if (lord === humanFactionId) return "Your vassal";
   if (overlords.get(humanFactionId) === polygonFactionId) return "Your overlord";
   if (lord === undefined) return "Independent";
