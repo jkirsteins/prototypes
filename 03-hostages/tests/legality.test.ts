@@ -31,7 +31,6 @@ function baseState(): GameState {
       secretsGiven: [],
       largestWillpowerSwing: null,
       notYetForced: false,
-      turningPoint: null,
     },
     rng: { seed: 1 },
   };
@@ -60,10 +59,16 @@ describe("canLead", () => {
     expect(canLead(state, "player", cardById("headbutt")).ok).toBe(true);
   });
 
-  it("blocks headbutt when he is undistracted", () => {
+  it("allows headbutt while bound if he is near and off-balance", () => {
+    const state = baseState();
+    state.convict.offBalance = true;
+    expect(canLead(state, "player", cardById("headbutt")).ok).toBe(true);
+  });
+
+  it("blocks headbutt when he is neither distracted nor off-balance", () => {
     const result = canLead(baseState(), "player", cardById("headbutt"));
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe("needs: he is distracted");
+    if (!result.ok) expect(result.reason).toBe("needs: he is distracted or off-balance");
   });
 
   it("blocks cards needing him near when he is away", () => {

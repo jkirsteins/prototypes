@@ -152,6 +152,17 @@ describe("answering and coercion", () => {
     expect(state.phase).toBe("playerLead");
   });
 
+  it("reports a card not in hand as unavailable even when it would also be illegal", () => {
+    const state = started();
+    stage(state, { playerHand: ["stallHim"], convictHand: ["backhand"] });
+    playerLead(state, "stallHim");
+    // Take It For Her only answers a threatensWife card, and backhand is not
+    // one, so this card fails both checks. Availability must win the race,
+    // matching playerLead's order, rather than reporting "not legal" for a
+    // card the player was never even holding.
+    expect(() => playerAnswer(state, "takeItForHer")).toThrow(/not available/);
+  });
+
   it("fires coercion when willpower ends at zero", () => {
     const state = started();
     state.player.willpower = 2;
@@ -182,6 +193,20 @@ describe("answering and coercion", () => {
     expect(state.player.willpower).toBe(0);
     expect(state.phase).toBe("playerLead");
     expect(state.coercionDefused).toBe(true);
+  });
+
+  it("giving up a secret to a coercive lead is capitulation, not resistance", () => {
+    const state = started();
+    state.player.willpower = 2;
+    stage(state, { playerHand: ["stallHim"], convictHand: ["whereIsIt"] });
+    playerLead(state, "stallHim");
+    playerAnswer(state, "secretFreezer");
+    expect(state.player.willpower).toBe(3);
+    expect(state.coercionDefused).toBe(false);
+    expect(state.stats.secretsGiven).toEqual([{ cardId: "secretFreezer", coerced: false }]);
+    const coercionLogs = state.log.filter((e) => e.kind === "coercion");
+    expect(coercionLogs.at(-1)?.text).toBe("He got what he wanted. He does not need to ask again.");
+    expect(state.log.some((e) => e.text === "You hold. He does not get his answer.")).toBe(false);
   });
 
   it("a surrendered secret restores willpower and applies its state", () => {

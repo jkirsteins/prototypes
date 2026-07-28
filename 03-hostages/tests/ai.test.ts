@@ -112,13 +112,19 @@ describe("chooseConvictAnswer", () => {
 });
 
 describe("chooseConvictDiscard", () => {
-  it("throws away the first card he cannot lead", () => {
+  it("throws away the first dead offensive card, keeping his defenses", () => {
     const s = state();
     s.convictPile.hand = ["backhand", "brace", "snatchItBack"];
+    expect(chooseConvictDiscard(s)).toBe("snatchItBack");
+  });
+
+  it("falls back to the first defensive card once every offensive card is legal", () => {
+    const s = state();
+    s.convictPile.hand = ["backhand", "brace"];
     expect(chooseConvictDiscard(s)).toBe("brace");
   });
 
-  it("falls back to the first card when everything is legal", () => {
+  it("falls back to the first card when everything offensive is legal and nothing defensive is held", () => {
     const s = state();
     s.convictPile.hand = ["backhand", "whereIsIt"];
     expect(chooseConvictDiscard(s)).toBe("backhand");

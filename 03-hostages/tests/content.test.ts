@@ -67,7 +67,7 @@ describe("content", () => {
     }
   });
 
-  it("marks exactly three coercion cards", () => {
+  it("marks exactly two coercion cards", () => {
     const coercers = ALL_CARDS.filter((c) => c.coercion);
     expect(coercers.map((c) => c.id).sort()).toEqual(["knifeToHerThroat", "whereIsIt"]);
   });

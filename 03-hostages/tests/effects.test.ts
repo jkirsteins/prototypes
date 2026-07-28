@@ -30,7 +30,6 @@ function baseState(): GameState {
       secretsGiven: [],
       largestWillpowerSwing: null,
       notYetForced: false,
-      turningPoint: null,
     },
     rng: { seed: 1 },
   };
@@ -157,6 +156,43 @@ describe("applyLeadEffect", () => {
     const state = baseState();
     applyLeadEffect(state, { kind: "willpower", target: "player", amount: -2 }, newMods());
     applyLeadEffect(state, { kind: "willpower", target: "player", amount: -4 }, newMods());
+    expect(state.stats.largestWillpowerSwing?.amount).toBe(4);
+  });
+
+  it("does not record a willpower gain as a swing", () => {
+    const state = baseState();
+    applyLeadEffect(state, { kind: "willpower", target: "player", amount: -1 }, newMods());
+    applyLeadEffect(state, { kind: "willpower", target: "player", amount: 5 }, newMods());
+    expect(state.stats.largestWillpowerSwing?.amount).toBe(1);
+  });
+
+  it("leaves the swing null when every change is a gain", () => {
+    const state = baseState();
+    applyLeadEffect(state, { kind: "willpower", target: "player", amount: 2 }, newMods());
+    expect(state.stats.largestWillpowerSwing).toBeNull();
+  });
+
+  it("names the specific pressure as the cause, not a generic label", () => {
+    const state = baseState();
+    applyLeadEffect(
+      state,
+      { kind: "willpower", target: "player", amount: -2 },
+      newMods(),
+      "Where Is It?",
+    );
+    expect(state.stats.largestWillpowerSwing?.cause).toBe("Where Is It?");
+  });
+
+  it("keeps the wife-damage cause when it is the largest swing", () => {
+    const state = baseState();
+    applyLeadEffect(
+      state,
+      { kind: "willpower", target: "player", amount: -1 },
+      newMods(),
+      "Backhand",
+    );
+    applyLeadEffect(state, { kind: "damage", target: "wife", amount: 2 }, newMods());
+    expect(state.stats.largestWillpowerSwing?.cause).toBe("watching her get hurt");
     expect(state.stats.largestWillpowerSwing?.amount).toBe(4);
   });
 });

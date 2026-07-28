@@ -32,7 +32,7 @@ export function newRun(seed: number): GameState {
     wife: { vigor: 4, bond: 3 },
     convict: {
       willpower: 6,
-      vigor: 8,
+      vigor: 6,
       distracted: 0,
       offBalance: false,
       weaponDown: false,
@@ -52,7 +52,6 @@ export function newRun(seed: number): GameState {
       secretsGiven: [],
       largestWillpowerSwing: null,
       notYetForced: false,
-      turningPoint: null,
     },
     rng,
   };
@@ -125,13 +124,13 @@ function resolveExchange(
     const answer = cardById(answerId);
     const deltas: string[] = [];
     for (const effect of answer.effects) {
-      deltas.push(...applyAnswerEffect(state, effect, mods));
+      deltas.push(...applyAnswerEffect(state, effect, mods, answer.name));
     }
     logCard(state, leadBy === "player" ? "convict" : "player", "answer", answerId, deltas);
   }
   const leadDeltas: string[] = [];
   for (const effect of lead.effects) {
-    leadDeltas.push(...applyLeadEffect(state, effect, mods));
+    leadDeltas.push(...applyLeadEffect(state, effect, mods, lead.name));
   }
   if (leadDeltas.length > 0) {
     logNote(state, leadBy, "effect", mods.negated ? "It comes to nothing." : "It lands.", leadDeltas);
@@ -294,11 +293,11 @@ export function playerAnswer(state: GameState, cardId: string | null): void {
 
   if (cardId !== null) {
     const card = cardById(cardId);
-    const legality = canAnswer(state, "player", card, lead);
-    if (!legality.ok) throw new Error(`Card ${cardId} is not legal: ${legality.reason}`);
     if (!card.tags.includes("secret") && !state.playerPile.hand.includes(cardId)) {
       throw new Error(`Card ${cardId} is not available`);
     }
+    const legality = canAnswer(state, "player", card, lead);
+    if (!legality.ok) throw new Error(`Card ${cardId} is not legal: ${legality.reason}`);
     spendPlayerAnswer(state, cardId, false);
   } else {
     logNote(state, "player", "decline", "You take it.");
@@ -321,8 +320,15 @@ export function playerAnswer(state: GameState, cardId: string | null): void {
       state.phase = "forcedSurrender";
       return;
     }
-    state.coercionDefused = true;
-    logNote(state, "player", "coercion", "You hold. He does not get his answer.");
+    const gaveSecret = cardId !== null && cardById(cardId).tags.includes("secret");
+    if (gaveSecret) {
+      // A secret is capitulation, not resistance: he got his answer, so the
+      // coercion clause is not defused and nothing here counts as holding out.
+      logNote(state, "convict", "coercion", "He got what he wanted. He does not need to ask again.");
+    } else {
+      state.coercionDefused = true;
+      logNote(state, "player", "coercion", "You hold. He does not get his answer.");
+    }
   } else if (pending.coercion && mods.coercionStripped) {
     state.coercionDefused = true;
   }
@@ -359,7 +365,7 @@ export function playerSurrender(state: GameState, secretId: string): void {
   const mods = newMods();
   const deltas: string[] = [];
   for (const effect of card.effects) {
-    deltas.push(...applyAnswerEffect(state, effect, mods));
+    deltas.push(...applyAnswerEffect(state, effect, mods, card.name));
   }
   logCard(state, "player", "answer", secretId, deltas);
   if (mods.runLost) state.outcome = "lossSecrets";

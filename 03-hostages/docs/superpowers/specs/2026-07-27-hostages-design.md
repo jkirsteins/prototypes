@@ -311,8 +311,7 @@ legal defensive cards plus `Decline`.
 **Ending.** The outcome in one line, then an after-action account assembled from the
 log: how many turns it lasted, which secrets you gave up and whether each was
 volunteered or coerced, your wife's lowest Vigor, whether you forced out `Not Yet`,
-the largest single Willpower swing and its cause, and the turn the run turned. Then
-`Play again`.
+the largest single Willpower swing and its cause. Then `Play again`.
 
 Presentation is deliberately plain text. No art, no animation.
 

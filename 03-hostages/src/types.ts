@@ -134,7 +134,6 @@ export interface RunStats {
   secretsGiven: Array<{ cardId: string; coerced: boolean }>;
   largestWillpowerSwing: { amount: number; cause: string } | null;
   notYetForced: boolean;
-  turningPoint: string | null;
 }
 
 export interface RngState {

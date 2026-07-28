@@ -40,7 +40,7 @@ function changeWillpower(
   if (change === 0) return;
   const magnitude = Math.abs(change);
   const current = state.stats.largestWillpowerSwing;
-  if (target === "player" && (current === null || magnitude > current.amount)) {
+  if (target === "player" && change < 0 && (current === null || magnitude > current.amount)) {
     state.stats.largestWillpowerSwing = { amount: magnitude, cause };
   }
   deltas.push(`${target === "player" ? "Your" : "His"} willpower ${change > 0 ? "+" : ""}${change}`);
@@ -82,13 +82,19 @@ function applyDamage(
   if (cost > 0) changeWillpower(state, "player", -cost, "watching her get hurt", deltas);
 }
 
-function applyCommon(state: GameState, effect: Effect, mods: ExchangeMods, deltas: string[]): void {
+function applyCommon(
+  state: GameState,
+  effect: Effect,
+  mods: ExchangeMods,
+  deltas: string[],
+  cause: string,
+): void {
   switch (effect.kind) {
     case "damage":
       applyDamage(state, effect, mods, deltas);
       break;
     case "willpower":
-      changeWillpower(state, effect.target, effect.amount, "the exchange", deltas);
+      changeWillpower(state, effect.target, effect.amount, cause, deltas);
       break;
     case "restoreWillpowerTo":
       state.player.willpower = effect.value;
@@ -163,15 +169,21 @@ export function applyAnswerEffect(
   state: GameState,
   effect: Effect,
   mods: ExchangeMods,
+  cause = "the exchange",
 ): string[] {
   const deltas: string[] = [];
-  applyCommon(state, effect, mods, deltas);
+  applyCommon(state, effect, mods, deltas, cause);
   return deltas;
 }
 
-export function applyLeadEffect(state: GameState, effect: Effect, mods: ExchangeMods): string[] {
+export function applyLeadEffect(
+  state: GameState,
+  effect: Effect,
+  mods: ExchangeMods,
+  cause = "the exchange",
+): string[] {
   if (mods.negated) return [];
   const deltas: string[] = [];
-  applyCommon(state, effect, mods, deltas);
+  applyCommon(state, effect, mods, deltas, cause);
   return deltas;
 }

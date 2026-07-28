@@ -38,10 +38,13 @@ export const CONVICT_CARDS: CardDef[] = [
     tags: [],
     requires: {},
     coercion: true,
-    effects: [{ kind: "willpower", target: "player", amount: -2 }],
-    rules: "Your Willpower -2. If your Willpower is 0 afterwards, you must give up a secret.",
+    effects: [
+      { kind: "setRange", value: "near" },
+      { kind: "willpower", target: "player", amount: -2 },
+    ],
+    rules: "He crosses the room to you. He ends Near. Your Willpower -2. If your Willpower is 0 afterwards, you must give up a secret.",
     flavor: "He asks it the same way every time. That is the pressure.",
-    narration: "He asks where it is.",
+    narration: "He closes the distance and asks where it is.",
   },
   {
     id: "knifeToHerThroat",

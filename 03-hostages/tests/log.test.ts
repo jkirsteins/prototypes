@@ -30,7 +30,6 @@ function stateWithTurn(turn: number): GameState {
       secretsGiven: [],
       largestWillpowerSwing: null,
       notYetForced: false,
-      turningPoint: null,
     },
     rng: { seed: 1 },
   };
