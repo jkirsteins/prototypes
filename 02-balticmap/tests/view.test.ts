@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { fitView, clampView, panBy, zoomAt, MAX_ZOOM, type View } from "../src/view";
+import {
+  fitView, clampView, panBy, politicalFactionForPolygon, zoomAt, MAX_ZOOM,
+  type View,
+} from "../src/view";
 
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 6);
 
@@ -69,5 +72,24 @@ describe("panBy", () => {
     const panned = panBy(zoomed, base, 1e9, 1e9, 800);
     close(panned.x, base.x);
     close(panned.y, base.y);
+  });
+});
+
+describe("politicalFactionForPolygon", () => {
+  it("preserves a vassal's own political identity", () => {
+    const overlords = new Map([["gamma", "delta"]]);
+
+    expect(politicalFactionForPolygon(
+      "gamma",
+      {},
+    )).toBe("gamma");
+    expect(overlords.get("gamma")).toBe("delta");
+  });
+
+  it("resolves incorporated land to its owner", () => {
+    expect(politicalFactionForPolygon(
+      "gamma",
+      { gamma: "delta" },
+    )).toBe("delta");
   });
 });

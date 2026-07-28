@@ -20,6 +20,7 @@ import {
   buildPlayerDeck, loadMeta, memoryStorage, mergeSeen,
   resetMeta, saveMeta, unlockCard, type MetaRecord, type MetaStorage,
 } from "./meta";
+import { politicalFactionForPolygon } from "./view";
 import "./style.css";
 
 const data = rawData as MapData;
@@ -93,8 +94,8 @@ function discardMode(): boolean {
 
 function relationsInfo(region: Region): string[] {
   const human = game.players[0];
-  if (!inPlay() || !human || region.faction === human.factionId) return [];
-  const f = region.faction;
+  const f = politicalFactionForPolygon(region.faction, game.incorporated);
+  if (!inPlay() || !human || f === human.factionId) return [];
   const mine = getRel(game.relations, human.factionId, f);
   const theirs = getRel(game.relations, f, human.factionId);
   const lines = [
@@ -319,13 +320,13 @@ function renderThreatBadges(): void {
 
 function hoverLines(region: Region): TooltipLine[] {
   const human = game.players[0];
+  const f = politicalFactionForPolygon(region.faction, game.incorporated);
   const base: TooltipLine[] = tooltipText(
     region, factionById.get(region.faction)!,
   )
     .split("\n")
     .map((text) => ({ text }));
-  if (!inPlay() || !human || region.faction === human.factionId) return base;
-  const f = region.faction;
+  if (!inPlay() || !human || f === human.factionId) return base;
   const delta = (label: string, n: number): TooltipLine =>
     n > 0
       ? { text: `${label}: +${n} (you lead)`, tone: "good" }
@@ -351,8 +352,8 @@ function applyTargeting(): void {
   const targets = new Set(armedTargets());
   for (const [id, el] of regionPaths) {
     const f = factionByRegion.get(id)!;
-    const effective = game.incorporated[f] ?? f;
-    const valid = armed !== null && targets.has(effective);
+    const political = politicalFactionForPolygon(f, game.incorporated);
+    const valid = armed !== null && targets.has(political);
     el.classList.toggle("target-valid", valid);
     el.classList.toggle("target-invalid", armed !== null && !valid);
   }
@@ -588,7 +589,9 @@ const interaction = attachInteraction(svg, regionPaths, settlementDots, data, {
     if (game.phase === "playing" && armed !== null) {
       const idx = armed;
       const raw = regionId !== null ? factionByRegion.get(regionId) : undefined;
-      const faction = raw !== undefined ? (game.incorporated[raw] ?? raw) : undefined;
+      const faction = raw === undefined
+        ? undefined
+        : politicalFactionForPolygon(raw, game.incorporated);
       const valid = faction !== undefined && armedTargets().includes(faction);
       disarm();
       if (valid) {

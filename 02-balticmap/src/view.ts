@@ -1,3 +1,5 @@
+import type { Incorporated } from "./relations";
+
 export interface View {
   x: number;
   y: number;
@@ -6,6 +8,13 @@ export interface View {
 }
 
 export const MAX_ZOOM = 8;
+
+export function politicalFactionForPolygon(
+  polygonFactionId: string,
+  incorporated: Incorporated,
+): string {
+  return incorporated[polygonFactionId] ?? polygonFactionId;
+}
 
 /** Smallest view that covers the whole map, centered, with the viewport's aspect. */
 export function fitView(mapW: number, mapH: number, vpW: number, vpH: number): View {

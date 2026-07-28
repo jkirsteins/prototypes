@@ -162,6 +162,18 @@ describe("playCard validation", () => {
 });
 
 describe("card effects", () => {
+  it("raids another overlord's vassal without changing the overlord relation", () => {
+    let g = playingState(LINE_ADJ);
+    g = {
+      ...g,
+      overlords: new Map([["gamma", "delta"]]),
+    };
+    g = withHand(g, 0, ["raid"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(leadsOf(after.relations, "beta", "gamma").might).toBe(1);
+    expect(leadsOf(after.relations, "beta", "delta").might).toBe(0);
+  });
+
   it("raid and marriage bump one pair; fortify bumps everyone living", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["raid", "shrewd-marriage", "fortify"]);
     const afterRaid = playCard(g, 0, rng(), "alpha");
