@@ -203,6 +203,73 @@ unreadable. On hovering any polygon during play:
   `.realm-hover` / `.vassal-hover`. Cleared when the hover leaves or the
   phase is not in play. e2e-verified (main.ts convention).
 
+## 8. Vassal-loss penalty (user ruling, 2026-07-28)
+
+When a vassal is torn away from its overlord - by a rival's Subjugate
+(poach) or by the new Revolt card - the former overlord suffers a -1
+penalty on BOTH tracks relative to that vassal. Because relation counters
+only grow, this is implemented as the vassal gaining +1 Might and +1 Status
+over the former lord (identical lead effect). Applies to every faction, not
+just the human. The poach modal gains a detail line when a former overlord
+exists: "{former} loses 1 Might and 1 Status against you."
+
+## 9. Revolt card, random AI decks, undiscovered counter (user ruling, 2026-07-28)
+
+- New card `revolt` (name "Revolt", untargeted, maxPerDeck 1, deckBuildable,
+  not forced): playable while a vassal regardless of leads. Effect: break
+  free (overlord link removed, Pay Tribute cards stripped) and the former
+  overlord suffers the section-8 vassal-loss penalty. Nothing else changes.
+  Emits the existing `reclaimed` event (self-initiated: stays modal-silent).
+  Card text: "Cast off your overlord, no lead required. They lose 1 Might
+  and 1 Status against you."
+- AI decks are assembled randomly: each deck-buildable non-basic card is
+  included with probability 0.5 (seeded rng), remainder filled with the
+  basic filler. Not every card appears in every game, so some are rarer in
+  practice. The human deck flow (knownCards + deck screen) is unchanged;
+  the default deck builder used for the human stays exhaustive.
+- Deck screen gains a label "N cards still undiscovered" where N = the
+  count of deck-buildable non-basic cards that are neither known nor in the
+  unlockable pool; hidden when N is 0.
+
+## 10. Diplomacy cards: Assassinate ruler, Alliance, Extended diplomacy (user ruling, 2026-07-28)
+
+Three new deck-buildable cards (all maxPerDeck 1, in the random AI pool):
+
+- **Assassinate ruler** (targeted, reach rules as Raid): resets the STATUS
+  delta between actor and target to 0 - both directions' status counters
+  are raised to max(theirs, ours) so the lead becomes even (counters only
+  grow). Might untouched. Card text: "Even the score: the Status lead
+  between you and one faction in reach resets to none."
+- **Alliance** (targeted, reach rules as Shrewd marriage): creates a pact
+  between actor and target for 5 turns (expires at `turn + 5`). While
+  active, NEITHER side may target the other with hostile cards (Raid,
+  Shrewd marriage, Subjugate, Assassinate ruler) - enforced in
+  validTargetsFor, so the AI obeys automatically. Card text: "Seal a pact
+  with one faction in reach: no hostile cards between you for 5 turns."
+- **Extended diplomacy** (untargeted, always playable): the actor's NEXT
+  Alliance lasts 10 turns instead of 5 (one-shot flag, consumed on use).
+  Card text: "Patient envoys: your next Alliance lasts twice as long."
+
+State: `GameState.alliances: Record<string, number>` keyed by the sorted
+pair "a|b" -> expiry turn (pact active while `turn < expiry`); expired
+entries are inert (no cleanup needed) but are pruned when overwritten.
+`GameState.diplomacyBoost: string[]` - faction ids holding an unused
+Extended diplomacy effect. Subjugating or incorporating an ally is blocked
+by the same hostile-card rule; an existing overlord/vassal pair CAN ally
+(it only blocks hostile plays). No new GameEventTypes: play events cover
+logging.
+
+Notices: the play-modal whitelist grows - Assassinate ruler targeting the
+human modals (title "A Ruler Falls", details: the new even standing);
+Alliance targeting the human modals (title "An Alliance Sealed", details:
+"No hostile cards between you and {actor} until turn {expiry}."). Both are
+state changes imposed on the player. Extended diplomacy is self-targeted
+and stays silent.
+
+Badges: while a pact between the human and a badge's faction is active,
+the badge text gains a third segment "A{turnsLeft}" (e.g. "M-1 S0 A3") in
+a distinct color (#1d4ed8), so active alliances are visible at a glance.
+
 ## Non-goals
 
 - No change to Subjugate/poach legality or AI behavior (balance is a
