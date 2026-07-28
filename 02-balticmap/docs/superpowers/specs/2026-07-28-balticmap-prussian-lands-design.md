@@ -20,7 +20,9 @@ These were settled during brainstorming and are not open questions:
 
 - **Granularity: 6 consolidated lands**, not the full 9-10 historic divisions.
   The thin and wilderness lands are merged into their neighbours.
-- **Geometry: NUTS-3 plus hand cuts.** Not gminas. See "Why NUTS-3" below.
+- **Geometry: whole administrative units from geoBoundaries ADM2.** Polish
+  powiats and Kaliningrad rayons, clipped to the GISCO country outlines. No
+  hand-traced cut lines anywhere. See "Why geoBoundaries ADM2" below.
 - **Existing lands are re-cut.** `pilsotas` gives up Skalvian ground;
   `suduva` and `dainava` extend south across the modern border.
 - **Victory threshold scales with the roster** rather than staying a
@@ -30,35 +32,71 @@ These were settled during brainstorming and are not open questions:
 - **The map gains a minimum zoom.** The whole map is no longer visible at
   once; the player pans.
 
-## Why NUTS-3
+## Why geoBoundaries ADM2
 
-The existing pipeline builds lands from GISCO administrative units: EE and LV
-from LAU 2023 municipalities keyed by `LAU_NAME`, LT from NUTS-3 counties
-keyed by `NUTS_ID`. The new territory does not fit that pattern cleanly.
+The existing pipeline builds lands from whole administrative units: EE and LV
+from GISCO LAU 2023 municipalities keyed by `LAU_NAME`, LT from GISCO NUTS-3
+counties keyed by `NUTS_ID`. The new territory should work the same way. It
+cannot use GISCO, for two separate reasons.
 
-Kaliningrad has no LAU or NUTS coverage at all. It is only present as part of
-the `RU` polygon in the countries file. So its lands must be hand-cut with
-`polygon-clipping` no matter what else is decided.
+Kaliningrad has no LAU or NUTS coverage at all. It appears in GISCO only as
+part of the undivided `RU` country polygon.
 
-Poland does have LAU gminas in the already-cached file, but they cannot be
-keyed the way EE and LV are. Measured, not assumed:
+Poland has LAU gminas in GISCO, but they cannot be keyed. Measured, not
+assumed: 203 gminas fall in the Prussian area with 22 name collisions, the
+usual urban and rural pairs (Bartoszyce, Elblag, Ketrzyn); `LAU_ID` is the
+constant `"1.0042"` for every Polish feature; and `GISCO_ID` does not decode
+to a verifiable TERYT powiat code. GISCO publishes no powiat level, which is
+the granularity the Prussian lands actually need.
 
-- 203 gminas fall in the Prussian area, with 22 name collisions, the usual
-  urban and rural pairs (Bartoszyce, Elblag, Ketrzyn, Lidzbark Warminski).
-- `LAU_ID` is a useless constant for Poland: every PL feature carries
-  `"1.0042"`.
-- `GISCO_ID` does not decode to a verifiable TERYT powiat code, so no readable
-  key can be derived from it.
+**geoBoundaries ADM2** (OpenStreetMap-derived, ODbL) supplies exactly the
+missing levels: 380 Polish powiats and city-counties, and the 22 rayons and
+urban okrugs of Kaliningrad Oblast. Verified against the data: all 28 Polish
+units the roster needs exist under unique, readable names, and the 22
+Kaliningrad units partition the oblast exactly.
 
-Keying Poland by gmina would therefore need either raw `GISCO_ID` strings in
-`LANDS` or a fragile derived tiebreaker, plus roughly 200 entries. Against
-that, hand cuts cost four cut lines using machinery already being written for
-Kaliningrad, keep `NUTS_ID` as the key, and leave the southern frontier
-toward Masovia following real NUTS-3 borders rather than a hand-traced line.
+This means **no hand-traced cut lines at all**. Every Prussian land is a union
+of whole administrative units, exactly like every existing land on the map.
+An earlier draft of this design proposed hand-tracing eight cut lines through
+Kaliningrad and Poland; that approach is rejected. Hand-drawn borders do not
+survive contact with the source data, cannot be verified, and would have made
+every future edit a fresh act of cartography.
 
-The trade-off accepted: internal Prussian borders are hand-traced and so read
-smoother than the admin-derived borders elsewhere on the map. The outer
-frontier and all coastlines remain real data.
+Two consequences of mixing sources, both handled:
+
+- **Ring winding.** geoBoundaries winds rings opposite to the GISCO and
+  d3-geo spherical convention, so an unrewound ring reads as the whole globe
+  minus a hole. The pipeline's existing `rewind` helper is applied on load.
+  This is not theoretical: it silently produced garbage in every measurement
+  taken during design until it was applied.
+- **Border disagreement.** Being OSM-derived, geoBoundaries outer borders do
+  not exactly match GISCO's. Measured on the frontier units, the worst case
+  is `powiat elblaski` straying 3.0 km2 outside the GISCO Poland outline, on
+  a 1310 km2 unit - 0.23%, well under a pixel at map scale. Each unit is
+  nonetheless intersected with its GISCO country polygon, so every
+  international border and coastline on the map keeps coming from GISCO
+  exactly as it does today, and only the internal divisions come from
+  geoBoundaries.
+
+The source is pinned to a specific geoBoundaries release commit so the build
+is reproducible, and cached alongside the GISCO and Natural Earth downloads.
+
+### Selecting the units
+
+Poland is selected by `shapeName`. The names are Latin, unique and meaningful
+- `powiat kwidzynski` is the powiat around Kwidzyn, the Prussian Kwedis.
+
+Kaliningrad is **not** selected by name. Its units carry Soviet-era names
+honouring Bagration, Chernyakhovsky and Nesterov, which mean nothing on a map
+of 1100, and five of them are Cyrillic and truncated in the source
+(`Mamonovskiy gorodskoy okru`). Instead each unit is selected by a point at
+the Prussian place it is centred on - Twangste, Tapiau, Ragaine, Labguva,
+Tilze - and the pipeline takes whichever polygon contains that point. The
+configuration therefore reads as Prussian geography and never as modern
+Russian administration, and no Cyrillic appears anywhere in the codebase.
+
+Verified: 22 points resolve to 22 distinct rayons covering the whole oblast,
+with no duplicates and none unclaimed.
 
 ## The roster
 
@@ -139,35 +177,61 @@ explicitly excluded: the emporium was long dead by 1100, so it fails the
 note-must-be-true-in-1100 rule the same way Riga does.
 
 The pipeline's existing `geoContains` guard will catch any site whose
-coordinates do not actually fall inside the land claiming it.
+coordinates do not actually fall inside the land claiming it. It already has:
+Balga's true position on its headland at 19.97E, 54.57N falls outside the
+simplified geoBoundaries coastline, so Honeda is placed a little inland at
+19.99E, 54.55N. This is the only place the simplified geometry is visibly
+coarser than GISCO, and it moves the dot by under two kilometres.
 
 ## Pipeline changes
 
 All in `scripts/prepare-data.mjs`.
 
-### Kaliningrad extraction
+### Loading geoBoundaries
 
-The oblast is present in the cached countries file as part of the `RU`
-MultiPolygon. Verified: one clean exterior ring of 509 points spanning
-19.80E to 22.89E and 54.32N to 55.29N, plus the tip of the Vistula Spit.
-Both are selected by bounding box.
+Two new cached downloads, pinned to a geoBoundaries release commit: the POL
+and RUS ADM2 simplified GeoJSON files. On load every feature is rewound and
+intersected with its GISCO country polygon, then enters the member pool under
+its selection key.
 
-The extracted polygon is subdivided into Semba, Notanga and the Kaliningrad
-portion of Nadrawa by hand-traced cut lines, using the machinery that already
-splits the two Daugava-straddling municipalities. `splitByDaugava` is
-generalized to a `splitByLine(feature, line, name)` helper so the Daugava
-split and the Prussian cuts share one implementation and one winding-rewind
-guard.
+### Kaliningrad
+
+The 22 units of the oblast are selected by Prussian-place point containment
+as described above, and grouped into three lands:
+
+- **Semba**: Twangste, Kaup, Rusemoter, Pioneru, Palvininkai, Neuhausen,
+  Zimmerbude, Pillau - the peninsula north of the Pregolya and west of the
+  Deima.
+- **Notanga**: Honeda, Heiligenbeil, Ludwigsort, Friedland, Tapiau - the
+  country south of the Pregolya, plus Bartia on the Polish side.
+- **Nadrawa**: Insterburg, Gumbinnen, Stalupenai, Lazdynai, Darkiemis,
+  Ragaine, Gastos, Tilze, Labguva - the east and the lower Nemunas.
+
+The pipeline asserts that the selection points resolve one-to-one onto the
+oblast's units, that none is claimed twice, and that none is left over. That
+assertion is the guard the hand-traced approach could never have.
 
 ### Poland
 
-PL NUTS-3 members PL621, PL622, PL623 and PL843 enter the member pool. Each
-is hand-cut to yield Warmi, Pamede, Galinda and the southern extensions of
-Suduva and Dainava.
+28 whole powiats and city-counties, selected by `shapeName`:
 
-The `LANDS` partition check is preserved: the claimed set must still exactly
-equal the available member pool, so a forgotten piece of a cut region fails
-the build rather than silently vanishing.
+- **Warmi**: braniewski, lidzbarski, elblaski, olsztynski, Elblag, Olsztyn
+- **Pamede**: kwidzynski, sztumski, malborski, ilawski, ostrodzki,
+  nowomiejski, dzialdowski
+- **Galinda**: mragowski, gizycki, piski, szczycienski, elcki, wegorzewski,
+  nidzicki
+- **Notanga** also takes bartoszycki and ketrzynski, which are Bartia
+- **Suduva** extends into goldapski, olecki, suwalski, sejnenski, Suwalki
+- **Dainava** extends into augustowski
+
+`powiat nowodworski`, the Vistula delta, is deliberately excluded: Zulawy
+marsh, Pomerelian rather than Pomesanian ground in 1100.
+
+The Polish member pool is this whitelist, not all 380 powiats, so the
+partition check guards that the whitelist is exactly claimed - it still
+catches a typo or a double claim, but it cannot catch a Prussian powiat
+nobody thought to list. That is an accepted and deliberate weakening,
+recorded here so it is not mistaken for an oversight.
 
 ### Lithuania
 
@@ -176,23 +240,32 @@ instead. Verified: all 60 LT LAU names are unique, so they key by `LAU_NAME`
 exactly as EE and LV do. This lets Silute, Pagegiai and Neringa join Nadrawa
 while Pilsotas keeps the rest.
 
-The remaining LT lands continue to use NUTS-3.
+The remaining LT lands continue to use NUTS-3, and no Lithuanian land
+takes any geoBoundaries unit.
 
 ### Adjacency
 
 Two failure modes, both handled:
 
-- The RU border comes from the countries file while the LT and PL borders
-  come from the LAU and NUTS files. Vertices across that seam will not match,
-  so neither arc-sharing nor the existing coordinate-matching fallback will
-  fire.
-- Hand-cut pieces share exact vertices along their cut lines, so the
-  coordinate fallback does handle those.
+- The Prussian lands come from geoBoundaries while their Estonian, Latvian
+  and Lithuanian neighbours come from GISCO. Vertices across that seam will
+  not match, so neither arc-sharing nor the existing coordinate-matching
+  fallback will fire. Clipping to the GISCO country outline does not help
+  here: it aligns the outer edge of the union, not the individual vertices.
+- Units from the same geoBoundaries file share exact vertices along their
+  common borders, so the coordinate fallback handles every border internal to
+  Poland or internal to Kaliningrad without help.
 
 `SEA_LINKS` is generalized to `AUTHORED_LINKS`, carrying both the existing
 island sea links and the new cross-source land seams, each with a comment
 explaining why it cannot be derived. The existing "every region has at least
 one adjacency" guard stays and will catch an omission.
+
+### Attribution
+
+geoBoundaries is ODbL, which requires attribution. The `attribution` field in
+`map.json` gains a clause naming geoBoundaries and OpenStreetMap contributors.
+`tests/data.test.ts` asserts that string exactly and must be updated with it.
 
 ### Rivers and labels
 
@@ -209,11 +282,12 @@ duplicate of every Prussian land inside the `RU` and `PL` paths.
 
 Two rules:
 
-- **Subtract playable land.** The extracted Kaliningrad polygon is subtracted
-  from `RU`, and the claimed NUTS-3 regions are subtracted from `PL`, using
-  the same `polygon-clipping` difference and winding-rewind path as the land
-  cuts. What remains is the Pskov and Novgorod frontier for `RU` and Masovia
-  and Pomerelia for `PL`.
+- **Subtract playable land.** The union of the claimed Kaliningrad units is
+  subtracted from `RU`, and the union of the claimed powiats from `PL`, using
+  `polygon-clipping` difference with the same winding-rewind guard. What
+  remains is the Pskov and Novgorod frontier for `RU`, and Masovia and
+  Pomerelia for `PL`. Subtracting the claimed units rather than whole source
+  regions is what keeps Pomerelia - which no land claims - a neighbor.
 - **Keep only neighbors that render.** Verified against the current built
   `map.json`: of the six configured neighbors, only `BY`, `FI`, `PL` and `RU`
   produce a path at all. `SE` and `DK` fall entirely outside the canvas and
@@ -308,8 +382,9 @@ panning being available at minimum zoom.
   partition check, the population total, the geometry winding check, the
   settlement containment check, and the every-region-has-adjacency check.
 - No configured neighbor yields an empty path, and no neighbor polygon
-  overlaps a playable land: `RU` no longer contains Kaliningrad and `PL` no
-  longer contains the Prussian NUTS-3 regions. Confirmed by inspecting the
+  overlaps a playable land: `RU` no longer contains the claimed Kaliningrad
+  units and `PL` no longer contains the claimed powiats. Confirmed by
+  inspecting the
   built `map.json`, not only by eye in the browser, since an overlap is
   invisible under the region fills.
 - Verified in Chrome through the root dev server at
