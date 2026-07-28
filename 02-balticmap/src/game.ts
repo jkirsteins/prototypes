@@ -14,7 +14,7 @@ export interface GameEvent {
   turn: number;
   playerId: number; // 1 = human
   type: GameEventType;
-  cardId?: string; // draw, play, discard
+  cardId?: string; // draw, play, discard, reclaimed (which card freed them)
   targetFactionId?: string;
   overlordFactionId?: string;
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
@@ -319,7 +319,7 @@ export function playCard(
     overlords.delete(p.factionId);
     players = updateFaction(players, p.factionId, stripTribute);
     events.push({
-      turn: state.turn, playerId: p.id, type: "reclaimed",
+      turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
       targetFactionId: p.factionId, overlordFactionId: former,
     });
   } else if (cardId === "revolt") {
@@ -331,7 +331,7 @@ export function playCard(
     // over the former lord (relation counters only grow).
     relations = bumpStatus(bumpMight(relations, p.factionId, former), p.factionId, former);
     events.push({
-      turn: state.turn, playerId: p.id, type: "reclaimed",
+      turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
       targetFactionId: p.factionId, overlordFactionId: former,
     });
   } else if (cardId === "pay-tribute") {

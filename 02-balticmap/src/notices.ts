@@ -39,6 +39,29 @@ export type NoticeRule =
 const victimOfOther = (e: GameEvent, ctx: NoticeCtx): boolean =>
   e.targetFactionId === ctx.humanFactionId && e.playerId !== 1;
 
+/** Which side of an allegiance change the human is on: the faction that
+ *  changed hands (`self`), or the overlord that lost it (`lord`). Null when
+ *  the event misses the human, or when the human caused it and already knows.
+ *
+ *  A round can contain both - a rival can subjugate you and poach a different
+ *  vassal in the same round - so the role is part of the batch key and is
+ *  never inferred from the event type alone. */
+export type HumanRole = "self" | "lord";
+
+function humanRoleIn(e: GameEvent, ctx: NoticeCtx): HumanRole | null {
+  if (e.playerId === 1) return null;
+  if (e.targetFactionId === ctx.humanFactionId) return "self";
+  const lostTo =
+    e.type === "subjugated" ? e.formerOverlordFactionId : e.overlordFactionId;
+  return lostTo === ctx.humanFactionId ? "lord" : null;
+}
+
+/** Every way a vassal leaves the human shrinks the realm, which lowers the
+ *  bar rivals need to subjugate the human in turn. */
+const realmShrunkConsequence = (ctx: NoticeCtx): string =>
+  `Your realm is smaller: a lead of ${ctx.subjugationGrip()} over you is now ` +
+  "enough to subjugate you.";
+
 const fmtLead = (n: number): string =>
   n > 0 ? `you lead by ${n}` : n < 0 ? `they lead by ${-n}` : "even";
 
@@ -258,6 +281,89 @@ function buildReleasedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
   };
 }
 
+/** A rival played Subjugate on one of the human's vassals and took it. The
+ *  wording avoids agreeing a verb with a faction name - the roster mixes
+ *  plurals ("Curonians") with singulars ("Semigallian Confederacy"). */
+function buildVassalPoachedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  if (events.length === 1) {
+    const e = events[0];
+    const actor = actorName(e, ctx);
+    return {
+      title: "A Vassal Torn Away",
+      what: `${actor} played Subjugate against your vassal ${ctx.factionName(e.targetFactionId)}.`,
+      details: [
+        `Fealty passes from you to ${actor}.`,
+        "They gain 1 Might and 1 Status against you.",
+        ...(e.overlordFactionId !== undefined
+          ? [standingLine(ctx, e.overlordFactionId)]
+          : []),
+      ],
+      consequence: realmShrunkConsequence(ctx),
+    };
+  }
+  return {
+    title: "A Vassal Torn Away",
+    what: "You lost vassals this round:",
+    details: events.map(
+      (e) => `${actorName(e, ctx)} took ${ctx.factionName(e.targetFactionId)} from you`,
+    ),
+    consequence: realmShrunkConsequence(ctx),
+  };
+}
+
+/** A vassal of the human played Revolt or Reclaim independence. Revolt also
+ *  costs the human a point on each track; Reclaim independence does not. */
+function buildVassalBrokeFreeNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  const cardLabel = (e: GameEvent): string =>
+    e.cardId === "revolt" ? "Revolt" : "Reclaim independence";
+  const penalty = (e: GameEvent): string[] =>
+    e.cardId === "revolt" ? ["They gain 1 Might and 1 Status against you."] : [];
+
+  if (events.length === 1) {
+    const e = events[0];
+    const rebel = ctx.factionName(e.targetFactionId);
+    return {
+      title: "A Vassal Breaks Free",
+      what: `${rebel} played ${cardLabel(e)} and cast off your overlordship.`,
+      details: [
+        ...penalty(e),
+        ...(e.targetFactionId !== undefined
+          ? [standingLine(ctx, e.targetFactionId)]
+          : []),
+      ],
+      consequence: realmShrunkConsequence(ctx),
+    };
+  }
+  return {
+    title: "A Vassal Breaks Free",
+    what: "Vassals cast off your overlordship this round:",
+    details: events.map(
+      (e) => `${ctx.factionName(e.targetFactionId)} played ${cardLabel(e)}`,
+    ),
+    consequence: realmShrunkConsequence(ctx),
+  };
+}
+
+/** The human was subjugated, which frees every vassal they held. No
+ *  consequence line: the Beneath the Yoke notice in the same round carries
+ *  the mechanical cost. */
+function buildVassalsScatteredNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  if (events.length === 1) {
+    return {
+      title: "Your Vassals Scatter",
+      what:
+        "Your own subjugation released " +
+        `${ctx.factionName(events[0].targetFactionId)} from your service.`,
+      details: [],
+    };
+  }
+  return {
+    title: "Your Vassals Scatter",
+    what: "Your own subjugation released your vassals:",
+    details: events.map((e) => ctx.factionName(e.targetFactionId)),
+  };
+}
+
 export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   draw: { kind: "silent", reason: "routine; visible in hand and log" },
   play: {
@@ -282,21 +388,30 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   reshuffle: { kind: "silent", reason: "routine; deck pulse animation" },
   subjugated: {
     kind: "modal",
-    appliesToHuman: victimOfOther,
-    build: (e, ctx) => buildSubjugatedNotice([e], ctx),
+    appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) !== null,
+    build: (e, ctx) =>
+      humanRoleIn(e, ctx) === "lord"
+        ? buildVassalPoachedNotice([e], ctx)
+        : buildSubjugatedNotice([e], ctx),
   },
   released: {
     kind: "modal",
-    appliesToHuman: victimOfOther,
-    build: (e, ctx) => buildReleasedNotice([e], ctx),
+    appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) !== null,
+    build: (e, ctx) =>
+      humanRoleIn(e, ctx) === "lord"
+        ? buildVassalsScatteredNotice([e], ctx)
+        : buildReleasedNotice([e], ctx),
   },
   incorporated: {
     kind: "silent",
     reason: "human target always co-occurs with defeat; postmortem covers it",
   },
   reclaimed: {
-    kind: "silent",
-    reason: "self-initiated when it touches the human",
+    // Silent only when the human reclaims: they played the card. A vassal
+    // walking out on the human is news, and used to pass unannounced.
+    kind: "modal",
+    appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) === "lord",
+    build: (e, ctx) => buildVassalBrokeFreeNotice([e], ctx),
   },
   tribute: {
     kind: "silent",
@@ -319,21 +434,30 @@ export function noticeFor(e: GameEvent, ctx: NoticeCtx): Notice | null {
  *  human in one AI round collapse into a single modal) and returns one
  *  Notice per group, ordered by first occurrence in the log. */
 export function buildNotices(events: GameEvent[], ctx: NoticeCtx): Notice[] {
-  const order: { type: GameEventType; events: GameEvent[] }[] = [];
+  const order: {
+    type: GameEventType;
+    role: HumanRole;
+    events: GameEvent[];
+  }[] = [];
   const indexByKey = new Map<string, number>();
   for (const e of events) {
     const rule = NOTICE_RULES[e.type];
     if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) continue;
-    const key = `${e.type}:${e.cardId ?? ""}:${e.prevented ? "prevented" : ""}`;
+    // The role is part of the key: being subjugated and having a different
+    // vassal poached are both `subjugated` events, and merging them would
+    // describe one with the other's wording.
+    const role = humanRoleIn(e, ctx) ?? "self";
+    const key =
+      `${e.type}:${e.cardId ?? ""}:${e.prevented ? "prevented" : ""}:${role}`;
     let idx = indexByKey.get(key);
     if (idx === undefined) {
       idx = order.length;
       indexByKey.set(key, idx);
-      order.push({ type: e.type, events: [] });
+      order.push({ type: e.type, role, events: [] });
     }
     order[idx].events.push(e);
   }
-  return order.map(({ type, events: groupEvents }) => {
+  return order.map(({ type, role, events: groupEvents }) => {
     switch (type) {
       case "play": {
         const cardId = groupEvents[0].cardId;
@@ -346,9 +470,15 @@ export function buildNotices(events: GameEvent[], ctx: NoticeCtx): Notice[] {
         return buildPlayNotice(groupEvents, ctx);
       }
       case "subjugated":
-        return buildSubjugatedNotice(groupEvents, ctx);
+        return role === "lord"
+          ? buildVassalPoachedNotice(groupEvents, ctx)
+          : buildSubjugatedNotice(groupEvents, ctx);
       case "released":
-        return buildReleasedNotice(groupEvents, ctx);
+        return role === "lord"
+          ? buildVassalsScatteredNotice(groupEvents, ctx)
+          : buildReleasedNotice(groupEvents, ctx);
+      case "reclaimed":
+        return buildVassalBrokeFreeNotice(groupEvents, ctx);
       default:
         throw new Error(`no batch notice builder for grouped event type: ${type}`);
     }

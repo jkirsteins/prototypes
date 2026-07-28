@@ -118,6 +118,109 @@ describe("buildNotices: single-event scenarios", () => {
     expect(n).toBeNull();
   });
 
+  it("warns when a rival tears a vassal away from you", () => {
+    leadsTable = { latgale: { might: -1, status: 0 } };
+    const n = oneNotice(
+      ev({
+        type: "subjugated", playerId: 3, targetFactionId: "curonia",
+        overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+      }),
+    );
+    expect(n).not.toBeNull();
+    expect(n!.title).toBe("A Vassal Torn Away");
+    expect(n!.what).toBe("Latgalians played Subjugate against your vassal Curonians.");
+    expect(n!.details).toContain("Fealty passes from you to Latgalians.");
+    expect(n!.details).toContain("They gain 1 Might and 1 Status against you.");
+  });
+
+  it("warns when a vassal revolts, including what the revolt cost you", () => {
+    const n = oneNotice(
+      ev({
+        type: "reclaimed", playerId: 4, cardId: "revolt",
+        targetFactionId: "curonia", overlordFactionId: "livs",
+      }),
+    );
+    expect(n).not.toBeNull();
+    expect(n!.title).toBe("A Vassal Breaks Free");
+    expect(n!.what).toBe("Curonians played Revolt and cast off your overlordship.");
+    expect(n!.details).toContain("They gain 1 Might and 1 Status against you.");
+  });
+
+  it("warns when a vassal reclaims independence, which costs you no standing", () => {
+    const n = oneNotice(
+      ev({
+        type: "reclaimed", playerId: 4, cardId: "reclaim-independence",
+        targetFactionId: "curonia", overlordFactionId: "livs",
+      }),
+    );
+    expect(n).not.toBeNull();
+    expect(n!.title).toBe("A Vassal Breaks Free");
+    expect(n!.what).toBe(
+      "Curonians played Reclaim independence and cast off your overlordship.",
+    );
+    expect(n!.details).not.toContain("They gain 1 Might and 1 Status against you.");
+  });
+
+  it("stays silent when the human is the one reclaiming", () => {
+    expect(
+      oneNotice(
+        ev({
+          type: "reclaimed", playerId: 1, cardId: "revolt",
+          targetFactionId: "livs", overlordFactionId: "jersika",
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("warns when your own fall scatters your vassals", () => {
+    const n = oneNotice(
+      ev({
+        type: "released", playerId: 3, targetFactionId: "curonia",
+        overlordFactionId: "livs",
+      }),
+    );
+    expect(n).not.toBeNull();
+    expect(n!.title).toBe("Your Vassals Scatter");
+    expect(n!.what).toBe("Your own subjugation released Curonians from your service.");
+  });
+
+  it("keeps your own subjugation separate from a vassal poached in the same round", () => {
+    leadsTable = {};
+    const notices = buildNotices(
+      [
+        ev({ type: "subjugated", playerId: 2, targetFactionId: "livs", overlordFactionId: "jersika" }),
+        ev({
+          type: "subjugated", playerId: 3, targetFactionId: "curonia",
+          overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+        }),
+      ],
+      ctx,
+    );
+    expect(notices.map((n) => n.title)).toEqual([
+      "Beneath the Yoke", "A Vassal Torn Away",
+    ]);
+  });
+
+  it("collapses several vassals lost in one round into one notice", () => {
+    const notices = buildNotices(
+      [
+        ev({
+          type: "subjugated", playerId: 3, targetFactionId: "curonia",
+          overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+        }),
+        ev({
+          type: "subjugated", playerId: 3, targetFactionId: "jersika",
+          overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+        }),
+      ],
+      ctx,
+    );
+    expect(notices).toHaveLength(1);
+    expect(notices[0].title).toBe("A Vassal Torn Away");
+    expect(notices[0].details).toContain("Latgalians took Curonians from you");
+    expect(notices[0].details).toContain("Latgalians took Jersikans from you");
+  });
+
   it("is empty for every silent event type", () => {
     const silent: GameEvent[] = [
       ev({ type: "draw", playerId: 1, cardId: "raid" }),

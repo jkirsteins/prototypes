@@ -584,6 +584,31 @@ describe("notice modal", () => {
     turn: 1, playerId: 3, type: "released", targetFactionId: "beta",
   };
 
+  it("shows a modal when a rival poaches one of your vassals", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [{
+      turn: 1, playerId: 2, type: "subjugated", targetFactionId: "gamma",
+      overlordFactionId: "alpha", formerOverlordFactionId: "beta",
+    }]));
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("A Vassal Torn Away");
+    expect(q(container, ".notice-what").textContent).toBe(
+      "Alpha played Subjugate against your vassal Gamma.",
+    );
+  });
+
+  it("shows a modal when a vassal of yours breaks free", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [{
+      turn: 1, playerId: 3, type: "reclaimed", cardId: "revolt",
+      targetFactionId: "gamma", overlordFactionId: "beta",
+    }]));
+    expect(q(container, ".notice-title").textContent).toBe("A Vassal Breaks Free");
+    expect(q(container, ".notice-what").textContent).toBe(
+      "Gamma played Revolt and cast off your overlordship.",
+    );
+  });
+
   it("shows a mandatory modal when an AI subjugates you", () => {
     const { container, hud } = setup();
     hud.update(withEvents(playing(), [subjugatedYou]));
