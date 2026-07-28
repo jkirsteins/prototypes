@@ -13,7 +13,8 @@ import {
 import { aiTakeTurn } from "./ai";
 import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
 import {
-  playableSet, validTargetsFor, targetEligibilityFor, SUBJUGATE_THRESHOLD,
+  playableSet, validTargetsFor, targetEligibilityFor, subjugationRequirement,
+  SUBJUGATE_THRESHOLD,
 } from "./playability";
 import { explainTargetEligibility } from "./target-explanations";
 import { CARDS } from "./cards";
@@ -23,7 +24,9 @@ import {
   buildPlayerDeck, loadMeta, memoryStorage, mergeSeen,
   resetMeta, saveMeta, unlockCard, type MetaRecord, type MetaStorage,
 } from "./meta";
-import { hoverRelationLines, politicalFactionForPolygon } from "./view";
+import {
+  formatLead, hoverRelationLines, politicalFactionForPolygon, relationshipLine,
+} from "./view";
 import { factionAdjacencyOf } from "./adjacency";
 import "./style.css";
 
@@ -102,7 +105,7 @@ function relationsInfo(region: Region): string[] {
     `Status: yours ${mine.status} / theirs ${theirs.status}`,
     `Might: yours ${mine.might} / theirs ${theirs.might}`,
   ];
-  lines.push(relationshipLine(f, human.factionId));
+  lines.push(allegianceOf(region.faction, human.factionId));
   const pact = allianceLine(f, human.factionId);
   if (pact !== null) lines.push(pact);
   if (validTargetsFor(viewOf(game), human.factionId, "subjugate").includes(f)) {
@@ -111,15 +114,13 @@ function relationsInfo(region: Region): string[] {
   return lines;
 }
 
-function relationshipLine(f: string, humanFaction: string): string {
-  const owner = game.incorporated[f];
-  const lord = game.overlords.get(f);
-  if (owner === humanFaction) return "Part of your realm (incorporated)";
-  if (owner !== undefined) return `Incorporated into ${factionById.get(owner)!.name}`;
-  if (lord === humanFaction) return "Your vassal";
-  if (game.overlords.get(humanFaction) === f) return "Your overlord";
-  if (lord === undefined) return "Independent";
-  return `Vassal of ${factionById.get(lord)!.name}`;
+/** `polygonFaction` is the land's OWN faction, not the resolved one - see
+ *  relationshipLine in view.ts. */
+function allegianceOf(polygonFaction: string, humanFaction: string): string {
+  return relationshipLine(
+    polygonFaction, humanFaction, game.overlords, game.incorporated,
+    (id) => factionById.get(id)!.name,
+  );
 }
 
 /** The pact line, when one binds the human and this faction. */
@@ -255,12 +256,6 @@ function renderRealmHalo(
   }
 }
 
-/** From the human's perspective: "M0" when even, else signed e.g. "M+2"/"M-1". */
-function formatLead(label: string, n: number): string {
-  if (n === 0) return `${label}0`;
-  return n > 0 ? `${label}+${n}` : `${label}${n}`;
-}
-
 function leadClass(n: number): string {
   return n > 0 ? "lead-good" : n < 0 ? "lead-bad" : "lead-even";
 }
@@ -281,6 +276,12 @@ function renderThreatBadges(): void {
     const l = leadsOf(game.relations, human.factionId, factionId);
     const allied = allianceActive(game, human.factionId, factionId);
     if (l.might === 0 && l.status === 0 && !allied) continue;
+    // The bar to clear for Subjugate, shown on both tracks: a lead of +2 next
+    // to a one-land neighbour and next to a three-land realm look identical
+    // otherwise, while only one of them is takeable.
+    const required = subjugationRequirement(
+      viewOf(game), human.factionId, factionId,
+    );
     const regionId = regionByFaction.get(factionId);
     const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
     if (!pathEl) continue;
@@ -309,12 +310,12 @@ function renderThreatBadges(): void {
     }
     const mightTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
     mightTspan.classList.add(leadClass(l.might));
-    mightTspan.textContent = formatLead("M", l.might);
+    mightTspan.textContent = formatLead("M", l.might, required);
     text.appendChild(mightTspan);
     const statusTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
     statusTspan.classList.add(leadClass(l.status));
     statusTspan.setAttribute("dx", "9");
-    statusTspan.textContent = formatLead("S", l.status);
+    statusTspan.textContent = formatLead("S", l.status, required);
     text.appendChild(statusTspan);
     if (allied) {
       const turnsLeft = game.alliances[allianceKey(human.factionId, factionId)] - game.turn;
@@ -339,17 +340,22 @@ function renderThreatBadges(): void {
 function hoverLines(region: Region): TooltipLine[] {
   const human = game.players[0];
   const f = politicalFactionForPolygon(region.faction, game.incorporated);
-  const base: TooltipLine[] = tooltipText(
-    region, factionById.get(region.faction)!,
-  )
+  // An absorbed land is named for the realm that holds it now - its own
+  // faction is gone as a polity - with a line recording who it used to be.
+  const ruling = inPlay() ? f : region.faction;
+  const base: TooltipLine[] = tooltipText(region, factionById.get(ruling)!)
     .split("\n")
     .map((text) => ({ text }));
+  if (ruling !== region.faction) {
+    base.push({ text: `Formerly ${factionById.get(region.faction)!.name}` });
+  }
   if (!inPlay() || !human || f === human.factionId) return base;
   base.push(...hoverRelationLines(
     game.relations,
     human.factionId,
     f,
-    relationshipLine(f, human.factionId),
+    allegianceOf(region.faction, human.factionId),
+    subjugationRequirement(viewOf(game), human.factionId, f),
   ));
   const pact = allianceLine(f, human.factionId);
   if (pact !== null) base.push({ text: pact, tone: "good" });

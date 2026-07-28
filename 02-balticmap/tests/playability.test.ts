@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  SUBJUGATE_THRESHOLD, isCardPlayable, playableSet, targetEligibilityFor,
-  validTargetsFor,
+  SUBJUGATE_THRESHOLD, isCardPlayable, playableSet, subjugationRequirement,
+  targetEligibilityFor, validTargetsFor,
   type RulesView,
 } from "../src/playability";
 import { allianceKey, bumpMight, bumpStatus, type Relations } from "../src/relations";
@@ -34,6 +34,49 @@ function mightLead(actor: string, target: string, n: number): Relations {
   for (let i = 0; i < n; i++) rel = bumpMight(rel, actor, target);
   return rel;
 }
+
+describe("subjugationRequirement", () => {
+  it("is 2 per land of the target's realm", () => {
+    const v = view();
+    expect(subjugationRequirement(v, "alpha", "beta")).toBe(SUBJUGATE_THRESHOLD);
+  });
+
+  it("counts the target's vassals, which is what surprises players", () => {
+    // beta holds gamma: two lands, so the bar doubles from 2 to 4.
+    const v = view({ overlords: new Map([["gamma", "beta"]]) });
+    expect(subjugationRequirement(v, "alpha", "beta")).toBe(4);
+  });
+
+  it("counts lands the target has incorporated", () => {
+    const v = view({ incorporated: { gamma: "beta" } });
+    expect(subjugationRequirement(v, "alpha", "beta")).toBe(4);
+  });
+
+  it("is null where Subjugate could never apply", () => {
+    expect(subjugationRequirement(view(), "alpha", "alpha")).toBeNull();
+    expect(
+      subjugationRequirement(view({ incorporated: { beta: "gamma" } }), "alpha", "beta"),
+    ).toBeNull();
+    expect(
+      subjugationRequirement(view({ overlords: new Map([["beta", "alpha"]]) }), "alpha", "beta"),
+    ).toBeNull();
+    expect(
+      subjugationRequirement(view({ overlords: new Map([["alpha", "delta"]]) }), "alpha", "beta"),
+    ).toBeNull();
+  });
+
+  it("agrees with the number the block reason reports", () => {
+    const v = view({ overlords: new Map([["gamma", "beta"]]) });
+    const entry = targetEligibilityFor(v, "alpha", "subjugate")
+      .find((e) => e.factionId === "beta");
+    const reason =
+      entry?.state === "blocked"
+        ? entry.reasons.find((r) => r.code === "insufficient-lead")
+        : undefined;
+    expect(reason?.code === "insufficient-lead" ? reason.requiredLead : null)
+      .toBe(subjugationRequirement(v, "alpha", "beta"));
+  });
+});
 
 describe("targetEligibilityFor", () => {
   it("keeps another overlord's vassal as its own Raid candidate", () => {

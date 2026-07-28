@@ -1,4 +1,7 @@
-import { leadsOf, type Incorporated, type Relations } from "./relations";
+import {
+  leadsOf, type Incorporated, type Overlords, type Relations,
+} from "./relations";
+import { SUBJUGATE_THRESHOLD } from "./playability";
 import type { TooltipLine } from "./panel";
 
 export interface View {
@@ -25,22 +28,85 @@ export function politicalFactionForPolygon(
   return incorporated[polygonFactionId] ?? polygonFactionId;
 }
 
+/** How a polygon stands to the human, from the polygon's OWN faction id.
+ *
+ *  Pass the polygon's own faction, never the politically resolved one: an
+ *  incorporated land resolves to its absorber, whose own `incorporated` entry
+ *  is empty, so resolving first makes the absorption invisible and the land
+ *  reads as independent. Leads still come from the resolved faction - an
+ *  absorbed land has no relations of its own - but its allegiance does not. */
+export function relationshipLine(
+  polygonFactionId: string,
+  humanFactionId: string,
+  overlords: Overlords,
+  incorporated: Incorporated,
+  factionName: (id: string) => string,
+): string {
+  const owner = incorporated[polygonFactionId];
+  const lord = overlords.get(polygonFactionId);
+  if (owner === humanFactionId) return "Part of your realm (incorporated)";
+  if (owner !== undefined) return `Incorporated into ${factionName(owner)}`;
+  if (lord === humanFactionId) return "Your vassal";
+  if (overlords.get(humanFactionId) === polygonFactionId) return "Your overlord";
+  if (lord === undefined) return "Independent";
+  return `Vassal of ${factionName(lord)}`;
+}
+
+/** One track for a map badge: "M+2" on its own, "M+2/4" against a bar to
+ *  clear. Zero is unsigned; the bar is omitted when no requirement applies. */
+export function formatLead(
+  label: string,
+  n: number,
+  required?: number | null,
+): string {
+  const value = n === 0 ? "0" : n > 0 ? `+${n}` : `${n}`;
+  return required == null
+    ? `${label}${value}`
+    : `${label}${value}/${required}`;
+}
+
+/** `requiredLead` is the Subjugate bar from `subjugationRequirement`; pass
+ *  null where Subjugate cannot apply and the lines read as they always did.
+ *  Tone always says who leads, never whether the bar is cleared - the same
+ *  classes color the map badges. */
 export function hoverRelationLines(
   relations: Relations,
   humanFactionId: string,
   hoveredFactionId: string,
   relationship: string,
+  requiredLead: number | null = null,
 ): TooltipLine[] {
-  const delta = (label: string, n: number): TooltipLine =>
-    n > 0
-      ? { text: `${label}: +${n} (you lead)`, tone: "good" }
-      : n < 0
-        ? { text: `${label}: ${n} (they lead)`, tone: "bad" }
-        : { text: `${label}: even`, tone: "neutral" };
+  const tone = (n: number) => (n > 0 ? "good" : n < 0 ? "bad" : "neutral");
+  const delta = (label: string, n: number): TooltipLine => {
+    if (requiredLead !== null) {
+      const suffix = n > 0 ? " (you lead)" : n < 0 ? " (they lead)" : "";
+      return {
+        text: `${label}: ${formatLead("", n, requiredLead)}${suffix}`,
+        tone: tone(n),
+      };
+    }
+    return n === 0
+      ? { text: `${label}: even`, tone: "neutral" }
+      : {
+          text: `${label}: ${formatLead("", n)} (${n > 0 ? "you" : "they"} lead)`,
+          tone: tone(n),
+        };
+  };
   const yours = leadsOf(relations, humanFactionId, hoveredFactionId);
+  const lands = requiredLead === null ? 0 : requiredLead / SUBJUGATE_THRESHOLD;
   return [
     delta("Might", yours.might),
     delta("Status", yours.status),
+    ...(requiredLead === null
+      ? []
+      : [
+          {
+            text:
+              `Subjugate needs a lead of ${requiredLead} - their realm has ` +
+              `${lands} ${lands === 1 ? "land" : "lands"}.`,
+            tone: "neutral" as const,
+          },
+        ]),
     { text: relationship },
   ];
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  fitView, clampView, homeView, hoverRelationLines, panBy, politicalFactionForPolygon,
+  fitView, clampView, formatLead, homeView, hoverRelationLines, panBy,
+  politicalFactionForPolygon, relationshipLine,
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
 } from "../src/view";
@@ -151,6 +152,24 @@ describe("zoom floor", () => {
   });
 });
 
+describe("formatLead", () => {
+  it("signs the lead and leaves plain zero unsigned", () => {
+    expect(formatLead("M", 2)).toBe("M+2");
+    expect(formatLead("M", -1)).toBe("M-1");
+    expect(formatLead("S", 0)).toBe("S0");
+  });
+
+  it("appends the bar to clear when a requirement applies, on both tracks", () => {
+    expect(formatLead("M", 2, 4)).toBe("M+2/4");
+    expect(formatLead("S", 0, 4)).toBe("S0/4");
+    expect(formatLead("M", -1, 2)).toBe("M-1/2");
+  });
+
+  it("omits the bar when no requirement applies", () => {
+    expect(formatLead("M", 2, null)).toBe("M+2");
+  });
+});
+
 describe("politicalFactionForPolygon", () => {
   it("preserves a vassal's own political identity", () => {
     const overlords = new Map([["gamma", "delta"]]);
@@ -170,7 +189,71 @@ describe("politicalFactionForPolygon", () => {
   });
 });
 
+describe("relationshipLine", () => {
+  const name = (id: string) => id.toUpperCase();
+  const line = (
+    polygonFaction: string,
+    overlords: [string, string][] = [],
+    incorporated: Record<string, string> = {},
+  ) =>
+    relationshipLine(polygonFaction, "me", new Map(overlords), incorporated, name);
+
+  it("names the realm that absorbed the land, from the land's own id", () => {
+    // The regression: callers used to pass the politically-resolved faction,
+    // so incorporated[f] was never set and an absorbed land read "Independent".
+    expect(line("zemgale", [], { zemgale: "lietuva" })).toBe("Incorporated into LIETUVA");
+  });
+
+  it("calls out the human's own absorbed lands", () => {
+    expect(line("zemgale", [], { zemgale: "me" })).toBe("Part of your realm (incorporated)");
+  });
+
+  it("names the overlord of a subjugated land", () => {
+    expect(line("zemgale", [["zemgale", "lietuva"]])).toBe("Vassal of LIETUVA");
+  });
+
+  it("keeps the human's own relationships in the second person", () => {
+    expect(line("zemgale", [["zemgale", "me"]])).toBe("Your vassal");
+    expect(line("lietuva", [["me", "lietuva"]])).toBe("Your overlord");
+  });
+
+  it("says independent when nobody holds it", () => {
+    expect(line("zemgale")).toBe("Independent");
+  });
+
+  it("prefers absorption over a stale vassal entry", () => {
+    expect(line("zemgale", [["zemgale", "lietuva"]], { zemgale: "lietuva" }))
+      .toBe("Incorporated into LIETUVA");
+  });
+});
+
 describe("hoverRelationLines", () => {
+  it("shows the bar to clear on both tracks when a requirement applies", () => {
+    // Tone keeps meaning who leads, not whether the bar is cleared - the same
+    // classes drive the map badges.
+    const rel = bumpMight({}, "actor", "target");
+    expect(hoverRelationLines(rel, "actor", "target", "Independent", 4)).toEqual([
+      { text: "Might: +1/4 (you lead)", tone: "good" },
+      { text: "Status: 0/4", tone: "neutral" },
+      { text: "Subjugate needs a lead of 4 - their realm has 2 lands.", tone: "neutral" },
+      { text: "Independent" },
+    ]);
+  });
+
+  it("says one land in the singular", () => {
+    const lines = hoverRelationLines({}, "actor", "target", "Independent", 2);
+    expect(lines[2].text).toBe("Subjugate needs a lead of 2 - their realm has 1 land.");
+  });
+
+  it("falls back to the plain lines when no requirement applies", () => {
+    const rel = bumpMight({}, "actor", "target");
+    expect(hoverRelationLines(rel, "actor", "target", "Your vassal", null)).toEqual([
+      { text: "Might: +1 (you lead)", tone: "good" },
+      { text: "Status: even", tone: "neutral" },
+      { text: "Your vassal" },
+    ]);
+  });
+
   it("shows a Raid against a vassal without changing the overlord hover", () => {
     const beforeRaid: Relations = bumpMight({}, "overlord", "actor");
     const overlordBefore = hoverRelationLines(

@@ -30,6 +30,28 @@ function reachOf(view: RulesView, factionId: string): Set<string> {
   return reach;
 }
 
+/** The lead the actor needs on either track to Subjugate the target: two per
+ *  land of the target's realm, counting its vassals and the lands it has
+ *  incorporated. Null when Subjugate could never apply to that pair at all,
+ *  so callers can leave the bar off rather than quote a meaningless number.
+ *
+ *  Same rule as the `insufficient-lead` block reason, kept here so the map
+ *  and the tooltip can show the bar without re-deriving it. */
+export function subjugationRequirement(
+  view: RulesView,
+  actorFactionId: string,
+  targetFactionId: string,
+): number | null {
+  if (targetFactionId === actorFactionId) return null;
+  if (targetFactionId in view.incorporated) return null;
+  if (view.overlords.get(targetFactionId) === actorFactionId) return null;
+  if (view.overlords.get(actorFactionId) !== undefined) return null;
+  return (
+    SUBJUGATE_THRESHOLD *
+    realmOf(targetFactionId, view.overlords, view.incorporated).length
+  );
+}
+
 export type TargetBlockReason =
   | { code: "alliance"; expiresTurn: number }
   | {
