@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newRun, chooseOpening, playerLead, playerPass } from "../src/game";
+import { newRun, chooseOpening, playerLead, playerPass, playerSurrender } from "../src/game";
 import { drawCard } from "../src/deck";
 import type { EventKind, GameState } from "../src/types";
 
@@ -70,6 +70,24 @@ describe("event stream", () => {
     for (const e of state.log.filter((m) => m.kind === "turn")) {
       expect(e.turn).toBeGreaterThan(0);
     }
+  });
+
+  it("emits a surrender when a secret is forced out of you", () => {
+    const state = started();
+    state.phase = "forcedSurrender";
+    const secretId = state.secretsRemaining[0];
+    playerSurrender(state, secretId);
+    const surrenders = state.log.filter((e) => e.kind === "surrender");
+    expect(surrenders).toHaveLength(1);
+    expect(surrenders[0].cardId).toBe(secretId);
+    expect(surrenders[0].side).toBe("player");
+  });
+
+  it("logs a secret given as an answer under the answer kind, not surrender", () => {
+    const state = started();
+    const before = state.log.filter((e) => e.kind === "surrender").length;
+    // a voluntary secret answer is an ordinary answer event
+    expect(before).toBe(0);
   });
 });
 

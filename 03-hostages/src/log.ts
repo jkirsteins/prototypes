@@ -39,7 +39,7 @@ export function push(
 export function logCard(
   state: GameState,
   side: Side,
-  kind: "lead" | "answer",
+  kind: "lead" | "answer" | "surrender",
   cardId: string,
   deltas: string[],
 ): void {

@@ -390,7 +390,7 @@ export function playerSurrender(state: GameState, secretId: string): void {
   for (const effect of card.effects) {
     deltas.push(...applyAnswerEffect(state, effect, mods, card.name));
   }
-  logCard(state, "player", "answer", secretId, deltas);
+  logCard(state, "player", "surrender", secretId, deltas);
 
   markSecretsLossIfDepleted(state);
   if (checkEnd(state)) return;
