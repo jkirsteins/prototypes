@@ -28,6 +28,7 @@ function setup(opts?: {
   isDiscardMode?: () => boolean;
   lootInfo?: () => { id: string; isNew: boolean }[];
   onResetProgress?: () => void;
+  placeNameFactionIds?: Set<string>;
 }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -46,7 +47,7 @@ function setup(opts?: {
   };
   const hud = createHud(container, cb, new Map([
     ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
-  ]));
+  ]), opts?.placeNameFactionIds);
   return { container, cb, hud };
 }
 
@@ -231,6 +232,18 @@ describe("activity log", () => {
     expect(texts[1]).toBe("You played Grow turnips");
     expect(texts[2]).toBe(`${alpha} of the Alpha drew a card`);
     expect(texts[3]).toMatch(new RegExp(`^${alpha} of the Alpha played `));
+  });
+
+  it("names a place-name faction's ruler with no article", () => {
+    const { container, hud } = setup({ placeNameFactionIds: new Set(["alpha"]) });
+    let g = playing();
+    g = advance({ ...g, playedThisTurn: true }, seededRng(2)); // player 2 draws
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    const alpha = rulerOf(g.rulers, "alpha").name;
+    expect(texts.some((t) => t === `${alpha} of Alpha drew a card`)).toBe(true);
   });
 
   it("appends only new entries across updates and inserts turn separators", () => {

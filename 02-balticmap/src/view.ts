@@ -78,6 +78,13 @@ export function holderOf(
   return incorporated[polygonFactionId] ?? overlords.get(polygonFactionId) ?? null;
 }
 
+/** "the Ugandians", but "Lietuva" - the one faction named for a land rather
+ *  than a people takes no article. Both the activity log and the notices use
+ *  this, so the two surfaces cannot drift apart. */
+export function withArticle(name: string, placeName: boolean): string {
+  return placeName ? name : `the ${name}`;
+}
+
 /** One track for a map badge: "M+2" on its own, "M+2/4" against a bar to
  *  clear. Zero is unsigned; the bar is omitted when no requirement applies. */
 export function formatLead(

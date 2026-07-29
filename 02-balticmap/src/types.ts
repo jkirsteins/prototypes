@@ -18,6 +18,10 @@ export interface Faction {
   ethnicity: string; // id into MapData.peoples
   type: FactionType; // descriptive only - no mechanics yet
   color: string; // polygon fill; a shade within the ethnicity hue family
+  /** True for the one faction named for a land rather than a people
+   *  (Lietuva), which takes no article ("Lietuva", not "the Lietuva").
+   *  Omitted (falsy) everywhere else. */
+  placeName?: boolean;
 }
 
 export type Cohesion = "low" | "medium" | "high";

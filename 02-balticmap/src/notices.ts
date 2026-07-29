@@ -12,6 +12,10 @@ export interface Notice {
 export interface NoticeCtx {
   humanFactionId: string;
   factionName(id: string | undefined): string;
+  /** "the Jersikans", but "Lietuva" for the one faction named for a land
+   *  rather than a people. Mid-sentence form; capitalize at a sentence
+   *  start. */
+  factionNameWithArticle(id: string | undefined): string;
   factionOf(playerId: number): string | undefined;
   /** The human's leads over otherFactionId; positive = you lead. */
   leads(otherFactionId: string): { might: number; status: number };
@@ -98,6 +102,11 @@ const RELEASE_CONSEQUENCE =
 const actorName = (e: GameEvent, ctx: NoticeCtx): string =>
   ctx.factionName(ctx.factionOf(e.playerId));
 
+/** Capitalizes a sentence's first character. A no-op on "Lietuva" - already
+ *  capitalized, since it takes no article - so this is safe to apply
+ *  unconditionally rather than special-casing place names here too. */
+const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
 /** Shared shape for hostile targeted plays against the human (Raid, Shrewd
  *  marriage, Assassinate ruler): single actor keeps the plain sentence; N
  *  actors collapse into one "N players played X against you" notice with
@@ -161,10 +170,14 @@ function buildAssassinateNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
   if (events.length !== 1) return base;
   const e = events[0];
   if (e.targetRuler === undefined || e.successorRuler === undefined) return base;
+  const actorId = ctx.factionOf(e.playerId);
   return {
     ...base,
-    what: `${ctx.factionName(ctx.factionOf(e.playerId))} had ${e.targetRuler} killed.`,
-    details: [`${e.successorRuler} now leads ${ctx.factionName(e.targetFactionId)}.`, ...base.details],
+    what: `${capitalize(ctx.factionNameWithArticle(actorId))} had ${e.targetRuler} killed.`,
+    details: [
+      `${e.successorRuler} now leads ${ctx.factionNameWithArticle(e.targetFactionId)}.`,
+      ...base.details,
+    ],
   };
 }
 

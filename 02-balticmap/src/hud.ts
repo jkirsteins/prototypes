@@ -5,6 +5,7 @@ import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
 import { buildNotices, type Notice, type NoticeCtx } from "./notices";
 import { subjugationGripOn, subjugationRequirement } from "./playability";
 import type { TargetExplanation } from "./target-explanations";
+import { withArticle } from "./view";
 
 export interface HudCallbacks {
   onNewGame(): void;
@@ -57,9 +58,14 @@ export function createHud(
   container: HTMLElement,
   cb: HudCallbacks,
   factionNames: Map<string, string> = new Map(),
+  placeNameFactionIds: Set<string> = new Set(),
 ): Hud {
   const factionName = (id: string | undefined): string =>
     (id !== undefined ? factionNames.get(id) : undefined) ?? id ?? "";
+
+  /** "the Ugandians", but "Lietuva" for the one faction named for a land. */
+  const factionNameWithArticle = (id: string | undefined): string =>
+    withArticle(factionName(id), id !== undefined && placeNameFactionIds.has(id));
 
   /** Who is speaking in a log line. A player's faction never changes, so it
    *  is safe to resolve from state; the ruler's name is not, so it comes off
@@ -70,7 +76,7 @@ export function createHud(
     const faction = factionName(factionId);
     return e.actorRuler === undefined || e.actorRuler === ""
       ? faction
-      : `${e.actorRuler} of the ${faction}`;
+      : `${e.actorRuler} of ${factionNameWithArticle(factionId)}`;
   }
 
   /** Assassinate ruler is the only card that changes who rules, so it is the
@@ -315,6 +321,7 @@ export function createHud(
     const ctx: NoticeCtx = {
       humanFactionId: human.factionId,
       factionName,
+      factionNameWithArticle,
       factionOf: (playerId) =>
         state.players.find((pl) => pl.id === playerId)?.factionId,
       leads: (other) => leadsOf(state.relations, human.factionId, other),

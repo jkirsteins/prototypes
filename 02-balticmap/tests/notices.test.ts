@@ -31,6 +31,7 @@ let subjugationBarTable: Record<string, number | null> = {};
 const ctx: NoticeCtx = {
   humanFactionId: "livs",
   factionName: (id) => (id !== undefined ? NAMES[id] ?? id : ""),
+  factionNameWithArticle: (id) => (id !== undefined ? `the ${NAMES[id] ?? id}` : ""),
   factionOf: (playerId) => FACTION_BY_PLAYER[playerId],
   leads: (other) => leadsTable[other] ?? { might: 0, status: 0 },
   subjugationGrip: () => grip,
@@ -664,8 +665,8 @@ describe("assassination notices name rulers", () => {
       }),
     )!;
     expect(n.title).toBe("A Ruler Falls");
-    expect(n.what).toBe("Jersikans had Kaupo killed.");
-    expect(n.details[0]).toBe("Dabrelis now leads Lower Daugava Livs.");
+    expect(n.what).toBe("The Jersikans had Kaupo killed.");
+    expect(n.details[0]).toBe("Dabrelis now leads the Lower Daugava Livs.");
   });
 
   it("names the ruler the bodyguard saved", () => {

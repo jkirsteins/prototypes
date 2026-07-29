@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   barFor, fitView, clampView, formatLead, holderOf, homeView, hoverRelationLines, panBy,
   politicalFactionForPolygon, relationshipLine,
+  withArticle,
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
 } from "../src/view";
@@ -167,6 +168,16 @@ describe("formatLead", () => {
 
   it("omits the bar when no requirement applies", () => {
     expect(formatLead("M", 2, null)).toBe("M+2");
+  });
+});
+
+describe("withArticle", () => {
+  it("prefixes 'the' for an ordinary faction name", () => {
+    expect(withArticle("Ugandians", false)).toBe("the Ugandians");
+  });
+
+  it("leaves a place name bare, with no article", () => {
+    expect(withArticle("Lietuva", true)).toBe("Lietuva");
   });
 });
 
