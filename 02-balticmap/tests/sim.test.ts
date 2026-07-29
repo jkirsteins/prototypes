@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
 import {
   DECK_ARMS, SIM_ADJACENCY, SIM_FACTION_IDS, WORLD_ARMS, aggregate,
   aggregateWorld, byFaction, median, naiveHumanTurn, pairedDelta, potatoDeck,
@@ -296,18 +295,18 @@ describe("runWorld", () => {
   ];
 
   it("reproduces an identical summary for an identical seed", () => {
-    const opts = { seed: 7, deck, raidRule: "border" as const, turnCap: 80 };
+    const opts = { seed: 7, deck, turnCap: 80 };
     expect(runWorld(opts)).toEqual(runWorld(opts));
   });
 
   it("reports a capped world rather than dropping it", () => {
-    const w = runWorld({ seed: 1, deck, raidRule: "border", turnCap: 1 });
+    const w = runWorld({ seed: 1, deck, turnCap: 1 });
     expect(w.outcome).toBe("cap");
     expect(w.winner).toBeNull();
   });
 
   it("names the winner when the world resolves", () => {
-    const w = runWorld({ seed: 3, deck, raidRule: "border", turnCap: 400 });
+    const w = runWorld({ seed: 3, deck, turnCap: 400 });
     if (w.outcome === "unified") {
       expect(w.winner).not.toBeNull();
       expect(SIM_FACTION_IDS).toContain(w.winner);
@@ -320,50 +319,22 @@ describe("runWorld", () => {
       expect(w.turnsSinceLastIncorporation).toBeGreaterThanOrEqual(0);
     }
   });
-
-  it("gives the flat rule a different world from the border rule", () => {
-    const opts = { seed: 11, deck, turnCap: 200 };
-    expect(runWorld({ ...opts, raidRule: "flat" }))
-      .not.toEqual(runWorld({ ...opts, raidRule: "border" }));
-  });
 });
 
 describe("world arms", () => {
   it("holds exactly DECK_SIZE cards in every arm", () => {
-    for (const arm of Object.values(WORLD_ARMS)) {
-      expect(arm.deck).toHaveLength(DECK_SIZE);
+    for (const deck of Object.values(WORLD_ARMS)) {
+      expect(deck).toHaveLength(DECK_SIZE);
     }
   });
 
-  it("differs from conquest-scaled only by the rule", () => {
-    expect(WORLD_ARMS["conquest-flat"].deck)
-      .toEqual(WORLD_ARMS["conquest-scaled"].deck);
-    expect(WORLD_ARMS["conquest-flat"].raidRule).toBe("flat");
-    expect(WORLD_ARMS["conquest-scaled"].raidRule).toBe("border");
-  });
-
   it("differs from conquest-omens only by one card", () => {
-    expect(WORLD_ARMS["conquest-omens"].raidRule).toBe("border");
-    expect(WORLD_ARMS["conquest-omens"].deck).toContain("favourable-omens");
-    expect(WORLD_ARMS["conquest-omens"].deck.filter((c) => c !== "grow-crops"))
+    expect(WORLD_ARMS["conquest-omens"]).toContain("favourable-omens");
+    expect(WORLD_ARMS["conquest-omens"].filter((c) => c !== "grow-crops"))
       .toEqual([
-        ...WORLD_ARMS["conquest-scaled"].deck.filter((c) => c !== "grow-crops"),
+        ...WORLD_ARMS["conquest-scaled"].filter((c) => c !== "grow-crops"),
         "favourable-omens",
       ]);
-  });
-
-  it("keeps the flat rule confined to one place in the source", () => {
-    // The spec's guarantee that the temporary raidRule flag cannot be *set*
-    // anywhere by accident. game.ts legitimately contains "flat" three times
-    // (the RaidRule type alias, its doc comment, and the one playCard
-    // comparison), and sim.ts legitimately contains it once (the single arm
-    // that selects it below). A third file showing up here is the signal
-    // this test exists to catch. Deleted along with the flag in a later task.
-    const dir = new URL("../src/", import.meta.url);
-    const hits = readdirSync(dir)
-      .filter((f) => f.endsWith(".ts"))
-      .filter((f) => readFileSync(new URL(f, dir), "utf8").includes('"flat"'));
-    expect(hits.sort()).toEqual(["game.ts", "sim.ts"]);
   });
 
   it("rejects an unknown arm by name", () => {
@@ -373,8 +344,8 @@ describe("world arms", () => {
 
   it("pairs arms seed for seed", () => {
     const opts = { games: 3, turnCap: 30, firstSeed: 1 };
-    const a = runWorldBatch({ ...opts, arm: "conquest-flat" });
-    const b = runWorldBatch({ ...opts, arm: "conquest-scaled" });
+    const a = runWorldBatch({ ...opts, arm: "conquest-scaled" });
+    const b = runWorldBatch({ ...opts, arm: "conquest-omens" });
     expect(a.map((g) => g.seed)).toEqual(b.map((g) => g.seed));
   });
 

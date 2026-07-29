@@ -186,22 +186,10 @@ export interface WorldScenario {
 /** Bands come from the 26-world run recorded in the 2026-07-29 scaling-might
  *  spec, then widened - turn medians to [0.6x, 1.5x], shares by +/-0.15. A
  *  miss means pacing moved, not that a seed was unlucky: every scenario here
- *  is fixed-seed and every world is paired across the three arms. */
+ *  is fixed-seed and every world is paired across the two remaining arms
+ *  (`conquest-flat` was a third, temporary arm, retired once its numbers
+ *  were recorded). */
 export const WORLD_SCENARIOS: WorldScenario[] = [
-  {
-    id: "conquest-flat",
-    description:
-      "The pre-scaling world: equal conquest decks and a flat +1 Raid. " +
-      "Kept only until the measurement is recorded; retired with the flag.",
-    arm: "conquest-flat",
-    games: 26,
-    firstSeed: 1,
-    turnCap: 300,
-    expect: {
-      unifiedShare: [0.43, 0.73],   // measured 0.577
-      medianEndTurn: [145, 365],    // measured 243.0
-    },
-  },
   {
     id: "conquest-scaled",
     description:

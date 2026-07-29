@@ -1,7 +1,7 @@
 /** Headless conquest run: how long does a world of equal decks take to
  *  resolve, and do the scaling Raid and Favourable omens shorten it?
  *
- *  npm run simulate:world -- --games=52 --cap=200 --seed=1 --arms=conquest-flat,conquest-scaled,conquest-omens
+ *  npm run simulate:world -- --games=52 --cap=200 --seed=1 --arms=conquest-scaled,conquest-omens
  */
 import {
   WORLD_ARMS, aggregateWorld, runWorldBatch,
@@ -27,7 +27,7 @@ const turnCap = num("cap", 200);
 const firstSeed = num("seed", 1);
 const arms = flag(
   "arms",
-  "conquest-flat,conquest-scaled,conquest-omens",
+  "conquest-scaled,conquest-omens",
 ).split(",");
 
 for (const arm of arms) {

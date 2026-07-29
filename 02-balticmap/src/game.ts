@@ -30,12 +30,6 @@ export type GamePhase =
 
 export type TributeTrack = "status" | "might";
 
-/** How Raid converts border into Might. `"border"` is the shipped rule;
- *  `"flat"` is the pre-2026-07-29 +1 and exists only so the simulation can
- *  measure what the change bought. Removed once that measurement is recorded
- *  in the 2026-07-29 scaling-might spec. */
-export type RaidRule = "border" | "flat";
-
 export interface PlayerState {
   id: number; // 1 = human, 2..N = AI
   factionId: string;
@@ -59,7 +53,6 @@ export interface GameState {
   diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
   omens: string[]; // faction ids holding an unspent Favourable omens reading
-  raidRule: RaidRule;
   /** Index of the seat treated as the player, or null for a world simulation
    *  with no privileged seat. Only the endings block and `advance` consult it;
    *  the rest of the app still addresses the human as index 0 / player id 1. */
@@ -109,7 +102,6 @@ export function newGame(
     diplomacyBoost: [],
     bodyguards: [],
     omens: [],
-    raidRule: "border",
     humanSeat: 0,
     adjacency:
       adjacency ??
@@ -275,9 +267,7 @@ export function playCard(
   };
 
   if (cardId === "raid" && targetId !== undefined) {
-    const gain = state.raidRule === "flat"
-      ? 1
-      : borderStrength(viewOf(state), p.factionId, targetId);
+    const gain = borderStrength(viewOf(state), p.factionId, targetId);
     relations = bumpMightBy(relations, p.factionId, targetId, gain * mult);
   } else if (cardId === "shrewd-marriage" && targetId !== undefined) {
     relations = bumpStatusBy(relations, p.factionId, targetId, mult);

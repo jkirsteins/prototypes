@@ -4,7 +4,7 @@ import { factionAdjacencyOf } from "./adjacency";
 import { buildAiDeck, buildDeck, CARDS, DECK_SIZE, type Rng } from "./cards";
 import {
   advance, chooseDeck, discardCard, newGame, pickFaction, playCard, startGame,
-  viewOf, type GameState, type RaidRule, type TributeTrack,
+  viewOf, type GameState, type TributeTrack,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
 import { aiTakeTurn } from "./ai";
@@ -327,7 +327,6 @@ export interface WorldOptions {
   seed: number;
   /** The deck every one of the 26 seats plays. Must hold exactly DECK_SIZE. */
   deck: string[];
-  raidRule: RaidRule;
   turnCap: number;
 }
 
@@ -370,7 +369,6 @@ export function runWorld(opts: WorldOptions): WorldSummary {
   const seeded: GameState = {
     ...newGame(SIM_FACTION_IDS, SIM_ADJACENCY),
     humanSeat: null,
-    raidRule: opts.raidRule,
   };
   let state = pickFaction(
     chooseDeck(startGame(seeded), opts.deck),
@@ -419,19 +417,13 @@ export const CONQUEST_OMENS_DECK: string[] = [
   ...Array.from({ length: DECK_SIZE - 4 }, () => "grow-crops"),
 ];
 
-export interface WorldArm {
-  deck: string[];
-  raidRule: RaidRule;
-}
-
 /** `conquest-scaled` exists to attribute a result. Without it, a shorter game
  *  under `conquest-omens` cannot be told apart from "the deck simply holds one
  *  more non-potato card" - the same reasoning that put the `defensive` arm in
  *  the 2026-07-29 new-player spec. */
-export const WORLD_ARMS: Record<string, WorldArm> = {
-  "conquest-flat": { deck: CONQUEST_DECK, raidRule: "flat" },
-  "conquest-scaled": { deck: CONQUEST_DECK, raidRule: "border" },
-  "conquest-omens": { deck: CONQUEST_OMENS_DECK, raidRule: "border" },
+export const WORLD_ARMS: Record<string, string[]> = {
+  "conquest-scaled": CONQUEST_DECK,
+  "conquest-omens": CONQUEST_OMENS_DECK,
 };
 
 export interface WorldBatchOptions {
@@ -442,8 +434,8 @@ export interface WorldBatchOptions {
 }
 
 export function runWorldBatch(opts: WorldBatchOptions): WorldSummary[] {
-  const arm = WORLD_ARMS[opts.arm];
-  if (arm === undefined) {
+  const deck = WORLD_ARMS[opts.arm];
+  if (deck === undefined) {
     throw new Error(
       `unknown world arm "${opts.arm}"; known: ${Object.keys(WORLD_ARMS).join(", ")}`,
     );
@@ -451,8 +443,7 @@ export function runWorldBatch(opts: WorldBatchOptions): WorldSummary[] {
   return Array.from({ length: opts.games }, (_, i) =>
     runWorld({
       seed: opts.firstSeed + i,
-      deck: arm.deck,
-      raidRule: arm.raidRule,
+      deck,
       turnCap: opts.turnCap,
     }),
   );

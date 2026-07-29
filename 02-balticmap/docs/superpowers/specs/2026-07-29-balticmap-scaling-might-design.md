@@ -252,23 +252,26 @@ definition in `src/sim.ts`. If a second place ever sets it, that test fails.
 
 ### Retiring the flag
 
-The Results section above confirms `"border"` as the rule worth shipping:
-`conquest-scaled` beats `conquest-flat` on every metric that matters (unified
+`GameState.raidRule` existed only for the length of this branch, to let the
+world harness produce the `conquest-flat` numbers now recorded in Results.
+The Results section confirmed `"border"` as the rule worth shipping:
+`conquest-scaled` beat `conquest-flat` on every metric that matters (unified
 share, median end turn, capShare), by a wide margin rather than a marginal
-one. The flag has done its job and the next task deletes
-`GameState.raidRule`, the `"flat"` branch in `playCard`, and the
-`conquest-flat` arm and its scenario. This step is not optional and not
-deferred further; it lands in the next change, now that the numbers are
-recorded.
+one. With that measurement recorded, the flag had done its job, and the same
+branch removed it: `GameState.raidRule`, the `RaidRule` type, the `"flat"`
+branch in `playCard`'s Raid resolution, and the `conquest-flat` arm and its
+scenario are all gone. `gainOf` in `src/ai.ts` and the Raid branch in
+`src/game.ts` now call `borderStrength` unconditionally.
 
-Accepted cost: the `conquest-flat` baseline stops being re-measurable and
+Accepted cost: the `conquest-flat` baseline is no longer runnable. It
 survives only as the numbers recorded in this document - the three-arm table
-above and the per-scenario notes are the only remaining record of what the
-flat rule produced - unlike the `unarmed` deck arm which this repository
-keeps runnable. That is the right trade here because `unarmed` is a deck
-variation the harness already expresses naturally, whereas this one is a
-branch in the rules that every future reader of `playCard` would have to
-understand and step around.
+above, the 104-worlds-per-arm confirmation below, and the per-scenario notes
+are the only remaining record of what the flat rule produced. This is
+unlike the `unarmed` deck arm, which stays live in `DECK_ARMS` and can be
+re-run at any time, because `unarmed` is a deck variation the harness already
+expresses naturally, whereas the flat Raid rule was a branch in the rules
+that every future reader of `playCard` would otherwise have to understand and
+step around.
 
 | Arm | Deck (10 cards) | Raid |
 | --- | --- | --- |
@@ -395,6 +398,42 @@ firing early.
 **Success, as defined in the Arms section above, is met**: both
 `conquest-scaled` and `conquest-omens` reach unification more often and
 sooner than `conquest-flat`, and `conquest-omens` is the best of the three.
+
+### Confirmation at 104 worlds per arm
+
+```
+npm run simulate:world -- --games=104 --cap=300 --seed=1
+```
+
+Run while `conquest-flat` was still live, before the retirement step below,
+purely to check that the 26-world finding was not a small-sample artifact:
+
+| arm | unified | median end | mean end | capped | median stall | median biggest realm |
+| --- | --- | --- | --- | --- | --- | --- |
+| `conquest-flat` | 58.7% | 237.0 | 237.5 | 41.3% | 125.0 | 15.0 |
+| `conquest-scaled` | 87.5% | 109.0 | 119.4 | 12.5% | 216.0 | 17.0 |
+| `conquest-omens` | 95.2% | 72.0 | 82.7 | 4.8% | 240.0 | 17.0 |
+
+The finding is stable across sample sizes: `conquest-scaled` still resolves
+far more worlds, and sooner, than `conquest-flat` (87.5% vs 58.7% unified,
+109.0 vs 237.0 median end turn), and `conquest-omens` is still the best of
+the three. The committed scenario bands in `src/scenarios.ts` are derived
+from the 26-world run above, not this one - a band must match the sample its
+scenario actually runs at (26 games, per `WORLD_SCENARIOS`), so widening a
+band using numbers from a run of a different size would make the band
+describe a check the scenario never performs. This 104-world run is
+corroboration that the 26-world finding generalizes, not the basis for any
+committed band.
+
+`median stall` again rises across the arms - 125.0 -> 216.0 -> 240.0 - and
+that is the same selection effect described for the 26-world run above, not
+a regression: the metric is computed only over capped worlds, and `capped`
+collapses in step, 41.3% -> 12.5% -> 4.8%. As the better rules shrink the
+population of worlds that still time out, the few that remain are the
+genuinely hopeless ones, so their stall figure rises even as stalling itself
+becomes rarer. Read `capped` and `median stall` together, as before: `capped`
+says stalling became rare, `median stall` says the worlds that still stall,
+stall hard.
 
 ### Existing scenario bands that moved
 

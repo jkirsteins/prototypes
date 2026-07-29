@@ -27,7 +27,7 @@ function gainOf(
   targetId: string,
 ): number {
   const base =
-    cardId === "raid" && state.raidRule === "border"
+    cardId === "raid"
       ? borderStrength(viewOf(state), actorFactionId, targetId)
       : 1;
   const doubled =
