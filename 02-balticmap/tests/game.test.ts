@@ -849,14 +849,15 @@ describe("any faction can win", () => {
   // FACTIONS has 4 members, so victoryRealmSize is ceil(0.55 * 4) = 3.
   it("ends the game when a rival reaches victory size", () => {
     let g = playingState(LINE_ADJ);
-    // alpha already holds gamma; incorporating delta makes its realm 3.
+    // alpha holds gamma incorporated (realm 2); subjugating delta - the play
+    // under test - is what pushes the realm to 3 and crosses the threshold.
     g = {
       ...g,
       current: 1, // alpha's seat
       incorporated: { gamma: "alpha" },
-      overlords: new Map([["delta", "alpha"]]),
     };
-    g = withHand(g, 1, ["incorporate"]);
+    g = withRel(g, mightLead(g.relations, "alpha", "delta", 2));
+    g = withHand(g, 1, ["subjugate"]);
     g = playCard(g, 0, seededRng(1), "delta");
     expect(g.phase).toBe("defeat");
     expect(g.log.at(-1)).toMatchObject({ type: "unified", overlordFactionId: "alpha" });
@@ -895,10 +896,18 @@ describe("any faction can win", () => {
 describe("advance", () => {
   it("skips an incorporated seat that is not the human seat", () => {
     let g = playingState(LINE_ADJ);
-    // gamma is players[2] (id 3). Incorporate it and step off beta's turn.
-    g = { ...g, incorporated: { gamma: "alpha" }, playedThisTurn: true };
+    // gamma is players[2] (id 3), the seat immediately after alpha's (index
+    // 1), so the skip is only observable if advance actually passes over it
+    // on the way to delta (index 3).
+    g = {
+      ...g,
+      current: 1, // alpha's seat
+      incorporated: { gamma: "alpha" },
+      playedThisTurn: true,
+    };
     g = advance(g, seededRng(1));
-    expect(g.players[g.current].factionId).not.toBe("gamma");
+    expect(g.current).toBe(3);
+    expect(g.players[g.current].factionId).toBe("delta");
   });
 
   it("skips an incorporated seat 0 when there is no human seat", () => {
