@@ -43,16 +43,35 @@ export const DECK_SIZE = 10;
 /** Returns a float in [0, 1). Injected so tests are deterministic. */
 export type Rng = () => number;
 
-/** The default (and AI) deck: every deck-buildable non-basic once,
- *  grow-crops filling the remaining slots. */
+/** The deck the deck screen offers by default and the `full` simulation arm
+ *  plays. Explicit rather than "the first DECK_SIZE entries of CARDS", because
+ *  that made the declaration order of CARDS silently decide the default deck -
+ *  which is how Favourable omens ended up absent from it: it was appended
+ *  last in CARDS so that the old slice-based buildDeck() would not change,
+ *  which also kept it out of the default deck entirely. See the 2026-07-29
+ *  scaling-might design doc's correction section for the measured effect.
+ *
+ *  Do NOT reorder CARDS to "fix" this list matching CARDS order, and do not
+ *  reorder CARDS for any other tidiness reason either: buildAiDeck() rolls
+ *  `nonBasics.filter(() => rng() < 0.5)`, consuming one rng draw per entry in
+ *  CARDS's declaration order, so reordering CARDS changes which card each
+ *  draw maps to and silently moves every committed AI-deck band. */
+export const DEFAULT_DECK: string[] = [
+  "raid", "shrewd-marriage", "fortify", "subjugate", "incorporate",
+  "reclaim-independence", "revolt", "assassinate-ruler", "alliance",
+  "favourable-omens",
+];
+
+/** The default (and human "full") deck: DEFAULT_DECK, padded with grow-crops
+ *  if it is ever shorter than DECK_SIZE. The padding is a preserved invariant,
+ *  not an assumption - DEFAULT_DECK is currently exactly DECK_SIZE long. */
 export function buildDeck(): string[] {
-  const nonBasics = Object.values(CARDS)
-    .filter((c) => c.deckBuildable && c.maxPerDeck !== null)
-    .map((c) => c.id);
-  const picked = nonBasics.slice(0, DECK_SIZE);
   return [
-    ...picked,
-    ...Array.from({ length: DECK_SIZE - picked.length }, () => "grow-crops"),
+    ...DEFAULT_DECK,
+    ...Array.from(
+      { length: Math.max(0, DECK_SIZE - DEFAULT_DECK.length) },
+      () => "grow-crops",
+    ),
   ];
 }
 

@@ -1,7 +1,9 @@
 import rawData from "./data/map.json";
 import type { MapData } from "./types";
 import { factionAdjacencyOf } from "./adjacency";
-import { buildAiDeck, buildDeck, CARDS, DECK_SIZE, type Rng } from "./cards";
+import {
+  buildAiDeck, buildDeck, CARDS, DECK_SIZE, DEFAULT_DECK, type Rng,
+} from "./cards";
 import {
   advance, chooseDeck, discardCard, newGame, pickFaction, playCard, startGame,
   viewOf, type GameState, type TributeTrack,
@@ -435,11 +437,20 @@ export const CONQUEST_INERT_DECK: string[] = [
  *  swaps that fourth card for one that is strategically inert in this deck,
  *  to show that card count alone (not what the card does) is not what moves
  *  the result. It intentionally has no committed scenario band - it exists
- *  for a reader to rerun, not to guard pacing. */
+ *  for a reader to rerun, not to guard pacing.
+ *
+ *  `full-deck` exists because the conquest arms above isolate the
+ *  subjugation loop (Raid/Subjugate/Incorporate plus filler) and, in doing
+ *  so, overstate how fast a real game resolves: a full ten-card deck also
+ *  carries Fortify, Alliance, Reclaim independence and Revolt, all of which
+ *  can stall or reverse a conquest. It runs the same DEFAULT_DECK every human
+ *  player is offered, so the committed evidence covers the deck shape a
+ *  player actually plays, not only the narrow shape that isolates one loop. */
 export const WORLD_ARMS: Record<string, string[]> = {
   "conquest-scaled": CONQUEST_DECK,
   "conquest-omens": CONQUEST_OMENS_DECK,
   "conquest-inert": CONQUEST_INERT_DECK,
+  "full-deck": DEFAULT_DECK,
 };
 
 export interface WorldBatchOptions {

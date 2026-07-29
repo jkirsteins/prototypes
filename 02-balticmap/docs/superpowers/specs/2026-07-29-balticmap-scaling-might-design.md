@@ -526,6 +526,92 @@ Per scenario:
   design flagged as one that "plausibly now ends on a rival unification";
   that is exactly what the measured run shows.
 
+## Correction: the default deck did not carry Favourable omens
+
+Found after the Results section above was written and believed done: the
+world-run evidence for this whole design was measured only against the
+`conquest-*` arms, which use a deliberately narrow deck (Raid, Subjugate,
+Incorporate plus Grow potatoes filler) built to isolate the subjugation loop.
+Measured instead with the actual ten-card deck a human player is offered -
+`buildDeck()`'s output, unchanged since this design shipped - worlds resolved
+only 50.0% of the time at a median of 237 turns: essentially the pre-change
+stalemate baseline this whole design set out to fix, not the 92-96% / 70-110
+turn result reported above.
+
+**Cause.** The "Favourable omens" section above states the reasoning
+plainly and it was wrong in its consequence: `favourable-omens` was appended
+at the end of `CARDS` specifically so that `buildDeck()`'s "take the first
+`DECK_SIZE` non-basics in `CARDS` declaration order" logic would keep
+returning the same ten cards it always had, on the theory that this would
+leave the `full`-deck scenarios undisturbed. It did leave them undisturbed -
+by keeping Favourable omens out of the default deck entirely. The default
+deck a real player builds, and the `full` arm the `flailing-full-deck` and
+`competent-full-deck` scenarios exercise, never contained the card whose
+whole purpose was to help resolve the stalemate. The conquest arms never
+noticed because they build their decks explicitly (`CONQUEST_DECK`,
+`CONQUEST_OMENS_DECK`) rather than through `buildDeck()`, so they were never
+exposed to this bug - which is exactly why they could not have caught it.
+
+**Fix.** `buildDeck()` in `src/cards.ts` no longer derives its output from
+`CARDS` declaration order at all. It now returns an explicit, named
+`DEFAULT_DECK` constant - the previous default deck with `extended-diplomacy`
+replaced by `favourable-omens` - padded with `grow-crops` only if the constant
+is ever shorter than `DECK_SIZE`. `CARDS`'s declaration order is unchanged and
+must stay unchanged: `buildAiDeck` draws one rng value per non-basic in that
+order (`nonBasics.filter(() => rng() < 0.5)`), so reordering `CARDS` would
+silently remap every seed's rng draws and move every committed AI-deck band.
+`DEFAULT_DECK` and the comment on it both call this out for future readers.
+
+Measured with the fix, 26 worlds, 26 equal seats, seeds 1..26, 300-turn cap:
+
+| deck all seats play | unified | median end turn | capped |
+| --- | --- | --- | --- |
+| full default (no omens, the bug) | 50.0% | 237.0 | 50.0% |
+| full default, omens replacing extended-diplomacy (the fix) | 92.3% | 114.5 | 7.7% |
+
+This arm now ships as `full-deck` in `WORLD_ARMS` (`src/sim.ts`) and
+`WORLD_SCENARIOS` (`src/scenarios.ts`), 26 games, seed 1, 300-turn cap,
+`unifiedShare` banded `[0.77, 1]` (measured 0.923) and `medianEndTurn` banded
+`[68, 172]` (measured 114.5). It exists so the conquest arms - which isolate
+the subjugation loop but, as shown above, overstate how fast a real game
+resolves - are no longer the only committed evidence that this design's fix
+holds up in the deck shape a player actually plays.
+
+**Bands that moved.** Making `buildDeck()` explicit changes `HUMAN_DECKS.full`
+(Favourable omens in, Extended diplomacy out), which changes what the two
+`full`-deck human scenarios in `src/scenarios.ts` measure. Re-measured at
+their existing game counts and turn caps:
+
+- `flailing-full-deck` (52 games, naive policy, 80-turn cap):
+  `subjugatedShare` moves `[0.62, 0.92]` (measured 0.77) -> `[0.45, 0.75]`
+  (measured 0.60); `medianFirstSubjugation` moves `[7, 19]` (measured 12.50)
+  -> `[3, 9]` (measured 6.00); `defeatShare` moves `[0.54, 0.84]` (measured
+  0.69) -> `[0.33, 0.63]` (measured 0.48).
+- `competent-full-deck` (26 games, competent policy, 80-turn cap):
+  `subjugatedShare` moves `[0.66, 0.96]` (measured 0.81) -> `[0.47, 0.77]`
+  (measured 0.62); `medianFirstSubjugation` moves `[3, 9]` (measured 6.00) ->
+  `[3, 8]` (measured 5.00).
+
+Both moves are in the same direction: a deck that traded Extended diplomacy
+(which only ever matters alongside Alliance) for Favourable omens (which
+sharpens whichever Raid or Shrewd marriage follows it) subjugates the human
+seat somewhat less often and somewhat sooner. `new-player-potatoes` and
+`potatoes-unarmed-enemies` were re-run and did not move - both use a potato
+deck for the human seat and an AI deck untouched by this change, exactly as
+expected, so their bands are unchanged.
+
+**Open balance question, not addressed here: Fortify is the main stalling
+card.** Adding Fortify alone to the `conquest-scaled` deck (in place of one
+`grow-crops`) drops that arm's unified share from 92.3% to 80.8% and more
+than doubles its capped share, 7.7% -> 19.2% (measured on the same 26 seeds,
+300-turn cap). Alliance added the same way is neutral, landing exactly on
+`conquest-scaled`'s 92.3% / 7.7%. Fortify's flat, untargeted Might gain
+against every living faction at once evidently props up factions that would
+otherwise fall behind, which is the same mechanism the scaling-Raid and
+Favourable-omens changes are fighting on the other side. This is a real
+tension in the current design and is left as an open balance question for a
+future change to address; rebalancing Fortify is not part of this correction.
+
 ## Out of scope
 
 - Any change to the Subjugate threshold formula itself.
@@ -533,3 +619,6 @@ Per scenario:
   design.
 - A UI for simulation results.
 - Rebalancing Alliance, Bodyguard, or Assassinate ruler.
+- Rebalancing Fortify. Its stalling effect on world resolution is measured
+  and recorded in the Correction section above, as an open question for a
+  future change, not addressed here.

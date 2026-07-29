@@ -5,7 +5,7 @@ import {
   runBatch, runGame, runWorld, runWorldBatch, seededRng, summarize,
   type GameSummary,
 } from "../src/sim";
-import { buildAiDeck, CARDS, DECK_SIZE } from "../src/cards";
+import { DEFAULT_DECK, buildAiDeck, CARDS, DECK_SIZE } from "../src/cards";
 import {
   chooseDeck, newGame, pickFaction, startGame, type GameState,
 } from "../src/game";
@@ -335,6 +335,14 @@ describe("world arms", () => {
         ...WORLD_ARMS["conquest-scaled"].filter((c) => c !== "grow-crops"),
         "favourable-omens",
       ]);
+  });
+
+  it("full-deck plays the actual default deck, not a conquest-shaped one", () => {
+    // The conquest arms above isolate the subjugation loop; full-deck exists
+    // so the committed evidence also covers the deck shape a real player
+    // plays - it must track DEFAULT_DECK exactly, favourable-omens included.
+    expect(WORLD_ARMS["full-deck"]).toEqual(DEFAULT_DECK);
+    expect(WORLD_ARMS["full-deck"]).toContain("favourable-omens");
   });
 
   it("rejects an unknown arm by name", () => {

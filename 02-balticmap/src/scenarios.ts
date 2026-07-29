@@ -33,7 +33,15 @@ export interface Scenario {
 /** Add a scenario here and it is checked by `npm run simulate:check` and by
  *  the test suite. All four bands were re-derived from scratch on 2026-07-29
  *  against the scaling-Raid rules and recorded in the 2026-07-29 scaling-might
- *  spec; the `// measured x` comments say what each band was widened from. */
+ *  spec; the `// measured x` comments say what each band was widened from.
+ *
+ *  `flailing-full-deck` and `competent-full-deck` were re-measured again on
+ *  2026-07-29 (see the design doc's "Correction: the default deck did not
+ *  carry Favourable omens" section) after `buildDeck()` was made explicit and
+ *  Favourable omens replaced Extended diplomacy in the default deck. That is
+ *  the only reason these two bands moved a second time in one day - the
+ *  other two scenarios use potato decks and an unchanged AI deck, so they did
+ *  not move. */
 export const SCENARIOS: Scenario[] = [
   {
     id: "new-player-potatoes",
@@ -84,9 +92,9 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.62, 0.92],    // measured 0.77
-      medianFirstSubjugation: [7, 19],  // measured 12.50
-      defeatShare: [0.54, 0.84],        // measured 0.69
+      subjugatedShare: [0.45, 0.75],   // measured 0.60
+      medianFirstSubjugation: [3, 9],  // measured 6.00
+      defeatShare: [0.33, 0.63],       // measured 0.48
     },
   },
   {
@@ -101,8 +109,8 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.66, 0.96],   // measured 0.81
-      medianFirstSubjugation: [3, 9],  // measured 6.00
+      subjugatedShare: [0.47, 0.77],   // measured 0.62
+      medianFirstSubjugation: [3, 8],  // measured 5.00
     },
   },
 ];
@@ -188,7 +196,17 @@ export interface WorldScenario {
  *  miss means pacing moved, not that a seed was unlucky: every scenario here
  *  is fixed-seed and every world is paired across the two remaining arms
  *  (`conquest-flat` was a third, temporary arm, retired once its numbers
- *  were recorded). */
+ *  were recorded).
+ *
+ *  `conquest-scaled` and `conquest-omens` isolate the subjugation loop with a
+ *  narrow deck (Raid, Subjugate, Incorporate plus filler) and, on their own,
+ *  overstated how fast a real game resolves: measured with the full ten-card
+ *  default deck, worlds only resolved 50.0% of the time at a median of 237
+ *  turns - essentially the pre-fix baseline - because that default deck did
+ *  not carry Favourable omens at all (see the design doc's correction
+ *  section). `full-deck` runs the actual DEFAULT_DECK every human player is
+ *  offered, so the conquest arms above can no longer be the only evidence
+ *  that the fix works in a game someone would actually play. */
 export const WORLD_SCENARIOS: WorldScenario[] = [
   {
     id: "conquest-scaled",
@@ -216,6 +234,23 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     expect: {
       unifiedShare: [0.81, 1],      // measured 0.962
       medianEndTurn: [42, 105],     // measured 70.0
+    },
+  },
+  {
+    id: "full-deck",
+    description:
+      "The actual default deck (DEFAULT_DECK, including Favourable omens) " +
+      "played by all 26 seats, not the narrow conquest-loop decks above. " +
+      "The conquest arms isolate the subjugation loop but overstate how " +
+      "fast a real game resolves; this arm guards the deck shape a player " +
+      "actually plays.",
+    arm: "full-deck",
+    games: 26,
+    firstSeed: 1,
+    turnCap: 300,
+    expect: {
+      unifiedShare: [0.77, 1],      // measured 0.923
+      medianEndTurn: [68, 172],     // measured 114.5
     },
   },
 ];

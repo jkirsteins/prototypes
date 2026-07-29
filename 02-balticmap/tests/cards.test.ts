@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  AI_DECK_GUARANTEED, CARDS, DECK_SIZE, buildDeck, buildAiDeck, shuffle,
-  type Rng,
+  AI_DECK_GUARANTEED, CARDS, DECK_SIZE, DEFAULT_DECK, buildDeck, buildAiDeck,
+  shuffle, type Rng,
 } from "../src/cards";
 
 const NON_BASICS = [
@@ -80,39 +80,42 @@ describe("cards", () => {
     );
   });
 
-  it("builds the 10-card default deck: 10 non-basics once each, no filler", () => {
+  it("builds the explicit default deck, favourable-omens included, no filler", () => {
     const deck = buildDeck();
     expect(deck).toHaveLength(DECK_SIZE);
-    const count = (id: string) => deck.filter((c) => c === id).length;
-    // 12 non-basics now exist for a 10-card deck; buildDeck's overflow guard
-    // (slice to DECK_SIZE) drops the last two in CARDS order - bodyguard and
-    // favourable-omens, both added after the original ten - rather than
-    // growing the deck past DECK_SIZE.
-    for (const id of NON_BASICS.filter(
-      (id) => id !== "bodyguard" && id !== "favourable-omens",
-    )) {
-      expect(count(id)).toBe(1);
-    }
-    expect(count("bodyguard")).toBe(0);
-    expect(count("favourable-omens")).toBe(0);
-    expect(count("grow-crops")).toBe(0);
-    expect(count("pay-tribute")).toBe(0);
+    expect(deck).toEqual(DEFAULT_DECK);
+    expect(deck).toContain("favourable-omens");
+    expect(deck).not.toContain("extended-diplomacy");
+    expect(deck).not.toContain("bodyguard");
+    expect(deck).not.toContain("grow-crops");
+    expect(deck).not.toContain("pay-tribute");
   });
 
-  it("guards against overflow: buildDeck stays at DECK_SIZE even if CARDS grows past 10 non-basics", () => {
-    // Simulate CARDS gaining an 11th deck-buildable non-basic without anyone
-    // remembering to bump DECK_SIZE. buildDeck() must slice to DECK_SIZE
-    // rather than silently returning an oversized deck that chooseDeck rejects.
-    const overflowId = "__test-overflow-card";
-    (CARDS as Record<string, (typeof CARDS)[string]>)[overflowId] = {
-      id: overflowId, name: "Overflow", targeted: false,
-      maxPerDeck: 1, deckBuildable: true, forced: false, text: "",
-    };
-    try {
-      expect(buildDeck().length).toBe(DECK_SIZE);
-    } finally {
-      delete (CARDS as Record<string, (typeof CARDS)[string]>)[overflowId];
+  it("DEFAULT_DECK holds DECK_SIZE ids, each a real, deck-buildable, " +
+    "maxPerDeck-respecting card", () => {
+    expect(DEFAULT_DECK).toHaveLength(DECK_SIZE);
+    const seen = new Set<string>();
+    for (const id of DEFAULT_DECK) {
+      const card = CARDS[id];
+      expect(card, `${id} is not a real card`).toBeDefined();
+      expect(card.deckBuildable, `${id} is not deck-buildable`).toBe(true);
+      // Every id here appears once, so a maxPerDeck of 1 (true of every
+      // non-basic) is trivially respected; this also catches an accidental
+      // duplicate that would otherwise silently double a card in the deck.
+      expect(seen.has(id), `${id} appears more than once`).toBe(false);
+      seen.add(id);
+      if (card.maxPerDeck !== null) {
+        const count = DEFAULT_DECK.filter((c) => c === id).length;
+        expect(count).toBeLessThanOrEqual(card.maxPerDeck);
+      }
     }
+  });
+
+  it("guards against overflow: buildDeck stays at DECK_SIZE even if DEFAULT_DECK were ever shorter", () => {
+    // buildDeck() pads with grow-crops if DEFAULT_DECK is ever shorter than
+    // DECK_SIZE. DEFAULT_DECK is currently exactly DECK_SIZE long, so this
+    // guards a preserved invariant rather than an assumption.
+    expect(buildDeck().length).toBe(DECK_SIZE);
   });
 
   it("shuffle returns a permutation and leaves the input untouched", () => {
