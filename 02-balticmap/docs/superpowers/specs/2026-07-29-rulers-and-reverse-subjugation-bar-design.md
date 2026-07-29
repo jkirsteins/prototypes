@@ -347,3 +347,42 @@ balance evidence:
 - Rulers changing on subjugation, incorporation, release or reclaim.
 - Naming the target side of faction-level log lines.
 - Any change to what the player may do on their turn.
+
+## Results
+
+Verification ran on 2026-07-30 against commit `3674d62`.
+
+- **Full suite:** `npx vitest run` - 463 tests across 22 files, all passing,
+  including `tests/rng-isolation.test.ts` and the 14 tests in
+  `tests/rulers.test.ts`.
+- **Production build:** `npm run build` (`tsc && vite build`) completed clean.
+- **Fixture guard:** `tests/rng-isolation.test.ts` replays the ten seeded
+  games in `BASELINE_SEEDS` against `tests/fixtures/seeded-games-baseline.json`,
+  captured at commit `ad30998` before any ruler code existed, and the replay
+  matches exactly. This is the automated proof that ruler naming never draws
+  from the shared `Rng`.
+- **Human-readable confirmation:** `npm run simulate -- --games=100 --cap=150
+  --seed=1 --arms=shipped` was run twice - once on the current tree, once in a
+  scratch worktree checked out at `f27b4f8` (the last commit before rulers
+  were introduced) - and the two outputs are byte-for-byte identical: 100.0%
+  subjugated, median turn 7.0, mean turn 8.8, 100.0% defeated, median defeat
+  turn 14.0, 3.7 times vassal, 0.2 times freed, and matching fastest/longest
+  faction breakdowns. `diff` between the two runs reported no differences.
+  Both the fixture replay and this live comparison agree, so the balance
+  baseline is untouched by this change.
+- **AI review:** rulers were reviewed against the repository's card-change
+  rule and found to need no AI change. Legal-action generation and
+  Assassinate ruler's targeting and Status effect are unchanged. A ruler
+  carries no mechanical property - only a display name and an inert `since` -
+  so there is nothing for `chooseAction` to weigh; a ruler-aware evaluation
+  would just be branching on a string. This is a deliberate conclusion,
+  revisited only when rulers gain their first real property, not an omission.
+- **Danger-marker change:** deriving the badge's red border from the reverse
+  `subjugationRequirement` (Part 1) rather than the old hand-rolled
+  `SUBJUGATE_THRESHOLD * humanRealm.size` formula is a deliberate behaviour
+  change, covered by `tests/hud.test.ts` and `tests/view.test.ts`: a faction
+  that is itself a vassal, or that is the player's own overlord, gets a
+  `null` reverse bar and correctly stops being marked dangerous even when it
+  leads a track by a wide margin. **Browser verification of this behaviour
+  (brief Steps 3-4) is pending** - it was intentionally not performed in this
+  pass and is being run separately in a session with browser tooling.
