@@ -30,6 +30,28 @@ function reachOf(view: RulesView, factionId: string): Set<string> {
   return reach;
 }
 
+/** How many lands of the actor's realm border the target's core - the target
+ *  itself, or a land the target has incorporated. The target's vassals resolve
+ *  to themselves, not to their lord.
+ *
+ *  This mirrors `reachOf`'s `incorporated[adj] ?? adj` resolution deliberately.
+ *  Because legality and this number come from the same rule, a Raid that the
+ *  rules allow always has at least one bordering land, so the gain is never 0
+ *  and the number on the tooltip can never contradict the target being
+ *  offered. */
+export function borderStrength(
+  view: RulesView,
+  actorFactionId: string,
+  targetFactionId: string,
+): number {
+  const realm = realmOf(actorFactionId, view.overlords, view.incorporated);
+  return realm.filter((member) =>
+    (view.adjacency[member] ?? []).some(
+      (adj) => (view.incorporated[adj] ?? adj) === targetFactionId,
+    ),
+  ).length;
+}
+
 /** The lead the actor needs on either track to Subjugate the target: two per
  *  land of the target's realm, counting its vassals and the lands it has
  *  incorporated. Null when Subjugate could never apply to that pair at all,

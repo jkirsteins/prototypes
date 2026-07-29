@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  SUBJUGATE_THRESHOLD, isCardPlayable, playableSet, subjugationRequirement,
+  SUBJUGATE_THRESHOLD, borderStrength, isCardPlayable, playableSet, subjugationRequirement,
   targetEligibilityFor, validTargetsFor,
   type RulesView,
 } from "../src/playability";
@@ -380,5 +380,52 @@ describe("bodyguard", () => {
     expect(isCardPlayable(view({ bodyguards: ["beta"] }), "beta", "bodyguard")).toBe(false);
     // another faction's guard does not block beta
     expect(isCardPlayable(view({ bodyguards: ["gamma"] }), "beta", "bodyguard")).toBe(true);
+  });
+});
+
+describe("borderStrength", () => {
+  it("counts one for a lone faction touching the target", () => {
+    expect(borderStrength(view(), "alpha", "beta")).toBe(1);
+  });
+
+  it("counts the actor's vassals that touch the target", () => {
+    // alpha holds gamma as a vassal. alpha touches beta, gamma touches beta.
+    const v = view({ overlords: new Map([["gamma", "alpha"]]) });
+    expect(borderStrength(v, "alpha", "beta")).toBe(2);
+  });
+
+  it("counts lands the actor has incorporated", () => {
+    const v = view({ incorporated: { gamma: "alpha" } });
+    expect(borderStrength(v, "alpha", "beta")).toBe(2);
+  });
+
+  it("counts lands the target has incorporated as the target", () => {
+    // beta is dead land owned by gamma, so alpha's border with beta is a
+    // border with gamma.
+    const v = view({ incorporated: { beta: "gamma" } });
+    expect(borderStrength(v, "alpha", "gamma")).toBe(1);
+  });
+
+  it("does not count the target's vassals as the target", () => {
+    // beta is gamma's vassal, not gamma's land. alpha touches beta only, so
+    // alpha has no border with gamma at all - which is also why Raid on gamma
+    // is not legal here.
+    const v = view({ overlords: new Map([["beta", "gamma"]]) });
+    expect(borderStrength(v, "alpha", "gamma")).toBe(0);
+    expect(validTargetsFor(v, "alpha", "raid")).not.toContain("gamma");
+  });
+
+  it("never yields 0 for a target Raid actually allows", () => {
+    // The invariant the whole design leans on: legality and the gain are
+    // derived from one adjacency resolution, so they cannot disagree.
+    const v = view({
+      overlords: new Map([["gamma", "alpha"]]),
+      incorporated: { delta: "beta" },
+    });
+    for (const actor of ORDER) {
+      for (const target of validTargetsFor(v, actor, "raid")) {
+        expect(borderStrength(v, actor, target)).toBeGreaterThanOrEqual(1);
+      }
+    }
   });
 });
