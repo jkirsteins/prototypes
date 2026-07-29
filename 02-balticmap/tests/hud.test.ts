@@ -8,6 +8,7 @@ import {
 import { aiTakeTurn } from "../src/ai";
 import { buildDeck, type Rng } from "../src/cards";
 import { allianceKey, bumpMight } from "../src/relations";
+import { rulerOf } from "../src/rulers";
 import type { TargetExplanation } from "../src/target-explanations";
 
 function seededRng(seed: number): Rng {
@@ -225,10 +226,11 @@ describe("activity log", () => {
     const texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
     );
+    const alpha = rulerOf(g.rulers, "alpha").name;
     expect(texts[0]).toMatch(/^You drew /);
     expect(texts[1]).toBe("You played Grow turnips");
-    expect(texts[2]).toBe("Player 2 drew a card");
-    expect(texts[3]).toMatch(/^Player 2 played /);
+    expect(texts[2]).toBe(`${alpha} of the Alpha drew a card`);
+    expect(texts[3]).toMatch(new RegExp(`^${alpha} of the Alpha played `));
   });
 
   it("appends only new entries across updates and inserts turn separators", () => {
@@ -369,22 +371,29 @@ describe("subjugation HUD", () => {
     const { container, hud } = setup();
     let g = { ...playing(), bodyguards: ["alpha"] };
     g = withHand(g, 0, ["assassinate-ruler"]);
+    const survivor = rulerOf(g.rulers, "alpha").name;
     g = playCard(g, 0, seededRng(1), "alpha"); // you (beta) are the actor
     hud.update(g);
     const texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
     );
-    expect(texts).toContain("You played Assassinate ruler on Alpha - prevented");
+    expect(texts).toContain(
+      `You played Assassinate ruler on Alpha - prevented, ${survivor} survives`,
+    );
 
     const { container: container2, hud: hud2 } = setup();
     let g2 = { ...playing(), bodyguards: ["beta"], current: 1 }; // alpha acts against you
     g2 = withHand(g2, 1, ["assassinate-ruler"]);
+    const ruler = rulerOf(g2.rulers, "alpha").name;
+    const ruler2 = rulerOf(g2.rulers, "beta").name;
     g2 = playCard(g2, 0, seededRng(1), "beta");
     hud2.update(g2);
     const texts2 = [...container2.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
     );
-    expect(texts2).toContain("Player 2 played Assassinate ruler on Beta - prevented");
+    expect(texts2).toContain(
+      `${ruler} of the Alpha played Assassinate ruler on Beta - prevented, ${ruler2} survives`,
+    );
   });
 
   it("marks cards the callback rejects as unplayable", () => {
@@ -855,5 +864,57 @@ describe("notice details and hand tips", () => {
     expect(tip.firstElementChild!.className).toBe("card-tip-modifier");
     expect(tip.textContent).toContain("Favourable omens: this card counts double.");
     expect(tip.textContent).toContain("on their border"); // description still there
+  });
+});
+
+describe("log lines name rulers", () => {
+  function playing() {
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+  }
+
+  const texts = (container: HTMLElement) =>
+    [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
+
+  it("names the ruler and their faction instead of a player number", () => {
+    const { container, hud } = setup();
+    let g = { ...playing(), current: 1 }; // alpha acts
+    g = withHand(g, 1, ["grow-crops"]);
+    const alpha = rulerOf(g.rulers, "alpha").name;
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g);
+    expect(texts(container)).toContain(`${alpha} of the Alpha played Grow turnips`);
+    expect(texts(container).join(" ")).not.toContain("Player 2");
+  });
+
+  it("still addresses the human as You", () => {
+    const { container, hud } = setup();
+    let g = withHand(playing(), 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g);
+    expect(texts(container)).toContain("You played Grow turnips");
+  });
+
+  it("names the dead ruler and the successor", () => {
+    const { container, hud } = setup();
+    let g = withHand(playing(), 0, ["assassinate-ruler"]);
+    const killed = rulerOf(g.rulers, "alpha").name;
+    g = playCard(g, 0, seededRng(1), "alpha");
+    const successor = rulerOf(g.rulers, "alpha").name;
+    hud.update(g);
+    expect(texts(container)).toContain(
+      `You played Assassinate ruler on Alpha - ${killed} killed, ${successor} succeeds`,
+    );
+  });
+
+  it("names the survivor when a bodyguard turns the blade", () => {
+    const { container, hud } = setup();
+    let g = { ...playing(), bodyguards: ["alpha"] };
+    g = withHand(g, 0, ["assassinate-ruler"]);
+    const survivor = rulerOf(g.rulers, "alpha").name;
+    g = playCard(g, 0, seededRng(1), "alpha");
+    hud.update(g);
+    expect(texts(container)).toContain(
+      `You played Assassinate ruler on Alpha - prevented, ${survivor} survives`,
+    );
   });
 });

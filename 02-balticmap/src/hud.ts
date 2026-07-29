@@ -61,24 +61,48 @@ export function createHud(
   const factionName = (id: string | undefined): string =>
     (id !== undefined ? factionNames.get(id) : undefined) ?? id ?? "";
 
-  function eventText(e: GameEvent): string {
+  /** Who is speaking in a log line. A player's faction never changes, so it
+   *  is safe to resolve from state; the ruler's name is not, so it comes off
+   *  the event, where it was stamped when the event happened. */
+  function actorLabel(e: GameEvent, state: GameState): string {
+    if (e.playerId === 1) return "You";
+    const factionId = state.players.find((pl) => pl.id === e.playerId)?.factionId;
+    const faction = factionName(factionId);
+    return e.actorRuler === undefined || e.actorRuler === ""
+      ? faction
+      : `${e.actorRuler} of the ${faction}`;
+  }
+
+  /** Assassinate ruler is the only card that changes who rules, so it is the
+   *  only line that names rulers on the target side. */
+  function rulerSuffix(e: GameEvent): string | null {
+    if (e.cardId !== "assassinate-ruler" || e.targetRuler === undefined) return null;
+    return e.prevented
+      ? ` - prevented, ${e.targetRuler} survives`
+      : e.successorRuler === undefined
+        ? null
+        : ` - ${e.targetRuler} killed, ${e.successorRuler} succeeds`;
+  }
+
+  function eventText(e: GameEvent, state: GameState): string {
     const you = e.playerId === 1;
+    const actor = actorLabel(e, state);
     switch (e.type) {
       case "draw":
-        return you ? `You drew ${cardName(e.cardId)}` : `Player ${e.playerId} drew a card`;
+        return you ? `You drew ${cardName(e.cardId)}` : `${actor} drew a card`;
       case "play": {
         const target = e.targetFactionId !== undefined
           ? ` on ${factionName(e.targetFactionId)}`
           : "";
-        const suffix = e.prevented ? " - prevented" : e.doubled ? " - doubled" : "";
-        return you
-          ? `You played ${cardName(e.cardId)}${target}${suffix}`
-          : `Player ${e.playerId} played ${cardName(e.cardId)}${target}${suffix}`;
+        const suffix =
+          rulerSuffix(e) ??
+          (e.prevented ? " - prevented" : e.doubled ? " - doubled" : "");
+        return `${actor} played ${cardName(e.cardId)}${target}${suffix}`;
       }
       case "reshuffle":
         return you
           ? "You reshuffled your discard"
-          : `Player ${e.playerId} reshuffled their discard`;
+          : `${actor} reshuffled their discard`;
       case "subjugated":
         return `${factionName(e.targetFactionId)} submits to ${factionName(e.overlordFactionId)}`;
       case "released":
@@ -86,9 +110,7 @@ export function createHud(
       case "incorporated":
         return `${factionName(e.targetFactionId)} is incorporated into ${factionName(e.overlordFactionId)}`;
       case "discard":
-        return you
-          ? "You discarded a card"
-          : `Player ${e.playerId} discarded a card`;
+        return you ? "You discarded a card" : `${actor} discarded a card`;
       case "reclaimed":
         return `${factionName(e.targetFactionId)} reclaims independence from ${factionName(e.overlordFactionId)}`;
       case "tribute":
@@ -339,7 +361,7 @@ export function createHud(
       }
       const entry = document.createElement("div");
       entry.className = "log-entry log-new";
-      entry.textContent = eventText(e);
+      entry.textContent = eventText(e, state);
       entry.classList.toggle("log-you", involvesHuman(e, humanFactionId));
       logEntries.appendChild(entry);
     }
@@ -595,7 +617,7 @@ export function createHud(
       ...state.log.map((e) => {
         const d = document.createElement("div");
         d.className = "log-entry";
-        d.textContent = eventText(e);
+        d.textContent = eventText(e, state);
         d.classList.toggle("log-you", involvesHuman(e, human?.factionId));
         return d;
       }),
