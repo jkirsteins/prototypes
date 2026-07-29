@@ -5,6 +5,12 @@ import {
 import raw from "../src/data/map.json";
 import pools from "../src/data/ruler-names.json";
 import type { MapData } from "../src/types";
+import {
+  newGame, startGame, chooseDeck, pickFaction, advance, type GameState,
+} from "../src/game";
+import { aiTakeTurn } from "../src/ai";
+import { buildDeck } from "../src/cards";
+import { SIM_FACTION_IDS, SIM_ADJACENCY, seededRng } from "../src/sim";
 
 const data = raw as MapData;
 const POOLS = pools as Record<string, string[]>;
@@ -127,5 +133,32 @@ describe("rulerNameFor", () => {
     const a = rulerNameFor("alpha", "livs", 0, taken);
     taken.add(a);
     expect(rulerNameFor("beta", "livs", 0, taken)).not.toBe(a);
+  });
+});
+
+describe("ruler invariant over a full game", () => {
+  // runGame (src/sim.ts) returns a GameSummary, not the state, so drive a
+  // game by hand the same way the AI-balance scratch tooling does: seat every
+  // faction with an AI deck and step turns with aiTakeTurn/advance directly.
+  it("resolves every faction through rulerOf, with no since ahead of the current turn", () => {
+    const TURN_CAP = 120;
+    const rng = seededRng(1);
+    let state: GameState = pickFaction(
+      chooseDeck(startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY)), buildDeck()),
+      SIM_FACTION_IDS[0],
+      rng,
+    );
+    while (state.phase === "playing" && state.turn <= TURN_CAP) {
+      const next = aiTakeTurn(state, rng);
+      state = next.phase === "playing" ? advance(next, rng) : next;
+    }
+    // Sanity: the game actually progressed, so the invariant below is
+    // exercised against successions, not just the untouched setup rulers.
+    expect(state.turn).toBeGreaterThan(1);
+    for (const id of state.factionIds) {
+      const ruler = rulerOf(state.rulers, id);
+      expect(ruler.name.length, `ruler name for ${id}`).toBeGreaterThan(0);
+      expect(ruler.since, `since for ${id}`).toBeLessThanOrEqual(state.turn);
+    }
   });
 });

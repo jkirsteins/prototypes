@@ -1002,6 +1002,12 @@ describe("event stamping", () => {
     let g = playingState(LINE_ADJ);
     g = withHand(g, 0, ["grow-crops"]);
     g = advance(playCard(g, 0, rng()), rng()); // beta plays; alpha's turn opens
+    // Force alpha into a discard - nothing in a lone, unplayable "subjugate"
+    // is playable at a fresh lead of 0 - to exercise discardCard's append,
+    // the third of three call sites that stamp actorRuler.
+    g = withHand(g, 1, ["subjugate"]);
+    g = discardCard(g, 0);
+    expect(g.log.some((e) => e.type === "discard")).toBe(true);
     expect(g.log.length).toBeGreaterThan(0);
     for (const e of g.log) {
       expect(e.actorRuler, `${e.type} on turn ${e.turn}`).toBeTruthy();

@@ -22,6 +22,11 @@ const FACTION_BY_PLAYER: Record<number, string> = {
 let leadsTable: Record<string, { might: number; status: number }> = {};
 let grip = 2;
 let allianceExpiryTable: Record<string, number | undefined> = {};
+// Rival-specific subjugation bar. Defaults to `grip` for any rival not
+// listed here, matching what the real `subjugationRequirement` returns for
+// an ordinary pair with no guard in play - this keeps every existing test's
+// meaning intact. Tests that need a guarded (null) pair override an entry.
+let subjugationBarTable: Record<string, number | null> = {};
 
 const ctx: NoticeCtx = {
   humanFactionId: "livs",
@@ -29,6 +34,8 @@ const ctx: NoticeCtx = {
   factionOf: (playerId) => FACTION_BY_PLAYER[playerId],
   leads: (other) => leadsTable[other] ?? { might: 0, status: 0 },
   subjugationGrip: () => grip,
+  subjugationBarAgainstYou: (other) =>
+    other in subjugationBarTable ? subjugationBarTable[other] : grip,
   allianceExpiry: (other) => allianceExpiryTable[other],
 };
 
@@ -63,6 +70,7 @@ describe("buildNotices: single-event scenarios", () => {
     leadsTable = {};
     grip = 2;
     allianceExpiryTable = {};
+    subjugationBarTable = {};
   });
 
   it("builds a subjugation notice when an AI subjugates the human", () => {
@@ -349,6 +357,31 @@ describe("buildNotices: single-event scenarios", () => {
     ]);
   });
 
+  it("omits the threat clause when this rival could never subjugate the human (already their overlord)", () => {
+    // e.g. the human is already jersika's vassal: jersika cannot subjugate
+    // again, so subjugationRequirement (and this bar) is null for that pair
+    // even though jersika leads Might by 5. The map's danger marker agrees.
+    leadsTable = { jersika: { might: -5, status: 0 } };
+    subjugationBarTable = { jersika: null };
+    const n = oneNotice(
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs" }),
+    )!;
+    expect(n.details).toEqual([
+      "Standing vs Jersikans: Might - they lead by 5; Status - even.",
+    ]);
+  });
+
+  it("omits the threat clause when this rival is itself somebody's vassal", () => {
+    leadsTable = { jersika: { might: 0, status: -6 } };
+    subjugationBarTable = { jersika: null };
+    const n = oneNotice(
+      ev({ type: "play", cardId: "shrewd-marriage", targetFactionId: "livs" }),
+    )!;
+    expect(n.details).toEqual([
+      "Standing vs Jersikans: Might - even; Status - they lead by 6.",
+    ]);
+  });
+
   it("play modals do not fire for own plays, AI-vs-AI, or other cards", () => {
     for (const e of [
       ev({ type: "play", playerId: 1, cardId: "raid", targetFactionId: "jersika" }),
@@ -426,6 +459,7 @@ describe("buildNotices: batch grouping", () => {
     leadsTable = {};
     grip = 2;
     allianceExpiryTable = {};
+    subjugationBarTable = {};
   });
 
   it("collapses 3 raids by different actors into one notice", () => {
@@ -450,6 +484,24 @@ describe("buildNotices: batch grouping", () => {
       "Curonians - Might: you lead by 1; Status: you lead by 1",
     ]);
     expect(n.consequence).toBeUndefined();
+  });
+
+  it("omits the threat clause for a rival that could never subjugate the human, even mid-batch", () => {
+    leadsTable = {
+      jersika: { might: -9, status: 0 }, // huge lead, but jersika already holds the human
+      latgale: { might: -2, status: 0 }, // qualifies normally
+    };
+    subjugationBarTable = { jersika: null };
+    const events: GameEvent[] = [
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs" }),
+      ev({ turn: 2, playerId: 3, type: "play", cardId: "raid", targetFactionId: "livs" }),
+    ];
+    const notices = buildNotices(events, ctx);
+    expect(notices).toHaveLength(1);
+    expect(notices[0].details).toEqual([
+      "Jersikans - Might: they lead by 9; Status: even",
+      "Latgalians - Might: they lead by 2; Status: even - a lead of 2 subjugates you",
+    ]);
   });
 
   it("groups raids and marriages into two separate notices, one per card", () => {

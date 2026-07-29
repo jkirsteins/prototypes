@@ -16,8 +16,14 @@ export interface NoticeCtx {
   /** The human's leads over otherFactionId; positive = you lead. */
   leads(otherFactionId: string): { might: number; status: number };
   /** The lead an enemy needs over the human to subjugate them (scaled by
-   *  the human realm's size). */
+   *  the human realm's size). No particular rival in mind - used only where
+   *  the human's own realm shrinking is the point, not who threatens them. */
   subjugationGrip(): number;
+  /** The lead this rival needs to subjugate the human, or null when the
+   *  rules forbid it outright - they already hold the human, or they are
+   *  somebody's vassal themselves. The map's danger marker uses the same
+   *  number, so the two surfaces cannot disagree. */
+  subjugationBarAgainstYou(otherFactionId: string): number | null;
   /** Expiry turn of an active alliance between the human and otherFactionId;
    *  undefined when no pact is active. */
   allianceExpiry(otherFactionId: string): number | undefined;
@@ -71,10 +77,15 @@ const standingLine = (ctx: NoticeCtx, otherId: string): string => {
     `Might - ${fmtLead(l.might)}; Status - ${fmtLead(l.status)}.`;
 };
 
-/** Their best lead over the human meets the subjugation threshold. */
+/** Their best lead over the human meets the bar THIS rival specifically needs
+ *  to subjugate the human - false when that bar is null (they could never
+ *  subjugate the human this way round) as well as when the lead falls
+ *  short. */
 const subjugationRisk = (ctx: NoticeCtx, otherId: string): boolean => {
+  const bar = ctx.subjugationBarAgainstYou(otherId);
+  if (bar === null) return false;
   const l = ctx.leads(otherId);
-  return Math.max(-l.might, -l.status) >= ctx.subjugationGrip();
+  return Math.max(-l.might, -l.status) >= bar;
 };
 
 const PAY_TRIBUTE_CONSEQUENCE =
@@ -105,7 +116,7 @@ function buildRelationPlayNotice(
       ? [
           standingLine(ctx, actorId),
           ...(subjugationRisk(ctx, actorId)
-            ? [`A lead of ${ctx.subjugationGrip()} is enough to subjugate.`]
+            ? [`A lead of ${ctx.subjugationBarAgainstYou(actorId)} is enough to subjugate.`]
             : []),
         ]
       : [];
@@ -121,8 +132,8 @@ function buildRelationPlayNotice(
     const actor = ctx.factionName(actorId);
     const l = actorId !== undefined ? ctx.leads(actorId) : { might: 0, status: 0 };
     const line = `${actor} - Might: ${fmtLead(l.might)}; Status: ${fmtLead(l.status)}`;
-    const risk = actorId !== undefined && subjugationRisk(ctx, actorId);
-    return risk ? `${line} - a lead of ${ctx.subjugationGrip()} subjugates you` : line;
+    if (actorId === undefined || !subjugationRisk(ctx, actorId)) return line;
+    return `${line} - a lead of ${ctx.subjugationBarAgainstYou(actorId)} subjugates you`;
   });
   return {
     title,

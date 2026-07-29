@@ -3,7 +3,7 @@ import { isHumanTurn, viewOf, type GameEvent, type GameState } from "./game";
 import { flyCard } from "./animate";
 import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
 import { buildNotices, type Notice, type NoticeCtx } from "./notices";
-import { subjugationGripOn } from "./playability";
+import { subjugationGripOn, subjugationRequirement } from "./playability";
 import type { TargetExplanation } from "./target-explanations";
 
 export interface HudCallbacks {
@@ -94,6 +94,11 @@ export function createHud(
         const target = e.targetFactionId !== undefined
           ? ` on ${factionName(e.targetFactionId)}`
           : "";
+        // rulerSuffix takes precedence over "- doubled": safe only because
+        // assassinate-ruler (the only card rulerSuffix fires for) is not in
+        // DOUBLABLE_CARDS (src/cards.ts). If it were ever added there, a
+        // doubled assassination would silently lose its "- doubled" marker
+        // on this line.
         const suffix =
           rulerSuffix(e) ??
           (e.prevented ? " - prevented" : e.doubled ? " - doubled" : "");
@@ -314,6 +319,8 @@ export function createHud(
         state.players.find((pl) => pl.id === playerId)?.factionId,
       leads: (other) => leadsOf(state.relations, human.factionId, other),
       subjugationGrip: () => subjugationGripOn(viewOf(state), human.factionId),
+      subjugationBarAgainstYou: (other) =>
+        subjugationRequirement(viewOf(state), other, human.factionId),
       allianceExpiry: (other) =>
         allianceActive(state, human.factionId, other)
           ? state.alliances[allianceKey(human.factionId, other)]

@@ -211,11 +211,13 @@ succession sequence number. The same game replayed with the same seed produces
 the same rulers, the same decks, and the same results as before this change.
 
 A test asserts this directly against a golden fixture. Before any ruler code
-lands, a seeded game is run at the current commit and its event log is
-committed as `tests/fixtures/seeded-log-baseline.json`. After the change, the
-same seed must reproduce that log exactly once the new ruler fields are
-stripped. Capturing the fixture first is what makes the test meaningful; a
-fixture generated afterwards would only prove the code agrees with itself.
+lands, ten seeded games (`BASELINE_SEEDS`) are run at the current commit and
+their `GameSummary` results are committed as
+`tests/fixtures/seeded-games-baseline.json`. `GameSummary` carries no ruler
+data - only faction ids, turns and counts - so after the change the same ten
+seeds must reproduce that array exactly, byte for byte. Capturing the fixture
+first is what makes the test meaningful; a fixture generated afterwards would
+only prove the code agrees with itself.
 
 ### Assassination
 
@@ -336,7 +338,7 @@ balance evidence:
 | assassination | successful play replaces the ruler and sets `since`; prevented play does not |
 | invariant | after a full seeded game every faction still resolves through `rulerOf` |
 | determinism | same seed produces the same rulers |
-| rng isolation | a seeded game's log, ruler fields stripped, matches the committed pre-change fixture |
+| rng isolation | ten seeded games' `GameSummary` results match the committed pre-change fixture |
 | `subjugationGripOn` | badge, tooltip and notice bar all resolve to the same number for the same pair |
 | log | actor lines name ruler and faction; player lines still say `You`; assassinate lines name both rulers |
 | notices | assassinate and prevented-assassinate notices name the rulers |
