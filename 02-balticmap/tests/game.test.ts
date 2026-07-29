@@ -948,3 +948,49 @@ describe("advance", () => {
     expect(g.current).toBe(0);
   });
 });
+
+describe("assassinate ruler succession", () => {
+  it("seats a successor and records both names on the event", () => {
+    let g = playingState(LINE_ADJ);
+    g = withHand(g, 0, ["assassinate-ruler"]);
+    const killed = rulerOf(g.rulers, "alpha").name;
+
+    const after = playCard(g, 0, rng(), "alpha");
+
+    const successor = rulerOf(after.rulers, "alpha").name;
+    expect(successor).not.toBe(killed);
+    expect(rulerOf(after.rulers, "alpha").since).toBe(after.turn);
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play",
+      cardId: "assassinate-ruler",
+      targetRuler: killed,
+      successorRuler: successor,
+    });
+  });
+
+  it("leaves the ruler alive when a bodyguard turns the blade", () => {
+    let g = { ...playingState(LINE_ADJ), bodyguards: ["alpha"] };
+    g = withHand(g, 0, ["assassinate-ruler"]);
+    const survivor = rulerOf(g.rulers, "alpha").name;
+
+    const after = playCard(g, 0, rng(), "alpha");
+
+    expect(rulerOf(after.rulers, "alpha").name).toBe(survivor);
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play",
+      prevented: true,
+      targetRuler: survivor,
+    });
+    expect(after.log.at(-1)?.successorRuler).toBeUndefined();
+  });
+
+  it("touches no other faction's ruler", () => {
+    let g = playingState(LINE_ADJ);
+    g = withHand(g, 0, ["assassinate-ruler"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    for (const id of g.factionIds) {
+      if (id === "alpha") continue;
+      expect(after.rulers[id]).toBe(g.rulers[id]);
+    }
+  });
+});

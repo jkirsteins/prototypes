@@ -5,7 +5,7 @@ import {
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import { borderStrength, playableSet, validTargetsFor, type RulesView } from "./playability";
-import { initialRulers, type Rulers } from "./rulers";
+import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
 
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
@@ -23,6 +23,9 @@ export interface GameEvent {
   track?: "status" | "might"; // tribute
   prevented?: boolean; // play: a nullified Assassinate ruler (Bodyguard)
   doubled?: boolean; // play, reclaimed: a card whose numbers a reading doubled
+  actorRuler?: string; // ruler of the acting faction when this was logged
+  targetRuler?: string; // assassinate: the ruler in the crosshairs
+  successorRuler?: string; // assassinate: set only when the killing landed
 }
 
 export type GamePhase =
@@ -210,6 +213,22 @@ function updateFaction(
   return players.map((p) => (p.factionId === factionId ? fn(p) : p));
 }
 
+/** Levelling Status and seating a successor are one step, so no future edit
+ *  can apply the assassination's effect while forgetting the succession. */
+function assassinate(
+  state: GameState,
+  rulers: Rulers,
+  relations: Relations,
+  actorFactionId: string,
+  targetId: string,
+): { relations: Relations; rulers: Rulers; killed: string; successor: string } {
+  const succession = replaceRuler(rulers, state.ethnicities, targetId, state.turn);
+  return {
+    relations: levelStatus(relations, actorFactionId, targetId),
+    ...succession,
+  };
+}
+
 export function playCard(
   state: GameState,
   cardIndex: number,
@@ -238,6 +257,7 @@ export function playCard(
   let diplomacyBoost = state.diplomacyBoost;
   let bodyguards = state.bodyguards;
   let omens = state.omens;
+  let rulers = state.rulers;
   const doubled = omens.includes(p.factionId) && DOUBLABLE_CARDS.has(cardId);
   const mult = doubled ? 2 : 1;
   if (doubled) omens = omens.filter((f) => f !== p.factionId);
@@ -292,8 +312,19 @@ export function playCard(
     if (bodyguards.includes(targetId)) {
       bodyguards = bodyguards.filter((f) => f !== targetId);
       prevented = true;
+      events[0] = {
+        ...events[0],
+        targetRuler: rulerOf(rulers, targetId).name,
+      };
     } else {
-      relations = levelStatus(relations, p.factionId, targetId);
+      const out = assassinate(state, rulers, relations, p.factionId, targetId);
+      relations = out.relations;
+      rulers = out.rulers;
+      events[0] = {
+        ...events[0],
+        targetRuler: out.killed,
+        successorRuler: out.successor,
+      };
     }
   } else if (cardId === "bodyguard") {
     if (!bodyguards.includes(p.factionId)) {
@@ -453,7 +484,7 @@ export function playCard(
 
   return {
     ...state, phase, players, relations, overlords, incorporated,
-    alliances, diplomacyBoost, bodyguards, omens, seenThisRun,
+    alliances, diplomacyBoost, bodyguards, omens, rulers, seenThisRun,
     log: [...state.log, ...events], playedThisTurn: true,
   };
 }
