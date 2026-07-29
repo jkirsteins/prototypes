@@ -91,6 +91,20 @@ export function formatLead(
     : `${label}${value}/${required}`;
 }
 
+/** Which subjugation bar a track is racing toward. The bars are asymmetric -
+ *  each counts the realm of the side being taken - so a badge showing both
+ *  tracks against the player's bar quotes the wrong number the moment the
+ *  enemy is the one leading. The sign of the lead already says who is
+ *  running, so it also says whose bar applies. Null where the leading side
+ *  could never subjugate the other, and the track shows no denominator. */
+export function barFor(
+  lead: number,
+  yourBar: number | null,
+  theirBar: number | null,
+): number | null {
+  return lead < 0 ? theirBar : yourBar;
+}
+
 /** `requiredLead` is the Subjugate bar from `subjugationRequirement`; pass
  *  null where Subjugate cannot apply and the lines read as they always did.
  *  Tone always says who leads, never whether the bar is cleared - the same

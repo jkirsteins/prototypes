@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  SUBJUGATE_THRESHOLD, borderStrength, isCardPlayable, playableSet, subjugationRequirement,
-  targetEligibilityFor, validTargetsFor,
+  SUBJUGATE_THRESHOLD, borderStrength, isCardPlayable, playableSet, subjugationGripOn,
+  subjugationRequirement, targetEligibilityFor, validTargetsFor,
   type RulesView,
 } from "../src/playability";
 import { allianceKey, bumpMight, bumpStatus, type Relations } from "../src/relations";
@@ -76,6 +76,20 @@ describe("subjugationRequirement", () => {
         : undefined;
     expect(reason?.code === "insufficient-lead" ? reason.requiredLead : null)
       .toBe(subjugationRequirement(v, "alpha", "beta"));
+  });
+});
+
+describe("subjugationGripOn", () => {
+  it("is 2 per land of the faction's realm, with no eligibility guards", () => {
+    // beta holds gamma: two lands.
+    const v = view({ overlords: new Map([["gamma", "beta"]]) });
+    expect(subjugationGripOn(v, "beta")).toBe(4);
+    expect(subjugationGripOn(v, "alpha")).toBe(2);
+  });
+
+  it("is the number subjugationRequirement quotes when the pair is legal", () => {
+    const v = view({ overlords: new Map([["gamma", "beta"]]) });
+    expect(subjugationRequirement(v, "alpha", "beta")).toBe(subjugationGripOn(v, "beta"));
   });
 });
 

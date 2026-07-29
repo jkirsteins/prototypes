@@ -53,6 +53,23 @@ export function borderStrength(
   ).length;
 }
 
+/** The lead anyone needs against this faction: two per land of its realm,
+ *  counting its vassals and the lands it has incorporated.
+ *
+ *  Bare arithmetic with no eligibility guards, because two callers need it
+ *  that way: `subjugationRequirement` applies the guards itself, and the
+ *  notices ask "what lead does anyone need against my realm" with no
+ *  particular rival in mind. */
+export function subjugationGripOn(
+  view: RulesView,
+  factionId: string,
+): number {
+  return (
+    SUBJUGATE_THRESHOLD *
+    realmOf(factionId, view.overlords, view.incorporated).length
+  );
+}
+
 /** The lead the actor needs on either track to Subjugate the target: two per
  *  land of the target's realm, counting its vassals and the lands it has
  *  incorporated. Null when Subjugate could never apply to that pair at all,
@@ -69,10 +86,7 @@ export function subjugationRequirement(
   if (targetFactionId in view.incorporated) return null;
   if (view.overlords.get(targetFactionId) === actorFactionId) return null;
   if (view.overlords.get(actorFactionId) !== undefined) return null;
-  return (
-    SUBJUGATE_THRESHOLD *
-    realmOf(targetFactionId, view.overlords, view.incorporated).length
-  );
+  return subjugationGripOn(view, targetFactionId);
 }
 
 export type TargetBlockReason =

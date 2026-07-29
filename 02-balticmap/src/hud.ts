@@ -1,9 +1,9 @@
 import { CARDS } from "./cards";
-import { isHumanTurn, type GameEvent, type GameState } from "./game";
+import { isHumanTurn, viewOf, type GameEvent, type GameState } from "./game";
 import { flyCard } from "./animate";
 import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
 import { buildNotices, type Notice, type NoticeCtx } from "./notices";
-import { SUBJUGATE_THRESHOLD } from "./playability";
+import { subjugationGripOn } from "./playability";
 import type { TargetExplanation } from "./target-explanations";
 
 export interface HudCallbacks {
@@ -291,9 +291,7 @@ export function createHud(
       factionOf: (playerId) =>
         state.players.find((pl) => pl.id === playerId)?.factionId,
       leads: (other) => leadsOf(state.relations, human.factionId, other),
-      subjugationGrip: () =>
-        SUBJUGATE_THRESHOLD *
-        realmOf(human.factionId, state.overlords, state.incorporated).length,
+      subjugationGrip: () => subjugationGripOn(viewOf(state), human.factionId),
       allianceExpiry: (other) =>
         allianceActive(state, human.factionId, other)
           ? state.alliances[allianceKey(human.factionId, other)]
