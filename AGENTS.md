@@ -68,6 +68,10 @@ For prototypes with card-playing AI, adding a card or changing a card's effect,
 legality, targeting, deck availability, or interactions must revisit the AI in
 the same change. The change must:
 
+- **Give the card its own branch in the AI policy.** A new card is not done
+  until the policy decides, by name, when to play it and (if targeted) what to
+  aim it at. Record that branch in the policy's coverage map so a card without
+  one fails a test rather than passing review.
 - Review legal-action generation and strategic evaluation for the card.
 - Add or update AI tests for useful, harmful, and competing-card situations.
 - Add or update simulation metrics that can reveal whether the card is ignored,
@@ -75,10 +79,19 @@ the same change. The change must:
 - Run the prototype's seeded AI balance benchmark and compare it with the
   committed baseline.
 - Document why no AI change is needed when the review concludes that existing
-  behavior is intentionally sufficient.
+  behavior is intentionally sufficient. "Intentionally sufficient" still needs a
+  coverage-map entry naming the branch that covers it.
 
 Falling through to the first playable card or first legal target is not complete
 AI support.
+
+This rule has been broken before, and prose alone did not catch it. Measured in
+`02-balticmap` on 2026-07-30, four of its fourteen cards had no branch in
+`chooseAction` at all, and 27.7% of all AI plays across 60 simulated worlds were
+step-of-last-resort fallthroughs. Two of them, Alliance and Assassinate ruler,
+were the 5th and 6th most-played cards in the game and picked their targets by
+faction sort order while two or more targets were legal 82% and 64% of the time.
+That is why the coverage map above is a test and not a checklist item.
 
 ## Housekeeping
 
