@@ -128,8 +128,9 @@ export interface Ruler {
 export type Rulers = Record<string, Ruler>;  // total over factionIds
 ```
 
-`GameState` gains `rulers: Rulers`, populated for every faction id at
-`pickFaction`, alongside the players.
+`GameState` gains `rulers: Rulers`, populated for every faction id in
+`newGame`. Seating them there rather than at `pickFaction` keeps the record
+total for the whole life of the state, including on the main menu.
 
 `since` carries no mechanics today. It is in the model because ruler-specific
 properties are expected later and a succession date is the field they will
@@ -246,9 +247,10 @@ successorRuler?: string;  // assassinate: set only when the killing landed
 ```
 
 `actorRuler` is stamped centrally. Events are pushed as object literals in
-several places in `src/game.ts`; those pushes move behind a single
-`pushEvent(log, state, event)` that fills `actorRuler` from the acting
-player's faction. A new event type cannot be added without the stamp.
+three places in `src/game.ts` - `beginTurn`, `playCard`, `discardCard`; all
+three appends move behind a single `appendEvents(state, events)` that fills
+`actorRuler` from the acting player's faction. A new event type cannot reach
+the log without the stamp.
 
 A player's faction never changes, so the HUD resolves faction from state and
 only takes the ruler name from the event.
@@ -282,8 +284,12 @@ named.
 > The Ugandians played Assassinate ruler against the Livs.
 > Your bodyguard turned the blade - Kaupo lives and your Status lead is unchanged.
 
-`NoticeCtx` gains `rulerName(factionId): string` so notice builders read the
-name the same way every other consumer does.
+Both builders read the names off the event rather than from current state. A
+`NoticeCtx.rulerName(factionId)` accessor was considered and rejected: by the
+time a notice renders, the successor is the sitting ruler, so an accessor
+would name the victim as whoever replaced him. Where a ruler field is absent,
+each builder falls back to its current wording, so a notice can never print
+`undefined` for a name.
 
 ### Tooltip
 
