@@ -67,7 +67,7 @@ export function createHud(
         const target = e.targetFactionId !== undefined
           ? ` on ${factionName(e.targetFactionId)}`
           : "";
-        const suffix = e.prevented ? " - prevented" : "";
+        const suffix = e.prevented ? " - prevented" : e.doubled ? " - doubled" : "";
         return you
           ? `You played ${cardName(e.cardId)}${target}${suffix}`
           : `Player ${e.playerId} played ${cardName(e.cardId)}${target}${suffix}`;
@@ -95,7 +95,7 @@ export function createHud(
       case "defeat":
         return `Your realm has been incorporated by ${factionName(e.overlordFactionId)}`;
       case "unified":
-        return `${factionName(e.overlordFactionId)} unifies the Baltic`;
+        return `${factionName(e.overlordFactionId)} unifies the Balts`;
     }
   }
 
@@ -519,31 +519,41 @@ export function createHud(
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();
     } else {
-      const defeatEvent = [...state.log].reverse().find((e) => e.type === "defeat");
-      const killer = defeatEvent?.overlordFactionId;
-      pmCause.textContent = `Incorporated by ${factionName(killer)}`;
-      if (killer !== undefined) {
-        const l = leadsOf(state.relations, killer, human.factionId);
-        const line = (label: string, n: number) =>
-          `${label}: ${n > 0 ? `they led by ${n}` : n < 0 ? `you led by ${-n}` : "even"}`;
-        pmDeltas.textContent = `${line("Might", l.might)} / ${line("Status", l.status)}`;
-        const killerPlayer = state.players.find((p) => p.factionId === killer);
-        const plays = state.log
-          .filter(
-            (e) =>
-              e.type === "play" &&
-              e.playerId === killerPlayer?.id &&
-              e.targetFactionId === human.factionId,
-          )
-          .slice(-5);
-        pmBuildup.replaceChildren(
-          ...plays.map((e) => {
-            const d = document.createElement("div");
-            d.className = "pm-buildup-entry";
-            d.textContent = `${cardName(e.cardId)} (turn ${e.turn})`;
-            return d;
-          }),
-        );
+      // A rival unification ends the game the same way an incorporation does,
+      // but there is no killer-vs-you comparison to show - just name the winner.
+      const unified = [...state.log].reverse().find((e) => e.type === "unified");
+      if (unified !== undefined) {
+        pmCause.textContent =
+          `${factionName(unified.overlordFactionId)} unified the Balts`;
+        pmDeltas.textContent = "";
+        pmBuildup.replaceChildren();
+      } else {
+        const defeatEvent = [...state.log].reverse().find((e) => e.type === "defeat");
+        const killer = defeatEvent?.overlordFactionId;
+        pmCause.textContent = `Incorporated by ${factionName(killer)}`;
+        if (killer !== undefined) {
+          const l = leadsOf(state.relations, killer, human.factionId);
+          const line = (label: string, n: number) =>
+            `${label}: ${n > 0 ? `they led by ${n}` : n < 0 ? `you led by ${-n}` : "even"}`;
+          pmDeltas.textContent = `${line("Might", l.might)} / ${line("Status", l.status)}`;
+          const killerPlayer = state.players.find((p) => p.factionId === killer);
+          const plays = state.log
+            .filter(
+              (e) =>
+                e.type === "play" &&
+                e.playerId === killerPlayer?.id &&
+                e.targetFactionId === human.factionId,
+            )
+            .slice(-5);
+          pmBuildup.replaceChildren(
+            ...plays.map((e) => {
+              const d = document.createElement("div");
+              d.className = "pm-buildup-entry";
+              d.textContent = `${cardName(e.cardId)} (turn ${e.turn})`;
+              return d;
+            }),
+          );
+        }
       }
     }
     const loot =

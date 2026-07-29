@@ -55,6 +55,10 @@ function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
 }
 
 describe("createHud", () => {
+  function playing() {
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+  }
+
   it("shows only the menu at main-menu, and New game fires onNewGame", () => {
     const { container, cb, hud } = setup();
     hud.update(newGame(FACTIONS));
@@ -134,6 +138,37 @@ describe("createHud", () => {
     expect(card.disabled).toBe(true);
     card.click();
     expect(cb.onPlayCard).not.toHaveBeenCalled();
+  });
+
+  it("names the faction that unified the Balts", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      phase: "defeat",
+      log: [
+        ...g.log,
+        { turn: 9, playerId: 2, type: "unified", overlordFactionId: "alpha" },
+      ],
+    });
+    expect(q(container, ".pm-cause").textContent).toBe("Alpha unified the Balts");
+  });
+
+  it("marks a doubled play in the activity log", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      log: [
+        ...g.log,
+        {
+          turn: 3, playerId: 1, type: "play", cardId: "raid",
+          targetFactionId: "alpha", doubled: true,
+        },
+      ],
+    });
+    expect(q(container, ".activity-log-entries").textContent)
+      .toContain("You played Raid on Alpha - doubled");
   });
 });
 
