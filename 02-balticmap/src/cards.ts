@@ -14,7 +14,7 @@ export interface CardDef {
 
 export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow potatoes", targeted: false, maxPerDeck: null, deckBuildable: true, forced: false, text: "No effect - a quiet season. Fills out the deck." },
-  "raid": { id: "raid", name: "Raid", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain Might over one faction in reach, equal to your lands on their border." },
+  "raid": { id: "raid", name: "Raid", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Might over one faction in reach for each of your lands on their border." },
   "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
   "fortify": { id: "fortify", name: "Fortify", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Might over every other living faction at once." },
   "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },

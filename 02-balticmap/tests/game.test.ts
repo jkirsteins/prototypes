@@ -692,7 +692,7 @@ describe("raid gain", () => {
   });
 
   it("no longer promises a flat +1 in its rules text", () => {
-    expect(CARDS["raid"].text).not.toContain("+1 Might over one faction");
+    expect(CARDS["raid"].text).toContain("for each");
     expect(CARDS["raid"].text).toContain("border");
   });
 });

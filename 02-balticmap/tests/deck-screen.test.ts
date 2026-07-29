@@ -144,7 +144,7 @@ describe("createDeckScreen", () => {
     const unlock = container.querySelector(".ds-unlock .ds-card")!;
     expect(unlock.querySelector(".ds-card-name")!.textContent).toBe("Raid");
     expect(unlock.querySelector(".ds-card-text")!.textContent).toBe(
-      "Gain Might over one faction in reach, equal to your lands on their border.",
+      "Gain +1 Might over one faction in reach for each of your lands on their border.",
     );
     const deckCard = container.querySelector(".ds-deck .ds-card")!;
     expect(deckCard.querySelector(".ds-card-name")!.textContent).toBe("Subjugate");
