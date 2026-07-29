@@ -140,9 +140,21 @@ function buildPlayNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
 }
 
 /** Assassinate ruler against the human: same shape as Raid/Marriage (the
- *  standing line already shows Status even, post-effect). */
+ *  standing line already shows Status even, post-effect).
+ *
+ *  The one card that changes who rules. The names come off the event, not
+ *  from current state: by the time this renders, the successor is the
+ *  sitting ruler and state can no longer say who died. */
 function buildAssassinateNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  return buildRelationPlayNotice(events, ctx, "A Ruler Falls", "Assassinate ruler");
+  const base = buildRelationPlayNotice(events, ctx, "A Ruler Falls", "Assassinate ruler");
+  if (events.length !== 1) return base;
+  const e = events[0];
+  if (e.targetRuler === undefined || e.successorRuler === undefined) return base;
+  return {
+    ...base,
+    what: `${ctx.factionName(ctx.factionOf(e.playerId))} had ${e.targetRuler} killed.`,
+    details: [`${e.successorRuler} now leads ${ctx.factionName(e.targetFactionId)}.`, ...base.details],
+  };
 }
 
 /** Assassinate ruler against the human, nullified by a Bodyguard: the "what"
@@ -155,7 +167,11 @@ function buildAssassinatePreventedNotice(events: GameEvent[], ctx: NoticeCtx): N
     return {
       title: "Assassination Prevented",
       what: `${actor} played Assassinate ruler against ${ctx.factionName(e.targetFactionId)}.`,
-      details: ["Your bodyguard turned the blade - your Status lead is unchanged."],
+      details: [
+        e.targetRuler === undefined
+          ? "Your bodyguard turned the blade - your Status lead is unchanged."
+          : `Your bodyguard turned the blade - ${e.targetRuler} lives and your Status lead is unchanged.`,
+      ],
     };
   }
 

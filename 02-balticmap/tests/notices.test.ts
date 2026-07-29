@@ -602,3 +602,30 @@ describe("buildNotices: batch grouping", () => {
     expect(buildNotices(events, ctx)).toEqual([]);
   });
 });
+
+describe("assassination notices name rulers", () => {
+  it("names the ruler who died and the one who follows", () => {
+    const n = oneNotice(
+      ev({
+        type: "play", cardId: "assassinate-ruler", targetFactionId: "livs",
+        targetRuler: "Kaupo", successorRuler: "Dabrelis",
+      }),
+    )!;
+    expect(n.title).toBe("A Ruler Falls");
+    expect(n.what).toBe("Jersikans had Kaupo killed.");
+    expect(n.details[0]).toBe("Dabrelis now leads Lower Daugava Livs.");
+  });
+
+  it("names the ruler the bodyguard saved", () => {
+    const n = oneNotice(
+      ev({
+        type: "play", cardId: "assassinate-ruler", targetFactionId: "livs",
+        targetRuler: "Kaupo", prevented: true,
+      }),
+    )!;
+    expect(n.title).toBe("Assassination Prevented");
+    expect(n.details).toEqual([
+      "Your bodyguard turned the blade - Kaupo lives and your Status lead is unchanged.",
+    ]);
+  });
+});
