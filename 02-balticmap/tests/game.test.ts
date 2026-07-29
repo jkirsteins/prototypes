@@ -994,3 +994,33 @@ describe("assassinate ruler succession", () => {
     }
   });
 });
+
+describe("event stamping", () => {
+  it("stamps every logged event with the ruler who acted", () => {
+    // The log is a record of what happened then. Resolving the name at render
+    // time would show today's ruler doing his predecessor's deeds.
+    let g = playingState(LINE_ADJ);
+    g = withHand(g, 0, ["grow-crops"]);
+    g = advance(playCard(g, 0, rng()), rng()); // beta plays; alpha's turn opens
+    expect(g.log.length).toBeGreaterThan(0);
+    for (const e of g.log) {
+      expect(e.actorRuler, `${e.type} on turn ${e.turn}`).toBeTruthy();
+    }
+  });
+
+  it("keeps the name the dead ruler held when he acted", () => {
+    let g = playingState(LINE_ADJ);
+    const doomed = rulerOf(g.rulers, "alpha").name;
+    g = withHand(g, 0, ["grow-crops"]);
+    g = advance(playCard(g, 0, rng()), rng()); // alpha's turn opens: a draw is logged for alpha
+    expect(g.log.some((e) => e.type === "draw" && e.actorRuler === doomed)).toBe(true);
+
+    // hand the seat back to beta holding an assassin's card
+    let back = withHand({ ...g, current: 0, playedThisTurn: false }, 0, ["assassinate-ruler"]);
+    const after = playCard(back, 0, rng(), "alpha");
+
+    expect(rulerOf(after.rulers, "alpha").name).not.toBe(doomed);
+    // the old event still names the man who actually drew that card
+    expect(after.log.some((e) => e.type === "draw" && e.actorRuler === doomed)).toBe(true);
+  });
+});

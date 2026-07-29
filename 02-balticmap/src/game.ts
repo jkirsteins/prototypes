@@ -174,20 +174,38 @@ export function pickFaction(
   return beginTurn({ ...state, phase: "playing", players, current: 0 }, rng);
 }
 
+/** The one place `actorRuler` is filled. Every append to the log goes
+ *  through here, so a new event type cannot ship unstamped, and the name
+ *  recorded is the one the actor's ruler held at the time. */
+function appendEvents(state: GameState, events: GameEvent[]): GameEvent[] {
+  return [
+    ...state.log,
+    ...events.map((e) => ({
+      ...e,
+      actorRuler: actorRulerName(state, e.playerId),
+    })),
+  ];
+}
+
+function actorRulerName(state: GameState, playerId: number): string {
+  const factionId = state.players.find((pl) => pl.id === playerId)?.factionId;
+  return factionId === undefined ? "" : rulerOf(state.rulers, factionId).name;
+}
+
 /** Current player draws 1 (reshuffle rule); resets the play flag. */
 export function beginTurn(state: GameState, rng: Rng): GameState {
   if (state.players.length === 0) return state;
   const p = state.players[state.current];
   let { deck, discard } = p;
-  const log = [...state.log];
+  const events: GameEvent[] = [];
   if (deck.length === 0 && discard.length > 0) {
     deck = shuffle(discard, rng);
     discard = [];
-    log.push({ turn: state.turn, playerId: p.id, type: "reshuffle" });
+    events.push({ turn: state.turn, playerId: p.id, type: "reshuffle" });
   }
   let hand = p.hand;
   if (deck.length > 0) {
-    log.push({ turn: state.turn, playerId: p.id, type: "draw", cardId: deck[0] });
+    events.push({ turn: state.turn, playerId: p.id, type: "draw", cardId: deck[0] });
     hand = [...hand, deck[0]];
     deck = deck.slice(1);
   }
@@ -195,7 +213,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   const players = state.players.map((pl, i) =>
     i === state.current ? updated : pl,
   );
-  return { ...state, players, log, playedThisTurn: false };
+  return { ...state, players, log: appendEvents(state, events), playedThisTurn: false };
 }
 
 const stripTribute = (p: PlayerState): PlayerState => ({
@@ -485,7 +503,7 @@ export function playCard(
   return {
     ...state, phase, players, relations, overlords, incorporated,
     alliances, diplomacyBoost, bodyguards, omens, rulers, seenThisRun,
-    log: [...state.log, ...events], playedThisTurn: true,
+    log: appendEvents(state, events), playedThisTurn: true,
   };
 }
 
@@ -509,10 +527,9 @@ export function discardCard(state: GameState, cardIndex: number): GameState {
   return {
     ...state,
     players,
-    log: [
-      ...state.log,
+    log: appendEvents(state, [
       { turn: state.turn, playerId: p.id, type: "discard", cardId },
-    ],
+    ]),
     playedThisTurn: true,
   };
 }
