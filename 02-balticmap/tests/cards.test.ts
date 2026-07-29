@@ -111,11 +111,22 @@ describe("cards", () => {
     }
   });
 
-  it("guards against overflow: buildDeck stays at DECK_SIZE even if DEFAULT_DECK were ever shorter", () => {
-    // buildDeck() pads with grow-crops if DEFAULT_DECK is ever shorter than
-    // DECK_SIZE. DEFAULT_DECK is currently exactly DECK_SIZE long, so this
-    // guards a preserved invariant rather than an assumption.
-    expect(buildDeck().length).toBe(DECK_SIZE);
+  it("pads with grow-crops if DEFAULT_DECK is ever shorter than DECK_SIZE", () => {
+    // DEFAULT_DECK is currently exactly DECK_SIZE long, so buildDeck()'s
+    // padding branch (Math.max(0, DECK_SIZE - DEFAULT_DECK.length)) is never
+    // exercised by calling buildDeck() as-is. Force it by shortening the
+    // live array - DEFAULT_DECK is a plain mutable string[] - then restore it
+    // in `finally` so no other test observes the mutation.
+    const removed = DEFAULT_DECK.pop()!;
+    try {
+      expect(DEFAULT_DECK).toHaveLength(DECK_SIZE - 1);
+      const deck = buildDeck();
+      expect(deck).toHaveLength(DECK_SIZE);
+      expect(deck).toEqual([...DEFAULT_DECK, "grow-crops"]);
+    } finally {
+      DEFAULT_DECK.push(removed);
+    }
+    expect(DEFAULT_DECK).toHaveLength(DECK_SIZE);
   });
 
   it("shuffle returns a permutation and leaves the input untouched", () => {

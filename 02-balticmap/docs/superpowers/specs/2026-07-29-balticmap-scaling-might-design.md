@@ -592,13 +592,39 @@ their existing game counts and turn caps:
   (measured 0.62); `medianFirstSubjugation` moves `[3, 9]` (measured 6.00) ->
   `[3, 8]` (measured 5.00).
 
-Both moves are in the same direction: a deck that traded Extended diplomacy
-(which only ever matters alongside Alliance) for Favourable omens (which
-sharpens whichever Raid or Shrewd marriage follows it) subjugates the human
-seat somewhat less often and somewhat sooner. `new-player-potatoes` and
-`potatoes-unarmed-enemies` were re-run and did not move - both use a potato
-deck for the human seat and an AI deck untouched by this change, exactly as
-expected, so their bands are unchanged.
+These moves are not all in the same direction for the player, and reading
+them as "the scenarios got easier" would be wrong. Of the three metrics that
+moved, two are better for the player and one is not:
+
+- `subjugatedShare` (0.77 -> 0.60 for `flailing-full-deck`, 0.81 -> 0.62 for
+  `competent-full-deck`) and `defeatShare` (0.69 -> 0.48) both fall: the
+  human is subjugated, and defeated, less often. Better for the player.
+- `medianFirstSubjugation` also falls (12.50 -> 6.00, and 6.00 -> 5.00), but
+  a lower first-subjugation turn is worse for the player, not better: among
+  the games where the human still ends up subjugated, it now happens sooner.
+
+This is a selection effect, the same shape as the `median stall` one already
+noted above for the world runs, and it is worth being explicit about rather
+than leaving the reader to reconcile three numbers that look like they
+disagree. A deck that trades Extended diplomacy (which only ever matters
+alongside Alliance) for Favourable omens (which sharpens whichever Raid or
+Shrewd marriage follows it) makes the human's own deck a little better at
+holding off subjugation altogether - hence `subjugatedShare` and
+`defeatShare` both falling. But the games the human now survives are
+disproportionately the ones where subjugation, if it happened at all, would
+have come late; those games drop out of the `medianFirstSubjugation`
+population entirely rather than pulling its median up. What is left is
+dominated by the early, hard-to-prevent subjugations that were always going
+to happen regardless of the human's deck, so the median of the surviving
+population falls even though no single game's subjugation moved earlier.
+Read `subjugatedShare`/`defeatShare` and `medianFirstSubjugation` together:
+the first two say the human's position improved; the third says the
+subjugations that still happen are concentrated earlier, which is consistent
+with an improvement, not a contradiction of one.
+
+`new-player-potatoes` and `potatoes-unarmed-enemies` were re-run and did not
+move - both use a potato deck for the human seat and an AI deck untouched by
+this change, exactly as expected, so their bands are unchanged.
 
 **Open balance question, not addressed here: Fortify is the main stalling
 card.** Adding Fortify alone to the `conquest-scaled` deck (in place of one
