@@ -1,0 +1,57 @@
+{
+  "estonians": [
+    "Lembitu", "Meelis", "Meeme", "Unnepewe", "Vootele", "Tabelinus",
+    "Maniwalde", "Kyriawanus", "Vesse", "Asso", "Ylle", "Imaut",
+    "Kulle", "Ahti", "Ranno", "Vardo", "Sange", "Rimeke", "Ilo", "Uexo"
+  ],
+  "livs": [
+    "Kaupo", "Ako", "Anno", "Dabrelis", "Uldevene", "Ninnus", "Wado",
+    "Kyrian", "Asse", "Mano", "Ilge", "Vesike", "Tolle", "Sadegerde",
+    "Viezo", "Manegint"
+  ],
+  "curonians": [
+    "Lamekins", "Butis", "Kalis", "Sareika", "Vane", "Gribas", "Rimtis",
+    "Naigis", "Dovils", "Skaistis", "Talvis", "Ventis", "Kursis", "Auksis",
+    "Milgis", "Zebris"
+  ],
+  "semigallians": [
+    "Viestards", "Nameisis", "Grunda", "Schabe", "Duvis", "Miltis",
+    "Gedrimas", "Zvaigne", "Ritis", "Aunis", "Vairis", "Sidrabs",
+    "Melnis", "Dobelis", "Tervis", "Zalgis"
+  ],
+  "selonians": [
+    "Sabis", "Ausis", "Medinis", "Ulis", "Rugis", "Karis", "Salis",
+    "Kalnis", "Egle", "Vilkis", "Berzis", "Purvis", "Sermukis", "Lauks",
+    "Skalbis", "Dziris"
+  ],
+  "latgalians": [
+    "Talivaldis", "Rameke", "Varibule", "Drivinalde", "Visvaldis", "Vetseke",
+    "Russin", "Waridote", "Paike", "Gerceslav", "Nameise", "Dausis",
+    "Talis", "Vestis", "Rutis", "Ludzis"
+  ],
+  "samogitians": [
+    "Vykintas", "Erdivilas", "Bulionis", "Vismantas", "Kintibutas",
+    "Vembutas", "Butautas", "Vyzeikis", "Visligas", "Kitenis", "Plikis",
+    "Ligeikis", "Sirvydas", "Sprudeika", "Daujotas", "Vilikaila"
+  ],
+  "aukstaitians": [
+    "Mindaugas", "Dausprungas", "Zivinbudas", "Jotvirdas", "Tautvilas",
+    "Gedvilas", "Lengvenis", "Skirmantas", "Rimgaudas", "Butvydas",
+    "Narimantas", "Svirbutas", "Ruskys", "Gineika", "Daumantas", "Aisvydas"
+  ],
+  "yotvingians": [
+    "Komatas", "Skomantas", "Skurdas", "Jundilas", "Steikintas", "Minigedas",
+    "Ancikas", "Vaisvilkas", "Sudimantas", "Girdenis", "Kantibutas",
+    "Nemunas", "Rastis", "Aleknas", "Ginvilas", "Sirvis"
+  ],
+  "prussians": [
+    "Diwanus", "Glappo", "Auktumas", "Sklodo", "Warpoda", "Herkus",
+    "Girmantas", "Kandeimas", "Milgedas", "Samylas", "Pipinas", "Bagatas",
+    "Linka", "Doblys", "Tussis", "Naudris"
+  ],
+  "generic": [
+    "Aldis", "Bardis", "Cintis", "Dovis", "Eimis", "Galvis", "Hercis",
+    "Ilgis", "Jonis", "Kandis", "Laimis", "Mendis", "Nartis", "Ordis",
+    "Puris", "Rimis", "Saulis", "Tumis", "Ulvis", "Verdis"
+  ]
+}
