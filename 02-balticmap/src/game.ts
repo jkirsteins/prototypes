@@ -1,9 +1,9 @@
 import { buildDeck, buildAiDeck, shuffle, CARDS, DECK_SIZE, type Rng } from "./cards";
 import {
-  allianceKey, bumpMight, bumpMightAll, bumpStatus, levelStatus, realmOf,
+  allianceKey, bumpMight, bumpMightAll, bumpMightBy, bumpStatus, levelStatus, realmOf,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
-import { playableSet, validTargetsFor, type RulesView } from "./playability";
+import { borderStrength, playableSet, validTargetsFor, type RulesView } from "./playability";
 
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
@@ -28,6 +28,12 @@ export type GamePhase =
 
 export type TributeTrack = "status" | "might";
 
+/** How Raid converts border into Might. `"border"` is the shipped rule;
+ *  `"flat"` is the pre-2026-07-29 +1 and exists only so the simulation can
+ *  measure what the change bought. Removed once that measurement is recorded
+ *  in the 2026-07-29 scaling-might spec. */
+export type RaidRule = "border" | "flat";
+
 export interface PlayerState {
   id: number; // 1 = human, 2..N = AI
   factionId: string;
@@ -50,6 +56,7 @@ export interface GameState {
   alliances: Record<string, number>; // sorted-pair key -> expiry turn
   diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
+  raidRule: RaidRule;
   humanDeck: string[];
   seenThisRun: string[]; // non-basic enemy cards witnessed (learning loop)
   log: GameEvent[];
@@ -93,6 +100,7 @@ export function newGame(
     alliances: {},
     diplomacyBoost: [],
     bodyguards: [],
+    raidRule: "border",
     adjacency:
       adjacency ??
       Object.fromEntries(
@@ -253,7 +261,10 @@ export function playCard(
   };
 
   if (cardId === "raid" && targetId !== undefined) {
-    relations = bumpMight(relations, p.factionId, targetId);
+    const gain = state.raidRule === "flat"
+      ? 1
+      : borderStrength(viewOf(state), p.factionId, targetId);
+    relations = bumpMightBy(relations, p.factionId, targetId, gain);
   } else if (cardId === "shrewd-marriage" && targetId !== undefined) {
     relations = bumpStatus(relations, p.factionId, targetId);
   } else if (cardId === "fortify") {

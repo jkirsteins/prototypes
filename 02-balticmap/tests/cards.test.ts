@@ -31,7 +31,7 @@ describe("cards", () => {
     );
     expectProps(
       "raid", "Raid", true, 1, true, false,
-      "Gain +1 Might over one faction in reach of your realm.",
+      "Gain Might over one faction in reach, equal to your lands on their border.",
     );
     expectProps(
       "shrewd-marriage", "Shrewd marriage", true, 1, true, false,

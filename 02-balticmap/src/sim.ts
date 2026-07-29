@@ -4,7 +4,7 @@ import { factionAdjacencyOf } from "./adjacency";
 import { buildAiDeck, buildDeck, CARDS, DECK_SIZE, type Rng } from "./cards";
 import {
   advance, chooseDeck, discardCard, newGame, pickFaction, playCard, startGame,
-  viewOf, type GameState, type TributeTrack,
+  viewOf, type GameState, type RaidRule, type TributeTrack,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
 import { aiTakeTurn } from "./ai";
@@ -129,6 +129,7 @@ export interface RunOptions {
   turnCap: number;
   humanDeck?: string[];
   humanTurn?: HumanTurn;
+  raidRule?: RaidRule;
 }
 
 /** Plays one complete headless game. Throws rather than spinning if a turn
@@ -145,6 +146,9 @@ export function runGame(opts: RunOptions): GameSummary {
     rng,
     opts.aiDeckFor ?? DECK_ARMS.shipped,
   );
+  if (opts.raidRule !== undefined) {
+    state = { ...state, raidRule: opts.raidRule };
+  }
   const humanTurn = opts.humanTurn ?? naiveHumanTurn;
   while (state.phase === "playing" && state.turn <= turnCap) {
     const actor = state.players[state.current].factionId;

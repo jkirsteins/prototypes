@@ -27,6 +27,7 @@ export interface Scenario {
   firstSeed: number;
   turnCap: number;
   expect: Expectation;
+  raidRule?: "border" | "flat";
 }
 
 /** Add a scenario here and it is checked by `npm run simulate:check` and by
@@ -62,6 +63,7 @@ export const SCENARIOS: Scenario[] = [
     games: 52,
     firstSeed: 1,
     turnCap: 80,
+    raidRule: "flat",
     expect: {
       subjugatedShare: [0.9, 1],
       medianFirstSubjugation: [10, 24],
@@ -138,6 +140,7 @@ export function runScenario(s: Scenario): ScenarioResult {
       humanTurn,
       humanDeck: buildHumanDeck(),
       turnCap: s.turnCap,
+      ...(s.raidRule !== undefined ? { raidRule: s.raidRule } : {}),
     }),
   );
   const stats = aggregate(s.id, games);

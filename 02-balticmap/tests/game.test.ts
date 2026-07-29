@@ -648,6 +648,55 @@ describe("diplomacy cards", () => {
   });
 });
 
+describe("raid gain", () => {
+  it("grants one Might for a single bordering land", () => {
+    // beta is the human; beta borders alpha and gamma.
+    let g = playingState(LINE_ADJ);
+    g = withHand(g, 0, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    expect(getRel(g.relations, "beta", "alpha").might).toBe(1);
+  });
+
+  it("grants one Might per bordering land of the actor's realm", () => {
+    // Give beta gamma as a vassal. beta borders alpha; gamma does not.
+    // Now make a map where both do.
+    const ADJ = {
+      alpha: ["beta", "gamma"],
+      beta: ["alpha", "gamma"],
+      gamma: ["alpha", "beta", "delta"],
+      delta: ["gamma"],
+    };
+    let g = playingState(ADJ);
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    expect(getRel(g.relations, "beta", "alpha").might).toBe(2);
+  });
+
+  it("grants a flat one under the flat rule", () => {
+    const ADJ = {
+      alpha: ["beta", "gamma"],
+      beta: ["alpha", "gamma"],
+      gamma: ["alpha", "beta", "delta"],
+      delta: ["gamma"],
+    };
+    let g = playingState(ADJ);
+    g = { ...g, raidRule: "flat", overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    expect(getRel(g.relations, "beta", "alpha").might).toBe(1);
+  });
+
+  it("defaults a real game to the border rule", () => {
+    expect(newGame(FACTIONS).raidRule).toBe("border");
+  });
+
+  it("no longer promises a flat +1 in its rules text", () => {
+    expect(CARDS["raid"].text).not.toContain("+1 Might over one faction");
+    expect(CARDS["raid"].text).toContain("border");
+  });
+});
+
 describe("bodyguard", () => {
   it("play appends the actor faction to bodyguards", () => {
     let g = playingState(LINE_ADJ);
