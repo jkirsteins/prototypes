@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   getRel, bumpStatus, bumpMight, leadsOf, bumpMightAll, realmOf,
-  levelStatus, allianceKey, allianceActive,
+  levelStatus, allianceKey, allianceActive, bumpMightBy, bumpStatusBy, bumpMightAllBy,
   type Relations,
 } from "../src/relations";
 
@@ -92,5 +92,44 @@ describe("alliance helpers", () => {
     expect(allianceActive({ alliances, turn: 4 }, "beta", "alpha")).toBe(true); // symmetric
     expect(allianceActive({ alliances, turn: 5 }, "alpha", "beta")).toBe(false);
     expect(allianceActive({ alliances: {}, turn: 1 }, "alpha", "beta")).toBe(false);
+  });
+});
+
+describe("amount-taking bumps", () => {
+  it("adds the given amount in one step", () => {
+    const rel = bumpMightBy({}, "alpha", "beta", 3);
+    expect(getRel(rel, "alpha", "beta").might).toBe(3);
+    expect(getRel(rel, "alpha", "beta").status).toBe(0);
+  });
+
+  it("accumulates onto an existing counter", () => {
+    const rel = bumpMightBy(bumpMight({}, "alpha", "beta"), "alpha", "beta", 2);
+    expect(getRel(rel, "alpha", "beta").might).toBe(3);
+  });
+
+  it("bumps status the same way, leaving might alone", () => {
+    const rel = bumpStatusBy({}, "alpha", "beta", 4);
+    expect(getRel(rel, "alpha", "beta")).toEqual({ status: 4, might: 0 });
+  });
+
+  it("is a no-op for zero, rather than writing an empty entry", () => {
+    // A zero amount must not materialise a key: `getRel` treats a missing key
+    // as 0/0, and a spurious entry would make two equal boards compare unequal
+    // in the simulation's reproducibility check.
+    expect(bumpMightBy({}, "alpha", "beta", 0)).toEqual({});
+  });
+
+  it("bumps every other faction by the amount", () => {
+    const rel = bumpMightAllBy({}, "alpha", ["beta", "gamma"], 2);
+    expect(getRel(rel, "alpha", "beta").might).toBe(2);
+    expect(getRel(rel, "alpha", "gamma").might).toBe(2);
+  });
+
+  it("keeps the +1 helpers behaving exactly as before", () => {
+    expect(bumpMight({}, "alpha", "beta")).toEqual(bumpMightBy({}, "alpha", "beta", 1));
+    expect(bumpStatus({}, "alpha", "beta")).toEqual(bumpStatusBy({}, "alpha", "beta", 1));
+    expect(bumpMightAll({}, "alpha", ["beta"])).toEqual(
+      bumpMightAllBy({}, "alpha", ["beta"], 1),
+    );
   });
 });

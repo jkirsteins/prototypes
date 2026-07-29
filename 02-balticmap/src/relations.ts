@@ -22,22 +22,40 @@ export function getRel(rel: Relations, actor: string, target: string): Relation 
   return rel[relKey(actor, target)] ?? { status: 0, might: 0 };
 }
 
-function bump(
+function bumpBy(
   rel: Relations,
   actor: string,
   target: string,
   field: "status" | "might",
+  amount: number,
 ): Relations {
+  // A zero amount must not materialise a key; a missing key already means 0.
+  if (amount <= 0) return rel;
   const cur = getRel(rel, actor, target);
-  return { ...rel, [relKey(actor, target)]: { ...cur, [field]: cur[field] + 1 } };
+  return {
+    ...rel,
+    [relKey(actor, target)]: { ...cur, [field]: cur[field] + amount },
+  };
+}
+
+export function bumpStatusBy(
+  rel: Relations, actor: string, target: string, amount: number,
+): Relations {
+  return bumpBy(rel, actor, target, "status", amount);
+}
+
+export function bumpMightBy(
+  rel: Relations, actor: string, target: string, amount: number,
+): Relations {
+  return bumpBy(rel, actor, target, "might", amount);
 }
 
 export function bumpStatus(rel: Relations, actor: string, target: string): Relations {
-  return bump(rel, actor, target, "status");
+  return bumpStatusBy(rel, actor, target, 1);
 }
 
 export function bumpMight(rel: Relations, actor: string, target: string): Relations {
-  return bump(rel, actor, target, "might");
+  return bumpMightBy(rel, actor, target, 1);
 }
 
 /** Per-track margins of A over B; positive = A is ahead on that track. */
@@ -51,15 +69,19 @@ export function leadsOf(
   return { status: ab.status - ba.status, might: ab.might - ba.might };
 }
 
-/** +1 might from actor toward every id in others (the Fortify effect). */
-export function bumpMightAll(
-  rel: Relations,
-  actor: string,
-  others: string[],
+/** +amount might from actor toward every id in others (the Fortify effect). */
+export function bumpMightAllBy(
+  rel: Relations, actor: string, others: string[], amount: number,
 ): Relations {
   let out = rel;
-  for (const target of others) out = bumpMight(out, actor, target);
+  for (const target of others) out = bumpMightBy(out, actor, target, amount);
   return out;
+}
+
+export function bumpMightAll(
+  rel: Relations, actor: string, others: string[],
+): Relations {
+  return bumpMightAllBy(rel, actor, others, 1);
 }
 
 /** The faction ids in F's realm: itself, its vassals, its incorporated lands. */
