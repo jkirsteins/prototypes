@@ -277,7 +277,9 @@ describe("hoverRelationLines", () => {
     // Tone keeps meaning who leads, not whether the bar is cleared - the same
     // classes drive the map badges.
     const rel = bumpMight({}, "actor", "target");
-    expect(hoverRelationLines(rel, "actor", "target", "Independent", 4)).toEqual([
+    expect(
+      hoverRelationLines(rel, "actor", "target", "Independent", { yours: 4, theirs: 6 }),
+    ).toEqual([
       { text: "Might: +1/4 (you lead)", tone: "good" },
       { text: "Status: 0/4", tone: "neutral" },
       { text: "Subjugate needs a lead of 4 - their realm has 2 lands.", tone: "neutral" },
@@ -285,40 +287,52 @@ describe("hoverRelationLines", () => {
     ]);
   });
 
+  it("measures a track they lead against their bar, not yours", () => {
+    // The whole bug: their bar counts YOUR realm, so it is a different number.
+    const rel = bumpMight({}, "target", "actor");
+    expect(
+      hoverRelationLines(rel, "actor", "target", "Independent", { yours: 4, theirs: 20 }),
+    ).toEqual([
+      { text: "Might: -1/20 (they lead)", tone: "bad" },
+      { text: "Status: 0/4", tone: "neutral" },
+      { text: "Subjugate needs a lead of 4 - their realm has 2 lands.", tone: "neutral" },
+      {
+        text: "They need a lead of 20 to subjugate you - your realm has 10 lands.",
+        tone: "neutral",
+      },
+      { text: "Independent" },
+    ]);
+  });
+
   it("says one land in the singular", () => {
-    const lines = hoverRelationLines({}, "actor", "target", "Independent", 2);
+    const lines = hoverRelationLines({}, "actor", "target", "Independent", {
+      yours: 2,
+      theirs: null,
+    });
     expect(lines[2].text).toBe("Subjugate needs a lead of 2 - their realm has 1 land.");
   });
 
-  it("falls back to the plain lines when no requirement applies", () => {
+  it("omits their sentence when they lead nothing", () => {
     const rel = bumpMight({}, "actor", "target");
-    expect(hoverRelationLines(rel, "actor", "target", "Your vassal", null)).toEqual([
-      { text: "Might: +1 (you lead)", tone: "good" },
-      { text: "Status: even", tone: "neutral" },
-      { text: "Your vassal" },
-    ]);
+    const lines = hoverRelationLines(rel, "actor", "target", "Independent", {
+      yours: 4,
+      theirs: 20,
+    });
+    expect(lines.some((l) => l.text.startsWith("They need"))).toBe(false);
   });
 
-  it("shows a Raid against a vassal without changing the overlord hover", () => {
-    const beforeRaid: Relations = bumpMight({}, "overlord", "actor");
-    const overlordBefore = hoverRelationLines(
-      beforeRaid, "actor", "overlord", "Independent",
-    );
-    const afterRaid = bumpMight(beforeRaid, "actor", "vassal");
-
-    expect(hoverRelationLines(afterRaid, "actor", "vassal", "Your vassal")).toEqual([
-      { text: "Might: +1 (you lead)", tone: "good" },
-      { text: "Status: even", tone: "neutral" },
-      { text: "Your vassal" },
-    ]);
-    expect(hoverRelationLines(afterRaid, "actor", "overlord", "Independent")).toEqual([
+  it("drops the denominator on a track whose leader could never subjugate", () => {
+    // Their bar is null: they are somebody's vassal and can subjugate no one.
+    const rel = bumpMight({}, "target", "actor");
+    const lines = hoverRelationLines(rel, "actor", "target", "Their vassal", {
+      yours: null,
+      theirs: null,
+    });
+    expect(lines).toEqual([
       { text: "Might: -1 (they lead)", tone: "bad" },
       { text: "Status: even", tone: "neutral" },
-      { text: "Independent" },
+      { text: "Their vassal" },
     ]);
-    expect(hoverRelationLines(
-      afterRaid, "actor", "overlord", "Independent",
-    )).toEqual(overlordBefore);
   });
 });
 

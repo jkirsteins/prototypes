@@ -356,7 +356,10 @@ function hoverLines(region: Region): TooltipLine[] {
     human.factionId,
     f,
     allegianceOf(region.faction, human.factionId),
-    subjugationRequirement(viewOf(game), human.factionId, f),
+    {
+      yours: subjugationRequirement(viewOf(game), human.factionId, f),
+      theirs: subjugationRequirement(viewOf(game), f, human.factionId),
+    },
   ));
   const pact = allianceLine(f, human.factionId);
   if (pact !== null) base.push({ text: pact, tone: "good" });

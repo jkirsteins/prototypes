@@ -105,25 +105,30 @@ export function barFor(
   return lead < 0 ? theirBar : yourBar;
 }
 
-/** `requiredLead` is the Subjugate bar from `subjugationRequirement`; pass
- *  null where Subjugate cannot apply and the lines read as they always did.
- *  Tone always says who leads, never whether the bar is cleared - the same
- *  classes color the map badges. */
+/** The two Subjugate bars for a hovered pair, from `subjugationRequirement`
+ *  called in both directions. Either is null where Subjugate could never
+ *  apply that way round, and the matching lines lose their denominator. */
+export interface SubjugationBars {
+  yours: number | null;
+  theirs: number | null;
+}
+
+/** Tone always says who leads, never whether a bar is cleared - the same
+ *  classes color the map badges. Each track is measured against the bar of
+ *  whichever side leads it, so a track they lead quotes their bar. */
 export function hoverRelationLines(
   relations: Relations,
   humanFactionId: string,
   hoveredFactionId: string,
   relationship: string,
-  requiredLead: number | null = null,
+  bars: SubjugationBars = { yours: null, theirs: null },
 ): TooltipLine[] {
   const tone = (n: number) => (n > 0 ? "good" : n < 0 ? "bad" : "neutral");
   const delta = (label: string, n: number): TooltipLine => {
-    if (requiredLead !== null) {
+    const bar = barFor(n, bars.yours, bars.theirs);
+    if (bar !== null) {
       const suffix = n > 0 ? " (you lead)" : n < 0 ? " (they lead)" : "";
-      return {
-        text: `${label}: ${formatLead("", n, requiredLead)}${suffix}`,
-        tone: tone(n),
-      };
+      return { text: `${label}: ${formatLead("", n, bar)}${suffix}`, tone: tone(n) };
     }
     return n === 0
       ? { text: `${label}: even`, tone: "neutral" }
@@ -132,18 +137,30 @@ export function hoverRelationLines(
           tone: tone(n),
         };
   };
+  const landsIn = (bar: number) => bar / SUBJUGATE_THRESHOLD;
+  const landsWord = (n: number) => `${n} ${n === 1 ? "land" : "lands"}`;
   const yours = leadsOf(relations, humanFactionId, hoveredFactionId);
-  const lands = requiredLead === null ? 0 : requiredLead / SUBJUGATE_THRESHOLD;
+  const theyLead = yours.might < 0 || yours.status < 0;
   return [
     delta("Might", yours.might),
     delta("Status", yours.status),
-    ...(requiredLead === null
+    ...(bars.yours === null
       ? []
       : [
           {
             text:
-              `Subjugate needs a lead of ${requiredLead} - their realm has ` +
-              `${lands} ${lands === 1 ? "land" : "lands"}.`,
+              `Subjugate needs a lead of ${bars.yours} - their realm has ` +
+              `${landsWord(landsIn(bars.yours))}.`,
+            tone: "neutral" as const,
+          },
+        ]),
+    ...(bars.theirs === null || !theyLead
+      ? []
+      : [
+          {
+            text:
+              `They need a lead of ${bars.theirs} to subjugate you - your realm has ` +
+              `${landsWord(landsIn(bars.theirs))}.`,
             tone: "neutral" as const,
           },
         ]),
