@@ -11,6 +11,7 @@
     "simulate": "vite-node scripts/simulate.ts",
     "simulate:check": "vite-node scripts/check-scenarios.ts",
     "simulate:world": "vite-node scripts/simulate-world.ts",
+    "capture:baseline": "vite-node scripts/capture-sim-baseline.ts",
     "prepare-data": "node scripts/prepare-data.mjs"
   },
   "devDependencies": {

@@ -23,7 +23,7 @@ describe("createDeckScreen", () => {
     expect(q(container, ".ds-unlock-section").classList.contains("hidden")).toBe(true);
     expect(container.querySelectorAll(".ds-deck .ds-card")).toHaveLength(1); // filler only
     expect(q(container, ".ds-counter").textContent).toBe(
-      "0 picked + 10 Grow potatoes = 10",
+      "0 picked + 10 Grow turnips = 10",
     );
     q(container, ".ds-start").click();
     expect(cb.onStart).toHaveBeenCalledWith([]);
@@ -62,12 +62,12 @@ describe("createDeckScreen", () => {
     ]);
     expect(toggles.some((c) => c.classList.contains("selected"))).toBe(false);
     expect(q(container, ".ds-counter").textContent).toBe(
-      "0 picked + 10 Grow potatoes = 10",
+      "0 picked + 10 Grow turnips = 10",
     );
     toggles[0].click(); // take raid
     expect(toggles[0].classList.contains("selected")).toBe(true);
     expect(q(container, ".ds-counter").textContent).toBe(
-      "1 picked + 9 Grow potatoes = 10",
+      "1 picked + 9 Grow turnips = 10",
     );
     q(container, ".ds-start").click();
     expect(cb.onStart).toHaveBeenCalledWith(["raid"]);
@@ -121,13 +121,13 @@ describe("createDeckScreen", () => {
     expect(toggles).toHaveLength(11);
     for (let i = 0; i < 10; i++) toggles[i].click();
     expect(q(container, ".ds-counter").textContent).toBe(
-      "10 picked + 0 Grow potatoes = 10",
+      "10 picked + 0 Grow turnips = 10",
     );
     expect(toggles[10].classList.contains("deck-full")).toBe(true);
     toggles[10].click(); // the deck is full: nothing changes
     expect(toggles[10].classList.contains("selected")).toBe(false);
     expect(q(container, ".ds-counter").textContent).toBe(
-      "10 picked + 0 Grow potatoes = 10",
+      "10 picked + 0 Grow turnips = 10",
     );
     toggles[0].click(); // free a slot: the last card becomes takeable again
     expect(toggles[10].classList.contains("deck-full")).toBe(false);

@@ -1,0 +1,122 @@
+[
+  {
+    "seed": 1,
+    "humanFaction": "lower-daugava-livs",
+    "outcome": "defeat",
+    "firstSubjugatedTurn": 4,
+    "firstOverlord": "jersikans",
+    "subjugatedCount": 2,
+    "releasedCount": 0,
+    "defeatTurn": 7,
+    "conqueror": "semigallian-confederacy",
+    "turns": 7
+  },
+  {
+    "seed": 2,
+    "humanFaction": "lower-daugava-livs",
+    "outcome": "defeat",
+    "firstSubjugatedTurn": 6,
+    "firstOverlord": "semigallian-confederacy",
+    "subjugatedCount": 6,
+    "releasedCount": 0,
+    "defeatTurn": 22,
+    "conqueror": "eastern-aukstaitian-confederacy",
+    "turns": 22
+  },
+  {
+    "seed": 3,
+    "humanFaction": "lower-daugava-livs",
+    "outcome": "defeat",
+    "firstSubjugatedTurn": 8,
+    "firstOverlord": "semigallian-confederacy",
+    "subjugatedCount": 2,
+    "releasedCount": 0,
+    "defeatTurn": 13,
+    "conqueror": "pilsotas-curonians",
+    "turns": 13
+  },
+  {
+    "seed": 4,
+    "humanFaction": "lower-daugava-livs",
+    "outcome": "defeat",
+    "firstSubjugatedTurn": 5,
+    "firstOverlord": "semigallian-confederacy",
+    "subjugatedCount": 1,
+    "releasedCount": 0,
+    "defeatTurn": 6,
+    "conqueror": "semigallian-confederacy",
+    "turns": 6
+  },
+  {
+    "seed": 5,
+    "humanFaction": "lower-daugava-livs",
+    "outcome": "defeat",
+    "firstSubjugatedTurn": 8,
+    "firstOverlord": "jersikans",
+    "subjugatedCount": 2,
+    "releasedCount": 0,
+    "defeatTurn": 20,
+    "conqueror": "semigallian-confederacy",
+    "turns": 20
+  },
+  {
+    "seed": 6,
+    "humanFaction": "lower-daugava-livs",
+    "outcome": "defeat",
+    "firstSubjugatedTurn": 6,
+    "firstOverlord": "jersikans",
+    "subjugatedCount": 1,
+    "releasedCount": 0,
+    "defeatTurn": 7,
+    "conqueror": "jersikans",
+    "turns": 7
+  },
+  {
+    "seed": 7,
+    "humanFaction": "lower-daugava-livs",
+    "outcome": "defeat",
+    "firstSubjugatedTurn": 5,
+    "firstOverlord": "selonians",
+    "subjugatedCount": 4,
+    "releasedCount": 0,
+    "defeatTurn": 17,
+    "conqueror": "samogitian-confederacy",
+    "turns": 17
+  },
+  {
+    "seed": 8,
+    "humanFaction": "lower-daugava-livs",
+    "outcome": "defeat",
+    "firstSubjugatedTurn": 3,
+    "firstOverlord": "semigallian-confederacy",
+    "subjugatedCount": 3,
+    "releasedCount": 0,
+    "defeatTurn": 8,
+    "conqueror": "jersikans",
+    "turns": 8
+  },
+  {
+    "seed": 9,
+    "humanFaction": "lower-daugava-livs",
+    "outcome": "defeat",
+    "firstSubjugatedTurn": 4,
+    "firstOverlord": "semigallian-confederacy",
+    "subjugatedCount": 8,
+    "releasedCount": 0,
+    "defeatTurn": 23,
+    "conqueror": "laanians",
+    "turns": 23
+  },
+  {
+    "seed": 10,
+    "humanFaction": "lower-daugava-livs",
+    "outcome": "defeat",
+    "firstSubjugatedTurn": 4,
+    "firstOverlord": "selonians",
+    "subjugatedCount": 1,
+    "releasedCount": 0,
+    "defeatTurn": 5,
+    "conqueror": "selonians",
+    "turns": 5
+  }
+]

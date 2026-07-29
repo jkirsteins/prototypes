@@ -74,7 +74,7 @@ export function createDeckScreen(
 
   function renderCounter(pickCount: number): void {
     counter.textContent =
-      `${pickCount} picked + ${DECK_SIZE - pickCount} Grow potatoes = ${DECK_SIZE}`;
+      `${pickCount} picked + ${DECK_SIZE - pickCount} ${cardName("grow-crops")} = ${DECK_SIZE}`;
   }
 
   return {
@@ -141,7 +141,7 @@ export function createDeckScreen(
           card.classList.toggle("selected", taken);
           card.classList.toggle("deck-full", atCap && !taken);
         }
-        filler.textContent = `Grow potatoes x${DECK_SIZE - selected.size}`;
+        filler.textContent = `${cardName("grow-crops")} x${DECK_SIZE - selected.size}`;
         renderCounter(selected.size);
       }
 
