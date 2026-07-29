@@ -223,15 +223,48 @@ number rather than as an undifferentiated "cap".
 ### Arms
 
 Arms differ by a rule as well as by a deck, which the current harness cannot
-express. `GameState` gains `raidRule: "border" | "flat"`, defaulting to
-`"border"` once this ships.
+express. `GameState` gains `raidRule: "border" | "flat"`.
 
-This is a feature flag in production state, which is a cost. It is accepted for
-the same reason the `unarmed` deck arm is kept permanently: this repository has
-already decided that the size of a past balance tradeoff should stay
-measurable rather than becoming a number in an old document. The alternative,
-measuring the baseline against the previous commit, leaves nothing to re-check
-when a later change moves the same numbers.
+This is a feature flag in production state, and a flag that silently defaults
+to the wrong value is worse than no flag. Three constraints make the value
+impossible to get wrong by accident, and a fourth removes the flag once it has
+done its job.
+
+**It is required, never optional.** `raidRule: "border" | "flat"` is declared
+without `?`, so every site that builds a `GameState` fails to compile until it
+states a value. There is no `?? "border"` anywhere; a fallback is exactly the
+construct that would let a missing value pass unnoticed.
+
+**It lives on `GameState` only, not on `RulesView`.** The rule is read in one
+place, the Raid branch of `playCard`. `borderStrength` itself is a pure
+function of the board and is not conditioned on it. That keeps `viewOf`
+unchanged and means the many tests that build a `RulesView` directly are
+untouched, so adding the flag now and deleting it later is a small diff both
+times.
+
+**Hover is never conditioned on it.** The tip always shows the border number,
+because the shipped game is always `"border"`. The `"flat"` value exists only
+inside simulation arms and never reaches a rendered frame.
+
+**A test pins the blast radius.** `newGame()` produces `"border"`, and
+`"flat"` appears in exactly one place in the source: the `conquest-flat` arm
+definition in `src/sim.ts`. If a second place ever sets it, that test fails.
+
+### Retiring the flag
+
+The flag is temporary. Once the Results section below is filled in and
+`"border"` is confirmed as the shipped rule, a final step deletes
+`GameState.raidRule`, the `"flat"` branch in `playCard`, and the
+`conquest-flat` arm and its scenario. This step is not optional and not
+deferred to a later change; it lands in the same branch, after the numbers are
+recorded.
+
+Accepted cost: the `conquest-flat` baseline stops being re-measurable and
+survives only as the numbers written in this document, unlike the `unarmed`
+deck arm which this repository keeps runnable. That is the right trade here
+because `unarmed` is a deck variation the harness already expresses naturally,
+whereas this one is a branch in the rules that every future reader of
+`playCard` would have to understand and step around.
 
 | Arm | Deck (10 cards) | Raid |
 | --- | --- | --- |
@@ -287,12 +320,16 @@ before the change lands, per the standing rule on bands.
 - Hover produces the right modifier line for each of the four cases, and Raid's
   target lines carry the gain.
 - Identical seeds reproduce identical `WorldSummary` values.
+- `newGame()` produces `raidRule: "border"`, and a source scan finds `"flat"`
+  in exactly one place, the `conquest-flat` arm. Both assertions are deleted
+  along with the flag in the retirement step.
 - Every existing test still passes, or its band is re-measured and the new
   number recorded here with a reason.
 
 ## Results
 
-To be filled in from the measured run before this ships. If `conquest-omens`
+To be filled in from the measured run before this ships, and before the
+`raidRule` flag is retired. If `conquest-omens`
 does not shorten games against `conquest-flat`, that is the finding and it is
 recorded here rather than papered over. Further dials to discuss in that case,
 none of them in scope now:
