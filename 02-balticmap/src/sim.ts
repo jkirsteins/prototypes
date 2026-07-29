@@ -406,3 +406,88 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     turnsSinceLastIncorporation: state.turn - (lastIncorporation?.turn ?? 0),
   };
 }
+
+/** Three lands worth of conquest and nothing else, so the measurement is about
+ *  the subjugation loop rather than about Alliance or Bodyguard. */
+export const CONQUEST_DECK: string[] = [
+  "raid", "subjugate", "incorporate",
+  ...Array.from({ length: DECK_SIZE - 3 }, () => "grow-crops"),
+];
+
+export const CONQUEST_OMENS_DECK: string[] = [
+  "raid", "subjugate", "incorporate", "favourable-omens",
+  ...Array.from({ length: DECK_SIZE - 4 }, () => "grow-crops"),
+];
+
+export interface WorldArm {
+  deck: string[];
+  raidRule: RaidRule;
+}
+
+/** `conquest-scaled` exists to attribute a result. Without it, a shorter game
+ *  under `conquest-omens` cannot be told apart from "the deck simply holds one
+ *  more non-potato card" - the same reasoning that put the `defensive` arm in
+ *  the 2026-07-29 new-player spec. */
+export const WORLD_ARMS: Record<string, WorldArm> = {
+  "conquest-flat": { deck: CONQUEST_DECK, raidRule: "flat" },
+  "conquest-scaled": { deck: CONQUEST_DECK, raidRule: "border" },
+  "conquest-omens": { deck: CONQUEST_OMENS_DECK, raidRule: "border" },
+};
+
+export interface WorldBatchOptions {
+  games: number;
+  turnCap: number;
+  firstSeed: number;
+  arm: string;
+}
+
+export function runWorldBatch(opts: WorldBatchOptions): WorldSummary[] {
+  const arm = WORLD_ARMS[opts.arm];
+  if (arm === undefined) {
+    throw new Error(
+      `unknown world arm "${opts.arm}"; known: ${Object.keys(WORLD_ARMS).join(", ")}`,
+    );
+  }
+  return Array.from({ length: opts.games }, (_, i) =>
+    runWorld({
+      seed: opts.firstSeed + i,
+      deck: arm.deck,
+      raidRule: arm.raidRule,
+      turnCap: opts.turnCap,
+    }),
+  );
+}
+
+export interface WorldStats {
+  arm: string;
+  games: number;
+  unifiedShare: number;
+  capShare: number;
+  /** Over resolved worlds only; null when none resolved. */
+  medianEndTurn: number | null;
+  meanEndTurn: number | null;
+  meanSubjugations: number | null;
+  meanIncorporations: number | null;
+  medianLargestRealm: number | null;
+  /** Median turns of silence before a capped world gave up. Null when every
+   *  world resolved. This is the stalemate number. */
+  medianStallTurns: number | null;
+}
+
+export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
+  const unified = games.filter((g) => g.outcome === "unified");
+  const capped = games.filter((g) => g.outcome === "cap");
+  const share = (n: number): number => (games.length === 0 ? 0 : n / games.length);
+  return {
+    arm,
+    games: games.length,
+    unifiedShare: share(unified.length),
+    capShare: share(capped.length),
+    medianEndTurn: median(unified.map((g) => g.endTurn)),
+    meanEndTurn: mean(unified.map((g) => g.endTurn)),
+    meanSubjugations: mean(games.map((g) => g.subjugations)),
+    meanIncorporations: mean(games.map((g) => g.incorporations)),
+    medianLargestRealm: median(games.map((g) => g.largestRealm)),
+    medianStallTurns: median(capped.map((g) => g.turnsSinceLastIncorporation)),
+  };
+}

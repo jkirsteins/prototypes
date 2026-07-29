@@ -10,9 +10,11 @@
     "test": "vitest run",
     "simulate": "vite-node scripts/simulate.ts",
     "simulate:check": "vite-node scripts/check-scenarios.ts",
+    "simulate:world": "vite-node scripts/simulate-world.ts",
     "prepare-data": "node scripts/prepare-data.mjs"
   },
   "devDependencies": {
+    "@types/node": "^26.1.2",
     "d3-geo": "^3.1.1",
     "happy-dom": "^15.11.0",
     "polygon-clipping": "^0.15.7",
