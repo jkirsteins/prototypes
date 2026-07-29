@@ -23,6 +23,7 @@ const FACTIONS = ["alpha", "beta", "gamma"];
 function setup(opts?: {
   canPlayCard?: (cardId: string) => boolean;
   targetExplanations?: (cardId: string) => TargetExplanation[];
+  cardModifiers?: (cardId: string) => string[];
   isDiscardMode?: () => boolean;
   lootInfo?: () => { id: string; isNew: boolean }[];
   onResetProgress?: () => void;
@@ -37,6 +38,7 @@ function setup(opts?: {
     ...(opts?.targetExplanations
       ? { targetExplanations: opts.targetExplanations }
       : {}),
+    ...(opts?.cardModifiers ? { cardModifiers: opts.cardModifiers } : {}),
     ...(opts?.isDiscardMode ? { isDiscardMode: opts.isDiscardMode } : {}),
     ...(opts?.lootInfo ? { lootInfo: opts.lootInfo } : {}),
     ...(opts?.onResetProgress ? { onResetProgress: opts.onResetProgress } : {}),
@@ -842,5 +844,16 @@ describe("notice details and hand tips", () => {
     expect(card.querySelector(".card-tip")!.textContent).toBe(
       "Gain +1 Might over every other living faction at once.",
     );
+  });
+
+  it("shows an active modifier above the card description", () => {
+    const { container, hud } = setup({
+      cardModifiers: () => ["Favourable omens: this card counts double."],
+    });
+    hud.update(withHand(playing(), 0, ["raid"]));
+    const tip = q(container, ".card-tip");
+    expect(tip.firstElementChild!.className).toBe("card-tip-modifier");
+    expect(tip.textContent).toContain("Favourable omens: this card counts double.");
+    expect(tip.textContent).toContain("on their border"); // description still there
   });
 });

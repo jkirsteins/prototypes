@@ -930,6 +930,17 @@ svg.map.dragging {
   pointer-events: auto;
 }
 
+.card-tip-modifier {
+  margin-bottom: 6px;
+  padding: 4px 6px;
+  border-left: 3px solid #8a6d2f;
+  border-radius: 3px;
+  background: #f6efdc;
+  color: #5a4620;
+  font-weight: 700;
+  text-align: left;
+}
+
 .card-tip-targets {
   margin-top: 8px;
   padding-top: 7px;

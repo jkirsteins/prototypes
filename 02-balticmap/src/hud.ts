@@ -12,6 +12,9 @@ export interface HudCallbacks {
   /** Optional gate for cards that need a valid target; default: playable. */
   canPlayCard?(cardId: string): boolean;
   targetExplanations?(cardId: string): TargetExplanation[];
+  /** Lines describing modifiers currently affecting this card, shown at the
+   *  top of its hover tip. */
+  cardModifiers?(cardId: string): string[];
   onTributeTrack?(track: "status" | "might"): void;
   isDiscardMode?(): boolean;
   /** Post-mortem loot row: unlockable cards seen this run. */
@@ -378,6 +381,12 @@ export function createHud(
       const tip = document.createElement("div");
       tip.className = "card-tip";
       tip.addEventListener("click", (event) => event.stopPropagation());
+      for (const text of cb.cardModifiers?.(cardId) ?? []) {
+        const modifier = document.createElement("div");
+        modifier.className = "card-tip-modifier";
+        modifier.textContent = text;
+        tip.appendChild(modifier);
+      }
       const description = document.createElement("div");
       description.className = "card-tip-description";
       description.textContent = CARDS[cardId]?.text ?? "";

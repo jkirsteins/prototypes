@@ -14,9 +14,9 @@ import { aiTakeTurn } from "./ai";
 import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
 import {
   playableSet, validTargetsFor, targetEligibilityFor, subjugationRequirement,
-  SUBJUGATE_THRESHOLD,
+  borderStrength, SUBJUGATE_THRESHOLD,
 } from "./playability";
-import { explainTargetEligibility } from "./target-explanations";
+import { cardModifierLines, explainTargetEligibility } from "./target-explanations";
 import { CARDS } from "./cards";
 import { createHud } from "./hud";
 import { createDeckScreen } from "./deck-screen";
@@ -563,10 +563,24 @@ const hud = createHud(
     targetExplanations(cardId) {
       const human = game.players[0];
       if (!human || !CARDS[cardId]?.targeted) return [];
+      const view = viewOf(game);
+      const doubled = game.omens.includes(human.factionId);
       return explainTargetEligibility(
-        targetEligibilityFor(viewOf(game), human.factionId, cardId),
+        targetEligibilityFor(view, human.factionId, cardId),
         (id) => factionById.get(id)?.name ?? id,
+        cardId === "raid"
+          ? (id) => {
+              const n = borderStrength(view, human.factionId, id);
+              return [
+                doubled ? `+${n * 2} Might (doubled)` : `+${n} Might`,
+              ];
+            }
+          : undefined,
       );
+    },
+    cardModifiers(cardId) {
+      const human = game.players[0];
+      return human ? cardModifierLines(game, human.factionId, cardId) : [];
     },
     isDiscardMode() {
       return game.players.length > 0 && discardMode();

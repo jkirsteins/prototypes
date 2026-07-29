@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { explainTargetEligibility } from "../src/target-explanations";
+import {
+  cardModifierLines,
+  explainTargetEligibility,
+} from "../src/target-explanations";
+import type { TargetEligibility } from "../src/playability";
 
 const nameOf = (id: string): string =>
   id.charAt(0).toUpperCase() + id.slice(1);
@@ -86,5 +90,67 @@ describe("explainTargetEligibility", () => {
       "You cannot target yourself.",
       "Not your vassal.",
     ]);
+  });
+
+  it("appends annotation lines to available targets only", () => {
+    const entries: TargetEligibility[] = [
+      { state: "available", factionId: "alpha" },
+      { state: "blocked", factionId: "beta", reasons: [{ code: "self" }] },
+    ];
+    const out = explainTargetEligibility(entries, (id) => id, () => ["+3 Might"]);
+    expect(out[0].lines).toEqual(["alpha", "Available.", "+3 Might"]);
+    expect(out[1].lines).not.toContain("+3 Might");
+  });
+
+  it("annotates nothing when no annotator is given", () => {
+    const entries: TargetEligibility[] = [{ state: "available", factionId: "alpha" }];
+    expect(explainTargetEligibility(entries, (id) => id)[0].lines)
+      .toEqual(["alpha", "Available."]);
+  });
+});
+
+describe("cardModifierLines", () => {
+  const none = { omens: [], diplomacyBoost: [], bodyguards: [] };
+
+  it("says nothing when no modifier is active", () => {
+    expect(cardModifierLines(none, "alpha", "raid")).toEqual([]);
+    expect(cardModifierLines(none, "alpha", "alliance")).toEqual([]);
+    expect(cardModifierLines(none, "alpha", "bodyguard")).toEqual([]);
+  });
+
+  it("marks a doublable card while a reading is held", () => {
+    const v = { ...none, omens: ["alpha"] };
+    expect(cardModifierLines(v, "alpha", "raid"))
+      .toEqual(["Favourable omens: this card counts double."]);
+    expect(cardModifierLines(v, "alpha", "pay-tribute"))
+      .toEqual(["Favourable omens: this card counts double."]);
+  });
+
+  it("leaves a card with nothing to double unmarked", () => {
+    const v = { ...none, omens: ["alpha"] };
+    expect(cardModifierLines(v, "alpha", "subjugate")).toEqual([]);
+  });
+
+  it("says a reading is already in hand", () => {
+    expect(cardModifierLines({ ...none, omens: ["alpha"] }, "alpha", "favourable-omens"))
+      .toEqual(["A reading is already in hand."]);
+  });
+
+  it("says an Alliance will run long", () => {
+    expect(
+      cardModifierLines({ ...none, diplomacyBoost: ["alpha"] }, "alpha", "alliance"),
+    ).toEqual(["Extended diplomacy: this Alliance lasts 10 turns."]);
+  });
+
+  it("says a bodyguard is already posted", () => {
+    expect(cardModifierLines({ ...none, bodyguards: ["alpha"] }, "alpha", "bodyguard"))
+      .toEqual(["A bodyguard is already posted."]);
+  });
+
+  it("ignores another faction's modifiers", () => {
+    const v = { omens: ["beta"], diplomacyBoost: ["beta"], bodyguards: ["beta"] };
+    expect(cardModifierLines(v, "alpha", "raid")).toEqual([]);
+    expect(cardModifierLines(v, "alpha", "alliance")).toEqual([]);
+    expect(cardModifierLines(v, "alpha", "bodyguard")).toEqual([]);
   });
 });
