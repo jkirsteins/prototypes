@@ -21,7 +21,7 @@ export interface GameEvent {
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
   track?: "status" | "might"; // tribute
   prevented?: boolean; // play: a nullified Assassinate ruler (Bodyguard)
-  doubled?: boolean; // play: a card whose numbers a reading doubled
+  doubled?: boolean; // play, reclaimed: a card whose numbers a reading doubled
 }
 
 export type GamePhase =
@@ -353,6 +353,7 @@ export function playCard(
     events.push({
       turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
       targetFactionId: p.factionId, overlordFactionId: former,
+      ...(doubled ? { doubled: true } : {}),
     });
   } else if (cardId === "pay-tribute") {
     const lord = overlords.get(p.factionId);

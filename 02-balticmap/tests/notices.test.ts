@@ -146,6 +146,19 @@ describe("buildNotices: single-event scenarios", () => {
     expect(n!.details).toContain("They gain 1 Might and 1 Status against you.");
   });
 
+  it("warns of a doubled gain when the revolting vassal held a reading", () => {
+    const n = oneNotice(
+      ev({
+        type: "reclaimed", playerId: 4, cardId: "revolt", doubled: true,
+        targetFactionId: "curonia", overlordFactionId: "livs",
+      }),
+    );
+    expect(n).not.toBeNull();
+    expect(n!.title).toBe("A Vassal Breaks Free");
+    expect(n!.details).toContain("They gain 2 Might and 2 Status against you.");
+    expect(n!.details).not.toContain("They gain 1 Might and 1 Status against you.");
+  });
+
   it("warns when a vassal reclaims independence, which costs you no standing", () => {
     const n = oneNotice(
       ev({

@@ -417,13 +417,29 @@ export const CONQUEST_OMENS_DECK: string[] = [
   ...Array.from({ length: DECK_SIZE - 4 }, () => "grow-crops"),
 ];
 
+/** Same three live cards as `conquest-scaled` plus a fourth card that never
+ *  does anything in this arm - Bodyguard only matters against Assassinate
+ *  ruler, which no deck in this deck holds. A control for Finding 2: if a
+ *  fourth card by itself (whether or not it does anything) sped worlds up,
+ *  this arm would move the same way `conquest-omens` does. It doesn't - see
+ *  the design doc's Finding 2 control table. */
+export const CONQUEST_INERT_DECK: string[] = [
+  "raid", "subjugate", "incorporate", "bodyguard",
+  ...Array.from({ length: DECK_SIZE - 4 }, () => "grow-crops"),
+];
+
 /** `conquest-scaled` exists to attribute a result. Without it, a shorter game
  *  under `conquest-omens` cannot be told apart from "the deck simply holds one
  *  more non-potato card" - the same reasoning that put the `defensive` arm in
- *  the 2026-07-29 new-player spec. */
+ *  the 2026-07-29 new-player spec. `conquest-inert` is a further control: it
+ *  swaps that fourth card for one that is strategically inert in this deck,
+ *  to show that card count alone (not what the card does) is not what moves
+ *  the result. It intentionally has no committed scenario band - it exists
+ *  for a reader to rerun, not to guard pacing. */
 export const WORLD_ARMS: Record<string, string[]> = {
   "conquest-scaled": CONQUEST_DECK,
   "conquest-omens": CONQUEST_OMENS_DECK,
+  "conquest-inert": CONQUEST_INERT_DECK,
 };
 
 export interface WorldBatchOptions {

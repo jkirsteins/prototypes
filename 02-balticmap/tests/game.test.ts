@@ -858,16 +858,29 @@ describe("any faction can win", () => {
     expect(g.log.some((e) => e.type === "unified")).toBe(false);
   });
 
-  it("has no seat to lose when humanSeat is null", () => {
-    let g: GameState = { ...playingState(LINE_ADJ), humanSeat: null, current: 1 };
-    g = {
-      ...g,
-      incorporated: { gamma: "alpha" },
-      overlords: new Map([["delta", "alpha"]]),
-    };
-    g = withHand(g, 1, ["incorporate"]);
-    g = playCard(g, 0, seededRng(1), "delta");
-    expect(g.log.at(-1)).toMatchObject({ type: "unified", overlordFactionId: "alpha" });
+  it("does not end the run when a seat falls and there is no human seat", () => {
+    // beta is seat 0 (players[0]) in playingState(). With humanSeat: null
+    // there is no human perspective to defeat, so gamma incorporating beta -
+    // ordinarily how the human loses, per the mirror case below - must not
+    // end the run: it is just one more faction's business.
+    let g: GameState = { ...playingState(LINE_ADJ), humanSeat: null };
+    g = { ...g, current: 2, overlords: new Map([["beta", "gamma"]]) };
+    g = withHand(g, 2, ["incorporate"]);
+    const after = playCard(g, 0, seededRng(1), "beta");
+    expect(after.incorporated).toEqual({ beta: "gamma" });
+    expect(after.phase).toBe("playing");
+    expect(after.log.some((e) => e.type === "defeat")).toBe(false);
+
+    // Mirror: the identical incorporation of beta, with the default
+    // humanSeat (0), does end the run in defeat.
+    let g2 = playingState(LINE_ADJ);
+    g2 = { ...g2, current: 2, overlords: new Map([["beta", "gamma"]]) };
+    g2 = withHand(g2, 2, ["incorporate"]);
+    const dead = playCard(g2, 0, seededRng(1), "beta");
+    expect(dead.phase).toBe("defeat");
+    expect(dead.log.at(-1)).toMatchObject({
+      type: "defeat", targetFactionId: "beta", overlordFactionId: "gamma",
+    });
   });
 
   it("defaults a real game to seat 0", () => {

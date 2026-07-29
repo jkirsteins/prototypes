@@ -316,8 +316,11 @@ function buildVassalPoachedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
 function buildVassalBrokeFreeNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
   const cardLabel = (e: GameEvent): string =>
     e.cardId === "revolt" ? "Revolt" : "Reclaim independence";
-  const penalty = (e: GameEvent): string[] =>
-    e.cardId === "revolt" ? ["They gain 1 Might and 1 Status against you."] : [];
+  const penalty = (e: GameEvent): string[] => {
+    if (e.cardId !== "revolt") return [];
+    const n = e.doubled ? 2 : 1;
+    return [`They gain ${n} Might and ${n} Status against you.`];
+  };
 
   if (events.length === 1) {
     const e = events[0];
@@ -419,8 +422,8 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   },
   victory: { kind: "silent", reason: "postmortem overlay covers it" },
   defeat: { kind: "silent", reason: "postmortem overlay covers it" },
-  // A later task owns the HUD copy for a rival unification; for now this only
-  // needs to satisfy Record<GameEventType, NoticeRule> so the build compiles.
+  // hud.ts renders unification in the activity log and the post-mortem
+  // overlay; no modal notice is needed on top of that.
   unified: { kind: "silent", reason: "postmortem overlay covers it" },
 };
 

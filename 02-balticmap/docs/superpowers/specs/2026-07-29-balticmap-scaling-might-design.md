@@ -175,6 +175,14 @@ reading, holds a doublable card, and is not a vassal.
   yields N.
 - After step 5 means a reading never delays a play that wins a subjugation
   outright.
+- Sitting after the defensive Fortify step (6) rather than before it is a
+  deliberate tradeoff, not an oversight: an AI holding Favourable omens,
+  Fortify, and facing a threat plays Fortify undoubled and keeps the reading
+  for the build step, forgoing +2 Might against every living faction. That
+  is accepted because Fortify's own defensive value does not depend on being
+  doubled, while the build step (7) is where a reading reliably shortens the
+  game (see Results below); ordering the reading first would trade a
+  measured win for an unmeasured one.
 
 ## Hover
 
@@ -366,12 +374,35 @@ turns since the last incorporation, over capped worlds only.
 2. **`conquest-omens` adds a further, smaller improvement beyond
    `conquest-scaled`.** Unified share rises again, 92.3% -> 96.2% (+3.9
    points), and median end turn falls again, 110.0 -> 70.0, another 40 turns
-   and a further 36% cut; mean end turn 115.7 -> 79.4. Because
-   `conquest-scaled` already isolates the border-scaling effect, and both
-   arms use the same explicit fixed deck rather than `buildAiDeck` (so
-   neither is touched by the deck-density effect in cause 1 below), this
-   second increment is attributable to Favourable omens and the AI's use of
-   it, not to a denser or more varied deck.
+   and a further 36% cut; mean end turn 115.7 -> 79.4. The two arms differ in
+   deck composition, not just in whether Favourable omens does something:
+   `CONQUEST_DECK` holds 3 live cards and 7 Grow potatoes, `CONQUEST_OMENS_DECK`
+   holds 4 live cards and 6 potatoes, so a naive reading could credit the
+   improvement to a denser or more varied deck rather than to the card
+   itself. A control experiment rules that out. Both arms draw from a
+   10-card deck, so Raid/Subjugate/Incorporate throughput per cycle is
+   identical regardless of what the fourth slot holds; a fourth card only
+   moves the result if it is played and does something. Swapping the fourth
+   card for one that is strategically inert in this deck - Bodyguard, which
+   only matters against Assassinate ruler, a card no arm here carries - at
+   the same 26 seeds and 300-turn cap:
+
+   | arm | unified | median end | mean end | capped |
+   | --- | --- | --- | --- | --- |
+   | `conquest-scaled` (3 live cards) | 92.3% | 110 | 115.7 | 7.7% |
+   | `conquest-omens` (4 live cards) | 96.2% | 70 | 79.4 | 3.8% |
+   | control, 4th card = `bodyguard` | 92.3% | 110 | 115.7 | 7.7% |
+   | control, 4th card = `extended-diplomacy` | 92.3% | 110 | 115.7 | 7.7% |
+
+   Both controls land exactly on `conquest-scaled` - adding a fourth card
+   that never fires changes nothing. So deck size and card count are not the
+   confound; the 40-turn improvement is Favourable omens and the AI's use of
+   it doing real work. The Bodyguard control is committed as the
+   `conquest-inert` arm in `WORLD_ARMS` (`src/sim.ts`) so a reader can rerun
+   it directly: `npm run simulate:world -- --games=26 --cap=300 --seed=1
+   --arms=conquest-scaled,conquest-omens,conquest-inert`. It carries no
+   committed scenario band - it is a control to rerun on demand, not pacing
+   to protect against regression.
 
 3. **The stall metrics fell, but `median stall` on its own is the wrong
    number to read.** The honest stall statistic is `capShare`: 42.3% ->
