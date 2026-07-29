@@ -5,6 +5,7 @@ import {
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import { borderStrength, playableSet, validTargetsFor, type RulesView } from "./playability";
+import { initialRulers, type Rulers } from "./rulers";
 
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
@@ -53,6 +54,12 @@ export interface GameState {
   diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
   omens: string[]; // faction ids holding an unspent Favourable omens reading
+  /** One ruler per faction id, total. Read through `rulerOf`, written only
+   *  by `replaceRuler`. */
+  rulers: Rulers;
+  /** Faction id -> ethnicity id, for the ruler name pools. Map-derived, like
+   *  `adjacency`; empty in tests, which then draw from the generic pool. */
+  ethnicities: Record<string, string>;
   /** Index of the seat treated as the player, or null for a world simulation
    *  with no privileged seat. Only the endings block and `advance` consult it;
    *  the rest of the app still addresses the human as index 0 / player id 1. */
@@ -87,6 +94,7 @@ export function viewOf(state: GameState): RulesView {
 export function newGame(
   factionIds: string[],
   adjacency?: Record<string, string[]>,
+  ethnicities: Record<string, string> = {},
 ): GameState {
   return {
     phase: "main-menu",
@@ -102,6 +110,8 @@ export function newGame(
     diplomacyBoost: [],
     bodyguards: [],
     omens: [],
+    ethnicities,
+    rulers: initialRulers(factionIds, ethnicities),
     humanSeat: 0,
     adjacency:
       adjacency ??

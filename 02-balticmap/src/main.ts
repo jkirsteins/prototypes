@@ -51,6 +51,9 @@ const regionById = new Map(data.regions.map((r) => [r.id, r]));
 const factionByRegion = new Map(data.regions.map((r) => [r.id, r.faction]));
 const regionByFaction = new Map(data.regions.map((r) => [r.faction, r.id]));
 const factionAdjacency = factionAdjacencyOf(data);
+const factionEthnicities: Record<string, string> = Object.fromEntries(
+  data.factions.map((f) => [f.id, f.ethnicity]),
+);
 
 const rng = Math.random;
 const { storage, storageIsPersistent } = ((): {
@@ -70,7 +73,9 @@ let meta: MetaRecord = loadMeta(storage);
 let unlockUsedThisGame = false;
 let seenMerged = false;
 let poolAtRunStart: string[] = meta.seenPool;
-let game: GameState = newGame(data.factions.map((f) => f.id), factionAdjacency);
+let game: GameState = newGame(
+  data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
+);
 let armed: number | null = null; // hand index of the armed targeted card
 let pendingTribute: number | null = null; // hand index awaiting a track choice
 let hoveredRegion: Region | null = null; // region under the cursor, for hover re-apply on refresh
@@ -507,7 +512,9 @@ const hud = createHud(
   {
     onNewGame() {
       bankSeen();
-      game = startGame(newGame(data.factions.map((f) => f.id), factionAdjacency));
+      game = startGame(newGame(
+        data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
+      ));
       cancelTribute();
       disarm();
       unlockUsedThisGame = false;

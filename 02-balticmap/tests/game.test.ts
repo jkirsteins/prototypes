@@ -9,6 +9,10 @@ import {
   allianceKey, bumpMight, bumpStatus, getRel, leadsOf, type Relations,
 } from "../src/relations";
 import { playableSet } from "../src/playability";
+import { rulerOf } from "../src/rulers";
+import pools from "../src/data/ruler-names.json";
+
+const POOLS = pools as Record<string, string[]>;
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -885,6 +889,28 @@ describe("any faction can win", () => {
 
   it("defaults a real game to seat 0", () => {
     expect(newGame(FACTIONS).humanSeat).toBe(0);
+  });
+});
+
+describe("rulers in state", () => {
+  it("seats a ruler for every faction from the first moment", () => {
+    const state = newGame(FACTIONS);
+    for (const id of state.factionIds) {
+      expect(rulerOf(state.rulers, id).since).toBe(1);
+    }
+  });
+
+  it("uses the ethnicity map when one is supplied", () => {
+    const state = newGame(["alpha"], undefined, { alpha: "livs" });
+    expect(state.ethnicities.alpha).toBe("livs");
+    expect(POOLS.livs).toContain(rulerOf(state.rulers, "alpha").name);
+  });
+
+  it("survives a faction pick with every ruler intact", () => {
+    const state = playingState();
+    for (const id of state.factionIds) {
+      expect(rulerOf(state.rulers, id).name.length).toBeGreaterThan(0);
+    }
   });
 });
 

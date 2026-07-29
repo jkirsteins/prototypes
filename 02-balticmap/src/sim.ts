@@ -17,6 +17,9 @@ const data = rawData as MapData;
 /** The map every simulated game is played on: the shipped 26 lands. */
 export const SIM_FACTION_IDS: string[] = data.factions.map((f) => f.id);
 export const SIM_ADJACENCY: Record<string, string[]> = factionAdjacencyOf(data);
+export const SIM_ETHNICITIES: Record<string, string> = Object.fromEntries(
+  data.factions.map((f) => [f.id, f.ethnicity]),
+);
 
 /** A deck of nothing but Grow potatoes - the new player's opening mistake. */
 export function potatoDeck(): string[] {
@@ -148,7 +151,7 @@ export function runGame(opts: RunOptions): GameSummary {
   const rng = seededRng(seed);
   let state = pickFaction(
     chooseDeck(
-      startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY)),
+      startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES)),
       opts.humanDeck ?? potatoDeck(),
     ),
     humanFaction,
@@ -369,7 +372,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
   }
   const rng = seededRng(opts.seed);
   const seeded: GameState = {
-    ...newGame(SIM_FACTION_IDS, SIM_ADJACENCY),
+    ...newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES),
     humanSeat: null,
   };
   let state = pickFaction(
