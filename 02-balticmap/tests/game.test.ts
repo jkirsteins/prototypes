@@ -369,7 +369,15 @@ describe("card effects", () => {
   });
 
   it("tribute feeds the overlord and its incorporated lands on the chosen track", () => {
-    let g = playingState(LINE_ADJ);
+    // A 4-faction roster makes gamma's realm here (itself + vassal beta +
+    // incorporated delta) exactly the victory size, which would end the game
+    // on this unrelated play. Widen the roster so 3 stays under threshold.
+    const factions = [...FACTIONS, "epsilon", "zeta"];
+    let g = pickFaction(
+      chooseDeck(startGame(newGame(factions)), buildDeck()),
+      "beta",
+      seededRng(1),
+    );
     g = {
       ...g,
       overlords: new Map([["beta", "gamma"]]),
@@ -834,5 +842,79 @@ describe("favourable omens", () => {
     const g = armed(playingState(LINE_ADJ));
     const set = playableSet(viewOf(g), "beta", ["favourable-omens"]);
     expect(set.mode).toBe("discard");
+  });
+});
+
+describe("any faction can win", () => {
+  // FACTIONS has 4 members, so victoryRealmSize is ceil(0.55 * 4) = 3.
+  it("ends the game when a rival reaches victory size", () => {
+    let g = playingState(LINE_ADJ);
+    // alpha already holds gamma; incorporating delta makes its realm 3.
+    g = {
+      ...g,
+      current: 1, // alpha's seat
+      incorporated: { gamma: "alpha" },
+      overlords: new Map([["delta", "alpha"]]),
+    };
+    g = withHand(g, 1, ["incorporate"]);
+    g = playCard(g, 0, seededRng(1), "delta");
+    expect(g.phase).toBe("defeat");
+    expect(g.log.at(-1)).toMatchObject({ type: "unified", overlordFactionId: "alpha" });
+  });
+
+  it("still calls the human's own unification a victory", () => {
+    let g = playingState(LINE_ADJ);
+    g = {
+      ...g,
+      incorporated: { alpha: "beta" },
+      overlords: new Map([["gamma", "beta"]]),
+    };
+    g = withHand(g, 0, ["incorporate"]);
+    g = playCard(g, 0, seededRng(1), "gamma");
+    expect(g.phase).toBe("victory");
+    expect(g.log.some((e) => e.type === "unified")).toBe(false);
+  });
+
+  it("has no seat to lose when humanSeat is null", () => {
+    let g: GameState = { ...playingState(LINE_ADJ), humanSeat: null, current: 1 };
+    g = {
+      ...g,
+      incorporated: { gamma: "alpha" },
+      overlords: new Map([["delta", "alpha"]]),
+    };
+    g = withHand(g, 1, ["incorporate"]);
+    g = playCard(g, 0, seededRng(1), "delta");
+    expect(g.log.at(-1)).toMatchObject({ type: "unified", overlordFactionId: "alpha" });
+  });
+
+  it("defaults a real game to seat 0", () => {
+    expect(newGame(FACTIONS).humanSeat).toBe(0);
+  });
+});
+
+describe("advance", () => {
+  it("skips an incorporated seat that is not the human seat", () => {
+    let g = playingState(LINE_ADJ);
+    // gamma is players[2] (id 3). Incorporate it and step off beta's turn.
+    g = { ...g, incorporated: { gamma: "alpha" }, playedThisTurn: true };
+    g = advance(g, seededRng(1));
+    expect(g.players[g.current].factionId).not.toBe("gamma");
+  });
+
+  it("skips an incorporated seat 0 when there is no human seat", () => {
+    let g: GameState = { ...playingState(LINE_ADJ), humanSeat: null };
+    g = { ...g, incorporated: { beta: "alpha" }, current: 3, playedThisTurn: true };
+    g = advance(g, seededRng(1));
+    expect(g.players[g.current].factionId).not.toBe("beta");
+  });
+
+  it("never skips the human seat, even once incorporated", () => {
+    // In the shipped game this cannot arise, since the game ends the moment
+    // the human is incorporated. The rule is asserted so the world-run change
+    // cannot quietly alter single-player behaviour.
+    let g = playingState(LINE_ADJ);
+    g = { ...g, incorporated: { beta: "alpha" }, current: 3, playedThisTurn: true };
+    g = advance(g, seededRng(1));
+    expect(g.current).toBe(0);
   });
 });

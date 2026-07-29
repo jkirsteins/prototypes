@@ -419,6 +419,9 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   },
   victory: { kind: "silent", reason: "postmortem overlay covers it" },
   defeat: { kind: "silent", reason: "postmortem overlay covers it" },
+  // A later task owns the HUD copy for a rival unification; for now this only
+  // needs to satisfy Record<GameEventType, NoticeRule> so the build compiles.
+  unified: { kind: "silent", reason: "postmortem overlay covers it" },
 };
 
 /** Single-event internal path, kept for direct per-event use in tests/debug.

@@ -462,7 +462,14 @@ describe("hud v2", () => {
 
   it("defeat shows the post-mortem with cause, build-up, seen cards, and log", () => {
     const { container, cb, hud } = setup();
-    let g = playing();
+    // A 3-faction roster makes gamma's realm (itself + vassal beta) reach
+    // victory size the instant overlords is seeded below, before either card
+    // plays - a 4th faction keeps that build-up step from ending the game
+    // early. gamma still lands at players[2], same as with 3 factions.
+    let g = pickFaction(
+      chooseDeck(startGame(newGame([...FACTIONS, "delta"])), buildDeck()),
+      "beta", seededRng(1),
+    );
     g = { ...g, current: 2, overlords: new Map([["beta", "gamma"]]) };
     g = withHand(g, 2, ["raid"]);
     g = playCard(g, 0, seededRng(1), "beta"); // gamma raids you (seen)

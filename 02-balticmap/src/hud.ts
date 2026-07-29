@@ -94,6 +94,8 @@ export function createHud(
         return "You rule the Baltic";
       case "defeat":
         return `Your realm has been incorporated by ${factionName(e.overlordFactionId)}`;
+      case "unified":
+        return `${factionName(e.overlordFactionId)} unifies the Baltic`;
     }
   }
 

@@ -9,7 +9,7 @@ import { borderStrength, playableSet, validTargetsFor, type RulesView } from "./
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
   | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
-  | "victory" | "defeat";
+  | "victory" | "defeat" | "unified";
 
 export interface GameEvent {
   turn: number;
@@ -60,6 +60,10 @@ export interface GameState {
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
   omens: string[]; // faction ids holding an unspent Favourable omens reading
   raidRule: RaidRule;
+  /** Index of the seat treated as the player, or null for a world simulation
+   *  with no privileged seat. Only the endings block and `advance` consult it;
+   *  the rest of the app still addresses the human as index 0 / player id 1. */
+  humanSeat: number | null;
   humanDeck: string[];
   seenThisRun: string[]; // non-basic enemy cards witnessed (learning loop)
   log: GameEvent[];
@@ -106,6 +110,7 @@ export function newGame(
     bodyguards: [],
     omens: [],
     raidRule: "border",
+    humanSeat: 0,
     adjacency:
       adjacency ??
       Object.fromEntries(
@@ -386,6 +391,7 @@ export function playCard(
   let seenThisRun = state.seenThisRun;
   const human = players[0];
   if (
+    state.humanSeat !== null &&
     p.id !== 1 &&
     card.deckBuildable &&
     card.maxPerDeck !== null &&
@@ -407,20 +413,41 @@ export function playCard(
   }
 
   // endings
-  // defeat is checked before victory; the spec notes the two cannot coincide
-  if (incorporated[human.factionId] !== undefined) {
+  // Defeat is checked before victory; the spec notes the two cannot coincide.
+  // A rival unification is checked last, so a play that wins for the human is
+  // never mistaken for one that loses to somebody else.
+  const seat = state.humanSeat;
+  const humanFaction = seat === null ? null : players[seat].factionId;
+  const winSize = victoryRealmSize(state.factionIds.length);
+  if (humanFaction !== null && incorporated[humanFaction] !== undefined) {
     phase = "defeat";
     events.push({
       turn: state.turn, playerId: p.id, type: "defeat",
-      targetFactionId: human.factionId,
-      overlordFactionId: incorporated[human.factionId],
+      targetFactionId: humanFaction,
+      overlordFactionId: incorporated[humanFaction],
     });
   } else if (
-    realmOf(human.factionId, overlords, incorporated).length >=
-    victoryRealmSize(state.factionIds.length)
+    humanFaction !== null &&
+    realmOf(humanFaction, overlords, incorporated).length >= winSize
   ) {
     phase = "victory";
     events.push({ turn: state.turn, playerId: p.id, type: "victory" });
+  } else {
+    const unifier = state.factionIds.find(
+      (f) =>
+        f !== humanFaction &&
+        !(f in incorporated) &&
+        realmOf(f, overlords, incorporated).length >= winSize,
+    );
+    if (unifier !== undefined) {
+      // "defeat" is simply the terminal non-victory phase. With no human seat
+      // no screen renders it; with one, the human has lost the map.
+      phase = "defeat";
+      events.push({
+        turn: state.turn, playerId: p.id, type: "unified",
+        overlordFactionId: unifier,
+      });
+    }
   }
 
   return {
@@ -458,19 +485,26 @@ export function discardCard(state: GameState, cardIndex: number): GameState {
   };
 }
 
-/** Moves to the next non-incorporated player after a completed turn.
- *  The human (index 0) is never skipped; the turn counter bumps on wrap. */
+/** Moves to the next living player after a completed turn. An incorporated
+ *  seat is skipped, except the human seat, which always gets its turn - in the
+ *  shipped game it is never incorporated without the game ending anyway. The
+ *  turn counter bumps on wrap. */
 export function advance(state: GameState, rng: Rng): GameState {
   if (state.phase !== "playing" || !state.playedThisTurn) return state;
   const inert = (i: number): boolean =>
     state.players[i].factionId in state.incorporated;
   let current = state.current;
   let turn = state.turn;
-  do {
+  for (let tried = 0; tried < state.players.length; tried++) {
     current = (current + 1) % state.players.length;
     if (current === 0) turn += 1;
-  } while (current !== 0 && inert(current));
-  return beginTurn({ ...state, current, turn }, rng);
+    if (current === state.humanSeat || !inert(current)) {
+      return beginTurn({ ...state, current, turn }, rng);
+    }
+  }
+  // Unreachable while a game is playing: a unification ends the run long
+  // before every seat is incorporated. Throwing beats spinning.
+  throw new Error("advance: no living seat to move to");
 }
 
 export function isHumanTurn(state: GameState): boolean {
