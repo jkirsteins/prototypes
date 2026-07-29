@@ -8,6 +8,7 @@ const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
   "incorporate", "reclaim-independence", "revolt",
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
+  "favourable-omens",
 ];
 
 function seededRng(seed: number): Rng {
@@ -83,13 +84,17 @@ describe("cards", () => {
     const deck = buildDeck();
     expect(deck).toHaveLength(DECK_SIZE);
     const count = (id: string) => deck.filter((c) => c === id).length;
-    // 11 non-basics now exist for a 10-card deck; buildDeck's overflow guard
-    // (slice to DECK_SIZE) drops the 11th in CARDS order - bodyguard, added
-    // last - rather than growing the deck past DECK_SIZE.
-    for (const id of NON_BASICS.filter((id) => id !== "bodyguard")) {
+    // 12 non-basics now exist for a 10-card deck; buildDeck's overflow guard
+    // (slice to DECK_SIZE) drops the last two in CARDS order - bodyguard and
+    // favourable-omens, both added after the original ten - rather than
+    // growing the deck past DECK_SIZE.
+    for (const id of NON_BASICS.filter(
+      (id) => id !== "bodyguard" && id !== "favourable-omens",
+    )) {
       expect(count(id)).toBe(1);
     }
     expect(count("bodyguard")).toBe(0);
+    expect(count("favourable-omens")).toBe(0);
     expect(count("grow-crops")).toBe(0);
     expect(count("pay-tribute")).toBe(0);
   });
@@ -126,6 +131,15 @@ describe("cards", () => {
   it("shuffle actually reorders (seed chosen to produce a change)", () => {
     const input = ["a", "b", "c", "d", "e", "f", "g"];
     expect(shuffle(input, seededRng(1))).not.toEqual(input);
+  });
+
+  it("carries Favourable omens as a one-per-deck buildable card", () => {
+    const card = CARDS["favourable-omens"];
+    expect(card.name).toBe("Favourable omens");
+    expect(card.targeted).toBe(false);
+    expect(card.forced).toBe(false);
+    expect(card.maxPerDeck).toBe(1);
+    expect(card.deckBuildable).toBe(true);
   });
 });
 
@@ -169,15 +183,19 @@ describe("buildAiDeck", () => {
   });
 
   it("an rng that always returns < 0.5 includes non-basics up to DECK_SIZE, guarding overflow", () => {
-    // 11 non-basics now exist; an rng that includes all of them must still
+    // 12 non-basics now exist; an rng that includes all of them must still
     // be capped at DECK_SIZE (same overflow guard as buildDeck), dropping
-    // bodyguard (last in CARDS order) rather than returning 11 cards.
+    // bodyguard and favourable-omens (last in CARDS order) rather than
+    // returning 12 cards.
     const deck = buildAiDeck(() => 0);
     const count = (id: string) => deck.filter((c) => c === id).length;
-    for (const id of NON_BASICS.filter((id) => id !== "bodyguard")) {
+    for (const id of NON_BASICS.filter(
+      (id) => id !== "bodyguard" && id !== "favourable-omens",
+    )) {
       expect(count(id)).toBe(1);
     }
     expect(count("bodyguard")).toBe(0);
+    expect(count("favourable-omens")).toBe(0);
     expect(deck).toHaveLength(DECK_SIZE);
   });
 });

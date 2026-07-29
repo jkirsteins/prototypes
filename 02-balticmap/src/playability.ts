@@ -17,6 +17,7 @@ export interface RulesView {
   alliances: Record<string, number>; // sorted-pair key -> expiry turn
   turn: number;
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
+  omens: string[]; // faction ids holding an unspent Favourable omens reading
 }
 
 function reachOf(view: RulesView, factionId: string): Set<string> {
@@ -214,6 +215,7 @@ export function isCardPlayable(
   const overlord = view.overlords.get(factionId);
   if (cardId === "grow-crops" || cardId === "fortify" || cardId === "extended-diplomacy") return true;
   if (cardId === "bodyguard") return !view.bodyguards.includes(factionId);
+  if (cardId === "favourable-omens") return !view.omens.includes(factionId);
   if (cardId === "pay-tribute") return overlord !== undefined;
   if (cardId === "revolt") return overlord !== undefined;
   if (cardId === "reclaim-independence") {

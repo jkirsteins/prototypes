@@ -26,7 +26,17 @@ export const CARDS: Record<string, CardDef> = {
   "alliance": { id: "alliance", name: "Alliance", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns." },
   "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Patient envoys: your next Alliance lasts twice as long." },
   "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking." },
+  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "The signs are read: your next Might or Status gain counts double." },
 };
+
+/** Cards a Favourable omens reading doubles. Everything else resolves as
+ *  normal and leaves the reading in reserve, so a reading is never spent on a
+ *  card with no number to double. Pay tribute is deliberately included: a
+ *  reading held while subjugated costs you, which is what stops the card from
+ *  being free to sit on. */
+export const DOUBLABLE_CARDS: ReadonlySet<string> = new Set([
+  "raid", "shrewd-marriage", "fortify", "revolt", "pay-tribute",
+]);
 
 export const DECK_SIZE = 10;
 

@@ -1,6 +1,7 @@
-import { buildDeck, buildAiDeck, shuffle, CARDS, DECK_SIZE, type Rng } from "./cards";
+import { buildDeck, buildAiDeck, shuffle, CARDS, DECK_SIZE, DOUBLABLE_CARDS, type Rng } from "./cards";
 import {
-  allianceKey, bumpMight, bumpMightAll, bumpMightBy, bumpStatus, levelStatus, realmOf,
+  allianceKey, bumpMight, bumpMightAll, bumpMightAllBy, bumpMightBy, bumpStatus, bumpStatusBy,
+  levelStatus, realmOf,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import { borderStrength, playableSet, validTargetsFor, type RulesView } from "./playability";
@@ -20,6 +21,7 @@ export interface GameEvent {
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
   track?: "status" | "might"; // tribute
   prevented?: boolean; // play: a nullified Assassinate ruler (Bodyguard)
+  doubled?: boolean; // play: a card whose numbers a reading doubled
 }
 
 export type GamePhase =
@@ -56,6 +58,7 @@ export interface GameState {
   alliances: Record<string, number>; // sorted-pair key -> expiry turn
   diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
+  omens: string[]; // faction ids holding an unspent Favourable omens reading
   raidRule: RaidRule;
   humanDeck: string[];
   seenThisRun: string[]; // non-basic enemy cards witnessed (learning loop)
@@ -80,6 +83,7 @@ export function viewOf(state: GameState): RulesView {
     alliances: state.alliances,
     turn: state.turn,
     bodyguards: state.bodyguards,
+    omens: state.omens,
   };
 }
 
@@ -100,6 +104,7 @@ export function newGame(
     alliances: {},
     diplomacyBoost: [],
     bodyguards: [],
+    omens: [],
     raidRule: "border",
     adjacency:
       adjacency ??
@@ -225,6 +230,10 @@ export function playCard(
   let alliances = state.alliances;
   let diplomacyBoost = state.diplomacyBoost;
   let bodyguards = state.bodyguards;
+  let omens = state.omens;
+  const doubled = omens.includes(p.factionId) && DOUBLABLE_CARDS.has(cardId);
+  const mult = doubled ? 2 : 1;
+  if (doubled) omens = omens.filter((f) => f !== p.factionId);
   let phase: GamePhase = state.phase;
   let prevented = false;
   const events: GameEvent[] = [
@@ -264,14 +273,16 @@ export function playCard(
     const gain = state.raidRule === "flat"
       ? 1
       : borderStrength(viewOf(state), p.factionId, targetId);
-    relations = bumpMightBy(relations, p.factionId, targetId, gain);
+    relations = bumpMightBy(relations, p.factionId, targetId, gain * mult);
   } else if (cardId === "shrewd-marriage" && targetId !== undefined) {
-    relations = bumpStatus(relations, p.factionId, targetId);
+    relations = bumpStatusBy(relations, p.factionId, targetId, mult);
   } else if (cardId === "fortify") {
     const living = state.factionIds.filter(
       (f) => f !== p.factionId && !(f in incorporated),
     );
-    relations = bumpMightAll(relations, p.factionId, living);
+    relations = bumpMightAllBy(relations, p.factionId, living, mult);
+  } else if (cardId === "favourable-omens") {
+    if (!omens.includes(p.factionId)) omens = [...omens, p.factionId];
   } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
     if (bodyguards.includes(targetId)) {
       bodyguards = bodyguards.filter((f) => f !== targetId);
@@ -339,8 +350,11 @@ export function playCard(
     overlords.delete(p.factionId);
     players = updateFaction(players, p.factionId, stripTribute);
     // vassal-loss penalty (section 8): the revolting vassal gains +1/+1
-    // over the former lord (relation counters only grow).
-    relations = bumpStatus(bumpMight(relations, p.factionId, former), p.factionId, former);
+    // over the former lord (relation counters only grow). A held reading
+    // doubles this parting blow like any other Might/Status gain.
+    relations = bumpStatusBy(
+      bumpMightBy(relations, p.factionId, former, mult), p.factionId, former, mult,
+    );
     events.push({
       turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
       targetFactionId: p.factionId, overlordFactionId: former,
@@ -352,9 +366,11 @@ export function playCard(
       lord,
       ...state.factionIds.filter((f) => incorporated[f] === lord),
     ];
-    const bump = tributeTrack === "might" ? bumpMight : bumpStatus;
+    // Pay tribute is deliberately in the doubling set: holding a reading
+    // while subjugated doubles what you pay, which is the cost of hoarding it.
+    const bump = tributeTrack === "might" ? bumpMightBy : bumpStatusBy;
     for (const b of beneficiaries) {
-      relations = bump(relations, b, p.factionId);
+      relations = bump(relations, b, p.factionId, mult);
     }
     events.push({
       turn: state.turn, playerId: p.id, type: "tribute",
@@ -364,6 +380,7 @@ export function playCard(
   }
 
   if (prevented) events[0] = { ...events[0], prevented: true };
+  if (doubled) events[0] = { ...events[0], doubled: true };
 
   // learning hook: enemy non-basic cards witnessed by the human
   let seenThisRun = state.seenThisRun;
@@ -408,7 +425,7 @@ export function playCard(
 
   return {
     ...state, phase, players, relations, overlords, incorporated,
-    alliances, diplomacyBoost, bodyguards, seenThisRun,
+    alliances, diplomacyBoost, bodyguards, omens, seenThisRun,
     log: [...state.log, ...events], playedThisTurn: true,
   };
 }

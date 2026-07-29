@@ -24,6 +24,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     alliances: {},
     turn: 1,
     bodyguards: [],
+    omens: [],
     ...partial,
   };
 }
@@ -283,6 +284,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       alliances: {},
       turn: 1,
       bodyguards: [],
+      omens: [],
     };
     const targets = validTargetsFor(v, "me", "raid");
     expect(targets).toContain("owner");
@@ -300,6 +302,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       alliances: {},
       turn: 1,
       bodyguards: [],
+      omens: [],
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "me", "target");
@@ -319,6 +322,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       alliances: {},
       turn: 1,
       bodyguards: [],
+      omens: [],
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "lord", "me");
@@ -427,5 +431,23 @@ describe("borderStrength", () => {
         expect(borderStrength(v, actor, target)).toBeGreaterThanOrEqual(1);
       }
     }
+  });
+});
+
+describe("favourable-omens legality", () => {
+  it("is playable when no reading is held", () => {
+    expect(isCardPlayable(view(), "alpha", "favourable-omens")).toBe(true);
+  });
+
+  it("is not playable while a reading is already held", () => {
+    expect(
+      isCardPlayable(view({ omens: ["alpha"] }), "alpha", "favourable-omens"),
+    ).toBe(false);
+  });
+
+  it("is unaffected by another faction's reading", () => {
+    expect(
+      isCardPlayable(view({ omens: ["beta"] }), "alpha", "favourable-omens"),
+    ).toBe(true);
   });
 });

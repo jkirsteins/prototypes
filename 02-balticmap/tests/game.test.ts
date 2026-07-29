@@ -8,6 +8,7 @@ import { DECK_SIZE, buildDeck, CARDS, type Rng } from "../src/cards";
 import {
   allianceKey, bumpMight, bumpStatus, getRel, leadsOf, type Relations,
 } from "../src/relations";
+import { playableSet } from "../src/playability";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -77,6 +78,7 @@ const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
   "incorporate", "reclaim-independence", "revolt",
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
+  "favourable-omens",
 ];
 
 function pickAt(seed: number): GameState {
@@ -760,5 +762,77 @@ describe("bodyguard", () => {
     expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
     expect(after.bodyguards).toEqual([]);
     expect(after.log.at(-1)?.prevented).toBeUndefined();
+  });
+});
+
+describe("favourable omens", () => {
+  const armed = (g: GameState): GameState => ({ ...g, omens: ["beta"] });
+
+  it("records a reading when played", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["favourable-omens"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(g.omens).toContain("beta");
+  });
+
+  it("doubles Raid, border and all", () => {
+    const ADJ = {
+      alpha: ["beta", "gamma"],
+      beta: ["alpha", "gamma"],
+      gamma: ["alpha", "beta", "delta"],
+      delta: ["gamma"],
+    };
+    let g = armed(playingState(ADJ));
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    expect(getRel(g.relations, "beta", "alpha").might).toBe(4); // 2 border x 2
+    expect(g.omens).not.toContain("beta");
+    expect(g.log.at(-1)).toMatchObject({ type: "play", cardId: "raid", doubled: true });
+  });
+
+  it("doubles Shrewd marriage", () => {
+    let g = withHand(armed(playingState(LINE_ADJ)), 0, ["shrewd-marriage"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    expect(getRel(g.relations, "beta", "alpha").status).toBe(2);
+    expect(g.omens).toEqual([]);
+  });
+
+  it("doubles Fortify against every living faction", () => {
+    let g = withHand(armed(playingState(LINE_ADJ)), 0, ["fortify"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(getRel(g.relations, "beta", "alpha").might).toBe(2);
+    expect(getRel(g.relations, "beta", "gamma").might).toBe(2);
+    expect(getRel(g.relations, "beta", "delta").might).toBe(2);
+  });
+
+  it("doubles the parting blow from Revolt", () => {
+    let g = armed(playingState(LINE_ADJ));
+    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = withHand(g, 0, ["revolt"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(leadsOf(g.relations, "beta", "alpha")).toEqual({ might: 2, status: 2 });
+  });
+
+  it("doubles the tribute a vassal pays, which is the cost of hoarding it", () => {
+    let g = armed(playingState(LINE_ADJ));
+    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = withHand(g, 0, ["pay-tribute"]);
+    g = playCard(g, 0, seededRng(1), undefined, "might");
+    expect(getRel(g.relations, "alpha", "beta").might).toBe(2);
+    expect(g.omens).toEqual([]);
+  });
+
+  it("passes through a card with nothing to double, keeping the reading", () => {
+    let g = armed(playingState(LINE_ADJ));
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(g.omens).toContain("beta");
+    expect(g.log.at(-1)).not.toHaveProperty("doubled");
+  });
+
+  it("does not stack: a second reading is not playable", () => {
+    const g = armed(playingState(LINE_ADJ));
+    const set = playableSet(viewOf(g), "beta", ["favourable-omens"]);
+    expect(set.mode).toBe("discard");
   });
 });

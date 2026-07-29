@@ -158,8 +158,8 @@ describe("createDeckScreen", () => {
     });
     const undiscovered = q(container, ".ds-undiscovered");
     expect(undiscovered.classList.contains("hidden")).toBe(false);
-    // 11 non-basics now exist (Bodyguard added).
-    expect(undiscovered.textContent).toBe("11 cards still undiscovered");
+    // 12 non-basics now exist (Favourable omens added).
+    expect(undiscovered.textContent).toBe("12 cards still undiscovered");
   });
 
   it("deducts known and pool cards from the undiscovered count", () => {
@@ -168,8 +168,8 @@ describe("createDeckScreen", () => {
       visible: true, knownCards: ["grow-crops", "raid", "subjugate"],
       seenPool: ["fortify"], unlockUsed: false,
     });
-    // 11 non-basics total - raid, subjugate (known) - fortify (pool) = 8 left
-    expect(q(container, ".ds-undiscovered").textContent).toBe("8 cards still undiscovered");
+    // 12 non-basics total - raid, subjugate (known) - fortify (pool) = 9 left
+    expect(q(container, ".ds-undiscovered").textContent).toBe("9 cards still undiscovered");
   });
 
   it("uses the singular 'card' when exactly one non-basic is undiscovered", () => {
@@ -179,14 +179,14 @@ describe("createDeckScreen", () => {
       knownCards: [
         "grow-crops", "raid", "shrewd-marriage", "fortify", "subjugate",
         "incorporate", "reclaim-independence", "revolt", "assassinate-ruler",
-        "alliance", "extended-diplomacy",
+        "alliance", "extended-diplomacy", "bodyguard",
       ],
       seenPool: [],
       unlockUsed: false,
     });
     const undiscovered = q(container, ".ds-undiscovered");
     expect(undiscovered.classList.contains("hidden")).toBe(false);
-    // only bodyguard remains undiscovered
+    // only favourable-omens remains undiscovered
     expect(undiscovered.textContent).toBe("1 card still undiscovered");
   });
 
@@ -200,6 +200,7 @@ describe("createDeckScreen", () => {
       seenPool: [
         "incorporate", "reclaim-independence", "revolt",
         "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
+        "favourable-omens",
       ],
       unlockUsed: false,
     });
