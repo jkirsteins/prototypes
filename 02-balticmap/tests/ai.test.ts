@@ -35,6 +35,12 @@ function lead(rel: Relations, actor: string, target: string, n: number): Relatio
   return out;
 }
 
+function statusLead(rel: Relations, actor: string, target: string, n: number): Relations {
+  let out = rel;
+  for (let i = 0; i < n; i++) out = bumpStatus(out, actor, target);
+  return out;
+}
+
 describe("chooseAction priorities", () => {
   it("1: tribute first, feeding the overlord's weaker track", () => {
     let g = base();
@@ -143,5 +149,96 @@ describe("chooseAction priorities", () => {
     let g3 = base();
     g3 = withHand(g3, ["extended-diplomacy"]);
     expect(chooseAction(g3)).toEqual({ type: "play", cardIndex: 0 });
+  });
+});
+
+const chosen = (g: GameState): string => {
+  const a = chooseAction(g);
+  return a.type === "play" ? g.players[1].hand[a.cardIndex] : "(discard)";
+};
+
+describe("chooseAction with scaling gains", () => {
+  it("5: finishes a bar that only a multi-point Raid can reach", () => {
+    // Full adjacency. alpha holds delta, so alpha's realm touches beta twice
+    // -> Raid on beta is worth 2, and beta's bar is 2 x 1 land = 2.
+    // alpha also sits one Status short of gamma's bar of 2.
+    // Old policy: Raid needs lead === bar - 1, which fails at lead 0, so it
+    // falls to Shrewd marriage on gamma. New policy: 0 + 2 >= 2, so Raid on
+    // beta finishes now. The two differ, which is what makes this a test.
+    let g = base();
+    g = {
+      ...g,
+      overlords: new Map([["delta", "alpha"]]),
+      relations: statusLead({}, "alpha", "gamma", 1),
+    };
+    g = withHand(g, ["shrewd-marriage", "raid"]);
+    expect(chooseAction(g)).toMatchObject({
+      type: "play", targetId: "beta",
+    });
+    expect(chosen(g)).toBe("raid");
+  });
+
+  it("6b: reads the omens before building", () => {
+    // No vassals, so Raid is worth 1 against a bar of 2: step 5 cannot fire
+    // and the policy would otherwise build. It reads the omens instead.
+    expect(chosen(withHand(base(), ["favourable-omens", "raid"]))).toBe(
+      "favourable-omens",
+    );
+  });
+
+  it("6b: does not read the omens with nothing to double", () => {
+    expect(chosen(withHand(base(), ["favourable-omens", "grow-crops"]))).toBe(
+      "grow-crops",
+    );
+  });
+
+  it("6b: never reads the omens while a vassal, which would double its tribute", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "delta"]]) };
+    expect(chosen(withHand(g, ["favourable-omens", "raid"]))).toBe("raid");
+  });
+
+  it("6b: never delays a play that finishes a subjugation", () => {
+    // lead 1 + gain 1 meets beta's bar of 2, so step 5 fires first.
+    let g = base();
+    g = { ...g, relations: lead({}, "alpha", "beta", 1) };
+    expect(chosen(withHand(g, ["favourable-omens", "raid"]))).toBe("raid");
+  });
+
+  it("7: ranks by plays remaining, not by point deficit", () => {
+    // A six-land map built so the two rankings disagree:
+    //   beta  - bar 2, alpha trails by 1 -> deficit 3, Raid worth 1 -> 3 plays
+    //   gamma - bar 4 (gamma plus incorporated g1), lead 0 -> deficit 4,
+    //           Raid worth 3 (alpha, a1 and a2 all touch gamma) -> 2 plays
+    // Neither is finishable, so step 5 stays quiet and step 7 decides.
+    // The old ranking picks beta (3 < 4); the new one must pick gamma.
+    const IDS = ["alpha", "a1", "a2", "beta", "gamma", "g1"];
+    const ADJ = {
+      alpha: ["a1", "a2", "beta", "gamma"],
+      a1: ["alpha", "gamma"],
+      a2: ["alpha", "gamma"],
+      beta: ["alpha"],
+      gamma: ["alpha", "a1", "a2", "g1"],
+      g1: ["gamma"],
+    };
+    let g = pickFaction(
+      chooseDeck(startGame(newGame(IDS, ADJ)), buildDeck()),
+      "beta",
+      seededRng(1),
+    );
+    g = {
+      ...g,
+      current: g.players.findIndex((p) => p.factionId === "alpha"),
+      overlords: new Map([["a1", "alpha"], ["a2", "alpha"]]),
+      incorporated: { g1: "gamma" },
+      relations: lead({}, "beta", "alpha", 1), // beta leads alpha by 1
+    };
+    g = {
+      ...g,
+      players: g.players.map((pl) =>
+        pl.factionId === "alpha" ? { ...pl, hand: ["raid"] } : pl,
+      ),
+    };
+    expect(chooseAction(g)).toMatchObject({ type: "play", targetId: "gamma" });
   });
 });

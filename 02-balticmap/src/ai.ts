@@ -1,7 +1,7 @@
-import { CARDS, type Rng } from "./cards";
+import { CARDS, DOUBLABLE_CARDS, type Rng } from "./cards";
 import { leadsOf, realmOf } from "./relations";
 import {
-  SUBJUGATE_THRESHOLD, playableSet, validTargetsFor,
+  SUBJUGATE_THRESHOLD, borderStrength, playableSet, validTargetsFor,
 } from "./playability";
 import {
   discardCard, playCard, viewOf,
@@ -16,6 +16,24 @@ const TRACKS = [
   { cardId: "raid", field: "might" as const },
   { cardId: "shrewd-marriage", field: "status" as const },
 ];
+
+/** What a play would actually move, so the policy stops assuming every card
+ *  is worth exactly 1: Raid scales with border, and any doublable card is
+ *  worth twice as much while a reading is held. */
+function gainOf(
+  state: GameState,
+  actorFactionId: string,
+  cardId: string,
+  targetId: string,
+): number {
+  const base =
+    cardId === "raid" && state.raidRule === "border"
+      ? borderStrength(viewOf(state), actorFactionId, targetId)
+      : 1;
+  const doubled =
+    state.omens.includes(actorFactionId) && DOUBLABLE_CARDS.has(cardId);
+  return doubled ? base * 2 : base;
+}
 
 /** Deterministic policy v2; see the rules-v2 spec, "AI policy v2". */
 export function chooseAction(state: GameState): AiAction {
@@ -73,7 +91,10 @@ export function chooseAction(state: GameState): AiAction {
       if (state.overlords.get(t) === p.factionId) continue;
       const needed =
         SUBJUGATE_THRESHOLD * realmOf(t, state.overlords, state.incorporated).length;
-      if (leadsOf(state.relations, p.factionId, t)[field] === needed - 1) {
+      if (
+        leadsOf(state.relations, p.factionId, t)[field] +
+          gainOf(state, p.factionId, cardId, t) >= needed
+      ) {
         return { type: "play", cardIndex: i, targetId: t };
       }
     }
@@ -92,8 +113,24 @@ export function chooseAction(state: GameState): AiAction {
     if (threatened) return { type: "play", cardIndex: fortify };
   }
 
-  // 7: build toward the closest new subjugation
-  let build: { cardIndex: number; targetId: string; deficit: number; order: number } | null = null;
+  // 6b: read the omens before building. Raid is one per deck, so spending a
+  // turn now and playing it doubled next turn beats playing it plain and
+  // following with filler. Never while a vassal: a forced Pay tribute would
+  // spend the reading on the overlord. This sits after step 5 so a reading
+  // never delays a play that wins a subjugation outright.
+  const omens = idxOf("favourable-omens");
+  if (
+    omens !== undefined &&
+    state.overlords.get(p.factionId) === undefined &&
+    p.hand.some((c) => DOUBLABLE_CARDS.has(c))
+  ) {
+    return { type: "play", cardIndex: omens };
+  }
+
+  // 7: build toward the closest new subjugation, measured in plays remaining
+  // rather than points - a 6-point gap closed 3 at a time is nearer than a
+  // 4-point gap closed 1 at a time.
+  let build: { cardIndex: number; targetId: string; plays: number; order: number } | null = null;
   for (const { cardId, field } of TRACKS) {
     const i = idxOf(cardId);
     if (i === undefined) continue;
@@ -102,13 +139,14 @@ export function chooseAction(state: GameState): AiAction {
       const needed =
         SUBJUGATE_THRESHOLD * realmOf(t, state.overlords, state.incorporated).length;
       const deficit = needed - leadsOf(state.relations, p.factionId, t)[field];
+      const plays = Math.ceil(deficit / gainOf(state, p.factionId, cardId, t));
       const order = state.factionIds.indexOf(t);
       if (
         build === null ||
-        deficit < build.deficit ||
-        (deficit === build.deficit && order < build.order)
+        plays < build.plays ||
+        (plays === build.plays && order < build.order)
       ) {
-        build = { cardIndex: i, targetId: t, deficit, order };
+        build = { cardIndex: i, targetId: t, plays, order };
       }
     }
   }
