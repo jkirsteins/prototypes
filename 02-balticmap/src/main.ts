@@ -12,6 +12,7 @@ import {
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
+import { rulerOf } from "./rulers";
 import {
   playableSet, validTargetsFor, targetEligibilityFor, subjugationRequirement,
   borderStrength,
@@ -358,6 +359,9 @@ function hoverLines(region: Region): TooltipLine[] {
   if (ruling !== region.faction) {
     base.push({ text: `Formerly ${factionById.get(region.faction)!.name}` });
   }
+  // Every faction has a ruler, including yours - the model is total, and a
+  // faceless neighbour is harder to remember than a named one.
+  if (inPlay()) base.push({ text: `Ruled by ${rulerOf(game.rulers, ruling).name}` });
   if (!inPlay() || !human || f === human.factionId) return base;
   base.push(...hoverRelationLines(
     game.relations,
