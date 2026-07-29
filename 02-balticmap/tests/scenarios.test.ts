@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-  SCENARIOS, checksFor, runScenario, type Expectation,
+  SCENARIOS, WORLD_SCENARIOS, checksFor, runScenario, runWorldScenario,
+  worldChecksFor, type Expectation,
 } from "../src/scenarios";
-import { DECK_ARMS, HUMAN_DECKS, HUMAN_POLICIES, aggregate } from "../src/sim";
+import {
+  DECK_ARMS, HUMAN_DECKS, HUMAN_POLICIES, WORLD_ARMS, aggregate,
+} from "../src/sim";
 
 describe("scenario definitions", () => {
   it("has unique ids", () => {
@@ -50,6 +53,47 @@ describe("checksFor", () => {
     const expect_: Expectation = { defeatShare: [0.25, 0.75] };
     expect(checksFor(expect_, { ...stats, defeatShare: 0.25 })[0].ok).toBe(true);
     expect(checksFor(expect_, { ...stats, defeatShare: 0.75 })[0].ok).toBe(true);
+  });
+});
+
+describe("world scenarios", () => {
+  it("has unique ids", () => {
+    const ids = WORLD_SCENARIOS.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("names a known arm and orders every band", () => {
+    for (const s of WORLD_SCENARIOS) {
+      expect(Object.keys(WORLD_ARMS), s.id).toContain(s.arm);
+      expect(Object.keys(s.expect).length, s.id).toBeGreaterThan(0);
+      for (const [metric, band] of Object.entries(s.expect)) {
+        expect(band[0], `${s.id}/${metric}`).toBeLessThanOrEqual(band[1]);
+      }
+    }
+  });
+
+  it("counts an unmeasurable metric as a miss, never as a pass", () => {
+    const checks = worldChecksFor(
+      { medianEndTurn: [1, 10] },
+      {
+        arm: "x", games: 0, unifiedShare: 0, capShare: 0, medianEndTurn: null,
+        meanEndTurn: null, meanSubjugations: null, meanIncorporations: null,
+        medianLargestRealm: null, medianStallTurns: null,
+      },
+    );
+    expect(checks[0].ok).toBe(false);
+  });
+
+  it("holds every committed world band", { timeout: 600_000 }, () => {
+    for (const s of WORLD_SCENARIOS) {
+      const result = runWorldScenario(s);
+      for (const c of result.checks) {
+        expect(
+          c.ok,
+          `${s.id} ${c.metric}: ${c.value} outside ${c.band[0]}..${c.band[1]}`,
+        ).toBe(true);
+      }
+    }
   });
 });
 

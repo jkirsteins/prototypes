@@ -1,6 +1,7 @@
 import {
-  DECK_ARMS, HUMAN_DECKS, HUMAN_POLICIES, aggregate, runGame,
-  SIM_FACTION_IDS, type ArmStats, type GameSummary,
+  DECK_ARMS, HUMAN_DECKS, HUMAN_POLICIES, WORLD_ARMS, aggregate, aggregateWorld,
+  runGame, runWorldBatch, SIM_FACTION_IDS,
+  type ArmStats, type GameSummary, type WorldStats, type WorldSummary,
 } from "./sim";
 
 /** An inclusive [min, max] band a metric must stay inside. Bands are set from
@@ -30,8 +31,9 @@ export interface Scenario {
 }
 
 /** Add a scenario here and it is checked by `npm run simulate:check` and by
- *  the test suite. Bands come from the measured run recorded in the
- *  2026-07-29 new-player simulation spec. */
+ *  the test suite. All four bands were re-derived from scratch on 2026-07-29
+ *  against the scaling-Raid rules and recorded in the 2026-07-29 scaling-might
+ *  spec; the `// measured x` comments say what each band was widened from. */
 export const SCENARIOS: Scenario[] = [
   {
     id: "new-player-potatoes",
@@ -45,10 +47,10 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.95, 1],
-      medianFirstSubjugation: [5, 13],
-      defeatShare: [0.9, 1],
-      medianDefeatTurn: [10, 24],
+      subjugatedShare: [0.85, 1],       // measured 1.00
+      medianFirstSubjugation: [4, 11],  // measured 7.00
+      defeatShare: [0.81, 1],           // measured 0.96
+      medianDefeatTurn: [7, 20],        // measured 13.00
     },
   },
   {
@@ -63,10 +65,10 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.9, 1],
-      medianFirstSubjugation: [10, 24],
-      defeatShare: [0.8, 1],
-      medianDefeatTurn: [16, 40],
+      subjugatedShare: [0.85, 1],       // measured 1.00
+      medianFirstSubjugation: [8, 22],  // measured 14.50
+      defeatShare: [0.66, 0.96],        // measured 0.81
+      medianDefeatTurn: [14, 36],       // measured 23.50
     },
   },
   {
@@ -82,9 +84,9 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.42, 0.78],
-      medianFirstSubjugation: [8, 22],
-      defeatShare: [0.15, 0.45],
+      subjugatedShare: [0.62, 0.92],    // measured 0.77
+      medianFirstSubjugation: [7, 19],  // measured 12.50
+      defeatShare: [0.54, 0.84],        // measured 0.69
     },
   },
   {
@@ -99,8 +101,8 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.4, 0.95],
-      medianFirstSubjugation: [8, 40],
+      subjugatedShare: [0.66, 0.96],   // measured 0.81
+      medianFirstSubjugation: [3, 9],  // measured 6.00
     },
   },
 ];
@@ -156,4 +158,119 @@ export function checksFor(expect: Expectation, stats: ArmStats): Check[] {
       ok: value !== null && value >= band[0] && value <= band[1],
     };
   });
+}
+
+// -- world scenarios --------------------------------------------------------
+
+/** `Scenario` is human-shaped: a human policy, a human deck, and expectations
+ *  about the subjugation of one privileged seat. A world run has none of those
+ *  - 26 equal seats, no human - so it gets its own expectation type rather
+ *  than widening `Expectation` with fields meaningless on the other side. */
+export interface WorldExpectation {
+  unifiedShare?: Band;
+  medianEndTurn?: Band;
+  capShare?: Band;
+}
+
+export interface WorldScenario {
+  id: string;
+  /** What this scenario is protecting, in one line. */
+  description: string;
+  arm: keyof typeof WORLD_ARMS & string;
+  games: number;
+  firstSeed: number;
+  turnCap: number;
+  expect: WorldExpectation;
+}
+
+/** Bands come from the 26-world run recorded in the 2026-07-29 scaling-might
+ *  spec, then widened - turn medians to [0.6x, 1.5x], shares by +/-0.15. A
+ *  miss means pacing moved, not that a seed was unlucky: every scenario here
+ *  is fixed-seed and every world is paired across the three arms. */
+export const WORLD_SCENARIOS: WorldScenario[] = [
+  {
+    id: "conquest-flat",
+    description:
+      "The pre-scaling world: equal conquest decks and a flat +1 Raid. " +
+      "Kept only until the measurement is recorded; retired with the flag.",
+    arm: "conquest-flat",
+    games: 26,
+    firstSeed: 1,
+    turnCap: 300,
+    expect: {
+      unifiedShare: [0.43, 0.73],   // measured 0.577
+      medianEndTurn: [145, 365],    // measured 243.0
+    },
+  },
+  {
+    id: "conquest-scaled",
+    description:
+      "The same decks with Raid scaling on border. Guards the claim that " +
+      "the scaling alone, with no extra card, resolves more worlds sooner.",
+    arm: "conquest-scaled",
+    games: 26,
+    firstSeed: 1,
+    turnCap: 300,
+    expect: {
+      unifiedShare: [0.77, 1],      // measured 0.923
+      medianEndTurn: [66, 165],     // measured 110.0
+    },
+  },
+  {
+    id: "conquest-omens",
+    description:
+      "Scaling plus Favourable omens - the shipped world. Guards the whole " +
+      "change: a later edit that returns this to a stalemate fails here.",
+    arm: "conquest-omens",
+    games: 26,
+    firstSeed: 1,
+    turnCap: 300,
+    expect: {
+      unifiedShare: [0.81, 1],      // measured 0.962
+      medianEndTurn: [42, 105],     // measured 70.0
+    },
+  },
+];
+
+export interface WorldCheck {
+  metric: keyof WorldExpectation;
+  value: number | null;
+  band: Band;
+  ok: boolean;
+}
+
+export interface WorldScenarioResult {
+  scenario: WorldScenario;
+  stats: WorldStats;
+  checks: WorldCheck[];
+  ok: boolean;
+}
+
+export function worldChecksFor(
+  expect: WorldExpectation,
+  stats: WorldStats,
+): WorldCheck[] {
+  return (Object.keys(expect) as (keyof WorldExpectation)[]).map((metric) => {
+    const band = expect[metric]!;
+    const value = stats[metric];
+    return {
+      metric,
+      value,
+      band,
+      ok: value !== null && value >= band[0] && value <= band[1],
+    };
+  });
+}
+
+export function runWorldScenario(s: WorldScenario): WorldScenarioResult {
+  if (!(s.arm in WORLD_ARMS)) throw new Error(`${s.id}: unknown arm "${s.arm}"`);
+  const games: WorldSummary[] = runWorldBatch({
+    games: s.games,
+    turnCap: s.turnCap,
+    firstSeed: s.firstSeed,
+    arm: s.arm,
+  });
+  const stats = aggregateWorld(s.id, games);
+  const checks = worldChecksFor(s.expect, stats);
+  return { scenario: s, stats, checks, ok: checks.every((c) => c.ok) };
 }
