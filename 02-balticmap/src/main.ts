@@ -14,7 +14,7 @@ import { aiTakeTurn } from "./ai";
 import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
 import {
   playableSet, validTargetsFor, targetEligibilityFor, subjugationRequirement,
-  borderStrength, SUBJUGATE_THRESHOLD,
+  borderStrength,
 } from "./playability";
 import { cardModifierLines, explainTargetEligibility } from "./target-explanations";
 import { CARDS } from "./cards";
@@ -25,7 +25,7 @@ import {
   resetMeta, saveMeta, unlockCard, type MetaRecord, type MetaStorage,
 } from "./meta";
 import {
-  formatLead, holderOf, hoverRelationLines, politicalFactionForPolygon,
+  barFor, formatLead, holderOf, hoverRelationLines, politicalFactionForPolygon,
   relationshipLine,
 } from "./view";
 import { factionAdjacencyOf } from "./adjacency";
@@ -270,26 +270,29 @@ function renderThreatBadges(): void {
   const humanRealm = new Set(
     realmOf(human.factionId, game.overlords, game.incorporated),
   );
-  const grip = SUBJUGATE_THRESHOLD * humanRealm.size;
   for (const factionId of game.factionIds) {
     if (factionId in game.incorporated) continue; // dead (absorbed)
     if (humanRealm.has(factionId)) continue; // human, its vassals, its lands
     const l = leadsOf(game.relations, human.factionId, factionId);
     const allied = allianceActive(game, human.factionId, factionId);
     if (l.might === 0 && l.status === 0 && !allied) continue;
-    // The bar to clear for Subjugate, shown on both tracks: a lead of +2 next
-    // to a one-land neighbour and next to a three-land realm look identical
-    // otherwise, while only one of them is takeable.
-    const required = subjugationRequirement(
-      viewOf(game), human.factionId, factionId,
-    );
+    // The bars are asymmetric: yours counts their realm, theirs counts yours.
+    // Each track is measured against the bar of whichever side leads it.
+    const yourBar = subjugationRequirement(viewOf(game), human.factionId, factionId);
+    const theirBar = subjugationRequirement(viewOf(game), factionId, human.factionId);
+    const mightBar = barFor(l.might, yourBar, theirBar);
+    const statusBar = barFor(l.status, yourBar, theirBar);
+    // Danger is now guarded by the same rule that decides legality: a faction
+    // that could never subjugate the human - one that is itself a vassal, or
+    // the human's own overlord - has a null bar and stops being marked.
+    const danger =
+      theirBar !== null && Math.max(-l.might, -l.status) >= theirBar;
     const regionId = regionByFaction.get(factionId);
     const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
     if (!pathEl) continue;
     const bbox = pathEl.getBBox();
     const cx = bbox.x + bbox.width / 2;
     const cy = bbox.y + bbox.height / 2;
-    const danger = Math.max(-l.might, -l.status) >= grip;
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     g.classList.add("threat-badge");
@@ -311,12 +314,12 @@ function renderThreatBadges(): void {
     }
     const mightTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
     mightTspan.classList.add(leadClass(l.might));
-    mightTspan.textContent = formatLead("M", l.might, required);
+    mightTspan.textContent = formatLead("M", l.might, mightBar);
     text.appendChild(mightTspan);
     const statusTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
     statusTspan.classList.add(leadClass(l.status));
     statusTspan.setAttribute("dx", "9");
-    statusTspan.textContent = formatLead("S", l.status, required);
+    statusTspan.textContent = formatLead("S", l.status, statusBar);
     text.appendChild(statusTspan);
     if (allied) {
       const turnsLeft = game.alliances[allianceKey(human.factionId, factionId)] - game.turn;
