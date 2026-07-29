@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   DECK_ARMS, SIM_ADJACENCY, SIM_FACTION_IDS, aggregate, byFaction, median,
-  naiveHumanTurn, pairedDelta, potatoDeck, runBatch, runGame, seededRng,
-  summarize, type GameSummary,
+  naiveHumanTurn, pairedDelta, potatoDeck, runBatch, runGame, runWorld,
+  seededRng, summarize, type GameSummary,
 } from "../src/sim";
 import { buildAiDeck, CARDS, DECK_SIZE } from "../src/cards";
 import {
@@ -195,6 +195,28 @@ describe("summarize", () => {
     });
   });
 
+  it("counts a rival's unification as the human's defeat", () => {
+    // A rival unifying the map sets phase to "defeat" but logs a "unified"
+    // event rather than a "defeat" one, since the ending's target is the map,
+    // not the human. From the human's seat it is still a loss.
+    const s = summarize(
+      state(
+        [
+          { turn: 4, playerId: 2, type: "subjugated", targetFactionId: HUMAN, overlordFactionId: "a" },
+          { turn: 12, playerId: 3, type: "unified", overlordFactionId: "b" },
+        ],
+        "defeat",
+      ),
+      5,
+      HUMAN,
+    );
+    expect(s).toMatchObject({
+      outcome: "defeat",
+      defeatTurn: 12,
+      conqueror: "b",
+    });
+  });
+
   it("counts releases and leaves a survivor's turns null", () => {
     const s = summarize(
       state(
@@ -262,5 +284,44 @@ describe("aggregation", () => {
     ]);
     expect(lands.map((l) => l.factionId)).toEqual(["fast", "slow", "never"]);
     expect(lands[2].subjugatedShare).toBe(0);
+  });
+});
+
+describe("runWorld", () => {
+  const deck = [
+    "raid", "subjugate", "incorporate",
+    ...Array.from({ length: 7 }, () => "grow-crops"),
+  ];
+
+  it("reproduces an identical summary for an identical seed", () => {
+    const opts = { seed: 7, deck, raidRule: "border" as const, turnCap: 80 };
+    expect(runWorld(opts)).toEqual(runWorld(opts));
+  });
+
+  it("reports a capped world rather than dropping it", () => {
+    const w = runWorld({ seed: 1, deck, raidRule: "border", turnCap: 1 });
+    expect(w.outcome).toBe("cap");
+    expect(w.winner).toBeNull();
+  });
+
+  it("names the winner when the world resolves", () => {
+    const w = runWorld({ seed: 3, deck, raidRule: "border", turnCap: 400 });
+    if (w.outcome === "unified") {
+      expect(w.winner).not.toBeNull();
+      expect(SIM_FACTION_IDS).toContain(w.winner);
+      expect(w.largestRealm).toBeGreaterThanOrEqual(
+        Math.ceil(0.55 * SIM_FACTION_IDS.length),
+      );
+    } else {
+      // A capped world is a legitimate result and the point of measuring;
+      // it must still carry usable stall numbers.
+      expect(w.turnsSinceLastIncorporation).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("gives the flat rule a different world from the border rule", () => {
+    const opts = { seed: 11, deck, turnCap: 200 };
+    expect(runWorld({ ...opts, raidRule: "flat" }))
+      .not.toEqual(runWorld({ ...opts, raidRule: "border" }));
   });
 });

@@ -4,10 +4,11 @@ import { factionAdjacencyOf } from "./adjacency";
 import { buildAiDeck, buildDeck, CARDS, DECK_SIZE, type Rng } from "./cards";
 import {
   advance, chooseDeck, discardCard, newGame, pickFaction, playCard, startGame,
-  viewOf, type GameState, type TributeTrack,
+  viewOf, type GameState, type RaidRule, type TributeTrack,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
 import { aiTakeTurn } from "./ai";
+import { realmOf } from "./relations";
 
 const data = rawData as MapData;
 
@@ -103,7 +104,14 @@ export function summarize(
   const mine = state.log.filter((e) => e.targetFactionId === humanFaction);
   const subjugations = mine.filter((e) => e.type === "subjugated");
   const releases = mine.filter((e) => e.type === "released");
-  const defeat = state.log.find((e) => e.type === "defeat");
+  // A rival unifying the map logs "unified", not "defeat", because its target
+  // is the map rather than the human's faction - but it still sets phase to
+  // "defeat", and from the human's seat losing the map to someone else is a
+  // loss just the same. Count either event so defeatTurn/conqueror line up
+  // with outcome instead of silently going null while outcome says "defeat".
+  const defeat = state.log.find(
+    (e) => e.type === "defeat" || e.type === "unified",
+  );
   const outcome: Outcome =
     state.phase === "defeat" ? "defeat"
       : state.phase === "victory" ? "victory"
@@ -311,4 +319,90 @@ export function byFaction(games: GameSummary[]): FactionStat[] {
         (a.medianFirstSubjugation ?? Infinity) -
         (b.medianFirstSubjugation ?? Infinity),
     );
+}
+
+// -- world runs -------------------------------------------------------------
+
+export interface WorldOptions {
+  seed: number;
+  /** The deck every one of the 26 seats plays. Must hold exactly DECK_SIZE. */
+  deck: string[];
+  raidRule: RaidRule;
+  turnCap: number;
+}
+
+export interface WorldSummary {
+  seed: number;
+  outcome: "unified" | "cap";
+  endTurn: number;
+  winner: string | null;
+  subjugations: number;
+  incorporations: number;
+  /** The biggest realm any faction reached at any point. */
+  largestRealm: number;
+  /** Turns between the last incorporation and the end of the run. */
+  turnsSinceLastIncorporation: number;
+}
+
+const biggestRealm = (s: GameState): number =>
+  Math.max(
+    ...s.factionIds.map((f) => realmOf(f, s.overlords, s.incorporated).length),
+  );
+
+/** One headless game with no privileged seat: all 26 lands hold the same deck
+ *  and play the same policy, and the run ends when somebody unifies the Balts
+ *  or the cap is reached.
+ *
+ *  The last three summary fields exist to tell a slow game from a stalemate.
+ *  A capped run whose largest realm is 3 and which has not seen an
+ *  incorporation in 60 turns is the failure this whole change is aimed at, and
+ *  it should be a number rather than an undifferentiated "cap". */
+export function runWorld(opts: WorldOptions): WorldSummary {
+  // chooseDeck silently no-ops on a wrong-length deck, which would leave the
+  // human seat on the default build while every AI seat runs opts.deck - a
+  // world that looks symmetric but is not. Fail loudly instead.
+  if (opts.deck.length !== DECK_SIZE) {
+    throw new Error(
+      `runWorld: deck must hold exactly ${DECK_SIZE} cards, got ${opts.deck.length}`,
+    );
+  }
+  const rng = seededRng(opts.seed);
+  const seeded: GameState = {
+    ...newGame(SIM_FACTION_IDS, SIM_ADJACENCY),
+    humanSeat: null,
+    raidRule: opts.raidRule,
+  };
+  let state = pickFaction(
+    chooseDeck(startGame(seeded), opts.deck),
+    SIM_FACTION_IDS[0],
+    rng,
+    () => opts.deck,
+  );
+  let largestRealm = biggestRealm(state);
+  while (state.phase === "playing" && state.turn <= opts.turnCap) {
+    const actor = state.players[state.current].factionId;
+    const next = aiTakeTurn(state, rng);
+    if (!next.playedThisTurn) {
+      throw new Error(
+        `stuck turn: seed ${opts.seed}, turn ${state.turn}, actor ${actor}, ` +
+          `hand [${state.players[state.current].hand.join(", ")}]`,
+      );
+    }
+    state = next.phase === "playing" ? advance(next, rng) : next;
+    largestRealm = Math.max(largestRealm, biggestRealm(state));
+  }
+  const unified = state.log.find((e) => e.type === "unified");
+  const lastIncorporation = [...state.log]
+    .reverse()
+    .find((e) => e.type === "incorporated");
+  return {
+    seed: opts.seed,
+    outcome: unified === undefined ? "cap" : "unified",
+    endTurn: state.turn,
+    winner: unified?.overlordFactionId ?? null,
+    subjugations: state.log.filter((e) => e.type === "subjugated").length,
+    incorporations: state.log.filter((e) => e.type === "incorporated").length,
+    largestRealm,
+    turnsSinceLastIncorporation: state.turn - (lastIncorporation?.turn ?? 0),
+  };
 }
