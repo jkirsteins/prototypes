@@ -4,12 +4,15 @@ import {
 } from "./game";
 import { flyCard, runAnimation, type Flight } from "./animate";
 import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
-import { buildRoundSummary, type NoticeCtx, type RoundSummary } from "./notices";
+import {
+  buildRoundSummary, isNoticeWorthy, type NoticeCtx, type RoundSummary,
+} from "./notices";
 import {
   passiveFortifyFor, subjugationGripOn, subjugationRequirement,
 } from "./playability";
 import type { TargetExplanation } from "./target-explanations";
 import type { TooltipLine } from "./panel";
+import { memoryStorage, type MetaStorage } from "./meta";
 import { standingChangeText, standingsFor } from "./view";
 import {
   card, cardName, faction, renderSegments, t, theFaction,
@@ -80,6 +83,53 @@ const RESHUFFLE_PULSE_MS = 450;
 // copied by hand - see the rule in AGENTS.md.
 const FLIGHT_WATCHDOG_SLACK_MS = 500;
 
+/** Activity-log display preferences: neither affects the rules, only what
+ *  the player is shown, so they persist independently of game/meta save
+ *  data - but through the SAME storage abstraction meta.ts already defined
+ *  (MetaStorage / memoryStorage), rather than reaching for `localStorage`
+ *  directly a second time. main.ts passes its own already-probed storage
+ *  (real localStorage where available, an in-memory stand-in otherwise -
+ *  private browsing, disabled storage, or a test with no browser storage at
+ *  all); createHud defaults to a private memoryStorage() so a caller that
+ *  does not care about persistence (tests) never touches real storage. */
+export interface LogPrefs {
+  /** Show only entries that would have raised a round-summary line. */
+  targetingMe: boolean;
+  /** Whether the round summary modal interrupts play at all. */
+  showPopups: boolean;
+}
+
+const LOG_PREFS_KEY = "balticmap-log-prefs-v1";
+const DEFAULT_LOG_PREFS: LogPrefs = { targetingMe: false, showPopups: true };
+
+function loadLogPrefs(storage: MetaStorage): LogPrefs {
+  try {
+    const raw = storage.getItem(LOG_PREFS_KEY);
+    if (raw === null) return { ...DEFAULT_LOG_PREFS };
+    const parsed: unknown = JSON.parse(raw);
+    const rec = parsed as Partial<LogPrefs>;
+    return {
+      targetingMe:
+        typeof rec.targetingMe === "boolean"
+          ? rec.targetingMe : DEFAULT_LOG_PREFS.targetingMe,
+      showPopups:
+        typeof rec.showPopups === "boolean"
+          ? rec.showPopups : DEFAULT_LOG_PREFS.showPopups,
+    };
+  } catch {
+    return { ...DEFAULT_LOG_PREFS };
+  }
+}
+
+function saveLogPrefs(storage: MetaStorage, prefs: LogPrefs): void {
+  try {
+    storage.setItem(LOG_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // storage unavailable or full: the toggle still works for the session,
+    // it just does not survive a reload - same tradeoff meta.ts accepts.
+  }
+}
+
 /** Cosmetic stack depth: more cards -> visibly thicker pile, capped at 4. */
 function pileLayers(count: number): number {
   if (count <= 0) return 0;
@@ -118,6 +168,7 @@ function rulerSuffix(e: GameEvent): string | null {
 export function eventSegments(e: GameEvent, state: GameState): Segment[] {
   const you = e.playerId === 1;
   const actor = actorSegments(e, state);
+  const humanFactionId = state.players.find((pl) => pl.id === 1)?.factionId;
   switch (e.type) {
     case "draw":
       return you
@@ -132,11 +183,17 @@ export function eventSegments(e: GameEvent, state: GameState): Segment[] {
       const suffix =
         rulerSuffix(e) ??
         (e.prevented ? " - prevented" : e.doubled ? " - doubled" : "");
+      // "on you", not "on Beta": the target is a name to look up everywhere
+      // else, but the human already knows which faction they are.
+      const targetedYou = !you && e.targetFactionId !== undefined
+        && e.targetFactionId === humanFactionId;
       return [
         ...actor, t(" played "), card(e.cardId ?? ""),
-        ...(e.targetFactionId !== undefined
-          ? [t(" on "), faction(e.targetFactionId)]
-          : []),
+        ...(targetedYou
+          ? [t(" on you")]
+          : e.targetFactionId !== undefined
+            ? [t(" on "), faction(e.targetFactionId)]
+            : []),
         t(suffix),
       ];
     }
@@ -207,6 +264,7 @@ export function createHud(
   cb: HudCallbacks,
   factionNames: Map<string, string> = new Map(),
   placeNameFactionIds: Set<string> = new Set(),
+  logStorage: MetaStorage = memoryStorage(),
 ): Hud {
   const factionName = (id: string | undefined): string =>
     (id !== undefined ? factionNames.get(id) : undefined) ?? id ?? "";
@@ -230,6 +288,10 @@ export function createHud(
    *  Without this the log would announce every faction's private preparations
    *  across the whole map. */
   function isObservable(e: GameEvent, humanFactionId: string | undefined): boolean {
+    // A draw happens for every seat, every turn, without exception - it is
+    // never news, only noise, so it never reaches the log regardless of whose
+    // turn it was.
+    if (e.type === "draw") return false;
     // A garrison gain is public in principle, but it fires every turn for every
     // realm past the threshold. Left unfiltered, the late-game log is nothing
     // but garrison lines from both surviving blocs and the events that actually
@@ -371,8 +433,11 @@ export function createHud(
   const hand = document.createElement("div");
   hand.className = "hand hidden";
 
+  let logPrefs = loadLogPrefs(logStorage);
+
   const logPanel = document.createElement("div");
   logPanel.className = "activity-log hidden";
+  logPanel.classList.toggle("filter-targeting-me", logPrefs.targetingMe);
   const logHeader = document.createElement("div");
   logHeader.className = "activity-log-header";
   const logTitle = document.createElement("span");
@@ -388,9 +453,45 @@ export function createHud(
     if (!collapsed) logEntries.scrollTop = logEntries.scrollHeight;
   });
   logHeader.append(logTitle, logToggle);
+
+  /** One "Targeting me" / "Show popups" checkbox. Both are pure display
+   *  preferences (see LogPrefs), applied and saved immediately on change -
+   *  there is no separate "apply" step. */
+  function makeLogFilterToggle(
+    label: string,
+    checked: boolean,
+    onChange: (checked: boolean) => void,
+  ): HTMLLabelElement {
+    const wrap = document.createElement("label");
+    wrap.className = "activity-log-filter";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = checked;
+    input.addEventListener("change", () => onChange(input.checked));
+    wrap.append(input, document.createTextNode(label));
+    return wrap;
+  }
+
+  const logFilters = document.createElement("div");
+  logFilters.className = "activity-log-filters";
+  logFilters.append(
+    makeLogFilterToggle("Targeting me", logPrefs.targetingMe, (checked) => {
+      logPrefs = { ...logPrefs, targetingMe: checked };
+      saveLogPrefs(logStorage, logPrefs);
+      // Every rendered entry was already tagged .notice-worthy (or not) at
+      // render time, so toggling this class is enough to retroactively
+      // show/hide the whole log - no re-render needed.
+      logPanel.classList.toggle("filter-targeting-me", checked);
+    }),
+    makeLogFilterToggle("Show popups", logPrefs.showPopups, (checked) => {
+      logPrefs = { ...logPrefs, showPopups: checked };
+      saveLogPrefs(logStorage, logPrefs);
+    }),
+  );
+
   const logEntries = document.createElement("div");
   logEntries.className = "activity-log-entries";
-  logPanel.append(logHeader, logEntries);
+  logPanel.append(logHeader, logFilters, logEntries);
 
   const noticeOverlay = document.createElement("div");
   noticeOverlay.className = "notice-overlay hidden";
@@ -453,13 +554,12 @@ export function createHud(
     noticeOverlay.classList.add("hidden");
   }
 
-  /** Player-affecting events interrupt once per AI round: build the whole
-   *  batch into a single summary and show it, if it has anything to say. */
-  function showRoundSummaryIfAny(state: GameState, fresh: GameEvent[]): void {
-    if (state.phase !== "playing") return;
+  /** Shared with the "Targeting me" log filter (isNoticeWorthy) so the two
+   *  surfaces cannot disagree about which events matter to the human. */
+  function buildNoticeCtx(state: GameState): NoticeCtx | null {
     const human = state.players[0];
-    if (!human) return;
-    const ctx: NoticeCtx = {
+    if (!human) return null;
+    return {
       humanFactionId: human.factionId,
       factionOf: (playerId) =>
         state.players.find((pl) => pl.id === playerId)?.factionId,
@@ -472,6 +572,16 @@ export function createHud(
           ? state.alliances[allianceKey(human.factionId, other)]
           : undefined,
     };
+  }
+
+  /** Player-affecting events interrupt once per AI round: build the whole
+   *  batch into a single summary and show it, if it has anything to say and
+   *  the player has not muted the popup (see LogPrefs.showPopups - the
+   *  events are still in the log either way, just not interrupting). */
+  function showRoundSummaryIfAny(state: GameState, fresh: GameEvent[]): void {
+    if (state.phase !== "playing" || !logPrefs.showPopups) return;
+    const ctx = buildNoticeCtx(state);
+    if (ctx === null) return;
     const summary = buildRoundSummary(fresh, ctx);
     if (summary !== null) showRoundSummary(summary);
   }
@@ -506,6 +616,7 @@ export function createHud(
     }
     const fresh = state.log.slice(renderedEvents);
     const humanFactionId = state.players[0]?.factionId;
+    const noticeCtx = buildNoticeCtx(state);
     for (const e of fresh) {
       if (e.turn !== lastRenderedTurn) {
         const sep = document.createElement("div");
@@ -519,6 +630,11 @@ export function createHud(
       entry.className = "log-entry log-new";
       entry.replaceChildren(renderSegments(eventSegments(e, state), richTextHooks));
       entry.classList.toggle("log-you", involvesHuman(e, humanFactionId));
+      // Tagged at render time, not re-evaluated on toggle: the "Targeting me"
+      // filter just shows/hides by this class, retroactively and instantly.
+      entry.classList.toggle(
+        "notice-worthy", noticeCtx !== null && isNoticeWorthy(e, noticeCtx),
+      );
       logEntries.appendChild(entry);
     }
     renderedEvents = state.log.length;
@@ -856,7 +972,7 @@ export function createHud(
     );
     pmSeenLabel.classList.toggle("hidden", loot.length === 0);
     pmLog.replaceChildren(
-      ...state.log.map((e) => {
+      ...state.log.filter((e) => e.type !== "draw").map((e) => {
         const d = document.createElement("div");
         d.className = "log-entry";
         d.replaceChildren(renderSegments(eventSegments(e, state), richTextHooks));

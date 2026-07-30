@@ -502,6 +502,15 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   unified: { kind: "silent", reason: "postmortem overlay covers it" },
 };
 
+/** Whether a single event would raise a line in the round summary - the same
+ *  test buildRoundSummary applies per-event, exposed so the activity log's
+ *  "Targeting me" filter can tag entries without duplicating the registry
+ *  lookup. */
+export function isNoticeWorthy(e: GameEvent, ctx: NoticeCtx): boolean {
+  const rule = NOTICE_RULES[e.type];
+  return rule.kind === "modal" && rule.appliesToHuman(e, ctx);
+}
+
 /** The HUD's entry point: given a batch of fresh log events, walks the WHOLE
  *  batch for standings (see standings.ts - this needs the silent events too,
  *  not just the notice-worthy ones), groups the noticeable ones by event type

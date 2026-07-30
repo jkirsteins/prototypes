@@ -652,6 +652,7 @@ svg.map.dragging {
 }
 
 .activity-log.collapsed .activity-log-entries,
+.activity-log.collapsed .activity-log-filters,
 .activity-log.collapsed .activity-log-title {
   display: none;
 }
@@ -667,6 +668,33 @@ svg.map.dragging {
   font-size: 13px;
   color: #666;
   padding: 2px 4px;
+}
+
+.activity-log-filters {
+  display: flex;
+  gap: 10px;
+  padding: 5px 10px;
+  border-bottom: 1px solid #eee;
+  font-size: 11px;
+  color: #6b5d49;
+}
+
+.activity-log-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.activity-log-filter input {
+  cursor: pointer;
+}
+
+/* Entries are tagged .notice-worthy at render time (see renderLog in
+   hud.ts); toggling this class on the panel shows/hides the whole log
+   retroactively, without a re-render. */
+.activity-log.filter-targeting-me .log-entry:not(.notice-worthy) {
+  display: none;
 }
 
 .activity-log-entries {

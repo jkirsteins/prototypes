@@ -719,6 +719,7 @@ const hud = createHud(
   },
   new Map(data.factions.map((f) => [f.id, f.name])),
   new Set(data.factions.filter((f) => f.placeName).map((f) => f.id)),
+  storage,
 );
 
 function deckScreenView(visible: boolean) {

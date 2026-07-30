@@ -13,6 +13,7 @@ import {
   INCORPORATE_RAMP, PASSIVE_PER_LANDS, loyaltyKey,
 } from "../src/playability";
 import type { TargetExplanation } from "../src/target-explanations";
+import { memoryStorage, type MetaStorage } from "../src/meta";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -34,6 +35,10 @@ function setup(opts?: {
   onSurrender?: () => void;
   onHighlightFaction?: (factionId: string | null) => void;
   placeNameFactionIds?: Set<string>;
+  /** LogPrefs storage. Defaults to a fresh, isolated memoryStorage() per
+   *  call - pass the SAME instance to two setup() calls to test that
+   *  preferences persist across HUD instances. */
+  logStorage?: MetaStorage;
 }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -56,7 +61,7 @@ function setup(opts?: {
   };
   const hud = createHud(container, cb, new Map([
     ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
-  ]), opts?.placeNameFactionIds);
+  ]), opts?.placeNameFactionIds, opts?.logStorage ?? memoryStorage());
   return { container, cb, hud };
 }
 
@@ -224,11 +229,28 @@ describe("activity log", () => {
     expect(q(container, ".activity-log").classList.contains("hidden")).toBe(false);
   });
 
-  it("names your cards, hides AI draws, and shows AI plays", () => {
+  it("never logs a draw, and names your cards and AI plays", () => {
     const { container, hud } = setup();
     let g = playing();
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
+    g = advance({ ...g, playedThisTurn: true }, seededRng(2)); // player 2 draws - never logged
+    g = withHand(g, 1, ["grow-crops"]);
+    g = aiTakeTurn(g, seededRng(1)); // player 2 plays
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    const alpha = rulerOf(g.rulers, "alpha").name;
+    expect(texts).toEqual([
+      "You played Grow turnips",
+      `${alpha} of the Alpha played Grow turnips`,
+    ]);
+  });
+
+  it("names a place-name faction's ruler with no article", () => {
+    const { container, hud } = setup({ placeNameFactionIds: new Set(["alpha"]) });
+    let g = playing();
     g = advance({ ...g, playedThisTurn: true }, seededRng(2)); // player 2 draws
     g = withHand(g, 1, ["grow-crops"]);
     g = aiTakeTurn(g, seededRng(1)); // player 2 plays
@@ -237,30 +259,28 @@ describe("activity log", () => {
       (el) => el.textContent,
     );
     const alpha = rulerOf(g.rulers, "alpha").name;
-    expect(texts[0]).toMatch(/^You drew /);
-    expect(texts[1]).toBe("You played Grow turnips");
-    expect(texts[2]).toBe(`${alpha} of the Alpha drew a card`);
-    expect(texts[3]).toMatch(new RegExp(`^${alpha} of the Alpha played `));
-  });
-
-  it("names a place-name faction's ruler with no article", () => {
-    const { container, hud } = setup({ placeNameFactionIds: new Set(["alpha"]) });
-    let g = playing();
-    g = advance({ ...g, playedThisTurn: true }, seededRng(2)); // player 2 draws
-    hud.update(g);
-    const texts = [...container.querySelectorAll(".log-entry")].map(
-      (el) => el.textContent,
-    );
-    const alpha = rulerOf(g.rulers, "alpha").name;
-    expect(texts.some((t) => t === `${alpha} of Alpha drew a card`)).toBe(true);
+    expect(texts.some((t) => t === `${alpha} of Alpha played Grow turnips`)).toBe(true);
   });
 
   it("appends only new entries across updates and inserts turn separators", () => {
     const { container, hud } = setup();
-    let g = playing();
+    let g = playing(); // beta's opening draw, turn 1 (never logged)
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1)); // entry 1: your play, turn 1
     hud.update(g);
-    for (let i = 0; i < FACTIONS.length; i++) g = advance({ ...g, playedThisTurn: true }, seededRng(3));
-    hud.update(g); // back to the human: turn 2 draw happened
+    expect(container.querySelectorAll(".log-entry")).toHaveLength(1);
+
+    g = advance(g, seededRng(2)); // -> alpha's turn (draw, never logged)
+    g = withHand(g, 1, ["grow-crops"]);
+    g = aiTakeTurn(g, seededRng(2)); // entry 2: alpha's play, turn 1
+    g = advance(g, seededRng(2)); // -> gamma's turn (draw, never logged)
+    g = withHand(g, 2, ["grow-crops"]);
+    g = aiTakeTurn(g, seededRng(2)); // entry 3: gamma's play, turn 1
+    g = advance(g, seededRng(2)); // -> back to you, turn bumps to 2 (draw, never logged)
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(2)); // entry 4: your play, turn 2
+
+    hud.update(g);
     expect(container.querySelectorAll(".log-entry")).toHaveLength(4);
     const seps = [...container.querySelectorAll(".log-turn")].map(
       (el) => el.textContent,
@@ -274,9 +294,9 @@ describe("activity log", () => {
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
     hud.update(g);
-    expect(container.querySelectorAll(".log-entry")).toHaveLength(2);
-    hud.update(playing()); // fresh game: log has only the opening draw
     expect(container.querySelectorAll(".log-entry")).toHaveLength(1);
+    hud.update(playing()); // fresh game: log has only the (unlogged) opening draw
+    expect(container.querySelectorAll(".log-entry")).toHaveLength(0);
   });
 
   it("collapses to a tab and expands again", () => {
@@ -288,6 +308,92 @@ describe("activity log", () => {
     expect(panel.classList.contains("collapsed")).toBe(true);
     q(container, ".activity-log-toggle").click();
     expect(panel.classList.contains("collapsed")).toBe(false);
+  });
+});
+
+describe("activity log filters", () => {
+  function playing() {
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+  }
+
+  const filterCheckbox = (c: HTMLElement): HTMLInputElement =>
+    c.querySelectorAll(".activity-log-filter input")[0] as HTMLInputElement;
+  const popupsCheckbox = (c: HTMLElement): HTMLInputElement =>
+    c.querySelectorAll(".activity-log-filter input")[1] as HTMLInputElement;
+
+  it("defaults to unfiltered, with popups on", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    expect(filterCheckbox(container).checked).toBe(false);
+    expect(popupsCheckbox(container).checked).toBe(true);
+    expect(q(container, ".activity-log").classList.contains("filter-targeting-me")).toBe(false);
+  });
+
+  it("tags a notice-worthy entry, and leaves an AI-vs-AI entry untagged", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = {
+      ...g,
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "gamma", amount: 1, track: "might" },
+      ],
+    };
+    hud.update(g);
+    q(container, ".notice-continue").click(); // dismiss the round summary the raid raised
+    const entries = [...container.querySelectorAll(".activity-log .log-entry")];
+    const raidOnYou = entries.find((el) => el.textContent === "Alpha played Raid on you")!;
+    const raidOnGamma = entries.find((el) => el.textContent === "Alpha played Raid on Gamma")!;
+    expect(raidOnYou.classList.contains("notice-worthy")).toBe(true);
+    expect(raidOnGamma.classList.contains("notice-worthy")).toBe(false);
+  });
+
+  it("checking Targeting me hides everything but notice-worthy entries, instantly", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = {
+      ...g,
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "gamma", amount: 1, track: "might" },
+      ],
+    };
+    hud.update(g);
+    q(container, ".notice-continue").click();
+    filterCheckbox(container).click();
+    expect(q(container, ".activity-log").classList.contains("filter-targeting-me")).toBe(true);
+  });
+
+  it("persists both preferences across HUD instances sharing storage", () => {
+    const logStorage = memoryStorage();
+    const { container: c1, hud: hud1 } = setup({ logStorage });
+    hud1.update(playing());
+    filterCheckbox(c1).click();
+    popupsCheckbox(c1).click();
+
+    const { container: c2, hud: hud2 } = setup({ logStorage });
+    hud2.update(playing());
+    expect(filterCheckbox(c2).checked).toBe(true);
+    expect(popupsCheckbox(c2).checked).toBe(false);
+  });
+
+  it("unchecking Show popups keeps the round silent, without losing the log entry", () => {
+    const { container, hud } = setup();
+    popupsCheckbox(container).click(); // off, before any game state exists
+    let g = playing();
+    g = {
+      ...g,
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
+      ],
+    };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    const texts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
+    expect(texts).toContain("Alpha played Raid on you");
   });
 });
 
@@ -503,7 +609,7 @@ describe("subjugation HUD", () => {
       (el) => el.textContent,
     );
     expect(texts2).toContain(
-      `${ruler} of the Alpha played Assassinate ruler on Beta - prevented, ${ruler2} survives`,
+      `${ruler} of the Alpha played Assassinate ruler on you - prevented, ${ruler2} survives`,
     );
   });
 
@@ -942,8 +1048,8 @@ describe("log highlighting", () => {
     q(container, ".notice-continue").click();
     const entries = [...container.querySelectorAll(".activity-log .log-entry")];
     const flags = entries.map((el) => el.classList.contains("log-you"));
-    // your draw, AI draw, you subjugated, AI-vs-AI, AI reclaims from you
-    expect(flags).toEqual([true, false, true, false, true]);
+    // draws never reach the log; you subjugated, AI-vs-AI, AI reclaims from you
+    expect(flags).toEqual([true, false, true]);
   });
 
   it("marks postmortem log entries the same way", () => {
