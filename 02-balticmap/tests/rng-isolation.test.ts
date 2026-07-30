@@ -21,12 +21,13 @@ describe("seeded games", () => {
   // their output is byte-identical, only deck building moved and re-freezing
   // this fixture is correct.
   //
-  // The pinned outcomes are suspended for the duration of the reclaim-cut and
-  // AI-policy-coverage changeset because the pin fires on any behaviour change,
-  // not only on the rng theft it guards against. Task 12 un-skips it and
-  // re-freezes the baseline. The guard's original ruler-naming warning still
-  // applies.
-  it.skip("are unchanged by anything that does not touch the rules", () => {
+  // A change to the AI policy is a third way this goes stale, and the most
+  // common one: different card choices mean different games. That is a
+  // behaviour change, so re-freeze - but apply the same fixed-deck-arm check
+  // first, because those arms run the policy too and will move with it. What
+  // must NOT move under a pure policy change is buildAiDeck's output for a
+  // given seed, since the policy consumes no rng of its own.
+  it("are unchanged by anything that does not touch the rules", () => {
     const games = BASELINE_SEEDS.map((seed) =>
       runGame({ seed, humanFaction: BASELINE_FACTION, turnCap: BASELINE_TURN_CAP }),
     );

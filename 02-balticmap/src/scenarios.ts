@@ -92,42 +92,37 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      // subjugatedShare suspended for the reclaim-cut and AI-policy-coverage
-      // changeset: Tasks 7, 8 and 9 each move it, so a band set now would be
-      // set three times. Restore from a fresh measurement immediately after
-      // Task 9. Measured 0.769 on the day Task 7 landed (up from the 0.60
-      // this band was set from), for comparison when restoring.
-      // subjugatedShare: [0.45, 0.75],   // measured 0.60
+      subjugatedShare: [0.45, 0.75],   // measured 0.60
       medianFirstSubjugation: [3, 9],  // measured 6.00
       defeatShare: [0.33, 0.63],       // measured 0.48
     },
   },
-  // competent-full-deck is suspended whole for the reclaim-cut and
-  // AI-policy-coverage changeset: Tasks 7, 8 and 9 each move BOTH of its
-  // metrics, and it has no third metric to stand on once both are moving, so
-  // a per-metric suspension leaves it asserting nothing (a structural
-  // invariant elsewhere in the test suite requires every scenario to expect
-  // something, and rightly so - that invariant is not weakened here).
-  // Restore complete, from a fresh measurement of both bands, immediately
-  // after Task 9. Measured during the changeset, for comparison when
-  // restoring: subjugatedShare 0.423 (band was [0.47, 0.77], measured 0.62),
-  // medianFirstSubjugation 10.5 (band was [3, 8], measured 5.00).
-  // {
-  //   id: "competent-full-deck",
-  //   description:
-  //     "A player who plays as well as the enemies do. Guards the other end: " +
-  //     "the world must not be so aggressive that skill stops mattering.",
-  //   humanPolicy: "competent",
-  //   humanDeck: "full",
-  //   arm: "shipped",
-  //   games: 26,
-  //   firstSeed: 1,
-  //   turnCap: 80,
-  //   expect: {
-  //     subjugatedShare: [0.47, 0.77],   // measured 0.62
-  //     medianFirstSubjugation: [3, 8],  // measured 5.00
-  //   },
-  // },
+  {
+    id: "competent-full-deck",
+    description:
+      "A player who plays as well as the enemies do. Guards the other end: " +
+      "the world must not be so aggressive that skill stops mattering.",
+    humanPolicy: "competent",
+    humanDeck: "full",
+    arm: "shipped",
+    games: 26,
+    firstSeed: 1,
+    turnCap: 80,
+    expect: {
+      subjugatedShare: [0.47, 0.77],    // measured 0.54
+      // Moved from [3, 8] (measured 5.00) after the reclaim-cut and
+      // AI-policy-coverage changeset. A competent human runs the same policy
+      // the enemies do, so it now plays the emergency Alliance and Assassinate
+      // ruler steps that Alliance and Assassinate ruler never had, and defends
+      // itself with them. Being subjugated later is the whole point of that
+      // work, so the band follows the behaviour rather than the behaviour being
+      // filed down to fit the band. This is the only band in the file that the
+      // changeset moved permanently: this scenario's subjugatedShare and
+      // flailing-full-deck's both left their bands mid-changeset and came back
+      // inside them once every policy step had landed.
+      medianFirstSubjugation: [7, 20],  // measured 13.50
+    },
+  },
 ];
 
 export interface Check {

@@ -419,3 +419,100 @@ item.
   is measured and intended; if that proves too generous to overlords it is a
   separate change with its own evidence.
 - Any change to `CARDS` declaration order.
+
+## Results
+
+Measured after every task landed, on the shipped code. All seven committed
+scenarios were re-run with `npm run simulate:check`.
+
+### Predictions, scored
+
+**Prediction 1, partly right.** Alliance and Assassinate ruler play shares were
+expected to "fall sharply" from 14.3% and 12.5%. They fell, but modestly:
+Alliance 14.3% -> 12.4%, Assassinate ruler 12.5% -> 9.7%. Both still fire often,
+because a threat within one play of subjugating you is common on a 26-faction
+map, not the rarity the word "emergency" implies.
+
+**Prediction 2, wrong.** It expected a median end turn "at or below the 112.0
+measured for the Reclaim cut alone". Measured 123.5 over 26 worlds at a 300-turn
+cap. The reasoning behind the prediction - that filler pacts were freezing the
+map and a threat-gated policy would unfreeze it - was too simple. Competent
+defence on all 26 seats slows conquest more than filler pacts did, because the
+pacts that now get sealed are the ones that actually protect somebody.
+Resolution share held at 92.3%, so the worlds still resolve; they just take
+longer.
+
+**Prediction 3, did not occur.** The named risk was `unifiedShare` collapsing
+and `medianStallTurns` rising. It did not: 92.3% unified, inside the committed
+`[0.77, 1]` band. Step 5's bar was left at `shortfall <= 1`.
+
+### The defect this changeset exists to fix
+
+`firstLegalTargetShare` measured **0.639** over 9,297 targeted plays that had two
+or more legal targets. Before this work it was 1.00 by construction for Alliance
+and Assassinate ruler, which together were 26.8% of all plays. The residue is
+Raid and Shrewd marriage, whose build step legitimately ranks the first legal
+target first when several tie.
+
+Play shares, 26 worlds, all 26 seats on `DEFAULT_DECK`:
+
+| card | share | was |
+| --- | --- | --- |
+| fortify | 14.3% | 16.1% |
+| favourable-omens | 14.0% | 16.0% |
+| raid | 13.1% | 14.8% |
+| grow-crops | 13.1% | - |
+| shrewd-marriage | 12.4% | 14.4% |
+| alliance | 12.4% | 14.3% |
+| assassinate-ruler | 9.7% | 12.5% |
+| subjugate | 4.6% | 4.8% |
+| pay-tribute | 2.3% | 2.7% |
+| incorporate | 2.2% | 2.7% |
+| revolt | 1.9% | 0.9% |
+| reclaim-independence | - | 0.7% |
+
+Every card now reaches play through a branch that chose it. The waste counters
+are effectively clean: `preventedAssassinations` 0.00, `untestedGuards` 0.00,
+`unusedBoosts` 0.00, `alliancesOnOwnTargets` 0.04 per world.
+
+### One thing the spec got wrong, caught by its own metric
+
+This document predicted `alliancesOnOwnTargets` would be "0 by construction once
+the exclusion in step 5 lands". The first measurement said 0.33 per world. Step 5
+does refuse to ally with a faction the actor could subjugate, but the step-11
+last-resort fallthrough still took the first legal target and undid that
+exclusion. Step 11 now prefers a target it could not subjugate, which halved it
+to 0.17, and the remainder is forced: when Alliance is the only playable card and
+every legal target is also one this faction could subjugate, there is nothing
+else to play. The test asserts a low rate rather than zero, and says why.
+
+### Bands
+
+Six of seven scenarios hold their committed bands unchanged. One band moved:
+
+| scenario | metric | from | to | measured |
+| --- | --- | --- | --- | --- |
+| competent-full-deck | medianFirstSubjugation | [3, 8] | [7, 20] | 13.50 |
+
+A competent human runs the same policy the enemies do, so it now plays the
+emergency Alliance and Assassinate ruler steps and defends itself with them.
+Being subjugated later is the point of that work, so the band follows the
+behaviour.
+
+Two bands left their ranges mid-changeset and came back inside them once every
+policy step had landed: `flailing-full-deck` `subjugatedShare` (0.769 after Task 7,
+0.73 at the end, band `[0.45, 0.75]`) and `competent-full-deck` `subjugatedShare`
+(0.423 after Task 7, 0.54 at the end, band `[0.47, 0.77]`). Both were suspended
+during the policy tasks rather than re-set three times, which is why they needed
+no permanent change. Setting them mid-sequence would have baked in numbers that
+describe a state that never shipped.
+
+The `conquest-scaled` and `conquest-omens` arms were expected to move, because
+Incorporate's targeting changed and both decks hold Incorporate. They did not
+move outside their bands (0.92 at 110.0 and 0.96 at 70.0). The earlier claim in
+this document that they were immune was wrong for the right reason and harmless
+in the event.
+
+`tests/rng-isolation.test.ts` was re-frozen once, at the end. Its comment now
+records all three ways it can legitimately go stale and the fixed-deck-arm check
+that distinguishes those from an actual rng regression.
