@@ -1047,3 +1047,136 @@ svg.map.dragging {
   stroke-width: 0.8;
   pointer-events: auto;
 }
+
+/* Victory scoreboard: top right, at most two rows. Matches .status-bar's card
+   treatment so the two read as one HUD layer rather than two designs. */
+.scoreboard {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #3f3428;
+  z-index: 6;
+}
+
+.scoreboard.hidden {
+  display: none;
+}
+
+.sb-row {
+  display: grid;
+  /* fixed lands/percent columns so the two rows' numbers line up under each
+     other however long the faction name is */
+  grid-template-columns: 1fr auto 40px;
+  align-items: baseline;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.sb-who {
+  font-weight: 600;
+}
+
+.sb-row.sb-you .sb-who {
+  color: #2f6f4f;
+}
+
+.sb-lands {
+  font-size: 12px;
+  color: #6b6152;
+}
+
+.sb-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Spans all three columns: a standing-rule footnote, not a fourth number. */
+.sb-passive {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: #6b6152;
+}
+
+/* Top left, which is the only free corner: Discard holds the bottom left, Deck
+   the bottom right, and the hand the bottom centre. Sat at bottom right first
+   and collided with the deck pile's label. */
+.surrender-btn {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  font-size: 12px;
+  padding: 5px 14px;
+  border: 1px solid #c9b896;
+  border-radius: 5px;
+  background: #fff;
+  color: #6b6152;
+  cursor: pointer;
+  z-index: 6;
+}
+
+.surrender-btn.hidden {
+  display: none;
+}
+
+.surrender-btn.confirm {
+  background: #7a2f2f;
+  color: #fdfaf4;
+  border-color: #7a2f2f;
+}
+
+/* Learned-cards announcement. Same overlay treatment as .notice-overlay, but
+   scoped to the deck screen, which is a separate phase with its own root. */
+.ds-learned-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(30, 24, 16, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.ds-learned-overlay.hidden {
+  display: none;
+}
+
+.ds-learned-card {
+  width: min(460px, calc(100% - 48px));
+  background: #fdf9f1;
+  border: 1px solid #c9b896;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  padding: 22px 24px;
+  text-align: center;
+  color: #3f3428;
+}
+
+.ds-learned-title {
+  font-size: 20px;
+  margin-bottom: 14px;
+}
+
+.ds-learned-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.ds-learned-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 2px solid #d4af37;
+  padding-left: 10px;
+}

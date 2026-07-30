@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  INCORPORATE_RAMP, POACH_CHANCE,
-  SUBJUGATE_THRESHOLD, borderStrength, gripPartsOn, incorporationChance,
+  INCORPORATE_RAMP, PASSIVE_PER_LANDS, POACH_CHANCE,
+  SUBJUGATE_THRESHOLD, annexedLandsOf, borderStrength, gripPartsOn,
+  incorporationChance, passiveFortifyFor, raidYield,
   isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
   subjugationChance, subjugationGripOn,
   subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
@@ -695,5 +696,73 @@ describe("the two rolls", () => {
     expect(at(INCORPORATE_RAMP)).toBe(1);
     expect(at(INCORPORATE_RAMP * 3)).toBe(1); // clamped, never above 1
     expect(at(1)).toBeCloseTo(1 / INCORPORATE_RAMP);
+  });
+});
+
+describe("raidYield", () => {
+  it("is triangular in border width, and unchanged for a single border land", () => {
+    expect(raidYield(0)).toBe(0);
+    // 1 is the early-game case: nearly every faction holds one land, so the
+    // convexity must not touch it.
+    expect(raidYield(1)).toBe(1);
+    expect(raidYield(2)).toBe(3);
+    expect(raidYield(3)).toBe(6);
+    expect(raidYield(5)).toBe(15);
+    expect(raidYield(6)).toBe(21);
+  });
+
+  it("grows faster than linearly, which is the whole point", () => {
+    // A doubled border is worth more than double: this is what lets a large
+    // realm out-accumulate a peer, since a lead is a pairwise difference and
+    // every other gain card is a flat +1.
+    expect(raidYield(6)).toBeGreaterThan(2 * raidYield(3));
+  });
+});
+
+describe("passiveFortifyFor", () => {
+  const annexedTo = (lord: string, lands: string[]) =>
+    Object.fromEntries(lands.map((l) => [l, lord]));
+
+  it("is zero below the threshold and floors above it", () => {
+    expect(passiveFortifyFor(view(), "alpha")).toBe(0);
+    expect(
+      passiveFortifyFor(view({ incorporated: annexedTo("alpha", ["beta"]) }), "alpha"),
+    ).toBe(0);
+    expect(
+      passiveFortifyFor(
+        view({ incorporated: annexedTo("alpha", ["beta", "gamma", "delta"]) }),
+        "alpha",
+      ),
+    ).toBe(0);
+  });
+
+  it("grants one per PASSIVE_PER_LANDS annexed lands", () => {
+    const lands = ["b", "c", "d", "e", "f", "g", "h", "i"];
+    const at = (n: number) =>
+      passiveFortifyFor(
+        view({ incorporated: annexedTo("alpha", lands.slice(0, n)) }),
+        "alpha",
+      );
+    expect(at(PASSIVE_PER_LANDS)).toBe(1);
+    expect(at(PASSIVE_PER_LANDS * 2)).toBe(2);
+  });
+
+  it("counts only the asking faction's own annexations", () => {
+    const v = view({
+      incorporated: {
+        ...annexedTo("alpha", ["b", "c", "d", "e"]),
+        ...annexedTo("beta", ["f", "g"]),
+      },
+    });
+    expect(passiveFortifyFor(v, "alpha")).toBe(1);
+    expect(passiveFortifyFor(v, "beta")).toBe(0);
+  });
+
+  it("agrees with annexedLandsOf", () => {
+    const v = view({ incorporated: annexedTo("alpha", ["b", "c", "d", "e", "f"]) });
+    expect(annexedLandsOf(v, "alpha")).toBe(5);
+    expect(passiveFortifyFor(v, "alpha")).toBe(
+      Math.floor(5 / PASSIVE_PER_LANDS),
+    );
   });
 });

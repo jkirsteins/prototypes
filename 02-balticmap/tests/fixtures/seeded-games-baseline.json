@@ -74,14 +74,14 @@
   {
     "seed": 7,
     "humanFaction": "lower-daugava-livs",
-    "outcome": "cap",
+    "outcome": "defeat",
     "firstSubjugatedTurn": 8,
     "firstOverlord": "semigallian-confederacy",
-    "subjugatedCount": 18,
-    "releasedCount": 1,
-    "defeatTurn": null,
-    "conqueror": null,
-    "turns": 151
+    "subjugatedCount": 2,
+    "releasedCount": 0,
+    "defeatTurn": 40,
+    "conqueror": "lietuva",
+    "turns": 40
   },
   {
     "seed": 8,
@@ -91,9 +91,9 @@
     "firstOverlord": "semigallian-confederacy",
     "subjugatedCount": 2,
     "releasedCount": 0,
-    "defeatTurn": 49,
+    "defeatTurn": 50,
     "conqueror": "talavians",
-    "turns": 49
+    "turns": 50
   },
   {
     "seed": 9,
@@ -101,11 +101,11 @@
     "outcome": "defeat",
     "firstSubjugatedTurn": 5,
     "firstOverlord": "semigallian-confederacy",
-    "subjugatedCount": 3,
+    "subjugatedCount": 4,
     "releasedCount": 0,
-    "defeatTurn": 130,
+    "defeatTurn": 94,
     "conqueror": "sembians",
-    "turns": 130
+    "turns": 94
   },
   {
     "seed": 10,
@@ -115,8 +115,8 @@
     "firstOverlord": "selonians",
     "subjugatedCount": 1,
     "releasedCount": 0,
-    "defeatTurn": 18,
+    "defeatTurn": 16,
     "conqueror": "selonians",
-    "turns": 18
+    "turns": 16
   }
 ]

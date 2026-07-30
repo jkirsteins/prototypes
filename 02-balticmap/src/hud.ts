@@ -1,15 +1,21 @@
 import { CARDS } from "./cards";
-import { isHumanTurn, viewOf, type GameEvent, type GameState } from "./game";
+import {
+  isHumanTurn, victoryRealmSize, viewOf, type GameEvent, type GameState,
+} from "./game";
 import { flyCard } from "./animate";
 import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
 import { buildNotices, type Notice, type NoticeCtx } from "./notices";
-import { subjugationGripOn, subjugationRequirement } from "./playability";
+import {
+  passiveFortifyFor, subjugationGripOn, subjugationRequirement,
+} from "./playability";
 import type { TargetExplanation } from "./target-explanations";
-import { withArticle } from "./view";
+import { standingsFor, withArticle } from "./view";
 
 export interface HudCallbacks {
   onNewGame(): void;
   onPlayCard(index: number): void;
+  /** Concede the run. Absent in contexts with no seat to concede (tests). */
+  onSurrender?(): void;
   /** Optional gate for cards that need a valid target; default: playable. */
   canPlayCard?(cardId: string): boolean;
   targetExplanations?(cardId: string): TargetExplanation[];
@@ -136,6 +142,12 @@ export function createHud(
         return `${actor} fails to prise ${factionName(e.targetFactionId)} from ${factionName(e.formerOverlordFactionId)}`;
       case "incorporate-failed":
         return `${factionName(e.targetFactionId)} resists incorporation into ${factionName(e.overlordFactionId)}`;
+      case "garrisoned":
+        return you
+          ? `Your garrisons stand watch (+${e.amount} Might against all)`
+          : `${actor}'s garrisons stand watch (+${e.amount} Might against all)`;
+      case "surrendered":
+        return "You conceded the Baltic";
       case "victory":
         return "You rule the Baltic";
       case "defeat":
@@ -156,6 +168,12 @@ export function createHud(
    *  Without this the log would announce every faction's private preparations
    *  across the whole map. */
   function isObservable(e: GameEvent, humanFactionId: string | undefined): boolean {
+    // A garrison gain is public in principle, but it fires every turn for every
+    // realm past the threshold. Left unfiltered, the late-game log is nothing
+    // but garrison lines from both surviving blocs and the events that actually
+    // matter scroll away. The player's own is kept, because that is where they
+    // learn the rule exists; a rival's shows up in the Might lead on the badge.
+    if (e.type === "garrisoned") return e.playerId === 1;
     if (e.type !== "seeded") return true;
     return e.playerId === 1 || e.overlordFactionId === humanFactionId;
   }
@@ -229,6 +247,32 @@ export function createHud(
   const pmLog = document.createElement("div");
   pmLog.className = "pm-log";
   postmortem.append(pmSummary, pmLog);
+
+  // Top-right scoreboard: who is closest to ending the run, and where you sit.
+  const scoreboard = document.createElement("div");
+  scoreboard.className = "scoreboard hidden";
+
+  // Concede. Two-click confirm, the same shape the Reset progress control uses,
+  // because it is terminal and a stray click must not end the run.
+  const surrenderBtn = document.createElement("button");
+  surrenderBtn.className = "surrender-btn hidden";
+  surrenderBtn.textContent = "Surrender";
+  let armedSurrender = false;
+  const disarmSurrender = (): void => {
+    armedSurrender = false;
+    surrenderBtn.textContent = "Surrender";
+    surrenderBtn.classList.remove("confirm");
+  };
+  surrenderBtn.addEventListener("click", () => {
+    if (!armedSurrender) {
+      armedSurrender = true;
+      surrenderBtn.textContent = "Really surrender?";
+      surrenderBtn.classList.add("confirm");
+      return;
+    }
+    disarmSurrender();
+    cb.onSurrender?.();
+  });
 
   const status = document.createElement("div");
   status.className = "status-bar hidden";
@@ -377,8 +421,8 @@ export function createHud(
   });
 
   container.append(
-    menu, postmortem, status, deckPile.root, discardPile.root, hand, logPanel,
-    noticeOverlay,
+    menu, postmortem, status, scoreboard, surrenderBtn, deckPile.root,
+    discardPile.root, hand, logPanel, noticeOverlay,
   );
 
   let pendingPlayRect: DOMRect | null = null;
@@ -581,6 +625,45 @@ export function createHud(
     }
   }
 
+  function renderScoreboard(state: GameState): void {
+    const human = state.players[0];
+    const rows = standingsFor({
+      factionIds: state.factionIds,
+      humanFactionId: human?.factionId,
+      realmSize: (f) => realmOf(f, state.overlords, state.incorporated).length,
+      incorporated: state.incorporated,
+      needed: victoryRealmSize(state.factionIds.length),
+      passiveFor: (f) => passiveFortifyFor(viewOf(state), f),
+    });
+    scoreboard.replaceChildren(
+      ...rows.map((r) => {
+        const row = document.createElement("div");
+        row.className = "sb-row";
+        row.classList.toggle("sb-you", r.isHuman);
+        const who = document.createElement("span");
+        who.className = "sb-who";
+        who.textContent = r.isHuman ? "You" : factionName(r.factionId);
+        const lands = document.createElement("span");
+        lands.className = "sb-lands";
+        lands.textContent = `${r.lands}/${r.needed} lands`;
+        const pct = document.createElement("span");
+        pct.className = "sb-pct";
+        pct.textContent = `${r.percent}%`;
+        row.append(who, lands, pct);
+        // The one place the passive garrison rule is stated outright. Without
+        // it a player watching their Might climb every turn has no way to learn
+        // why, since the log line alone does not say where the number comes from.
+        if (r.passivePerTurn !== undefined && r.passivePerTurn > 0) {
+          const passive = document.createElement("span");
+          passive.className = "sb-passive";
+          passive.textContent = `garrisons +${r.passivePerTurn} Might/turn`;
+          row.appendChild(passive);
+        }
+        return row;
+      }),
+    );
+  }
+
   function renderPostmortem(state: GameState): void {
     const human = state.players[0];
     const won = state.phase === "victory";
@@ -591,6 +674,18 @@ export function createHud(
       ).length;
       pmCause.textContent =
         `You rule the Baltic - ${size} of ${state.factionIds.length} lands`;
+      pmDeltas.textContent = "";
+      pmBuildup.replaceChildren();
+    } else if (state.log.some((e) => e.type === "surrendered")) {
+      // Conceding has no killer and no buildup to explain. Say what happened
+      // and how far off the pace they were, and leave it at that.
+      const size = realmOf(
+        human.factionId, state.overlords, state.incorporated,
+      ).length;
+      pmTitle.textContent = "Surrendered";
+      pmCause.textContent =
+        `You conceded with ${size} of the ` +
+        `${victoryRealmSize(state.factionIds.length)} lands needed`;
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();
     } else {
@@ -635,7 +730,7 @@ export function createHud(
       cb.lootInfo?.() ??
       state.seenThisRun.map((id) => ({ id, isNew: false }));
     pmSeenLabel.textContent = cb.lootInfo
-      ? "Unlock one of these when you start your next game."
+      ? "These are yours when you start your next game."
       : "Cards seen this run:";
     pmSeen.replaceChildren(
       ...loot.map(({ id, isNew }) => {
@@ -685,6 +780,12 @@ export function createHud(
       hand.classList.toggle("hidden", state.phase !== "playing");
       logPanel.classList.toggle("hidden", state.phase !== "playing");
       postmortem.classList.toggle("hidden", !ended);
+      scoreboard.classList.toggle("hidden", state.phase !== "playing");
+      surrenderBtn.classList.toggle(
+        "hidden",
+        state.phase !== "playing" || cb.onSurrender === undefined,
+      );
+      if (state.phase !== "playing") disarmSurrender();
 
       renderStatus(state);
 
@@ -693,6 +794,7 @@ export function createHud(
         renderPile(deckPile, human.deck.length);
         renderPile(discardPile, human.discard.length);
         renderHand(state);
+        renderScoreboard(state);
         const fresh = renderLog(state);
         enqueueNotices(state, fresh);
         animateEvents(fresh);

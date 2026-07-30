@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   barFor, fitView, clampView, formatLead, holderOf, homeView, hoverRelationLines, panBy,
-  politicalFactionForPolygon, relationshipLine,
+  politicalFactionForPolygon, relationshipLine, standingsFor,
   withArticle,
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
@@ -402,5 +402,119 @@ describe("barFor", () => {
     // subjugationRequirement returns null in that direction.
     expect(barFor(-13, 10, null)).toBeNull();
     expect(barFor(3, null, 20)).toBeNull();
+  });
+});
+
+describe("standingsFor", () => {
+  const base = {
+    factionIds: ["a", "b", "c"],
+    incorporated: {} as Record<string, string>,
+    needed: 15,
+    passiveFor: () => 0,
+  };
+
+  it("ranks the top three, biggest first", () => {
+    const rows = standingsFor({
+      ...base,
+      factionIds: ["a", "b", "c", "d", "e"],
+      humanFactionId: "a",
+      realmSize: (f) => ({ a: 14, b: 9, c: 2, d: 11, e: 1 })[f] ?? 0,
+    });
+    expect(rows.map((r) => r.factionId)).toEqual(["a", "d", "b"]);
+    expect(rows[0]).toMatchObject({
+      factionId: "a", lands: 14, needed: 15, percent: 93, isHuman: true,
+    });
+  });
+
+  it("ranks everyone when fewer than three contenders exist", () => {
+    const rows = standingsFor({
+      ...base,
+      factionIds: ["a", "b"],
+      humanFactionId: "a",
+      realmSize: (f) => ({ a: 4, b: 2 })[f] ?? 0,
+    });
+    expect(rows.map((r) => r.factionId)).toEqual(["a", "b"]);
+  });
+
+  it("adds the human as a fourth row when they are outside the top three", () => {
+    const rows = standingsFor({
+      ...base,
+      factionIds: ["a", "b", "c", "d", "e"],
+      humanFactionId: "e",
+      realmSize: (f) => ({ a: 14, b: 9, c: 2, d: 11, e: 1 })[f] ?? 0,
+    });
+    expect(rows.map((r) => r.factionId)).toEqual(["a", "d", "b", "e"]);
+    expect(rows.slice(0, 3).every((r) => !r.isHuman)).toBe(true);
+    expect(rows[3]).toMatchObject({ factionId: "e", lands: 1, isHuman: true });
+  });
+
+  it("does not repeat the human when they are already ranked", () => {
+    const rows = standingsFor({
+      ...base,
+      factionIds: ["a", "b", "c", "d", "e"],
+      humanFactionId: "b",
+      realmSize: (f) => ({ a: 14, b: 9, c: 2, d: 11, e: 1 })[f] ?? 0,
+    });
+    expect(rows).toHaveLength(3);
+    expect(rows.filter((r) => r.isHuman)).toHaveLength(1);
+  });
+
+  it("never ranks an incorporated faction", () => {
+    // `a` is the biggest realm but has been absorbed, so it cannot win.
+    const rows = standingsFor({
+      ...base,
+      incorporated: { a: "b" },
+      humanFactionId: "c",
+      realmSize: (f) => ({ a: 14, b: 9, c: 2 })[f] ?? 0,
+    });
+    expect(rows.map((r) => r.factionId)).not.toContain("a");
+    expect(rows[0].factionId).toBe("b");
+  });
+
+  it("caps the percentage at 100 rather than reporting 106%", () => {
+    const rows = standingsFor({
+      ...base,
+      humanFactionId: "a",
+      realmSize: () => 16,
+    });
+    expect(rows[0].percent).toBe(100);
+  });
+
+  it("breaks land-count ties stably, so the board does not reshuffle", () => {
+    const args = {
+      ...base,
+      factionIds: ["a", "b", "c", "d"],
+      humanFactionId: "c",
+      realmSize: (f: string) => ({ a: 9, b: 9, c: 2, d: 9 })[f] ?? 0,
+    };
+    expect(standingsFor(args).map((r) => r.factionId)).toEqual(["a", "b", "d", "c"]);
+    expect(standingsFor(args).map((r) => r.factionId)).toEqual(["a", "b", "d", "c"]);
+  });
+
+  it("reports the passive garrison rate only on the human's own row", () => {
+    const rows = standingsFor({
+      ...base,
+      humanFactionId: "c",
+      realmSize: (f) => ({ a: 14, b: 9, c: 5 })[f] ?? 0,
+      passiveFor: (f) => (f === "c" ? 2 : 3),
+    });
+    const you = rows.find((r) => r.isHuman)!;
+    expect(you.passivePerTurn).toBe(2);
+    // A rival's garrison strength is never stated outright - the player reads
+    // it off the Might lead instead.
+    for (const r of rows.filter((x) => !x.isHuman)) {
+      expect(r.passivePerTurn).toBeUndefined();
+    }
+  });
+
+  it("returns nothing when every faction has been absorbed", () => {
+    expect(
+      standingsFor({
+        ...base,
+        incorporated: { a: "x", b: "x", c: "x" },
+        humanFactionId: "a",
+        realmSize: () => 1,
+      }),
+    ).toEqual([]);
   });
 });

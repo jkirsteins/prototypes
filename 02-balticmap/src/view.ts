@@ -21,6 +21,72 @@ export const MAX_ZOOM = 8;
  *  they were rather than 16 percent smaller. */
 export const MIN_ZOOM = 1.3;
 
+/** How many contenders the scoreboard ranks. The human gets a further row when
+ *  they fall outside it, so the board can show one more than this. */
+export const SCOREBOARD_ROWS = 3;
+
+/** One row of the victory scoreboard. */
+export interface StandingRow {
+  factionId: string;
+  lands: number;
+  needed: number;
+  /** Whole percent of the way to victory, floored, capped at 100. */
+  percent: number;
+  isHuman: boolean;
+  /** Standing Might per turn this realm earns from its annexed lands. Only
+   *  ever set for the human's own row: a rival's garrison strength is not
+   *  something the player is told outright, they read it off the Might lead. */
+  passivePerTurn?: number;
+}
+
+/** The scoreboard: the top three contenders, plus the human's own row when the
+ *  human is outside that three. Four rows at most.
+ *
+ *  Three rather than the full 26: a complete ranking is noise, but a single
+ *  leader hides the shape of the endgame. Two rivals within a land of each
+ *  other is a different board from one runaway, and that difference is what
+ *  tells a player whether to attack the front or wait.
+ *
+ *  Only factions that could actually win are ranked, which is the same test the
+ *  victory check applies - not incorporated. A vassal stays in the ranking
+ *  because the rules let one win.
+ *
+ *  Ties on land count resolve by `factionIds` order: `contenders` is built by
+ *  filtering `factionIds`, and `sort` is stable, so equal realms keep a fixed
+ *  order and the board does not reshuffle itself from one turn to the next. */
+export function standingsFor(args: {
+  factionIds: string[];
+  humanFactionId: string | undefined;
+  realmSize(factionId: string): number;
+  incorporated: Incorporated;
+  needed: number;
+  passiveFor(factionId: string): number;
+}): StandingRow[] {
+  const { factionIds, humanFactionId, realmSize, incorporated, needed } = args;
+  const pct = (lands: number): number =>
+    Math.min(100, Math.floor((lands / needed) * 100));
+  const row = (factionId: string): StandingRow => ({
+    factionId,
+    lands: realmSize(factionId),
+    needed,
+    percent: pct(realmSize(factionId)),
+    isHuman: factionId === humanFactionId,
+    ...(factionId === humanFactionId
+      ? { passivePerTurn: args.passiveFor(factionId) }
+      : {}),
+  });
+  const contenders = factionIds.filter((f) => !(f in incorporated));
+  if (contenders.length === 0) return [];
+  const top = [...contenders]
+    .sort((a, b) => realmSize(b) - realmSize(a))
+    .slice(0, SCOREBOARD_ROWS);
+  const rows = top.map(row);
+  if (humanFactionId !== undefined && !top.includes(humanFactionId)) {
+    rows.push(row(humanFactionId));
+  }
+  return rows;
+}
+
 export function politicalFactionForPolygon(
   polygonFactionId: string,
   incorporated: Incorporated,

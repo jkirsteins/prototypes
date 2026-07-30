@@ -4,13 +4,16 @@ export interface DeckScreenView {
   visible: boolean;
   knownCards: string[];
   seenPool: string[];
-  /** One unlock per game: hides the unlock row once spent. */
-  unlockUsed: boolean;
+  /** Cards learned since the last run, to announce. Already in `knownCards` by
+   *  the time this renders - learning is automatic now, so this is a report of
+   *  what happened, not a choice to make. Empty hides the modal. */
+  learned: string[];
 }
 
 export interface DeckScreenCallbacks {
-  onUnlock(cardId: string): void;
   onStart(selectedIds: string[]): void;
+  /** Acknowledges the learned-cards modal. */
+  onDismissLearned(): void;
 }
 
 export interface DeckScreen {
@@ -38,14 +41,23 @@ export function createDeckScreen(
   title.className = "menu-title";
   title.textContent = "Prepare your deck";
 
-  const unlockSection = document.createElement("div");
-  unlockSection.className = "ds-unlock-section";
-  const unlockLabel = document.createElement("p");
-  unlockLabel.className = "ds-label";
-  unlockLabel.textContent = "Learned from your defeats - unlock one:";
-  const unlockRow = document.createElement("div");
-  unlockRow.className = "ds-unlock";
-  unlockSection.append(unlockLabel, unlockRow);
+  // Learned cards are announced, not chosen. The modal is the only place the
+  // player is told what a newly learned card actually does, so it carries the
+  // full rules text rather than just the names.
+  const learnedOverlay = document.createElement("div");
+  learnedOverlay.className = "ds-learned-overlay hidden";
+  const learnedCard = document.createElement("div");
+  learnedCard.className = "ds-learned-card";
+  const learnedTitle = document.createElement("h2");
+  learnedTitle.className = "ds-learned-title";
+  const learnedList = document.createElement("div");
+  learnedList.className = "ds-learned-list";
+  const learnedContinue = document.createElement("button");
+  learnedContinue.className = "notice-continue";
+  learnedContinue.textContent = "Continue";
+  learnedContinue.addEventListener("click", () => cb.onDismissLearned());
+  learnedCard.append(learnedTitle, learnedList, learnedContinue);
+  learnedOverlay.appendChild(learnedCard);
 
   const deckLabel = document.createElement("p");
   deckLabel.className = "ds-label";
@@ -63,7 +75,7 @@ export function createDeckScreen(
   start.className = "menu-new-game ds-start";
   start.textContent = "Choose your lands";
 
-  root.append(title, unlockSection, deckLabel, deckRow, counter, undiscovered, start);
+  root.append(title, deckLabel, deckRow, counter, undiscovered, start, learnedOverlay);
   container.appendChild(root);
 
   /** Toggle state survives update() calls; pruned to known cards each render.
@@ -93,22 +105,23 @@ export function createDeckScreen(
       undiscovered.textContent =
         `${undiscoveredCount} ${undiscoveredCount === 1 ? "card" : "cards"} still undiscovered`;
 
-      unlockSection.classList.toggle(
-        "hidden", view.seenPool.length === 0 || view.unlockUsed,
-      );
-      unlockRow.replaceChildren(
-        ...view.seenPool.map((id) => {
-          const card = document.createElement("button");
-          card.className = "ds-card ds-locked";
+      learnedOverlay.classList.toggle("hidden", view.learned.length === 0);
+      learnedTitle.textContent =
+        view.learned.length === 1
+          ? "You learned a new card"
+          : `You learned ${view.learned.length} new cards`;
+      learnedList.replaceChildren(
+        ...view.learned.map((id) => {
+          const entry = document.createElement("div");
+          entry.className = "ds-learned-entry";
           const name = document.createElement("span");
           name.className = "ds-card-name";
           name.textContent = cardName(id);
           const text = document.createElement("span");
           text.className = "ds-card-text";
           text.textContent = CARDS[id]?.text ?? "";
-          card.append(name, text);
-          card.addEventListener("click", () => cb.onUnlock(id));
-          return card;
+          entry.append(name, text);
+          return entry;
         }),
       );
 

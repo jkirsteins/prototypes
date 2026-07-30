@@ -1,9 +1,9 @@
 import { CARDS, DOUBLABLE_CARDS, type Rng } from "./cards";
 import { leadsOf, realmOf } from "./relations";
 import {
-  borderStrength, playableSet, subjugationGripOn, subjugationRequirement,
-  poachSurchargeOn, subjugationChance, incorporationChance,
-  targetEligibilityFor, threatsTo, validTargetsFor,
+  borderStrength, playableSet, raidYield, subjugationGripOn,
+  subjugationRequirement, poachSurchargeOn, subjugationChance,
+  incorporationChance, targetEligibilityFor, threatsTo, validTargetsFor,
 } from "./playability";
 import {
   discardCard, playCard, viewOf,
@@ -59,9 +59,13 @@ function gainOf(
   cardId: string,
   targetId: string,
 ): number {
+  // Raid's yield is convex in border width, so the policy has to score it
+  // through `raidYield` too. Scoring the raw border count instead would
+  // undervalue a wide border - exactly the case the convexity exists to reward -
+  // and the policy would keep preferring a flat +1 card over a Raid worth 15.
   const base =
     cardId === "raid"
-      ? borderStrength(viewOf(state), actorFactionId, targetId)
+      ? raidYield(borderStrength(viewOf(state), actorFactionId, targetId))
       : 1;
   const doubled =
     state.omens.includes(actorFactionId) && DOUBLABLE_CARDS.has(cardId);

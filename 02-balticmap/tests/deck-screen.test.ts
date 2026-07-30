@@ -5,7 +5,7 @@ import { createDeckScreen, type DeckScreenCallbacks } from "../src/deck-screen";
 function setup() {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  const cb: DeckScreenCallbacks = { onUnlock: vi.fn(), onStart: vi.fn() };
+  const cb: DeckScreenCallbacks = { onStart: vi.fn(), onDismissLearned: vi.fn() };
   const screen = createDeckScreen(container, cb);
   return { container, cb, screen };
 }
@@ -17,10 +17,10 @@ describe("createDeckScreen", () => {
     const { container, cb, screen } = setup();
     expect(q(container, ".deck-screen").classList.contains("hidden")).toBe(true);
     screen.update({
-      visible: true, knownCards: ["grow-crops"], seenPool: [], unlockUsed: false,
+      visible: true, knownCards: ["grow-crops"], seenPool: [], learned: [],
     });
     expect(q(container, ".deck-screen").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".ds-unlock-section").classList.contains("hidden")).toBe(true);
+    expect(q(container, ".ds-learned-overlay").classList.contains("hidden")).toBe(true);
     expect(container.querySelectorAll(".ds-deck .ds-card")).toHaveLength(1); // filler only
     expect(q(container, ".ds-counter").textContent).toBe(
       "0 picked + 10 Grow turnips = 10",
@@ -29,30 +29,65 @@ describe("createDeckScreen", () => {
     expect(cb.onStart).toHaveBeenCalledWith([]);
   });
 
-  it("unlock row lists the pool and collapses after one unlock", () => {
+  it("announces every learned card with its rules text, and dismisses", () => {
     const { container, cb, screen } = setup();
     screen.update({
-      visible: true, knownCards: ["grow-crops"],
-      seenPool: ["raid", "fortify"], unlockUsed: false,
+      visible: true, knownCards: ["grow-crops", "raid", "fortify"],
+      seenPool: [], learned: ["raid", "fortify"],
     });
-    const locked = [...container.querySelectorAll(".ds-unlock .ds-card")];
-    expect(locked.map((c) => c.querySelector(".ds-card-name")?.textContent)).toEqual([
+    const overlay = q(container, ".ds-learned-overlay");
+    expect(overlay.classList.contains("hidden")).toBe(false);
+    expect(q(container, ".ds-learned-title").textContent).toBe(
+      "You learned 2 new cards",
+    );
+    const entries = [...container.querySelectorAll(".ds-learned-entry")];
+    expect(entries.map((e) => e.querySelector(".ds-card-name")?.textContent)).toEqual([
       "Raid", "Fortify",
     ]);
-    (locked[0] as HTMLElement).click();
-    expect(cb.onUnlock).toHaveBeenCalledWith("raid");
+    // The modal is the only place a newly learned card's rules are stated.
+    for (const e of entries) {
+      expect(e.querySelector(".ds-card-text")!.textContent!.length).toBeGreaterThan(0);
+    }
+    q(container, ".ds-learned-card .notice-continue").click();
+    expect(cb.onDismissLearned).toHaveBeenCalled();
+    // Dismissal is the owner's call: it clears `learned` and re-renders.
+    screen.update({
+      visible: true, knownCards: ["grow-crops", "raid", "fortify"],
+      seenPool: [], learned: [],
+    });
+    expect(q(container, ".ds-learned-overlay").classList.contains("hidden")).toBe(true);
+  });
+
+  it("uses the singular title for a single learned card", () => {
+    const { container, screen } = setup();
     screen.update({
       visible: true, knownCards: ["grow-crops", "raid"],
-      seenPool: ["fortify"], unlockUsed: true,
+      seenPool: [], learned: ["raid"],
     });
-    expect(q(container, ".ds-unlock-section").classList.contains("hidden")).toBe(true);
+    expect(q(container, ".ds-learned-title").textContent).toBe(
+      "You learned a new card",
+    );
+  });
+
+  it("learned cards are already pickable: learning is not a separate step", () => {
+    const { container, screen } = setup();
+    screen.update({
+      visible: true, knownCards: ["grow-crops", "raid", "fortify"],
+      seenPool: [], learned: ["raid", "fortify"],
+    });
+    const toggles = [...container.querySelectorAll(".ds-deck .ds-card")].filter(
+      (c) => !c.classList.contains("ds-filler"),
+    );
+    expect(toggles.map((c) => c.querySelector(".ds-card-name")?.textContent)).toEqual([
+      "Raid", "Fortify",
+    ]);
   });
 
   it("known non-basics start unselected, toggle on, and feed onStart", () => {
     const { container, cb, screen } = setup();
     screen.update({
       visible: true, knownCards: ["grow-crops", "raid", "fortify"],
-      seenPool: [], unlockUsed: false,
+      seenPool: [], learned: [],
     });
     const toggles = [...container.querySelectorAll(".ds-deck .ds-card")].filter(
       (c) => !c.classList.contains("ds-filler"),
@@ -77,7 +112,7 @@ describe("createDeckScreen", () => {
     const { container, screen } = setup();
     screen.update({
       visible: true, knownCards: ["grow-crops", "raid"],
-      seenPool: ["fortify"], unlockUsed: false,
+      seenPool: ["fortify"], learned: [],
     });
     const raid = [...container.querySelectorAll(".ds-deck .ds-card")].find(
       (c) => c.querySelector(".ds-card-name")?.textContent === "Raid",
@@ -85,7 +120,7 @@ describe("createDeckScreen", () => {
     raid.click(); // take raid
     screen.update({
       visible: true, knownCards: ["grow-crops", "raid", "fortify"],
-      seenPool: [], unlockUsed: true,
+      seenPool: [], learned: [],
     });
     const cards = [...container.querySelectorAll(".ds-deck .ds-card")];
     const byText = (t: string) =>
@@ -97,7 +132,7 @@ describe("createDeckScreen", () => {
   it("start stays available with nothing picked (first run has no choice to make)", () => {
     const { container, cb, screen } = setup();
     screen.update({
-      visible: true, knownCards: ["grow-crops"], seenPool: [], unlockUsed: false,
+      visible: true, knownCards: ["grow-crops"], seenPool: [], learned: [],
     });
     expect((q(container, ".ds-start") as HTMLButtonElement).disabled).toBe(false);
     q(container, ".ds-start").click();
@@ -113,7 +148,7 @@ describe("createDeckScreen", () => {
     ];
     screen.update({
       visible: true, knownCards: ["grow-crops", ...eleven],
-      seenPool: [], unlockUsed: false,
+      seenPool: [], learned: [],
     });
     const toggles = [...container.querySelectorAll(".ds-deck .ds-card")].filter(
       (c) => !c.classList.contains("ds-filler"),
@@ -135,17 +170,12 @@ describe("createDeckScreen", () => {
     expect(toggles[10].classList.contains("selected")).toBe(true);
   });
 
-  it("shows rules text on unlock and deck cards", () => {
+  it("shows rules text on deck cards", () => {
     const { container, screen } = setup();
     screen.update({
       visible: true, knownCards: ["grow-crops", "subjugate"],
-      seenPool: ["raid"], unlockUsed: false,
+      seenPool: ["raid"], learned: [],
     });
-    const unlock = container.querySelector(".ds-unlock .ds-card")!;
-    expect(unlock.querySelector(".ds-card-name")!.textContent).toBe("Raid");
-    expect(unlock.querySelector(".ds-card-text")!.textContent).toBe(
-      "Gain +1 Might over one faction in reach for each of your lands on their border.",
-    );
     const deckCard = container.querySelector(".ds-deck .ds-card")!;
     expect(deckCard.querySelector(".ds-card-name")!.textContent).toBe("Subjugate");
     expect(deckCard.querySelector(".ds-card-text")!.textContent?.length).toBeGreaterThan(0);
@@ -154,7 +184,7 @@ describe("createDeckScreen", () => {
   it("shows the undiscovered counter when neither known nor pool cover every non-basic", () => {
     const { container, screen } = setup();
     screen.update({
-      visible: true, knownCards: ["grow-crops"], seenPool: [], unlockUsed: false,
+      visible: true, knownCards: ["grow-crops"], seenPool: [], learned: [],
     });
     const undiscovered = q(container, ".ds-undiscovered");
     expect(undiscovered.classList.contains("hidden")).toBe(false);
@@ -167,7 +197,7 @@ describe("createDeckScreen", () => {
     const { container, screen } = setup();
     screen.update({
       visible: true, knownCards: ["grow-crops", "raid", "subjugate"],
-      seenPool: ["fortify"], unlockUsed: false,
+      seenPool: ["fortify"], learned: [],
     });
     // 12 non-basics total - raid, subjugate (known) - fortify (pool) = 9 left
     expect(q(container, ".ds-undiscovered").textContent).toBe("9 cards still undiscovered");
@@ -183,7 +213,7 @@ describe("createDeckScreen", () => {
         "alliance", "extended-diplomacy", "bodyguard", "found-settlement",
       ],
       seenPool: [],
-      unlockUsed: false,
+      learned: [],
     });
     const undiscovered = q(container, ".ds-undiscovered");
     expect(undiscovered.classList.contains("hidden")).toBe(false);
@@ -203,7 +233,7 @@ describe("createDeckScreen", () => {
         "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
         "favourable-omens", "found-settlement",
       ],
-      unlockUsed: false,
+      learned: [],
     });
     expect(q(container, ".ds-undiscovered").classList.contains("hidden")).toBe(true);
   });

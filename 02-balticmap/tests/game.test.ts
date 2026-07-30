@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, chooseDeck, pickFaction, beginTurn, playCard, discardCard,
-  advance, isHumanTurn, viewOf,
+  advance, isHumanTurn, surrender, viewOf,
   OPENING_HAND, victoryRealmSize, type GameState,
 } from "../src/game";
 import { DECK_SIZE, buildDeck, CARDS, type Rng } from "../src/cards";
@@ -9,7 +9,8 @@ import {
   allianceKey, bumpMight, bumpStatus, getRel, leadsOf, type Relations,
 } from "../src/relations";
 import {
-  INCORPORATE_RAMP, loyaltyKey, playableSet, subjugationGripOn,
+  INCORPORATE_RAMP, PASSIVE_PER_LANDS, loyaltyKey, playableSet, raidYield,
+  subjugationGripOn,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
 import pools from "../src/data/ruler-names.json";
@@ -694,7 +695,7 @@ describe("raid gain", () => {
     expect(getRel(g.relations, "beta", "alpha").might).toBe(1);
   });
 
-  it("grants one Might per bordering land of the actor's realm", () => {
+  it("is convex in border width: two bordering lands are worth 3, not 2", () => {
     // Give beta gamma as a vassal. beta borders alpha; gamma does not.
     // Now make a map where both do.
     const ADJ = {
@@ -707,11 +708,15 @@ describe("raid gain", () => {
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["raid"]);
     g = playCard(g, 0, seededRng(1), "alpha");
-    expect(getRel(g.relations, "beta", "alpha").might).toBe(2);
+    // raidYield(2) = 1 + 2. A wide border has to beat the sum of narrow ones,
+    // or realm size buys no accumulation rate and a peer endgame never breaks.
+    expect(getRel(g.relations, "beta", "alpha").might).toBe(raidYield(2));
+    expect(getRel(g.relations, "beta", "alpha").might).toBe(3);
   });
 
-  it("no longer promises a flat +1 in its rules text", () => {
-    expect(CARDS["raid"].text).toContain("for each");
+  it("states the escalating yield in its rules text", () => {
+    expect(CARDS["raid"].text).toContain("+1 for your first land");
+    expect(CARDS["raid"].text).toContain("+2 for the second");
     expect(CARDS["raid"].text).toContain("border");
   });
 });
@@ -802,7 +807,7 @@ describe("favourable omens", () => {
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["raid"]);
     g = playCard(g, 0, seededRng(1), "alpha");
-    expect(getRel(g.relations, "beta", "alpha").might).toBe(4); // 2 border x 2
+    expect(getRel(g.relations, "beta", "alpha").might).toBe(raidYield(2) * 2); // raidYield(2) = 3, doubled
     expect(g.omens).not.toContain("beta");
     expect(g.log.at(-1)).toMatchObject({ type: "play", cardId: "raid", doubled: true });
   });
@@ -1145,5 +1150,108 @@ describe("seeds of revolt and the two rolls", () => {
     const twice = beginTurn({ ...ticked, current: 0 }, rng());
     expect(twice.loyalty[loyaltyKey("beta", "gamma")]).toBe(2);
     expect(twice.loyalty).not.toHaveProperty(loyaltyKey("beta", "delta"));
+  });
+});
+
+describe("passive garrison fortify", () => {
+  /** `n` lands annexed by `lord`, using ids outside FACTIONS so the four
+   *  seats stay sovereign and keep taking turns. */
+  const annexed = (lord: string, n: number): Record<string, string> =>
+    Object.fromEntries(
+      Array.from({ length: n }, (_, i) => [`annex-${i}`, lord]),
+    );
+
+  it("grants nothing below the threshold", () => {
+    const g = playingState(LINE_ADJ);
+    const before = leadsOf(g.relations, "beta", "gamma").might;
+    const next = beginTurn(
+      { ...g, incorporated: annexed("beta", PASSIVE_PER_LANDS - 1), current: 0 },
+      rng(),
+    );
+    expect(leadsOf(next.relations, "beta", "gamma").might).toBe(before);
+    expect(next.log.some((e) => e.type === "garrisoned")).toBe(false);
+  });
+
+  it("raises Might against every living faction at once, and logs one event", () => {
+    const g = playingState(LINE_ADJ);
+    const next = beginTurn(
+      { ...g, incorporated: annexed("beta", PASSIVE_PER_LANDS), current: 0 },
+      rng(),
+    );
+    for (const other of ["alpha", "gamma", "delta"]) {
+      expect(leadsOf(next.relations, "beta", other).might).toBe(1);
+    }
+    const events = next.log.filter((e) => e.type === "garrisoned");
+    expect(events).toHaveLength(1);
+    expect(events[0].amount).toBe(1);
+    expect(events[0].targetFactionId).toBe("beta");
+  });
+
+  it("skips incorporated factions - they are not living targets", () => {
+    const g = playingState(LINE_ADJ);
+    const next = beginTurn(
+      {
+        ...g,
+        incorporated: { ...annexed("beta", PASSIVE_PER_LANDS), delta: "beta" },
+        current: 0,
+      },
+      rng(),
+    );
+    // delta is inside beta's realm now; nothing is accrued against it.
+    expect(leadsOf(next.relations, "beta", "delta").might).toBe(0);
+    expect(leadsOf(next.relations, "beta", "gamma").might).toBe(1);
+  });
+
+  it("is not doubled by a held Favourable omens reading", () => {
+    const g = playingState(LINE_ADJ);
+    const next = beginTurn(
+      {
+        ...g,
+        incorporated: annexed("beta", PASSIVE_PER_LANDS),
+        omens: ["beta"],
+        current: 0,
+      },
+      rng(),
+    );
+    expect(leadsOf(next.relations, "beta", "gamma").might).toBe(1);
+    // The reading is untouched, still there for a Raid.
+    expect(next.omens).toContain("beta");
+  });
+
+  it("consumes no rng: the same seed yields the same stream with or without it", () => {
+    const g = playingState(LINE_ADJ);
+    const drawOf = (state: GameState): string | undefined => {
+      const r = seededRng(99);
+      return beginTurn({ ...state, current: 0 }, r).log
+        .filter((e) => e.type === "draw")
+        .at(-1)?.cardId;
+    };
+    const without = drawOf(g);
+    const with_ = drawOf({ ...g, incorporated: annexed("beta", PASSIVE_PER_LANDS * 3) });
+    expect(with_).toBe(without);
+  });
+});
+
+describe("surrender", () => {
+  it("ends the run in defeat and records why", () => {
+    const g = playingState(LINE_ADJ);
+    const next = surrender(g);
+    expect(next.phase).toBe("defeat");
+    expect(next.log.at(-1)?.type).toBe("surrendered");
+  });
+
+  it("is inert outside play, so a double click cannot re-end a finished run", () => {
+    const g = playingState(LINE_ADJ);
+    const once = surrender(g);
+    const twice = surrender(once);
+    expect(twice).toBe(once);
+    expect(surrender(newGame(FACTIONS))).toEqual(newGame(FACTIONS));
+  });
+
+  it("carries no overlord, so no killer comparison can be built from it", () => {
+    const next = surrender(playingState(LINE_ADJ));
+    const e = next.log.at(-1)!;
+    expect(e.overlordFactionId).toBeUndefined();
+    expect(next.log.some((x) => x.type === "defeat")).toBe(false);
   });
 });

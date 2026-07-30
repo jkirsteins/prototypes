@@ -8,8 +8,9 @@ import type { GameEvent, GameEventType } from "../src/game";
 const ALL_TYPES: GameEventType[] = [
   "draw", "play", "reshuffle", "discard",
   "subjugated", "released", "incorporated", "reclaimed", "tribute",
-  "settled", "seeded", "subjugate-failed", "incorporate-failed",
-  "victory", "defeat", "unified",
+  "settled", "seeded", "garrisoned",
+  "subjugate-failed", "incorporate-failed",
+  "victory", "defeat", "unified", "surrendered",
 ];
 
 const NAMES: Record<string, string> = {
@@ -730,5 +731,71 @@ describe("a failed poach", () => {
       targetFactionId: "jersika",
       overlordFactionId: "latgale", formerOverlordFactionId: "curonia",
     }))).toBeNull();
+  });
+});
+
+describe("failed attempts against the player", () => {
+  it("tells the player a rival tried to prise them away and missed", () => {
+    // The human is curonia's vassal; jersika (player 2) reached for them.
+    const e: GameEvent = {
+      turn: 9, playerId: 2, type: "subjugate-failed",
+      targetFactionId: "livs",
+      overlordFactionId: "jersika",
+      formerOverlordFactionId: "curonia",
+    };
+    const [n] = buildNotices([e], ctx);
+    expect(n.title).toBe("You Held");
+    expect(n.what).toContain("Jersikans");
+    expect(n.what).toContain("Curonians");
+    expect(n.consequence).toContain("card is spent");
+  });
+
+  it("keeps the vassal-held wording when the human is the lord who held on", () => {
+    const e: GameEvent = {
+      turn: 9, playerId: 2, type: "subjugate-failed",
+      targetFactionId: "latgale",
+      overlordFactionId: "jersika",
+      formerOverlordFactionId: "livs",
+    };
+    const [n] = buildNotices([e], ctx);
+    expect(n.title).toBe("Your Vassal Holds");
+  });
+
+  it("tells the player their overlord failed to annex them", () => {
+    const e: GameEvent = {
+      turn: 12, playerId: 3, type: "incorporate-failed",
+      targetFactionId: "livs",
+      overlordFactionId: "latgale",
+    };
+    const [n] = buildNotices([e], ctx);
+    expect(n.title).toBe("You Resisted");
+    expect(n.what).toContain("Latgalians");
+    // The actionable part: staying a vassal improves their next roll.
+    expect(n.consequence).toContain("longer you stay their vassal");
+  });
+
+  it("stays silent on the human's own failed roll", () => {
+    const own: GameEvent = {
+      turn: 12, playerId: 1, type: "incorporate-failed",
+      targetFactionId: "latgale", overlordFactionId: "livs",
+    };
+    expect(buildNotices([own], ctx)).toEqual([]);
+  });
+
+  it("says nothing about a failure between two rivals", () => {
+    const between: GameEvent = {
+      turn: 12, playerId: 2, type: "incorporate-failed",
+      targetFactionId: "curonia", overlordFactionId: "jersika",
+    };
+    expect(buildNotices([between], ctx)).toEqual([]);
+  });
+
+  it("never interrupts for a garrison gain - it fires every turn", () => {
+    const e: GameEvent = {
+      turn: 5, playerId: 2, type: "garrisoned",
+      targetFactionId: "jersika", amount: 3,
+    };
+    expect(buildNotices([e], ctx)).toEqual([]);
+    expect(NOTICE_RULES.garrisoned.kind).toBe("silent");
   });
 });

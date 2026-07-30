@@ -6,6 +6,10 @@ import {
 
 export const SUBJUGATE_THRESHOLD = 2;
 
+/** Annexed lands per +1 Might their owner gains against everyone, once per
+ *  turn. See `passiveFortifyFor`. */
+export const PASSIVE_PER_LANDS = 4;
+
 /** The slice of game state the rules need. GameState satisfies this
  *  structurally; tests build it directly. */
 export interface RulesView {
@@ -128,6 +132,61 @@ export function borderStrength(
       (adj) => (view.incorporated[adj] ?? adj) === targetFactionId,
     ),
   ).length;
+}
+
+/** Raid's Might yield for `borderLands` of the actor's realm on the target's
+ *  border: the first bordering land is worth 1, the second 2, the third 3, and
+ *  so on.
+ *
+ *  Convex rather than linear because realm size otherwise buys no accumulation
+ *  rate at all. The Subjugate bar scales with the *defender's* realm, so your
+ *  last rival is always the largest faction left; but a lead is a pairwise
+ *  difference, and every other lead-gaining card is a flat +1. Two peers
+ *  therefore gain at the same rate, their difference random-walks near zero,
+ *  and a bar of 20-plus is never reached. Measured on 2026-07-30: 13.5% of
+ *  worlds never resolved inside 300 turns, every one of them a two-bloc endgame
+ *  one or two lands short with a median pairwise lead of exactly 0.
+ *
+ *  `borderLands = 1` is unchanged at 1, so the early game - where nearly every
+ *  faction holds a single land - plays exactly as it did. The convexity only
+ *  bites once several of your lands touch the same target, which is to say once
+ *  you are already large. That is the intent expressed on the accumulation side
+ *  rather than by lowering the bar, which would have broken the single
+ *  realm-wide grip number the HUD and notices both quote. */
+export function raidYield(borderLands: number): number {
+  return (borderLands * (borderLands + 1)) / 2;
+}
+
+/** Lands this faction has permanently annexed. Counted straight off
+ *  `incorporated` rather than by filtering `realmOf`, because the two agree by
+ *  construction: `realmOf`'s incorporated portion is exactly these entries. */
+export function annexedLandsOf(view: RulesView, factionId: string): number {
+  return Object.values(view.incorporated).filter((o) => o === factionId).length;
+}
+
+/** The standing Might an annexed realm earns its owner against every living
+ *  faction, once per turn: `floor(annexed / PASSIVE_PER_LANDS)`.
+ *
+ *  Annexation otherwise silences a land completely - `advance` skips any seat
+ *  whose faction is incorporated, and only *vassals* pay tribute - so a
+ *  fourteen-land realm took exactly one action per round, the same as a
+ *  one-land minnow. Conquest raised your own grip and your victory count and
+ *  did nothing at all for your rate of gain. This is what makes size buy tempo.
+ *
+ *  Deliberately deterministic, so it consumes no rng: a seeded stream stays
+ *  aligned with the committed fixture, and a band that moves has moved because
+ *  behaviour changed rather than because draw order shifted. It is also why
+ *  Favourable omens cannot touch it - see `beginTurn`, which applies this
+ *  outside the card path entirely.
+ *
+ *  Known wart: `floor` plateaus, so at PASSIVE_PER_LANDS = 4 realms of 12 and
+ *  15 annexed lands both yield +3 and drift nothing against each other. Near
+ *  ties are broken by `raidYield`, not by this; this carries the broad
+ *  size-buys-tempo intent. If measurement ever shows the passive has to break
+ *  ties on its own, the fix is a per-faction remainder accumulator, not a
+ *  smaller divisor. */
+export function passiveFortifyFor(view: RulesView, factionId: string): number {
+  return Math.floor(annexedLandsOf(view, factionId) / PASSIVE_PER_LANDS);
 }
 
 /** What a faction's grip is made of: the lands of its realm, and the

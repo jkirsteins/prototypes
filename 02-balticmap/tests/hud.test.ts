@@ -9,7 +9,9 @@ import { aiTakeTurn } from "../src/ai";
 import { buildDeck, type Rng } from "../src/cards";
 import { allianceKey, bumpMight } from "../src/relations";
 import { rulerOf } from "../src/rulers";
-import { INCORPORATE_RAMP, loyaltyKey } from "../src/playability";
+import {
+  INCORPORATE_RAMP, PASSIVE_PER_LANDS, loyaltyKey,
+} from "../src/playability";
 import type { TargetExplanation } from "../src/target-explanations";
 
 function seededRng(seed: number): Rng {
@@ -29,6 +31,7 @@ function setup(opts?: {
   isDiscardMode?: () => boolean;
   lootInfo?: () => { id: string; isNew: boolean }[];
   onResetProgress?: () => void;
+  onSurrender?: () => void;
   placeNameFactionIds?: Set<string>;
 }) {
   const container = document.createElement("div");
@@ -45,6 +48,7 @@ function setup(opts?: {
     ...(opts?.isDiscardMode ? { isDiscardMode: opts.isDiscardMode } : {}),
     ...(opts?.lootInfo ? { lootInfo: opts.lootInfo } : {}),
     ...(opts?.onResetProgress ? { onResetProgress: opts.onResetProgress } : {}),
+    ...(opts?.onSurrender ? { onSurrender: opts.onSurrender } : {}),
   };
   const hud = createHud(container, cb, new Map([
     ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
@@ -589,7 +593,7 @@ describe("learning loop hud", () => {
     return { ...g, seenThisRun: ["raid", "subjugate"] };
   }
 
-  it("renders loot from lootInfo with NEW tags and the unlock caption", () => {
+  it("renders loot from lootInfo with NEW tags and the learned caption", () => {
     const { container, hud } = setup({
       lootInfo: () => [
         { id: "raid", isNew: true },
@@ -603,8 +607,9 @@ describe("learning loop hud", () => {
     ]);
     expect(cards[0].querySelector(".pm-card-new")?.textContent).toBe("NEW");
     expect(cards[0].querySelector(".pm-card-text")?.textContent?.length).toBeGreaterThan(0);
+    // Learning is automatic now: the caption reports, it does not ask.
     expect(q(container, ".pm-seen-label").textContent).toBe(
-      "Unlock one of these when you start your next game.",
+      "These are yours when you start your next game.",
     );
   });
 
@@ -982,5 +987,118 @@ describe("private actions stay off the activity log", () => {
       targetFactionId: "gamma", overlordFactionId: "alpha",
     });
     expect(texts.some((t) => /sows the seeds of revolt/.test(t ?? ""))).toBe(false);
+  });
+});
+
+describe("scoreboard", () => {
+  function playing() {
+    return pickFaction(
+      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
+    );
+  }
+
+  it("is hidden outside play", () => {
+    const { container, hud } = setup();
+    hud.update(newGame(FACTIONS));
+    expect(q(container, ".scoreboard").classList.contains("hidden")).toBe(true);
+  });
+
+  it("names the frontrunner and the human's own standing", () => {
+    const { container, hud } = setup();
+    // alpha absorbs gamma: 2 lands of the 2 needed for a 3-faction map... so
+    // shrink the win target by using the real formula instead of guessing.
+    const g = { ...playing(), incorporated: { gamma: "alpha" } };
+    hud.update(g);
+    const rows = [...container.querySelectorAll(".sb-row")];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelector(".sb-who")!.textContent).toBe("Alpha");
+    expect(rows[0].querySelector(".sb-lands")!.textContent).toBe("2/2 lands");
+    expect(rows[0].querySelector(".sb-pct")!.textContent).toBe("100%");
+    // The human's own row is labelled "You", never by faction name.
+    expect(rows[1].querySelector(".sb-who")!.textContent).toBe("You");
+    expect(rows[1].classList.contains("sb-you")).toBe(true);
+  });
+
+  it("puts the human at the top when they lead, without a duplicate row", () => {
+    const { container, hud } = setup();
+    const g = { ...playing(), incorporated: { gamma: "beta" } };
+    hud.update(g);
+    const rows = [...container.querySelectorAll(".sb-row")];
+    // gamma is absorbed, so only alpha and beta are still contenders.
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelector(".sb-who")!.textContent).toBe("You");
+    expect(rows.filter((r) => r.classList.contains("sb-you"))).toHaveLength(1);
+  });
+
+  it("states the garrison rate on the human's row, the one place the rule is given", () => {
+    const { container, hud } = setup();
+    // Four annexed lands is exactly PASSIVE_PER_LANDS, so +1 per turn.
+    const annexed = Object.fromEntries(
+      Array.from({ length: PASSIVE_PER_LANDS }, (_, i) => [`annex-${i}`, "beta"]),
+    );
+    hud.update({ ...playing(), incorporated: annexed });
+    const you = q(container, ".sb-row.sb-you");
+    expect(you.querySelector(".sb-passive")!.textContent).toBe(
+      "garrisons +1 Might/turn",
+    );
+  });
+
+  it("omits the garrison line when there is nothing to report", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    expect(q(container, ".sb-row.sb-you").querySelector(".sb-passive")).toBeNull();
+  });
+});
+
+describe("surrender", () => {
+  function playing() {
+    return pickFaction(
+      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
+    );
+  }
+
+  it("is absent when no surrender callback is wired", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    expect(q(container, ".surrender-btn").classList.contains("hidden")).toBe(true);
+  });
+
+  it("needs a confirming second click, so a stray click cannot end the run", () => {
+    const onSurrender = vi.fn();
+    const { container, hud } = setup({ onSurrender });
+    hud.update(playing());
+    const btn = q(container, ".surrender-btn");
+    expect(btn.classList.contains("hidden")).toBe(false);
+    btn.click();
+    expect(onSurrender).not.toHaveBeenCalled();
+    expect(btn.textContent).toBe("Really surrender?");
+    btn.click();
+    expect(onSurrender).toHaveBeenCalledOnce();
+  });
+
+  it("disarms and hides once the run is over", () => {
+    const onSurrender = vi.fn();
+    const { container, hud } = setup({ onSurrender });
+    hud.update(playing());
+    const btn = q(container, ".surrender-btn");
+    btn.click();
+    expect(btn.classList.contains("confirm")).toBe(true);
+    hud.update({ ...playing(), phase: "defeat" });
+    expect(btn.classList.contains("hidden")).toBe(true);
+    expect(btn.textContent).toBe("Surrender");
+    expect(btn.classList.contains("confirm")).toBe(false);
+  });
+
+  it("postmortem names the concession instead of inventing a killer", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      phase: "defeat",
+      log: [...g.log, { turn: 4, playerId: 1, type: "surrendered" }],
+    });
+    expect(q(container, ".pm-title").textContent).toBe("Surrendered");
+    expect(q(container, ".pm-cause").textContent).toContain("You conceded");
+    expect(q(container, ".pm-deltas").textContent).toBe("");
   });
 });

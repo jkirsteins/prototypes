@@ -6,16 +6,17 @@ import {
 } from "./relations";
 import {
   loyaltyKey, incorporationChance, subjugationChance,
-  borderStrength, playableSet, validTargetsFor, type RulesView,
+  borderStrength, passiveFortifyFor, playableSet, raidYield, validTargetsFor,
+  type RulesView,
 } from "./playability";
 import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
 
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
   | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
-  | "settled" | "seeded"
+  | "settled" | "seeded" | "garrisoned"
   | "subjugate-failed" | "incorporate-failed"
-  | "victory" | "defeat" | "unified";
+  | "victory" | "defeat" | "unified" | "surrendered";
 
 export interface GameEvent {
   turn: number;
@@ -26,6 +27,7 @@ export interface GameEvent {
   overlordFactionId?: string;
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
   track?: "status" | "might"; // tribute
+  amount?: number; // garrisoned: Might gained against every living faction
   prevented?: boolean; // play: a nullified Assassinate ruler (Bodyguard)
   doubled?: boolean; // play, reclaimed: a card whose numbers a reading doubled
   actorRuler?: string; // ruler of the acting faction when this was logged
@@ -264,9 +266,45 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   const players = state.players.map((pl, i) =>
     i === state.current ? updated : pl,
   );
+  // Annexed lands earn their owner a standing Might gain against everyone.
+  // Applied here rather than through the card path on purpose: that path
+  // consults `mult`, and a garrison must never eat the Favourable omens reading
+  // the player was saving for a Raid. One event carrying the whole amount, not
+  // one per land, or a fourteen-land realm writes fourteen log lines a round.
+  let relations = state.relations;
+  const passive = passiveFortifyFor(viewOf(state), p.factionId);
+  if (passive > 0) {
+    const living = state.factionIds.filter(
+      (f) => f !== p.factionId && !(f in state.incorporated),
+    );
+    relations = bumpMightAllBy(relations, p.factionId, living, passive);
+    events.push({
+      turn: state.turn, playerId: p.id, type: "garrisoned",
+      targetFactionId: p.factionId, amount: passive,
+    });
+  }
   return {
-    ...state, players, loyalty: tickLoyalty(state, p.factionId),
+    ...state, players, relations, loyalty: tickLoyalty(state, p.factionId),
     log: appendEvents(state, events), playedThisTurn: false,
+  };
+}
+
+/** The player concedes. Terminal, and deliberately not reversible: an early
+ *  position with nothing playable can drag for tens of turns, and the honest
+ *  answer is to let it end rather than to make the player click through it.
+ *
+ *  Its own event type rather than reusing `defeat`, because `defeat` carries an
+ *  `overlordFactionId` and the postmortem builds a killer-versus-you comparison
+ *  out of it. Nobody killed you here. */
+export function surrender(state: GameState): GameState {
+  if (state.phase !== "playing") return state;
+  const p = state.players[state.current];
+  return {
+    ...state,
+    phase: "defeat",
+    log: appendEvents(state, [
+      { turn: state.turn, playerId: p?.id ?? 1, type: "surrendered" },
+    ]),
   };
 }
 
@@ -384,7 +422,7 @@ export function playCard(
   };
 
   if (cardId === "raid" && targetId !== undefined) {
-    const gain = borderStrength(viewOf(state), p.factionId, targetId);
+    const gain = raidYield(borderStrength(viewOf(state), p.factionId, targetId));
     relations = bumpMightBy(relations, p.factionId, targetId, gain * mult);
   } else if (cardId === "shrewd-marriage" && targetId !== undefined) {
     relations = bumpStatusBy(relations, p.factionId, targetId, mult);

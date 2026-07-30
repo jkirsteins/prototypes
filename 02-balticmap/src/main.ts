@@ -8,7 +8,7 @@ import {
 import { attachInteraction } from "./interaction";
 import {
   newGame, startGame, chooseDeck, pickFaction, playCard, discardCard, advance,
-  isHumanTurn, viewOf, type GameState,
+  isHumanTurn, surrender, viewOf, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
@@ -17,6 +17,7 @@ import {
   playableSet, validTargetsFor, targetEligibilityFor, subjugationRequirement,
   gripPartsOn,
   borderStrength,
+  raidYield,
 } from "./playability";
 import {
   cardModifierLines, explainTargetEligibility, targetOddsLines,
@@ -26,7 +27,7 @@ import { createHud } from "./hud";
 import { createDeckScreen } from "./deck-screen";
 import {
   buildPlayerDeck, loadMeta, memoryStorage, mergeSeen,
-  resetMeta, saveMeta, unlockCard, type MetaRecord, type MetaStorage,
+  resetMeta, saveMeta, unlockAllSeen, type MetaRecord, type MetaStorage,
 } from "./meta";
 import {
   barFor, formatLead, holderOf, hoverRelationLines, politicalFactionForPolygon,
@@ -93,9 +94,10 @@ const { storage, storageIsPersistent } = ((): {
   }
 })();
 let meta: MetaRecord = loadMeta(storage);
-let unlockUsedThisGame = false;
 let seenMerged = false;
 let poolAtRunStart: string[] = meta.seenPool;
+/** Cards learned on the way into this deck screen, awaiting acknowledgement. */
+let learnedToShow: string[] = [];
 let game: GameState = newGame(
   data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
   SITE_LANDS,
@@ -563,10 +565,18 @@ const hud = createHud(
       clearFoundedSettlements();
       cancelTribute();
       disarm();
-      unlockUsedThisGame = false;
       seenMerged = false;
       poolAtRunStart = meta.seenPool;
+      learnSeenCards();
       deckScreen.update(deckScreenView(true));
+      refresh();
+    },
+    onSurrender() {
+      if (game.phase !== "playing") return;
+      disarm();
+      cancelTribute();
+      game = surrender(game);
+      bankSeen();
       refresh();
     },
     onPlayCard(index) {
@@ -632,7 +642,10 @@ const hud = createHud(
           // on every target that can fail, or the roll reads as a bug.
           const odds = targetOddsLines(view, human.factionId, cardId, id);
           if (cardId !== "raid") return odds;
-          const n = borderStrength(view, human.factionId, id);
+          // Quote the convex yield, not the border count: the two diverge fast
+          // (a 5-land border is worth 15), and the number the player is shown
+          // before aiming has to be the number they get.
+          const n = raidYield(borderStrength(view, human.factionId, id));
           return [
             ...odds,
             doubled ? `+${n * 2} Might (doubled)` : `+${n} Might`,
@@ -671,18 +684,25 @@ function deckScreenView(visible: boolean) {
     visible,
     knownCards: meta.knownCards,
     seenPool: meta.seenPool,
-    unlockUsed: unlockUsedThisGame,
+    learned: learnedToShow,
   };
 }
 
+/** Learns everything witnessed in past runs, on the way into the deck screen,
+ *  and records what to announce. Called at every entry to deck-building so a
+ *  pool banked by any route (a loss, a surrender, a fresh New game) is cashed
+ *  in before the player picks a deck. */
+function learnSeenCards(): void {
+  const { meta: next, learned } = unlockAllSeen(meta);
+  if (learned.length === 0) return;
+  meta = next;
+  learnedToShow = learned;
+  saveMeta(storage, meta);
+}
+
 const deckScreen = createDeckScreen(app, {
-  onUnlock(cardId) {
-    if (unlockUsedThisGame) return;
-    const next = unlockCard(meta, cardId);
-    if (next === meta) return;
-    meta = next;
-    unlockUsedThisGame = true;
-    saveMeta(storage, meta);
+  onDismissLearned() {
+    learnedToShow = [];
     deckScreen.update(deckScreenView(true));
   },
   onStart(selectedIds) {

@@ -115,16 +115,26 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.45, 0.75],     // measured 0.46
-      // Moved from [3, 9] (measured 6.00): even played leftmost-first, a
-      // settlement raises this player's own bar, and the world needs longer to
-      // clear it.
-      medianFirstSubjugation: [12, 31],  // measured 26.00
-      // Moved by the subjugation-stability changeset, same cause as the two
-      // potato scenarios. This player is also the one Seeds of revolt changes
-      // most: it no longer holds a pre-loaded Revolt, so escaping now costs two
-      // turns and a deck cycle instead of one card.
-      defeatShare: [0.16, 0.40],         // measured 0.27
+      // All three moved together on 2026-07-30 by the realm-tempo changeset
+      // (convex Raid plus the passive garrison Fortify). One cause, pulling in
+      // two directions, and both directions are the intended mechanic:
+      //
+      // Early game got SAFER. Raid's yield is now triangular in border width,
+      // so the AI prefers targets it has several lands against. A one-land
+      // naive player is the narrowest target on the map, so nobody spends a
+      // Raid on them for a long while - hence first subjugation at turn 40
+      // rather than 26.
+      //
+      // Late game got DEADLIER. Once an AI realm is large it out-accumulates a
+      // player who is not growing, so when the blow finally lands it lands
+      // hard: defeat in 62% of games rather than 27%.
+      //
+      // Attribution measured by disabling the passive and re-running: convex
+      // Raid alone accounts for most of it (defeatShare 0.46 of the 0.62), the
+      // passive adds the rest. See the realm-tempo plan.
+      subjugatedShare: [0.64, 0.94],     // measured 0.79
+      medianFirstSubjugation: [24, 60],  // measured 40.00
+      defeatShare: [0.47, 0.77],         // measured 0.62
     },
   },
   {
@@ -139,12 +149,25 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      // Moved from [0.47, 0.77] (measured 0.54): a competent player who founds
-      // a settlement is subjugated in 15% of games instead of 54%. The floor is
-      // deliberately above zero - this scenario guards that skill matters, and a
-      // world where a competent player can never be touched at all fails it just
-      // as a hyper-aggressive one does.
-      subjugatedShare: [0.03, 0.30],    // measured 0.15
+      // Moved from [0.03, 0.30] (measured 0.15) by the 2026-07-30 realm-tempo
+      // changeset. This is the band that changeset cost the most, and it is
+      // worth stating plainly rather than quietly widening: a competent player
+      // is now subjugated in 50% of games instead of 15%.
+      //
+      // The cause is the intended one. A competent human runs the same policy
+      // the enemies do but holds one seat of 26, and the whole point of the
+      // change was to let a large realm out-accumulate a smaller one. The AI
+      // realms grow; a single seat does not. Measured by disabling the passive
+      // and re-running, convex Raid alone accounts for 0.38 of the 0.50.
+      //
+      // Note this is subjugation, not defeat - vassalage is escapable, and this
+      // scenario has never asserted a defeatShare. The floor stays well above
+      // zero for the original reason: a world where skill makes a player
+      // untouchable fails this scenario as surely as a hyper-aggressive one.
+      //
+      // If this proves too punishing in play, PASSIVE_PER_LANDS = 6 measured
+      // 0.42 here while still resolving 98% of worlds - the softer trade.
+      subjugatedShare: [0.35, 0.65],    // measured 0.50
       // Moved from [3, 8] (measured 5.00) after the reclaim-cut and
       // AI-policy-coverage changeset. A competent human runs the same policy
       // the enemies do, so it now plays the emergency Alliance and Assassinate
@@ -267,8 +290,13 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     firstSeed: 1,
     turnCap: 300,
     expect: {
-      unifiedShare: [0.77, 1],      // measured 0.923
-      medianEndTurn: [66, 165],     // measured 110.0
+      // Both moved on 2026-07-30 by the realm-tempo changeset. The lower
+      // unifiedShare bound is deliberately tightened from 0.77 to 0.85: every
+      // world arm now resolves 100% of the time, and the whole point of the
+      // change was that worlds stop hanging, so a drift back toward 77% must
+      // fail this test rather than pass it quietly.
+      unifiedShare: [0.85, 1],      // measured 1.000
+      medianEndTurn: [37, 94],      // measured 62.5
     },
   },
   {
@@ -281,8 +309,10 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     firstSeed: 1,
     turnCap: 300,
     expect: {
-      unifiedShare: [0.81, 1],      // measured 0.962
-      medianEndTurn: [42, 105],     // measured 70.0
+      // Only the share bound tightens here, for the reason given on
+      // conquest-scaled; medianEndTurn still sits inside its old band.
+      unifiedShare: [0.85, 1],      // measured 1.000
+      medianEndTurn: [42, 105],     // measured 56.0
     },
   },
   {
@@ -298,13 +328,16 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     firstSeed: 1,
     turnCap: 300,
     expect: {
-      unifiedShare: [0.77, 1],      // measured 0.885
-      // Moved from [68, 172] (measured 114.5): every seat founds a settlement,
-      // so every bar in the world goes up by 1 and the first conquest of each
-      // cascade takes about half again as long. Worlds still resolve - 88.5%
-      // inside the 300-turn cap - but this is the pacing cost of the card, and
-      // the band says so rather than hiding it.
-      medianEndTurn: [110, 275],    // measured 183.0
+      // The arm this changeset exists for. Before it, 13.5% of these worlds
+      // never resolved inside 300 turns, measured over 52 seeds; now none hang,
+      // and the settlement card's pacing cost recorded above is absorbed rather
+      // than merely tolerated. The median comes down with it: 105.5 against the
+      // ~150-turn target, so the game is now slightly SHORTER than intended
+      // rather than dragging past it. That is the accepted side of the trade,
+      // and the lever for lengthening it again is the win threshold in
+      // `victoryRealmSize`, not the accumulation rules.
+      unifiedShare: [0.85, 1],      // measured 1.000
+      medianEndTurn: [63, 158],     // measured 105.5
     },
   },
 ];

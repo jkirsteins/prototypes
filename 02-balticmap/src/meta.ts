@@ -89,6 +89,28 @@ export function unlockCard(meta: MetaRecord, cardId: string): MetaRecord {
   };
 }
 
+/** Learns everything in the seen pool at once, and reports what was learned so
+ *  the player can be told.
+ *
+ *  Replaces the old one-unlock-per-game choice. Picking one card out of five
+ *  witnessed was a decision made with no information - you have not played any
+ *  of them yet - and it gated the deck the player could experiment with behind
+ *  several more runs. Witnessing a card is the achievement; rationing it
+ *  afterwards only slowed the loop down.
+ *
+ *  Returns the same record when the pool is empty, so callers can skip the save
+ *  and the modal on the common path. */
+export function unlockAllSeen(
+  meta: MetaRecord,
+): { meta: MetaRecord; learned: string[] } {
+  if (meta.seenPool.length === 0) return { meta, learned: [] };
+  const learned = meta.seenPool;
+  return {
+    meta: { knownCards: [...meta.knownCards, ...learned], seenPool: [] },
+    learned,
+  };
+}
+
 /** Banks a run's seen cards as unlock candidates. */
 export function mergeSeen(meta: MetaRecord, seen: string[]): MetaRecord {
   const fresh = dedupe(seen).filter(

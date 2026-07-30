@@ -61,8 +61,14 @@ export type HumanRole = "self" | "lord";
 function humanRoleIn(e: GameEvent, ctx: NoticeCtx): HumanRole | null {
   if (e.playerId === 1) return null;
   if (e.targetFactionId === ctx.humanFactionId) return "self";
+  // `subjugate-failed` names the incumbent lord in `formerOverlordFactionId`,
+  // the same field `subjugated` uses, so both must read it there. Without this
+  // a failed poach of the human's vassal fell through to the "self" role and
+  // would be described with the wording meant for an attempt on the human.
   const lostTo =
-    e.type === "subjugated" ? e.formerOverlordFactionId : e.overlordFactionId;
+    e.type === "subjugated" || e.type === "subjugate-failed"
+      ? e.formerOverlordFactionId
+      : e.overlordFactionId;
   return lostTo === ctx.humanFactionId ? "lord" : null;
 }
 
@@ -447,6 +453,42 @@ function buildVassalHeldNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
   };
 }
 
+/** A rival tried to prise the human away from their own overlord and missed.
+ *  Distinct from `buildVassalHeldNotice`, which is the human as the lord who
+ *  kept a vassal; here the human is the prize. */
+function buildYouHeldNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  const single = events.length === 1;
+  return {
+    title: "You Held",
+    what: single
+      ? `${ctx.factionName(events[0].overlordFactionId ?? events[0].targetFactionId)} tried to take you from ${ctx.factionName(events[0].formerOverlordFactionId)} and failed.`
+      : "Rivals tried to take you and failed:",
+    details: single
+      ? []
+      : events.map((e) => ctx.factionName(e.overlordFactionId)),
+    consequence:
+      "Their card is spent. You are still your overlord's vassal, not theirs.",
+  };
+}
+
+/** The human's own overlord tried to annex them permanently and the roll
+ *  missed. The single most consequential near-miss in the game: had it landed,
+ *  the run would have ended. */
+function buildAnnexationResistedNotice(
+  events: GameEvent[],
+  ctx: NoticeCtx,
+): Notice {
+  return {
+    title: "You Resisted",
+    what:
+      `${ctx.factionName(events[0].overlordFactionId)} tried to absorb your realm permanently and failed.`,
+    details: [],
+    consequence:
+      "Their card is spent. The longer you stay their vassal, the better " +
+      "their next attempt's odds - breaking free resets that clock.",
+  };
+}
+
 export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   draw: { kind: "silent", reason: "routine; visible in hand and log" },
   play: {
@@ -528,22 +570,47 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   },
   "subjugate-failed": {
     kind: "modal",
-    // A rival trying and failing to prise away one of the human's vassals is
-    // exactly the kind of near-miss the player must see: nothing on the map
-    // changed, so without a notice the attempt leaves no trace at all.
+    // A rival trying and failing is exactly the kind of near-miss the player
+    // must see: nothing on the map changed, so without a notice the attempt
+    // leaves no trace at all. Two ways it can touch the human - they kept a
+    // vassal somebody reached for, or they were themselves the prize - and the
+    // role split in `humanRoleIn` picks the wording.
     appliesToHuman: (e, ctx) =>
-      e.formerOverlordFactionId === ctx.humanFactionId && e.playerId !== 1,
-    build: (e, ctx) => buildVassalHeldNotice([e], ctx),
+      e.playerId !== 1 &&
+      (e.formerOverlordFactionId === ctx.humanFactionId ||
+        e.targetFactionId === ctx.humanFactionId),
+    build: (e, ctx) =>
+      humanRoleIn(e, ctx) === "lord"
+        ? buildVassalHeldNotice([e], ctx)
+        : buildYouHeldNotice([e], ctx),
   },
   "incorporate-failed": {
+    kind: "modal",
+    // Was silent, reasoned as "only ever the human's own play, since nobody
+    // else can incorporate a land the human holds". That is wrong whenever the
+    // human is somebody's vassal: their overlord can annex *them*, and the roll
+    // can miss. Being one failed roll away from the run ending is the least
+    // skippable thing that can happen, and nothing on the map records it.
+    //
+    // The human's own missed roll stays silent, as it always was - the hand and
+    // activity log already show the card was spent, and a modal on your own
+    // failed gamble is a nag. `playerId !== 1` is what keeps that true.
+    appliesToHuman: (e, ctx) =>
+      e.targetFactionId === ctx.humanFactionId && e.playerId !== 1,
+    build: (e, ctx) => buildAnnexationResistedNotice([e], ctx),
+  },
+  garrisoned: {
     kind: "silent",
-    // Only ever the human's own play (nobody else can incorporate a land the
-    // human holds), and the hand and activity log both already show the card
-    // was spent. A modal on your own failed roll is a nag.
-    reason: "the human's own spent card; hand and log already show it",
+    // A standing per-turn gain, not an event: every realm past the threshold
+    // earns it every single turn, so a modal would fire continuously and mean
+    // nothing. The player's own is in the activity log and stated as a standing
+    // line on the scoreboard; a rival's shows up where it matters, in the Might
+    // lead on their threat badge.
+    reason: "continuous standing gain; log, scoreboard and badge all carry it",
   },
   victory: { kind: "silent", reason: "postmortem overlay covers it" },
   defeat: { kind: "silent", reason: "postmortem overlay covers it" },
+  surrendered: { kind: "silent", reason: "postmortem overlay covers it" },
   // hud.ts renders unification in the activity log and the post-mortem
   // overlay; no modal notice is needed on top of that.
   unified: { kind: "silent", reason: "postmortem overlay covers it" },
@@ -610,7 +677,11 @@ export function buildNotices(events: GameEvent[], ctx: NoticeCtx): Notice[] {
       case "seeded":
         return buildUnrestNotice(groupEvents, ctx);
       case "subjugate-failed":
-        return buildVassalHeldNotice(groupEvents, ctx);
+        return role === "lord"
+          ? buildVassalHeldNotice(groupEvents, ctx)
+          : buildYouHeldNotice(groupEvents, ctx);
+      case "incorporate-failed":
+        return buildAnnexationResistedNotice(groupEvents, ctx);
       default:
         throw new Error(`no batch notice builder for grouped event type: ${type}`);
     }

@@ -605,3 +605,71 @@ describe("subjugation-stability policy branches", () => {
     });
   });
 });
+
+describe("convex Raid valuation", () => {
+  it("prefers the target it has the widest border against", () => {
+    // alpha (the actor) holds gamma as a vassal, so its realm is {alpha, gamma}.
+    // On this map both alpha and gamma touch beta, but only alpha touches delta:
+    // a Raid on beta is worth raidYield(2)=3, on delta raidYield(1)=1.
+    const ADJ = {
+      alpha: ["beta", "gamma", "delta"],
+      beta: ["alpha", "gamma"],
+      gamma: ["alpha", "beta"],
+      delta: ["alpha"],
+    };
+    let g = pickFaction(
+      chooseDeck(startGame(newGame(FACTIONS, ADJ)), buildDeck()),
+      "beta",
+      seededRng(1),
+    );
+    g = { ...g, current: 1, overlords: new Map([["gamma", "alpha"]]) };
+    g = withHand(g, ["raid"]);
+    const action = chooseAction(g);
+    expect(action).toMatchObject({ type: "play", cardIndex: 0 });
+    expect((action as { targetId: string }).targetId).toBe("beta");
+  });
+
+  it("scores a wide-border Raid above a flat +1 card", () => {
+    // Same wide border. Given both Raid and Shrewd marriage, the policy must
+    // take the Raid: scoring the raw border count instead of raidYield would
+    // still pick Raid here, so the guard that matters is the size of the gain
+    // it believes in - checked directly below.
+    const ADJ = {
+      alpha: ["beta", "gamma", "delta"],
+      beta: ["alpha", "gamma"],
+      gamma: ["alpha", "beta"],
+      delta: ["alpha"],
+    };
+    let g = pickFaction(
+      chooseDeck(startGame(newGame(FACTIONS, ADJ)), buildDeck()),
+      "beta",
+      seededRng(1),
+    );
+    g = { ...g, current: 1, overlords: new Map([["gamma", "alpha"]]) };
+    g = withHand(g, ["shrewd-marriage", "raid"]);
+    expect(chooseAction(g)).toMatchObject({ type: "play", cardIndex: 1 });
+  });
+
+  it("finishes with a Raid whose convex yield alone clears the bar", () => {
+    // delta's bar is SUBJUGATE_THRESHOLD * 1 = 2 and alpha leads by 0. A raid
+    // worth 1 cannot set up a finish, but a raid worth 3 can. Give alpha a wide
+    // border on delta and check the policy sees a finishing play.
+    const ADJ = {
+      alpha: ["delta", "gamma"],
+      beta: ["gamma"],
+      gamma: ["alpha", "beta", "delta"],
+      delta: ["alpha", "gamma"],
+    };
+    let g = pickFaction(
+      chooseDeck(startGame(newGame(FACTIONS, ADJ)), buildDeck()),
+      "beta",
+      seededRng(1),
+    );
+    g = { ...g, current: 1, overlords: new Map([["gamma", "alpha"]]) };
+    g = withHand(g, ["raid"]);
+    const action = chooseAction(g);
+    // Two of alpha's realm lands border delta, so the raid is worth 3 - past
+    // delta's bar of 2 in one play.
+    expect(action).toMatchObject({ type: "play", cardIndex: 0, targetId: "delta" });
+  });
+});

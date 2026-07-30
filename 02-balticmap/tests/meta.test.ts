@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   META_STORAGE_KEY, buildPlayerDeck, initialMeta, loadMeta, memoryStorage,
-  mergeSeen, resetMeta, saveMeta, unlockCard,
+  mergeSeen, resetMeta, saveMeta, unlockAllSeen, unlockCard,
 } from "../src/meta";
 import { DECK_SIZE } from "../src/cards";
 
@@ -118,5 +118,39 @@ describe("buildPlayerDeck", () => {
     expect(buildPlayerDeck(["grow-crops"], [])).toEqual(
       Array.from({ length: DECK_SIZE }, () => "grow-crops"),
     );
+  });
+});
+
+describe("unlockAllSeen", () => {
+  it("learns the whole pool at once and reports what was learned", () => {
+    const meta = { knownCards: ["grow-crops"], seenPool: ["raid", "fortify"] };
+    const { meta: next, learned } = unlockAllSeen(meta);
+    expect(learned).toEqual(["raid", "fortify"]);
+    expect(next.knownCards).toEqual(["grow-crops", "raid", "fortify"]);
+    expect(next.seenPool).toEqual([]);
+  });
+
+  it("returns the same record when the pool is empty, so callers can skip", () => {
+    const meta = { knownCards: ["grow-crops"], seenPool: [] };
+    const result = unlockAllSeen(meta);
+    expect(result.meta).toBe(meta);
+    expect(result.learned).toEqual([]);
+  });
+
+  it("leaves the input untouched", () => {
+    const meta = { knownCards: ["grow-crops"], seenPool: ["raid"] };
+    unlockAllSeen(meta);
+    expect(meta.seenPool).toEqual(["raid"]);
+  });
+
+  it("makes every witnessed card immediately deck-buildable", () => {
+    const { meta: next } = unlockAllSeen({
+      knownCards: ["grow-crops"],
+      seenPool: ["raid", "fortify", "subjugate", "alliance", "bodyguard"],
+    });
+    // The whole point: five witnessed cards are five cards you can now take,
+    // not one choice out of five made with no experience of any of them.
+    expect(buildPlayerDeck(next.knownCards, ["raid", "fortify", "subjugate"]))
+      .toEqual(expect.arrayContaining(["raid", "fortify", "subjugate"]));
   });
 });
