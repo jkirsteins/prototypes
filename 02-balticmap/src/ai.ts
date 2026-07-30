@@ -1,7 +1,7 @@
 import { CARDS, DOUBLABLE_CARDS, type Rng } from "./cards";
 import { leadsOf, realmOf } from "./relations";
 import {
-  SUBJUGATE_THRESHOLD, borderStrength, playableSet, validTargetsFor,
+  SUBJUGATE_THRESHOLD, borderStrength, playableSet, threatsTo, validTargetsFor,
 } from "./playability";
 import {
   discardCard, playCard, viewOf,
@@ -99,6 +99,32 @@ export function chooseAction(state: GameState): AiAction {
         }
       }
       return { type: "play", cardIndex: subjugate, targetId: best };
+    }
+  }
+
+  // 5: emergency defence, only against a threat that can subjugate this faction
+  // now or after one more play. It sits below Subjugate because taking a vassal
+  // is a certain gain that also raises this faction's own bar (realmOf grows,
+  // so SUBJUGATE_THRESHOLD * realmOf(me) grows), and is therefore itself
+  // defensive. It sits above the finishing raid because being subjugated costs
+  // more than setting up next turn's conquest.
+  const threats = threatsTo(v, p.factionId).filter((t) => t.shortfall <= 1);
+  if (threats.length > 0) {
+    const alliance = idxOf("alliance");
+    if (alliance !== undefined) {
+      const courtable = validTargetsFor(v, p.factionId, "alliance");
+      const myTargets = validTargetsFor(v, p.factionId, "subjugate");
+      // A pact blocks hostile targeted cards in BOTH directions, so allying
+      // with your own best target freezes your own conquest for five turns.
+      const pick = threats.find(
+        (t) =>
+          courtable.includes(t.factionId) &&
+          !myTargets.includes(t.factionId) &&
+          state.overlords.get(t.factionId) !== p.factionId,
+      );
+      if (pick !== undefined) {
+        return { type: "play", cardIndex: alliance, targetId: pick.factionId };
+      }
     }
   }
 

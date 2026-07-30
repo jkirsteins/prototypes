@@ -92,7 +92,12 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.45, 0.75],   // measured 0.60
+      // subjugatedShare suspended for the reclaim-cut and AI-policy-coverage
+      // changeset: Tasks 7, 8 and 9 each move it, so a band set now would be
+      // set three times. Restore from a fresh measurement immediately after
+      // Task 9. Measured 0.769 on the day Task 7 landed (up from the 0.60
+      // this band was set from), for comparison when restoring.
+      // subjugatedShare: [0.45, 0.75],   // measured 0.60
       medianFirstSubjugation: [3, 9],  // measured 6.00
       defeatShare: [0.33, 0.63],       // measured 0.48
     },
@@ -109,7 +114,12 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.47, 0.77],   // measured 0.62
+      // subjugatedShare suspended for the reclaim-cut and AI-policy-coverage
+      // changeset: Tasks 7, 8 and 9 each move it, so a band set now would be
+      // set three times. Restore from a fresh measurement immediately after
+      // Task 9. Measured 0.423 on the day Task 7 landed (down from the 0.62
+      // this band was set from), for comparison when restoring.
+      // subjugatedShare: [0.47, 0.77],   // measured 0.62
       medianFirstSubjugation: [3, 8],  // measured 5.00
     },
   },

@@ -130,6 +130,39 @@ describe("chooseAction priorities", () => {
     });
   });
 
+  it("5: allies with the faction that can subjugate it now", () => {
+    let g = base();
+    // gamma is 1 short of taking alpha; alliance freezes it for 5 turns
+    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
+    g = withHand(g, ["grow-crops", "alliance"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "gamma",
+    });
+  });
+
+  it("5: does not ally with a faction it could subjugate itself", () => {
+    let g = base();
+    // beta threatens alpha AND alpha can already take beta: a pact would freeze
+    // alpha's own conquest for five turns, so step 5 must decline entirely.
+    // The hand carries a potato so the decline is visible: if the step fired it
+    // would seal with beta, the only threat within one play.
+    //
+    // The two leads MUST sit on different tracks. leadsOf is a difference, so
+    // bumping both directions on Might would cancel to a lead of zero and nobody
+    // would threaten anyone. Subjugation needs the bar on either track, so beta
+    // threatens on Might while alpha holds its own claim on Status.
+    g = { ...g, relations: statusLead(lead(g.relations, "beta", "alpha", 2), "alpha", "beta", 2) };
+    g = withHand(g, ["alliance", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("5: does not fire when nobody is close to subjugating it", () => {
+    let g = base();
+    g = withHand(g, ["alliance", "raid"]);
+    // no threat within one play, so the build step takes the turn
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
   it("6: fortify defensively when out-mighted", () => {
     let g = base();
     g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
