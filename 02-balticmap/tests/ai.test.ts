@@ -253,6 +253,84 @@ describe("chooseAction priorities", () => {
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 
+  it("8: extends diplomacy only with an Alliance in hand to extend", () => {
+    let g = base();
+    g = withHand(g, ["extended-diplomacy", "alliance"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("8: does not extend diplomacy with no Alliance in hand", () => {
+    let g = base();
+    g = withHand(g, ["extended-diplomacy", "grow-crops"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
+  it("8: an emergency alliance outranks extending the next one", () => {
+    let g = base();
+    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
+    g = withHand(g, ["extended-diplomacy", "alliance"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "gamma" });
+  });
+
+  it("8: posts a guard on a Status lead it cannot cash this turn", () => {
+    let g = base();
+    g = { ...g, relations: statusLead(g.relations, "alpha", "beta", 2) };
+    g = withHand(g, ["bodyguard", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("8: does not post a guard when Subjugate is playable this turn", () => {
+    let g = base();
+    g = { ...g, relations: statusLead(g.relations, "alpha", "beta", 2) };
+    g = withHand(g, ["bodyguard", "subjugate"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "beta" });
+  });
+
+  it("8: does not post a guard with no subjugation-grade Status lead", () => {
+    let g = base();
+    g = { ...g, relations: statusLead(g.relations, "alpha", "beta", 1) };
+    g = withHand(g, ["bodyguard", "grow-crops"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
+  // Supplementary tests below: the brief's six "8:" tests above mostly pass
+  // even if the branch they target is deleted outright, because an existing,
+  // unconditional later step (grow-crops, or the lone build target) happens
+  // to land on the same card by coincidence. These tests are built so that
+  // deleting or weakening the relevant guard actually changes the answer.
+
+  it("8 (supplementary): extending diplomacy still wins over an available grow-crops fallback", () => {
+    // Unlike the brief's own "extends only with an Alliance in hand" test,
+    // grow-crops is also in hand here. If the extend branch were deleted,
+    // the unconditional grow-crops step (existing, later) would take the
+    // turn instead, at cardIndex 2, not 0 - so this fails without the branch.
+    let g = base();
+    g = withHand(g, ["extended-diplomacy", "alliance", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("8 (supplementary): withholds diplomacy when Alliance is not in hand, even though Alliance has valid targets in the game state", () => {
+    // validTargetsFor("alliance") is nonempty here purely from game state
+    // (nobody is allied, all reachable) even though "alliance" is not in
+    // hand. A guard that dropped the hand.includes("alliance") check and
+    // relied on validTargetsFor alone would wrongly fire and return
+    // cardIndex 0; the build step's Raid is the correct fallback instead.
+    let g = base();
+    g = withHand(g, ["extended-diplomacy", "raid"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "beta" });
+  });
+
+  it("8 (supplementary): the guard threshold is the Subjugate bar itself, not merely 'some lead'", () => {
+    // alpha leads beta by 1 Status, one short of the bar of
+    // SUBJUGATE_THRESHOLD * 1 = 2. A guard that fired on any positive lead
+    // (dropping the ">= required" comparison) would wrongly post the guard
+    // at cardIndex 0; the correct answer builds with Raid instead.
+    let g = base();
+    g = { ...g, relations: statusLead(g.relations, "alpha", "beta", 1) };
+    g = withHand(g, ["bodyguard", "raid"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "beta" });
+  });
+
   it("9: discards leftmost when nothing is playable", () => {
     let g = base();
     g = withHand(g, ["subjugate", "incorporate"]);

@@ -1,7 +1,8 @@
 import { CARDS, DOUBLABLE_CARDS, type Rng } from "./cards";
 import { leadsOf, realmOf } from "./relations";
 import {
-  SUBJUGATE_THRESHOLD, borderStrength, playableSet, threatsTo, validTargetsFor,
+  SUBJUGATE_THRESHOLD, borderStrength, playableSet, subjugationRequirement,
+  targetEligibilityFor, threatsTo, validTargetsFor,
 } from "./playability";
 import {
   discardCard, playCard, viewOf,
@@ -200,6 +201,38 @@ export function chooseAction(state: GameState): AiAction {
     p.hand.some((c) => DOUBLABLE_CARDS.has(c))
   ) {
     return { type: "play", cardIndex: omens };
+  }
+
+  // 8b: extend the next pact. Only with an Alliance in hand and somebody to
+  // seal it with, and only having reached this tier, which means no emergency
+  // alliance fired - the same rule the omens step follows: a setup card must
+  // never delay a play that resolves something now. isCardPlayable already
+  // refuses this while a boost is held.
+  const extend = idxOf("extended-diplomacy");
+  if (
+    extend !== undefined &&
+    p.hand.includes("alliance") &&
+    validTargetsFor(v, p.factionId, "alliance").length > 0
+  ) {
+    return { type: "play", cardIndex: extend };
+  }
+
+  // 8c: post a guard on a Status lead that cannot be cashed this turn. This is
+  // exactly the position step 5's assassination hunts, so the guard answers a
+  // threat the AI itself would make. A lead you can cash now needs no guard,
+  // which is what the Subjugate check encodes. An `irrelevant` eligibility
+  // entry means out of reach, so it is also the reach test.
+  const bodyguard = idxOf("bodyguard");
+  if (bodyguard !== undefined && idxOf("subjugate") === undefined) {
+    const worthGuarding = targetEligibilityFor(v, p.factionId, "subjugate").some(
+      (e) => {
+        if (e.state === "irrelevant") return false;
+        const required = subjugationRequirement(v, p.factionId, e.factionId);
+        if (required === null) return false;
+        return leadsOf(state.relations, p.factionId, e.factionId).status >= required;
+      },
+    );
+    if (worthGuarding) return { type: "play", cardIndex: bodyguard };
   }
 
   // 7: build toward the closest new subjugation, measured in plays remaining
