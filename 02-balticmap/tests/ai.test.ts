@@ -163,6 +163,22 @@ describe("chooseAction priorities", () => {
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
   });
 
+  it("5: skips an excluded threat and allies with the next one", () => {
+    let g = base();
+    // gamma is the worst threat (shortfall 0) but alpha can subjugate gamma, so
+    // it is excluded. delta is a lesser threat (shortfall 1) and is eligible.
+    // The two leads sit on different tracks on purpose: leadsOf is a difference,
+    // so same-track bumps in both directions would cancel to zero.
+    let rel = lead(g.relations, "gamma", "alpha", 2);      // gamma -> alpha, might
+    rel = statusLead(rel, "alpha", "gamma", 2);            // alpha -> gamma, status
+    rel = lead(rel, "delta", "alpha", 1);                  // delta -> alpha, might
+    g = { ...g, relations: rel };
+    g = withHand(g, ["grow-crops", "alliance"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "delta",
+    });
+  });
+
   it("6: fortify defensively when out-mighted", () => {
     let g = base();
     g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };

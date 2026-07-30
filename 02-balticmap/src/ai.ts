@@ -116,6 +116,10 @@ export function chooseAction(state: GameState): AiAction {
       const myTargets = validTargetsFor(v, p.factionId, "subjugate");
       // A pact blocks hostile targeted cards in BOTH directions, so allying
       // with your own best target freezes your own conquest for five turns.
+      // The own-vassal check below is defence in depth, not load-bearing:
+      // threatsTo already excludes any faction with an overlord (including
+      // one of your own vassals) from ever appearing as a threat, since a
+      // vassal cannot itself Subjugate.
       const pick = threats.find(
         (t) =>
           courtable.includes(t.factionId) &&
