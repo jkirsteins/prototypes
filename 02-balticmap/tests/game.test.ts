@@ -80,7 +80,7 @@ describe("setup", () => {
 
 const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
-  "incorporate", "reclaim-independence", "revolt",
+  "incorporate", "revolt",
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens",
 ];
@@ -297,39 +297,6 @@ describe("card effects", () => {
     g = withHand(g, 0, ["incorporate"]);
     const after = playCard(g, 0, rng(), "gamma");
     expect(after.incorporated).toEqual({ delta: "beta", gamma: "beta" });
-  });
-
-  it("reclaim frees the player and strips tribute copies", () => {
-    let g = playingState(LINE_ADJ);
-    g = { ...g, overlords: new Map([["beta", "gamma"]]) };
-    let p0 = g.players[0];
-    p0 = {
-      ...p0,
-      deck: [...p0.deck, "pay-tribute"],
-      discard: ["pay-tribute"],
-      hand: ["reclaim-independence"],
-    };
-    g = { ...g, players: [p0, ...g.players.slice(1)] };
-    // overlord lead < 2 on both tracks (all zeros): reclaim is playable
-    const after = playCard(g, 0, rng());
-    expect(after.overlords.has("beta")).toBe(false);
-    const freed = after.players[0];
-    expect(
-      [...freed.deck, ...freed.hand, ...freed.discard].filter((c) => c === "pay-tribute"),
-    ).toHaveLength(0);
-    expect(after.log.at(-1)).toMatchObject({
-      type: "reclaimed", targetFactionId: "beta", overlordFactionId: "gamma",
-    });
-  });
-
-  it("reclaim is rejected while the overlord's lead is 2+", () => {
-    let g = playingState(LINE_ADJ);
-    g = { ...g, overlords: new Map([["beta", "gamma"]]) };
-    g = withRel(g, mightLead(g.relations, "gamma", "beta", 2));
-    g = withHand(g, 0, ["reclaim-independence"]);
-    // reclaim unplayable -> hand of 1 means discard mode
-    expect(playCard(g, 0, rng())).toBe(g);
-    expect(discardCard(g, 0)).not.toBe(g);
   });
 
   it("revolt is not playable while free (no overlord)", () => {

@@ -284,17 +284,6 @@ export function isCardPlayable(
   if (cardId === "favourable-omens") return !view.omens.includes(factionId);
   if (cardId === "pay-tribute") return overlord !== undefined;
   if (cardId === "revolt") return overlord !== undefined;
-  if (cardId === "reclaim-independence") {
-    if (overlord === undefined) return false;
-    const l = leadsOf(view.relations, overlord, factionId);
-    // The overlord's realm always includes factionId itself (as its vassal);
-    // the grip strength is the overlord's OTHER holdings, excluding the
-    // very vassal weighing whether to leave.
-    const overlordRealm = realmOf(overlord, view.overlords, view.incorporated)
-      .filter((id) => id !== factionId);
-    const grip = SUBJUGATE_THRESHOLD * overlordRealm.length;
-    return l.status < grip && l.might < grip;
-  }
   if (card.targeted) return validTargetsFor(view, factionId, cardId).length > 0;
   return false;
 }

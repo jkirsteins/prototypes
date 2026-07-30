@@ -238,22 +238,6 @@ describe("isCardPlayable", () => {
     expect(isCardPlayable(sub, "beta", "pay-tribute")).toBe(true);
   });
 
-  it("reclaim needs subjugation AND the overlord's lead below 2 on both tracks", () => {
-    const base = { overlords: new Map([["beta", "alpha"]]) };
-    expect(isCardPlayable(view(), "beta", "reclaim-independence")).toBe(false);
-    expect(
-      isCardPlayable(view({ ...base, relations: mightLead("alpha", "beta", 2) }),
-        "beta", "reclaim-independence"),
-    ).toBe(false);
-    expect(
-      isCardPlayable(view({ ...base, relations: mightLead("alpha", "beta", 1) }),
-        "beta", "reclaim-independence"),
-    ).toBe(true);
-    expect(
-      isCardPlayable(view(base), "beta", "reclaim-independence"),
-    ).toBe(true);
-  });
-
   it("targeted cards are playable iff a target exists", () => {
     expect(isCardPlayable(view(), "beta", "raid")).toBe(true);
     expect(isCardPlayable(view(), "beta", "subjugate")).toBe(false);
@@ -325,25 +309,6 @@ describe("reach through incorporated lands and scaled thresholds", () => {
     expect(validTargetsFor({ ...base, relations: rel }, "me", "subjugate")).toContain("target");
   });
 
-  it("reclaim scales with the overlord realm size", () => {
-    // overlord realm size 2 -> grip threshold 4: leads of 3 still reclaimable
-    const v: RulesView = {
-      relations: {},
-      overlords: new Map([["me", "lord"]]),
-      incorporated: { land: "lord" },
-      adjacency: { me: ["lord"], lord: ["me"], land: ["me"] },
-      factionIds: ["me", "lord", "land"],
-      alliances: {},
-      turn: 1,
-      bodyguards: [],
-      omens: [],
-    };
-    let rel: Relations = {};
-    for (let i = 0; i < 3; i++) rel = bumpMight(rel, "lord", "me");
-    expect(isCardPlayable({ ...v, relations: rel }, "me", "reclaim-independence")).toBe(true);
-    rel = bumpMight(rel, "lord", "me"); // lead 4 meets the scaled grip
-    expect(isCardPlayable({ ...v, relations: rel }, "me", "reclaim-independence")).toBe(false);
-  });
 });
 
 describe("alliances", () => {

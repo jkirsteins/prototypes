@@ -389,15 +389,6 @@ export function playCard(
       turn: state.turn, playerId: p.id, type: "incorporated",
       targetFactionId: targetId, overlordFactionId: p.factionId,
     });
-  } else if (cardId === "reclaim-independence") {
-    const former = overlords.get(p.factionId);
-    if (former === undefined) return state;
-    overlords.delete(p.factionId);
-    players = updateFaction(players, p.factionId, stripTribute);
-    events.push({
-      turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
-      targetFactionId: p.factionId, overlordFactionId: former,
-    });
   } else if (cardId === "revolt") {
     const former = overlords.get(p.factionId);
     if (former === undefined) return state;

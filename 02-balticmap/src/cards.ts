@@ -19,7 +19,6 @@ export const CARDS: Record<string, CardDef> = {
   "fortify": { id: "fortify", name: "Fortify", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Might over every other living faction at once." },
   "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },
   "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Permanently absorb one of your vassals into your realm." },
-  "reclaim-independence": { id: "reclaim-independence", name: "Reclaim independence", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Cast off your overlord. Playable while their lead in Might and Status is under 2 per land of their other holdings." },
   "pay-tribute": { id: "pay-tribute", name: "Pay tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true, text: "Forced: while a vassal, grant your overlord +1 Might or +1 Status." },
   "revolt": { id: "revolt", name: "Revolt", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you." },
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Even the score: the Status lead between you and one faction in reach resets to none." },
@@ -58,7 +57,7 @@ export type Rng = () => number;
  *  draw maps to and silently moves every committed AI-deck band. */
 export const DEFAULT_DECK: string[] = [
   "raid", "shrewd-marriage", "fortify", "subjugate", "incorporate",
-  "reclaim-independence", "revolt", "assassinate-ruler", "alliance",
+  "grow-crops", "revolt", "assassinate-ruler", "alliance",
   "favourable-omens",
 ];
 

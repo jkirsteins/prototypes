@@ -62,13 +62,6 @@ describe("chooseAction priorities", () => {
     });
   });
 
-  it("2: reclaim when playable", () => {
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = withHand(g, ["grow-crops", "reclaim-independence"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
-  });
-
   it("3: incorporate the first vassal", () => {
     let g = base();
     g = { ...g, overlords: new Map([["delta", "alpha"], ["gamma", "alpha"]]) };

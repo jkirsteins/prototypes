@@ -6,7 +6,7 @@ import {
 
 const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
-  "incorporate", "reclaim-independence", "revolt",
+  "incorporate", "revolt",
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens",
 ];
@@ -51,10 +51,6 @@ describe("cards", () => {
       "Permanently absorb one of your vassals into your realm.",
     );
     expectProps(
-      "reclaim-independence", "Reclaim independence", false, 1, true, false,
-      "Cast off your overlord. Playable while their lead in Might and Status is under 2 per land of their other holdings.",
-    );
-    expectProps(
       "pay-tribute", "Pay tribute", false, null, false, true,
       "Forced: while a vassal, grant your overlord +1 Might or +1 Status.",
     );
@@ -80,15 +76,17 @@ describe("cards", () => {
     );
   });
 
-  it("builds the explicit default deck, favourable-omens included, no filler", () => {
+  it("builds the explicit default deck, favourable-omens included", () => {
     const deck = buildDeck();
     expect(deck).toHaveLength(DECK_SIZE);
     expect(deck).toEqual(DEFAULT_DECK);
     expect(deck).toContain("favourable-omens");
     expect(deck).not.toContain("extended-diplomacy");
     expect(deck).not.toContain("bodyguard");
-    expect(deck).not.toContain("grow-crops");
     expect(deck).not.toContain("pay-tribute");
+    // grow-crops fills Reclaim independence's retired slot in place, so it
+    // is now a deliberate, single member of the default deck, not filler.
+    expect(deck.filter((c) => c === "grow-crops")).toHaveLength(1);
   });
 
   it("DEFAULT_DECK holds DECK_SIZE ids, each a real, deck-buildable, " +
@@ -197,18 +195,15 @@ describe("buildAiDeck", () => {
   });
 
   it("an rng that always returns < 0.5 includes non-basics up to DECK_SIZE, guarding overflow", () => {
-    // 12 non-basics now exist; an rng that includes all of them must still
-    // be capped at DECK_SIZE (same overflow guard as buildDeck), dropping
-    // bodyguard and favourable-omens (last in CARDS order) rather than
-    // returning 12 cards.
+    // 11 non-basics now exist (Reclaim independence retired); an rng that
+    // includes all of them must still be capped at DECK_SIZE (same overflow
+    // guard as buildDeck), dropping only favourable-omens (last in CARDS
+    // order) rather than returning 11 cards.
     const deck = buildAiDeck(() => 0);
     const count = (id: string) => deck.filter((c) => c === id).length;
-    for (const id of NON_BASICS.filter(
-      (id) => id !== "bodyguard" && id !== "favourable-omens",
-    )) {
+    for (const id of NON_BASICS.filter((id) => id !== "favourable-omens")) {
       expect(count(id)).toBe(1);
     }
-    expect(count("bodyguard")).toBe(0);
     expect(count("favourable-omens")).toBe(0);
     expect(deck).toHaveLength(DECK_SIZE);
   });
