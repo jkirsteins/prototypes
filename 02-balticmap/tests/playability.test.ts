@@ -25,6 +25,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     turn: 1,
     bodyguards: [],
     omens: [],
+    diplomacyBoost: [],
     ...partial,
   };
 }
@@ -243,6 +244,17 @@ describe("isCardPlayable", () => {
     expect(isCardPlayable(view(), "beta", "subjugate")).toBe(false);
     expect(isCardPlayable(view(), "beta", "incorporate")).toBe(false);
   });
+
+  it("extended diplomacy is unplayable while a boost is already held", () => {
+    expect(isCardPlayable(view(), "alpha", "extended-diplomacy")).toBe(true);
+    expect(
+      isCardPlayable(view({ diplomacyBoost: ["alpha"] }), "alpha", "extended-diplomacy"),
+    ).toBe(false);
+    // someone else's boost is not yours
+    expect(
+      isCardPlayable(view({ diplomacyBoost: ["beta"] }), "alpha", "extended-diplomacy"),
+    ).toBe(true);
+  });
 });
 
 describe("playableSet", () => {
@@ -283,6 +295,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       turn: 1,
       bodyguards: [],
       omens: [],
+      diplomacyBoost: [],
     };
     const targets = validTargetsFor(v, "me", "raid");
     expect(targets).toContain("owner");
@@ -301,6 +314,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       turn: 1,
       bodyguards: [],
       omens: [],
+      diplomacyBoost: [],
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "me", "target");

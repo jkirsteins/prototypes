@@ -91,6 +91,7 @@ export function viewOf(state: GameState): RulesView {
     turn: state.turn,
     bodyguards: state.bodyguards,
     omens: state.omens,
+    diplomacyBoost: state.diplomacyBoost,
   };
 }
 

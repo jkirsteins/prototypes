@@ -18,6 +18,7 @@ export interface RulesView {
   turn: number;
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
   omens: string[]; // faction ids holding an unspent Favourable omens reading
+  diplomacyBoost: string[]; // faction ids holding an unspent Extended diplomacy
 }
 
 function reachOf(view: RulesView, factionId: string): Set<string> {
@@ -279,9 +280,10 @@ export function isCardPlayable(
   const card = CARDS[cardId];
   if (!card) return false;
   const overlord = view.overlords.get(factionId);
-  if (cardId === "grow-crops" || cardId === "fortify" || cardId === "extended-diplomacy") return true;
+  if (cardId === "grow-crops" || cardId === "fortify") return true;
   if (cardId === "bodyguard") return !view.bodyguards.includes(factionId);
   if (cardId === "favourable-omens") return !view.omens.includes(factionId);
+  if (cardId === "extended-diplomacy") return !view.diplomacyBoost.includes(factionId);
   if (cardId === "pay-tribute") return overlord !== undefined;
   if (cardId === "revolt") return overlord !== undefined;
   if (card.targeted) return validTargetsFor(view, factionId, cardId).length > 0;
