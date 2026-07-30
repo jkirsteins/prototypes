@@ -179,6 +179,57 @@ describe("chooseAction priorities", () => {
     });
   });
 
+  it("5: assassinates the ruler closest to taking it on Status", () => {
+    let g = base();
+    g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 1) };
+    g = withHand(g, ["grow-crops", "assassinate-ruler"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "gamma",
+    });
+  });
+
+  it("5: sorts assassination candidates by statusShortfall, not by threats' shortfall order", () => {
+    // delta out-mights alpha by 3 (mightShortfall -1) but is only 1 short on
+    // Status (statusShortfall 1): its overall shortfall (-1) sorts it first in
+    // `threats`. gamma leads only on Status, exactly to the bar
+    // (statusShortfall 0, shortfall 0), so it sorts second in `threats`. A
+    // policy that reused threats' order (e.g. threats.find(...)) instead of
+    // re-sorting by statusShortfall would wrongly assassinate delta, whose
+    // Might lead the card cannot touch, instead of gamma.
+    let g = base();
+    let rel = lead(g.relations, "delta", "alpha", 3);
+    rel = statusLead(rel, "delta", "alpha", 1);
+    rel = statusLead(rel, "gamma", "alpha", 2);
+    g = { ...g, relations: rel };
+    g = withHand(g, ["grow-crops", "assassinate-ruler"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "gamma",
+    });
+  });
+
+  it("5: ignores a Might-only threat, which levelling Status cannot help", () => {
+    let g = base();
+    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 2) };
+    g = withHand(g, ["assassinate-ruler", "raid"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
+  it("5: does not fire when every qualifying ruler is guarded", () => {
+    let g = base();
+    g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 1) };
+    g = { ...g, bodyguards: ["gamma"] };
+    g = withHand(g, ["assassinate-ruler", "raid"]);
+    // spending the card to strip a guard leaves the threat standing
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
+  it("5: prefers the alliance when both are in hand", () => {
+    let g = base();
+    g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 1) };
+    g = withHand(g, ["assassinate-ruler", "alliance"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "gamma" });
+  });
+
   it("6: fortify defensively when out-mighted", () => {
     let g = base();
     g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };

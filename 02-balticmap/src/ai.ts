@@ -130,6 +130,32 @@ export function chooseAction(state: GameState): AiAction {
         return { type: "play", cardIndex: alliance, targetId: pick.factionId };
       }
     }
+
+    const assassinate = idxOf("assassinate-ruler");
+    if (assassinate !== undefined) {
+      const legal = validTargetsFor(v, p.factionId, "assassinate-ruler");
+      const order = (id: string): number => state.factionIds.indexOf(id);
+      // Levelling Status helps only against a Status threat. Because such a
+      // threat leads this faction on Status by definition, the card can never
+      // destroy the actor's own lead here, so no separate guard is needed.
+      // A guarded ruler is skipped: trading the card for the guard leaves the
+      // threat standing, and the turn is worth more spent building.
+      const pick = threats
+        .filter(
+          (t) =>
+            t.statusShortfall <= 1 &&
+            legal.includes(t.factionId) &&
+            !state.bodyguards.includes(t.factionId),
+        )
+        .sort(
+          (a, b) =>
+            a.statusShortfall - b.statusShortfall ||
+            order(a.factionId) - order(b.factionId),
+        )[0];
+      if (pick !== undefined) {
+        return { type: "play", cardIndex: assassinate, targetId: pick.factionId };
+      }
+    }
   }
 
   // 5: one play away from the threshold
