@@ -104,28 +104,66 @@ These numbers are a starting calibration, not gospel - validate with
 runs land far from this curve. Do not hand-tune elsewhere; the constants
 are the one place to change.
 
+## Turnip milestones (easter egg)
+
+Growing a lot of turnips is its own hidden reward path, independent of
+XP. `MetaRecord` gains `turnipsGrown: number` - a persistent, cross-run
+count of every Grow potatoes the human has ever played.
+
+Explicit milestones: 10, 100, 1,000, 5,000, 10,000. Past 10,000 the
+milestone list keeps going by doubling the previous one (20,000, 40,000,
+80,000, ...) - an "ever increasing curve" in the same decelerating-payoff
+spirit as the XP level curve, so it does not become a repeatable grind
+once the joke has landed.
+
+```ts
+TURNIP_MILESTONES_BASE = [10, 100, 1000, 5000, 10000]
+turnipMilestone(n: number): number // n-th milestone, 0-indexed; doubles past index 4
+turnipPacksEarned(turnipsGrown: number): number // count of milestones crossed
+```
+
+Each milestone crossed grants exactly one bonus pack, folded into the
+same `pendingPacks` total as XP levels:
+
+```
+pendingPacks(meta) = levelForXp(meta.xp) + turnipPacksEarned(meta.turnipsGrown) - meta.packsOpened
+```
+
+Wired through the same single call site and merge points XP already
+uses: `GameState.turnipsGrownThisRun` increments alongside `xpThisRun`
+whenever the human's play is `grow-crops`, and merges into
+`meta.turnipsGrown` at the same run-end points that merge `xpThisRun`
+into `meta.xp`. No new hook, no new merge site.
+
+**Stays hidden.** No progress counter, no "N turnips until your next
+pack" indicator anywhere in the UI - showing progress would spoil the
+easter egg. The bonus pack simply appears as one more pending pack at the
+deck screen next time, indistinguishable from an XP-earned one. Whether a
+pending pack came from a level or a turnip milestone is not tracked once
+it is banked; only the count matters.
+
 ## Persistence
 
 `MetaRecord` (in `meta.ts`) becomes:
 
 ```ts
-{ knownCards: string[], xp: number, packsOpened: number }
+{ knownCards: string[], xp: number, turnipsGrown: number, packsOpened: number }
 ```
 
-`seenPool` is removed. `pendingPacks(meta) = levelForXp(meta.xp) -
-meta.packsOpened` is derived, never stored redundantly - `packsOpened` is
-the one persisted counter, matching the "reconstruct from a log rather
-than track a shadow counter" pattern `standings.ts` already uses for the
-round summary.
+`seenPool` is removed. `pendingPacks(meta)` (shown above) is derived,
+never stored redundantly - `packsOpened` is the one persisted counter,
+matching the "reconstruct from a log rather than track a shadow counter"
+pattern `standings.ts` already uses for the round summary.
 
 At every point that currently banks `seenThisRun` into `seenPool` (run
 end, or "New game" clicked mid-run, in `main.ts`), it instead does
-`meta.xp += state.xpThisRun`.
+`meta.xp += state.xpThisRun` and `meta.turnipsGrown +=
+state.turnipsGrownThisRun`.
 
 `initialMeta()` becomes:
 
 ```json
-{ "knownCards": ["grow-crops", "raid", "subjugate", "fortify"], "xp": 0, "packsOpened": 0 }
+{ "knownCards": ["grow-crops", "raid", "subjugate", "fortify"], "xp": 0, "turnipsGrown": 0, "packsOpened": 0 }
 ```
 
 Old-shape records in localStorage (with `seenPool`) fail the new shape
@@ -194,7 +232,8 @@ already being silent notices ("postmortem overlay covers it").
 
 - `tests/xp.test.ts` (new): `XP_TABLE` exhaustiveness (compile-time via
   `Record<GameEventType, number>`), `xpForEvent` amount-scaling,
-  `xpThresholdForLevel`/`levelForXp` math.
+  `xpThresholdForLevel`/`levelForXp` math, `turnipMilestone` doubling past
+  index 4, `turnipPacksEarned` crossing math, combined `pendingPacks`.
 - `tests/packs.test.ts` (new): weighted draw with a seeded rng, empty-tier
   (rare/epic) fallback to common, duplicates allowed and not filtered.
 - `tests/meta.test.ts`: updated for the new record shape, `bankXp`-style
