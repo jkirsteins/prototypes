@@ -73,12 +73,31 @@ surrendered: 0
 Shrewd marriage, Fortify, Assassinate ruler, Revolt) - a bigger Raid earns
 more than a token one.
 
-**Single call site.** In `game.ts`, the play-resolution function currently
-has a "learning hook" block (~line 603) that computes `seenThisRun`. That
-block is replaced with one that sums `xpForEvent` over the events just
-pushed for this play, filtered to the human (`playerId === 1`), and adds
-the result to a new `GameState.xpThisRun: number` (replacing
-`seenThisRun: string[]`). Nowhere else in `game.ts` touches XP.
+**Zero call sites: XP is derived from the log, never accumulated.**
+`state.log` is already the complete, append-only history of a run
+(`appendEvents` in `game.ts` only ever concatenates). So XP is a pure
+function of it:
+
+```ts
+runXp(log: GameEvent[]): number      // sum of xpForEvent over playerId === 1
+runTurnips(log: GameEvent[]): number // count of human grow-crops plays
+```
+
+`game.ts` gains no XP field and no XP hook at all. The witnessing block
+(~line 603) and `GameState.seenThisRun` are simply deleted, and
+`GameState` gets nothing in return.
+
+This is deliberately stronger than a single hook in `playCard`. A hook
+there would already have missed `discardCard`, the second site that
+pushes events, and would have to be remembered again at any third site.
+Derivation cannot be forgotten: any event that reaches the log is scored
+by the table, and the exhaustive `Record<GameEventType, number>` forces a
+decision for every new event type. It is also the pattern `standings.ts`
+already uses - reconstruct from the log rather than track a shadow
+counter.
+
+Cost is one pass over the log at the two moments XP is read (banking at
+run end, and the postmortem line). The log is a few hundred events.
 
 Confirmed: a subjugated human earns 0 XP from tribute or garrison while
 vassalized. Revolting still pays off through the `reclaimed` event.
@@ -129,11 +148,10 @@ same `pendingPacks` total as XP levels:
 pendingPacks(meta) = levelForXp(meta.xp) + turnipPacksEarned(meta.turnipsGrown) - meta.packsOpened
 ```
 
-Wired through the same single call site and merge points XP already
-uses: `GameState.turnipsGrownThisRun` increments alongside `xpThisRun`
-whenever the human's play is `grow-crops`, and merges into
-`meta.turnipsGrown` at the same run-end points that merge `xpThisRun`
-into `meta.xp`. No new hook, no new merge site.
+Derived from the log exactly like XP: `runTurnips(log)` counts the
+human's `grow-crops` plays, and banks into `meta.turnipsGrown` at the
+same run-end points that bank XP. No state field, no hook, no new merge
+site.
 
 **Stays hidden.** No progress counter, no "N turnips until your next
 pack" indicator anywhere in the UI - showing progress would spoil the
@@ -156,9 +174,10 @@ matching the "reconstruct from a log rather than track a shadow counter"
 pattern `standings.ts` already uses for the round summary.
 
 At every point that currently banks `seenThisRun` into `seenPool` (run
-end, or "New game" clicked mid-run, in `main.ts`), it instead does
-`meta.xp += state.xpThisRun` and `meta.turnipsGrown +=
-state.turnipsGrownThisRun`.
+end, or "New game" clicked mid-run, in `main.ts`), it instead calls
+`bankRun(meta, runXp(game.log), runTurnips(game.log))`. The existing
+`bankSeen()` once-per-run guard carries over unchanged, which is what
+stops a log from being banked twice.
 
 `initialMeta()` becomes:
 
@@ -214,15 +233,17 @@ drive it.
 
 The postmortem's "Seen this run" loot row is removed (nothing is
 witnessed anymore). The postmortem instead gets a small "+N XP earned"
-line, computed from `state.xpThisRun` - keeps a run-end payoff visible
+line, computed from `runXp(state.log)` - keeps a run-end payoff visible
 without a second modal, consistent with `victory`/`defeat`/`surrendered`
 already being silent notices ("postmortem overlay covers it").
 
 ## Removed
 
-- `seenPool`, `seenThisRun` (state field)
+- `seenPool`, `seenThisRun` (state field, removed with nothing replacing
+  it on `GameState`)
 - `mergeSeen`, `unlockCard`, `unlockAllSeen`
 - `deck-screen.ts`'s `learnedOverlay` / `onDismissLearned`
+- `hud.ts`'s `lootInfo` callback and the `pm-seen` loot row
 - the witnessing-detection block in `game.ts` (~line 603)
 - `2026-07-26-balticmap-learning-loop-design.md`'s mechanic is superseded;
   the doc itself is kept for history with a status note pointing here,
@@ -236,12 +257,12 @@ already being silent notices ("postmortem overlay covers it").
   index 4, `turnipPacksEarned` crossing math, combined `pendingPacks`.
 - `tests/packs.test.ts` (new): weighted draw with a seeded rng, empty-tier
   (rare/epic) fallback to common, duplicates allowed and not filtered.
-- `tests/meta.test.ts`: updated for the new record shape, `bankXp`-style
-  XP merge, pack-opening merge into `knownCards`, old-shape record
-  fallback.
-- `tests/game.test.ts`: `xpThisRun` accumulation replacing the
-  seen-detection tests - per event type, per the table, including the
-  amount-scaled cases and the 0-XP forced events.
+- `tests/meta.test.ts`: updated for the new record shape, `bankRun`,
+  `applyPack` merge into `knownCards` with `isNew` flags, old-shape
+  record fallback.
+- `tests/xp.test.ts` also covers `runXp`/`runTurnips` over a real played
+  game's log (drive `playCard` a few turns, assert the derived totals) -
+  replacing the deleted seen-detection tests in `tests/game.test.ts`.
 - `tests/deck-screen.test.ts`: pack-opening flow (one pack at a time,
   gates the deck builder, "N of 9 collected") replacing the learned-modal
   tests.
