@@ -93,6 +93,44 @@ were the 5th and 6th most-played cards in the game and picked their targets by
 faction sort order while two or more targets were legal 82% and 64% of the time.
 That is why the coverage map above is a test and not a checklist item.
 
+## Every new card must be discoverable by the player
+
+For prototypes with a card-discovery or unlock loop, a new card is not done until
+a player can *learn that it exists* by playing the game. A card the player can
+never find out about is content that, for them, is not in the game at all.
+
+So for every card added:
+
+- **Name the route by which the player first sees it**, and make it a test.
+  Usually that means the card is deck-buildable and tracked by the learning
+  loop, so witnessing an enemy play it adds it to the seen pool.
+- **Measure the discovery rate** over a seeded batch and record it. A card
+  witnessed in a few percent of games is technically discoverable and
+  practically invisible; treat that as a failing number, not a pass.
+- **A card deliberately excluded from deck-building must be reachable another
+  way**, and that way must be documented next to its definition. Injection-only
+  cards are the legitimate case: the player meets them because something else
+  puts them in their deck.
+
+Injection-only is the sole exemption, and it is only an exemption from *deck
+discovery*, never from being encountered. If a card cannot be built, cannot be
+witnessed, and cannot be injected, it must not ship.
+
+Measured in `02-balticmap` on 2026-07-30, when Seeds of revolt replaced Revolt:
+Seeds of revolt is witnessed in 71% of games by a naive player over 200 seeded
+runs, the same rate as Assassinate ruler and ahead of Alliance at 53%. Revolt
+itself became `deckBuildable: false` and is now reachable *only* by playing
+Seeds of revolt - which is why that route is stated in its card comment and in
+the deck-screen test, rather than left to be rediscovered later.
+
+Note that discoverability is about more than the deck screen. If a card's effect
+is a private action - one that moves cards inside a faction's own deck rather
+than changing the map - decide explicitly who can observe it, and keep the
+activity log and the notices agreeing with that decision. The same changeset
+shipped a log filter and a notice for exactly this reason: sowing a revolt is
+invisible from outside, so the log must not announce every faction's, while a
+player's own vassal sowing must be announced or the counterplay is unknowable.
+
 ## Housekeeping
 
 - Several sessions may work in this repo at once, sometimes on the same branch
