@@ -74,11 +74,14 @@ Append to `tests/playability.test.ts`. The `view()` helper and `mightLead`/`stat
 ```ts
 describe("threatsTo", () => {
   it("reports a faction that can subjugate now at shortfall 0 or less", () => {
-    // alpha and beta are adjacent; beta's realm is 1 land, so the bar is 2
+    // alpha and beta are adjacent; beta's realm is 1 land, so the bar is 2.
+    // gamma is also adjacent to beta and so is also a threat, just a distant
+    // one: threatsTo reports everyone who COULD take beta given enough lead,
+    // and leaves the filtering to its callers. alpha sorts first on shortfall.
     const v = view({ relations: mightLead("alpha", "beta", 2) });
     const threats = threatsTo(v, "beta");
-    expect(threats.map((t) => t.factionId)).toEqual(["alpha"]);
-    expect(threats[0].shortfall).toBe(0);
+    expect(threats[0]).toMatchObject({ factionId: "alpha", shortfall: 0 });
+    expect(threats.map((t) => t.factionId)).toEqual(["alpha", "gamma"]);
   });
 
   it("reports how much lead a threat still needs, per track", () => {
