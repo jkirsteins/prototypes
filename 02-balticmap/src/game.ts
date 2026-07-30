@@ -4,13 +4,18 @@ import {
   levelStatus, realmOf,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
-import { borderStrength, playableSet, validTargetsFor, type RulesView } from "./playability";
+import {
+  loyaltyKey, incorporationChance, subjugationChance,
+  borderStrength, playableSet, validTargetsFor, type RulesView,
+} from "./playability";
 import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
 
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
   | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
-  | "settled" | "victory" | "defeat" | "unified";
+  | "settled" | "seeded"
+  | "subjugate-failed" | "incorporate-failed"
+  | "victory" | "defeat" | "unified";
 
 export interface GameEvent {
   turn: number;
@@ -54,6 +59,9 @@ export interface GameState {
   incorporated: Incorporated;
   adjacency: Record<string, string[]>;
   alliances: Record<string, number>; // sorted-pair key -> expiry turn
+  /** `${land}|${lord}` -> consecutive turns that lord has held that land.
+   *  Ticked in `beginTurn`, read by the Incorporate odds. */
+  loyalty: Record<string, number>;
   diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
   omens: string[]; // faction ids holding an unspent Favourable omens reading
@@ -100,6 +108,12 @@ export function viewOf(state: GameState): RulesView {
     diplomacyBoost: state.diplomacyBoost,
     sites: state.sites,
     settled: state.settled,
+    loyalty: state.loyalty,
+    liveRevolts: state.players
+      .filter((pl) =>
+        pl.deck.includes("revolt") || pl.hand.includes("revolt") ||
+        pl.discard.includes("revolt"))
+      .map((pl) => pl.factionId),
   };
 }
 
@@ -124,6 +138,7 @@ export function newGame(
     overlords: new Map(),
     incorporated: {},
     alliances: {},
+    loyalty: {},
     diplomacyBoost: [],
     bodyguards: [],
     omens: [],
@@ -209,6 +224,26 @@ function actorRulerName(state: GameState, playerId: number): string {
 }
 
 /** Current player draws 1 (reshuffle rule); resets the play flag. */
+/** One tick of the loyalty clock for the faction about to act. The pair it is
+ *  currently held by rises; every other pair for that land decays toward 0, so
+ *  an ex-lord's investment fades and a poacher starts from near nothing rather
+ *  than inheriting the grip its rival built. Keys that reach 0 are deleted so
+ *  the record stays the size of the vassalages actually in play. */
+function tickLoyalty(state: GameState, land: string): Record<string, number> {
+  const lord = state.overlords.get(land);
+  const held = lord === undefined ? null : loyaltyKey(land, lord);
+  const out: Record<string, number> = {};
+  for (const [key, turns] of Object.entries(state.loyalty)) {
+    if (!key.startsWith(`${land}|`) || key === held) {
+      out[key] = turns;
+    } else if (turns > 1) {
+      out[key] = turns - 1;
+    }
+  }
+  if (held !== null) out[held] = (state.loyalty[held] ?? 0) + 1;
+  return out;
+}
+
 export function beginTurn(state: GameState, rng: Rng): GameState {
   if (state.players.length === 0) return state;
   const p = state.players[state.current];
@@ -229,8 +264,25 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   const players = state.players.map((pl, i) =>
     i === state.current ? updated : pl,
   );
-  return { ...state, players, log: appendEvents(state, events), playedThisTurn: false };
+  return {
+    ...state, players, loyalty: tickLoyalty(state, p.factionId),
+    log: appendEvents(state, events), playedThisTurn: false,
+  };
 }
+
+/** A pending Revolt never outlives the vassalage it was sown in, for the same
+ *  reason Pay tribute does not: otherwise a freed or poached faction carries a
+ *  live Revolt into its next vassalage and the pre-loaded escape is back. */
+const stripRevolt = (p: PlayerState): PlayerState => ({
+  ...p,
+  deck: p.deck.filter((c) => c !== "revolt"),
+  hand: p.hand.filter((c) => c !== "revolt"),
+  discard: p.discard.filter((c) => c !== "revolt"),
+});
+
+/** Both injected cards leave together on every exit from vassalage. */
+const stripVassalCards = (p: PlayerState): PlayerState =>
+  stripRevolt(stripTribute(p));
 
 const stripTribute = (p: PlayerState): PlayerState => ({
   ...p,
@@ -322,7 +374,7 @@ export function playCard(
     for (const [vassal, l] of [...overlords]) {
       if (l === lord) {
         overlords.delete(vassal);
-        players = updateFaction(players, vassal, stripTribute);
+        players = updateFaction(players, vassal, stripVassalCards);
         events.push({
           turn: state.turn, playerId: p.id, type: "released",
           targetFactionId: vassal, overlordFactionId: lord,
@@ -385,12 +437,24 @@ export function playCard(
     if (!diplomacyBoost.includes(p.factionId)) {
       diplomacyBoost = [...diplomacyBoost, p.factionId];
     }
+  } else if (
+    cardId === "subjugate" && targetId !== undefined &&
+    rng() >= subjugationChance(viewOf(state), targetId)
+  ) {
+    // A poach that missed. The card is spent and the turn is gone, but the
+    // lead that justified it is untouched, so the next copy drawn can try
+    // again. Taking a free faction never reaches this branch.
+    events.push({
+      turn: state.turn, playerId: p.id, type: "subjugate-failed",
+      targetFactionId: targetId, overlordFactionId: p.factionId,
+      formerOverlordFactionId: state.overlords.get(targetId),
+    });
   } else if (cardId === "subjugate" && targetId !== undefined) {
     const formerLord = overlords.get(targetId);
     freeVassalsOf(targetId);
     overlords.set(targetId, p.factionId);
     players = updateFaction(players, targetId, (pl) => {
-      const clean = stripTribute(pl);
+      const clean = stripVassalCards(pl);
       return { ...clean, deck: shuffle([...clean.deck, "pay-tribute", "pay-tribute"], rng) };
     });
     if (formerLord !== undefined) {
@@ -403,6 +467,18 @@ export function playCard(
       targetFactionId: targetId, overlordFactionId: p.factionId,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
+  } else if (
+    cardId === "incorporate" && targetId !== undefined &&
+    rng() >= incorporationChance(state, p.factionId, targetId)
+  ) {
+    // The vassal is not digested yet. The card is spent and the turn is gone;
+    // the vassalage survives and its loyalty clock keeps running, so the next
+    // attempt is likelier. Spending the card is what makes a low roll a real
+    // decision rather than a delay.
+    events.push({
+      turn: state.turn, playerId: p.id, type: "incorporate-failed",
+      targetFactionId: targetId, overlordFactionId: p.factionId,
+    });
   } else if (cardId === "incorporate" && targetId !== undefined) {
     overlords.delete(targetId);
     freeVassalsOf(targetId); // defensive: chains never exist
@@ -410,16 +486,28 @@ export function playCard(
     for (const [land, owner] of Object.entries(incorporated)) {
       if (owner === targetId) incorporated = { ...incorporated, [land]: p.factionId };
     }
-    players = updateFaction(players, targetId, stripTribute);
+    players = updateFaction(players, targetId, stripVassalCards);
     events.push({
       turn: state.turn, playerId: p.id, type: "incorporated",
       targetFactionId: targetId, overlordFactionId: p.factionId,
+    });
+  } else if (cardId === "seeds-of-revolt") {
+    // Shuffle a live Revolt into the vassal's remaining deck. The wait for it
+    // to surface is the whole point: the delay comes out of the deck rather
+    // than out of a constant, and it differs every vassalage.
+    players = updateFaction(players, p.factionId, (pl) => ({
+      ...pl, deck: shuffle([...pl.deck, "revolt"], rng),
+    }));
+    events.push({
+      turn: state.turn, playerId: p.id, type: "seeded", cardId,
+      targetFactionId: p.factionId,
+      overlordFactionId: state.overlords.get(p.factionId),
     });
   } else if (cardId === "revolt") {
     const former = overlords.get(p.factionId);
     if (former === undefined) return state;
     overlords.delete(p.factionId);
-    players = updateFaction(players, p.factionId, stripTribute);
+    players = updateFaction(players, p.factionId, stripVassalCards);
     // vassal-loss penalty (section 8): the revolting vassal gains +1/+1
     // over the former lord (relation counters only grow). A held reading
     // doubles this parting blow like any other Might/Status gain.

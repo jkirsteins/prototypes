@@ -20,7 +20,8 @@ export const CARDS: Record<string, CardDef> = {
   "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },
   "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Permanently absorb one of your vassals into your realm." },
   "pay-tribute": { id: "pay-tribute", name: "Pay tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true, text: "Forced: while a vassal, grant your overlord +1 Might or +1 Status." },
-  "revolt": { id: "revolt", name: "Revolt", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you." },
+  "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
+  "revolt": { id: "revolt", name: "Revolt", targeted: false, maxPerDeck: 1, deckBuildable: false, forced: false, text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good." },
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Even the score: the Status lead between you and one faction in reach resets to none." },
   "alliance": { id: "alliance", name: "Alliance", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns." },
   "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Patient envoys: your next Alliance lasts twice as long." },
@@ -59,10 +60,15 @@ export type Rng = () => number;
  *
  *  The grow-crops slot the Reclaim cut left behind now holds Found a
  *  settlement: a default deck that offers a do-nothing card where a real
- *  choice fits was a hole, not a design. */
+ *  choice fits was a hole, not a design.
+ *
+ *  Revolt is no longer here: it is injection-only, like Pay tribute. Seeds of
+ *  revolt takes its deck slot and injects the Revolt itself. Note that swapping
+ *  one deck-buildable non-basic for another keeps `buildAiDeck`'s rng draw
+ *  count identical, so committed AI-deck bands do not move. */
 export const DEFAULT_DECK: string[] = [
   "raid", "shrewd-marriage", "fortify", "subjugate", "incorporate",
-  "found-settlement", "revolt", "assassinate-ruler", "alliance",
+  "found-settlement", "seeds-of-revolt", "assassinate-ruler", "alliance",
   "favourable-omens",
 ];
 

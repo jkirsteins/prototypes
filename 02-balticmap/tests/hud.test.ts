@@ -9,6 +9,7 @@ import { aiTakeTurn } from "../src/ai";
 import { buildDeck, type Rng } from "../src/cards";
 import { allianceKey, bumpMight } from "../src/relations";
 import { rulerOf } from "../src/rulers";
+import { INCORPORATE_RAMP, loyaltyKey } from "../src/playability";
 import type { TargetExplanation } from "../src/target-explanations";
 
 function seededRng(seed: number): Rng {
@@ -533,6 +534,9 @@ describe("hud v2", () => {
     g = withHand(g, 2, ["raid"]);
     g = playCard(g, 0, seededRng(1), "beta"); // gamma raids you (seen)
     g = { ...g, playedThisTurn: false };
+    // Held long enough that Incorporate is certain: this test is about the
+    // post-mortem, not about the loyalty roll.
+    g = { ...g, loyalty: { [loyaltyKey("beta", "gamma")]: INCORPORATE_RAMP } };
     g = withHand(g, 2, ["incorporate"]);
     g = playCard(g, 0, seededRng(1), "beta");
     expect(g.phase).toBe("defeat");
@@ -749,6 +753,24 @@ describe("notice modal", () => {
     expect(lines).toEqual(["No hostile cards between you and Alpha until turn 8."]);
   });
 
+  it("names a place-name actor with no article in an assassination notice", () => {
+    // Actor (alpha) is a place-name faction and gets no article; the human's
+    // own faction (beta, an ordinary faction) still gets "the" in the same
+    // notice - proving both branches of the real hud.ts wiring, not just the
+    // hand-built NoticeCtx fixture in notices.test.ts.
+    const { container, hud } = setup({ placeNameFactionIds: new Set(["alpha"]) });
+    hud.update(withEvents(playing(), [{
+      turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler",
+      targetFactionId: "beta", targetRuler: "Kaupo", successorRuler: "Dabrelis",
+    }]));
+    expect(q(container, ".notice-title").textContent).toBe("A Ruler Falls");
+    expect(q(container, ".notice-what").textContent).toBe("Alpha had Kaupo killed.");
+    const lines = [...container.querySelectorAll(".notice-details .notice-detail")].map(
+      (el) => el.textContent,
+    );
+    expect(lines[0]).toBe("Dabrelis now leads the Beta.");
+  });
+
   it("dismisses on Escape", () => {
     const { container, hud } = setup();
     hud.update(withEvents(playing(), [subjugatedYou]));
@@ -929,5 +951,36 @@ describe("log lines name rulers", () => {
     expect(texts(container)).toContain(
       `You played Assassinate ruler on Alpha - prevented, ${survivor} survives`,
     );
+  });
+});
+
+describe("private actions stay off the activity log", () => {
+  /** Push a raw event onto a playing state and render it. */
+  const withEvent = (e: GameEvent) => {
+    const { container, hud } = setup();
+    // beta is the human seat, as everywhere else in this file
+    const g = pickFaction(
+      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
+    );
+    hud.update({ ...g, log: [...g.log, e] });
+    return [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
+  };
+
+  it("shows your own vassal sowing a revolt - the warning you act on", () => {
+    const texts = withEvent({
+      turn: 1, playerId: 2, type: "seeded",
+      targetFactionId: "alpha", overlordFactionId: "beta", // beta is the human
+    });
+    expect(texts.some((t) => /sows the seeds of revolt/.test(t ?? ""))).toBe(true);
+  });
+
+  it("hides a sowing between two other factions, which nobody can observe", () => {
+    // Sowing moves a card inside one faction's own deck. Without this filter
+    // the log would announce every faction's private preparations map-wide.
+    const texts = withEvent({
+      turn: 1, playerId: 3, type: "seeded",
+      targetFactionId: "gamma", overlordFactionId: "alpha",
+    });
+    expect(texts.some((t) => /sows the seeds of revolt/.test(t ?? ""))).toBe(false);
   });
 });

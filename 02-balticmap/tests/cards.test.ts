@@ -6,7 +6,7 @@ import {
 
 const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
-  "incorporate", "revolt",
+  "incorporate", "seeds-of-revolt",
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens",
 ];
@@ -55,8 +55,14 @@ describe("cards", () => {
       "Forced: while a vassal, grant your overlord +1 Might or +1 Status.",
     );
     expectProps(
-      "revolt", "Revolt", false, 1, true, false,
-      "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you.",
+      "seeds-of-revolt", "Seeds of revolt", false, 1, true, false,
+      "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time.",
+    );
+    // Revolt is injection-only now, like Pay tribute: Seeds of revolt puts it
+    // in the deck, so it must never be deck-buildable.
+    expectProps(
+      "revolt", "Revolt", false, 1, false, false,
+      "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good.",
     );
     expectProps(
       "assassinate-ruler", "Assassinate ruler", true, 1, true, false,
@@ -208,5 +214,33 @@ describe("buildAiDeck", () => {
     }
     expect(count("favourable-omens")).toBe(0);
     expect(deck).toHaveLength(DECK_SIZE);
+  });
+});
+
+describe("every card is reachable by a player", () => {
+  // AGENTS.md: a card a player can never learn of is, for them, not in the
+  // game. Deck-buildable cards are found via the learning loop; the only
+  // exemption is injection-only cards, which must name what injects them.
+  const INJECTED_BY: Record<string, string> = {
+    "pay-tribute": "subjugate",
+    "revolt": "seeds-of-revolt",
+  };
+
+  it("makes every non-deck-buildable card reachable by something that injects it", () => {
+    for (const card of Object.values(CARDS)) {
+      if (card.deckBuildable) continue;
+      const source = INJECTED_BY[card.id];
+      expect(source, `${card.id} is not deck-buildable and nothing injects it`)
+        .toBeDefined();
+      expect(CARDS[source]).toBeDefined();
+    }
+  });
+
+  it("keeps Revolt out of deck-building so Seeds of revolt is its only route", () => {
+    expect(CARDS["revolt"].deckBuildable).toBe(false);
+    expect(CARDS["seeds-of-revolt"].deckBuildable).toBe(true);
+    // and therefore never rolled into an AI deck or offered on the deck screen
+    const deck = buildAiDeck(() => 0, []);
+    expect(deck).not.toContain("revolt");
   });
 });

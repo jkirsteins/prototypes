@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { POLICY_COVERAGE, chooseAction } from "../src/ai";
+import { INCORPORATE_RAMP, loyaltyKey } from "../src/playability";
 import {
   newGame, startGame, chooseDeck, pickFaction, type GameState,
 } from "../src/game";
@@ -22,6 +23,14 @@ function base(): GameState {
     chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
   );
   return { ...g, current: 1 };
+}
+
+/** Hold every named land long enough that Incorporate is certain, so a test
+ *  about WHICH vassal the policy picks is not also a test of the loyalty roll. */
+function digestedAll(g: GameState, lands: string[], lord: string): GameState {
+  const loyalty = { ...g.loyalty };
+  for (const land of lands) loyalty[loyaltyKey(land, lord)] = INCORPORATE_RAMP;
+  return { ...g, loyalty };
 }
 
 function withHand(g: GameState, hand: string[]): GameState {
@@ -94,6 +103,7 @@ describe("chooseAction priorities", () => {
     // alpha holds gamma and delta; delta has annexed a land, so it is worth more
     g = { ...g, overlords: new Map([["gamma", "alpha"], ["delta", "alpha"]]) };
     g = { ...g, incorporated: { beta: "delta" } };
+    g = digestedAll(g, ["gamma", "delta"], "alpha");
     g = withHand(g, ["incorporate"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "delta",
@@ -103,6 +113,7 @@ describe("chooseAction priorities", () => {
   it("3: breaks a realm-size tie by faction order", () => {
     let g = base();
     g = { ...g, overlords: new Map([["gamma", "alpha"], ["delta", "alpha"]]) };
+    g = digestedAll(g, ["gamma", "delta"], "alpha");
     g = withHand(g, ["incorporate"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "gamma",
@@ -533,5 +544,64 @@ describe("POLICY_COVERAGE", () => {
     for (const [id, step] of Object.entries(POLICY_COVERAGE)) {
       expect(step, id).not.toBe("");
     }
+  });
+});
+
+describe("subjugation-stability policy branches", () => {
+  it("2a: sows a revolt while a vassal", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "beta"]]) };
+    g = withHand(g, ["grow-crops", "seeds-of-revolt"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("2: prefers a live Revolt over sowing another", () => {
+    // Sowing is illegal while one is live, but the ordering must also be right:
+    // escaping now beats preparing to escape.
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "beta"]]) };
+    g = withHand(g, ["seeds-of-revolt", "revolt"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("3: waits rather than gambling the only Incorporate on long odds", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
+    // loyalty 1 of 5 -> 20%, below MIN_ODDS: the policy must not play it.
+    g = { ...g, loyalty: { [loyaltyKey("gamma", "alpha")]: 1 } };
+    g = withHand(g, ["incorporate", "grow-crops"]);
+    expect(chooseAction(g)).not.toMatchObject({ cardIndex: 0 });
+  });
+
+  it("3: prefers the smaller vassal when the bigger one is a long shot", () => {
+    // delta is worth 2 land at 20%; gamma is worth 1 at 100%. Land alone would
+    // pick delta and usually burn the card for nothing.
+    let g = base();
+    g = { ...g, overlords: new Map([["gamma", "alpha"], ["delta", "alpha"]]) };
+    g = { ...g, incorporated: { beta: "delta" } };
+    g = {
+      ...g,
+      loyalty: {
+        [loyaltyKey("gamma", "alpha")]: INCORPORATE_RAMP,
+        [loyaltyKey("delta", "alpha")]: 1,
+      },
+    };
+    g = withHand(g, ["incorporate"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "gamma",
+    });
+  });
+
+  it("4: takes the certain target over a bigger lead on a coin-flip poach", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["delta", "beta"]]) };
+    let rel: Relations = {};
+    rel = lead(rel, "alpha", "gamma", 2);   // free: exactly at the bar, certain
+    rel = lead(rel, "alpha", "delta", 9);   // poach: far clear, but 50%
+    g = { ...g, relations: rel };
+    g = withHand(g, ["subjugate"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "gamma",
+    });
   });
 });

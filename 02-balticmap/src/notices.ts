@@ -404,6 +404,49 @@ function buildVassalsScatteredNotice(events: GameEvent[], ctx: NoticeCtx): Notic
   };
 }
 
+/** Your own vassals preparing a revolt. Grouped, because two vassals can sow in
+ *  the same round and two near-identical modals in a row is a nag. */
+function buildUnrestNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  const names = events.map((e) => ctx.factionName(e.targetFactionId));
+  return {
+    title: "Unrest Among Your Vassals",
+    what:
+      names.length === 1
+        ? `${names[0]} are preparing a revolt against you.`
+        : "Several of your vassals are preparing a revolt against you:",
+    details:
+      names.length === 1
+        ? [
+            "A Revolt is now in their deck. They will play it when they draw it.",
+            "Incorporating them before then ends the threat for good.",
+          ]
+        : [
+            ...names,
+            "Each has a Revolt in their deck now, and will play it when drawn.",
+          ],
+  };
+}
+
+/** A rival tried to prise one of your vassals away and missed. Worth saying
+ *  precisely because nothing on the map moved: without this the attempt leaves
+ *  no trace the player could ever see. */
+function buildVassalHeldNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
+  return {
+    title: "Your Vassal Holds",
+    what:
+      events.length === 1
+        ? `${ctx.factionName(events[0].overlordFactionId)} tried to take ${ctx.factionName(events[0].targetFactionId)} from you and failed.`
+        : "Rivals tried to take your vassals and failed:",
+    details:
+      events.length === 1
+        ? []
+        : events.map(
+            (e) =>
+              `${ctx.factionName(e.overlordFactionId)} against ${ctx.factionName(e.targetFactionId)}`,
+          ),
+  };
+}
+
 export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   draw: { kind: "silent", reason: "routine; visible in hand and log" },
   play: {
@@ -465,6 +508,39 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // are already on the map badge, the hover tooltip and the land panel, and
     // the activity log names the land.
     reason: "changes a bar the map and tooltip already show, never a lead",
+  },
+  seeded: {
+    kind: "modal",
+    // Your own vassal sowing is the warning that starts the race: a Revolt is
+    // now in their deck and will surface in a few turns. It is the only way to
+    // learn this - you cannot see their hand - and it is what turns the
+    // Incorporate odds into a decision rather than a readout. Gamble the card
+    // now at poor odds, or wait for the clock and risk the Revolt landing
+    // first. Without this notice that whole choice is invisible.
+    //
+    // Only fires for the human's OWN vassal. The human's own sowing needs no
+    // notice, and a rival's is genuinely unobservable - see the log filter in
+    // hud.ts, which keeps other factions' sowings off the activity log for the
+    // same reason.
+    appliesToHuman: (e, ctx) =>
+      e.overlordFactionId === ctx.humanFactionId && e.playerId !== 1,
+    build: (e, ctx) => buildUnrestNotice([e], ctx),
+  },
+  "subjugate-failed": {
+    kind: "modal",
+    // A rival trying and failing to prise away one of the human's vassals is
+    // exactly the kind of near-miss the player must see: nothing on the map
+    // changed, so without a notice the attempt leaves no trace at all.
+    appliesToHuman: (e, ctx) =>
+      e.formerOverlordFactionId === ctx.humanFactionId && e.playerId !== 1,
+    build: (e, ctx) => buildVassalHeldNotice([e], ctx),
+  },
+  "incorporate-failed": {
+    kind: "silent",
+    // Only ever the human's own play (nobody else can incorporate a land the
+    // human holds), and the hand and activity log both already show the card
+    // was spent. A modal on your own failed roll is a nag.
+    reason: "the human's own spent card; hand and log already show it",
   },
   victory: { kind: "silent", reason: "postmortem overlay covers it" },
   defeat: { kind: "silent", reason: "postmortem overlay covers it" },
@@ -531,6 +607,10 @@ export function buildNotices(events: GameEvent[], ctx: NoticeCtx): Notice[] {
           : buildReleasedNotice(groupEvents, ctx);
       case "reclaimed":
         return buildVassalBrokeFreeNotice(groupEvents, ctx);
+      case "seeded":
+        return buildUnrestNotice(groupEvents, ctx);
+      case "subjugate-failed":
+        return buildVassalHeldNotice(groupEvents, ctx);
       default:
         throw new Error(`no batch notice builder for grouped event type: ${type}`);
     }

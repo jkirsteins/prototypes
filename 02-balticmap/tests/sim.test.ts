@@ -360,9 +360,9 @@ describe("world arms", () => {
   it("aggregates end turns over resolved worlds only", () => {
     const stats = aggregateWorld("x", [
       { seed: 1, outcome: "unified", endTurn: 10, winner: "a", subjugations: 3,
-        incorporations: 2, largestRealm: 15, turnsSinceLastIncorporation: 0 , playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0, settlementsFounded: 0, settlementsOnHeldLands: 0, settlementsWalkedOff: 0 },
+        incorporations: 2, largestRealm: 15, turnsSinceLastIncorporation: 0 , revoltsSown: 0, revoltsPlayed: 0, poachAttempts: 0, poachesFailed: 0, incorporateAttempts: 0, incorporationsFailed: 0, vassalTenures: [], playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0, settlementsFounded: 0, settlementsOnHeldLands: 0, settlementsWalkedOff: 0 },
       { seed: 2, outcome: "cap", endTurn: 99, winner: null, subjugations: 1,
-        incorporations: 0, largestRealm: 3, turnsSinceLastIncorporation: 99 , playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0, settlementsFounded: 0, settlementsOnHeldLands: 0, settlementsWalkedOff: 0 },
+        incorporations: 0, largestRealm: 3, turnsSinceLastIncorporation: 99 , revoltsSown: 0, revoltsPlayed: 0, poachAttempts: 0, poachesFailed: 0, incorporateAttempts: 0, incorporationsFailed: 0, vassalTenures: [], playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0, settlementsFounded: 0, settlementsOnHeldLands: 0, settlementsWalkedOff: 0 },
     ]);
     expect(stats.unifiedShare).toBe(0.5);
     expect(stats.capShare).toBe(0.5);

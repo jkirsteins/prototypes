@@ -179,7 +179,7 @@ describe("createDeckScreen", () => {
       visible: true,
       knownCards: [
         "grow-crops", "raid", "shrewd-marriage", "fortify", "subjugate",
-        "incorporate", "revolt", "assassinate-ruler",
+        "incorporate", "seeds-of-revolt", "assassinate-ruler",
         "alliance", "extended-diplomacy", "bodyguard", "found-settlement",
       ],
       seenPool: [],
@@ -199,7 +199,7 @@ describe("createDeckScreen", () => {
         "grow-crops", "raid", "shrewd-marriage", "fortify", "subjugate",
       ],
       seenPool: [
-        "incorporate", "revolt",
+        "incorporate", "seeds-of-revolt",
         "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
         "favourable-omens", "found-settlement",
       ],

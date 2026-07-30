@@ -29,6 +29,72 @@ export interface RulesView {
   /** Factions whose land has been settled this game. One site per land, so a
    *  list of faction ids is the whole state. */
   settled: string[];
+  /** `${land}|${lord}` -> consecutive turns that lord has held that land as a
+   *  vassal. Drives the Incorporate odds. Absent key means 0. */
+  loyalty: Record<string, number>;
+  /** Factions holding a live Revolt card somewhere in deck, hand or discard.
+   *  Seeds of revolt refuses to sow a second one, so the rules need to know;
+   *  modelled as a faction-id list like `bodyguards` and `omens` rather than
+   *  giving RulesView a view of the piles. */
+  liveRevolts: string[];
+}
+
+/** Turns of unbroken vassalage after which Incorporate is certain. Below it the
+ *  card rolls `loyalty / INCORPORATE_RAMP`, so a fresh conquest is a gamble and
+ *  a long-held one is a formality. Measured at 5: at 15 and 30 the map stopped
+ *  consolidating entirely and vassals just circulated between poachers. */
+export const INCORPORATE_RAMP = 5;
+
+/** Chance a Subjugate aimed at somebody else's vassal lands. Taking a free
+ *  faction is never a gamble - the roll exists to defend an existing vassalage,
+ *  not to tax expansion. */
+export const POACH_CHANCE = 0.5;
+
+/** `${land}|${lord}` key for the loyalty clock. */
+export const loyaltyKey = (land: string, lord: string): string =>
+  `${land}|${lord}`;
+
+export function loyaltyOf(
+  view: { loyalty: Record<string, number> },
+  land: string,
+  lord: string,
+): number {
+  return view.loyalty[loyaltyKey(land, lord)] ?? 0;
+}
+
+/** The odds an Incorporate of `land` by `lord` succeeds, in [0, 1]. */
+export function incorporationChance(
+  view: { loyalty: Record<string, number> },
+  lord: string,
+  land: string,
+): number {
+  return Math.min(1, loyaltyOf(view, land, lord) / INCORPORATE_RAMP);
+}
+
+/** The odds a Subjugate of `target` lands: certain unless it is a poach. */
+export function subjugationChance(view: RulesView, target: string): number {
+  return view.overlords.has(target) ? POACH_CHANCE : 1;
+}
+
+/** The incumbent overlord's hold on a vassal: the larger of their two leads
+ *  over it, 0 when it is nobody's vassal. */
+export function overlordGrip(view: RulesView, targetFactionId: string): number {
+  const lord = view.overlords.get(targetFactionId);
+  if (lord === undefined) return 0;
+  const l = leadsOf(view.relations, lord, targetFactionId);
+  return Math.max(0, l.status, l.might);
+}
+
+/** What a poacher pays on top of the base grip: half the incumbent's hold,
+ *  rounded up. Tribute therefore defends a vassalage against rivals as well as
+ *  feeding its lord. Half rather than all of it deliberately - at the full grip
+ *  poaching all but vanished (0.1% of endings), which deletes an interaction
+ *  rather than pricing it. */
+export function poachSurchargeOn(
+  view: RulesView,
+  targetFactionId: string,
+): number {
+  return Math.ceil(overlordGrip(view, targetFactionId) / 2);
 }
 
 function reachOf(view: RulesView, factionId: string): Set<string> {
@@ -102,8 +168,9 @@ export function subjugationGripOn(
 
 /** The lead the actor needs on either track to Subjugate the target: two per
  *  land of the target's realm, counting its vassals and the lands it has
- *  incorporated. Null when Subjugate could never apply to that pair at all,
- *  so callers can leave the bar off rather than quote a meaningless number.
+ *  incorporated, plus the poach surcharge when the target already has a lord.
+ *  Null when Subjugate could never apply to that pair at all, so callers can
+ *  leave the bar off rather than quote a meaningless number.
  *
  *  Same rule as the `insufficient-lead` block reason, kept here so the map
  *  and the tooltip can show the bar without re-deriving it. */
@@ -116,7 +183,8 @@ export function subjugationRequirement(
   if (targetFactionId in view.incorporated) return null;
   if (view.overlords.get(targetFactionId) === actorFactionId) return null;
   if (view.overlords.get(actorFactionId) !== undefined) return null;
-  return subjugationGripOn(view, targetFactionId);
+  return subjugationGripOn(view, targetFactionId) +
+    poachSurchargeOn(view, targetFactionId);
 }
 
 export interface Threat {
@@ -181,6 +249,10 @@ export type TargetBlockReason =
       realmSize: number;
       /** Settlements founded in that realm, each adding 1 to requiredLead. */
       settlements: number;
+      /** Extra lead demanded because the target already has an overlord; 0
+       *  when it is free. Part of requiredLead, broken out so the tooltip can
+       *  say why the bar is higher than the realm alone explains. */
+      poachSurcharge: number;
     }
   | { code: "already-vassal" }
   | { code: "already-settled" }
@@ -280,15 +352,17 @@ export function targetEligibilityFor(
 
     if (cardId === "subjugate") {
       const grip = gripPartsOn(view, factionId);
+      const surcharge = poachSurchargeOn(view, factionId);
       const lead = leadsOf(view.relations, actorFactionId, factionId);
-      if (Math.max(lead.status, lead.might) < grip.bar) {
+      if (Math.max(lead.status, lead.might) < grip.bar + surcharge) {
         reasons.push({
           code: "insufficient-lead",
-          requiredLead: grip.bar,
+          requiredLead: grip.bar + surcharge,
           mightLead: lead.might,
           statusLead: lead.status,
           realmSize: grip.lands,
           settlements: grip.settlements,
+          poachSurcharge: surcharge,
         });
       }
     }
@@ -334,6 +408,13 @@ export function isCardPlayable(
   if (cardId === "extended-diplomacy") return !view.diplomacyBoost.includes(factionId);
   if (cardId === "pay-tribute") return overlord !== undefined;
   if (cardId === "revolt") return overlord !== undefined;
+  if (cardId === "seeds-of-revolt") {
+    // Only a vassal may sow, and only one Revolt may be live at a time. Letting
+    // a free faction sow would put a Revolt into an idle hand, where it would
+    // sit unplayable until the next subjugation - which is exactly the
+    // pre-loaded escape this card exists to remove.
+    return overlord !== undefined && !view.liveRevolts.includes(factionId);
+  }
   if (card.targeted) return validTargetsFor(view, factionId, cardId).length > 0;
   return false;
 }

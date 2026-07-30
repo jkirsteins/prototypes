@@ -18,7 +18,9 @@ import {
   gripPartsOn,
   borderStrength,
 } from "./playability";
-import { cardModifierLines, explainTargetEligibility } from "./target-explanations";
+import {
+  cardModifierLines, explainTargetEligibility, targetOddsLines,
+} from "./target-explanations";
 import { CARDS } from "./cards";
 import { createHud } from "./hud";
 import { createDeckScreen } from "./deck-screen";
@@ -625,14 +627,17 @@ const hud = createHud(
       return explainTargetEligibility(
         targetEligibilityFor(view, human.factionId, cardId),
         (id) => factionById.get(id)?.name ?? id,
-        cardId === "raid"
-          ? (id) => {
-              const n = borderStrength(view, human.factionId, id);
-              return [
-                doubled ? `+${n * 2} Might (doubled)` : `+${n} Might`,
-              ];
-            }
-          : undefined,
+        (id) => {
+          // Odds first: a card that can fail must say so before it is aimed,
+          // on every target that can fail, or the roll reads as a bug.
+          const odds = targetOddsLines(view, human.factionId, cardId, id);
+          if (cardId !== "raid") return odds;
+          const n = borderStrength(view, human.factionId, id);
+          return [
+            ...odds,
+            doubled ? `+${n * 2} Might (doubled)` : `+${n} Might`,
+          ];
+        },
       );
     },
     cardModifiers(cardId) {

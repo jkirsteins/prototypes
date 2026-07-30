@@ -8,7 +8,8 @@ import type { GameEvent, GameEventType } from "../src/game";
 const ALL_TYPES: GameEventType[] = [
   "draw", "play", "reshuffle", "discard",
   "subjugated", "released", "incorporated", "reclaimed", "tribute",
-  "settled", "victory", "defeat", "unified",
+  "settled", "seeded", "subjugate-failed", "incorporate-failed",
+  "victory", "defeat", "unified",
 ];
 
 const NAMES: Record<string, string> = {
@@ -681,5 +682,53 @@ describe("assassination notices name rulers", () => {
     expect(n.details).toEqual([
       "Your bodyguard turned the blade - Kaupo lives and your Status lead is unchanged.",
     ]);
+  });
+});
+
+describe("seeds of revolt", () => {
+  it("warns when your OWN vassal starts preparing a revolt", () => {
+    // The only way to learn this: you cannot see a vassal's deck. Without the
+    // notice the Incorporate race is invisible, and the odds on the card are a
+    // readout rather than a decision.
+    const n = oneNotice(ev({
+      type: "seeded", playerId: 2,
+      targetFactionId: "jersika", overlordFactionId: "livs",
+    }));
+    expect(n?.title).toBe("Unrest Among Your Vassals");
+    expect(n?.what).toContain("Jersikans");
+  });
+
+  it("says nothing about a rival's vassal sowing, which nobody can observe", () => {
+    expect(oneNotice(ev({
+      type: "seeded", playerId: 3,
+      targetFactionId: "latgale", overlordFactionId: "curonia",
+    }))).toBeNull();
+  });
+
+  it("says nothing when the human sows their own", () => {
+    expect(oneNotice(ev({
+      type: "seeded", playerId: 1,
+      targetFactionId: "livs", overlordFactionId: "jersika",
+    }))).toBeNull();
+  });
+});
+
+describe("a failed poach", () => {
+  it("tells you your vassal held, since nothing on the map changed", () => {
+    const n = oneNotice(ev({
+      type: "subjugate-failed", playerId: 3,
+      targetFactionId: "jersika",
+      overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+    }));
+    expect(n?.title).toBe("Your Vassal Holds");
+    expect(n?.what).toContain("Latgalians");
+  });
+
+  it("stays quiet about failed poaches between other factions", () => {
+    expect(oneNotice(ev({
+      type: "subjugate-failed", playerId: 3,
+      targetFactionId: "jersika",
+      overlordFactionId: "latgale", formerOverlordFactionId: "curonia",
+    }))).toBeNull();
   });
 });

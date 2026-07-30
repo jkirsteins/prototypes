@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  SUBJUGATE_THRESHOLD, borderStrength, gripPartsOn, isCardPlayable, playableSet,
-  subjugationGripOn,
+  INCORPORATE_RAMP, POACH_CHANCE,
+  SUBJUGATE_THRESHOLD, borderStrength, gripPartsOn, incorporationChance,
+  isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
+  subjugationChance, subjugationGripOn,
   subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView,
 } from "../src/playability";
@@ -27,6 +29,8 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     bodyguards: [],
     omens: [],
     diplomacyBoost: [],
+    loyalty: {},
+    liveRevolts: [],
     sites: ORDER,
     settled: [],
     ...partial,
@@ -165,6 +169,7 @@ describe("gripPartsOn", () => {
         statusLead: 0,
         realmSize: 1,
         settlements: 1,
+        poachSurcharge: 0,
       }],
     });
   });
@@ -222,6 +227,7 @@ describe("targetEligibilityFor", () => {
           statusLead: 0,
           realmSize: 1,
           settlements: 0,
+          poachSurcharge: 0,
         },
       ],
     });
@@ -244,6 +250,7 @@ describe("targetEligibilityFor", () => {
         statusLead: 0,
         realmSize: 2,
         settlements: 0,
+        poachSurcharge: 0,
       }],
     });
   });
@@ -382,6 +389,8 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       incorporated: { deadland: "owner" },
       adjacency: { me: ["deadland"], deadland: ["me", "owner"], owner: ["deadland"] },
       factionIds: ["me", "deadland", "owner"],
+      loyalty: {},
+      liveRevolts: [],
       alliances: {},
       turn: 1,
       bodyguards: [],
@@ -403,6 +412,8 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       incorporated: { land: "target" },
       adjacency: { me: ["target"], target: ["me"], land: ["me"] },
       factionIds: ["me", "target", "land"],
+      loyalty: {},
+      liveRevolts: [],
       alliances: {},
       turn: 1,
       bodyguards: [],
@@ -613,5 +624,76 @@ describe("threatsTo", () => {
       relations: mightLead("alpha", "beta", 2),
     });
     expect(threatsTo(v, "beta")[0].shortfall).toBe(2);
+  });
+});
+
+describe("seeds of revolt", () => {
+  it("is playable only while a vassal", () => {
+    expect(isCardPlayable(view(), "beta", "seeds-of-revolt")).toBe(false);
+    const v = view({ overlords: new Map([["beta", "alpha"]]) });
+    expect(isCardPlayable(v, "beta", "seeds-of-revolt")).toBe(true);
+  });
+
+  it("refuses to sow a second Revolt while one is live", () => {
+    // Without this the card would stack escapes, and a free faction sowing
+    // would put a Revolt into an idle hand - the pre-load it exists to remove.
+    const v = view({
+      overlords: new Map([["beta", "alpha"]]),
+      liveRevolts: ["beta"],
+    });
+    expect(isCardPlayable(v, "beta", "seeds-of-revolt")).toBe(false);
+  });
+});
+
+describe("poach surcharge", () => {
+  it("is zero against a faction with no overlord", () => {
+    expect(poachSurchargeOn(view(), "beta")).toBe(0);
+    expect(subjugationRequirement(view(), "alpha", "beta"))
+      .toBe(subjugationGripOn(view(), "beta"));
+  });
+
+  it("adds half the incumbent's grip, rounded up", () => {
+    // delta leads its vassal gamma by 3 might, so a poacher pays ceil(3/2) = 2
+    // on top of the base bar of 2.
+    const v = view({
+      overlords: new Map([["gamma", "delta"]]),
+      relations: mightLead("delta", "gamma", 3),
+    });
+    expect(overlordGrip(v, "gamma")).toBe(3);
+    expect(poachSurchargeOn(v, "gamma")).toBe(2);
+    expect(subjugationRequirement(v, "beta", "gamma")).toBe(4);
+  });
+
+  it("names the surcharge in the block reason so the bar is explicable", () => {
+    const v = view({
+      overlords: new Map([["gamma", "delta"]]),
+      relations: mightLead("delta", "gamma", 3),
+    });
+    const entry = targetEligibilityFor(v, "beta", "subjugate")
+      .find((e) => e.factionId === "gamma");
+    const reason = entry?.state === "blocked"
+      ? entry.reasons.find((r) => r.code === "insufficient-lead")
+      : undefined;
+    expect(reason).toMatchObject({ requiredLead: 4, poachSurcharge: 2 });
+  });
+});
+
+describe("the two rolls", () => {
+  it("makes taking a free faction certain and poaching a coin flip", () => {
+    expect(subjugationChance(view(), "beta")).toBe(1);
+    const v = view({ overlords: new Map([["gamma", "delta"]]) });
+    expect(subjugationChance(v, "gamma")).toBe(POACH_CHANCE);
+  });
+
+  it("ramps the Incorporate odds linearly to certainty, then clamps", () => {
+    const at = (turns: number): number =>
+      incorporationChance(
+        view({ loyalty: { [loyaltyKey("gamma", "beta")]: turns } }),
+        "beta", "gamma",
+      );
+    expect(at(0)).toBe(0);
+    expect(at(INCORPORATE_RAMP)).toBe(1);
+    expect(at(INCORPORATE_RAMP * 3)).toBe(1); // clamped, never above 1
+    expect(at(1)).toBeCloseTo(1 / INCORPORATE_RAMP);
   });
 });

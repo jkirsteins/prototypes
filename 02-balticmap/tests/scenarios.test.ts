@@ -85,6 +85,9 @@ describe("world scenarios", () => {
         alliancesOnOwnTargetsShare: null,
         meanSettlementsFounded: null, settlementsOnHeldLandsShare: null,
         settlementsFoundedTotal: 0, settlementsWalkedOffShare: null,
+        revoltsSownTotal: 0, revoltsPlayedTotal: 0,
+        poachFailShare: 0, incorporateFailShare: 0,
+        medianVassalTenure: null, meanVassalTenure: null,
       },
     );
     expect(checks[0].ok).toBe(false);

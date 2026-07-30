@@ -2,6 +2,7 @@ import { CARDS, DOUBLABLE_CARDS, type Rng } from "./cards";
 import { leadsOf, realmOf } from "./relations";
 import {
   borderStrength, playableSet, subjugationGripOn, subjugationRequirement,
+  poachSurchargeOn, subjugationChance, incorporationChance,
   targetEligibilityFor, threatsTo, validTargetsFor,
 } from "./playability";
 import {
@@ -33,7 +34,8 @@ const TRACKS = [
 export const POLICY_COVERAGE: Record<string, string> = {
   "pay-tribute": "1: forced tribute",
   "revolt": "2: revolt out of vassalage",
-  "incorporate": "3: incorporate the largest vassal realm",
+  "seeds-of-revolt": "2a: sow a revolt while a vassal",
+  "incorporate": "3: incorporate the vassal with the best land-times-odds",
   "subjugate": "4: subjugate the biggest lead",
   "alliance": "5: emergency alliance",
   "assassinate-ruler": "5: emergency assassination",
@@ -116,6 +118,13 @@ export function chooseAction(state: GameState): AiAction {
   const revolt = idxOf("revolt");
   if (revolt !== undefined) return { type: "play", cardIndex: revolt };
 
+  // 2a: sow a revolt. Legality already restricts this to a vassal holding no
+  // live Revolt, so there is nothing left to weigh: the sooner it is sown, the
+  // sooner the escape becomes drawable, and every turn spent waiting is another
+  // forced tribute feeding the lord's grip.
+  const seeds = idxOf("seeds-of-revolt");
+  if (seeds !== undefined) return { type: "play", cardIndex: seeds };
+
   // 3: incorporate the vassal that brings the most land. Incorporation is
   // permanent and carries the vassal's own annexations with it, so realm size
   // is exactly the land gained - and land is the victory condition. Chains
@@ -124,16 +133,26 @@ export function chooseAction(state: GameState): AiAction {
   if (incorporate !== undefined) {
     const targets = validTargetsFor(v, p.factionId, "incorporate");
     if (targets.length > 0) {
-      let best = targets[0];
-      let bestSize = -1;
+      // Land gained, discounted by the odds of actually getting it: a failed
+      // roll burns the only Incorporate in the deck, so a four-land vassal at
+      // 20% is worth less than a one-land vassal at 100%. Holding the card
+      // costs nothing and the loyalty clock only rises, so below MIN_ODDS the
+      // policy waits rather than gambling the card away.
+      const MIN_ODDS = 0.5;
+      let best: string | null = null;
+      let bestScore = -1;
       for (const t of targets) {
-        const size = realmOf(t, state.overlords, state.incorporated).length;
-        if (size > bestSize) {
+        const odds = incorporationChance(state, p.factionId, t);
+        if (odds < MIN_ODDS) continue;
+        const score = odds * realmOf(t, state.overlords, state.incorporated).length;
+        if (score > bestScore) {
           best = t;
-          bestSize = size;
+          bestScore = score;
         }
       }
-      return { type: "play", cardIndex: incorporate, targetId: best };
+      if (best !== null) {
+        return { type: "play", cardIndex: incorporate, targetId: best };
+      }
     }
   }
 
@@ -142,13 +161,20 @@ export function chooseAction(state: GameState): AiAction {
   if (subjugate !== undefined) {
     const targets = validTargetsFor(v, p.factionId, "subjugate");
     if (targets.length > 0) {
+      // Odds first, then lead. Taking a free faction always lands; prising one
+      // off a rival is a coin flip that burns the only Subjugate in the deck.
+      // A bigger lead never compensates for halving the chance, so the two are
+      // ranked in order rather than multiplied together.
       let best = targets[0];
+      let bestOdds = -1;
       let bestLead = -Infinity;
       for (const t of targets) {
+        const odds = subjugationChance(v, t);
         const l = leadsOf(state.relations, p.factionId, t);
         const m = Math.max(l.status, l.might);
-        if (m > bestLead) {
+        if (odds > bestOdds || (odds === bestOdds && m > bestLead)) {
           best = t;
+          bestOdds = odds;
           bestLead = m;
         }
       }
@@ -218,7 +244,7 @@ export function chooseAction(state: GameState): AiAction {
     if (i === undefined) continue;
     for (const t of validTargetsFor(v, p.factionId, cardId)) {
       if (state.overlords.get(t) === p.factionId) continue;
-      const needed = subjugationGripOn(v, t);
+      const needed = subjugationGripOn(v, t) + poachSurchargeOn(v, t);
       if (
         leadsOf(state.relations, p.factionId, t)[field] +
           gainOf(state, p.factionId, cardId, t) >= needed
@@ -312,7 +338,7 @@ export function chooseAction(state: GameState): AiAction {
     if (i === undefined) continue;
     for (const t of validTargetsFor(v, p.factionId, cardId)) {
       if (state.overlords.get(t) === p.factionId) continue;
-      const needed = subjugationGripOn(v, t);
+      const needed = subjugationGripOn(v, t) + poachSurchargeOn(v, t);
       const deficit = needed - leadsOf(state.relations, p.factionId, t)[field];
       const plays = Math.ceil(deficit / gainOf(state, p.factionId, cardId, t));
       const order = state.factionIds.indexOf(t);

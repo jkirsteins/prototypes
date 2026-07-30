@@ -70,9 +70,16 @@ export const SCENARIOS: Scenario[] = [
     turnCap: 80,
     expect: {
       subjugatedShare: [0.85, 1],       // measured 1.00
-      medianFirstSubjugation: [4, 11],  // measured 7.00
-      defeatShare: [0.81, 1],           // measured 0.96
-      medianDefeatTurn: [7, 20],        // measured 13.00
+      medianFirstSubjugation: [4, 11],  // measured 6.00
+      // Both moved on 2026-07-30 by the subjugation-stability changeset. The
+      // new player still falls - subjugatedShare is untouched at 1.00, and over
+      // 500 games at the 150-turn cap 94.2% are still defeated. What changed is
+      // WHEN: Incorporate now rolls against a loyalty clock, so the killing
+      // blow lands later and this scenario's 80-turn cap truncates more runs.
+      // The design goal is that falling is how a new player discovers the deck;
+      // they now spend longer fallen, which serves it rather than weakening it.
+      defeatShare: [0.57, 0.85],        // measured 0.71
+      medianDefeatTurn: [11, 29],       // measured 19.00
     },
   },
   {
@@ -88,9 +95,11 @@ export const SCENARIOS: Scenario[] = [
     turnCap: 80,
     expect: {
       subjugatedShare: [0.85, 1],       // measured 1.00
-      medianFirstSubjugation: [8, 22],  // measured 14.50
-      defeatShare: [0.66, 0.96],        // measured 0.81
-      medianDefeatTurn: [14, 36],       // measured 23.50
+      medianFirstSubjugation: [8, 22],  // measured 10.00
+      // Same cause as new-player-potatoes above: the loyalty roll delays the
+      // final incorporation, not the fall into vassalage.
+      defeatShare: [0.48, 0.72],        // measured 0.60
+      medianDefeatTurn: [14, 36],       // measured 23.00
     },
   },
   {
@@ -110,8 +119,12 @@ export const SCENARIOS: Scenario[] = [
       // Moved from [3, 9] (measured 6.00): even played leftmost-first, a
       // settlement raises this player's own bar, and the world needs longer to
       // clear it.
-      medianFirstSubjugation: [12, 31],  // measured 20.50
-      defeatShare: [0.33, 0.63],         // measured 0.38
+      medianFirstSubjugation: [12, 31],  // measured 26.00
+      // Moved by the subjugation-stability changeset, same cause as the two
+      // potato scenarios. This player is also the one Seeds of revolt changes
+      // most: it no longer holds a pre-loaded Revolt, so escaping now costs two
+      // turns and a deck cycle instead of one card.
+      defeatShare: [0.16, 0.40],         // measured 0.27
     },
   },
   {
@@ -142,7 +155,11 @@ export const SCENARIOS: Scenario[] = [
       // changeset moved permanently: this scenario's subjugatedShare and
       // flailing-full-deck's both left their bands mid-changeset and came back
       // inside them once every policy step had landed.
-      medianFirstSubjugation: [13, 33],  // measured 22.00
+      // Moved again on 2026-07-30: poaching now costs half the incumbent's grip
+      // on top of the base bar, so the enemies spend longer building before
+      // they can take anyone - including the human. Being subjugated later is
+      // again the intent of the work rather than a band being filed to fit.
+      medianFirstSubjugation: [22, 55],  // measured 37.00
     },
   },
 ];

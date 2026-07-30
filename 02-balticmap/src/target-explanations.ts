@@ -1,4 +1,6 @@
 import {
+  INCORPORATE_RAMP, incorporationChance, loyaltyOf, subjugationChance,
+  type RulesView,
   type TargetBlockReason,
   type TargetEligibility,
 } from "./playability";
@@ -20,8 +22,15 @@ function explainReason(reason: TargetBlockReason): string[] {
         reason.settlements === 0
           ? ""
           : ` and ${reason.settlements} ${reason.settlements === 1 ? "settlement" : "settlements"}`;
+      // The surcharge is named separately or the bar looks wrong: a one-land
+      // vassal demanding a lead of 5 makes no sense until you are told that 2
+      // of it is the price of prising it off its current lord.
+      const poached =
+        reason.poachSurcharge === 0
+          ? ""
+          : `, plus ${reason.poachSurcharge} to prise them off their overlord`;
       return [
-        `Need a Might or Status lead of ${reason.requiredLead} because their realm has ${lands}${settled}.`,
+        `Need a Might or Status lead of ${reason.requiredLead} because their realm has ${lands}${settled}${poached}.`,
         `Current leads: Might ${reason.mightLead}, Status ${reason.statusLead}.`,
       ];
     }
@@ -73,6 +82,47 @@ export function explainTargetEligibility(
       available: false,
     }];
   });
+}
+
+/** Odds lines for a card whose resolution is a roll, for one candidate target.
+ *  Empty for every deterministic card and for every deterministic target, so a
+ *  player is never shown "100%" where no roll exists and never left guessing
+ *  where one does.
+ *
+ *  Both rolls spend the card on a miss, which is the part a player must know
+ *  BEFORE committing - so it is stated on every line rather than only on the
+ *  long odds.
+ *
+ *  Lives here beside the block reasons because it answers the same question
+ *  ("what happens if I aim here") and so that one test covers both halves of
+ *  what a target tooltip says. */
+export function targetOddsLines(
+  view: RulesView,
+  actorFactionId: string,
+  cardId: string,
+  targetFactionId: string,
+): string[] {
+  const pct = (n: number): string => `${Math.round(n * 100)}%`;
+  if (cardId === "subjugate") {
+    const chance = subjugationChance(view, targetFactionId);
+    if (chance >= 1) return [];
+    return [
+      `${pct(chance)} chance to succeed - they already have an overlord.`,
+      "A failed attempt still spends the card.",
+    ];
+  }
+  if (cardId === "incorporate") {
+    const chance = incorporationChance(view, actorFactionId, targetFactionId);
+    const held = loyaltyOf(view, targetFactionId, actorFactionId);
+    if (chance >= 1) {
+      return [`Certain: held ${held} turns, ${INCORPORATE_RAMP} needed.`];
+    }
+    return [
+      `${pct(chance)} chance to succeed - held ${held} of the ${INCORPORATE_RAMP} turns needed.`,
+      "A failed attempt still spends the card.",
+    ];
+  }
+  return [];
 }
 
 /** The slice of state the modifier lines need. `GameState` satisfies this

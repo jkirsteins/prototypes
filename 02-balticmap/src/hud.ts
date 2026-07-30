@@ -130,6 +130,12 @@ export function createHud(
         // Singular verb to match the other allegiance lines ("Vironians
         // submits to", "pays tribute to"), which name a people the same way.
         return `${factionName(e.targetFactionId)} founds a new settlement`;
+      case "seeded":
+        return `${factionName(e.targetFactionId)} sows the seeds of revolt against ${factionName(e.overlordFactionId)}`;
+      case "subjugate-failed":
+        return `${actor} fails to prise ${factionName(e.targetFactionId)} from ${factionName(e.formerOverlordFactionId)}`;
+      case "incorporate-failed":
+        return `${factionName(e.targetFactionId)} resists incorporation into ${factionName(e.overlordFactionId)}`;
       case "victory":
         return "You rule the Baltic";
       case "defeat":
@@ -137,6 +143,21 @@ export function createHud(
       case "unified":
         return `${factionName(e.overlordFactionId)} unifies the Balts`;
     }
+  }
+
+  /** Whether the player could actually know this happened.
+   *
+   *  Almost every event is a public fact about the map - who submitted to whom,
+   *  who founded a settlement - so the default is true. Sowing a revolt is the
+   *  exception: it moves a card inside one faction's deck and nobody outside
+   *  can see it. The player learns of it only for their own vassals, which is
+   *  exactly the warning the Incorporate race is built on.
+   *
+   *  Without this the log would announce every faction's private preparations
+   *  across the whole map. */
+  function isObservable(e: GameEvent, humanFactionId: string | undefined): boolean {
+    if (e.type !== "seeded") return true;
+    return e.playerId === 1 || e.overlordFactionId === humanFactionId;
   }
 
   function involvesHuman(e: GameEvent, humanFactionId: string | undefined): boolean {
@@ -383,6 +404,7 @@ export function createHud(
         logEntries.appendChild(sep);
         lastRenderedTurn = e.turn;
       }
+      if (!isObservable(e, humanFactionId)) continue;
       const entry = document.createElement("div");
       entry.className = "log-entry log-new";
       entry.textContent = eventText(e, state);
