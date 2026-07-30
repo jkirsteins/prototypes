@@ -343,10 +343,16 @@ export function createHud(
     }
   }
 
+  // Return dismisses a notice as well as Escape, so a queue of them can be
+  // walked one press at a time without reaching for the mouse. Handled here
+  // rather than by focusing the button: focus on the overlay does not survive
+  // the AI turns that run behind it, and one press must dismiss exactly one
+  // notice - a focused button would take the press AND this handler would fire.
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !noticeOverlay.classList.contains("hidden")) {
-      dismissNotice();
-    }
+    if (noticeOverlay.classList.contains("hidden")) return;
+    if (e.key !== "Escape" && e.key !== "Enter") return;
+    e.preventDefault();
+    dismissNotice();
   });
 
   container.append(
