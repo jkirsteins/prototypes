@@ -47,6 +47,23 @@ describe("storage round-trip", () => {
     expect(resetMeta(s)).toEqual(initialMeta());
     expect(s.getItem(META_STORAGE_KEY)).toBeNull();
   });
+
+  it("drops a retired card id from stored progress", () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      META_STORAGE_KEY,
+      JSON.stringify({
+        knownCards: ["grow-crops", "raid", "reclaim-independence"],
+        seenPool: ["reclaim-independence", "alliance"],
+      }),
+    );
+    const meta = loadMeta(storage);
+    expect(meta.knownCards).not.toContain("reclaim-independence");
+    expect(meta.seenPool).not.toContain("reclaim-independence");
+    // the ids that still exist survive
+    expect(meta.knownCards).toContain("raid");
+    expect(meta.seenPool).toContain("alliance");
+  });
 });
 
 describe("unlockCard", () => {

@@ -83,8 +83,8 @@ export const SCENARIOS: Scenario[] = [
     id: "flailing-full-deck",
     description:
       "A player holding every card but with no plan, playing whatever is " +
-      "leftmost. Outlasts the potato player by a wide margin - Reclaim " +
-      "independence and Revolt keep landing in hand - without being safe.",
+      "leftmost. Outlasts the potato player by a wide margin - Revolt " +
+      "keeps landing in hand - without being safe.",
     humanPolicy: "naive",
     humanDeck: "full",
     arm: "shipped",

@@ -445,10 +445,10 @@ export const CONQUEST_INERT_DECK: string[] = [
  *  `full-deck` exists because the conquest arms above isolate the
  *  subjugation loop (Raid/Subjugate/Incorporate plus filler) and, in doing
  *  so, overstate how fast a real game resolves: a full ten-card deck also
- *  carries Fortify, Alliance, Reclaim independence and Revolt, all of which
- *  can stall or reverse a conquest. It runs the same DEFAULT_DECK every human
- *  player is offered, so the committed evidence covers the deck shape a
- *  player actually plays, not only the narrow shape that isolates one loop. */
+ *  carries Fortify, Alliance and Revolt, all of which can stall or reverse
+ *  a conquest. It runs the same DEFAULT_DECK every human player is offered,
+ *  so the committed evidence covers the deck shape a player actually plays,
+ *  not only the narrow shape that isolates one loop. */
 export const WORLD_ARMS: Record<string, string[]> = {
   "conquest-scaled": CONQUEST_DECK,
   "conquest-omens": CONQUEST_OMENS_DECK,

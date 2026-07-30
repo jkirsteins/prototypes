@@ -168,21 +168,6 @@ describe("buildNotices: single-event scenarios", () => {
     expect(n!.details).not.toContain("They gain 1 Might and 1 Status against you.");
   });
 
-  it("warns when a vassal reclaims independence, which costs you no standing", () => {
-    const n = oneNotice(
-      ev({
-        type: "reclaimed", playerId: 4, cardId: "reclaim-independence",
-        targetFactionId: "curonia", overlordFactionId: "livs",
-      }),
-    );
-    expect(n).not.toBeNull();
-    expect(n!.title).toBe("A Vassal Breaks Free");
-    expect(n!.what).toBe(
-      "Curonians played Reclaim independence and cast off your overlordship.",
-    );
-    expect(n!.details).not.toContain("They gain 1 Might and 1 Status against you.");
-  });
-
   it("stays silent when the human is the one reclaiming", () => {
     expect(
       oneNotice(
@@ -250,7 +235,7 @@ describe("buildNotices: single-event scenarios", () => {
       ev({ type: "reshuffle", playerId: 1 }),
       ev({ type: "discard", playerId: 1, cardId: "raid" }),
       ev({ type: "incorporated", targetFactionId: "livs", overlordFactionId: "jersika" }),
-      ev({ type: "reclaimed", playerId: 1, targetFactionId: "livs", overlordFactionId: "jersika" }),
+      ev({ type: "reclaimed", playerId: 1, cardId: "revolt", targetFactionId: "livs", overlordFactionId: "jersika" }),
       ev({ type: "tribute", playerId: 1, targetFactionId: "livs", overlordFactionId: "jersika", track: "might" }),
       ev({ type: "victory", playerId: 1 }),
       ev({ type: "defeat", targetFactionId: "livs", overlordFactionId: "jersika" }),

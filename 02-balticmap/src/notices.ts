@@ -351,13 +351,10 @@ function buildVassalPoachedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
   };
 }
 
-/** A vassal of the human played Revolt or Reclaim independence. Revolt also
- *  costs the human a point on each track; Reclaim independence does not. */
+/** A vassal of the human played Revolt, the only way out of vassalage. It also
+ *  costs the human a point on each track, doubled if the vassal held a reading. */
 function buildVassalBrokeFreeNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  const cardLabel = (e: GameEvent): string =>
-    e.cardId === "revolt" ? "Revolt" : "Reclaim independence";
   const penalty = (e: GameEvent): string[] => {
-    if (e.cardId !== "revolt") return [];
     const n = e.doubled ? 2 : 1;
     return [`They gain ${n} Might and ${n} Status against you.`];
   };
@@ -367,7 +364,7 @@ function buildVassalBrokeFreeNotice(events: GameEvent[], ctx: NoticeCtx): Notice
     const rebel = ctx.factionName(e.targetFactionId);
     return {
       title: "A Vassal Breaks Free",
-      what: `${rebel} played ${cardLabel(e)} and cast off your overlordship.`,
+      what: `${rebel} played Revolt and cast off your overlordship.`,
       details: [
         ...penalty(e),
         ...(e.targetFactionId !== undefined
@@ -381,7 +378,7 @@ function buildVassalBrokeFreeNotice(events: GameEvent[], ctx: NoticeCtx): Notice
     title: "A Vassal Breaks Free",
     what: "Vassals cast off your overlordship this round:",
     details: events.map(
-      (e) => `${ctx.factionName(e.targetFactionId)} played ${cardLabel(e)}`,
+      (e) => `${ctx.factionName(e.targetFactionId)} played Revolt`,
     ),
     consequence: realmShrunkConsequence(ctx),
   };
