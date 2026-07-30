@@ -79,6 +79,9 @@ describe("world scenarios", () => {
         arm: "x", games: 0, unifiedShare: 0, capShare: 0, medianEndTurn: null,
         meanEndTurn: null, meanSubjugations: null, meanIncorporations: null,
         medianLargestRealm: null, medianStallTurns: null,
+        firstLegalTargetShare: null, targetedPlaysSeen: 0, playShareByCard: {},
+        meanPreventedAssassinations: null, meanUntestedGuards: null,
+        meanUnusedBoosts: null, meanAlliancesOnOwnTargets: null,
       },
     );
     expect(checks[0].ok).toBe(false);

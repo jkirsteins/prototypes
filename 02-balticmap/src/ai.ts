@@ -294,14 +294,21 @@ export function chooseAction(state: GameState): AiAction {
   const grow = idxOf("grow-crops");
   if (grow !== undefined) return { type: "play", cardIndex: grow };
 
-  // 11: first playable card as a last resort
+  // 11: first playable card as a last resort. Even here a target is not taken
+  // blindly: an Alliance sealed with a faction this one could subjugate freezes
+  // its own conquest for five turns, and the emergency step at 5 refuses such a
+  // target for exactly that reason. Without this, the fallthrough undid that
+  // exclusion - measured at 0.33 such pacts per world before it was added.
   const i0 = set.cardIndexes[0];
   const cardId = p.hand[i0];
   if (CARDS[cardId]?.targeted) {
-    return {
-      type: "play", cardIndex: i0,
-      targetId: validTargetsFor(v, p.factionId, cardId)[0],
-    };
+    const legal = validTargetsFor(v, p.factionId, cardId);
+    const mine = validTargetsFor(v, p.factionId, "subjugate");
+    const targetId =
+      cardId === "alliance"
+        ? legal.find((t) => !mine.includes(t)) ?? legal[0]
+        : legal[0];
+    return { type: "play", cardIndex: i0, targetId };
   }
   return { type: "play", cardIndex: i0 };
 }

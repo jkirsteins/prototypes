@@ -9,7 +9,7 @@ import {
   viewOf, type GameState, type TributeTrack,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
-import { aiTakeTurn } from "./ai";
+import { aiTakeTurn, chooseAction } from "./ai";
 import { realmOf } from "./relations";
 
 const data = rawData as MapData;
@@ -346,6 +346,22 @@ export interface WorldSummary {
   largestRealm: number;
   /** Turns between the last incorporation and the end of the run. */
   turnsSinceLastIncorporation: number;
+  /** Play counts per card id. Shows a card ignored, or played as filler. */
+  playsByCard: Record<string, number>;
+  /** Targeted plays made while 2 or more targets were legal, and how many of
+   *  those took the first in faction order. A share near 1 is the arbitrary
+   *  targeting defect: it was 1.00 for Alliance and Assassinate ruler by
+   *  construction before either had a policy branch. */
+  targetedPlays: number;
+  firstLegalTargetPlays: number;
+  /** Assassinate ruler spent into a Bodyguard. */
+  preventedAssassinations: number;
+  /** Guards posted that no assassination ever tested. */
+  untestedGuards: number;
+  /** Extended diplomacy plays whose boost was never spent on an Alliance. */
+  unusedBoosts: number;
+  /** Pacts sealed with a faction the actor could have subjugated instead. */
+  alliancesOnOwnTargets: number;
 }
 
 const biggestRealm = (s: GameState): number =>
@@ -382,13 +398,48 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     () => opts.deck,
   );
   let largestRealm = biggestRealm(state);
+  const playsByCard: Record<string, number> = {};
+  let targetedPlays = 0;
+  let firstLegalTargetPlays = 0;
+  let boostedAlliances = 0;
+  let alliancesOnOwnTargets = 0;
   while (state.phase === "playing" && state.turn <= opts.turnCap) {
-    const actor = state.players[state.current].factionId;
-    const next = aiTakeTurn(state, rng);
+    const p = state.players[state.current];
+    const actor = p.factionId;
+    // Three of the metrics need the alternatives the policy had at decision
+    // time, which the log does not record, so the action is inspected before it
+    // is applied. `aiTakeTurn` is exactly `chooseAction` followed by one of
+    // discardCard/playCard, so rng consumption is unchanged - the
+    // identical-seeds test is the guard on that.
+    const action = chooseAction(state);
+    if (action.type === "play") {
+      const cardId = p.hand[action.cardIndex];
+      playsByCard[cardId] = (playsByCard[cardId] ?? 0) + 1;
+      if (CARDS[cardId]?.targeted === true) {
+        const legal = validTargetsFor(viewOf(state), actor, cardId);
+        if (legal.length > 1) {
+          targetedPlays++;
+          if (action.targetId === legal[0]) firstLegalTargetPlays++;
+        }
+      }
+      if (cardId === "alliance") {
+        if (state.diplomacyBoost.includes(actor)) boostedAlliances++;
+        if (
+          action.targetId !== undefined &&
+          validTargetsFor(viewOf(state), actor, "subjugate").includes(action.targetId)
+        ) {
+          alliancesOnOwnTargets++;
+        }
+      }
+    }
+    const next =
+      action.type === "discard"
+        ? discardCard(state, action.cardIndex)
+        : playCard(state, action.cardIndex, rng, action.targetId, action.tributeTrack);
     if (!next.playedThisTurn) {
       throw new Error(
         `stuck turn: seed ${opts.seed}, turn ${state.turn}, actor ${actor}, ` +
-          `hand [${state.players[state.current].hand.join(", ")}]`,
+          `hand [${p.hand.join(", ")}]`,
       );
     }
     state = next.phase === "playing" ? advance(next, rng) : next;
@@ -398,6 +449,21 @@ export function runWorld(opts: WorldOptions): WorldSummary {
   const lastIncorporation = [...state.log]
     .reverse()
     .find((e) => e.type === "incorporated");
+  const plays = state.log.filter((e) => e.type === "play");
+  const preventedAssassinations = plays.filter(
+    (e) => e.cardId === "assassinate-ruler" && e.prevented === true,
+  ).length;
+  // Both waste counters are "tokens posted, never cashed", so both floor at 0.
+  // A negative value would mean a token was spent twice, which is a bug worth
+  // failing loudly for rather than reporting as a tidy zero.
+  const untestedGuards = (playsByCard["bodyguard"] ?? 0) - preventedAssassinations;
+  const unusedBoosts = (playsByCard["extended-diplomacy"] ?? 0) - boostedAlliances;
+  if (untestedGuards < 0 || unusedBoosts < 0) {
+    throw new Error(
+      `token cashed twice: seed ${opts.seed}, guards ${untestedGuards}, ` +
+        `boosts ${unusedBoosts}`,
+    );
+  }
   return {
     seed: opts.seed,
     outcome: unified === undefined ? "cap" : "unified",
@@ -407,6 +473,13 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     incorporations: state.log.filter((e) => e.type === "incorporated").length,
     largestRealm,
     turnsSinceLastIncorporation: state.turn - (lastIncorporation?.turn ?? 0),
+    playsByCard,
+    targetedPlays,
+    firstLegalTargetPlays,
+    preventedAssassinations,
+    untestedGuards,
+    unusedBoosts,
+    alliancesOnOwnTargets,
   };
 }
 
@@ -493,12 +566,40 @@ export interface WorldStats {
   /** Median turns of silence before a capped world gave up. Null when every
    *  world resolved. This is the stalemate number. */
   medianStallTurns: number | null;
+  /** Pooled share of targeted plays that took the first legal target while 2 or
+   *  more were legal. Pooled rather than a mean of per-game ratios, so a
+   *  40-turn game does not weigh the same as a 300-turn one. Null when no game
+   *  ever offered a real choice of target. */
+  firstLegalTargetShare: number | null;
+  /** Pooled denominator behind firstLegalTargetShare: targeted plays made with
+   *  2 or more legal targets. A share is meaningless without it. */
+  targetedPlaysSeen: number;
+  /** Pooled share of all plays, per card id. */
+  playShareByCard: Record<string, number>;
+  meanPreventedAssassinations: number | null;
+  meanUntestedGuards: number | null;
+  meanUnusedBoosts: number | null;
+  meanAlliancesOnOwnTargets: number | null;
 }
 
 export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
   const unified = games.filter((g) => g.outcome === "unified");
   const capped = games.filter((g) => g.outcome === "cap");
   const share = (n: number): number => (games.length === 0 ? 0 : n / games.length);
+  const sum = (pick: (g: WorldSummary) => number): number =>
+    games.reduce((a, g) => a + pick(g), 0);
+  const targeted = sum((g) => g.targetedPlays);
+  const firstLegal = sum((g) => g.firstLegalTargetPlays);
+  const playShareByCard: Record<string, number> = {};
+  for (const g of games) {
+    for (const [id, n] of Object.entries(g.playsByCard)) {
+      playShareByCard[id] = (playShareByCard[id] ?? 0) + n;
+    }
+  }
+  const totalPlays = Object.values(playShareByCard).reduce((a, b) => a + b, 0);
+  for (const id of Object.keys(playShareByCard)) {
+    playShareByCard[id] = totalPlays === 0 ? 0 : playShareByCard[id] / totalPlays;
+  }
   return {
     arm,
     games: games.length,
@@ -510,5 +611,12 @@ export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
     meanIncorporations: mean(games.map((g) => g.incorporations)),
     medianLargestRealm: median(games.map((g) => g.largestRealm)),
     medianStallTurns: median(capped.map((g) => g.turnsSinceLastIncorporation)),
+    firstLegalTargetShare: targeted === 0 ? null : firstLegal / targeted,
+    targetedPlaysSeen: targeted,
+    playShareByCard,
+    meanPreventedAssassinations: mean(games.map((g) => g.preventedAssassinations)),
+    meanUntestedGuards: mean(games.map((g) => g.untestedGuards)),
+    meanUnusedBoosts: mean(games.map((g) => g.unusedBoosts)),
+    meanAlliancesOnOwnTargets: mean(games.map((g) => g.alliancesOnOwnTargets)),
   };
 }

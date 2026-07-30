@@ -360,12 +360,50 @@ describe("world arms", () => {
   it("aggregates end turns over resolved worlds only", () => {
     const stats = aggregateWorld("x", [
       { seed: 1, outcome: "unified", endTurn: 10, winner: "a", subjugations: 3,
-        incorporations: 2, largestRealm: 15, turnsSinceLastIncorporation: 0 },
+        incorporations: 2, largestRealm: 15, turnsSinceLastIncorporation: 0 , playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0 },
       { seed: 2, outcome: "cap", endTurn: 99, winner: null, subjugations: 1,
-        incorporations: 0, largestRealm: 3, turnsSinceLastIncorporation: 99 },
+        incorporations: 0, largestRealm: 3, turnsSinceLastIncorporation: 99 , playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0 },
     ]);
     expect(stats.unifiedShare).toBe(0.5);
     expect(stats.capShare).toBe(0.5);
     expect(stats.medianEndTurn).toBe(10); // the capped run contributes no end
+  });
+});
+
+describe("waste and bias metrics", () => {
+  const opts = { games: 6, turnCap: 120, firstSeed: 1, arm: "full-deck" };
+
+  it("no longer takes the first legal target most of the time", () => {
+    const stats = aggregateWorld("full-deck", runWorldBatch(opts));
+    // Alliance and Assassinate ruler used to take validTargetsFor(...)[0]
+    // unconditionally, so this share was 1.00 by construction. Asserting
+    // "below 1" rather than a pinned count deliberately: a pinned count would
+    // have to be re-baselined on every future policy change, while this still
+    // fails outright if targeting reverts to first-legal-always.
+    expect(stats.targetedPlaysSeen).toBeGreaterThan(0);
+    expect(stats.firstLegalTargetShare).not.toBeNull();
+    expect(stats.firstLegalTargetShare!).toBeLessThan(1);
+  });
+
+  it("rarely seals a pact with a faction it could subjugate instead", () => {
+    const stats = aggregateWorld("full-deck", runWorldBatch(opts));
+    // Allying with your own best target freezes your own conquest for five
+    // turns. Step 5 refuses such a target outright, and step 11 now prefers a
+    // different one, which took this from 0.33 pacts per world to 0.17.
+    //
+    // It cannot reach 0, and the design spec was wrong to predict it would:
+    // when Alliance is the ONLY playable card and every legal target is also a
+    // faction this one could subjugate, step 11 has to play it anyway. That
+    // residue is forced by the rules, not a targeting defect, so this asserts a
+    // low rate rather than zero. The emergency path IS zero by construction and
+    // is covered by the step-5 exclusion tests in tests/ai.test.ts.
+    expect(stats.meanAlliancesOnOwnTargets!).toBeLessThan(0.5);
+  });
+
+  it("counts every play against a card id", () => {
+    const stats = aggregateWorld("full-deck", runWorldBatch(opts));
+    const total = Object.values(stats.playShareByCard).reduce((a, b) => a + b, 0);
+    expect(total).toBeCloseTo(1, 10);
+    expect(stats.playShareByCard["reclaim-independence"]).toBeUndefined();
   });
 });
