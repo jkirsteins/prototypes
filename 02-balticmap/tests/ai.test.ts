@@ -76,7 +76,11 @@ describe("chooseAction priorities", () => {
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
-  it("1 beats 2: a forced tribute outranks revolting", () => {
+  it("forced tribute monopolises the playable set, so revolt is unreachable", () => {
+    // Pay tribute is forced while a vassal, giving it exclusive occupancy of
+    // cardIndexes. This means idxOf("revolt") is undefined and step 2 never
+    // fires. The two cards cannot co-occur in playableSet, so their relative
+    // step order has no observable effect and no ordering test exists.
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
     g = withHand(g, ["revolt", "pay-tribute"]);
