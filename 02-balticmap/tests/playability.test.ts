@@ -244,17 +244,6 @@ describe("isCardPlayable", () => {
     expect(isCardPlayable(view(), "beta", "subjugate")).toBe(false);
     expect(isCardPlayable(view(), "beta", "incorporate")).toBe(false);
   });
-
-  it("extended diplomacy is unplayable while a boost is already held", () => {
-    expect(isCardPlayable(view(), "alpha", "extended-diplomacy")).toBe(true);
-    expect(
-      isCardPlayable(view({ diplomacyBoost: ["alpha"] }), "alpha", "extended-diplomacy"),
-    ).toBe(false);
-    // someone else's boost is not yours
-    expect(
-      isCardPlayable(view({ diplomacyBoost: ["beta"] }), "alpha", "extended-diplomacy"),
-    ).toBe(true);
-  });
 });
 
 describe("playableSet", () => {
@@ -365,10 +354,6 @@ describe("alliances", () => {
     expect(validTargetsFor(view({ alliances, turn: 1 }), "beta", "alliance")).toContain("gamma");
     expect(validTargetsFor(view({ alliances, turn: 1 }), "beta", "alliance")).toContain("alpha");
   });
-
-  it("extended-diplomacy is always playable, like grow-crops/fortify", () => {
-    expect(isCardPlayable(view(), "beta", "extended-diplomacy")).toBe(true);
-  });
 });
 
 describe("bodyguard", () => {
@@ -441,6 +426,24 @@ describe("favourable-omens legality", () => {
   it("is unaffected by another faction's reading", () => {
     expect(
       isCardPlayable(view({ omens: ["beta"] }), "alpha", "favourable-omens"),
+    ).toBe(true);
+  });
+});
+
+describe("extended-diplomacy legality", () => {
+  it("is playable when no boost is held", () => {
+    expect(isCardPlayable(view(), "alpha", "extended-diplomacy")).toBe(true);
+  });
+
+  it("is not playable while a boost is already held", () => {
+    expect(
+      isCardPlayable(view({ diplomacyBoost: ["alpha"] }), "alpha", "extended-diplomacy"),
+    ).toBe(false);
+  });
+
+  it("is unaffected by another faction's boost", () => {
+    expect(
+      isCardPlayable(view({ diplomacyBoost: ["beta"] }), "alpha", "extended-diplomacy"),
     ).toBe(true);
   });
 });
