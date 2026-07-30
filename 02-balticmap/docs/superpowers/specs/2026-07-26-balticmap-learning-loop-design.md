@@ -1,7 +1,9 @@
 # Balticmap: Learning Loop - Roguelite Meta-Progression
 
 Date: 2026-07-26
-Status: approved
+Status: superseded by `2026-07-31-card-acquisition-xp-packs-design.md` -
+witnessing/`seenPool` is removed, replaced by XP/levels/packs. Kept for
+history.
 
 ## Goal
 
