@@ -56,80 +56,52 @@ in each prototype and assemble the `dist/` directories the way
 ## Per-prototype conventions
 
 - `npm test` runs vitest; `npm run build` runs `tsc` then `vite build`. Both must
-  pass before committing.
+  pass before committing. Keep `npm test` fast - if a suite grows past a few
+  seconds, split the slow part behind its own script rather than taxing every
+  commit with it.
 - `vite.config.ts` must set `base: "/prototypes/NN/"` matching the directory
   number, or the deployed build will not load its assets.
 - Prototype-specific instructions, specs and plans live under that prototype's
   own `docs/`. Read them before changing its code.
 
-## Card changes must revisit AI and balance evidence
+## Card changes: two guards, then playtest it
 
-For prototypes with card-playing AI, adding a card or changing a card's effect,
-legality, targeting, deck availability, or interactions must revisit the AI in
-the same change. The change must:
+For prototypes with card-playing AI, two things must hold when a card is added
+or its effect, legality, targeting, deck availability or interactions change.
+Both are already tests, so they cost nothing to honour:
 
-- **Give the card its own branch in the AI policy.** A new card is not done
-  until the policy decides, by name, when to play it and (if targeted) what to
-  aim it at. Record that branch in the policy's coverage map so a card without
-  one fails a test rather than passing review.
-- Review legal-action generation and strategic evaluation for the card.
-- Add or update AI tests for useful, harmful, and competing-card situations.
-- Add or update simulation metrics that can reveal whether the card is ignored,
-  wasted, dominant, or targeted with an unintended bias.
-- Run the prototype's seeded AI balance benchmark and compare it with the
-  committed baseline.
-- Document why no AI change is needed when the review concludes that existing
-  behavior is intentionally sufficient. "Intentionally sufficient" still needs a
-  coverage-map entry naming the branch that covers it.
+- **A branch in the AI policy.** Add an entry to `POLICY_COVERAGE` naming the
+  branch in `chooseAction` that decides the card and, if targeted, what it aims
+  at. Falling through to the first playable card or first legal target is not AI
+  support; when existing behaviour genuinely covers a card, the entry names the
+  branch that covers it.
+- **A route by which the player learns the card exists.** Usually
+  `deckBuildable: true` plus the learning loop, so witnessing an enemy play it
+  is enough. A card kept out of deck-building must name its other route in a
+  comment beside its definition. A card that cannot be built, witnessed or
+  injected must not ship. If its effect is private - moving cards inside a
+  faction's own deck rather than changing the map - decide who can observe it
+  and keep the activity log and notices agreeing with that decision.
 
-Falling through to the first playable card or first legal target is not complete
-AI support.
+Then play it. Your judgement is the gate, so end card work by saying what to
+play and what would look wrong.
 
-This rule has been broken before, and prose alone did not catch it. Measured in
-`02-balticmap` on 2026-07-30, four of its fourteen cards had no branch in
-`chooseAction` at all, and 27.7% of all AI plays across 60 simulated worlds were
-step-of-last-resort fallthroughs. Two of them, Alliance and Assassinate ruler,
-were the 5th and 6th most-played cards in the game and picked their targets by
-faction sort order while two or more targets were legal 82% and 64% of the time.
-That is why the coverage map above is a test and not a checklist item.
+`POLICY_COVERAGE` is a test and not a checklist item because prose did not work.
+Measured in `02-balticmap` on 2026-07-30: four of fourteen cards had no branch
+at all, and 27.7% of AI plays were last-resort fallthroughs - Alliance and
+Assassinate ruler, the 5th and 6th most-played cards, picking targets by faction
+sort order.
 
-## Every new card must be discoverable by the player
+## Balance evidence is on demand
 
-For prototypes with a card-discovery or unlock loop, a new card is not done until
-a player can *learn that it exists* by playing the game. A card the player can
-never find out about is content that, for them, is not in the game at all.
+`npm test` is fast and catches a missing AI branch, a missing discovery route
+and rng drift. It cannot tell you whether a change is *good*.
 
-So for every card added:
-
-- **Name the route by which the player first sees it**, and make it a test.
-  Usually that means the card is deck-buildable and tracked by the learning
-  loop, so witnessing an enemy play it adds it to the seen pool.
-- **Measure the discovery rate** over a seeded batch and record it. A card
-  witnessed in a few percent of games is technically discoverable and
-  practically invisible; treat that as a failing number, not a pass.
-- **A card deliberately excluded from deck-building must be reachable another
-  way**, and that way must be documented next to its definition. Injection-only
-  cards are the legitimate case: the player meets them because something else
-  puts them in their deck.
-
-Injection-only is the sole exemption, and it is only an exemption from *deck
-discovery*, never from being encountered. If a card cannot be built, cannot be
-witnessed, and cannot be injected, it must not ship.
-
-Measured in `02-balticmap` on 2026-07-30, when Seeds of revolt replaced Revolt:
-Seeds of revolt is witnessed in 71% of games by a naive player over 200 seeded
-runs, the same rate as Assassinate ruler and ahead of Alliance at 53%. Revolt
-itself became `deckBuildable: false` and is now reachable *only* by playing
-Seeds of revolt - which is why that route is stated in its card comment and in
-the deck-screen test, rather than left to be rediscovered later.
-
-Note that discoverability is about more than the deck screen. If a card's effect
-is a private action - one that moves cards inside a faction's own deck rather
-than changing the map - decide explicitly who can observe it, and keep the
-activity log and the notices agreeing with that decision. The same changeset
-shipped a log filter and a notice for exactly this reason: sowing a revolt is
-invisible from outside, so the log must not announce every faction's, while a
-player's own vassal sowing must be announced or the counterplay is unknowable.
+In `02-balticmap`, `npm run balance` can. It runs the seeded simulation and the
+scenario pacing bands, then prints play share per card, cards in the deck that
+were never played, targeting bias, waste and the stalemate number. It takes
+about a minute. Run it when a batch of card work settles or when something feels
+wrong - not on every change. `npm run test:all` is both suites.
 
 ## Housekeeping
 
