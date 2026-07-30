@@ -32,6 +32,7 @@ function setup(opts?: {
   lootInfo?: () => { id: string; isNew: boolean }[];
   onResetProgress?: () => void;
   onSurrender?: () => void;
+  onHighlightFaction?: (factionId: string | null) => void;
   placeNameFactionIds?: Set<string>;
 }) {
   const container = document.createElement("div");
@@ -49,6 +50,9 @@ function setup(opts?: {
     ...(opts?.lootInfo ? { lootInfo: opts.lootInfo } : {}),
     ...(opts?.onResetProgress ? { onResetProgress: opts.onResetProgress } : {}),
     ...(opts?.onSurrender ? { onSurrender: opts.onSurrender } : {}),
+    ...(opts?.onHighlightFaction
+      ? { onHighlightFaction: opts.onHighlightFaction }
+      : {}),
   };
   const hud = createHud(container, cb, new Map([
     ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
@@ -364,6 +368,77 @@ describe("card animations", () => {
   });
 });
 
+describe("afterPlayAnimation", () => {
+  function playing() {
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+  }
+
+  it("waits for the played card to land before firing", () => {
+    vi.useFakeTimers();
+    const { hud } = setup();
+    let g = playing();
+    hud.update(g);
+    vi.runAllTimers(); // clear the opening draw's flight
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g);
+
+    const fn = vi.fn();
+    hud.afterPlayAnimation(fn);
+    vi.advanceTimersByTime(20 + 350 + 700 + 350 - 1);
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(fn).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it("fires on the next tick when nothing flew (a forced discard)", () => {
+    vi.useFakeTimers();
+    const { hud } = setup();
+    const g = playing();
+    hud.update(g); // nothing played yet - no flight in the air
+    const fn = vi.fn();
+    hud.afterPlayAnimation(fn);
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(0);
+    expect(fn).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it("fires exactly once even once every timer has run", () => {
+    vi.useFakeTimers();
+    const { hud } = setup();
+    let g = playing();
+    hud.update(g);
+    vi.runAllTimers();
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g);
+    const fn = vi.fn();
+    hud.afterPlayAnimation(fn);
+    vi.runAllTimers();
+    expect(fn).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it("a new game releases a pending continuation", () => {
+    vi.useFakeTimers();
+    const { hud } = setup();
+    let g = playing();
+    hud.update(g);
+    vi.runAllTimers();
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g); // the card is now mid-flight
+
+    const fn = vi.fn();
+    hud.afterPlayAnimation(fn);
+    hud.update(newGame(FACTIONS)); // main-menu: the run this flight belonged to is gone
+    expect(fn).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+});
+
 describe("subjugation HUD", () => {
   function playing() {
     return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
@@ -383,6 +458,24 @@ describe("subjugation HUD", () => {
     );
     expect(texts).toContain("You played Subjugate on Alpha");
     expect(texts).toContain("Alpha submits to Beta");
+  });
+
+  it("hovering a faction name in the log highlights that faction on the map", () => {
+    const onHighlightFaction = vi.fn();
+    const { container, hud } = setup({ onHighlightFaction });
+    let g = playing();
+    g = { ...g, relations: bumpMight(bumpMight(g.relations, "beta", "alpha"), "beta", "alpha") };
+    g = withHand(g, 0, ["subjugate"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    hud.update(g);
+    const entry = [...container.querySelectorAll(".log-entry")]
+      .find((el) => el.textContent === "You played Subjugate on Alpha")!;
+    const span = entry.querySelector(".rt-faction")!;
+    expect(span.textContent).toBe("Alpha");
+    span.dispatchEvent(new MouseEvent("mousemove", { clientX: 1, clientY: 1, bubbles: true }));
+    expect(onHighlightFaction).toHaveBeenCalledWith("alpha");
+    span.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+    expect(onHighlightFaction).toHaveBeenCalledWith(null);
   });
 
   it("appends '- prevented' to a nullified Assassinate ruler play, for both the actor and the victim", () => {
@@ -651,6 +744,11 @@ describe("notice modal", () => {
     return { ...g, log: [...g.log, ...events] };
   }
 
+  const lineTexts = (container: HTMLElement): string[] =>
+    [...container.querySelectorAll(".notice-line")].map((el) => el.textContent ?? "");
+  const footnoteTexts = (container: HTMLElement): string[] =>
+    [...container.querySelectorAll(".notice-footnote")].map((el) => el.textContent ?? "");
+
   const subjugatedYou: GameEvent = {
     turn: 1, playerId: 2, type: "subjugated",
     targetFactionId: "beta", overlordFactionId: "alpha",
@@ -666,22 +764,22 @@ describe("notice modal", () => {
       overlordFactionId: "alpha", formerOverlordFactionId: "beta",
     }]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("A Vassal Torn Away");
-    expect(q(container, ".notice-what").textContent).toBe(
-      "Alpha played Subjugate against your vassal Gamma.",
-    );
+    expect(q(container, ".notice-title").textContent).toBe("What happened during their turns");
+    expect(lineTexts(container)).toEqual([
+      "Subjugate by Alpha took your vassal Gamma (Might +1 -> 0, Status +1 -> 0)",
+    ]);
+    expect(footnoteTexts(container)[0]).toContain("Your realm is smaller");
   });
 
   it("shows a modal when a vassal of yours breaks free", () => {
     const { container, hud } = setup();
     hud.update(withEvents(playing(), [{
       turn: 1, playerId: 3, type: "reclaimed", cardId: "revolt",
-      targetFactionId: "gamma", overlordFactionId: "beta",
+      targetFactionId: "gamma", overlordFactionId: "beta", amount: 1,
     }]));
-    expect(q(container, ".notice-title").textContent).toBe("A Vassal Breaks Free");
-    expect(q(container, ".notice-what").textContent).toBe(
-      "Gamma played Revolt and cast off your overlordship.",
-    );
+    expect(lineTexts(container)).toEqual([
+      "Revolt by Gamma cast off your overlordship (Might +1 -> 0, Status +1 -> 0)",
+    ]);
   });
 
   it("shows a mandatory modal when an AI subjugates you", () => {
@@ -689,14 +787,8 @@ describe("notice modal", () => {
     hud.update(withEvents(playing(), [subjugatedYou]));
     const overlay = q(container, ".notice-overlay");
     expect(overlay.classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("Beneath the Yoke");
-    expect(q(container, ".notice-what").textContent).toBe(
-      "Alpha played Subjugate against Beta.",
-    );
-    expect(container.querySelector(".notice-flavor")).toBeNull();
-    expect(q(container, ".notice-consequence").textContent).toContain(
-      "Two Pay Tribute cards",
-    );
+    expect(lineTexts(container)).toEqual(["Subjugate by Alpha - you owe fealty to them"]);
+    expect(footnoteTexts(container)[0]).toContain("Pay tribute cards were shuffled into your deck");
   });
 
   it("dismisses on Continue and stays dismissed on re-render", () => {
@@ -709,35 +801,39 @@ describe("notice modal", () => {
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
 
-  it("queues multiple notices and shows them in order", () => {
+  it("puts both a subjugation and a release in one modal with one Continue", () => {
     const { container, hud } = setup();
     hud.update(withEvents(playing(), [subjugatedYou, releasedYou]));
-    expect(q(container, ".notice-title").textContent).toBe("Beneath the Yoke");
-    q(container, ".notice-continue").click();
+    expect(lineTexts(container)).toEqual([
+      "Subjugate by Alpha - you owe fealty to them",
+      "The fall of your overlord to Gamma released you from vassalage",
+    ]);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("The Yoke Is Broken");
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
 
-  it("collapses 2 raid events in one update into a single modal", () => {
+  it("lists 2 raid events in one update as 2 lines in a single modal", () => {
     const { container, hud } = setup();
     const raidByAlpha: GameEvent = {
       turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta",
+      amount: 1, track: "might",
     };
     const raidByGamma: GameEvent = {
       turn: 1, playerId: 3, type: "play", cardId: "raid", targetFactionId: "beta",
+      amount: 1, track: "might",
     };
     hud.update(withEvents(playing(), [raidByAlpha, raidByGamma]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("Raided");
-    expect(q(container, ".notice-what").textContent).toBe("2 players played Raid against you:");
-    expect(q(container, ".notice-details").classList.contains("multi")).toBe(true);
+    expect(lineTexts(container)).toEqual([
+      "Raid played against you by Alpha (Might +1 -> 0)",
+      "Raid played against you by Gamma (Might +1 -> 0)",
+    ]);
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
 
-  it("shows an alliance modal with the until-turn detail when an AI seals a pact", () => {
+  it("shows the alliance until-turn clause inline on the line", () => {
     const { container, hud } = setup();
     let g = playing();
     g = {
@@ -750,30 +846,30 @@ describe("notice modal", () => {
     };
     hud.update(g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("An Alliance Sealed");
-    expect(q(container, ".notice-what").textContent).toBe("Alpha played Alliance with Beta.");
-    const lines = [...container.querySelectorAll(".notice-details .notice-detail")].map(
-      (el) => el.textContent,
-    );
-    expect(lines).toEqual(["No hostile cards between you and Alpha until turn 8."]);
+    expect(lineTexts(container)).toEqual([
+      "Alliance sealed with you by Alpha, until turn 8",
+    ]);
   });
 
-  it("names a place-name actor with no article in an assassination notice", () => {
-    // Actor (alpha) is a place-name faction and gets no article; the human's
-    // own faction (beta, an ordinary faction) still gets "the" in the same
-    // notice - proving both branches of the real hud.ts wiring, not just the
-    // hand-built NoticeCtx fixture in notices.test.ts.
-    const { container, hud } = setup({ placeNameFactionIds: new Set(["alpha"]) });
+  it("renders a place-name actor with no article, as a hoverable faction span that highlights the map", () => {
+    // Actor (alpha) is a place-name faction and gets no article; proves the
+    // real hud.ts wiring, not just the hand-built NoticeCtx fixture in
+    // notices.test.ts.
+    const onHighlightFaction = vi.fn();
+    const { container, hud } = setup({
+      placeNameFactionIds: new Set(["alpha"]), onHighlightFaction,
+    });
     hud.update(withEvents(playing(), [{
       turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler",
-      targetFactionId: "beta", targetRuler: "Kaupo", successorRuler: "Dabrelis",
+      targetFactionId: "beta", targetRuler: "Kaupo", successorRuler: "Dabrelis", amount: 1,
     }]));
-    expect(q(container, ".notice-title").textContent).toBe("A Ruler Falls");
-    expect(q(container, ".notice-what").textContent).toBe("Alpha had Kaupo killed.");
-    const lines = [...container.querySelectorAll(".notice-details .notice-detail")].map(
-      (el) => el.textContent,
-    );
-    expect(lines[0]).toBe("Dabrelis now leads the Beta.");
+    expect(lineTexts(container)).toEqual([
+      "Assassinate ruler took Kaupo; Dabrelis now leads you - by Alpha (Status -1 -> 0)",
+    ]);
+    const span = q(container, ".notice-line .rt-faction");
+    expect(span.textContent).toBe("Alpha");
+    span.dispatchEvent(new MouseEvent("mousemove", { clientX: 1, clientY: 1, bubbles: true }));
+    expect(onHighlightFaction).toHaveBeenCalledWith("alpha");
   });
 
   it("dismisses on Escape", () => {
@@ -781,6 +877,17 @@ describe("notice modal", () => {
     hud.update(withEvents(playing(), [subjugatedYou]));
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+  });
+
+  it("clears a hover's tip and map halo on dismiss", () => {
+    const onHighlightFaction = vi.fn();
+    const onHideTip = vi.fn();
+    const { container, cb, hud } = setup({ onHighlightFaction });
+    cb.onHideTip = onHideTip;
+    hud.update(withEvents(playing(), [subjugatedYou]));
+    q(container, ".notice-continue").click();
+    expect(onHideTip).toHaveBeenCalled();
+    expect(onHighlightFaction).toHaveBeenCalledWith(null);
   });
 
   it("shows nothing for your own plays or AI-vs-AI events", () => {
@@ -792,13 +899,13 @@ describe("notice modal", () => {
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
 
-  it("clears the queue and overlay when a new game starts", () => {
+  it("clears the overlay when a new game starts", () => {
     const { container, hud } = setup();
     hud.update(withEvents(playing(), [subjugatedYou, releasedYou]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     hud.update(playing()); // fresh game: shorter log resets renderLog
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
-    // a later dismiss must not resurface stale queued notices
+    // a later dismiss must not resurface a stale summary
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
@@ -862,26 +969,28 @@ describe("notice details and hand tips", () => {
     return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
   }
 
-  it("renders detail lines for a subjugation notice", () => {
+  it("renders the line for a subjugation notice, with its Pay Tribute footnote", () => {
     const { container, hud } = setup();
     let g = playing();
     g = { ...g, log: [...g.log, { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" }] };
     hud.update(g);
-    const lines = [...container.querySelectorAll(".notice-details .notice-detail")].map(
-      (el) => el.textContent,
+    expect(q(container, ".notice-line").textContent).toContain("you owe fealty to them");
+    expect(q(container, ".notice-footnote").textContent).toContain(
+      "Pay tribute cards were shuffled into your deck",
     );
-    expect(lines[0]).toBe("You now owe fealty to Alpha.");
-    expect(lines[1]).toMatch(/^Standing vs Alpha: Might - /);
-    expect(q(container, ".notice-details").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-footnotes").classList.contains("hidden")).toBe(false);
   });
 
-  it("hides the details block when a notice has no details", () => {
+  it("hides the footer when the round produced no consequences", () => {
+    // Your own subjugation losing you a vassal (role "lord") carries no
+    // footnote of its own - the Pay Tribute consequence belongs to the
+    // "subjugated" line for the same round, not this side-effect.
     const { container, hud } = setup();
     let g = playing();
-    g = { ...g, log: [...g.log, { turn: 1, playerId: 3, type: "released", targetFactionId: "beta", overlordFactionId: "alpha" }] };
+    g = { ...g, log: [...g.log, { turn: 1, playerId: 3, type: "released", targetFactionId: "gamma", overlordFactionId: "beta" }] };
     hud.update(g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-details").classList.contains("hidden")).toBe(true);
+    expect(q(container, ".notice-footnotes").classList.contains("hidden")).toBe(true);
   });
 
   it("hand cards carry a name span and a rules tip", () => {

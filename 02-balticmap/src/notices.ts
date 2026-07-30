@@ -1,23 +1,36 @@
 import type { GameEvent, GameEventType } from "./game";
 import type { TrackBars } from "./playability";
+import { card, faction, t, theFaction, type Segment } from "./rich-text";
+import { walkStandings, type StandingChange } from "./standings";
 import { barPhrase } from "./view";
 
-/** A player-facing interruption for an event (or batch of same-kind events)
- *  that changed the human's state. Factual only: no flavor text. */
-export interface Notice {
+/** One notice-worthy event, rendered as one line: the card, who did it, and
+ *  the standing it moved. See the rule in AGENTS.md - no second modal, no
+ *  three-paragraph notices. */
+export interface SummaryLine {
+  text: Segment[];
+  /** Before -> after for every track this event moved, in the human's signed
+   *  view. Empty for events that move nothing (an alliance, a release, a
+   *  failed poach). */
+  changes: StandingChange[];
+  /** "bad" = done to you, "good" = you gained or held, "neutral" = a fact
+   *  with no clear direction. */
+  tone: "good" | "bad" | "neutral";
+}
+
+/** Everything the AI round did to the human: one modal, one Continue. */
+export interface RoundSummary {
   title: string;
-  what: string; // factual: who did what
-  consequence?: string; // mechanical effect on the human player
-  details: string[]; // standing/allegiance context lines, always present
+  lines: SummaryLine[];
+  /** Rules consequences not tied to one line - the Pay Tribute injection, the
+   *  shrunk-realm subjugation bar. Deduplicated by rendered text and shown as
+   *  a footer block, NOT appended to a line: they carry no before/after, and
+   *  three vassals lost must not print the same warning three times. */
+  footnotes: Segment[][];
 }
 
 export interface NoticeCtx {
   humanFactionId: string;
-  factionName(id: string | undefined): string;
-  /** "the Jersikans", but "Lietuva" for the one faction named for a land
-   *  rather than a people. Mid-sentence form; capitalize at a sentence
-   *  start. */
-  factionNameWithArticle(id: string | undefined): string;
   factionOf(playerId: number): string | undefined;
   /** The human's leads over otherFactionId; positive = you lead. */
   leads(otherFactionId: string): { might: number; status: number };
@@ -36,21 +49,22 @@ export interface NoticeCtx {
   allianceExpiry(otherFactionId: string): number | undefined;
 }
 
-/** Every GameEventType must decide: interrupt the human, or stay silent
- *  with a written reason. The exhaustive Record makes adding an event type
- *  a compile error until that decision is made. */
+/** Every GameEventType must decide: a line in the round summary, or silence
+ *  with a written reason. The exhaustive Record makes adding an event type a
+ *  compile error until that decision is made. */
 export type NoticeRule =
   | {
       kind: "modal";
       appliesToHuman(e: GameEvent, ctx: NoticeCtx): boolean;
-      /** Per-event build, used by the single-event internal path (noticeFor)
-       *  and as the base case inside the batch group builders. */
-      build(e: GameEvent, ctx: NoticeCtx): Notice;
+      /** One call per group (same type + card + prevented + human role).
+       *  `changes` is index-parallel to `events`, from a walk over the WHOLE
+       *  batch - so a line's numbers are that event's own, not the round's
+       *  total. */
+      lines(events: GameEvent[], changes: StandingChange[][], ctx: NoticeCtx): SummaryLine[];
+      /** What this group contributes to the footer, if anything. */
+      footnotes?(events: GameEvent[], ctx: NoticeCtx): Segment[][];
     }
   | { kind: "silent"; reason: string };
-
-const victimOfOther = (e: GameEvent, ctx: NoticeCtx): boolean =>
-  e.targetFactionId === ctx.humanFactionId && e.playerId !== 1;
 
 /** Which side of an allegiance change the human is on: the faction that
  *  changed hands (`self`), or the overlord that lost it (`lord`). Null when
@@ -77,428 +91,264 @@ function humanRoleIn(e: GameEvent, ctx: NoticeCtx): HumanRole | null {
 
 /** Every way a vassal leaves the human shrinks the realm, which lowers the
  *  bar rivals need to subjugate the human in turn. */
-const realmShrunkConsequence = (ctx: NoticeCtx): string =>
-  `Your realm is smaller: a lead of ${barPhrase(ctx.subjugationGrip())} over ` +
-  "you is now enough to subjugate you.";
-
-const fmtLead = (n: number): string =>
-  n > 0 ? `you lead by ${n}` : n < 0 ? `they lead by ${-n}` : "even";
-
-const standingLine = (ctx: NoticeCtx, otherId: string): string => {
-  const l = ctx.leads(otherId);
-  return `Standing vs ${ctx.factionName(otherId)}: ` +
-    `Might - ${fmtLead(l.might)}; Status - ${fmtLead(l.status)}.`;
-};
+function realmShrunkFootnote(ctx: NoticeCtx): Segment[] {
+  return [
+    t(`Your realm is smaller: a lead of ${barPhrase(ctx.subjugationGrip())} over `),
+    t("you is now enough to subjugate you."),
+  ];
+}
 
 /** Either of their leads over the human meets that track's bar for THIS rival
  *  specifically - false when the bars are null (they could never subjugate the
  *  human this way round) as well as when both leads fall short. Per track
  *  rather than best-lead-against-one-bar: the Status bar is the lower one on a
  *  settled realm, so a single number would understate the danger. */
-const subjugationRisk = (ctx: NoticeCtx, otherId: string): boolean => {
+function subjugationRisk(ctx: NoticeCtx, otherId: string): boolean {
   const bars = ctx.subjugationBarAgainstYou(otherId);
   if (bars === null) return false;
   const l = ctx.leads(otherId);
   return -l.might >= bars.might || -l.status >= bars.status;
-};
+}
 
-/** The bars this rival must clear, in words. Only ever reached behind a
- *  `subjugationRisk` guard, which already established they are not null. */
-const barAgainstYou = (ctx: NoticeCtx, otherId: string): string => {
-  const bars = ctx.subjugationBarAgainstYou(otherId);
-  return bars === null ? "" : barPhrase(bars);
-};
+const PAY_TRIBUTE_FOOTNOTE = (): Segment[] => [
+  card("pay-tribute"), t(" cards were shuffled into your deck (x2). While one is in "),
+  t("hand it must be played first."),
+];
 
-const PAY_TRIBUTE_CONSEQUENCE =
-  "Two Pay Tribute cards were shuffled into your deck. When one is " +
-  "in hand, it must be played before anything else.";
+const RELEASE_FOOTNOTE = (): Segment[] => [
+  t("All "), card("pay-tribute"), t(" cards were removed from your deck, hand and discard."),
+];
 
-const RELEASE_CONSEQUENCE =
-  "All Pay Tribute cards were removed from your deck, hand, and discard.";
+/** Segment-key for footnote dedup: two "your realm is smaller" lines from two
+ *  different lost vassals must collapse to one, so this compares rendered
+ *  shape rather than object identity. Cards/factions key by id, not by their
+ *  (possibly not-yet-resolved) display name. */
+function footnoteKey(segs: Segment[]): string {
+  return segs
+    .map((s) => {
+      if (s.kind === "text") return `t:${s.text}`;
+      if (s.kind === "card") return `card:${s.cardId}`;
+      return `faction:${s.factionId}`;
+    })
+    .join("|");
+}
 
-const actorName = (e: GameEvent, ctx: NoticeCtx): string =>
-  ctx.factionName(ctx.factionOf(e.playerId));
+// -- per-type line builders --------------------------------------------
 
-/** Capitalizes a sentence's first character. A no-op on "Lietuva" - already
- *  capitalized, since it takes no article - so this is safe to apply
- *  unconditionally rather than special-casing place names here too. */
-const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+function actorId(e: GameEvent, ctx: NoticeCtx): string | undefined {
+  return ctx.factionOf(e.playerId);
+}
 
-/** Shared shape for hostile targeted plays against the human (Raid, Shrewd
- *  marriage, Assassinate ruler): single actor keeps the plain sentence; N
- *  actors collapse into one "N players played X against you" notice with
- *  one standing bullet per actor. */
-function buildRelationPlayNotice(
+function changesFor(i: number, changes: StandingChange[][]): StandingChange[] {
+  return changes[i] ?? [];
+}
+
+function raidOrMarriageLines(
   events: GameEvent[],
+  changes: StandingChange[][],
   ctx: NoticeCtx,
-  title: string,
-  cardLabel: string,
-): Notice {
-  if (events.length === 1) {
-    const e = events[0];
-    const actorId = ctx.factionOf(e.playerId);
-    const actor = ctx.factionName(actorId);
-    const details = actorId !== undefined
-      ? [
-          standingLine(ctx, actorId),
-          ...(subjugationRisk(ctx, actorId)
-            ? [`A lead of ${barAgainstYou(ctx, actorId)} is enough to subjugate.`]
-            : []),
-        ]
-      : [];
-    return {
-      title,
-      what: `${actor} played ${cardLabel} against ${ctx.factionName(e.targetFactionId)}.`,
-      details,
-    };
-  }
-
-  const details = events.map((e) => {
-    const actorId = ctx.factionOf(e.playerId);
-    const actor = ctx.factionName(actorId);
-    const l = actorId !== undefined ? ctx.leads(actorId) : { might: 0, status: 0 };
-    const line = `${actor} - Might: ${fmtLead(l.might)}; Status: ${fmtLead(l.status)}`;
-    if (actorId === undefined || !subjugationRisk(ctx, actorId)) return line;
-    return `${line} - a lead of ${barAgainstYou(ctx, actorId)} subjugates you`;
-  });
-  return {
-    title,
-    what: `${events.length} players played ${cardLabel} against you:`,
-    details,
-  };
-}
-
-/** Raid / Shrewd marriage against the human. */
-function buildPlayNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  const raid = events[0].cardId === "raid";
-  const title = raid ? "Raided" : "A Shrewd Marriage";
-  const cardLabel = raid ? "Raid" : "Shrewd marriage";
-  return buildRelationPlayNotice(events, ctx, title, cardLabel);
-}
-
-/** Assassinate ruler against the human: same shape as Raid/Marriage (the
- *  standing line already shows Status even, post-effect).
- *
- *  The one card that changes who rules. The names come off the event, not
- *  from current state: by the time this renders, the successor is the
- *  sitting ruler and state can no longer say who died. */
-function buildAssassinateNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  const base = buildRelationPlayNotice(events, ctx, "A Ruler Falls", "Assassinate ruler");
-  if (events.length !== 1) return base;
-  const e = events[0];
-  if (e.targetRuler === undefined || e.successorRuler === undefined) return base;
-  const actorId = ctx.factionOf(e.playerId);
-  return {
-    ...base,
-    what: `${capitalize(ctx.factionNameWithArticle(actorId))} had ${e.targetRuler} killed.`,
-    details: [
-      `${e.successorRuler} now leads ${ctx.factionNameWithArticle(e.targetFactionId)}.`,
-      ...base.details,
+): SummaryLine[] {
+  return events.map((e, i) => ({
+    text: [
+      card(e.cardId ?? ""), t(" played against you by "), faction(actorId(e, ctx) ?? ""),
     ],
-  };
+    changes: changesFor(i, changes),
+    tone: "bad",
+  }));
 }
 
-/** Assassinate ruler against the human, nullified by a Bodyguard: the "what"
- *  line matches the successful case's shape, but the details report the
- *  block instead of a standing/threat line. */
-function buildAssassinatePreventedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  if (events.length === 1) {
-    const e = events[0];
-    const actor = ctx.factionName(ctx.factionOf(e.playerId));
-    return {
-      title: "Assassination Prevented",
-      what: `${actor} played Assassinate ruler against ${ctx.factionName(e.targetFactionId)}.`,
-      details: [
-        e.targetRuler === undefined
-          ? "Your bodyguard turned the blade - your Status lead is unchanged."
-          : `Your bodyguard turned the blade - ${e.targetRuler} lives and your Status lead is unchanged.`,
-      ],
-    };
+function raidOrMarriageFootnotes(events: GameEvent[], ctx: NoticeCtx): Segment[][] {
+  const seen = new Set<string>();
+  const out: Segment[][] = [];
+  for (const e of events) {
+    const id = actorId(e, ctx);
+    if (id === undefined || seen.has(id) || !subjugationRisk(ctx, id)) continue;
+    seen.add(id);
+    const bars = ctx.subjugationBarAgainstYou(id);
+    if (bars === null) continue;
+    out.push([
+      theFaction(id), t(` can subjugate you at a lead of ${barPhrase(bars)}.`),
+    ]);
   }
-
-  const details = events.map(
-    (e) => `${ctx.factionName(ctx.factionOf(e.playerId))} - prevented by your bodyguard`,
-  );
-  return {
-    title: "Assassination Prevented",
-    what: `${events.length} players played Assassinate ruler against you:`,
-    details,
-  };
+  return out;
 }
 
-/** Alliance sealed with the human: single actor keeps "played Alliance
- *  WITH you" (not against); N actors collapse into one notice with one
- *  "actor - until turn N" bullet each. */
-function buildAllianceNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  if (events.length === 1) {
-    const e = events[0];
-    const actorId = ctx.factionOf(e.playerId);
-    const actor = ctx.factionName(actorId);
-    const expiry = actorId !== undefined ? ctx.allianceExpiry(actorId) : undefined;
-    const details = expiry !== undefined
-      ? [`No hostile cards between you and ${actor} until turn ${expiry}.`]
-      : [];
-    return {
-      title: "An Alliance Sealed",
-      what: `${actor} played Alliance with ${ctx.factionName(e.targetFactionId)}.`,
-      details,
-    };
-  }
-
-  const details = events.map((e) => {
-    const actorId = ctx.factionOf(e.playerId);
-    const actor = ctx.factionName(actorId);
-    const expiry = actorId !== undefined ? ctx.allianceExpiry(actorId) : undefined;
-    return expiry !== undefined ? `${actor} - until turn ${expiry}` : actor;
-  });
-  return {
-    title: "An Alliance Sealed",
-    what: `${events.length} players sealed alliances with you:`,
-    details,
-  };
-}
-
-/** Subjugated: single event keeps the fealty/shift + standing format;
- *  a poach chain in one batch lists each transition, then the standing line
- *  for the FINAL overlord only, then the consequence once. */
-function buildSubjugatedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  if (events.length === 1) {
-    const e = events[0];
-    const actor = actorName(e, ctx);
-    const former = e.formerOverlordFactionId;
-    const details = [
-      former !== undefined
-        ? `Your allegiance shifts from ${ctx.factionName(former)} to ${actor}.`
-        : `You now owe fealty to ${actor}.`,
-      ...(e.overlordFactionId !== undefined ? [standingLine(ctx, e.overlordFactionId)] : []),
-      ...(former !== undefined && former !== e.overlordFactionId
-        ? [
-            standingLine(ctx, former),
-            `${ctx.factionName(former)} loses 1 Might and 1 Status against you.`,
-          ]
-        : []),
-    ];
-    return {
-      title: "Beneath the Yoke",
-      what: `${actor} played Subjugate against ${ctx.factionName(e.targetFactionId)}.`,
-      details,
-      consequence: PAY_TRIBUTE_CONSEQUENCE,
-    };
-  }
-
-  const bullets = events.map((e) => {
-    const actor = actorName(e, ctx);
-    const former = e.formerOverlordFactionId;
-    return former !== undefined
-      ? `${actor} tore you from ${ctx.factionName(former)}`
-      : `${actor} subjugated you`;
-  });
-  const finalEvent = events[events.length - 1];
-  const finalOverlord = finalEvent.overlordFactionId;
-  const finalFormer = finalEvent.formerOverlordFactionId;
-  const details = [
-    ...bullets,
-    ...(finalOverlord !== undefined ? [standingLine(ctx, finalOverlord)] : []),
-    ...(finalFormer !== undefined
-      ? [`${ctx.factionName(finalFormer)} loses 1 Might and 1 Status against you.`]
-      : []),
-  ];
-  return {
-    title: "Beneath the Yoke",
-    what: "Your allegiance changed this round:",
-    details,
-    consequence: PAY_TRIBUTE_CONSEQUENCE,
-  };
-}
-
-/** Released: single event keeps the plain sentence; N events in one batch
- *  collapse into one notice with a bullet per release. */
-function buildReleasedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  const lordName = (e: GameEvent): string =>
-    e.overlordFactionId !== undefined ? ctx.factionName(e.overlordFactionId) : "your overlord";
-
-  if (events.length === 1) {
-    const e = events[0];
-    return {
-      title: "The Yoke Is Broken",
-      what: `The fall of ${lordName(e)} to ${actorName(e, ctx)} releases you from vassalage.`,
-      details: [],
-      consequence: RELEASE_CONSEQUENCE,
-    };
-  }
-
-  const bullets = events.map(
-    (e) => `The fall of ${lordName(e)} to ${actorName(e, ctx)} set you free`,
-  );
-  return {
-    title: "The Yoke Is Broken",
-    what: "You were released this round:",
-    details: bullets,
-    consequence: RELEASE_CONSEQUENCE,
-  };
-}
-
-/** A rival played Subjugate on one of the human's vassals and took it. The
- *  wording avoids agreeing a verb with a faction name - the roster mixes
- *  plurals ("Curonians") with singulars ("Semigallian Confederacy"). */
-function buildVassalPoachedNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  if (events.length === 1) {
-    const e = events[0];
-    const actor = actorName(e, ctx);
-    return {
-      title: "A Vassal Torn Away",
-      what: `${actor} played Subjugate against your vassal ${ctx.factionName(e.targetFactionId)}.`,
-      details: [
-        `Fealty passes from you to ${actor}.`,
-        "They gain 1 Might and 1 Status against you.",
-        ...(e.overlordFactionId !== undefined
-          ? [standingLine(ctx, e.overlordFactionId)]
-          : []),
-      ],
-      consequence: realmShrunkConsequence(ctx),
-    };
-  }
-  return {
-    title: "A Vassal Torn Away",
-    what: "You lost vassals this round:",
-    details: events.map(
-      (e) => `${actorName(e, ctx)} took ${ctx.factionName(e.targetFactionId)} from you`,
-    ),
-    consequence: realmShrunkConsequence(ctx),
-  };
-}
-
-/** A vassal of the human played Revolt, the only way out of vassalage. It also
- *  costs the human a point on each track, doubled if the vassal held a reading. */
-function buildVassalBrokeFreeNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  const penalty = (e: GameEvent): string[] => {
-    const n = e.doubled ? 2 : 1;
-    return [`They gain ${n} Might and ${n} Status against you.`];
-  };
-
-  if (events.length === 1) {
-    const e = events[0];
-    const rebel = ctx.factionName(e.targetFactionId);
-    return {
-      title: "A Vassal Breaks Free",
-      what: `${rebel} played Revolt and cast off your overlordship.`,
-      details: [
-        ...penalty(e),
-        ...(e.targetFactionId !== undefined
-          ? [standingLine(ctx, e.targetFactionId)]
-          : []),
-      ],
-      consequence: realmShrunkConsequence(ctx),
-    };
-  }
-  return {
-    title: "A Vassal Breaks Free",
-    what: "Vassals cast off your overlordship this round:",
-    details: events.map(
-      (e) => `${ctx.factionName(e.targetFactionId)} played Revolt`,
-    ),
-    consequence: realmShrunkConsequence(ctx),
-  };
-}
-
-/** The human was subjugated, which frees every vassal they held. No
- *  consequence line: the Beneath the Yoke notice in the same round carries
- *  the mechanical cost. */
-function buildVassalsScatteredNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  if (events.length === 1) {
-    return {
-      title: "Your Vassals Scatter",
-      what:
-        "Your own subjugation released " +
-        `${ctx.factionName(events[0].targetFactionId)} from your service.`,
-      details: [],
-    };
-  }
-  return {
-    title: "Your Vassals Scatter",
-    what: "Your own subjugation released your vassals:",
-    details: events.map((e) => ctx.factionName(e.targetFactionId)),
-  };
-}
-
-/** Your own vassals preparing a revolt. Grouped, because two vassals can sow in
- *  the same round and two near-identical modals in a row is a nag. */
-function buildUnrestNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  const names = events.map((e) => ctx.factionName(e.targetFactionId));
-  return {
-    title: "Unrest Among Your Vassals",
-    what:
-      names.length === 1
-        ? `${names[0]} are preparing a revolt against you.`
-        : "Several of your vassals are preparing a revolt against you:",
-    details:
-      names.length === 1
-        ? [
-            "A Revolt is now in their deck. They will play it when they draw it.",
-            "Incorporating them before then ends the threat for good.",
-          ]
-        : [
-            ...names,
-            "Each has a Revolt in their deck now, and will play it when drawn.",
-          ],
-  };
-}
-
-/** A rival tried to prise one of your vassals away and missed. Worth saying
- *  precisely because nothing on the map moved: without this the attempt leaves
- *  no trace the player could ever see. */
-function buildVassalHeldNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  return {
-    title: "Your Vassal Holds",
-    what:
-      events.length === 1
-        ? `${ctx.factionName(events[0].overlordFactionId)} tried to take ${ctx.factionName(events[0].targetFactionId)} from you and failed.`
-        : "Rivals tried to take your vassals and failed:",
-    details:
-      events.length === 1
-        ? []
-        : events.map(
-            (e) =>
-              `${ctx.factionName(e.overlordFactionId)} against ${ctx.factionName(e.targetFactionId)}`,
-          ),
-  };
-}
-
-/** A rival tried to prise the human away from their own overlord and missed.
- *  Distinct from `buildVassalHeldNotice`, which is the human as the lord who
- *  kept a vassal; here the human is the prize. */
-function buildYouHeldNotice(events: GameEvent[], ctx: NoticeCtx): Notice {
-  const single = events.length === 1;
-  return {
-    title: "You Held",
-    what: single
-      ? `${ctx.factionName(events[0].overlordFactionId ?? events[0].targetFactionId)} tried to take you from ${ctx.factionName(events[0].formerOverlordFactionId)} and failed.`
-      : "Rivals tried to take you and failed:",
-    details: single
-      ? []
-      : events.map((e) => ctx.factionName(e.overlordFactionId)),
-    consequence:
-      "Their card is spent. You are still your overlord's vassal, not theirs.",
-  };
-}
-
-/** The human's own overlord tried to annex them permanently and the roll
- *  missed. The single most consequential near-miss in the game: had it landed,
- *  the run would have ended. */
-function buildAnnexationResistedNotice(
+function assassinateLines(
   events: GameEvent[],
+  changes: StandingChange[][],
   ctx: NoticeCtx,
-): Notice {
-  return {
-    title: "You Resisted",
-    what:
-      `${ctx.factionName(events[0].overlordFactionId)} tried to absorb your realm permanently and failed.`,
-    details: [],
-    consequence:
-      "Their card is spent. The longer you stay their vassal, the better " +
-      "their next attempt's odds - breaking free resets that clock.",
-  };
+): SummaryLine[] {
+  return events.map((e, i) => {
+    if (e.prevented) {
+      return {
+        text: [
+          card("assassinate-ruler"), t(" by "), faction(actorId(e, ctx) ?? ""),
+          t(" - your bodyguard turned the blade"),
+        ],
+        changes: [],
+        tone: "good" as const,
+      };
+    }
+    const text: Segment[] = [card("assassinate-ruler")];
+    if (e.targetRuler !== undefined) text.push(t(` took ${e.targetRuler}`));
+    if (e.successorRuler !== undefined) text.push(t(`; ${e.successorRuler} now leads you`));
+    text.push(t(" - by "), faction(actorId(e, ctx) ?? ""));
+    return { text, changes: changesFor(i, changes), tone: "bad" as const };
+  });
 }
+
+function allianceLines(
+  events: GameEvent[],
+  _changes: StandingChange[][],
+  ctx: NoticeCtx,
+): SummaryLine[] {
+  return events.map((e) => {
+    const id = actorId(e, ctx);
+    const expiry = id !== undefined ? ctx.allianceExpiry(id) : undefined;
+    return {
+      text: [
+        card("alliance"), t(" sealed with you by "), faction(id ?? ""),
+        ...(expiry !== undefined ? [t(`, until turn ${expiry}`)] : []),
+      ],
+      changes: [],
+      tone: "good" as const,
+    };
+  });
+}
+
+function subjugatedLines(
+  events: GameEvent[],
+  changes: StandingChange[][],
+  ctx: NoticeCtx,
+  role: HumanRole,
+): SummaryLine[] {
+  if (role === "lord") {
+    return events.map((e, i) => ({
+      text: [
+        card("subjugate"), t(" by "), faction(actorId(e, ctx) ?? ""),
+        t(" took your vassal "), faction(e.targetFactionId ?? ""),
+      ],
+      changes: changesFor(i, changes),
+      tone: "bad",
+    }));
+  }
+  return events.map((e, i) => ({
+    text: [
+      card("subjugate"), t(" by "), faction(actorId(e, ctx) ?? ""),
+      ...(e.formerOverlordFactionId !== undefined
+        ? [t(" - your allegiance shifts from "), faction(e.formerOverlordFactionId), t(" to them")]
+        : [t(" - you owe fealty to them")]),
+    ],
+    changes: changesFor(i, changes),
+    tone: "bad",
+  }));
+}
+
+function reclaimedLines(
+  events: GameEvent[],
+  changes: StandingChange[][],
+  ctx: NoticeCtx,
+): SummaryLine[] {
+  return events.map((e, i) => ({
+    text: [
+      card("revolt"), t(" by "), faction(e.targetFactionId ?? ""),
+      t(" cast off your overlordship"),
+    ],
+    changes: changesFor(i, changes),
+    tone: "bad",
+  }));
+}
+
+function releasedLines(events: GameEvent[], ctx: NoticeCtx, role: HumanRole): SummaryLine[] {
+  if (role === "lord") {
+    if (events.length === 1) {
+      return [{
+        text: [t("Your subjugation released "), faction(events[0].targetFactionId ?? ""), t(" from your service")],
+        changes: [],
+        tone: "neutral",
+      }];
+    }
+    const names: Segment[] = events.flatMap((e, i) => {
+      const isLast = i === events.length - 1;
+      const isSecondLast = i === events.length - 2;
+      return [
+        faction(e.targetFactionId ?? ""),
+        ...(isLast ? [] : isSecondLast ? [t(" and ")] : [t(", ")]),
+      ];
+    });
+    return [{
+      text: [t("Your subjugation released "), ...names, t(" from your service")],
+      changes: [],
+      tone: "neutral",
+    }];
+  }
+  return events.map((e) => ({
+    text: [
+      t("The fall of "),
+      ...(e.overlordFactionId !== undefined ? [faction(e.overlordFactionId)] : [t("your overlord")]),
+      t(" to "), faction(actorId(e, ctx) ?? ""),
+      t(" released you from vassalage"),
+    ],
+    changes: [],
+    tone: "good",
+  }));
+}
+
+function unrestLines(events: GameEvent[]): SummaryLine[] {
+  if (events.length === 1) {
+    return [{
+      text: [faction(events[0].targetFactionId ?? ""), t(" is preparing a revolt against you")],
+      changes: [],
+      tone: "bad",
+    }];
+  }
+  const names: Segment[] = events.flatMap((e, i) => {
+    const isLast = i === events.length - 1;
+    const isSecondLast = i === events.length - 2;
+    return [
+      faction(e.targetFactionId ?? ""),
+      ...(isLast ? [] : isSecondLast ? [t(" and ")] : [t(", ")]),
+    ];
+  });
+  return [{
+    text: [...names, t(" are preparing a revolt against you")],
+    changes: [],
+    tone: "bad",
+  }];
+}
+
+function subjugateFailedLines(events: GameEvent[], ctx: NoticeCtx, role: HumanRole): SummaryLine[] {
+  if (role === "lord") {
+    return events.map((e) => ({
+      text: [
+        faction(e.overlordFactionId ?? ""), t(" failed to take "),
+        faction(e.targetFactionId ?? ""), t(" from you"),
+      ],
+      changes: [],
+      tone: "good",
+    }));
+  }
+  return events.map((e) => ({
+    text: [
+      faction(e.overlordFactionId ?? e.targetFactionId ?? ""), t(" failed to take you from "),
+      faction(e.formerOverlordFactionId ?? ""),
+    ],
+    changes: [],
+    tone: "good",
+  }));
+}
+
+function incorporateFailedLines(events: GameEvent[]): SummaryLine[] {
+  return events.map((e) => ({
+    text: [
+      faction(e.overlordFactionId ?? ""), t(" failed to absorb your realm permanently"),
+    ],
+    changes: [],
+    tone: "good",
+  }));
+}
+
+// -- the registry ---------------------------------------------------------
 
 export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   draw: { kind: "silent", reason: "routine; visible in hand and log" },
@@ -511,32 +361,46 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
         e.cardId === "alliance") &&
       e.targetFactionId === ctx.humanFactionId &&
       e.playerId !== 1,
-    build: (e, ctx) =>
-      e.cardId === "assassinate-ruler"
-        ? e.prevented
-          ? buildAssassinatePreventedNotice([e], ctx)
-          : buildAssassinateNotice([e], ctx)
-        : e.cardId === "alliance"
-          ? buildAllianceNotice([e], ctx)
-          : buildPlayNotice([e], ctx),
+    lines: (events, changes, ctx) => {
+      const cardId = events[0].cardId;
+      if (cardId === "assassinate-ruler") return assassinateLines(events, changes, ctx);
+      if (cardId === "alliance") return allianceLines(events, changes, ctx);
+      return raidOrMarriageLines(events, changes, ctx);
+    },
+    // Raid, Shrewd marriage and Assassinate ruler are all hostile plays that
+    // move (or tried to move) a lead against the human, so all three carry
+    // the same danger cue: is this actor now able to subjugate the human?
+    // That question is about the actor's CURRENT standing, not this play's
+    // own effect, so a prevented Assassinate ruler still asks it.
+    footnotes: (events, ctx) => {
+      const cardId = events[0].cardId;
+      if (cardId === "raid" || cardId === "shrewd-marriage" || cardId === "assassinate-ruler") {
+        return raidOrMarriageFootnotes(events, ctx);
+      }
+      return [];
+    },
   },
   discard: { kind: "silent", reason: "routine; visible in log" },
   reshuffle: { kind: "silent", reason: "routine; deck pulse animation" },
   subjugated: {
     kind: "modal",
     appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) !== null,
-    build: (e, ctx) =>
-      humanRoleIn(e, ctx) === "lord"
-        ? buildVassalPoachedNotice([e], ctx)
-        : buildSubjugatedNotice([e], ctx),
+    lines: (events, changes, ctx) =>
+      subjugatedLines(events, changes, ctx, humanRoleIn(events[0], ctx) ?? "self"),
+    footnotes: (events, ctx) => {
+      const role = humanRoleIn(events[0], ctx) ?? "self";
+      return role === "self" ? [PAY_TRIBUTE_FOOTNOTE()] : [realmShrunkFootnote(ctx)];
+    },
   },
   released: {
     kind: "modal",
     appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) !== null,
-    build: (e, ctx) =>
-      humanRoleIn(e, ctx) === "lord"
-        ? buildVassalsScatteredNotice([e], ctx)
-        : buildReleasedNotice([e], ctx),
+    lines: (events, _changes, ctx) =>
+      releasedLines(events, ctx, humanRoleIn(events[0], ctx) ?? "self"),
+    footnotes: (events, ctx) => {
+      const role = humanRoleIn(events[0], ctx) ?? "self";
+      return role === "self" ? [RELEASE_FOOTNOTE()] : [];
+    },
   },
   incorporated: {
     kind: "silent",
@@ -547,7 +411,8 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // walking out on the human is news, and used to pass unannounced.
     kind: "modal",
     appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) === "lord",
-    build: (e, ctx) => buildVassalBrokeFreeNotice([e], ctx),
+    lines: reclaimedLines,
+    footnotes: (_events, ctx) => [realmShrunkFootnote(ctx)],
   },
   tribute: {
     kind: "silent",
@@ -567,9 +432,7 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // Your own vassal sowing is the warning that starts the race: a Revolt is
     // now in their deck and will surface in a few turns. It is the only way to
     // learn this - you cannot see their hand - and it is what turns the
-    // Incorporate odds into a decision rather than a readout. Gamble the card
-    // now at poor odds, or wait for the clock and risk the Revolt landing
-    // first. Without this notice that whole choice is invisible.
+    // Incorporate odds into a decision rather than a readout.
     //
     // Only fires for the human's OWN vassal. The human's own sowing needs no
     // notice, and a rival's is genuinely unobservable - see the log filter in
@@ -577,7 +440,11 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // same reason.
     appliesToHuman: (e, ctx) =>
       e.overlordFactionId === ctx.humanFactionId && e.playerId !== 1,
-    build: (e, ctx) => buildUnrestNotice([e], ctx),
+    lines: (events) => unrestLines(events),
+    footnotes: () => [[
+      t("A "), card("revolt"), t(" is in their deck now. Incorporating them "),
+      t("before it surfaces ends the threat for good."),
+    ]],
   },
   "subjugate-failed": {
     kind: "modal",
@@ -585,15 +452,19 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // must see: nothing on the map changed, so without a notice the attempt
     // leaves no trace at all. Two ways it can touch the human - they kept a
     // vassal somebody reached for, or they were themselves the prize - and the
-    // role split in `humanRoleIn` picks the wording.
+    // role split picks the wording.
     appliesToHuman: (e, ctx) =>
       e.playerId !== 1 &&
       (e.formerOverlordFactionId === ctx.humanFactionId ||
         e.targetFactionId === ctx.humanFactionId),
-    build: (e, ctx) =>
-      humanRoleIn(e, ctx) === "lord"
-        ? buildVassalHeldNotice([e], ctx)
-        : buildYouHeldNotice([e], ctx),
+    lines: (events, _changes, ctx) =>
+      subjugateFailedLines(events, ctx, humanRoleIn(events[0], ctx) ?? "self"),
+    footnotes: (events, ctx) => {
+      const role = humanRoleIn(events[0], ctx) ?? "self";
+      return role === "self"
+        ? [[t("Their card is spent. You are still your overlord's vassal, not theirs.")]]
+        : [];
+    },
   },
   "incorporate-failed": {
     kind: "modal",
@@ -608,7 +479,11 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // failed gamble is a nag. `playerId !== 1` is what keeps that true.
     appliesToHuman: (e, ctx) =>
       e.targetFactionId === ctx.humanFactionId && e.playerId !== 1,
-    build: (e, ctx) => buildAnnexationResistedNotice([e], ctx),
+    lines: (events) => incorporateFailedLines(events),
+    footnotes: () => [[
+      t("Their card is spent. The longer you stay their vassal, the better their "),
+      t("next attempt's odds - breaking free resets that clock."),
+    ]],
   },
   garrisoned: {
     kind: "silent",
@@ -627,74 +502,65 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   unified: { kind: "silent", reason: "postmortem overlay covers it" },
 };
 
-/** Single-event internal path, kept for direct per-event use in tests/debug.
- *  The HUD calls buildNotices instead. */
-export function noticeFor(e: GameEvent, ctx: NoticeCtx): Notice | null {
-  const rule = NOTICE_RULES[e.type];
-  if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) return null;
-  return rule.build(e, ctx);
-}
+/** The HUD's entry point: given a batch of fresh log events, walks the WHOLE
+ *  batch for standings (see standings.ts - this needs the silent events too,
+ *  not just the notice-worthy ones), groups the noticeable ones by event type
+ *  + cardId + human role (so e.g. three Raids against the human in one AI
+ *  round become three lines in one modal, ordered by first occurrence), and
+ *  returns the round as one summary. Null when the round touched the human in
+ *  no way worth interrupting for. */
+export function buildRoundSummary(events: GameEvent[], ctx: NoticeCtx): RoundSummary | null {
+  const walkCtx = {
+    humanFactionId: ctx.humanFactionId,
+    factionOf: ctx.factionOf,
+    leads: ctx.leads,
+  };
+  const allChanges = walkStandings(events, walkCtx);
 
-/** The HUD's entry point: given a batch of fresh log events, groups the
- *  noticeable ones by event type + cardId (so e.g. three Raids against the
- *  human in one AI round collapse into a single modal) and returns one
- *  Notice per group, ordered by first occurrence in the log. */
-export function buildNotices(events: GameEvent[], ctx: NoticeCtx): Notice[] {
   const order: {
     type: GameEventType;
-    role: HumanRole;
     events: GameEvent[];
+    changes: StandingChange[][];
   }[] = [];
   const indexByKey = new Map<string, number>();
-  for (const e of events) {
+  events.forEach((e, i) => {
     const rule = NOTICE_RULES[e.type];
-    if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) continue;
+    if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) return;
     // The role is part of the key: being subjugated and having a different
     // vassal poached are both `subjugated` events, and merging them would
     // describe one with the other's wording.
     const role = humanRoleIn(e, ctx) ?? "self";
-    const key =
-      `${e.type}:${e.cardId ?? ""}:${e.prevented ? "prevented" : ""}:${role}`;
+    const key = `${e.type}:${e.cardId ?? ""}:${e.prevented ? "prevented" : ""}:${role}`;
     let idx = indexByKey.get(key);
     if (idx === undefined) {
       idx = order.length;
       indexByKey.set(key, idx);
-      order.push({ type: e.type, role, events: [] });
+      order.push({ type: e.type, events: [], changes: [] });
     }
     order[idx].events.push(e);
-  }
-  return order.map(({ type, role, events: groupEvents }) => {
-    switch (type) {
-      case "play": {
-        const cardId = groupEvents[0].cardId;
-        if (cardId === "assassinate-ruler") {
-          return groupEvents[0].prevented
-            ? buildAssassinatePreventedNotice(groupEvents, ctx)
-            : buildAssassinateNotice(groupEvents, ctx);
-        }
-        if (cardId === "alliance") return buildAllianceNotice(groupEvents, ctx);
-        return buildPlayNotice(groupEvents, ctx);
-      }
-      case "subjugated":
-        return role === "lord"
-          ? buildVassalPoachedNotice(groupEvents, ctx)
-          : buildSubjugatedNotice(groupEvents, ctx);
-      case "released":
-        return role === "lord"
-          ? buildVassalsScatteredNotice(groupEvents, ctx)
-          : buildReleasedNotice(groupEvents, ctx);
-      case "reclaimed":
-        return buildVassalBrokeFreeNotice(groupEvents, ctx);
-      case "seeded":
-        return buildUnrestNotice(groupEvents, ctx);
-      case "subjugate-failed":
-        return role === "lord"
-          ? buildVassalHeldNotice(groupEvents, ctx)
-          : buildYouHeldNotice(groupEvents, ctx);
-      case "incorporate-failed":
-        return buildAnnexationResistedNotice(groupEvents, ctx);
-      default:
-        throw new Error(`no batch notice builder for grouped event type: ${type}`);
-    }
+    order[idx].changes.push(allChanges[i]);
   });
+
+  if (order.length === 0) return null;
+
+  const lines = order.flatMap(({ type, events: groupEvents, changes: groupChanges }) => {
+    const rule = NOTICE_RULES[type];
+    if (rule.kind !== "modal") return [];
+    return rule.lines(groupEvents, groupChanges, ctx);
+  });
+
+  const footnoteSeen = new Set<string>();
+  const footnotes: Segment[][] = [];
+  for (const { type, events: groupEvents } of order) {
+    const rule = NOTICE_RULES[type];
+    if (rule.kind !== "modal" || rule.footnotes === undefined) continue;
+    for (const fn of rule.footnotes(groupEvents, ctx)) {
+      const key = footnoteKey(fn);
+      if (footnoteSeen.has(key)) continue;
+      footnoteSeen.add(key);
+      footnotes.push(fn);
+    }
+  }
+
+  return { title: "What happened during their turns", lines, footnotes };
 }

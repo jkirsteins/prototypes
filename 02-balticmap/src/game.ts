@@ -1,7 +1,7 @@
 import { buildDeck, buildAiDeck, shuffle, CARDS, DECK_SIZE, DOUBLABLE_CARDS, type Rng } from "./cards";
 import {
   allianceKey, bumpMight, bumpMightAll, bumpMightAllBy, bumpMightBy, bumpStatus, bumpStatusBy,
-  levelStatus, realmOf,
+  leadsOf, levelStatus, realmOf,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
@@ -26,8 +26,20 @@ export interface GameEvent {
   targetFactionId?: string;
   overlordFactionId?: string;
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
-  track?: "status" | "might"; // tribute
-  amount?: number; // garrisoned: Might gained against every living faction
+  /** Which track `amount` moved. Absent where the event moves both tracks (a
+   *  poach or revolt penalty is +1/+1 by rule) or moves nothing. */
+  track?: "status" | "might";
+  /** How far this event moved a relation counter, from the ACTOR's side (the
+   *  playerId this event belongs to) - written at every site that bumps a
+   *  relation, so src/standings.ts can reconstruct a before -> after standing
+   *  without re-deriving the rules from state that has already moved on.
+   *  Assassinate ruler is the exception: it levels rather than adds, and
+   *  `amount` records the actor's Status LEAD over the target immediately
+   *  before the levelling, so the "before" survives the reset that erased it.
+   *  See the rule in AGENTS.md: a ninth site that forgets this drifts the
+   *  round summary silently, which is why tests/standings.test.ts replays a
+   *  full game and checks the walk against the real relations. */
+  amount?: number;
   prevented?: boolean; // play: a nullified Assassinate ruler (Bodyguard)
   doubled?: boolean; // play, reclaimed: a card whose numbers a reading doubled
   actorRuler?: string; // ruler of the acting faction when this was logged
@@ -424,13 +436,16 @@ export function playCard(
   if (cardId === "raid" && targetId !== undefined) {
     const gain = raidYield(borderStrength(viewOf(state), p.factionId, targetId));
     relations = bumpMightBy(relations, p.factionId, targetId, gain * mult);
+    events[0] = { ...events[0], amount: gain * mult, track: "might" };
   } else if (cardId === "shrewd-marriage" && targetId !== undefined) {
     relations = bumpStatusBy(relations, p.factionId, targetId, mult);
+    events[0] = { ...events[0], amount: mult, track: "status" };
   } else if (cardId === "fortify") {
     const living = state.factionIds.filter(
       (f) => f !== p.factionId && !(f in incorporated),
     );
     relations = bumpMightAllBy(relations, p.factionId, living, mult);
+    events[0] = { ...events[0], amount: mult, track: "might" };
   } else if (cardId === "favourable-omens") {
     if (!omens.includes(p.factionId)) omens = [...omens, p.factionId];
   } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
@@ -442,6 +457,9 @@ export function playCard(
         targetRuler: rulerOf(rulers, targetId).name,
       };
     } else {
+      // Captured before assassinate() levels it away: the "before" of a
+      // standings line has to come from somewhere once the reset erases it.
+      const preStatusLead = leadsOf(relations, p.factionId, targetId).status;
       const out = assassinate(state, rulers, relations, p.factionId, targetId);
       relations = out.relations;
       rulers = out.rulers;
@@ -449,6 +467,8 @@ export function playCard(
         ...events[0],
         targetRuler: out.killed,
         successorRuler: out.successor,
+        amount: preStatusLead,
+        track: "status",
       };
     }
   } else if (cardId === "found-settlement" && targetId !== undefined) {
@@ -554,7 +574,7 @@ export function playCard(
     );
     events.push({
       turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
-      targetFactionId: p.factionId, overlordFactionId: former,
+      targetFactionId: p.factionId, overlordFactionId: former, amount: mult,
       ...(doubled ? { doubled: true } : {}),
     });
   } else if (cardId === "pay-tribute") {
@@ -573,7 +593,7 @@ export function playCard(
     events.push({
       turn: state.turn, playerId: p.id, type: "tribute",
       targetFactionId: p.factionId, overlordFactionId: lord,
-      track: tributeTrack,
+      track: tributeTrack, amount: mult,
     });
   }
 

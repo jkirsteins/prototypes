@@ -164,6 +164,15 @@ export function formatLead(
     : `${label}${value}/${required}`;
 }
 
+/** "Might +1 -> 0" for the round summary: both numbers are the human's signed
+ *  lead over the other side, direction included - the same convention as the
+ *  map badges and the scoreboard. ASCII "->", never a unicode arrow: nothing
+ *  in this codebase uses one. */
+export function standingChangeText(c: { track: "might" | "status"; before: number; after: number }): string {
+  const label = c.track === "might" ? "Might" : "Status";
+  return `${label} ${formatLead("", c.before)} -> ${formatLead("", c.after)}`;
+}
+
 /** Which subjugation bar a track is racing toward. The bars are asymmetric -
  *  each counts the realm of the side being taken - so a badge showing both
  *  tracks against the player's bar quotes the wrong number the moment the

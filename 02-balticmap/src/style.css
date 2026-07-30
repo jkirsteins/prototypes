@@ -145,7 +145,15 @@ svg.map.dragging {
   font-size: 13px;
   pointer-events: none;
   white-space: pre-line;
-  z-index: 10;
+  /* Above .notice-overlay (z-index 40): a card/faction name hovered inside
+     the round-summary modal must show its tip above the modal, not behind it. */
+  z-index: 60;
+}
+
+.rt-card,
+.rt-faction {
+  border-bottom: 1px dotted currentColor;
+  cursor: help;
 }
 
 .tooltip-line.tone-good {
@@ -769,8 +777,9 @@ svg.map.dragging {
   padding: 8px 4px;
   text-align: center;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  transition-property: transform;
-  transition-timing-function: ease;
+  /* No transition-property here: the flight is driven by the Web Animations
+     API in src/animate.ts (an el.animate() call per flight), and a CSS
+     transition on the same property would race it. */
 }
 
 .flying-card.back {
@@ -787,15 +796,11 @@ svg.map.dragging {
   visibility: hidden;
 }
 
-.pile-deck.pulse .pile-stack {
-  animation: pile-pulse 400ms ease;
-}
-
-@keyframes pile-pulse {
-  50% {
-    transform: scale(1.12);
-  }
-}
+/* .pulse itself carries no animation: src/hud.ts drives the scale bump with
+   a runAnimation() call on .pile-stack (see pulseDeck in src/hud.ts), so the
+   duration lives in one place instead of a hardcoded number here that a JS
+   constant can silently drift from. The class exists as a styling hook and
+   for the "is it pulsing" test assertion. */
 
 /* Cascade tie-breaker for hidden panels. Rules appended after this point
    must pair display overrides with their own .x.hidden rule (as
@@ -821,7 +826,7 @@ svg.map.dragging {
 }
 
 .notice-card {
-  width: min(420px, calc(100% - 48px));
+  width: min(520px, calc(100% - 48px));
   background: #fdf9f1;
   border: 1px solid #c9b896;
   border-radius: 10px;
@@ -833,18 +838,47 @@ svg.map.dragging {
 
 .notice-title {
   font-size: 22px;
-  margin-bottom: 10px;
-}
-
-.notice-what {
-  font-size: 14px;
-  margin-bottom: 10px;
-}
-
-.notice-consequence {
-  font-size: 13px;
-  font-weight: 600;
   margin-bottom: 14px;
+}
+
+.notice-lines {
+  list-style: none;
+  text-align: left;
+  margin-bottom: 10px;
+}
+
+.notice-line {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.notice-change {
+  font-variant-numeric: tabular-nums;
+}
+
+.notice-change.lead-good {
+  color: #2e7d32;
+}
+
+.notice-change.lead-bad {
+  color: #b3402a;
+}
+
+.notice-change.lead-even {
+  color: #6b5d49;
+}
+
+.notice-footnotes {
+  border-top: 1px solid #e2d5b8;
+  padding-top: 10px;
+  margin-bottom: 14px;
+}
+
+.notice-footnote {
+  font-size: 12px;
+  color: #6b5d49;
+  text-align: left;
+  margin-bottom: 4px;
 }
 
 .notice-continue {
@@ -892,28 +926,6 @@ svg.map.dragging {
 
 .pm-card-text {
   color: #cac2b5;
-}
-
-.notice-details {
-  margin-bottom: 10px;
-}
-
-.notice-detail {
-  font-size: 13px;
-  margin-bottom: 4px;
-}
-
-/* 2+ actor lines (a batched raid/subjugation/release round) read better as a
-   left-aligned bulleted list; a single detail line stays centered as today. */
-.notice-details.multi {
-  text-align: left;
-}
-
-.notice-details.multi .notice-detail {
-  display: list-item;
-  list-style-type: disc;
-  list-style-position: inside;
-  margin-left: 4px;
 }
 
 .card .card-tip {

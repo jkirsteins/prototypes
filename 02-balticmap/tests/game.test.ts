@@ -1258,3 +1258,86 @@ describe("surrender", () => {
     expect(next.log.some((x) => x.type === "defeat")).toBe(false);
   });
 });
+
+// Every site that moves a relation counter records how far, so
+// src/standings.ts can reconstruct a before -> after without re-deriving the
+// rules from state that has already moved on. See the doc comment on
+// GameEvent.amount and the rule in AGENTS.md.
+describe("event amount/track", () => {
+  it("raid records the doubled yield and the might track", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["raid"]);
+    g = { ...g, omens: ["beta"] }; // doubled
+    const after = playCard(g, 0, rng(), "alpha");
+    const gain = raidYield(1); // one-land border on LINE_ADJ
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "raid", amount: gain * 2, track: "might",
+    });
+  });
+
+  it("shrewd marriage records mult and the status track", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["shrewd-marriage"]);
+    g = { ...g, omens: ["beta"] };
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "shrewd-marriage", amount: 2, track: "status",
+    });
+  });
+
+  it("fortify records mult and the might track, with no target", () => {
+    const g = withHand(playingState(LINE_ADJ), 0, ["fortify"]);
+    const after = playCard(g, 0, rng());
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "fortify", amount: 1, track: "might",
+    });
+    expect(after.log.at(-1)?.targetFactionId).toBeUndefined();
+  });
+
+  it("a landed assassination records the actor's Status lead from before the reset", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["assassinate-ruler"]);
+    g = withRel(g, bumpStatus(bumpStatus(g.relations, "beta", "alpha"), "beta", "alpha"));
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "assassinate-ruler", amount: 2, track: "status",
+    });
+    // and the level actually happened - the "before" is not just echoing 0
+    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
+  });
+
+  it("a prevented assassination records no amount - nothing moved", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["assassinate-ruler"]);
+    g = { ...g, bodyguards: ["alpha"] };
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(after.log.at(-1)?.prevented).toBe(true);
+    expect(after.log.at(-1)?.amount).toBeUndefined();
+  });
+
+  it("revolt records mult on the reclaimed event, both tracks by 1 rule", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = { ...g, omens: ["beta"] };
+    g = withHand(g, 0, ["revolt"]);
+    const after = playCard(g, 0, rng());
+    expect(after.log.at(-1)).toMatchObject({ type: "reclaimed", amount: 2 });
+    expect(after.log.at(-1)?.track).toBeUndefined();
+  });
+
+  it("tribute records mult alongside the track it already carried", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = { ...g, omens: ["beta"] };
+    g = withHand(g, 0, ["pay-tribute"]);
+    const after = playCard(g, 0, rng(), undefined, "might");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "tribute", track: "might", amount: 2,
+    });
+  });
+
+  it("a successful subjugation carries no amount - the +1/+1 poach penalty is a constant", () => {
+    let g = playingState(LINE_ADJ);
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after.log.at(-1)).toMatchObject({ type: "subjugated" });
+    expect(after.log.at(-1)?.amount).toBeUndefined();
+  });
+});

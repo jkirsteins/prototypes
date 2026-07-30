@@ -105,6 +105,12 @@ let game: GameState = newGame(
 let armed: number | null = null; // hand index of the armed targeted card
 let pendingTribute: number | null = null; // hand index awaiting a track choice
 let hoveredRegion: Region | null = null; // region under the cursor, for hover re-apply on refresh
+// True from a committed human action until the AI chain has resolved and the
+// round summary (if any) is on screen. The hand is already inert in this
+// window (renderHand disables it whenever it is not the human's turn), so
+// this exists for the map and the menu buttons: nothing must act while the
+// human's card is still flying or the AI is still resolving behind it.
+let resolving = false;
 
 function inPlay(): boolean {
   return (
@@ -537,13 +543,23 @@ function bankSeen(): void {
 }
 
 /** After a completed human action: advance, then run every AI turn back to
- *  back (each AI plays or discards; the loop stops on an ending phase). */
+ *  back (each AI plays or discards; the loop stops on an ending phase).
+ *
+ *  The AI chain does not start until the human's played card has finished
+ *  flying (`hud.afterPlayAnimation`) - resolving it on a bare `setTimeout(0)`
+ *  used to put the round-summary modal over a card the player was still
+ *  watching move. The human's own effect is revealed immediately below,
+ *  while their card is still in the air: the card flies over the board it
+ *  just changed, and the "before" of every summary line is then the number
+ *  the player was looking at while it flew. Revealing the AI round early
+ *  would make that "before" a lie. */
 function afterHumanAction(): void {
   game = advance(game, rng);
   if (game.phase === "victory" || game.phase === "defeat") bankSeen();
   refresh();
   if (game.phase !== "playing" || isHumanTurn(game)) return;
-  setTimeout(() => {
+  resolving = true;
+  hud.afterPlayAnimation(() => {
     let iterations = 0;
     while (game.phase === "playing" && !isHumanTurn(game)) {
       if (++iterations > 1000) {
@@ -553,8 +569,9 @@ function afterHumanAction(): void {
       game = advance(aiTakeTurn(game, rng), rng);
     }
     if (game.phase === "victory" || game.phase === "defeat") bankSeen();
+    resolving = false;
     refresh();
-  }, 0);
+  });
 }
 
 const hud = createHud(
@@ -562,6 +579,11 @@ const hud = createHud(
   {
     onNewGame() {
       bankSeen();
+      // Belt-and-braces: onNewGame is unreachable mid-resolution in practice
+      // (the menu is hidden while playing, and the postmortem appears only
+      // once the run has ended), but a stray call must not leave a stale
+      // continuation armed against the fresh game that follows.
+      resolving = false;
       game = startGame(newGame(
         data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
         SITE_LANDS,
@@ -576,7 +598,7 @@ const hud = createHud(
       refresh();
     },
     onSurrender() {
-      if (game.phase !== "playing") return;
+      if (game.phase !== "playing" || resolving) return;
       disarm();
       cancelTribute();
       game = surrender(game);
@@ -584,7 +606,7 @@ const hud = createHud(
       refresh();
     },
     onPlayCard(index) {
-      if (!isHumanTurn(game) || game.playedThisTurn) return;
+      if (!isHumanTurn(game) || game.playedThisTurn || resolving) return;
       cancelTribute();
       if (discardMode()) {
         disarm();
@@ -620,7 +642,7 @@ const hud = createHud(
       afterHumanAction();
     },
     onTributeTrack(track) {
-      if (pendingTribute === null) return;
+      if (pendingTribute === null || resolving) return;
       const index = pendingTribute;
       cancelTribute();
       game = playCard(game, index, rng, undefined, track);
@@ -663,6 +685,22 @@ const hud = createHud(
     },
     isDiscardMode() {
       return game.players.length > 0 && discardMode();
+    },
+    onHighlightFaction(factionId) {
+      // Segments carry FACTION ids; applyRealmHover takes a Region, and the
+      // two id spaces are different words - see the comment above
+      // regionByFaction. Deliberately does not touch hoveredRegion: that
+      // tracks the cursor on the map and is what refresh() re-asserts, while
+      // a name hover here is transient and must not survive the next refresh.
+      const regionId = factionId === null ? undefined : regionByFaction.get(factionId);
+      const region = regionId === undefined ? null : regionById.get(regionId) ?? null;
+      applyRealmHover(region);
+    },
+    onShowTip(lines, clientX, clientY) {
+      tooltip.showLines(lines, clientX, clientY);
+    },
+    onHideTip() {
+      tooltip.hide();
     },
     lootInfo() {
       return game.seenThisRun
@@ -744,6 +782,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
     else panel.hide();
   },
   interceptClick(regionId) {
+    if (resolving) return true; // swallow: no selection while the round resolves
     if (game.phase === "pick-faction") {
       if (regionId === null) return true;
       game = pickFaction(game, regionById.get(regionId)!.faction, rng);

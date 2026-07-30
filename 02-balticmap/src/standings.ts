@@ -1,0 +1,199 @@
+import type { GameEvent, TributeTrack } from "./game";
+
+/** The human's lead over `factionId` on one track, immediately before and
+ *  after one event. Always the human's SIGNED lead: positive = you lead.
+ *  Same convention as the map badges, the scoreboard and `formatLead`. */
+export interface StandingChange {
+  factionId: string;
+  track: TributeTrack;
+  before: number;
+  after: number;
+}
+
+/** How one event moved the human's lead over one faction. `set` is
+ *  Assassinate ruler, the one card that levels instead of adding. */
+type LeadMove =
+  | { kind: "add"; factionId: string; track: TributeTrack; delta: number }
+  | { kind: "set"; factionId: string; track: TributeTrack; from: number };
+
+export interface WalkCtx {
+  humanFactionId: string;
+  factionOf(playerId: number): string | undefined;
+  /** The human's lead over this faction NOW, i.e. after every event handed to
+   *  `walkStandings` has already applied. The walk runs backwards from here -
+   *  it is the only truth available, since notices are built after the fact. */
+  leads(factionId: string): { might: number; status: number };
+}
+
+/** Every way a relation counter moves in game.ts, translated into the
+ *  human's view. There are exactly eight bump sites (raid, shrewd marriage,
+ *  fortify, assassinate, the subjugate/revolt poach penalty, tribute, and the
+ *  passive garrison) and this switch is all eight - see the doc comment on
+ *  `GameEvent.amount` and the rule in AGENTS.md. `tests/standings.test.ts`
+ *  replays real seeded games and checks this against the actual relations, so
+ *  a ninth site that forgets to record its amount fails there rather than
+ *  drifting silently in the round summary.
+ *
+ *  Fortify's "every other living faction" fan-out cannot be reconstructed
+ *  from one event alone (which faction was already incorporated, at that
+ *  instant, is state this function is not given) - so a THIRD PARTY's
+ *  fortify still resolves correctly (it is exactly one pair: the actor
+ *  against the human), but a HUMAN-authored fortify returns no move here.
+ *  That is not a gap in production use: the human's own play is never part
+ *  of the same batch as the AI round this walk is built for (see
+ *  `notices.ts`), so this branch never actually needs to fire outside a
+ *  synthetic test. The human's own trailing `garrisoned` has the identical
+ *  fan-out problem and DOES need to fire in production - `walkStandings`
+ *  handles that one directly, rather than here, because the fix needs the
+ *  whole batch's faction list, which a single event does not carry. */
+export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
+  const H = ctx.humanFactionId;
+  const A = ctx.factionOf(e.playerId);
+  if (A === undefined) return [];
+
+  switch (e.type) {
+    case "play": {
+      if (e.cardId === "raid" || e.cardId === "shrewd-marriage") {
+        if (e.amount === undefined || e.track === undefined) return [];
+        const T = e.targetFactionId;
+        if (T === undefined) return [];
+        if (A === H) return [{ kind: "add", factionId: T, track: e.track, delta: e.amount }];
+        if (T === H) return [{ kind: "add", factionId: A, track: e.track, delta: -e.amount }];
+        return [];
+      }
+      if (e.cardId === "fortify") {
+        if (e.amount === undefined || e.track === undefined || A === H) return [];
+        return [{ kind: "add", factionId: A, track: e.track, delta: -e.amount }];
+      }
+      if (e.cardId === "assassinate-ruler") {
+        if (e.amount === undefined || e.prevented) return [];
+        const T = e.targetFactionId;
+        if (T === undefined) return [];
+        if (A === H) return [{ kind: "set", factionId: T, track: "status", from: e.amount }];
+        if (T === H) return [{ kind: "set", factionId: A, track: "status", from: -e.amount }];
+        return [];
+      }
+      return [];
+    }
+    case "tribute": {
+      if (e.amount === undefined || e.track === undefined) return [];
+      const payer = e.targetFactionId;
+      const lord = e.overlordFactionId;
+      if (payer === undefined || lord === undefined) return [];
+      if (payer === H) return [{ kind: "add", factionId: lord, track: e.track, delta: -e.amount }];
+      if (lord === H) return [{ kind: "add", factionId: payer, track: e.track, delta: e.amount }];
+      return [];
+    }
+    case "subjugated": {
+      // The poach penalty is a constant +1/+1 (game.ts), not carried on the
+      // event - see the comment above `GameEvent.amount`.
+      const T = e.targetFactionId;
+      const F = e.formerOverlordFactionId;
+      if (T === undefined || F === undefined) return [];
+      if (T === H) {
+        return [
+          { kind: "add", factionId: F, track: "might", delta: 1 },
+          { kind: "add", factionId: F, track: "status", delta: 1 },
+        ];
+      }
+      if (F === H) {
+        return [
+          { kind: "add", factionId: T, track: "might", delta: -1 },
+          { kind: "add", factionId: T, track: "status", delta: -1 },
+        ];
+      }
+      return [];
+    }
+    case "reclaimed": {
+      if (e.amount === undefined) return [];
+      const T = e.targetFactionId; // the rebel
+      const L = e.overlordFactionId; // the ex-lord
+      if (T === undefined || L === undefined) return [];
+      if (T === H) {
+        return [
+          { kind: "add", factionId: L, track: "might", delta: e.amount },
+          { kind: "add", factionId: L, track: "status", delta: e.amount },
+        ];
+      }
+      if (L === H) {
+        return [
+          { kind: "add", factionId: T, track: "might", delta: -e.amount },
+          { kind: "add", factionId: T, track: "status", delta: -e.amount },
+        ];
+      }
+      return [];
+    }
+    case "garrisoned": {
+      // self === H is handled by walkStandings, not here - see the doc
+      // comment above this function.
+      if (e.amount === undefined || A === H) return [];
+      return [{ kind: "add", factionId: A, track: "might", delta: -e.amount }];
+    }
+    default:
+      return [];
+  }
+}
+
+/** Per-event before -> after, index-parallel to `events`. Runs BACKWARDS from
+ *  the post-batch leads (`ctx.leads`), because that is the only truth
+ *  available: a round summary is built after every event in it has already
+ *  applied.
+ *
+ *  Walks ALL of `events`, not just the notice-worthy subset a summary line
+ *  renders. A rival's Fortify is never shown and a garrisoned is filtered out
+ *  of the activity log (see `isObservable` in hud.ts), but both move the
+ *  human's Might lead, and the human's own garrisoned is the LAST event of
+ *  every AI batch. Skipping either would put every Might line in the summary
+ *  out by their sum. */
+export function walkStandings(
+  events: GameEvent[],
+  ctx: WalkCtx,
+): StandingChange[][] {
+  const H = ctx.humanFactionId;
+
+  // Gathered independent of leadMovesOf, from the raw event fields: this is
+  // what lets the human's own trailing garrisoned (Might over every living
+  // faction - not reconstructable from that one event) apply to every
+  // faction this batch turns out to care about, without needing to know who
+  // was alive at that instant. A faction incorporated earlier in this same
+  // batch would be included too and so get a stray line; accepted as a rare,
+  // cosmetically harmless edge case rather than threading incorporation
+  // state through this walk.
+  const mentioned = new Set<string>();
+  for (const e of events) {
+    const ids = [
+      ctx.factionOf(e.playerId),
+      e.targetFactionId, e.overlordFactionId, e.formerOverlordFactionId,
+    ];
+    for (const id of ids) if (id !== undefined && id !== H) mentioned.add(id);
+  }
+
+  const movesPerEvent: LeadMove[][] = events.map((e) => {
+    if (e.type === "garrisoned" && e.amount !== undefined && ctx.factionOf(e.playerId) === H) {
+      return [...mentioned].map((factionId): LeadMove => (
+        { kind: "add", factionId, track: "might", delta: e.amount! }
+      ));
+    }
+    return leadMovesOf(e, ctx);
+  });
+
+  const tracked = new Set<string>();
+  for (const moves of movesPerEvent) for (const m of moves) tracked.add(m.factionId);
+
+  const current: Record<string, { might: number; status: number }> = {};
+  for (const factionId of tracked) current[factionId] = ctx.leads(factionId);
+
+  const out: StandingChange[][] = new Array(events.length);
+  for (let i = events.length - 1; i >= 0; i--) {
+    const lines: StandingChange[] = [];
+    for (const move of movesPerEvent[i]) {
+      const cur = current[move.factionId];
+      const after = cur[move.track];
+      const before = move.kind === "set" ? move.from : after - move.delta;
+      lines.push({ factionId: move.factionId, track: move.track, before, after });
+      current[move.factionId] = { ...cur, [move.track]: before };
+    }
+    out[i] = lines;
+  }
+  return out;
+}

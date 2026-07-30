@@ -2,14 +2,19 @@ import { CARDS } from "./cards";
 import {
   isHumanTurn, victoryRealmSize, viewOf, type GameEvent, type GameState,
 } from "./game";
-import { flyCard } from "./animate";
+import { flyCard, runAnimation, type Flight } from "./animate";
 import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
-import { buildNotices, type Notice, type NoticeCtx } from "./notices";
+import { buildRoundSummary, type NoticeCtx, type RoundSummary } from "./notices";
 import {
   passiveFortifyFor, subjugationGripOn, subjugationRequirement,
 } from "./playability";
 import type { TargetExplanation } from "./target-explanations";
-import { standingsFor, withArticle } from "./view";
+import type { TooltipLine } from "./panel";
+import { standingChangeText, standingsFor } from "./view";
+import {
+  card, cardName, faction, renderSegments, t, theFaction,
+  type RichTextHooks, type Segment,
+} from "./rich-text";
 
 export interface HudCallbacks {
   onNewGame(): void;
@@ -28,12 +33,35 @@ export interface HudCallbacks {
   lootInfo?(): { id: string; isNew: boolean }[];
   /** Renders the main-menu Reset progress control when provided. */
   onResetProgress?(): void;
+  /** Lights this faction's realm on the map, exactly as hovering its land
+   *  does; null clears. Absent where there is no map (tests), in which case
+   *  a hovered faction name in prose is inert. */
+  onHighlightFaction?(factionId: string | null): void;
+  /** The shared, coordinate-driven map tooltip - used to explain a card or
+   *  name a faction hovered inline in prose (the log, the round summary,
+   *  the scoreboard). Absent where there is no map. */
+  onShowTip?(lines: TooltipLine[], clientX: number, clientY: number): void;
+  onHideTip?(): void;
 }
 
 export interface Hud {
   update(state: GameState): void;
   setArmed(index: number | null, cardName?: string): void;
   setTributePrompt(show: boolean): void;
+  /** Runs `fn` once the play flight started by the most recent `update()` has
+   *  landed. Fires exactly once, always:
+   *   - nothing in the air (a forced discard animates nothing, and an AI
+   *     action never animates) -> next macrotask, so the caller cannot
+   *     re-enter the click handler whose `renderHand` just replaced the
+   *     button it came from;
+   *   - a flight is in the air -> when it reports itself finished;
+   *   - a flight is cancelled (a new game, the run ending) -> immediately.
+   *  The HUD holds no duration of its own: it counts live flights and waits
+   *  for each one to report itself done, per the rule in AGENTS.md. A second
+   *  call replaces a still-pending one - only one human turn can be
+   *  resolving at a time, and the replaced continuation is by definition
+   *  stale. */
+  afterPlayAnimation(fn: () => void): void;
 }
 
 const FAN_ANGLE_DEG = 5;
@@ -47,9 +75,10 @@ const PLAY_HOLD_MS = 700;
 const PLAY_TO_DISCARD_MS = 350;
 const PLAY_CENTER_SCALE = 1.6;
 const RESHUFFLE_PULSE_MS = 450;
-
-const cardName = (id: string | undefined): string =>
-  (id && CARDS[id]?.name) ?? id ?? "";
+// Last-resort net for afterPlayAnimation, in case a flight's onDone is lost
+// outright. Derived from each live flight's own totalMs, never a duration
+// copied by hand - see the rule in AGENTS.md.
+const FLIGHT_WATCHDOG_SLACK_MS = 500;
 
 /** Cosmetic stack depth: more cards -> visibly thicker pile, capped at 4. */
 function pileLayers(count: number): number {
@@ -58,6 +87,119 @@ function pileLayers(count: number): number {
   if (count < 8) return 2;
   if (count < 13) return 3;
   return 4;
+}
+
+/** Who is speaking in a log line. A player's faction never changes, so it is
+ *  safe to resolve from state; the ruler's name is not, so it comes off the
+ *  event, where it was stamped when the event happened. Ruler names stay
+ *  plain text - there is no hover target for a person. */
+function actorSegments(e: GameEvent, state: GameState): Segment[] {
+  if (e.playerId === 1) return [t("You")];
+  const factionId = state.players.find((pl) => pl.id === e.playerId)?.factionId;
+  if (factionId === undefined) return [t("")];
+  if (e.actorRuler === undefined || e.actorRuler === "") return [faction(factionId)];
+  return [t(`${e.actorRuler} of `), theFaction(factionId)];
+}
+
+/** Assassinate ruler is the only card that changes who rules, so it is the
+ *  only line that names rulers on the target side. */
+function rulerSuffix(e: GameEvent): string | null {
+  if (e.cardId !== "assassinate-ruler" || e.targetRuler === undefined) return null;
+  return e.prevented
+    ? ` - prevented, ${e.targetRuler} survives`
+    : e.successorRuler === undefined
+      ? null
+      : ` - ${e.targetRuler} killed, ${e.successorRuler} succeeds`;
+}
+
+/** One log/postmortem line as segments. Exported (not just used by
+ *  createHud) so tests/naming-convention.test.ts can drive every event type
+ *  through it directly. */
+export function eventSegments(e: GameEvent, state: GameState): Segment[] {
+  const you = e.playerId === 1;
+  const actor = actorSegments(e, state);
+  switch (e.type) {
+    case "draw":
+      return you
+        ? [t("You drew "), card(e.cardId ?? "")]
+        : [...actor, t(" drew a card")];
+    case "play": {
+      // rulerSuffix takes precedence over "- doubled": safe only because
+      // assassinate-ruler (the only card rulerSuffix fires for) is not in
+      // DOUBLABLE_CARDS (src/cards.ts). If it were ever added there, a
+      // doubled assassination would silently lose its "- doubled" marker
+      // on this line.
+      const suffix =
+        rulerSuffix(e) ??
+        (e.prevented ? " - prevented" : e.doubled ? " - doubled" : "");
+      return [
+        ...actor, t(" played "), card(e.cardId ?? ""),
+        ...(e.targetFactionId !== undefined
+          ? [t(" on "), faction(e.targetFactionId)]
+          : []),
+        t(suffix),
+      ];
+    }
+    case "reshuffle":
+      return you
+        ? [t("You reshuffled your discard")]
+        : [...actor, t(" reshuffled their discard")];
+    case "subjugated":
+      return [
+        faction(e.targetFactionId ?? ""), t(" submits to "),
+        faction(e.overlordFactionId ?? ""),
+      ];
+    case "released":
+      return [faction(e.targetFactionId ?? ""), t(" breaks free")];
+    case "incorporated":
+      return [
+        faction(e.targetFactionId ?? ""), t(" is incorporated into "),
+        faction(e.overlordFactionId ?? ""),
+      ];
+    case "discard":
+      return you ? [t("You discarded a card")] : [...actor, t(" discarded a card")];
+    case "reclaimed":
+      return [
+        faction(e.targetFactionId ?? ""), t(" reclaims independence from "),
+        faction(e.overlordFactionId ?? ""),
+      ];
+    case "tribute":
+      return [
+        faction(e.targetFactionId ?? ""), t(" pays tribute to "),
+        faction(e.overlordFactionId ?? ""),
+      ];
+    case "settled":
+      // Singular verb to match the other allegiance lines ("Vironians
+      // submits to", "pays tribute to"), which name a people the same way.
+      return [faction(e.targetFactionId ?? ""), t(" founds a new settlement")];
+    case "seeded":
+      return [
+        faction(e.targetFactionId ?? ""), t(" sows the seeds of revolt against "),
+        faction(e.overlordFactionId ?? ""),
+      ];
+    case "subjugate-failed":
+      return [
+        ...actor, t(" fails to prise "), faction(e.targetFactionId ?? ""),
+        t(" from "), faction(e.formerOverlordFactionId ?? ""),
+      ];
+    case "incorporate-failed":
+      return [
+        faction(e.targetFactionId ?? ""), t(" resists incorporation into "),
+        faction(e.overlordFactionId ?? ""),
+      ];
+    case "garrisoned":
+      return you
+        ? [t(`Your garrisons stand watch (+${e.amount} Might against all)`)]
+        : [...actor, t(`'s garrisons stand watch (+${e.amount} Might against all)`)];
+    case "surrendered":
+      return [t("You conceded the Baltic")];
+    case "victory":
+      return [t("You rule the Baltic")];
+    case "defeat":
+      return [t("Your realm has been incorporated by "), faction(e.overlordFactionId ?? "")];
+    case "unified":
+      return [faction(e.overlordFactionId ?? ""), t(" unifies the Balts")];
+  }
 }
 
 export function createHud(
@@ -69,93 +211,13 @@ export function createHud(
   const factionName = (id: string | undefined): string =>
     (id !== undefined ? factionNames.get(id) : undefined) ?? id ?? "";
 
-  /** "the Ugandians", but "Lietuva" for the one faction named for a land. */
-  const factionNameWithArticle = (id: string | undefined): string =>
-    withArticle(factionName(id), id !== undefined && placeNameFactionIds.has(id));
-
-  /** Who is speaking in a log line. A player's faction never changes, so it
-   *  is safe to resolve from state; the ruler's name is not, so it comes off
-   *  the event, where it was stamped when the event happened. */
-  function actorLabel(e: GameEvent, state: GameState): string {
-    if (e.playerId === 1) return "You";
-    const factionId = state.players.find((pl) => pl.id === e.playerId)?.factionId;
-    const faction = factionName(factionId);
-    return e.actorRuler === undefined || e.actorRuler === ""
-      ? faction
-      : `${e.actorRuler} of ${factionNameWithArticle(factionId)}`;
-  }
-
-  /** Assassinate ruler is the only card that changes who rules, so it is the
-   *  only line that names rulers on the target side. */
-  function rulerSuffix(e: GameEvent): string | null {
-    if (e.cardId !== "assassinate-ruler" || e.targetRuler === undefined) return null;
-    return e.prevented
-      ? ` - prevented, ${e.targetRuler} survives`
-      : e.successorRuler === undefined
-        ? null
-        : ` - ${e.targetRuler} killed, ${e.successorRuler} succeeds`;
-  }
-
-  function eventText(e: GameEvent, state: GameState): string {
-    const you = e.playerId === 1;
-    const actor = actorLabel(e, state);
-    switch (e.type) {
-      case "draw":
-        return you ? `You drew ${cardName(e.cardId)}` : `${actor} drew a card`;
-      case "play": {
-        const target = e.targetFactionId !== undefined
-          ? ` on ${factionName(e.targetFactionId)}`
-          : "";
-        // rulerSuffix takes precedence over "- doubled": safe only because
-        // assassinate-ruler (the only card rulerSuffix fires for) is not in
-        // DOUBLABLE_CARDS (src/cards.ts). If it were ever added there, a
-        // doubled assassination would silently lose its "- doubled" marker
-        // on this line.
-        const suffix =
-          rulerSuffix(e) ??
-          (e.prevented ? " - prevented" : e.doubled ? " - doubled" : "");
-        return `${actor} played ${cardName(e.cardId)}${target}${suffix}`;
-      }
-      case "reshuffle":
-        return you
-          ? "You reshuffled your discard"
-          : `${actor} reshuffled their discard`;
-      case "subjugated":
-        return `${factionName(e.targetFactionId)} submits to ${factionName(e.overlordFactionId)}`;
-      case "released":
-        return `${factionName(e.targetFactionId)} breaks free`;
-      case "incorporated":
-        return `${factionName(e.targetFactionId)} is incorporated into ${factionName(e.overlordFactionId)}`;
-      case "discard":
-        return you ? "You discarded a card" : `${actor} discarded a card`;
-      case "reclaimed":
-        return `${factionName(e.targetFactionId)} reclaims independence from ${factionName(e.overlordFactionId)}`;
-      case "tribute":
-        return `${factionName(e.targetFactionId)} pays tribute to ${factionName(e.overlordFactionId)}`;
-      case "settled":
-        // Singular verb to match the other allegiance lines ("Vironians
-        // submits to", "pays tribute to"), which name a people the same way.
-        return `${factionName(e.targetFactionId)} founds a new settlement`;
-      case "seeded":
-        return `${factionName(e.targetFactionId)} sows the seeds of revolt against ${factionName(e.overlordFactionId)}`;
-      case "subjugate-failed":
-        return `${actor} fails to prise ${factionName(e.targetFactionId)} from ${factionName(e.formerOverlordFactionId)}`;
-      case "incorporate-failed":
-        return `${factionName(e.targetFactionId)} resists incorporation into ${factionName(e.overlordFactionId)}`;
-      case "garrisoned":
-        return you
-          ? `Your garrisons stand watch (+${e.amount} Might against all)`
-          : `${actor}'s garrisons stand watch (+${e.amount} Might against all)`;
-      case "surrendered":
-        return "You conceded the Baltic";
-      case "victory":
-        return "You rule the Baltic";
-      case "defeat":
-        return `Your realm has been incorporated by ${factionName(e.overlordFactionId)}`;
-      case "unified":
-        return `${factionName(e.overlordFactionId)} unifies the Balts`;
-    }
-  }
+  const richTextHooks: RichTextHooks = {
+    factionName,
+    isPlaceName: (id) => placeNameFactionIds.has(id),
+    showTip: cb.onShowTip,
+    hideTip: cb.onHideTip,
+    highlightFaction: cb.onHighlightFaction,
+  };
 
   /** Whether the player could actually know this happened.
    *
@@ -336,61 +398,69 @@ export function createHud(
   noticeCard.className = "notice-card";
   const noticeTitle = document.createElement("h2");
   noticeTitle.className = "notice-title";
-  const noticeWhat = document.createElement("p");
-  noticeWhat.className = "notice-what";
-  const noticeDetails = document.createElement("div");
-  noticeDetails.className = "notice-details";
-  const noticeConsequence = document.createElement("p");
-  noticeConsequence.className = "notice-consequence";
+  const noticeLines = document.createElement("ul");
+  noticeLines.className = "notice-lines";
+  const noticeFootnotes = document.createElement("div");
+  noticeFootnotes.className = "notice-footnotes";
   const noticeContinue = document.createElement("button");
   noticeContinue.className = "notice-continue";
   noticeContinue.textContent = "Continue";
-  noticeContinue.addEventListener("click", () => dismissNotice());
-  noticeCard.append(
-    noticeTitle, noticeWhat, noticeDetails, noticeConsequence, noticeContinue,
-  );
+  noticeContinue.addEventListener("click", () => dismissSummary());
+  noticeCard.append(noticeTitle, noticeLines, noticeFootnotes, noticeContinue);
   noticeOverlay.appendChild(noticeCard);
 
-  let noticeQueue: Notice[] = [];
-
-  function showNotice(n: Notice): void {
-    noticeTitle.textContent = n.title;
-    noticeWhat.textContent = n.what;
-    noticeDetails.replaceChildren(
-      ...n.details.map((line) => {
+  /** Shows the round's summary and hides it again on Continue/Escape/Enter -
+   *  there is no queue: one AI round is one modal (see AGENTS.md). */
+  function showRoundSummary(summary: RoundSummary): void {
+    noticeTitle.textContent = summary.title;
+    noticeLines.replaceChildren(
+      ...summary.lines.map((line) => {
+        const li = document.createElement("li");
+        li.className = `notice-line tone-${line.tone}`;
+        li.appendChild(renderSegments(line.text, richTextHooks));
+        if (line.changes.length > 0) {
+          const span = document.createElement("span");
+          const toneClass =
+            line.tone === "bad" ? "lead-bad" : line.tone === "good" ? "lead-good" : "lead-even";
+          span.className = `notice-change ${toneClass}`;
+          span.textContent = ` (${line.changes.map(standingChangeText).join(", ")})`;
+          li.appendChild(span);
+        }
+        return li;
+      }),
+    );
+    noticeFootnotes.replaceChildren(
+      ...summary.footnotes.map((fn) => {
         const p = document.createElement("p");
-        p.className = "notice-detail";
-        p.textContent = line;
+        p.className = "notice-footnote";
+        p.appendChild(renderSegments(fn, richTextHooks));
         return p;
       }),
     );
-    noticeDetails.classList.toggle("hidden", n.details.length === 0);
-    noticeDetails.classList.toggle("multi", n.details.length > 1);
-    noticeConsequence.textContent = n.consequence ?? "";
-    noticeConsequence.classList.toggle("hidden", n.consequence === undefined);
+    noticeFootnotes.classList.toggle("hidden", summary.footnotes.length === 0);
     noticeOverlay.classList.remove("hidden");
   }
 
-  function dismissNotice(): void {
-    const next = noticeQueue.shift();
-    if (next !== undefined) showNotice(next);
-    else noticeOverlay.classList.add("hidden");
+  function dismissSummary(): void {
+    noticeOverlay.classList.add("hidden");
+    // A dismiss with the cursor still over a name must not leave its tip or
+    // its map halo stuck on screen.
+    cb.onHideTip?.();
+    cb.onHighlightFaction?.(null);
   }
 
-  function clearNotices(): void {
-    noticeQueue = [];
+  function hideSummary(): void {
     noticeOverlay.classList.add("hidden");
   }
 
-  /** Player-affecting events interrupt: queue one modal per fresh notice. */
-  function enqueueNotices(state: GameState, fresh: GameEvent[]): void {
+  /** Player-affecting events interrupt once per AI round: build the whole
+   *  batch into a single summary and show it, if it has anything to say. */
+  function showRoundSummaryIfAny(state: GameState, fresh: GameEvent[]): void {
     if (state.phase !== "playing") return;
     const human = state.players[0];
     if (!human) return;
     const ctx: NoticeCtx = {
       humanFactionId: human.factionId,
-      factionName,
-      factionNameWithArticle,
       factionOf: (playerId) =>
         state.players.find((pl) => pl.id === playerId)?.factionId,
       leads: (other) => leadsOf(state.relations, human.factionId, other),
@@ -402,22 +472,18 @@ export function createHud(
           ? state.alliances[allianceKey(human.factionId, other)]
           : undefined,
     };
-    for (const n of buildNotices(fresh, ctx)) {
-      if (noticeOverlay.classList.contains("hidden")) showNotice(n);
-      else noticeQueue.push(n);
-    }
+    const summary = buildRoundSummary(fresh, ctx);
+    if (summary !== null) showRoundSummary(summary);
   }
 
-  // Return dismisses a notice as well as Escape, so a queue of them can be
-  // walked one press at a time without reaching for the mouse. Handled here
-  // rather than by focusing the button: focus on the overlay does not survive
-  // the AI turns that run behind it, and one press must dismiss exactly one
-  // notice - a focused button would take the press AND this handler would fire.
+  // Return dismisses the summary as well as Escape. Handled here rather than
+  // by focusing the button: focus on the overlay does not survive the AI
+  // turns that ran to produce it.
   window.addEventListener("keydown", (e) => {
     if (noticeOverlay.classList.contains("hidden")) return;
     if (e.key !== "Escape" && e.key !== "Enter") return;
     e.preventDefault();
-    dismissNotice();
+    dismissSummary();
   });
 
   container.append(
@@ -436,7 +502,7 @@ export function createHud(
       logEntries.replaceChildren();
       renderedEvents = 0;
       lastRenderedTurn = 0;
-      clearNotices();
+      hideSummary();
     }
     const fresh = state.log.slice(renderedEvents);
     const humanFactionId = state.players[0]?.factionId;
@@ -451,7 +517,7 @@ export function createHud(
       if (!isObservable(e, humanFactionId)) continue;
       const entry = document.createElement("div");
       entry.className = "log-entry log-new";
-      entry.textContent = eventText(e, state);
+      entry.replaceChildren(renderSegments(eventSegments(e, state), richTextHooks));
       entry.classList.toggle("log-you", involvesHuman(e, humanFactionId));
       logEntries.appendChild(entry);
     }
@@ -554,26 +620,46 @@ export function createHud(
     y: r.y + r.height / 2,
   });
 
+  // --- the turn gate: waits for the human's play flight, never a timer that
+  // guesses its length. See afterPlayAnimation's doc comment and AGENTS.md. --
+
+  const liveFlights = new Set<Flight>();
+  let pendingContinuation: (() => void) | null = null;
+  let watchdog: ReturnType<typeof setTimeout> | null = null;
+
+  function settleTurn(): void {
+    if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+    const fn = pendingContinuation;
+    pendingContinuation = null;
+    fn?.();
+  }
+
+  function cancelLiveFlights(): void {
+    // Copy first: a flight's own onDone removes itself from liveFlights, so
+    // mutating the Set while iterating it would skip entries.
+    for (const flight of [...liveFlights]) flight.cancel();
+  }
+
   function animateDraw(): void {
     const from = deckPile.root.getBoundingClientRect();
+    const newest = hand.lastElementChild;
+    newest?.classList.add("card-incoming");
+    // Deliberately not tracked in liveFlights: the draw is short, concurrent
+    // with any play flight, and gating the turn on it would add nothing.
     flyCard(
       container,
       "back",
       "",
       { x: from.x, y: from.y, width: CARD_W, height: CARD_H },
       [{ to: center(hand.getBoundingClientRect()), scale: 1, durationMs: DRAW_MS }],
+      () => newest?.classList.remove("card-incoming"),
     );
-    const newest = hand.lastElementChild;
-    if (newest) {
-      newest.classList.add("card-incoming");
-      setTimeout(() => newest.classList.remove("card-incoming"), DRAW_MS + 40);
-    }
   }
 
   function animatePlay(cardId: string): void {
     const from = pendingPlayRect ?? hand.getBoundingClientRect();
     pendingPlayRect = null;
-    flyCard(
+    const flight = flyCard(
       container,
       "",
       cardName(cardId),
@@ -591,12 +677,26 @@ export function createHud(
           durationMs: PLAY_TO_DISCARD_MS,
         },
       ],
+      () => {
+        liveFlights.delete(flight);
+        if (liveFlights.size === 0) settleTurn();
+      },
     );
+    liveFlights.add(flight);
   }
 
   function pulseDeck(): void {
     deckPile.root.classList.add("pulse");
-    setTimeout(() => deckPile.root.classList.remove("pulse"), RESHUFFLE_PULSE_MS);
+    runAnimation(
+      deckPile.stack,
+      [
+        { offset: 0, transform: "scale(1)" },
+        { offset: 0.5, transform: "scale(1.12)" },
+        { offset: 1, transform: "scale(1)" },
+      ],
+      RESHUFFLE_PULSE_MS,
+      () => deckPile.root.classList.remove("pulse"),
+    );
   }
 
   /** Human-only: AI actions surface as log entries, nothing moves on screen. */
@@ -642,7 +742,8 @@ export function createHud(
         row.classList.toggle("sb-you", r.isHuman);
         const who = document.createElement("span");
         who.className = "sb-who";
-        who.textContent = r.isHuman ? "You" : factionName(r.factionId);
+        if (r.isHuman) who.textContent = "You";
+        else who.replaceChildren(renderSegments([faction(r.factionId)], richTextHooks));
         const lands = document.createElement("span");
         lands.className = "sb-lands";
         lands.textContent = `${r.lands}/${r.needed} lands`;
@@ -758,7 +859,7 @@ export function createHud(
       ...state.log.map((e) => {
         const d = document.createElement("div");
         d.className = "log-entry";
-        d.textContent = eventText(e, state);
+        d.replaceChildren(renderSegments(eventSegments(e, state), richTextHooks));
         d.classList.toggle("log-you", involvesHuman(e, human?.factionId));
         return d;
       }),
@@ -768,7 +869,13 @@ export function createHud(
   return {
     update(state) {
       lastState = state;
-      if (state.phase !== "playing") clearNotices();
+      if (state.phase !== "playing") {
+        hideSummary();
+        // A run that ended, or a fresh game, must never leave afterPlayAnimation's
+        // caller waiting forever on a flight that will now never land.
+        cancelLiveFlights();
+        settleTurn();
+      }
       const ended = state.phase === "victory" || state.phase === "defeat";
       menu.classList.toggle("hidden", state.phase !== "main-menu");
       status.classList.toggle(
@@ -796,7 +903,7 @@ export function createHud(
         renderHand(state);
         renderScoreboard(state);
         const fresh = renderLog(state);
-        enqueueNotices(state, fresh);
+        showRoundSummaryIfAny(state, fresh);
         animateEvents(fresh);
       } else if (ended) {
         renderPostmortem(state);
@@ -816,6 +923,16 @@ export function createHud(
       tributeButtons.classList.toggle("hidden", !show);
       if (show) statusText.textContent = "Pay tribute with:";
       else if (lastState) renderStatus(lastState);
+    },
+    afterPlayAnimation(fn) {
+      if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+      pendingContinuation = fn;
+      if (liveFlights.size === 0) {
+        setTimeout(settleTurn, 0);
+        return;
+      }
+      const longestMs = Math.max(...[...liveFlights].map((f) => f.totalMs));
+      watchdog = setTimeout(settleTurn, longestMs + FLIGHT_WATCHDOG_SLACK_MS);
     },
   };
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { NOTICE_RULES, buildNotices, type NoticeCtx } from "../src/notices";
+import { NOTICE_RULES, buildRoundSummary, type NoticeCtx } from "../src/notices";
+import { plainText, type NameLookup } from "../src/rich-text";
 import type { GameEvent, GameEventType } from "../src/game";
 
 // Hand-maintained, and it was already missing "unified" before "settled" was
@@ -20,6 +21,11 @@ const NAMES: Record<string, string> = {
   curonia: "Curonians",
 };
 
+const nameLookup: NameLookup = {
+  factionName: (id) => NAMES[id] ?? id,
+  isPlaceName: () => false,
+};
+
 const FACTION_BY_PLAYER: Record<number, string> = {
   1: "livs", 2: "jersika", 3: "latgale", 4: "curonia",
 };
@@ -38,8 +44,6 @@ let subjugationBarTable: Record<string, number | null> = {};
 
 const ctx: NoticeCtx = {
   humanFactionId: "livs",
-  factionName: (id) => (id !== undefined ? NAMES[id] ?? id : ""),
-  factionNameWithArticle: (id) => (id !== undefined ? `the ${NAMES[id] ?? id}` : ""),
   factionOf: (playerId) => FACTION_BY_PLAYER[playerId],
   leads: (other) => leadsTable[other] ?? { might: 0, status: 0 },
   // The bars diverge only where a settlement has been founded, so these
@@ -59,8 +63,15 @@ const ev = (partial: Partial<GameEvent> & { type: GameEvent["type"] }): GameEven
   ...partial,
 });
 
-/** Build notices from a single event and return the one result (or null). */
-const oneNotice = (e: GameEvent) => buildNotices([e], ctx)[0] ?? null;
+/** Build a round summary from a single event. */
+const oneSummary = (e: GameEvent) => buildRoundSummary([e], ctx);
+
+/** The rendered text of summary line `i`, plain-text for assertions. */
+const lineText = (s: ReturnType<typeof oneSummary>, i = 0): string =>
+  plainText(s!.lines[i].text, nameLookup);
+
+const footnoteTexts = (s: ReturnType<typeof oneSummary>): string[] =>
+  s!.footnotes.map((f) => plainText(f, nameLookup));
 
 describe("NOTICE_RULES registry", () => {
   it("has an explicit rule for every event type", () => {
@@ -84,15 +95,15 @@ describe("a founded settlement", () => {
     const rule = NOTICE_RULES.settled;
     expect(rule.kind).toBe("silent");
     expect(
-      buildNotices(
+      buildRoundSummary(
         [{ turn: 3, playerId: 2, type: "settled", targetFactionId: "livs" }],
         ctx,
       ),
-    ).toEqual([]);
+    ).toBeNull();
   });
 });
 
-describe("buildNotices: single-event scenarios", () => {
+describe("buildRoundSummary: single-event scenarios", () => {
   beforeEach(() => {
     leadsTable = {};
     grip = 2;
@@ -101,126 +112,122 @@ describe("buildNotices: single-event scenarios", () => {
     subjugationBarTable = {};
   });
 
-  it("builds a subjugation notice when an AI subjugates the human", () => {
-    leadsTable = { jersika: { might: -2, status: 1 } };
-    const n = oneNotice(
+  it("has the fixed round title", () => {
+    const s = oneSummary(
       ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
-    );
-    expect(n).not.toBeNull();
-    expect(n!.title).toBe("Beneath the Yoke");
-    expect(n!.what).toBe("Jersikans played Subjugate against Lower Daugava Livs.");
-    expect(n!.consequence).toContain("Two Pay Tribute cards were shuffled into your deck");
-    expect(n!.details).toEqual([
-      "You now owe fealty to Jersikans.",
-      "Standing vs Jersikans: Might - they lead by 2; Status - you lead by 1.",
+    )!;
+    expect(s.title).toBe("What happened during their turns");
+  });
+
+  it("builds a subjugation line when an AI subjugates the human", () => {
+    const s = oneSummary(
+      ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+    )!;
+    expect(lineText(s)).toBe("Subjugate by Jersikans - you owe fealty to them");
+    expect(footnoteTexts(s)).toEqual([
+      "Pay tribute cards were shuffled into your deck (x2). While one is in hand it must be played first.",
     ]);
   });
 
   it("is null when the human subjugates someone else", () => {
-    const n = oneNotice(
-      ev({
-        type: "subjugated", playerId: 1,
-        targetFactionId: "jersika", overlordFactionId: "livs",
-      }),
-    );
-    expect(n).toBeNull();
+    expect(
+      oneSummary(
+        ev({
+          type: "subjugated", playerId: 1,
+          targetFactionId: "jersika", overlordFactionId: "livs",
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("is null for AI-vs-AI subjugation", () => {
-    const n = oneNotice(
-      ev({ type: "subjugated", targetFactionId: "latgale", overlordFactionId: "jersika" }),
-    );
-    expect(n).toBeNull();
+    expect(
+      oneSummary(
+        ev({ type: "subjugated", targetFactionId: "latgale", overlordFactionId: "jersika" }),
+      ),
+    ).toBeNull();
   });
 
-  it("builds a release notice when another player frees the human", () => {
-    leadsTable = {};
-    const n = oneNotice(
+  it("builds a release line when another player frees the human", () => {
+    const s = oneSummary(
       ev({ type: "released", playerId: 3, targetFactionId: "livs" }),
-    );
-    expect(n).not.toBeNull();
-    expect(n!.title).toBe("The Yoke Is Broken");
-    expect(n!.what).toBe("The fall of your overlord to Latgalians releases you from vassalage.");
-    expect(n!.consequence).toBe(
-      "All Pay Tribute cards were removed from your deck, hand, and discard.",
-    );
-    expect(n!.details).toEqual([]);
+    )!;
+    expect(lineText(s)).toBe("The fall of your overlord to Latgalians released you from vassalage");
+    expect(footnoteTexts(s)).toEqual([
+      "All Pay tribute cards were removed from your deck, hand and discard.",
+    ]);
   });
 
   it("is null for a release that frees another faction", () => {
-    const n = oneNotice(
-      ev({ type: "released", playerId: 3, targetFactionId: "latgale" }),
-    );
-    expect(n).toBeNull();
+    expect(
+      oneSummary(ev({ type: "released", playerId: 3, targetFactionId: "latgale" })),
+    ).toBeNull();
   });
 
   it("warns when a rival tears a vassal away from you", () => {
-    leadsTable = { latgale: { might: -1, status: 0 } };
-    const n = oneNotice(
+    const s = oneSummary(
       ev({
         type: "subjugated", playerId: 3, targetFactionId: "curonia",
         overlordFactionId: "latgale", formerOverlordFactionId: "livs",
       }),
-    );
-    expect(n).not.toBeNull();
-    expect(n!.title).toBe("A Vassal Torn Away");
-    expect(n!.what).toBe("Latgalians played Subjugate against your vassal Curonians.");
-    expect(n!.details).toContain("Fealty passes from you to Latgalians.");
-    expect(n!.details).toContain("They gain 1 Might and 1 Status against you.");
+    )!;
+    expect(lineText(s)).toBe("Subjugate by Latgalians took your vassal Curonians");
+    expect(footnoteTexts(s)[0]).toContain("Your realm is smaller");
   });
 
-  it("warns when a vassal revolts, including what the revolt cost you", () => {
-    const n = oneNotice(
+  it("warns when a vassal revolts", () => {
+    const s = oneSummary(
       ev({
         type: "reclaimed", playerId: 4, cardId: "revolt",
-        targetFactionId: "curonia", overlordFactionId: "livs",
+        targetFactionId: "curonia", overlordFactionId: "livs", amount: 1,
       }),
-    );
-    expect(n).not.toBeNull();
-    expect(n!.title).toBe("A Vassal Breaks Free");
-    expect(n!.what).toBe("Curonians played Revolt and cast off your overlordship.");
-    expect(n!.details).toContain("They gain 1 Might and 1 Status against you.");
+    )!;
+    expect(lineText(s)).toBe("Revolt by Curonians cast off your overlordship");
+    expect(footnoteTexts(s)[0]).toContain("Your realm is smaller");
   });
 
-  it("warns of a doubled gain when the revolting vassal held a reading", () => {
-    const n = oneNotice(
+  it("a doubled revolt reports the doubled swing in its changes", () => {
+    // The rebel (curonia) gains against its former lord (the human), doubled -
+    // the human's own lead over curonia drops by 2 on both tracks.
+    leadsTable = { curonia: { might: -2, status: -2 } }; // post-batch: now trailing
+    const s = oneSummary(
       ev({
         type: "reclaimed", playerId: 4, cardId: "revolt", doubled: true,
-        targetFactionId: "curonia", overlordFactionId: "livs",
+        targetFactionId: "curonia", overlordFactionId: "livs", amount: 2,
       }),
-    );
-    expect(n).not.toBeNull();
-    expect(n!.title).toBe("A Vassal Breaks Free");
-    expect(n!.details).toContain("They gain 2 Might and 2 Status against you.");
-    expect(n!.details).not.toContain("They gain 1 Might and 1 Status against you.");
+    )!;
+    expect(s.lines[0].changes).toEqual([
+      { factionId: "curonia", track: "might", before: 0, after: -2 },
+      { factionId: "curonia", track: "status", before: 0, after: -2 },
+    ]);
   });
 
   it("stays silent when the human is the one reclaiming", () => {
     expect(
-      oneNotice(
+      oneSummary(
         ev({
           type: "reclaimed", playerId: 1, cardId: "revolt",
-          targetFactionId: "livs", overlordFactionId: "jersika",
+          targetFactionId: "livs", overlordFactionId: "jersika", amount: 1,
         }),
       ),
     ).toBeNull();
   });
 
   it("warns when your own fall scatters your vassals", () => {
-    const n = oneNotice(
+    const s = oneSummary(
       ev({
         type: "released", playerId: 3, targetFactionId: "curonia",
         overlordFactionId: "livs",
       }),
-    );
-    expect(n).not.toBeNull();
-    expect(n!.title).toBe("Your Vassals Scatter");
-    expect(n!.what).toBe("Your own subjugation released Curonians from your service.");
+    )!;
+    expect(lineText(s)).toBe("Your subjugation released Curonians from your service");
+    // no Pay Tribute footnote - that consequence belongs to the "subjugated"
+    // notice for the same round, not this side-effect
+    expect(s.footnotes).toEqual([]);
   });
 
   it("keeps your own subjugation separate from a vassal poached in the same round", () => {
-    leadsTable = {};
-    const notices = buildNotices(
+    const s = buildRoundSummary(
       [
         ev({ type: "subjugated", playerId: 2, targetFactionId: "livs", overlordFactionId: "jersika" }),
         ev({
@@ -229,14 +236,14 @@ describe("buildNotices: single-event scenarios", () => {
         }),
       ],
       ctx,
-    );
-    expect(notices.map((n) => n.title)).toEqual([
-      "Beneath the Yoke", "A Vassal Torn Away",
-    ]);
+    )!;
+    expect(s.lines).toHaveLength(2);
+    expect(lineText(s, 0)).toBe("Subjugate by Jersikans - you owe fealty to them");
+    expect(lineText(s, 1)).toBe("Subjugate by Latgalians took your vassal Curonians");
   });
 
-  it("collapses several vassals lost in one round into one notice", () => {
-    const notices = buildNotices(
+  it("lists several vassals lost in one round as separate lines - a ledger, not a nag", () => {
+    const s = buildRoundSummary(
       [
         ev({
           type: "subjugated", playerId: 3, targetFactionId: "curonia",
@@ -248,14 +255,15 @@ describe("buildNotices: single-event scenarios", () => {
         }),
       ],
       ctx,
-    );
-    expect(notices).toHaveLength(1);
-    expect(notices[0].title).toBe("A Vassal Torn Away");
-    expect(notices[0].details).toContain("Latgalians took Curonians from you");
-    expect(notices[0].details).toContain("Latgalians took Jersikans from you");
+    )!;
+    expect(s.lines).toHaveLength(2);
+    expect(lineText(s, 0)).toBe("Subjugate by Latgalians took your vassal Curonians");
+    expect(lineText(s, 1)).toBe("Subjugate by Latgalians took your vassal Jersikans");
+    // the realm-shrunk footnote is the same warning twice - deduplicated to one
+    expect(s.footnotes).toHaveLength(1);
   });
 
-  it("is empty for every silent event type", () => {
+  it("is null for every silent event type", () => {
     const silent: GameEvent[] = [
       ev({ type: "draw", playerId: 1, cardId: "raid" }),
       ev({ type: "play", playerId: 1, cardId: "raid", targetFactionId: "livs" }),
@@ -267,135 +275,94 @@ describe("buildNotices: single-event scenarios", () => {
       ev({ type: "victory", playerId: 1 }),
       ev({ type: "defeat", targetFactionId: "livs", overlordFactionId: "jersika" }),
     ];
-    expect(buildNotices(silent, ctx)).toEqual([]);
+    expect(buildRoundSummary(silent, ctx)).toBeNull();
   });
 
-  it("falls back to raw ids for unknown factions", () => {
-    const n = oneNotice(
+  it("falls back to a blank actor when the faction cannot be resolved", () => {
+    const s = oneSummary(
       ev({ type: "subjugated", playerId: 9, targetFactionId: "livs", overlordFactionId: "mystery" }),
-    );
-    expect(n).not.toBeNull();
-    // playerId 9 has no faction: factionOf returns undefined, factionName("")
-    expect(n!.what).toBe(" played Subjugate against Lower Daugava Livs.");
-  });
-
-  it("first subjugation: fealty line and standing vs the new overlord", () => {
-    leadsTable = { jersika: { might: -2, status: 1 } };
-    const n = oneNotice(
-      ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
     )!;
-    expect(n.details).toEqual([
-      "You now owe fealty to Jersikans.",
-      "Standing vs Jersikans: Might - they lead by 2; Status - you lead by 1.",
-    ]);
+    // playerId 9 has no faction: factionOf returns undefined -> faction("")
+    expect(lineText(s)).toBe("Subjugate by  - you owe fealty to them");
   });
 
-  it("poach: allegiance shift and standing vs both lords", () => {
+  it("poach: allegiance shift, and changes read against the former lord", () => {
     leadsTable = {
       jersika: { might: -2, status: 0 },
       latgale: { might: 0, status: -1 },
     };
-    const n = oneNotice(
+    const s = oneSummary(
       ev({
         type: "subjugated", targetFactionId: "livs",
         overlordFactionId: "jersika", formerOverlordFactionId: "latgale",
       }),
     )!;
-    expect(n.details).toEqual([
-      "Your allegiance shifts from Latgalians to Jersikans.",
-      "Standing vs Jersikans: Might - they lead by 2; Status - even.",
-      "Standing vs Latgalians: Might - even; Status - they lead by 1.",
-      "Latgalians loses 1 Might and 1 Status against you.",
+    expect(lineText(s)).toBe("Subjugate by Jersikans - your allegiance shifts from Latgalians to them");
+    expect(s.lines[0].changes).toEqual([
+      { factionId: "latgale", track: "might", before: -1, after: 0 },
+      { factionId: "latgale", track: "status", before: -2, after: -1 },
     ]);
   });
 
   it("released names the fallen lord when the event carries it", () => {
-    const n = oneNotice(
+    const s = oneSummary(
       ev({ type: "released", playerId: 3, targetFactionId: "livs", overlordFactionId: "jersika" }),
     )!;
-    expect(n.what).toBe("The fall of Jersikans to Latgalians releases you from vassalage.");
+    expect(lineText(s)).toBe("The fall of Jersikans to Latgalians released you from vassalage");
   });
 
-  it("released falls back when the lord field is absent", () => {
-    const n = oneNotice(
-      ev({ type: "released", playerId: 3, targetFactionId: "livs" }),
-    )!;
-    expect(n.what).toBe("The fall of your overlord to Latgalians releases you from vassalage.");
-  });
-
-  it("raid against the human raises a modal with standing and threat warning", () => {
+  it("raid against the human names the card and the actor, and reports the Might swing", () => {
     leadsTable = { jersika: { might: -2, status: 0 } };
-    const n = oneNotice(
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs" }),
+    const s = oneSummary(
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
     )!;
-    expect(n.title).toBe("Raided");
-    expect(n.what).toBe("Jersikans played Raid against Lower Daugava Livs.");
-    expect(n.details).toEqual([
-      "Standing vs Jersikans: Might - they lead by 2; Status - even.",
-      "A lead of 2 is enough to subjugate.",
+    expect(lineText(s)).toBe("Raid played against you by Jersikans");
+    expect(s.lines[0].changes).toEqual([
+      { factionId: "jersika", track: "might", before: 0, after: -2 },
     ]);
+    expect(footnoteTexts(s)).toEqual(["the Jersikans can subjugate you at a lead of 2."]);
   });
 
-  it("marriage against the human raises a modal without warning below threshold", () => {
+  it("marriage against the human reports the Status swing, no threat footnote below threshold", () => {
     leadsTable = { jersika: { might: 0, status: -1 } };
-    const n = oneNotice(
-      ev({ type: "play", cardId: "shrewd-marriage", targetFactionId: "livs" }),
+    const s = oneSummary(
+      ev({ type: "play", cardId: "shrewd-marriage", targetFactionId: "livs", amount: 1, track: "status" }),
     )!;
-    expect(n.title).toBe("A Shrewd Marriage");
-    expect(n.details).toEqual([
-      "Standing vs Jersikans: Might - even; Status - they lead by 1.",
+    expect(lineText(s)).toBe("Shrewd marriage played against you by Jersikans");
+    expect(s.lines[0].changes).toEqual([
+      { factionId: "jersika", track: "status", before: 0, after: -1 },
     ]);
+    expect(footnoteTexts(s)).toEqual([]);
   });
 
-  it("scaled grip: no warning when the lead is below a bumped-up threshold", () => {
+  it("scaled grip: no threat footnote when the lead is below a bumped-up threshold", () => {
     grip = 4;
     leadsTable = { jersika: { might: -2, status: 0 } };
-    const n = oneNotice(
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs" }),
+    const s = oneSummary(
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
     )!;
-    expect(n.details).toEqual([
-      "Standing vs Jersikans: Might - they lead by 2; Status - even.",
-    ]);
+    expect(footnoteTexts(s)).toEqual([]);
   });
 
-  it("scaled grip: warning text reflects the bumped-up threshold", () => {
+  it("scaled grip: threat footnote text reflects the bumped-up threshold", () => {
     grip = 4;
     leadsTable = { jersika: { might: -4, status: 0 } };
-    const n = oneNotice(
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs" }),
+    const s = oneSummary(
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 4, track: "might" }),
     )!;
-    expect(n.details).toEqual([
-      "Standing vs Jersikans: Might - they lead by 4; Status - even.",
-      "A lead of 4 is enough to subjugate.",
-    ]);
+    expect(footnoteTexts(s)).toEqual(["the Jersikans can subjugate you at a lead of 4."]);
   });
 
-  it("omits the threat clause when this rival could never subjugate the human (already their overlord)", () => {
-    // e.g. the human is already jersika's vassal: jersika cannot subjugate
-    // again, so subjugationRequirement (and this bar) is null for that pair
-    // even though jersika leads Might by 5. The map's danger marker agrees.
+  it("omits the threat footnote when this rival could never subjugate the human (already their overlord)", () => {
     leadsTable = { jersika: { might: -5, status: 0 } };
     subjugationBarTable = { jersika: null };
-    const n = oneNotice(
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs" }),
+    const s = oneSummary(
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 5, track: "might" }),
     )!;
-    expect(n.details).toEqual([
-      "Standing vs Jersikans: Might - they lead by 5; Status - even.",
-    ]);
+    expect(footnoteTexts(s)).toEqual([]);
   });
 
-  it("omits the threat clause when this rival is itself somebody's vassal", () => {
-    leadsTable = { jersika: { might: 0, status: -6 } };
-    subjugationBarTable = { jersika: null };
-    const n = oneNotice(
-      ev({ type: "play", cardId: "shrewd-marriage", targetFactionId: "livs" }),
-    )!;
-    expect(n.details).toEqual([
-      "Standing vs Jersikans: Might - even; Status - they lead by 6.",
-    ]);
-  });
-
-  it("play modals do not fire for own plays, AI-vs-AI, or other cards", () => {
+  it("play lines do not fire for own plays, AI-vs-AI, or other cards", () => {
     for (const e of [
       ev({ type: "play", playerId: 1, cardId: "raid", targetFactionId: "jersika" }),
       ev({ type: "play", cardId: "raid", targetFactionId: "latgale" }),
@@ -403,71 +370,64 @@ describe("buildNotices: single-event scenarios", () => {
       ev({ type: "play", cardId: "fortify" }),
       ev({ type: "play", cardId: "grow-crops" }),
     ]) {
-      expect(oneNotice(e), `expected null for ${e.cardId}`).toBeNull();
+      expect(oneSummary(e), `expected null for ${e.cardId}`).toBeNull();
     }
   });
 
-  it("assassinate-ruler against the human raises a modal with standing and threat warning", () => {
+  it("assassinate-ruler against the human resets the Status lead to 0", () => {
     leadsTable = { jersika: { might: -2, status: 0 } };
-    const n = oneNotice(
-      ev({ type: "play", cardId: "assassinate-ruler", targetFactionId: "livs" }),
+    // amount is the ACTOR's (jersika's) own Status lead over the human before
+    // the reset - here jersika led by 2, so the human's own lead was -2.
+    const s = oneSummary(
+      ev({
+        type: "play", cardId: "assassinate-ruler", targetFactionId: "livs", amount: 2,
+      }),
     )!;
-    expect(n.title).toBe("A Ruler Falls");
-    expect(n.what).toBe("Jersikans played Assassinate ruler against Lower Daugava Livs.");
-    expect(n.details).toEqual([
-      "Standing vs Jersikans: Might - they lead by 2; Status - even.",
-      "A lead of 2 is enough to subjugate.",
+    expect(lineText(s)).toBe("Assassinate ruler - by Jersikans");
+    expect(s.lines[0].changes).toEqual([
+      { factionId: "jersika", track: "status", before: -2, after: 0 },
     ]);
+    expect(footnoteTexts(s)).toEqual(["the Jersikans can subjugate you at a lead of 2."]);
   });
 
-  it("a prevented assassinate-ruler against the human raises its own modal", () => {
-    leadsTable = { jersika: { might: -2, status: 0 } };
-    const n = oneNotice(
+  it("a prevented assassinate-ruler against the human names the actor and moves nothing", () => {
+    const s = oneSummary(
       ev({
         type: "play", cardId: "assassinate-ruler", targetFactionId: "livs",
         prevented: true,
       }),
     )!;
-    expect(n.title).toBe("Assassination Prevented");
-    expect(n.what).toBe("Jersikans played Assassinate ruler against Lower Daugava Livs.");
-    expect(n.details).toEqual([
-      "Your bodyguard turned the blade - your Status lead is unchanged.",
-    ]);
+    expect(lineText(s)).toBe("Assassinate ruler by Jersikans - your bodyguard turned the blade");
+    expect(s.lines[0].changes).toEqual([]);
   });
 
-  it("alliance with the human raises a modal naming the pact expiry", () => {
+  it("alliance with the human names the pact expiry", () => {
     allianceExpiryTable = { jersika: 8 };
-    const n = oneNotice(
+    const s = oneSummary(
       ev({ type: "play", cardId: "alliance", targetFactionId: "livs" }),
     )!;
-    expect(n.title).toBe("An Alliance Sealed");
-    expect(n.what).toBe("Jersikans played Alliance with Lower Daugava Livs.");
-    expect(n.details).toEqual([
-      "No hostile cards between you and Jersikans until turn 8.",
-    ]);
+    expect(lineText(s)).toBe("Alliance sealed with you by Jersikans, until turn 8");
   });
 
-  it("alliance modal omits the expiry line when allianceExpiry is undefined", () => {
-    const n = oneNotice(
+  it("alliance line omits the expiry clause when allianceExpiry is undefined", () => {
+    const s = oneSummary(
       ev({ type: "play", cardId: "alliance", targetFactionId: "livs" }),
     )!;
-    expect(n.details).toEqual([]);
+    expect(lineText(s)).toBe("Alliance sealed with you by Jersikans");
   });
 
   it("extended-diplomacy play stays silent (untargeted, self-initiated)", () => {
-    const n = oneNotice(ev({ type: "play", cardId: "extended-diplomacy" }));
-    expect(n).toBeNull();
+    expect(oneSummary(ev({ type: "play", cardId: "extended-diplomacy" }))).toBeNull();
   });
 
   it("alliance played by the human stays silent", () => {
-    const n = oneNotice(
-      ev({ type: "play", playerId: 1, cardId: "alliance", targetFactionId: "jersika" }),
-    );
-    expect(n).toBeNull();
+    expect(
+      oneSummary(ev({ type: "play", playerId: 1, cardId: "alliance", targetFactionId: "jersika" })),
+    ).toBeNull();
   });
 });
 
-describe("buildNotices: batch grouping", () => {
+describe("buildRoundSummary: batch grouping", () => {
   beforeEach(() => {
     leadsTable = {};
     grip = 2;
@@ -476,83 +436,53 @@ describe("buildNotices: batch grouping", () => {
     subjugationBarTable = {};
   });
 
-  it("collapses 3 raids by different actors into one notice", () => {
+  it("lists 3 raids by different actors as 3 lines in one summary, not 3 modals", () => {
     leadsTable = {
       jersika: { might: -2, status: 0 }, // qualifies: max(2, 0) >= grip(2)
       latgale: { might: 0, status: -1 }, // below grip
       curonia: { might: 1, status: 1 }, // human leads both
     };
     const events: GameEvent[] = [
-      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs" }),
-      ev({ turn: 2, playerId: 3, type: "play", cardId: "raid", targetFactionId: "livs" }),
-      ev({ turn: 3, playerId: 4, type: "play", cardId: "raid", targetFactionId: "livs" }),
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
+      ev({ turn: 2, playerId: 3, type: "play", cardId: "raid", targetFactionId: "livs", amount: 1, track: "might" }),
+      ev({ turn: 3, playerId: 4, type: "play", cardId: "raid", targetFactionId: "livs", amount: 1, track: "might" }),
     ];
-    const notices = buildNotices(events, ctx);
-    expect(notices).toHaveLength(1);
-    const n = notices[0];
-    expect(n.title).toBe("Raided");
-    expect(n.what).toBe("3 players played Raid against you:");
-    expect(n.details).toEqual([
-      "Jersikans - Might: they lead by 2; Status: even - a lead of 2 subjugates you",
-      "Latgalians - Might: even; Status: they lead by 1",
-      "Curonians - Might: you lead by 1; Status: you lead by 1",
+    const s = buildRoundSummary(events, ctx)!;
+    expect(s.lines).toHaveLength(3);
+    expect(s.lines.map((l) => plainText(l.text, nameLookup))).toEqual([
+      "Raid played against you by Jersikans",
+      "Raid played against you by Latgalians",
+      "Raid played against you by Curonians",
     ]);
-    expect(n.consequence).toBeUndefined();
+    // each line's own Might swing, not the round's total
+    expect(s.lines.map((l) => l.changes[0].after)).toEqual([-2, 0, 1]);
+    expect(footnoteTexts(s)).toEqual(["the Jersikans can subjugate you at a lead of 2."]);
   });
 
-  it("omits the threat clause for a rival that could never subjugate the human, even mid-batch", () => {
-    leadsTable = {
-      jersika: { might: -9, status: 0 }, // huge lead, but jersika already holds the human
-      latgale: { might: -2, status: 0 }, // qualifies normally
-    };
-    subjugationBarTable = { jersika: null };
-    const events: GameEvent[] = [
-      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs" }),
-      ev({ turn: 2, playerId: 3, type: "play", cardId: "raid", targetFactionId: "livs" }),
-    ];
-    const notices = buildNotices(events, ctx);
-    expect(notices).toHaveLength(1);
-    expect(notices[0].details).toEqual([
-      "Jersikans - Might: they lead by 9; Status: even",
-      "Latgalians - Might: they lead by 2; Status: even - a lead of 2 subjugates you",
-    ]);
-  });
-
-  it("groups raids and marriages into two separate notices, one per card", () => {
+  it("puts a raid and a marriage in one summary, in log order", () => {
     leadsTable = { jersika: { might: -2, status: 0 }, latgale: { might: 0, status: -1 } };
     const events: GameEvent[] = [
-      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs" }),
-      ev({ turn: 2, playerId: 3, type: "play", cardId: "shrewd-marriage", targetFactionId: "livs" }),
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
+      ev({ turn: 2, playerId: 3, type: "play", cardId: "shrewd-marriage", targetFactionId: "livs", amount: 1, track: "status" }),
     ];
-    const notices = buildNotices(events, ctx);
-    expect(notices).toHaveLength(2);
-    expect(notices[0].title).toBe("Raided");
-    expect(notices[0].what).toBe("Jersikans played Raid against Lower Daugava Livs.");
-    expect(notices[1].title).toBe("A Shrewd Marriage");
-    expect(notices[1].what).toBe("Latgalians played Shrewd marriage against Lower Daugava Livs.");
+    const s = buildRoundSummary(events, ctx)!;
+    expect(s.lines).toHaveLength(2);
+    expect(lineText(s, 0)).toBe("Raid played against you by Jersikans");
+    expect(lineText(s, 1)).toBe("Shrewd marriage played against you by Latgalians");
   });
 
-  it("collapses 2 assassinate-ruler plays by different actors into one notice", () => {
-    leadsTable = {
-      jersika: { might: -2, status: 0 }, // qualifies: max(2, 0) >= grip(2)
-      latgale: { might: 0, status: -1 }, // below grip
-    };
+  it("lists 2 assassinate-ruler plays by different actors as 2 lines", () => {
     const events: GameEvent[] = [
-      ev({ turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler", targetFactionId: "livs" }),
-      ev({ turn: 2, playerId: 3, type: "play", cardId: "assassinate-ruler", targetFactionId: "livs" }),
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler", targetFactionId: "livs", amount: 2 }),
+      ev({ turn: 2, playerId: 3, type: "play", cardId: "assassinate-ruler", targetFactionId: "livs", amount: -1 }),
     ];
-    const notices = buildNotices(events, ctx);
-    expect(notices).toHaveLength(1);
-    const n = notices[0];
-    expect(n.title).toBe("A Ruler Falls");
-    expect(n.what).toBe("2 players played Assassinate ruler against you:");
-    expect(n.details).toEqual([
-      "Jersikans - Might: they lead by 2; Status: even - a lead of 2 subjugates you",
-      "Latgalians - Might: even; Status: they lead by 1",
-    ]);
+    const s = buildRoundSummary(events, ctx)!;
+    expect(s.lines).toHaveLength(2);
+    expect(lineText(s, 0)).toBe("Assassinate ruler - by Jersikans");
+    expect(lineText(s, 1)).toBe("Assassinate ruler - by Latgalians");
   });
 
-  it("collapses 2 prevented assassinate-ruler plays into one Assassination Prevented notice", () => {
+  it("groups 2 prevented assassinate-ruler plays as their own lines, separate from a landed one", () => {
     const events: GameEvent[] = [
       ev({
         turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler",
@@ -560,60 +490,28 @@ describe("buildNotices: batch grouping", () => {
       }),
       ev({
         turn: 2, playerId: 3, type: "play", cardId: "assassinate-ruler",
-        targetFactionId: "livs", prevented: true,
+        targetFactionId: "livs", amount: 1,
       }),
     ];
-    const notices = buildNotices(events, ctx);
-    expect(notices).toHaveLength(1);
-    const n = notices[0];
-    expect(n.title).toBe("Assassination Prevented");
-    expect(n.what).toBe("2 players played Assassinate ruler against you:");
-    expect(n.details).toEqual([
-      "Jersikans - prevented by your bodyguard",
-      "Latgalians - prevented by your bodyguard",
-    ]);
+    const s = buildRoundSummary(events, ctx)!;
+    expect(s.lines).toHaveLength(2);
+    expect(lineText(s, 0)).toContain("your bodyguard turned the blade");
+    expect(lineText(s, 1)).toBe("Assassinate ruler - by Latgalians");
   });
 
-  it("a round with both a prevented and a successful assassination raises one modal of each kind", () => {
-    leadsTable = { jersika: { might: -2, status: 0 } };
-    const events: GameEvent[] = [
-      ev({
-        turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler",
-        targetFactionId: "livs", prevented: true,
-      }),
-      ev({
-        turn: 2, playerId: 3, type: "play", cardId: "assassinate-ruler",
-        targetFactionId: "livs",
-      }),
-    ];
-    const notices = buildNotices(events, ctx);
-    expect(notices).toHaveLength(2);
-    expect(notices[0].title).toBe("Assassination Prevented");
-    expect(notices[1].title).toBe("A Ruler Falls"); // successful case unaffected
-  });
-
-  it("collapses 2 alliances sealed in one round into one notice", () => {
+  it("lists 2 alliances sealed in one round as 2 lines", () => {
     allianceExpiryTable = { jersika: 6, latgale: 11 };
     const events: GameEvent[] = [
       ev({ turn: 1, playerId: 2, type: "play", cardId: "alliance", targetFactionId: "livs" }),
       ev({ turn: 2, playerId: 3, type: "play", cardId: "alliance", targetFactionId: "livs" }),
     ];
-    const notices = buildNotices(events, ctx);
-    expect(notices).toHaveLength(1);
-    const n = notices[0];
-    expect(n.title).toBe("An Alliance Sealed");
-    expect(n.what).toBe("2 players sealed alliances with you:");
-    expect(n.details).toEqual([
-      "Jersikans - until turn 6",
-      "Latgalians - until turn 11",
-    ]);
+    const s = buildRoundSummary(events, ctx)!;
+    expect(s.lines).toHaveLength(2);
+    expect(lineText(s, 0)).toBe("Alliance sealed with you by Jersikans, until turn 6");
+    expect(lineText(s, 1)).toBe("Alliance sealed with you by Latgalians, until turn 11");
   });
 
-  it("collapses a fealty-then-poach chain into one notice with two transitions", () => {
-    leadsTable = {
-      jersika: { might: -2, status: 0 },
-      latgale: { might: -1, status: 2 },
-    };
+  it("lists a fealty-then-poach chain as two lines, one Pay Tribute footnote", () => {
     const events: GameEvent[] = [
       ev({
         turn: 1, playerId: 2, type: "subjugated",
@@ -624,75 +522,89 @@ describe("buildNotices: batch grouping", () => {
         targetFactionId: "livs", overlordFactionId: "latgale", formerOverlordFactionId: "jersika",
       }),
     ];
-    const notices = buildNotices(events, ctx);
-    expect(notices).toHaveLength(1);
-    const n = notices[0];
-    expect(n.title).toBe("Beneath the Yoke");
-    expect(n.what).toBe("Your allegiance changed this round:");
-    expect(n.details).toEqual([
-      "Jersikans subjugated you",
-      "Latgalians tore you from Jersikans",
-      "Standing vs Latgalians: Might - they lead by 1; Status - you lead by 2.",
-      "Jersikans loses 1 Might and 1 Status against you.",
+    const s = buildRoundSummary(events, ctx)!;
+    expect(s.lines).toHaveLength(2);
+    expect(lineText(s, 0)).toBe("Subjugate by Jersikans - you owe fealty to them");
+    expect(lineText(s, 1)).toBe("Subjugate by Latgalians - your allegiance shifts from Jersikans to them");
+    expect(footnoteTexts(s)).toEqual([
+      "Pay tribute cards were shuffled into your deck (x2). While one is in hand it must be played first.",
     ]);
-    expect(n.consequence).toBe(
-      "Two Pay Tribute cards were shuffled into your deck. When one is in hand, it must be played before anything else.",
-    );
   });
 
-  it("collapses 2 releases in one round into one notice with a bullet each", () => {
+  it("lists 2 releases in one round as 2 lines, one Pay Tribute removal footnote", () => {
     const events: GameEvent[] = [
       ev({ turn: 1, playerId: 3, type: "released", targetFactionId: "livs", overlordFactionId: "jersika" }),
       ev({ turn: 2, playerId: 4, type: "released", targetFactionId: "livs" }),
     ];
-    const notices = buildNotices(events, ctx);
-    expect(notices).toHaveLength(1);
-    const n = notices[0];
-    expect(n.title).toBe("The Yoke Is Broken");
-    expect(n.what).toBe("You were released this round:");
-    expect(n.details).toEqual([
-      "The fall of Jersikans to Latgalians set you free",
-      "The fall of your overlord to Curonians set you free",
+    const s = buildRoundSummary(events, ctx)!;
+    expect(s.lines).toHaveLength(2);
+    expect(lineText(s, 0)).toBe("The fall of Jersikans to Latgalians released you from vassalage");
+    expect(lineText(s, 1)).toBe("The fall of your overlord to Curonians released you from vassalage");
+    expect(footnoteTexts(s)).toEqual([
+      "All Pay tribute cards were removed from your deck, hand and discard.",
     ]);
-    expect(n.consequence).toBe(
-      "All Pay Tribute cards were removed from your deck, hand, and discard.",
-    );
   });
 
-  it("is empty for silent events even in a batch", () => {
+  it("is null for silent events even in a batch", () => {
     const events: GameEvent[] = [
       ev({ type: "draw", playerId: 1, cardId: "raid" }),
       ev({ type: "reshuffle", playerId: 1 }),
       ev({ type: "tribute", playerId: 1, targetFactionId: "livs", overlordFactionId: "jersika", track: "might" }),
     ];
-    expect(buildNotices(events, ctx)).toEqual([]);
+    expect(buildRoundSummary(events, ctx)).toBeNull();
+  });
+
+  it("a silent rival Fortify shifts the before of that rival's later Raid, in the same round", () => {
+    // jersika Fortifies (+1 Might over everyone, including the human - silent,
+    // no line of its own), then Raids the human for 2 more in the same round.
+    // The Raid line's "before" must already reflect the Fortify.
+    leadsTable = { jersika: { might: -3, status: 0 } }; // post-batch: -1 (fortify) + -2 (raid)
+    const events: GameEvent[] = [
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "fortify", amount: 1, track: "might" }),
+      ev({ turn: 2, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
+    ];
+    const s = buildRoundSummary(events, ctx)!;
+    expect(s.lines).toHaveLength(1); // Fortify itself never produces a line
+    expect(s.lines[0].changes).toEqual([
+      { factionId: "jersika", track: "might", before: -1, after: -3 },
+    ]);
+  });
+
+  it("the human's own trailing garrison does not corrupt the raid line above it", () => {
+    // A rival raids the human for 2 Might, then the human's own beginTurn
+    // garrison (the last event of every AI batch) adds 1 Might back.
+    leadsTable = { jersika: { might: -1, status: 0 } }; // -2 (raid) + 1 (garrison)
+    const events: GameEvent[] = [
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
+      { turn: 1, playerId: 1, type: "garrisoned", targetFactionId: "livs", amount: 1 },
+    ];
+    const s = buildRoundSummary(events, ctx)!;
+    expect(s.lines).toHaveLength(1); // the human's own garrison is silent
+    expect(s.lines[0].changes).toEqual([
+      { factionId: "jersika", track: "might", before: 0, after: -2 },
+    ]);
   });
 });
 
-describe("assassination notices name rulers", () => {
+describe("assassination lines name rulers", () => {
   it("names the ruler who died and the one who follows", () => {
-    const n = oneNotice(
+    const s = oneSummary(
       ev({
         type: "play", cardId: "assassinate-ruler", targetFactionId: "livs",
-        targetRuler: "Kaupo", successorRuler: "Dabrelis",
+        targetRuler: "Kaupo", successorRuler: "Dabrelis", amount: 1,
       }),
     )!;
-    expect(n.title).toBe("A Ruler Falls");
-    expect(n.what).toBe("The Jersikans had Kaupo killed.");
-    expect(n.details[0]).toBe("Dabrelis now leads the Lower Daugava Livs.");
+    expect(lineText(s)).toBe("Assassinate ruler took Kaupo; Dabrelis now leads you - by Jersikans");
   });
 
   it("names the ruler the bodyguard saved", () => {
-    const n = oneNotice(
+    const s = oneSummary(
       ev({
         type: "play", cardId: "assassinate-ruler", targetFactionId: "livs",
         targetRuler: "Kaupo", prevented: true,
       }),
     )!;
-    expect(n.title).toBe("Assassination Prevented");
-    expect(n.details).toEqual([
-      "Your bodyguard turned the blade - Kaupo lives and your Status lead is unchanged.",
-    ]);
+    expect(lineText(s)).toBe("Assassinate ruler by Jersikans - your bodyguard turned the blade");
   });
 });
 
@@ -701,23 +613,35 @@ describe("seeds of revolt", () => {
     // The only way to learn this: you cannot see a vassal's deck. Without the
     // notice the Incorporate race is invisible, and the odds on the card are a
     // readout rather than a decision.
-    const n = oneNotice(ev({
+    const s = oneSummary(ev({
       type: "seeded", playerId: 2,
       targetFactionId: "jersika", overlordFactionId: "livs",
-    }));
-    expect(n?.title).toBe("Unrest Among Your Vassals");
-    expect(n?.what).toContain("Jersikans");
+    }))!;
+    expect(lineText(s)).toBe("Jersikans is preparing a revolt against you");
+    expect(footnoteTexts(s)[0]).toContain("Revolt is in their deck now");
+  });
+
+  it("collapses several vassals sowing in the same round into one line", () => {
+    const s = buildRoundSummary(
+      [
+        ev({ turn: 1, playerId: 2, type: "seeded", targetFactionId: "jersika", overlordFactionId: "livs" }),
+        ev({ turn: 1, playerId: 3, type: "seeded", targetFactionId: "latgale", overlordFactionId: "livs" }),
+      ],
+      ctx,
+    )!;
+    expect(s.lines).toHaveLength(1);
+    expect(lineText(s)).toBe("Jersikans and Latgalians are preparing a revolt against you");
   });
 
   it("says nothing about a rival's vassal sowing, which nobody can observe", () => {
-    expect(oneNotice(ev({
+    expect(oneSummary(ev({
       type: "seeded", playerId: 3,
       targetFactionId: "latgale", overlordFactionId: "curonia",
     }))).toBeNull();
   });
 
   it("says nothing when the human sows their own", () => {
-    expect(oneNotice(ev({
+    expect(oneSummary(ev({
       type: "seeded", playerId: 1,
       targetFactionId: "livs", overlordFactionId: "jersika",
     }))).toBeNull();
@@ -726,17 +650,16 @@ describe("seeds of revolt", () => {
 
 describe("a failed poach", () => {
   it("tells you your vassal held, since nothing on the map changed", () => {
-    const n = oneNotice(ev({
+    const s = oneSummary(ev({
       type: "subjugate-failed", playerId: 3,
       targetFactionId: "jersika",
       overlordFactionId: "latgale", formerOverlordFactionId: "livs",
-    }));
-    expect(n?.title).toBe("Your Vassal Holds");
-    expect(n?.what).toContain("Latgalians");
+    }))!;
+    expect(lineText(s)).toBe("Latgalians failed to take Jersikans from you");
   });
 
   it("stays quiet about failed poaches between other factions", () => {
-    expect(oneNotice(ev({
+    expect(oneSummary(ev({
       type: "subjugate-failed", playerId: 3,
       targetFactionId: "jersika",
       overlordFactionId: "latgale", formerOverlordFactionId: "curonia",
@@ -753,11 +676,9 @@ describe("failed attempts against the player", () => {
       overlordFactionId: "jersika",
       formerOverlordFactionId: "curonia",
     };
-    const [n] = buildNotices([e], ctx);
-    expect(n.title).toBe("You Held");
-    expect(n.what).toContain("Jersikans");
-    expect(n.what).toContain("Curonians");
-    expect(n.consequence).toContain("card is spent");
+    const s = buildRoundSummary([e], ctx)!;
+    expect(lineText(s)).toBe("Jersikans failed to take you from Curonians");
+    expect(footnoteTexts(s)[0]).toContain("card is spent");
   });
 
   it("keeps the vassal-held wording when the human is the lord who held on", () => {
@@ -767,8 +688,8 @@ describe("failed attempts against the player", () => {
       overlordFactionId: "jersika",
       formerOverlordFactionId: "livs",
     };
-    const [n] = buildNotices([e], ctx);
-    expect(n.title).toBe("Your Vassal Holds");
+    const s = buildRoundSummary([e], ctx)!;
+    expect(lineText(s)).toBe("Jersikans failed to take Latgalians from you");
   });
 
   it("tells the player their overlord failed to annex them", () => {
@@ -777,11 +698,10 @@ describe("failed attempts against the player", () => {
       targetFactionId: "livs",
       overlordFactionId: "latgale",
     };
-    const [n] = buildNotices([e], ctx);
-    expect(n.title).toBe("You Resisted");
-    expect(n.what).toContain("Latgalians");
+    const s = buildRoundSummary([e], ctx)!;
+    expect(lineText(s)).toBe("Latgalians failed to absorb your realm permanently");
     // The actionable part: staying a vassal improves their next roll.
-    expect(n.consequence).toContain("longer you stay their vassal");
+    expect(footnoteTexts(s)[0]).toContain("longer you stay their vassal");
   });
 
   it("stays silent on the human's own failed roll", () => {
@@ -789,7 +709,7 @@ describe("failed attempts against the player", () => {
       turn: 12, playerId: 1, type: "incorporate-failed",
       targetFactionId: "latgale", overlordFactionId: "livs",
     };
-    expect(buildNotices([own], ctx)).toEqual([]);
+    expect(buildRoundSummary([own], ctx)).toBeNull();
   });
 
   it("says nothing about a failure between two rivals", () => {
@@ -797,7 +717,7 @@ describe("failed attempts against the player", () => {
       turn: 12, playerId: 2, type: "incorporate-failed",
       targetFactionId: "curonia", overlordFactionId: "jersika",
     };
-    expect(buildNotices([between], ctx)).toEqual([]);
+    expect(buildRoundSummary([between], ctx)).toBeNull();
   });
 
   it("never interrupts for a garrison gain - it fires every turn", () => {
@@ -805,7 +725,7 @@ describe("failed attempts against the player", () => {
       turn: 5, playerId: 2, type: "garrisoned",
       targetFactionId: "jersika", amount: 3,
     };
-    expect(buildNotices([e], ctx)).toEqual([]);
+    expect(buildRoundSummary([e], ctx)).toBeNull();
     expect(NOTICE_RULES.garrisoned.kind).toBe("silent");
   });
 });

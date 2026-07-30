@@ -1,4 +1,5 @@
 import { CARDS, DECK_SIZE } from "./cards";
+import { cardName } from "./rich-text";
 
 export interface DeckScreenView {
   visible: boolean;
@@ -19,8 +20,6 @@ export interface DeckScreenCallbacks {
 export interface DeckScreen {
   update(view: DeckScreenView): void;
 }
-
-const cardName = (id: string): string => CARDS[id]?.name ?? id;
 
 const nonBasics = (ids: string[]): string[] =>
   ids.filter((id) => CARDS[id]?.maxPerDeck !== null);
