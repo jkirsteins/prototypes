@@ -79,6 +79,13 @@ svg.map.dragging {
   stroke-width: 1.2;
 }
 
+/* Founded in play rather than standing in 1100: hollow, so a settlement the
+   player built reads differently from the ones the map shipped with. */
+.settlement-founded {
+  fill: #fdfaf4;
+  stroke: #4c4234;
+}
+
 .settlement-label {
   font-size: 12px;
   fill: #3f3428;

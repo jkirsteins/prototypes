@@ -1,9 +1,17 @@
-import type { MapData } from "./types";
+import type { MapData, Settlement } from "./types";
 
 export interface RenderResult {
   svg: SVGSVGElement;
   regionPaths: Map<string, SVGPathElement>;
   settlementDots: Map<string, SVGCircleElement>;
+  /** Draws a settlement that starts locked, once it is founded in play. Safe to
+   *  call again for one already revealed - the caller drives this from game
+   *  state on every refresh rather than tracking what it has drawn. */
+  revealSettlement: (s: Settlement) => void;
+  /** Removes every settlement `revealSettlement` drew. The map is rendered once
+   *  per page load and a new game reuses it, so without this the last game's
+   *  settlements would stay on the map. */
+  clearFoundedSettlements: () => void;
   realmOutlineGroup: SVGGElement;
   realmHoverGroup: SVGGElement;
   vassalOverlayGroup: SVGGElement;
@@ -125,24 +133,47 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   const settlementsGroup = el("g");
   settlementsGroup.classList.add("settlements");
   const settlementDots = new Map<string, SVGCircleElement>();
-  for (const s of data.settlements) {
-    if (!s.unlocked) continue;
+  const foundedElements = new Map<string, Element[]>();
+  const drawSettlement = (s: Settlement, founded: boolean): void => {
+    const drawn: Element[] = [];
     const c = el("circle") as SVGCircleElement;
     c.classList.add("settlement");
+    if (founded) c.classList.add("settlement-founded");
     c.setAttribute("cx", String(s.x));
     c.setAttribute("cy", String(s.y));
     c.setAttribute("r", "3.5");
     c.setAttribute("data-settlement-id", s.id);
     settlementsGroup.appendChild(c);
     settlementDots.set(s.id, c);
-    const t = el("text");
-    t.classList.add("settlement-label");
-    t.setAttribute("x", String(s.x));
-    t.setAttribute("y", String(s.y + (s.labelDy ?? -7)));
-    t.textContent = s.name;
-    settlementsGroup.appendChild(t);
+    drawn.push(c);
+    // A growth site has no name, deliberately: the map does not invent place
+    // names, so a founded site gets a dot and a tooltip but no label.
+    if (s.name !== "") {
+      const t = el("text");
+      t.classList.add("settlement-label");
+      t.setAttribute("x", String(s.x));
+      t.setAttribute("y", String(s.y + (s.labelDy ?? -7)));
+      t.textContent = s.name;
+      settlementsGroup.appendChild(t);
+      drawn.push(t);
+    }
+    if (founded) foundedElements.set(s.id, drawn);
+  };
+  for (const s of data.settlements) {
+    if (s.unlocked) drawSettlement(s, false);
   }
   svg.appendChild(settlementsGroup);
+  const revealSettlement = (s: Settlement): void => {
+    if (settlementDots.has(s.id)) return;
+    drawSettlement(s, true);
+  };
+  const clearFoundedSettlements = (): void => {
+    for (const [id, drawn] of foundedElements) {
+      for (const node of drawn) node.remove();
+      settlementDots.delete(id);
+    }
+    foundedElements.clear();
+  };
 
   const labelsGroup = el("g");
   labelsGroup.classList.add("labels");
@@ -169,7 +200,7 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   container.appendChild(svg);
 
   return {
-    svg, regionPaths, settlementDots, realmOutlineGroup, realmHoverGroup,
-    vassalOverlayGroup, peopleLabels,
+    svg, regionPaths, settlementDots, revealSettlement, clearFoundedSettlements,
+    realmOutlineGroup, realmHoverGroup, vassalOverlayGroup, peopleLabels,
   };
 }

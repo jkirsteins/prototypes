@@ -117,6 +117,30 @@ describe("panel", () => {
       "Settlements: Trikāta (1/3)",
     );
   });
+
+  it("counts a settlement founded in play on the settlements line", () => {
+    const container = document.createElement("div");
+    const panel = createPanel(
+      container, () => {}, peoples, factions, settlements, undefined,
+      (regionId) => regionId === "talava",
+    );
+    panel.show(talava);
+    expect(container.querySelector(".panel-settlements")!.textContent).toBe(
+      "Settlements: Trikāta and one new settlement (2/3)",
+    );
+  });
+});
+
+describe("settlementTooltipText", () => {
+  it("gives a nameless growth site its note alone, not a blank first line", () => {
+    const growth: Settlement = {
+      id: "talava-growth", name: "", note: "New settlement in Tālava.",
+      land: "talava", unlocked: false, x: 1, y: 2,
+    };
+    expect(settlementTooltipText(growth)).toBe("New settlement in Tālava.");
+    expect(settlementTooltipText(settlements[0]))
+      .toBe("Trikāta\nLatgalian chief's fort.");
+  });
 });
 
 describe("tooltip", () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  SUBJUGATE_THRESHOLD, borderStrength, isCardPlayable, playableSet, subjugationGripOn,
+  SUBJUGATE_THRESHOLD, borderStrength, gripPartsOn, isCardPlayable, playableSet,
+  subjugationGripOn,
   subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView,
 } from "../src/playability";
@@ -26,6 +27,8 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     bodyguards: [],
     omens: [],
     diplomacyBoost: [],
+    sites: ORDER,
+    settled: [],
     ...partial,
   };
 }
@@ -80,6 +83,103 @@ describe("subjugationRequirement", () => {
   });
 });
 
+describe("found a settlement", () => {
+  it("offers every land of the realm with a free, unsettled site", () => {
+    const v = view({
+      overlords: new Map([["gamma", "beta"]]),
+      incorporated: { delta: "beta" },
+      sites: ["beta", "gamma", "delta"],
+    });
+    expect(validTargetsFor(v, "beta", "found-settlement"))
+      .toEqual(["beta", "gamma", "delta"]);
+  });
+
+  it("leaves lands outside the realm irrelevant, not blocked", () => {
+    const entries = targetEligibilityFor(view(), "beta", "found-settlement");
+    expect(entries.find((e) => e.factionId === "alpha")?.state).toBe("irrelevant");
+    expect(entries.find((e) => e.factionId === "beta")?.state).toBe("available");
+  });
+
+  it("blocks a land with no site and a land already settled, by reason", () => {
+    const v = view({ sites: ["beta"], settled: ["beta"] });
+    expect(targetEligibilityFor(v, "beta", "found-settlement")).toContainEqual({
+      state: "blocked", factionId: "beta", reasons: [{ code: "already-settled" }],
+    });
+    const w = view({ sites: [] });
+    expect(targetEligibilityFor(w, "beta", "found-settlement")).toContainEqual({
+      state: "blocked", factionId: "beta", reasons: [{ code: "no-free-site" }],
+    });
+  });
+
+  it("is unplayable when the whole realm is settled or has no sites", () => {
+    expect(isCardPlayable(view({ sites: [] }), "beta", "found-settlement"))
+      .toBe(false);
+    expect(
+      isCardPlayable(view({ sites: ["beta"], settled: ["beta"] }), "beta", "found-settlement"),
+    ).toBe(false);
+    expect(isCardPlayable(view(), "beta", "found-settlement")).toBe(true);
+  });
+
+  it("is not blocked by a pact with the land being settled", () => {
+    // A pact blocks hostile cards. Settling your own vassal's land is not one,
+    // and a vassal you allied with would otherwise become unbuildable.
+    const v = view({
+      overlords: new Map([["gamma", "beta"]]),
+      alliances: { [allianceKey("beta", "gamma")]: 9 },
+      turn: 4,
+    });
+    expect(validTargetsFor(v, "beta", "found-settlement")).toContain("gamma");
+  });
+
+  it("is playable while subjugated - a vassal may still build", () => {
+    const v = view({ overlords: new Map([["beta", "alpha"]]) });
+    expect(validTargetsFor(v, "beta", "found-settlement")).toEqual(["beta"]);
+  });
+});
+
+describe("gripPartsOn", () => {
+  it("adds one per settlement in the realm on top of two per land", () => {
+    const v = view({
+      overlords: new Map([["gamma", "beta"]]),
+      settled: ["beta", "gamma"],
+    });
+    expect(gripPartsOn(v, "beta")).toEqual({ lands: 2, settlements: 2, bar: 6 });
+    expect(subjugationGripOn(v, "beta")).toBe(6);
+    expect(subjugationRequirement(v, "alpha", "beta")).toBe(6);
+  });
+
+  it("ignores settlements outside the realm", () => {
+    const v = view({ settled: ["alpha", "gamma"] });
+    expect(gripPartsOn(v, "beta")).toEqual({ lands: 1, settlements: 0, bar: 2 });
+  });
+
+  it("reports the settlements behind an insufficient-lead block", () => {
+    const v = view({ settled: ["gamma"] });
+    expect(targetEligibilityFor(v, "beta", "subjugate")).toContainEqual({
+      state: "blocked",
+      factionId: "gamma",
+      reasons: [{
+        code: "insufficient-lead",
+        requiredLead: 3,
+        mightLead: 0,
+        statusLead: 0,
+        realmSize: 1,
+        settlements: 1,
+      }],
+    });
+  });
+
+  it("counts a settlement toward the threat a vassal poses to its lord", () => {
+    // The lord's realm includes the vassal's land, so a settlement founded
+    // there raises the lord's own bar too.
+    const v = view({
+      overlords: new Map([["gamma", "beta"]]),
+      settled: ["gamma"],
+    });
+    expect(subjugationGripOn(v, "beta")).toBe(5);
+  });
+});
+
 describe("subjugationGripOn", () => {
   it("is 2 per land of the faction's realm, with no eligibility guards", () => {
     // beta holds gamma: two lands.
@@ -121,6 +221,7 @@ describe("targetEligibilityFor", () => {
           mightLead: 0,
           statusLead: 0,
           realmSize: 1,
+          settlements: 0,
         },
       ],
     });
@@ -142,6 +243,7 @@ describe("targetEligibilityFor", () => {
         mightLead: 1,
         statusLead: 0,
         realmSize: 2,
+        settlements: 0,
       }],
     });
   });
@@ -285,6 +387,8 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       bodyguards: [],
       omens: [],
       diplomacyBoost: [],
+      sites: [],
+      settled: [],
     };
     const targets = validTargetsFor(v, "me", "raid");
     expect(targets).toContain("owner");
@@ -304,6 +408,8 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       bodyguards: [],
       omens: [],
       diplomacyBoost: [],
+      sites: [],
+      settled: [],
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "me", "target");

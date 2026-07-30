@@ -35,6 +35,20 @@ export interface Scenario {
  *  against the scaling-Raid rules and recorded in the 2026-07-29 scaling-might
  *  spec; the `// measured x` comments say what each band was widened from.
  *
+ *  Three bands moved again on 2026-07-30 when Found a settlement replaced the
+ *  grow-crops slot in DEFAULT_DECK: `flailing-full-deck` and
+ *  `competent-full-deck` (both of which play that deck) and the `full-deck`
+ *  world arm. The card adds 1 to the lead anyone needs against a realm, and
+ *  defence gains from that more than offence does - a defender has one bar to
+ *  raise, while an attacker must clear a separate bar per rival - so the
+ *  measured effect is much larger than "+1" sounds. It is the brake the card
+ *  exists to be, so the bands follow the behaviour. The numbers are in the
+ *  2026-07-30 settlement-card spec, and the pacing cost is real: worlds run
+ *  60% longer. Note what did NOT move: the two conquest arms, whose fixed decks
+ *  hold no settlement card, measured identically before and after (110.0 and
+ *  70.0), which is the evidence that the grip rule changes nothing until
+ *  something is actually settled.
+ *
  *  `flailing-full-deck` and `competent-full-deck` were re-measured again on
  *  2026-07-29 (see the design doc's "Correction: the default deck did not
  *  carry Favourable omens" section) after `buildDeck()` was made explicit and
@@ -92,9 +106,12 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.45, 0.75],   // measured 0.60
-      medianFirstSubjugation: [3, 9],  // measured 6.00
-      defeatShare: [0.33, 0.63],       // measured 0.48
+      subjugatedShare: [0.45, 0.75],     // measured 0.46
+      // Moved from [3, 9] (measured 6.00): even played leftmost-first, a
+      // settlement raises this player's own bar, and the world needs longer to
+      // clear it.
+      medianFirstSubjugation: [12, 31],  // measured 20.50
+      defeatShare: [0.33, 0.63],         // measured 0.38
     },
   },
   {
@@ -109,7 +126,12 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.47, 0.77],    // measured 0.54
+      // Moved from [0.47, 0.77] (measured 0.54): a competent player who founds
+      // a settlement is subjugated in 15% of games instead of 54%. The floor is
+      // deliberately above zero - this scenario guards that skill matters, and a
+      // world where a competent player can never be touched at all fails it just
+      // as a hyper-aggressive one does.
+      subjugatedShare: [0.03, 0.30],    // measured 0.15
       // Moved from [3, 8] (measured 5.00) after the reclaim-cut and
       // AI-policy-coverage changeset. A competent human runs the same policy
       // the enemies do, so it now plays the emergency Alliance and Assassinate
@@ -120,7 +142,7 @@ export const SCENARIOS: Scenario[] = [
       // changeset moved permanently: this scenario's subjugatedShare and
       // flailing-full-deck's both left their bands mid-changeset and came back
       // inside them once every policy step had landed.
-      medianFirstSubjugation: [7, 20],  // measured 13.50
+      medianFirstSubjugation: [13, 33],  // measured 22.00
     },
   },
 ];
@@ -259,8 +281,13 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     firstSeed: 1,
     turnCap: 300,
     expect: {
-      unifiedShare: [0.77, 1],      // measured 0.923
-      medianEndTurn: [68, 172],     // measured 114.5
+      unifiedShare: [0.77, 1],      // measured 0.885
+      // Moved from [68, 172] (measured 114.5): every seat founds a settlement,
+      // so every bar in the world goes up by 1 and the first conquest of each
+      // cascade takes about half again as long. Worlds still resolve - 88.5%
+      // inside the 300-turn cap - but this is the pacing cost of the card, and
+      // the band says so rather than hiding it.
+      medianEndTurn: [110, 275],    // measured 183.0
     },
   },
 ];

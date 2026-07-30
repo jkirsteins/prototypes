@@ -1,0 +1,157 @@
+# Balticmap: Found a settlement - Design
+
+Date: 2026-07-30
+Status: Implemented
+
+## Goal
+
+Give the deck a constructive, defensive play. Before this change all thirteen
+cards moved pairwise Might/Status leads, vassalage, alliances or a modifier;
+nothing created anything, nothing touched the map's settlements, and
+`Region.maxSettlements` was read in exactly one place (the land panel's
+`Settlements: Varbola (1/2)` line).
+
+## The card
+
+```
+found-settlement  "Found a settlement"  targeted, maxPerDeck 1, deckBuildable
+"Settle the free site in one land of your realm. Each settlement adds +1 to
+ the lead others need to subjugate you."
+```
+
+- **Grip becomes `2 * lands + settlements`.** The one existing rule (`2` per
+  land of a realm) gains one per settlement founded in that realm. No new
+  resource, no second win condition: `victoryRealmSize` is untouched, so
+  building can delay a defeat but never buy a victory.
+- **Targets a land of your own realm** - your own, one you have annexed, or a
+  vassal's. Lands and factions are 1:1, so this reuses the whole existing
+  faction-targeting path (eligibility, map click, block reasons) with two new
+  reasons: `no-free-site` and `already-settled`. Lands outside the realm are
+  `irrelevant`, not blocked, exactly like out-of-reach targets.
+- **One site per land**, not one per free slot. Grip therefore stays between
+  `2N` and `3N` for an N-land realm - analysable, and it cannot outrun an
+  attacker the way an unbounded builder would.
+- **A settlement belongs to the land, not the founder.** Settle a vassal's land
+  and it walks off with the vassal when the vassal leaves, taking the +1 with
+  it. That is the risk the card offers, and it is why the AI ranks vassal lands
+  last.
+- Not in `DOUBLABLE_CARDS`: nothing about it is a Might or Status gain, so a
+  held Favourable omens reading stays held.
+- Playable while subjugated. A vassal rarely gets the turn (Pay tribute is
+  forced) but the rules do not forbid it.
+
+## Where the settlement goes
+
+Four lands carry an authored locked site (Ikšķile, Koknese, Otepää, Mežotne)
+and those are used as they are, named and labelled. The other 21 lands with a
+spare slot get one **baked growth site**: unnamed, no map label, tooltip "New
+settlement in <Land>." Inventing 21 more named hillforts would be inventing
+history this map is otherwise careful about.
+
+`scripts/prepare-data.mjs` picks each growth point by sampling the land's own
+polygon and maximising `min(distance to the land's edge, distance to the
+settlements it already has)`. Both halves are needed: distance from the existing
+town alone drove sites into land corners where they read as the neighbour's
+(Žemaitija's and eastern Aukštaitija's first attempts landed one pixel apart),
+and distance from the edge alone put them on top of the town already there.
+Every growth site passes the same `geoContains` guard as an authored one.
+
+Pilsotas (10,000 people, one slot) gets no site and can never be built in. The
+pipeline now asserts exactly one locked next site per land with a spare slot,
+and none for a land without.
+
+## Also fixed here
+
+- **`placeName` was hand-edited into `map.json`** and the pipeline never emitted
+  it, so the first regeneration silently put "the Lietuva" back into every
+  notice. It is now in the `FACTIONS` roster the pipeline ships verbatim.
+- **`view.ts` recovered the land count by dividing the bar by 2.** A settlement
+  makes that inverse wrong, so `SubjugationBars` now carries the parts from
+  `gripPartsOn` and the tooltip reads "their realm has 2 lands and 1
+  settlement".
+- **`ai.ts` had two inline copies of the grip formula**; both now call
+  `subjugationGripOn`, so the policy cannot disagree with the rules.
+- **Settlement tooltips were bound per dot at attach time**, so a settlement
+  founded in play would have had no tooltip. The handler is now delegated on the
+  svg.
+- **`tests/notices.test.ts`'s `ALL_TYPES`** was missing `unified` as well as the
+  new `settled`, which meant the registry test silently did not guard them.
+
+## AI policy
+
+Two branches, both in `POLICY_COVERAGE`:
+
+- **7b: settle against a nearing threat.** Any threat within two plays of
+  taking this faction (`threatsTo(...).shortfall <= 2`). A settlement buys about
+  a turn against a rival gaining 1 a turn, so it is worth the turn only once
+  somebody is close.
+- **9b: settle a spare turn**, below the plays that resolve something now and
+  above Grow turnips.
+
+Target ranking: own land, then a land annexed, then a vassal's, ties by faction
+order. The ranking is the rule, not a sort-order accident.
+
+Measured: dropping 9b is *worse*, not more focused - worlds capped 34.6% of the
+time instead of 11.5%, because a hand holding only this card ends up in the
+step-11 fallthrough. Both branches stay.
+
+## Measured effect (26 worlds, seeds 1-52, 300-turn cap)
+
+| metric | before | after |
+|---|---|---|
+| `full-deck` median end turn | 114.5 | 183.0 |
+| `full-deck` unified share | 0.923 | 0.885 |
+| competent human subjugated share | 0.54 | 0.15 |
+| competent human median first subjugation | 13.5 | 22.0 |
+| flailing human median first subjugation | 6.0 | 20.5 |
+| settlements founded per world | - | 26 (one per seat) |
+| founded on land not held outright | - | 7.8% |
+| founded then lost with a vassal | - | 5.8% |
+| `conquest-scaled` / `conquest-omens` | 110.0 / 70.0 | 110.0 / 70.0 |
+
+The conquest arms hold fixed decks with no settlement card and measured
+**identically** before and after. That is the evidence the grip rule changes
+nothing until something is actually settled, and it is the check
+`tests/rng-isolation.test.ts` prescribes before re-freezing its fixture (the
+fixture was re-frozen: adding a card shifts every `buildAiDeck` rng draw).
+
+**The pacing cost is real and larger than "+1" sounds.** A defender has one bar
+to raise; an attacker must clear a separate bar per rival, so defence gains
+disproportionately. Worlds run 60% longer and a competent player is subjugated
+in 15% of games instead of 54%. Four bands moved to follow the behaviour, each
+with the reason recorded in `src/scenarios.ts`. If that brake turns out to be
+too strong, the dials, cheapest first: gate step 9b on a threat existing at all;
+count only settlements in lands held outright; or cap the bonus per realm.
+
+## Testing
+
+- `playability.test.ts`: targets offered across a realm, out-of-realm lands
+  irrelevant, both block reasons, pact does not block it, playable while
+  subjugated, `gripPartsOn` arithmetic including a vassal's settlement raising
+  its lord's bar.
+- `game.test.ts`: the play records the land, logs `settled`, raises the bar,
+  refuses an out-of-realm or siteless land, leaves the settlement with a
+  revolting vassal, and does not spend an omens reading.
+- `ai.test.ts`: settles under threat, ranks own > annexed > vassal, skips a
+  siteless or already-settled land, spends an idle turn on it, and never takes
+  it over a live Subjugate or a nearer Raid.
+- `sim.test.ts`: founded / on-held-land / walked-off metrics, and
+  `alliancesOnOwnTargets` re-asserted as a share of pacts rather than a count
+  per world (the count tracks game length as much as targeting quality).
+- `render.test.ts`, `interaction.test.ts`, `panel.test.ts`, `data.test.ts`,
+  `notices.test.ts`, `view.test.ts` cover the reveal/clear pair, the delegated
+  tooltip, the panel line, the baked data invariants, the silent notice and the
+  tooltip wording.
+- Verified in Chrome through the root dev server: the card is offered, arms,
+  highlights only realm lands, reveals Otepää with its label and growth sites
+  without one, writes "Ugandians founds a new settlement" to the log, shows
+  `Settlements: Tarbatu and one new settlement (2/3)`, quotes "2 lands and 2
+  settlements" on the hover bar, and clears the dots on a new game. The browser
+  pass is what caught the id-space bug below.
+
+## Bug the browser pass caught
+
+`sites` was first built from `settlement.land` - a **region** id - while the
+rules speak **faction** ids ("ugandi" the land, "ugandians" the faction). No
+region id is ever a member of a realm, so the card was permanently unplayable
+while every unit test passed: tests use the same id for both.

@@ -11,17 +11,20 @@ const data = raw as MapData;
 function setup(interceptClick?: (id: string | null) => boolean) {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  const { svg, regionPaths, settlementDots } = renderMap(data, container);
+  const { svg, regionPaths, settlementDots, revealSettlement } = renderMap(data, container);
   const onHover = vi.fn();
   const onSelect = vi.fn();
   const onHoverSettlement = vi.fn();
-  const handle = attachInteraction(svg, regionPaths, settlementDots, data, {
+  const handle = attachInteraction(svg, regionPaths, data, {
     onHover,
     onSelect,
     onHoverSettlement,
     interceptClick,
   });
-  return { svg, regionPaths, settlementDots, onHover, onSelect, onHoverSettlement, handle };
+  return {
+    svg, regionPaths, settlementDots, revealSettlement,
+    onHover, onSelect, onHoverSettlement, handle,
+  };
 }
 
 const mouse = (type: string, init: MouseEventInit = {}) =>
@@ -98,14 +101,32 @@ describe("attachInteraction", () => {
   });
 
   it("hovering a settlement dot fires onHoverSettlement with the settlement", () => {
+    // pointerover/pointerout, not enter/leave: the handler is delegated on the
+    // svg so a dot added mid-game gets a tooltip too, and only the bubbling
+    // pair reaches a delegated listener.
     const { settlementDots, onHoverSettlement } = setup();
     const dot = settlementDots.get("daugmale")!;
-    dot.dispatchEvent(mouse("pointerenter", { clientX: 3, clientY: 4 }));
+    dot.dispatchEvent(mouse("pointerover", { clientX: 3, clientY: 4 }));
     expect(onHoverSettlement).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: "daugmale", name: "Daugmale" }), 3, 4,
     );
-    dot.dispatchEvent(mouse("pointerleave"));
+    dot.dispatchEvent(mouse("pointerout"));
     expect(onHoverSettlement).toHaveBeenLastCalledWith(null, 0, 0);
+  });
+
+  it("gives a dot revealed mid-game the same tooltip", () => {
+    // The regression this delegation exists for: a settlement founded in play
+    // is created after attachInteraction ran.
+    const { svg, revealSettlement, onHoverSettlement } = setup();
+    const locked = data.settlements.find((s) => !s.unlocked)!;
+    revealSettlement(locked);
+    const dot = svg.querySelector(
+      `[data-settlement-id="${locked.id}"]`,
+    ) as SVGCircleElement;
+    dot.dispatchEvent(mouse("pointerover", { clientX: 5, clientY: 6 }));
+    expect(onHoverSettlement).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: locked.id }), 5, 6,
+    );
   });
 
   it("clicking a settlement dot does not change the selection", () => {

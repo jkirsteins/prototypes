@@ -8,7 +8,7 @@ import { DECK_SIZE, buildDeck, CARDS, type Rng } from "../src/cards";
 import {
   allianceKey, bumpMight, bumpStatus, getRel, leadsOf, type Relations,
 } from "../src/relations";
-import { playableSet } from "../src/playability";
+import { playableSet, subjugationGripOn } from "../src/playability";
 import { rulerOf } from "../src/rulers";
 import pools from "../src/data/ruler-names.json";
 
@@ -82,7 +82,7 @@ const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
   "incorporate", "revolt",
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
-  "favourable-omens",
+  "favourable-omens", "found-settlement",
 ];
 
 function pickAt(seed: number): GameState {
@@ -391,6 +391,48 @@ describe("card effects", () => {
     const won = playCard(big, 0, rng());
     expect(won.phase).toBe("victory");
     expect(won.log.at(-1)?.type).toBe("victory");
+  });
+});
+
+describe("found a settlement", () => {
+  it("records the land, logs it, and raises the bar against the realm", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
+    expect(subjugationGripOn(viewOf(g), "beta")).toBe(2);
+    const after = playCard(g, 0, rng(), "beta");
+    expect(after.settled).toEqual(["beta"]);
+    expect(subjugationGripOn(viewOf(after), "beta")).toBe(3);
+    expect(after.log.filter((e) => e.type === "settled")).toEqual([
+      expect.objectContaining({ type: "settled", targetFactionId: "beta", playerId: 1 }),
+    ]);
+  });
+
+  it("refuses a land outside the realm and a land with no site", () => {
+    const g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
+    expect(playCard(g, 0, rng(), "alpha").playedThisTurn).toBe(false);
+    const noSites = { ...g, sites: [] };
+    expect(playCard(noSites, 0, rng(), "beta").playedThisTurn).toBe(false);
+  });
+
+  it("leaves the settlement with the land when a vassal revolts", () => {
+    // The lord settles its vassal's land, then the vassal leaves: the lord's
+    // realm loses both the land and the settlement's +1.
+    let g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    let after = playCard(g, 0, rng(), "gamma");
+    expect(subjugationGripOn(viewOf(after), "beta")).toBe(5); // 2 lands + 1
+    after = { ...after, overlords: new Map() };
+    expect(subjugationGripOn(viewOf(after), "beta")).toBe(2);
+    expect(subjugationGripOn(viewOf(after), "gamma")).toBe(3); // it keeps it
+    expect(after.settled).toEqual(["gamma"]);
+  });
+
+  it("does not double a settlement with a Favourable omens reading", () => {
+    // Nothing about it is a Might or Status gain, so a held reading stays held.
+    let g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
+    g = { ...g, omens: ["beta"] };
+    const after = playCard(g, 0, rng(), "beta");
+    expect(after.omens).toEqual(["beta"]);
+    expect(subjugationGripOn(viewOf(after), "beta")).toBe(3);
   });
 });
 

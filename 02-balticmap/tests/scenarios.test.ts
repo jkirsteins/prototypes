@@ -82,6 +82,9 @@ describe("world scenarios", () => {
         firstLegalTargetShare: null, targetedPlaysSeen: 0, playShareByCard: {},
         meanPreventedAssassinations: null, meanUntestedGuards: null,
         meanUnusedBoosts: null, meanAlliancesOnOwnTargets: null,
+        alliancesOnOwnTargetsShare: null,
+        meanSettlementsFounded: null, settlementsOnHeldLandsShare: null,
+        settlementsFoundedTotal: 0, settlementsWalkedOffShare: null,
       },
     );
     expect(checks[0].ok).toBe(false);

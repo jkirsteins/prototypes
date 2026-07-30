@@ -158,8 +158,9 @@ describe("createDeckScreen", () => {
     });
     const undiscovered = q(container, ".ds-undiscovered");
     expect(undiscovered.classList.contains("hidden")).toBe(false);
-    // 11 non-basics now exist (Reclaim independence retired).
-    expect(undiscovered.textContent).toBe("11 cards still undiscovered");
+    // 12 non-basics now exist (Reclaim independence retired, Found a
+    // settlement added).
+    expect(undiscovered.textContent).toBe("12 cards still undiscovered");
   });
 
   it("deducts known and pool cards from the undiscovered count", () => {
@@ -168,8 +169,8 @@ describe("createDeckScreen", () => {
       visible: true, knownCards: ["grow-crops", "raid", "subjugate"],
       seenPool: ["fortify"], unlockUsed: false,
     });
-    // 11 non-basics total - raid, subjugate (known) - fortify (pool) = 8 left
-    expect(q(container, ".ds-undiscovered").textContent).toBe("8 cards still undiscovered");
+    // 12 non-basics total - raid, subjugate (known) - fortify (pool) = 9 left
+    expect(q(container, ".ds-undiscovered").textContent).toBe("9 cards still undiscovered");
   });
 
   it("uses the singular 'card' when exactly one non-basic is undiscovered", () => {
@@ -179,7 +180,7 @@ describe("createDeckScreen", () => {
       knownCards: [
         "grow-crops", "raid", "shrewd-marriage", "fortify", "subjugate",
         "incorporate", "revolt", "assassinate-ruler",
-        "alliance", "extended-diplomacy", "bodyguard",
+        "alliance", "extended-diplomacy", "bodyguard", "found-settlement",
       ],
       seenPool: [],
       unlockUsed: false,
@@ -200,7 +201,7 @@ describe("createDeckScreen", () => {
       seenPool: [
         "incorporate", "revolt",
         "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
-        "favourable-omens",
+        "favourable-omens", "found-settlement",
       ],
       unlockUsed: false,
     });

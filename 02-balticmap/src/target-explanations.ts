@@ -14,11 +14,17 @@ function explainReason(reason: TargetBlockReason): string[] {
   switch (reason.code) {
     case "alliance":
       return [`Blocked by Alliance until turn ${reason.expiresTurn}.`];
-    case "insufficient-lead":
+    case "insufficient-lead": {
+      const lands = `${reason.realmSize} ${reason.realmSize === 1 ? "land" : "lands"}`;
+      const settled =
+        reason.settlements === 0
+          ? ""
+          : ` and ${reason.settlements} ${reason.settlements === 1 ? "settlement" : "settlements"}`;
       return [
-        `Need a Might or Status lead of ${reason.requiredLead} because their realm has ${reason.realmSize} ${reason.realmSize === 1 ? "land" : "lands"}.`,
+        `Need a Might or Status lead of ${reason.requiredLead} because their realm has ${lands}${settled}.`,
         `Current leads: Might ${reason.mightLead}, Status ${reason.statusLead}.`,
       ];
+    }
     case "already-vassal":
       return ["Already your vassal."];
     case "actor-subjugated":
@@ -31,6 +37,10 @@ function explainReason(reason: TargetBlockReason): string[] {
       return ["You cannot target yourself."];
     case "not-your-vassal":
       return ["Not your vassal."];
+    case "already-settled":
+      return ["Already settled this game."];
+    case "no-free-site":
+      return ["No room for another settlement."];
     default: {
       const exhaustive: never = reason;
       return exhaustive;

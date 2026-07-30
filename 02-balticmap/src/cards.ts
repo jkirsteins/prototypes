@@ -26,6 +26,7 @@ export const CARDS: Record<string, CardDef> = {
   "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Patient envoys: your next Alliance lasts twice as long." },
   "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking." },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "The signs are read: your next Might or Status gain counts double." },
+  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Settle the free site in one land of your realm. Each settlement adds +1 to the lead others need to subjugate you." },
 };
 
 /** Cards a Favourable omens reading doubles. Everything else resolves as
@@ -54,10 +55,14 @@ export type Rng = () => number;
  *  reorder CARDS for any other tidiness reason either: buildAiDeck() rolls
  *  `nonBasics.filter(() => rng() < 0.5)`, consuming one rng draw per entry in
  *  CARDS's declaration order, so reordering CARDS changes which card each
- *  draw maps to and silently moves every committed AI-deck band. */
+ *  draw maps to and silently moves every committed AI-deck band.
+ *
+ *  The grow-crops slot the Reclaim cut left behind now holds Found a
+ *  settlement: a default deck that offers a do-nothing card where a real
+ *  choice fits was a hole, not a design. */
 export const DEFAULT_DECK: string[] = [
   "raid", "shrewd-marriage", "fortify", "subjugate", "incorporate",
-  "grow-crops", "revolt", "assassinate-ruler", "alliance",
+  "found-settlement", "revolt", "assassinate-ruler", "alliance",
   "favourable-omens",
 ];
 

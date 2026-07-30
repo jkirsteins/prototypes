@@ -1,7 +1,7 @@
 import {
   leadsOf, type Incorporated, type Overlords, type Relations,
 } from "./relations";
-import { SUBJUGATE_THRESHOLD } from "./playability";
+import type { GripParts } from "./playability";
 import type { TooltipLine } from "./panel";
 
 export interface View {
@@ -118,6 +118,13 @@ export function barFor(
 export interface SubjugationBars {
   yours: number | null;
   theirs: number | null;
+  /** What each bar is made of, from `gripPartsOn`. Supplied rather than
+   *  recovered from the bar: the lines used to divide the bar by
+   *  SUBJUGATE_THRESHOLD to name the land count, and a founded settlement adds
+   *  1, which makes that inverse silently wrong. Omitted where the caller has
+   *  no parts to give, and then the line quotes the bar alone. */
+  yoursFrom?: GripParts;
+  theirsFrom?: GripParts;
 }
 
 /** Tone always says who leads, never whether a bar is cleared - the same
@@ -144,8 +151,17 @@ export function hoverRelationLines(
           tone: tone(n),
         };
   };
-  const landsIn = (bar: number) => bar / SUBJUGATE_THRESHOLD;
   const landsWord = (n: number) => `${n} ${n === 1 ? "land" : "lands"}`;
+  /** "3 lands", or "3 lands and 1 settlement" once anything is built. Falls
+   *  back to naming no composition at all when the caller gave no parts. */
+  const madeOf = (whose: string, parts: GripParts | undefined): string => {
+    if (parts === undefined) return "";
+    const settled =
+      parts.settlements === 0
+        ? ""
+        : ` and ${parts.settlements} ${parts.settlements === 1 ? "settlement" : "settlements"}`;
+    return ` - ${whose} realm has ${landsWord(parts.lands)}${settled}`;
+  };
   const yours = leadsOf(relations, humanFactionId, hoveredFactionId);
   const theyLead = yours.might < 0 || yours.status < 0;
   return [
@@ -156,8 +172,8 @@ export function hoverRelationLines(
       : [
           {
             text:
-              `Subjugate needs a lead of ${bars.yours} - their realm has ` +
-              `${landsWord(landsIn(bars.yours))}.`,
+              `Subjugate needs a lead of ${bars.yours}` +
+              `${madeOf("their", bars.yoursFrom)}.`,
             tone: "neutral" as const,
           },
         ]),
@@ -166,8 +182,8 @@ export function hoverRelationLines(
       : [
           {
             text:
-              `They need a lead of ${bars.theirs} to subjugate you - your realm has ` +
-              `${landsWord(landsIn(bars.theirs))}.`,
+              `They need a lead of ${bars.theirs} to subjugate you` +
+              `${madeOf("your", bars.theirsFrom)}.`,
             tone: "neutral" as const,
           },
         ]),

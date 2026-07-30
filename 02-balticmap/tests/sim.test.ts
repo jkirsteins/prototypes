@@ -360,9 +360,9 @@ describe("world arms", () => {
   it("aggregates end turns over resolved worlds only", () => {
     const stats = aggregateWorld("x", [
       { seed: 1, outcome: "unified", endTurn: 10, winner: "a", subjugations: 3,
-        incorporations: 2, largestRealm: 15, turnsSinceLastIncorporation: 0 , playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0 },
+        incorporations: 2, largestRealm: 15, turnsSinceLastIncorporation: 0 , playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0, settlementsFounded: 0, settlementsOnHeldLands: 0, settlementsWalkedOff: 0 },
       { seed: 2, outcome: "cap", endTurn: 99, winner: null, subjugations: 1,
-        incorporations: 0, largestRealm: 3, turnsSinceLastIncorporation: 99 , playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0 },
+        incorporations: 0, largestRealm: 3, turnsSinceLastIncorporation: 99 , playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0, settlementsFounded: 0, settlementsOnHeldLands: 0, settlementsWalkedOff: 0 },
     ]);
     expect(stats.unifiedShare).toBe(0.5);
     expect(stats.capShare).toBe(0.5);
@@ -372,6 +372,21 @@ describe("world arms", () => {
 
 describe("waste and bias metrics", () => {
   const opts = { games: 6, turnCap: 120, firstSeed: 1, arm: "full-deck" };
+
+  it("founds settlements, mostly in the founder's own land, rarely wasted", () => {
+    const stats = aggregateWorld("full-deck", runWorldBatch(opts));
+    // Zero would mean the card is ignored; one per seat is the ceiling for a
+    // one-land realm, since a land holds one site.
+    expect(stats.settlementsFoundedTotal).toBeGreaterThan(0);
+    expect(stats.meanSettlementsFounded!).toBeLessThanOrEqual(SIM_FACTION_IDS.length);
+    // The policy ranks its own land first, a land it annexed second, a vassal's
+    // last, so most settlements sit on land the founder holds outright. A share
+    // near 1 here would mean the ranking had inverted.
+    expect(stats.settlementsOnHeldLandsShare!).toBeLessThan(0.4);
+    // Founded in a land that then left the realm: the wasted play. Vassals last
+    // in the ranking is what keeps this low.
+    expect(stats.settlementsWalkedOffShare!).toBeLessThan(0.3);
+  });
 
   it("no longer takes the first legal target most of the time", () => {
     const stats = aggregateWorld("full-deck", runWorldBatch(opts));
@@ -397,7 +412,13 @@ describe("waste and bias metrics", () => {
     // residue is forced by the rules, not a targeting defect, so this asserts a
     // low rate rather than zero. The emergency path IS zero by construction and
     // is covered by the step-5 exclusion tests in tests/ai.test.ts.
-    expect(stats.meanAlliancesOnOwnTargets!).toBeLessThan(0.5);
+    //
+    // Asserted as a share of the pacts sealed, not as a count per world: the
+    // count tracks how long worlds run as much as how well targets are picked,
+    // and it tripled when Found a settlement lengthened them (measured 0.038 to
+    // 0.65 per world) while the share went 0.03% to 0.28% - both negligible.
+    expect(stats.alliancesOnOwnTargetsShare).not.toBeNull();
+    expect(stats.alliancesOnOwnTargetsShare!).toBeLessThan(0.05);
   });
 
   it("counts every play against a card id", () => {

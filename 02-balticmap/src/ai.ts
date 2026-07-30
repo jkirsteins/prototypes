@@ -1,7 +1,7 @@
 import { CARDS, DOUBLABLE_CARDS, type Rng } from "./cards";
 import { leadsOf, realmOf } from "./relations";
 import {
-  SUBJUGATE_THRESHOLD, borderStrength, playableSet, subjugationRequirement,
+  borderStrength, playableSet, subjugationGripOn, subjugationRequirement,
   targetEligibilityFor, threatsTo, validTargetsFor,
 } from "./playability";
 import {
@@ -40,6 +40,8 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "raid": "6: finishing play, else 9: build toward the closest subjugation",
   "shrewd-marriage": "6: finishing play, else 9: build toward the closest subjugation",
   "fortify": "7: defensive fortify",
+  "found-settlement":
+    "7b: settle against a nearing threat, else 9b: settle a spare turn",
   "favourable-omens": "8: read the omens before building",
   "extended-diplomacy": "8b: extend the next pact",
   "bodyguard": "8c: post a guard",
@@ -62,6 +64,29 @@ function gainOf(
   const doubled =
     state.omens.includes(actorFactionId) && DOUBLABLE_CARDS.has(cardId);
   return doubled ? base * 2 : base;
+}
+
+/** Which land of the realm to settle. Every settlement raises the same bar by
+ *  the same 1, so the choice is entirely about which land is safest to sink a
+ *  turn into: a land you hold yourself or have annexed is yours for good, while
+ *  a vassal walks off with the settlement (and the grip it carries) the moment
+ *  it revolts. Ties break on faction order, so the pick is deterministic
+ *  without being arbitrary - the ordering is the rule. */
+function settlementTarget(
+  state: GameState,
+  actorFactionId: string,
+  targets: string[],
+): string | undefined {
+  const rank = (id: string): number => {
+    if (id === actorFactionId) return 0;
+    if (state.incorporated[id] === actorFactionId) return 1;
+    return 2; // a vassal's land: settle it last
+  };
+  return [...targets].sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
+  )[0];
 }
 
 /** Deterministic policy v2; see the rules-v2 spec, "AI policy v2". */
@@ -193,8 +218,7 @@ export function chooseAction(state: GameState): AiAction {
     if (i === undefined) continue;
     for (const t of validTargetsFor(v, p.factionId, cardId)) {
       if (state.overlords.get(t) === p.factionId) continue;
-      const needed =
-        SUBJUGATE_THRESHOLD * realmOf(t, state.overlords, state.incorporated).length;
+      const needed = subjugationGripOn(v, t);
       if (
         leadsOf(state.relations, p.factionId, t)[field] +
           gainOf(state, p.factionId, cardId, t) >= needed
@@ -215,6 +239,22 @@ export function chooseAction(state: GameState): AiAction {
         leadsOf(state.relations, f, p.factionId).might >= 1,
     );
     if (threatened) return { type: "play", cardIndex: fortify };
+  }
+
+  // 7b: settle a land while a threat is closing. A settlement adds 1 to the
+  // lead anyone needs against this whole realm, permanently, which buys about
+  // a turn against a rival who gains 1 a turn - so it is worth the turn only
+  // once somebody is within two plays of taking this faction. An unthreatened
+  // spare turn still settles, at step 9b, below the plays that resolve
+  // something now.
+  const settle = idxOf("found-settlement");
+  if (settle !== undefined && threats.some((t) => t.shortfall <= 2)) {
+    const target = settlementTarget(
+      state, p.factionId, validTargetsFor(v, p.factionId, "found-settlement"),
+    );
+    if (target !== undefined) {
+      return { type: "play", cardIndex: settle, targetId: target };
+    }
   }
 
   // 8: read the omens before building. Raid is one per deck, so spending a
@@ -272,8 +312,7 @@ export function chooseAction(state: GameState): AiAction {
     if (i === undefined) continue;
     for (const t of validTargetsFor(v, p.factionId, cardId)) {
       if (state.overlords.get(t) === p.factionId) continue;
-      const needed =
-        SUBJUGATE_THRESHOLD * realmOf(t, state.overlords, state.incorporated).length;
+      const needed = subjugationGripOn(v, t);
       const deficit = needed - leadsOf(state.relations, p.factionId, t)[field];
       const plays = Math.ceil(deficit / gainOf(state, p.factionId, cardId, t));
       const order = state.factionIds.indexOf(t);
@@ -288,6 +327,18 @@ export function chooseAction(state: GameState): AiAction {
   }
   if (build !== null) {
     return { type: "play", cardIndex: build.cardIndex, targetId: build.targetId };
+  }
+
+  // 9b: no threat near and nothing to build toward - spend the turn on a
+  // permanent bar rather than on turnips. Below step 9 because a lead that
+  // wins a subjugation is worth more than a bar that delays one.
+  if (settle !== undefined) {
+    const target = settlementTarget(
+      state, p.factionId, validTargetsFor(v, p.factionId, "found-settlement"),
+    );
+    if (target !== undefined) {
+      return { type: "play", cardIndex: settle, targetId: target };
+    }
   }
 
   // 10: grow crops

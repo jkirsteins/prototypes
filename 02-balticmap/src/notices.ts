@@ -457,6 +457,15 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     kind: "silent",
     reason: "self-initiated (human pays) or human merely benefits",
   },
+  settled: {
+    kind: "silent",
+    // A rival settling raises the lead the human needs against it, and a
+    // settlement in the human's own realm raises the lead rivals need against
+    // them. Neither moves a lead, so neither is an interruption: both numbers
+    // are already on the map badge, the hover tooltip and the land panel, and
+    // the activity log names the land.
+    reason: "changes a bar the map and tooltip already show, never a lead",
+  },
   victory: { kind: "silent", reason: "postmortem overlay covers it" },
   defeat: { kind: "silent", reason: "postmortem overlay covers it" },
   // hud.ts renders unification in the activity log and the post-mortem

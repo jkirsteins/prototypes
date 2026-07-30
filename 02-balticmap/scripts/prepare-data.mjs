@@ -75,7 +75,11 @@ const FACTIONS = [
   { id: "jersikans", name: "Jersikans", ethnicity: "latgalians", type: "principality", color: "#cd9468" },
   { id: "pilsotas-curonians", name: "Pilsotas Curonians", ethnicity: "curonians", type: "land-coalition", color: "#c48257" },
   { id: "samogitian-confederacy", name: "Samogitian Confederacy", ethnicity: "samogitians", type: "regional-confederacy", color: "#c9b17f" },
-  { id: "lietuva", name: "Lietuva", ethnicity: "aukstaitians", type: "land-coalition", color: "#d9c48f" },
+  // placeName: Lietuva is named for a land, not a people, so it takes no
+  // article. Emitted from here because `factions: FACTIONS` ships this roster
+  // verbatim - the flag was once hand-edited into map.json and the next bake
+  // silently dropped it, putting "the Lietuva" back in every notice.
+  { id: "lietuva", name: "Lietuva", ethnicity: "aukstaitians", type: "land-coalition", color: "#d9c48f", placeName: true },
   { id: "eastern-aukstaitian-confederacy", name: "Eastern Aukštaitian Confederacy", ethnicity: "aukstaitians", type: "land-coalition", color: "#e6d9b8" },
   { id: "sudovians", name: "Sudovians", ethnicity: "yotvingians", type: "land-coalition", color: "#d1a3a0" },
   { id: "dainavians", name: "Dainavians", ethnicity: "yotvingians", type: "land-coalition", color: "#bd8a87" },
@@ -1205,25 +1209,134 @@ console.log(
   [...adjacency].map(([id, s]) => `${id}: ${[...s].sort().join(",")}`).join("; "),
 );
 
+const landFeatureById = new Map(
+  landFeatures.map((f) => [f.properties.land.id, f]),
+);
+
+// --- Growth sites: the one further site a land can still settle -----------
+// Found a settlement needs somewhere to put the new dot. Four lands already
+// carry an authored locked site (Ikšķile, Koknese, Otepää, Mežotne) and those
+// are used as they are; the rest get one unnamed growth site each, because
+// inventing 22 more named hillforts would be inventing history the map is
+// otherwise careful about.
+//
+// The point is chosen by sampling the land's own polygon on a grid and taking
+// the sample with the best `min(distance to the land's edge, distance to the
+// settlements it already has)`. Both halves are needed: distance from the
+// existing town alone drives the site into a far corner of the land, where it
+// reads as belonging to the neighbour across the border (measured: Žemaitija's
+// and eastern Aukštaitija's first attempts landed one pixel apart), and
+// distance from the edge alone puts it on top of the town already there.
+// Derived from the same geometry the geoContains guard below checks, so it is
+// deterministic and validated like an authored site.
+const GROWTH_GRID = 60;
+
+function growthSiteFor(land, feature, existing) {
+  const coords = [];
+  const walk = (node) => {
+    if (typeof node[0] === "number") coords.push(node);
+    else node.forEach(walk);
+  };
+  walk(feature.geometry.coordinates);
+  const lons = coords.map((c) => c[0]);
+  const lats = coords.map((c) => c[1]);
+  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const stepLon = (maxLon - minLon) / GROWTH_GRID;
+  const stepLat = (maxLat - minLat) / GROWTH_GRID;
+  // Longitude scaled by cos(lat) so a degree east counts for what it is worth
+  // this far north. Distances are in these scaled degrees throughout.
+  const k = Math.cos(((minLat + maxLat) / 2 * Math.PI) / 180);
+  const cell = Math.min(stepLat, stepLon * k);
+  const at = (i, j) => [minLon + i * stepLon, minLat + j * stepLat];
+  const dist = (a, b) => Math.hypot((a[0] - b[0]) * k, a[1] - b[1]);
+
+  // Contained mask, then a hop count out from the edge (8-connected BFS from
+  // every sample that is not inside the land): a cheap distance-to-edge that
+  // needs no polygon geometry.
+  const n = GROWTH_GRID + 1;
+  const insideMask = new Uint8Array(n * n);
+  const hops = new Int32Array(n * n).fill(-1);
+  const queue = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const p = at(i, j);
+      if (geoContains(feature, p)) insideMask[i * n + j] = 1;
+      else { hops[i * n + j] = 0; queue.push(i * n + j); }
+    }
+  }
+  for (let q = 0; q < queue.length; q++) {
+    const idx = queue[q];
+    const i = Math.floor(idx / n), j = idx % n;
+    for (let di = -1; di <= 1; di++) {
+      for (let dj = -1; dj <= 1; dj++) {
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || nj < 0 || ni >= n || nj >= n) continue;
+        const nIdx = ni * n + nj;
+        if (hops[nIdx] !== -1) continue;
+        hops[nIdx] = hops[idx] + 1;
+        queue.push(nIdx);
+      }
+    }
+  }
+
+  let best = null;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const idx = i * n + j;
+      if (!insideMask[idx] || hops[idx] < 2) continue; // never hug the edge
+      const p = at(i, j);
+      const score = Math.min(
+        hops[idx] * cell,
+        ...existing.map((s) => dist(p, [s.lon, s.lat])),
+      );
+      if (best === null || score > best.score) {
+        best = { lon: Number(p[0].toFixed(3)), lat: Number(p[1].toFixed(3)), score };
+      }
+    }
+  }
+  if (best === null) {
+    throw new Error(`No interior growth site found in land ${land.id}`);
+  }
+  return {
+    id: `${land.id}-growth`,
+    name: "", // unnamed on purpose: no invented place name, so no map label
+    land: land.id,
+    unlocked: false,
+    lon: best.lon,
+    lat: best.lat,
+    note: `New settlement in ${land.name}.`,
+  };
+}
+
+const GROWTH_SITES = LANDS.flatMap((land) => {
+  const own = SETTLEMENTS.filter((s) => s.land === land.id);
+  if (own.some((s) => !s.unlocked)) return []; // authored locked site already
+  if (own.length >= maxSettlementsFor(land.population)) return []; // no slot
+  return [growthSiteFor(land, landFeatureById.get(land.id), own)];
+});
+
+const ALL_SETTLEMENTS = [...SETTLEMENTS, ...GROWTH_SITES];
+
 // --- Settlement validation: known land, exactly one unlocked per land,
-// authored count within the land's slot cap, and the coordinates really
-// fall inside the claimed land (curation guard).
+// exactly one locked "next site" per land that has a spare slot, authored
+// count within the land's slot cap, and the coordinates really fall inside
+// the claimed land (curation guard). Growth sites go through every one of
+// these too - a generated point is not exempt from the guard that caught
+// curation errors in the authored ones.
 const landIdSet = new Set(LANDS.map((l) => l.id));
 const unlockedPerLand = new Map();
+const lockedPerLand = new Map();
 const authoredPerLand = new Map();
-for (const s of SETTLEMENTS) {
+for (const s of ALL_SETTLEMENTS) {
   if (!landIdSet.has(s.land)) {
     throw new Error(`Settlement ${s.id} claims unknown land ${s.land}`);
   }
   authoredPerLand.set(s.land, (authoredPerLand.get(s.land) ?? 0) + 1);
-  if (s.unlocked) {
-    unlockedPerLand.set(s.land, (unlockedPerLand.get(s.land) ?? 0) + 1);
-  }
+  const per = s.unlocked ? unlockedPerLand : lockedPerLand;
+  per.set(s.land, (per.get(s.land) ?? 0) + 1);
 }
-const landFeatureById = new Map(
-  landFeatures.map((f) => [f.properties.land.id, f]),
-);
-for (const s of SETTLEMENTS) {
+for (const s of ALL_SETTLEMENTS) {
   if (!geoContains(landFeatureById.get(s.land), [s.lon, s.lat])) {
     throw new Error(
       `Settlement ${s.id} at ${s.lon},${s.lat} is not inside land ${s.land}`,
@@ -1231,11 +1344,22 @@ for (const s of SETTLEMENTS) {
   }
 }
 for (const land of LANDS) {
+  const slots = maxSettlementsFor(land.population);
   if ((unlockedPerLand.get(land.id) ?? 0) !== 1) {
     throw new Error(`Land ${land.id} must have exactly one unlocked settlement`);
   }
-  if ((authoredPerLand.get(land.id) ?? 0) > maxSettlementsFor(land.population)) {
+  if ((authoredPerLand.get(land.id) ?? 0) > slots) {
     throw new Error(`Land ${land.id} has more authored settlements than slots`);
+  }
+  // A land with a spare slot must have exactly one locked next site, or Found
+  // a settlement would be unplayable there for no reason a player can see.
+  // A land with no spare slot must have none.
+  const locked = lockedPerLand.get(land.id) ?? 0;
+  const wanted = slots > 1 ? 1 : 0;
+  if (locked !== wanted) {
+    throw new Error(
+      `Land ${land.id} has ${locked} locked next sites, expected ${wanted}`,
+    );
   }
 }
 
@@ -1396,7 +1520,7 @@ const rivers = RIVERS.flatMap((r) => {
   return [{ id: r.id, name: r.name, major: r.major, path: d }];
 }).sort((a, b) => a.id.localeCompare(b.id));
 
-const settlements = SETTLEMENTS.map((s) => {
+const settlements = ALL_SETTLEMENTS.map((s) => {
   const p = projection([s.lon, s.lat]);
   const inBounds =
     p && p[0] > 0 && p[0] < WIDTH && p[1] > 0 && p[1] < HEIGHT;

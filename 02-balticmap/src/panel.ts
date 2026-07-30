@@ -28,8 +28,10 @@ export function tooltipText(region: Region, faction: Faction): string {
   );
 }
 
+/** Growth sites carry no name on purpose (the map invents no place names), so
+ *  their tooltip is the note alone rather than a blank first line. */
 export function settlementTooltipText(s: Settlement): string {
-  return `${s.name}\n${s.note}`;
+  return s.name === "" ? s.note : `${s.name}\n${s.note}`;
 }
 
 export function createPanel(
@@ -39,6 +41,10 @@ export function createPanel(
   factions: Faction[],
   settlements: Settlement[],
   relationsInfo?: (region: Region) => string[],
+  /** Whether a settlement has been founded in this land during the game. The
+   *  panel is otherwise built from static map data, and the count on this line
+   *  is the one place play changes it. */
+  settledIn: (regionId: string) => boolean = () => false,
 ): Panel {
   const root = document.createElement("aside");
   root.className = "panel hidden";
@@ -87,8 +93,10 @@ export function createPanel(
       population.textContent = `Population: ${formatPopulation(region.population)}`;
       cohesion.textContent = `Cohesion: ${region.cohesion}`;
       const home = settlements.find((s) => s.land === region.id && s.unlocked);
+      const founded = settledIn(region.id) ? 1 : 0;
       settlementsLine.textContent = home
-        ? `Settlements: ${home.name} (1/${region.maxSettlements})`
+        ? `Settlements: ${home.name}${founded === 1 ? " and one new settlement" : ""} ` +
+          `(${1 + founded}/${region.maxSettlements})`
         : "";
       flavor.textContent = region.flavor;
       places.textContent = `Notable places: ${region.places.join(", ")}`;

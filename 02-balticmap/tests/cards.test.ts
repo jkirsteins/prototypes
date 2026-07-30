@@ -84,9 +84,11 @@ describe("cards", () => {
     expect(deck).not.toContain("extended-diplomacy");
     expect(deck).not.toContain("bodyguard");
     expect(deck).not.toContain("pay-tribute");
-    // grow-crops fills Reclaim independence's retired slot in place, so it
-    // is now a deliberate, single member of the default deck, not filler.
-    expect(deck.filter((c) => c === "grow-crops")).toHaveLength(1);
+    // Found a settlement holds the slot Reclaim independence retired and
+    // grow-crops briefly filled, so the default deck now carries no filler at
+    // all: every one of its ten cards does something.
+    expect(deck).toContain("found-settlement");
+    expect(deck.filter((c) => c === "grow-crops")).toHaveLength(0);
   });
 
   it("DEFAULT_DECK holds DECK_SIZE ids, each a real, deck-buildable, " +

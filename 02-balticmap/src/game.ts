@@ -10,7 +10,7 @@ import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
   | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
-  | "victory" | "defeat" | "unified";
+  | "settled" | "victory" | "defeat" | "unified";
 
 export interface GameEvent {
   turn: number;
@@ -57,6 +57,12 @@ export interface GameState {
   diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
   omens: string[]; // faction ids holding an unspent Favourable omens reading
+  /** Factions whose land has a site still free to settle - map-derived and
+   *  static, like `adjacency`. Faction ids, not the map's region ids. A faction
+   *  absent here can never be built in. */
+  sites: string[];
+  /** Factions whose land has been settled, in the order founded. */
+  settled: string[];
   /** One ruler per faction id, total. Read through `rulerOf`, written only
    *  by `replaceRuler`. */
   rulers: Rulers;
@@ -92,6 +98,8 @@ export function viewOf(state: GameState): RulesView {
     bodyguards: state.bodyguards,
     omens: state.omens,
     diplomacyBoost: state.diplomacyBoost,
+    sites: state.sites,
+    settled: state.settled,
   };
 }
 
@@ -99,6 +107,11 @@ export function newGame(
   factionIds: string[],
   adjacency?: Record<string, string[]>,
   ethnicities: Record<string, string> = {},
+  /** Faction ids whose land has a free site, from the map. Defaults to every
+   *  faction, the same way `adjacency` defaults to a complete graph: tests get
+   *  a world where Found a settlement is playable everywhere unless they say
+   *  otherwise. */
+  sites?: string[],
 ): GameState {
   return {
     phase: "main-menu",
@@ -114,6 +127,8 @@ export function newGame(
     diplomacyBoost: [],
     bodyguards: [],
     omens: [],
+    sites: sites ?? [...factionIds],
+    settled: [],
     ethnicities,
     rulers: initialRulers(factionIds, ethnicities),
     humanSeat: 0,
@@ -276,6 +291,7 @@ export function playCard(
   let diplomacyBoost = state.diplomacyBoost;
   let bodyguards = state.bodyguards;
   let omens = state.omens;
+  let settled = state.settled;
   let rulers = state.rulers;
   const doubled = omens.includes(p.factionId) && DOUBLABLE_CARDS.has(cardId);
   const mult = doubled ? 2 : 1;
@@ -345,6 +361,15 @@ export function playCard(
         successorRuler: out.successor,
       };
     }
+  } else if (cardId === "found-settlement" && targetId !== undefined) {
+    // The settlement belongs to the land, not to whoever founded it: a vassal's
+    // land settled by its overlord keeps the settlement when the vassal leaves,
+    // and takes the grip with it. That is the risk the card offers.
+    settled = [...settled, targetId];
+    events.push({
+      turn: state.turn, playerId: p.id, type: "settled",
+      targetFactionId: targetId,
+    });
   } else if (cardId === "bodyguard") {
     if (!bodyguards.includes(p.factionId)) {
       bodyguards = [...bodyguards, p.factionId];
@@ -494,7 +519,7 @@ export function playCard(
 
   return {
     ...state, phase, players, relations, overlords, incorporated,
-    alliances, diplomacyBoost, bodyguards, omens, rulers, seenThisRun,
+    alliances, diplomacyBoost, bodyguards, omens, settled, rulers, seenThisRun,
     log: appendEvents(state, events), playedThisTurn: true,
   };
 }

@@ -25,7 +25,6 @@ const WHEEL_ZOOM_BASE = 1.0015;
 export function attachInteraction(
   svg: SVGSVGElement,
   regionPaths: Map<string, SVGPathElement>,
-  settlementDots: Map<string, SVGCircleElement>,
   data: MapData,
   cb: InteractionCallbacks,
 ): InteractionHandle {
@@ -76,16 +75,24 @@ export function attachInteraction(
     });
   }
 
+  // Delegated rather than bound per dot: a settlement founded in play is added
+  // to the map after this runs, and a per-dot listener would leave exactly those
+  // dots with no tooltip - the ones a player most needs explained.
   const settlementById = new Map(data.settlements.map((s) => [s.id, s]));
-  for (const [id, dot] of settlementDots) {
-    dot.addEventListener("pointerenter", (e) => {
-      const me = e as MouseEvent;
-      cb.onHoverSettlement(settlementById.get(id)!, me.clientX, me.clientY);
-    });
-    dot.addEventListener("pointerleave", () => {
-      cb.onHoverSettlement(null, 0, 0);
-    });
-  }
+  const dotUnder = (e: Event): string | undefined =>
+    (e.target as Element | null)?.closest?.("[data-settlement-id]")
+      ?.getAttribute("data-settlement-id") ?? undefined;
+  svg.addEventListener("pointerover", (e) => {
+    const id = dotUnder(e);
+    const s = id === undefined ? undefined : settlementById.get(id);
+    if (s === undefined) return;
+    const me = e as MouseEvent;
+    cb.onHoverSettlement(s, me.clientX, me.clientY);
+  });
+  svg.addEventListener("pointerout", (e) => {
+    if (dotUnder(e) === undefined) return;
+    cb.onHoverSettlement(null, 0, 0);
+  });
 
   let down: { x: number; y: number; pointerId: number | undefined } | null = null;
   let dragged = false;

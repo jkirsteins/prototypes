@@ -85,6 +85,39 @@ describe("renderMap", () => {
     );
   });
 
+  it("reveals a founded settlement, labels only a named one, and clears them", () => {
+    const container = document.createElement("div");
+    const { svg, settlementDots, revealSettlement, clearFoundedSettlements } =
+      renderMap(data, container);
+    const dots = () => svg.querySelectorAll("circle.settlement").length;
+    const labels = () => svg.querySelectorAll("text.settlement-label").length;
+    const before = { dots: dots(), labels: labels() };
+
+    // An authored locked site keeps its name, so it gets a label.
+    const named = data.settlements.find((x) => x.id === "otepaa")!;
+    revealSettlement(named);
+    expect(dots()).toBe(before.dots + 1);
+    expect(labels()).toBe(before.labels + 1);
+    expect(settlementDots.get("otepaa")!.classList.contains("settlement-founded"))
+      .toBe(true);
+
+    // A baked growth site has no name, so it gets a dot and no label - the map
+    // invents no place names.
+    const unnamed = data.settlements.find((x) => !x.unlocked && x.name === "")!;
+    revealSettlement(unnamed);
+    expect(dots()).toBe(before.dots + 2);
+    expect(labels()).toBe(before.labels + 1);
+
+    revealSettlement(named); // idempotent: driven from state every refresh
+    expect(dots()).toBe(before.dots + 2);
+
+    clearFoundedSettlements();
+    expect(dots()).toBe(before.dots);
+    expect(labels()).toBe(before.labels);
+    expect(settlementDots.has("otepaa")).toBe(false);
+    expect(settlementDots.has("daugmale")).toBe(true); // untouched
+  });
+
   it("exposes the vassal overlay group and one stripe pattern per faction", () => {
     const container = document.createElement("div");
     const { svg, vassalOverlayGroup } = renderMap(data, container);

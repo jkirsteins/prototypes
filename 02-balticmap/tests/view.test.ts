@@ -289,7 +289,11 @@ describe("hoverRelationLines", () => {
     // classes drive the map badges.
     const rel = bumpMight({}, "actor", "target");
     expect(
-      hoverRelationLines(rel, "actor", "target", "Independent", { yours: 4, theirs: 6 }),
+      hoverRelationLines(rel, "actor", "target", "Independent", {
+        yours: 4, theirs: 6,
+        yoursFrom: { lands: 2, settlements: 0, bar: 4 },
+        theirsFrom: { lands: 3, settlements: 0, bar: 6 },
+      }),
     ).toEqual([
       { text: "Might: +1/4 (you lead)", tone: "good" },
       { text: "Status: 0/4", tone: "neutral" },
@@ -302,7 +306,11 @@ describe("hoverRelationLines", () => {
     // The whole bug: their bar counts YOUR realm, so it is a different number.
     const rel = bumpMight({}, "target", "actor");
     expect(
-      hoverRelationLines(rel, "actor", "target", "Independent", { yours: 4, theirs: 20 }),
+      hoverRelationLines(rel, "actor", "target", "Independent", {
+        yours: 4, theirs: 20,
+        yoursFrom: { lands: 2, settlements: 0, bar: 4 },
+        theirsFrom: { lands: 10, settlements: 0, bar: 20 },
+      }),
     ).toEqual([
       { text: "Might: -1/20 (they lead)", tone: "bad" },
       { text: "Status: 0/4", tone: "neutral" },
@@ -319,8 +327,35 @@ describe("hoverRelationLines", () => {
     const lines = hoverRelationLines({}, "actor", "target", "Independent", {
       yours: 2,
       theirs: null,
+      yoursFrom: { lands: 1, settlements: 0, bar: 2 },
     });
     expect(lines[2].text).toBe("Subjugate needs a lead of 2 - their realm has 1 land.");
+  });
+
+  it("names the settlements behind a bar rather than dividing it back out", () => {
+    // The bar is 2 per land plus 1 per settlement, so it can no longer be
+    // halved to recover the land count - the parts are passed in instead.
+    const rel = bumpMight({}, "target", "actor");
+    const lines = hoverRelationLines(rel, "actor", "target", "Independent", {
+      yours: 5,
+      theirs: 7,
+      yoursFrom: { lands: 2, settlements: 1, bar: 5 },
+      theirsFrom: { lands: 3, settlements: 1, bar: 7 },
+    });
+    expect(lines[2].text).toBe(
+      "Subjugate needs a lead of 5 - their realm has 2 lands and 1 settlement.",
+    );
+    expect(lines[3].text).toBe(
+      "They need a lead of 7 to subjugate you - your realm has 3 lands and 1 settlement.",
+    );
+  });
+
+  it("quotes the bar alone when no parts are supplied", () => {
+    const lines = hoverRelationLines({}, "actor", "target", "Independent", {
+      yours: 4,
+      theirs: null,
+    });
+    expect(lines[2].text).toBe("Subjugate needs a lead of 4.");
   });
 
   it("omits their sentence when they lead nothing", () => {

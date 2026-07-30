@@ -15,6 +15,7 @@ import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relatio
 import { rulerOf } from "./rulers";
 import {
   playableSet, validTargetsFor, targetEligibilityFor, subjugationRequirement,
+  gripPartsOn,
   borderStrength,
 } from "./playability";
 import { cardModifierLines, explainTargetEligibility } from "./target-explanations";
@@ -36,9 +37,10 @@ const data = rawData as MapData;
 const app = document.getElementById("app")!;
 
 const {
-  svg, regionPaths, settlementDots, realmOutlineGroup, realmHoverGroup,
-  vassalOverlayGroup, peopleLabels,
+  svg, regionPaths, revealSettlement, clearFoundedSettlements,
+  realmOutlineGroup, realmHoverGroup, vassalOverlayGroup, peopleLabels,
 } = renderMap(data, app);
+
 // map-render.ts doesn't expose a badge group; appended here, last in the SVG
 // (after realm-outline/vassal-overlay, on top of the whole map stack).
 const badgeGroup = document.createElementNS(
@@ -51,6 +53,24 @@ const factionById = new Map(data.factions.map((f) => [f.id, f]));
 const regionById = new Map(data.regions.map((r) => [r.id, r]));
 const factionByRegion = new Map(data.regions.map((r) => [r.id, r.faction]));
 const regionByFaction = new Map(data.regions.map((r) => [r.faction, r.id]));
+/** The one further site each land can settle: its locked settlement, if the
+ *  land has one. Lands with no spare slot have none and can never be built in,
+ *  which is exactly what `sites` tells the rules.
+ *
+ *  Keyed by FACTION id, not region id. Every land has one faction and every
+ *  faction one land, but the two id spaces are different words ("ugandi" the
+ *  land, "ugandians" the faction) and the rules speak faction ids throughout.
+ *  Keying this by `settlement.land` made the card permanently unplayable, since
+ *  no region id is ever a member of a realm. */
+const siteByFaction = new Map(
+  data.settlements
+    .filter((s) => !s.unlocked)
+    .flatMap((s) => {
+      const faction = factionByRegion.get(s.land);
+      return faction === undefined ? [] : [[faction, s] as const];
+    }),
+);
+const SITE_LANDS = [...siteByFaction.keys()];
 const factionAdjacency = factionAdjacencyOf(data);
 const factionEthnicities: Record<string, string> = Object.fromEntries(
   data.factions.map((f) => [f.id, f.ethnicity]),
@@ -76,6 +96,7 @@ let seenMerged = false;
 let poolAtRunStart: string[] = meta.seenPool;
 let game: GameState = newGame(
   data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
+  SITE_LANDS,
 );
 let armed: number | null = null; // hand index of the armed targeted card
 let pendingTribute: number | null = null; // hand index awaiting a track choice
@@ -140,6 +161,10 @@ function allianceLine(f: string, humanFaction: string): string | null {
 const panel = createPanel(
   app, () => interaction.deselect(), data.peoples, data.factions,
   data.settlements, relationsInfo,
+  (regionId) => {
+    const faction = factionByRegion.get(regionId);
+    return faction !== undefined && game.settled.includes(faction);
+  },
 );
 
 function effectiveFaction(f: string): string {
@@ -371,6 +396,8 @@ function hoverLines(region: Region): TooltipLine[] {
     {
       yours: subjugationRequirement(viewOf(game), human.factionId, f),
       theirs: subjugationRequirement(viewOf(game), f, human.factionId),
+      yoursFrom: gripPartsOn(viewOf(game), f),
+      theirsFrom: gripPartsOn(viewOf(game), human.factionId),
     },
   ));
   const pact = allianceLine(f, human.factionId);
@@ -471,9 +498,20 @@ function cancelTribute(): void {
   hud.setTributePrompt(false);
 }
 
+/** Draws the dot for every settlement founded so far, from state, on every
+ *  refresh. The map itself is rendered once per page load, so starting a new
+ *  game clears the previous game's settlements first. */
+function revealFoundedSettlements(): void {
+  for (const factionId of game.settled) {
+    const site = siteByFaction.get(factionId);
+    if (site !== undefined) revealSettlement(site);
+  }
+}
+
 function refresh(): void {
   applyOwnership();
   applyTargeting();
+  revealFoundedSettlements();
   renderThreatBadges();
   hud.update(game);
   applyRealmHover(hoveredRegion);
@@ -518,7 +556,9 @@ const hud = createHud(
       bankSeen();
       game = startGame(newGame(
         data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
+        SITE_LANDS,
       ));
+      clearFoundedSettlements();
       cancelTribute();
       disarm();
       unlockUsedThisGame = false;
@@ -658,7 +698,7 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-const interaction = attachInteraction(svg, regionPaths, settlementDots, data, {
+const interaction = attachInteraction(svg, regionPaths, data, {
   onHover(region, clientX, clientY) {
     if (region) tooltip.showLines(hoverLines(region), clientX, clientY);
     else tooltip.hide();

@@ -452,6 +452,78 @@ describe("chooseAction with scaling gains", () => {
   });
 });
 
+describe("found a settlement (steps 7b and 9b)", () => {
+  // alpha is the actor throughout; beta is the human seat.
+  const threatened = (g: GameState, by: string, n: number): GameState => ({
+    ...g,
+    relations: lead({}, by, "alpha", n),
+  });
+
+  it("settles against a threat within two plays of taking it", () => {
+    // alpha's bar is 2 (one land); gamma leading by 1 is one play short.
+    const g = threatened(withHand(base(), ["found-settlement"]), "gamma", 1);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "alpha",
+    });
+  });
+
+  it("prefers its own land, then an annexed one, over a vassal's", () => {
+    const g = {
+      ...threatened(withHand(base(), ["found-settlement"]), "gamma", 1),
+      overlords: new Map([["delta", "alpha"]]),
+      incorporated: { beta: "alpha" },
+      settled: ["alpha"], // own land already settled
+    };
+    // beta is annexed and permanent; delta is a vassal that can walk off.
+    expect(chooseAction(g)).toMatchObject({ targetId: "beta" });
+    expect(chooseAction({ ...g, settled: ["alpha", "beta"] }))
+      .toMatchObject({ targetId: "delta" });
+  });
+
+  it("does not settle a land with no free site", () => {
+    const g = {
+      ...threatened(withHand(base(), ["found-settlement", "grow-crops"]), "gamma", 1),
+      sites: [], // no land in this world has a spare slot
+    };
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 }); // grows crops
+  });
+
+  it("does not settle the same land twice", () => {
+    const g = {
+      ...threatened(withHand(base(), ["found-settlement", "grow-crops"]), "gamma", 1),
+      sites: ["alpha"],
+      settled: ["alpha"],
+    };
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
+  it("spends an unthreatened turn settling rather than growing crops", () => {
+    // No leads anywhere, so no threat and nothing to build toward: step 9b.
+    const g = withHand(base(), ["grow-crops", "found-settlement"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "alpha",
+    });
+  });
+
+  it("takes a subjugation over a settlement", () => {
+    // alpha leads gamma by 2, gamma's realm is one land: Subjugate is live.
+    const g = {
+      ...withHand(base(), ["found-settlement", "subjugate"]),
+      relations: lead({}, "alpha", "gamma", 2),
+    };
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "gamma" });
+  });
+
+  it("raids toward a subjugation rather than settling, when one is near", () => {
+    // Step 9 outranks 9b: a lead that wins a vassal beats a bar that delays one.
+    const g = {
+      ...withHand(base(), ["found-settlement", "raid"]),
+      relations: lead({}, "alpha", "gamma", 1),
+    };
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+});
+
 describe("POLICY_COVERAGE", () => {
   it("names a policy branch for every card in the game", () => {
     expect(Object.keys(POLICY_COVERAGE).sort()).toEqual(Object.keys(CARDS).sort());

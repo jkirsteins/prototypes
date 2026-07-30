@@ -362,6 +362,15 @@ export interface WorldSummary {
   unusedBoosts: number;
   /** Pacts sealed with a faction the actor could have subjugated instead. */
   alliancesOnOwnTargets: number;
+  /** Settlements founded. Zero across a batch means the card is ignored. */
+  settlementsFounded: number;
+  /** Of those, ones founded in a land the founder did not hold itself - a
+   *  vassal's land or one it had annexed. A share near 1 would mean the policy
+   *  prefers other people's land, which is the bias worth catching. */
+  settlementsOnHeldLands: number;
+  /** Settlements founded in a land that had left the founder's realm by the
+   *  end of the run: the turn was spent raising somebody else's bar. */
+  settlementsWalkedOff: number;
 }
 
 const biggestRealm = (s: GameState): number =>
@@ -445,6 +454,22 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     state = next.phase === "playing" ? advance(next, rng) : next;
     largestRealm = Math.max(largestRealm, biggestRealm(state));
   }
+  // Settlements: founded where, and how many walked off with a vassal. The log
+  // carries the founder as a player id, so the faction is resolved through the
+  // seat rather than assumed to be the land itself.
+  const settledEvents = state.log.filter((e) => e.type === "settled");
+  const factionOfPlayer = new Map(state.players.map((pl) => [pl.id, pl.factionId]));
+  let settlementsOnHeldLands = 0;
+  let settlementsWalkedOff = 0;
+  for (const e of settledEvents) {
+    const founder = factionOfPlayer.get(e.playerId);
+    const land = e.targetFactionId;
+    if (founder === undefined || land === undefined) continue;
+    if (land !== founder) settlementsOnHeldLands++;
+    if (!realmOf(founder, state.overlords, state.incorporated).includes(land)) {
+      settlementsWalkedOff++;
+    }
+  }
   const unified = state.log.find((e) => e.type === "unified");
   const lastIncorporation = [...state.log]
     .reverse()
@@ -480,6 +505,9 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     untestedGuards,
     unusedBoosts,
     alliancesOnOwnTargets,
+    settlementsFounded: settledEvents.length,
+    settlementsOnHeldLands,
+    settlementsWalkedOff,
   };
 }
 
@@ -580,6 +608,19 @@ export interface WorldStats {
   meanUntestedGuards: number | null;
   meanUnusedBoosts: number | null;
   meanAlliancesOnOwnTargets: number | null;
+  /** The same defect as a share of the pacts actually sealed, which is what it
+   *  was always about. The per-world mean above conflates targeting quality
+   *  with game length - it tripled when Found a settlement lengthened worlds
+   *  while the share stayed under 1% - so the share is the one to assert on. */
+  alliancesOnOwnTargetsShare: number | null;
+  meanSettlementsFounded: number | null;
+  /** Share of founded settlements placed in a land the founder did not hold
+   *  itself. Pooled over the batch, so it needs the count below to read. */
+  settlementsOnHeldLandsShare: number | null;
+  settlementsFoundedTotal: number;
+  /** Share of founded settlements that had left the founder's realm by the end
+   *  - the wasted-play counter for this card. */
+  settlementsWalkedOffShare: number | null;
 }
 
 export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
@@ -590,6 +631,8 @@ export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
     games.reduce((a, g) => a + pick(g), 0);
   const targeted = sum((g) => g.targetedPlays);
   const firstLegal = sum((g) => g.firstLegalTargetPlays);
+  const founded = sum((g) => g.settlementsFounded);
+  const alliancePlays = sum((g) => g.playsByCard["alliance"] ?? 0);
   const playShareByCard: Record<string, number> = {};
   for (const g of games) {
     for (const [id, n] of Object.entries(g.playsByCard)) {
@@ -618,5 +661,19 @@ export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
     meanUntestedGuards: mean(games.map((g) => g.untestedGuards)),
     meanUnusedBoosts: mean(games.map((g) => g.unusedBoosts)),
     meanAlliancesOnOwnTargets: mean(games.map((g) => g.alliancesOnOwnTargets)),
+    alliancesOnOwnTargetsShare:
+      alliancePlays === 0
+        ? null
+        : sum((g) => g.alliancesOnOwnTargets) / alliancePlays,
+    meanSettlementsFounded: mean(games.map((g) => g.settlementsFounded)),
+    settlementsFoundedTotal: founded,
+    settlementsOnHeldLandsShare:
+      founded === 0
+        ? null
+        : games.reduce((n, g) => n + g.settlementsOnHeldLands, 0) / founded,
+    settlementsWalkedOffShare:
+      founded === 0
+        ? null
+        : games.reduce((n, g) => n + g.settlementsWalkedOff, 0) / founded,
   };
 }

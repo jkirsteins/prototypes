@@ -19,6 +19,16 @@ export interface RulesView {
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
   omens: string[]; // faction ids holding an unspent Favourable omens reading
   diplomacyBoost: string[]; // faction ids holding an unspent Extended diplomacy
+  /** Factions whose land still has a free site to settle. Map-derived and
+   *  static, like `adjacency`: a land's slot cap follows from its population,
+   *  so which lands could ever be built in is not something play changes.
+   *
+   *  Faction ids, like every other id here - the map's region ids are a
+   *  different id space and must be translated before they reach the rules. */
+  sites: string[];
+  /** Factions whose land has been settled this game. One site per land, so a
+   *  list of faction ids is the whole state. */
+  settled: string[];
 }
 
 function reachOf(view: RulesView, factionId: string): Set<string> {
@@ -54,8 +64,29 @@ export function borderStrength(
   ).length;
 }
 
+/** What a faction's grip is made of: the lands of its realm, and the
+ *  settlements founded in them. */
+export interface GripParts {
+  lands: number;
+  settlements: number;
+  /** The lead the two together demand: `2 * lands + settlements`. */
+  bar: number;
+}
+
+/** The lands and settlements behind a faction's grip. Returned as parts rather
+ *  than only the total because the number cannot be taken apart again
+ *  afterwards: the tooltip used to recover the land count by dividing the bar
+ *  by two, which a settlement makes wrong. */
+export function gripPartsOn(view: RulesView, factionId: string): GripParts {
+  const realm = realmOf(factionId, view.overlords, view.incorporated);
+  const lands = realm.length;
+  const settlements = realm.filter((m) => view.settled.includes(m)).length;
+  return { lands, settlements, bar: SUBJUGATE_THRESHOLD * lands + settlements };
+}
+
 /** The lead anyone needs against this faction: two per land of its realm,
- *  counting its vassals and the lands it has incorporated.
+ *  counting its vassals and the lands it has incorporated, plus one per
+ *  settlement founded in any of those lands.
  *
  *  Bare arithmetic with no eligibility guards, because two callers need it
  *  that way: `subjugationRequirement` applies the guards itself, and the
@@ -65,11 +96,9 @@ export function subjugationGripOn(
   view: RulesView,
   factionId: string,
 ): number {
-  return (
-    SUBJUGATE_THRESHOLD *
-    realmOf(factionId, view.overlords, view.incorporated).length
-  );
+  return gripPartsOn(view, factionId).bar;
 }
+
 
 /** The lead the actor needs on either track to Subjugate the target: two per
  *  land of the target's realm, counting its vassals and the lands it has
@@ -150,8 +179,12 @@ export type TargetBlockReason =
       mightLead: number;
       statusLead: number;
       realmSize: number;
+      /** Settlements founded in that realm, each adding 1 to requiredLead. */
+      settlements: number;
     }
   | { code: "already-vassal" }
+  | { code: "already-settled" }
+  | { code: "no-free-site" }
   | { code: "actor-subjugated" }
   | { code: "overlord-prohibited" }
   | { code: "incorporated" }
@@ -193,19 +226,29 @@ export function targetEligibilityFor(
 
   const actorOverlord = view.overlords.get(actorFactionId);
   const reach = reachOf(view, actorFactionId);
-  const hostile = cardId !== "alliance";
+  // Found a settlement is aimed at your own realm, so neither the pact block
+  // nor the self and incorporated blocks apply to it: your own land and the
+  // lands you have annexed are exactly what it is for.
+  const inward = cardId === "found-settlement";
+  const hostile = cardId !== "alliance" && !inward;
+  const ownRealm = inward
+    ? realmOf(actorFactionId, view.overlords, view.incorporated)
+    : [];
 
   return view.factionIds.map((factionId): TargetEligibility => {
     const specialOverlord =
       (cardId === "shrewd-marriage" || cardId === "alliance") &&
       factionId === actorOverlord;
-    const relevant = cardId === "incorporate" || reach.has(factionId) ||
-      specialOverlord;
+    const relevant = inward
+      ? ownRealm.includes(factionId)
+      : cardId === "incorporate" || reach.has(factionId) || specialOverlord;
     if (!relevant) return { state: "irrelevant", factionId };
 
     const reasons: TargetBlockReason[] = [];
-    if (factionId === actorFactionId) reasons.push({ code: "self" });
-    if (factionId in view.incorporated) reasons.push({ code: "incorporated" });
+    if (factionId === actorFactionId && !inward) reasons.push({ code: "self" });
+    if (factionId in view.incorporated && !inward) {
+      reasons.push({ code: "incorporated" });
+    }
     if (
       actorOverlord !== undefined &&
       (cardId === "subjugate" || cardId === "incorporate")
@@ -236,19 +279,24 @@ export function targetEligibilityFor(
     }
 
     if (cardId === "subjugate") {
-      const realmSize =
-        realmOf(factionId, view.overlords, view.incorporated).length;
-      const requiredLead = SUBJUGATE_THRESHOLD * realmSize;
+      const grip = gripPartsOn(view, factionId);
       const lead = leadsOf(view.relations, actorFactionId, factionId);
-      if (Math.max(lead.status, lead.might) < requiredLead) {
+      if (Math.max(lead.status, lead.might) < grip.bar) {
         reasons.push({
           code: "insufficient-lead",
-          requiredLead,
+          requiredLead: grip.bar,
           mightLead: lead.might,
           statusLead: lead.status,
-          realmSize,
+          realmSize: grip.lands,
+          settlements: grip.settlements,
         });
       }
+    }
+
+    if (inward && !view.sites.includes(factionId)) {
+      reasons.push({ code: "no-free-site" });
+    } else if (inward && view.settled.includes(factionId)) {
+      reasons.push({ code: "already-settled" });
     }
 
     return reasons.length === 0

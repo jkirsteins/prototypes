@@ -211,16 +211,20 @@ describe("map.json (anno 1100)", () => {
     }
   });
 
-  it("has 30 authored settlements, exactly one unlocked per land", () => {
-    expect(data.settlements.length).toBe(30);
+  it("has 51 authored settlements, exactly one unlocked per land", () => {
+    expect(data.settlements.length).toBe(51);
     const ids = data.settlements.map((s) => s.id);
-    expect(new Set(ids).size).toBe(30);
+    expect(new Set(ids).size).toBe(51);
     expect(ids).toEqual([...ids].sort());
     const landIds = new Set(data.regions.map((r) => r.id));
     const unlockedPerLand = new Map<string, number>();
     for (const s of data.settlements) {
-      expect(s.name.length).toBeGreaterThan(0);
-      expect(s.note.length).toBeGreaterThan(20);
+      // A baked growth site is deliberately nameless: the map invents no place
+      // names for the settlements founded during a game.
+      const growth = s.id.endsWith("-growth");
+      expect(s.name.length).toBeGreaterThan(growth ? -1 : 0);
+      expect(growth ? s.name : "").toBe("");
+      expect(s.note.length).toBeGreaterThan(growth ? 15 : 20);
       expect(landIds.has(s.land)).toBe(true);
       expect(typeof s.unlocked).toBe("boolean");
       expect(s.x).toBeGreaterThan(0);
@@ -237,9 +241,25 @@ describe("map.json (anno 1100)", () => {
     for (const r of data.regions) {
       expect(unlockedPerLand.get(r.id)).toBe(1);
     }
-    // Apuole is gone: Pilsotas at 10,000 people supports a single slot.
-    const locked = data.settlements.filter((s) => !s.unlocked).map((s) => s.id);
-    expect(locked.sort()).toEqual(["ikskile", "koknese", "mezotne", "otepaa"]);
+    // Every land has exactly one locked next site for Found a settlement,
+    // except Pilsotas: at 10,000 people it supports a single slot, so it has
+    // no room for one (which is also why Apuole is gone).
+    const locked = data.settlements.filter((s) => !s.unlocked);
+    expect(locked.length).toBe(25);
+    expect(new Set(locked.map((s) => s.land)).size).toBe(25);
+    expect(locked.some((s) => s.land === "pilsotas")).toBe(false);
+    // The four authored locked sites are used as they are; the rest are baked.
+    expect(locked.filter((s) => s.name !== "").map((s) => s.id).sort())
+      .toEqual(["ikskile", "koknese", "mezotne", "otepaa"]);
+  });
+
+  it("gives every land with a spare slot exactly one locked next site", () => {
+    for (const r of data.regions) {
+      const locked = data.settlements.filter(
+        (s) => s.land === r.id && !s.unlocked,
+      );
+      expect(locked.length).toBe(r.maxSettlements > 1 ? 1 : 0);
+    }
   });
 
   it("maxSettlements follows the population formula and bounds authored counts", () => {

@@ -2,10 +2,13 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { NOTICE_RULES, buildNotices, type NoticeCtx } from "../src/notices";
 import type { GameEvent, GameEventType } from "../src/game";
 
+// Hand-maintained, and it was already missing "unified" before "settled" was
+// added: the registry test only guards the types listed here, so anything left
+// off is exactly what goes unguarded.
 const ALL_TYPES: GameEventType[] = [
   "draw", "play", "reshuffle", "discard",
   "subjugated", "released", "incorporated", "reclaimed", "tribute",
-  "victory", "defeat",
+  "settled", "victory", "defeat", "unified",
 ];
 
 const NAMES: Record<string, string> = {
@@ -63,6 +66,19 @@ describe("NOTICE_RULES registry", () => {
         expect(rule.reason.length, `empty reason for ${t}`).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe("a founded settlement", () => {
+  it("stays silent: it moves a bar the map already shows, never a lead", () => {
+    const rule = NOTICE_RULES.settled;
+    expect(rule.kind).toBe("silent");
+    expect(
+      buildNotices(
+        [{ turn: 3, playerId: 2, type: "settled", targetFactionId: "livs" }],
+        ctx,
+      ),
+    ).toEqual([]);
   });
 });
 

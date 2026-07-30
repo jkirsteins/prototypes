@@ -126,6 +126,10 @@ export function createHud(
         return `${factionName(e.targetFactionId)} reclaims independence from ${factionName(e.overlordFactionId)}`;
       case "tribute":
         return `${factionName(e.targetFactionId)} pays tribute to ${factionName(e.overlordFactionId)}`;
+      case "settled":
+        // Singular verb to match the other allegiance lines ("Vironians
+        // submits to", "pays tribute to"), which name a people the same way.
+        return `${factionName(e.targetFactionId)} founds a new settlement`;
       case "victory":
         return "You rule the Baltic";
       case "defeat":

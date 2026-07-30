@@ -31,6 +31,7 @@ describe("explainTargetEligibility", () => {
           mightLead: 1,
           statusLead: 0,
           realmSize: 2,
+          settlements: 0,
         },
       ],
     }], nameOf)).toEqual([{
@@ -55,6 +56,7 @@ describe("explainTargetEligibility", () => {
         mightLead: 0,
         statusLead: 1,
         realmSize: 1,
+        settlements: 0,
       }],
     }], nameOf)[0]?.lines).toEqual([
       "Alpha",
