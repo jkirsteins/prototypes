@@ -5,11 +5,11 @@
     "outcome": "defeat",
     "firstSubjugatedTurn": 7,
     "firstOverlord": "selonians",
-    "subjugatedCount": 2,
+    "subjugatedCount": 4,
     "releasedCount": 0,
-    "defeatTurn": 11,
+    "defeatTurn": 18,
     "conqueror": "eastern-aukstaitian-confederacy",
-    "turns": 11
+    "turns": 18
   },
   {
     "seed": 2,
@@ -17,11 +17,11 @@
     "outcome": "defeat",
     "firstSubjugatedTurn": 6,
     "firstOverlord": "jersikans",
-    "subjugatedCount": 7,
+    "subjugatedCount": 6,
     "releasedCount": 0,
-    "defeatTurn": 18,
+    "defeatTurn": 15,
     "conqueror": "selonians",
-    "turns": 18
+    "turns": 15
   },
   {
     "seed": 3,
@@ -29,11 +29,11 @@
     "outcome": "defeat",
     "firstSubjugatedTurn": 4,
     "firstOverlord": "selonians",
-    "subjugatedCount": 6,
+    "subjugatedCount": 4,
     "releasedCount": 0,
-    "defeatTurn": 15,
+    "defeatTurn": 11,
     "conqueror": "semigallian-confederacy",
-    "turns": 15
+    "turns": 11
   },
   {
     "seed": 4,
@@ -43,9 +43,9 @@
     "firstOverlord": "jersikans",
     "subjugatedCount": 6,
     "releasedCount": 0,
-    "defeatTurn": 21,
-    "conqueror": "talavians",
-    "turns": 21
+    "defeatTurn": 22,
+    "conqueror": "selonians",
+    "turns": 22
   },
   {
     "seed": 5,
@@ -53,11 +53,11 @@
     "outcome": "defeat",
     "firstSubjugatedTurn": 7,
     "firstOverlord": "selonians",
-    "subjugatedCount": 3,
+    "subjugatedCount": 2,
     "releasedCount": 0,
-    "defeatTurn": 13,
-    "conqueror": "jersikans",
-    "turns": 13
+    "defeatTurn": 9,
+    "conqueror": "semigallian-confederacy",
+    "turns": 9
   },
   {
     "seed": 6,
@@ -65,11 +65,11 @@
     "outcome": "defeat",
     "firstSubjugatedTurn": 8,
     "firstOverlord": "jersikans",
-    "subjugatedCount": 1,
+    "subjugatedCount": 2,
     "releasedCount": 0,
-    "defeatTurn": 9,
-    "conqueror": "jersikans",
-    "turns": 9
+    "defeatTurn": 10,
+    "conqueror": "selonians",
+    "turns": 10
   },
   {
     "seed": 7,
@@ -104,7 +104,7 @@
     "subjugatedCount": 5,
     "releasedCount": 0,
     "defeatTurn": 18,
-    "conqueror": "samogitian-confederacy",
+    "conqueror": "semigallian-confederacy",
     "turns": 18
   },
   {

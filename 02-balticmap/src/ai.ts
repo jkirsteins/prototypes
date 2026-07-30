@@ -53,9 +53,14 @@ export function chooseAction(state: GameState): AiAction {
     return { type: "play", cardIndex: tribute, tributeTrack: track };
   }
 
-  // 2: reclaim independence
-  const reclaim = idxOf("reclaim-independence");
-  if (reclaim !== undefined) return { type: "play", cardIndex: reclaim };
+  // 2: revolt out of vassalage. A vassal cannot Subjugate or Incorporate at all
+  // and every forced Pay tribute compounds the lord's lead against it, so no
+  // vassal turn is better spent elsewhere. Revolt carries no lead condition,
+  // and its parting +1/+1 cuts the lord's lead, delaying re-subjugation.
+  // Playable exactly while subjugated, so idxOf is the whole guard. A forced
+  // Pay tribute still outranks it through playableSet.
+  const revolt = idxOf("revolt");
+  if (revolt !== undefined) return { type: "play", cardIndex: revolt };
 
   // 3: incorporate the first vassal in faction order
   const incorporate = idxOf("incorporate");

@@ -62,6 +62,29 @@ describe("chooseAction priorities", () => {
     });
   });
 
+  it("2: revolts out of vassalage rather than building", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
+    g = withHand(g, ["raid", "revolt"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("2: does not revolt when not subjugated", () => {
+    let g = base();
+    g = withHand(g, ["revolt", "grow-crops"]);
+    // Revolt is unplayable while free, so the potato is the play
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("1 beats 2: a forced tribute outranks revolting", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
+    g = withHand(g, ["revolt", "pay-tribute"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, tributeTrack: "might",
+    });
+  });
+
   it("3: incorporate the first vassal", () => {
     let g = base();
     g = { ...g, overlords: new Map([["delta", "alpha"], ["gamma", "alpha"]]) };
