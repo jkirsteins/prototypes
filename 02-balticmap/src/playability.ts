@@ -89,6 +89,58 @@ export function subjugationRequirement(
   return subjugationGripOn(view, targetFactionId);
 }
 
+export interface Threat {
+  factionId: string;
+  /** Lead this faction still needs on its best track. <= 0 means it can act now. */
+  shortfall: number;
+  statusShortfall: number;
+  mightShortfall: number;
+}
+
+/** Every faction that could Subjugate `factionId` if only its lead were high
+ *  enough, with how much lead each still needs. Sorted by shortfall ascending,
+ *  ties by faction order.
+ *
+ *  Legality comes from `targetEligibilityFor` rather than being re-derived: a
+ *  candidate counts only when this faction's entry is `available` (it can act
+ *  now) or blocked by nothing except `insufficient-lead`. Reach, active pacts,
+ *  the candidate being someone's vassal and this faction already being its
+ *  vassal are therefore all handled in one place.
+ *
+ *  Four policy steps ask this question - Alliance, Assassinate ruler, Bodyguard
+ *  and Fortify - which is why it lives here as one unit instead of four
+ *  inlined copies in the AI. */
+export function threatsTo(view: RulesView, factionId: string): Threat[] {
+  const out: Threat[] = [];
+  for (const other of view.factionIds) {
+    if (other === factionId) continue;
+    const required = subjugationRequirement(view, other, factionId);
+    if (required === null) continue;
+    const entry = targetEligibilityFor(view, other, "subjugate").find(
+      (e) => e.factionId === factionId,
+    );
+    if (entry === undefined || entry.state === "irrelevant") continue;
+    if (
+      entry.state === "blocked" &&
+      !(entry.reasons.length === 1 && entry.reasons[0].code === "insufficient-lead")
+    ) {
+      continue;
+    }
+    const lead = leadsOf(view.relations, other, factionId);
+    out.push({
+      factionId: other,
+      shortfall: required - Math.max(lead.status, lead.might),
+      statusShortfall: required - lead.status,
+      mightShortfall: required - lead.might,
+    });
+  }
+  const order = (id: string): number => view.factionIds.indexOf(id);
+  return out.sort(
+    (a, b) =>
+      a.shortfall - b.shortfall || order(a.factionId) - order(b.factionId),
+  );
+}
+
 export type TargetBlockReason =
   | { code: "alliance"; expiresTurn: number }
   | {

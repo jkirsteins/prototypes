@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   SUBJUGATE_THRESHOLD, borderStrength, isCardPlayable, playableSet, subjugationGripOn,
-  subjugationRequirement, targetEligibilityFor, validTargetsFor,
+  subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView,
 } from "../src/playability";
 import { allianceKey, bumpMight, bumpStatus, type Relations } from "../src/relations";
@@ -463,5 +463,67 @@ describe("favourable-omens legality", () => {
     expect(
       isCardPlayable(view({ omens: ["beta"] }), "alpha", "favourable-omens"),
     ).toBe(true);
+  });
+});
+
+describe("threatsTo", () => {
+  it("reports a faction that can subjugate now at shortfall 0 or less", () => {
+    // alpha and beta are adjacent; beta's realm is 1 land, so the bar is 2.
+    // gamma is also adjacent to beta and so is also a threat, just a distant
+    // one: threatsTo reports everyone who COULD take beta given enough lead,
+    // and leaves the filtering to its callers. alpha sorts first on shortfall.
+    const v = view({ relations: mightLead("alpha", "beta", 2) });
+    const threats = threatsTo(v, "beta");
+    expect(threats[0]).toMatchObject({ factionId: "alpha", shortfall: 0 });
+    expect(threats.map((t) => t.factionId)).toEqual(["alpha", "gamma"]);
+  });
+
+  it("reports how much lead a threat still needs, per track", () => {
+    const v = view({ relations: mightLead("alpha", "beta", 1) });
+    const [t] = threatsTo(v, "beta");
+    expect(t.shortfall).toBe(1);
+    expect(t.mightShortfall).toBe(1);
+    expect(t.statusShortfall).toBe(SUBJUGATE_THRESHOLD);
+  });
+
+  it("counts a faction with no lead at all as a threat needing the full bar", () => {
+    expect(threatsTo(view(), "beta").map((t) => t.factionId)).toEqual([
+      "alpha", "gamma",
+    ]);
+  });
+
+  it("ignores factions out of reach", () => {
+    // delta is two steps from beta on the line map
+    expect(threatsTo(view(), "beta").map((t) => t.factionId)).not.toContain("delta");
+  });
+
+  it("ignores a faction whose pact with this one is still active", () => {
+    const v = view({ alliances: { [allianceKey("alpha", "beta")]: 10 }, turn: 1 });
+    expect(threatsTo(v, "beta").map((t) => t.factionId)).not.toContain("alpha");
+  });
+
+  it("ignores a subjugated faction, which cannot subjugate anyone", () => {
+    const v = view({ overlords: new Map([["alpha", "delta"]]) });
+    expect(threatsTo(v, "beta").map((t) => t.factionId)).not.toContain("alpha");
+  });
+
+  it("ignores this faction's own overlord, which already holds it", () => {
+    const v = view({ overlords: new Map([["beta", "alpha"]]) });
+    expect(threatsTo(v, "beta").map((t) => t.factionId)).not.toContain("alpha");
+  });
+
+  it("sorts by shortfall, then by faction order", () => {
+    // gamma is 1 short, alpha is 2 short: gamma first despite sorting later
+    const v = view({ relations: mightLead("gamma", "beta", 1) });
+    expect(threatsTo(v, "beta").map((t) => t.factionId)).toEqual(["gamma", "alpha"]);
+  });
+
+  it("scales with the threatened faction's own realm", () => {
+    // beta holds gamma: 2 lands, so the bar doubles and a lead of 2 is short
+    const v = view({
+      overlords: new Map([["gamma", "beta"]]),
+      relations: mightLead("alpha", "beta", 2),
+    });
+    expect(threatsTo(v, "beta")[0].shortfall).toBe(2);
   });
 });
