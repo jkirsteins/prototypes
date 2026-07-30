@@ -58,9 +58,14 @@ export function createHand(): Hand {
       options.forEach((option, i) => {
         const button = cardButton(option, onPick, locked);
         const offset = i - (n - 1) / 2;
+        const angle = offset * FAN_ANGLE_DEG;
         button.style.transform =
-          `rotate(${offset * FAN_ANGLE_DEG}deg) ` +
-          `translateY(${Math.abs(offset) * FAN_DROP_PX}px)`;
+          `rotate(${angle}deg) translateY(${Math.abs(offset) * FAN_DROP_PX}px)`;
+        // The hover panel is a child of the card, so it inherits this rotation.
+        // A legal card flattens on hover and the panel comes upright with it;
+        // an unplayable one deliberately does not move, so style.css cancels
+        // the angle on the panel alone, and needs to know what it was.
+        button.style.setProperty("--fan-rotate", `${angle}deg`);
         root.append(button);
       });
     },

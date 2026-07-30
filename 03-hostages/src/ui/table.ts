@@ -16,7 +16,9 @@ import type { GameEvent, GameState, Side } from "../types";
 
 const CARD_W = 112; // matches .hand .card in style.css
 const CARD_H = 120;
-const CENTER_SCALE = 1.25;
+// .slot in style.css is this multiple of the card size, so a card stops at
+// exactly the size of the slot it lands on.
+export const CENTER_SCALE = 1.25;
 
 export function bannerText(state: GameState): string {
   if (state.phase === "playerAnswer") return "HE IS WAITING - answer or take it";
@@ -144,17 +146,36 @@ export function createTable(actions: Actions): Table {
       return;
     }
     if (event.kind === "lead" || event.kind === "answer") {
-      if (event.cardId === undefined) return;
-      const card = cardById(event.cardId);
+      const cardId = event.cardId;
+      if (cardId === undefined) return;
+      const card = cardById(cardId);
       // rectOf returns null once the card has left the fan, which is the
       // normal case by the time a lead animates: fall back to the fan itself.
       const origin =
-        (side === "player" ? hand.rectOf(event.cardId) : null) ??
+        (side === "player" ? hand.rectOf(cardId) : null) ??
         rectOf(side === "player" ? hand.root : backs.root);
       const slot = event.kind === "lead" ? leadSlot : answerSlot;
-      flyCard(root, "", card.name, spawn(origin), [
-        { to: centerOf(rectOf(slot)), scale: CENTER_SCALE, durationMs: 220 },
-      ]);
+      // The flying element is removed when it arrives, so without this the
+      // card evaporates over an empty slot and the middle of the table stays
+      // blank until the whole chain settles - which is every card you ever
+      // play, since your own leads are resolved by then and paintState has
+      // nothing pending to draw. Landing the face here is the arrival.
+      // Guarded on isBusy so a flight that outlives its own chain (an
+      // `answer` beat is 200ms against a 240ms flight) cannot repaint a slot
+      // that settled() has already cleared.
+      const land = (): void => {
+        if (!beats.isBusy()) return;
+        slot.textContent = "";
+        slot.append(faceCard(cardId));
+      };
+      flyCard(
+        root,
+        "",
+        card.name,
+        spawn(origin),
+        [{ to: centerOf(rectOf(slot)), scale: CENTER_SCALE, durationMs: 220 }],
+        land,
+      );
       return;
     }
     if (event.kind === "surrender" && event.cardId !== undefined) {
@@ -173,16 +194,20 @@ export function createTable(actions: Actions): Table {
     }
   }
 
-  function renderCenter(state: GameState): void {
-    leadSlot.textContent = "";
-    answerSlot.textContent = "";
-    if (state.pendingLead === null) return;
-    const card = cardById(state.pendingLead.cardId);
+  function faceCard(cardId: string): HTMLElement {
+    const card = cardById(cardId);
     const face = el("div", "card center-card");
     face.dataset.cardId = card.id;
     face.append(el("span", "card-name", card.name));
     face.append(el("span", "card-summary", summarize(card)));
-    leadSlot.append(face);
+    return face;
+  }
+
+  function renderCenter(state: GameState): void {
+    leadSlot.textContent = "";
+    answerSlot.textContent = "";
+    if (state.pendingLead === null) return;
+    leadSlot.append(faceCard(state.pendingLead.cardId));
   }
 
   /** Secrets live in their own row for the whole run, so they are filtered
