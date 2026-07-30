@@ -62,11 +62,25 @@ export function chooseAction(state: GameState): AiAction {
   const revolt = idxOf("revolt");
   if (revolt !== undefined) return { type: "play", cardIndex: revolt };
 
-  // 3: incorporate the first vassal in faction order
+  // 3: incorporate the vassal that brings the most land. Incorporation is
+  // permanent and carries the vassal's own annexations with it, so realm size
+  // is exactly the land gained - and land is the victory condition. Chains
+  // cannot exist, so a vassal's realm is itself plus what it has annexed.
   const incorporate = idxOf("incorporate");
   if (incorporate !== undefined) {
-    const t = validTargetsFor(v, p.factionId, "incorporate")[0];
-    if (t !== undefined) return { type: "play", cardIndex: incorporate, targetId: t };
+    const targets = validTargetsFor(v, p.factionId, "incorporate");
+    if (targets.length > 0) {
+      let best = targets[0];
+      let bestSize = -1;
+      for (const t of targets) {
+        const size = realmOf(t, state.overlords, state.incorporated).length;
+        if (size > bestSize) {
+          best = t;
+          bestSize = size;
+        }
+      }
+      return { type: "play", cardIndex: incorporate, targetId: best };
+    }
   }
 
   // 4: subjugate the biggest lead

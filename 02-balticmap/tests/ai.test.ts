@@ -89,12 +89,23 @@ describe("chooseAction priorities", () => {
     });
   });
 
-  it("3: incorporate the first vassal", () => {
+  it("3: incorporates the vassal that brings the most land", () => {
     let g = base();
-    g = { ...g, overlords: new Map([["delta", "alpha"], ["gamma", "alpha"]]) };
-    g = withHand(g, ["subjugate", "incorporate"]);
+    // alpha holds gamma and delta; delta has annexed a land, so it is worth more
+    g = { ...g, overlords: new Map([["gamma", "alpha"], ["delta", "alpha"]]) };
+    g = { ...g, incorporated: { beta: "delta" } };
+    g = withHand(g, ["incorporate"]);
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "gamma", // faction order
+      type: "play", cardIndex: 0, targetId: "delta",
+    });
+  });
+
+  it("3: breaks a realm-size tie by faction order", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["gamma", "alpha"], ["delta", "alpha"]]) };
+    g = withHand(g, ["incorporate"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "gamma",
     });
   });
 
