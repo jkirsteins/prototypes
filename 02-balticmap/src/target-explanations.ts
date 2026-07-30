@@ -29,8 +29,15 @@ function explainReason(reason: TargetBlockReason): string[] {
         reason.poachSurcharge === 0
           ? ""
           : `, plus ${reason.poachSurcharge} to prise them off their overlord`;
+      // Naming the tracks separately is the whole point once they diverge: the
+      // shorter bar is the route to take, and a player told only the taller one
+      // would read a settled realm as further out of reach than it is.
+      const need =
+        reason.required.might === reason.required.status
+          ? `Need a Might or Status lead of ${reason.required.might}`
+          : `Need a Might lead of ${reason.required.might} or a Status lead of ${reason.required.status}`;
       return [
-        `Need a Might or Status lead of ${reason.requiredLead} because their realm has ${lands}${settled}${poached}.`,
+        `${need} because their realm has ${lands}${settled}${poached}.`,
         `Current leads: Might ${reason.mightLead}, Status ${reason.statusLead}.`,
       ];
     }

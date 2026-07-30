@@ -1,7 +1,7 @@
 import {
   leadsOf, type Incorporated, type Overlords, type Relations,
 } from "./relations";
-import type { GripParts } from "./playability";
+import type { GripParts, TrackBars } from "./playability";
 import type { TooltipLine } from "./panel";
 
 export interface View {
@@ -178,12 +178,21 @@ export function barFor(
   return lead < 0 ? theirBar : yourBar;
 }
 
+/** How to say a pair of per-track bars in one clause. Collapses to a single
+ *  number while nothing is built, which is the common case and the shorter
+ *  read: the bars only diverge once a settlement raises the Might one. */
+export function barPhrase(bars: TrackBars): string {
+  return bars.might === bars.status
+    ? `${bars.might}`
+    : `${bars.might} in Might or ${bars.status} in Status`;
+}
+
 /** The two Subjugate bars for a hovered pair, from `subjugationRequirement`
  *  called in both directions. Either is null where Subjugate could never
  *  apply that way round, and the matching lines lose their denominator. */
 export interface SubjugationBars {
-  yours: number | null;
-  theirs: number | null;
+  yours: TrackBars | null;
+  theirs: TrackBars | null;
   /** What each bar is made of, from `gripPartsOn`. Supplied rather than
    *  recovered from the bar: the lines used to divide the bar by
    *  SUBJUGATE_THRESHOLD to name the land count, and a founded settlement adds
@@ -204,8 +213,16 @@ export function hoverRelationLines(
   bars: SubjugationBars = { yours: null, theirs: null },
 ): TooltipLine[] {
   const tone = (n: number) => (n > 0 ? "good" : n < 0 ? "bad" : "neutral");
-  const delta = (label: string, n: number): TooltipLine => {
-    const bar = barFor(n, bars.yours, bars.theirs);
+  const delta = (
+    label: string,
+    n: number,
+    track: keyof TrackBars,
+  ): TooltipLine => {
+    const bar = barFor(
+      n,
+      bars.yours === null ? null : bars.yours[track],
+      bars.theirs === null ? null : bars.theirs[track],
+    );
     if (bar !== null) {
       const suffix = n > 0 ? " (you lead)" : n < 0 ? " (they lead)" : "";
       return { text: `${label}: ${formatLead("", n, bar)}${suffix}`, tone: tone(n) };
@@ -231,14 +248,14 @@ export function hoverRelationLines(
   const yours = leadsOf(relations, humanFactionId, hoveredFactionId);
   const theyLead = yours.might < 0 || yours.status < 0;
   return [
-    delta("Might", yours.might),
-    delta("Status", yours.status),
+    delta("Might", yours.might, "might"),
+    delta("Status", yours.status, "status"),
     ...(bars.yours === null
       ? []
       : [
           {
             text:
-              `Subjugate needs a lead of ${bars.yours}` +
+              `Subjugate needs a lead of ${barPhrase(bars.yours)}` +
               `${madeOf("their", bars.yoursFrom)}.`,
             tone: "neutral" as const,
           },
@@ -248,7 +265,7 @@ export function hoverRelationLines(
       : [
           {
             text:
-              `They need a lead of ${bars.theirs} to subjugate you` +
+              `They need a lead of ${barPhrase(bars.theirs)} to subjugate you` +
               `${madeOf("your", bars.theirsFrom)}.`,
             tone: "neutral" as const,
           },

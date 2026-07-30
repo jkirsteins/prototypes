@@ -6,7 +6,7 @@ import {
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
 } from "../src/view";
-import { bumpMight, type Relations } from "../src/relations";
+import { bumpMight, bumpStatus, type Relations } from "../src/relations";
 
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 6);
 
@@ -290,9 +290,9 @@ describe("hoverRelationLines", () => {
     const rel = bumpMight({}, "actor", "target");
     expect(
       hoverRelationLines(rel, "actor", "target", "Independent", {
-        yours: 4, theirs: 6,
-        yoursFrom: { lands: 2, settlements: 0, bar: 4 },
-        theirsFrom: { lands: 3, settlements: 0, bar: 6 },
+        yours: { might: 4, status: 4 }, theirs: { might: 6, status: 6 },
+        yoursFrom: { lands: 2, settlements: 0, might: 4, status: 4 },
+        theirsFrom: { lands: 3, settlements: 0, might: 6, status: 6 },
       }),
     ).toEqual([
       { text: "Might: +1/4 (you lead)", tone: "good" },
@@ -307,9 +307,9 @@ describe("hoverRelationLines", () => {
     const rel = bumpMight({}, "target", "actor");
     expect(
       hoverRelationLines(rel, "actor", "target", "Independent", {
-        yours: 4, theirs: 20,
-        yoursFrom: { lands: 2, settlements: 0, bar: 4 },
-        theirsFrom: { lands: 10, settlements: 0, bar: 20 },
+        yours: { might: 4, status: 4 }, theirs: { might: 20, status: 20 },
+        yoursFrom: { lands: 2, settlements: 0, might: 4, status: 4 },
+        theirsFrom: { lands: 10, settlements: 0, might: 20, status: 20 },
       }),
     ).toEqual([
       { text: "Might: -1/20 (they lead)", tone: "bad" },
@@ -325,34 +325,49 @@ describe("hoverRelationLines", () => {
 
   it("says one land in the singular", () => {
     const lines = hoverRelationLines({}, "actor", "target", "Independent", {
-      yours: 2,
+      yours: { might: 2, status: 2 },
       theirs: null,
-      yoursFrom: { lands: 1, settlements: 0, bar: 2 },
+      yoursFrom: { lands: 1, settlements: 0, might: 2, status: 2 },
     });
     expect(lines[2].text).toBe("Subjugate needs a lead of 2 - their realm has 1 land.");
   });
 
   it("names the settlements behind a bar rather than dividing it back out", () => {
-    // The bar is 2 per land plus 1 per settlement, so it can no longer be
-    // halved to recover the land count - the parts are passed in instead.
+    // The Might bar is 2 per land plus 1 per settlement, so it can no longer be
+    // halved to recover the land count - the parts are passed in instead. A
+    // settlement leaves the Status bar alone, so both numbers are named.
     const rel = bumpMight({}, "target", "actor");
     const lines = hoverRelationLines(rel, "actor", "target", "Independent", {
-      yours: 5,
-      theirs: 7,
-      yoursFrom: { lands: 2, settlements: 1, bar: 5 },
-      theirsFrom: { lands: 3, settlements: 1, bar: 7 },
+      yours: { might: 5, status: 4 },
+      theirs: { might: 7, status: 6 },
+      yoursFrom: { lands: 2, settlements: 1, might: 5, status: 4 },
+      theirsFrom: { lands: 3, settlements: 1, might: 7, status: 6 },
     });
     expect(lines[2].text).toBe(
-      "Subjugate needs a lead of 5 - their realm has 2 lands and 1 settlement.",
+      "Subjugate needs a lead of 5 in Might or 4 in Status" +
+        " - their realm has 2 lands and 1 settlement.",
     );
     expect(lines[3].text).toBe(
-      "They need a lead of 7 to subjugate you - your realm has 3 lands and 1 settlement.",
+      "They need a lead of 7 in Might or 6 in Status to subjugate you" +
+        " - your realm has 3 lands and 1 settlement.",
     );
+  });
+
+  it("measures each track against its own bar", () => {
+    // A settled realm is nearer on Status than on Might, and the badge must
+    // say so: same lead, two denominators.
+    const rel = bumpStatus(bumpMight({}, "actor", "target"), "actor", "target");
+    const lines = hoverRelationLines(rel, "actor", "target", "Independent", {
+      yours: { might: 5, status: 4 },
+      theirs: null,
+    });
+    expect(lines[0].text).toBe("Might: +1/5 (you lead)");
+    expect(lines[1].text).toBe("Status: +1/4 (you lead)");
   });
 
   it("quotes the bar alone when no parts are supplied", () => {
     const lines = hoverRelationLines({}, "actor", "target", "Independent", {
-      yours: 4,
+      yours: { might: 4, status: 4 },
       theirs: null,
     });
     expect(lines[2].text).toBe("Subjugate needs a lead of 4.");
@@ -361,8 +376,8 @@ describe("hoverRelationLines", () => {
   it("omits their sentence when they lead nothing", () => {
     const rel = bumpMight({}, "actor", "target");
     const lines = hoverRelationLines(rel, "actor", "target", "Independent", {
-      yours: 4,
-      theirs: 20,
+      yours: { might: 4, status: 4 },
+      theirs: { might: 20, status: 20 },
     });
     expect(lines.some((l) => l.text.startsWith("They need"))).toBe(false);
   });

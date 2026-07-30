@@ -315,13 +315,17 @@ function renderThreatBadges(): void {
     // Each track is measured against the bar of whichever side leads it.
     const yourBar = subjugationRequirement(viewOf(game), human.factionId, factionId);
     const theirBar = subjugationRequirement(viewOf(game), factionId, human.factionId);
-    const mightBar = barFor(l.might, yourBar, theirBar);
-    const statusBar = barFor(l.status, yourBar, theirBar);
+    // Each track also carries its own bar: a settlement raises the Might one
+    // and leaves Status where it was, so the two denominators can differ for
+    // that reason as well as by direction.
+    const mightBar = barFor(l.might, yourBar?.might ?? null, theirBar?.might ?? null);
+    const statusBar = barFor(l.status, yourBar?.status ?? null, theirBar?.status ?? null);
     // Danger is now guarded by the same rule that decides legality: a faction
     // that could never subjugate the human - one that is itself a vassal, or
     // the human's own overlord - has a null bar and stops being marked.
     const danger =
-      theirBar !== null && Math.max(-l.might, -l.status) >= theirBar;
+      theirBar !== null &&
+      (-l.might >= theirBar.might || -l.status >= theirBar.status);
     const regionId = regionByFaction.get(factionId);
     const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
     if (!pathEl) continue;

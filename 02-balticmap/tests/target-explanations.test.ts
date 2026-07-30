@@ -30,7 +30,7 @@ describe("explainTargetEligibility", () => {
         { code: "alliance", expiresTurn: 12 },
         {
           code: "insufficient-lead",
-          requiredLead: 4,
+          required: { might: 4, status: 4 },
           mightLead: 1,
           statusLead: 0,
           realmSize: 2,
@@ -56,7 +56,7 @@ describe("explainTargetEligibility", () => {
       factionId: "alpha",
       reasons: [{
         code: "insufficient-lead",
-        requiredLead: 2,
+        required: { might: 2, status: 2 },
         mightLead: 0,
         statusLead: 1,
         realmSize: 1,

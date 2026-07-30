@@ -412,10 +412,11 @@ describe("card effects", () => {
 describe("found a settlement", () => {
   it("records the land, logs it, and raises the bar against the realm", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
-    expect(subjugationGripOn(viewOf(g), "beta")).toBe(2);
+    expect(subjugationGripOn(viewOf(g), "beta")).toEqual({ might: 2, status: 2 });
     const after = playCard(g, 0, rng(), "beta");
     expect(after.settled).toEqual(["beta"]);
-    expect(subjugationGripOn(viewOf(after), "beta")).toBe(3);
+    // The settlement is garrisoned ground: it raises Might and leaves Status.
+    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 3, status: 2 });
     expect(after.log.filter((e) => e.type === "settled")).toEqual([
       expect.objectContaining({ type: "settled", targetFactionId: "beta", playerId: 1 }),
     ]);
@@ -434,10 +435,12 @@ describe("found a settlement", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     let after = playCard(g, 0, rng(), "gamma");
-    expect(subjugationGripOn(viewOf(after), "beta")).toBe(5); // 2 lands + 1
+    // 2 lands, +1 Might for the settlement
+    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 5, status: 4 });
     after = { ...after, overlords: new Map() };
-    expect(subjugationGripOn(viewOf(after), "beta")).toBe(2);
-    expect(subjugationGripOn(viewOf(after), "gamma")).toBe(3); // it keeps it
+    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 2, status: 2 });
+    expect(subjugationGripOn(viewOf(after), "gamma")) // it keeps it
+      .toEqual({ might: 3, status: 2 });
     expect(after.settled).toEqual(["gamma"]);
   });
 
@@ -447,7 +450,7 @@ describe("found a settlement", () => {
     g = { ...g, omens: ["beta"] };
     const after = playCard(g, 0, rng(), "beta");
     expect(after.omens).toEqual(["beta"]);
-    expect(subjugationGripOn(viewOf(after), "beta")).toBe(3);
+    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 3, status: 2 });
   });
 });
 

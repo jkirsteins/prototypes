@@ -26,6 +26,9 @@ const FACTION_BY_PLAYER: Record<number, string> = {
 
 let leadsTable: Record<string, { might: number; status: number }> = {};
 let grip = 2;
+// The Might bar when a settlement has raised it above the Status one. Null
+// keeps the two equal, which is every case that predates the split.
+let mightGrip: number | null = null;
 let allianceExpiryTable: Record<string, number | undefined> = {};
 // Rival-specific subjugation bar. Defaults to `grip` for any rival not
 // listed here, matching what the real `subjugationRequirement` returns for
@@ -39,9 +42,14 @@ const ctx: NoticeCtx = {
   factionNameWithArticle: (id) => (id !== undefined ? `the ${NAMES[id] ?? id}` : ""),
   factionOf: (playerId) => FACTION_BY_PLAYER[playerId],
   leads: (other) => leadsTable[other] ?? { might: 0, status: 0 },
-  subjugationGrip: () => grip,
-  subjugationBarAgainstYou: (other) =>
-    other in subjugationBarTable ? subjugationBarTable[other] : grip,
+  // The bars diverge only where a settlement has been founded, so these
+  // helpers take one number and mirror it onto both tracks. The tests that
+  // care about the split set `mightGrip` instead.
+  subjugationGrip: () => ({ might: mightGrip ?? grip, status: grip }),
+  subjugationBarAgainstYou: (other) => {
+    const bar = other in subjugationBarTable ? subjugationBarTable[other] : grip;
+    return bar === null ? null : { might: mightGrip ?? bar, status: bar };
+  },
   allianceExpiry: (other) => allianceExpiryTable[other],
 };
 
@@ -88,6 +96,7 @@ describe("buildNotices: single-event scenarios", () => {
   beforeEach(() => {
     leadsTable = {};
     grip = 2;
+    mightGrip = null;
     allianceExpiryTable = {};
     subjugationBarTable = {};
   });
@@ -462,6 +471,7 @@ describe("buildNotices: batch grouping", () => {
   beforeEach(() => {
     leadsTable = {};
     grip = 2;
+    mightGrip = null;
     allianceExpiryTable = {};
     subjugationBarTable = {};
   });

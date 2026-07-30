@@ -248,7 +248,10 @@ export function chooseAction(state: GameState): AiAction {
     if (i === undefined) continue;
     for (const t of validTargetsFor(v, p.factionId, cardId)) {
       if (state.overlords.get(t) === p.factionId) continue;
-      const needed = subjugationGripOn(v, t) + poachSurchargeOn(v, t);
+      // Each track answers to its own bar, so a settled target is nearer on
+      // Status than on Might and the policy must not measure both against one
+      // number.
+      const needed = subjugationGripOn(v, t)[field] + poachSurchargeOn(v, t);
       if (
         leadsOf(state.relations, p.factionId, t)[field] +
           gainOf(state, p.factionId, cardId, t) >= needed
@@ -327,7 +330,8 @@ export function chooseAction(state: GameState): AiAction {
         if (e.state === "irrelevant") return false;
         const required = subjugationRequirement(v, p.factionId, e.factionId);
         if (required === null) return false;
-        return leadsOf(state.relations, p.factionId, e.factionId).status >= required;
+        return leadsOf(state.relations, p.factionId, e.factionId).status >=
+          required.status;
       },
     );
     if (worthGuarding) return { type: "play", cardIndex: bodyguard };
@@ -342,7 +346,7 @@ export function chooseAction(state: GameState): AiAction {
     if (i === undefined) continue;
     for (const t of validTargetsFor(v, p.factionId, cardId)) {
       if (state.overlords.get(t) === p.factionId) continue;
-      const needed = subjugationGripOn(v, t) + poachSurchargeOn(v, t);
+      const needed = subjugationGripOn(v, t)[field] + poachSurchargeOn(v, t);
       const deficit = needed - leadsOf(state.relations, p.factionId, t)[field];
       const plays = Math.ceil(deficit / gainOf(state, p.factionId, cardId, t));
       const order = state.factionIds.indexOf(t);

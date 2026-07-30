@@ -7,9 +7,9 @@
     "firstOverlord": "jersikans",
     "subjugatedCount": 1,
     "releasedCount": 0,
-    "defeatTurn": 7,
+    "defeatTurn": 9,
     "conqueror": "jersikans",
-    "turns": 7
+    "turns": 9
   },
   {
     "seed": 2,
@@ -55,9 +55,9 @@
     "firstOverlord": "semigallian-confederacy",
     "subjugatedCount": 1,
     "releasedCount": 0,
-    "defeatTurn": 18,
+    "defeatTurn": 17,
     "conqueror": "semigallian-confederacy",
-    "turns": 18
+    "turns": 17
   },
   {
     "seed": 6,
@@ -77,11 +77,11 @@
     "outcome": "defeat",
     "firstSubjugatedTurn": 8,
     "firstOverlord": "semigallian-confederacy",
-    "subjugatedCount": 2,
+    "subjugatedCount": 4,
     "releasedCount": 0,
-    "defeatTurn": 40,
+    "defeatTurn": 48,
     "conqueror": "lietuva",
-    "turns": 40
+    "turns": 48
   },
   {
     "seed": 8,
@@ -89,11 +89,11 @@
     "outcome": "defeat",
     "firstSubjugatedTurn": 3,
     "firstOverlord": "semigallian-confederacy",
-    "subjugatedCount": 2,
-    "releasedCount": 0,
-    "defeatTurn": 50,
+    "subjugatedCount": 5,
+    "releasedCount": 2,
+    "defeatTurn": 52,
     "conqueror": "talavians",
-    "turns": 50
+    "turns": 52
   },
   {
     "seed": 9,
@@ -101,22 +101,22 @@
     "outcome": "defeat",
     "firstSubjugatedTurn": 5,
     "firstOverlord": "semigallian-confederacy",
-    "subjugatedCount": 4,
-    "releasedCount": 0,
-    "defeatTurn": 94,
-    "conqueror": "sembians",
-    "turns": 94
+    "subjugatedCount": 5,
+    "releasedCount": 1,
+    "defeatTurn": 65,
+    "conqueror": "ugandians",
+    "turns": 65
   },
   {
     "seed": 10,
     "humanFaction": "lower-daugava-livs",
     "outcome": "defeat",
-    "firstSubjugatedTurn": 9,
-    "firstOverlord": "selonians",
-    "subjugatedCount": 1,
+    "firstSubjugatedTurn": 13,
+    "firstOverlord": "jersikans",
+    "subjugatedCount": 2,
     "releasedCount": 0,
-    "defeatTurn": 16,
-    "conqueror": "selonians",
-    "turns": 16
+    "defeatTurn": 19,
+    "conqueror": "semigallian-confederacy",
+    "turns": 19
   }
 ]

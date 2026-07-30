@@ -189,29 +189,42 @@ export function passiveFortifyFor(view: RulesView, factionId: string): number {
   return Math.floor(annexedLandsOf(view, factionId) / PASSIVE_PER_LANDS);
 }
 
-/** What a faction's grip is made of: the lands of its realm, and the
- *  settlements founded in them. */
-export interface GripParts {
+/** The lead a Subjugate needs, one bar per track. The two are separate because
+ *  a settlement is garrisoned ground: it walls off the Might route only.
+ *
+ *  The asymmetry is deliberate and it runs the other way on the accumulation
+ *  side. Might is the fast track - `raidYield` is convex in bordering lands and
+ *  `passiveFortifyFor` pays every turn for nothing - so it meets the taller
+ *  wall. Status climbs at +1 a play from a single Shrewd marriage per deck, so
+ *  it faces the shorter one. A settled realm is therefore soft to a patient
+ *  Status siege, and that is the tell the player is meant to read. */
+export interface TrackBars {
+  might: number;
+  status: number;
+}
+
+/** What a faction's grip is made of: the lands of its realm, the settlements
+ *  founded in them, and the bar each track demands. */
+export interface GripParts extends TrackBars {
   lands: number;
   settlements: number;
-  /** The lead the two together demand: `2 * lands + settlements`. */
-  bar: number;
 }
 
 /** The lands and settlements behind a faction's grip. Returned as parts rather
- *  than only the total because the number cannot be taken apart again
- *  afterwards: the tooltip used to recover the land count by dividing the bar
- *  by two, which a settlement makes wrong. */
+ *  than only the totals because a bar cannot be taken apart again afterwards:
+ *  the tooltip used to recover the land count by dividing the bar by two, which
+ *  a settlement makes wrong. */
 export function gripPartsOn(view: RulesView, factionId: string): GripParts {
   const realm = realmOf(factionId, view.overlords, view.incorporated);
   const lands = realm.length;
   const settlements = realm.filter((m) => view.settled.includes(m)).length;
-  return { lands, settlements, bar: SUBJUGATE_THRESHOLD * lands + settlements };
+  const base = SUBJUGATE_THRESHOLD * lands;
+  return { lands, settlements, might: base + settlements, status: base };
 }
 
 /** The lead anyone needs against this faction: two per land of its realm,
- *  counting its vassals and the lands it has incorporated, plus one per
- *  settlement founded in any of those lands.
+ *  counting its vassals and the lands it has incorporated, plus - on the Might
+ *  track alone - one per settlement founded in any of those lands.
  *
  *  Bare arithmetic with no eligibility guards, because two callers need it
  *  that way: `subjugationRequirement` applies the guards itself, and the
@@ -220,35 +233,57 @@ export function gripPartsOn(view: RulesView, factionId: string): GripParts {
 export function subjugationGripOn(
   view: RulesView,
   factionId: string,
-): number {
-  return gripPartsOn(view, factionId).bar;
+): TrackBars {
+  const { might, status } = gripPartsOn(view, factionId);
+  return { might, status };
+}
+
+/** True once either track's lead has reached its own bar. Subjugate has always
+ *  needed one track cleared, not both; with per-track bars the comparison can
+ *  no longer be `max(lead) >= bar`, so it lives here once rather than being
+ *  spelled out at each of its call sites. */
+export function clearsBars(
+  lead: { status: number; might: number },
+  bars: TrackBars,
+): boolean {
+  return lead.might >= bars.might || lead.status >= bars.status;
+}
+
+/** The poach surcharge lands on both bars. It prices the incumbent lord's hold
+ *  on a vassal, which is a fact about the lord rather than about a track. */
+function withSurcharge(bars: TrackBars, surcharge: number): TrackBars {
+  return { might: bars.might + surcharge, status: bars.status + surcharge };
 }
 
 
-/** The lead the actor needs on either track to Subjugate the target: two per
+/** The lead the actor needs on each track to Subjugate the target: two per
  *  land of the target's realm, counting its vassals and the lands it has
- *  incorporated, plus the poach surcharge when the target already has a lord.
- *  Null when Subjugate could never apply to that pair at all, so callers can
- *  leave the bar off rather than quote a meaningless number.
+ *  incorporated, plus one per settlement on the Might track, plus the poach
+ *  surcharge on both when the target already has a lord. Null when Subjugate
+ *  could never apply to that pair at all, so callers can leave the bars off
+ *  rather than quote meaningless numbers.
  *
  *  Same rule as the `insufficient-lead` block reason, kept here so the map
- *  and the tooltip can show the bar without re-deriving it. */
+ *  and the tooltip can show the bars without re-deriving them. */
 export function subjugationRequirement(
   view: RulesView,
   actorFactionId: string,
   targetFactionId: string,
-): number | null {
+): TrackBars | null {
   if (targetFactionId === actorFactionId) return null;
   if (targetFactionId in view.incorporated) return null;
   if (view.overlords.get(targetFactionId) === actorFactionId) return null;
   if (view.overlords.get(actorFactionId) !== undefined) return null;
-  return subjugationGripOn(view, targetFactionId) +
-    poachSurchargeOn(view, targetFactionId);
+  return withSurcharge(
+    subjugationGripOn(view, targetFactionId),
+    poachSurchargeOn(view, targetFactionId),
+  );
 }
 
 export interface Threat {
   factionId: string;
-  /** Lead this faction still needs on its best track. <= 0 means it can act now. */
+  /** Lead this faction still needs on its nearest track, each track measured
+   *  against its own bar. <= 0 means it can act now. */
   shortfall: number;
   statusShortfall: number;
   mightShortfall: number;
@@ -284,11 +319,13 @@ export function threatsTo(view: RulesView, factionId: string): Threat[] {
       continue;
     }
     const lead = leadsOf(view.relations, other, factionId);
+    const statusShortfall = required.status - lead.status;
+    const mightShortfall = required.might - lead.might;
     out.push({
       factionId: other,
-      shortfall: required - Math.max(lead.status, lead.might),
-      statusShortfall: required - lead.status,
-      mightShortfall: required - lead.might,
+      shortfall: Math.min(statusShortfall, mightShortfall),
+      statusShortfall,
+      mightShortfall,
     });
   }
   const order = (id: string): number => view.factionIds.indexOf(id);
@@ -302,15 +339,17 @@ export type TargetBlockReason =
   | { code: "alliance"; expiresTurn: number }
   | {
       code: "insufficient-lead";
-      requiredLead: number;
+      /** The bar on each track. They differ by the settlement count. */
+      required: TrackBars;
       mightLead: number;
       statusLead: number;
       realmSize: number;
-      /** Settlements founded in that realm, each adding 1 to requiredLead. */
+      /** Settlements founded in that realm, each adding 1 to the Might bar. */
       settlements: number;
-      /** Extra lead demanded because the target already has an overlord; 0
-       *  when it is free. Part of requiredLead, broken out so the tooltip can
-       *  say why the bar is higher than the realm alone explains. */
+      /** Extra lead demanded on both tracks because the target already has an
+       *  overlord; 0 when it is free. Part of `required`, broken out so the
+       *  tooltip can say why the bars are higher than the realm alone
+       *  explains. */
       poachSurcharge: number;
     }
   | { code: "already-vassal" }
@@ -412,11 +451,12 @@ export function targetEligibilityFor(
     if (cardId === "subjugate") {
       const grip = gripPartsOn(view, factionId);
       const surcharge = poachSurchargeOn(view, factionId);
+      const required = withSurcharge(grip, surcharge);
       const lead = leadsOf(view.relations, actorFactionId, factionId);
-      if (Math.max(lead.status, lead.might) < grip.bar + surcharge) {
+      if (!clearsBars(lead, required)) {
         reasons.push({
           code: "insufficient-lead",
-          requiredLead: grip.bar + surcharge,
+          required,
           mightLead: lead.might,
           statusLead: lead.status,
           realmSize: grip.lands,

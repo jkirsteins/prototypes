@@ -48,18 +48,19 @@ function mightLead(actor: string, target: string, n: number): Relations {
 describe("subjugationRequirement", () => {
   it("is 2 per land of the target's realm", () => {
     const v = view();
-    expect(subjugationRequirement(v, "alpha", "beta")).toBe(SUBJUGATE_THRESHOLD);
+    expect(subjugationRequirement(v, "alpha", "beta"))
+      .toEqual({ might: SUBJUGATE_THRESHOLD, status: SUBJUGATE_THRESHOLD });
   });
 
   it("counts the target's vassals, which is what surprises players", () => {
     // beta holds gamma: two lands, so the bar doubles from 2 to 4.
     const v = view({ overlords: new Map([["gamma", "beta"]]) });
-    expect(subjugationRequirement(v, "alpha", "beta")).toBe(4);
+    expect(subjugationRequirement(v, "alpha", "beta")).toEqual({ might: 4, status: 4 });
   });
 
   it("counts lands the target has incorporated", () => {
     const v = view({ incorporated: { gamma: "beta" } });
-    expect(subjugationRequirement(v, "alpha", "beta")).toBe(4);
+    expect(subjugationRequirement(v, "alpha", "beta")).toEqual({ might: 4, status: 4 });
   });
 
   it("is null where Subjugate could never apply", () => {
@@ -83,8 +84,8 @@ describe("subjugationRequirement", () => {
       entry?.state === "blocked"
         ? entry.reasons.find((r) => r.code === "insufficient-lead")
         : undefined;
-    expect(reason?.code === "insufficient-lead" ? reason.requiredLead : null)
-      .toBe(subjugationRequirement(v, "alpha", "beta"));
+    expect(reason?.code === "insufficient-lead" ? reason.required : null)
+      .toEqual(subjugationRequirement(v, "alpha", "beta"));
   });
 });
 
@@ -148,14 +149,17 @@ describe("gripPartsOn", () => {
       overlords: new Map([["gamma", "beta"]]),
       settled: ["beta", "gamma"],
     });
-    expect(gripPartsOn(v, "beta")).toEqual({ lands: 2, settlements: 2, bar: 6 });
-    expect(subjugationGripOn(v, "beta")).toBe(6);
-    expect(subjugationRequirement(v, "alpha", "beta")).toBe(6);
+    // Two settlements raise the Might bar to 6 and leave Status at 4.
+    expect(gripPartsOn(v, "beta"))
+      .toEqual({ lands: 2, settlements: 2, might: 6, status: 4 });
+    expect(subjugationGripOn(v, "beta")).toEqual({ might: 6, status: 4 });
+    expect(subjugationRequirement(v, "alpha", "beta")).toEqual({ might: 6, status: 4 });
   });
 
   it("ignores settlements outside the realm", () => {
     const v = view({ settled: ["alpha", "gamma"] });
-    expect(gripPartsOn(v, "beta")).toEqual({ lands: 1, settlements: 0, bar: 2 });
+    expect(gripPartsOn(v, "beta"))
+      .toEqual({ lands: 1, settlements: 0, might: 2, status: 2 });
   });
 
   it("reports the settlements behind an insufficient-lead block", () => {
@@ -165,7 +169,7 @@ describe("gripPartsOn", () => {
       factionId: "gamma",
       reasons: [{
         code: "insufficient-lead",
-        requiredLead: 3,
+        required: { might: 3, status: 2 },
         mightLead: 0,
         statusLead: 0,
         realmSize: 1,
@@ -182,7 +186,7 @@ describe("gripPartsOn", () => {
       overlords: new Map([["gamma", "beta"]]),
       settled: ["gamma"],
     });
-    expect(subjugationGripOn(v, "beta")).toBe(5);
+    expect(subjugationGripOn(v, "beta")).toEqual({ might: 5, status: 4 });
   });
 });
 
@@ -190,13 +194,14 @@ describe("subjugationGripOn", () => {
   it("is 2 per land of the faction's realm, with no eligibility guards", () => {
     // beta holds gamma: two lands.
     const v = view({ overlords: new Map([["gamma", "beta"]]) });
-    expect(subjugationGripOn(v, "beta")).toBe(4);
-    expect(subjugationGripOn(v, "alpha")).toBe(2);
+    expect(subjugationGripOn(v, "beta")).toEqual({ might: 4, status: 4 });
+    expect(subjugationGripOn(v, "alpha")).toEqual({ might: 2, status: 2 });
   });
 
   it("is the number subjugationRequirement quotes when the pair is legal", () => {
     const v = view({ overlords: new Map([["gamma", "beta"]]) });
-    expect(subjugationRequirement(v, "alpha", "beta")).toBe(subjugationGripOn(v, "beta"));
+    expect(subjugationRequirement(v, "alpha", "beta"))
+      .toEqual(subjugationGripOn(v, "beta"));
   });
 });
 
@@ -223,7 +228,7 @@ describe("targetEligibilityFor", () => {
         { code: "alliance", expiresTurn: 9 },
         {
           code: "insufficient-lead",
-          requiredLead: 2,
+          required: { might: 2, status: 2 },
           mightLead: 0,
           statusLead: 0,
           realmSize: 1,
@@ -246,7 +251,7 @@ describe("targetEligibilityFor", () => {
       factionId: "gamma",
       reasons: [{
         code: "insufficient-lead",
-        requiredLead: 4,
+        required: { might: 4, status: 4 },
         mightLead: 1,
         statusLead: 0,
         realmSize: 2,
@@ -650,7 +655,7 @@ describe("poach surcharge", () => {
   it("is zero against a faction with no overlord", () => {
     expect(poachSurchargeOn(view(), "beta")).toBe(0);
     expect(subjugationRequirement(view(), "alpha", "beta"))
-      .toBe(subjugationGripOn(view(), "beta"));
+      .toEqual(subjugationGripOn(view(), "beta"));
   });
 
   it("adds half the incumbent's grip, rounded up", () => {
@@ -662,7 +667,7 @@ describe("poach surcharge", () => {
     });
     expect(overlordGrip(v, "gamma")).toBe(3);
     expect(poachSurchargeOn(v, "gamma")).toBe(2);
-    expect(subjugationRequirement(v, "beta", "gamma")).toBe(4);
+    expect(subjugationRequirement(v, "beta", "gamma")).toEqual({ might: 4, status: 4 });
   });
 
   it("names the surcharge in the block reason so the bar is explicable", () => {
@@ -675,7 +680,9 @@ describe("poach surcharge", () => {
     const reason = entry?.state === "blocked"
       ? entry.reasons.find((r) => r.code === "insufficient-lead")
       : undefined;
-    expect(reason).toMatchObject({ requiredLead: 4, poachSurcharge: 2 });
+    expect(reason).toMatchObject({
+      required: { might: 4, status: 4 }, poachSurcharge: 2,
+    });
   });
 });
 

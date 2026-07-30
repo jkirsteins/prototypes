@@ -1,4 +1,6 @@
 import type { GameEvent, GameEventType } from "./game";
+import type { TrackBars } from "./playability";
+import { barPhrase } from "./view";
 
 /** A player-facing interruption for an event (or batch of same-kind events)
  *  that changed the human's state. Factual only: no flavor text. */
@@ -19,15 +21,16 @@ export interface NoticeCtx {
   factionOf(playerId: number): string | undefined;
   /** The human's leads over otherFactionId; positive = you lead. */
   leads(otherFactionId: string): { might: number; status: number };
-  /** The lead an enemy needs over the human to subjugate them (scaled by
-   *  the human realm's size). No particular rival in mind - used only where
-   *  the human's own realm shrinking is the point, not who threatens them. */
-  subjugationGrip(): number;
-  /** The lead this rival needs to subjugate the human, or null when the
-   *  rules forbid it outright - they already hold the human, or they are
-   *  somebody's vassal themselves. The map's danger marker uses the same
-   *  number, so the two surfaces cannot disagree. */
-  subjugationBarAgainstYou(otherFactionId: string): number | null;
+  /** The lead an enemy needs over the human to subjugate them, per track
+   *  (scaled by the human realm's size, and by its settlements on the Might
+   *  track). No particular rival in mind - used only where the human's own
+   *  realm shrinking is the point, not who threatens them. */
+  subjugationGrip(): TrackBars;
+  /** The lead this rival needs to subjugate the human on each track, or null
+   *  when the rules forbid it outright - they already hold the human, or they
+   *  are somebody's vassal themselves. The map's danger marker uses the same
+   *  numbers, so the two surfaces cannot disagree. */
+  subjugationBarAgainstYou(otherFactionId: string): TrackBars | null;
   /** Expiry turn of an active alliance between the human and otherFactionId;
    *  undefined when no pact is active. */
   allianceExpiry(otherFactionId: string): number | undefined;
@@ -75,8 +78,8 @@ function humanRoleIn(e: GameEvent, ctx: NoticeCtx): HumanRole | null {
 /** Every way a vassal leaves the human shrinks the realm, which lowers the
  *  bar rivals need to subjugate the human in turn. */
 const realmShrunkConsequence = (ctx: NoticeCtx): string =>
-  `Your realm is smaller: a lead of ${ctx.subjugationGrip()} over you is now ` +
-  "enough to subjugate you.";
+  `Your realm is smaller: a lead of ${barPhrase(ctx.subjugationGrip())} over ` +
+  "you is now enough to subjugate you.";
 
 const fmtLead = (n: number): string =>
   n > 0 ? `you lead by ${n}` : n < 0 ? `they lead by ${-n}` : "even";
@@ -87,15 +90,23 @@ const standingLine = (ctx: NoticeCtx, otherId: string): string => {
     `Might - ${fmtLead(l.might)}; Status - ${fmtLead(l.status)}.`;
 };
 
-/** Their best lead over the human meets the bar THIS rival specifically needs
- *  to subjugate the human - false when that bar is null (they could never
- *  subjugate the human this way round) as well as when the lead falls
- *  short. */
+/** Either of their leads over the human meets that track's bar for THIS rival
+ *  specifically - false when the bars are null (they could never subjugate the
+ *  human this way round) as well as when both leads fall short. Per track
+ *  rather than best-lead-against-one-bar: the Status bar is the lower one on a
+ *  settled realm, so a single number would understate the danger. */
 const subjugationRisk = (ctx: NoticeCtx, otherId: string): boolean => {
-  const bar = ctx.subjugationBarAgainstYou(otherId);
-  if (bar === null) return false;
+  const bars = ctx.subjugationBarAgainstYou(otherId);
+  if (bars === null) return false;
   const l = ctx.leads(otherId);
-  return Math.max(-l.might, -l.status) >= bar;
+  return -l.might >= bars.might || -l.status >= bars.status;
+};
+
+/** The bars this rival must clear, in words. Only ever reached behind a
+ *  `subjugationRisk` guard, which already established they are not null. */
+const barAgainstYou = (ctx: NoticeCtx, otherId: string): string => {
+  const bars = ctx.subjugationBarAgainstYou(otherId);
+  return bars === null ? "" : barPhrase(bars);
 };
 
 const PAY_TRIBUTE_CONSEQUENCE =
@@ -131,7 +142,7 @@ function buildRelationPlayNotice(
       ? [
           standingLine(ctx, actorId),
           ...(subjugationRisk(ctx, actorId)
-            ? [`A lead of ${ctx.subjugationBarAgainstYou(actorId)} is enough to subjugate.`]
+            ? [`A lead of ${barAgainstYou(ctx, actorId)} is enough to subjugate.`]
             : []),
         ]
       : [];
@@ -148,7 +159,7 @@ function buildRelationPlayNotice(
     const l = actorId !== undefined ? ctx.leads(actorId) : { might: 0, status: 0 };
     const line = `${actor} - Might: ${fmtLead(l.might)}; Status: ${fmtLead(l.status)}`;
     if (actorId === undefined || !subjugationRisk(ctx, actorId)) return line;
-    return `${line} - a lead of ${ctx.subjugationBarAgainstYou(actorId)} subjugates you`;
+    return `${line} - a lead of ${barAgainstYou(ctx, actorId)} subjugates you`;
   });
   return {
     title,
