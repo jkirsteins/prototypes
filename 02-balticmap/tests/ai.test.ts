@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { chooseAction } from "../src/ai";
+import { POLICY_COVERAGE, chooseAction } from "../src/ai";
 import {
   newGame, startGame, chooseDeck, pickFaction, type GameState,
 } from "../src/game";
 import { bumpMight, bumpStatus, type Relations } from "../src/relations";
-import { buildDeck, type Rng } from "../src/cards";
+import { CARDS, buildDeck, type Rng } from "../src/cards";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -346,7 +346,7 @@ describe("chooseAction priorities", () => {
     });
   });
 
-  it("9: unrecognized diplomacy cards (no dedicated priority) fall through as a last resort without crashing", () => {
+  it("11: a card whose branch declines still falls through without crashing", () => {
     let g = base();
     g = withHand(g, ["alliance"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0, targetId: "beta" });
@@ -449,5 +449,17 @@ describe("chooseAction with scaling gains", () => {
       ),
     };
     expect(chooseAction(g)).toMatchObject({ type: "play", targetId: "gamma" });
+  });
+});
+
+describe("POLICY_COVERAGE", () => {
+  it("names a policy branch for every card in the game", () => {
+    expect(Object.keys(POLICY_COVERAGE).sort()).toEqual(Object.keys(CARDS).sort());
+  });
+
+  it("names a non-empty branch for each", () => {
+    for (const [id, step] of Object.entries(POLICY_COVERAGE)) {
+      expect(step, id).not.toBe("");
+    }
   });
 });

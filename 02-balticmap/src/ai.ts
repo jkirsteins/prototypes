@@ -18,6 +18,34 @@ const TRACKS = [
   { cardId: "shrewd-marriage", field: "status" as const },
 ];
 
+/** Which branch of `chooseAction` decides each card. Keyed on every id in
+ *  CARDS, not only the deck-buildable ones: Pay tribute is injection-only yet
+ *  reaches hands and has a real branch, so keying on `deckBuildable` would
+ *  leave the most forced card in the game unguarded.
+ *
+ *  A card with no branch here fails a test rather than passing review. That is
+ *  deliberate. Alliance, Assassinate ruler, Extended diplomacy, Bodyguard and
+ *  Revolt all once shipped with no branch at all, and 27.7% of AI plays were
+ *  last-resort fallthroughs as a result - Alliance and Assassinate ruler being
+ *  the 5th and 6th most-played cards, each picking its target by faction sort
+ *  order while 2 or more targets were legal 82% and 64% of the time. See the
+ *  card rule in AGENTS.md. */
+export const POLICY_COVERAGE: Record<string, string> = {
+  "pay-tribute": "1: forced tribute",
+  "revolt": "2: revolt out of vassalage",
+  "incorporate": "3: incorporate the largest vassal realm",
+  "subjugate": "4: subjugate the biggest lead",
+  "alliance": "5: emergency alliance",
+  "assassinate-ruler": "5: emergency assassination",
+  "raid": "6: finishing play, else 9: build toward the closest subjugation",
+  "shrewd-marriage": "6: finishing play, else 9: build toward the closest subjugation",
+  "fortify": "7: defensive fortify",
+  "favourable-omens": "8: read the omens before building",
+  "extended-diplomacy": "8b: extend the next pact",
+  "bodyguard": "8c: post a guard",
+  "grow-crops": "10: grow crops",
+};
+
 /** What a play would actually move, so the policy stops assuming every card
  *  is worth exactly 1: Raid scales with border, and any doublable card is
  *  worth twice as much while a reading is held. */
@@ -159,7 +187,7 @@ export function chooseAction(state: GameState): AiAction {
     }
   }
 
-  // 5: one play away from the threshold
+  // 6: one play away from the threshold
   for (const { cardId, field } of TRACKS) {
     const i = idxOf(cardId);
     if (i === undefined) continue;
@@ -176,7 +204,7 @@ export function chooseAction(state: GameState): AiAction {
     }
   }
 
-  // 6: defensive fortify
+  // 7: defensive fortify
   const fortify = idxOf("fortify");
   if (fortify !== undefined) {
     const threatened = state.factionIds.some(
@@ -189,10 +217,10 @@ export function chooseAction(state: GameState): AiAction {
     if (threatened) return { type: "play", cardIndex: fortify };
   }
 
-  // 6b: read the omens before building. Raid is one per deck, so spending a
+  // 8: read the omens before building. Raid is one per deck, so spending a
   // turn now and playing it doubled next turn beats playing it plain and
   // following with filler. Never while a vassal: a forced Pay tribute would
-  // spend the reading on the overlord. This sits after step 5 so a reading
+  // spend the reading on the overlord. This sits after step 6 so a reading
   // never delays a play that wins a subjugation outright.
   const omens = idxOf("favourable-omens");
   if (
@@ -235,7 +263,7 @@ export function chooseAction(state: GameState): AiAction {
     if (worthGuarding) return { type: "play", cardIndex: bodyguard };
   }
 
-  // 7: build toward the closest new subjugation, measured in plays remaining
+  // 9: build toward the closest new subjugation, measured in plays remaining
   // rather than points - a 6-point gap closed 3 at a time is nearer than a
   // 4-point gap closed 1 at a time.
   let build: { cardIndex: number; targetId: string; plays: number; order: number } | null = null;
@@ -262,11 +290,11 @@ export function chooseAction(state: GameState): AiAction {
     return { type: "play", cardIndex: build.cardIndex, targetId: build.targetId };
   }
 
-  // 8: grow crops
+  // 10: grow crops
   const grow = idxOf("grow-crops");
   if (grow !== undefined) return { type: "play", cardIndex: grow };
 
-  // 9: first playable card as a last resort
+  // 11: first playable card as a last resort
   const i0 = set.cardIndexes[0];
   const cardId = p.hand[i0];
   if (CARDS[cardId]?.targeted) {
