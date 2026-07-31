@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  DECK_ARMS, SIM_ADJACENCY, SIM_FACTION_IDS, WORLD_ARMS, aggregate,
+  DECK_ARMS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_FACTION_IDS, WORLD_ARMS, aggregate,
   aggregateWorld, byFaction, median, naiveHumanTurn, pairedDelta, potatoDeck,
   runBatch, runGame, runWorld, runWorldBatch, seededRng, summarize,
   type GameSummary,
@@ -240,11 +240,33 @@ describe("summarize", () => {
   });
 });
 
+describe("summarize finalRealmSize", () => {
+  it("counts every land under the human, not just direct holdings", () => {
+    const base = startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES));
+    const state: GameState = {
+      ...base,
+      overlords: new Map([[SIM_FACTION_IDS[1], HUMAN]]),
+      incorporated: { [SIM_FACTION_IDS[2]]: SIM_FACTION_IDS[1] },
+    };
+    // The human, their vassal, and the land that vassal annexed: three.
+    expect(summarize(state, 1, HUMAN).finalRealmSize).toBe(3);
+  });
+
+  it("scores zero once the human has been incorporated", () => {
+    const base = startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES));
+    const state: GameState = {
+      ...base,
+      incorporated: { [HUMAN]: SIM_FACTION_IDS[1] },
+    };
+    expect(summarize(state, 1, HUMAN).finalRealmSize).toBe(0);
+  });
+});
+
 describe("aggregation", () => {
   const game = (over: Partial<GameSummary>): GameSummary => ({
     seed: 1, humanFaction: HUMAN, outcome: "defeat", firstSubjugatedTurn: 10,
     firstOverlord: "a", subjugatedCount: 1, releasedCount: 0, defeatTurn: 20,
-    conqueror: "a", turns: 20, ...over,
+    conqueror: "a", turns: 20, finalRealmSize: 10, ...over,
   });
 
   it("takes the median of an even and an odd run", () => {

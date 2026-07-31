@@ -107,6 +107,13 @@ export interface GameSummary {
   conqueror: string | null;
   /** Turns the game actually ran, capped by turnCap. */
   turns: number;
+  /** Lands under the human when the game ended, by `fullRealmOf` - the
+   *  "how much of the map is theirs" question, per the two-realm-sizes rule in
+   *  CLAUDE.md. Zero once the human has been incorporated: `realmOf` always
+   *  includes its own root, so a conquered faction would otherwise score 1.
+   *  This is the continuous outcome the rarity regression fits against; the
+   *  other fields here are all counts or turn numbers. */
+  finalRealmSize: number;
 }
 
 export function summarize(
@@ -132,6 +139,8 @@ export function summarize(
     state.phase === "defeat" ? "defeat"
       : state.phase === "victory" ? "victory"
         : "cap";
+  // Their land belongs to the conqueror, so nothing is theirs.
+  const conquered = state.incorporated[humanFaction] !== undefined;
   return {
     seed,
     humanFaction,
@@ -143,6 +152,9 @@ export function summarize(
     defeatTurn: defeat?.turn ?? null,
     conqueror: defeat?.overlordFactionId ?? null,
     turns: state.turn,
+    finalRealmSize: conquered
+      ? 0
+      : fullRealmOf(humanFaction, state.overlords, state.incorporated).size,
   };
 }
 
