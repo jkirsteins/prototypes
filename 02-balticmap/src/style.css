@@ -460,14 +460,6 @@ svg.map.dragging {
   border-style: dashed;
 }
 
-.ds-card.ds-locked {
-  background: #3a4148;
-  color: #d8cfc0;
-  border-style: dashed;
-  border-color: #d4af37;
-  opacity: 1;
-}
-
 .ds-card.ds-filler {
   background: #f1e9da;
   cursor: default;
