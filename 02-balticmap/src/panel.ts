@@ -1,105 +1,10 @@
-import type { Faction, FactionType, People, Region, Settlement } from "./types";
+import type { Settlement } from "./types";
 import { leadClass } from "./view";
-
-export interface Panel {
-  show(region: Region): void;
-  hide(): void;
-}
-
-function formatPeoples(ids: string[], peoples: People[]): string {
-  const names = ids.map(
-    (id) => peoples.find((p) => p.id === id)?.name ?? id,
-  );
-  if (names.length === 1) return names[0];
-  return `Predominantly ${names[0]}, with ${names.slice(1).join(" and ")}`;
-}
-
-export function formatPopulation(population: number): string {
-  return `~${population / 1000}k`;
-}
-
-export function formatFactionType(type: FactionType): string {
-  return type.replace(/-/g, " ");
-}
 
 /** Growth sites carry no name on purpose (the map invents no place names), so
  *  their tooltip is the note alone rather than a blank first line. */
 export function settlementTooltipText(s: Settlement): string {
   return s.name === "" ? s.note : `${s.name}\n${s.note}`;
-}
-
-export function createPanel(
-  container: HTMLElement,
-  onClose: () => void,
-  peoples: People[],
-  factions: Faction[],
-  settlements: Settlement[],
-  relationsInfo?: (region: Region) => string[],
-  /** Whether a settlement has been founded in this land during the game. The
-   *  panel is otherwise built from static map data, and the count on this line
-   *  is the one place play changes it. */
-  settledIn: (regionId: string) => boolean = () => false,
-): Panel {
-  const root = document.createElement("aside");
-  root.className = "panel hidden";
-
-  const close = document.createElement("button");
-  close.className = "panel-close";
-  close.setAttribute("aria-label", "Close");
-  close.textContent = "x";
-  close.addEventListener("click", onClose);
-
-  const name = document.createElement("h2");
-  name.className = "panel-name";
-  const factionLine = document.createElement("p");
-  factionLine.className = "panel-faction";
-  const relations = document.createElement("p");
-  relations.className = "panel-relations hidden";
-  const peoplesLine = document.createElement("p");
-  peoplesLine.className = "panel-peoples";
-  const population = document.createElement("p");
-  population.className = "panel-population";
-  const cohesion = document.createElement("p");
-  cohesion.className = "panel-cohesion";
-  const settlementsLine = document.createElement("p");
-  settlementsLine.className = "panel-settlements";
-  const flavor = document.createElement("p");
-  flavor.className = "panel-flavor";
-  const places = document.createElement("p");
-  places.className = "panel-places";
-
-  const factionById = new Map(factions.map((f) => [f.id, f]));
-
-  root.append(close, name, factionLine, relations, peoplesLine, population, cohesion, settlementsLine, flavor, places);
-  container.appendChild(root);
-
-  return {
-    show(region) {
-      name.textContent = region.name;
-      const faction = factionById.get(region.faction);
-      factionLine.textContent = faction
-        ? `Faction: ${faction.name} (${formatFactionType(faction.type)})`
-        : "";
-      const lines = relationsInfo?.(region) ?? [];
-      relations.textContent = lines.join("\n");
-      relations.classList.toggle("hidden", lines.length === 0);
-      peoplesLine.textContent = formatPeoples(region.peoples, peoples);
-      population.textContent = `Population: ${formatPopulation(region.population)}`;
-      cohesion.textContent = `Cohesion: ${region.cohesion}`;
-      const home = settlements.find((s) => s.land === region.id && s.unlocked);
-      const founded = settledIn(region.id) ? 1 : 0;
-      settlementsLine.textContent = home
-        ? `Settlements: ${home.name}${founded === 1 ? " and one new settlement" : ""} ` +
-          `(${1 + founded}/${region.maxSettlements})`
-        : "";
-      flavor.textContent = region.flavor;
-      places.textContent = `Notable places: ${region.places.join(", ")}`;
-      root.classList.remove("hidden");
-    },
-    hide() {
-      root.classList.add("hidden");
-    },
-  };
 }
 
 /** A run inside a tooltip line that carries its own colour. `lead` marks it as

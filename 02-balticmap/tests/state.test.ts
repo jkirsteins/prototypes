@@ -12,15 +12,17 @@ describe("selection state", () => {
     expect(withHover(s, null).hovered).toBeNull();
   });
 
-  it("click selects, clicking another region switches", () => {
-    const a = withClick(initialState, "kursa");
-    expect(a.selected).toBe("kursa");
-    expect(withClick(a, "dainava").selected).toBe("dainava");
+  it("click selects when nothing is selected", () => {
+    expect(withClick(initialState, "kursa").selected).toBe("kursa");
   });
 
-  it("clicking the selected region or the background deselects", () => {
+  it("any click while something is selected clears it, and only that", () => {
+    // Including a click on a different region: selecting it takes a second
+    // click, so a stray one cannot slide the pin off what is being read.
     const a = withClick(initialState, "kursa");
+    expect(withClick(a, "dainava").selected).toBeNull();
     expect(withClick(a, "kursa").selected).toBeNull();
     expect(withClick(a, null).selected).toBeNull();
+    expect(withClick(withClick(a, "dainava"), "dainava").selected).toBe("dainava");
   });
 });

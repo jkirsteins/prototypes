@@ -75,6 +75,24 @@ describe("attachInteraction", () => {
     expect(onSelect).toHaveBeenLastCalledWith(null);
   });
 
+  it("a click on another region while one is selected only deselects", () => {
+    const { regionPaths, onSelect } = setup();
+    const a = regionPaths.get("dainava")!;
+    const b = regionPaths.get("ravala")!;
+    const click = (el: SVGPathElement) => {
+      el.dispatchEvent(mouse("pointerdown", { clientX: 10, clientY: 10 }));
+      el.dispatchEvent(mouse("pointerup", { clientX: 10, clientY: 10 }));
+    };
+    click(a);
+    click(b);
+    expect(a.classList.contains("selected")).toBe(false);
+    expect(b.classList.contains("selected")).toBe(false);
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+    // The second click on it is the one that selects.
+    click(b);
+    expect(b.classList.contains("selected")).toBe(true);
+  });
+
   it("a drag beyond the threshold pans and does not select", () => {
     const { svg, regionPaths, onSelect } = setup();
     const el = regionPaths.get("ravala")!;

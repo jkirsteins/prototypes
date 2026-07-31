@@ -1732,4 +1732,68 @@ describe("faction highlight in the activity log", () => {
     hud.update(withEvents(g, [THEIRS]));
     expect(lit(container)).toEqual(["Delta submits to Gamma"]);
   });
+
+  it("a highlight held while the round resolves survives the new entries", () => {
+    // The pin's whole point: the log goes on being dimmed to the pinned
+    // faction while lines land under it, so it can be read.
+    const { container, hud } = setup();
+    const g = withEvents(playing(), [YOURS]);
+    hud.update(g);
+    hud.highlightFaction("alpha");
+    hud.update(withEvents(g, [THEIRS]));
+    expect(q(container, ".activity-log").classList.contains("log-highlighting"))
+      .toBe(true);
+    expect(lit(container)).toEqual(["You played Raid on Alpha"]);
+  });
+});
+
+describe("the pinned faction in the status bar", () => {
+  function playing(): GameState {
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+  }
+
+  it("names the pinned faction and how to clear it, and restores the turn prompt", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
+
+    hud.setPinned("gamma");
+    expect(q(container, ".status-text").textContent)
+      .toBe("Pinned: Gamma - Esc to clear");
+
+    hud.setPinned(null);
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
+  });
+
+  it("renders the name as a segment, so it lights that realm here too", () => {
+    const onHighlightFaction = vi.fn();
+    const { container, hud } = setup({ onHighlightFaction });
+    hud.update(playing());
+    hud.setPinned("gamma");
+    const span = q(container, ".status-text .rt-faction");
+    expect(span.textContent).toBe("Gamma");
+    span.dispatchEvent(
+      new MouseEvent("mousemove", { clientX: 1, clientY: 1, bubbles: true }),
+    );
+    expect(onHighlightFaction).toHaveBeenLastCalledWith("gamma");
+  });
+
+  it("survives a re-render, and an armed card owns the bar over it", () => {
+    const { container, hud } = setup();
+    const g = withHand(playing(), 0, ["raid", "grow-crops"]);
+    hud.update(g);
+    hud.setPinned("gamma");
+
+    hud.setArmed(0, "Raid");
+    expect(q(container, ".status-text").textContent)
+      .toBe("Choose a target for Raid");
+
+    // Disarming hands the bar back to the pin, which is still held.
+    hud.setArmed(null);
+    expect(q(container, ".status-text").textContent)
+      .toBe("Pinned: Gamma - Esc to clear");
+    hud.update(g);
+    expect(q(container, ".status-text").textContent)
+      .toBe("Pinned: Gamma - Esc to clear");
+  });
 });

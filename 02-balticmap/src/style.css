@@ -178,7 +178,7 @@ svg.map.dragging {
    white-space: pre-line and collapses the runs of spaces a padded column
    needs. These two classes live only inside the dark .tooltip and inherit its
    color (or the row's tone-*), so per the dark-box rule they must never be
-   reused on the light .panel or .card-tip. */
+   reused on the light .card-tip. */
 .tooltip-line.has-amount {
   display: flex;
   gap: 6px;
@@ -221,76 +221,6 @@ svg.map.dragging {
    first line, which already has the tip's own padding above it. */
 .tooltip-line.block-start:not(:first-child) {
   margin-top: 8px;
-}
-
-.panel {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  width: 260px;
-  background: #fff;
-  border: 1px solid #d0d0d0;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  padding: 16px;
-  z-index: 5;
-}
-
-.panel-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  border: none;
-  background: none;
-  font-size: 16px;
-  cursor: pointer;
-  color: #666;
-}
-
-.panel-name {
-  font-size: 18px;
-  margin-bottom: 2px;
-  padding-right: 20px;
-}
-
-.panel-faction,
-.panel-peoples {
-  font-size: 13px;
-  color: #8a7f6f;
-  margin-top: 6px;
-}
-
-.panel-faction {
-  margin-top: 8px;
-}
-
-.panel-population,
-.panel-cohesion,
-.panel-settlements {
-  font-size: 13px;
-  color: #8a7f6f;
-  margin-top: 2px;
-}
-
-.panel-population {
-  margin-top: 8px;
-}
-
-.panel-flavor {
-  font-size: 14px;
-  color: #333;
-  line-height: 1.5;
-  margin-top: 11px;
-}
-
-.panel-places {
-  font-size: 13px;
-  color: #8a7f6f;
-  margin-top: 11px;
-}
-
-.panel-relations {
-  white-space: pre-line;
 }
 
 .menu-overlay {

@@ -2,7 +2,7 @@ import rawData from "./data/map.json";
 import type { MapData, Region } from "./types";
 import { renderMap, darkenColor, brightenColor } from "./map-render";
 import {
-  createPanel, createTooltip, settlementTooltipText,
+  createTooltip, settlementTooltipText,
   type TooltipLine,
 } from "./panel";
 import { attachInteraction } from "./interaction";
@@ -11,7 +11,7 @@ import {
   isHumanTurn, surrender, viewOf, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
-import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
+import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
 import {
   handBlockReason, playableSet, validTargetsFor, targetEligibilityFor,
   subjugationRaceFor, raidGainFor,
@@ -104,6 +104,12 @@ let game: GameState = newGame(
 );
 let armed: number | null = null; // hand index of the armed targeted card
 let hoveredRegion: Region | null = null; // region under the cursor, for hover re-apply on refresh
+/** The land clicked to hold its faction's highlight, or null. A pin outranks
+ *  the cursor: it exists so the activity log can be read, and reaching the log
+ *  means dragging the cursor across lines whose faction names would each steal
+ *  the highlight back. Suppressed, not cleared, while a card is armed -
+ *  targeting cues own the map, and disarming brings the pin back. */
+let pinnedRegion: Region | null = null;
 // True from a committed human action until the AI chain has resolved and the
 // round summary (if any) is on screen. The hand is already inert in this
 // window (renderHand disables it whenever it is not the human's turn), so
@@ -140,27 +146,6 @@ function discardMode(): boolean {
   );
 }
 
-function relationsInfo(region: Region): string[] {
-  const human = game.players[0];
-  const f = politicalFactionForPolygon(region.faction, game.incorporated);
-  if (!inPlay() || !human || f === human.factionId) return [];
-  const mine = getRel(game.relations, human.factionId, f);
-  const theirs = getRel(game.relations, f, human.factionId);
-  const lines = [
-    `Status: yours ${mine.status} / theirs ${theirs.status}`,
-    `Might: yours ${mine.might} / theirs ${theirs.might}`,
-  ];
-  // The panel has room to spell out the ordinary case; the map hover, which
-  // shares this line, drops it instead. See `relationshipLine`.
-  lines.push(allegianceOf(region.faction, human.factionId) ?? "Independent");
-  const pact = allianceLine(f, human.factionId);
-  if (pact !== null) lines.push(pact);
-  if (validTargetsFor(viewOf(game), human.factionId, "subjugate").includes(f)) {
-    lines.push("Subjugate available");
-  }
-  return lines;
-}
-
 /** `polygonFaction` is the land's OWN faction, not the resolved one - see
  *  relationshipLine in view.ts. */
 function allegianceOf(
@@ -179,15 +164,6 @@ function allianceLine(f: string, humanFaction: string): string | null {
   const until = game.alliances[allianceKey(humanFaction, f)];
   return `Allied until turn ${until} - no hostile cards between you`;
 }
-
-const panel = createPanel(
-  app, () => interaction.deselect(), data.peoples, data.factions,
-  data.settlements, relationsInfo,
-  (regionId) => {
-    const faction = factionByRegion.get(regionId);
-    return faction !== undefined && game.settled.includes(faction);
-  },
-);
 
 function effectiveFaction(f: string): string {
   return game.incorporated[f] ?? f;
@@ -442,7 +418,9 @@ function applyTargeting(): void {
     el.classList.toggle("target-valid", valid);
     el.classList.toggle("target-invalid", armed !== null && !valid);
   }
-  if (armed !== null) applyHighlight(null, null); // targeting cues win the map
+  // Targeting cues win the map while armed - applyHighlight suppresses itself
+  // then. Disarming lands here too, and brings the pin, or the live hover, back.
+  applyHighlight(hoveredRegion, hoveredRegion?.faction ?? null);
   // Arming and disarming both land here without a full refresh, and the badges
   // are part of the targeting picture - see renderThreatBadges.
   renderThreatBadges();
@@ -454,6 +432,14 @@ function applyTargeting(): void {
  *  faction id rather than the region because a name hovered in prose has an id
  *  and may have no polygon at all. */
 function applyHighlight(region: Region | null, factionId: string | null): void {
+  // A pin outranks whatever is being hovered, and is resolved here rather than
+  // at the call sites so every route into the highlight - the map hover, a name
+  // hovered in prose, refresh, arming a card, dismissing the round summary -
+  // obeys it without a branch of its own.
+  if (pinnedRegion !== null) {
+    region = pinnedRegion;
+    factionId = pinnedRegion.faction;
+  }
   applyRealmHover(region);
   // The same suppression applyRealmHover applies to the map: while a card is
   // armed the targeting cues own the screen, and a log dimmed to some faction
@@ -611,6 +597,9 @@ const hud = createHud(
       ));
       clearFoundedSettlements();
       disarm();
+      // A pin must not outlive the run it was set in: the fresh game re-colours
+      // every polygon, and the held highlight would describe the last one.
+      interaction.deselect();
       runBanked = false;
       packReveal = null;
       deckScreen.update(deckScreenView(true));
@@ -772,7 +761,9 @@ hud.update(game);
 
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  // An armed card goes first, so one Escape never both disarms and unpins.
   if (armed !== null) disarm();
+  else if (pinnedRegion !== null) interaction.deselect();
 });
 
 const interaction = attachInteraction(svg, regionPaths, data, {
@@ -788,8 +779,9 @@ const interaction = attachInteraction(svg, regionPaths, data, {
     } else tooltip.hide();
   },
   onSelect(region) {
-    if (region) panel.show(region);
-    else panel.hide();
+    pinnedRegion = region;
+    hud.setPinned(region?.faction ?? null);
+    applyHighlight(region, region?.faction ?? null);
   },
   interceptClick(regionId) {
     if (resolving) return true; // swallow: no selection while the round resolves

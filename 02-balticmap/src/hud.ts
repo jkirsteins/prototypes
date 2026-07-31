@@ -76,6 +76,11 @@ export interface Hud {
    *  The mirror of `HudCallbacks.onHighlightFaction`, which lights the map from
    *  a name in prose: one hover, two views of it, and the caller sets both. */
   highlightFaction(factionId: string | null): void;
+  /** Names the faction whose highlight is pinned in the status bar; null when
+   *  nothing is pinned. The pin is the map's state, not the HUD's - this only
+   *  says so, and says how to clear it, since a held highlight with nothing
+   *  explaining it reads as the game being stuck. */
+  setPinned(factionId: string | null): void;
 }
 
 const FAN_ANGLE_DEG = 5;
@@ -689,6 +694,11 @@ export function createHud(
    *  Held rather than read back off the DOM because entries appended while a
    *  hover is live have to arrive already dimmed. */
   let highlightedFaction: string | null = null;
+  /** The faction whose highlight the map is holding pinned, for the status bar.
+   *  Separate from `highlightedFaction`: that one is the log's dimming, which a
+   *  pin and a plain hover drive alike, while this is only ever set by a click
+   *  and is what the bar has to announce. */
+  let pinnedFaction: string | null = null;
 
   /** Sets one entry's dimming from `highlightedFaction`. An entry is lit when
    *  it names that faction - `data-factions`, written in renderLog. */
@@ -1048,12 +1058,25 @@ export function createHud(
   }
 
   let lastState: GameState | null = null;
+  /** The armed hand index, held only so the status bar knows the "choose a
+   *  target" line is up and must not be overwritten from under the player. */
+  let armedIndex: number | null = null;
 
   function renderStatus(state: GameState): void {
     if (state.phase === "pick-faction") {
       statusText.textContent = "Choose your faction";
     } else if (state.phase === "playing") {
-      if (isHumanTurn(state)) {
+      // The pin outranks the turn prompt: while it is up, the one thing the
+      // player needs from this bar is what is pinned and how to let go of it.
+      // A segment, not a string - the name lights its realm here too.
+      if (pinnedFaction !== null) {
+        statusText.replaceChildren(
+          renderSegments(
+            [t("Pinned: "), faction(pinnedFaction), t(" - Esc to clear")],
+            richTextHooks,
+          ),
+        );
+      } else if (isHumanTurn(state)) {
         statusText.textContent = (cb.isDiscardMode?.() ?? false)
           ? "No playable card - discard one"
           : `Turn ${state.turn} - play a card`;
@@ -1259,6 +1282,7 @@ export function createHud(
       }
     },
     setArmed(index, cardNameText) {
+      armedIndex = index;
       [...hand.children].forEach((el, i) => {
         el.classList.toggle("card-armed", i === index);
       });
@@ -1277,6 +1301,13 @@ export function createHud(
       }
       const longestMs = Math.max(...[...liveFlights].map((f) => f.totalMs));
       watchdog = setTimeout(settleTurn, longestMs + FLIGHT_WATCHDOG_SLACK_MS);
+    },
+    setPinned(factionId) {
+      if (factionId === pinnedFaction) return;
+      pinnedFaction = factionId;
+      // An armed card owns the bar - it is asking for a target, and a click on
+      // the map answers it rather than pinning. setArmed(null) renders again.
+      if (lastState !== null && armedIndex === null) renderStatus(lastState);
     },
     highlightFaction(factionId) {
       // The hover that drives this fires on mousemove, so it arrives once per

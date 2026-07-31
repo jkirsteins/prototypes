@@ -9,7 +9,12 @@ export function withHover(state: SelectionState, id: string | null): SelectionSt
   return { ...state, hovered: id };
 }
 
-/** Clicking the background (null) or the already-selected region deselects. */
+/** A click while something is selected only ever clears it - including a click
+ *  on a different region, which then takes a second click to select. A
+ *  selection pins the map's whole highlight and dims the activity log to one
+ *  faction; letting a stray click slide that onto whatever land happened to be
+ *  under the cursor loses the thing the player was reading. Clicking the
+ *  background (null) clears too. */
 export function withClick(state: SelectionState, id: string | null): SelectionState {
-  return { ...state, selected: id === null || id === state.selected ? null : id };
+  return { ...state, selected: state.selected !== null || id === null ? null : id };
 }
