@@ -45,7 +45,7 @@ describe("storage round-trip", () => {
     const s = memoryStorage();
     s.setItem(META_STORAGE_KEY, JSON.stringify(rec({ xp: -5 })));
     expect(loadMeta(s)).toEqual(initialMeta());
-    s.setItem(META_STORAGE_KEY, JSON.stringify(rec({ turnipsGrown: "lots" })));
+    s.setItem(META_STORAGE_KEY, JSON.stringify(rec({ turnipsGrown: "lots" as unknown as number })));
     expect(loadMeta(s)).toEqual(initialMeta());
   });
 
