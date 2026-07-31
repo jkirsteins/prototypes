@@ -792,6 +792,13 @@ export function createHud(
     // how many entries have been appended.
     const changes =
       noticeCtx === null ? [] : walkStandings(fresh, walkCtxOf(noticeCtx));
+    // The entry a consequence indents under. A local is enough: the log only
+    // ever grows by a whole `appendEvents` batch and `renderedEvents` is set to
+    // the full length after every render, so a play and the events it caused are
+    // never split across two calls. Assigned only from entries that were
+    // actually appended, so a consequence dropped by isObservable (a vassal's
+    // hidden `seeded`) leaves the cause standing for the next one.
+    let cause: HTMLElement | null = null;
     fresh.forEach((e, i) => {
       if (e.turn !== lastRenderedTurn) {
         const sep = document.createElement("div");
@@ -829,6 +836,20 @@ export function createHud(
         "notice-worthy", noticeCtx !== null && isNoticeWorthy(e, noticeCtx),
       );
       entry.classList.toggle("log-mine", isYourDoing(e));
+      if (e.consequence !== true) {
+        cause = entry;
+      } else {
+        entry.classList.add("log-consequence");
+        // The filter hides an entry that is neither notice-worthy nor yours, and
+        // the play that caused a notice-worthy consequence is often neither - a
+        // rival's Revolt is not aimed at you, the vassalage it broke was. Left
+        // alone, the filter would show the consequence indented under nothing.
+        // Optional chaining, not an assertion: a hand-built log with no play
+        // above it degrades to a plain indented line rather than throwing.
+        if (entry.classList.contains("notice-worthy")) {
+          cause?.classList.add("notice-cause");
+        }
+      }
       logEntries.appendChild(entry);
     });
     renderedEvents = state.log.length;
@@ -1186,6 +1207,9 @@ export function createHud(
         d.className = "log-entry";
         d.replaceChildren(renderSegments(eventSegments(e, state), richTextHooks));
         d.classList.toggle("log-you", involvesHuman(e, human?.factionId));
+        // Same nesting as the activity log. No cause to tag here: the
+        // postmortem has no filter to hide one.
+        d.classList.toggle("log-consequence", e.consequence === true);
         return d;
       }),
     );

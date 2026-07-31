@@ -47,6 +47,10 @@ export interface GameEvent {
   amount?: number;
   prevented?: boolean; // play: a nullified Assassinate ruler (Bodyguard)
   doubled?: boolean; // play, reclaimed: a card whose numbers a reading doubled
+  /** This event was caused by the play it was logged with - the log indents it
+   *  under that play's line. Set by `appendEvents` off the shape of the batch,
+   *  never by a card branch; see the comment there. */
+  consequence?: boolean;
   actorRuler?: string; // ruler of the acting faction when this was logged
   targetRuler?: string; // assassinate: the ruler in the crosshairs
   successorRuler?: string; // assassinate: set only when the killing landed
@@ -221,15 +225,67 @@ export function pickFaction(
   return beginTurn({ ...state, phase: "playing", players, current: 0 }, rng);
 }
 
-/** The one place `actorRuler` is filled. Every append to the log goes
- *  through here, so a new event type cannot ship unstamped, and the name
- *  recorded is the one the actor's ruler held at the time. */
+/** Whether this kind of event, when a play caused it, reads as that play's
+ *  sub-item in the log. Endings are the exception: a play can win or lose the
+ *  run, but the run's last line is a headline, not something indented under a
+ *  card.
+ *
+ *  An exhaustive switch with no `default`, like `eventSegments` in src/hud.ts:
+ *  a new `GameEventType` stops compiling here until somebody decides which it
+ *  is. */
+function nestsUnderItsPlay(type: GameEventType): boolean {
+  switch (type) {
+    // Never a consequence: the play itself, and the pile bookkeeping that
+    // begins or ends a turn rather than following from a card.
+    case "play":
+    case "draw":
+    case "reshuffle":
+    case "discard":
+    // The run is over. See above.
+    case "victory":
+    case "defeat":
+    case "unified":
+    case "surrendered":
+    case "stranded":
+      return false;
+    case "subjugated":
+    case "released":
+    case "incorporated":
+    case "reclaimed":
+    case "tribute":
+    case "settled":
+    case "seeded":
+    case "garrisoned":
+    case "subjugate-failed":
+    case "incorporate-failed":
+      return true;
+  }
+}
+
+/** The one place `actorRuler` is filled, and the one place a consequence is
+ *  tied to the play that caused it. Every append to the log goes through here,
+ *  so a new event type cannot ship unstamped, and the name recorded is the one
+ *  the actor's ruler held at the time.
+ *
+ *  `playCard` builds one batch per play with the `play` event first and pushes
+ *  everything that play caused onto it, and no other caller starts a batch with
+ *  a `play` - `beginTurn` starts with a draw or a reshuffle, `surrender` and
+ *  `discardCard` append one event. So "caused by this play" is exactly "not
+ *  first in a batch that starts with a play", and reading it off the batch's
+ *  shape here is what keeps it out of all fourteen card branches, where it
+ *  would drift. */
 function appendEvents(state: GameState, events: GameEvent[]): GameEvent[] {
+  const causedByPlay = events[0]?.type === "play";
   return [
     ...state.log,
-    ...events.map((e) => ({
+    ...events.map((e, i) => ({
       ...e,
       actorRuler: actorRulerName(state, e.playerId),
+      // Omitted rather than set false, so an event that is nobody's consequence
+      // carries the shape it always did.
+      ...(causedByPlay && i > 0 && nestsUnderItsPlay(e.type)
+        ? { consequence: true }
+        : {}),
     })),
   ];
 }

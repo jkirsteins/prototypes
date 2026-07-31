@@ -1051,6 +1051,50 @@ describe("event stamping", () => {
     }
   });
 
+  it("marks what a play caused, and never the play itself", () => {
+    // The log indents a consequence under its play, so the link has to be in the
+    // data. It comes off the shape of the batch in appendEvents, which is why no
+    // card branch has to remember it.
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["beta", "gamma"]]) };
+    g = withHand(g, 0, ["revolt"]);
+    const after = playCard(g, 0, rng());
+    const back = [...after.log].reverse();
+    const play = back.find((e) => e.type === "play");
+    const reclaimed = back.find((e) => e.type === "reclaimed");
+    expect(play?.consequence).toBeUndefined();
+    expect(reclaimed?.consequence).toBe(true);
+  });
+
+  it("leaves an ending top-level even though its play caused it", () => {
+    // A play can win the run, but the last line of a run is a headline, not a
+    // sub-item under a card. Same construction as the victory test above.
+    const many = Array.from({ length: 20 }, (_, i) => `f${i}`);
+    let big = pickFaction(
+      chooseDeck(startGame(newGame(many)), buildDeck()), "f0", seededRng(1),
+    );
+    const inc: Record<string, string> = {};
+    for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
+    big = { ...big, incorporated: inc };
+    big = withHand(big, 0, ["grow-crops"]);
+    const won = playCard(big, 0, rng());
+    expect(won.log.at(-1)).toMatchObject({ type: "victory" });
+    expect(won.log.at(-1)?.consequence).toBeUndefined();
+  });
+
+  it("marks nothing in a batch that no play opened", () => {
+    // beginTurn's draw, reshuffle and garrison tick follow from the turn, not
+    // from a card, so nothing in that batch is anybody's consequence.
+    let g = playingState(LINE_ADJ);
+    g = withHand(g, 0, ["grow-crops"]);
+    g = advance(playCard(g, 0, rng()), rng());
+    const turnEvents = g.log.filter(
+      (e) => e.type === "draw" || e.type === "reshuffle" || e.type === "garrisoned",
+    );
+    expect(turnEvents.length).toBeGreaterThan(0);
+    expect(turnEvents.every((e) => e.consequence === undefined)).toBe(true);
+  });
+
   it("keeps the name the dead ruler held when he acted", () => {
     let g = playingState(LINE_ADJ);
     const doomed = rulerOf(g.rulers, "alpha").name;

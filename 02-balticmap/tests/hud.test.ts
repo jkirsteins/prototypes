@@ -1339,6 +1339,78 @@ describe("log highlighting", () => {
   });
 });
 
+describe("log nesting", () => {
+  function playing() {
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+  }
+
+  /** Built through playCard, not by hand: the point is that the link between a
+   *  play and what it caused survives the real path from the rules to the DOM. */
+  function revoltBy(seat: number, lord: string) {
+    let g = playing();
+    const rebel = g.players[seat].factionId;
+    g = { ...g, current: seat, overlords: new Map([[rebel, lord]]) };
+    g = withHand(g, seat, ["revolt"]);
+    return playCard(g, 0, seededRng(1));
+  }
+
+  const entries = (c: HTMLElement): HTMLElement[] =>
+    [...c.querySelectorAll(".activity-log .log-entry")] as HTMLElement[];
+
+  it("indents what a play caused under the play, and not the play itself", () => {
+    const { container, hud } = setup();
+    hud.update(revoltBy(0, "gamma")); // you are gamma's vassal, and you revolt
+    const nested = entries(container).map((el) => el.classList.contains("log-consequence"));
+    expect(nested).toEqual([false, true]); // your play, then the land it freed
+    expect(entries(container)[1].textContent).toContain("reclaims independence");
+  });
+
+  it("keeps the play on screen when the filter shows only its consequence", () => {
+    // A rival's Revolt is not aimed at you; the vassalage it broke was. Without
+    // .notice-cause the filter would leave the consequence indented under
+    // nothing.
+    const { container, hud } = setup();
+    hud.update(revoltBy(1, "beta")); // alpha throws off your overlordship
+    const [play, consequence] = entries(container);
+    expect(play.classList.contains("notice-worthy")).toBe(false);
+    expect(consequence.classList.contains("notice-worthy")).toBe(true);
+    expect(play.classList.contains("notice-cause")).toBe(true);
+  });
+
+  it("leaves an AI-vs-AI play uncaused", () => {
+    const { container, hud } = setup();
+    hud.update(revoltBy(1, "gamma")); // alpha leaves gamma; nothing to do with you
+    const [play, consequence] = entries(container);
+    expect(consequence.classList.contains("log-consequence")).toBe(true);
+    expect(play.classList.contains("notice-cause")).toBe(false);
+  });
+
+  it("leaves an ending flush left in the postmortem log", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = {
+      ...g,
+      phase: "defeat",
+      log: [
+        ...g.log,
+        { turn: 2, playerId: 2, type: "play", cardId: "incorporate", targetFactionId: "beta" },
+        {
+          turn: 2, playerId: 2, type: "incorporated",
+          targetFactionId: "beta", overlordFactionId: "alpha", consequence: true,
+        },
+        {
+          turn: 2, playerId: 2, type: "defeat",
+          targetFactionId: "beta", overlordFactionId: "alpha",
+        },
+      ],
+    };
+    hud.update(g);
+    const pm = [...container.querySelectorAll(".pm-log .log-entry")];
+    const nested = pm.slice(-3).map((el) => el.classList.contains("log-consequence"));
+    expect(nested).toEqual([false, true, false]);
+  });
+});
+
 describe("notice details and hand tips", () => {
   function playing() {
     return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
