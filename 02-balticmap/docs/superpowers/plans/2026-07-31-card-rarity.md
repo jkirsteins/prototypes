@@ -392,10 +392,16 @@ const POOL: string[] = Object.values(CARDS)
 
 /** A deck holding between 3 and 8 non-basics, padded with Grow turnips.
  *  Not a uniform draw over the pool: with 12 non-basics and 10 slots, a
- *  uniform deck holds nearly everything and the fit sees no contrast. */
+ *  uniform deck holds nearly everything and the fit sees no contrast.
+ *
+ *  The shuffle first, the size second. seededRng's FIRST output moves only
+ *  about 0.0004 per unit of seed, so drawing the size from it gave every deck
+ *  in a run of consecutive seeds the same size - 4 or 5 and nothing else
+ *  across 500 games. Eleven draws into the stream it is flat over 3..8. */
 function randomDeck(rng: Rng): string[] {
+  const order = shuffle(POOL, rng);
   const k = 3 + Math.floor(rng() * 6);
-  const picked = shuffle(POOL, rng).slice(0, k);
+  const picked = order.slice(0, k);
   return [
     ...picked,
     ...Array.from({ length: DECK_SIZE - picked.length }, () => "grow-crops"),

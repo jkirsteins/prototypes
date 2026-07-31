@@ -101,8 +101,17 @@ number covers every outcome. Record survival turn as a secondary check.
 
 **The decks need contrast.** There are 12 deck-buildable non-basics and 10
 slots, so a uniform random deck holds almost everything and the regression
-sees no variation. Draw a count first, between 3 and 8, then draw that many
-cards and pad with Grow turnips. Past roughly 20 cards this stops mattering.
+sees no variation. Shuffle the pool, then draw a count between 3 and 8, take
+that many cards and pad with Grow turnips. Past roughly 20 cards this stops
+mattering.
+
+The order of those two draws is not cosmetic. `seededRng` is a linear
+congruential generator whose first output moves about 0.0004 per unit of
+seed, so a count drawn from it is near-identical across consecutive seeds:
+drawing the count first pinned every deck in a 500-game run to size 4 or 5,
+and a 40-game run to a single size, which made the normal equations singular.
+Taking the count after the shuffle puts it eleven draws into the stream,
+where it is flat over 3..8. Measured over seeds 1..500: 85/83/85/83/82/82.
 
 Measured cost: 246ms per game at a 150-turn cap with the competent policy, so
 500 games is about two minutes.
