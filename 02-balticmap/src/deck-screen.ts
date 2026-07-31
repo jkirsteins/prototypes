@@ -110,6 +110,11 @@ export function createDeckScreen(
       packOverlay.classList.toggle("hidden", !opening);
       packCount.textContent =
         `${view.pendingPacks} ${view.pendingPacks === 1 ? "pack" : "packs"} to open`;
+      // applyPack has already decremented pendingPacks by the time the reveal
+      // for that pack is on screen, so the count would contradict what the
+      // player is looking at ("0 packs to open" over an open pack). Hide it
+      // for the same window the sealed pack and its hint are hidden.
+      packCount.classList.toggle("hidden", view.reveal !== null);
       packSealed.classList.toggle("hidden", view.reveal !== null);
       packHint.classList.toggle("hidden", view.reveal !== null);
       packContinue.classList.toggle("hidden", view.reveal === null);

@@ -79,6 +79,30 @@ describe("createDeckScreen", () => {
     expect(cb.onDismissReveal).toHaveBeenCalled();
   });
 
+  it("does not re-render the pack cards on a repeat update with the same reveal", () => {
+    const { container, screen } = setup();
+    const v = view({
+      pendingPacks: 1,
+      reveal: [{ id: "alliance", isNew: true }, { id: "raid", isNew: false }],
+    });
+    screen.update(v);
+    const first = container.querySelector(".ds-pack-card");
+    expect(first).not.toBeNull();
+    screen.update(v); // same view object, same reveal array identity
+    expect(container.querySelector(".ds-pack-card")).toBe(first);
+  });
+
+  it("hides the pack count while a reveal is showing", () => {
+    const { container, screen } = setup();
+    screen.update(view({ pendingPacks: 1 }));
+    expect(q(container, ".ds-pack-count").classList.contains("hidden")).toBe(false);
+    screen.update(view({
+      pendingPacks: 0,
+      reveal: [{ id: "alliance", isNew: true }, { id: "raid", isNew: false }],
+    }));
+    expect(q(container, ".ds-pack-count").classList.contains("hidden")).toBe(true);
+  });
+
   it("shows the deck builder again once no packs are pending", () => {
     const { container, screen } = setup();
     screen.update(view({ pendingPacks: 1 }));

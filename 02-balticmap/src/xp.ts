@@ -35,10 +35,30 @@ export const XP_TABLE: Record<GameEventType, number> = {
 /** Base value plus how far the event moved a relation counter. A four-point
  *  Raid is worth more than a one-point one, so reaching for a good play beats
  *  spamming a cheap one. Events with no `track` carry no `amount` worth
- *  scoring (see the GameEvent.amount contract in src/game.ts). */
+ *  scoring (see the GameEvent.amount contract in src/game.ts).
+ *
+ *  This scaling is a second, unenforced decision sitting next to the
+ *  `XP_TABLE` base value: the exhaustive `Record<GameEventType, number>`
+ *  forces someone to pick a base for every new event type, but nothing forces
+ *  a matching decision about whether `amount` is safe to scale by, or which
+ *  direction counts as "more". A type that happens to set `track` gets
+ *  amount-scaled silently; one that sets `amount` without `track` is
+ *  silently worth only its base. `assassinate-ruler` below is the first
+ *  event that actually collided with that gap. */
 export function xpForEvent(e: GameEvent): number {
   const base = XP_TABLE[e.type];
   if (base === 0) return 0;
+  // assassinate-ruler is a special case of the scaling above, not the base
+  // value: src/game.ts (~line 460) writes `amount: preStatusLead`, the
+  // actor's Status lead captured BEFORE assassinate() resets it to zero.
+  // That amount is a deficit being erased, not a gain being made - the
+  // bigger-is-better scaling every other tracked event uses would pay most
+  // for assassinating from a lead (throwing the lead away) and least for
+  // assassinating from behind (the card's actual purpose). Score the
+  // deficit it erased instead.
+  if (e.type === "play" && e.cardId === "assassinate-ruler") {
+    return base + Math.max(0, -(e.amount ?? 0));
+  }
   const scaled = e.track !== undefined ? Math.max(0, e.amount ?? 0) : 0;
   return base + scaled;
 }
@@ -70,7 +90,10 @@ export function xpThresholdForLevel(level: number): number {
 
 /** Highest level fully paid for by `xp`. Walks the curve rather than solving
  *  the quadratic: exact at every boundary, and the loop is a few dozen steps
- *  even at absurd totals. */
+ *  for any total `xp` can actually reach through play. `src/meta.ts`'s
+ *  `isCount` is what keeps "actually reach" true - it caps a loaded counter
+ *  at 1e9, so a corrupted or hand-edited record cannot hand this a total
+ *  large enough to spin for a very long time. */
 export function levelForXp(xp: number): number {
   if (!Number.isFinite(xp) || xp < XP_LEVEL_STEP) return 0;
   let level = 0;

@@ -908,12 +908,6 @@ svg.map.dragging {
   font-size: 11px;
   line-height: 1.35;
   color: #6b5d49;
-  /* the ink colour above is for the parchment cards; the dark context below
-     (locked unlock row) must override it or the rules text goes dark-on-dark */
-}
-
-.ds-card.ds-locked .ds-card-text {
-  color: #bdb4a5;
 }
 
 .card .card-tip {

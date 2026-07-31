@@ -47,8 +47,13 @@ export function initialMeta(): MetaRecord {
 const isTrackable = (id: unknown): id is string =>
   typeof id === "string" && CARDS[id]?.deckBuildable === true;
 
+/** A sane lifetime counter: a whole number, non-negative, and capped well
+ *  above anything reachable by play. Without the integer check and the
+ *  ceiling, a hand-edited or corrupted record like `{"xp": 1e30}` loaded
+ *  successfully and sent `levelForXp` spinning for roughly 2.8e14 iterations,
+ *  freezing the tab. */
 const isCount = (n: unknown): n is number =>
-  typeof n === "number" && Number.isFinite(n) && n >= 0;
+  typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 1e9;
 
 const dedupe = (ids: string[]): string[] => [...new Set(ids)];
 

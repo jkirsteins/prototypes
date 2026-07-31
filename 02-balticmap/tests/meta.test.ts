@@ -49,6 +49,18 @@ describe("storage round-trip", () => {
     expect(loadMeta(s)).toEqual(initialMeta());
   });
 
+  it("rejects a non-integer counter", () => {
+    const s = memoryStorage();
+    s.setItem(META_STORAGE_KEY, JSON.stringify(rec({ packsOpened: 2.5 })));
+    expect(loadMeta(s)).toEqual(initialMeta());
+  });
+
+  it("rejects an absurd counter rather than spinning levelForXp forever", () => {
+    const s = memoryStorage();
+    s.setItem(META_STORAGE_KEY, JSON.stringify(rec({ xp: 1e30 })));
+    expect(loadMeta(s)).toEqual(initialMeta());
+  });
+
   it("prunes unknown ids and re-adds the starting cards", () => {
     const s = memoryStorage();
     s.setItem(META_STORAGE_KEY, JSON.stringify({
