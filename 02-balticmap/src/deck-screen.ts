@@ -1,20 +1,24 @@
-import { CARDS, DECK_SIZE } from "./cards";
+import { ACQUIRABLE_CARDS, CARDS, DECK_SIZE } from "./cards";
+import { runAnimation } from "./animate";
 import { cardName } from "./rich-text";
+
+export interface PackReveal {
+  id: string;
+  isNew: boolean;
+}
 
 export interface DeckScreenView {
   visible: boolean;
   knownCards: string[];
-  seenPool: string[];
-  /** Cards learned since the last run, to announce. Already in `knownCards` by
-   *  the time this renders - learning is automatic now, so this is a report of
-   *  what happened, not a choice to make. Empty hides the modal. */
-  learned: string[];
+  collected: number; // owned acquirable cards
+  pendingPacks: number; // packs waiting to be opened
+  reveal: PackReveal[] | null; // non-null once the owner has drawn a pack
 }
 
 export interface DeckScreenCallbacks {
   onStart(selectedIds: string[]): void;
-  /** Acknowledges the learned-cards modal. */
-  onDismissLearned(): void;
+  onOpenPack(): void; // player clicked the sealed pack
+  onDismissReveal(): void; // player clicked Continue on the reveal
 }
 
 export interface DeckScreen {
@@ -23,11 +27,6 @@ export interface DeckScreen {
 
 const nonBasics = (ids: string[]): string[] =>
   ids.filter((id) => CARDS[id]?.maxPerDeck !== null);
-
-/** Every deck-buildable non-basic card id, in stable CARDS order. */
-const ALL_DECK_BUILDABLE_NON_BASICS = Object.values(CARDS)
-  .filter((c) => c.deckBuildable && c.maxPerDeck !== null)
-  .map((c) => c.id);
 
 export function createDeckScreen(
   container: HTMLElement,
@@ -40,23 +39,29 @@ export function createDeckScreen(
   title.className = "menu-title";
   title.textContent = "Prepare your deck";
 
-  // Learned cards are announced, not chosen. The modal is the only place the
-  // player is told what a newly learned card actually does, so it carries the
-  // full rules text rather than just the names.
-  const learnedOverlay = document.createElement("div");
-  learnedOverlay.className = "ds-learned-overlay hidden";
-  const learnedCard = document.createElement("div");
-  learnedCard.className = "ds-learned-card";
-  const learnedTitle = document.createElement("h2");
-  learnedTitle.className = "ds-learned-title";
-  const learnedList = document.createElement("div");
-  learnedList.className = "ds-learned-list";
-  const learnedContinue = document.createElement("button");
-  learnedContinue.className = "notice-continue";
-  learnedContinue.textContent = "Continue";
-  learnedContinue.addEventListener("click", () => cb.onDismissLearned());
-  learnedCard.append(learnedTitle, learnedList, learnedContinue);
-  learnedOverlay.appendChild(learnedCard);
+  // The pack is the only place a card's rules are stated before it is played,
+  // so a revealed card carries its full text, not just a name.
+  const packOverlay = document.createElement("div");
+  packOverlay.className = "ds-pack-overlay hidden";
+  const packInner = document.createElement("div");
+  packInner.className = "ds-pack-inner";
+  const packCount = document.createElement("p");
+  packCount.className = "ds-pack-count";
+  const packSealed = document.createElement("button");
+  packSealed.className = "ds-pack-sealed";
+  packSealed.textContent = "Open";
+  const packHint = document.createElement("p");
+  packHint.className = "ds-pack-hint";
+  packHint.textContent = "Click to open";
+  const packCards = document.createElement("div");
+  packCards.className = "ds-pack-cards";
+  const packContinue = document.createElement("button");
+  packContinue.className = "notice-continue ds-pack-continue hidden";
+  packContinue.textContent = "Continue";
+  packSealed.addEventListener("click", () => cb.onOpenPack());
+  packContinue.addEventListener("click", () => cb.onDismissReveal());
+  packInner.append(packCount, packSealed, packHint, packCards, packContinue);
+  packOverlay.appendChild(packInner);
 
   const deckLabel = document.createElement("p");
   deckLabel.className = "ds-label";
@@ -74,7 +79,7 @@ export function createDeckScreen(
   start.className = "menu-new-game ds-start";
   start.textContent = "Choose your lands";
 
-  root.append(title, deckLabel, deckRow, counter, undiscovered, start, learnedOverlay);
+  root.append(title, deckLabel, deckRow, counter, undiscovered, start, packOverlay);
   container.appendChild(root);
 
   /** Toggle state survives update() calls; pruned to known cards each render.
@@ -82,6 +87,11 @@ export function createDeckScreen(
   let selected = new Set<string>();
 
   start.addEventListener("click", () => cb.onStart([...selected]));
+
+  /** The reveal currently on screen, so `update()` re-rendering for an
+   *  unrelated reason does not replay the burst. Compared by identity: the
+   *  owner hands over a fresh array per pack. */
+  let animatedReveal: unknown = null;
 
   function renderCounter(pickCount: number): void {
     counter.textContent =
@@ -96,33 +106,62 @@ export function createDeckScreen(
       const known = nonBasics(view.knownCards);
       selected = new Set(known.filter((id) => selected.has(id)));
 
-      const discovered = new Set([...view.knownCards, ...view.seenPool]);
-      const undiscoveredCount = ALL_DECK_BUILDABLE_NON_BASICS.filter(
-        (id) => !discovered.has(id),
-      ).length;
-      undiscovered.classList.toggle("hidden", undiscoveredCount === 0);
-      undiscovered.textContent =
-        `${undiscoveredCount} ${undiscoveredCount === 1 ? "card" : "cards"} still undiscovered`;
+      const opening = view.pendingPacks > 0 || view.reveal !== null;
+      packOverlay.classList.toggle("hidden", !opening);
+      packCount.textContent =
+        `${view.pendingPacks} ${view.pendingPacks === 1 ? "pack" : "packs"} to open`;
+      packSealed.classList.toggle("hidden", view.reveal !== null);
+      packHint.classList.toggle("hidden", view.reveal !== null);
+      packContinue.classList.toggle("hidden", view.reveal === null);
 
-      learnedOverlay.classList.toggle("hidden", view.learned.length === 0);
-      learnedTitle.textContent =
-        view.learned.length === 1
-          ? "You learned a new card"
-          : `You learned ${view.learned.length} new cards`;
-      learnedList.replaceChildren(
-        ...view.learned.map((id) => {
-          const entry = document.createElement("div");
-          entry.className = "ds-learned-entry";
-          const name = document.createElement("span");
-          name.className = "ds-card-name";
-          name.textContent = cardName(id);
-          const text = document.createElement("span");
-          text.className = "ds-card-text";
-          text.textContent = CARDS[id]?.text ?? "";
-          entry.append(name, text);
-          return entry;
-        }),
-      );
+      for (const el of [deckLabel, deckRow, counter, start]) {
+        el.classList.toggle("hidden", opening);
+      }
+
+      if (view.reveal === null) {
+        packCards.replaceChildren();
+        animatedReveal = null;
+      } else if (view.reveal !== animatedReveal) {
+        animatedReveal = view.reveal;
+        packCards.replaceChildren(
+          ...view.reveal.map((r, i) => {
+            const el = document.createElement("div");
+            el.className = "ds-pack-card";
+            const name = document.createElement("span");
+            name.className = "ds-card-name";
+            name.textContent = cardName(r.id);
+            const text = document.createElement("span");
+            text.className = "ds-card-text";
+            text.textContent = CARDS[r.id]?.text ?? "";
+            const tag = document.createElement("span");
+            if (r.isNew) {
+              tag.className = "ds-pack-new";
+              tag.textContent = "NEW";
+            } else {
+              tag.className = "ds-pack-dupe";
+              tag.textContent = "already known";
+            }
+            el.append(name, tag, text);
+            // Each card flips in after the one before it. The stagger is the
+            // whole beat of a pack opening; the animation reports its own end
+            // and nothing re-derives its length.
+            runAnimation(
+              el,
+              [
+                { offset: 0, opacity: 0, transform: "rotateY(90deg) scale(0.8)" },
+                { offset: i === 0 ? 0 : 0.4, opacity: 0, transform: "rotateY(90deg) scale(0.8)" },
+                { offset: 1, opacity: 1, transform: "rotateY(0deg) scale(1)" },
+              ],
+              i === 0 ? 420 : 700,
+            );
+            return el;
+          }),
+        );
+      }
+
+      undiscovered.classList.remove("hidden");
+      undiscovered.textContent =
+        `${view.collected} of ${ACQUIRABLE_CARDS.length} collected`;
 
       const filler = document.createElement("div");
       filler.className = "ds-card ds-filler";

@@ -1133,50 +1133,97 @@ svg.map.dragging {
   border-color: #7a2f2f;
 }
 
-/* Learned-cards announcement. Same overlay treatment as .notice-overlay, but
-   scoped to the deck screen, which is a separate phase with its own root. */
-.ds-learned-overlay {
+/* Pack-opening overlay. Same overlay treatment as .notice-overlay, but scoped
+   to the deck screen, which is a separate phase with its own root. */
+.ds-pack-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(30, 24, 16, 0.65);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 40;
+  background: rgba(12, 10, 8, 0.88);
+  z-index: 20;
 }
 
-.ds-learned-overlay.hidden {
-  display: none;
-}
+.ds-pack-overlay.hidden { display: none; }
 
-.ds-learned-card {
-  width: min(460px, calc(100% - 48px));
-  background: #fdf9f1;
-  border: 1px solid #c9b896;
-  border-radius: 10px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  padding: 22px 24px;
-  text-align: center;
-  color: #3f3428;
-}
-
-.ds-learned-title {
-  font-size: 20px;
-  margin-bottom: 14px;
-}
-
-.ds-learned-list {
+.ds-pack-inner {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 16px;
+  align-items: center;
+  gap: 1rem;
+  max-width: 44rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.ds-pack-count {
+  margin: 0;
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.ds-pack-sealed {
+  width: 9rem;
+  height: 13rem;
+  border: 2px solid #c9a227;
+  border-radius: 0.6rem;
+  background: linear-gradient(160deg, #4a3a18, #2a2113);
+  color: #f2e2b0;
+  font-size: 1.2rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  animation: pack-breathe 2.2s ease-in-out infinite;
+}
+
+.ds-pack-sealed:hover { border-color: #f0d060; }
+.ds-pack-sealed.hidden { display: none; }
+
+@keyframes pack-breathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 1.4rem rgba(201, 162, 39, 0.25); }
+  50% { transform: scale(1.03); box-shadow: 0 0 2.4rem rgba(201, 162, 39, 0.55); }
+}
+
+.ds-pack-hint { margin: 0; opacity: 0.6; font-size: 0.9rem; }
+.ds-pack-hint.hidden { display: none; }
+
+.ds-pack-cards {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.ds-pack-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 13rem;
+  padding: 0.9rem;
+  border: 1px solid #6b5a34;
+  border-radius: 0.5rem;
+  background: #1b1710;
   text-align: left;
 }
 
-.ds-learned-entry {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border-left: 2px solid #d4af37;
-  padding-left: 10px;
+.ds-pack-new {
+  align-self: flex-start;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.2rem;
+  background: #c9a227;
+  color: #1b1710;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
 }
+
+.ds-pack-dupe {
+  align-self: flex-start;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  opacity: 0.5;
+}
+
+.ds-pack-continue.hidden { display: none; }
