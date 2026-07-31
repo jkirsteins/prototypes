@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import { createPanel, createTooltip, formatPopulation, formatFactionType, settlementTooltipText } from "../src/panel";
+import { createPanel, createTooltip, formatPopulation, formatFactionType, settlementTooltipText, spanLine } from "../src/panel";
 import type { Faction, People, Region, Settlement } from "../src/types";
 
 const peoples: People[] = [
@@ -182,6 +182,85 @@ describe("tooltip", () => {
     );
     expect(el.style.left).toBe(`${window.innerWidth - 20 - 12 - 280}px`);
     expect(el.style.top).toBe(`${window.innerHeight - 20 - 12 - 60}px`);
+  });
+
+  it("gives an amount its own column, because the tip collapses padded spaces", () => {
+    // .tooltip is white-space: pre-line, so a space-padded column would not
+    // align. The amount has to be its own element or the breakdown is ragged.
+    const container = document.createElement("div");
+    const tooltip = createTooltip(container);
+    const el = container.querySelector(".tooltip") as HTMLElement;
+
+    tooltip.showLines([{ amount: "+1", text: "a settlement (Might only)" }], 0, 0);
+    const row = el.querySelector(".tooltip-line") as HTMLElement;
+    expect(row.classList.contains("has-amount")).toBe(true);
+    expect(row.querySelector(".tooltip-amount")?.textContent).toBe("+1");
+    expect(row.querySelector(".tooltip-text")?.textContent)
+      .toBe("a settlement (Might only)");
+    // The row still reads as one sentence, which is what the placement and the
+    // existing text assertions rely on.
+    expect(row.textContent).toBe("+1a settlement (Might only)");
+  });
+
+  it("leaves a line with no amount a single text node", () => {
+    const container = document.createElement("div");
+    const tooltip = createTooltip(container);
+    const el = container.querySelector(".tooltip") as HTMLElement;
+
+    tooltip.showLines([{ text: "Out of reach.", tone: "bad" }], 0, 0);
+    const row = el.querySelector(".tooltip-line") as HTMLElement;
+    expect(row.classList.contains("has-amount")).toBe(false);
+    expect(row.querySelector(".tooltip-amount")).toBeNull();
+    expect(row.textContent).toBe("Out of reach.");
+  });
+
+  it("colours a standing value by its own sign, inside the line", () => {
+    const container = document.createElement("div");
+    const tooltip = createTooltip(container);
+    const el = container.querySelector(".tooltip") as HTMLElement;
+
+    tooltip.showLines([spanLine([
+      { text: "Might " },
+      { text: "-2", lead: -2 },
+      { text: " -> " },
+      { text: "-1", lead: -1 },
+    ])], 0, 0);
+    const values = [...el.querySelectorAll(".tooltip-value")];
+    expect(values.map((v) => v.textContent)).toEqual(["-2", "-1"]);
+    expect(values.every((v) => v.classList.contains("lead-bad"))).toBe(true);
+    // The line still reads as one sentence for anything checking textContent.
+    expect(el.textContent).toBe("Might -2 -> -1");
+  });
+
+  it("redraws in place when the state behind it moves, and not while hidden", () => {
+    // The tip stays up through a card being played and the AI answering, so
+    // every number on it goes stale unless something re-renders it.
+    const container = document.createElement("div");
+    const tooltip = createTooltip(container);
+    const el = container.querySelector(".tooltip") as HTMLElement;
+
+    tooltip.showLines([{ text: "Might +1/2" }], 100, 200);
+    tooltip.redraw([{ text: "Might +2/2" }]);
+    expect(el.textContent).toBe("Might +2/2");
+    expect(el.classList.contains("hidden")).toBe(false);
+    // Placed from the cursor it was opened at, not from 0,0.
+    expect(el.style.left).toBe("112px");
+    expect(el.style.top).toBe("212px");
+
+    tooltip.hide();
+    tooltip.redraw([{ text: "should not appear" }]);
+    expect(el.classList.contains("hidden")).toBe(true);
+    expect(el.textContent).toBe("Might +2/2");
+  });
+
+  it("keeps the tone on the row when an amount is present", () => {
+    const container = document.createElement("div");
+    const tooltip = createTooltip(container);
+    const el = container.querySelector(".tooltip") as HTMLElement;
+
+    tooltip.showLines([{ amount: "=", text: "6", tone: "bad" }], 0, 0);
+    const row = el.querySelector(".tooltip-line") as HTMLElement;
+    expect(row.classList.contains("tone-bad")).toBe(true);
   });
 
   it("never leaves the near edge either, when the flip would overshoot it", () => {

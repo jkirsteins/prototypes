@@ -167,6 +167,62 @@ svg.map.dragging {
   color: #e08a80;
 }
 
+/* The armed card's preview. Its own colour so the block scans as one thing and
+   never competes with the red/green that means threshold direction. */
+.tooltip-line.tone-info {
+  color: #d9b45c;
+}
+
+/* A tooltip line that is a table row rather than a sentence: the amount gets
+   its own right-aligned column. Flex and not padding, because .tooltip is
+   white-space: pre-line and collapses the runs of spaces a padded column
+   needs. These two classes live only inside the dark .tooltip and inherit its
+   color (or the row's tone-*), so per the dark-box rule they must never be
+   reused on the light .panel or .card-tip. */
+.tooltip-line.has-amount {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.tooltip-amount {
+  flex: none;
+  min-width: 2.5ch;
+  text-align: right;
+  /* Same-width digits, or the column shimmers from row to row. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* min-width: 0 is load-bearing: without it a long label refuses to wrap and
+   pushes the row past the tooltip's max-width. */
+.tooltip-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A standing value inside a line, coloured by sign. The .lead-* rules above set
+   `fill` for the SVG badges and say nothing about text colour, and the log's
+   own .log-change.lead-* are tuned for a light panel - this box is dark and so
+   states its own, per the dark-box rule. */
+.tooltip-value.lead-good {
+  color: #7cb06a;
+}
+
+.tooltip-value.lead-bad {
+  color: #e08a80;
+}
+
+.tooltip-value.lead-even {
+  color: #d9b45c;
+}
+
+/* Space above the head of a block, so a tip carrying two tables reads as two.
+   Margin rather than a blank line: an empty div has no height. Not on the
+   first line, which already has the tip's own padding above it. */
+.tooltip-line.block-start:not(:first-child) {
+  margin-top: 8px;
+}
+
 .panel {
   position: absolute;
   top: 16px;

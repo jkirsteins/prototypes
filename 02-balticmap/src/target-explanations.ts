@@ -1,6 +1,7 @@
 import {
-  INCORPORATE_RAMP, incorporationChance, isDoubled, loyaltyOf, raidGainFor,
-  subjugationChance, targetEligibilityFor,
+  INCORPORATE_RAMP, gripPartsOn, incorporationChance,
+  isDoubled, loyaltyOf, poachSurchargeOn, raidGainFor, subjugationChance,
+  subjugationRaceFor, targetEligibilityFor,
   type CardBlockReason,
   type RulesView,
   type TargetBlockReason,
@@ -8,8 +9,8 @@ import {
 } from "./playability";
 import { CARDS, DOUBLABLE_CARDS } from "./cards";
 import { leadsOf } from "./relations";
-import { standingChangeText } from "./view";
-import type { TooltipLine } from "./panel";
+import { formatLead } from "./view";
+import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
 
 export interface TargetExplanation {
   factionId: string;
@@ -137,89 +138,140 @@ export function targetOddsLines(
   return [];
 }
 
-/** What the armed card would do to one land's standing, as the map hover says
- *  it: the human's signed lead before and after, `formatLead`'s convention, the
- *  same one the badges and the round summary use. */
+/** One effect of the armed card, as a row of its block: the change in the left
+ *  column, and what changes on the right. `NO_FIGURE` where the effect is not a
+ *  number, so the column still lines up rather than leaving a hole. */
+interface Impact {
+  amount: string;
+  spans: TooltipSpan[];
+}
+
+const NO_FIGURE = "--";
+
+const prose = (text: string): Impact => ({ amount: NO_FIGURE, spans: [{ text }] });
+
+/** What the armed card would do to one land's standing: the human's signed lead
+ *  before and after, in `formatLead`'s convention - the same one the badges and
+ *  the round summary use.
+ *
+ *  Both values are spans rather than text, because the sign of each is the
+ *  point. A Raid that moves a lead from -2 to -1 is progress, but neither
+ *  number is good news, and a line coloured green end to end said it was.
+ *
+ *  Building the pieces here means this no longer calls `standingChangeText`,
+ *  which is what the activity log and the round summary say the same change
+ *  with. The spans must still join to exactly that string, and a test asserts
+ *  it - one change cannot end up phrased three ways across three surfaces. */
 function standingMove(
   view: RulesView,
   actorFactionId: string,
   targetFactionId: string,
   track: "might" | "status",
-  after: (before: number) => number,
+  next: (before: number) => number,
   doubled: boolean,
-): string {
+): Impact {
   const before = leadsOf(view.relations, actorFactionId, targetFactionId)[track];
-  return (
-    standingChangeText({ track, before, after: after(before) }) +
-    (doubled ? " (doubled)" : "")
-  );
+  const after = next(before);
+  const label = track === "might" ? "Might" : "Status";
+  return {
+    amount: formatLead("", after - before),
+    spans: [
+      // Bracketed, because the row already opens with the change in its own
+      // column: "+1 Might -1 -> 0" reads as three loose numbers, and the
+      // parentheses say which two are the before and after.
+      { text: `${label} (` },
+      { text: formatLead("", before), lead: before },
+      { text: " -> " },
+      { text: formatLead("", after), lead: after },
+      { text: doubled ? ", doubled)" : ")" },
+    ],
+  };
 }
 
-/** What playing the armed card here would get you, in one line. Only ever
- *  called for a target the rules already allow, so every branch can quote a
- *  real number rather than hedging. */
-function availableImpact(
+/** What playing the armed card here would get you. Only ever called for a
+ *  target the rules already allow, so every branch can quote a real number
+ *  rather than hedging.
+ *
+ *  A list because a card may do more than one thing; every card does exactly
+ *  one today, and the block around it is shaped to take more without moving. */
+function availableImpacts(
   view: RulesView,
   actorFactionId: string,
   cardId: string,
   targetFactionId: string,
-): string {
+): Impact[] {
   const doubled = isDoubled(view, actorFactionId, cardId);
   if (cardId === "raid") {
     const { gain } = raidGainFor(view, actorFactionId, targetFactionId);
-    return standingMove(
+    return [standingMove(
       view, actorFactionId, targetFactionId, "might", (b) => b + gain, doubled,
-    );
+    )];
   }
   if (cardId === "shrewd-marriage") {
-    return standingMove(
+    return [standingMove(
       view, actorFactionId, targetFactionId, "status",
       (b) => b + (doubled ? 2 : 1), doubled,
-    );
+    )];
   }
   if (cardId === "assassinate-ruler") {
     // The card levels the Status lead rather than adding to it, so the "after"
     // is 0 whichever side was ahead. A Bodyguard on the target would nullify
     // it, and this deliberately does not say so: the guard is theirs to know.
-    return standingMove(
+    return [standingMove(
       view, actorFactionId, targetFactionId, "status", () => 0, false,
-    );
+    )];
   }
   if (cardId === "subjugate" || cardId === "incorporate") {
     const odds = targetOddsLines(view, actorFactionId, cardId, targetFactionId);
-    if (odds.length > 0) return odds[0];
-    return cardId === "subjugate"
-      ? "Becomes your vassal."
-      : "Absorbed into your realm.";
+    if (odds.length > 0) return [prose(odds[0])];
+    return [prose(
+      cardId === "subjugate"
+        ? "Becomes your vassal."
+        : "Absorbed into your realm.",
+    )];
   }
   if (cardId === "alliance") {
     const turns = view.diplomacyBoost.includes(actorFactionId) ? 10 : 5;
-    return `No hostile cards between you for ${turns} turns.`;
+    return [prose(`No hostile cards between you for ${turns} turns.`)];
   }
   if (cardId === "found-settlement") {
-    return "+1 to the lead others need to subjugate you.";
+    return [prose("+1 to the lead others need to subjugate you.")];
   }
-  return "Available.";
+  return [prose("Available.")];
 }
 
-/** One line for the map hover while a card is armed: what this card would do
- *  to this land, or why it cannot be aimed there. Null for a card that takes no
- *  target, or a faction the rules have never heard of.
+/** What the armed card would do to this land, or why it cannot be aimed there.
+ *  Empty for a card that takes no target, or a faction the rules have never
+ *  heard of.
  *
- *  Deliberately quotes no card name. A name in player-facing prose has to be a
- *  segment the player can point at (see AGENTS.md), `TooltipLine` is plain
- *  text, and the armed card is already named on the HUD anyway. */
-export function targetImpactLine(
+ *  A legal target gets a block: a heading naming the card, then a row per
+ *  effect, matching the threshold blocks below it. A refusal is not a list of
+ *  effects and stays the single red line it has always been - the heading would
+ *  otherwise promise a preview it cannot give.
+ *
+ *  The heading names the card, which the flat version of this line deliberately
+ *  did not. The reasoning against it still stands and is worth stating: a name
+ *  in prose ought to be a segment the player can point at (see AGENTS.md) and
+ *  `TooltipLine` is plain text, so this one is inert. It is here because a
+ *  block of effects with no subject reads as though the numbers belong to the
+ *  land rather than to the card in your hand. */
+export function targetImpactLines(
   view: RulesView,
   actorFactionId: string,
   cardId: string,
   targetFactionId: string,
-): TooltipLine | null {
-  if (!CARDS[cardId]?.targeted) return null;
+  /** Drop the line when the only thing it would say is the lead shortfall.
+   *  The map hover sets this because `subjugationBreakdown` prints the same
+   *  shortfall itemised directly underneath, and the two together say it
+   *  twice. Every other block reason still comes through. */
+  omitInsufficientLead = false,
+): TooltipLine[] {
+  const card = CARDS[cardId];
+  if (!card?.targeted) return [];
   const entry = targetEligibilityFor(view, actorFactionId, cardId).find(
     (e) => e.factionId === targetFactionId,
   );
-  if (entry === undefined) return null;
+  if (entry === undefined) return [];
   // Your own land, before anything else. The rules reach it two different ways
   // - "irrelevant" because a realm does not border itself, or a `self` block
   // once an annexation puts your own id back in your reach - and both would
@@ -227,28 +279,144 @@ export function targetImpactLine(
   // you are standing on. Never reached by Found a settlement, which is aimed
   // at your own realm and comes back available.
   if (entry.state !== "available" && targetFactionId === actorFactionId) {
-    return { text: "Your own land.", tone: "bad" };
+    return [{ text: "Your own land.", tone: "bad" }];
   }
   if (entry.state === "irrelevant") {
-    return {
+    return [{
       text:
         cardId === "found-settlement"
           ? "Not in your realm."
           : "Out of reach.",
       tone: "bad",
-    };
+    }];
   }
   if (entry.state === "blocked") {
     // The first reason only. `targetEligibilityFor` pushes the structural
     // blocks (self, incorporated, subjugated, already a vassal) before the
     // lead shortfall, so the first is the one that has to be fixed first, and
     // a hover has room for one line. The card tip still lists them all.
-    return { text: explainReason(entry.reasons[0])[0], tone: "bad" };
+    const first = entry.reasons[0];
+    if (omitInsufficientLead && first.code === "insufficient-lead") return [];
+    return [{ text: explainReason(first)[0], tone: "bad" }];
   }
-  return {
-    text: availableImpact(view, actorFactionId, cardId, targetFactionId),
-    tone: "good",
-  };
+  // The whole block is amber, heading and rows alike, so the armed card's
+  // preview is one shape the eye can find. Red and green are already spoken
+  // for: on the threshold blocks below they mean which realm is being counted,
+  // and inside these rows they mean the sign of a standing value.
+  return [
+    { text: `If ${card.name} played here:`, tone: "info", blockStart: true },
+    ...availableImpacts(view, actorFactionId, cardId, targetFactionId).map(
+      (i) => spanLine(i.spans, { amount: i.amount, tone: "info" }),
+    ),
+  ];
+}
+
+type Track = "might" | "status";
+
+const TRACK_LABEL: Record<Track, string> = { might: "Might", status: "Status" };
+
+/** One track's block: the badge's own figure for that track, then a row per
+ *  piece of the threshold behind it.
+ *
+ *  Every track gets its own block and its own rows even when the two tracks are
+ *  racing the same realm and most of the rows repeat. The alternative was one
+ *  block serving both bars with a "(Might only)" note on the settlement row,
+ *  and there the column added up to neither number. Here each column sums to
+ *  the figure in its own heading, which is the only version a player can check.
+ *
+ *  `mine` says the threshold being itemised is built from the human's own
+ *  realm, which is the direction where they are the one being taken. */
+function trackBlock(
+  view: RulesView,
+  track: Track,
+  lead: number,
+  bar: number,
+  takenFactionId: string,
+  mine: boolean,
+): TooltipLine[] {
+  const parts = gripPartsOn(view, takenFactionId);
+  const surcharge = poachSurchargeOn(view, takenFactionId);
+  const rows: TooltipLine[] = [
+    {
+      // `parts.status` IS the base - gripPartsOn defines it as
+      // SUBJUGATE_THRESHOLD per land - so the column never repeats that
+      // multiplication and cannot drift from the heading above it.
+      amount: `${parts.status}`,
+      text: `from realm size (${parts.lands} ${parts.lands === 1 ? "land" : "lands"})`,
+    },
+  ];
+  // Settlements raise the Might threshold alone, so the Status block must not
+  // list them: there they contribute nothing and the column would not add up.
+  if (parts.settlements > 0 && track === "might") {
+    rows.push({
+      amount: `+${parts.settlements}`,
+      text:
+        parts.settlements === 1
+          ? "from a settlement"
+          : `from ${parts.settlements} settlements`,
+    });
+  }
+  // Named separately or the threshold looks wrong: a one-land vassal demanding
+  // a lead of 5 makes no sense until you are told what 2 of it buys.
+  //
+  // The possessive is not decoration. This row's surcharge belongs to whoever
+  // is being taken, which on a "Your thresholds" block is the human - so a bare
+  // "overlord support" on a tooltip titled with a rival's name reads as that
+  // rival's overlord, and there may not be one.
+  if (surcharge > 0) {
+    rows.push({
+      amount: `+${surcharge}`,
+      text: mine
+        ? "from your overlord's support"
+        : "from their overlord's support",
+    });
+  }
+  return [
+    {
+      // The same formatter the badge uses, so the heading is literally the
+      // figure the player is pointing at.
+      text: `${formatLead(`${TRACK_LABEL[track]} `, lead, bar)}. ${mine ? "Your" : "Opponent's"} thresholds:`,
+      tone: mine ? "bad" : "good",
+      blockStart: true,
+    },
+    ...rows,
+  ];
+}
+
+/** Where the numbers on a rival's map badge come from: one block per track,
+ *  itemising the threshold that track is racing.
+ *
+ *  Gated on the same `quiet` flag the badge is, so a block appears exactly
+ *  where a denominator is on screen to be explained. A track whose leading side
+ *  could never subjugate the other carries no denominator and gets no block:
+ *  this explains the thresholds that are showing and never the absence of one,
+ *  which is a different question and belongs to the card tip's block reasons.
+ *
+ *  Takes no faction-name lookup, which is how it satisfies the naming rule
+ *  rather than by remembering to: it structurally cannot name anybody. A future
+ *  change that wants a name here has to add a parameter and argue with this
+ *  comment. `TooltipLine` is plain text and a name in prose has to be a segment
+ *  the player can point at (see AGENTS.md); the land and its holder are already
+ *  named on the lines above these blocks. */
+export function subjugationBreakdown(
+  view: RulesView,
+  humanFactionId: string,
+  rivalFactionId: string,
+): TooltipLine[] {
+  const race = subjugationRaceFor(view, humanFactionId, rivalFactionId);
+  if (race.quiet) return [];
+  const lines: TooltipLine[] = [];
+  for (const track of ["might", "status"] as Track[]) {
+    const { lead, bar, takenFactionId } = race[track];
+    if (bar === null) continue;
+    lines.push(
+      ...trackBlock(
+        view, track, lead, bar, takenFactionId,
+        takenFactionId === humanFactionId,
+      ),
+    );
+  }
+  return lines;
 }
 
 /** Why a card in hand is greyed out, in one line, for its hover tip.

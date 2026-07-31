@@ -4,7 +4,7 @@ import {
   SUBJUGATE_THRESHOLD, annexedLandsOf, borderStrength, gripPartsOn,
   incorporationChance, passiveFortifyFor, raidYield,
   isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
-  subjugationChance, subjugationGripOn,
+  subjugationChance, subjugationGripOn, subjugationRaceFor,
   subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView,
 } from "../src/playability";
@@ -571,6 +571,114 @@ describe("extended-diplomacy legality", () => {
     expect(
       isCardPlayable(view({ diplomacyBoost: ["beta"] }), "alpha", "extended-diplomacy"),
     ).toBe(true);
+  });
+});
+
+describe("subjugationRaceFor", () => {
+  // alpha is the human throughout. The direction-picking cases below were
+  // `barFor` unit tests in tests/view.test.ts before this function absorbed
+  // that rule.
+  it("quotes your bar on a track you lead", () => {
+    // beta holds gamma, so beta's realm is 2 lands and the bar you face is 4.
+    const v = view({
+      overlords: new Map([["gamma", "beta"]]),
+      relations: mightLead("alpha", "beta", 3),
+    });
+    const race = subjugationRaceFor(v, "alpha", "beta");
+    expect(race.might).toEqual({ lead: 3, bar: 4, takenFactionId: "beta" });
+  });
+
+  it("quotes their bar on a track they lead, because the bars are not symmetric", () => {
+    // Their bar counts YOUR realm: alpha holds delta, so it is 4, not beta's 2.
+    // A badge that quoted your bar here told the player they were about to be
+    // taken when they were not.
+    const v = view({
+      overlords: new Map([["delta", "alpha"]]),
+      relations: mightLead("beta", "alpha", 3),
+    });
+    const race = subjugationRaceFor(v, "alpha", "beta");
+    expect(race.might).toEqual({ lead: -3, bar: 4, takenFactionId: "alpha" });
+  });
+
+  it("quotes your bar at a dead-even lead", () => {
+    const v = view({ relations: mightLead("alpha", "beta", 1) });
+    const race = subjugationRaceFor(v, "alpha", "beta");
+    expect(race.status).toEqual({ lead: 0, bar: 2, takenFactionId: "beta" });
+  });
+
+  it("lets the two tracks race toward different realms at once", () => {
+    // alpha leads Might, beta leads Status. Each track takes the bar of the
+    // side it would take, so one badge quotes two different realms.
+    let relations = mightLead("alpha", "beta", 2);
+    relations = bumpStatus(relations, "beta", "alpha");
+    const v = view({
+      overlords: new Map([["gamma", "beta"], ["delta", "alpha"]]),
+      relations,
+    });
+    const race = subjugationRaceFor(v, "alpha", "beta");
+    expect(race.might.takenFactionId).toBe("beta");
+    expect(race.status.takenFactionId).toBe("alpha");
+    expect(race.might.bar).toBe(4);
+    expect(race.status.bar).toBe(4);
+  });
+
+  it("adds a settlement to the Might bar alone, so the tracks can differ", () => {
+    const v = view({
+      settled: ["beta"],
+      relations: mightLead("alpha", "beta", 1),
+    });
+    const race = subjugationRaceFor(v, "alpha", "beta");
+    expect(race.might.bar).toBe(3);
+    expect(race.status.bar).toBe(2);
+  });
+
+  it("has no bar on either track while you are somebody's vassal", () => {
+    const v = view({
+      overlords: new Map([["alpha", "gamma"]]),
+      relations: mightLead("alpha", "beta", 2),
+    });
+    const race = subjugationRaceFor(v, "alpha", "beta");
+    expect(race.might.bar).toBeNull();
+    expect(race.status.bar).toBeNull();
+  });
+
+  it("has no bar in either direction against your own vassal", () => {
+    const v = view({
+      overlords: new Map([["beta", "alpha"]]),
+      relations: mightLead("alpha", "beta", 2),
+    });
+    const race = subjugationRaceFor(v, "alpha", "beta");
+    expect(race.might.bar).toBeNull();
+    expect(race.status.bar).toBeNull();
+  });
+
+  it("is quiet only when no lead and no pact stand between you", () => {
+    expect(subjugationRaceFor(view(), "alpha", "beta").quiet).toBe(true);
+    const led = view({ relations: mightLead("alpha", "beta", 1) });
+    expect(subjugationRaceFor(led, "alpha", "beta").quiet).toBe(false);
+    // A pact keeps an otherwise dead-even pair loud: the badge shows its "A5"
+    // and the hover has something to explain.
+    const pact = view({ alliances: { [allianceKey("alpha", "beta")]: 6 } });
+    const race = subjugationRaceFor(pact, "alpha", "beta");
+    expect(race.allied).toBe(true);
+    expect(race.quiet).toBe(false);
+  });
+
+  it("flags danger once either of their tracks has cleared its bar", () => {
+    const v = view({ relations: mightLead("beta", "alpha", 2) });
+    expect(subjugationRaceFor(v, "alpha", "beta").danger).toBe(true);
+    const short = view({ relations: mightLead("beta", "alpha", 1) });
+    expect(subjugationRaceFor(short, "alpha", "beta").danger).toBe(false);
+  });
+
+  it("never flags danger for a faction that could never take you", () => {
+    // beta is gamma's vassal: a vassal subjugates nobody, so the lead it has
+    // built over you is not a threat and must not be marked as one.
+    const v = view({
+      overlords: new Map([["beta", "gamma"]]),
+      relations: mightLead("beta", "alpha", 9),
+    });
+    expect(subjugationRaceFor(v, "alpha", "beta").danger).toBe(false);
   });
 });
 

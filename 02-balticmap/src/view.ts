@@ -174,18 +174,13 @@ export function standingChangeText(c: { track: "might" | "status"; before: numbe
   return `${label} ${formatLead("", c.before)} -> ${formatLead("", c.after)}`;
 }
 
-/** Which subjugation bar a track is racing toward. The bars are asymmetric -
- *  each counts the realm of the side being taken - so a badge showing both
- *  tracks against the player's bar quotes the wrong number the moment the
- *  enemy is the one leading. The sign of the lead already says who is
- *  running, so it also says whose bar applies. Null where the leading side
- *  could never subjugate the other, and the track shows no denominator. */
-export function barFor(
-  lead: number,
-  yourBar: number | null,
-  theirBar: number | null,
-): number | null {
-  return lead < 0 ? theirBar : yourBar;
+/** The sign colour of a standing value: positive is yours to press, negative is
+ *  theirs, zero is neither. One scale for the map badges, the activity log, the
+ *  round summary and the hover, so a number never changes meaning by moving
+ *  between them. The classes only name the tone - each surface declares what
+ *  the tone looks like against its own background. */
+export function leadClass(n: number): string {
+  return n > 0 ? "lead-good" : n < 0 ? "lead-bad" : "lead-even";
 }
 
 /** How to say a pair of per-track bars in one clause. Collapses to a single

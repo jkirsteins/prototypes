@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  barFor, fitView, clampView, formatLead, holderOf, homeView, panBy,
+  fitView, clampView, formatLead, holderOf, homeView, panBy,
   politicalFactionForPolygon, relationshipLine, standingsFor,
   withArticle,
   zoomAt, MAX_ZOOM, MIN_ZOOM,
@@ -284,28 +284,8 @@ describe("relationshipLine", () => {
   });
 });
 
-describe("barFor", () => {
-  it("uses your bar when you lead", () => {
-    expect(barFor(3, 10, 20)).toBe(10);
-  });
-
-  it("uses their bar when they lead, because the bars are not symmetric", () => {
-    // Their bar counts YOUR realm: a big realm is hard to take, and a badge
-    // that quoted your bar here told the player they were about to be taken.
-    expect(barFor(-13, 10, 20)).toBe(20);
-  });
-
-  it("uses your bar when nobody leads", () => {
-    expect(barFor(0, 10, 20)).toBe(10);
-  });
-
-  it("has no bar when the side that leads could never subjugate", () => {
-    // A faction that is somebody's vassal cannot subjugate anyone, so
-    // subjugationRequirement returns null in that direction.
-    expect(barFor(-13, 10, null)).toBeNull();
-    expect(barFor(3, null, 20)).toBeNull();
-  });
-});
+// The direction-picking cases that lived here as `barFor` moved to
+// tests/playability.test.ts with `subjugationRaceFor`, which owns that rule now.
 
 describe("standingsFor", () => {
   const base = {

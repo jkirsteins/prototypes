@@ -366,6 +366,77 @@ export function threatsTo(view: RulesView, factionId: string): Threat[] {
   );
 }
 
+/** One track of one rival's subjugation race, as the map badge quotes it. */
+export interface TrackRace {
+  /** The human's signed lead on this track, positive means the human leads -
+   *  the same convention as `formatLead`, the scoreboard and the round
+   *  summary. */
+  lead: number;
+  /** The bar that lead is racing. The bars are asymmetric, each counting the
+   *  realm of the side being taken, so a track showing both against the
+   *  player's bar quotes the wrong number the moment the rival is the one
+   *  leading. The sign of the lead already says who is running, so it also
+   *  says whose bar applies. Null where the leading side could never subjugate
+   *  the other, and the track shows no denominator. */
+  bar: number | null;
+  /** Whose realm `bar` counts: the side that would be TAKEN. Anything
+   *  itemising a bar has to itemise this realm, which is not always the
+   *  faction under the cursor. A dead-even track (lead 0) goes to the human,
+   *  which is what the badge has always shown. */
+  takenFactionId: string;
+}
+
+/** Both tracks of one rival's subjugation race against the human.
+ *
+ *  One computation, because the map badge and the hover breakdown must quote
+ *  the same numbers by construction rather than by two copies of the same
+ *  direction-picking dance. The tracks resolve independently on purpose: a
+ *  settlement raises the Might bar and leaves Status where it was, and the two
+ *  leads can point in opposite directions, so Might and Status can be racing
+ *  toward different realms' bars on one badge. */
+export interface SubjugationRace {
+  might: TrackRace;
+  status: TrackRace;
+  /** A pact is running. Neither side may aim a hostile card at the other while
+   *  it lasts, so the bars are what will apply once it lapses. */
+  allied: boolean;
+  /** Nothing stands between these two: no lead either way and no pact. The map
+   *  draws no badge and the hover offers no breakdown - both read this rather
+   *  than testing the leads themselves. */
+  quiet: boolean;
+  /** Either of THEIR tracks has already cleared its bar: they can take the
+   *  human now. Guarded by the same rule that decides legality, so a faction
+   *  that could never subjugate the human is never marked. */
+  danger: boolean;
+}
+
+export function subjugationRaceFor(
+  view: RulesView,
+  humanFactionId: string,
+  rivalFactionId: string,
+): SubjugationRace {
+  const lead = leadsOf(view.relations, humanFactionId, rivalFactionId);
+  const yours = subjugationRequirement(view, humanFactionId, rivalFactionId);
+  const theirs = subjugationRequirement(view, rivalFactionId, humanFactionId);
+  const track = (t: "might" | "status"): TrackRace =>
+    lead[t] < 0
+      ? { lead: lead[t], bar: theirs?.[t] ?? null, takenFactionId: humanFactionId }
+      : { lead: lead[t], bar: yours?.[t] ?? null, takenFactionId: rivalFactionId };
+  const allied = allianceActive(view, humanFactionId, rivalFactionId);
+  return {
+    might: track("might"),
+    status: track("status"),
+    allied,
+    quiet: lead.might === 0 && lead.status === 0 && !allied,
+    // Their lead over the human is the human's lead negated, measured against
+    // their bar. `clearsBars` rather than a hand-written pair of comparisons:
+    // one track clearing is enough, and that rule lives in one place.
+    danger:
+      theirs !== null &&
+      clearsBars({ might: -lead.might, status: -lead.status }, theirs),
+  };
+}
+
 export type TargetBlockReason =
   | { code: "alliance"; expiresTurn: number }
   | {

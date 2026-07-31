@@ -14,11 +14,11 @@ import { aiTakeTurn } from "./ai";
 import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
 import {
   handBlockReason, playableSet, validTargetsFor, targetEligibilityFor,
-  subjugationRequirement, raidGainFor,
+  subjugationRaceFor, raidGainFor,
 } from "./playability";
 import {
-  cardBlockLine, cardModifierLines, explainTargetEligibility, targetImpactLine,
-  targetOddsLines,
+  cardBlockLine, cardModifierLines, explainTargetEligibility, targetImpactLines,
+  targetOddsLines, subjugationBreakdown,
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
 import { createHud } from "./hud";
@@ -30,7 +30,7 @@ import {
 import { runTurnips, runXp } from "./xp";
 import { openPack } from "./packs";
 import {
-  barFor, formatLead, holderOf, politicalFactionForPolygon, relationshipLine,
+  formatLead, holderOf, leadClass, politicalFactionForPolygon, relationshipLine,
 } from "./view";
 import { factionAdjacencyOf } from "./adjacency";
 import "./style.css";
@@ -310,10 +310,6 @@ function renderRealmHalo(
   }
 }
 
-function leadClass(n: number): string {
-  return n > 0 ? "lead-good" : n < 0 ? "lead-bad" : "lead-even";
-}
-
 /** One badge per living faction outside the human's realm with a non-zero
  *  lead on either track, anchored at that faction's home region bbox.
  *
@@ -334,24 +330,10 @@ function renderThreatBadges(): void {
     if (factionId in game.incorporated) continue; // dead (absorbed)
     if (humanRealm.has(factionId)) continue; // human, its vassals, its lands
     if (targets !== null && !targets.has(factionId)) continue;
-    const l = leadsOf(game.relations, human.factionId, factionId);
-    const allied = allianceActive(game, human.factionId, factionId);
-    if (l.might === 0 && l.status === 0 && !allied) continue;
-    // The bars are asymmetric: yours counts their realm, theirs counts yours.
-    // Each track is measured against the bar of whichever side leads it.
-    const yourBar = subjugationRequirement(viewOf(game), human.factionId, factionId);
-    const theirBar = subjugationRequirement(viewOf(game), factionId, human.factionId);
-    // Each track also carries its own bar: a settlement raises the Might one
-    // and leaves Status where it was, so the two denominators can differ for
-    // that reason as well as by direction.
-    const mightBar = barFor(l.might, yourBar?.might ?? null, theirBar?.might ?? null);
-    const statusBar = barFor(l.status, yourBar?.status ?? null, theirBar?.status ?? null);
-    // Danger is now guarded by the same rule that decides legality: a faction
-    // that could never subjugate the human - one that is itself a vassal, or
-    // the human's own overlord - has a null bar and stops being marked.
-    const danger =
-      theirBar !== null &&
-      (-l.might >= theirBar.might || -l.status >= theirBar.status);
+    // Both tracks, both directions and the danger mark in one call, so the
+    // badge and the hover breakdown cannot quote different numbers.
+    const race = subjugationRaceFor(viewOf(game), human.factionId, factionId);
+    if (race.quiet) continue;
     const regionId = regionByFaction.get(factionId);
     const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
     if (!pathEl) continue;
@@ -361,7 +343,7 @@ function renderThreatBadges(): void {
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     g.classList.add("threat-badge");
-    if (danger) g.classList.add("danger");
+    if (race.danger) g.classList.add("danger");
     g.setAttribute("transform", `translate(${cx}, ${cy})`);
 
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -371,22 +353,22 @@ function renderThreatBadges(): void {
 
     const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
     text.classList.add("badge-text");
-    if (danger) {
+    if (race.danger) {
       const bang = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
       bang.classList.add("badge-danger-mark");
       bang.textContent = "! ";
       text.appendChild(bang);
     }
     const mightTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-    mightTspan.classList.add(leadClass(l.might));
-    mightTspan.textContent = formatLead("M", l.might, mightBar);
+    mightTspan.classList.add(leadClass(race.might.lead));
+    mightTspan.textContent = formatLead("M", race.might.lead, race.might.bar);
     text.appendChild(mightTspan);
     const statusTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-    statusTspan.classList.add(leadClass(l.status));
+    statusTspan.classList.add(leadClass(race.status.lead));
     statusTspan.setAttribute("dx", "9");
-    statusTspan.textContent = formatLead("S", l.status, statusBar);
+    statusTspan.textContent = formatLead("S", race.status.lead, race.status.bar);
     text.appendChild(statusTspan);
-    if (allied) {
+    if (race.allied) {
       const turnsLeft = game.alliances[allianceKey(human.factionId, factionId)] - game.turn;
       const allyTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
       allyTspan.classList.add("lead-ally");
@@ -406,14 +388,17 @@ function renderThreatBadges(): void {
   }
 }
 
-/** What a hover says, and no more: what this land is, who holds it, and - only
- *  while a card is armed - what that card would do here.
+/** What a hover says: what this land is, who holds it, whether a pact stands
+ *  between you, what an armed card would do here, and where the Subjugate bars
+ *  on its badge come from.
  *
- *  Everything else the game knows about a land has a home already. The leads
- *  and the Subjugate bars are on the map badges, population, cohesion, ruler
- *  and settlements are on the click-through panel, and an active pact is a
- *  block reason the armed line quotes. A hover that recited all of it was seven
- *  lines wide and answered no question anybody was asking. */
+ *  Everything else the game knows about a land has a home already - population,
+ *  cohesion, ruler and settlements are on the click-through panel - and a hover
+ *  that recited all of it was seven lines wide and answered no question anybody
+ *  was asking. The bar breakdown is the exception that rule allows: the badge
+ *  puts a "/6" on the map and nothing else on screen says what builds it. It is
+ *  gated on the badge showing that denominator, so it answers the question the
+ *  badge raises and appears nowhere else. */
 function hoverLines(region: Region): TooltipLine[] {
   const human = game.players[0];
   // The land's OWN faction, never the politically resolved one: an absorbed
@@ -424,16 +409,21 @@ function hoverLines(region: Region): TooltipLine[] {
   if (!inPlay() || !human) return lines;
   const held = allegianceOf(region.faction, human.factionId);
   if (held !== null) lines.push({ text: held });
-  if (armed === null) return lines;
-  const impact = targetImpactLine(
-    viewOf(game),
-    human.factionId,
-    human.hand[armed],
-    // The same resolution `interceptClick` uses, or the preview would answer
-    // for a different faction than the click aims at on an absorbed land.
-    politicalFactionForPolygon(region.faction, game.incorporated),
-  );
-  if (impact !== null) lines.push(impact);
+  // The same resolution `interceptClick` uses, or the lines below would answer
+  // for a different faction than the click aims at on an absorbed land.
+  const f = politicalFactionForPolygon(region.faction, game.incorporated);
+  // The pact line is back now that the hover speaks with no card armed: without
+  // it the breakdown reads as a plan you could act on against a faction you
+  // cannot legally touch for another five turns.
+  const pact = allianceLine(f, human.factionId);
+  if (pact !== null) lines.push({ text: pact, tone: "good" });
+  const breakdown = subjugationBreakdown(viewOf(game), human.factionId, f);
+  if (armed !== null) {
+    lines.push(...targetImpactLines(
+      viewOf(game), human.factionId, human.hand[armed], f, breakdown.length > 0,
+    ));
+  }
+  lines.push(...breakdown);
   return lines;
 }
 
@@ -555,6 +545,12 @@ function refresh(): void {
   renderThreatBadges();
   hud.update(game);
   applyHighlight(hoveredRegion, hoveredRegion?.faction ?? null);
+  // The tip outlives the state it describes: it stays up while a card is
+  // played and the AI answers behind it, and every number on it - the leads,
+  // the thresholds, the preview of what the armed card would do - has just
+  // moved. Guarded by hoveredRegion so a card or faction name being hovered
+  // elsewhere keeps its own tip.
+  if (hoveredRegion !== null) tooltip.redraw(hoverLines(hoveredRegion));
 }
 
 /** Banks this run's XP and turnips into the persistent record, once per run.
