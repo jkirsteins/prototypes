@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import { createDeckScreen, type DeckScreenCallbacks } from "../src/deck-screen";
+import { applyRarityBand } from "../src/rarity-band";
+import { ACQUIRABLE_CARDS, CARDS, RARITY_TIERS } from "../src/cards";
 
 function setup() {
   const container = document.createElement("div");
@@ -160,5 +162,23 @@ describe("createDeckScreen", () => {
     expect(q(container, ".ds-counter").textContent).toBe(
       "3 picked + 7 Grow turnips = 10",
     );
+  });
+});
+
+describe("rarity band", () => {
+  it("bands a pack-pool card with its tier colour", () => {
+    const el = document.createElement("div");
+    const id = ACQUIRABLE_CARDS[0];
+    applyRarityBand(el, id);
+    const tier = RARITY_TIERS.find((t) => t.id === CARDS[id].rarity);
+    expect(el.classList.contains("rarity-band")).toBe(true);
+    expect(el.style.getPropertyValue("--rarity")).toBe(tier?.colour);
+  });
+
+  it("leaves a card that never came from a pack unbanded", () => {
+    const el = document.createElement("div");
+    applyRarityBand(el, "grow-crops");
+    expect(el.classList.contains("rarity-band")).toBe(false);
+    expect(el.style.getPropertyValue("--rarity")).toBe("");
   });
 });

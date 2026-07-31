@@ -360,6 +360,20 @@ svg.map.dragging {
   z-index: 7;
 }
 
+/* The tier band. One rule for every tier: the colour arrives as --rarity from
+   applyRarityBand, so a new tier is an entry in RARITY_TIERS and nothing here.
+   Saturated on purpose - the map's faction fills are all muted pastels, so a
+   band never reads as somebody's territory. */
+.rarity-band::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 4px;
+  background: var(--rarity);
+  border-radius: 0 0 7px 7px;
+  pointer-events: none;
+}
+
 .postmortem-overlay {
   position: absolute;
   inset: 0;
@@ -493,6 +507,7 @@ svg.map.dragging {
 }
 
 .ds-card {
+  position: relative;
   width: 84px;
   /* rules text sets the height: a fixed box spilled its own copy */
   min-height: 118px;
@@ -1398,6 +1413,7 @@ svg.map.dragging {
 }
 
 .ds-pack-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;

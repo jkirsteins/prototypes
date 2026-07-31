@@ -1,4 +1,5 @@
 import { CARDS } from "./cards";
+import { applyRarityBand } from "./rarity-band";
 import {
   isHumanTurn, victoryRealmSize, viewOf, type GameEvent, type GameState,
 } from "./game";
@@ -961,6 +962,7 @@ export function createHud(
     human.hand.forEach((cardId, i) => {
       const card = document.createElement("button");
       card.className = "card";
+      applyRarityBand(card, cardId);
       const name = document.createElement("span");
       name.className = "card-name";
       name.textContent = CARDS[cardId]?.name ?? cardId;

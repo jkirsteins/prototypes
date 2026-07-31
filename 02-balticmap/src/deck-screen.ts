@@ -2,6 +2,7 @@ import { ACQUIRABLE_CARDS, CARDS, DECK_SIZE } from "./cards";
 import { runAnimation } from "./animate";
 import { count } from "./plural";
 import { cardName } from "./rich-text";
+import { applyRarityBand } from "./rarity-band";
 
 export interface PackReveal {
   id: string;
@@ -146,6 +147,7 @@ export function createDeckScreen(
           ...view.reveal.map((r, i) => {
             const el = document.createElement("div");
             el.className = "ds-pack-card";
+            applyRarityBand(el, r.id);
             const name = document.createElement("span");
             name.className = "ds-card-name";
             name.textContent = cardName(r.id);
@@ -187,6 +189,7 @@ export function createDeckScreen(
       const cards = known.map((id) => {
         const card = document.createElement("button");
         card.className = "ds-card";
+        applyRarityBand(card, id);
         const name = document.createElement("span");
         name.className = "ds-card-name";
         name.textContent = cardName(id);
