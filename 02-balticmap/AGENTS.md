@@ -59,6 +59,27 @@ the footer block under the list, deduplicated, not appended to a line.
 positive = you lead, formatted by `formatLead` in `src/view.ts`. This is the same
 convention as the map badges, the hover tooltip and the scoreboard.
 
+## The activity log says what happened, and never hides your own turn
+
+The log carries the same numbers, from the same walk. `renderLog` runs
+`walkStandings` over the fresh batch through `walkCtxOf` - the identical context
+`buildRoundSummary` uses - and `impactText` renders one event's slice as the
+`(Might +1 -> 2)` suffix. The modal and the log therefore cannot quote different
+numbers for the same event, and a test asserts they do not. A card that moves no
+track gets no suffix: its name is a hoverable segment that already says what it
+does.
+
+Two things this deliberately does not do. The suffix is **not** a `Segment` and
+does not live in `eventSegments`: the postmortem log renders those segments over
+a whole finished game, with no batch to walk, which is also why the `garrisoned`
+line keeps its own "+N Might against all" inline and `impactText` returns null
+for it. And the "Targeting me" filter never hides an entry tagged `.log-mine` -
+what you played or discarded, and the events your play caused. A filter that
+removes the line you just made is a filter that lies about your own turn. The
+automatic garrison tick and the reshuffle are excluded from `.log-mine`: you did
+not choose them, they fire every round, and they are the noise the filter exists
+to remove.
+
 ## A dark box states its own text colour
 
 `.deck-screen` and the notice overlays are dark; the deck picker's card boxes and

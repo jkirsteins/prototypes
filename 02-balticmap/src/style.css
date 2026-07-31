@@ -675,10 +675,11 @@ svg.map.dragging {
   cursor: pointer;
 }
 
-/* Entries are tagged .notice-worthy at render time (see renderLog in
-   hud.ts); toggling this class on the panel shows/hides the whole log
-   retroactively, without a re-render. */
-.activity-log.filter-targeting-me .log-entry:not(.notice-worthy) {
+/* Entries are tagged .notice-worthy and .log-mine at render time (see
+   renderLog in hud.ts); toggling this class on the panel shows/hides the whole
+   log retroactively, without a re-render. .log-mine is exempt whatever the
+   filter says: your own turn is never something you asked to hide. */
+.activity-log.filter-targeting-me .log-entry:not(.notice-worthy):not(.log-mine) {
   display: none;
 }
 
@@ -700,6 +701,26 @@ svg.map.dragging {
   color: #8a7f6f;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+/* The realized before -> after on a log line. Its own colours rather than
+   .notice-change's: that class belongs to the notice card, and a box states
+   the colour of the text on it (see AGENTS.md). The values match because both
+   boxes are light - if one is ever restyled, only its own class moves. */
+.log-change {
+  font-variant-numeric: tabular-nums;
+}
+
+.log-change.lead-good {
+  color: #2e7d32;
+}
+
+.log-change.lead-bad {
+  color: #b3402a;
+}
+
+.log-change.lead-even {
+  color: #6b5d49;
 }
 
 .log-entry.log-new {

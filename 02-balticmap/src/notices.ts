@@ -2,7 +2,7 @@ import type { GameEvent, GameEventType } from "./game";
 import type { TrackBars } from "./playability";
 import { TRIBUTE_CARDS } from "./cards";
 import { card, faction, t, theFaction, type Segment } from "./rich-text";
-import { walkStandings, type StandingChange } from "./standings";
+import { walkStandings, type StandingChange, type WalkCtx } from "./standings";
 import { barPhrase } from "./view";
 
 /** One notice-worthy event, rendered as one line: the card, who did it, and
@@ -556,6 +556,18 @@ export function isNoticeWorthy(e: GameEvent, ctx: NoticeCtx): boolean {
   return rule.kind === "modal" && rule.appliesToHuman(e, ctx);
 }
 
+/** The three fields `walkStandings` needs out of a full NoticeCtx. Shared by
+ *  the round summary and the activity log so the two cannot walk a batch from
+ *  different starting leads and quote different before -> after numbers for the
+ *  same event. */
+export function walkCtxOf(ctx: NoticeCtx): WalkCtx {
+  return {
+    humanFactionId: ctx.humanFactionId,
+    factionOf: ctx.factionOf,
+    leads: ctx.leads,
+  };
+}
+
 /** The HUD's entry point: given a batch of fresh log events, walks the WHOLE
  *  batch for standings (see standings.ts - this needs the silent events too,
  *  not just the notice-worthy ones), groups the noticeable ones by event type
@@ -585,12 +597,7 @@ export function buildRoundSummary(
   ctx: NoticeCtx,
   opts: RoundSummaryOptions = {},
 ): RoundSummary | null {
-  const walkCtx = {
-    humanFactionId: ctx.humanFactionId,
-    factionOf: ctx.factionOf,
-    leads: ctx.leads,
-  };
-  const allChanges = walkStandings(events, walkCtx);
+  const allChanges = walkStandings(events, walkCtxOf(ctx));
 
   const order: {
     type: GameEventType;

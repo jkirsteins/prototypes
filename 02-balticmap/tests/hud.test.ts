@@ -7,7 +7,7 @@ import {
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
 import { buildDeck, type Rng } from "../src/cards";
-import { allianceKey, bumpMight } from "../src/relations";
+import { allianceKey, bumpMight, leadsOf } from "../src/relations";
 import { rulerOf } from "../src/rulers";
 import {
   INCORPORATE_RAMP, PASSIVE_PER_LANDS, loyaltyKey,
@@ -301,6 +301,81 @@ describe("activity log", () => {
     expect(container.querySelectorAll(".log-entry")).toHaveLength(0);
   });
 
+  it("states what your play did, in the badges' own before -> after form", () => {
+    const { container, hud } = setup();
+    let g = playing(); // you are beta; adjacency defaults to a complete graph
+    g = withHand(g, 0, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    expect(texts).toContain("You played Raid on Alpha (Might 0 -> +1)");
+    // The number the log quotes is the number on the map, not a second
+    // reckoning of its own.
+    expect(leadsOf(g.relations, "beta", "alpha").might).toBe(1);
+  });
+
+  it("colours a gain and a loss differently", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = withHand(g, 0, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    g = {
+      ...g,
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
+      ],
+    };
+    hud.update(g);
+    const changes = [...container.querySelectorAll(".log-change")];
+    expect(changes[0].className).toBe("log-change lead-good"); // yours
+    expect(changes[1].className).toBe("log-change lead-bad"); // theirs, on you
+  });
+
+  it("states a Fortify as the fan-out it is, not a pair", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = withHand(g, 0, ["fortify"]);
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    expect(texts).toContain("You played Fortify (+1 Might against all)");
+  });
+
+  it("leaves a card that moves no standing without a suffix", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = withHand(g, 0, ["alliance"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    expect(texts).toContain("You played Alliance on Alpha");
+    expect(container.querySelectorAll(".log-change")).toHaveLength(0);
+  });
+
+  it("quotes the garrison tick's number once, from its own line", () => {
+    const { container, hud } = setup();
+    const annexed = Object.fromEntries(
+      Array.from({ length: PASSIVE_PER_LANDS }, (_, i) => [`annex-${i}`, "beta"]),
+    );
+    // The garrison fires as a turn BEGINS, for whoever is about to play.
+    const g = beginTurn({ ...playing(), incorporated: annexed }, seededRng(1));
+    hud.update(g);
+    const garrison = [...container.querySelectorAll(".log-entry")].find(
+      (el) => el.textContent?.startsWith("Your garrisons"),
+    )!;
+    expect(garrison.textContent).toBe(
+      "Your garrisons stand watch (+1 Might against all)",
+    );
+    expect(garrison.querySelector(".log-change")).toBeNull();
+  });
+
   it("collapses to a tab and expands again", () => {
     const { container, hud } = setup();
     hud.update(playing());
@@ -345,10 +420,47 @@ describe("activity log filters", () => {
     hud.update(g);
     q(container, ".notice-continue").click(); // dismiss the round summary the raid raised
     const entries = [...container.querySelectorAll(".activity-log .log-entry")];
-    const raidOnYou = entries.find((el) => el.textContent === "Alpha played Raid on you")!;
-    const raidOnGamma = entries.find((el) => el.textContent === "Alpha played Raid on Gamma")!;
+    // Prefix, not equality: the line carries a standings suffix and this test
+    // is about the tag, not the number.
+    const raidOnYou = entries.find(
+      (el) => el.textContent?.startsWith("Alpha played Raid on you"),
+    )!;
+    const raidOnGamma = entries.find(
+      (el) => el.textContent?.startsWith("Alpha played Raid on Gamma"),
+    )!;
     expect(raidOnYou.classList.contains("notice-worthy")).toBe(true);
     expect(raidOnGamma.classList.contains("notice-worthy")).toBe(false);
+  });
+
+  /** The filter is about what is being done TO you. It was never meant to
+   *  answer "what did I just do", and hiding your own turn is the one thing it
+   *  must not do. */
+  it("tags your own doing, so Targeting me can never hide it", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = withHand(g, 0, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    hud.update(g);
+    const mine = [...container.querySelectorAll(".activity-log .log-entry")].find(
+      (el) => el.textContent?.startsWith("You played Raid on Alpha"),
+    )!;
+    // Every modal rule requires playerId !== 1, so nothing you do is ever
+    // notice-worthy: .log-mine is the only thing keeping this on screen.
+    expect(mine.classList.contains("notice-worthy")).toBe(false);
+    expect(mine.classList.contains("log-mine")).toBe(true);
+  });
+
+  it("leaves the automatic garrison tick out of your own doing", () => {
+    const { container, hud } = setup();
+    const annexed = Object.fromEntries(
+      Array.from({ length: PASSIVE_PER_LANDS }, (_, i) => [`annex-${i}`, "beta"]),
+    );
+    const g = beginTurn({ ...playing(), incorporated: annexed }, seededRng(1));
+    hud.update(g);
+    const garrison = [...container.querySelectorAll(".log-entry")].find(
+      (el) => el.textContent?.startsWith("Your garrisons"),
+    )!;
+    expect(garrison.classList.contains("log-mine")).toBe(false);
   });
 
   it("checking Targeting me hides everything but notice-worthy entries, instantly", () => {
@@ -366,6 +478,27 @@ describe("activity log filters", () => {
     q(container, ".notice-continue").click();
     filterCheckbox(container).click();
     expect(q(container, ".activity-log").classList.contains("filter-targeting-me")).toBe(true);
+  });
+
+  /** Both surfaces walk the same batch through the same context (walkCtxOf),
+   *  so a raid cannot read one way in the modal and another in the log. */
+  it("quotes the same numbers in the log as in the round summary", () => {
+    const { container, hud } = setup();
+    const g = {
+      ...playing(),
+      log: [
+        ...playing().log,
+        { turn: 1, playerId: 2, type: "play" as const, cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" as const },
+      ],
+    };
+    hud.update(g);
+    const noticed = q(container, ".notice-change").textContent;
+    q(container, ".notice-continue").click();
+    const logged = [...container.querySelectorAll(".log-entry")]
+      .find((el) => el.textContent?.startsWith("Alpha played Raid on you"))!
+      .querySelector(".log-change")!.textContent;
+    expect(logged).toBe(noticed);
+    expect(logged).toBe(" (Might +1 -> 0)");
   });
 
   it("persists both preferences across HUD instances sharing storage", () => {
@@ -395,7 +528,7 @@ describe("activity log filters", () => {
     hud.update(g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
     const texts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(texts).toContain("Alpha played Raid on you");
+    expect(texts).toContain("Alpha played Raid on you (Might +1 -> 0)");
   });
 
   /** The mute narrows the interrupt, it does not switch it off. Being made
@@ -423,7 +556,7 @@ describe("activity log filters", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/fealty/i);
     const logTexts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(logTexts).toContain("Alpha played Raid on you");
+    expect(logTexts).toContain("Alpha played Raid on you (Might +1 -> 0)");
   });
 
   it("stays silent with popups muted when a rival poaches a vassal from you", () => {
@@ -1291,7 +1424,7 @@ describe("log lines name rulers", () => {
     const successor = rulerOf(g.rulers, "alpha").name;
     hud.update(g);
     expect(texts(container)).toContain(
-      `You played Assassinate ruler on Alpha - ${killed} killed, ${successor} succeeds`,
+      `You played Assassinate ruler on Alpha - ${killed} killed, ${successor} succeeds (Status 0 -> 0)`,
     );
   });
 

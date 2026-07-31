@@ -5,8 +5,10 @@ import {
 import { flyCard, runAnimation, type Flight } from "./animate";
 import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
 import {
-  buildRoundSummary, isNoticeWorthy, type NoticeCtx, type RoundSummary,
+  buildRoundSummary, isNoticeWorthy, walkCtxOf,
+  type NoticeCtx, type RoundSummary,
 } from "./notices";
+import { walkStandings, type StandingChange } from "./standings";
 import {
   passiveFortifyFor, subjugationGripOn, subjugationRequirement,
 } from "./playability";
@@ -269,6 +271,50 @@ export function eventSegments(e: GameEvent, state: GameState): Segment[] {
   }
 }
 
+/** What one log line's event actually did, as a suffix in parentheses: the
+ *  human's signed lead before -> after, `standingChangeText`'s one format, the
+ *  same convention as the map badges, the map hover preview and the round
+ *  summary. Null where the human can see no number - a card that moves no
+ *  track, a prevented assassination, an AI hitting another AI.
+ *
+ *  Not a Segment: it names no card and no faction (see the rule in AGENTS.md),
+ *  and keeping it out of `eventSegments` is what lets the postmortem log render
+ *  the same lines without a batch to walk.
+ *
+ *  `changes` is one event's slice of `walkStandings`. */
+export function impactText(
+  e: GameEvent,
+  changes: StandingChange[],
+): { text: string; tone: "good" | "bad" | "even" } | null {
+  // The garrison line states its own "+N Might against all" inside its
+  // segments, because the postmortem log renders those segments with no suffix
+  // beside them. Adding one here would print the number twice in the activity
+  // log; removing it from the segments would blank it in the postmortem.
+  if (e.type === "garrisoned") return null;
+
+  const fanOut = (): { text: string; tone: "good" } | null => {
+    if (e.amount === undefined || e.track === undefined) return null;
+    const label = e.track === "might" ? "Might" : "Status";
+    return { text: `+${e.amount} ${label} against all`, tone: "good" };
+  };
+
+  const factions = new Set(changes.map((c) => c.factionId));
+  // Your own Fortify: one card, +1 Might against every living faction, so
+  // there is no single pair to quote. `leadMovesOf` deliberately returns
+  // nothing for it (see the doc comment in standings.ts), so the amount comes
+  // off the event, exactly as the garrison line's does.
+  if (factions.size === 0) {
+    return e.type === "play" && e.cardId === "fortify" ? fanOut() : null;
+  }
+  if (factions.size > 1) return fanOut();
+
+  const net = changes.reduce((sum, c) => sum + (c.after - c.before), 0);
+  return {
+    text: changes.map(standingChangeText).join(", "),
+    tone: net > 0 ? "good" : net < 0 ? "bad" : "even",
+  };
+}
+
 export function createHud(
   container: HTMLElement,
   cb: HudCallbacks,
@@ -310,6 +356,17 @@ export function createHud(
     if (e.type === "garrisoned") return e.playerId === 1;
     if (e.type !== "seeded") return true;
     return e.playerId === 1 || e.overlordFactionId === humanFactionId;
+  }
+
+  /** What you played or discarded, and the events your own play caused. Never
+   *  hidden by the "Targeting me" filter: a filter that removes the line you
+   *  just made is a filter that lies about your own turn.
+   *
+   *  The automatic garrison tick and the deck reshuffle are excluded. You did
+   *  not choose either, and both fire every round for the whole late game -
+   *  which is exactly the noise the filter exists to remove. */
+  function isYourDoing(e: GameEvent): boolean {
+    return e.playerId === 1 && e.type !== "garrisoned" && e.type !== "reshuffle";
   }
 
   function involvesHuman(e: GameEvent, humanFactionId: string | undefined): boolean {
@@ -709,7 +766,15 @@ export function createHud(
     const fresh = state.log.slice(renderedEvents);
     const humanFactionId = state.players[0]?.factionId;
     const noticeCtx = buildNoticeCtx(state);
-    for (const e of fresh) {
+    // Index-parallel to `fresh`, INCLUDING the events isObservable drops: the
+    // walk runs backwards from the leads as they stand now, so a hidden event
+    // that moved a counter (a rival's garrison, a draw's reshuffle) has to be
+    // stepped back over or every line above it is out by its amount. Which is
+    // also why this is indexed by the loop's position in `fresh` and not by
+    // how many entries have been appended.
+    const changes =
+      noticeCtx === null ? [] : walkStandings(fresh, walkCtxOf(noticeCtx));
+    fresh.forEach((e, i) => {
       if (e.turn !== lastRenderedTurn) {
         const sep = document.createElement("div");
         sep.className = "log-turn";
@@ -717,18 +782,26 @@ export function createHud(
         logEntries.appendChild(sep);
         lastRenderedTurn = e.turn;
       }
-      if (!isObservable(e, humanFactionId)) continue;
+      if (!isObservable(e, humanFactionId)) return;
       const entry = document.createElement("div");
       entry.className = "log-entry log-new";
       entry.replaceChildren(renderSegments(eventSegments(e, state), richTextHooks));
+      const impact = impactText(e, changes[i] ?? []);
+      if (impact !== null) {
+        const span = document.createElement("span");
+        span.className = `log-change lead-${impact.tone}`;
+        span.textContent = ` (${impact.text})`;
+        entry.appendChild(span);
+      }
       entry.classList.toggle("log-you", involvesHuman(e, humanFactionId));
       // Tagged at render time, not re-evaluated on toggle: the "Targeting me"
-      // filter just shows/hides by this class, retroactively and instantly.
+      // filter just shows/hides by these classes, retroactively and instantly.
       entry.classList.toggle(
         "notice-worthy", noticeCtx !== null && isNoticeWorthy(e, noticeCtx),
       );
+      entry.classList.toggle("log-mine", isYourDoing(e));
       logEntries.appendChild(entry);
-    }
+    });
     renderedEvents = state.log.length;
     if (fresh.length > 0) logEntries.scrollTop = logEntries.scrollHeight;
     return fresh;
