@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { PACK_SIZE, RARITY_WEIGHTS, openPack } from "../src/packs";
-import { ACQUIRABLE_CARDS, type Rng } from "../src/cards";
+import { PACK_SIZE, openPack } from "../src/packs";
+import { ACQUIRABLE_CARDS, RARITY_TIERS, type Rng } from "../src/cards";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -49,7 +49,9 @@ describe("openPack", () => {
   });
 
   it("weights common most heavily", () => {
-    expect(RARITY_WEIGHTS.common).toBeGreaterThan(RARITY_WEIGHTS.rare);
-    expect(RARITY_WEIGHTS.rare).toBeGreaterThan(RARITY_WEIGHTS.epic);
+    const weight = (id: string) =>
+      RARITY_TIERS.find((t) => t.id === id)?.weight;
+    expect(weight("common")).toBeGreaterThan(weight("rare")!);
+    expect(weight("rare")).toBeGreaterThan(weight("epic")!);
   });
 });

@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  ACQUIRABLE_CARDS, AI_DECK_GUARANTEED, CARDS, DECK_SIZE, DEFAULT_DECK,
-  STARTING_KNOWN_CARDS, TRIBUTE_CARDS, buildDeck, buildAiDeck, shuffle,
+  ACQUIRABLE_CARDS, AI_DECK_GUARANTEED, BASE_RARITY, CARDS, DECK_SIZE,
+  DEFAULT_DECK, RARITY_TIERS, STARTING_KNOWN_CARDS, TRIBUTE_CARDS,
+  buildDeck, buildAiDeck, rarityForImpact, shuffle,
   type Rng,
 } from "../src/cards";
 
@@ -308,5 +309,31 @@ describe("rarity and the acquirable pool", () => {
     for (const id of Object.keys(TRIBUTE_CARDS)) {
       expect(ACQUIRABLE_CARDS).not.toContain(id);
     }
+  });
+});
+
+describe("rarity tiers", () => {
+  it("orders tiers by ascending minImpact", () => {
+    const mins = RARITY_TIERS.map((t) => t.minImpact);
+    expect([...mins].sort((a, b) => a - b)).toEqual(mins);
+  });
+
+  it("gives a harder-to-reach tier a smaller weight", () => {
+    const weights = RARITY_TIERS.map((t) => t.weight);
+    expect([...weights].sort((a, b) => b - a)).toEqual(weights);
+  });
+
+  it("weights sum to 100, so they read as percentages", () => {
+    expect(RARITY_TIERS.reduce((sum, t) => sum + t.weight, 0)).toBe(100);
+  });
+
+  it("puts the base tier first and lets anything reach it", () => {
+    expect(RARITY_TIERS[0].id).toBe(BASE_RARITY);
+    expect(rarityForImpact(Number.NEGATIVE_INFINITY)).toBe(BASE_RARITY);
+  });
+
+  it("returns the highest tier the impact reaches", () => {
+    const top = RARITY_TIERS[RARITY_TIERS.length - 1];
+    expect(rarityForImpact(top.minImpact)).toBe(top.id);
   });
 });

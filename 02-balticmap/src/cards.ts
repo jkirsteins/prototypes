@@ -1,7 +1,46 @@
-/** Pack draw tier. Only "common" is populated today - rare and epic exist so
- *  the weighting machinery is real, and assigning cards to them is a separate
- *  balance pass. See the 2026-07-31 card-acquisition design doc. */
-export type CardRarity = "common" | "rare" | "epic";
+/** One pack draw tier: how much of a slot it takes, what impact a card needs
+ *  to reach it, and the colour of the band a card of that tier wears.
+ *
+ *  The table is ordered, ascending by minImpact, and the first entry is the
+ *  base tier: it is what an unreachable threshold and an empty tier both fall
+ *  back to. Adding a fourth tier is one entry here and nothing else.
+ *
+ *  `rollTier` consumes exactly one rng value whatever it returns, and
+ *  `openPack` exactly two per slot, so a new tier does not shift the draw count
+ *  and committed seeds stay comparable. It does change which tier a given roll
+ *  lands in, which is expected - the same caution `CARDS` carries below about
+ *  its own declaration order.
+ *
+ *  minImpact is in lands: the coefficient of the card in the realm-size
+ *  regression run by `npm run rarity`. See the 2026-07-31 card-rarity design. */
+export interface RarityTier {
+  id: string;
+  weight: number;
+  minImpact: number;
+  colour: string;
+}
+
+export const RARITY_TIERS = [
+  { id: "common", weight: 70, minImpact: Number.NEGATIVE_INFINITY, colour: "#6d6355" },
+  { id: "rare",   weight: 25, minImpact: Number.POSITIVE_INFINITY, colour: "#1f6fd0" },
+  { id: "epic",   weight:  5, minImpact: Number.POSITIVE_INFINITY, colour: "#7b2fbf" },
+] as const satisfies readonly RarityTier[];
+
+export type CardRarity = (typeof RARITY_TIERS)[number]["id"];
+
+/** The tier nothing can fail to reach. Also the fallback when a rolled tier
+ *  holds no cards. */
+export const BASE_RARITY: CardRarity = RARITY_TIERS[0].id;
+
+/** The highest tier this impact reaches. Relies on the ascending minImpact
+ *  order, which `tests/cards.test.ts` enforces. */
+export function rarityForImpact(impact: number): CardRarity {
+  let out: CardRarity = BASE_RARITY;
+  for (const tier of RARITY_TIERS) {
+    if (impact >= tier.minImpact) out = tier.id;
+  }
+  return out;
+}
 
 export interface CardDef {
   id: string;
@@ -13,7 +52,8 @@ export interface CardDef {
   deckBuildable: boolean;
   /** While in hand, it is the only playable card. */
   forced: boolean;
-  /** Pack draw tier. Every card is "common" today; see CardRarity. */
+  /** Pack draw tier. Set from the measured impact table, not by hand; see
+   *  `rarityForImpact` and tests/cards.test.ts. */
   rarity: CardRarity;
   /** One-line rules text shown to the player. */
   text: string;
