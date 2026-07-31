@@ -965,11 +965,22 @@ git commit -m "feat(balticmap): persist XP, turnips and packs opened"
 
 ---
 
-### Task 5: `src/game.ts` - delete the witnessing hook
+### Task 5: delete the witnessing hook (`game.ts` + `hud.ts` together)
+
+> **Plan correction, made during execution.** Task 5 and Task 7 were
+> originally separate. They cannot be: `src/hud.ts:948` reads
+> `state.seenThisRun.map(...)` with no fallback, and vitest transforms
+> without type-checking, so deleting the field breaks 9 `tests/hud.test.ts`
+> cases at RUNTIME - not merely in `tsc`, which is what the split assumed.
+> `npm test` green at every commit is non-negotiable, so the field's removal
+> and the hud's last read of it must land in one commit. Task 7's content is
+> folded in here; Task 7 below is retained only as a pointer.
 
 **Files:**
 - Modify: `src/game.ts` (lines ~99, ~170, ~603-626, ~668)
-- Test: `tests/game.test.ts`
+- Modify: `src/hud.ts` (lines ~35-36, ~361-370, ~946-973) - see Task 7 for the exact edits
+- Modify: `src/style.css` - see Task 7
+- Test: `tests/game.test.ts`, `tests/hud.test.ts`
 
 **Interfaces:**
 - Consumes: nothing new.
@@ -1424,6 +1435,10 @@ git commit -m "feat(balticmap): pack-opening overlay on the deck screen"
 ---
 
 ### Task 7: `src/hud.ts` - postmortem XP line, loot row removed
+
+> **Folded into Task 5 during execution** - see the correction note there.
+> The edits below are the authoritative description of the hud change; they
+> are performed as part of Task 5's commit, not separately.
 
 **Files:**
 - Modify: `src/hud.ts` (lines ~35-36, ~361-370, ~946-973)
