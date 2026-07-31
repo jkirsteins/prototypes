@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  AI_DECK_GUARANTEED, CARDS, DECK_SIZE, DEFAULT_DECK, buildDeck, buildAiDeck,
-  shuffle, type Rng,
+  ACQUIRABLE_CARDS, AI_DECK_GUARANTEED, CARDS, DECK_SIZE, DEFAULT_DECK,
+  STARTING_KNOWN_CARDS, buildDeck, buildAiDeck, shuffle, type Rng,
 } from "../src/cards";
 
 const NON_BASICS = [
@@ -23,62 +23,76 @@ describe("cards", () => {
   it("defines the nine card types with v2 properties", () => {
     const expectProps = (
       id: string, name: string, targeted: boolean,
-      maxPerDeck: number | null, deckBuildable: boolean, forced: boolean, text: string,
+      maxPerDeck: number | null, deckBuildable: boolean, forced: boolean,
+      rarity: string, text: string,
     ) =>
-      expect(CARDS[id]).toEqual({ id, name, targeted, maxPerDeck, deckBuildable, forced, text });
+      expect(CARDS[id]).toEqual({ id, name, targeted, maxPerDeck, deckBuildable, forced, rarity, text });
     expectProps(
       "grow-crops", "Grow turnips", false, null, true, false,
+      "common",
       "No effect - a quiet season. Fills out the deck.",
     );
     expectProps(
       "raid", "Raid", true, 1, true, false,
+      "common",
       "Gain Might over one faction in reach: +1 for your first land on their " +
         "border, +2 for the second, +3 for the third, and so on.",
     );
     expectProps(
       "shrewd-marriage", "Shrewd marriage", true, 1, true, false,
+      "common",
       "Gain +1 Status over one faction in reach; your overlord is always courtable.",
     );
     expectProps(
       "fortify", "Fortify", false, 1, true, false,
+      "common",
       "Gain +1 Might over every other living faction at once.",
     );
     expectProps(
       "subjugate", "Subjugate", true, 1, true, false,
+      "common",
       "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute.",
     );
     expectProps(
       "incorporate", "Incorporate", true, 1, true, false,
+      "common",
       "Permanently absorb one of your vassals into your realm.",
     );
     expectProps(
       "pay-tribute", "Pay tribute", false, null, false, true,
+      "common",
       "Forced: while a vassal, grant your overlord +1 Might or +1 Status.",
     );
     expectProps(
       "seeds-of-revolt", "Seeds of revolt", false, 1, true, false,
+      "common",
       "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time.",
     );
     // Revolt is injection-only now, like Pay tribute: Seeds of revolt puts it
     // in the deck, so it must never be deck-buildable.
     expectProps(
       "revolt", "Revolt", false, 1, false, false,
+      "common",
       "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good.",
     );
     expectProps(
       "assassinate-ruler", "Assassinate ruler", true, 1, true, false,
+      "common",
       "Even the score: the Status lead between you and one faction in reach resets to none.",
     );
     expectProps(
       "alliance", "Alliance", true, 1, true, false,
+      "common",
       "Seal a pact with one faction in reach: no hostile cards between you for 5 turns.",
     );
     expectProps(
       "extended-diplomacy", "Extended diplomacy", false, 1, true, false,
+      "common",
       "Patient envoys: your next Alliance lasts twice as long.",
     );
     expectProps(
       "bodyguard", "Bodyguard", false, 1, true, false,
+      "common",
       "Post a bodyguard: the next Assassinate ruler against you fails. No stacking.",
     );
   });
@@ -238,10 +252,39 @@ describe("every card is reachable by a player", () => {
   });
 
   it("keeps Revolt out of deck-building so Seeds of revolt is its only route", () => {
-    expect(CARDS["revolt"].deckBuildable).toBe(false);
+    expect(CARDS.revolt.deckBuildable).toBe(false);
     expect(CARDS["seeds-of-revolt"].deckBuildable).toBe(true);
     // and therefore never rolled into an AI deck or offered on the deck screen
     const deck = buildAiDeck(() => 0, []);
     expect(deck).not.toContain("revolt");
+  });
+});
+
+describe("rarity and the acquirable pool", () => {
+  it("tags every card with a rarity, all common for now", () => {
+    for (const c of Object.values(CARDS)) {
+      expect(c.rarity).toBe("common");
+    }
+  });
+
+  it("starts the player on Raid, Subjugate and Fortify", () => {
+    expect(STARTING_KNOWN_CARDS).toEqual(["raid", "subjugate", "fortify"]);
+    for (const id of STARTING_KNOWN_CARDS) {
+      expect(CARDS[id].deckBuildable).toBe(true);
+      expect(CARDS[id].maxPerDeck).not.toBeNull();
+    }
+  });
+
+  it("acquires exactly the deck-buildable non-basics you do not start with", () => {
+    expect(ACQUIRABLE_CARDS).toEqual([
+      "shrewd-marriage", "incorporate", "seeds-of-revolt",
+      "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
+      "favourable-omens", "found-settlement",
+    ]);
+    // grow-crops is free filler, not acquirable; revolt and pay-tribute are
+    // injection-only and must never appear in a pack.
+    expect(ACQUIRABLE_CARDS).not.toContain("grow-crops");
+    expect(ACQUIRABLE_CARDS).not.toContain("revolt");
+    expect(ACQUIRABLE_CARDS).not.toContain("pay-tribute");
   });
 });

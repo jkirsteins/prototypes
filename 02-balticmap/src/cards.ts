@@ -1,3 +1,8 @@
+/** Pack draw tier. Only "common" is populated today - rare and epic exist so
+ *  the weighting machinery is real, and assigning cards to them is a separate
+ *  balance pass. See the 2026-07-31 card-acquisition design doc. */
+export type CardRarity = "common" | "rare" | "epic";
+
 export interface CardDef {
   id: string;
   name: string;
@@ -8,26 +13,28 @@ export interface CardDef {
   deckBuildable: boolean;
   /** While in hand, it is the only playable card. */
   forced: boolean;
+  /** Pack draw tier. Every card is "common" today; see CardRarity. */
+  rarity: CardRarity;
   /** One-line rules text shown to the player. */
   text: string;
 }
 
 export const CARDS: Record<string, CardDef> = {
-  "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, maxPerDeck: null, deckBuildable: true, forced: false, text: "No effect - a quiet season. Fills out the deck." },
-  "raid": { id: "raid", name: "Raid", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain Might over one faction in reach: +1 for your first land on their border, +2 for the second, +3 for the third, and so on." },
-  "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
-  "fortify": { id: "fortify", name: "Fortify", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Gain +1 Might over every other living faction at once." },
-  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },
-  "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Permanently absorb one of your vassals into your realm." },
-  "pay-tribute": { id: "pay-tribute", name: "Pay tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true, text: "Forced: while a vassal, grant your overlord +1 Might or +1 Status." },
-  "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
-  "revolt": { id: "revolt", name: "Revolt", targeted: false, maxPerDeck: 1, deckBuildable: false, forced: false, text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good." },
-  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Even the score: the Status lead between you and one faction in reach resets to none." },
-  "alliance": { id: "alliance", name: "Alliance", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns." },
-  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Patient envoys: your next Alliance lasts twice as long." },
-  "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking." },
-  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, text: "The signs are read: your next Might or Status gain counts double." },
-  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, text: "Settle the free site in one land of your realm. Each settlement adds +1 to the lead others need to subjugate you." },
+  "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "No effect - a quiet season. Fills out the deck." },
+  "raid": { id: "raid", name: "Raid", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain Might over one faction in reach: +1 for your first land on their border, +2 for the second, +3 for the third, and so on." },
+  "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
+  "fortify": { id: "fortify", name: "Fortify", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Might over every other living faction at once." },
+  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },
+  "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Permanently absorb one of your vassals into your realm." },
+  "pay-tribute": { id: "pay-tribute", name: "Pay tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, grant your overlord +1 Might or +1 Status." },
+  "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
+  "revolt": { id: "revolt", name: "Revolt", targeted: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good." },
+  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Even the score: the Status lead between you and one faction in reach resets to none." },
+  "alliance": { id: "alliance", name: "Alliance", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns." },
+  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Patient envoys: your next Alliance lasts twice as long." },
+  "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking." },
+  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "The signs are read: your next Might or Status gain counts double." },
+  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Settle the free site in one land of your realm. Each settlement adds +1 to the lead others need to subjugate you." },
 };
 
 /** Cards a Favourable omens reading doubles. Everything else resolves as
@@ -38,6 +45,24 @@ export const CARDS: Record<string, CardDef> = {
 export const DOUBLABLE_CARDS: ReadonlySet<string> = new Set([
   "raid", "shrewd-marriage", "fortify", "revolt", "pay-tribute",
 ]);
+
+/** Cards the player knows from their very first game. Everything else in the
+ *  roster is earned from packs. Raid, Subjugate and Fortify together cover the
+ *  three verbs the game is about - hit someone, take someone, hold everyone -
+ *  so a first run is a real game rather than ten turns of turnips. */
+export const STARTING_KNOWN_CARDS: string[] = ["raid", "subjugate", "fortify"];
+
+/** The pack pool: every deck-buildable non-basic you do not start with, in
+ *  stable CARDS order. Grow turnips stays free filler outside the pool; Revolt
+ *  and Pay tribute are injection-only and excluded by `deckBuildable`. */
+export const ACQUIRABLE_CARDS: string[] = Object.values(CARDS)
+  .filter(
+    (c) =>
+      c.deckBuildable &&
+      c.maxPerDeck !== null &&
+      !STARTING_KNOWN_CARDS.includes(c.id),
+  )
+  .map((c) => c.id);
 
 export const DECK_SIZE = 10;
 
