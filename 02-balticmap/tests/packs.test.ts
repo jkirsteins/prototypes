@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { PACK_SIZE, openPack } from "../src/packs";
-import { ACQUIRABLE_CARDS, RARITY_TIERS, type Rng } from "../src/cards";
+import {
+  ACQUIRABLE_CARDS, BASE_RARITY, CARDS, RARITY_TIERS, type Rng,
+} from "../src/cards";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -37,11 +39,25 @@ describe("openPack", () => {
     expect(pack).toEqual([ACQUIRABLE_CARDS[0], ACQUIRABLE_CARDS[0]]);
   });
 
-  it("falls back to common when the rolled tier is empty", () => {
-    // Roll the very top of the weight range: epic, which has no cards today.
+  it("draws from the top tier once it holds a card", () => {
+    // Roll the very top of the weight range - epic - then index 0 of it. Epic
+    // is populated now that the impact table has been measured, so this is the
+    // path a real jackpot pack takes.
+    const epic = ACQUIRABLE_CARDS.filter((id) => CARDS[id].rarity === "epic");
+    expect(epic.length).toBeGreaterThan(0);
     const pack = openPack(ACQUIRABLE_CARDS, scriptedRng([0.999, 0, 0.999, 0]));
+    expect(pack).toEqual([epic[0], epic[0]]);
+  });
+
+  it("falls back to common when the rolled tier is empty", () => {
+    // Roll epic again, but against a pool holding no epic card - the fallback
+    // this exercises is what keeps an unpopulated tier harmless. It used to be
+    // enough to roll epic against the whole pool, because epic was empty; now
+    // that it is not, the empty tier has to be constructed.
+    const noEpic = ACQUIRABLE_CARDS.filter((id) => CARDS[id].rarity !== "epic");
+    const pack = openPack(noEpic, scriptedRng([0.999, 0, 0.999, 0]));
     expect(pack).toHaveLength(PACK_SIZE);
-    for (const id of pack) expect(ACQUIRABLE_CARDS).toContain(id);
+    for (const id of pack) expect(CARDS[id].rarity).toBe(BASE_RARITY);
   });
 
   it("returns nothing for an empty pool rather than throwing", () => {

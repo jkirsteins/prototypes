@@ -1,6 +1,19 @@
 {
-  "games": 0,
-  "firstSeed": 0,
-  "turnCap": 0,
-  "impact": {}
+  "games": 1500,
+  "firstSeed": 1,
+  "turnCap": 150,
+  "impact": {
+    "raid": 0.223,
+    "shrewd-marriage": 0.069,
+    "fortify": 0.516,
+    "subjugate": 0.684,
+    "incorporate": 0.591,
+    "seeds-of-revolt": -0.706,
+    "assassinate-ruler": -0.042,
+    "alliance": 0.156,
+    "extended-diplomacy": -0.014,
+    "bodyguard": -0.02,
+    "favourable-omens": 0.187,
+    "found-settlement": -0.049
+  }
 }

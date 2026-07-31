@@ -5,6 +5,7 @@ import {
   buildDeck, buildAiDeck, rarityForImpact, shuffle,
   type Rng,
 } from "../src/cards";
+import impactData from "../src/data/card-impact.json";
 
 const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
@@ -57,7 +58,7 @@ describe("cards", () => {
     );
     expectProps(
       "incorporate", "Incorporate", true, 1, true, false,
-      "common",
+      "epic",
       "Permanently absorb one of your vassals into your realm.",
     );
     expectProps(
@@ -89,7 +90,7 @@ describe("cards", () => {
     );
     expectProps(
       "alliance", "Alliance", true, 1, true, false,
-      "common",
+      "rare",
       "Seal a pact with one faction in reach: no hostile cards between you for 5 turns.",
     );
     expectProps(
@@ -268,9 +269,10 @@ describe("every card is reachable by a player", () => {
 });
 
 describe("rarity and the acquirable pool", () => {
-  it("tags every card with a rarity, all common for now", () => {
+  it("tags every card with a rarity drawn from the tier table", () => {
+    const ids = RARITY_TIERS.map((t) => t.id);
     for (const c of Object.values(CARDS)) {
-      expect(c.rarity).toBe("common");
+      expect(ids, `${c.id} has an unknown rarity`).toContain(c.rarity);
     }
   });
 
@@ -308,6 +310,23 @@ describe("rarity and the acquirable pool", () => {
     expect(ACQUIRABLE_CARDS).not.toContain("revolt");
     for (const id of Object.keys(TRIBUTE_CARDS)) {
       expect(ACQUIRABLE_CARDS).not.toContain(id);
+    }
+  });
+});
+
+describe("rarity assignment", () => {
+  it("gives every pack-pool card the tier its measured impact reaches", () => {
+    const impact: Record<string, number> = impactData.impact;
+    for (const id of ACQUIRABLE_CARDS) {
+      expect(impact[id], `no measured impact for ${id}`).toBeTypeOf("number");
+      expect(CARDS[id].rarity).toBe(rarityForImpact(impact[id]));
+    }
+  });
+
+  it("keeps every card outside the pack pool at the base tier", () => {
+    for (const card of Object.values(CARDS)) {
+      if (ACQUIRABLE_CARDS.includes(card.id)) continue;
+      expect(card.rarity, `${card.id} is not in a pack`).toBe(BASE_RARITY);
     }
   });
 });

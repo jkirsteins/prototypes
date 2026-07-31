@@ -22,8 +22,16 @@ export interface RarityTier {
 
 export const RARITY_TIERS = [
   { id: "common", weight: 70, minImpact: Number.NEGATIVE_INFINITY, colour: "#6d6355" },
-  { id: "rare",   weight: 25, minImpact: Number.POSITIVE_INFINITY, colour: "#1f6fd0" },
-  { id: "epic",   weight:  5, minImpact: Number.POSITIVE_INFINITY, colour: "#7b2fbf" },
+  // Thresholds set once from the 1500-deck run in src/data/card-impact.json and
+  // then frozen. They are cut points in the gaps between measured impacts, so a
+  // rerun that nudges a coefficient does not re-tier a card the player owns.
+  // 0.1125 is the midpoint of the 0.087-wide gap between Alliance (0.156) and
+  // Shrewd marriage (0.069), the widest gap in the pool bar one; 0.389 is the
+  // midpoint of that one, the 0.404 chasm between Incorporate (0.591) and
+  // Favourable omens (0.187), which is 4.6x wider than anything else in the
+  // table and is the only separation in it that two independent seeds agree on.
+  { id: "rare",   weight: 25, minImpact: 0.1125, colour: "#1f6fd0" },
+  { id: "epic",   weight:  5, minImpact: 0.389, colour: "#7b2fbf" },
 ] as const satisfies readonly RarityTier[];
 
 export type CardRarity = (typeof RARITY_TIERS)[number]["id"];
@@ -65,7 +73,7 @@ export const CARDS: Record<string, CardDef> = {
   "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
   "fortify": { id: "fortify", name: "Fortify", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Might over every other living faction at once." },
   "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },
-  "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Permanently absorb one of your vassals into your realm." },
+  "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Permanently absorb one of your vassals into your realm." },
   // Injection-only, like Revolt: a Subjugate shuffles one of each into the
   // vassal's deck (see playCard) and a release strips them out again. They are
   // never deck-buildable and never in a pack.
@@ -74,10 +82,10 @@ export const CARDS: Record<string, CardDef> = {
   "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
   "revolt": { id: "revolt", name: "Revolt", targeted: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good." },
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Even the score: the Status lead between you and one faction in reach resets to none." },
-  "alliance": { id: "alliance", name: "Alliance", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns." },
+  "alliance": { id: "alliance", name: "Alliance", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns." },
   "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Patient envoys: your next Alliance lasts twice as long." },
   "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking." },
-  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "The signs are read: your next Might or Status gain counts double." },
+  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "The signs are read: your next Might or Status gain counts double." },
   "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Settle the free site in one land of your realm. Each settlement adds +1 to the lead others need to subjugate you." },
 };
 
