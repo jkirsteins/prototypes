@@ -446,6 +446,9 @@ svg.map.dragging {
   justify-content: center;
   gap: 16px;
   background: rgba(24, 32, 38, 0.88);
+  /* A dark root states its text colour, so nothing under it can fall through to
+     the UA default black. The light boxes inside (.ds-card) override it back. */
+  color: #fdfaf4;
   z-index: 20;
 }
 
@@ -1242,6 +1245,10 @@ svg.map.dragging {
   background: #1b1710;
   text-align: left;
 }
+
+/* .ds-card-text serves the light picker box and this dark one; its colour is
+   the light box's, so the dark box scopes its own. */
+.ds-pack-card .ds-card-text { color: #b8b0a2; }
 
 .ds-pack-new {
   align-self: flex-start;

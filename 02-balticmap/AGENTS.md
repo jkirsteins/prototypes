@@ -59,6 +59,23 @@ the footer block under the list, deduplicated, not appended to a line.
 positive = you lead, formatted by `formatLead` in `src/view.ts`. This is the same
 convention as the map badges, the hover tooltip and the scoreboard.
 
+## A dark box states its own text colour
+
+`.deck-screen` and the notice overlays are dark; the deck picker's card boxes and
+the buttons on top of them are light. Text that declares no colour inherits the
+browser default black, which is invisible on the dark half. So: a container with a
+dark background declares `color`, and a class shared between a light box and a dark
+one is scoped to each rather than left to inherit.
+
+This shipped. `.ds-pack-card` was cloned from the light `.ds-card`, took the dark
+background and left the `color` behind, so every revealed card's title was black on
+`#1b1710`. Its "already known" tag, the pack count and the "Click to open" hint had
+the same hole.
+
+Which is also the reading rule for screenshots: when you take one, read the text in
+it before moving on. The browser passes over the pack overlay missed this because
+the screenshot was checked for layout and never read.
+
 ## The human's turn ends when their card lands, not when they click
 
 `afterHumanAction` must not resolve AI turns until the played card has finished
