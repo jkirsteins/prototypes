@@ -6,7 +6,7 @@ import {
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
 } from "../src/view";
-import { bumpMight, bumpStatus, type Relations } from "../src/relations";
+import { bumpMight, bumpStatus } from "../src/relations";
 
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 6);
 

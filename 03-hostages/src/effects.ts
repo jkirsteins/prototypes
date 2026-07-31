@@ -59,7 +59,7 @@ function applyDamage(
   amount = Math.ceil(amount * mods.damageFactor);
   if (amount <= 0) return;
 
-  let target = effect.target;
+  const target = effect.target;
   if (target === "wife" && mods.interposed) return;
 
   if (target === "convict") {

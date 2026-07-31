@@ -1,0 +1,137 @@
+#!/bin/sh
+# Pre-commit gate: biome lint on staged TS/JS, plus `tsc --noEmit` in every
+# prototype that has staged changes. No tests here - `npm test` is per
+# prototype and is the author's job, not the commit's.
+#
+# Install:  npm run hooks:install     (git config core.hooksPath .githooks)
+# Bypass:   git commit --no-verify
+#
+# DELIBERATE TRADEOFF - we check the WORKING TREE, not the staged snapshot.
+# This hook never runs `git stash`. Several sessions work in this repo at once,
+# sometimes on the same branch and on different prototypes; a stash/restore
+# cycle would swallow a sibling session's in-progress edits, and a crashed hook
+# would leave the stash behind. Consequence: after a partial `git add -p` you
+# can be blocked by code you did not stage. That is much the cheaper failure.
+#
+# No `set -e` on purpose: POSIX sh has no `pipefail`, `set -e` is suppressed
+# inside `if`/`&&` anyway, and we want every check to run so that one commit
+# reports every problem instead of only the first.
+
+set -u
+
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+cd "$ROOT" || exit 1
+GITDIR=$(git rev-parse --git-dir) || exit 1
+
+# 1 => a skipped check (missing node_modules, missing biome) becomes a hard
+# failure instead of a warning. For CI or a paranoid local setup.
+STRICT=${PROTOTYPES_HOOK_STRICT:-0}
+
+FAILURES=''
+say()  { printf '%s\n' "$*"; }
+warn() { printf 'WARN  %s\n' "$*" >&2; }
+note_failure() { FAILURES="${FAILURES}  - $1
+"; }
+skip_or_fail() {
+	warn "$1"
+	[ "$STRICT" = 1 ] && note_failure "$1"
+	return 0
+}
+
+# --- Do not run inside a merge / rebase / cherry-pick / revert ---------------
+if [ -e "$GITDIR/MERGE_HEAD" ] || [ -e "$GITDIR/CHERRY_PICK_HEAD" ] ||
+	[ -e "$GITDIR/REVERT_HEAD" ] || [ -d "$GITDIR/rebase-merge" ] ||
+	[ -d "$GITDIR/rebase-apply" ]; then
+	say "pre-commit: merge/rebase/cherry-pick in progress - skipping checks."
+	exit 0
+fi
+
+# --- What is staged ---------------------------------------------------------
+# diff-index against the empty tree so this also works on an unborn branch,
+# where `git diff --cached` would die on an ambiguous HEAD.
+if git rev-parse -q --verify HEAD >/dev/null 2>&1; then
+	AGAINST=HEAD
+else
+	AGAINST=$(git hash-object -t tree /dev/null)
+fi
+
+staged_lintable() {
+	git -c core.quotePath=false diff-index --cached --name-only \
+		--diff-filter=ACMR "$AGAINST" |
+		grep -E '\.[mc]?[jt]sx?$'
+}
+
+# .json counts because every tsconfig sets resolveJsonModule, and
+# tsconfig/package.json live in the prototype too.
+staged_prototypes() {
+	git -c core.quotePath=false diff-index --cached --name-only \
+		--diff-filter=ACMRD "$AGAINST" |
+		grep -E '\.([mc]?[jt]sx?|json)$' |
+		sed -n 's|^\([0-9][0-9]-[^/]*\)/.*|\1|p' |
+		sort -u
+}
+
+LINT_N=$(staged_lintable | wc -l | tr -d ' ')
+PROTOS=$(staged_prototypes)
+
+# Staged nothing, or only docs/assets/workflows: get out of the way fast.
+if [ "$LINT_N" = 0 ] && [ -z "$PROTOS" ]; then
+	exit 0
+fi
+
+# Both biome's launcher and tsc's shim are `#!/usr/bin/env node`. GUI git
+# clients often run hooks with a minimal PATH and no node.
+if ! command -v node >/dev/null 2>&1; then
+	skip_or_fail "node is not on PATH for this hook (GUI git clients use a minimal PATH) - SKIPPING all checks."
+	[ -z "$FAILURES" ] && exit 0
+fi
+
+# --- 1. biome lint ----------------------------------------------------------
+# Absolute path from the repo root: resolves the root node_modules no matter
+# where `git commit` ran from, and can never fall through to `npx biome`, which
+# resolves to an unrelated squatted `biome@0.3.3` on the registry.
+BIOME="$ROOT/node_modules/.bin/biome"
+if [ "$LINT_N" != 0 ]; then
+	if [ -x "$BIOME" ]; then
+		staged_lintable |
+			while IFS= read -r f; do
+				[ -e "$f" ] && printf '%s\0' "$f"
+			done |
+			xargs -0 -r "$BIOME" lint --no-errors-on-unmatched
+		[ $? -ne 0 ] && note_failure "biome lint failed"
+	else
+		skip_or_fail "$BIOME is missing - SKIPPING lint. Run 'npm install' in $ROOT."
+	fi
+fi
+
+# --- 2. tsc --noEmit, only for prototypes with staged changes ---------------
+# Scoped on purpose: a session committing to 02-balticmap must not be blocked
+# by 03-hostages being mid-edit in another session.
+for p in $PROTOS; do
+	[ -f "$p/tsconfig.json" ] || continue
+	if [ ! -x "$p/node_modules/.bin/tsc" ]; then
+		skip_or_fail "$p/node_modules has no typescript - SKIPPING typecheck. Run 'npm install' in $p."
+		continue
+	fi
+	say "pre-commit: tsc --noEmit ($p)"
+	# tsc directly, never `npm run build`/`npm test`: 01-escapecastle's scripts
+	# run compile:ink, which rewrites src/ink/scene1.json in the working tree.
+	(cd "$p" && ./node_modules/.bin/tsc --noEmit -p tsconfig.json)
+	[ $? -ne 0 ] && note_failure "tsc --noEmit failed in $p"
+done
+
+# --- Verdict ----------------------------------------------------------------
+if [ -n "$FAILURES" ]; then
+	printf '\npre-commit FAILED:\n%s' "$FAILURES"
+	cat <<-'EOF'
+
+		  autofix lint      npm run lint:fix
+		  commit anyway     git commit --no-verify
+
+		  Note: checks ran against the working tree, not the staged snapshot -
+		  this hook never stashes, because other sessions may be mid-edit.
+	EOF
+	exit 1
+fi
+
+exit 0

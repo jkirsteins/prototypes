@@ -398,7 +398,7 @@ export function playerSurrender(state: GameState, secretId: string): void {
 }
 
 function options(
-  state: GameState,
+  _state: GameState,
   ids: string[],
   check: (card: CardDef) => Legality,
 ): Array<{ cardId: string; legality: Legality }> {

@@ -689,6 +689,7 @@ describe("opening ink scene", () => {
 
 describe("item labels", () => {
   it("has exactly one label per item defined in the ink LIST", () => {
+    // biome-ignore lint/suspicious/noExplicitAny: scene1Content is untyped generated ink JSON; listDefs isn't in its declared type.
     const listItemIds = Object.keys((scene1Content as any).listDefs.items);
 
     expect(Object.keys(ITEM_LABELS).sort()).toEqual(listItemIds.sort());

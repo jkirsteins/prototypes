@@ -129,7 +129,7 @@ front.on("upgrade", (req, socket, head) => {
           .join("") +
         "\r\n",
     );
-    if (head && head.length) upstream.write(head);
+    if (head?.length) upstream.write(head);
     upstream.pipe(socket);
     socket.pipe(upstream);
   });

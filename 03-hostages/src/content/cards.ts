@@ -24,7 +24,7 @@ export function cardById(id: string): CardDef {
  * card name that does not end in `."`.
  */
 export function cardNameInProse(name: string): string {
-  return name.endsWith('."') ? name.slice(0, -2) + '"' : name;
+  return name.endsWith('."') ? `${name.slice(0, -2)}"` : name;
 }
 
 export { PLAYER_CARDS, PLAYER_DECK, SECRETS, VICTORY_CARD_ID } from "./cards-player";

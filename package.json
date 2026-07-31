@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/dev.mjs"
+    "dev": "node scripts/dev.mjs",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.6"
   }
 }

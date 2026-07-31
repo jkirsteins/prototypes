@@ -545,7 +545,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
   // Both waste counters are "tokens posted, never cashed", so both floor at 0.
   // A negative value would mean a token was spent twice, which is a bug worth
   // failing loudly for rather than reporting as a tidy zero.
-  const untestedGuards = (playsByCard["bodyguard"] ?? 0) - preventedAssassinations;
+  const untestedGuards = (playsByCard.bodyguard ?? 0) - preventedAssassinations;
   const unusedBoosts = (playsByCard["extended-diplomacy"] ?? 0) - boostedAlliances;
   if (untestedGuards < 0 || unusedBoosts < 0) {
     throw new Error(
@@ -573,7 +573,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     revoltsPlayed: plays.filter((e) => e.cardId === "revolt").length,
     poachAttempts,
     poachesFailed: state.log.filter((e) => e.type === "subjugate-failed").length,
-    incorporateAttempts: playsByCard["incorporate"] ?? 0,
+    incorporateAttempts: playsByCard.incorporate ?? 0,
     incorporationsFailed:
       state.log.filter((e) => e.type === "incorporate-failed").length,
     vassalTenures,
@@ -714,7 +714,7 @@ export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
   const targeted = sum((g) => g.targetedPlays);
   const firstLegal = sum((g) => g.firstLegalTargetPlays);
   const founded = sum((g) => g.settlementsFounded);
-  const alliancePlays = sum((g) => g.playsByCard["alliance"] ?? 0);
+  const alliancePlays = sum((g) => g.playsByCard.alliance ?? 0);
   const playShareByCard: Record<string, number> = {};
   for (const g of games) {
     for (const [id, n] of Object.entries(g.playsByCard)) {

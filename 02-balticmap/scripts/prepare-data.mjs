@@ -1487,7 +1487,7 @@ function riverFeatureNames(f) {
   const primary = typeof p.name === "string" && p.name.length > 0 ? p.name : p.name_en;
   return typeof primary === "string"
     ? primary
-        .split(/[\/,()]/)
+        .split(/[/,()]/)
         .map((n) => n.trim().toLowerCase())
         .filter((n) => n.length > 0)
     : [];

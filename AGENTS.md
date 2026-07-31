@@ -103,6 +103,29 @@ were never played, targeting bias, waste and the stalemate number. It takes
 about a minute. Run it when a batch of card work settles or when something feels
 wrong - not on every change. `npm run test:all` is both suites.
 
+## Linting and the pre-commit gate
+
+A single root `biome.json` lints every prototype (`npm run lint` /
+`npm run lint:fix` from the repo root). It is deliberately lint-only, formatter
+off: the code across all three prototypes is hand-formatted with intent -
+packed multi-import lines, aligned JSDoc - and Biome's formatter would rewrite
+all of that for no benefit. `style/noNonNullAssertion`,
+`style/noDescendingSpecificity` and `complexity/noImportantStyles` are turned
+off because this codebase uses them deliberately; everything else in Biome's
+recommended set is on.
+
+`.githooks/pre-commit` runs `biome lint` on staged files plus `tsc --noEmit`
+for every prototype that has staged changes, scoped so a commit to one
+prototype is never blocked by another prototype mid-edit in a sibling session.
+It is not installed automatically per clone - run `npm install` at the repo
+root once (its `prepare` script points `core.hooksPath` at `.githooks`), or
+`npm run hooks:install` directly. Bypass with `git commit --no-verify`.
+
+The hook checks the **working tree, not the staged snapshot** - it never runs
+`git stash`, because several sessions can be mid-edit on the same branch at
+once and a stash/restore cycle could swallow someone else's in-progress work.
+See the comment at the top of `.githooks/pre-commit` for the full reasoning.
+
 ## Housekeeping
 
 - Several sessions may work in this repo at once, sometimes on the same branch

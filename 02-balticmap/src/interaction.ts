@@ -154,7 +154,7 @@ export function attachInteraction(
     (e) => {
       e.preventDefault();
       const rect = svg.getBoundingClientRect();
-      const factor = Math.pow(WHEEL_ZOOM_BASE, -e.deltaY);
+      const factor = WHEEL_ZOOM_BASE ** -e.deltaY;
       view = zoomAt(
         view, base,
         e.clientX - rect.left, e.clientY - rect.top,
