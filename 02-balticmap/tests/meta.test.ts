@@ -13,7 +13,7 @@ describe("storage round-trip", () => {
   it("starts you knowing turnips plus the four starting cards", () => {
     expect(loadMeta(memoryStorage())).toEqual({
       knownCards: ["grow-crops", "raid", "subjugate", "fortify", "seeds-of-revolt"],
-      xp: 0, turnipsGrown: 0, packsOpened: 0,
+      xp: 0, turnipsGrown: 0, packsOpened: 0, lastPicks: [],
     });
   });
 
@@ -72,6 +72,41 @@ describe("storage round-trip", () => {
     expect(loadMeta(s).knownCards).toEqual([
       "grow-crops", "raid", "subjugate", "fortify", "seeds-of-revolt", "alliance",
     ]);
+  });
+
+  it("round-trips the last confirmed loadout", () => {
+    const s = memoryStorage();
+    saveMeta(s, rec({ lastPicks: ["raid", "fortify"] }));
+    expect(loadMeta(s).lastPicks).toEqual(["raid", "fortify"]);
+  });
+
+  it("keeps a record written before loadouts were saved", () => {
+    const s = memoryStorage();
+    const old: Record<string, unknown> = rec({ xp: 90, packsOpened: 2 });
+    delete old.lastPicks;
+    s.setItem(META_STORAGE_KEY, JSON.stringify(old));
+    // The whole point of reading lastPicks outside the validation gate: an
+    // existing player's collection must survive the upgrade.
+    expect(loadMeta(s)).toEqual(rec({ xp: 90, packsOpened: 2, lastPicks: [] }));
+  });
+
+  it("sanitizes a nonsense loadout instead of resetting the record", () => {
+    const s = memoryStorage();
+    const junk: unknown[] = [
+      "raid", // not an array at all
+      ["gone-card", "pay-military-tribute"], // unknown and injection-only ids
+      ["raid", "raid", "fortify"], // duplicates
+      Array.from({ length: DECK_SIZE + 5 }, () => "raid"), // over the cap
+    ];
+    for (const lastPicks of junk) {
+      s.setItem(META_STORAGE_KEY, JSON.stringify({ ...rec({ xp: 40 }), lastPicks }));
+      const loaded = loadMeta(s);
+      expect(loaded.xp).toBe(40);
+      expect(loaded.lastPicks.length).toBeLessThanOrEqual(DECK_SIZE);
+      expect(loaded.lastPicks).toEqual([...new Set(loaded.lastPicks)]);
+      expect(loaded.lastPicks).not.toContain("gone-card");
+      expect(loaded.lastPicks).not.toContain("pay-military-tribute");
+    }
   });
 
   it("resetMeta wipes storage and returns the initial record", () => {

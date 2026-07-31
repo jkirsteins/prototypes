@@ -738,6 +738,7 @@ function deckScreenView(visible: boolean) {
     collected: collectedCount(meta),
     pendingPacks: pendingPacks(meta),
     reveal: packReveal,
+    savedPicks: meta.lastPicks,
   };
 }
 
@@ -759,6 +760,12 @@ const deckScreen = createDeckScreen(app, {
     // A pack still waiting is the screen's own business - it hides the deck
     // builder - but guard anyway so a stray call cannot skip the reveal.
     if (pendingPacks(meta) > 0 || packReveal !== null) return;
+    // Remember the loadout on confirm rather than on every toggle: what is
+    // worth restoring is the deck actually played, and it is one write a run.
+    // This hands the screen a fresh array, so it re-seeds from it next time it
+    // is shown - with the very picks it just reported, which is a no-op.
+    meta = { ...meta, lastPicks: [...selectedIds] };
+    saveMeta(storage, meta);
     game = chooseDeck(game, buildPlayerDeck(meta.knownCards, selectedIds));
     deckScreen.update(deckScreenView(false));
     refresh();

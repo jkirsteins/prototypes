@@ -10,6 +10,10 @@ export interface MetaRecord {
   xp: number;
   turnipsGrown: number;
   packsOpened: number;
+  /** The loadout confirmed at the last "Choose your lands": the cards the
+   *  player picked, not the deck built from them - no Grow turnips filler. It
+   *  seeds the deck screen so replaying the same deck is one click. */
+  lastPicks: string[];
 }
 
 export const META_STORAGE_KEY = "balticmap-meta-v1";
@@ -40,6 +44,7 @@ export function initialMeta(): MetaRecord {
     xp: 0,
     turnipsGrown: 0,
     packsOpened: 0,
+    lastPicks: [],
   };
 }
 
@@ -68,7 +73,7 @@ export function loadMeta(storage: MetaStorage): MetaRecord {
     const parsed: unknown = JSON.parse(raw);
     const rec = parsed as {
       knownCards?: unknown; xp?: unknown;
-      turnipsGrown?: unknown; packsOpened?: unknown;
+      turnipsGrown?: unknown; packsOpened?: unknown; lastPicks?: unknown;
     };
     if (
       !Array.isArray(rec.knownCards) || !isCount(rec.xp) ||
@@ -85,6 +90,15 @@ export function loadMeta(storage: MetaStorage): MetaRecord {
       xp: rec.xp,
       turnipsGrown: rec.turnipsGrown,
       packsOpened: rec.packsOpened,
+      // Deliberately outside the validation gate above: every record written
+      // before this field existed lacks it, and the gate resets the whole
+      // record. A missing or nonsense loadout means "nothing preselected",
+      // never a wiped collection. Not filtered against knownCards - the deck
+      // screen prunes to what is known on every render, and buildPlayerDeck
+      // filters again before the deck is dealt.
+      lastPicks: Array.isArray(rec.lastPicks)
+        ? dedupe(rec.lastPicks.filter(isTrackable)).slice(0, DECK_SIZE)
+        : [],
     };
   } catch {
     return initialMeta();

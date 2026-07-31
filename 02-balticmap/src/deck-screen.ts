@@ -13,6 +13,7 @@ export interface DeckScreenView {
   collected: number; // owned acquirable cards
   pendingPacks: number; // packs waiting to be opened
   reveal: PackReveal[] | null; // non-null once the owner has drawn a pack
+  savedPicks: string[]; // the last confirmed loadout, to select on arrival
 }
 
 export interface DeckScreenCallbacks {
@@ -83,7 +84,8 @@ export function createDeckScreen(
   container.appendChild(root);
 
   /** Toggle state survives update() calls; pruned to known cards each render.
-   *  Nothing is ever selected for the player: the loadout is their call. */
+   *  The only thing ever selected for the player is the loadout they last
+   *  confirmed themselves - the game still picks nothing on their behalf. */
   let selected = new Set<string>();
 
   start.addEventListener("click", () => cb.onStart([...selected]));
@@ -92,6 +94,13 @@ export function createDeckScreen(
    *  unrelated reason does not replay the burst. Compared by identity: the
    *  owner hands over a fresh array per pack. */
   let animatedReveal: unknown = null;
+
+  /** The saved loadout already adopted into `selected`. Compared by identity,
+   *  like the reveal above: the owner hands over a fresh array exactly when the
+   *  selection should change under the player - on load, and on Reset progress -
+   *  and the same array otherwise, so an update() for an unrelated reason
+   *  (opening a pack, dismissing a reveal) never undoes a pick made since. */
+  let seededPicks: unknown = null;
 
   function renderCounter(pickCount: number): void {
     counter.textContent =
@@ -102,6 +111,11 @@ export function createDeckScreen(
     update(view) {
       root.classList.toggle("hidden", !view.visible);
       if (!view.visible) return;
+
+      if (view.savedPicks !== seededPicks) {
+        seededPicks = view.savedPicks;
+        selected = new Set(view.savedPicks);
+      }
 
       const known = nonBasics(view.knownCards);
       selected = new Set(known.filter((id) => selected.has(id)));

@@ -17,7 +17,7 @@ const START = ["grow-crops", "raid", "subjugate", "fortify"];
 
 const view = (over: Record<string, unknown> = {}) => ({
   visible: true, knownCards: START, collected: 0, pendingPacks: 0,
-  reveal: null, ...over,
+  reveal: null, savedPicks: [], ...over,
 }) as Parameters<ReturnType<typeof createDeckScreen>["update"]>[0];
 
 describe("createDeckScreen", () => {
@@ -109,6 +109,46 @@ describe("createDeckScreen", () => {
     expect(q(container, ".ds-pack-overlay").classList.contains("hidden")).toBe(false);
     screen.update(view({ pendingPacks: 0, reveal: null }));
     expect(q(container, ".ds-pack-overlay").classList.contains("hidden")).toBe(true);
+  });
+
+  it("arrives with the last confirmed loadout already picked", () => {
+    const { container, cb, screen } = setup();
+    screen.update(view({ savedPicks: ["raid", "fortify"] }));
+    const picked = [...container.querySelectorAll(".ds-deck .ds-card.selected")]
+      .map((c) => c.querySelector(".ds-card-name")?.textContent);
+    expect(picked).toEqual(["Raid", "Fortify"]);
+    expect(q(container, ".ds-counter").textContent).toBe(
+      "2 picked + 8 Grow turnips = 10",
+    );
+    // Replaying that deck is one click: no reselection needed.
+    q(container, ".ds-start").click();
+    expect(cb.onStart).toHaveBeenCalledWith(["raid", "fortify"]);
+  });
+
+  it("drops a saved pick for a card that is no longer known", () => {
+    const { container, cb, screen } = setup();
+    screen.update(view({ knownCards: ["grow-crops", "raid"], savedPicks: ["raid", "alliance"] }));
+    expect(container.querySelectorAll(".ds-deck .ds-card.selected")).toHaveLength(1);
+    q(container, ".ds-start").click();
+    expect(cb.onStart).toHaveBeenCalledWith(["raid"]);
+  });
+
+  it("keeps a pick the player just changed, and yields to a new saved loadout", () => {
+    const { container, cb, screen } = setup();
+    const saved = ["raid", "fortify"];
+    screen.update(view({ savedPicks: saved }));
+    // Deselect Raid, then re-render for an unrelated reason: the same saved
+    // array must not undo the change.
+    const raid = [...container.querySelectorAll<HTMLElement>(".ds-deck .ds-card")]
+      .find((c) => c.querySelector(".ds-card-name")?.textContent === "Raid")!;
+    raid.click();
+    screen.update(view({ savedPicks: saved, collected: 1 }));
+    q(container, ".ds-start").click();
+    expect(cb.onStart).toHaveBeenLastCalledWith(["fortify"]);
+    // A fresh array is the owner saying the loadout itself changed - a new
+    // confirmed deck, or Reset progress handing back an empty one.
+    screen.update(view({ savedPicks: [] }));
+    expect(container.querySelectorAll(".ds-deck .ds-card.selected")).toHaveLength(0);
   });
 
   it("caps picks at the deck size", () => {
