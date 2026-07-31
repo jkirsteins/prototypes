@@ -88,6 +88,66 @@ export function subjugationChance(view: RulesView, target: string): number {
   return view.overlords.has(target) ? POACH_CHANCE : 1;
 }
 
+/** Why a play can come back with nothing. Two shapes, because a player can be
+ *  told two different things about it. A roll has a number and the number is
+ *  the decision. A guard has none: it is a card the target may or may not be
+ *  holding, and saying which would hand over what they bought.
+ *
+ *  `held` rides along on the loyalty roll because the odds alone do not say
+ *  what to do about them - a player told "60%" and not "held 3 of the 5 turns
+ *  needed" cannot see that waiting fixes it. */
+export type FailureRisk =
+  | { kind: "roll"; chance: number; because: "poach" | "loyalty"; held: number }
+  | { kind: "hidden"; because: "bodyguard" };
+
+/** How this play could come back with nothing, or null when it cannot.
+ *
+ *  The single place that question is answered. Every surface that warns about a
+ *  fallible card reads it from here, so a card cannot become fallible - or stop
+ *  being so - in the rules without every tooltip following. Before this, the
+ *  odds existed only as prose inside the tooltip that printed them, which is
+ *  why Assassinate ruler's guard was never mentioned anywhere at all.
+ *
+ *  A miss is not the only way a play can disappoint, and the ones left out are
+ *  left out deliberately: Grow turnips does nothing by design and says so in
+ *  its own text, and an Alliance re-sealed on a faction you could have taken is
+ *  a bad choice rather than a failure. This answers "can the rules refuse
+ *  this after I commit to it", nothing wider. */
+export function failureRiskOf(
+  view: RulesView,
+  actorFactionId: string,
+  cardId: string,
+  targetFactionId: string,
+): FailureRisk | null {
+  if (cardId === "subjugate") {
+    const chance = subjugationChance(view, targetFactionId);
+    return chance >= 1
+      ? null
+      : { kind: "roll", chance, because: "poach", held: 0 };
+  }
+  if (cardId === "incorporate") {
+    // Returned at 100% too, unlike the poach above. A certain poach is not a
+    // risk and saying so would be noise on every free target; a certain
+    // annexation is the end of a clock the player has been watching, and "held
+    // 5 of the 5 turns needed" is the payoff for waiting.
+    return {
+      kind: "roll",
+      chance: incorporationChance(view, actorFactionId, targetFactionId),
+      because: "loyalty",
+      held: loyaltyOf(view, targetFactionId, actorFactionId),
+    };
+  }
+  if (cardId === "assassinate-ruler") {
+    // Unconditional, and it must stay that way: `view.bodyguards` is right
+    // there, and reading it would turn this warning into a detector telling
+    // the player exactly which rivals had spent a card defending themselves.
+    // The guard is theirs to know. What the player is owed is that the card
+    // can be turned aside at all, which is true of every target equally.
+    return { kind: "hidden", because: "bodyguard" };
+  }
+  return null;
+}
+
 /** The incumbent overlord's hold on a vassal: the larger of their two leads
  *  over it, 0 when it is nobody's vassal. */
 export function overlordGrip(view: RulesView, targetFactionId: string): number {

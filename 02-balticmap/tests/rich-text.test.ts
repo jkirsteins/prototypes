@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import {
-  t, card, faction, theFaction, factionIds, joinSegments, plainText, renderSegments, cardName,
+  t, card, faction, theFaction, factionIds, joinSegments, plainText, possessive,
+  renderSegments, cardName, verb,
   type NameLookup, type RichTextHooks,
 } from "../src/rich-text";
 
@@ -129,5 +130,43 @@ describe("renderSegments", () => {
       move(factionSpan as HTMLElement);
       factionSpan.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
     }).not.toThrow();
+  });
+});
+
+describe("verb", () => {
+  /** The person axis. `plural` in plural.ts owns the number axis; these are the
+   *  two halves of English agreement and neither substitutes for the other. */
+  it("agrees the present tense with its subject", () => {
+    expect(verb("second", "fail")).toEqual({ kind: "text", text: "fail" });
+    expect(verb("third", "fail")).toEqual({ kind: "text", text: "fails" });
+    expect(verb("second", "pay")).toEqual({ kind: "text", text: "pay" });
+    expect(verb("third", "pay")).toEqual({ kind: "text", text: "pays" });
+  });
+
+  it("treats a people as singular, as the allegiance lines always have", () => {
+    // "Vironians submits to", not "submit to" - a faction is one actor.
+    expect(verb("third", "submit")).toEqual({ kind: "text", text: "submits" });
+  });
+
+  it("gives one past form to both, since the past never disagrees", () => {
+    for (const person of ["second", "third"] as const) {
+      expect(verb(person, "draw", "past")).toEqual({ kind: "text", text: "drew" });
+      expect(verb(person, "play", "past")).toEqual({ kind: "text", text: "played" });
+    }
+  });
+
+  /** The reason this is a table and not a `+s`/`+ed` rule: a helper that
+   *  guessed would have produced "drawed", "breaked", "standed" and "payed". */
+  it("carries the irregular forms a rule would have got wrong", () => {
+    expect(verb("second", "draw", "past")).toEqual({ kind: "text", text: "drew" });
+    expect(verb("second", "break", "past")).toEqual({ kind: "text", text: "broke" });
+    expect(verb("second", "stand", "past")).toEqual({ kind: "text", text: "stood" });
+    expect(verb("second", "pay", "past")).toEqual({ kind: "text", text: "paid" });
+    expect(verb("third", "unify")).toEqual({ kind: "text", text: "unifies" });
+  });
+
+  it("agrees the possessive too", () => {
+    expect(possessive("second")).toEqual({ kind: "text", text: "your" });
+    expect(possessive("third")).toEqual({ kind: "text", text: "their" });
   });
 });

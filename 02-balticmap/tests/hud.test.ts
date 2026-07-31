@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import { createHud, type HudCallbacks } from "../src/hud";
+import { createHud, type Hud, type HudCallbacks } from "../src/hud";
 import {
   newGame, startGame, chooseDeck, pickFaction, advance, playCard, beginTurn,
   type GameState, type GameEvent,
@@ -816,6 +816,102 @@ describe("afterPlayAnimation", () => {
     expect(fn).toHaveBeenCalledOnce();
     vi.useRealTimers();
   });
+
+  /** A play whose card flew and whose roll then missed. Appended to the batch
+   *  rather than rolled for real: the point under test is the ORDER of the
+   *  modal against the flight, and driving the rules to a genuine miss would
+   *  make the test about deck construction instead. */
+  function withOwnFizzle(g: GameState): GameState {
+    return {
+      ...g,
+      log: [...g.log, {
+        turn: g.turn, playerId: 1, type: "subjugate-failed",
+        targetFactionId: "gamma", overlordFactionId: "beta",
+        formerOverlordFactionId: "alpha",
+      }],
+    };
+  }
+
+  function playedWithFizzle() {
+    let g = pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+    return (hud: Hud) => {
+      hud.update(g);
+      vi.runAllTimers(); // clear the opening draw's flight
+      g = withHand(g, 0, ["grow-crops"]);
+      g = withOwnFizzle(playCard(g, 0, seededRng(1)));
+      hud.update(g);
+      return g;
+    };
+  }
+
+  it("holds a fizzle modal until the played card has landed", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    playedWithFizzle()(hud);
+
+    // The overlay sits above the flying card, so showing it now would cover the
+    // very card the player is being told about.
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    vi.advanceTimersByTime(20 + 350 + 700 + 350);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("Your subjugation failed");
+    vi.useRealTimers();
+  });
+
+  it("keeps the AI waiting behind a fizzle modal until Continue", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    playedWithFizzle()(hud);
+
+    const fn = vi.fn();
+    hud.afterPlayAnimation(fn);
+    vi.runAllTimers();
+    // The flight has landed and every timer has run, and the AI still has not
+    // moved: a modal about your turn must not have their turns resolving
+    // behind it.
+    expect(fn).not.toHaveBeenCalled();
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+
+    (q(container, ".notice-continue") as HTMLButtonElement).click();
+    expect(fn).toHaveBeenCalledOnce();
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("does not hold the turn when the play raised nothing", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    let g = pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+    hud.update(g);
+    vi.runAllTimers();
+    g = withHand(g, 0, ["grow-crops"]);
+    hud.update(playCard(g, 0, seededRng(1)));
+
+    const fn = vi.fn();
+    hud.afterPlayAnimation(fn);
+    vi.runAllTimers();
+    expect(fn).toHaveBeenCalledOnce();
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    vi.useRealTimers();
+  });
+
+  /** The pending summary must not outlive its run, and clearing it must not
+   *  swallow the continuation it was holding - `hideSummary` runs before
+   *  `cancelLiveFlights` for exactly this reason. */
+  it("a new game drops a pending fizzle and still releases the turn", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    playedWithFizzle()(hud);
+
+    const fn = vi.fn();
+    hud.afterPlayAnimation(fn);
+    hud.update(newGame(FACTIONS));
+    expect(fn).toHaveBeenCalledOnce();
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    vi.runAllTimers();
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    vi.useRealTimers();
+  });
 });
 
 describe("subjugation HUD", () => {
@@ -905,6 +1001,7 @@ describe("subjugation HUD", () => {
       targetExplanations: () => [{
         factionId: "gamma",
         available: false,
+        risk: [],
         lines: [
           "Gamma",
           "Blocked by Alliance until turn 12.",
@@ -929,6 +1026,7 @@ describe("subjugation HUD", () => {
       targetExplanations: () => [{
         factionId: "gamma",
         available: true,
+        risk: [],
         lines: ["Gamma", "Available."],
       }],
     });

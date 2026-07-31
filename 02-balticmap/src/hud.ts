@@ -20,8 +20,9 @@ import { memoryStorage, type MetaStorage } from "./meta";
 import { levelWindow, runXp } from "./xp";
 import { standingChangeText, standingsFor } from "./view";
 import {
-  card, cardName, faction, factionIds, renderSegments, t, theFaction,
-  type RichTextHooks, type Segment,
+  card, cardName, faction, factionIds, optionalPhrase, possessive, renderSegments,
+  t, theFaction, verb,
+  type RichTextHooks, type Segment, type Speaker, type Verb,
 } from "./rich-text";
 
 export interface HudCallbacks {
@@ -32,6 +33,10 @@ export interface HudCallbacks {
   /** Optional gate for cards that need a valid target; default: playable. */
   canPlayCard?(cardId: string): boolean;
   targetExplanations?(cardId: string): TargetExplanation[];
+  /** How this card can come back with nothing, or null when the rules can
+   *  never refuse it. Target-independent: what a *particular* aim risks rides
+   *  on `TargetExplanation.risk` instead. */
+  cardRisk?(cardId: string): string | null;
   /** Lines describing modifiers currently affecting this card, shown at the
    *  top of its hover tip. */
   cardModifiers?(cardId: string): string[];
@@ -161,13 +166,35 @@ function pileLayers(count: number): number {
  *  safe to resolve from state; the ruler's name is not, so it comes off the
  *  event, where it was stamped when the event happened. Ruler names stay
  *  plain text - there is no hover target for a person. */
-function actorSegments(e: GameEvent, state: GameState): Segment[] {
-  if (e.playerId === 1) return [t("You")];
+function actorOf(e: GameEvent, state: GameState): Speaker {
+  if (e.playerId === 1) return { segments: [t("You")], person: "second" };
   const factionId = state.players.find((pl) => pl.id === e.playerId)?.factionId;
-  if (factionId === undefined) return [t("")];
-  if (e.actorRuler === undefined || e.actorRuler === "") return [faction(factionId)];
-  return [t(`${e.actorRuler} of `), theFaction(factionId)];
+  const segments =
+    factionId === undefined
+      ? [t("")]
+      : e.actorRuler === undefined || e.actorRuler === ""
+        ? [faction(factionId)]
+        : [t(`${e.actorRuler} of `), theFaction(factionId)];
+  return { segments, person: "third" };
 }
+
+/** A faction named as the subject of its own line, rather than as the player
+ *  who acted. Always third person - these lines never say "You", they say the
+ *  people's name even when those people are the player's, which is the
+ *  allegiance-line convention `Person` documents. */
+const named = (factionId: string | undefined): Speaker =>
+  ({ segments: [faction(factionId ?? "")], person: "third" });
+
+/** Subject, agreeing verb, then the rest of the sentence. Every line in
+ *  `eventSegments` is built through this, including the ones whose subject can
+ *  never be "You": one path means the next line added cannot pick a form by
+ *  hand, which is how "You fails to prise" got in. */
+const clause = (
+  subject: Speaker,
+  lemma: Verb,
+  rest: Segment[],
+  tense: "present" | "past" = "present",
+): Segment[] => [...subject.segments, t(" "), verb(subject.person, lemma, tense), ...rest];
 
 /** Assassinate ruler is the only card that changes who rules, so it is the
  *  only line that names rulers on the target side. */
@@ -185,13 +212,14 @@ function rulerSuffix(e: GameEvent): string | null {
  *  through it directly. */
 export function eventSegments(e: GameEvent, state: GameState): Segment[] {
   const you = e.playerId === 1;
-  const actor = actorSegments(e, state);
+  const actor = actorOf(e, state);
   const humanFactionId = state.players.find((pl) => pl.id === 1)?.factionId;
   switch (e.type) {
     case "draw":
-      return you
-        ? [t("You drew "), card(e.cardId ?? "")]
-        : [...actor, t(" drew a card")];
+      // Content differs, not agreement: you see WHICH card you drew and they
+      // do not. That is a different sentence, so it branches - the verb is the
+      // same either way and comes from the same place.
+      return clause(actor, "draw", you ? [t(" "), card(e.cardId ?? "")] : [t(" a card")], "past");
     case "play": {
       // rulerSuffix takes precedence over the readings marker: safe only
       // because assassinate-ruler (the only card rulerSuffix fires for) is not
@@ -207,75 +235,83 @@ export function eventSegments(e: GameEvent, state: GameState): Segment[] {
       // else, but the human already knows which faction they are.
       const targetedYou = !you && e.targetFactionId !== undefined
         && e.targetFactionId === humanFactionId;
-      return [
-        ...actor, t(" played "), card(e.cardId ?? ""),
+      return clause(actor, "play", [
+        t(" "), card(e.cardId ?? ""),
         ...(targetedYou
           ? [t(" on you")]
           : e.targetFactionId !== undefined
             ? [t(" on "), faction(e.targetFactionId)]
             : []),
         t(suffix),
-      ];
+      ], "past");
     }
     case "reshuffle":
-      return you
-        ? [t("You reshuffled your discard")]
-        : [...actor, t(" reshuffled their discard")];
+      return clause(actor, "reshuffle", [
+        t(" "), possessive(actor.person), t(" discard"),
+      ], "past");
     case "subjugated":
-      return [
-        faction(e.targetFactionId ?? ""), t(" submits to "),
-        faction(e.overlordFactionId ?? ""),
-      ];
+      return clause(named(e.targetFactionId), "submit", [
+        t(" to "), faction(e.overlordFactionId ?? ""),
+      ]);
     case "released":
-      return [faction(e.targetFactionId ?? ""), t(" breaks free")];
+      return clause(named(e.targetFactionId), "break", [t(" free")]);
     case "incorporated":
       return [
         faction(e.targetFactionId ?? ""), t(" is incorporated into "),
         faction(e.overlordFactionId ?? ""),
       ];
     case "discard":
-      return you ? [t("You discarded a card")] : [...actor, t(" discarded a card")];
+      return clause(actor, "discard", [t(" a card")], "past");
     case "reclaimed":
-      return [
-        faction(e.targetFactionId ?? ""), t(" reclaims independence from "),
-        faction(e.overlordFactionId ?? ""),
-      ];
+      return clause(named(e.targetFactionId), "reclaim", [
+        t(" independence from "), faction(e.overlordFactionId ?? ""),
+      ]);
     case "tribute":
-      return [
-        faction(e.targetFactionId ?? ""), t(" pays tribute to "),
-        faction(e.overlordFactionId ?? ""),
-      ];
+      return clause(named(e.targetFactionId), "pay", [
+        t(" tribute to "), faction(e.overlordFactionId ?? ""),
+      ]);
     case "settled":
-      // Singular verb to match the other allegiance lines ("Vironians
-      // submits to", "pays tribute to"), which name a people the same way.
-      return [faction(e.targetFactionId ?? ""), t(" founds a new settlement")];
+      return clause(named(e.targetFactionId), "found", [t(" a new settlement")]);
     case "seeded":
-      return [
-        faction(e.targetFactionId ?? ""), t(" sows the seeds of revolt against "),
-        faction(e.overlordFactionId ?? ""),
-      ];
+      return clause(named(e.targetFactionId), "sow", [
+        t(" the seeds of revolt against "), faction(e.overlordFactionId ?? ""),
+      ]);
     case "subjugate-failed":
-      return [
-        ...actor, t(" fails to prise "), faction(e.targetFactionId ?? ""),
-        t(" from "), faction(e.formerOverlordFactionId ?? ""),
-      ];
+      // `formerOverlordFactionId` is set only when the target had a lord, so
+      // the "from X" phrase is optional - see `optionalPhrase` for what went
+      // wrong when three call sites each decided that for themselves.
+      return clause(actor, "fail", [
+        t(" to prise "), faction(e.targetFactionId ?? ""),
+        ...optionalPhrase(" from ", e.formerOverlordFactionId),
+      ]);
     case "incorporate-failed":
+      return clause(named(e.targetFactionId), "resist", [
+        t(" incorporation into "), faction(e.overlordFactionId ?? ""),
+      ]);
+    case "garrisoned": {
+      // The one line whose subject is not the actor: the garrisons are, and
+      // they are plural, so the verb is invariant and `clause` has nothing to
+      // agree. That is the NUMBER axis (plural.ts), not the person axis this
+      // helper owns, and forcing it through `verb` would claim an agreement
+      // that is not the one in play.
+      //
+      // "Your" here is a genitive on the actor rather than a determiner, so it
+      // is not `possessive` either: "Your garrisons" against "Nadruvians's
+      // garrisons".
+      const whose: Segment[] = you ? [t("Your")] : [...actor.segments, t("'s")];
       return [
-        faction(e.targetFactionId ?? ""), t(" resists incorporation into "),
-        faction(e.overlordFactionId ?? ""),
+        ...whose,
+        t(` garrisons stand watch (+${e.amount} Might against all)`),
       ];
-    case "garrisoned":
-      return you
-        ? [t(`Your garrisons stand watch (+${e.amount} Might against all)`)]
-        : [...actor, t(`'s garrisons stand watch (+${e.amount} Might against all)`)];
+    }
     case "surrendered":
-      return [t("You conceded the Baltic")];
+      return clause(actor, "concede", [t(" the Baltic")], "past");
     case "victory":
-      return [t("You rule the Baltic")];
+      return clause(actor, "rule", [t(" the Baltic")]);
     case "defeat":
       return [t("Your realm has been incorporated by "), faction(e.overlordFactionId ?? "")];
     case "unified":
-      return [faction(e.overlordFactionId ?? ""), t(" unifies the Balts")];
+      return clause(named(e.overlordFactionId), "unify", [t(" the Balts")]);
     case "stranded":
       return [
         t("Your people have no way out of vassalage to "),
@@ -630,10 +666,18 @@ export function createHud(
     // its map halo stuck on screen.
     cb.onHideTip?.();
     cb.onHighlightFaction?.(null);
+    // Releases the AI round a fizzle modal was holding. Unconditional is safe:
+    // an AI-round modal has no pending continuation and this no-ops, as does a
+    // second dismiss.
+    settleTurn();
   }
 
   function hideSummary(): void {
     noticeOverlay.classList.add("hidden");
+    // Torn down rather than shown later. Both callers are ends - the run
+    // finishing, and a new game shrinking the log - and a summary about the
+    // previous run has nothing to say about either.
+    pendingSummary = null;
   }
 
   /** Shared with the "Targeting me" log filter (isNoticeWorthy) so the two
@@ -673,7 +717,17 @@ export function createHud(
     const summary = buildRoundSummary(fresh, ctx, {
       criticalOnly: !logPrefs.showPopups,
     });
-    if (summary !== null) showRoundSummary(summary);
+    if (summary === null) return;
+    // A live flight means one thing only: the human's own played card is on
+    // screen. `animateEvents` skips every event with `playerId !== 1` and the
+    // draw is deliberately untracked, so this is the honest test for "the turn
+    // this summary describes is not over yet" - read off the animation rather
+    // than from a predicate that re-guesses which events animate.
+    if (liveFlights.size > 0) {
+      pendingSummary = summary;
+      return;
+    }
+    showRoundSummary(summary);
   }
 
   // Return dismisses the summary as well as Escape. Handled here rather than
@@ -886,6 +940,17 @@ export function createHud(
     }
   }
 
+  /** One amber "this can come back with nothing" line. The card's own failure
+   *  mode and a candidate's odds are the same claim at two scales, so they are
+   *  the same element: a player who has learnt to read the band once has learnt
+   *  to read it everywhere it appears. */
+  function riskBand(text: string): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "card-tip-risk";
+    el.textContent = text;
+    return el;
+  }
+
   function renderHand(state: GameState): void {
     hand.replaceChildren();
     const human = state.players[0];
@@ -919,6 +984,11 @@ export function createHud(
       description.className = "card-tip-description";
       description.textContent = CARDS[cardId]?.text ?? "";
       tip.appendChild(description);
+      // Under the description, above the targets: the card's own failure mode
+      // is a fact about the card, so it reads with the card's text, and it has
+      // to be there before the player starts comparing candidates.
+      const risk = cb.cardRisk?.(cardId) ?? null;
+      if (risk !== null) tip.appendChild(riskBand(risk));
       const explanations = CARDS[cardId]?.targeted
         ? cb.targetExplanations?.(cardId) ?? []
         : [];
@@ -939,6 +1009,12 @@ export function createHud(
             line.className = "card-tip-candidate-line";
             line.textContent = lineText;
             candidate.appendChild(line);
+          }
+          // The same band as the card-level one, so "this can come back with
+          // nothing" is one shape wherever it appears rather than a warning at
+          // the top and an ordinary sentence down here.
+          for (const lineText of explanation.risk) {
+            candidate.appendChild(riskBand(lineText));
           }
           targets.appendChild(candidate);
         }
@@ -978,9 +1054,29 @@ export function createHud(
   const liveFlights = new Set<Flight>();
   let pendingContinuation: (() => void) | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
+  /** A summary the human's OWN turn raised, held back until their card lands.
+   *  Null whenever nothing is waiting.
+   *
+   *  The wait is on `liveFlights`, never on a duration - the same clock
+   *  `afterPlayAnimation` runs on, per the rule in AGENTS.md. Raising it any
+   *  earlier fails twice over: `.notice-overlay` sits above `.flying-card`, so
+   *  the modal would cover the very card it is talking about; and the AI round
+   *  that follows calls `showRoundSummary` again, which would either overwrite
+   *  this one within the same tick or leave it standing after the opponents had
+   *  already moved. */
+  let pendingSummary: RoundSummary | null = null;
 
   function settleTurn(): void {
     if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+    if (pendingSummary !== null) {
+      const summary = pendingSummary;
+      pendingSummary = null;
+      showRoundSummary(summary);
+      // The continuation stays armed on purpose. The AI must not take its turns
+      // behind a modal about the turn before it - `dismissSummary` calls back
+      // in here once the player has read it, and that is what releases them.
+      return;
+    }
     const fn = pendingContinuation;
     pendingContinuation = null;
     fn?.();
@@ -1283,8 +1379,12 @@ export function createHud(
         renderHand(state);
         renderScoreboard(state);
         const fresh = renderLog(state);
-        showRoundSummaryIfAny(state, fresh);
+        // Animate first, decide second. `showRoundSummaryIfAny` asks whether a
+        // flight is in the air to know whether the turn it is describing has
+        // finished, and the flight this batch starts has to exist by then or
+        // the answer is stale by one update.
         animateEvents(fresh);
+        showRoundSummaryIfAny(state, fresh);
       } else if (ended) {
         renderPostmortem(state);
       }

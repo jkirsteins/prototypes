@@ -1073,8 +1073,15 @@ svg.map.dragging {
   pointer-events: auto;
 }
 
-/* Why this card is greyed out. Reads as a warning rather than a modifier: the
-   modifier band is gold and says something is helping you. */
+/* Three bands, three answers, and the light card tip has to keep them apart by
+   eye: red means you cannot play this at all, muted gold means something is
+   helping you, warm amber means you can play it and it may do nothing.
+
+   Amber and gold are the pair most at risk of reading as one thing, so the
+   amber is pushed distinctly oranger AND its text always opens with "Can fail"
+   or a percentage. Colour is the cue that finds the band; the words are what
+   say which band it is. Nothing here may reuse the .tooltip-line tone classes -
+   those live in the dark map tooltip, see the dark-box rule above. */
 .card-tip-blocked {
   margin-bottom: 6px;
   padding: 4px 6px;
@@ -1095,6 +1102,26 @@ svg.map.dragging {
   color: #5a4620;
   font-weight: 700;
   text-align: left;
+}
+
+.card-tip-risk {
+  margin-top: 6px;
+  padding: 4px 6px;
+  border-left: 3px solid #c07a1a;
+  border-radius: 3px;
+  background: #fbeccd;
+  color: #6b4310;
+  font-weight: 700;
+  text-align: left;
+}
+
+/* Inside a candidate box the band is already indented by its parent, and the
+   candidate's own left rail is 3px away - so it drops the second rail and keeps
+   only the fill, or the two rails read as a nested list. */
+.card-tip-candidate .card-tip-risk {
+  margin-top: 4px;
+  border-left: none;
+  font-weight: 600;
 }
 
 .card-tip-targets {

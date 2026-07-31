@@ -2,7 +2,9 @@ import type { GameEvent, GameEventType } from "./game";
 import type { TrackBars } from "./playability";
 import { TRIBUTE_CARDS } from "./cards";
 import { count, plural } from "./plural";
-import { card, faction, joinSegments, t, theFaction, type Segment } from "./rich-text";
+import {
+  card, faction, joinSegments, optionalPhrase, t, theFaction, type Segment,
+} from "./rich-text";
 import { walkStandings, type StandingChange, type WalkCtx } from "./standings";
 import { barPhrase } from "./view";
 
@@ -67,11 +69,11 @@ export type NoticeRule =
       footnotes?(events: GameEvent[], ctx: NoticeCtx): Segment[][];
       /** Returns the modal heading when this event must interrupt even though
        *  the player has muted popups (`LogPrefs.showPopups`), or null when it
-       *  may be swallowed. Reserve it for things done TO the player that change
-       *  the terms they play under - not for merely important news, or the mute
-       *  stops meaning anything. Two kinds qualify, and BOTH directions of each
-       *  do - a change the player is never told about is no less disorienting
-       *  for having been in their favour:
+       *  may be swallowed. Reserve it for changes the player would otherwise
+       *  play on without knowing - not for merely important news, or the mute
+       *  stops meaning anything. Three kinds qualify, and BOTH directions of
+       *  the first two do: a change the player is never told about is no less
+       *  disorienting for having been in their favour.
        *
        *  - What the player IS. Subjugation walls off their own plays and forces
        *    tribute into their deck; release takes both back. A muted player
@@ -81,6 +83,13 @@ export type NoticeRule =
        *    smaller realm lowers the bar the next rival needs to subjugate them -
        *    the number `realmShrunkFootnote` prints. Losing one silently means
        *    playing on against a bar that has moved.
+       *  - What the player SPENT. The other two are things done TO them; this
+       *    is the one they did themselves, and it is here because a roll that
+       *    missed moves NOTHING on the map. A landed Subjugate and a missed one
+       *    leave the board in states a muted player cannot tell apart, while
+       *    the card and the turn are gone either way. It is the narrowest of
+       *    the three: only when the human is the actor, and only when their
+       *    play bought nothing at all.
        *
        *  It returns the TITLE rather than a boolean so a rule cannot be marked
        *  critical without saying what happened: a modal that pierced a mute
@@ -152,6 +161,28 @@ function humanRoleIn(e: GameEvent, ctx: NoticeCtx): HumanRole | null {
       ? e.formerOverlordFactionId
       : e.overlordFactionId;
   return lostTo === ctx.humanFactionId ? "lord" : null;
+}
+
+/** `HumanRole` plus the one case it deliberately refuses to name: `actor`, the
+ *  human's own play.
+ *
+ *  A wrapper and not a widening of `humanRoleIn`, which is load-bearing.
+ *  `subjugated`, `released` and `reclaimed` use `humanRoleIn(e, ctx) !== null`
+ *  as their ENTIRE `appliesToHuman`, so a `humanRoleIn` that answered for the
+ *  human's own actions would pop a modal on their own Subjugate, their own
+ *  Revolt and the vassals their own conquest scattered - three regressions,
+ *  none of them anywhere near the line that caused them.
+ *
+ *  Only the three fizzle rules ask for `actor`, and the type is what keeps it
+ *  that way: the line builders that must never see one still take `HumanRole`,
+ *  so handing them this stops compiling. */
+export type NoticeRole = HumanRole | "actor";
+
+function noticeRoleOf(e: GameEvent, ctx: NoticeCtx): NoticeRole {
+  // Falls back to "self" exactly as the call sites did when this was written
+  // out inline. It is not a membership test: every `appliesToHuman` must still
+  // check the human is actually named on the event.
+  return e.playerId === 1 ? "actor" : humanRoleIn(e, ctx) ?? "self";
 }
 
 /** Every way a vassal leaves the human shrinks the realm, which lowers the
@@ -244,7 +275,13 @@ function raidOrMarriageFootnotes(events: GameEvent[], ctx: NoticeCtx): Segment[]
   const out: Segment[][] = [];
   for (const e of events) {
     const id = actorId(e, ctx);
-    if (id === undefined || seen.has(id) || !subjugationRisk(ctx, id)) continue;
+    // The human is never their own danger cue. Unreachable today - the `play`
+    // rule branches to a different footnote before it gets here - but this
+    // reads `ctx.subjugationBarAgainstYou(id)` below, which has no meaning for
+    // the human against themselves, so the guard belongs where the assumption
+    // is rather than one level up where it happens to hold.
+    if (id === undefined || id === ctx.humanFactionId) continue;
+    if (seen.has(id) || !subjugationRisk(ctx, id)) continue;
     seen.add(id);
     const bars = ctx.subjugationBarAgainstYou(id);
     if (bars === null) continue;
@@ -259,9 +296,23 @@ function assassinateLines(
   events: GameEvent[],
   changes: StandingChange[][],
   ctx: NoticeCtx,
+  role: NoticeRole,
 ): SummaryLine[] {
   return events.map((e, i) => {
     if (e.prevented) {
+      // Nested inside `prevented` rather than checked first, so the actor arm
+      // is structurally unreachable for a blade that landed - which is the only
+      // other way the human's own Assassinate ruler could get here.
+      if (role === "actor") {
+        return {
+          text: [
+            card("assassinate-ruler"), t(" spent on "),
+            faction(e.targetFactionId ?? ""), t(" - a bodyguard turned the blade"),
+          ],
+          changes: [],
+          tone: "bad" as const,
+        };
+      }
       return {
         text: [
           card("assassinate-ruler"), t(" by "), faction(actorId(e, ctx) ?? ""),
@@ -376,7 +427,17 @@ function unrestLines(events: GameEvent[]): SummaryLine[] {
   }];
 }
 
-function subjugateFailedLines(events: GameEvent[], _ctx: NoticeCtx, role: HumanRole): SummaryLine[] {
+function subjugateFailedLines(events: GameEvent[], _ctx: NoticeCtx, role: NoticeRole): SummaryLine[] {
+  if (role === "actor") {
+    return events.map((e) => ({
+      text: [
+        t("Your attempt on "), faction(e.targetFactionId ?? ""), t(" failed"),
+        ...optionalPhrase(" - they still owe fealty to ", e.formerOverlordFactionId),
+      ],
+      changes: [],
+      tone: "bad",
+    }));
+  }
   if (role === "lord") {
     return events.map((e) => ({
       text: [
@@ -389,15 +450,25 @@ function subjugateFailedLines(events: GameEvent[], _ctx: NoticeCtx, role: HumanR
   }
   return events.map((e) => ({
     text: [
-      faction(e.overlordFactionId ?? e.targetFactionId ?? ""), t(" failed to take you from "),
-      faction(e.formerOverlordFactionId ?? ""),
+      faction(e.overlordFactionId ?? e.targetFactionId ?? ""), t(" failed to take you"),
+      ...optionalPhrase(" from ", e.formerOverlordFactionId),
     ],
     changes: [],
     tone: "good",
   }));
 }
 
-function incorporateFailedLines(events: GameEvent[]): SummaryLine[] {
+function incorporateFailedLines(events: GameEvent[], role: NoticeRole): SummaryLine[] {
+  if (role === "actor") {
+    return events.map((e) => ({
+      text: [
+        t("Your attempt to absorb "), faction(e.targetFactionId ?? ""),
+        t(" failed - they are still only your vassal"),
+      ],
+      changes: [],
+      tone: "bad",
+    }));
+  }
   return events.map((e) => ({
     text: [
       faction(e.overlordFactionId ?? ""), t(" failed to absorb your realm permanently"),
@@ -413,16 +484,35 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   draw: { kind: "silent", reason: "routine; visible in hand and log" },
   play: {
     kind: "modal",
+    // A ternary on actor-ness rather than another `||` on the shared condition,
+    // so the two arms cannot leak into each other. The actor arm's entire
+    // surface is one card id plus `prevented === true`: a raid you landed, an
+    // alliance you sealed and an assassination that struck are all already
+    // visible where you aimed them, and none of them belongs in a modal.
     appliesToHuman: (e, ctx) =>
-      (e.cardId === "raid" ||
-        e.cardId === "shrewd-marriage" ||
-        e.cardId === "assassinate-ruler" ||
-        e.cardId === "alliance") &&
-      e.targetFactionId === ctx.humanFactionId &&
-      e.playerId !== 1,
+      e.playerId === 1
+        ? e.cardId === "assassinate-ruler" && e.prevented === true
+        : (e.cardId === "raid" ||
+            e.cardId === "shrewd-marriage" ||
+            e.cardId === "assassinate-ruler" ||
+            e.cardId === "alliance") &&
+          e.targetFactionId === ctx.humanFactionId,
+    // Only the actor arm returns a title, so a rival's raid - or a rival's
+    // assassination your own bodyguard turned - stays mutable as it always was.
+    // Your blade stopped by THEIR guard is the wasted turn: the card is gone,
+    // nothing moved, and their guard is quietly gone too.
+    //
+    // A plain string, not a family: you play one card per turn and
+    // `playedThisTurn` enforces it, so a batch can never hold two of your own
+    // fizzles. A family that can never count past one is a plural that can
+    // never fire.
+    critical: (e, ctx) =>
+      noticeRoleOf(e, ctx) === "actor" ? "A bodyguard stopped you" : null,
     lines: (events, changes, ctx) => {
       const cardId = events[0].cardId;
-      if (cardId === "assassinate-ruler") return assassinateLines(events, changes, ctx);
+      if (cardId === "assassinate-ruler") {
+        return assassinateLines(events, changes, ctx, noticeRoleOf(events[0], ctx));
+      }
       if (cardId === "alliance") return allianceLines(events, changes, ctx);
       return raidOrMarriageLines(events, changes, ctx);
     },
@@ -432,6 +522,16 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // That question is about the actor's CURRENT standing, not this play's
     // own effect, so a prevented Assassinate ruler still asks it.
     footnotes: (events, ctx) => {
+      // Except when the human IS the actor, where the cue has no answer. The
+      // actor arm carries its own: what the turn actually bought. The guard
+      // consumption in playCard is real and is recorded nowhere else in the UI,
+      // so without this line the modal would say only that nothing happened.
+      if (noticeRoleOf(events[0], ctx) === "actor") {
+        return [[
+          t("Their bodyguard is spent defending this. A second attempt has "),
+          t("nothing left to turn it aside."),
+        ]];
+      }
       const cardId = events[0].cardId;
       if (cardId === "raid" || cardId === "shrewd-marriage" || cardId === "assassinate-ruler") {
         return raidOrMarriageFootnotes(events, ctx);
@@ -532,17 +632,29 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     kind: "modal",
     // A rival trying and failing is exactly the kind of near-miss the player
     // must see: nothing on the map changed, so without a notice the attempt
-    // leaves no trace at all. Two ways it can touch the human - they kept a
-    // vassal somebody reached for, or they were themselves the prize - and the
-    // role split picks the wording.
+    // leaves no trace at all. Three ways it can touch the human - they kept a
+    // vassal somebody reached for, they were themselves the prize, or their own
+    // poach missed - and the role split picks the wording.
+    //
+    // That same argument is why the actor arm exists. It does not get weaker
+    // when the card spent was yours; it gets stronger, because you also lost
+    // the turn.
     appliesToHuman: (e, ctx) =>
-      e.playerId !== 1 &&
-      (e.formerOverlordFactionId === ctx.humanFactionId ||
-        e.targetFactionId === ctx.humanFactionId),
+      noticeRoleOf(e, ctx) === "actor" ||
+      e.formerOverlordFactionId === ctx.humanFactionId ||
+      e.targetFactionId === ctx.humanFactionId,
+    critical: (e, ctx) =>
+      noticeRoleOf(e, ctx) === "actor" ? "Your subjugation failed" : null,
     lines: (events, _changes, ctx) =>
-      subjugateFailedLines(events, ctx, humanRoleIn(events[0], ctx) ?? "self"),
+      subjugateFailedLines(events, ctx, noticeRoleOf(events[0], ctx)),
     footnotes: (events, ctx) => {
-      const role = humanRoleIn(events[0], ctx) ?? "self";
+      const role = noticeRoleOf(events[0], ctx);
+      if (role === "actor") {
+        return [[
+          t("Your card is spent, but the lead that justified it is untouched - "),
+          t("the next copy you draw can try again."),
+        ]];
+      }
       return role === "self"
         ? [[t("Their card is spent. You are still your overlord's vassal, not theirs.")]]
         : [];
@@ -550,22 +662,33 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   },
   "incorporate-failed": {
     kind: "modal",
-    // Was silent, reasoned as "only ever the human's own play, since nobody
-    // else can incorporate a land the human holds". That is wrong whenever the
-    // human is somebody's vassal: their overlord can annex *them*, and the roll
-    // can miss. Being one failed roll away from the run ending is the least
-    // skippable thing that can happen, and nothing on the map records it.
+    // Two roles. As TARGET: your overlord tried to annex you and the roll
+    // missed - one failed roll from the run ending, and nothing on the map
+    // records it. As ACTOR: your own roll on your own vassal missed.
     //
-    // The human's own missed roll stays silent, as it always was - the hand and
-    // activity log already show the card was spent, and a modal on your own
-    // failed gamble is a nag. `playerId !== 1` is what keeps that true.
+    // The second was silent, argued as "the hand and activity log already show
+    // the card was spent, and a modal on your own failed gamble is a nag".
+    // That mistook a spent turn for a non-event. The hand shows the card is
+    // gone and never says why, and a vassal you failed to absorb looks
+    // identical to one you never reached for.
     appliesToHuman: (e, ctx) =>
-      e.targetFactionId === ctx.humanFactionId && e.playerId !== 1,
-    lines: (events) => incorporateFailedLines(events),
-    footnotes: () => [[
-      t("Their card is spent. The longer you stay their vassal, the better their "),
-      t("next attempt's odds - breaking free resets that clock."),
-    ]],
+      // The actor arm needs no target check: an Incorporate is aimed at the
+      // actor's own vassal by rule, so "the human acted" already places them.
+      noticeRoleOf(e, ctx) === "actor" || e.targetFactionId === ctx.humanFactionId,
+    critical: (e, ctx) =>
+      noticeRoleOf(e, ctx) === "actor" ? "Your annexation failed" : null,
+    lines: (events, _changes, ctx) =>
+      incorporateFailedLines(events, noticeRoleOf(events[0], ctx)),
+    footnotes: (events, ctx) =>
+      noticeRoleOf(events[0], ctx) === "actor"
+        ? [[
+            t("Your card is spent. The vassalage survives and its loyalty clock "),
+            t("keeps running, so your next attempt has better odds."),
+          ]]
+        : [[
+            t("Their card is spent. The longer you stay their vassal, the better their "),
+            t("next attempt's odds - breaking free resets that clock."),
+          ]],
   },
   garrisoned: {
     kind: "silent",
@@ -669,9 +792,17 @@ export function buildRoundSummary(
    *  two vassals cannot be headed by the wording for one. */
   const selfTitles: CriticalTitle[] = [];
   const lordTitles: CriticalTitle[] = [];
+  /** What the player FAILED TO GAIN, and last of the three on purpose: a
+   *  wasted turn is the only one that changed nothing about the position, so
+   *  a round that also took something from them is headed by the taking. */
+  const actorTitles: CriticalTitle[] = [];
   /** How many critical events in this batch belong to each title family -
    *  counted across event types, since that is the whole point of a family. */
   const familyCounts = new Map<string, number>();
+  /** Whether anything in this batch happened on somebody else's turn. False
+   *  only for a batch made entirely of the human's own play - see the heading
+   *  choice at the end. */
+  let sawOtherRole = false;
   events.forEach((e, i) => {
     const rule = NOTICE_RULES[e.type];
     if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) return;
@@ -680,9 +811,12 @@ export function buildRoundSummary(
     // The role is part of the key: being subjugated and having a different
     // vassal poached are both `subjugated` events, and merging them would
     // describe one with the other's wording.
-    const role = humanRoleIn(e, ctx) ?? "self";
+    const role = noticeRoleOf(e, ctx);
+    if (role !== "actor") sawOtherRole = true;
     if (criticalTitle !== null) {
-      (role === "self" ? selfTitles : lordTitles).push(criticalTitle);
+      const bucket =
+        role === "self" ? selfTitles : role === "lord" ? lordTitles : actorTitles;
+      bucket.push(criticalTitle);
       if (typeof criticalTitle !== "string") {
         const f = criticalTitle.family;
         familyCounts.set(f, (familyCounts.get(f) ?? 0) + 1);
@@ -720,8 +854,10 @@ export function buildRoundSummary(
     }
   }
 
-  // Last `self`, else first `lord` - see the comment on the two arrays.
-  const chosen: CriticalTitle | undefined = selfTitles[selfTitles.length - 1] ?? lordTitles[0];
+  // Last `self`, else first `lord`, else first `actor` - see the comment on the
+  // three arrays. What you ARE, then what you LOST, then what you failed to gain.
+  const chosen: CriticalTitle | undefined =
+    selfTitles[selfTitles.length - 1] ?? lordTitles[0] ?? actorTitles[0];
   const title =
     chosen === undefined
       ? null
@@ -730,8 +866,21 @@ export function buildRoundSummary(
           typeof chosen === "string" ? 1 : (familyCounts.get(chosen.family) ?? 1),
         );
   return {
+    // ROUND_SUMMARY_TITLE names the opponents' turns, which is what a full
+    // summary is - so a batch describing ONLY the human's own turn cannot wear
+    // it. That batch exists now: a fizzle modal is raised while the played card
+    // is still in the air and before any rival has moved, and heading it
+    // "Opponents' turns" would be plainly false whether or not popups are
+    // muted. Hence the second clause, which is about what the batch IS rather
+    // than about the mute.
+    //
+    // `title` cannot be null when `sawOtherRole` is false today: every actor
+    // arm is critical. If one is ever added that is not, it needs a heading of
+    // its own rather than this fallback.
     title:
-      opts.criticalOnly && title !== null ? title : ROUND_SUMMARY_TITLE,
+      (opts.criticalOnly || !sawOtherRole) && title !== null
+        ? title
+        : ROUND_SUMMARY_TITLE,
     lines,
     footnotes,
   };

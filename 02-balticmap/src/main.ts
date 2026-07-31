@@ -19,8 +19,8 @@ import {
   subjugationRaceFor, raidGainFor,
 } from "./playability";
 import {
-  cardBlockLine, cardModifierLines, explainTargetEligibility, multipliedWord,
-  targetImpactLines, targetOddsLines, subjugationBreakdown,
+  cardBlockLine, cardModifierLines, cardRiskLine, explainTargetEligibility,
+  multipliedWord, targetImpactLines, targetOddsLines, subjugationBreakdown,
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
 import { createHud } from "./hud";
@@ -848,21 +848,25 @@ const hud = createHud(
       return explainTargetEligibility(
         targetEligibilityFor(view, human.factionId, cardId),
         (id) => factionById.get(id)?.name ?? id,
+        // A card that can fail must say so before it is aimed, on every target
+        // that can fail, or the roll reads as a bug. Its own band in the tip,
+        // not another annotation line: the two say opposite things.
+        (id) => targetOddsLines(view, human.factionId, cardId, id),
         (id) => {
-          // Odds first: a card that can fail must say so before it is aimed,
-          // on every target that can fail, or the roll reads as a bug.
-          const odds = targetOddsLines(view, human.factionId, cardId, id);
-          if (cardId !== "raid") return odds;
+          if (cardId !== "raid") return [];
           // Quote the convex yield, not the border count: the two diverge fast
           // (a 5-land border is worth 15), and the number the player is shown
           // before aiming has to be the number they get - which is why it comes
           // from the same call `playCard` resolves the raid with.
           const { gain, multiplier } = raidGainFor(view, human.factionId, id);
-          return [...odds, multiplier > 1
+          return [multiplier > 1
             ? `+${gain} Might (${multipliedWord(multiplier)})`
             : `+${gain} Might`];
         },
       );
+    },
+    cardRisk(cardId) {
+      return cardRiskLine(cardId);
     },
     cardModifiers(cardId) {
       const human = game.players[0];

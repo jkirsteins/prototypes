@@ -706,12 +706,73 @@ describe("failed attempts against the player", () => {
     expect(footnoteTexts(s)[0]).toContain("longer you stay their vassal");
   });
 
-  it("stays silent on the human's own failed roll", () => {
+  /** This asserted silence, on the grounds that a modal about your own failed
+   *  gamble is a nag. It mistook a spent turn for a non-event: the hand shows
+   *  the card is gone and never says why, and a vassal you failed to absorb
+   *  looks exactly like one you never reached for. */
+  it("interrupts on the human's own failed roll, muted or not", () => {
     const own: GameEvent = {
       turn: 12, playerId: 1, type: "incorporate-failed",
       targetFactionId: "latgale", overlordFactionId: "livs",
     };
-    expect(buildRoundSummary([own], ctx)).toBeNull();
+    const s = buildRoundSummary([own], ctx)!;
+    expect(lineText(s)).toBe(
+      "Your attempt to absorb Latgalians failed - they are still only your vassal",
+    );
+    expect(footnoteTexts(s)[0]).toContain("loyalty clock");
+    // Pierces the mute: the map records nothing either way, so a muted player
+    // has no other way to tell the miss from a hit.
+    expect(buildRoundSummary([own], ctx, { criticalOnly: true })!.title)
+      .toBe("Your annexation failed");
+  });
+
+  it("interrupts on the human's own failed poach, naming who kept them", () => {
+    const own: GameEvent = {
+      turn: 12, playerId: 1, type: "subjugate-failed",
+      targetFactionId: "curonia", overlordFactionId: "livs",
+      formerOverlordFactionId: "jersika",
+    };
+    const s = buildRoundSummary([own], ctx, { criticalOnly: true })!;
+    expect(s.title).toBe("Your subjugation failed");
+    expect(lineText(s)).toBe(
+      "Your attempt on Curonians failed - they still owe fealty to Jersikans",
+    );
+    expect(footnoteTexts(s)[0]).toContain("can try again");
+  });
+
+  /** The grouping key carries the role, so your own miss and a rival's miss
+   *  against you are two entries. Merging them would describe one with the
+   *  other's wording - and the two wordings say opposite things about who lost
+   *  a turn. */
+  it("keeps your own failed poach apart from a rival's against you", () => {
+    const s = buildRoundSummary([
+      {
+        turn: 12, playerId: 1, type: "subjugate-failed",
+        targetFactionId: "curonia", overlordFactionId: "livs",
+        formerOverlordFactionId: "jersika",
+      },
+      {
+        turn: 12, playerId: 3, type: "subjugate-failed",
+        targetFactionId: "livs", overlordFactionId: "jersika",
+        formerOverlordFactionId: "latgale",
+      },
+    ], ctx)!;
+    expect(s.lines).toHaveLength(2);
+    expect(lineText(s, 0)).toContain("Your attempt on Curonians");
+    expect(lineText(s, 1)).toContain("failed to take you from");
+  });
+
+  /** The regression guard on wrapping `humanRoleIn` rather than widening it.
+   *  Three rules use it as their entire `appliesToHuman`, and an `actor` role
+   *  leaking into them would pop a modal on the player's own conquest. */
+  it("still says nothing about the human's own successful plays", () => {
+    for (const own of [
+      { type: "subjugated" as const, targetFactionId: "curonia", overlordFactionId: "livs" },
+      { type: "released" as const, targetFactionId: "curonia", overlordFactionId: "livs" },
+      { type: "reclaimed" as const, targetFactionId: "livs", overlordFactionId: "jersika" },
+    ]) {
+      expect(buildRoundSummary([{ turn: 12, playerId: 1, ...own }], ctx)).toBeNull();
+    }
   });
 
   it("says nothing about a failure between two rivals", () => {
@@ -868,6 +929,37 @@ describe("critical events pierce a muted popup", () => {
       .toBe("You were subjugated");
   });
 
+  /** A batch made only of your own turn is not "Opponents' turns" - it is
+   *  raised while your card is still in the air, before any rival has moved.
+   *  The heading follows what the batch IS, not whether popups are muted. */
+  it("never heads your own wasted turn as the opponents' round", () => {
+    const own: GameEvent = {
+      turn: 12, playerId: 1, type: "subjugate-failed",
+      targetFactionId: "curonia", overlordFactionId: "livs",
+      formerOverlordFactionId: "jersika",
+    };
+    expect(buildRoundSummary([own], ctx)!.title).toBe("Your subjugation failed");
+    // But a batch that also carries a rival's doing is a round summary again,
+    // and keeps the round heading unless the mute has narrowed it.
+    const mixed = [own, ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" })];
+    expect(buildRoundSummary(mixed, ctx)!.title).toBe(ROUND_SUMMARY_TITLE);
+  });
+
+  /** What you ARE outranks what you failed to gain. A round where your poach
+   *  missed AND somebody took you is headed by the taking: the wasted turn is
+   *  the only one of the two that left the position unchanged. */
+  it("heads a round with the subjugation, not your own wasted turn", () => {
+    const s = buildRoundSummary([
+      {
+        turn: 12, playerId: 1, type: "subjugate-failed",
+        targetFactionId: "curonia", overlordFactionId: "livs",
+        formerOverlordFactionId: "jersika",
+      },
+      ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+    ], ctx, { criticalOnly: true })!;
+    expect(s.title).toBe("You were subjugated");
+  });
+
   /** Not a ban on new critical rules - a requirement that adding one is a
    *  deliberate edit here rather than a side effect somewhere else. */
   it("names every critical rule in the registry", () => {
@@ -875,7 +967,42 @@ describe("critical events pierce a muted popup", () => {
       const rule = NOTICE_RULES[t];
       return rule.kind === "modal" && rule.critical !== undefined;
     });
-    expect(critical).toEqual(["subjugated", "released", "reclaimed"]);
+    // `play` is here only for the actor arm - a bodyguard stopping YOUR blade.
+    // A rival's raid against you returns null from the same function, which is
+    // asserted separately below.
+    expect(critical).toEqual([
+      "play", "subjugated", "released", "reclaimed",
+      "subjugate-failed", "incorporate-failed",
+    ]);
+  });
+
+  it("leaves a rival's play mutable, critical arm or not", () => {
+    const rule = NOTICE_RULES.play;
+    if (rule.kind !== "modal") throw new Error("play must be modal");
+    for (const e of [
+      { cardId: "raid", targetFactionId: "livs" },
+      { cardId: "assassinate-ruler", targetFactionId: "livs", prevented: true },
+    ]) {
+      expect(rule.critical!({ turn: 4, playerId: 3, type: "play", ...e }, ctx))
+        .toBeNull();
+    }
+  });
+
+  /** The arm most likely to widen by accident later: it is the only place a
+   *  play by the human reaches a modal at all, and every other own play must
+   *  keep falling straight through. */
+  it("raises nothing for the human's own plays that did something", () => {
+    const rule = NOTICE_RULES.play;
+    if (rule.kind !== "modal") throw new Error("play must be modal");
+    for (const e of [
+      { cardId: "assassinate-ruler", targetFactionId: "livs" }, // landed
+      { cardId: "raid", targetFactionId: "livs" },
+      { cardId: "alliance", targetFactionId: "livs" },
+      { cardId: "shrewd-marriage", targetFactionId: "livs" },
+    ]) {
+      expect(rule.appliesToHuman({ turn: 4, playerId: 1, type: "play", ...e }, ctx))
+        .toBe(false);
+    }
   });
 
   /** Being subjugated runs `freeVassalsOf` on you, so your whole realm walks

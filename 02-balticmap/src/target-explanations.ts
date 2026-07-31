@@ -1,9 +1,9 @@
 import {
-  INCORPORATE_RAMP, gripPartsOn, incorporationChance,
-  loyaltyOf, omenMultiplier, omensHeld, poachSurchargeOn, raidGainFor,
-  subjugationChance,
+  INCORPORATE_RAMP, POACH_CHANCE, failureRiskOf, gripPartsOn,
+  omenMultiplier, omensHeld, poachSurchargeOn, raidGainFor,
   subjugationRaceFor, targetEligibilityFor,
   type CardBlockReason,
+  type FailureRisk,
   type Omens,
   type RulesView,
   type TargetBlockReason,
@@ -43,6 +43,12 @@ export const multipliedWord = (multiplier: number): string =>
 export interface TargetExplanation {
   factionId: string;
   lines: string[];
+  /** How this target could come back with nothing, for the amber band. Kept
+   *  apart from `lines` rather than appended to it because the two are not the
+   *  same kind of statement and must not look alike: `lines` say what the card
+   *  would do, and this says it might do none of it. Empty for a target that
+   *  cannot fail. */
+  risk: string[];
   available: boolean;
 }
 
@@ -99,6 +105,14 @@ function explainReason(reason: TargetBlockReason): string[] {
 export function explainTargetEligibility(
   entries: TargetEligibility[],
   factionName: (id: string) => string,
+  /** How each available target can come back with nothing - `targetOddsLines`,
+   *  at every call site that has a view to ask with.
+   *
+   *  Required rather than defaulted, unlike `annotate` below. A missing
+   *  annotation costs a candidate its "+3 Might" line, which is a smaller tip;
+   *  a missing risk tells the player a coin flip is a certainty. A new call
+   *  site has to answer this one. */
+  risk: (factionId: string) => string[],
   /** Extra lines appended to available targets, e.g. what a Raid there gains.
    *  Blocked targets get none: the block reason is the useful answer. */
   annotate: (factionId: string) => string[] = () => [],
@@ -109,28 +123,67 @@ export function explainTargetEligibility(
       return [{
         factionId: entry.factionId,
         lines: [factionName(entry.factionId), "Available.", ...annotate(entry.factionId)],
+        risk: risk(entry.factionId),
         available: true,
       }];
     }
+    // A blocked target gets no risk band. The rules already refuse this aim, so
+    // the odds of a play that cannot happen are not a warning, they are noise
+    // sitting on top of the answer.
     return [{
       factionId: entry.factionId,
       lines: [
         factionName(entry.factionId),
         ...entry.reasons.flatMap(explainReason),
       ],
+      risk: [],
       available: false,
     }];
   });
 }
 
-/** Odds lines for a card whose resolution is a roll, for one candidate target.
- *  Empty for every deterministic card and for every deterministic target, so a
- *  player is never shown "100%" where no roll exists and never left guessing
- *  where one does.
+const pct = (n: number): string => `${Math.round(n * 100)}%`;
+
+/** The one sentence that has to survive every rewording below, because it is
+ *  the part that costs a turn rather than a card. Written once so the three
+ *  risks cannot drift into three ways of saying it. */
+const SPENT_ANYWAY = "A failed attempt still spends the card.";
+
+/** How a card can come back with nothing, in words. Renders `FailureRisk` and
+ *  decides nothing: whether a card is fallible at all is `failureRiskOf`'s
+ *  question, answered once in the rules.
  *
- *  Both rolls spend the card on a miss, which is the part a player must know
- *  BEFORE committing - so it is stated on every line rather than only on the
- *  long odds.
+ *  Both surfaces that warn a player call this - the card tip's amber band and
+ *  the map hover's armed-card block - so the odds cannot be phrased one way
+ *  before aiming and another while aiming. */
+export function riskLines(risk: FailureRisk): string[] {
+  if (risk.kind === "hidden") {
+    return [
+      // Lowercase "bodyguard", the ordinary English word: the capitalized
+      // Bodyguard is the card, and this is plain text with no way to make it a
+      // segment the player could point at. See the naming rule in AGENTS.md.
+      "A posted bodyguard would turn this aside, and you cannot tell in advance.",
+      SPENT_ANYWAY,
+    ];
+  }
+  if (risk.because === "poach") {
+    return [
+      `${pct(risk.chance)} chance to succeed - they already have an overlord.`,
+      SPENT_ANYWAY,
+    ];
+  }
+  if (risk.chance >= 1) {
+    // The one risk line that is not a warning. The clock this card has been
+    // waiting on has run out, and saying so is the payoff for the wait.
+    return [`Certain: held ${count(risk.held, "turn")}, ${INCORPORATE_RAMP} needed.`];
+  }
+  return [
+    `${pct(risk.chance)} chance to succeed - held ${risk.held} of the ${INCORPORATE_RAMP} turns needed.`,
+    SPENT_ANYWAY,
+  ];
+}
+
+/** Risk lines for one candidate target, or none where that aim cannot fail.
  *
  *  Lives here beside the block reasons because it answers the same question
  *  ("what happens if I aim here") and so that one test covers both halves of
@@ -141,28 +194,35 @@ export function targetOddsLines(
   cardId: string,
   targetFactionId: string,
 ): string[] {
-  const pct = (n: number): string => `${Math.round(n * 100)}%`;
-  if (cardId === "subjugate") {
-    const chance = subjugationChance(view, targetFactionId);
-    if (chance >= 1) return [];
-    return [
-      `${pct(chance)} chance to succeed - they already have an overlord.`,
-      "A failed attempt still spends the card.",
-    ];
-  }
-  if (cardId === "incorporate") {
-    const chance = incorporationChance(view, actorFactionId, targetFactionId);
-    const held = loyaltyOf(view, targetFactionId, actorFactionId);
-    if (chance >= 1) {
-      return [`Certain: held ${held} turns, ${INCORPORATE_RAMP} needed.`];
-    }
-    return [
-      `${pct(chance)} chance to succeed - held ${held} of the ${INCORPORATE_RAMP} turns needed.`,
-      "A failed attempt still spends the card.",
-    ];
-  }
-  return [];
+  const risk = failureRiskOf(view, actorFactionId, cardId, targetFactionId);
+  return risk === null ? [] : riskLines(risk);
 }
+
+/** What a fallible card says about itself, before any target is chosen. Null
+ *  for a card the rules can never refuse.
+ *
+ *  Target-independent on purpose, and that is the whole job: a Subjugate is a
+ *  coin flip on one candidate and a certainty on the next, so a player reading
+ *  only the per-target line learns the rule exists exactly once, on whichever
+ *  candidate they happened to look at. This is where the rule itself is stated.
+ *
+ *  A record rather than a switch so the omission is visible: a new fallible
+ *  card that `failureRiskOf` answers for and this does not is a hole a test
+ *  can see, which a missing `if` would not be. */
+const CARD_RISK: Record<string, string> = {
+  "subjugate":
+    `Can fail: prising a faction off its overlord is a ${pct(POACH_CHANCE)} roll. ` +
+    "Taking a faction that has no overlord is certain.",
+  "incorporate":
+    "Can fail: the odds rise with every turn you have held the vassal, and " +
+    `reach certainty at ${INCORPORATE_RAMP}.`,
+  "assassinate-ruler":
+    "Can fail: a posted bodyguard turns the blade aside, and nothing tells " +
+    "you in advance which rivals have one.",
+};
+
+export const cardRiskLine = (cardId: string): string | null =>
+  CARD_RISK[cardId] ?? null;
 
 /** One effect of the armed card, as a row of its block: the change in the left
  *  column, and what changes on the right. `NO_FIGURE` where the effect is not a
@@ -175,6 +235,20 @@ interface Impact {
 const NO_FIGURE = "--";
 
 const prose = (text: string): Impact => ({ amount: NO_FIGURE, spans: [{ text }] });
+
+/** Every risk line as its own row of the armed-card block.
+ *
+ *  All of them, not the first. This used to take `odds[0]` and drop the rest,
+ *  which meant "a failed attempt still spends the card" appeared in the card
+ *  tip and vanished from the map - the one surface the player is looking at
+ *  with the cursor already over the land they are about to commit to. */
+const riskRows = (
+  view: RulesView,
+  actorFactionId: string,
+  cardId: string,
+  targetFactionId: string,
+): Impact[] =>
+  targetOddsLines(view, actorFactionId, cardId, targetFactionId).map(prose);
 
 /** What the armed card would do to one land's standing: the human's signed lead
  *  before and after, in `formatLead`'s convention - the same one the badges and
@@ -242,15 +316,17 @@ function availableImpacts(
   }
   if (cardId === "assassinate-ruler") {
     // The card levels the Status lead rather than adding to it, so the "after"
-    // is 0 whichever side was ahead. A Bodyguard on the target would nullify
-    // it, and this deliberately does not say so: the guard is theirs to know.
-    return [standingMove(
-      view, actorFactionId, targetFactionId, "status", () => 0, 1,
-    )];
+    // is 0 whichever side was ahead. The risk rows below say a guard could
+    // nullify it, in the same words on every target - which is how the warning
+    // stays honest without becoming a detector for who is holding one.
+    return [
+      standingMove(view, actorFactionId, targetFactionId, "status", () => 0, 1),
+      ...riskRows(view, actorFactionId, cardId, targetFactionId),
+    ];
   }
   if (cardId === "subjugate" || cardId === "incorporate") {
-    const odds = targetOddsLines(view, actorFactionId, cardId, targetFactionId);
-    if (odds.length > 0) return [prose(odds[0])];
+    const rows = riskRows(view, actorFactionId, cardId, targetFactionId);
+    if (rows.length > 0) return rows;
     return [prose(
       cardId === "subjugate"
         ? "Becomes your vassal."

@@ -1,27 +1,33 @@
 import { describe, expect, it } from "vitest";
 import {
-  cardModifierLines,
+  cardModifierLines, cardRiskLine,
   explainTargetEligibility, subjugationBreakdown, targetImpactLines,
   targetOddsLines,
 } from "../src/target-explanations";
+import { CARDS } from "../src/cards";
 import { bumpMight, bumpStatus, type Relations } from "../src/relations";
 import { standingChangeText } from "../src/view";
 import type { TooltipLine } from "../src/panel";
 import {
-  INCORPORATE_RAMP, loyaltyKey,
+  INCORPORATE_RAMP, failureRiskOf, loyaltyKey,
   type RulesView, type TargetEligibility,
 } from "../src/playability";
 
 const nameOf = (id: string): string =>
   id.charAt(0).toUpperCase() + id.slice(1);
 
+/** These cases are about eligibility wording, not about odds. The risk band has
+ *  its own describe below, driven through `targetOddsLines` with a real view. */
+const noRisk = (): string[] => [];
+
 describe("explainTargetEligibility", () => {
   it("labels an available candidate", () => {
     expect(explainTargetEligibility([
       { state: "available", factionId: "beta" },
-    ], nameOf)).toEqual([{
+    ], nameOf, noRisk)).toEqual([{
       factionId: "beta",
       available: true,
+      risk: [],
       lines: ["Beta", "Available."],
     }]);
   });
@@ -42,9 +48,10 @@ describe("explainTargetEligibility", () => {
           poachSurcharge: 0,
         },
       ],
-    }], nameOf)).toEqual([{
+    }], nameOf, noRisk)).toEqual([{
       factionId: "gamma",
       available: false,
+      risk: [],
       lines: [
         "Gamma",
         "Blocked by Alliance until turn 12.",
@@ -67,7 +74,7 @@ describe("explainTargetEligibility", () => {
         settlements: 0,
         poachSurcharge: 0,
       }],
-    }], nameOf)[0]?.lines).toEqual([
+    }], nameOf, noRisk)[0]?.lines).toEqual([
       "Alpha",
       "Need a Might or Status lead of 2 because their realm has 1 land.",
       "Current leads: Might 0, Status 1.",
@@ -77,7 +84,7 @@ describe("explainTargetEligibility", () => {
   it("omits irrelevant candidates", () => {
     expect(explainTargetEligibility([
       { state: "irrelevant", factionId: "delta" },
-    ], nameOf)).toEqual([]);
+    ], nameOf, noRisk)).toEqual([]);
   });
 
   it("formats each relationship and identity blocker", () => {
@@ -92,7 +99,7 @@ describe("explainTargetEligibility", () => {
         { code: "self" },
         { code: "not-your-vassal" },
       ],
-    }], nameOf)[0]?.lines).toEqual([
+    }], nameOf, noRisk)[0]?.lines).toEqual([
       "Beta",
       "Already your vassal.",
       "Unavailable while you are subjugated.",
@@ -108,14 +115,14 @@ describe("explainTargetEligibility", () => {
       { state: "available", factionId: "alpha" },
       { state: "blocked", factionId: "beta", reasons: [{ code: "self" }] },
     ];
-    const out = explainTargetEligibility(entries, (id) => id, () => ["+3 Might"]);
+    const out = explainTargetEligibility(entries, (id) => id, noRisk, () => ["+3 Might"]);
     expect(out[0].lines).toEqual(["alpha", "Available.", "+3 Might"]);
     expect(out[1].lines).not.toContain("+3 Might");
   });
 
   it("annotates nothing when no annotator is given", () => {
     const entries: TargetEligibility[] = [{ state: "available", factionId: "alpha" }];
-    expect(explainTargetEligibility(entries, (id) => id)[0].lines)
+    expect(explainTargetEligibility(entries, (id) => id, noRisk)[0].lines)
       .toEqual(["alpha", "Available."]);
   });
 });
@@ -197,6 +204,20 @@ describe("targetOddsLines", () => {
     expect(targetOddsLines(v(), "alpha", "subjugate", "beta")).toEqual([]);
   });
 
+  /** Not a roll, and it still has to be said. A guard is the one way a play can
+   *  come back with nothing that the player cannot see coming at all, which
+   *  makes it the one that most needs saying before they commit. */
+  it("warns that a blade can be turned aside, on every target alike", () => {
+    const warning = [
+      "A posted bodyguard would turn this aside, and you cannot tell in advance.",
+      "A failed attempt still spends the card.",
+    ];
+    expect(targetOddsLines(v(), "alpha", "assassinate-ruler", "beta"))
+      .toEqual(warning);
+    expect(targetOddsLines(v({ bodyguards: ["beta"] }), "alpha", "assassinate-ruler", "beta"))
+      .toEqual(warning);
+  });
+
   it("warns before a coin-flip poach, and that the card is spent either way", () => {
     const view = v({ overlords: new Map([["gamma", "beta"]]) });
     expect(targetOddsLines(view, "alpha", "subjugate", "gamma")).toEqual([
@@ -226,6 +247,55 @@ describe("targetOddsLines", () => {
     expect(targetOddsLines(view, "alpha", "incorporate", "gamma")).toEqual([
       `Certain: held ${INCORPORATE_RAMP} turns, ${INCORPORATE_RAMP} needed.`,
     ]);
+  });
+
+  it("counts a single turn held as one turn", () => {
+    const view = v({
+      overlords: new Map([["gamma", "alpha"]]),
+      loyalty: { [loyaltyKey("gamma", "alpha")]: 1 },
+    });
+    // Reaches the "Certain" branch only at INCORPORATE_RAMP, so pin the plural
+    // where the number is actually printed as a noun phrase.
+    expect(targetOddsLines({ ...view, loyalty: {} }, "alpha", "incorporate", "gamma")[0])
+      .toBe(`0% chance to succeed - held 0 of the ${INCORPORATE_RAMP} turns needed.`);
+  });
+});
+
+describe("cardRiskLine", () => {
+  /** The card-level statement exists because the per-target one is not enough:
+   *  Subjugate is a coin flip on one candidate and a certainty on the next, so
+   *  a player reading only the candidate lines meets the rule once, by
+   *  accident, on whichever land they happened to hover. */
+  it("names the failure mode of every card that has one", () => {
+    expect(cardRiskLine("subjugate")).toContain("Can fail");
+    expect(cardRiskLine("subjugate")).toContain("50%");
+    expect(cardRiskLine("incorporate")).toContain("Can fail");
+    expect(cardRiskLine("assassinate-ruler")).toContain("bodyguard");
+  });
+
+  it("stays silent for a card the rules can never refuse", () => {
+    for (const id of ["raid", "shrewd-marriage", "alliance", "grow-crops", "fortify"]) {
+      expect(cardRiskLine(id)).toBeNull();
+    }
+  });
+
+  /** The band and the rules must agree on WHICH cards can fail, or the tip
+   *  either warns about a certainty or stays quiet about a gamble. Driven off
+   *  CARDS so a fifteenth card is covered the day it is added. */
+  it("covers exactly the cards failureRiskOf answers for", () => {
+    const ids = ["alpha", "beta", "gamma"];
+    const view: RulesView = {
+      relations: {}, overlords: new Map([["gamma", "beta"]]), incorporated: {},
+      adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
+      factionIds: ids, alliances: {}, turn: 1, bodyguards: [], omens: {},
+      diplomacyBoost: [], loyalty: {}, liveRevolts: [], sites: [], settled: [],
+    };
+    const fallible = Object.keys(CARDS).filter((id) =>
+      ids.some((target) => failureRiskOf(view, "alpha", id, target) !== null),
+    );
+    expect(fallible.filter((id) => cardRiskLine(id) === null)).toEqual([]);
+    expect(Object.keys(CARDS).filter((id) => cardRiskLine(id) !== null).sort())
+      .toEqual(fallible.sort());
   });
 });
 
@@ -319,10 +389,23 @@ describe("targetImpactLines", () => {
       .toBe("-2 Status (+2 -> 0)");
   });
 
+  /** The block warns that a guard could turn the blade aside, so it now says
+   *  the word "bodyguard" on every target - which is exactly when it would
+   *  become a detector if it ever said it on only the guarded ones. Compares
+   *  the WHOLE block rather than one row: a leak would arrive as an extra line,
+   *  and an assertion pinned to an index would step straight over it. */
   it("does not leak that the target has a bodyguard posted", () => {
-    const view = v({ bodyguards: ["beta"] });
-    expect(shown(targetImpactLines(view, "alpha", "assassinate-ruler", "beta"))[1])
-      .toBe("0 Status (0 -> 0)");
+    const guarded = shown(
+      targetImpactLines(v({ bodyguards: ["beta"] }), "alpha", "assassinate-ruler", "beta"),
+    );
+    const unguarded = shown(
+      targetImpactLines(v(), "alpha", "assassinate-ruler", "beta"),
+    );
+    expect(guarded).toEqual(unguarded);
+    expect(guarded[1]).toBe("0 Status (0 -> 0)");
+    expect(guarded).toContain(
+      "-- A posted bodyguard would turn this aside, and you cannot tell in advance.",
+    );
   });
 
   it("marks an effect that is not a number rather than leaving the column blank", () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { eventSegments } from "../src/hud";
 import { buildRoundSummary, type NoticeCtx } from "../src/notices";
-import type { Segment } from "../src/rich-text";
+import { plainText, type NameLookup, type Segment } from "../src/rich-text";
 import type { GameEvent, GameEventType, GameState } from "../src/game";
 import { CARDS } from "../src/cards";
 import rawData from "../src/data/map.json";
@@ -50,6 +50,12 @@ for (const c of Object.values(CARDS)) {
     playEvents.push({
       ...base, playerId: 1, type: "play", targetFactionId: RIVAL,
       targetRuler: "Someruler", successorRuler: "Somesuccessor",
+    });
+    // The human's own blade turned aside - the one own play that raises a
+    // modal, so the one own play whose summary lines the naming rule must see.
+    playEvents.push({
+      ...base, playerId: 1, type: "play", targetFactionId: RIVAL,
+      prevented: true, targetRuler: "Someruler",
     });
   }
 }
@@ -128,6 +134,17 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
       turn: 1, playerId: 1, type: "subjugate-failed",
       targetFactionId: RIVAL, overlordFactionId: H, formerOverlordFactionId: RIVAL,
     },
+    // No former overlord, from both sides. Unreachable while only a poach can
+    // miss, but neither sentence may lean on that: both build a "from X"
+    // clause around a field that is only sometimes set.
+    {
+      turn: 1, playerId: 1, type: "subjugate-failed",
+      targetFactionId: RIVAL, overlordFactionId: H,
+    },
+    {
+      turn: 1, playerId: 2, type: "subjugate-failed",
+      targetFactionId: H, overlordFactionId: RIVAL,
+    },
   ],
   "incorporate-failed": [
     { turn: 1, playerId: 2, type: "incorporate-failed", targetFactionId: H, overlordFactionId: RIVAL },
@@ -141,6 +158,14 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "stranded", targetFactionId: H, overlordFactionId: RIVAL },
     { turn: 1, playerId: 2, type: "stranded", targetFactionId: H, overlordFactionId: RIVAL },
   ],
+};
+
+/** Enough of a lookup to flatten segments back to a sentence. The verb sweep
+ *  below reads the whole line, not its segments, because agreement is a
+ *  property of how the words sit next to each other. */
+const names: NameLookup = {
+  factionName: (id) => data.factions.find((f) => f.id === id)?.name ?? id,
+  isPlaceName: () => false,
 };
 
 const ALL_SAMPLE_EVENTS: GameEvent[] = (Object.keys(SAMPLES) as GameEventType[])
@@ -199,6 +224,64 @@ describe("naming convention: no card or faction name as raw text", () => {
       }
     }
     expect(leaks).toEqual([]);
+  });
+
+  /** "You fails to prise Curonians from Nadruvians" shipped, because
+   *  `actorSegments` yielded "You" and the verb beside it was written in third
+   *  person only. Every sample is driven with the human as actor and again with
+   *  a rival, and no correct sentence in this game reads "You <verb>s".
+   *
+   *  `\bYou ` and not `You` so "Your garrisons stand watch" is not a false
+   *  positive: the possessive is a different word. If a legitimate line ever
+   *  needs an s-final word straight after "You", it goes in an allowlist here
+   *  with a note - it does not loosen the pattern.
+   */
+  it("never disagrees a verb with a You subject", () => {
+    const disagreements: string[] = [];
+    for (const type of Object.keys(SAMPLES) as GameEventType[]) {
+      for (const sample of SAMPLES[type]) {
+        for (const playerId of [1, 2]) {
+          const text = plainText(eventSegments({ ...sample, playerId }, state), names);
+          if (/\bYou [a-z]+s\b/.test(text)) disagreements.push(text);
+        }
+      }
+    }
+    expect(disagreements).toEqual([]);
+  });
+
+  /** A faction segment with no id renders as nothing, so a clause built around
+   *  one that may be absent ends the sentence on its preposition. This shipped
+   *  visibly as "You fail to prise Dainavians from" - caught by reading a
+   *  screenshot, which is the rule in AGENTS.md and the reason it is a rule. */
+  it("never ends a line on a dangling preposition", () => {
+    const dangles = (text: string): boolean =>
+      /\b(from|to|into|against|by|on|of|with)$/.test(text.trim());
+    const dangling: string[] = [];
+    for (const type of Object.keys(SAMPLES) as GameEventType[]) {
+      for (const sample of SAMPLES[type]) {
+        for (const playerId of [1, 2]) {
+          const e = { ...sample, playerId };
+          const text = plainText(eventSegments(e, state), names);
+          if (dangles(text)) dangling.push(text);
+          // The summary says the same events in its own words and has the same
+          // hole, so it is swept too rather than trusted to differ.
+          const summary = buildRoundSummary([e], ctx);
+          for (const line of summary?.lines ?? []) {
+            const s = plainText(line.text, names);
+            if (dangles(s)) dangling.push(s);
+          }
+        }
+      }
+    }
+    expect(dangling).toEqual([]);
+  });
+
+  it("does not pass vacuously - the verb sweep would catch a disagreement", () => {
+    // The regex has to actually fire, or the sweep above is a no-op that would
+    // sit there passing while the bug it exists for walked straight past it.
+    expect(/\bYou [a-z]+s\b/.test("You fails to prise Curonians")).toBe(true);
+    expect(/\bYou [a-z]+s\b/.test("Your garrisons stand watch")).toBe(false);
+    expect(/\bYou [a-z]+s\b/.test("You fail to prise Curonians")).toBe(false);
   });
 
   it("does not pass vacuously - a raid line actually carries a card and a faction segment", () => {
