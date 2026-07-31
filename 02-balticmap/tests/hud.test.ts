@@ -393,6 +393,53 @@ describe("activity log filters", () => {
     const texts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
     expect(texts).toContain("Alpha played Raid on you");
   });
+
+  /** The mute narrows the interrupt, it does not switch it off. Being made
+   *  someone's vassal walls off your own plays, so a muted player who was
+   *  never told would discover it by noticing their cards had stopped
+   *  working. */
+  it("still interrupts for your own subjugation with popups muted", () => {
+    const { container, hud } = setup();
+    popupsCheckbox(container).click(); // off
+    let g = playing();
+    g = {
+      ...g,
+      overlords: new Map([["beta", "alpha"]]),
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
+        { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
+      ],
+    };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("You were subjugated");
+    const lines = [...container.querySelectorAll(".notice-line")].map((el) => el.textContent);
+    // Only the subjugation rides through the mute; the Raid stays in the log.
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/fealty/i);
+    const logTexts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
+    expect(logTexts).toContain("Alpha played Raid on you");
+  });
+
+  it("stays silent with popups muted when a rival poaches a vassal from you", () => {
+    const { container, hud } = setup();
+    popupsCheckbox(container).click(); // off
+    let g = playing();
+    g = {
+      ...g,
+      overlords: new Map([["gamma", "alpha"]]),
+      log: [
+        ...g.log,
+        {
+          turn: 1, playerId: 2, type: "subjugated", targetFactionId: "gamma",
+          overlordFactionId: "alpha", formerOverlordFactionId: "beta",
+        },
+      ],
+    };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+  });
 });
 
 describe("card animations", () => {

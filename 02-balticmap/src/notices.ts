@@ -63,6 +63,22 @@ export type NoticeRule =
       lines(events: GameEvent[], changes: StandingChange[][], ctx: NoticeCtx): SummaryLine[];
       /** What this group contributes to the footer, if anything. */
       footnotes?(events: GameEvent[], ctx: NoticeCtx): Segment[][];
+      /** Returns the modal title when this event must interrupt even though
+       *  the player has muted popups (`LogPrefs.showPopups`), or null when it
+       *  may be swallowed. Reserve it for things done TO the player that change
+       *  what they are allowed to do next - not for merely important news, or
+       *  the mute stops meaning anything.
+       *
+       *  It returns the TITLE rather than a boolean so a rule cannot be marked
+       *  critical without saying what happened: a modal that pierced a mute
+       *  and then announced itself as "What happened during their turns" would
+       *  bury the one thing it exists to say.
+       *
+       *  A function rather than a constant because one event type can be
+       *  critical in one role and not another: `subjugated` fires both when the
+       *  player becomes a vassal and when a rival poaches a vassal from them,
+       *  and only the first takes away their agency. */
+      critical?(e: GameEvent, ctx: NoticeCtx): string | null;
     }
   | { kind: "silent"; reason: string };
 
@@ -247,7 +263,7 @@ function subjugatedLines(
 function reclaimedLines(
   events: GameEvent[],
   changes: StandingChange[][],
-  ctx: NoticeCtx,
+  _ctx: NoticeCtx,
 ): SummaryLine[] {
   return events.map((e, i) => ({
     text: [
@@ -317,7 +333,7 @@ function unrestLines(events: GameEvent[]): SummaryLine[] {
   }];
 }
 
-function subjugateFailedLines(events: GameEvent[], ctx: NoticeCtx, role: HumanRole): SummaryLine[] {
+function subjugateFailedLines(events: GameEvent[], _ctx: NoticeCtx, role: HumanRole): SummaryLine[] {
   if (role === "lord") {
     return events.map((e) => ({
       text: [
@@ -385,6 +401,13 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   subjugated: {
     kind: "modal",
     appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) !== null,
+    // Becoming someone's vassal is the one event a muted popup may not
+    // swallow: a forced Pay tribute enters your deck and your own plays are
+    // walled off until you break free. Losing a different vassal to a rival
+    // is the other role of this same event type and is NOT critical - the
+    // realm shrank, but nothing changed about what you may do next.
+    critical: (e, ctx) =>
+      humanRoleIn(e, ctx) === "self" ? "You were subjugated" : null,
     lines: (events, changes, ctx) =>
       subjugatedLines(events, changes, ctx, humanRoleIn(events[0], ctx) ?? "self"),
     footnotes: (events, ctx) => {
@@ -518,7 +541,28 @@ export function isNoticeWorthy(e: GameEvent, ctx: NoticeCtx): boolean {
  *  round become three lines in one modal, ordered by first occurrence), and
  *  returns the round as one summary. Null when the round touched the human in
  *  no way worth interrupting for. */
-export function buildRoundSummary(events: GameEvent[], ctx: NoticeCtx): RoundSummary | null {
+/** Heading for the ordinary once-per-AI-round summary. A critical modal
+ *  replaces it with the rule's own title - see NoticeRule.critical. */
+export const ROUND_SUMMARY_TITLE = "What happened during their turns";
+
+export interface RoundSummaryOptions {
+  /** Keep only events whose rule marks them critical, dropping the rest.
+   *  What the player sees when they have muted popups: the one thing they
+   *  must not miss interrupts, and nothing rides along with it. The activity
+   *  log still holds the whole round.
+   *
+   *  Note this filters the GROUPING, not the input - `walkStandings` below
+   *  still walks the whole batch, so a surviving line's before -> after
+   *  numbers are the same ones it would show unmuted. Filtering the input
+   *  array instead would silently count only the events that survived. */
+  criticalOnly?: boolean;
+}
+
+export function buildRoundSummary(
+  events: GameEvent[],
+  ctx: NoticeCtx,
+  opts: RoundSummaryOptions = {},
+): RoundSummary | null {
   const walkCtx = {
     humanFactionId: ctx.humanFactionId,
     factionOf: ctx.factionOf,
@@ -532,9 +576,18 @@ export function buildRoundSummary(events: GameEvent[], ctx: NoticeCtx): RoundSum
     changes: StandingChange[][];
   }[] = [];
   const indexByKey = new Map<string, number>();
+  /** Set by the first critical event in the batch, and only in criticalOnly
+   *  mode does it become the modal's title - a full round summary keeps its
+   *  own heading even when a subjugation is one of the lines in it. */
+  let title: string | null = null;
   events.forEach((e, i) => {
     const rule = NOTICE_RULES[e.type];
     if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) return;
+    const criticalTitle = rule.critical?.(e, ctx) ?? null;
+    if (opts.criticalOnly && criticalTitle === null) return;
+    // First critical event names the modal. Only one event type is critical
+    // today, so this never has to choose between two competing titles.
+    if (criticalTitle !== null && title === null) title = criticalTitle;
     // The role is part of the key: being subjugated and having a different
     // vassal poached are both `subjugated` events, and merging them would
     // describe one with the other's wording.
@@ -571,5 +624,10 @@ export function buildRoundSummary(events: GameEvent[], ctx: NoticeCtx): RoundSum
     }
   }
 
-  return { title: "What happened during their turns", lines, footnotes };
+  return {
+    title:
+      opts.criticalOnly && title !== null ? title : ROUND_SUMMARY_TITLE,
+    lines,
+    footnotes,
+  };
 }

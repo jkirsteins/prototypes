@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { NOTICE_RULES, buildRoundSummary, type NoticeCtx } from "../src/notices";
+import {
+  NOTICE_RULES, ROUND_SUMMARY_TITLE, buildRoundSummary, type NoticeCtx,
+} from "../src/notices";
 import { plainText, type NameLookup } from "../src/rich-text";
 import type { GameEvent, GameEventType } from "../src/game";
 
@@ -727,5 +729,113 @@ describe("failed attempts against the player", () => {
     };
     expect(buildRoundSummary([e], ctx)).toBeNull();
     expect(NOTICE_RULES.garrisoned.kind).toBe("silent");
+  });
+});
+
+describe("critical events pierce a muted popup", () => {
+  beforeEach(() => {
+    leadsTable = {};
+    grip = 2;
+    mightGrip = null;
+    subjugationBarTable = {};
+    allianceExpiryTable = {};
+  });
+
+  /** Being made someone's vassal is the one thing the mute may not swallow:
+   *  it takes away what the player is allowed to do next. */
+  it("marks only the human's own subjugation critical", () => {
+    const rule = NOTICE_RULES.subjugated;
+    if (rule.kind !== "modal") throw new Error("subjugated must be modal");
+    expect(rule.critical).toBeDefined();
+
+    const becameVassal = ev({
+      type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika",
+    });
+    // Returns the modal title, not a bare true: a rule cannot pierce the mute
+    // without saying what happened.
+    expect(rule.critical!(becameVassal, ctx)).toBe("You were subjugated");
+  });
+
+  it("does not mark a poached vassal critical - the realm shrank, the player did not", () => {
+    const rule = NOTICE_RULES.subjugated;
+    if (rule.kind !== "modal") throw new Error("subjugated must be modal");
+    const lostAVassal = ev({
+      type: "subjugated", playerId: 3, targetFactionId: "curonia",
+      overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+    });
+    expect(rule.critical!(lostAVassal, ctx)).toBeNull();
+  });
+
+  it("is the only critical rule in the registry", () => {
+    const critical = ALL_TYPES.filter((t) => {
+      const rule = NOTICE_RULES[t];
+      return rule.kind === "modal" && rule.critical !== undefined;
+    });
+    expect(critical).toEqual(["subjugated"]);
+  });
+
+  it("criticalOnly keeps the subjugation and drops everything else", () => {
+    const events: GameEvent[] = [
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", track: "might", amount: 2 }),
+      ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+    ];
+    const full = buildRoundSummary(events, ctx);
+    const muted = buildRoundSummary(events, ctx, { criticalOnly: true });
+    expect(full!.lines.length).toBeGreaterThan(muted!.lines.length);
+    expect(muted!.lines).toHaveLength(1);
+    expect(lineText(muted)).toContain("Jersikans");
+  });
+
+  it("titles the muted modal after what happened, not the round", () => {
+    const muted = buildRoundSummary(
+      [ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" })],
+      ctx, { criticalOnly: true },
+    );
+    expect(muted!.title).toBe("You were subjugated");
+  });
+
+  it("keeps the round heading when popups are on, subjugation or not", () => {
+    const full = buildRoundSummary(
+      [ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" })],
+      ctx,
+    );
+    expect(full!.title).toBe(ROUND_SUMMARY_TITLE);
+  });
+
+  it("keeps the subjugation's own Pay tribute footnote when muted", () => {
+    const muted = buildRoundSummary(
+      [ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" })],
+      ctx, { criticalOnly: true },
+    );
+    expect(footnoteTexts(muted).join(" ")).toMatch(/tribute/i);
+  });
+
+  it("stays silent when a muted round holds nothing critical", () => {
+    const events: GameEvent[] = [
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", track: "might", amount: 2 }),
+      ev({
+        type: "subjugated", playerId: 3, targetFactionId: "curonia",
+        overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+      }),
+    ];
+    expect(buildRoundSummary(events, ctx)).not.toBeNull();
+    expect(buildRoundSummary(events, ctx, { criticalOnly: true })).toBeNull();
+  });
+
+  /** The standings walk must still see the whole batch. Filtering the input
+   *  array instead of the grouping would make a surviving line's
+   *  before -> after numbers count only the events that survived. */
+  it("reports the same standing numbers muted as unmuted", () => {
+    const events: GameEvent[] = [
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", track: "might", amount: 3 }),
+      ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+    ];
+    const full = buildRoundSummary(events, ctx);
+    const muted = buildRoundSummary(events, ctx, { criticalOnly: true });
+    const fullTexts = full!.lines.map((l) => plainText(l.text, nameLookup));
+    const subjLine = fullTexts.find((t) => /fealty/.test(t));
+    expect(subjLine, `no subjugation line in ${JSON.stringify(fullTexts)}`)
+      .toBeDefined();
+    expect(plainText(muted!.lines[0].text, nameLookup)).toBe(subjLine);
   });
 });

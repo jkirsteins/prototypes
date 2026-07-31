@@ -571,14 +571,22 @@ export function createHud(
   }
 
   /** Player-affecting events interrupt once per AI round: build the whole
-   *  batch into a single summary and show it, if it has anything to say and
-   *  the player has not muted the popup (see LogPrefs.showPopups - the
-   *  events are still in the log either way, just not interrupting). */
+   *  batch into a single summary and show it, if it has anything to say.
+   *
+   *  Muting the popup (LogPrefs.showPopups) narrows this rather than silencing
+   *  it. A critical event - one that changes what the player is allowed to do
+   *  next, see NoticeRule.critical - still interrupts, but alone: the summary
+   *  is built from the critical events only, so the mute costs the round's
+   *  other news and nothing more. The activity log carries everything either
+   *  way. Without this, a player who muted popups could be made someone's
+   *  vassal and find out only by noticing their cards had stopped working. */
   function showRoundSummaryIfAny(state: GameState, fresh: GameEvent[]): void {
-    if (state.phase !== "playing" || !logPrefs.showPopups) return;
+    if (state.phase !== "playing") return;
     const ctx = buildNoticeCtx(state);
     if (ctx === null) return;
-    const summary = buildRoundSummary(fresh, ctx);
+    const summary = buildRoundSummary(fresh, ctx, {
+      criticalOnly: !logPrefs.showPopups,
+    });
     if (summary !== null) showRoundSummary(summary);
   }
 
