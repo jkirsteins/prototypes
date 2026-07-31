@@ -10,6 +10,7 @@
     "test": "vitest run --exclude tests/sim.test.ts --exclude tests/scenarios.test.ts",
     "test:all": "vitest run",
     "balance": "vitest run tests/sim.test.ts tests/scenarios.test.ts && vite-node scripts/balance.ts",
+    "rarity": "vite-node scripts/rarity.ts",
     "simulate": "vite-node scripts/simulate.ts",
     "simulate:check": "vite-node scripts/check-scenarios.ts",
     "simulate:world": "vite-node scripts/simulate-world.ts",
