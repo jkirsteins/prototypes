@@ -42,9 +42,29 @@ const app = document.getElementById("app")!;
 
 const {
   svg, regionPaths, revealSettlement, clearFoundedSettlements,
-  realmOutlineGroup, realmUnionGroup, realmHoverGroup, vassalOverlayGroup,
-  peopleLabels, outerOutline,
+  realmOutlineGroup, realmUnionGroup, realmHoverGroup, realmEdgeGroup,
+  vassalOverlayGroup, peopleLabels, outerOutline, outsideMask,
 } = renderMap(data, app);
+
+/** The masked stroke-only copy of each land that sits in a realm of 2+, by
+ *  region id. Rebuilt by `renderRealmUnions` whenever the realms change. */
+const realmEdgePaths = new Map<string, SVGPathElement>();
+
+/** One path carrying `d`, clipped by `mask`, appended to `group`. */
+function maskedPath(group: SVGGElement, d: string, mask: string): SVGPathElement {
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  p.setAttribute("d", d);
+  p.setAttribute("mask", mask);
+  group.appendChild(p);
+  return p;
+}
+
+// Every class toggled onto a region has to reach its edge copy, and the copy is
+// what draws that land's threat/ownership/hover/targeting stroke now. Watching
+// the attribute is what makes that unconditional: a future toggle added
+// anywhere is carried across without knowing this exists. Only region paths are
+// observed and only edge copies are written, so this cannot feed itself.
+const realmEdgeObserver = new MutationObserver(() => syncRealmEdges());
 
 // map-render.ts doesn't expose a badge group; appended here, last in the SVG
 // (after realm-outline/vassal-overlay, on top of the whole map stack).
@@ -53,6 +73,11 @@ const badgeGroup = document.createElementNS(
 ) as SVGGElement;
 badgeGroup.classList.add("threat-badges");
 svg.appendChild(badgeGroup);
+for (const region of regionPaths.values()) {
+  realmEdgeObserver.observe(region, {
+    attributes: true, attributeFilter: ["class", "style"],
+  });
+}
 const tooltip = createTooltip(app);
 const factionById = new Map(data.factions.map((f) => [f.id, f]));
 const regionById = new Map(data.regions.map((r) => [r.id, r]));
@@ -313,6 +338,8 @@ function renderRealmUnions(): void {
       byRoot.set(root, members);
     }
   }
+  realmEdgeGroup.replaceChildren();
+  realmEdgePaths.clear();
   const seamed = new Set<string>();
   for (const [root, members] of byRoot) {
     const regions = members
@@ -321,19 +348,62 @@ function renderRealmUnions(): void {
       .filter((r): r is Region => r !== undefined);
     if (regions.length < 2) continue;
     for (const region of regions) seamed.add(region.id);
+    // The edge copies come first, and unlike the band they are built for the
+    // human's realm too: `.owned` is the heaviest stroke on the map and its
+    // seams were the most visible of the lot.
+    const mask = outsideMask(
+      realmEdgeGroup, `realm-edge-mask-${root}`, regions.map((r) => r.path),
+    );
+    for (const region of regions) {
+      realmEdgePaths.set(region.id, maskedPath(realmEdgeGroup, region.path, mask));
+    }
     if (root === human?.factionId) continue;
-    const color = darkenColor(factionById.get(root)!.color, 0.5);
-    const p = outerOutline(
+    const unionMask = outsideMask(
       realmUnionGroup, `realm-union-mask-${root}`, regions.map((r) => r.path),
     );
-    p.setAttribute("stroke", color);
-    p.setAttribute("pointer-events", "none");
+    const d = regions.map((r) => r.path).join(" ");
+    // Band first, casing over it. Everything here is clipped to OUTSIDE the
+    // realm, so there is no room on the inner side of the band to put a casing
+    // - the only way to hold the band off the boundary is to draw it wide and
+    // then paint the innermost slice of it pale. Widths in the CSS.
+    const band = maskedPath(realmUnionGroup, d, unionMask);
+    band.classList.add("ru-band");
+    band.setAttribute("stroke", darkenColor(factionById.get(root)!.color, 0.5));
+    maskedPath(realmUnionGroup, d, unionMask).classList.add("ru-casing");
   }
   // The pale dashed seam goes on the members themselves: a region's own stroke
-  // draws its whole outline, inner edges included, and the band above restores
-  // the outer edge - so what is left pale is exactly the seams within a realm.
+  // draws its whole outline, inner edges included, and that is now ALL it is
+  // allowed to draw - see the `.region.realm-member` rule. Everything the land
+  // says about itself is on its edge copy above, clipped to the realm's outer
+  // boundary.
   for (const [id, el] of regionPaths) {
     el.classList.toggle("realm-member", seamed.has(id));
+  }
+  syncRealmEdges();
+}
+
+/** Copies each region's classes and inline style onto its edge copy, so the
+ *  copy is styled by the very same `.region.*` rules and cannot fall behind
+ *  them. A copy is not a mirror: there is no second list of colours anywhere,
+ *  only this one assignment, and the one rule that must NOT reach the copy
+ *  excludes it by name (`.region.realm-member:not(.realm-edge)`).
+ *
+ *  Driven by an observer rather than by calls at each of the four places that
+ *  toggle a region class (`applyOwnership`, `applyTargeting`, `applyRealmHover`
+ *  and `renderRealmUnions`). Four call sites nobody may forget is the shape of
+ *  drift this codebase keeps writing tests against, and there is no test that
+ *  can reach main.ts - so the sync is wired to the mutation itself. */
+function syncRealmEdges(): void {
+  for (const [id, edge] of realmEdgePaths) {
+    const region = regionPaths.get(id);
+    if (region === undefined) continue;
+    edge.setAttribute("class", `${region.getAttribute("class")} realm-edge`);
+    // The inline style comes too, because a class is not always the whole
+    // answer: `.region.owned` paints `var(--owned-stroke)`, and that custom
+    // property is set per land in applyOwnership. Without it the copy resolved
+    // an undefined var, which for an inherited property means `stroke` falls
+    // back to none - the copy carried the class and drew nothing.
+    edge.setAttribute("style", region.getAttribute("style") ?? "");
   }
 }
 

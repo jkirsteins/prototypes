@@ -15,8 +15,16 @@ export interface RenderResult {
   realmOutlineGroup: SVGGElement;
   realmUnionGroup: SVGGElement;
   realmHoverGroup: SVGGElement;
+  realmEdgeGroup: SVGGElement;
   vassalOverlayGroup: SVGGElement;
   peopleLabels: Map<string, SVGTextElement[]>;
+  /** Appends a `<mask>` to `group` that hides everything inside `paths` and
+   *  shows everything outside them, and returns the `url(#id)` to reference it
+   *  by. The box is map plus margin - the sea rect's - because a realm on the
+   *  map's edge strokes outward past the map itself. */
+  outsideMask: (
+    group: SVGGElement, maskId: string, paths: string[],
+  ) => string;
   /** Appends to `group` one outline tracing only the OUTER boundary of
    *  `regionPaths` taken together: where two of them meet, nothing is drawn.
    *  `maskId` must be unique among the outlines alive at the same time.
@@ -150,6 +158,15 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   }
   svg.appendChild(regionsGroup);
 
+  // Above the fills, because it carries the state stroke - threat, ownership,
+  // hover, targeting - that a realm member is no longer allowed to draw for
+  // itself. One masked copy of each member, clipped to the realm's outer edge,
+  // so a land keeps its colour without painting it along a seam with its own
+  // realm. See renderRealmEdges in main.ts.
+  const realmEdgeGroup = el("g") as SVGGElement;
+  realmEdgeGroup.classList.add("realm-edges");
+  svg.appendChild(realmEdgeGroup);
+
   const vassalOverlayGroup = el("g") as SVGGElement;
   vassalOverlayGroup.classList.add("vassal-overlay");
   svg.appendChild(vassalOverlayGroup);
@@ -235,10 +252,9 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   // The mask has to cover everything the stroke can reach, and a realm on the
   // map's edge strokes outward past it - so this is the sea rect's box, which
   // already spans map plus margin, and nothing narrower.
-  const outerOutline = (
+  const outsideMask = (
     group: SVGGElement, maskId: string, paths: string[],
-  ): SVGPathElement => {
-    const d = paths.join(" ");
+  ): string => {
     const mask = el("mask");
     mask.setAttribute("id", maskId);
     mask.setAttribute("maskUnits", "userSpaceOnUse");
@@ -251,25 +267,40 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     show.setAttribute("y", String(-data.margin));
     show.setAttribute("width", String(data.width + 2 * data.margin));
     show.setAttribute("height", String(data.height + 2 * data.margin));
-    show.setAttribute("fill", "#fff");
     const hide = el("path");
-    hide.setAttribute("d", d);
-    hide.setAttribute("fill", "#000");
+    hide.setAttribute("d", paths.join(" "));
+    // Inline, not `fill=` attributes. A mask lives inside the group it serves,
+    // so a descendant rule written for that group's own shapes reaches into it
+    // too: `.realm-union path { fill: none }` blanked this very path, the mask
+    // lost the shape it hides with, and every mask in that group silently
+    // became a no-op that showed everything. An inline style outranks any
+    // author rule, so the mask cannot be switched off from a stylesheet that
+    // has never heard of it. The `>` combinators in style.css are the second
+    // half of the same fix.
+    show.style.fill = "#fff";
+    hide.style.fill = "#000";
     mask.appendChild(show);
     mask.appendChild(hide);
     // Inside the group rather than <defs>: the caller clears the group on every
-    // refresh, so the mask cannot outlive the outline it belongs to.
+    // refresh, so the mask cannot outlive the shapes it belongs to.
     group.appendChild(mask);
+    return `url(#${maskId})`;
+  };
+
+  const outerOutline = (
+    group: SVGGElement, maskId: string, paths: string[],
+  ): SVGPathElement => {
+    const mask = outsideMask(group, maskId, paths);
     const p = el("path") as SVGPathElement;
-    p.setAttribute("d", d);
-    p.setAttribute("mask", `url(#${maskId})`);
+    p.setAttribute("d", paths.join(" "));
+    p.setAttribute("mask", mask);
     group.appendChild(p);
     return p;
   };
 
   return {
     svg, regionPaths, settlementDots, revealSettlement, clearFoundedSettlements,
-    realmOutlineGroup, realmUnionGroup, realmHoverGroup, vassalOverlayGroup,
-    peopleLabels, outerOutline,
+    realmOutlineGroup, realmUnionGroup, realmHoverGroup, realmEdgeGroup,
+    vassalOverlayGroup, peopleLabels, outerOutline, outsideMask,
   };
 }

@@ -60,33 +60,41 @@ svg.map.dragging {
 }
 
 /* Inside a realm the lines between its own lands are subdivisions, not
-   frontiers. This pales a member's whole outline, its outer edge included - the
-   .realm-union band underneath restores that outer edge, so what stays pale is
-   exactly the seams within the realm. That band is the ONLY thing drawing a
-   realm's outer edge at full weight, so it and this rule are a pair: weaken one
-   without the other and a realm either loses its border or keeps its seams.
+   frontiers, and this pale dash is now the ONLY stroke a member draws for
+   itself - !important, against every threat, hover and targeting rule in this
+   file. Nothing is lost by that: `renderRealmEdges` gives each member a masked
+   copy carrying the same classes, so what the land says about itself is still
+   painted in full, on the realm's outer edge, where it cannot run along a seam.
 
-   Deliberately EARLY in this file, the mirror of the targeting-cue note below:
-   every later rule of equal specificity - threat, hover, realm-hover, the
-   targeting cues - must beat it, because each of those is saying something
-   about the land that outranks how it is grouped.
+   This used to be a :where(:not(hovered, threat-1, owned, target-valid, ...))
+   list that switched the seam OFF whenever the land had anything else to say,
+   so the land's own stroke drew its whole outline in threat red or ownership
+   gold, seams included, once from each side. Measured mid-game, six of ten
+   realm members were in that state at any moment, so "no borders inside a
+   realm" held almost nowhere. The masked copy is what lets both be true at
+   once, and it is why the exception list is gone rather than extended.
 
-   The :where() list is what makes that true of the DASH as well. Being later
-   is only enough to override a property you also set, and no other .region
-   rule sets stroke-dasharray - a threat border on a realm member would come
-   out red and still dashed. Rather than teach a dozen rules to switch a dash
-   off they never switched on, the seam simply does not apply when the land has
-   anything else to say. :where() adds no specificity, so this stays a plain
-   two-class rule and the ordering above still holds. */
-.region.realm-member:where(:not(
-  .hovered, .selected, .owned,
-  .threat-1, .threat-2, .threat-3, .advantage,
-  .realm-hover, .vassal-hover, .holder-hover,
-  .target-valid, .target-invalid
-)) {
-  stroke: #b9ab93;
-  stroke-width: 0.7;
-  stroke-dasharray: 4 3;
+   :not(.realm-edge) is what keeps this off the copy - the copy carries the
+   region's classes verbatim so every other .region rule reaches it, and this
+   is the single rule that must not. */
+.region.realm-member:not(.realm-edge) {
+  stroke: #b9ab93 !important;
+  stroke-width: 0.7 !important;
+  stroke-dasharray: 4 3 !important;
+}
+
+/* The stroke-only copies. `fill: none` because a path defaults to filled black
+   and these carry only an outline; no stroke of their own, so a member with
+   nothing to say draws nothing here and the .region rules above supply the rest
+   when it has. Inert to the pointer - the land itself is still the hit target,
+   which a mask does not affect. */
+.realm-edges {
+  pointer-events: none;
+}
+
+.realm-edge {
+  fill: none;
+  stroke: none;
 }
 
 .river {
@@ -568,23 +576,44 @@ svg.map.dragging {
    armed they must outrank the hover and threat strokes, which are later
    rules of equal specificity. See ".region.target-*" below. */
 
-.realm-outline path {
+.realm-outline > path {
   stroke-width: 6;
   stroke-linejoin: round;
 }
 
 /* One band around a realm of 2+ polygons, in that realm's own darkened color,
-   always on. `outerOutline` masks away everything inside the realm, so the
-   lines between its own lands are not drawn and only the union's outer edge
-   survives - see the comment on it in map-render.ts. That mask also takes the
-   inner half of the stroke, so every width here reads as half its number: 3 is
-   a 1.5 unit border. */
-.realm-union path {
+   always on. The mask takes everything inside the realm - the lines between its
+   own lands, and the inner half of every stroke - so a width here renders as
+   half its number and lies entirely OUTSIDE the realm it belongs to.
+
+   Which is why the casing exists. Two realms that touch each put their band on
+   the other's land, so the two bands meet at the border with nothing between
+   them, and a pair of Estonian greens reads as one fat line rather than two
+   realms. The casing is the cartographer's answer: 1 unit of pale held against
+   the border, so two bands are always separated by light whatever their hues.
+
+   It goes OVER a wider band rather than under a narrow one. Under would put it
+   outside the band, where it separates a realm from open country it was never
+   confused with; there is no room on the inner side to draw it, because that
+   side is masked. So the band is drawn 2 units wider than it should be and the
+   casing paints back the innermost unit of it: band 5 renders 0-2.5 outward,
+   casing 2 renders 0-1, leaving 1-2.5 - the same 1.5 units of colour as before,
+   now held a unit clear of the line. */
+.realm-union > path {
   fill: none;
-  stroke-width: 3;
   stroke-linejoin: round;
-  opacity: 0.7;
   pointer-events: none;
+}
+
+.realm-union > .ru-band {
+  stroke-width: 5;
+  opacity: 0.7;
+}
+
+.realm-union > .ru-casing {
+  stroke: #fdfaf4;
+  stroke-width: 2;
+  opacity: 0.85;
 }
 
 .region.owned:not(.selected) {
@@ -1135,7 +1164,7 @@ svg.map.dragging {
    from clear, so widening the halo spreads the same ink over more map and it
    goes from a line to a smear - 10 reads as a vague grey shadow where 5 reads
    as a definite edge. Checked in the browser both ways. */
-.realm-hover-halo path {
+.realm-hover-halo > path {
   fill: none;
   stroke: #2b2318;
   stroke-width: 5;
@@ -1147,7 +1176,7 @@ svg.map.dragging {
    keeps the full weight the black halo has given up. There is exactly one of
    these on the map and you are looking for it; a rival's realm is one of two
    dozen you pass over, and at 11 it was shouting. */
-.realm-hover-halo.own path {
+.realm-hover-halo.own > path {
   stroke: #d4af37;
   stroke-width: 11;
 }

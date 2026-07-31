@@ -132,6 +132,11 @@ describe("renderMap", () => {
     expect(groups).toContain("realm-hover-halo");
     expect(groups.indexOf("realm-hover-halo")).toBeLessThan(groups.indexOf("regions"));
 
+    // the state strokes of a realm's members ride ABOVE the fills, since they
+    // replace the stroke those members are no longer allowed to draw themselves
+    expect(groups).toContain("realm-edges");
+    expect(groups.indexOf("regions")).toBeLessThan(groups.indexOf("realm-edges"));
+
     // the always-on realm band works the same way, and sits under the hover
     // halo so a hover always outranks it
     expect(groups).toContain("realm-union");
@@ -177,14 +182,30 @@ describe("renderMap", () => {
       const { realmUnionGroup, p, a, b } = twoRegions();
       expect(p.getAttribute("mask")).toBe("url(#test-mask)");
       const mask = realmUnionGroup.querySelector("mask#test-mask")!;
-      // white everywhere, then the realm itself punched black
-      expect(mask.querySelector("rect")!.getAttribute("fill")).toBe("#fff");
       const hide = mask.querySelector("path")!;
-      expect(hide.getAttribute("fill")).toBe("#000");
       expect(hide.getAttribute("d")).toBe(`${a.path} ${b.path}`);
       // no fill-rule: two members can overlap (Selija and Jersika share two
       // scraps of the Daugava bank split) and evenodd would reopen them
       expect(hide.getAttribute("fill-rule")).toBeNull();
+    });
+
+    /** The bug this pins shipped and hid for two changes. A mask sits inside
+     *  the group it serves, so `.realm-union path { fill: none }` - written for
+     *  that group's own shapes - reached into the mask, blanked the black shape
+     *  it hides with, and turned every mask in the group into a no-op that
+     *  showed everything. Nothing looked broken; the seams just stayed. An
+     *  inline fill outranks any author rule, so the mask cannot be switched off
+     *  by a stylesheet that has never heard of it. */
+    it("puts the mask's fills inline, out of reach of the host group's rules", () => {
+      const { realmUnionGroup } = twoRegions();
+      const mask = realmUnionGroup.querySelector("mask#test-mask")!;
+      const show = mask.querySelector("rect") as SVGRectElement;
+      const hide = mask.querySelector("path") as SVGPathElement;
+      expect(show.style.fill).not.toBe("");
+      expect(hide.style.fill).not.toBe("");
+      // and NOT as attributes, which any descendant rule outranks
+      expect(show.getAttribute("fill")).toBeNull();
+      expect(hide.getAttribute("fill")).toBeNull();
     });
 
     /** A realm on the map's edge strokes outward past it, so a mask stopping at
