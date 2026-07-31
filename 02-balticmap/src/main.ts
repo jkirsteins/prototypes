@@ -43,7 +43,7 @@ const app = document.getElementById("app")!;
 const {
   svg, regionPaths, revealSettlement, clearFoundedSettlements,
   realmOutlineGroup, realmUnionGroup, realmHoverGroup, vassalOverlayGroup,
-  peopleLabels,
+  peopleLabels, outerOutline,
 } = renderMap(data, app);
 
 // map-render.ts doesn't expose a badge group; appended here, last in the SVG
@@ -290,8 +290,9 @@ function renderRealmHalo(
 }
 
 /** One outline around every realm that spans two or more polygons, always on.
- *  Same trick as the hover halo: the paths sit under the region fills, so a
- *  realm's shared inner edges are covered and only its outer edge survives.
+ *  Same trick as the hover halo: `outerOutline` masks away everything inside
+ *  the realm, so the lines between its own lands are not drawn at all and only
+ *  its outer edge survives.
  *
  *  A realm of one polygon gets nothing - its own border already is its outline.
  *  The human's own realm gets nothing either: `renderRealmHalo` is this outline
@@ -322,13 +323,11 @@ function renderRealmUnions(): void {
     for (const region of regions) seamed.add(region.id);
     if (root === human?.factionId) continue;
     const color = darkenColor(factionById.get(root)!.color, 0.5);
-    for (const region of regions) {
-      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      p.setAttribute("d", region.path);
-      p.setAttribute("stroke", color);
-      p.setAttribute("pointer-events", "none");
-      realmUnionGroup.appendChild(p);
-    }
+    const p = outerOutline(
+      realmUnionGroup, `realm-union-mask-${root}`, regions.map((r) => r.path),
+    );
+    p.setAttribute("stroke", color);
+    p.setAttribute("pointer-events", "none");
   }
   // The pale dashed seam goes on the members themselves: a region's own stroke
   // draws its whole outline, inner edges included, and the band above restores
@@ -537,23 +536,22 @@ function applyRealmHover(region: Region | null): void {
   renderRealmHoverHalo(members);
 }
 
-/** One outline around the hovered realm: the paths sit under the region
- *  fills, so only the realm's outer edge survives. */
+/** One outline around the hovered realm: `outerOutline` masks away everything
+ *  inside it, so only the realm's outer edge survives. */
 function renderRealmHoverHalo(members: Set<string>): void {
   realmHoverGroup.replaceChildren();
   const human = game.players[0];
   realmHoverGroup.classList.toggle(
     "own", human !== undefined && members.has(human.factionId),
   );
-  for (const factionId of members) {
-    const regionId = regionByFaction.get(factionId);
-    const region = regionId !== undefined ? regionById.get(regionId) : undefined;
-    if (!region) continue;
-    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    p.setAttribute("d", region.path);
-    p.setAttribute("pointer-events", "none");
-    realmHoverGroup.appendChild(p);
-  }
+  const paths = [...members]
+    .map((factionId) => regionByFaction.get(factionId))
+    .map((id) => (id !== undefined ? regionById.get(id) : undefined))
+    .filter((r): r is Region => r !== undefined)
+    .map((r) => r.path);
+  if (paths.length === 0) return;
+  const p = outerOutline(realmHoverGroup, "realm-hover-mask", paths);
+  p.setAttribute("pointer-events", "none");
 }
 
 function disarm(): void {

@@ -62,7 +62,9 @@ svg.map.dragging {
 /* Inside a realm the lines between its own lands are subdivisions, not
    frontiers. This pales a member's whole outline, its outer edge included - the
    .realm-union band underneath restores that outer edge, so what stays pale is
-   exactly the seams within the realm.
+   exactly the seams within the realm. That band is the ONLY thing drawing a
+   realm's outer edge at full weight, so it and this rule are a pair: weaken one
+   without the other and a realm either loses its border or keeps its seams.
 
    Deliberately EARLY in this file, the mirror of the targeting-cue note below:
    every later rule of equal specificity - threat, hover, realm-hover, the
@@ -572,9 +574,11 @@ svg.map.dragging {
 }
 
 /* One band around a realm of 2+ polygons, in that realm's own darkened color,
-   always on. Under the region fills, so only the union's outer edge survives -
-   see the comment in map-render.ts. Half the stroke is behind the fill, so this
-   reads as a ~1.5 unit border. */
+   always on. `outerOutline` masks away everything inside the realm, so the
+   lines between its own lands are not drawn and only the union's outer edge
+   survives - see the comment on it in map-render.ts. That mask also takes the
+   inner half of the stroke, so every width here reads as half its number: 3 is
+   a 1.5 unit border. */
 .realm-union path {
   fill: none;
   stroke-width: 3;
@@ -1122,6 +1126,15 @@ svg.map.dragging {
   opacity: 1;
 }
 
+/* `outerOutline` masks away everything inside the realm, seams and the inner
+   half of the border alike, so these widths render at half their number: 5 lays
+   down a 2.5 unit line hugging the outside of the realm.
+
+   Deliberately NOT doubled to hold the old visible weight. What survives the
+   mask lies under the NEIGHBOURING lands' fills, which are translucent but far
+   from clear, so widening the halo spreads the same ink over more map and it
+   goes from a line to a smear - 10 reads as a vague grey shadow where 5 reads
+   as a definite edge. Checked in the browser both ways. */
 .realm-hover-halo path {
   fill: none;
   stroke: #2b2318;

@@ -17,6 +17,33 @@ export interface RenderResult {
   realmHoverGroup: SVGGElement;
   vassalOverlayGroup: SVGGElement;
   peopleLabels: Map<string, SVGTextElement[]>;
+  /** Appends to `group` one outline tracing only the OUTER boundary of
+   *  `regionPaths` taken together: where two of them meet, nothing is drawn.
+   *  `maskId` must be unique among the outlines alive at the same time.
+   *  Returns the path so the caller can set its stroke.
+   *
+   *  This replaces stroking each member polygon and letting the region fills
+   *  above cover the halves that fall inside the realm. That only works if those
+   *  fills are opaque, and they are not - `.region.dimmed` and the vassal
+   *  stripes let the band show straight through. So every seam *inside* a realm
+   *  came out as a full-width line drawn twice, once from each side, while the
+   *  realm's real border was drawn once: a realm read as several outlined lands
+   *  rather than one outlined realm, which is the opposite of the point.
+   *
+   *  The seams are removed geometrically instead. One path holds every member's
+   *  subpaths and is masked by its own filled shape, so everything inside the
+   *  union is hidden - precisely the seams, plus the inner half of the border -
+   *  and what survives is the outer half of the outer edge. A stroke-width of N
+   *  therefore reads as N/2, which is what the CSS widths are set against. No
+   *  polygon-union arithmetic, and nothing left to drift when a fill's opacity
+   *  changes.
+   *
+   *  The mask keeps SVG's default nonzero fill rule on purpose: two members'
+   *  polygons can overlap (Sēlija and Jersika both carry the same two scraps
+   *  from the Daugava bank split), and evenodd would punch those back open. */
+  outerOutline: (
+    group: SVGGElement, maskId: string, regionPaths: string[],
+  ) => SVGPathElement;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -205,9 +232,44 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
 
   container.appendChild(svg);
 
+  // The mask has to cover everything the stroke can reach, and a realm on the
+  // map's edge strokes outward past it - so this is the sea rect's box, which
+  // already spans map plus margin, and nothing narrower.
+  const outerOutline = (
+    group: SVGGElement, maskId: string, paths: string[],
+  ): SVGPathElement => {
+    const d = paths.join(" ");
+    const mask = el("mask");
+    mask.setAttribute("id", maskId);
+    mask.setAttribute("maskUnits", "userSpaceOnUse");
+    mask.setAttribute("x", String(-data.margin));
+    mask.setAttribute("y", String(-data.margin));
+    mask.setAttribute("width", String(data.width + 2 * data.margin));
+    mask.setAttribute("height", String(data.height + 2 * data.margin));
+    const show = el("rect");
+    show.setAttribute("x", String(-data.margin));
+    show.setAttribute("y", String(-data.margin));
+    show.setAttribute("width", String(data.width + 2 * data.margin));
+    show.setAttribute("height", String(data.height + 2 * data.margin));
+    show.setAttribute("fill", "#fff");
+    const hide = el("path");
+    hide.setAttribute("d", d);
+    hide.setAttribute("fill", "#000");
+    mask.appendChild(show);
+    mask.appendChild(hide);
+    // Inside the group rather than <defs>: the caller clears the group on every
+    // refresh, so the mask cannot outlive the outline it belongs to.
+    group.appendChild(mask);
+    const p = el("path") as SVGPathElement;
+    p.setAttribute("d", d);
+    p.setAttribute("mask", `url(#${maskId})`);
+    group.appendChild(p);
+    return p;
+  };
+
   return {
     svg, regionPaths, settlementDots, revealSettlement, clearFoundedSettlements,
     realmOutlineGroup, realmUnionGroup, realmHoverGroup, vassalOverlayGroup,
-    peopleLabels,
+    peopleLabels, outerOutline,
   };
 }

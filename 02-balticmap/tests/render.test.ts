@@ -127,7 +127,8 @@ describe("renderMap", () => {
     expect(groups.indexOf("regions")).toBeLessThan(groups.indexOf("vassal-overlay"));
     expect(groups.indexOf("vassal-overlay")).toBeLessThan(groups.indexOf("rivers"));
 
-    // the hover halo hides its inner edges behind the region fills
+    // the hover halo masks away everything inside the realm, and still sits
+    // under the region fills so a land's own stroke reads over it
     expect(groups).toContain("realm-hover-halo");
     expect(groups.indexOf("realm-hover-halo")).toBeLessThan(groups.indexOf("regions"));
 
@@ -146,6 +147,66 @@ describe("renderMap", () => {
       const rect = pattern!.querySelector("rect")!;
       expect(rect.getAttribute("fill")).toBe(f.color);
     }
+  });
+
+  /** A realm's outline is ONE masked path over every member, not one stroked
+   *  path per member. The per-member version drew the seams between a realm's
+   *  own lands, twice over - once from each side - because it relied on the
+   *  region fills above to cover them and those fills are translucent. */
+  describe("outerOutline", () => {
+    const twoRegions = () => {
+      const container = document.createElement("div");
+      const result = renderMap(data, container);
+      const [a, b] = data.regions;
+      const p = result.outerOutline(
+        result.realmUnionGroup, "test-mask", [a.path, b.path],
+      );
+      return { ...result, p, a, b };
+    };
+
+    it("draws one path holding every member, not one path each", () => {
+      const { realmUnionGroup, p, a, b } = twoRegions();
+      // direct children only: the mask holds a path of its own, one level down
+      const drawn = [...realmUnionGroup.children]
+        .filter((c) => c.tagName.toLowerCase() === "path");
+      expect(drawn).toHaveLength(1);
+      expect(p.getAttribute("d")).toBe(`${a.path} ${b.path}`);
+    });
+
+    it("masks the realm's own interior, so its inner seams are not drawn", () => {
+      const { realmUnionGroup, p, a, b } = twoRegions();
+      expect(p.getAttribute("mask")).toBe("url(#test-mask)");
+      const mask = realmUnionGroup.querySelector("mask#test-mask")!;
+      // white everywhere, then the realm itself punched black
+      expect(mask.querySelector("rect")!.getAttribute("fill")).toBe("#fff");
+      const hide = mask.querySelector("path")!;
+      expect(hide.getAttribute("fill")).toBe("#000");
+      expect(hide.getAttribute("d")).toBe(`${a.path} ${b.path}`);
+      // no fill-rule: two members can overlap (Selija and Jersika share two
+      // scraps of the Daugava bank split) and evenodd would reopen them
+      expect(hide.getAttribute("fill-rule")).toBeNull();
+    });
+
+    /** A realm on the map's edge strokes outward past it, so a mask stopping at
+     *  the map box would clip its own outline away. */
+    it("covers map plus margin, the same box as the sea", () => {
+      const { realmUnionGroup } = twoRegions();
+      const mask = realmUnionGroup.querySelector("mask#test-mask")!;
+      expect(mask.getAttribute("maskUnits")).toBe("userSpaceOnUse");
+      expect(mask.getAttribute("x")).toBe(String(-data.margin));
+      expect(mask.getAttribute("width")).toBe(String(data.width + 2 * data.margin));
+      expect(mask.getAttribute("height")).toBe(String(data.height + 2 * data.margin));
+    });
+
+    /** The mask lives in the group, not <defs>, so clearing the group on a
+     *  refresh cannot leave it behind referencing a path that is gone. */
+    it("puts the mask in the group it draws into", () => {
+      const { realmUnionGroup, svg } = twoRegions();
+      expect(realmUnionGroup.querySelector("mask#test-mask")).not.toBeNull();
+      expect(svg.querySelector("defs mask")).toBeNull();
+      realmUnionGroup.replaceChildren();
+      expect(svg.querySelector("#test-mask")).toBeNull();
+    });
   });
 
   it("tags people labels with data-people and collects them in peopleLabels", () => {
