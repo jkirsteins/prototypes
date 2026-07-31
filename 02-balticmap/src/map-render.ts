@@ -13,6 +13,7 @@ export interface RenderResult {
    *  settlements would stay on the map. */
   clearFoundedSettlements: () => void;
   realmOutlineGroup: SVGGElement;
+  realmUnionGroup: SVGGElement;
   realmHoverGroup: SVGGElement;
   vassalOverlayGroup: SVGGElement;
   peopleLabels: Map<string, SVGTextElement[]>;
@@ -92,6 +93,13 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   const realmOutlineGroup = el("g") as SVGGElement;
   realmOutlineGroup.classList.add("realm-outline");
   svg.appendChild(realmOutlineGroup);
+
+  // the always-on version of the same trick, for every realm of 2+ regions:
+  // below the hover halo so a hover always wins, above realm-outline so a
+  // neighbour's outline is not swallowed by the human halo's fill
+  const realmUnionGroup = el("g") as SVGGElement;
+  realmUnionGroup.classList.add("realm-union");
+  svg.appendChild(realmUnionGroup);
 
   // under the regions: a thick stroke here reads as one outline around a
   // whole realm, because the fills above cover every shared inner edge
@@ -201,6 +209,7 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
 
   return {
     svg, regionPaths, settlementDots, revealSettlement, clearFoundedSettlements,
-    realmOutlineGroup, realmHoverGroup, vassalOverlayGroup, peopleLabels,
+    realmOutlineGroup, realmUnionGroup, realmHoverGroup, vassalOverlayGroup,
+    peopleLabels,
   };
 }

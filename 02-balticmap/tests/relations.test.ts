@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  getRel, bumpStatus, bumpMight, leadsOf, bumpMightAll, realmOf,
+  getRel, bumpStatus, bumpMight, leadsOf, bumpMightAll, realmOf, realmRootOf,
+  fullRealmOf,
   levelStatus, allianceKey, allianceActive, bumpMightBy, bumpStatusBy, bumpMightAllBy,
   type Relations,
 } from "../src/relations";
@@ -27,6 +28,33 @@ describe("realmOf", () => {
       ["alpha", "beta", "gamma"],
     );
     expect(realmOf("delta", o, { gamma: "alpha" })).toEqual(["delta"]);
+  });
+});
+
+describe("realmRootOf", () => {
+  it("walks a land to its holder, then that holder to its overlord", () => {
+    const o = new Map([["beta", "alpha"]]);
+    const inc = { gamma: "beta" };
+    expect(realmRootOf("alpha", o, inc)).toBe("alpha"); // already the root
+    expect(realmRootOf("beta", o, inc)).toBe("alpha"); // a vassal
+    expect(realmRootOf("gamma", o, inc)).toBe("alpha"); // a vassal's land
+    expect(realmRootOf("delta", o, inc)).toBe("delta"); // unattached
+  });
+});
+
+describe("fullRealmOf", () => {
+  it("adds a vassal's own incorporated lands, which realmOf misses", () => {
+    const o = new Map([["beta", "alpha"]]);
+    const inc = { gamma: "beta" };
+    // realmOf only walks one level out: gamma is beta's, not alpha's
+    expect(realmOf("alpha", o, inc).sort()).toEqual(["alpha", "beta"]);
+    expect([...fullRealmOf("alpha", o, inc)].sort()).toEqual(
+      ["alpha", "beta", "gamma"],
+    );
+  });
+
+  it("is just the faction itself when it holds nothing", () => {
+    expect([...fullRealmOf("delta", new Map(), {})]).toEqual(["delta"]);
   });
 });
 

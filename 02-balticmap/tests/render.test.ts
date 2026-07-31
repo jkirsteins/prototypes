@@ -132,6 +132,13 @@ describe("renderMap", () => {
     expect(groups).toContain("realm-hover-halo");
     expect(groups.indexOf("realm-hover-halo")).toBeLessThan(groups.indexOf("regions"));
 
+    // the always-on realm band works the same way, and sits under the hover
+    // halo so a hover always outranks it
+    expect(groups).toContain("realm-union");
+    expect(groups.indexOf("realm-union")).toBeLessThan(groups.indexOf("regions"));
+    expect(groups.indexOf("realm-outline")).toBeLessThan(groups.indexOf("realm-union"));
+    expect(groups.indexOf("realm-union")).toBeLessThan(groups.indexOf("realm-hover-halo"));
+
     const patterns = svg.querySelectorAll("defs pattern[id^='vassal-stripes-']");
     expect(patterns.length).toBe(data.factions.length);
     for (const f of data.factions) {

@@ -11,7 +11,9 @@ import {
   isHumanTurn, surrender, viewOf, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
-import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
+import {
+  allianceActive, allianceKey, fullRealmOf, leadsOf, realmOf, realmRootOf,
+} from "./relations";
 import {
   handBlockReason, playableSet, validTargetsFor, targetEligibilityFor,
   subjugationRaceFor, raidGainFor,
@@ -40,7 +42,8 @@ const app = document.getElementById("app")!;
 
 const {
   svg, regionPaths, revealSettlement, clearFoundedSettlements,
-  realmOutlineGroup, realmHoverGroup, vassalOverlayGroup, peopleLabels,
+  realmOutlineGroup, realmUnionGroup, realmHoverGroup, vassalOverlayGroup,
+  peopleLabels,
 } = renderMap(data, app);
 
 // map-render.ts doesn't expose a badge group; appended here, last in the SVG
@@ -286,6 +289,55 @@ function renderRealmHalo(
   }
 }
 
+/** One outline around every realm that spans two or more polygons, always on.
+ *  Same trick as the hover halo: the paths sit under the region fills, so a
+ *  realm's shared inner edges are covered and only its outer edge survives.
+ *
+ *  A realm of one polygon gets nothing - its own border already is its outline.
+ *  The human's own realm gets nothing either: `renderRealmHalo` is this outline
+ *  in brighter form, and drawing both would ring it twice. An overlord the
+ *  human is vassal to is not the human's root, so it still gets one. */
+function renderRealmUnions(): void {
+  realmUnionGroup.replaceChildren();
+  const human = game.players[0];
+  // while a card is armed the targeting cues own the map, the same reason
+  // applyRealmHover drops the hover halo
+  const live = inPlay() && armed === null;
+  const byRoot = new Map<string, string[]>();
+  if (live) {
+    for (const factionId of game.factionIds) {
+      const root = realmRootOf(factionId, game.overlords, game.incorporated);
+      const members = byRoot.get(root) ?? [];
+      members.push(factionId);
+      byRoot.set(root, members);
+    }
+  }
+  const seamed = new Set<string>();
+  for (const [root, members] of byRoot) {
+    const regions = members
+      .map((f) => regionByFaction.get(f))
+      .map((id) => (id !== undefined ? regionById.get(id) : undefined))
+      .filter((r): r is Region => r !== undefined);
+    if (regions.length < 2) continue;
+    for (const region of regions) seamed.add(region.id);
+    if (root === human?.factionId) continue;
+    const color = darkenColor(factionById.get(root)!.color, 0.5);
+    for (const region of regions) {
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", region.path);
+      p.setAttribute("stroke", color);
+      p.setAttribute("pointer-events", "none");
+      realmUnionGroup.appendChild(p);
+    }
+  }
+  // The pale dashed seam goes on the members themselves: a region's own stroke
+  // draws its whole outline, inner edges included, and the band above restores
+  // the outer edge - so what is left pale is exactly the seams within a realm.
+  for (const [id, el] of regionPaths) {
+    el.classList.toggle("realm-member", seamed.has(id));
+  }
+}
+
 /** One badge per living faction outside the human's realm with a non-zero
  *  lead on either track, anchored at that faction's home region bbox.
  *
@@ -422,8 +474,10 @@ function applyTargeting(): void {
   // then. Disarming lands here too, and brings the pin, or the live hover, back.
   applyHighlight(hoveredRegion, hoveredRegion?.faction ?? null);
   // Arming and disarming both land here without a full refresh, and the badges
-  // are part of the targeting picture - see renderThreatBadges.
+  // and the always-on realm outlines are part of the targeting picture - see
+  // renderThreatBadges and renderRealmUnions.
   renderThreatBadges();
+  renderRealmUnions();
 }
 
 /** The one place a faction highlight is applied. The map halo and the activity
@@ -452,21 +506,15 @@ function applyHighlight(region: Region | null, factionId: string | null): void {
  *  incorporated holdings that `realmOf` alone would miss. No-op (all
  *  classes cleared) when there is no hover or the phase is not in play. */
 function applyRealmHover(region: Region | null): void {
-  const members = new Set<string>();
   // while a card is armed, targeting owns the map: a realm halo here would
   // outrank the valid/invalid cues and make blocked targets look clickable
-  if (region && inPlay() && armed === null) {
-    let root = game.incorporated[region.faction] ?? region.faction;
-    root = game.overlords.get(root) ?? root;
-    for (const member of realmOf(root, game.overlords, game.incorporated)) {
-      members.add(member);
-    }
-    for (const member of [...members]) {
-      for (const [land, owner] of Object.entries(game.incorporated)) {
-        if (owner === member) members.add(land);
-      }
-    }
-  }
+  const members =
+    region && inPlay() && armed === null
+      ? fullRealmOf(
+          realmRootOf(region.faction, game.overlords, game.incorporated),
+          game.overlords, game.incorporated,
+        )
+      : new Set<string>();
   // The polygon of the faction that holds the hovered land - who took it -
   // marked on its own, not its whole realm. Suppressed while a card is armed,
   // for the same reason the realm halo is.

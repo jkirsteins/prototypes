@@ -100,6 +100,34 @@ export function realmOf(
   return out;
 }
 
+/** The realm F belongs to, named by its root: whoever holds F if F has been
+ *  incorporated, then that faction's overlord if it has one. */
+export function realmRootOf(
+  factionId: string,
+  overlords: Overlords,
+  incorporated: Incorporated,
+): string {
+  const held = incorporated[factionId] ?? factionId;
+  return overlords.get(held) ?? held;
+}
+
+/** Every faction id under one root, including each vassal's own incorporated
+ *  lands - which `realmOf` alone misses, since it only walks one level out
+ *  from the faction it is given. */
+export function fullRealmOf(
+  root: string,
+  overlords: Overlords,
+  incorporated: Incorporated,
+): Set<string> {
+  const members = new Set(realmOf(root, overlords, incorporated));
+  for (const member of [...members]) {
+    for (const [land, owner] of Object.entries(incorporated)) {
+      if (owner === member) members.add(land);
+    }
+  }
+  return members;
+}
+
 /** Raises BOTH directions' status counters to the max of the two, so the
  *  status lead becomes 0 (relation counters only grow; Assassinate ruler). */
 export function levelStatus(rel: Relations, a: string, b: string): Relations {

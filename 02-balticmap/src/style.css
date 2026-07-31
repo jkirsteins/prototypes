@@ -59,6 +59,34 @@ svg.map.dragging {
   filter: brightness(1.05);
 }
 
+/* Inside a realm the lines between its own lands are subdivisions, not
+   frontiers. This pales a member's whole outline, its outer edge included - the
+   .realm-union band underneath restores that outer edge, so what stays pale is
+   exactly the seams within the realm.
+
+   Deliberately EARLY in this file, the mirror of the targeting-cue note below:
+   every later rule of equal specificity - threat, hover, realm-hover, the
+   targeting cues - must beat it, because each of those is saying something
+   about the land that outranks how it is grouped.
+
+   The :where() list is what makes that true of the DASH as well. Being later
+   is only enough to override a property you also set, and no other .region
+   rule sets stroke-dasharray - a threat border on a realm member would come
+   out red and still dashed. Rather than teach a dozen rules to switch a dash
+   off they never switched on, the seam simply does not apply when the land has
+   anything else to say. :where() adds no specificity, so this stays a plain
+   two-class rule and the ordering above still holds. */
+.region.realm-member:where(:not(
+  .hovered, .selected, .owned,
+  .threat-1, .threat-2, .threat-3, .advantage,
+  .realm-hover, .vassal-hover, .holder-hover,
+  .target-valid, .target-invalid
+)) {
+  stroke: #b9ab93;
+  stroke-width: 0.7;
+  stroke-dasharray: 4 3;
+}
+
 .river {
   fill: none;
   stroke: #7fa3c0;
@@ -541,6 +569,18 @@ svg.map.dragging {
 .realm-outline path {
   stroke-width: 6;
   stroke-linejoin: round;
+}
+
+/* One band around a realm of 2+ polygons, in that realm's own darkened color,
+   always on. Under the region fills, so only the union's outer edge survives -
+   see the comment in map-render.ts. Half the stroke is behind the fill, so this
+   reads as a ~1.5 unit border. */
+.realm-union path {
+  fill: none;
+  stroke-width: 3;
+  stroke-linejoin: round;
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .region.owned:not(.selected) {
@@ -1057,7 +1097,7 @@ svg.map.dragging {
 
 .region.realm-hover {
   stroke: #3f3428;
-  stroke-width: 1.8;
+  stroke-width: 1.4;
 }
 
 .region.realm-hover.dimmed {
@@ -1085,12 +1125,15 @@ svg.map.dragging {
 .realm-hover-halo path {
   fill: none;
   stroke: #2b2318;
-  stroke-width: 9;
+  stroke-width: 5;
   stroke-linejoin: round;
   pointer-events: none;
 }
 
-/* your own realm gets the gold treatment - "this is mine" at a glance */
+/* Your own realm gets the gold treatment - "this is mine" at a glance - and
+   keeps the full weight the black halo has given up. There is exactly one of
+   these on the map and you are looking for it; a rival's realm is one of two
+   dozen you pass over, and at 11 it was shouting. */
 .realm-hover-halo.own path {
   stroke: #d4af37;
   stroke-width: 11;
