@@ -211,10 +211,10 @@ describe("map.json (anno 1100)", () => {
     }
   });
 
-  it("has 51 authored settlements, exactly one unlocked per land", () => {
-    expect(data.settlements.length).toBe(51);
+  it("has 90 authored settlements, exactly one unlocked per land", () => {
+    expect(data.settlements.length).toBe(90);
     const ids = data.settlements.map((s) => s.id);
-    expect(new Set(ids).size).toBe(51);
+    expect(new Set(ids).size).toBe(90);
     expect(ids).toEqual([...ids].sort());
     const landIds = new Set(data.regions.map((r) => r.id));
     const unlockedPerLand = new Map<string, number>();
@@ -250,9 +250,11 @@ describe("map.json (anno 1100)", () => {
     // except Pilsotas: at 10,000 people it supports a single slot, so it has
     // no room for one (which is also why Apuole is gone).
     const locked = data.settlements.filter((s) => !s.unlocked);
-    expect(locked.length).toBe(25);
-    expect(new Set(locked.map((s) => s.land)).size).toBe(25);
-    expect(locked.some((s) => s.land === "pilsotas")).toBe(false);
+    expect(locked.length).toBe(64);
+    // every land, Pilsotas included - it used to be the one land with no
+    // buildable site at all, and so the one land this card was dead on
+    expect(new Set(locked.map((s) => s.land)).size).toBe(26);
+    expect(locked.some((s) => s.land === "pilsotas")).toBe(true);
   });
 
   // The map once shipped 21 nameless dots - one per land with a spare slot,
@@ -270,7 +272,7 @@ describe("map.json (anno 1100)", () => {
       // settlements, but it may not omit a settlement drawn inside that land.
       expect(placesOf.get(s.land)).toContain(s.name);
     }
-    expect(new Set(data.settlements.map((s) => s.name)).size).toBe(51);
+    expect(new Set(data.settlements.map((s) => s.name)).size).toBe(90);
   });
 
   // Mirrors the pipeline's own guard on the baked output, with the geometry
@@ -306,12 +308,18 @@ describe("map.json (anno 1100)", () => {
     }
   });
 
-  it("gives every land with a spare slot exactly one locked next site", () => {
+  /** Every slot is a real place: one settlement standing at turn 1 and a named
+   *  site for each further slot the land's size affords. A slot with no
+   *  authored place would be a hole in the map, and a land with no locked site
+   *  would be a land Found a settlement can never be aimed at - which is what
+   *  Pilsotas was before its floor was raised to two. */
+  it("fills every slot: one standing site and the rest buildable", () => {
     for (const r of data.regions) {
-      const locked = data.settlements.filter(
-        (s) => s.land === r.id && !s.unlocked,
-      );
-      expect(locked.length).toBe(r.maxSettlements > 1 ? 1 : 0);
+      const mine = data.settlements.filter((s) => s.land === r.id);
+      const locked = mine.filter((s) => !s.unlocked);
+      expect(mine.length, `authored in ${r.id}`).toBe(r.maxSettlements);
+      expect(locked.length, `buildable in ${r.id}`).toBe(r.maxSettlements - 1);
+      expect(locked.length, `${r.id} must be buildable`).toBeGreaterThanOrEqual(1);
     }
   });
 
@@ -321,10 +329,11 @@ describe("map.json (anno 1100)", () => {
       authoredPerLand.set(s.land, (authoredPerLand.get(s.land) ?? 0) + 1);
     }
     for (const r of data.regions) {
-      const expected = Math.min(10, Math.max(1, Math.round(r.population / 10000)));
+      // Floor of 2, not 1: the first slot is the settlement standing at turn 1,
+      // so a one-slot land would be a land the card can never be aimed at.
+      const expected = Math.min(10, Math.max(2, Math.round(r.population / 10000)));
       expect(r.maxSettlements).toBe(expected);
-      expect(authoredPerLand.get(r.id) ?? 0).toBeGreaterThanOrEqual(1);
-      expect(authoredPerLand.get(r.id) ?? 0).toBeLessThanOrEqual(r.maxSettlements);
+      expect(authoredPerLand.get(r.id) ?? 0).toBe(r.maxSettlements);
     }
     const region = (id: string) => data.regions.find((r) => r.id === id)!;
     expect(region("ravala").maxSettlements).toBe(2);
