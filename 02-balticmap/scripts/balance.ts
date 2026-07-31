@@ -7,7 +7,8 @@
  *  npm run balance
  *  npm run balance -- --games=24 --cap=200 --arm=conquest-scaled
  */
-import { CARDS } from "../src/cards";
+import { ACQUIRABLE_CARDS, CARDS, RARITY_TIERS } from "../src/cards";
+import { PACK_SIZE } from "../src/packs";
 import { aggregateWorld, runWorldBatch, WORLD_ARMS } from "../src/sim";
 
 function flag(name: string, fallback: string): string {
@@ -92,3 +93,41 @@ console.log(`  incorporations failed  ${pct(stats.incorporateFailShare)}`);
 console.log(
   `  revolts sown ${stats.revoltsSownTotal}, of which played ${stats.revoltsPlayedTotal}`,
 );
+
+// Tier weight is fixed; a card's share of it falls as the tier fills, and an
+// empty tier hands its weight to the base tier via openPack's fallback. Print
+// what a player's odds actually are rather than what the weights say.
+console.log("\nrarity");
+const members = new Map(
+  RARITY_TIERS.map((t) => [
+    t.id,
+    ACQUIRABLE_CARDS.filter((id) => CARDS[id]?.rarity === t.id),
+  ]),
+);
+const baseId = RARITY_TIERS[0].id;
+const effective = new Map(RARITY_TIERS.map((t) => [t.id, t.weight]));
+for (const tier of RARITY_TIERS) {
+  if ((members.get(tier.id) ?? []).length === 0 && tier.id !== baseId) {
+    effective.set(tier.id, 0);
+    effective.set(baseId, (effective.get(baseId) ?? 0) + tier.weight);
+  }
+}
+const totalWeight = RARITY_TIERS.reduce((sum, t) => sum + t.weight, 0);
+const tierWidth = Math.max(...RARITY_TIERS.map((t) => t.id.length));
+for (const tier of RARITY_TIERS) {
+  const cards = members.get(tier.id) ?? [];
+  const slotShare = (effective.get(tier.id) ?? 0) / totalWeight;
+  const perCard = cards.length === 0 ? 0 : slotShare / cards.length;
+  const perPack = 1 - (1 - perCard) ** PACK_SIZE;
+  console.log(
+    `  ${tier.id.padEnd(tierWidth)}  ${String(cards.length).padStart(2)} cards` +
+      `  ${pct(slotShare).padStart(6)} of a slot` +
+      `  ${pct(perPack).padStart(6)} per pack per card`,
+  );
+  if (cards.length > 0 && perPack < 0.02) {
+    console.log(
+      `    WARNING - ${tier.id} holds ${cards.length} cards, so one of them ` +
+        "shows up less than once in 50 packs",
+    );
+  }
+}

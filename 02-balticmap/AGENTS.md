@@ -180,3 +180,11 @@ route, then play it. Also add a `NOTICE_RULES` entry for any new `GameEventType`
 - the exhaustive `Record` will refuse to compile until you decide modal or
 silent and write down why - and record `amount`/`track` on any event that moves
 a relation counter, or the before/after standings silently drift.
+
+A new deck-buildable card also needs a measured impact and the tier that
+follows from it. Run `npm run rarity` with the card added to `CARDS`, or, for
+a single card, one arm against the frozen reference deck; then set its
+`rarity` from `rarityForImpact`. The conformance test in
+`tests/cards.test.ts` fails until you do, and hand-tagging a card fails it
+too. Cards outside `ACQUIRABLE_CARDS` are common by rule and wear no band.
+See the 2026-07-31 card-rarity design doc.
