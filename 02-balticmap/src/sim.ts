@@ -6,7 +6,7 @@ import {
 } from "./cards";
 import {
   advance, chooseDeck, discardCard, newGame, pickFaction, playCard, startGame,
-  viewOf, type GameState, type TributeTrack,
+  viewOf, type GameState,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
 import { aiTakeTurn, chooseAction } from "./ai";
@@ -57,7 +57,7 @@ export const DECK_ARMS: Record<string, AiDeckFor> = {
 };
 
 /** The new player: no plan, just plays whatever the rules allow, first come.
- *  With a potato deck that is Grow potatoes, or forced Pay tribute as a
+ *  With a potato deck that is Grow potatoes, or forced tribute as a
  *  vassal. Returns the state after their single action. */
 export function naiveHumanTurn(state: GameState, rng: Rng): GameState {
   const p = state.players[state.current];
@@ -68,9 +68,7 @@ export function naiveHumanTurn(state: GameState, rng: Rng): GameState {
   const targetId = CARDS[cardId]?.targeted
     ? validTargetsFor(viewOf(state), p.factionId, cardId)[0]
     : undefined;
-  const track: TributeTrack | undefined =
-    cardId === "pay-tribute" ? (rng() < 0.5 ? "might" : "status") : undefined;
-  return playCard(state, i, rng, targetId, track);
+  return playCard(state, i, rng, targetId);
 }
 
 /** How the human seat plays. `naive` is the new player; `competent` runs the
@@ -474,7 +472,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     const next =
       action.type === "discard"
         ? discardCard(state, action.cardIndex)
-        : playCard(state, action.cardIndex, rng, action.targetId, action.tributeTrack);
+        : playCard(state, action.cardIndex, rng, action.targetId);
     if (!next.playedThisTurn) {
       throw new Error(
         `stuck turn: seed ${opts.seed}, turn ${state.turn}, actor ${actor}, ` +

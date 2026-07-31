@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   ACQUIRABLE_CARDS, AI_DECK_GUARANTEED, CARDS, DECK_SIZE, DEFAULT_DECK,
-  STARTING_KNOWN_CARDS, buildDeck, buildAiDeck, shuffle, type Rng,
+  STARTING_KNOWN_CARDS, TRIBUTE_CARDS, buildDeck, buildAiDeck, shuffle,
+  type Rng,
 } from "../src/cards";
 
 const NON_BASICS = [
@@ -59,16 +60,21 @@ describe("cards", () => {
       "Permanently absorb one of your vassals into your realm.",
     );
     expectProps(
-      "pay-tribute", "Pay tribute", false, null, false, true,
+      "pay-military-tribute", "Pay military tribute", false, null, false, true,
       "common",
-      "Forced: while a vassal, grant your overlord +1 Might or +1 Status.",
+      "Forced: while a vassal, grant your overlord +1 Might.",
+    );
+    expectProps(
+      "pay-status-tribute", "Pay status tribute", false, null, false, true,
+      "common",
+      "Forced: while a vassal, grant your overlord +1 Status.",
     );
     expectProps(
       "seeds-of-revolt", "Seeds of revolt", false, 1, true, false,
       "common",
       "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time.",
     );
-    // Revolt is injection-only now, like Pay tribute: Seeds of revolt puts it
+    // Revolt is injection-only now, like the tribute cards: Seeds of revolt puts it
     // in the deck, so it must never be deck-buildable.
     expectProps(
       "revolt", "Revolt", false, 1, false, false,
@@ -104,7 +110,7 @@ describe("cards", () => {
     expect(deck).toContain("favourable-omens");
     expect(deck).not.toContain("extended-diplomacy");
     expect(deck).not.toContain("bodyguard");
-    expect(deck).not.toContain("pay-tribute");
+    for (const id of Object.keys(TRIBUTE_CARDS)) expect(deck).not.toContain(id);
     // Found a settlement holds the slot Reclaim independence retired and
     // grow-crops briefly filled, so the default deck now carries no filler at
     // all: every one of its ten cards does something.
@@ -237,7 +243,7 @@ describe("every card is reachable by a player", () => {
   // game. Deck-buildable cards are found via the learning loop; the only
   // exemption is injection-only cards, which must name what injects them.
   const INJECTED_BY: Record<string, string> = {
-    "pay-tribute": "subjugate",
+    ...Object.fromEntries(Object.keys(TRIBUTE_CARDS).map((id) => [id, "subjugate"])),
     "revolt": "seeds-of-revolt",
   };
 
@@ -280,7 +286,7 @@ describe("rarity and the acquirable pool", () => {
   it("keeps the only escape from vassalage reachable on a first run", () => {
     // Seeds of revolt is the only route to a Revolt, and a Revolt is the only
     // way a vassal frees itself (src/playability.ts). Pack-locking it meant a
-    // first run could reach a position with no legal play but Pay tribute and
+    // first run could reach a position with no legal play but tribute and
     // no way out of it - which src/game.ts now ends outright, so the card
     // being reachable from run one is what keeps that ending a decision.
     // tests/meta.test.ts checks the other half: it can actually be decked.
@@ -295,10 +301,12 @@ describe("rarity and the acquirable pool", () => {
     ]);
     // the escape is a starting card now, not a pack drop
     expect(ACQUIRABLE_CARDS).not.toContain("seeds-of-revolt");
-    // grow-crops is free filler, not acquirable; revolt and pay-tribute are
+    // grow-crops is free filler, not acquirable; revolt and the tribute cards are
     // injection-only and must never appear in a pack.
     expect(ACQUIRABLE_CARDS).not.toContain("grow-crops");
     expect(ACQUIRABLE_CARDS).not.toContain("revolt");
-    expect(ACQUIRABLE_CARDS).not.toContain("pay-tribute");
+    for (const id of Object.keys(TRIBUTE_CARDS)) {
+      expect(ACQUIRABLE_CARDS).not.toContain(id);
+    }
   });
 });

@@ -516,17 +516,6 @@ svg.map.dragging {
   letter-spacing: 0.08em;
 }
 
-.tribute-btn {
-  font-size: 13px;
-  padding: 4px 14px;
-  margin-left: 8px;
-  border: 1px solid #7a6a55;
-  border-radius: 5px;
-  background: #fdfaf4;
-  color: #3f3428;
-  cursor: pointer;
-}
-
 .card.discard-hint {
   outline: 2px dashed #b5544c;
   outline-offset: -2px;
@@ -955,6 +944,19 @@ svg.map.dragging {
   color: #3f3428;
   z-index: 20;
   pointer-events: auto;
+}
+
+/* Why this card is greyed out. Reads as a warning rather than a modifier: the
+   modifier band is gold and says something is helping you. */
+.card-tip-blocked {
+  margin-bottom: 6px;
+  padding: 4px 6px;
+  border-left: 3px solid #992f27;
+  border-radius: 3px;
+  background: #f6e0dd;
+  color: #6d2a24;
+  font-weight: 700;
+  text-align: left;
 }
 
 .card-tip-modifier {

@@ -113,7 +113,7 @@ describe("naive human policy", () => {
       overlords: new Map([[HUMAN, lord]]),
     };
     const g = naiveHumanTurn(
-      withHand(vassal, ["grow-crops", "pay-tribute"]),
+      withHand(vassal, ["grow-crops", "pay-military-tribute"]),
       seededRng(1),
     );
     // A potato deck holds no Seeds of revolt, so this vassalage is also a dead

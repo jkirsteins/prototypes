@@ -31,7 +31,10 @@ export interface HudCallbacks {
   /** Lines describing modifiers currently affecting this card, shown at the
    *  top of its hover tip. */
   cardModifiers?(cardId: string): string[];
-  onTributeTrack?(track: "status" | "might"): void;
+  /** Why this card cannot be played this turn, or null when it can. Shown at
+   *  the very top of its hover tip, above the modifiers - it is the reason the
+   *  card is greyed out, so it is the first thing the player came to read. */
+  cardBlocked?(cardId: string): string | null;
   isDiscardMode?(): boolean;
   /** Renders the main-menu Reset progress control when provided. */
   onResetProgress?(): void;
@@ -53,7 +56,6 @@ export interface HudCallbacks {
 export interface Hud {
   update(state: GameState): void;
   setArmed(index: number | null, cardName?: string): void;
-  setTributePrompt(show: boolean): void;
   /** Runs `fn` once the play flight started by the most recent `update()` has
    *  landed. Fires exactly once, always:
    *   - nothing in the air (a forced discard animates nothing, and an AI
@@ -421,16 +423,7 @@ export function createHud(
   status.className = "status-bar hidden";
   const statusText = document.createElement("span");
   statusText.className = "status-text";
-  const tributeButtons = document.createElement("span");
-  tributeButtons.className = "tribute-buttons hidden";
-  for (const track of ["might", "status"] as const) {
-    const b = document.createElement("button");
-    b.className = "tribute-btn";
-    b.textContent = track === "might" ? "Might" : "Status";
-    b.addEventListener("click", () => cb.onTributeTrack?.(track));
-    tributeButtons.appendChild(b);
-  }
-  status.append(statusText, tributeButtons);
+  status.append(statusText);
 
   function makePile(kind: string, label: string) {
     const root = document.createElement("div");
@@ -772,6 +765,13 @@ export function createHud(
       const tip = document.createElement("div");
       tip.className = "card-tip";
       tip.addEventListener("click", (event) => event.stopPropagation());
+      const blocked = canPlay ? cb.cardBlocked?.(cardId) ?? null : null;
+      if (blocked !== null) {
+        const line = document.createElement("div");
+        line.className = "card-tip-blocked";
+        line.textContent = blocked;
+        tip.appendChild(line);
+      }
       for (const text of cb.cardModifiers?.(cardId) ?? []) {
         const modifier = document.createElement("div");
         modifier.className = "card-tip-modifier";
@@ -1141,11 +1141,6 @@ export function createHud(
       } else if (lastState) {
         renderStatus(lastState);
       }
-    },
-    setTributePrompt(show) {
-      tributeButtons.classList.toggle("hidden", !show);
-      if (show) statusText.textContent = "Pay tribute with:";
-      else if (lastState) renderStatus(lastState);
     },
     afterPlayAnimation(fn) {
       if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }

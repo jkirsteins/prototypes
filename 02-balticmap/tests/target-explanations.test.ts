@@ -130,7 +130,7 @@ describe("cardModifierLines", () => {
     const v = { ...none, omens: ["alpha"] };
     expect(cardModifierLines(v, "alpha", "raid"))
       .toEqual(["Favourable omens: this card counts double."]);
-    expect(cardModifierLines(v, "alpha", "pay-tribute"))
+    expect(cardModifierLines(v, "alpha", "pay-military-tribute"))
       .toEqual(["Favourable omens: this card counts double."]);
   });
 

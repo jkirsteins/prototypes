@@ -13,11 +13,11 @@ import {
 import { aiTakeTurn } from "./ai";
 import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
 import {
-  playableSet, validTargetsFor, targetEligibilityFor, subjugationRequirement,
-  raidGainFor,
+  handBlockReason, playableSet, validTargetsFor, targetEligibilityFor,
+  subjugationRequirement, raidGainFor,
 } from "./playability";
 import {
-  cardModifierLines, explainTargetEligibility, targetImpactLine,
+  cardBlockLine, cardModifierLines, explainTargetEligibility, targetImpactLine,
   targetOddsLines,
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
@@ -103,7 +103,6 @@ let game: GameState = newGame(
   SITE_LANDS,
 );
 let armed: number | null = null; // hand index of the armed targeted card
-let pendingTribute: number | null = null; // hand index awaiting a track choice
 let hoveredRegion: Region | null = null; // region under the cursor, for hover re-apply on refresh
 // True from a committed human action until the AI chain has resolved and the
 // round summary (if any) is on screen. The hand is already inert in this
@@ -123,6 +122,14 @@ function inPlay(): boolean {
 function humanPlayableSet() {
   const human = game.players[0];
   return playableSet(viewOf(game), human.factionId, human.hand);
+}
+
+/** Why the human cannot play this card this turn, or null when they can. The
+ *  gate on the click and the line on the hover come from this one call. */
+function humanBlockReason(cardId: string) {
+  const human = game.players[0];
+  if (!human) return null;
+  return handBlockReason(viewOf(game), human.factionId, human.hand, cardId);
 }
 
 function discardMode(): boolean {
@@ -518,11 +525,6 @@ function disarm(): void {
   hud.setArmed(null);
 }
 
-function cancelTribute(): void {
-  pendingTribute = null;
-  hud.setTributePrompt(false);
-}
-
 /** Draws the dot for every settlement founded so far, from state, on every
  *  refresh. The map itself is rendered once per page load, so starting a new
  *  game clears the previous game's settlements first. */
@@ -599,7 +601,6 @@ const hud = createHud(
         SITE_LANDS,
       ));
       clearFoundedSettlements();
-      cancelTribute();
       disarm();
       runBanked = false;
       packReveal = null;
@@ -609,14 +610,12 @@ const hud = createHud(
     onSurrender() {
       if (game.phase !== "playing" || resolving) return;
       disarm();
-      cancelTribute();
       game = surrender(game);
       bankRunProgress();
       refresh();
     },
     onPlayCard(index) {
       if (!isHumanTurn(game) || game.playedThisTurn || resolving) return;
-      cancelTribute();
       if (discardMode()) {
         disarm();
         game = discardCard(game, index);
@@ -624,14 +623,7 @@ const hud = createHud(
         return;
       }
       const human = game.players[0];
-      const cardId = human.hand[index];
-      const card = CARDS[cardId];
-      if (cardId === "pay-tribute") {
-        disarm();
-        pendingTribute = index;
-        hud.setTributePrompt(true);
-        return;
-      }
+      const card = CARDS[human.hand[index]];
       if (card?.targeted) {
         if (armed === index) {
           disarm();
@@ -650,19 +642,12 @@ const hud = createHud(
       game = playCard(game, index, rng);
       afterHumanAction();
     },
-    onTributeTrack(track) {
-      if (pendingTribute === null || resolving) return;
-      const index = pendingTribute;
-      cancelTribute();
-      game = playCard(game, index, rng, undefined, track);
-      afterHumanAction();
-    },
     canPlayCard(cardId) {
-      const human = game.players[0];
-      if (!human) return true;
-      const set = humanPlayableSet();
-      if (set.mode === "discard") return true;
-      return set.cardIndexes.some((i) => human.hand[i] === cardId);
+      return humanBlockReason(cardId) === null;
+    },
+    cardBlocked(cardId) {
+      const reason = humanBlockReason(cardId);
+      return reason === null ? null : cardBlockLine(reason);
     },
     targetExplanations(cardId) {
       const human = game.players[0];
@@ -769,10 +754,6 @@ hud.update(game);
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (armed !== null) disarm();
-  if (pendingTribute !== null) {
-    cancelTribute();
-    hud.update(game);
-  }
 });
 
 const interaction = attachInteraction(svg, regionPaths, data, {

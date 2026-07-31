@@ -127,7 +127,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
     )!;
     expect(lineText(s)).toBe("Subjugate by Jersikans - you owe fealty to them");
     expect(footnoteTexts(s)).toEqual([
-      "Pay tribute cards were shuffled into your deck (x2). While one is in hand it must be played first.",
+      "Pay military tribute and Pay status tribute were shuffled into your deck. While either is in hand it must be played first.",
     ]);
   });
 
@@ -156,7 +156,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
     )!;
     expect(lineText(s)).toBe("The fall of your overlord to Latgalians released you from vassalage");
     expect(footnoteTexts(s)).toEqual([
-      "All Pay tribute cards were removed from your deck, hand and discard.",
+      "Pay military tribute and Pay status tribute were removed from your deck, hand and discard.",
     ]);
   });
 
@@ -529,7 +529,7 @@ describe("buildRoundSummary: batch grouping", () => {
     expect(lineText(s, 0)).toBe("Subjugate by Jersikans - you owe fealty to them");
     expect(lineText(s, 1)).toBe("Subjugate by Latgalians - your allegiance shifts from Jersikans to them");
     expect(footnoteTexts(s)).toEqual([
-      "Pay tribute cards were shuffled into your deck (x2). While one is in hand it must be played first.",
+      "Pay military tribute and Pay status tribute were shuffled into your deck. While either is in hand it must be played first.",
     ]);
   });
 
@@ -543,7 +543,7 @@ describe("buildRoundSummary: batch grouping", () => {
     expect(lineText(s, 0)).toBe("The fall of Jersikans to Latgalians released you from vassalage");
     expect(lineText(s, 1)).toBe("The fall of your overlord to Curonians released you from vassalage");
     expect(footnoteTexts(s)).toEqual([
-      "All Pay tribute cards were removed from your deck, hand and discard.",
+      "Pay military tribute and Pay status tribute were removed from your deck, hand and discard.",
     ]);
   });
 

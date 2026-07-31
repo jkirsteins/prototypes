@@ -1,6 +1,7 @@
 import {
   INCORPORATE_RAMP, incorporationChance, isDoubled, loyaltyOf, raidGainFor,
   subjugationChance, targetEligibilityFor,
+  type CardBlockReason,
   type RulesView,
   type TargetBlockReason,
   type TargetEligibility,
@@ -248,6 +249,36 @@ export function targetImpactLine(
     text: availableImpact(view, actorFactionId, cardId, targetFactionId),
     tone: "good",
   };
+}
+
+/** Why a card in hand is greyed out, in one line, for its hover tip.
+ *
+ *  One line per rule, not per card: `cardBlockReason` already reduced fourteen
+ *  cards to six answers, and this is the only place those six are put into
+ *  words. A fifteenth card that reuses an existing rule needs nothing here.
+ *
+ *  Names no card. The forced card is the one still lit up in the hand, which
+ *  says which it is better than a name in a tip the player has to hover a
+ *  different card to read. */
+export function cardBlockLine(reason: CardBlockReason): string {
+  switch (reason.code) {
+    case "forced-first":
+      return "A forced card must be played first.";
+    case "needs-overlord":
+      return "Only while you are somebody's vassal.";
+    case "already-held":
+      return "You are already holding an unspent one.";
+    case "revolt-live":
+      return "A revolt is already sown in your deck.";
+    case "no-target":
+      return "Nothing in reach is a legal target.";
+    case "unavailable":
+      return "Not playable now.";
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
 }
 
 /** The slice of state the modifier lines need. `GameState` satisfies this

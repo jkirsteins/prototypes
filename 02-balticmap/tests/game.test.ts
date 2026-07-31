@@ -4,7 +4,9 @@ import {
   advance, surrender, viewOf,
   OPENING_HAND, victoryRealmSize, type GameState,
 } from "../src/game";
-import { DECK_SIZE, buildDeck, CARDS, type Rng } from "../src/cards";
+import {
+  DECK_SIZE, buildDeck, isTributeCard, CARDS, TRIBUTE_CARDS, type Rng,
+} from "../src/cards";
 import {
   allianceKey, bumpMight, bumpStatus, getRel, leadsOf, type Relations,
 } from "../src/relations";
@@ -192,12 +194,18 @@ describe("playCard validation", () => {
     expect(discardCard(g2, 0)).toBe(g2);
   });
 
-  it("pay-tribute requires a track", () => {
+  it("a tribute card carries its own track - playing it is the whole decision", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["beta", "gamma"]]) };
-    g = withHand(g, 0, ["pay-tribute"]);
-    expect(playCard(g, 0, rng())).toBe(g);
-    expect(playCard(g, 0, rng(), undefined, "might")).not.toBe(g);
+    // free faction: no lord to pay, so neither tribute card resolves
+    const free = withHand(playingState(LINE_ADJ), 0, ["pay-military-tribute"]);
+    expect(playCard(free, 0, rng())).toBe(free);
+    for (const [cardId, track] of Object.entries(TRIBUTE_CARDS)) {
+      const after = playCard(withHand(g, 0, [cardId]), 0, rng());
+      // find, not at(-1): a vassal with no escape is stranded on the same play
+      expect(after.log.find((e) => e.type === "tribute"))
+        .toMatchObject({ type: "tribute", track });
+    }
   });
 });
 
@@ -235,7 +243,7 @@ describe("card effects", () => {
     expect(after.overlords.get("gamma")).toBe("beta");
     const gammaPlayer = after.players.find((p) => p.factionId === "gamma")!;
     const tributes = [...gammaPlayer.deck, ...gammaPlayer.hand, ...gammaPlayer.discard]
-      .filter((c) => c === "pay-tribute");
+      .filter(isTributeCard);
     expect(tributes).toHaveLength(2);
     expect(after.log.at(-1)).toMatchObject({
       type: "subjugated", targetFactionId: "gamma", overlordFactionId: "beta",
@@ -248,7 +256,7 @@ describe("card effects", () => {
     // gamma holds delta; beta out-leads and takes gamma
     g = { ...g, overlords: new Map([["delta", "gamma"]]) };
     let deltaP = g.players.find((p) => p.factionId === "delta")!;
-    deltaP = { ...deltaP, deck: [...deltaP.deck, "pay-tribute", "pay-tribute"] };
+    deltaP = { ...deltaP, deck: [...deltaP.deck, ...Object.keys(TRIBUTE_CARDS)] };
     g = { ...g, players: g.players.map((p) => (p.factionId === "delta" ? deltaP : p)) };
     // gamma's realm (self + vassal delta) is size 2, so the scaled subjugate
     // threshold here is 4, not the flat 2.
@@ -260,7 +268,7 @@ describe("card effects", () => {
     const freedDelta = after.players.find((p) => p.factionId === "delta")!;
     expect(
       [...freedDelta.deck, ...freedDelta.hand, ...freedDelta.discard]
-        .filter((c) => c === "pay-tribute"),
+        .filter(isTributeCard),
     ).toHaveLength(0);
     expect(after.log.some((e) => e.type === "released" && e.targetFactionId === "delta")).toBe(true);
   });
@@ -288,7 +296,7 @@ describe("card effects", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
     let gammaP = g.players.find((p) => p.factionId === "gamma")!;
-    gammaP = { ...gammaP, deck: [...gammaP.deck, "pay-tribute", "pay-tribute"] };
+    gammaP = { ...gammaP, deck: [...gammaP.deck, ...Object.keys(TRIBUTE_CARDS)] };
     g = { ...g, players: g.players.map((p) => (p.factionId === "gamma" ? gammaP : p)) };
     g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
     g = withHand(g, 0, ["subjugate"]);
@@ -296,7 +304,7 @@ describe("card effects", () => {
     const poached = after.players.find((p) => p.factionId === "gamma")!;
     expect(
       [...poached.deck, ...poached.hand, ...poached.discard]
-        .filter((c) => c === "pay-tribute"),
+        .filter(isTributeCard),
     ).toHaveLength(2);
   });
 
@@ -356,8 +364,8 @@ describe("card effects", () => {
     let p0 = g.players[0];
     p0 = {
       ...p0,
-      deck: [...p0.deck, "pay-tribute"],
-      discard: ["pay-tribute"],
+      deck: [...p0.deck, "pay-military-tribute"],
+      discard: ["pay-status-tribute"],
       hand: ["revolt"],
     };
     g = { ...g, players: [p0, ...g.players.slice(1)] };
@@ -365,7 +373,7 @@ describe("card effects", () => {
     expect(after.overlords.has("beta")).toBe(false);
     const freed = after.players[0];
     expect(
-      [...freed.deck, ...freed.hand, ...freed.discard].filter((c) => c === "pay-tribute"),
+      [...freed.deck, ...freed.hand, ...freed.discard].filter(isTributeCard),
     ).toHaveLength(0);
     const l = leadsOf(after.relations, "beta", "gamma");
     expect(l.might).toBe(1);
@@ -386,8 +394,8 @@ describe("card effects", () => {
       seededRng(1),
     );
     g = asVassal({ ...g, incorporated: { delta: "gamma" } }, "gamma");
-    g = withHand(g, 0, ["pay-tribute"]);
-    const after = playCard(g, 0, rng(), undefined, "status");
+    g = withHand(g, 0, ["pay-status-tribute"]);
+    const after = playCard(g, 0, rng());
     expect(getRel(after.relations, "gamma", "beta").status).toBe(1);
     expect(getRel(after.relations, "delta", "beta").status).toBe(1);
     expect(getRel(after.relations, "alpha", "beta").status).toBe(0);
@@ -837,8 +845,8 @@ describe("favourable omens", () => {
   it("doubles the tribute a vassal pays, which is the cost of hoarding it", () => {
     let g = armed(playingState(LINE_ADJ));
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    g = withHand(g, 0, ["pay-tribute"]);
-    g = playCard(g, 0, seededRng(1), undefined, "might");
+    g = withHand(g, 0, ["pay-military-tribute"]);
+    g = playCard(g, 0, seededRng(1));
     expect(getRel(g.relations, "alpha", "beta").might).toBe(2);
     expect(g.omens).toEqual([]);
   });
@@ -1420,8 +1428,8 @@ describe("event amount/track", () => {
   it("tribute records mult alongside the track it already carried", () => {
     let g = asVassal(playingState(LINE_ADJ), "alpha");
     g = { ...g, omens: ["beta"] };
-    g = withHand(g, 0, ["pay-tribute"]);
-    const after = playCard(g, 0, rng(), undefined, "might");
+    g = withHand(g, 0, ["pay-military-tribute"]);
+    const after = playCard(g, 0, rng());
     expect(after.log.at(-1)).toMatchObject({
       type: "tribute", track: "might", amount: 2,
     });

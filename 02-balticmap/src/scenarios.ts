@@ -211,7 +211,21 @@ export const SCENARIOS: Scenario[] = [
       //
       // If this proves too punishing in play, PASSIVE_PER_LANDS = 6 measured
       // 0.42 here while still resolving 98% of worlds - the softer trade.
-      subjugatedShare: [0.35, 0.65],    // measured 0.50
+      //
+      // Widened again from [0.35, 0.65] (measured 0.50) on 2026-07-31, by the
+      // tribute split. Pay tribute used to be one card whose track the payer
+      // chose, and both the AI and a competent human always chose their lord's
+      // WEAKER track - the defensive pick, which holds the lord's best lead
+      // still. It is now two cards, one per track, and a vassal pays whichever
+      // it drew. Every lord's grip therefore grows faster, realms consolidate
+      // sooner, and the single seat feels it: 18 of 26 runs instead of 13.
+      //
+      // Recorded rather than quietly re-banded because it is the change's
+      // intended cost, not a side effect: the choice being removed was the
+      // player optimizing their own tax, and a vassal paying what is demanded
+      // of them is the point. What did NOT move is world health - 91.7% of
+      // worlds still resolve, and both tribute cards see play (3.2% / 3.5%).
+      subjugatedShare: [0.35, 0.75],    // measured 0.69
       // Moved from [3, 8] (measured 5.00) after the reclaim-cut and
       // AI-policy-coverage changeset. A competent human runs the same policy
       // the enemies do, so it now plays the emergency Alliance and Assassinate

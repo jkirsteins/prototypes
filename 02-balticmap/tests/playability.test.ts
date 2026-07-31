@@ -8,6 +8,7 @@ import {
   subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView,
 } from "../src/playability";
+import { TRIBUTE_CARDS } from "../src/cards";
 import { allianceKey, bumpMight, bumpStatus, type Relations } from "../src/relations";
 
 const ORDER = ["alpha", "beta", "gamma", "delta"];
@@ -349,9 +350,11 @@ describe("isCardPlayable", () => {
     const free = view();
     expect(isCardPlayable(free, "beta", "grow-crops")).toBe(true);
     expect(isCardPlayable(free, "beta", "fortify")).toBe(true);
-    expect(isCardPlayable(free, "beta", "pay-tribute")).toBe(false);
     const sub = view({ overlords: new Map([["beta", "alpha"]]) });
-    expect(isCardPlayable(sub, "beta", "pay-tribute")).toBe(true);
+    for (const id of Object.keys(TRIBUTE_CARDS)) {
+      expect(isCardPlayable(free, "beta", id)).toBe(false);
+      expect(isCardPlayable(sub, "beta", id)).toBe(true);
+    }
   });
 
   it("targeted cards are playable iff a target exists", () => {
@@ -364,7 +367,7 @@ describe("isCardPlayable", () => {
 describe("playableSet", () => {
   it("forced tribute overrides everything else", () => {
     const sub = view({ overlords: new Map([["beta", "alpha"]]) });
-    const set = playableSet(sub, "beta", ["raid", "pay-tribute", "grow-crops"]);
+    const set = playableSet(sub, "beta", ["raid", "pay-military-tribute", "grow-crops"]);
     expect(set).toEqual({ mode: "play", cardIndexes: [1] });
   });
 
@@ -379,7 +382,7 @@ describe("playableSet", () => {
   });
 
   it("a stale tribute in a free hand is not forced and not playable", () => {
-    const set = playableSet(view(), "beta", ["pay-tribute"]);
+    const set = playableSet(view(), "beta", ["pay-status-tribute"]);
     expect(set).toEqual({ mode: "discard", cardIndexes: [0] });
   });
 });

@@ -54,21 +54,28 @@ describe("chooseAction priorities", () => {
   it("1: tribute first, feeding the overlord's weaker track", () => {
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    // gamma leads alpha by 2 might, 0 status -> weaker track is status
+    // gamma leads alpha by 2 might, 0 status -> weaker track is status, so of
+    // the two tribute cards in hand it plays the one that pays Status
     g = { ...g, relations: lead(g.relations, "gamma", "alpha", 2) };
-    g = withHand(g, ["raid", "pay-tribute"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, tributeTrack: "status",
-    });
+    g = withHand(g, ["pay-military-tribute", "pay-status-tribute"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
   it("1: tribute track tie goes to might", () => {
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = withHand(g, ["pay-tribute"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, tributeTrack: "might",
-    });
+    g = withHand(g, ["pay-status-tribute", "pay-military-tribute"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("1: plays the tribute it has when the weaker track's card is elsewhere", () => {
+    // The common case: one tribute card in hand and nothing to choose. The
+    // weaker track here is status and the card that pays it is not in hand.
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
+    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 2) };
+    g = withHand(g, ["raid", "pay-military-tribute"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
   it("2: revolts out of vassalage rather than building", () => {
@@ -86,16 +93,14 @@ describe("chooseAction priorities", () => {
   });
 
   it("forced tribute monopolises the playable set, so revolt is unreachable", () => {
-    // Pay tribute is forced while a vassal, giving it exclusive occupancy of
+    // Tribute is forced while a vassal, giving it exclusive occupancy of
     // cardIndexes. This means idxOf("revolt") is undefined and step 2 never
     // fires. The two cards cannot co-occur in playableSet, so their relative
     // step order has no observable effect and no ordering test exists.
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = withHand(g, ["revolt", "pay-tribute"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, tributeTrack: "might",
-    });
+    g = withHand(g, ["revolt", "pay-military-tribute"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
   it("3: incorporates the vassal that brings the most land", () => {

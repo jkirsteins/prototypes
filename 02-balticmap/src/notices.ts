@@ -1,5 +1,6 @@
 import type { GameEvent, GameEventType } from "./game";
 import type { TrackBars } from "./playability";
+import { TRIBUTE_CARDS } from "./cards";
 import { card, faction, t, theFaction, type Segment } from "./rich-text";
 import { walkStandings, type StandingChange } from "./standings";
 import { barPhrase } from "./view";
@@ -22,7 +23,7 @@ export interface SummaryLine {
 export interface RoundSummary {
   title: string;
   lines: SummaryLine[];
-  /** Rules consequences not tied to one line - the Pay Tribute injection, the
+  /** Rules consequences not tied to one line - the tribute injection, the
    *  shrunk-realm subjugation bar. Deduplicated by rendered text and shown as
    *  a footer block, NOT appended to a line: they carry no before/after, and
    *  three vassals lost must not print the same warning three times. */
@@ -126,13 +127,25 @@ function subjugationRisk(ctx: NoticeCtx, otherId: string): boolean {
   return -l.might >= bars.might || -l.status >= bars.status;
 }
 
+/** The tribute cards named in a row - "A and B", "A, B and C" - as segments,
+ *  so each stays a card the player can point at. Built from TRIBUTE_CARDS
+ *  rather than written out, so the footnotes cannot fall behind the set. */
+const tributeCardList = (): Segment[] => {
+  const ids = Object.keys(TRIBUTE_CARDS);
+  return ids.flatMap((id, i) => [
+    ...(i === 0 ? [] : [t(i === ids.length - 1 ? " and " : ", ")]),
+    card(id),
+  ]);
+};
+
 const PAY_TRIBUTE_FOOTNOTE = (): Segment[] => [
-  card("pay-tribute"), t(" cards were shuffled into your deck (x2). While one is in "),
-  t("hand it must be played first."),
+  ...tributeCardList(),
+  t(" were shuffled into your deck. While either is in hand it must be played first."),
 ];
 
 const RELEASE_FOOTNOTE = (): Segment[] => [
-  t("All "), card("pay-tribute"), t(" cards were removed from your deck, hand and discard."),
+  ...tributeCardList(),
+  t(" were removed from your deck, hand and discard."),
 ];
 
 /** Segment-key for footnote dedup: two "your realm is smaller" lines from two
@@ -402,7 +415,7 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     kind: "modal",
     appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) !== null,
     // Becoming someone's vassal is the one event a muted popup may not
-    // swallow: a forced Pay tribute enters your deck and your own plays are
+    // swallow: a forced tribute card enters your deck and your own plays are
     // walled off until you break free. Losing a different vassal to a rival
     // is the other role of this same event type and is NOT critical - the
     // realm shrank, but nothing changed about what you may do next.

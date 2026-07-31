@@ -1,17 +1,17 @@
-import { CARDS, DOUBLABLE_CARDS, type Rng } from "./cards";
+import {
+  CARDS, DOUBLABLE_CARDS, isTributeCard, TRIBUTE_CARDS,
+  type Rng, type TributeTrack,
+} from "./cards";
 import { leadsOf, realmOf } from "./relations";
 import {
   isDoubled, playableSet, raidGainFor, subjugationGripOn,
   subjugationRequirement, poachSurchargeOn, subjugationChance,
   incorporationChance, targetEligibilityFor, threatsTo, validTargetsFor,
 } from "./playability";
-import {
-  discardCard, playCard, viewOf,
-  type GameState, type TributeTrack,
-} from "./game";
+import { discardCard, playCard, viewOf, type GameState } from "./game";
 
 export type AiAction =
-  | { type: "play"; cardIndex: number; targetId?: string; tributeTrack?: TributeTrack }
+  | { type: "play"; cardIndex: number; targetId?: string }
   | { type: "discard"; cardIndex: number };
 
 const TRACKS = [
@@ -20,7 +20,7 @@ const TRACKS = [
 ];
 
 /** Which branch of `chooseAction` decides each card. Keyed on every id in
- *  CARDS, not only the deck-buildable ones: Pay tribute is injection-only yet
+ *  CARDS, not only the deck-buildable ones: tribute is injection-only yet
  *  reaches hands and has a real branch, so keying on `deckBuildable` would
  *  leave the most forced card in the game unguarded.
  *
@@ -32,7 +32,8 @@ const TRACKS = [
  *  order while 2 or more targets were legal 82% and 64% of the time. See the
  *  card rule in AGENTS.md. */
 export const POLICY_COVERAGE: Record<string, string> = {
-  "pay-tribute": "1: forced tribute",
+  "pay-military-tribute": "1: forced tribute, weaker track first",
+  "pay-status-tribute": "1: forced tribute, weaker track first",
   "revolt": "2: revolt out of vassalage",
   "seeds-of-revolt": "2a: sow a revolt while a vassal",
   "incorporate": "3: incorporate the vassal with the best land-times-odds",
@@ -102,21 +103,26 @@ export function chooseAction(state: GameState): AiAction {
   const idxOf = (id: string): number | undefined =>
     set.cardIndexes.find((i) => p.hand[i] === id);
 
-  // 1: forced tribute, feeding the overlord's weaker track
-  const tribute = idxOf("pay-tribute");
-  if (tribute !== undefined) {
-    const lord = state.overlords.get(p.factionId)!;
+  // 1: forced tribute, feeding the overlord's weaker track. The track is the
+  // card now, so this is a choice between the two tribute cards rather than a
+  // choice made while playing one - and when only one of them is in hand there
+  // is nothing to choose, which is the common case.
+  const lord = state.overlords.get(p.factionId);
+  if (lord !== undefined) {
     const l = leadsOf(state.relations, lord, p.factionId);
-    const track: TributeTrack = l.status < l.might ? "status" : "might";
-    return { type: "play", cardIndex: tribute, tributeTrack: track };
+    const weaker: TributeTrack = l.status < l.might ? "status" : "might";
+    const tributes = set.cardIndexes.filter((i) => isTributeCard(p.hand[i]));
+    const preferred =
+      tributes.find((i) => TRIBUTE_CARDS[p.hand[i]] === weaker) ?? tributes[0];
+    if (preferred !== undefined) return { type: "play", cardIndex: preferred };
   }
 
   // 2: revolt out of vassalage. A vassal cannot Subjugate or Incorporate at all
-  // and every forced Pay tribute compounds the lord's lead against it, so no
+  // and every forced tribute compounds the lord's lead against it, so no
   // vassal turn is better spent elsewhere. Revolt carries no lead condition,
   // and its parting +1/+1 cuts the lord's lead, delaying re-subjugation.
   // Playable exactly while subjugated, so idxOf is the whole guard. A forced
-  // Pay tribute still outranks it through playableSet.
+  // tribute still outranks it through playableSet.
   const revolt = idxOf("revolt");
   if (revolt !== undefined) return { type: "play", cardIndex: revolt };
 
@@ -290,7 +296,7 @@ export function chooseAction(state: GameState): AiAction {
 
   // 8: read the omens before building. Raid is one per deck, so spending a
   // turn now and playing it doubled next turn beats playing it plain and
-  // following with filler. Never while a vassal: a forced Pay tribute would
+  // following with filler. Never while a vassal: a forced tribute would
   // spend the reading on the overlord. This sits after step 6 so a reading
   // never delays a play that wins a subjugation outright.
   const omens = idxOf("favourable-omens");
@@ -400,5 +406,5 @@ export function aiTakeTurn(state: GameState, rng: Rng): GameState {
   const a = chooseAction(state);
   return a.type === "discard"
     ? discardCard(state, a.cardIndex)
-    : playCard(state, a.cardIndex, rng, a.targetId, a.tributeTrack);
+    : playCard(state, a.cardIndex, rng, a.targetId);
 }

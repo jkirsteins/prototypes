@@ -64,7 +64,9 @@ describe("storage round-trip", () => {
   it("prunes unknown ids and re-adds the starting cards", () => {
     const s = memoryStorage();
     s.setItem(META_STORAGE_KEY, JSON.stringify({
-      knownCards: ["alliance", "gone-card", "pay-tribute"],
+      // "gone-card" is an id that no longer exists; the tribute card is a real
+      // one that is injection-only, and must be pruned for that reason instead.
+      knownCards: ["alliance", "gone-card", "pay-military-tribute"],
       xp: 10, turnipsGrown: 0, packsOpened: 0,
     }));
     expect(loadMeta(s).knownCards).toEqual([

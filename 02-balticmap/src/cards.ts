@@ -9,7 +9,7 @@ export interface CardDef {
   targeted: boolean;
   /** Copies allowed per deck; null = unlimited (basic filler). */
   maxPerDeck: number | null;
-  /** May appear in a built deck. Pay Tribute is injection-only. */
+  /** May appear in a built deck. The tribute cards are injection-only. */
   deckBuildable: boolean;
   /** While in hand, it is the only playable card. */
   forced: boolean;
@@ -26,7 +26,11 @@ export const CARDS: Record<string, CardDef> = {
   "fortify": { id: "fortify", name: "Fortify", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Might over every other living faction at once." },
   "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },
   "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Permanently absorb one of your vassals into your realm." },
-  "pay-tribute": { id: "pay-tribute", name: "Pay tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, grant your overlord +1 Might or +1 Status." },
+  // Injection-only, like Revolt: a Subjugate shuffles one of each into the
+  // vassal's deck (see playCard) and a release strips them out again. They are
+  // never deck-buildable and never in a pack.
+  "pay-military-tribute": { id: "pay-military-tribute", name: "Pay military tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, grant your overlord +1 Might." },
+  "pay-status-tribute": { id: "pay-status-tribute", name: "Pay status tribute", targeted: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, grant your overlord +1 Status." },
   "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
   "revolt": { id: "revolt", name: "Revolt", targeted: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good." },
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Even the score: the Status lead between you and one faction in reach resets to none." },
@@ -37,13 +41,36 @@ export const CARDS: Record<string, CardDef> = {
   "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Settle the free site in one land of your realm. Each settlement adds +1 to the lead others need to subjugate you." },
 };
 
+/** Which track a relation counter moves on. Lives here because the tribute
+ *  cards below are what fix it per card; `game.ts` re-exports it. */
+export type TributeTrack = "status" | "might";
+
+/** The tribute a vassalage injects, and the track each card pays on.
+ *
+ *  One card per track rather than one card with a choice. The choice was a
+ *  second click that asked the player to optimize their own tax, and a
+ *  vassal's real position is that they pay what is demanded of them - which of
+ *  the two comes up is the draw's business, not theirs.
+ *
+ *  This map is the only place the set is written down. Everything that used to
+ *  name "pay-tribute" - the strip on release, the injection on subjugation,
+ *  the resolution in `playCard`, the vassal-only legality, the doubling set,
+ *  the footnotes - reads it instead, so a third tribute would be one entry. */
+export const TRIBUTE_CARDS: Readonly<Record<string, TributeTrack>> = {
+  "pay-military-tribute": "might",
+  "pay-status-tribute": "status",
+};
+
+export const isTributeCard = (cardId: string): boolean =>
+  cardId in TRIBUTE_CARDS;
+
 /** Cards a Favourable omens reading doubles. Everything else resolves as
  *  normal and leaves the reading in reserve, so a reading is never spent on a
- *  card with no number to double. Pay tribute is deliberately included: a
- *  reading held while subjugated costs you, which is what stops the card from
- *  being free to sit on. */
+ *  card with no number to double. Tribute is deliberately included: a reading
+ *  held while subjugated doubles what you pay, which is what stops the card
+ *  from being free to sit on. */
 export const DOUBLABLE_CARDS: ReadonlySet<string> = new Set([
-  "raid", "shrewd-marriage", "fortify", "revolt", "pay-tribute",
+  "raid", "shrewd-marriage", "fortify", "revolt", ...Object.keys(TRIBUTE_CARDS),
 ]);
 
 /** Cards the player knows from their very first game. Everything else in the
@@ -65,7 +92,7 @@ export const STARTING_KNOWN_CARDS: string[] = [
 
 /** The pack pool: every deck-buildable non-basic you do not start with, in
  *  stable CARDS order. Grow turnips stays free filler outside the pool; Revolt
- *  and Pay tribute are injection-only and excluded by `deckBuildable`. */
+ *  and the tribute cards are injection-only and excluded by `deckBuildable`. */
 export const ACQUIRABLE_CARDS: string[] = Object.values(CARDS)
   .filter(
     (c) =>
@@ -98,7 +125,7 @@ export type Rng = () => number;
  *  settlement: a default deck that offers a do-nothing card where a real
  *  choice fits was a hole, not a design.
  *
- *  Revolt is no longer here: it is injection-only, like Pay tribute. Seeds of
+ *  Revolt is no longer here: it is injection-only, like tribute. Seeds of
  *  revolt takes its deck slot and injects the Revolt itself. Note that swapping
  *  one deck-buildable non-basic for another keeps `buildAiDeck`'s rng draw
  *  count identical, so committed AI-deck bands do not move. */

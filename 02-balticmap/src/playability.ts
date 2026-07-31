@@ -1,4 +1,4 @@
-import { CARDS, DOUBLABLE_CARDS } from "./cards";
+import { CARDS, DOUBLABLE_CARDS, isTributeCard } from "./cards";
 import {
   allianceActive, allianceKey, leadsOf, realmOf,
   type Incorporated, type Overlords, type Relations,
@@ -524,29 +524,75 @@ export function validTargetsFor(
     .map((entry) => entry.factionId);
 }
 
-export function isCardPlayable(
+/** Why a card cannot be played, in the vocabulary of the rules rather than of
+ *  any one card. `TargetBlockReason` does the same job one level down, for a
+ *  targeted card's individual candidates. */
+export type CardBlockReason =
+  | { code: "forced-first" }
+  | { code: "needs-overlord" }
+  | { code: "already-held" }
+  | { code: "revolt-live" }
+  | { code: "no-target" }
+  | { code: "unavailable" };
+
+/** Why this card cannot be played on its own terms, or null when it can.
+ *
+ *  Derived per rule rather than per card: "you are holding an unspent one" is
+ *  one answer covering Bodyguard, Favourable omens and Extended diplomacy, and
+ *  "only while you are somebody's vassal" covers Revolt, Seeds of revolt and
+ *  every tribute card, present and future. `isCardPlayable` is this reduced to
+ *  a boolean, so legality and the explanation can never disagree.
+ *
+ *  Says nothing about the rest of the hand - a card that is perfectly legal
+ *  can still be unplayable this turn because a forced card monopolizes it.
+ *  That is `handBlockReason`. */
+export function cardBlockReason(
   view: RulesView,
   factionId: string,
   cardId: string,
-): boolean {
+): CardBlockReason | null {
   const card = CARDS[cardId];
-  if (!card) return false;
+  if (!card) return { code: "unavailable" };
   const overlord = view.overlords.get(factionId);
-  if (cardId === "grow-crops" || cardId === "fortify") return true;
-  if (cardId === "bodyguard") return !view.bodyguards.includes(factionId);
-  if (cardId === "favourable-omens") return !view.omens.includes(factionId);
-  if (cardId === "extended-diplomacy") return !view.diplomacyBoost.includes(factionId);
-  if (cardId === "pay-tribute") return overlord !== undefined;
-  if (cardId === "revolt") return overlord !== undefined;
+  const vassalOnly = (): CardBlockReason | null =>
+    overlord === undefined ? { code: "needs-overlord" } : null;
+  if (cardId === "grow-crops" || cardId === "fortify") return null;
+  if (cardId === "bodyguard") {
+    return view.bodyguards.includes(factionId) ? { code: "already-held" } : null;
+  }
+  if (cardId === "favourable-omens") {
+    return view.omens.includes(factionId) ? { code: "already-held" } : null;
+  }
+  if (cardId === "extended-diplomacy") {
+    return view.diplomacyBoost.includes(factionId)
+      ? { code: "already-held" }
+      : null;
+  }
+  if (isTributeCard(cardId) || cardId === "revolt") return vassalOnly();
   if (cardId === "seeds-of-revolt") {
     // Only a vassal may sow, and only one Revolt may be live at a time. Letting
     // a free faction sow would put a Revolt into an idle hand, where it would
     // sit unplayable until the next subjugation - which is exactly the
     // pre-loaded escape this card exists to remove.
-    return overlord !== undefined && !view.liveRevolts.includes(factionId);
+    return (
+      vassalOnly() ??
+      (view.liveRevolts.includes(factionId) ? { code: "revolt-live" } : null)
+    );
   }
-  if (card.targeted) return validTargetsFor(view, factionId, cardId).length > 0;
-  return false;
+  if (card.targeted) {
+    return validTargetsFor(view, factionId, cardId).length > 0
+      ? null
+      : { code: "no-target" };
+  }
+  return { code: "unavailable" };
+}
+
+export function isCardPlayable(
+  view: RulesView,
+  factionId: string,
+  cardId: string,
+): boolean {
+  return cardBlockReason(view, factionId, cardId) === null;
 }
 
 export interface PlayableSet {
@@ -554,7 +600,7 @@ export interface PlayableSet {
   cardIndexes: number[];
 }
 
-/** Which hand indexes may be played this turn. Forced cards (Pay Tribute)
+/** Which hand indexes may be played this turn. Forced cards (the tribute cards)
  *  monopolize the set; an empty playable set means a forced discard of any
  *  card in hand. */
 export function playableSet(
@@ -573,4 +619,23 @@ export function playableSet(
   });
   if (playable.length > 0) return { mode: "play", cardIndexes: playable };
   return { mode: "discard", cardIndexes: hand.map((_, i) => i) };
+}
+
+/** Why this card in this hand cannot be played THIS TURN, or null when it can.
+ *
+ *  The hand-level answer, and the one the player is owed: a card can be
+ *  perfectly legal and still unplayable because something forced is holding
+ *  the turn. Read straight off `playableSet` rather than re-deriving the
+ *  forced rule, so what the hover says and what the click allows are the same
+ *  decision. In discard mode nothing is blocked - every card may go - and this
+ *  returns null for all of them. */
+export function handBlockReason(
+  view: RulesView,
+  factionId: string,
+  hand: string[],
+  cardId: string,
+): CardBlockReason | null {
+  const set = playableSet(view, factionId, hand);
+  if (set.cardIndexes.some((i) => hand[i] === cardId)) return null;
+  return cardBlockReason(view, factionId, cardId) ?? { code: "forced-first" };
 }

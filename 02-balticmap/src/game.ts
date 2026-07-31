@@ -1,4 +1,9 @@
-import { buildDeck, buildAiDeck, shuffle, CARDS, DECK_SIZE, type Rng } from "./cards";
+import {
+  buildDeck, buildAiDeck, shuffle, isTributeCard, CARDS, DECK_SIZE,
+  TRIBUTE_CARDS, type Rng, type TributeTrack,
+} from "./cards";
+
+export type { TributeTrack };
 import {
   allianceKey, bumpMight, bumpMightAllBy, bumpMightBy, bumpStatus, bumpStatusBy,
   leadsOf, levelStatus, realmOf,
@@ -51,7 +56,6 @@ export type GamePhase =
   | "main-menu" | "deck-building" | "pick-faction" | "playing"
   | "victory" | "defeat";
 
-export type TributeTrack = "status" | "might";
 
 export interface PlayerState {
   id: number; // 1 = human, 2..N = AI
@@ -319,7 +323,7 @@ export function surrender(state: GameState): GameState {
 }
 
 /** A pending Revolt never outlives the vassalage it was sown in, for the same
- *  reason Pay tribute does not: otherwise a freed or poached faction carries a
+ *  reason the tribute cards do not: otherwise a freed or poached faction carries a
  *  live Revolt into its next vassalage and the pre-loaded escape is back. */
 const stripRevolt = (p: PlayerState): PlayerState => ({
   ...p,
@@ -334,9 +338,9 @@ const stripVassalCards = (p: PlayerState): PlayerState =>
 
 const stripTribute = (p: PlayerState): PlayerState => ({
   ...p,
-  deck: p.deck.filter((c) => c !== "pay-tribute"),
-  hand: p.hand.filter((c) => c !== "pay-tribute"),
-  discard: p.discard.filter((c) => c !== "pay-tribute"),
+  deck: p.deck.filter((c) => !isTributeCard(c)),
+  hand: p.hand.filter((c) => !isTributeCard(c)),
+  discard: p.discard.filter((c) => !isTributeCard(c)),
 });
 
 /** A vassal holding neither a live Revolt nor a Seeds of revolt can never free
@@ -346,13 +350,13 @@ const stripTribute = (p: PlayerState): PlayerState => ({
  *  Scanning all three piles is enough because the piles only ever cycle: a
  *  played card goes to the discard and `beginTurn` reshuffles the discard back,
  *  and `stripVassalCards` directly above is the ONLY thing in the game that
- *  removes a card - and it removes Pay tribute and Revolt, never Seeds of
+ *  removes a card - and it removes tribute and Revolt, never Seeds of
  *  revolt. So a Seeds anywhere in the piles will come round again, and a player
  *  poached out of a live Revolt still holds the Seeds that sowed it.
  *
  *  Being freed by a third party toppling your lord is a real escape, but it is
  *  not one this player can reach for, and while they wait every turn is a
- *  forced Pay tribute or a forced discard. The run is over; say so. */
+ *  forced tribute or a forced discard. The run is over; say so. */
 export function isStranded(
   player: PlayerState,
   overlords: Overlords,
@@ -392,7 +396,6 @@ export function playCard(
   cardIndex: number,
   rng: Rng,
   targetId?: string,
-  tributeTrack?: TributeTrack,
 ): GameState {
   if (state.phase !== "playing") return state;
   if (state.playedThisTurn) return state;
@@ -406,7 +409,6 @@ export function playCard(
     const targets = validTargetsFor(viewOf(state), p.factionId, cardId);
     if (targetId === undefined || !targets.includes(targetId)) return state;
   }
-  if (cardId === "pay-tribute" && tributeTrack === undefined) return state;
 
   let relations = state.relations;
   const overlords = new Map(state.overlords);
@@ -538,7 +540,10 @@ export function playCard(
     overlords.set(targetId, p.factionId);
     players = updateFaction(players, targetId, (pl) => {
       const clean = stripVassalCards(pl);
-      return { ...clean, deck: shuffle([...clean.deck, "pay-tribute", "pay-tribute"], rng) };
+      return {
+        ...clean,
+        deck: shuffle([...clean.deck, ...Object.keys(TRIBUTE_CARDS)], rng),
+      };
     });
     if (formerLord !== undefined) {
       // vassal-loss penalty (section 8): the poached vassal gains +1/+1
@@ -602,14 +607,16 @@ export function playCard(
       targetFactionId: p.factionId, overlordFactionId: former, amount: mult,
       ...(doubled ? { doubled: true } : {}),
     });
-  } else if (cardId === "pay-tribute") {
+  } else if (isTributeCard(cardId)) {
     const lord = overlords.get(p.factionId);
-    if (lord === undefined || tributeTrack === undefined) return state;
+    if (lord === undefined) return state;
+    // Which track this card pays is the card's own business - see TRIBUTE_CARDS.
+    const tributeTrack = TRIBUTE_CARDS[cardId];
     const beneficiaries = [
       lord,
       ...state.factionIds.filter((f) => incorporated[f] === lord),
     ];
-    // Pay tribute is deliberately in the doubling set: holding a reading
+    // Tribute is deliberately in the doubling set: holding a reading
     // while subjugated doubles what you pay, which is the cost of hoarding it.
     const bump = tributeTrack === "might" ? bumpMightBy : bumpStatusBy;
     for (const b of beneficiaries) {

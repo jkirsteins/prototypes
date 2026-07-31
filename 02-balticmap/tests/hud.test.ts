@@ -30,6 +30,7 @@ function setup(opts?: {
   canPlayCard?: (cardId: string) => boolean;
   targetExplanations?: (cardId: string) => TargetExplanation[];
   cardModifiers?: (cardId: string) => string[];
+  cardBlocked?: (cardId: string) => string | null;
   isDiscardMode?: () => boolean;
   onResetProgress?: () => void;
   onSurrender?: () => void;
@@ -46,12 +47,12 @@ function setup(opts?: {
   const cb: HudCallbacks = {
     onNewGame: vi.fn(),
     onPlayCard: vi.fn(),
-    onTributeTrack: vi.fn(),
     ...(opts?.canPlayCard ? { canPlayCard: opts.canPlayCard } : {}),
     ...(opts?.targetExplanations
       ? { targetExplanations: opts.targetExplanations }
       : {}),
     ...(opts?.cardModifiers ? { cardModifiers: opts.cardModifiers } : {}),
+    ...(opts?.cardBlocked ? { cardBlocked: opts.cardBlocked } : {}),
     ...(opts?.isDiscardMode ? { isDiscardMode: opts.isDiscardMode } : {}),
     ...(opts?.onResetProgress ? { onResetProgress: opts.onResetProgress } : {}),
     ...(opts?.onSurrender ? { onSurrender: opts.onSurrender } : {}),
@@ -755,20 +756,19 @@ describe("hud v2", () => {
     expect(cb.onPlayCard).toHaveBeenCalledWith(1);
   });
 
-  it("tribute prompt swaps the status bar to track buttons", () => {
-    const { container, cb, hud } = setup();
-    hud.update(playing());
-    hud.setTributePrompt(true);
-    const buttons = [...container.querySelectorAll(".tribute-btn")];
-    expect(buttons.map((b) => b.textContent)).toEqual(["Might", "Status"]);
-    (buttons[1] as HTMLElement).click();
-    expect(cb.onTributeTrack).toHaveBeenCalledWith("status");
-    hud.setTributePrompt(false);
-    // buttons stay in the DOM, hidden via the codebase's .hidden convention
-    expect(
-      q(container, ".tribute-buttons").classList.contains("hidden"),
-    ).toBe(true);
-    expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
+  it("shows why a card is greyed out, on the card itself", () => {
+    const { container, hud } = setup({
+      canPlayCard: (id) => id !== "raid",
+      cardBlocked: (id) =>
+        id === "raid" ? "A forced card must be played first." : null,
+    });
+    hud.update(withHand(playing(), 0, ["raid", "grow-crops"]));
+    const cards = [...container.querySelectorAll(".card")];
+    expect(cards[0].classList.contains("unplayable")).toBe(true);
+    expect(cards[0].querySelector(".card-tip-blocked")?.textContent).toBe(
+      "A forced card must be played first.",
+    );
+    expect(cards[1].querySelector(".card-tip-blocked")).toBeNull();
   });
 
   it("defeat shows the post-mortem with cause, build-up, seen cards, and log", () => {
@@ -825,8 +825,8 @@ describe("hud v2", () => {
           : pl,
       ),
     };
-    g = withHand(g, 0, ["pay-tribute"]);
-    g = playCard(g, 0, seededRng(1), undefined, "might");
+    g = withHand(g, 0, ["pay-military-tribute"]);
+    g = playCard(g, 0, seededRng(1));
     expect(g.phase).toBe("defeat");
     hud.update(g);
     expect(q(container, ".pm-title").textContent).toBe("Game over");
@@ -1028,7 +1028,7 @@ describe("notice modal", () => {
     const overlay = q(container, ".notice-overlay");
     expect(overlay.classList.contains("hidden")).toBe(false);
     expect(lineTexts(container)).toEqual(["Subjugate by Alpha - you owe fealty to them"]);
-    expect(footnoteTexts(container)[0]).toContain("Pay tribute cards were shuffled into your deck");
+    expect(footnoteTexts(container)[0]).toContain("Pay military tribute and Pay status tribute were shuffled into your deck");
   });
 
   it("dismisses on Continue and stays dismissed on re-render", () => {
@@ -1216,7 +1216,7 @@ describe("notice details and hand tips", () => {
     hud.update(g);
     expect(q(container, ".notice-line").textContent).toContain("you owe fealty to them");
     expect(q(container, ".notice-footnote").textContent).toContain(
-      "Pay tribute cards were shuffled into your deck",
+      "Pay military tribute and Pay status tribute were shuffled into your deck",
     );
     expect(q(container, ".notice-footnotes").classList.contains("hidden")).toBe(false);
   });
