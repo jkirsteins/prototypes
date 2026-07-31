@@ -22,13 +22,15 @@ import {
 import {
   cardModifierLines, explainTargetEligibility, targetOddsLines,
 } from "./target-explanations";
-import { CARDS } from "./cards";
+import { ACQUIRABLE_CARDS, CARDS } from "./cards";
 import { createHud } from "./hud";
 import { createDeckScreen } from "./deck-screen";
 import {
-  buildPlayerDeck, loadMeta, memoryStorage, mergeSeen,
-  resetMeta, saveMeta, unlockAllSeen, type MetaRecord, type MetaStorage,
+  applyPack, bankRun, buildPlayerDeck, collectedCount, loadMeta, memoryStorage,
+  pendingPacks, resetMeta, saveMeta, type MetaRecord, type MetaStorage,
 } from "./meta";
+import { runTurnips, runXp } from "./xp";
+import { openPack } from "./packs";
 import {
   barFor, formatLead, holderOf, hoverRelationLines, politicalFactionForPolygon,
   relationshipLine,
@@ -94,10 +96,11 @@ const { storage, storageIsPersistent } = ((): {
   }
 })();
 let meta: MetaRecord = loadMeta(storage);
-let seenMerged = false;
-let poolAtRunStart: string[] = meta.seenPool;
-/** Cards learned on the way into this deck screen, awaiting acknowledgement. */
-let learnedToShow: string[] = [];
+let runBanked = false;
+/** The pack currently revealed on the deck screen, or null when none is open.
+ *  A fresh array per pack: the deck screen compares identity to decide whether
+ *  to replay the reveal animation. */
+let packReveal: { id: string; isNew: boolean }[] | null = null;
 let game: GameState = newGame(
   data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
   SITE_LANDS,
@@ -531,15 +534,14 @@ function refresh(): void {
   applyRealmHover(hoveredRegion);
 }
 
-/** Banks this run's seen cards into the persistent pool, once per run. */
-function bankSeen(): void {
-  if (seenMerged || game.players.length === 0) return;
-  seenMerged = true;
-  const next = mergeSeen(meta, game.seenThisRun);
-  if (next !== meta) {
-    meta = next;
-    saveMeta(storage, meta);
-  }
+/** Banks this run's XP and turnips into the persistent record, once per run.
+ *  Both totals are derived from the log rather than carried on state, so this
+ *  is the only place progress is written and it cannot double-count. */
+function bankRunProgress(): void {
+  if (runBanked || game.players.length === 0) return;
+  runBanked = true;
+  meta = bankRun(meta, runXp(game.log), runTurnips(game.log));
+  saveMeta(storage, meta);
 }
 
 /** After a completed human action: advance, then run every AI turn back to
@@ -555,7 +557,7 @@ function bankSeen(): void {
  *  would make that "before" a lie. */
 function afterHumanAction(): void {
   game = advance(game, rng);
-  if (game.phase === "victory" || game.phase === "defeat") bankSeen();
+  if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
   refresh();
   if (game.phase !== "playing" || isHumanTurn(game)) return;
   resolving = true;
@@ -568,7 +570,7 @@ function afterHumanAction(): void {
       }
       game = advance(aiTakeTurn(game, rng), rng);
     }
-    if (game.phase === "victory" || game.phase === "defeat") bankSeen();
+    if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
     resolving = false;
     refresh();
   });
@@ -578,7 +580,7 @@ const hud = createHud(
   app,
   {
     onNewGame() {
-      bankSeen();
+      bankRunProgress();
       // Belt-and-braces: onNewGame is unreachable mid-resolution in practice
       // (the menu is hidden while playing, and the postmortem appears only
       // once the run has ended), but a stray call must not leave a stale
@@ -591,9 +593,8 @@ const hud = createHud(
       clearFoundedSettlements();
       cancelTribute();
       disarm();
-      seenMerged = false;
-      poolAtRunStart = meta.seenPool;
-      learnSeenCards();
+      runBanked = false;
+      packReveal = null;
       deckScreen.update(deckScreenView(true));
       refresh();
     },
@@ -602,7 +603,7 @@ const hud = createHud(
       disarm();
       cancelTribute();
       game = surrender(game);
-      bankSeen();
+      bankRunProgress();
       refresh();
     },
     onPlayCard(index) {
@@ -702,16 +703,11 @@ const hud = createHud(
     onHideTip() {
       tooltip.hide();
     },
-    lootInfo() {
-      return game.seenThisRun
-        .filter((id) => !meta.knownCards.includes(id))
-        .map((id) => ({ id, isNew: !poolAtRunStart.includes(id) }));
-    },
     ...(storageIsPersistent
       ? {
           onResetProgress() {
             meta = resetMeta(storage);
-            poolAtRunStart = meta.seenPool;
+            packReveal = null;
             deckScreen.update(deckScreenView(game.phase === "deck-building"));
           },
         }
@@ -726,29 +722,30 @@ function deckScreenView(visible: boolean) {
   return {
     visible,
     knownCards: meta.knownCards,
-    seenPool: meta.seenPool,
-    learned: learnedToShow,
+    collected: collectedCount(meta),
+    pendingPacks: pendingPacks(meta),
+    reveal: packReveal,
   };
 }
 
-/** Learns everything witnessed in past runs, on the way into the deck screen,
- *  and records what to announce. Called at every entry to deck-building so a
- *  pool banked by any route (a loss, a surrender, a fresh New game) is cashed
- *  in before the player picks a deck. */
-function learnSeenCards(): void {
-  const { meta: next, learned } = unlockAllSeen(meta);
-  if (learned.length === 0) return;
-  meta = next;
-  learnedToShow = learned;
-  saveMeta(storage, meta);
-}
-
 const deckScreen = createDeckScreen(app, {
-  onDismissLearned() {
-    learnedToShow = [];
+  onOpenPack() {
+    if (pendingPacks(meta) === 0 || packReveal !== null) return;
+    const drawn = openPack(ACQUIRABLE_CARDS, rng);
+    const { meta: next, results } = applyPack(meta, drawn);
+    meta = next;
+    packReveal = results;
+    saveMeta(storage, meta);
+    deckScreen.update(deckScreenView(true));
+  },
+  onDismissReveal() {
+    packReveal = null;
     deckScreen.update(deckScreenView(true));
   },
   onStart(selectedIds) {
+    // A pack still waiting is the screen's own business - it hides the deck
+    // builder - but guard anyway so a stray call cannot skip the reveal.
+    if (pendingPacks(meta) > 0 || packReveal !== null) return;
     game = chooseDeck(game, buildPlayerDeck(meta.knownCards, selectedIds));
     deckScreen.update(deckScreenView(false));
     refresh();
