@@ -30,7 +30,6 @@ function setup(opts?: {
   targetExplanations?: (cardId: string) => TargetExplanation[];
   cardModifiers?: (cardId: string) => string[];
   isDiscardMode?: () => boolean;
-  lootInfo?: () => { id: string; isNew: boolean }[];
   onResetProgress?: () => void;
   onSurrender?: () => void;
   onHighlightFaction?: (factionId: string | null) => void;
@@ -52,7 +51,6 @@ function setup(opts?: {
       : {}),
     ...(opts?.cardModifiers ? { cardModifiers: opts.cardModifiers } : {}),
     ...(opts?.isDiscardMode ? { isDiscardMode: opts.isDiscardMode } : {}),
-    ...(opts?.lootInfo ? { lootInfo: opts.lootInfo } : {}),
     ...(opts?.onResetProgress ? { onResetProgress: opts.onResetProgress } : {}),
     ...(opts?.onSurrender ? { onSurrender: opts.onSurrender } : {}),
     ...(opts?.onHighlightFaction
@@ -749,7 +747,6 @@ describe("hud v2", () => {
     expect(q(container, ".pm-title").textContent).toBe("Game over");
     expect(q(container, ".pm-cause").textContent).toBe("Incorporated by Gamma");
     expect(q(container, ".pm-buildup").textContent).toContain("Raid");
-    expect(q(container, ".pm-seen").textContent).toContain("Raid");
     expect(q(container, ".pm-log .log-entry").textContent?.length).toBeGreaterThan(0);
     expect(q(container, ".status-bar").classList.contains("hidden")).toBe(true);
     (pm.querySelector(".menu-new-game") as HTMLElement).click();
@@ -789,34 +786,14 @@ describe("learning loop hud", () => {
     g = { ...g, current: 2, overlords: new Map([["beta", "gamma"]]) };
     g = withHand(g, 2, ["incorporate"]);
     g = playCard(g, 0, seededRng(1), "beta");
-    return { ...g, seenThisRun: ["raid", "subjugate"] };
+    return g;
   }
 
-  it("renders loot from lootInfo with NEW tags and the learned caption", () => {
-    const { container, hud } = setup({
-      lootInfo: () => [
-        { id: "raid", isNew: true },
-        { id: "subjugate", isNew: false },
-      ],
-    });
+  it("reports what the run earned and drops the old loot row", () => {
+    const { container, hud } = setup();
     hud.update(defeated());
-    const cards = [...container.querySelectorAll(".pm-card")];
-    expect(cards.map((c) => c.querySelector(".pm-card-name")?.textContent)).toEqual([
-      "Raid", "Subjugate",
-    ]);
-    expect(cards[0].querySelector(".pm-card-new")?.textContent).toBe("NEW");
-    expect(cards[0].querySelector(".pm-card-text")?.textContent?.length).toBeGreaterThan(0);
-    // Learning is automatic now: the caption reports, it does not ask.
-    expect(q(container, ".pm-seen-label").textContent).toBe(
-      "These are yours when you start your next game.",
-    );
-  });
-
-  it("hides the loot row when lootInfo returns nothing", () => {
-    const { container, hud } = setup({ lootInfo: () => [] });
-    hud.update(defeated());
-    expect(q(container, ".pm-seen-label").classList.contains("hidden")).toBe(true);
-    expect(container.querySelectorAll(".pm-card")).toHaveLength(0);
+    expect(q(container, ".pm-xp").textContent).toMatch(/^\+\d+ XP earned$/);
+    expect(container.querySelector(".pm-seen")).toBeNull();
   });
 
   it("reset progress arms on first click and fires on second", () => {

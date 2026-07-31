@@ -13,6 +13,7 @@ import {
 import type { TargetExplanation } from "./target-explanations";
 import type { TooltipLine } from "./panel";
 import { memoryStorage, type MetaStorage } from "./meta";
+import { runXp } from "./xp";
 import { standingChangeText, standingsFor } from "./view";
 import {
   card, cardName, faction, renderSegments, t, theFaction,
@@ -32,8 +33,6 @@ export interface HudCallbacks {
   cardModifiers?(cardId: string): string[];
   onTributeTrack?(track: "status" | "might"): void;
   isDiscardMode?(): boolean;
-  /** Post-mortem loot row: unlockable cards seen this run. */
-  lootInfo?(): { id: string; isNew: boolean }[];
   /** Renders the main-menu Reset progress control when provided. */
   onResetProgress?(): void;
   /** Lights this faction's realm on the map, exactly as hovering its land
@@ -358,16 +357,13 @@ export function createHud(
   pmDeltas.className = "pm-deltas";
   const pmBuildup = document.createElement("div");
   pmBuildup.className = "pm-buildup";
-  const pmSeenLabel = document.createElement("p");
-  pmSeenLabel.className = "pm-seen-label";
-  pmSeenLabel.textContent = "Cards seen this run:";
-  const pmSeen = document.createElement("div");
-  pmSeen.className = "pm-seen";
+  const pmXp = document.createElement("p");
+  pmXp.className = "pm-xp";
   const pmNewGame = document.createElement("button");
   pmNewGame.className = "menu-new-game";
   pmNewGame.textContent = "New game";
   pmNewGame.addEventListener("click", () => cb.onNewGame());
-  pmSummary.append(pmTitle, pmCause, pmDeltas, pmBuildup, pmSeenLabel, pmSeen, pmNewGame);
+  pmSummary.append(pmTitle, pmCause, pmDeltas, pmBuildup, pmXp, pmNewGame);
   const pmLog = document.createElement("div");
   pmLog.className = "pm-log";
   postmortem.append(pmSummary, pmLog);
@@ -943,34 +939,9 @@ export function createHud(
         }
       }
     }
-    const loot =
-      cb.lootInfo?.() ??
-      state.seenThisRun.map((id) => ({ id, isNew: false }));
-    pmSeenLabel.textContent = cb.lootInfo
-      ? "These are yours when you start your next game."
-      : "Cards seen this run:";
-    pmSeen.replaceChildren(
-      ...loot.map(({ id, isNew }) => {
-        const d = document.createElement("div");
-        d.className = "pm-card";
-        const name = document.createElement("span");
-        name.className = "pm-card-name";
-        name.textContent = cardName(id);
-        d.appendChild(name);
-        if (isNew) {
-          const tag = document.createElement("span");
-          tag.className = "pm-card-new";
-          tag.textContent = "NEW";
-          d.appendChild(tag);
-        }
-        const text = document.createElement("span");
-        text.className = "pm-card-text";
-        text.textContent = CARDS[id]?.text ?? "";
-        d.appendChild(text);
-        return d;
-      }),
-    );
-    pmSeenLabel.classList.toggle("hidden", loot.length === 0);
+    // XP is derived from the log, never a counter carried on state - see
+    // src/xp.ts. The number here is the same one that gets banked.
+    pmXp.textContent = `+${runXp(state.log)} XP earned`;
     pmLog.replaceChildren(
       ...state.log.filter((e) => e.type !== "draw").map((e) => {
         const d = document.createElement("div");
@@ -1026,9 +997,9 @@ export function createHud(
       }
     },
     setArmed(index, cardNameText) {
-      [...hand.children].forEach((el, i) =>
-        el.classList.toggle("card-armed", i === index),
-      );
+      [...hand.children].forEach((el, i) => {
+        el.classList.toggle("card-armed", i === index);
+      });
       if (index !== null && cardNameText !== undefined) {
         statusText.textContent = `Choose a target for ${cardNameText}`;
       } else if (lastState) {

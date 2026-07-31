@@ -1,6 +1,6 @@
 import { buildDeck, buildAiDeck, shuffle, CARDS, DECK_SIZE, DOUBLABLE_CARDS, type Rng } from "./cards";
 import {
-  allianceKey, bumpMight, bumpMightAll, bumpMightAllBy, bumpMightBy, bumpStatus, bumpStatusBy,
+  allianceKey, bumpMight, bumpMightAllBy, bumpMightBy, bumpStatus, bumpStatusBy,
   leadsOf, levelStatus, realmOf,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
@@ -96,7 +96,6 @@ export interface GameState {
    *  the rest of the app still addresses the human as index 0 / player id 1. */
   humanSeat: number | null;
   humanDeck: string[];
-  seenThisRun: string[]; // non-basic enemy cards witnessed (learning loop)
   log: GameEvent[];
 }
 
@@ -167,7 +166,6 @@ export function newGame(
         factionIds.map((id) => [id, factionIds.filter((o) => o !== id)]),
       ),
     humanDeck: buildDeck(),
-    seenThisRun: [],
     log: [],
   };
 }
@@ -600,31 +598,6 @@ export function playCard(
   if (prevented) events[0] = { ...events[0], prevented: true };
   if (doubled) events[0] = { ...events[0], doubled: true };
 
-  // learning hook: enemy non-basic cards witnessed by the human
-  let seenThisRun = state.seenThisRun;
-  const human = players[0];
-  if (
-    state.humanSeat !== null &&
-    p.id !== 1 &&
-    card.deckBuildable &&
-    card.maxPerDeck !== null &&
-    !seenThisRun.includes(cardId)
-  ) {
-    const humanRealm = realmOf(human.factionId, overlords, incorporated);
-    const humanRealmBefore = realmOf(human.factionId, state.overlords, state.incorporated);
-    let seen = false;
-    if (card.targeted && targetId !== undefined) {
-      seen = humanRealm.includes(targetId) || humanRealmBefore.includes(targetId);
-    } else if (!card.targeted) {
-      const actorRealm = realmOf(p.factionId, overlords, incorporated);
-      const humanSet = new Set(humanRealm);
-      seen = actorRealm.some((m) =>
-        (state.adjacency[m] ?? []).some((a) => humanSet.has(a)),
-      );
-    }
-    if (seen) seenThisRun = [...seenThisRun, cardId];
-  }
-
   // endings
   // Defeat is checked before victory; the spec notes the two cannot coincide.
   // A rival unification is checked last, so a play that wins for the human is
@@ -665,7 +638,7 @@ export function playCard(
 
   return {
     ...state, phase, players, relations, overlords, incorporated,
-    alliances, diplomacyBoost, bodyguards, omens, settled, rulers, seenThisRun,
+    alliances, diplomacyBoost, bodyguards, omens, settled, rulers,
     log: appendEvents(state, events), playedThisTurn: true,
   };
 }

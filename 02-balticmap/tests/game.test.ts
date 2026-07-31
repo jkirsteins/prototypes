@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, chooseDeck, pickFaction, beginTurn, playCard, discardCard,
-  advance, isHumanTurn, surrender, viewOf,
+  advance, surrender, viewOf,
   OPENING_HAND, victoryRealmSize, type GameState,
 } from "../src/game";
 import { DECK_SIZE, buildDeck, CARDS, type Rng } from "../src/cards";
@@ -13,6 +13,7 @@ import {
   subjugationGripOn,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
+import { runTurnips, runXp } from "../src/xp";
 import pools from "../src/data/ruler-names.json";
 
 const POOLS = pools as Record<string, string[]>;
@@ -64,8 +65,7 @@ describe("setup", () => {
     const g = newGame(FACTIONS);
     expect(g.phase).toBe("main-menu");
     expect(g.overlords.size).toBe(0);
-    expect(g.seenThisRun).toEqual([]);
-    expect(g.adjacency["alpha"].sort()).toEqual(["beta", "delta", "gamma"]);
+    expect(g.adjacency.alpha.sort()).toEqual(["beta", "delta", "gamma"]);
     expect(g.alliances).toEqual({});
     expect(g.diplomacyBoost).toEqual([]);
     expect(g.bodyguards).toEqual([]);
@@ -411,7 +411,7 @@ describe("card effects", () => {
 
 describe("found a settlement", () => {
   it("records the land, logs it, and raises the bar against the realm", () => {
-    let g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
+    const g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
     expect(subjugationGripOn(viewOf(g), "beta")).toEqual({ might: 2, status: 2 });
     const after = playCard(g, 0, rng(), "beta");
     expect(after.settled).toEqual(["beta"]);
@@ -454,46 +454,25 @@ describe("found a settlement", () => {
   });
 });
 
-describe("seenThisRun", () => {
-  it("records AI cards played against the human realm, once, in order", () => {
-    let g = playingState(LINE_ADJ);
-    g = { ...g, current: 2 }; // gamma acts
-    g = withHand(g, 2, ["raid"]);
-    let after = playCard(g, 0, rng(), "beta");
-    expect(after.seenThisRun).toEqual(["raid"]);
-    after = { ...after, playedThisTurn: false };
-    after = withHand(after, 2, ["raid"]);
-    after = playCard(after, 0, rng(), "beta");
-    expect(after.seenThisRun).toEqual(["raid"]); // deduped
+describe("XP is derived from a real game's log", () => {
+  it("scores a human turnip as one point and counts it as a turnip", () => {
+    let g = playingState();
+    g = withHand(g, 0, ["grow-crops"]);
+    const before = runXp(g.log);
+    const beforeTurnips = runTurnips(g.log);
+    g = playCard(g, 0, seededRng(1));
+    expect(runXp(g.log)).toBe(before + 1);
+    expect(runTurnips(g.log)).toBe(beforeTurnips + 1);
   });
 
-  it("records untargeted plays only from factions adjacent to the human realm", () => {
-    let g = playingState(LINE_ADJ);
-    g = { ...g, current: 2 }; // gamma, adjacent to beta
-    g = withHand(g, 2, ["fortify"]);
-    expect(playCard(g, 0, rng()).seenThisRun).toEqual(["fortify"]);
-    let far = playingState(LINE_ADJ);
-    far = { ...far, current: 3 }; // delta, not adjacent to beta
-    far = withHand(far, 3, ["fortify"]);
-    expect(playCard(far, 0, rng()).seenThisRun).toEqual([]);
-  });
-
-  it("ignores the human's own plays and AI plays on other AIs", () => {
-    let g = withHand(playingState(LINE_ADJ), 0, ["raid"]);
-    expect(playCard(g, 0, rng(), "alpha").seenThisRun).toEqual([]);
-    let g2 = playingState(LINE_ADJ);
-    g2 = { ...g2, current: 2 };
-    g2 = withHand(g2, 2, ["raid"]);
-    expect(playCard(g2, 0, rng(), "delta").seenThisRun).toEqual([]);
-  });
-
-  it("records a poach of the human's own vassal", () => {
-    let g = playingState(LINE_ADJ);
-    g = { ...g, current: 3, overlords: new Map([["gamma", "beta"]]) };
-    g = withRel(g, mightLead(g.relations, "delta", "gamma", 2));
-    g = withHand(g, 3, ["subjugate"]);
-    const after = playCard(g, 0, rng(), "gamma");
-    expect(after.seenThisRun).toEqual(["subjugate"]);
+  it("ignores an AI's plays entirely", () => {
+    let g = playingState();
+    g = { ...g, current: 1 };
+    g = withHand(g, 1, ["grow-crops"]);
+    const before = runXp(g.log);
+    g = playCard(g, 0, seededRng(1));
+    expect(runXp(g.log)).toBe(before);
+    expect(runTurnips(g.log)).toBe(0);
   });
 });
 
@@ -718,9 +697,9 @@ describe("raid gain", () => {
   });
 
   it("states the escalating yield in its rules text", () => {
-    expect(CARDS["raid"].text).toContain("+1 for your first land");
-    expect(CARDS["raid"].text).toContain("+2 for the second");
-    expect(CARDS["raid"].text).toContain("border");
+    expect(CARDS.raid.text).toContain("+1 for your first land");
+    expect(CARDS.raid.text).toContain("+2 for the second");
+    expect(CARDS.raid.text).toContain("border");
   });
 });
 
@@ -1055,7 +1034,7 @@ describe("event stamping", () => {
     expect(g.log.some((e) => e.type === "draw" && e.actorRuler === doomed)).toBe(true);
 
     // hand the seat back to beta holding an assassin's card
-    let back = withHand({ ...g, current: 0, playedThisTurn: false }, 0, ["assassinate-ruler"]);
+    const back = withHand({ ...g, current: 0, playedThisTurn: false }, 0, ["assassinate-ruler"]);
     const after = playCard(back, 0, rng(), "alpha");
 
     expect(rulerOf(after.rulers, "alpha").name).not.toBe(doomed);

@@ -369,44 +369,11 @@ svg.map.dragging {
   color: #e8b0a8;
 }
 
-.pm-seen-label {
-  font-size: 11px;
-  color: #b8b0a2;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.pm-seen {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.pm-card {
-  width: 72px;
-  height: 100px;
-  border: 1px dashed #b8b0a2;
-  border-radius: 6px;
-  font-size: 11px;
-  color: #fdfaf4;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 4px;
-  position: relative;
-}
-
-.pm-card-new {
-  position: absolute;
-  top: -7px;
-  right: -7px;
-  background: #d4af37;
-  color: #2b3238;
-  font-size: 9px;
-  font-weight: bold;
-  padding: 1px 5px;
-  border-radius: 4px;
+.pm-xp {
+  margin: 0.6rem 0 0;
+  color: #c9a227;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
 }
 
 .menu-reset {
@@ -930,30 +897,23 @@ svg.map.dragging {
   font-weight: 600;
 }
 
-.ds-card-name,
-.pm-card-name {
+.ds-card-name {
   display: block;
   font-weight: 600;
 }
 
-.ds-card-text,
-.pm-card-text {
+.ds-card-text {
   display: block;
   margin-top: 4px;
   font-size: 11px;
   line-height: 1.35;
   color: #6b5d49;
-  /* the ink colour above is for the parchment cards; the two dark contexts
-     below (locked unlock row, postmortem overlay) must override it or the
-     rules text goes dark-on-dark */
+  /* the ink colour above is for the parchment cards; the dark context below
+     (locked unlock row) must override it or the rules text goes dark-on-dark */
 }
 
 .ds-card.ds-locked .ds-card-text {
   color: #bdb4a5;
-}
-
-.pm-card-text {
-  color: #cac2b5;
 }
 
 .card .card-tip {
