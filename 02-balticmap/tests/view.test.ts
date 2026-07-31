@@ -272,6 +272,38 @@ describe("relationshipLine", () => {
     expect(line("lietuva", [["me", "lietuva"]])).toBe("Your overlord");
   });
 
+  /** The fealty used to read one way only: a vassal's hover named its lord,
+   *  while the lord - the land whose colour every vassal wears in stripes - was
+   *  the one land whose hover said nothing at all. */
+  it("names the vassals a rival holds", () => {
+    expect(line("lietuva", [["zemgale", "lietuva"]])).toBe("Overlord of ZEMGALE");
+    expect(line("lietuva", [["zemgale", "lietuva"], ["kursa", "lietuva"]]))
+      .toBe("Overlord of KURSA and ZEMGALE");
+  });
+
+  it("says both halves when a land is held and holds", () => {
+    expect(line("lietuva", [["lietuva", "sudovians"], ["zemgale", "lietuva"]]))
+      .toBe("Vassal of SUDOVIANS, overlord of ZEMGALE");
+    expect(line("lietuva", [["lietuva", "me"], ["zemgale", "lietuva"]]))
+      .toBe("Your vassal, overlord of ZEMGALE");
+  });
+
+  /** The human is left out of the list: "Your overlord" says it better than
+   *  the player's own faction name repeated back at them would. */
+  it("keeps the human out of its own overlord's vassal list", () => {
+    expect(line("lietuva", [["me", "lietuva"]])).toBe("Your overlord");
+    expect(line("lietuva", [["me", "lietuva"], ["zemgale", "lietuva"]]))
+      .toBe("Your overlord, and overlord of ZEMGALE");
+  });
+
+  /** An absorbed land is not a vassal any more; the entry in `overlords` can
+   *  outlive the subjugation, as "prefers absorption over a stale vassal entry"
+   *  below already records for the other direction. */
+  it("does not count an absorbed land among the vassals", () => {
+    expect(line("lietuva", [["zemgale", "lietuva"]], { zemgale: "lietuva" }))
+      .toBeNull();
+  });
+
   it("says nothing at all when nobody holds it", () => {
     // Null rather than "Independent": the map hover shows this line only when
     // there is a holder to name, and the panel supplies its own wording.

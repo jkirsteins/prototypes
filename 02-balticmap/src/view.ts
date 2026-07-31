@@ -91,6 +91,16 @@ export function politicalFactionForPolygon(
   return incorporated[polygonFactionId] ?? polygonFactionId;
 }
 
+/** "A", "A and B", "A, B and C". Plain text, not segments: these tooltip lines
+ *  have always been plain (`Vassal of ${name}` above it), and the segment rule
+ *  in AGENTS.md governs the prose that renders through `renderSegments`. */
+function andList(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
 /** How a polygon stands to the human, from the polygon's OWN faction id.
  *
  *  Pass the polygon's own faction, never the politically resolved one: an
@@ -125,10 +135,30 @@ export function relationshipLine(
           : `, itself a vassal of ${factionName(ownersLord)}`;
     return `Incorporated into ${factionName(owner)}${suffix}`;
   }
-  if (lord === humanFactionId) return "Your vassal";
-  if (overlords.get(humanFactionId) === polygonFactionId) return "Your overlord";
-  if (lord === undefined) return null;
-  return `Vassal of ${factionName(lord)}`;
+  // Who this land holds, on top of who holds it. Without it the fealty only
+  // ever read one way: a vassal's hover named its lord while the lord's own
+  // hover said nothing back, so the land carrying the stripes everybody else
+  // wears was the one land that never explained them. The human is left out -
+  // "Your overlord" below already says that better than a name in a list would.
+  const held = [...overlords]
+    .filter(([v, l]) => l === polygonFactionId && v !== humanFactionId && !(v in incorporated))
+    .map(([v]) => factionName(v))
+    .sort();
+  const holds = held.length > 0 ? `overlord of ${andList(held)}` : null;
+  if (lord === humanFactionId) {
+    return holds === null ? "Your vassal" : `Your vassal, ${holds}`;
+  }
+  if (overlords.get(humanFactionId) === polygonFactionId) {
+    // The human is deliberately absent from `held`, so this reads as "yours and
+    // theirs" rather than repeating you back at yourself.
+    return holds === null ? "Your overlord" : `Your overlord, and ${holds}`;
+  }
+  if (lord === undefined) {
+    return holds === null ? null : capitalize(holds);
+  }
+  return holds === null
+    ? `Vassal of ${factionName(lord)}`
+    : `Vassal of ${factionName(lord)}, ${holds}`;
 }
 
 /** The faction whose OWN polygon holds this land: the realm that absorbed it,
