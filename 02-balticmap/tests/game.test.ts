@@ -472,9 +472,9 @@ describe("found a settlement", () => {
   it("does not double a settlement with a Favourable omens reading", () => {
     // Nothing about it is a Might or Status gain, so a held reading stays held.
     let g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
-    g = { ...g, omens: ["beta"] };
+    g = { ...g, omens: { beta: 1 } };
     const after = playCard(g, 0, rng(), "beta");
-    expect(after.omens).toEqual(["beta"]);
+    expect(after.omens).toEqual({ beta: 1 });
     expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 3, status: 2 });
   });
 });
@@ -795,12 +795,12 @@ describe("bodyguard", () => {
 });
 
 describe("favourable omens", () => {
-  const armed = (g: GameState): GameState => ({ ...g, omens: ["beta"] });
+  const armed = (g: GameState): GameState => ({ ...g, omens: { beta: 1 } });
 
   it("records a reading when played", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["favourable-omens"]);
     g = playCard(g, 0, seededRng(1));
-    expect(g.omens).toContain("beta");
+    expect(g.omens.beta).toBe(1);
   });
 
   it("doubles Raid, border and all", () => {
@@ -815,15 +815,15 @@ describe("favourable omens", () => {
     g = withHand(g, 0, ["raid"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     expect(getRel(g.relations, "beta", "alpha").might).toBe(raidYield(2) * 2); // raidYield(2) = 3, doubled
-    expect(g.omens).not.toContain("beta");
-    expect(g.log.at(-1)).toMatchObject({ type: "play", cardId: "raid", doubled: true });
+    expect(g.omens.beta).toBeUndefined();
+    expect(g.log.at(-1)).toMatchObject({ type: "play", cardId: "raid", readings: 1 });
   });
 
   it("doubles Shrewd marriage", () => {
     let g = withHand(armed(playingState(LINE_ADJ)), 0, ["shrewd-marriage"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     expect(getRel(g.relations, "beta", "alpha").status).toBe(2);
-    expect(g.omens).toEqual([]);
+    expect(g.omens).toEqual({});
   });
 
   it("doubles Fortify against every living faction", () => {
@@ -848,21 +848,51 @@ describe("favourable omens", () => {
     g = withHand(g, 0, ["pay-military-tribute"]);
     g = playCard(g, 0, seededRng(1));
     expect(getRel(g.relations, "alpha", "beta").might).toBe(2);
-    expect(g.omens).toEqual([]);
+    expect(g.omens).toEqual({});
   });
 
   it("passes through a card with nothing to double, keeping the reading", () => {
     let g = armed(playingState(LINE_ADJ));
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
-    expect(g.omens).toContain("beta");
-    expect(g.log.at(-1)).not.toHaveProperty("doubled");
+    expect(g.omens.beta).toBe(1);
+    expect(g.log.at(-1)).not.toHaveProperty("readings");
   });
 
-  it("does not stack: a second reading is not playable", () => {
-    const g = armed(playingState(LINE_ADJ));
-    const set = playableSet(viewOf(g), "beta", ["favourable-omens"]);
-    expect(set.mode).toBe("discard");
+  it("stacks: a second reading is playable and counts on top of the first", () => {
+    let g = withHand(armed(playingState(LINE_ADJ)), 0, ["favourable-omens"]);
+    expect(playableSet(viewOf(g), "beta", ["favourable-omens"]).mode)
+      .toBe("play");
+    g = playCard(g, 0, seededRng(1));
+    expect(g.omens.beta).toBe(2);
+  });
+
+  it("cashes the whole stack on one card: two readings quadruple a Raid", () => {
+    const ADJ = {
+      alpha: ["beta", "gamma"],
+      beta: ["alpha", "gamma"],
+      gamma: ["alpha", "beta", "delta"],
+      delta: ["gamma"],
+    };
+    let g: GameState = { ...playingState(ADJ), omens: { beta: 2 } };
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    // The multiplier applies after the convex yield, not to the border count.
+    expect(getRel(g.relations, "beta", "alpha").might).toBe(raidYield(2) * 4);
+    expect(g.omens.beta).toBeUndefined();
+    expect(g.log.at(-1)).toMatchObject({ type: "play", cardId: "raid", readings: 2 });
+  });
+
+  it("a forced tribute cashes the whole stack against the overlord", () => {
+    // The cost of hoarding readings while somebody's vassal, and the reason
+    // the AI policy refuses to read one while it is one.
+    let g: GameState = { ...playingState(LINE_ADJ), omens: { beta: 2 } };
+    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = withHand(g, 0, ["pay-military-tribute"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(getRel(g.relations, "alpha", "beta").might).toBe(4);
+    expect(g.omens).toEqual({});
   });
 });
 
@@ -1385,14 +1415,14 @@ describe("passive garrison fortify", () => {
       {
         ...g,
         incorporated: annexed("beta", PASSIVE_PER_LANDS),
-        omens: ["beta"],
+        omens: { beta: 1 },
         current: 0,
       },
       rng(),
     );
     expect(leadsOf(next.relations, "beta", "gamma").might).toBe(1);
     // The reading is untouched, still there for a Raid.
-    expect(next.omens).toContain("beta");
+    expect(next.omens.beta).toBe(1);
   });
 
   it("consumes no rng: the same seed yields the same stream with or without it", () => {
@@ -1440,7 +1470,7 @@ describe("surrender", () => {
 describe("event amount/track", () => {
   it("raid records the doubled yield and the might track", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["raid"]);
-    g = { ...g, omens: ["beta"] }; // doubled
+    g = { ...g, omens: { beta: 1 } }; // doubled
     const after = playCard(g, 0, rng(), "alpha");
     const gain = raidYield(1); // one-land border on LINE_ADJ
     expect(after.log.at(-1)).toMatchObject({
@@ -1450,7 +1480,7 @@ describe("event amount/track", () => {
 
   it("shrewd marriage records mult and the status track", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["shrewd-marriage"]);
-    g = { ...g, omens: ["beta"] };
+    g = { ...g, omens: { beta: 1 } };
     const after = playCard(g, 0, rng(), "alpha");
     expect(after.log.at(-1)).toMatchObject({
       type: "play", cardId: "shrewd-marriage", amount: 2, track: "status",
@@ -1488,7 +1518,7 @@ describe("event amount/track", () => {
   it("revolt records mult on the reclaimed event, both tracks by 1 rule", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    g = { ...g, omens: ["beta"] };
+    g = { ...g, omens: { beta: 1 } };
     g = withHand(g, 0, ["revolt"]);
     const after = playCard(g, 0, rng());
     expect(after.log.at(-1)).toMatchObject({ type: "reclaimed", amount: 2 });
@@ -1497,7 +1527,7 @@ describe("event amount/track", () => {
 
   it("tribute records mult alongside the track it already carried", () => {
     let g = asVassal(playingState(LINE_ADJ), "alpha");
-    g = { ...g, omens: ["beta"] };
+    g = { ...g, omens: { beta: 1 } };
     g = withHand(g, 0, ["pay-military-tribute"]);
     const after = playCard(g, 0, rng());
     expect(after.log.at(-1)).toMatchObject({

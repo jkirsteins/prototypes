@@ -4,7 +4,7 @@ import {
 } from "./cards";
 import { leadsOf, realmOf } from "./relations";
 import {
-  isDoubled, playableSet, raidGainFor, subjugationGripOn,
+  omenMultiplier, playableSet, raidGainFor, subjugationGripOn,
   subjugationRequirement, poachSurchargeOn, subjugationChance,
   incorporationChance, targetEligibilityFor, threatsTo, validTargetsFor,
 } from "./playability";
@@ -45,7 +45,8 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "fortify": "7: defensive fortify",
   "found-settlement":
     "7b: settle against a nearing threat, else 9b: settle a spare turn",
-  "favourable-omens": "8: read the omens before building",
+  "favourable-omens":
+    "8: read the omens before building, stacking on a held reading",
   "extended-diplomacy": "8b: extend the next pact",
   "bodyguard": "8c: post a guard",
   "grow-crops": "10: grow crops",
@@ -53,7 +54,7 @@ export const POLICY_COVERAGE: Record<string, string> = {
 
 /** What a play would actually move, so the policy stops assuming every card
  *  is worth exactly 1: Raid scales with border, and any doublable card is
- *  worth twice as much while a reading is held. */
+ *  worth `2 ** readings` as much while a stack of readings is held. */
 function gainOf(
   state: GameState,
   actorFactionId: string,
@@ -68,7 +69,7 @@ function gainOf(
   if (cardId === "raid") {
     return raidGainFor(viewOf(state), actorFactionId, targetId).gain;
   }
-  return isDoubled(state, actorFactionId, cardId) ? 2 : 1;
+  return omenMultiplier(state, actorFactionId, cardId);
 }
 
 /** Which land of the realm to settle. Every settlement raises the same bar by
@@ -297,8 +298,13 @@ export function chooseAction(state: GameState): AiAction {
   // 8: read the omens before building. Raid is one per deck, so spending a
   // turn now and playing it doubled next turn beats playing it plain and
   // following with filler. Never while a vassal: a forced tribute would
-  // spend the reading on the overlord. This sits after step 6 so a reading
-  // never delays a play that wins a subjugation outright.
+  // spend every held reading on the overlord. This sits after step 6 so a
+  // reading never delays a play that wins a subjugation outright.
+  //
+  // Readings stack, and this branch deliberately does not check whether one is
+  // already held: the same trade holds a second time, and a "only when holding
+  // none" guard would leave the redrawn copy legal but unwanted, which hands it
+  // to the last-resort fallthrough - the failure POLICY_COVERAGE exists to stop.
   const omens = idxOf("favourable-omens");
   if (
     omens !== undefined &&

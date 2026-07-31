@@ -423,6 +423,26 @@ describe("chooseAction with scaling gains", () => {
     expect(chosen(withHand(g, ["favourable-omens", "raid"]))).toBe("raid");
   });
 
+  it("6b: reads a second time rather than leaving the redrawn copy dead", () => {
+    // Readings stack, so the branch must not check whether one is already
+    // held: a guard there would leave the card legal but unwanted and hand it
+    // to the last-resort fallthrough. Fortify rather than Raid, because a
+    // Raid doubled by the first reading already meets a bar of 2 - which the
+    // test below is about.
+    const g = { ...base(), omens: { alpha: 1 } };
+    expect(chosen(withHand(g, ["favourable-omens", "fortify"]))).toBe(
+      "favourable-omens",
+    );
+  });
+
+  it("6b: cashes a held reading on a subjugation rather than stacking on it", () => {
+    // Step 6 sits above the omens step, and gainOf scores through the reading:
+    // a doubled Raid meets alpha's bar of 2 where a plain one is worth 1, so
+    // the finishing play fires and a second reading never delays it.
+    const g = { ...base(), omens: { alpha: 1 } };
+    expect(chosen(withHand(g, ["favourable-omens", "raid"]))).toBe("raid");
+  });
+
   it("6b: never delays a play that finishes a subjugation", () => {
     // lead 1 + gain 1 meets beta's bar of 2, so step 5 fires first.
     let g = base();

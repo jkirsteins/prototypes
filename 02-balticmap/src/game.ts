@@ -11,7 +11,8 @@ import {
 } from "./relations";
 import {
   loyaltyKey, incorporationChance, subjugationChance,
-  isDoubled, passiveFortifyFor, playableSet, raidGainFor, validTargetsFor,
+  type Omens, omenMultiplier, passiveFortifyFor, playableSet, raidGainFor,
+  validTargetsFor,
   type RulesView,
 } from "./playability";
 import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
@@ -46,7 +47,11 @@ export interface GameEvent {
    *  full game and checks the walk against the real relations. */
   amount?: number;
   prevented?: boolean; // play: a nullified Assassinate ruler (Bodyguard)
-  doubled?: boolean; // play, reclaimed: a card whose numbers a reading doubled
+  /** play, reclaimed: how many Favourable omens readings this play cashed, so
+   *  the log can say by how much. A count rather than the boolean it replaced,
+   *  because readings stack: two of them quadruple, and "doubled" could not
+   *  tell that from one. Absent when no reading was spent. */
+  readings?: number;
   /** This event was caused by the play it was logged with - the log indents it
    *  under that play's line. Set by `appendEvents` off the shape of the batch,
    *  never by a card branch; see the comment there. */
@@ -86,7 +91,7 @@ export interface GameState {
   loyalty: Record<string, number>;
   diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
-  omens: string[]; // faction ids holding an unspent Favourable omens reading
+  omens: Omens; // faction id -> unspent Favourable omens readings held
   /** Factions whose land has a site still free to settle - map-derived and
    *  static, like `adjacency`. Faction ids, not the map's region ids. A faction
    *  absent here can never be built in. */
@@ -162,7 +167,7 @@ export function newGame(
     loyalty: {},
     diplomacyBoost: [],
     bodyguards: [],
-    omens: [],
+    omens: {},
     sites: sites ?? [...factionIds],
     settled: [],
     ethnicities,
@@ -338,8 +343,10 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   );
   // Annexed lands earn their owner a standing Might gain against everyone.
   // Applied here rather than through the card path on purpose: that path
-  // consults `mult`, and a garrison must never eat the Favourable omens reading
-  // the player was saving for a Raid. One event carrying the whole amount, not
+  // consults `mult`, and a garrison must never eat the Favourable omens
+  // readings the player was saving for a Raid - a stack of two is two turns of
+  // setup, so eating it here would be a silent loss. One event carrying the
+  // whole amount, not
   // one per land, or a fourteen-land realm writes fourteen log lines a round.
   let relations = state.relations;
   const passive = passiveFortifyFor(viewOf(state), p.factionId);
@@ -475,9 +482,17 @@ export function playCard(
   let omens = state.omens;
   let settled = state.settled;
   let rulers = state.rulers;
-  const doubled = isDoubled(state, p.factionId, cardId);
-  const mult = doubled ? 2 : 1;
-  if (doubled) omens = omens.filter((f) => f !== p.factionId);
+  // A doublable card cashes the whole stack at once, rather than peeling one
+  // reading per play. One rule, and no special case for a play made for you:
+  // a forced tribute therefore pays the full multiplier and clears everything,
+  // which is the cost of hoarding readings while somebody's vassal.
+  const mult = omenMultiplier(state, p.factionId, cardId);
+  const readings = mult > 1 ? (state.omens[p.factionId] ?? 0) : 0;
+  if (readings > 0) {
+    const spent = { ...omens };
+    delete spent[p.factionId];
+    omens = spent;
+  }
   let phase: GamePhase = state.phase;
   let prevented = false;
   const events: GameEvent[] = [
@@ -530,7 +545,7 @@ export function playCard(
     relations = bumpMightAllBy(relations, p.factionId, living, mult);
     events[0] = { ...events[0], amount: mult, track: "might" };
   } else if (cardId === "favourable-omens") {
-    if (!omens.includes(p.factionId)) omens = [...omens, p.factionId];
+    omens = { ...omens, [p.factionId]: (omens[p.factionId] ?? 0) + 1 };
   } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
     if (bodyguards.includes(targetId)) {
       bodyguards = bodyguards.filter((f) => f !== targetId);
@@ -653,15 +668,15 @@ export function playCard(
     overlords.delete(p.factionId);
     players = updateFaction(players, p.factionId, stripVassalCards);
     // vassal-loss penalty (section 8): the revolting vassal gains +1/+1
-    // over the former lord (relation counters only grow). A held reading
-    // doubles this parting blow like any other Might/Status gain.
+    // over the former lord (relation counters only grow). Held readings
+    // multiply this parting blow like any other Might/Status gain.
     relations = bumpStatusBy(
       bumpMightBy(relations, p.factionId, former, mult), p.factionId, former, mult,
     );
     events.push({
       turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
       targetFactionId: p.factionId, overlordFactionId: former, amount: mult,
-      ...(doubled ? { doubled: true } : {}),
+      ...(readings > 0 ? { readings } : {}),
     });
   } else if (isTributeCard(cardId)) {
     const lord = overlords.get(p.factionId);
@@ -672,8 +687,9 @@ export function playCard(
       lord,
       ...state.factionIds.filter((f) => incorporated[f] === lord),
     ];
-    // Tribute is deliberately in the doubling set: holding a reading
-    // while subjugated doubles what you pay, which is the cost of hoarding it.
+    // Tribute is deliberately in the doubling set: readings held while
+    // subjugated multiply what you pay and are all spent doing it, which is
+    // the cost of hoarding them.
     const bump = tributeTrack === "might" ? bumpMightBy : bumpStatusBy;
     for (const b of beneficiaries) {
       relations = bump(relations, b, p.factionId, mult);
@@ -686,7 +702,7 @@ export function playCard(
   }
 
   if (prevented) events[0] = { ...events[0], prevented: true };
-  if (doubled) events[0] = { ...events[0], doubled: true };
+  if (readings > 0) events[0] = { ...events[0], readings };
 
   // endings
   // Defeat is checked before victory; the spec notes the two cannot coincide.

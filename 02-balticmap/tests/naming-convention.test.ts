@@ -94,7 +94,7 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     },
     {
       turn: 1, playerId: 2, type: "reclaimed", cardId: "revolt",
-      targetFactionId: RIVAL, overlordFactionId: H, amount: 1, doubled: true,
+      targetFactionId: RIVAL, overlordFactionId: H, amount: 1, readings: 1,
     },
   ],
   tribute: [

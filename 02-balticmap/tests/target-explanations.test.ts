@@ -121,7 +121,7 @@ describe("explainTargetEligibility", () => {
 });
 
 describe("cardModifierLines", () => {
-  const none = { omens: [], diplomacyBoost: [], bodyguards: [] };
+  const none = { omens: {}, diplomacyBoost: [], bodyguards: [] };
 
   it("says nothing when no modifier is active", () => {
     expect(cardModifierLines(none, "alpha", "raid")).toEqual([]);
@@ -130,21 +130,36 @@ describe("cardModifierLines", () => {
   });
 
   it("marks a doublable card while a reading is held", () => {
-    const v = { ...none, omens: ["alpha"] };
+    const v = { ...none, omens: { alpha: 1 } };
     expect(cardModifierLines(v, "alpha", "raid"))
       .toEqual(["Favourable omens: this card counts double."]);
     expect(cardModifierLines(v, "alpha", "pay-military-tribute"))
       .toEqual(["Favourable omens: this card counts double."]);
   });
 
+  it("names the multiple a stack is worth, not just that one is held", () => {
+    expect(cardModifierLines({ ...none, omens: { alpha: 2 } }, "alpha", "raid"))
+      .toEqual(["Favourable omens: this card counts quadruple."]);
+    expect(cardModifierLines({ ...none, omens: { alpha: 3 } }, "alpha", "raid"))
+      .toEqual(["Favourable omens: this card counts x8."]);
+  });
+
   it("leaves a card with nothing to double unmarked", () => {
-    const v = { ...none, omens: ["alpha"] };
+    const v = { ...none, omens: { alpha: 1 } };
     expect(cardModifierLines(v, "alpha", "subjugate")).toEqual([]);
   });
 
-  it("says a reading is already in hand", () => {
-    expect(cardModifierLines({ ...none, omens: ["alpha"] }, "alpha", "favourable-omens"))
-      .toEqual(["A reading is already in hand."]);
+  it("tells a held reading what a second one would be worth", () => {
+    // The only route by which a player discovers readings stack at all: the
+    // card text describes one, and a second is legal so there is no block line.
+    expect(cardModifierLines({ ...none, omens: { alpha: 1 } }, "alpha", "favourable-omens"))
+      .toEqual([
+        "1 reading already in hand: another makes the next gain count quadruple.",
+      ]);
+    expect(cardModifierLines({ ...none, omens: { alpha: 2 } }, "alpha", "favourable-omens"))
+      .toEqual([
+        "2 readings already in hand: another makes the next gain count x8.",
+      ]);
   });
 
   it("says an Alliance will run long", () => {
@@ -159,7 +174,7 @@ describe("cardModifierLines", () => {
   });
 
   it("ignores another faction's modifiers", () => {
-    const v = { omens: ["beta"], diplomacyBoost: ["beta"], bodyguards: ["beta"] };
+    const v = { omens: { beta: 1 }, diplomacyBoost: ["beta"], bodyguards: ["beta"] };
     expect(cardModifierLines(v, "alpha", "raid")).toEqual([]);
     expect(cardModifierLines(v, "alpha", "alliance")).toEqual([]);
     expect(cardModifierLines(v, "alpha", "bodyguard")).toEqual([]);
@@ -171,7 +186,7 @@ describe("targetOddsLines", () => {
   const v = (partial: Partial<RulesView> = {}): RulesView => ({
     relations: {}, overlords: new Map(), incorporated: {},
     adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
-    factionIds: ORDER, alliances: {}, turn: 1, bodyguards: [], omens: [],
+    factionIds: ORDER, alliances: {}, turn: 1, bodyguards: [], omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], sites: [], settled: [],
     ...partial,
   });
@@ -221,7 +236,7 @@ describe("targetImpactLines", () => {
     adjacency: {
       alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"], delta: [],
     },
-    factionIds: ORDER, alliances: {}, turn: 1, bodyguards: [], omens: [],
+    factionIds: ORDER, alliances: {}, turn: 1, bodyguards: [], omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], sites: [], settled: [],
     ...partial,
   });
@@ -281,11 +296,19 @@ describe("targetImpactLines", () => {
   });
 
   it("doubles a held reading, and says which number is the reading's", () => {
-    const view = v({ omens: ["alpha"] });
+    const view = v({ omens: { alpha: 1 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
       .toBe("+2 Might (0 -> +2, doubled)");
     expect(shown(targetImpactLines(view, "alpha", "shrewd-marriage", "beta"))[1])
       .toBe("+2 Status (0 -> +2, doubled)");
+  });
+
+  it("quotes a stack at its real multiple before it is aimed", () => {
+    const view = v({ omens: { alpha: 2 } });
+    expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
+      .toBe("+4 Might (0 -> +4, quadrupled)");
+    expect(shown(targetImpactLines(view, "alpha", "shrewd-marriage", "beta"))[1])
+      .toBe("+4 Status (0 -> +4, quadrupled)");
   });
 
   it("shows an Assassinate as the levelling it is, never as a gain", () => {
@@ -385,7 +408,7 @@ describe("subjugationBreakdown", () => {
       alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta", "delta"],
       delta: ["gamma"],
     },
-    factionIds: ORDER, alliances: {}, turn: 1, bodyguards: [], omens: [],
+    factionIds: ORDER, alliances: {}, turn: 1, bodyguards: [], omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], sites: [], settled: [],
     ...partial,
   });

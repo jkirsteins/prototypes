@@ -1,8 +1,10 @@
 import {
   INCORPORATE_RAMP, gripPartsOn, incorporationChance,
-  isDoubled, loyaltyOf, poachSurchargeOn, raidGainFor, subjugationChance,
+  loyaltyOf, omenMultiplier, omensHeld, poachSurchargeOn, raidGainFor,
+  subjugationChance,
   subjugationRaceFor, targetEligibilityFor,
   type CardBlockReason,
+  type Omens,
   type RulesView,
   type TargetBlockReason,
   type TargetEligibility,
@@ -12,6 +14,31 @@ import { count } from "./plural";
 import { leadsOf } from "./relations";
 import { formatLead } from "./view";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
+
+/** How much a Favourable omens stack multiplies by, in words. One table, two
+ *  grammatical forms: the adjective for a promise ("counts double") and the
+ *  participle for a resolution ("- doubled").
+ *
+ *  Here rather than at each surface because four of them say it - the card tip,
+ *  the map preview, the activity log and the round summary - and the repo rule
+ *  is that one change is never phrased more than one way. English runs out at
+ *  two readings, so a three-deep stack falls back to the plain multiple; that
+ *  is honest rather than reaching for "octupled".
+ *
+ *  A multiplier of 1 has no word: callers must not ask, since "counts single"
+ *  is not a thing anyone says. */
+const MULTIPLE_WORDS: Readonly<Record<number, readonly [string, string]>> = {
+  2: ["double", "doubled"],
+  4: ["quadruple", "quadrupled"],
+};
+
+/** "double", "quadruple", "x8" - what the card counts as. */
+export const multipleWord = (multiplier: number): string =>
+  MULTIPLE_WORDS[multiplier]?.[0] ?? `x${multiplier}`;
+
+/** "doubled", "quadrupled", "x8" - what happened to the numbers. */
+export const multipliedWord = (multiplier: number): string =>
+  MULTIPLE_WORDS[multiplier]?.[1] ?? `x${multiplier}`;
 
 export interface TargetExplanation {
   factionId: string;
@@ -167,7 +194,7 @@ function standingMove(
   targetFactionId: string,
   track: "might" | "status",
   next: (before: number) => number,
-  doubled: boolean,
+  multiplier: number,
 ): Impact {
   const before = leadsOf(view.relations, actorFactionId, targetFactionId)[track];
   const after = next(before);
@@ -182,7 +209,7 @@ function standingMove(
       { text: formatLead("", before), lead: before },
       { text: " -> " },
       { text: formatLead("", after), lead: after },
-      { text: doubled ? ", doubled)" : ")" },
+      { text: multiplier > 1 ? `, ${multipliedWord(multiplier)})` : ")" },
     ],
   };
 }
@@ -199,17 +226,18 @@ function availableImpacts(
   cardId: string,
   targetFactionId: string,
 ): Impact[] {
-  const doubled = isDoubled(view, actorFactionId, cardId);
+  const multiplier = omenMultiplier(view, actorFactionId, cardId);
   if (cardId === "raid") {
     const { gain } = raidGainFor(view, actorFactionId, targetFactionId);
     return [standingMove(
-      view, actorFactionId, targetFactionId, "might", (b) => b + gain, doubled,
+      view, actorFactionId, targetFactionId, "might", (b) => b + gain,
+      multiplier,
     )];
   }
   if (cardId === "shrewd-marriage") {
     return [standingMove(
       view, actorFactionId, targetFactionId, "status",
-      (b) => b + (doubled ? 2 : 1), doubled,
+      (b) => b + multiplier, multiplier,
     )];
   }
   if (cardId === "assassinate-ruler") {
@@ -217,7 +245,7 @@ function availableImpacts(
     // is 0 whichever side was ahead. A Bodyguard on the target would nullify
     // it, and this deliberately does not say so: the guard is theirs to know.
     return [standingMove(
-      view, actorFactionId, targetFactionId, "status", () => 0, false,
+      view, actorFactionId, targetFactionId, "status", () => 0, 1,
     )];
   }
   if (cardId === "subjugate" || cardId === "incorporate") {
@@ -448,7 +476,7 @@ export function cardBlockLine(reason: CardBlockReason): string {
 /** The slice of state the modifier lines need. `GameState` satisfies this
  *  structurally, so the caller passes the game straight in. */
 export interface ModifierView {
-  omens: string[];
+  omens: Omens;
   diplomacyBoost: string[];
   bodyguards: string[];
 }
@@ -462,12 +490,21 @@ export function cardModifierLines(
   cardId: string,
 ): string[] {
   const lines: string[] = [];
-  if (view.omens.includes(factionId)) {
+  const held = omensHeld(view, factionId);
+  if (held > 0) {
     if (DOUBLABLE_CARDS.has(cardId)) {
-      lines.push("Favourable omens: this card counts double.");
+      const word = multipleWord(omenMultiplier(view, factionId, cardId));
+      lines.push(`Favourable omens: this card counts ${word}.`);
     }
+    // The only route by which a player finds out readings stack. Nothing else
+    // says so: the card's own text describes one reading, and a second one is
+    // now legal rather than greyed out, so there is no block line to read
+    // either. It names the payoff rather than the state for that reason.
     if (cardId === "favourable-omens") {
-      lines.push("A reading is already in hand.");
+      lines.push(
+        `${count(held, "reading")} already in hand: another makes the next ` +
+        `gain count ${multipleWord(2 ** (held + 1))}.`,
+      );
     }
   }
   if (cardId === "alliance" && view.diplomacyBoost.includes(factionId)) {

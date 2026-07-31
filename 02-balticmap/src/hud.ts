@@ -12,7 +12,9 @@ import { walkStandings, type StandingChange } from "./standings";
 import {
   passiveFortifyFor, subjugationGripOn, subjugationRequirement,
 } from "./playability";
-import type { TargetExplanation } from "./target-explanations";
+import {
+  multipliedWord, type TargetExplanation,
+} from "./target-explanations";
 import type { TooltipLine } from "./panel";
 import { memoryStorage, type MetaStorage } from "./meta";
 import { levelWindow, runXp } from "./xp";
@@ -191,14 +193,16 @@ export function eventSegments(e: GameEvent, state: GameState): Segment[] {
         ? [t("You drew "), card(e.cardId ?? "")]
         : [...actor, t(" drew a card")];
     case "play": {
-      // rulerSuffix takes precedence over "- doubled": safe only because
-      // assassinate-ruler (the only card rulerSuffix fires for) is not in
-      // DOUBLABLE_CARDS (src/cards.ts). If it were ever added there, a
-      // doubled assassination would silently lose its "- doubled" marker
+      // rulerSuffix takes precedence over the readings marker: safe only
+      // because assassinate-ruler (the only card rulerSuffix fires for) is not
+      // in DOUBLABLE_CARDS (src/cards.ts). If it were ever added there, a
+      // multiplied assassination would silently lose its "- doubled" marker
       // on this line.
       const suffix =
         rulerSuffix(e) ??
-        (e.prevented ? " - prevented" : e.doubled ? " - doubled" : "");
+        (e.prevented
+          ? " - prevented"
+          : e.readings ? ` - ${multipliedWord(2 ** e.readings)}` : "");
       // "on you", not "on Beta": the target is a name to look up everywhere
       // else, but the human already knows which faction they are.
       const targetedYou = !you && e.targetFactionId !== undefined

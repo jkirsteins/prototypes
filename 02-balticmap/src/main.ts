@@ -19,8 +19,8 @@ import {
   subjugationRaceFor, raidGainFor,
 } from "./playability";
 import {
-  cardBlockLine, cardModifierLines, explainTargetEligibility, targetImpactLines,
-  targetOddsLines, subjugationBreakdown,
+  cardBlockLine, cardModifierLines, explainTargetEligibility, multipliedWord,
+  targetImpactLines, targetOddsLines, subjugationBreakdown,
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
 import { createHud } from "./hud";
@@ -857,8 +857,10 @@ const hud = createHud(
           // (a 5-land border is worth 15), and the number the player is shown
           // before aiming has to be the number they get - which is why it comes
           // from the same call `playCard` resolves the raid with.
-          const { gain, doubled } = raidGainFor(view, human.factionId, id);
-          return [...odds, doubled ? `+${gain} Might (doubled)` : `+${gain} Might`];
+          const { gain, multiplier } = raidGainFor(view, human.factionId, id);
+          return [...odds, multiplier > 1
+            ? `+${gain} Might (${multipliedWord(multiplier)})`
+            : `+${gain} Might`];
         },
       );
     },

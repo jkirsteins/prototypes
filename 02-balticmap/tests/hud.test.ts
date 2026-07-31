@@ -185,12 +185,29 @@ describe("createHud", () => {
         ...g.log,
         {
           turn: 3, playerId: 1, type: "play", cardId: "raid",
-          targetFactionId: "alpha", doubled: true,
+          targetFactionId: "alpha", readings: 1,
         },
       ],
     });
     expect(q(container, ".activity-log-entries").textContent)
       .toContain("You played Raid on Alpha - doubled");
+  });
+
+  it("names the multiple when a play cashed a stack of readings", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      log: [
+        ...g.log,
+        {
+          turn: 3, playerId: 1, type: "play", cardId: "raid",
+          targetFactionId: "alpha", readings: 2,
+        },
+      ],
+    });
+    expect(q(container, ".activity-log-entries").textContent)
+      .toContain("You played Raid on Alpha - quadrupled");
   });
 });
 

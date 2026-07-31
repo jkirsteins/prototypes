@@ -29,7 +29,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     alliances: {},
     turn: 1,
     bodyguards: [],
-    omens: [],
+    omens: {},
     diplomacyBoost: [],
     loyalty: {},
     liveRevolts: [],
@@ -403,7 +403,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       alliances: {},
       turn: 1,
       bodyguards: [],
-      omens: [],
+      omens: {},
       diplomacyBoost: [],
       sites: [],
       settled: [],
@@ -426,7 +426,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       alliances: {},
       turn: 1,
       bodyguards: [],
-      omens: [],
+      omens: {},
       diplomacyBoost: [],
       sites: [],
       settled: [],
@@ -543,15 +543,18 @@ describe("favourable-omens legality", () => {
     expect(isCardPlayable(view(), "alpha", "favourable-omens")).toBe(true);
   });
 
-  it("is not playable while a reading is already held", () => {
+  it("is still playable while a reading is held: readings stack", () => {
     expect(
-      isCardPlayable(view({ omens: ["alpha"] }), "alpha", "favourable-omens"),
-    ).toBe(false);
+      isCardPlayable(view({ omens: { alpha: 1 } }), "alpha", "favourable-omens"),
+    ).toBe(true);
+    expect(
+      isCardPlayable(view({ omens: { alpha: 3 } }), "alpha", "favourable-omens"),
+    ).toBe(true);
   });
 
   it("is unaffected by another faction's reading", () => {
     expect(
-      isCardPlayable(view({ omens: ["beta"] }), "alpha", "favourable-omens"),
+      isCardPlayable(view({ omens: { beta: 1 } }), "alpha", "favourable-omens"),
     ).toBe(true);
   });
 });

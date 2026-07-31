@@ -194,7 +194,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
     leadsTable = { curonia: { might: -2, status: -2 } }; // post-batch: now trailing
     const s = oneSummary(
       ev({
-        type: "reclaimed", playerId: 4, cardId: "revolt", doubled: true,
+        type: "reclaimed", playerId: 4, cardId: "revolt", readings: 1,
         targetFactionId: "curonia", overlordFactionId: "livs", amount: 2,
       }),
     )!;

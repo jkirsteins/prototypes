@@ -6,6 +6,14 @@ import {
 
 export const SUBJUGATE_THRESHOLD = 2;
 
+/** Unspent Favourable omens readings per faction. Absent key means none.
+ *
+ *  A count map rather than a faction-id list like `bodyguards`, because
+ *  readings stack: each one held doubles the next doublable card again. A list
+ *  with repeated ids would have kept `includes` compiling while silently
+ *  meaning "at least one", which is exactly the drift this shape refuses. */
+export type Omens = Readonly<Record<string, number>>;
+
 /** Annexed lands per +1 Might their owner gains against everyone, once per
  *  turn. See `passiveFortifyFor`. */
 export const PASSIVE_PER_LANDS = 4;
@@ -21,7 +29,7 @@ export interface RulesView {
   alliances: Record<string, number>; // sorted-pair key -> expiry turn
   turn: number;
   bodyguards: string[]; // faction ids holding an unused Bodyguard guard
-  omens: string[]; // faction ids holding an unspent Favourable omens reading
+  omens: Omens; // faction id -> unspent Favourable omens readings held
   diplomacyBoost: string[]; // faction ids holding an unspent Extended diplomacy
   /** Factions whose land still has a free site to settle. Map-derived and
    *  static, like `adjacency`: a land's slot cap follows from its population,
@@ -157,35 +165,51 @@ export function raidYield(borderLands: number): number {
   return (borderLands * (borderLands + 1)) / 2;
 }
 
-/** Whether a Favourable omens reading would double this card for this faction:
- *  a reading is held AND the card is one a reading can double.
+/** What this faction's held Favourable omens readings multiply this card by:
+ *  `2 ** readings` on a card a reading can double, 1 otherwise.
  *
- *  Four places ask it - `playCard` spends the reading on it, the AI policy
+ *  Readings stack and are never capped. The ceiling is tempo: the deck holds
+ *  one copy, so a second reading costs a full cycle in which you declined to
+ *  cash the first on Raid, Fortify, Shrewd marriage or Revolt.
+ *
+ *  Four places ask it - `playCard` spends the readings on it, the AI policy
  *  scores through it, the card tip names it and the map preview quotes the
- *  doubled number - and it was written out longhand at each. That is the shape
- *  a rule drifts in: the card tip's copy dropped the `DOUBLABLE_CARDS` half
- *  and only stayed correct because its one caller had already narrowed to
- *  Raid. */
-export function isDoubled(
-  view: { omens: string[] },
+ *  multiplied number - and it was written out longhand at each. That is the
+ *  shape a rule drifts in: the card tip's copy dropped the `DOUBLABLE_CARDS`
+ *  half and only stayed correct because its one caller had already narrowed
+ *  to Raid.
+ *
+ *  Returns a multiplier rather than a boolean on purpose. The boolean version
+ *  it replaced could not express a stack, and every caller had already written
+ *  `? 2 : 1` beside it. */
+export function omenMultiplier(
+  view: { omens: Omens },
   factionId: string,
   cardId: string,
-): boolean {
-  return view.omens.includes(factionId) && DOUBLABLE_CARDS.has(cardId);
+): number {
+  return DOUBLABLE_CARDS.has(cardId) ? 2 ** (view.omens[factionId] ?? 0) : 1;
 }
 
-/** The Might a Raid on this target would actually add, doubling included, and
- *  whether a reading paid for half of it. `playCard` resolves the raid with
- *  this, so the number the player is shown before aiming is by construction
- *  the number they get. */
+/** How many unspent readings this faction holds. */
+export function omensHeld(view: { omens: Omens }, factionId: string): number {
+  return view.omens[factionId] ?? 0;
+}
+
+/** The Might a Raid on this target would actually add, readings included, and
+ *  the multiplier they paid for. `playCard` resolves the raid with this, so the
+ *  number the player is shown before aiming is by construction the number they
+ *  get.
+ *
+ *  The multiplier applies after `raidYield`, so a stack multiplies the convex
+ *  number rather than the border count. */
 export function raidGainFor(
   view: RulesView,
   actorFactionId: string,
   targetFactionId: string,
-): { gain: number; doubled: boolean } {
-  const doubled = isDoubled(view, actorFactionId, "raid");
+): { gain: number; multiplier: number } {
+  const multiplier = omenMultiplier(view, actorFactionId, "raid");
   const gain = raidYield(borderStrength(view, actorFactionId, targetFactionId));
-  return { gain: doubled ? gain * 2 : gain, doubled };
+  return { gain: gain * multiplier, multiplier };
 }
 
 /** Lands this faction has permanently annexed. Counted straight off
@@ -208,7 +232,8 @@ export function annexedLandsOf(view: RulesView, factionId: string): number {
  *  aligned with the committed fixture, and a band that moves has moved because
  *  behaviour changed rather than because draw order shifted. It is also why
  *  Favourable omens cannot touch it - see `beginTurn`, which applies this
- *  outside the card path entirely.
+ *  outside the card path entirely. That matters more now that readings stack:
+ *  a garrison tick eating a two-deep stack would be a silent loss of two turns.
  *
  *  Known wart: `floor` plateaus, so at PASSIVE_PER_LANDS = 4 realms of 12 and
  *  15 annexed lands both yield +3 and drift nothing against each other. Near
@@ -609,7 +634,7 @@ export type CardBlockReason =
 /** Why this card cannot be played on its own terms, or null when it can.
  *
  *  Derived per rule rather than per card: "you are holding an unspent one" is
- *  one answer covering Bodyguard, Favourable omens and Extended diplomacy, and
+ *  one answer covering Bodyguard and Extended diplomacy, and
  *  "only while you are somebody's vassal" covers Revolt, Seeds of revolt and
  *  every tribute card, present and future. `isCardPlayable` is this reduced to
  *  a boolean, so legality and the explanation can never disagree.
@@ -627,12 +652,17 @@ export function cardBlockReason(
   const overlord = view.overlords.get(factionId);
   const vassalOnly = (): CardBlockReason | null =>
     overlord === undefined ? { code: "needs-overlord" } : null;
-  if (cardId === "grow-crops" || cardId === "fortify") return null;
+  // Favourable omens is always legal: readings stack, so a second one is a
+  // bigger multiplier rather than a dead card. Listed here explicitly because
+  // the tail of this function answers `unavailable` for untargeted cards.
+  if (
+    cardId === "grow-crops" || cardId === "fortify" ||
+    cardId === "favourable-omens"
+  ) {
+    return null;
+  }
   if (cardId === "bodyguard") {
     return view.bodyguards.includes(factionId) ? { code: "already-held" } : null;
-  }
-  if (cardId === "favourable-omens") {
-    return view.omens.includes(factionId) ? { code: "already-held" } : null;
   }
   if (cardId === "extended-diplomacy") {
     return view.diplomacyBoost.includes(factionId)
