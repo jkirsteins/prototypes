@@ -697,6 +697,13 @@ const hud = createHud(
       const region = regionId === undefined ? null : regionById.get(regionId) ?? null;
       applyRealmHover(region);
     },
+    // Read after bankRunProgress() has folded this run in - the postmortem
+    // only ever renders on an ended run, and every route that ends one banks
+    // before refreshing. The bar derives the run's start from this minus the
+    // run's own XP, so there is no second counter to drift.
+    lifetimeXp() {
+      return meta.xp;
+    },
     onShowTip(lines, clientX, clientY) {
       tooltip.showLines(lines, clientX, clientY);
     },

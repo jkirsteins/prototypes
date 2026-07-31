@@ -543,7 +543,7 @@ export function isNoticeWorthy(e: GameEvent, ctx: NoticeCtx): boolean {
  *  no way worth interrupting for. */
 /** Heading for the ordinary once-per-AI-round summary. A critical modal
  *  replaces it with the rule's own title - see NoticeRule.critical. */
-export const ROUND_SUMMARY_TITLE = "What happened during their turns";
+export const ROUND_SUMMARY_TITLE = "Opponents' turns";
 
 export interface RoundSummaryOptions {
   /** Keep only events whose rule marks them critical, dropping the rest.

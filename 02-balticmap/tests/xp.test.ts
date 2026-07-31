@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   TURNIP_MILESTONES_BASE, XP_TABLE, levelForXp, runTurnips, runXp,
-  turnipMilestone, turnipPacksEarned, xpForEvent, xpThresholdForLevel,
+  levelWindow, turnipMilestone, turnipPacksEarned, xpForEvent,
+  xpThresholdForLevel,
 } from "../src/xp";
 import type { GameEvent } from "../src/game";
 
@@ -110,5 +111,32 @@ describe("turnip milestones", () => {
     expect(turnipPacksEarned(100)).toBe(2);
     expect(turnipPacksEarned(10_000)).toBe(5);
     expect(turnipPacksEarned(20_000)).toBe(6);
+  });
+});
+
+describe("levelWindow", () => {
+  it("describes a fresh player's climb toward the first pack", () => {
+    expect(levelWindow(0)).toEqual({ level: 0, into: 0, span: 25, toNext: 25 });
+  });
+
+  /** The case that prompted this: 17 XP earned, no level, and the flat
+   *  "+17 XP earned" line said nothing about how close that was. */
+  it("says how much is left when a run falls short of a level", () => {
+    expect(levelWindow(17)).toEqual({ level: 0, into: 17, span: 25, toNext: 8 });
+  });
+
+  it("resets into the next band exactly on a threshold", () => {
+    expect(levelWindow(25)).toEqual({ level: 1, into: 0, span: 50, toNext: 50 });
+    expect(levelWindow(74)).toEqual({ level: 1, into: 49, span: 50, toNext: 1 });
+    expect(levelWindow(75)).toEqual({ level: 2, into: 0, span: 75, toNext: 75 });
+  });
+
+  it("keeps into + toNext equal to the span at every point", () => {
+    for (const xp of [0, 1, 24, 25, 26, 74, 75, 200, 1000, 9999]) {
+      const w = levelWindow(xp);
+      expect(w.into + w.toNext, `xp ${xp}`).toBe(w.span);
+      expect(w.into).toBeGreaterThanOrEqual(0);
+      expect(w.into).toBeLessThan(w.span);
+    }
   });
 });

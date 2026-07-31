@@ -13,7 +13,7 @@ import {
 import type { TargetExplanation } from "./target-explanations";
 import type { TooltipLine } from "./panel";
 import { memoryStorage, type MetaStorage } from "./meta";
-import { runXp } from "./xp";
+import { levelWindow, runXp } from "./xp";
 import { standingChangeText, standingsFor } from "./view";
 import {
   card, cardName, faction, renderSegments, t, theFaction,
@@ -35,6 +35,10 @@ export interface HudCallbacks {
   isDiscardMode?(): boolean;
   /** Renders the main-menu Reset progress control when provided. */
   onResetProgress?(): void;
+  /** Lifetime XP after this run was banked, for the postmortem progress bar.
+   *  Absent where there is no persistent progress to report (tests), in which
+   *  case the bar is hidden and only the "+N XP earned" line shows. */
+  lifetimeXp?(): number;
   /** Lights this faction's realm on the map, exactly as hovering its land
    *  does; null clears. Absent where there is no map (tests), in which case
    *  a hovered faction name in prose is inert. */
@@ -359,11 +363,25 @@ export function createHud(
   pmBuildup.className = "pm-buildup";
   const pmXp = document.createElement("p");
   pmXp.className = "pm-xp";
+  // The bar fills from where the run started to where it ended, so the run's
+  // contribution is the part that moves. A flat "+17 XP earned" left a first
+  // run looking like it had achieved nothing; what it had actually done was
+  // get two thirds of the way to a pack.
+  const pmXpTrack = document.createElement("div");
+  pmXpTrack.className = "pm-xp-track";
+  const pmXpFill = document.createElement("div");
+  pmXpFill.className = "pm-xp-fill";
+  pmXpTrack.appendChild(pmXpFill);
+  const pmXpToNext = document.createElement("p");
+  pmXpToNext.className = "pm-xp-next";
   const pmNewGame = document.createElement("button");
   pmNewGame.className = "menu-new-game";
   pmNewGame.textContent = "New game";
   pmNewGame.addEventListener("click", () => cb.onNewGame());
-  pmSummary.append(pmTitle, pmCause, pmDeltas, pmBuildup, pmXp, pmNewGame);
+  pmSummary.append(
+    pmTitle, pmCause, pmDeltas, pmBuildup,
+    pmXp, pmXpTrack, pmXpToNext, pmNewGame,
+  );
   const pmLog = document.createElement("div");
   pmLog.className = "pm-log";
   postmortem.append(pmSummary, pmLog);
@@ -611,6 +629,78 @@ export function createHud(
 
   /** Appends entries for events not yet rendered; returns those events so
    *  animations can key off the same diff. */
+  /** Cancels the in-flight postmortem bar fill, if any. A second postmortem
+   *  (a new run ending) must not have two fills racing on the same element. */
+  let xpFill: { cancel(): void } | null = null;
+
+  /** Fills the postmortem bar from where this run started to where it ended.
+   *
+   *  Crossing a level is animated as a run to full, a reset to empty, and a
+   *  fresh fill into the new band - chained on each leg reporting itself
+   *  finished, never on a timer set to the same number (the rule in
+   *  AGENTS.md). Without the chaining a crossing would slide the fill
+   *  backwards, which reads as losing progress at the exact moment a pack
+   *  was won.
+   *
+   *  Falls back to the finished state with no animation when the caller
+   *  supplies no lifetime context, which is every test that does not opt in
+   *  and any run banked outside a seat. */
+  function renderXpBar(earned: number): void {
+    xpFill?.cancel();
+    xpFill = null;
+    const total = cb.lifetimeXp?.();
+    const hasContext = typeof total === "number";
+    pmXpTrack.classList.toggle("hidden", !hasContext);
+    pmXpToNext.classList.toggle("hidden", !hasContext);
+    if (!hasContext) return;
+
+    const after = levelWindow(total);
+    const startXp = Math.max(0, total - Math.max(0, earned));
+    const before = levelWindow(startXp);
+    // Crossing at all is the headline, not landing exactly on the threshold:
+    // a run that ended at 26 has WON a pack, and telling it "49 XP to your
+    // next pack" buries that under a number about the pack after it.
+    pmXpToNext.textContent =
+      after.level > before.level
+        ? `Level ${after.level} reached - a pack is waiting`
+        : `${after.toNext} XP to your next pack`;
+
+    const pct = (w: { into: number; span: number }): number =>
+      w.span === 0 ? 100 : (w.into / w.span) * 100;
+
+    // One leg per band the run passed through: the first runs from where the
+    // run started, every later one from empty.
+    const legs: { from: number; to: number }[] = [];
+    for (let lvl = before.level; lvl < after.level; lvl++) {
+      legs.push({ from: lvl === before.level ? pct(before) : 0, to: 100 });
+    }
+    legs.push({
+      from: after.level === before.level ? pct(before) : 0,
+      to: pct(after),
+    });
+
+    const LEG_MS = 650;
+    const run = (i: number): void => {
+      const leg = legs[i];
+      if (leg === undefined) {
+        xpFill = null;
+        return;
+      }
+      pmXpFill.style.width = `${leg.from}%`;
+      pmXpFill.classList.toggle("pm-xp-levelled", leg.to === 100 && i < legs.length - 1);
+      xpFill = runAnimation(
+        pmXpFill,
+        [{ width: `${leg.from}%` }, { width: `${leg.to}%` }],
+        LEG_MS,
+        () => {
+          pmXpFill.style.width = `${leg.to}%`;
+          run(i + 1);
+        },
+      );
+    };
+    run(0);
+  }
+
   function renderLog(state: GameState): GameEvent[] {
     if (state.log.length < renderedEvents) {
       logEntries.replaceChildren();
@@ -949,7 +1039,9 @@ export function createHud(
     }
     // XP is derived from the log, never a counter carried on state - see
     // src/xp.ts. The number here is the same one that gets banked.
-    pmXp.textContent = `+${runXp(state.log)} XP earned`;
+    const earned = runXp(state.log);
+    pmXp.textContent = `+${earned} XP earned`;
+    renderXpBar(earned);
     pmLog.replaceChildren(
       ...state.log.filter((e) => e.type !== "draw").map((e) => {
         const d = document.createElement("div");

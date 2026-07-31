@@ -118,7 +118,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
     const s = oneSummary(
       ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
     )!;
-    expect(s.title).toBe("What happened during their turns");
+    expect(s.title).toBe(ROUND_SUMMARY_TITLE);
   });
 
   it("builds a subjugation line when an AI subjugates the human", () => {

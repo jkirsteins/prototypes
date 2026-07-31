@@ -123,3 +123,28 @@ export function turnipPacksEarned(turnipsGrown: number): number {
   while (turnipMilestone(count) <= turnipsGrown) count++;
   return count;
 }
+
+/** Where a lifetime XP total sits inside its level's band. `into + toNext`
+ *  always equals `span`, so a progress bar and the "how much is left" line
+ *  can never disagree. */
+export interface LevelWindow {
+  /** Levels fully paid for - the same number `levelForXp` returns. */
+  level: number;
+  /** XP earned past this level's threshold. */
+  into: number;
+  /** XP this whole band is worth, threshold to threshold. */
+  span: number;
+  /** XP still owed before the next level, and so the next pack. */
+  toNext: number;
+}
+
+/** The band `xp` currently sits in. Exists because "+17 XP earned" told a
+ *  first-time player nothing: it neither leveled them up nor said how close
+ *  17 had come. See the postmortem bar in src/hud.ts. */
+export function levelWindow(xp: number): LevelWindow {
+  const level = levelForXp(xp);
+  const base = level === 0 ? 0 : xpThresholdForLevel(level);
+  const span = xpThresholdForLevel(level + 1) - base;
+  const into = Math.max(0, Math.min(span, xp - base));
+  return { level, into, span, toNext: span - into };
+}

@@ -376,6 +376,37 @@ svg.map.dragging {
   letter-spacing: 0.06em;
 }
 
+.pm-xp-track {
+  height: 0.55rem;
+  margin: 0.45rem 0 0.35rem;
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  border-radius: 0.3rem;
+  background: rgba(201, 162, 39, 0.08);
+  overflow: hidden;
+}
+
+.pm-xp-track.hidden { display: none; }
+
+.pm-xp-fill {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #8a6f1c, #f0d060);
+}
+
+/* The instant a band completes, before the bar resets for the next one. */
+.pm-xp-fill.pm-xp-levelled {
+  background: linear-gradient(90deg, #f0d060, #fff4c2);
+}
+
+.pm-xp-next {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+}
+
+.pm-xp-next.hidden { display: none; }
+
 .menu-reset {
   font-size: 12px;
   padding: 4px 14px;

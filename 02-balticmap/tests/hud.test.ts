@@ -14,6 +14,7 @@ import {
 } from "../src/playability";
 import type { TargetExplanation } from "../src/target-explanations";
 import { memoryStorage, type MetaStorage } from "../src/meta";
+import { ROUND_SUMMARY_TITLE } from "../src/notices";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -33,6 +34,7 @@ function setup(opts?: {
   onResetProgress?: () => void;
   onSurrender?: () => void;
   onHighlightFaction?: (factionId: string | null) => void;
+  lifetimeXp?: () => number;
   placeNameFactionIds?: Set<string>;
   /** LogPrefs storage. Defaults to a fresh, isolated memoryStorage() per
    *  call - pass the SAME instance to two setup() calls to test that
@@ -56,6 +58,7 @@ function setup(opts?: {
     ...(opts?.onHighlightFaction
       ? { onHighlightFaction: opts.onHighlightFaction }
       : {}),
+    ...(opts?.lifetimeXp ? { lifetimeXp: opts.lifetimeXp } : {}),
   };
   const hud = createHud(container, cb, new Map([
     ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
@@ -836,6 +839,74 @@ describe("learning loop hud", () => {
     return g;
   }
 
+  /** The complaint this bar exists for: a first run earned 17 XP, did not
+   *  level, earned no pack, and the flat line gave no sense of how close it
+   *  had come. */
+  it("shows how much XP is still owed toward the next pack", () => {
+    const { container, hud } = setup({ lifetimeXp: () => 17 });
+    hud.update(defeated());
+    expect(q(container, ".pm-xp-track").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".pm-xp-next").textContent).toBe("8 XP to your next pack");
+  });
+
+  it("announces the pack when the run crossed a level", () => {
+    // The run must actually earn something to cross: `defeated()` alone has
+    // the AI acting and the human idle, so its runXp is 0 and no lifetime
+    // total could ever put the start and end in different bands.
+    const { container, hud } = setup({ lifetimeXp: () => 25 });
+    const g = defeated();
+    hud.update({
+      ...g,
+      log: [...g.log, { turn: 1, playerId: 1, type: "play", cardId: "grow-crops" }],
+    });
+    // earned 1, so the run started at 24 - inside level 0 - and ended exactly
+    // on the level 1 threshold, where a fresh band reads 0 of 50.
+    expect(q(container, ".pm-xp").textContent).toBe("+1 XP earned");
+    expect(q(container, ".pm-xp-next").textContent).toBe(
+      "Level 1 reached - a pack is waiting",
+    );
+  });
+
+  /** Caught in a browser pass: a run that ended PAST the threshold rather
+   *  than exactly on it had won a pack, and the line read "49 XP to your next
+   *  pack" - a number about the pack after the one just earned. */
+  it("announces the pack when the run overshot the threshold", () => {
+    const { container, hud } = setup({ lifetimeXp: () => 26 });
+    const g = defeated();
+    hud.update({
+      ...g,
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 1, type: "play", cardId: "grow-crops" },
+        { turn: 1, playerId: 1, type: "play", cardId: "grow-crops" },
+      ],
+    });
+    // earned 2, so the run ran 24 -> 26, crossing the level-1 threshold at 25
+    expect(q(container, ".pm-xp").textContent).toBe("+2 XP earned");
+    expect(q(container, ".pm-xp-next").textContent).toBe(
+      "Level 1 reached - a pack is waiting",
+    );
+  });
+
+  it("hides the bar entirely when there is no lifetime progress to report", () => {
+    const { container, hud } = setup();
+    hud.update(defeated());
+    expect(q(container, ".pm-xp-track").classList.contains("hidden")).toBe(true);
+    expect(q(container, ".pm-xp-next").classList.contains("hidden")).toBe(true);
+    // the plain earned line still shows
+    expect(q(container, ".pm-xp").textContent).toMatch(/^\+\d+ XP earned$/);
+  });
+
+  it("fills the bar to where the run left it, once the animation lands", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup({ lifetimeXp: () => 17 });
+    hud.update(defeated());
+    vi.runAllTimers();
+    // 17 of the 25-XP first band
+    expect(q(container, ".pm-xp-fill").style.width).toBe("68%");
+    vi.useRealTimers();
+  });
+
   it("reports what the run earned and drops the old loot row", () => {
     const { container, hud } = setup();
     hud.update(defeated());
@@ -894,7 +965,7 @@ describe("notice modal", () => {
       overlordFactionId: "alpha", formerOverlordFactionId: "beta",
     }]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("What happened during their turns");
+    expect(q(container, ".notice-title").textContent).toBe(ROUND_SUMMARY_TITLE);
     expect(lineTexts(container)).toEqual([
       "Subjugate by Alpha took your vassal Gamma (Might +1 -> 0, Status +1 -> 0)",
     ]);
