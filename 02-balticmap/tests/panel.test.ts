@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import { createPanel, createTooltip, formatPopulation, formatFactionType, tooltipText, settlementTooltipText } from "../src/panel";
+import { createPanel, createTooltip, formatPopulation, formatFactionType, settlementTooltipText } from "../src/panel";
 import type { Faction, People, Region, Settlement } from "../src/types";
 
 const peoples: People[] = [
@@ -159,6 +159,49 @@ describe("tooltip", () => {
     tooltip.hide();
     expect(el.classList.contains("hidden")).toBe(true);
   });
+
+  it("flips to the other side of the cursor rather than off the window", () => {
+    // happy-dom measures every element as 0, so the size has to be stubbed -
+    // without it the flip can never trigger and the test would pass on a
+    // tooltip that still runs off the edge.
+    const container = document.createElement("div");
+    const tooltip = createTooltip(container);
+    const el = container.querySelector(".tooltip") as HTMLElement;
+    Object.defineProperty(el, "offsetWidth", { value: 280 });
+    Object.defineProperty(el, "offsetHeight", { value: 60 });
+
+    tooltip.showLines([{ text: "Zemgale (Semigallians)" }], 100, 200);
+    expect(el.style.left).toBe("112px");
+    expect(el.style.top).toBe("212px");
+
+    // Near the far corner it goes above and to the left of the cursor instead.
+    tooltip.showLines(
+      [{ text: "Zemgale (Semigallians)" }],
+      window.innerWidth - 20,
+      window.innerHeight - 20,
+    );
+    expect(el.style.left).toBe(`${window.innerWidth - 20 - 12 - 280}px`);
+    expect(el.style.top).toBe(`${window.innerHeight - 20 - 12 - 60}px`);
+  });
+
+  it("never leaves the near edge either, when the flip would overshoot it", () => {
+    const container = document.createElement("div");
+    const tooltip = createTooltip(container);
+    const el = container.querySelector(".tooltip") as HTMLElement;
+    Object.defineProperty(el, "offsetWidth", { value: 280 });
+    Object.defineProperty(el, "offsetHeight", { value: 60 });
+
+    // A cursor near the left edge of a window too narrow for the tip: flipping
+    // would put it at a negative left, so it clamps to the margin.
+    const width = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { value: 200, configurable: true });
+    try {
+      tooltip.showLines([{ text: "x" }], 10, 10);
+      expect(el.style.left).toBe("4px");
+    } finally {
+      Object.defineProperty(window, "innerWidth", { value: width, configurable: true });
+    }
+  });
 });
 
 describe("relations block", () => {
@@ -190,20 +233,9 @@ describe("population helpers", () => {
     expect(formatPopulation(150000)).toBe("~150k");
   });
 
-  it("builds a two-line tooltip with name, faction, band, and cohesion", () => {
-    expect(tooltipText(talava, factions[0])).toBe(
-      "Tālava\nTalavians - ~30k - high cohesion",
-    );
-    expect(tooltipText(jersika, factions[1])).toBe(
-      "Jersika\nJersikans - ~35k - high cohesion",
-    );
-  });
-
   it("formats faction types with spaces", () => {
-    expect(formatFactionType("regional-confederacy")).toBe(
-      "regional confederacy",
-    );
-    expect(formatFactionType("county")).toBe("county");
+    expect(formatFactionType("united-lands")).toBe("united lands");
+    expect(formatFactionType("land")).toBe("land");
   });
 
   it("settlementTooltipText shows name and note", () => {

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   cardModifierLines,
-  explainTargetEligibility, targetOddsLines,
+  explainTargetEligibility, targetImpactLine, targetOddsLines,
 } from "../src/target-explanations";
+import { bumpMight, bumpStatus } from "../src/relations";
 import {
   INCORPORATE_RAMP, loyaltyKey,
   type RulesView, type TargetEligibility,
@@ -207,5 +208,125 @@ describe("targetOddsLines", () => {
     expect(targetOddsLines(view, "alpha", "incorporate", "gamma")).toEqual([
       `Certain: held ${INCORPORATE_RAMP} turns, ${INCORPORATE_RAMP} needed.`,
     ]);
+  });
+});
+
+describe("targetImpactLine", () => {
+  const ORDER = ["alpha", "beta", "gamma", "delta"];
+  const v = (partial: Partial<RulesView> = {}): RulesView => ({
+    relations: {}, overlords: new Map(), incorporated: {},
+    adjacency: {
+      alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"], delta: [],
+    },
+    factionIds: ORDER, alliances: {}, turn: 1, bodyguards: [], omens: [],
+    diplomacyBoost: [], loyalty: {}, liveRevolts: [], sites: [], settled: [],
+    ...partial,
+  });
+
+  it("says nothing for a card that takes no target", () => {
+    expect(targetImpactLine(v(), "alpha", "fortify", "beta")).toBeNull();
+  });
+
+  it("quotes a Raid as the standing it would move", () => {
+    expect(targetImpactLine(v(), "alpha", "raid", "beta")).toEqual({
+      text: "Might 0 -> +1", tone: "good",
+    });
+  });
+
+  it("walks from the lead already standing, signed", () => {
+    const view = v({ relations: bumpMight({}, "alpha", "beta") });
+    expect(targetImpactLine(view, "alpha", "raid", "beta")).toEqual({
+      text: "Might +1 -> +2", tone: "good",
+    });
+  });
+
+  it("doubles a held reading, and says which number is the reading's", () => {
+    const view = v({ omens: ["alpha"] });
+    expect(targetImpactLine(view, "alpha", "raid", "beta")).toEqual({
+      text: "Might 0 -> +2 (doubled)", tone: "good",
+    });
+    expect(targetImpactLine(view, "alpha", "shrewd-marriage", "beta")).toEqual({
+      text: "Status 0 -> +2 (doubled)", tone: "good",
+    });
+  });
+
+  it("shows an Assassinate as the levelling it is, never as a gain", () => {
+    const view = v({
+      relations: bumpStatus(bumpStatus({}, "alpha", "beta"), "alpha", "beta"),
+    });
+    expect(targetImpactLine(view, "alpha", "assassinate-ruler", "beta")).toEqual({
+      text: "Status +2 -> 0", tone: "good",
+    });
+  });
+
+  it("does not leak that the target has a bodyguard posted", () => {
+    const view = v({ bodyguards: ["beta"] });
+    expect(targetImpactLine(view, "alpha", "assassinate-ruler", "beta")?.text)
+      .toBe("Status 0 -> 0");
+  });
+
+  it("quotes the odds for a card that rolls, and the certainty when it does not", () => {
+    // A one-land realm asks for a lead of 2, so both cases start from one.
+    const lead = bumpMight(bumpMight({}, "alpha", "beta"), "alpha", "beta");
+    expect(targetImpactLine(v({ relations: lead }), "alpha", "subjugate", "beta"))
+      .toEqual({ text: "Becomes your vassal.", tone: "good" });
+    const poach = v({
+      relations: lead, overlords: new Map([["beta", "gamma"]]),
+    });
+    expect(targetImpactLine(poach, "alpha", "subjugate", "beta")?.text)
+      .toBe("50% chance to succeed - they already have an overlord.");
+  });
+
+  it("counts the turns an Alliance would run, boost included", () => {
+    expect(targetImpactLine(v(), "alpha", "alliance", "beta")?.text)
+      .toBe("No hostile cards between you for 5 turns.");
+    const boosted = v({ diplomacyBoost: ["alpha"] });
+    expect(targetImpactLine(boosted, "alpha", "alliance", "beta")?.text)
+      .toBe("No hostile cards between you for 10 turns.");
+  });
+
+  it("says what a settlement buys, on your own land", () => {
+    const view = v({ sites: ["alpha"] });
+    expect(targetImpactLine(view, "alpha", "found-settlement", "alpha")).toEqual({
+      text: "+1 to the lead others need to subjugate you.", tone: "good",
+    });
+  });
+
+  it("gives the first block reason, not all of them", () => {
+    const view = v({ alliances: { "alpha|beta": 12 } });
+    expect(targetImpactLine(view, "alpha", "raid", "beta")).toEqual({
+      text: "Blocked by Alliance until turn 12.", tone: "bad",
+    });
+  });
+
+  it("names the shortfall when the lead is the only thing missing", () => {
+    const view = v({ incorporated: { gamma: "beta" } });
+    expect(targetImpactLine(view, "alpha", "subjugate", "beta")?.text).toBe(
+      "Need a Might or Status lead of 4 because their realm has 2 lands.",
+    );
+  });
+
+  it("says out of reach rather than going quiet on a land it cannot touch", () => {
+    expect(targetImpactLine(v(), "alpha", "raid", "delta")).toEqual({
+      text: "Out of reach.", tone: "bad",
+    });
+  });
+
+  it("does not tell you your own land is out of reach", () => {
+    // A realm never borders itself, so your own land lands in the same
+    // "irrelevant" bucket as a land across the map.
+    expect(targetImpactLine(v(), "alpha", "raid", "alpha")).toEqual({
+      text: "Your own land.", tone: "bad",
+    });
+    // ...and a land you have annexed resolves to you, so it says the same.
+    const view = v({ incorporated: { beta: "alpha" } });
+    expect(targetImpactLine(view, "alpha", "raid", "alpha")?.text)
+      .toBe("Your own land.");
+  });
+
+  it("says the inward card's own version of out of reach", () => {
+    expect(targetImpactLine(v(), "alpha", "found-settlement", "beta")).toEqual({
+      text: "Not in your realm.", tone: "bad",
+    });
   });
 });

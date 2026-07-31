@@ -4,13 +4,17 @@ export interface People {
   color: string;
 }
 
+/** Descriptive only. Deliberately free of modern political vocabulary - a
+ *  "confederacy" or a "league" is a thing none of these lands were in 1184.
+ *  The land (terra) is the unit; the types say how tightly a set of them held
+ *  together. */
 export type FactionType =
-  | "county"
-  | "island-league"
-  | "regional-confederacy"
+  | "land"
+  | "island-lands"
+  | "united-lands"
   | "principality"
   | "chiefdom"
-  | "land-coalition";
+  | "allied-lands";
 
 export interface Faction {
   id: string;

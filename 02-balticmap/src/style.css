@@ -144,7 +144,10 @@ svg.map.dragging {
   border-radius: 4px;
   font-size: 13px;
   pointer-events: none;
+  /* pre-line, not pre: the settlement tip passes a "\n", and everything else
+     has to wrap inside the width rather than push the tip off the screen. */
   white-space: pre-line;
+  max-width: min(280px, 60vw);
   /* Above .notice-overlay (z-index 40): a card/faction name hovered inside
      the round-summary modal must show its tip above the modal, not behind it. */
   z-index: 60;
@@ -1054,12 +1057,24 @@ svg.map.dragging {
   filter: brightness(1.05);
 }
 
+/* Which valid target is under the cursor. Needed as its own rule because
+   .region.target-valid above sets `filter` and so overrides .region.hovered,
+   which would otherwise leave every legal target looking identical. */
+.region.target-valid.hovered {
+  stroke-width: 3.2;
+  filter: brightness(1.22);
+}
+
+/* Everything the armed card cannot be aimed at - your own realm included -
+   drops out of the map: grey, near-invisible and inert to the hover cues. It
+   keeps `pointer-events` though, because the hover is what shows the one line
+   saying WHY it cannot be aimed there. */
 .region.target-invalid,
 .region.target-invalid.hovered,
 .region.target-invalid.dimmed {
-  opacity: 0.12;
+  opacity: 0.07;
   cursor: not-allowed;
-  filter: none;
+  filter: grayscale(1);
   stroke: #7a6a55;
   stroke-width: 0.8;
   pointer-events: auto;

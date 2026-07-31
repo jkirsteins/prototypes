@@ -2,7 +2,7 @@ import rawData from "./data/map.json";
 import type { MapData, Region } from "./types";
 import { renderMap, darkenColor, brightenColor } from "./map-render";
 import {
-  createPanel, createTooltip, tooltipText, settlementTooltipText,
+  createPanel, createTooltip, settlementTooltipText,
   type TooltipLine,
 } from "./panel";
 import { attachInteraction } from "./interaction";
@@ -12,15 +12,13 @@ import {
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { allianceActive, allianceKey, getRel, leadsOf, realmOf } from "./relations";
-import { rulerOf } from "./rulers";
 import {
   playableSet, validTargetsFor, targetEligibilityFor, subjugationRequirement,
-  gripPartsOn,
-  borderStrength,
-  raidYield,
+  raidGainFor,
 } from "./playability";
 import {
-  cardModifierLines, explainTargetEligibility, targetOddsLines,
+  cardModifierLines, explainTargetEligibility, targetImpactLine,
+  targetOddsLines,
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
 import { createHud } from "./hud";
@@ -32,8 +30,7 @@ import {
 import { runTurnips, runXp } from "./xp";
 import { openPack } from "./packs";
 import {
-  barFor, formatLead, holderOf, hoverRelationLines, politicalFactionForPolygon,
-  relationshipLine,
+  barFor, formatLead, holderOf, politicalFactionForPolygon, relationshipLine,
 } from "./view";
 import { factionAdjacencyOf } from "./adjacency";
 import "./style.css";
@@ -146,7 +143,9 @@ function relationsInfo(region: Region): string[] {
     `Status: yours ${mine.status} / theirs ${theirs.status}`,
     `Might: yours ${mine.might} / theirs ${theirs.might}`,
   ];
-  lines.push(allegianceOf(region.faction, human.factionId));
+  // The panel has room to spell out the ordinary case; the map hover, which
+  // shares this line, drops it instead. See `relationshipLine`.
+  lines.push(allegianceOf(region.faction, human.factionId) ?? "Independent");
   const pact = allianceLine(f, human.factionId);
   if (pact !== null) lines.push(pact);
   if (validTargetsFor(viewOf(game), human.factionId, "subjugate").includes(f)) {
@@ -157,7 +156,10 @@ function relationsInfo(region: Region): string[] {
 
 /** `polygonFaction` is the land's OWN faction, not the resolved one - see
  *  relationshipLine in view.ts. */
-function allegianceOf(polygonFaction: string, humanFaction: string): string {
+function allegianceOf(
+  polygonFaction: string,
+  humanFaction: string,
+): string | null {
   return relationshipLine(
     polygonFaction, humanFaction, game.overlords, game.incorporated,
     (id) => factionById.get(id)!.name,
@@ -306,7 +308,13 @@ function leadClass(n: number): string {
 }
 
 /** One badge per living faction outside the human's realm with a non-zero
- *  lead on either track, anchored at that faction's home region bbox. */
+ *  lead on either track, anchored at that faction's home region bbox.
+ *
+ *  While a card is armed the board narrows to what the card can be aimed at:
+ *  badges survive only on the legal targets. A lead over a land this card
+ *  cannot touch is not information the player needs while choosing, and it
+ *  floats at full contrast above a polygon the targeting cues have deliberately
+ *  greyed out - which reads as a live option rather than an excluded one. */
 function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
   const human = game.players[0];
@@ -314,9 +322,11 @@ function renderThreatBadges(): void {
   const humanRealm = new Set(
     realmOf(human.factionId, game.overlords, game.incorporated),
   );
+  const targets = armed === null ? null : new Set(armedTargets());
   for (const factionId of game.factionIds) {
     if (factionId in game.incorporated) continue; // dead (absorbed)
     if (humanRealm.has(factionId)) continue; // human, its vassals, its lands
+    if (targets !== null && !targets.has(factionId)) continue;
     const l = leadsOf(game.relations, human.factionId, factionId);
     const allied = allianceActive(game, human.factionId, factionId);
     if (l.might === 0 && l.status === 0 && !allied) continue;
@@ -389,40 +399,35 @@ function renderThreatBadges(): void {
   }
 }
 
+/** What a hover says, and no more: what this land is, who holds it, and - only
+ *  while a card is armed - what that card would do here.
+ *
+ *  Everything else the game knows about a land has a home already. The leads
+ *  and the Subjugate bars are on the map badges, population, cohesion, ruler
+ *  and settlements are on the click-through panel, and an active pact is a
+ *  block reason the armed line quotes. A hover that recited all of it was seven
+ *  lines wide and answered no question anybody was asking. */
 function hoverLines(region: Region): TooltipLine[] {
   const human = game.players[0];
-  const f = politicalFactionForPolygon(region.faction, game.incorporated);
-  // An absorbed land is named for the realm that holds it now - its own
-  // faction is gone as a polity - with a line recording who it used to be.
-  const ruling = inPlay() ? f : region.faction;
-  const base: TooltipLine[] = tooltipText(region, factionById.get(ruling)!)
-    .split("\n")
-    .map((text) => ({ text }));
-  if (ruling !== region.faction) {
-    base.push({ text: `Formerly ${factionById.get(region.faction)!.name}` });
-  }
-  // Every faction has a ruler, including yours - the model is total, and a
-  // faceless neighbour is harder to remember than a named one.
-  if (inPlay()) base.push({ text: `Ruled by ${rulerOf(game.rulers, ruling).name}` });
-  if (!inPlay() || !human || f === human.factionId) return base;
-  base.push(...hoverRelationLines(
-    game.relations,
+  // The land's OWN faction, never the politically resolved one: an absorbed
+  // land keeps its name here and the line below says who took it.
+  const lines: TooltipLine[] = [
+    { text: `${region.name} (${factionById.get(region.faction)!.name})` },
+  ];
+  if (!inPlay() || !human) return lines;
+  const held = allegianceOf(region.faction, human.factionId);
+  if (held !== null) lines.push({ text: held });
+  if (armed === null) return lines;
+  const impact = targetImpactLine(
+    viewOf(game),
     human.factionId,
-    f,
-    allegianceOf(region.faction, human.factionId),
-    {
-      yours: subjugationRequirement(viewOf(game), human.factionId, f),
-      theirs: subjugationRequirement(viewOf(game), f, human.factionId),
-      yoursFrom: gripPartsOn(viewOf(game), f),
-      theirsFrom: gripPartsOn(viewOf(game), human.factionId),
-    },
-  ));
-  const pact = allianceLine(f, human.factionId);
-  if (pact !== null) base.push({ text: pact, tone: "good" });
-  if (validTargetsFor(viewOf(game), human.factionId, "subjugate").includes(f)) {
-    base.push({ text: "Subjugate available", tone: "good" });
-  }
-  return base;
+    human.hand[armed],
+    // The same resolution `interceptClick` uses, or the preview would answer
+    // for a different faction than the click aims at on an absorbed land.
+    politicalFactionForPolygon(region.faction, game.incorporated),
+  );
+  if (impact !== null) lines.push(impact);
+  return lines;
 }
 
 function armedTargets(): string[] {
@@ -441,6 +446,9 @@ function applyTargeting(): void {
     el.classList.toggle("target-invalid", armed !== null && !valid);
   }
   if (armed !== null) applyRealmHover(null); // targeting cues win the map
+  // Arming and disarming both land here without a full refresh, and the badges
+  // are part of the targeting picture - see renderThreatBadges.
+  renderThreatBadges();
 }
 
 /** Every polygon belonging to the hovered region's realm root (owner if
@@ -660,7 +668,6 @@ const hud = createHud(
       const human = game.players[0];
       if (!human || !CARDS[cardId]?.targeted) return [];
       const view = viewOf(game);
-      const doubled = game.omens.includes(human.factionId);
       return explainTargetEligibility(
         targetEligibilityFor(view, human.factionId, cardId),
         (id) => factionById.get(id)?.name ?? id,
@@ -671,12 +678,10 @@ const hud = createHud(
           if (cardId !== "raid") return odds;
           // Quote the convex yield, not the border count: the two diverge fast
           // (a 5-land border is worth 15), and the number the player is shown
-          // before aiming has to be the number they get.
-          const n = raidYield(borderStrength(view, human.factionId, id));
-          return [
-            ...odds,
-            doubled ? `+${n * 2} Might (doubled)` : `+${n} Might`,
-          ];
+          // before aiming has to be the number they get - which is why it comes
+          // from the same call `playCard` resolves the raid with.
+          const { gain, doubled } = raidGainFor(view, human.factionId, id);
+          return [...odds, doubled ? `+${gain} Might (doubled)` : `+${gain} Might`];
         },
       );
     },

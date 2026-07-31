@@ -1,10 +1,14 @@
 import {
-  INCORPORATE_RAMP, incorporationChance, loyaltyOf, subjugationChance,
+  INCORPORATE_RAMP, incorporationChance, isDoubled, loyaltyOf, raidGainFor,
+  subjugationChance, targetEligibilityFor,
   type RulesView,
   type TargetBlockReason,
   type TargetEligibility,
 } from "./playability";
-import { DOUBLABLE_CARDS } from "./cards";
+import { CARDS, DOUBLABLE_CARDS } from "./cards";
+import { leadsOf } from "./relations";
+import { standingChangeText } from "./view";
+import type { TooltipLine } from "./panel";
 
 export interface TargetExplanation {
   factionId: string;
@@ -130,6 +134,120 @@ export function targetOddsLines(
     ];
   }
   return [];
+}
+
+/** What the armed card would do to one land's standing, as the map hover says
+ *  it: the human's signed lead before and after, `formatLead`'s convention, the
+ *  same one the badges and the round summary use. */
+function standingMove(
+  view: RulesView,
+  actorFactionId: string,
+  targetFactionId: string,
+  track: "might" | "status",
+  after: (before: number) => number,
+  doubled: boolean,
+): string {
+  const before = leadsOf(view.relations, actorFactionId, targetFactionId)[track];
+  return (
+    standingChangeText({ track, before, after: after(before) }) +
+    (doubled ? " (doubled)" : "")
+  );
+}
+
+/** What playing the armed card here would get you, in one line. Only ever
+ *  called for a target the rules already allow, so every branch can quote a
+ *  real number rather than hedging. */
+function availableImpact(
+  view: RulesView,
+  actorFactionId: string,
+  cardId: string,
+  targetFactionId: string,
+): string {
+  const doubled = isDoubled(view, actorFactionId, cardId);
+  if (cardId === "raid") {
+    const { gain } = raidGainFor(view, actorFactionId, targetFactionId);
+    return standingMove(
+      view, actorFactionId, targetFactionId, "might", (b) => b + gain, doubled,
+    );
+  }
+  if (cardId === "shrewd-marriage") {
+    return standingMove(
+      view, actorFactionId, targetFactionId, "status",
+      (b) => b + (doubled ? 2 : 1), doubled,
+    );
+  }
+  if (cardId === "assassinate-ruler") {
+    // The card levels the Status lead rather than adding to it, so the "after"
+    // is 0 whichever side was ahead. A Bodyguard on the target would nullify
+    // it, and this deliberately does not say so: the guard is theirs to know.
+    return standingMove(
+      view, actorFactionId, targetFactionId, "status", () => 0, false,
+    );
+  }
+  if (cardId === "subjugate" || cardId === "incorporate") {
+    const odds = targetOddsLines(view, actorFactionId, cardId, targetFactionId);
+    if (odds.length > 0) return odds[0];
+    return cardId === "subjugate"
+      ? "Becomes your vassal."
+      : "Absorbed into your realm.";
+  }
+  if (cardId === "alliance") {
+    const turns = view.diplomacyBoost.includes(actorFactionId) ? 10 : 5;
+    return `No hostile cards between you for ${turns} turns.`;
+  }
+  if (cardId === "found-settlement") {
+    return "+1 to the lead others need to subjugate you.";
+  }
+  return "Available.";
+}
+
+/** One line for the map hover while a card is armed: what this card would do
+ *  to this land, or why it cannot be aimed there. Null for a card that takes no
+ *  target, or a faction the rules have never heard of.
+ *
+ *  Deliberately quotes no card name. A name in player-facing prose has to be a
+ *  segment the player can point at (see AGENTS.md), `TooltipLine` is plain
+ *  text, and the armed card is already named on the HUD anyway. */
+export function targetImpactLine(
+  view: RulesView,
+  actorFactionId: string,
+  cardId: string,
+  targetFactionId: string,
+): TooltipLine | null {
+  if (!CARDS[cardId]?.targeted) return null;
+  const entry = targetEligibilityFor(view, actorFactionId, cardId).find(
+    (e) => e.factionId === targetFactionId,
+  );
+  if (entry === undefined) return null;
+  // Your own land, before anything else. The rules reach it two different ways
+  // - "irrelevant" because a realm does not border itself, or a `self` block
+  // once an annexation puts your own id back in your reach - and both would
+  // otherwise print an answer ("Out of reach") that is nonsense for the land
+  // you are standing on. Never reached by Found a settlement, which is aimed
+  // at your own realm and comes back available.
+  if (entry.state !== "available" && targetFactionId === actorFactionId) {
+    return { text: "Your own land.", tone: "bad" };
+  }
+  if (entry.state === "irrelevant") {
+    return {
+      text:
+        cardId === "found-settlement"
+          ? "Not in your realm."
+          : "Out of reach.",
+      tone: "bad",
+    };
+  }
+  if (entry.state === "blocked") {
+    // The first reason only. `targetEligibilityFor` pushes the structural
+    // blocks (self, incorporated, subjugated, already a vassal) before the
+    // lead shortfall, so the first is the one that has to be fixed first, and
+    // a hover has room for one line. The card tip still lists them all.
+    return { text: explainReason(entry.reasons[0])[0], tone: "bad" };
+  }
+  return {
+    text: availableImpact(view, actorFactionId, cardId, targetFactionId),
+    tone: "good",
+  };
 }
 
 /** The slice of state the modifier lines need. `GameState` satisfies this

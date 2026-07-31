@@ -1,4 +1,4 @@
-import { buildDeck, buildAiDeck, shuffle, CARDS, DECK_SIZE, DOUBLABLE_CARDS, type Rng } from "./cards";
+import { buildDeck, buildAiDeck, shuffle, CARDS, DECK_SIZE, type Rng } from "./cards";
 import {
   allianceKey, bumpMight, bumpMightAllBy, bumpMightBy, bumpStatus, bumpStatusBy,
   leadsOf, levelStatus, realmOf,
@@ -6,7 +6,7 @@ import {
 } from "./relations";
 import {
   loyaltyKey, incorporationChance, subjugationChance,
-  borderStrength, passiveFortifyFor, playableSet, raidYield, validTargetsFor,
+  isDoubled, passiveFortifyFor, playableSet, raidGainFor, validTargetsFor,
   type RulesView,
 } from "./playability";
 import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
@@ -417,7 +417,7 @@ export function playCard(
   let omens = state.omens;
   let settled = state.settled;
   let rulers = state.rulers;
-  const doubled = omens.includes(p.factionId) && DOUBLABLE_CARDS.has(cardId);
+  const doubled = isDoubled(state, p.factionId, cardId);
   const mult = doubled ? 2 : 1;
   if (doubled) omens = omens.filter((f) => f !== p.factionId);
   let phase: GamePhase = state.phase;
@@ -456,9 +456,12 @@ export function playCard(
   };
 
   if (cardId === "raid" && targetId !== undefined) {
-    const gain = raidYield(borderStrength(viewOf(state), p.factionId, targetId));
-    relations = bumpMightBy(relations, p.factionId, targetId, gain * mult);
-    events[0] = { ...events[0], amount: gain * mult, track: "might" };
+    // Through `raidGainFor` rather than `raidYield * mult`: the card tip and
+    // the map preview quote the same call, so the promise and the resolution
+    // cannot drift apart.
+    const { gain } = raidGainFor(viewOf(state), p.factionId, targetId);
+    relations = bumpMightBy(relations, p.factionId, targetId, gain);
+    events[0] = { ...events[0], amount: gain, track: "might" };
   } else if (cardId === "shrewd-marriage" && targetId !== undefined) {
     relations = bumpStatusBy(relations, p.factionId, targetId, mult);
     events[0] = { ...events[0], amount: mult, track: "status" };

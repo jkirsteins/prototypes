@@ -23,8 +23,8 @@ const EXPECTED_PEOPLE_IDS = [
 ];
 
 const FACTION_TYPES = [
-  "county", "island-league", "regional-confederacy", "principality",
-  "chiefdom", "land-coalition",
+  "land", "island-lands", "united-lands", "principality",
+  "chiefdom", "allied-lands",
 ];
 
 describe("map.json (anno 1100)", () => {
@@ -127,13 +127,13 @@ describe("map.json (anno 1100)", () => {
       faction: "curonian-confederacy", population: 45000, cohesion: "high",
     });
     expect(faction("curonian-confederacy")).toMatchObject({
-      name: "Curonian Confederacy", type: "regional-confederacy",
+      name: "Curonians", type: "united-lands",
       ethnicity: "curonians",
     });
     expect(region("lietuva")).toMatchObject({
       faction: "lietuva", population: 60000, cohesion: "medium",
     });
-    expect(faction("lietuva").type).toBe("land-coalition");
+    expect(faction("lietuva").type).toBe("allied-lands");
     expect(region("eastern-aukstaitija")).toMatchObject({
       faction: "eastern-aukstaitian-confederacy",
       population: 90000, cohesion: "low",
@@ -144,7 +144,7 @@ describe("map.json (anno 1100)", () => {
     expect(region("selija").peoples).toEqual(["selonians"]);
     expect(region("zemgale").peoples).toEqual(["semigallians"]);
     expect(region("talava").peoples).toEqual(["latgalians", "livs"]);
-    expect(faction("osilians")).toMatchObject({ type: "island-league" });
+    expect(faction("osilians")).toMatchObject({ type: "island-lands" });
     expect(region("saaremaa")).toMatchObject({ cohesion: "high" });
   });
 

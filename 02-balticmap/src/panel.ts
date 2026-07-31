@@ -21,13 +21,6 @@ export function formatFactionType(type: FactionType): string {
   return type.replace(/-/g, " ");
 }
 
-export function tooltipText(region: Region, faction: Faction): string {
-  return (
-    `${region.name}\n${faction.name} - ` +
-    `${formatPopulation(region.population)} - ${region.cohesion} cohesion`
-  );
-}
-
 /** Growth sites carry no name on purpose (the map invents no place names), so
  *  their tooltip is the note alone rather than a blank first line. */
 export function settlementTooltipText(s: Settlement): string {
@@ -119,16 +112,41 @@ export interface Tooltip {
   hide(): void;
 }
 
+/** Gap between the cursor and the tip, and the smallest margin the tip is
+ *  allowed to keep from the edge of the window. */
+const TIP_GAP_PX = 12;
+const TIP_MARGIN_PX = 4;
+
 export function createTooltip(container: HTMLElement): Tooltip {
   const el = document.createElement("div");
   el.className = "tooltip hidden";
   container.appendChild(el);
+
+  /** Below and right of the cursor, flipped to the other side when that would
+   *  run off the window, then clamped so it can never be pushed off the near
+   *  edge either. Must run AFTER the tip is unhidden and filled: a hidden
+   *  element measures 0 and would never flip. Under happy-dom every measurement
+   *  is 0, so the flip is simply a no-op there - the tests assert placement,
+   *  Chrome is where the flip is confirmed. */
+  const place = (clientX: number, clientY: number): void => {
+    const axis = (
+      cursor: number,
+      size: number,
+      limit: number,
+    ): number => {
+      const after = cursor + TIP_GAP_PX;
+      const start = after + size > limit ? cursor - TIP_GAP_PX - size : after;
+      return Math.max(TIP_MARGIN_PX, Math.min(start, limit - size - TIP_MARGIN_PX));
+    };
+    el.style.left = `${axis(clientX, el.offsetWidth, window.innerWidth)}px`;
+    el.style.top = `${axis(clientY, el.offsetHeight, window.innerHeight)}px`;
+  };
+
   return {
     show(text, clientX, clientY) {
       el.textContent = text;
-      el.style.left = `${clientX + 12}px`;
-      el.style.top = `${clientY + 12}px`;
       el.classList.remove("hidden");
+      place(clientX, clientY);
     },
     showLines(lines, clientX, clientY) {
       el.replaceChildren(
@@ -139,9 +157,8 @@ export function createTooltip(container: HTMLElement): Tooltip {
           return div;
         }),
       );
-      el.style.left = `${clientX + 12}px`;
-      el.style.top = `${clientY + 12}px`;
       el.classList.remove("hidden");
+      place(clientX, clientY);
     },
     hide() {
       el.classList.add("hidden");

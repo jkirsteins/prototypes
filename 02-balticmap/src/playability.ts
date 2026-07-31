@@ -1,4 +1,4 @@
-import { CARDS } from "./cards";
+import { CARDS, DOUBLABLE_CARDS } from "./cards";
 import {
   allianceActive, allianceKey, leadsOf, realmOf,
   type Incorporated, type Overlords, type Relations,
@@ -155,6 +155,37 @@ export function borderStrength(
  *  realm-wide grip number the HUD and notices both quote. */
 export function raidYield(borderLands: number): number {
   return (borderLands * (borderLands + 1)) / 2;
+}
+
+/** Whether a Favourable omens reading would double this card for this faction:
+ *  a reading is held AND the card is one a reading can double.
+ *
+ *  Four places ask it - `playCard` spends the reading on it, the AI policy
+ *  scores through it, the card tip names it and the map preview quotes the
+ *  doubled number - and it was written out longhand at each. That is the shape
+ *  a rule drifts in: the card tip's copy dropped the `DOUBLABLE_CARDS` half
+ *  and only stayed correct because its one caller had already narrowed to
+ *  Raid. */
+export function isDoubled(
+  view: { omens: string[] },
+  factionId: string,
+  cardId: string,
+): boolean {
+  return view.omens.includes(factionId) && DOUBLABLE_CARDS.has(cardId);
+}
+
+/** The Might a Raid on this target would actually add, doubling included, and
+ *  whether a reading paid for half of it. `playCard` resolves the raid with
+ *  this, so the number the player is shown before aiming is by construction
+ *  the number they get. */
+export function raidGainFor(
+  view: RulesView,
+  actorFactionId: string,
+  targetFactionId: string,
+): { gain: number; doubled: boolean } {
+  const doubled = isDoubled(view, actorFactionId, "raid");
+  const gain = raidYield(borderStrength(view, actorFactionId, targetFactionId));
+  return { gain: doubled ? gain * 2 : gain, doubled };
 }
 
 /** Lands this faction has permanently annexed. Counted straight off

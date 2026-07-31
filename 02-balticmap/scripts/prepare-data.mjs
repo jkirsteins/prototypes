@@ -58,37 +58,44 @@ const PEOPLES = [
 // ethnicities reuse the people color exactly; the 8 Estonian greens and the
 // 3 Prussian blues are spread so neighbouring lands differ clearly in
 // lightness (final tuning is done visually in Chrome - keep hexes unique).
+//
+// Four ids still read "-confederacy" while their names do not. That is on
+// purpose: no Baltic land in 1184 was a confederacy in any sense the word
+// carries now, so the names are plain ethnonyms like the other twenty-two, but
+// the ids are keys - tests/fixtures/seeded-games-baseline.json records
+// "semigallian-confederacy" as a conqueror, and renaming them would rewrite a
+// committed baseline for a word no player ever sees.
 const FACTIONS = [
-  { id: "ravalans", name: "Ravalans", ethnicity: "estonians", type: "county", color: "#93b371" },
-  { id: "harjuans", name: "Harjuans", ethnicity: "estonians", type: "county", color: "#d7e5bb" },
-  { id: "vironians", name: "Vironians", ethnicity: "estonians", type: "county", color: "#a3bf83" },
-  { id: "jarvans", name: "Jarvans", ethnicity: "estonians", type: "county", color: "#79a15e" },
-  { id: "laanians", name: "Laanians", ethnicity: "estonians", type: "county", color: "#b8cf9b" },
-  { id: "osilians", name: "Osilians", ethnicity: "estonians", type: "island-league", color: "#e2eecd" },
-  { id: "ugandians", name: "Ugandians", ethnicity: "estonians", type: "county", color: "#8fb06d" },
-  { id: "sakalans", name: "Sakalans", ethnicity: "estonians", type: "county", color: "#cddfae" },
-  { id: "lower-daugava-livs", name: "Lower Daugava Livs", ethnicity: "livs", type: "land-coalition", color: "#a8c8cf" },
-  { id: "curonian-confederacy", name: "Curonian Confederacy", ethnicity: "curonians", type: "regional-confederacy", color: "#d9986f" },
-  { id: "semigallian-confederacy", name: "Semigallian Confederacy", ethnicity: "semigallians", type: "regional-confederacy", color: "#e8d18b" },
-  { id: "selonians", name: "Selonians", ethnicity: "selonians", type: "land-coalition", color: "#c7b3d6" },
+  { id: "ravalans", name: "Ravalans", ethnicity: "estonians", type: "land", color: "#93b371" },
+  { id: "harjuans", name: "Harjuans", ethnicity: "estonians", type: "land", color: "#d7e5bb" },
+  { id: "vironians", name: "Vironians", ethnicity: "estonians", type: "land", color: "#a3bf83" },
+  { id: "jarvans", name: "Jarvans", ethnicity: "estonians", type: "land", color: "#79a15e" },
+  { id: "laanians", name: "Laanians", ethnicity: "estonians", type: "land", color: "#b8cf9b" },
+  { id: "osilians", name: "Osilians", ethnicity: "estonians", type: "island-lands", color: "#e2eecd" },
+  { id: "ugandians", name: "Ugandians", ethnicity: "estonians", type: "land", color: "#8fb06d" },
+  { id: "sakalans", name: "Sakalans", ethnicity: "estonians", type: "land", color: "#cddfae" },
+  { id: "lower-daugava-livs", name: "Lower Daugava Livs", ethnicity: "livs", type: "allied-lands", color: "#a8c8cf" },
+  { id: "curonian-confederacy", name: "Curonians", ethnicity: "curonians", type: "united-lands", color: "#d9986f" },
+  { id: "semigallian-confederacy", name: "Semigallians", ethnicity: "semigallians", type: "united-lands", color: "#e8d18b" },
+  { id: "selonians", name: "Selonians", ethnicity: "selonians", type: "allied-lands", color: "#c7b3d6" },
   { id: "talavians", name: "Talavians", ethnicity: "latgalians", type: "chiefdom", color: "#e5b28e" },
   { id: "jersikans", name: "Jersikans", ethnicity: "latgalians", type: "principality", color: "#cd9468" },
-  { id: "pilsotas-curonians", name: "Pilsotas Curonians", ethnicity: "curonians", type: "land-coalition", color: "#c48257" },
-  { id: "samogitian-confederacy", name: "Samogitian Confederacy", ethnicity: "samogitians", type: "regional-confederacy", color: "#c9b17f" },
+  { id: "pilsotas-curonians", name: "Pilsotas Curonians", ethnicity: "curonians", type: "allied-lands", color: "#c48257" },
+  { id: "samogitian-confederacy", name: "Samogitians", ethnicity: "samogitians", type: "united-lands", color: "#c9b17f" },
   // placeName: Lietuva is named for a land, not a people, so it takes no
   // article. Emitted from here because `factions: FACTIONS` ships this roster
   // verbatim - the flag was once hand-edited into map.json and the next bake
   // silently dropped it, putting "the Lietuva" back in every notice.
-  { id: "lietuva", name: "Lietuva", ethnicity: "aukstaitians", type: "land-coalition", color: "#d9c48f", placeName: true },
-  { id: "eastern-aukstaitian-confederacy", name: "Eastern Aukštaitian Confederacy", ethnicity: "aukstaitians", type: "land-coalition", color: "#e6d9b8" },
-  { id: "sudovians", name: "Sudovians", ethnicity: "yotvingians", type: "land-coalition", color: "#d1a3a0" },
-  { id: "dainavians", name: "Dainavians", ethnicity: "yotvingians", type: "land-coalition", color: "#bd8a87" },
-  { id: "sembians", name: "Sembians", ethnicity: "prussians", type: "land-coalition", color: "#90a8c9" },
-  { id: "natangians", name: "Natangians", ethnicity: "prussians", type: "land-coalition", color: "#7089b0" },
-  { id: "nadruvians", name: "Nadruvians", ethnicity: "prussians", type: "land-coalition", color: "#b1c5de" },
-  { id: "warmians", name: "Warmians", ethnicity: "prussians", type: "land-coalition", color: "#8098bd" },
+  { id: "lietuva", name: "Lietuva", ethnicity: "aukstaitians", type: "allied-lands", color: "#d9c48f", placeName: true },
+  { id: "eastern-aukstaitian-confederacy", name: "Eastern Aukštaitians", ethnicity: "aukstaitians", type: "allied-lands", color: "#e6d9b8" },
+  { id: "sudovians", name: "Sudovians", ethnicity: "yotvingians", type: "allied-lands", color: "#d1a3a0" },
+  { id: "dainavians", name: "Dainavians", ethnicity: "yotvingians", type: "allied-lands", color: "#bd8a87" },
+  { id: "sembians", name: "Sembians", ethnicity: "prussians", type: "allied-lands", color: "#90a8c9" },
+  { id: "natangians", name: "Natangians", ethnicity: "prussians", type: "allied-lands", color: "#7089b0" },
+  { id: "nadruvians", name: "Nadruvians", ethnicity: "prussians", type: "allied-lands", color: "#b1c5de" },
+  { id: "warmians", name: "Warmians", ethnicity: "prussians", type: "allied-lands", color: "#8098bd" },
   { id: "pomesanians", name: "Pomesanians", ethnicity: "prussians", type: "chiefdom", color: "#a1b7d3" },
-  { id: "galindians", name: "Galindians", ethnicity: "prussians", type: "land-coalition", color: "#5f7aa3" },
+  { id: "galindians", name: "Galindians", ethnicity: "prussians", type: "allied-lands", color: "#5f7aa3" },
 ];
 
 // Main trade arteries ca. 1100. `match` lists Natural Earth naming

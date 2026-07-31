@@ -1,8 +1,5 @@
-import {
-  leadsOf, type Incorporated, type Overlords, type Relations,
-} from "./relations";
-import type { GripParts, TrackBars } from "./playability";
-import type { TooltipLine } from "./panel";
+import type { Incorporated, Overlords } from "./relations";
+import type { TrackBars } from "./playability";
 
 export interface View {
   x: number;
@@ -100,14 +97,18 @@ export function politicalFactionForPolygon(
  *  incorporated land resolves to its absorber, whose own `incorporated` entry
  *  is empty, so resolving first makes the absorption invisible and the land
  *  reads as independent. Leads still come from the resolved faction - an
- *  absorbed land has no relations of its own - but its allegiance does not. */
+ *  absorbed land has no relations of its own - but its allegiance does not.
+ *
+ *  Null when the land answers to nobody. The map hover shows this line only
+ *  when somebody holds the land, so it needs the absence as a value rather
+ *  than as a string it would have to compare against. */
 export function relationshipLine(
   polygonFactionId: string,
   humanFactionId: string,
   overlords: Overlords,
   incorporated: Incorporated,
   factionName: (id: string) => string,
-): string {
+): string | null {
   const owner = incorporated[polygonFactionId];
   const lord = overlords.get(polygonFactionId);
   if (owner === humanFactionId) return "Part of your realm (incorporated)";
@@ -126,7 +127,7 @@ export function relationshipLine(
   }
   if (lord === humanFactionId) return "Your vassal";
   if (overlords.get(humanFactionId) === polygonFactionId) return "Your overlord";
-  if (lord === undefined) return "Independent";
+  if (lord === undefined) return null;
   return `Vassal of ${factionName(lord)}`;
 }
 
@@ -194,93 +195,6 @@ export function barPhrase(bars: TrackBars): string {
   return bars.might === bars.status
     ? `${bars.might}`
     : `${bars.might} in Might or ${bars.status} in Status`;
-}
-
-/** The two Subjugate bars for a hovered pair, from `subjugationRequirement`
- *  called in both directions. Either is null where Subjugate could never
- *  apply that way round, and the matching lines lose their denominator. */
-export interface SubjugationBars {
-  yours: TrackBars | null;
-  theirs: TrackBars | null;
-  /** What each bar is made of, from `gripPartsOn`. Supplied rather than
-   *  recovered from the bar: the lines used to divide the bar by
-   *  SUBJUGATE_THRESHOLD to name the land count, and a founded settlement adds
-   *  1, which makes that inverse silently wrong. Omitted where the caller has
-   *  no parts to give, and then the line quotes the bar alone. */
-  yoursFrom?: GripParts;
-  theirsFrom?: GripParts;
-}
-
-/** Tone always says who leads, never whether a bar is cleared - the same
- *  classes color the map badges. Each track is measured against the bar of
- *  whichever side leads it, so a track they lead quotes their bar. */
-export function hoverRelationLines(
-  relations: Relations,
-  humanFactionId: string,
-  hoveredFactionId: string,
-  relationship: string,
-  bars: SubjugationBars = { yours: null, theirs: null },
-): TooltipLine[] {
-  const tone = (n: number) => (n > 0 ? "good" : n < 0 ? "bad" : "neutral");
-  const delta = (
-    label: string,
-    n: number,
-    track: keyof TrackBars,
-  ): TooltipLine => {
-    const bar = barFor(
-      n,
-      bars.yours === null ? null : bars.yours[track],
-      bars.theirs === null ? null : bars.theirs[track],
-    );
-    if (bar !== null) {
-      const suffix = n > 0 ? " (you lead)" : n < 0 ? " (they lead)" : "";
-      return { text: `${label}: ${formatLead("", n, bar)}${suffix}`, tone: tone(n) };
-    }
-    return n === 0
-      ? { text: `${label}: even`, tone: "neutral" }
-      : {
-          text: `${label}: ${formatLead("", n)} (${n > 0 ? "you" : "they"} lead)`,
-          tone: tone(n),
-        };
-  };
-  const landsWord = (n: number) => `${n} ${n === 1 ? "land" : "lands"}`;
-  /** "3 lands", or "3 lands and 1 settlement" once anything is built. Falls
-   *  back to naming no composition at all when the caller gave no parts. */
-  const madeOf = (whose: string, parts: GripParts | undefined): string => {
-    if (parts === undefined) return "";
-    const settled =
-      parts.settlements === 0
-        ? ""
-        : ` and ${parts.settlements} ${parts.settlements === 1 ? "settlement" : "settlements"}`;
-    return ` - ${whose} realm has ${landsWord(parts.lands)}${settled}`;
-  };
-  const yours = leadsOf(relations, humanFactionId, hoveredFactionId);
-  const theyLead = yours.might < 0 || yours.status < 0;
-  return [
-    delta("Might", yours.might, "might"),
-    delta("Status", yours.status, "status"),
-    ...(bars.yours === null
-      ? []
-      : [
-          {
-            text:
-              `Subjugate needs a lead of ${barPhrase(bars.yours)}` +
-              `${madeOf("their", bars.yoursFrom)}.`,
-            tone: "neutral" as const,
-          },
-        ]),
-    ...(bars.theirs === null || !theyLead
-      ? []
-      : [
-          {
-            text:
-              `They need a lead of ${barPhrase(bars.theirs)} to subjugate you` +
-              `${madeOf("your", bars.theirsFrom)}.`,
-            tone: "neutral" as const,
-          },
-        ]),
-    { text: relationship },
-  ];
 }
 
 /** Smallest view that covers the whole map, centered, with the viewport's aspect. */

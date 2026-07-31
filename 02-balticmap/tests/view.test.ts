@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-  barFor, fitView, clampView, formatLead, holderOf, homeView, hoverRelationLines, panBy,
+  barFor, fitView, clampView, formatLead, holderOf, homeView, panBy,
   politicalFactionForPolygon, relationshipLine, standingsFor,
   withArticle,
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
 } from "../src/view";
-import { bumpMight, bumpStatus } from "../src/relations";
 
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 6);
 
@@ -273,127 +272,15 @@ describe("relationshipLine", () => {
     expect(line("lietuva", [["me", "lietuva"]])).toBe("Your overlord");
   });
 
-  it("says independent when nobody holds it", () => {
-    expect(line("zemgale")).toBe("Independent");
+  it("says nothing at all when nobody holds it", () => {
+    // Null rather than "Independent": the map hover shows this line only when
+    // there is a holder to name, and the panel supplies its own wording.
+    expect(line("zemgale")).toBeNull();
   });
 
   it("prefers absorption over a stale vassal entry", () => {
     expect(line("zemgale", [["zemgale", "lietuva"]], { zemgale: "lietuva" }))
       .toBe("Incorporated into LIETUVA");
-  });
-});
-
-describe("hoverRelationLines", () => {
-  it("shows the bar to clear on both tracks when a requirement applies", () => {
-    // Tone keeps meaning who leads, not whether the bar is cleared - the same
-    // classes drive the map badges.
-    const rel = bumpMight({}, "actor", "target");
-    expect(
-      hoverRelationLines(rel, "actor", "target", "Independent", {
-        yours: { might: 4, status: 4 }, theirs: { might: 6, status: 6 },
-        yoursFrom: { lands: 2, settlements: 0, might: 4, status: 4 },
-        theirsFrom: { lands: 3, settlements: 0, might: 6, status: 6 },
-      }),
-    ).toEqual([
-      { text: "Might: +1/4 (you lead)", tone: "good" },
-      { text: "Status: 0/4", tone: "neutral" },
-      { text: "Subjugate needs a lead of 4 - their realm has 2 lands.", tone: "neutral" },
-      { text: "Independent" },
-    ]);
-  });
-
-  it("measures a track they lead against their bar, not yours", () => {
-    // The whole bug: their bar counts YOUR realm, so it is a different number.
-    const rel = bumpMight({}, "target", "actor");
-    expect(
-      hoverRelationLines(rel, "actor", "target", "Independent", {
-        yours: { might: 4, status: 4 }, theirs: { might: 20, status: 20 },
-        yoursFrom: { lands: 2, settlements: 0, might: 4, status: 4 },
-        theirsFrom: { lands: 10, settlements: 0, might: 20, status: 20 },
-      }),
-    ).toEqual([
-      { text: "Might: -1/20 (they lead)", tone: "bad" },
-      { text: "Status: 0/4", tone: "neutral" },
-      { text: "Subjugate needs a lead of 4 - their realm has 2 lands.", tone: "neutral" },
-      {
-        text: "They need a lead of 20 to subjugate you - your realm has 10 lands.",
-        tone: "neutral",
-      },
-      { text: "Independent" },
-    ]);
-  });
-
-  it("says one land in the singular", () => {
-    const lines = hoverRelationLines({}, "actor", "target", "Independent", {
-      yours: { might: 2, status: 2 },
-      theirs: null,
-      yoursFrom: { lands: 1, settlements: 0, might: 2, status: 2 },
-    });
-    expect(lines[2].text).toBe("Subjugate needs a lead of 2 - their realm has 1 land.");
-  });
-
-  it("names the settlements behind a bar rather than dividing it back out", () => {
-    // The Might bar is 2 per land plus 1 per settlement, so it can no longer be
-    // halved to recover the land count - the parts are passed in instead. A
-    // settlement leaves the Status bar alone, so both numbers are named.
-    const rel = bumpMight({}, "target", "actor");
-    const lines = hoverRelationLines(rel, "actor", "target", "Independent", {
-      yours: { might: 5, status: 4 },
-      theirs: { might: 7, status: 6 },
-      yoursFrom: { lands: 2, settlements: 1, might: 5, status: 4 },
-      theirsFrom: { lands: 3, settlements: 1, might: 7, status: 6 },
-    });
-    expect(lines[2].text).toBe(
-      "Subjugate needs a lead of 5 in Might or 4 in Status" +
-        " - their realm has 2 lands and 1 settlement.",
-    );
-    expect(lines[3].text).toBe(
-      "They need a lead of 7 in Might or 6 in Status to subjugate you" +
-        " - your realm has 3 lands and 1 settlement.",
-    );
-  });
-
-  it("measures each track against its own bar", () => {
-    // A settled realm is nearer on Status than on Might, and the badge must
-    // say so: same lead, two denominators.
-    const rel = bumpStatus(bumpMight({}, "actor", "target"), "actor", "target");
-    const lines = hoverRelationLines(rel, "actor", "target", "Independent", {
-      yours: { might: 5, status: 4 },
-      theirs: null,
-    });
-    expect(lines[0].text).toBe("Might: +1/5 (you lead)");
-    expect(lines[1].text).toBe("Status: +1/4 (you lead)");
-  });
-
-  it("quotes the bar alone when no parts are supplied", () => {
-    const lines = hoverRelationLines({}, "actor", "target", "Independent", {
-      yours: { might: 4, status: 4 },
-      theirs: null,
-    });
-    expect(lines[2].text).toBe("Subjugate needs a lead of 4.");
-  });
-
-  it("omits their sentence when they lead nothing", () => {
-    const rel = bumpMight({}, "actor", "target");
-    const lines = hoverRelationLines(rel, "actor", "target", "Independent", {
-      yours: { might: 4, status: 4 },
-      theirs: { might: 20, status: 20 },
-    });
-    expect(lines.some((l) => l.text.startsWith("They need"))).toBe(false);
-  });
-
-  it("drops the denominator on a track whose leader could never subjugate", () => {
-    // Their bar is null: they are somebody's vassal and can subjugate no one.
-    const rel = bumpMight({}, "target", "actor");
-    const lines = hoverRelationLines(rel, "actor", "target", "Their vassal", {
-      yours: null,
-      theirs: null,
-    });
-    expect(lines).toEqual([
-      { text: "Might: -1 (they lead)", tone: "bad" },
-      { text: "Status: even", tone: "neutral" },
-      { text: "Their vassal" },
-    ]);
   });
 });
 

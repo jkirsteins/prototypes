@@ -16,10 +16,10 @@ describe("renderMap", () => {
     expect(regionPaths.size).toBe(26);
     const kursa = regionPaths.get("kursa")!;
     expect(kursa.getAttribute("data-id")).toBe("kursa");
-    const curonianConfederacy = data.factions.find(
+    const curonians = data.factions.find(
       (f) => f.id === "curonian-confederacy",
     )!;
-    expect(kursa.getAttribute("fill")).toBe(curonianConfederacy.color);
+    expect(kursa.getAttribute("fill")).toBe(curonians.color);
   });
 
   it("gives same-ethnicity lands different faction fills", () => {
