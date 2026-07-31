@@ -6,7 +6,7 @@ import {
 export type { TributeTrack };
 import {
   allianceKey, bumpMight, bumpMightAllBy, bumpMightBy, bumpStatus, bumpStatusBy,
-  leadsOf, levelStatus, realmOf,
+  fullRealmOf, leadsOf, levelStatus,
   type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
@@ -719,7 +719,12 @@ export function playCard(
     });
   } else if (
     humanFaction !== null &&
-    realmOf(humanFaction, overlords, incorporated).length >= winSize
+    // `fullRealmOf`, not `realmOf`: a land your vassal annexed is a land you
+    // hold, and the map has always drawn it that way. It also keeps this branch
+    // ahead of the unification one below by construction - the human's full
+    // realm is a superset of any of its vassals', so a vassal can never unify
+    // the Balts out from under the seat that owns it.
+    fullRealmOf(humanFaction, overlords, incorporated).size >= winSize
   ) {
     phase = "victory";
     events.push({ turn: state.turn, playerId: p.id, type: "victory" });
@@ -728,7 +733,7 @@ export function playCard(
       (f) =>
         f !== humanFaction &&
         !(f in incorporated) &&
-        realmOf(f, overlords, incorporated).length >= winSize,
+        fullRealmOf(f, overlords, incorporated).size >= winSize,
     );
     if (unifier !== undefined) {
       // "defeat" is simply the terminal non-victory phase. With no human seat

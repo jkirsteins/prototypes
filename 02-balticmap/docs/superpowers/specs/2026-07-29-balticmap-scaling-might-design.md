@@ -61,6 +61,14 @@ A vassal's own incorporated lands stay attributed to the vassal, not to its
 lord, because `realmOf` walks one level. That is the existing meaning of realm
 throughout the rules and this change does not alter it.
 
+> Amended 2026-07-31. The sentence above still holds for the Might rules it was
+> written about - the subjugation bar and `borderStrength` keep the one-level
+> `realmOf`, because Subjugate frees its target's vassals the moment it lands.
+> It is no longer true "throughout the rules": the scoreboard and the win
+> condition now count with `fullRealmOf`, which does attribute a vassal's
+> annexations to its lord. See "Two realm sizes, and only one of them is a
+> score" in `AGENTS.md`.
+
 ### Favourable omens
 
 A new deck-buildable non-basic, one per deck, untargeted:

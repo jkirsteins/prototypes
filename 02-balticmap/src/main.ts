@@ -209,16 +209,18 @@ function effectiveFaction(f: string): string {
 function applyOwnership(): void {
   const human = game.players[0];
   const humanOverlord = human ? game.overlords.get(human.factionId) : undefined;
-  const humanRealm = new Set(
+  // `fullRealmOf`, the same count the scoreboard and the win condition apply. A
+  // land a vassal annexed already sits inside the realm outline and wears the
+  // stripes; shading it as somebody else's left one land of your own total
+  // greyed out and outside the halo.
+  const humanRealm =
     inPlay() && human
-      ? realmOf(human.factionId, game.overlords, game.incorporated)
-      : [],
-  );
-  const overlordRealm = new Set(
+      ? fullRealmOf(human.factionId, game.overlords, game.incorporated)
+      : new Set<string>();
+  const overlordRealm =
     inPlay() && humanOverlord !== undefined
-      ? realmOf(humanOverlord, game.overlords, game.incorporated)
-      : [],
-  );
+      ? fullRealmOf(humanOverlord, game.overlords, game.incorporated)
+      : new Set<string>();
   for (const [id, el] of regionPaths) {
     const region = regionById.get(id)!;
     const effective = inPlay() ? effectiveFaction(region.faction) : region.faction;
@@ -459,6 +461,9 @@ function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
   const human = game.players[0];
   if (!inPlay() || !human) return;
+  // One level is enough here, unlike applyOwnership: everything `fullRealmOf`
+  // would add is a faction in `game.incorporated`, and the loop below skips
+  // those outright, so the two spellings badge exactly the same lands.
   const humanRealm = new Set(
     realmOf(human.factionId, game.overlords, game.incorporated),
   );

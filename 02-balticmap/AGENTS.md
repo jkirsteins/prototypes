@@ -101,6 +101,38 @@ A rival's Revolt is not aimed at you, so its `play` is neither notice-worthy nor
 play `.notice-cause` and the filter exempts it. Any new reason for the filter to
 hide a line has to answer the same question.
 
+## Two realm sizes, and only one of them is a score
+
+`src/relations.ts` spells "F's realm" twice, and the two are not
+interchangeable:
+
+- `realmOf` is what F holds **directly** - itself, its vassals, the lands it
+  incorporated. One level out. This is what the rules that scale to direct
+  holding want, and only those: the subjugation bar and `borderStrength` in
+  `src/playability.ts`, the Incorporate scoring in `src/ai.ts`, and the vassal
+  stripe overlay in `src/main.ts`. Subjugate frees its target's vassals the
+  moment it lands, so those vassals must not raise the target's bar.
+- `fullRealmOf` is **every land under F**, adding each vassal's own annexations.
+  This is the answer to "how much of the map is theirs", so it is what the
+  scoreboard, the win condition, the postmortem, the ownership shading and the
+  hover halo count. `incorporate` re-parents a target's annexations to the
+  actor, so `incorporated` is never deeper than one level and two steps reach
+  everything.
+
+The flat version shipped and rotted exactly where you would expect. At turn 35
+the scoreboard read `You 3/15 lands` while four polygons sat inside the player's
+realm. The fourth was Jersika, annexed by the Eastern Aukštaitians, who were the
+player's vassal. Four things drew it as theirs - the union outline and its seam
+removal, the hover halo, the vassal stripes in their own colour, and the hover
+line "Incorporated into Eastern Aukštaitians, itself your vassal" - while the
+score and the win condition walked one level and refused to count it.
+
+So the test to apply to a new caller is not "which function exists" but **which
+question is being asked**. If the answer is a number the player can check
+against the map, it is `fullRealmOf`. Getting this wrong is not a rounding
+error: it silently moved the win condition, and it put a land inside a player's
+own outline that their score would not count.
+
 ## A dark box states its own text colour
 
 `.deck-screen` and the notice overlays are dark; the deck picker's card boxes and

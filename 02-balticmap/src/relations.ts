@@ -84,7 +84,17 @@ export function bumpMightAll(
   return bumpMightAllBy(rel, actor, others, 1);
 }
 
-/** The faction ids in F's realm: itself, its vassals, its incorporated lands. */
+/** What F holds DIRECTLY: itself, its vassals, its incorporated lands. One
+ *  level out - a vassal's own annexations belong to the vassal, not to F.
+ *
+ *  This is the meaning the rules that scale to direct holding want, and only
+ *  those: the subjugation bar and `borderStrength` in `playability.ts`, and the
+ *  vassal stripe overlay. Subjugate frees its target's vassals the moment it
+ *  lands, so they must not raise that target's bar.
+ *
+ *  For "how much of the map is F's" - the scoreboard, the win condition, the
+ *  ownership shading - use `fullRealmOf`. Picking this one there is what put a
+ *  land inside the player's own outline that the scoreboard refused to count. */
 export function realmOf(
   factionId: string,
   overlords: Overlords,
@@ -111,9 +121,15 @@ export function realmRootOf(
   return overlords.get(held) ?? held;
 }
 
-/** Every faction id under one root, including each vassal's own incorporated
- *  lands - which `realmOf` alone misses, since it only walks one level out
- *  from the faction it is given. */
+/** EVERY land under one root, including each vassal's own incorporated lands -
+ *  which `realmOf` alone misses, since it only walks one level out from the
+ *  faction it is given.
+ *
+ *  This is the answer to "how much of the map is theirs", so it is what the
+ *  scoreboard, the win condition, the postmortem, the ownership shading and the
+ *  hover halo all count. `incorporate` re-parents a target's own annexations to
+ *  the actor, so `incorporated` is never deeper than one level and these two
+ *  steps reach everything. */
 export function fullRealmOf(
   root: string,
   overlords: Overlords,

@@ -10,7 +10,7 @@ import {
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
 import { aiTakeTurn, chooseAction } from "./ai";
-import { realmOf } from "./relations";
+import { fullRealmOf } from "./relations";
 
 const data = rawData as MapData;
 
@@ -401,9 +401,11 @@ export interface WorldSummary {
   settlementsWalkedOff: number;
 }
 
+/** Read against the win threshold to tell a slow game from a stalemate, so it
+ *  counts lands the way the win condition does - `fullRealmOf`, not `realmOf`. */
 const biggestRealm = (s: GameState): number =>
   Math.max(
-    ...s.factionIds.map((f) => realmOf(f, s.overlords, s.incorporated).length),
+    ...s.factionIds.map((f) => fullRealmOf(f, s.overlords, s.incorporated).size),
   );
 
 /** One headless game with no privileged seat: all 26 lands hold the same deck
@@ -494,7 +496,10 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     const land = e.targetFactionId;
     if (founder === undefined || land === undefined) continue;
     if (land !== founder) settlementsOnHeldLands++;
-    if (!realmOf(founder, state.overlords, state.incorporated).includes(land)) {
+    // Same reading of "the founder's realm" as the win condition: a land a
+    // vassal has since annexed has not walked off, it is still inside the
+    // founder's outline.
+    if (!fullRealmOf(founder, state.overlords, state.incorporated).has(land)) {
       settlementsWalkedOff++;
     }
   }

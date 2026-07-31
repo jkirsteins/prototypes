@@ -3,7 +3,7 @@ import {
   isHumanTurn, victoryRealmSize, viewOf, type GameEvent, type GameState,
 } from "./game";
 import { flyCard, runAnimation, type Flight } from "./animate";
-import { allianceActive, allianceKey, leadsOf, realmOf } from "./relations";
+import { allianceActive, allianceKey, fullRealmOf, leadsOf } from "./relations";
 import {
   buildRoundSummary, isNoticeWorthy, walkCtxOf,
   type NoticeCtx, type RoundSummary,
@@ -1091,7 +1091,11 @@ export function createHud(
     const rows = standingsFor({
       factionIds: state.factionIds,
       humanFactionId: human?.factionId,
-      realmSize: (f) => realmOf(f, state.overlords, state.incorporated).length,
+      // `fullRealmOf`, the same count the win condition applies: a land a vassal
+      // annexed already sits inside its lord's outline on the map, so a
+      // scoreboard that walked one level was quoting a smaller realm than the
+      // one the player could see.
+      realmSize: (f) => fullRealmOf(f, state.overlords, state.incorporated).size,
       incorporated: state.incorporated,
       needed: victoryRealmSize(state.factionIds.length),
       passiveFor: (f) => passiveFortifyFor(viewOf(state), f),
@@ -1167,9 +1171,9 @@ export function createHud(
     const won = state.phase === "victory";
     pmTitle.textContent = won ? "Victory" : "Game over";
     if (won) {
-      const size = realmOf(
+      const size = fullRealmOf(
         human.factionId, state.overlords, state.incorporated,
-      ).length;
+      ).size;
       setCause([
         t(`You rule the Baltic - ${size} of ${state.factionIds.length} lands`),
       ]);
@@ -1178,9 +1182,9 @@ export function createHud(
     } else if (state.log.some((e) => e.type === "surrendered")) {
       // Conceding has no killer and no buildup to explain. Say what happened
       // and how far off the pace they were, and leave it at that.
-      const size = realmOf(
+      const size = fullRealmOf(
         human.factionId, state.overlords, state.incorporated,
-      ).length;
+      ).size;
       pmTitle.textContent = "Surrendered";
       setCause([
         t(`You conceded with ${size} of the ` +

@@ -1658,6 +1658,28 @@ describe("scoreboard", () => {
     expect(rows.filter((r) => r.classList.contains("sb-you"))).toHaveLength(1);
   });
 
+  it("counts a land your vassal annexed, which the map already draws as yours", () => {
+    // The reported bug, at the scale it was seen: you -> a vassal -> a land the
+    // vassal had annexed. That land carries your stripes, sits inside your realm
+    // outline and hovers as "itself your vassal", so a score that walked one
+    // level was quoting a smaller realm than the player could see.
+    // A fourth faction so the win target is 3 and the count is legible.
+    const { container, hud } = setup();
+    const g = pickFaction(
+      chooseDeck(startGame(newGame([...FACTIONS, "delta"])), buildDeck()),
+      "beta",
+      seededRng(1),
+    );
+    hud.update({
+      ...g,
+      overlords: new Map([["gamma", "beta"]]),
+      incorporated: { alpha: "gamma" },
+    });
+    const you = q(container, ".sb-row.sb-you");
+    // beta + gamma + alpha. One level out stops at 2.
+    expect(you.querySelector(".sb-lands")!.textContent).toBe("3/3 lands");
+  });
+
   it("states the garrison rate on the human's row, the one place the rule is given", () => {
     const { container, hud } = setup();
     // Four annexed lands is exactly PASSIVE_PER_LANDS, so +1 per turn.

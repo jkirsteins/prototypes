@@ -884,6 +884,32 @@ describe("any faction can win", () => {
     expect(g.log.at(-1)).toMatchObject({ type: "unified", overlordFactionId: "alpha" });
   });
 
+  it("counts a land the new vassal had annexed toward the human's win", () => {
+    // The reported bug: the map drew Jersika inside the player's realm - own
+    // outline, own stripes, "itself your vassal" on hover - while the score
+    // walked one level and refused to count it. beta takes gamma, and delta
+    // comes with it: realm 3, the win. A one-level count stops at 2.
+    let g = playingState(LINE_ADJ);
+    g = { ...g, incorporated: { delta: "gamma" } };
+    // gamma's realm is 2 lands, so the bar is SUBJUGATE_THRESHOLD * 2.
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 4));
+    g = withHand(g, 0, ["subjugate"]);
+    g = playCard(g, 0, seededRng(1), "gamma");
+    expect(g.overlords.get("gamma")).toBe("beta");
+    expect(g.phase).toBe("victory");
+  });
+
+  it("counts the same land for a rival, so the two sides read one rule", () => {
+    let g = playingState(LINE_ADJ);
+    // delta has annexed alpha; gamma taking delta inherits both.
+    g = { ...g, current: 2, incorporated: { alpha: "delta" } };
+    g = withRel(g, mightLead(g.relations, "gamma", "delta", 4));
+    g = withHand(g, 2, ["subjugate"]);
+    g = playCard(g, 0, seededRng(1), "delta");
+    expect(g.phase).toBe("defeat");
+    expect(g.log.at(-1)).toMatchObject({ type: "unified", overlordFactionId: "gamma" });
+  });
+
   it("still calls the human's own unification a victory", () => {
     let g = playingState(LINE_ADJ);
     g = {
