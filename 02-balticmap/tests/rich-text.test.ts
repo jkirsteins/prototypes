@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import {
-  t, card, faction, theFaction, factionIds, plainText, renderSegments, cardName,
+  t, card, faction, theFaction, factionIds, joinSegments, plainText, renderSegments, cardName,
   type NameLookup, type RichTextHooks,
 } from "../src/rich-text";
 
@@ -13,6 +13,28 @@ const NAMES: NameLookup = {
 function move(el: HTMLElement, x = 10, y = 20): void {
   el.dispatchEvent(new MouseEvent("mousemove", { clientX: x, clientY: y, bubbles: true }));
 }
+
+describe("joinSegments", () => {
+  const names = (...ids: string[]) => plainText(joinSegments(ids.map((id) => [faction(id)])), NAMES);
+
+  it("joins one, two and three runs the way English does", () => {
+    expect(names("selonians")).toBe("Selonians");
+    expect(names("selonians", "lietuva")).toBe("Selonians and Lietuva");
+    expect(names("a", "b", "c")).toBe("a, b and c");
+  });
+
+  it("is empty for no runs, so a caller never has to special-case it", () => {
+    expect(joinSegments([])).toEqual([]);
+  });
+
+  /** Each item is a run, not a single segment: the tribute footnote joins card
+   *  segments and the release line joins faction ones, and a run may be more
+   *  than one segment long. */
+  it("keeps every segment of a multi-segment run", () => {
+    expect(plainText(joinSegments([[t("held by "), faction("selonians")], [card("raid")]]), NAMES))
+      .toBe("held by Selonians and Raid");
+  });
+});
 
 describe("cardName", () => {
   it("resolves a real card id, and falls back to the raw id otherwise", () => {

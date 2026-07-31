@@ -17,6 +17,17 @@ export const faction = (factionId: string): Segment => ({ kind: "faction", facti
 export const theFaction = (factionId: string): Segment =>
   ({ kind: "faction", factionId, article: true });
 
+/** "A", "A and B", "A, B and C" - the one place a run of names becomes a
+ *  sentence. Was written three times in notices.ts, twice byte-identically,
+ *  each with its own `events.length === 1` branch beside it. Callers that
+ *  need a verb to agree with the run take it from `plural` in plural.ts. */
+export function joinSegments(items: Segment[][]): Segment[] {
+  return items.flatMap((item, i) => {
+    if (i === 0) return item;
+    return [t(i === items.length - 1 ? " and " : ", "), ...item];
+  });
+}
+
 /** The single card-name resolver. Was written twice (hud.ts, deck-screen.ts). */
 export const cardName = (id: string | undefined): string =>
   (id !== undefined ? CARDS[id]?.name : undefined) ?? id ?? "";

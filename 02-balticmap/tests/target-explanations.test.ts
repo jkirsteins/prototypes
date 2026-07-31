@@ -424,7 +424,7 @@ describe("subjugationBreakdown", () => {
     expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([
       { text: "Might +2/6. Opponent's thresholds:", tone: "good", blockStart: true },
       { amount: "4", text: "from realm size (2 lands)" },
-      { amount: "+1", text: "from a settlement" },
+      { amount: "+1", text: "from 1 settlement" },
       { amount: "+1", text: "from their overlord's support" },
       { text: "Status 0/5. Opponent's thresholds:", tone: "good", blockStart: true },
       { amount: "4", text: "from realm size (2 lands)" },

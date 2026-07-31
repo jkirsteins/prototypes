@@ -8,6 +8,7 @@ import {
   type TargetEligibility,
 } from "./playability";
 import { CARDS, DOUBLABLE_CARDS } from "./cards";
+import { count } from "./plural";
 import { leadsOf } from "./relations";
 import { formatLead } from "./view";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
@@ -23,11 +24,9 @@ function explainReason(reason: TargetBlockReason): string[] {
     case "alliance":
       return [`Blocked by Alliance until turn ${reason.expiresTurn}.`];
     case "insufficient-lead": {
-      const lands = `${reason.realmSize} ${reason.realmSize === 1 ? "land" : "lands"}`;
+      const lands = count(reason.realmSize, "land");
       const settled =
-        reason.settlements === 0
-          ? ""
-          : ` and ${reason.settlements} ${reason.settlements === 1 ? "settlement" : "settlements"}`;
+        reason.settlements === 0 ? "" : ` and ${count(reason.settlements, "settlement")}`;
       // The surcharge is named separately or the bar looks wrong: a one-land
       // vassal demanding a lead of 5 makes no sense until you are told that 2
       // of it is the price of prising it off its current lord.
@@ -342,7 +341,7 @@ function trackBlock(
       // SUBJUGATE_THRESHOLD per land - so the column never repeats that
       // multiplication and cannot drift from the heading above it.
       amount: `${parts.status}`,
-      text: `from realm size (${parts.lands} ${parts.lands === 1 ? "land" : "lands"})`,
+      text: `from realm size (${count(parts.lands, "land")})`,
     },
   ];
   // Settlements raise the Might threshold alone, so the Status block must not
@@ -350,10 +349,7 @@ function trackBlock(
   if (parts.settlements > 0 && track === "might") {
     rows.push({
       amount: `+${parts.settlements}`,
-      text:
-        parts.settlements === 1
-          ? "from a settlement"
-          : `from ${parts.settlements} settlements`,
+      text: `from ${count(parts.settlements, "settlement")}`,
     });
   }
   // Named separately or the threshold looks wrong: a one-land vassal demanding

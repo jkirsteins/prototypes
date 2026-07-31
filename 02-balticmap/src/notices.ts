@@ -1,7 +1,8 @@
 import type { GameEvent, GameEventType } from "./game";
 import type { TrackBars } from "./playability";
 import { TRIBUTE_CARDS } from "./cards";
-import { card, faction, t, theFaction, type Segment } from "./rich-text";
+import { count, plural } from "./plural";
+import { card, faction, joinSegments, t, theFaction, type Segment } from "./rich-text";
 import { walkStandings, type StandingChange, type WalkCtx } from "./standings";
 import { barPhrase } from "./view";
 
@@ -64,7 +65,7 @@ export type NoticeRule =
       lines(events: GameEvent[], changes: StandingChange[][], ctx: NoticeCtx): SummaryLine[];
       /** What this group contributes to the footer, if anything. */
       footnotes?(events: GameEvent[], ctx: NoticeCtx): Segment[][];
-      /** Returns the modal title when this event must interrupt even though
+      /** Returns the modal heading when this event must interrupt even though
        *  the player has muted popups (`LogPrefs.showPopups`), or null when it
        *  may be swallowed. Reserve it for things done TO the player that change
        *  the terms they play under - not for merely important news, or the mute
@@ -91,10 +92,44 @@ export type NoticeRule =
        *  player becomes a vassal and when a rival poaches a vassal from them,
        *  which are the two kinds above and take different titles. A round can
        *  hold several critical events at once - see `buildRoundSummary` for
-       *  which of their titles becomes the heading. */
-      critical?(e: GameEvent, ctx: NoticeCtx): string | null;
+       *  which of their titles becomes the heading, and `CriticalTitle` for
+       *  why the heading is a spec rather than a finished string. */
+      critical?(e: GameEvent, ctx: NoticeCtx): CriticalTitle | null;
     }
   | { kind: "silent"; reason: string };
+
+/** A critical heading, before the round is counted. A heading that can only
+ *  ever describe one thing is a plain string - there is exactly one human, so
+ *  "You were subjugated" can never need a plural. A heading describing
+ *  something the round can do more than once carries both forms plus a
+ *  `family`, and every rule returning the same family is counted TOGETHER:
+ *  a round where one vassal is poached and another revolts lost two vassals,
+ *  not one of each. `critical` sees a single event and so can never resolve
+ *  this itself; `buildRoundSummary` holds the batch and does it there.
+ *
+ *  This shipped as a plain string and was wrong in both directions at once -
+ *  "A vassal was taken" over a poach plus a revolt, and a hardcoded "You lost
+ *  your vassals" over a single release. */
+export type CriticalTitle =
+  | string
+  | { family: string; one: string; many: (n: number) => string };
+
+/** A `CriticalTitle` and the round's count for its family, read as one
+ *  heading. The single place a title becomes words, so no caller can pick the
+ *  singular form by forgetting to count. */
+export function resolveTitle(title: CriticalTitle, n: number): string {
+  return typeof title === "string" ? title : plural(n, title.one, title.many(n));
+}
+
+/** The three ways a vassal leaves you - poached, revolted, released when you
+ *  fell - are one heading, because they are one loss to the player and the
+ *  line underneath already says which it was. Shared rather than repeated so
+ *  the family key cannot be typed differently in one of the three. */
+const VASSAL_LOST: CriticalTitle = {
+  family: "vassal-lost",
+  one: "A vassal was lost",
+  many: (n) => `You lost ${count(n, "vassal")}`,
+};
 
 /** Which side of an allegiance change the human is on: the faction that
  *  changed hands (`self`), or the overlord that lost it (`lord`). Null when
@@ -143,22 +178,27 @@ function subjugationRisk(ctx: NoticeCtx, otherId: string): boolean {
 /** The tribute cards named in a row - "A and B", "A, B and C" - as segments,
  *  so each stays a card the player can point at. Built from TRIBUTE_CARDS
  *  rather than written out, so the footnotes cannot fall behind the set. */
-const tributeCardList = (): Segment[] => {
-  const ids = Object.keys(TRIBUTE_CARDS);
-  return ids.flatMap((id, i) => [
-    ...(i === 0 ? [] : [t(i === ids.length - 1 ? " and " : ", ")]),
-    card(id),
-  ]);
-};
+const tributeCardList = (): Segment[] =>
+  joinSegments(Object.keys(TRIBUTE_CARDS).map((id) => [card(id)]));
 
-const PAY_TRIBUTE_FOOTNOTE = (): Segment[] => [
-  ...tributeCardList(),
-  t(" were shuffled into your deck. While either is in hand it must be played first."),
-];
+/** How many cards the two footnotes below are talking about. They used to read
+ *  "were ... While either is in hand", which is only English while
+ *  TRIBUTE_CARDS holds exactly two - the same assumption `tributeCardList`
+ *  was built to avoid. */
+const tributeCount = (): number => Object.keys(TRIBUTE_CARDS).length;
+
+const PAY_TRIBUTE_FOOTNOTE = (): Segment[] => {
+  const n = tributeCount();
+  return [
+    ...tributeCardList(),
+    t(` ${plural(n, "was", "were")} shuffled into your deck. `),
+    t(`While ${plural(n, "it is", "any of them is")} in hand it must be played first.`),
+  ];
+};
 
 const RELEASE_FOOTNOTE = (): Segment[] => [
   ...tributeCardList(),
-  t(" were removed from your deck, hand and discard."),
+  t(` ${plural(tributeCount(), "was", "were")} removed from your deck, hand and discard.`),
 ];
 
 /** Segment-key for footnote dedup: two "your realm is smaller" lines from two
@@ -303,23 +343,12 @@ function reclaimedLines(
 
 function releasedLines(events: GameEvent[], ctx: NoticeCtx, role: HumanRole): SummaryLine[] {
   if (role === "lord") {
-    if (events.length === 1) {
-      return [{
-        text: [t("Your subjugation released "), faction(events[0].targetFactionId ?? ""), t(" from your service")],
-        changes: [],
-        tone: "neutral",
-      }];
-    }
-    const names: Segment[] = events.flatMap((e, i) => {
-      const isLast = i === events.length - 1;
-      const isSecondLast = i === events.length - 2;
-      return [
-        faction(e.targetFactionId ?? ""),
-        ...(isLast ? [] : isSecondLast ? [t(" and ")] : [t(", ")]),
-      ];
-    });
     return [{
-      text: [t("Your subjugation released "), ...names, t(" from your service")],
+      text: [
+        t("Your subjugation released "),
+        ...joinSegments(events.map((e) => [faction(e.targetFactionId ?? "")])),
+        t(" from your service"),
+      ],
       changes: [],
       tone: "neutral",
     }];
@@ -337,23 +366,11 @@ function releasedLines(events: GameEvent[], ctx: NoticeCtx, role: HumanRole): Su
 }
 
 function unrestLines(events: GameEvent[]): SummaryLine[] {
-  if (events.length === 1) {
-    return [{
-      text: [faction(events[0].targetFactionId ?? ""), t(" is preparing a revolt against you")],
-      changes: [],
-      tone: "bad",
-    }];
-  }
-  const names: Segment[] = events.flatMap((e, i) => {
-    const isLast = i === events.length - 1;
-    const isSecondLast = i === events.length - 2;
-    return [
-      faction(e.targetFactionId ?? ""),
-      ...(isLast ? [] : isSecondLast ? [t(" and ")] : [t(", ")]),
-    ];
-  });
   return [{
-    text: [...names, t(" are preparing a revolt against you")],
+    text: [
+      ...joinSegments(events.map((e) => [faction(e.targetFactionId ?? "")])),
+      t(` ${plural(events.length, "is", "are")} preparing a revolt against you`),
+    ],
     changes: [],
     tone: "bad",
   }];
@@ -434,7 +451,7 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // your realm, which lowers the bar for whoever comes for you next - so it
     // interrupts too, under its own title rather than the alarming one.
     critical: (e, ctx) =>
-      humanRoleIn(e, ctx) === "self" ? "You were subjugated" : "A vassal was taken",
+      humanRoleIn(e, ctx) === "self" ? "You were subjugated" : VASSAL_LOST,
     lines: (events, changes, ctx) =>
       subjugatedLines(events, changes, ctx, humanRoleIn(events[0], ctx) ?? "self"),
     footnotes: (events, ctx) => {
@@ -453,7 +470,7 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // plays unlock again, which is exactly the "what you ARE" change that makes
     // subjugation critical, run backwards.
     critical: (e, ctx) =>
-      humanRoleIn(e, ctx) === "self" ? "Your overlord fell" : "You lost your vassals",
+      humanRoleIn(e, ctx) === "self" ? "Your overlord fell" : VASSAL_LOST,
     lines: (events, _changes, ctx) =>
       releasedLines(events, ctx, humanRoleIn(events[0], ctx) ?? "self"),
     footnotes: (events, ctx) => {
@@ -471,10 +488,11 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     kind: "modal",
     appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) === "lord",
     // The other way a vassal leaves you, and it shrinks the realm by exactly as
-    // much as a poach does, so it pierces the mute on the same grounds. The
-    // title cannot name the card: it is a plain string, not a Segment, and
-    // "Revolt" in plain text is what the naming convention forbids.
-    critical: (e, ctx) => (humanRoleIn(e, ctx) === "lord" ? "A vassal broke free" : null),
+    // much as a poach does, so it pierces the mute on the same grounds, under
+    // the same heading. The title could not name the card anyway: it is plain
+    // text, not a Segment, and "Revolt" in plain text is what the naming
+    // convention forbids.
+    critical: (e, ctx) => (humanRoleIn(e, ctx) === "lord" ? VASSAL_LOST : null),
     lines: reclaimedLines,
     footnotes: (_events, ctx) => [realmShrunkFootnote(ctx)],
   },
@@ -633,9 +651,9 @@ export function buildRoundSummary(
     changes: StandingChange[][];
   }[] = [];
   const indexByKey = new Map<string, number>();
-  /** The two candidate titles, and only in criticalOnly mode does the winner
-   *  become the modal's heading - a full round summary keeps its own heading
-   *  even when a subjugation is one of the lines in it.
+  /** The candidate titles by role, and only in criticalOnly mode does the
+   *  winner become the modal's heading - a full round summary keeps its own
+   *  heading even when a subjugation is one of the lines in it.
    *
    *  A batch is a whole AI round, so several critical events can land in one:
    *  one rival can subjugate your overlord (freeing you) while another
@@ -644,9 +662,16 @@ export function buildRoundSummary(
    *  LAST one - events arrive in play order, so that is the standing they wake
    *  up in. Only when nothing changed what they are does the heading fall to
    *  what they LOST, and there the FIRST one reads best: the rest are its
-   *  equals and are all still listed as lines. */
-  let selfTitle: string | null = null;
-  let lordTitle: string | null = null;
+   *  equals and are all still listed as lines.
+   *
+   *  Which of them wins is settled here, but HOW IT READS is not: a title with
+   *  a family is resolved against `familyCounts` below, so a round that lost
+   *  two vassals cannot be headed by the wording for one. */
+  const selfTitles: CriticalTitle[] = [];
+  const lordTitles: CriticalTitle[] = [];
+  /** How many critical events in this batch belong to each title family -
+   *  counted across event types, since that is the whole point of a family. */
+  const familyCounts = new Map<string, number>();
   events.forEach((e, i) => {
     const rule = NOTICE_RULES[e.type];
     if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) return;
@@ -657,8 +682,11 @@ export function buildRoundSummary(
     // describe one with the other's wording.
     const role = humanRoleIn(e, ctx) ?? "self";
     if (criticalTitle !== null) {
-      if (role === "self") selfTitle = criticalTitle;
-      else if (lordTitle === null) lordTitle = criticalTitle;
+      (role === "self" ? selfTitles : lordTitles).push(criticalTitle);
+      if (typeof criticalTitle !== "string") {
+        const f = criticalTitle.family;
+        familyCounts.set(f, (familyCounts.get(f) ?? 0) + 1);
+      }
     }
     const key = `${e.type}:${e.cardId ?? ""}:${e.prevented ? "prevented" : ""}:${role}`;
     let idx = indexByKey.get(key);
@@ -692,7 +720,15 @@ export function buildRoundSummary(
     }
   }
 
-  const title = selfTitle ?? lordTitle;
+  // Last `self`, else first `lord` - see the comment on the two arrays.
+  const chosen: CriticalTitle | undefined = selfTitles[selfTitles.length - 1] ?? lordTitles[0];
+  const title =
+    chosen === undefined
+      ? null
+      : resolveTitle(
+          chosen,
+          typeof chosen === "string" ? 1 : (familyCounts.get(chosen.family) ?? 1),
+        );
   return {
     title:
       opts.criticalOnly && title !== null ? title : ROUND_SUMMARY_TITLE,

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  NOTICE_RULES, ROUND_SUMMARY_TITLE, buildRoundSummary, type NoticeCtx,
+  NOTICE_RULES, ROUND_SUMMARY_TITLE, buildRoundSummary, resolveTitle, type NoticeCtx,
 } from "../src/notices";
 import { plainText, type NameLookup } from "../src/rich-text";
 import type { GameEvent, GameEventType } from "../src/game";
@@ -127,7 +127,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
     )!;
     expect(lineText(s)).toBe("Subjugate by Jersikans - you owe fealty to them");
     expect(footnoteTexts(s)).toEqual([
-      "Pay military tribute and Pay status tribute were shuffled into your deck. While either is in hand it must be played first.",
+      "Pay military tribute and Pay status tribute were shuffled into your deck. While any of them is in hand it must be played first.",
     ]);
   });
 
@@ -529,7 +529,7 @@ describe("buildRoundSummary: batch grouping", () => {
     expect(lineText(s, 0)).toBe("Subjugate by Jersikans - you owe fealty to them");
     expect(lineText(s, 1)).toBe("Subjugate by Latgalians - your allegiance shifts from Jersikans to them");
     expect(footnoteTexts(s)).toEqual([
-      "Pay military tribute and Pay status tribute were shuffled into your deck. While either is in hand it must be played first.",
+      "Pay military tribute and Pay status tribute were shuffled into your deck. While any of them is in hand it must be played first.",
     ]);
   });
 
@@ -752,7 +752,8 @@ describe("critical events pierce a muted popup", () => {
       type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika",
     });
     // Returns the modal title, not a bare true: a rule cannot pierce the mute
-    // without saying what happened.
+    // without saying what happened. There is one human, so this heading never
+    // counts and stays a plain string.
     expect(rule.critical!(becameVassal, ctx)).toBe("You were subjugated");
   });
 
@@ -766,7 +767,7 @@ describe("critical events pierce a muted popup", () => {
       type: "subjugated", playerId: 3, targetFactionId: "curonia",
       overlordFactionId: "latgale", formerOverlordFactionId: "livs",
     });
-    expect(rule.critical!(lostAVassal, ctx)).toBe("A vassal was taken");
+    expect(resolveTitle(rule.critical!(lostAVassal, ctx)!, 1)).toBe("A vassal was lost");
   });
 
   it("marks a vassal's revolt against the human critical", () => {
@@ -776,7 +777,7 @@ describe("critical events pierce a muted popup", () => {
       type: "reclaimed", playerId: 3, cardId: "revolt",
       targetFactionId: "latgale", overlordFactionId: "livs",
     });
-    expect(rule.critical!(brokeFree, ctx)).toBe("A vassal broke free");
+    expect(resolveTitle(rule.critical!(brokeFree, ctx)!, 1)).toBe("A vassal was lost");
   });
 
   /** The human breaking free themselves is their own play. Nothing was done to
@@ -800,8 +801,71 @@ describe("critical events pierce a muted popup", () => {
     const youWentFree = ev({
       type: "released", targetFactionId: "livs", overlordFactionId: "jersika",
     });
-    expect(rule.critical!(yourVassalsScattered, ctx)).toBe("You lost your vassals");
+    // Was a hardcoded "You lost your vassals" that fired for a single one.
+    expect(resolveTitle(rule.critical!(yourVassalsScattered, ctx)!, 1)).toBe("A vassal was lost");
     expect(rule.critical!(youWentFree, ctx)).toBe("Your overlord fell");
+  });
+
+  /** The bug this whole mechanism exists for. `critical` sees one event at a
+   *  time, so the heading it returns cannot know how many of its kind the
+   *  round holds - and a poach and a revolt are not even the same rule. Two
+   *  vassals left the realm; the heading said one. */
+  it("counts a poached vassal and a revolted one as two losses in the heading", () => {
+    const events: GameEvent[] = [
+      ev({
+        type: "subjugated", playerId: 3, targetFactionId: "curonia",
+        overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+      }),
+      ev({
+        type: "reclaimed", playerId: 4, cardId: "revolt",
+        targetFactionId: "latgale", overlordFactionId: "livs",
+      }),
+    ];
+    const muted = buildRoundSummary(events, ctx, { criticalOnly: true })!;
+    expect(muted.title).toBe("You lost 2 vassals");
+    expect(muted.lines).toHaveLength(2);
+  });
+
+  it("counts two poaches in one round", () => {
+    const events: GameEvent[] = [
+      ev({
+        type: "subjugated", playerId: 3, targetFactionId: "curonia",
+        overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+      }),
+      ev({
+        type: "subjugated", playerId: 4, targetFactionId: "latgale",
+        overlordFactionId: "jersika", formerOverlordFactionId: "livs",
+      }),
+    ];
+    expect(buildRoundSummary(events, ctx, { criticalOnly: true })!.title)
+      .toBe("You lost 2 vassals");
+  });
+
+  it("keeps the singular heading when exactly one vassal is lost", () => {
+    const oneRevolt = ev({
+      type: "reclaimed", playerId: 3, cardId: "revolt",
+      targetFactionId: "latgale", overlordFactionId: "livs",
+    });
+    expect(buildRoundSummary([oneRevolt], ctx, { criticalOnly: true })!.title)
+      .toBe("A vassal was lost");
+  });
+
+  /** What the player IS still outranks what they LOST, however many they
+   *  lost - the count decides the wording, never which title wins. */
+  it("still prefers your own subjugation over any number of lost vassals", () => {
+    const events: GameEvent[] = [
+      ev({
+        type: "subjugated", playerId: 3, targetFactionId: "curonia",
+        overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+      }),
+      ev({
+        type: "reclaimed", playerId: 4, cardId: "revolt",
+        targetFactionId: "latgale", overlordFactionId: "livs",
+      }),
+      ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+    ];
+    expect(buildRoundSummary(events, ctx, { criticalOnly: true })!.title)
+      .toBe("You were subjugated");
   });
 
   /** Not a ban on new critical rules - a requirement that adding one is a
@@ -917,7 +981,7 @@ describe("critical events pierce a muted popup", () => {
       }),
     ];
     const muted = buildRoundSummary(events, ctx, { criticalOnly: true });
-    expect(muted!.title).toBe("A vassal broke free");
+    expect(muted!.title).toBe("A vassal was lost");
     expect(muted!.lines).toHaveLength(1);
     expect(lineText(muted)).toContain("Latgalians");
     expect(footnoteTexts(muted).join(" ")).toMatch(/realm is smaller/i);

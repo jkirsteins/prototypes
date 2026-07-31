@@ -1,5 +1,6 @@
 import { ACQUIRABLE_CARDS, CARDS, DECK_SIZE } from "./cards";
 import { runAnimation } from "./animate";
+import { count } from "./plural";
 import { cardName } from "./rich-text";
 
 export interface PackReveal {
@@ -122,8 +123,7 @@ export function createDeckScreen(
 
       const opening = view.pendingPacks > 0 || view.reveal !== null;
       packOverlay.classList.toggle("hidden", !opening);
-      packCount.textContent =
-        `${view.pendingPacks} ${view.pendingPacks === 1 ? "pack" : "packs"} to open`;
+      packCount.textContent = `${count(view.pendingPacks, "pack")} to open`;
       // applyPack has already decremented pendingPacks by the time the reveal
       // for that pack is on screen, so the count would contradict what the
       // player is looking at ("0 packs to open" over an open pack). Hide it

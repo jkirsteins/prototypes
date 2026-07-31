@@ -581,7 +581,7 @@ describe("activity log filters", () => {
     };
     hud.update(g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("A vassal was taken");
+    expect(q(container, ".notice-title").textContent).toBe("A vassal was lost");
   });
 
   /** Your own fall scatters every vassal you held (`freeVassalsOf` in game.ts),
@@ -643,7 +643,7 @@ describe("activity log filters", () => {
     };
     hud.update(g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("A vassal broke free");
+    expect(q(container, ".notice-title").textContent).toBe("A vassal was lost");
     const lines = [...container.querySelectorAll(".notice-line")].map((el) => el.textContent);
     // Only the revolt rides through the mute; the Raid stays in the log.
     expect(lines).toHaveLength(1);
