@@ -128,7 +128,8 @@ const RIVERS = [
 // Attested or archaeologically grounded sites ca. 1100, at the modern
 // coordinates of their hillforts/harbours. Notes are one-line tooltips
 // and must hold for 1100 specifically (hence Daugmale at its peak, an
-// unremarkable Ikskile, and no Riga - it does not exist yet). Each land
+// unremarkable Ikskile, and Rigo the Liv village, not Riga the town, which is a
+// century off). Each land
 // starts with exactly one unlocked settlement; locked entries are
 // authored ahead for future unlocks and are not rendered. labelDy drops
 // a label below its dot where neighbours would collide.
@@ -229,6 +230,10 @@ const SETTLEMENTS = [
   // Reconstructed: the Järva forts Henry names are Kareda and the causeway
   // villages; this one is fixed by the parish that keeps the name.
   { id: "painurme", name: "Päinurme", land: "jarvamaa", unlocked: false, lon: 25.95, lat: 58.85, labelDy: 16, note: "Village on the dry ground between two bogs, where the winter roads out of Järva meet." },
+  // Rigo is the Livonian name of the place, from the Ridzene the village sits
+  // on; the German town founded on top of it in 1201 inherited the name rather
+  // than coining it. Same pattern as Lindanise under Reval.
+  { id: "rigo", name: "Rīgõ", land: "livzeme", unlocked: false, lon: 24.1, lat: 56.95, note: "Liv village and landing at a small river's mouth, downstream of the great market and in its shadow." },
   { id: "ridala", name: "Ridala", land: "laanemaa", unlocked: false, lon: 23.65, lat: 58.9, note: "Fort on the western headland above the shallows, in sight of the island crossings." },
   // Reconstructed: Ugandi's recorded strongholds are Tarbatu and Otepää alone;
   // this stands for the fort on the upper Emajõgi, fixed by the modern parish.
@@ -468,8 +473,8 @@ const LANDS = [
       "rich on river trade with the Rus' towns and Gotland. The hillfort " +
       "town of Daugmale above the river crossing is the busiest market " +
       "on this coast.",
-    places: ["Daugmale", "Ikšķile", "Turaida"],
-    population: 20000, cohesion: "medium",
+    places: ["Daugmale", "Ikšķile", "Turaida", "Rīgõ"],
+    population: 25000, cohesion: "medium",
   },
   {
     id: "kursa", name: "Kursa", faction: "curonian-confederacy",
@@ -1126,7 +1131,7 @@ for (const f of FACTIONS) {
 }
 const usedFactions = new Set();
 const COHESION_TIERS = new Set(["low", "medium", "high"]);
-const EXPECTED_TOTAL_POPULATION = 820000;
+const EXPECTED_TOTAL_POPULATION = 825000;
 
 // Population-correlated settlement slots ("max cities"): one slot per
 // ~10k people, clamped to 2..10. Deliberate game math, not demography.

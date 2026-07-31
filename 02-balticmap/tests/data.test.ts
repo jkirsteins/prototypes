@@ -148,7 +148,7 @@ describe("map.json (anno 1100)", () => {
     expect(region("saaremaa")).toMatchObject({ cohesion: "high" });
   });
 
-  it("populations are 5k multiples totalling 820k", () => {
+  it("populations are 5k multiples totalling 825k", () => {
     let total = 0;
     for (const r of data.regions) {
       expect(Number.isInteger(r.population)).toBe(true);
@@ -157,7 +157,7 @@ describe("map.json (anno 1100)", () => {
       expect(["low", "medium", "high"]).toContain(r.cohesion);
       total += r.population;
     }
-    expect(total).toBe(820000);
+    expect(total).toBe(825000);
   });
 
   it("ravala holds the northwest coast and harjumaa is contiguous", () => {
@@ -211,10 +211,10 @@ describe("map.json (anno 1100)", () => {
     }
   });
 
-  it("has 90 authored settlements, exactly one unlocked per land", () => {
-    expect(data.settlements.length).toBe(90);
+  it("has 91 authored settlements, exactly one unlocked per land", () => {
+    expect(data.settlements.length).toBe(91);
     const ids = data.settlements.map((s) => s.id);
-    expect(new Set(ids).size).toBe(90);
+    expect(new Set(ids).size).toBe(91);
     expect(ids).toEqual([...ids].sort());
     const landIds = new Set(data.regions.map((r) => r.id));
     const unlockedPerLand = new Map<string, number>();
@@ -250,7 +250,7 @@ describe("map.json (anno 1100)", () => {
     // except Pilsotas: at 10,000 people it supports a single slot, so it has
     // no room for one (which is also why Apuole is gone).
     const locked = data.settlements.filter((s) => !s.unlocked);
-    expect(locked.length).toBe(64);
+    expect(locked.length).toBe(65);
     // every land, Pilsotas included - it used to be the one land with no
     // buildable site at all, and so the one land this card was dead on
     expect(new Set(locked.map((s) => s.land)).size).toBe(26);
@@ -272,7 +272,7 @@ describe("map.json (anno 1100)", () => {
       // settlements, but it may not omit a settlement drawn inside that land.
       expect(placesOf.get(s.land)).toContain(s.name);
     }
-    expect(new Set(data.settlements.map((s) => s.name)).size).toBe(90);
+    expect(new Set(data.settlements.map((s) => s.name)).size).toBe(91);
   });
 
   // Mirrors the pipeline's own guard on the baked output, with the geometry
