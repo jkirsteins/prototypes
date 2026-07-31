@@ -25,11 +25,19 @@ export const RARITY_TIERS = [
   // Thresholds set once from the 1500-deck run in src/data/card-impact.json and
   // then frozen. They are cut points in the gaps between measured impacts, so a
   // rerun that nudges a coefficient does not re-tier a card the player owns.
+  // The two cuts are not equally solid, and a maintainer re-tiering should know
+  // which is which before trusting either.
+  //
+  // 0.389 is the midpoint of the 0.404 chasm between Incorporate (0.591) and
+  // Favourable omens (0.187). That gap is 4.6x wider than anything else in the
+  // table and is the only separation two independent seeds agree on. Epic is
+  // measured.
+  //
   // 0.1125 is the midpoint of the 0.087-wide gap between Alliance (0.156) and
-  // Shrewd marriage (0.069), the widest gap in the pool bar one; 0.389 is the
-  // midpoint of that one, the 0.404 chasm between Incorporate (0.591) and
-  // Favourable omens (0.187), which is 4.6x wider than anything else in the
-  // table and is the only separation in it that two independent seeds agree on.
+  // Shrewd marriage (0.069) - the widest gap left, but only just: the runner-up
+  // is 0.083, and on seed 2000 Alliance measured 0.073 and would have fallen
+  // common. Rare is a judgement call resting on a gap the noise can cross.
+  // Treat it as a design decision to playtest, not as a measurement.
   { id: "rare",   weight: 25, minImpact: 0.1125, colour: "#1f6fd0" },
   { id: "epic",   weight:  5, minImpact: 0.389, colour: "#7b2fbf" },
 ] as const satisfies readonly RarityTier[];

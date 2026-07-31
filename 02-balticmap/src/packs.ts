@@ -17,8 +17,10 @@ function rollTier(rng: Rng): CardRarity {
 }
 
 /** Draws PACK_SIZE cards. Each slot rolls a tier, then picks uniformly inside
- *  it; an empty tier falls back to common, which is what makes unpopulated
- *  rare/epic harmless rather than a crash waiting to happen.
+ *  it; an empty tier falls back to the base tier, which is what makes a tier
+ *  nobody has qualified for harmless rather than a crash waiting to happen.
+ *  The base tier is whichever one `RARITY_TIERS` lists first, not the literal
+ *  "common" - naming the tier here is the drift the table exists to prevent.
  *
  *  Deliberately never consults what the player already knows: a duplicate is a
  *  real outcome, shown as "already known" at reveal. Consumes exactly two rng
