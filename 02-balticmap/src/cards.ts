@@ -49,8 +49,19 @@ export const DOUBLABLE_CARDS: ReadonlySet<string> = new Set([
 /** Cards the player knows from their very first game. Everything else in the
  *  roster is earned from packs. Raid, Subjugate and Fortify together cover the
  *  three verbs the game is about - hit someone, take someone, hold everyone -
- *  so a first run is a real game rather than ten turns of turnips. */
-export const STARTING_KNOWN_CARDS: string[] = ["raid", "subjugate", "fortify"];
+ *  so a first run is a real game rather than ten turns of turnips.
+ *
+ *  Seeds of revolt is here for a different reason: it is the only route to a
+ *  Revolt, and a Revolt is the only way a vassal frees itself. Pack-locking it
+ *  meant a first-run player fell into vassalage around turn 6 (measured by the
+ *  `new-player-potatoes` scenario) with no counterplay available to them at
+ *  all, and now that a dead vassalage ends the run outright (see `isStranded`
+ *  in src/game.ts) that would have been a locked door rather than a decision.
+ *  It stays an ordinary optional pick: leaving it out of your ten is allowed,
+ *  and being stranded is then what you chose. */
+export const STARTING_KNOWN_CARDS: string[] = [
+  "raid", "subjugate", "fortify", "seeds-of-revolt",
+];
 
 /** The pack pool: every deck-buildable non-basic you do not start with, in
  *  stable CARDS order. Grow turnips stays free filler outside the pool; Revolt

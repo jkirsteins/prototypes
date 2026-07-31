@@ -26,6 +26,15 @@ export function potatoDeck(): string[] {
   return Array.from({ length: DECK_SIZE }, () => "grow-crops");
 }
 
+/** The same mistake with one slot spent on insurance. Seeds of revolt is a
+ *  starting known card, so this is a deck a first-run player can actually
+ *  build, and the difference between this arm and `potatoes` is exactly what
+ *  the one slot buys: the dead-end vassalage that ends a run outright never
+ *  happens here. */
+export function potatoesPlusSeedsDeck(): string[] {
+  return ["seeds-of-revolt", ...potatoDeck().slice(1)];
+}
+
 /** Linear congruential rng; same generator the tests use, so a seed here
  *  means the same stream everywhere. */
 export function seededRng(seed: number): Rng {
@@ -77,6 +86,7 @@ export const HUMAN_POLICIES: Record<string, HumanTurn> = {
  *  `full` is the default build offered by the deck screen. */
 export const HUMAN_DECKS: Record<string, () => string[]> = {
   potatoes: potatoDeck,
+  "potatoes-plus-seeds": potatoesPlusSeedsDeck,
   full: buildDeck,
 };
 
@@ -112,10 +122,13 @@ export function summarize(
   // A rival unifying the map logs "unified", not "defeat", because its target
   // is the map rather than the human's faction - but it still sets phase to
   // "defeat", and from the human's seat losing the map to someone else is a
-  // loss just the same. Count either event so defeatTurn/conqueror line up
-  // with outcome instead of silently going null while outcome says "defeat".
+  // loss just the same. A vassalage with no way out logs "stranded" for the
+  // same reason: a different terminal event, the same lost run, and its
+  // overlord is the faction that ended it. Count all three so
+  // defeatTurn/conqueror line up with outcome instead of silently going null
+  // while outcome says "defeat".
   const defeat = state.log.find(
-    (e) => e.type === "defeat" || e.type === "unified",
+    (e) => e.type === "defeat" || e.type === "unified" || e.type === "stranded",
   );
   const outcome: Outcome =
     state.phase === "defeat" ? "defeat"

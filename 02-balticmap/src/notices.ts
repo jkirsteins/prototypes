@@ -523,6 +523,15 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   // hud.ts renders unification in the activity log and the post-mortem
   // overlay; no modal notice is needed on top of that.
   unified: { kind: "silent", reason: "postmortem overlay covers it" },
+  // Worth being precise about, because it is not the same as the rules above
+  // it: a modal here would never be seen. This ending sets phase to "defeat"
+  // on the same play as the Subjugate that caused it, and hud.update only
+  // builds a round summary while the phase is "playing" - so the round that
+  // ends the run shows no modal at all, not even the critical `subjugated`
+  // one. The postmortem is the whole explanation, which is why its cause line
+  // names the lord AND both cards that were missing, and why the incorporated
+  // ending has always worked the same way.
+  stranded: { kind: "silent", reason: "postmortem overlay covers it" },
 };
 
 /** Whether a single event would raise a line in the round summary - the same

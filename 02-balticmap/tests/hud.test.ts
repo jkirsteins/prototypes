@@ -803,6 +803,45 @@ describe("hud v2", () => {
     expect(cb.onNewGame).toHaveBeenCalledOnce();
   });
 
+  it("a vassalage with no way out names the lord and the cards you lacked", () => {
+    const { container, hud } = setup();
+    let g = pickFaction(
+      chooseDeck(startGame(newGame([...FACTIONS, "delta"])), buildDeck()),
+      "beta", seededRng(1),
+    );
+    // buildDeck() carries the escape, so the dead end has to be built: empty
+    // every pile of it, then hand beta to gamma.
+    g = {
+      ...g,
+      overlords: new Map([["beta", "gamma"]]),
+      players: g.players.map((pl, i) =>
+        i === 0
+          ? {
+              ...pl,
+              deck: pl.deck.filter((c) => c !== "seeds-of-revolt"),
+              hand: pl.hand.filter((c) => c !== "seeds-of-revolt"),
+              discard: pl.discard.filter((c) => c !== "seeds-of-revolt"),
+            }
+          : pl,
+      ),
+    };
+    g = withHand(g, 0, ["pay-tribute"]);
+    g = playCard(g, 0, seededRng(1), undefined, "might");
+    expect(g.phase).toBe("defeat");
+    hud.update(g);
+    expect(q(container, ".pm-title").textContent).toBe("Game over");
+    expect(q(container, ".pm-cause").textContent).toBe(
+      "Vassal of Gamma with no way out - no Seeds of revolt and no Revolt anywhere in your deck",
+    );
+    // the lord is a node to point at, not text - AGENTS.md
+    expect(q(container, ".pm-cause .rt-faction").textContent).toBe("Gamma");
+    expect(
+      [...container.querySelectorAll(".pm-cause .rt-card")].map((el) => el.textContent),
+    ).toEqual(["Seeds of revolt", "Revolt"]);
+    // and the standing against the lord still gets its comparison line
+    expect(q(container, ".pm-deltas").textContent).toContain("Might");
+  });
+
   it("victory names the realm size", () => {
     const { container, hud } = setup();
     const many = Array.from({ length: 20 }, (_, i) => `f${i}`);

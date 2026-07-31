@@ -259,6 +259,11 @@ export function eventSegments(e: GameEvent, state: GameState): Segment[] {
       return [t("Your realm has been incorporated by "), faction(e.overlordFactionId ?? "")];
     case "unified":
       return [faction(e.overlordFactionId ?? ""), t(" unifies the Balts")];
+    case "stranded":
+      return [
+        t("Your people have no way out of vassalage to "),
+        faction(e.overlordFactionId ?? ""),
+      ];
   }
 }
 
@@ -975,6 +980,42 @@ export function createHud(
     );
   }
 
+  /** The cause line is the one place the postmortem names a faction, so it is
+   *  built from segments like every other named thing in the game (AGENTS.md):
+   *  the name is a node the player can point at to light that realm up on the
+   *  map, not inert text on a screen they see once. */
+  function setCause(segments: Segment[]): void {
+    pmCause.replaceChildren(renderSegments(segments, richTextHooks));
+  }
+
+  /** Where the two of you stood, and the last five things they aimed at you.
+   *  Shared by the endings that have a faction to blame - an incorporation and
+   *  a vassalage with no way out. */
+  function renderEnderComparison(state: GameState, ender: string): void {
+    const human = state.players[0];
+    const l = leadsOf(state.relations, ender, human.factionId);
+    const line = (label: string, n: number) =>
+      `${label}: ${n > 0 ? `they led by ${n}` : n < 0 ? `you led by ${-n}` : "even"}`;
+    pmDeltas.textContent = `${line("Might", l.might)} / ${line("Status", l.status)}`;
+    const enderPlayer = state.players.find((p) => p.factionId === ender);
+    const plays = state.log
+      .filter(
+        (e) =>
+          e.type === "play" &&
+          e.playerId === enderPlayer?.id &&
+          e.targetFactionId === human.factionId,
+      )
+      .slice(-5);
+    pmBuildup.replaceChildren(
+      ...plays.map((e) => {
+        const d = document.createElement("div");
+        d.className = "pm-buildup-entry";
+        d.textContent = `${cardName(e.cardId)} (turn ${e.turn})`;
+        return d;
+      }),
+    );
+  }
+
   function renderPostmortem(state: GameState): void {
     const human = state.players[0];
     const won = state.phase === "victory";
@@ -983,8 +1024,9 @@ export function createHud(
       const size = realmOf(
         human.factionId, state.overlords, state.incorporated,
       ).length;
-      pmCause.textContent =
-        `You rule the Baltic - ${size} of ${state.factionIds.length} lands`;
+      setCause([
+        t(`You rule the Baltic - ${size} of ${state.factionIds.length} lands`),
+      ]);
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();
     } else if (state.log.some((e) => e.type === "surrendered")) {
@@ -994,46 +1036,40 @@ export function createHud(
         human.factionId, state.overlords, state.incorporated,
       ).length;
       pmTitle.textContent = "Surrendered";
-      pmCause.textContent =
-        `You conceded with ${size} of the ` +
-        `${victoryRealmSize(state.factionIds.length)} lands needed`;
+      setCause([
+        t(`You conceded with ${size} of the ` +
+          `${victoryRealmSize(state.factionIds.length)} lands needed`),
+      ]);
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();
     } else {
+      // A dead-end vassalage: the map never moved, so the cause has to say
+      // outright what was missing, and it names both cards so the player can
+      // read what they should have carried and go build it next run.
+      const stranded = [...state.log].reverse().find((e) => e.type === "stranded");
       // A rival unification ends the game the same way an incorporation does,
       // but there is no killer-vs-you comparison to show - just name the winner.
       const unified = [...state.log].reverse().find((e) => e.type === "unified");
-      if (unified !== undefined) {
-        pmCause.textContent =
-          `${factionName(unified.overlordFactionId)} unified the Balts`;
+      if (stranded !== undefined) {
+        const lord = stranded.overlordFactionId;
+        setCause([
+          t("Vassal of "), faction(lord ?? ""), t(" with no way out - no "),
+          card("seeds-of-revolt"), t(" and no "), card("revolt"),
+          t(" anywhere in your deck"),
+        ]);
+        if (lord !== undefined) renderEnderComparison(state, lord);
+      } else if (unified !== undefined) {
+        setCause([
+          faction(unified.overlordFactionId ?? ""), t(" unified the Balts"),
+        ]);
         pmDeltas.textContent = "";
         pmBuildup.replaceChildren();
       } else {
         const defeatEvent = [...state.log].reverse().find((e) => e.type === "defeat");
         const killer = defeatEvent?.overlordFactionId;
-        pmCause.textContent = `Incorporated by ${factionName(killer)}`;
+        setCause([t("Incorporated by "), faction(killer ?? "")]);
         if (killer !== undefined) {
-          const l = leadsOf(state.relations, killer, human.factionId);
-          const line = (label: string, n: number) =>
-            `${label}: ${n > 0 ? `they led by ${n}` : n < 0 ? `you led by ${-n}` : "even"}`;
-          pmDeltas.textContent = `${line("Might", l.might)} / ${line("Status", l.status)}`;
-          const killerPlayer = state.players.find((p) => p.factionId === killer);
-          const plays = state.log
-            .filter(
-              (e) =>
-                e.type === "play" &&
-                e.playerId === killerPlayer?.id &&
-                e.targetFactionId === human.factionId,
-            )
-            .slice(-5);
-          pmBuildup.replaceChildren(
-            ...plays.map((e) => {
-              const d = document.createElement("div");
-              d.className = "pm-buildup-entry";
-              d.textContent = `${cardName(e.cardId)} (turn ${e.turn})`;
-              return d;
-            }),
-          );
+          renderEnderComparison(state, killer);
         }
       }
     }

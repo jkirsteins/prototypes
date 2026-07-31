@@ -267,20 +267,34 @@ describe("rarity and the acquirable pool", () => {
     }
   });
 
-  it("starts the player on Raid, Subjugate and Fortify", () => {
-    expect(STARTING_KNOWN_CARDS).toEqual(["raid", "subjugate", "fortify"]);
+  it("starts the player on Raid, Subjugate, Fortify and Seeds of revolt", () => {
+    expect(STARTING_KNOWN_CARDS).toEqual([
+      "raid", "subjugate", "fortify", "seeds-of-revolt",
+    ]);
     for (const id of STARTING_KNOWN_CARDS) {
       expect(CARDS[id].deckBuildable).toBe(true);
       expect(CARDS[id].maxPerDeck).not.toBeNull();
     }
   });
 
+  it("keeps the only escape from vassalage reachable on a first run", () => {
+    // Seeds of revolt is the only route to a Revolt, and a Revolt is the only
+    // way a vassal frees itself (src/playability.ts). Pack-locking it meant a
+    // first run could reach a position with no legal play but Pay tribute and
+    // no way out of it - which src/game.ts now ends outright, so the card
+    // being reachable from run one is what keeps that ending a decision.
+    // tests/meta.test.ts checks the other half: it can actually be decked.
+    expect(STARTING_KNOWN_CARDS).toContain("seeds-of-revolt");
+  });
+
   it("acquires exactly the deck-buildable non-basics you do not start with", () => {
     expect(ACQUIRABLE_CARDS).toEqual([
-      "shrewd-marriage", "incorporate", "seeds-of-revolt",
+      "shrewd-marriage", "incorporate",
       "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
       "favourable-omens", "found-settlement",
     ]);
+    // the escape is a starting card now, not a pack drop
+    expect(ACQUIRABLE_CARDS).not.toContain("seeds-of-revolt");
     // grow-crops is free filler, not acquirable; revolt and pay-tribute are
     // injection-only and must never appear in a pack.
     expect(ACQUIRABLE_CARDS).not.toContain("grow-crops");

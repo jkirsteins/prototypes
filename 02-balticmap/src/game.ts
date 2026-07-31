@@ -16,7 +16,7 @@ export type GameEventType =
   | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
   | "settled" | "seeded" | "garrisoned"
   | "subjugate-failed" | "incorporate-failed"
-  | "victory" | "defeat" | "unified" | "surrendered";
+  | "victory" | "defeat" | "unified" | "surrendered" | "stranded";
 
 export interface GameEvent {
   turn: number;
@@ -339,6 +339,30 @@ const stripTribute = (p: PlayerState): PlayerState => ({
   discard: p.discard.filter((c) => c !== "pay-tribute"),
 });
 
+/** A vassal holding neither a live Revolt nor a Seeds of revolt can never free
+ *  itself by its own play: Revolt is the only card that ends a vassalage from
+ *  below, and Seeds of revolt is the only route to a Revolt.
+ *
+ *  Scanning all three piles is enough because the piles only ever cycle: a
+ *  played card goes to the discard and `beginTurn` reshuffles the discard back,
+ *  and `stripVassalCards` directly above is the ONLY thing in the game that
+ *  removes a card - and it removes Pay tribute and Revolt, never Seeds of
+ *  revolt. So a Seeds anywhere in the piles will come round again, and a player
+ *  poached out of a live Revolt still holds the Seeds that sowed it.
+ *
+ *  Being freed by a third party toppling your lord is a real escape, but it is
+ *  not one this player can reach for, and while they wait every turn is a
+ *  forced Pay tribute or a forced discard. The run is over; say so. */
+export function isStranded(
+  player: PlayerState,
+  overlords: Overlords,
+): boolean {
+  if (!overlords.has(player.factionId)) return false;
+  return ![...player.deck, ...player.hand, ...player.discard].some(
+    (c) => c === "revolt" || c === "seeds-of-revolt",
+  );
+}
+
 function updateFaction(
   players: PlayerState[],
   factionId: string,
@@ -611,6 +635,21 @@ export function playCard(
       turn: state.turn, playerId: p.id, type: "defeat",
       targetFactionId: humanFaction,
       overlordFactionId: incorporated[humanFaction],
+    });
+  } else if (seat !== null && isStranded(players[seat], overlords)) {
+    // A vassalage with no way out is over even though the map has not moved.
+    // Reading the LOCAL players and overlords rather than `state` matters: both
+    // are the copies this play has already mutated, so the ending lands on the
+    // Subjugate that caused it rather than one play later. This is also why
+    // playCard is the only site that needs the check - it is the only place a
+    // card is ever removed from a pile or an overlord ever recorded.
+    // Deliberately human-only, like its neighbours: an AI vassal with no escape
+    // keeps paying tribute, which is the world working as it always has.
+    phase = "defeat";
+    events.push({
+      turn: state.turn, playerId: p.id, type: "stranded",
+      targetFactionId: players[seat].factionId,
+      overlordFactionId: overlords.get(players[seat].factionId),
     });
   } else if (
     humanFaction !== null &&

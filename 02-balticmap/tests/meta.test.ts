@@ -10,9 +10,9 @@ const rec = (over: Partial<ReturnType<typeof initialMeta>> = {}) => ({
 });
 
 describe("storage round-trip", () => {
-  it("starts you knowing turnips plus Raid, Subjugate and Fortify", () => {
+  it("starts you knowing turnips plus the four starting cards", () => {
     expect(loadMeta(memoryStorage())).toEqual({
-      knownCards: ["grow-crops", "raid", "subjugate", "fortify"],
+      knownCards: ["grow-crops", "raid", "subjugate", "fortify", "seeds-of-revolt"],
       xp: 0, turnipsGrown: 0, packsOpened: 0,
     });
   });
@@ -68,7 +68,7 @@ describe("storage round-trip", () => {
       xp: 10, turnipsGrown: 0, packsOpened: 0,
     }));
     expect(loadMeta(s).knownCards).toEqual([
-      "grow-crops", "raid", "subjugate", "fortify", "alliance",
+      "grow-crops", "raid", "subjugate", "fortify", "seeds-of-revolt", "alliance",
     ]);
   });
 
@@ -153,7 +153,7 @@ describe("collectedCount", () => {
     expect(collectedCount(initialMeta())).toBe(0);
     const { meta } = applyPack(initialMeta(), ["alliance", "bodyguard"]);
     expect(collectedCount(meta)).toBe(2);
-    expect(ACQUIRABLE_CARDS).toHaveLength(9);
+    expect(ACQUIRABLE_CARDS).toHaveLength(8);
   });
 });
 
@@ -166,5 +166,14 @@ describe("buildPlayerDeck", () => {
     expect(deck.filter((id) => id === "raid")).toHaveLength(1);
     expect(deck).not.toContain("alliance");
     expect(deck.filter((id) => id === "grow-crops")).toHaveLength(DECK_SIZE - 1);
+  });
+
+  it("lets a first-run player deck the escape from vassalage", () => {
+    // The other half of the guard in tests/cards.test.ts: knowing the card is
+    // only useful if a fresh record can actually put it in the ten. Without
+    // this the stranded ending in src/game.ts would be a locked door rather
+    // than a decision the player made.
+    const deck = buildPlayerDeck(initialMeta().knownCards, ["seeds-of-revolt"]);
+    expect(deck).toContain("seeds-of-revolt");
   });
 });

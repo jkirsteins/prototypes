@@ -51,6 +51,27 @@ function withRel(g: GameState, relations: Relations): GameState {
   return { ...g, relations };
 }
 
+/** Makes the human a vassal of `lord` for tests that are about something else.
+ *  Keeping a Seeds of revolt in the deck is not decoration: a human vassal
+ *  holding no escape card in any pile is a dead run, and playCard ends it on
+ *  the spot, so a fixture that hand-sets `overlords` and then replaces the hand
+ *  can silently stop testing what it meant to. */
+function asVassal(g: GameState, lord: string): GameState {
+  const human = g.players[0];
+  // Into the DECK, not merely "somewhere in the piles": these fixtures go on to
+  // replace the hand, which would throw away the only copy if it happened to be
+  // dealt there.
+  return {
+    ...g,
+    overlords: new Map([...g.overlords, [human.factionId, lord]]),
+    players: g.players.map((pl, i) =>
+      i === 0 && !pl.deck.includes("seeds-of-revolt")
+        ? { ...pl, deck: [...pl.deck, "seeds-of-revolt"] }
+        : pl,
+    ),
+  };
+}
+
 /** actor leads target by n might */
 function mightLead(rel: Relations, actor: string, target: string, n: number): Relations {
   let out = rel;
@@ -364,11 +385,7 @@ describe("card effects", () => {
       "beta",
       seededRng(1),
     );
-    g = {
-      ...g,
-      overlords: new Map([["beta", "gamma"]]),
-      incorporated: { delta: "gamma" },
-    };
+    g = asVassal({ ...g, incorporated: { delta: "gamma" } }, "gamma");
     g = withHand(g, 0, ["pay-tribute"]);
     const after = playCard(g, 0, rng(), undefined, "status");
     expect(getRel(after.relations, "gamma", "beta").status).toBe(1);
@@ -1135,6 +1152,106 @@ describe("seeds of revolt and the two rolls", () => {
   });
 });
 
+describe("a vassalage with no way out ends the run", () => {
+  /** Empties a seat's piles of both escape cards. `playingState` deals the
+   *  human `buildDeck()`, which carries a Seeds of revolt, so the dead-end
+   *  position has to be built rather than assumed. */
+  function withoutEscape(g: GameState, factionId: string): GameState {
+    const drop = (pile: string[]) =>
+      pile.filter((c) => c !== "seeds-of-revolt" && c !== "revolt");
+    return {
+      ...g,
+      players: g.players.map((pl) =>
+        pl.factionId === factionId
+          ? { ...pl, deck: drop(pl.deck), hand: drop(pl.hand), discard: drop(pl.discard) }
+          : pl,
+      ),
+    };
+  }
+
+  /** alpha, an AI seat, subjugates the human. beta's realm is one land, so the
+   *  flat threshold of 2 applies. */
+  function alphaTakesTheHuman(g: GameState): GameState {
+    let out = withRel(g, mightLead(g.relations, "alpha", "beta", 2));
+    out = { ...out, current: 1 };
+    out = withHand(out, 1, ["subjugate"]);
+    return playCard(out, 0, rng(), "beta");
+  }
+
+  it("ends on the very play that strands you, not a turn later", () => {
+    const after = alphaTakesTheHuman(withoutEscape(playingState(LINE_ADJ), "beta"));
+    expect(after.overlords.get("beta")).toBe("alpha");
+    expect(after.phase).toBe("defeat");
+    // both events land in one play: what happened, then what it means
+    expect(after.log.at(-2)).toMatchObject({ type: "subjugated", targetFactionId: "beta" });
+    expect(after.log.at(-1)).toMatchObject({
+      type: "stranded", targetFactionId: "beta", overlordFactionId: "alpha",
+    });
+  });
+
+  it("leaves the run alive when a Seeds of revolt is still in the piles", () => {
+    let g = withoutEscape(playingState(LINE_ADJ), "beta");
+    g = {
+      ...g,
+      players: g.players.map((pl) =>
+        pl.factionId === "beta" ? { ...pl, discard: [...pl.discard, "seeds-of-revolt"] } : pl,
+      ),
+    };
+    const after = alphaTakesTheHuman(g);
+    expect(after.overlords.get("beta")).toBe("alpha");
+    expect(after.phase).toBe("playing");
+    expect(after.log.some((e) => e.type === "stranded")).toBe(false);
+  });
+
+  it("is not saved by a Revolt carried over from an earlier vassalage", () => {
+    // Subjugate strips the target's vassal cards before injecting the new
+    // tributes, precisely so a Revolt cannot be pre-loaded. That strip runs
+    // before this ending is decided, so a stale Revolt is gone by the time it
+    // is asked about - which is what makes the check honest rather than a
+    // loophole. A Revolt sown during THIS vassalage is different: the Seeds
+    // that sowed it is in the discard, and that is what keeps the run alive.
+    let g = withoutEscape(playingState(LINE_ADJ), "beta");
+    g = {
+      ...g,
+      players: g.players.map((pl) =>
+        pl.factionId === "beta" ? { ...pl, deck: [...pl.deck, "revolt"] } : pl,
+      ),
+    };
+    const after = alphaTakesTheHuman(g);
+    expect([...after.players[0].deck, ...after.players[0].hand]).not.toContain("revolt");
+    expect(after.phase).toBe("defeat");
+  });
+
+  it("does not strand a player poached out of a live Revolt, because the Seeds survives", () => {
+    // The strip invariant this ending rests on: stripVassalCards takes the
+    // Revolt on a poach but never the Seeds that sowed it, so the escape is
+    // still one draw away and the run must go on.
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["beta", "gamma"]]) };
+    g = withHand(g, 0, ["seeds-of-revolt"]);
+    g = playCard(g, 0, rng());
+    expect(g.players[0].deck).toContain("revolt");
+    expect(g.players[0].discard).toContain("seeds-of-revolt");
+
+    const after = alphaTakesTheHuman({ ...g, playedThisTurn: false });
+    expect(after.overlords.get("beta")).toBe("alpha"); // poached
+    const me = after.players[0];
+    expect([...me.deck, ...me.hand, ...me.discard]).not.toContain("revolt"); // stripped
+    expect(me.discard).toContain("seeds-of-revolt"); // and this is why it lives
+    expect(after.phase).toBe("playing");
+  });
+
+  it("is human-only: an AI vassal with no escape keeps paying tribute", () => {
+    let g = withoutEscape(playingState(LINE_ADJ), "gamma");
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after.overlords.get("gamma")).toBe("beta");
+    expect(after.phase).toBe("playing");
+    expect(after.log.some((e) => e.type === "stranded")).toBe(false);
+  });
+});
+
 describe("passive garrison fortify", () => {
   /** `n` lands annexed by `lord`, using ids outside FACTIONS so the four
    *  seats stay sovereign and keep taking turns. */
@@ -1301,8 +1418,7 @@ describe("event amount/track", () => {
   });
 
   it("tribute records mult alongside the track it already carried", () => {
-    let g = playingState(LINE_ADJ);
-    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    let g = asVassal(playingState(LINE_ADJ), "alpha");
     g = { ...g, omens: ["beta"] };
     g = withHand(g, 0, ["pay-tribute"]);
     const after = playCard(g, 0, rng(), undefined, "might");

@@ -116,7 +116,11 @@ describe("naive human policy", () => {
       withHand(vassal, ["grow-crops", "pay-tribute"]),
       seededRng(1),
     );
-    expect(g.log.at(-1)).toMatchObject({ type: "tribute", overlordFactionId: lord });
+    // A potato deck holds no Seeds of revolt, so this vassalage is also a dead
+    // end and the run ends on the same play. The tribute still happened, and
+    // that - not what follows it - is what this test is about.
+    expect(g.log.at(-2)).toMatchObject({ type: "tribute", overlordFactionId: lord });
+    expect(g.log.at(-1)).toMatchObject({ type: "stranded", overlordFactionId: lord });
   });
 });
 

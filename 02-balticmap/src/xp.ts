@@ -30,6 +30,7 @@ export const XP_TABLE: Record<GameEventType, number> = {
   defeat: 0,
   unified: 0,
   surrendered: 0,
+  stranded: 0,
 };
 
 /** Base value plus how far the event moved a relation counter. A four-point

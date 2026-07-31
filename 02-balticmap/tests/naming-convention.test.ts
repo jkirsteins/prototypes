@@ -137,6 +137,10 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
   defeat: [{ turn: 1, playerId: 1, type: "defeat", targetFactionId: H, overlordFactionId: RIVAL }],
   unified: [{ turn: 1, playerId: 1, type: "unified", overlordFactionId: RIVAL }],
   surrendered: [{ turn: 1, playerId: 1, type: "surrendered" }],
+  stranded: [
+    { turn: 1, playerId: 1, type: "stranded", targetFactionId: H, overlordFactionId: RIVAL },
+    { turn: 1, playerId: 2, type: "stranded", targetFactionId: H, overlordFactionId: RIVAL },
+  ],
 };
 
 const ALL_SAMPLE_EVENTS: GameEvent[] = (Object.keys(SAMPLES) as GameEventType[])

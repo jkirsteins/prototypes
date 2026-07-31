@@ -71,15 +71,56 @@ export const SCENARIOS: Scenario[] = [
     expect: {
       subjugatedShare: [0.85, 1],       // measured 1.00
       medianFirstSubjugation: [4, 11],  // measured 6.00
-      // Both moved on 2026-07-30 by the subjugation-stability changeset. The
-      // new player still falls - subjugatedShare is untouched at 1.00, and over
-      // 500 games at the 150-turn cap 94.2% are still defeated. What changed is
-      // WHEN: Incorporate now rolls against a loyalty clock, so the killing
-      // blow lands later and this scenario's 80-turn cap truncates more runs.
-      // The design goal is that falling is how a new player discovers the deck;
-      // they now spend longer fallen, which serves it rather than weakening it.
-      defeatShare: [0.57, 0.85],        // measured 0.71
-      medianDefeatTurn: [11, 29],       // measured 19.00
+      // Both moved on 2026-07-31 by the dead-end-vassalage changeset, and they
+      // are no longer independent numbers. A potato deck holds no Seeds of
+      // revolt, so the first subjugation is also the last thing that happens:
+      // the run ends on that play rather than dragging to an incorporation
+      // some fifteen turns later. defeatShare is therefore the same 1.00 that
+      // subjugatedShare is, and medianDefeatTurn is the same 6.00 that
+      // medianFirstSubjugation is - so both bands are set to the band of the
+      // metric they now shadow, and a future change that separates them again
+      // will show up as a MISS rather than passing quietly.
+      //
+      // This scenario's premise is untouched: falling is still how a new
+      // player discovers the deck, and they still fall in every game. What
+      // they no longer do is spend seventy turns paying tribute with nothing
+      // legal to play. `new-player-with-seeds` below is the other half - the
+      // same player who spent one slot on the escape does not end here.
+      defeatShare: [0.85, 1],           // measured 1.00
+      medianDefeatTurn: [4, 11],        // measured 6.00
+    },
+  },
+  {
+    id: "new-player-with-seeds",
+    description:
+      "The same new player, one slot spent on Seeds of revolt. Guards what " +
+      "that slot buys: they still fall, but the fall is survivable.",
+    humanPolicy: "naive",
+    humanDeck: "potatoes-plus-seeds",
+    arm: "shipped",
+    games: 52,
+    firstSeed: 1,
+    turnCap: 80,
+    expect: {
+      // Paired with new-player-potatoes: same policy, same enemies, same
+      // seeds, one card different. Read the two together, because the pair is
+      // the measurement and neither number means much alone:
+      //
+      //                    potatoes   plus seeds
+      //   subjugatedShare      1.00         1.00   they fall just as often
+      //   medianFirstSubj      6.00         6.00   and just as early
+      //   defeatShare          1.00         0.81   one in five now survives
+      //   medianDefeatTurn     6.00        19.50   and the rest live 13 turns
+      //
+      // One deck slot buys thirteen turns of play and a fifth of the runs
+      // outright. If defeatShare here ever climbs to meet the 1.00 next door,
+      // the dead-end ending has started firing on players who DID carry the
+      // escape, and it has stopped being a decision - which is the whole
+      // premise of putting Seeds of revolt in STARTING_KNOWN_CARDS.
+      subjugatedShare: [0.85, 1],       // measured 1.00
+      medianFirstSubjugation: [4, 11],  // measured 6.00
+      defeatShare: [0.65, 0.92],        // measured 0.81
+      medianDefeatTurn: [13, 30],       // measured 19.50
     },
   },
   {
@@ -96,10 +137,13 @@ export const SCENARIOS: Scenario[] = [
     expect: {
       subjugatedShare: [0.85, 1],       // measured 1.00
       medianFirstSubjugation: [8, 22],  // measured 10.00
-      // Same cause as new-player-potatoes above: the loyalty roll delays the
-      // final incorporation, not the fall into vassalage.
-      defeatShare: [0.48, 0.72],        // measured 0.60
-      medianDefeatTurn: [14, 36],       // measured 23.00
+      // Same cause as new-player-potatoes above, and the same collapse: with
+      // no Seeds of revolt in the deck the first subjugation ends the run, so
+      // these two now shadow the two above them. Note what this arm still
+      // shows, which is the reason it exists: unarmed enemies take four turns
+      // longer to get there (10.00 against 6.00).
+      defeatShare: [0.85, 1],           // measured 1.00
+      medianDefeatTurn: [8, 22],        // measured 10.00
     },
   },
   {
