@@ -12,7 +12,8 @@
 
 ## Global Constraints
 
-- `npm test` and `npm run build` must both pass before every commit.
+- `npm test` must pass before every commit, with no exceptions.
+- `npm run build` (full `tsc`) must pass at Tasks 1, 2, 3 and 8. It is **expected to fail at Tasks 4-7**: this refactor removes `seenThisRun`, `mergeSeen`, `unlockAllSeen` and `lootInfo`, and `main.ts` keeps referencing them until Task 8 rewires it. Each of those tasks states the expected failure. Do not "fix" `main.ts` early to get a green build - that steals Task 8's work and skips its review. Task 8 is where the build goes green again.
 - Stage with explicit paths scoped to `02-balticmap`. Never `git add -A`. Several sessions share this branch.
 - Never interpolate a card or faction name into a string. Build player-facing prose with `t()`, `card()`, `faction()` from `src/rich-text.ts` and hand the array to `renderSegments`. `tests/naming-convention.test.ts` enforces this. (Note: existing deck-screen code uses `cardName(id)` into `textContent`; that is the pre-existing pattern inside `deck-screen.ts` and is what the convention test currently tolerates there. Follow the surrounding file.)
 - Never re-derive an animation's duration. Wait on `runAnimation`'s `onDone`, never a second `setTimeout` set to the same number.
