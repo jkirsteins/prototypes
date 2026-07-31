@@ -132,8 +132,18 @@ const RIVERS = [
 // starts with exactly one unlocked settlement; locked entries are
 // authored ahead for future unlocks and are not rendered. labelDy drops
 // a label below its dot where neighbours would collide.
+//
+// Every land with a spare slot carries exactly one locked entry, and every
+// entry on this map is named - there is no nameless dot. Where nothing
+// usable is attested, which is the Prussian and Yotvingian lands and only
+// those, the name is reconstructed from an attested district, river or
+// surviving toponym, and that row carries a comment saying which. A row
+// with no such comment is claiming attestation.
 const SETTLEMENTS = [
+  { id: "aluksne", name: "Alūksne", land: "talava", unlocked: false, lon: 27.05, lat: 57.42, note: "Latgalian fort of Atzele among the eastern lakes, on the marches toward Pskov." },
   { id: "daugmale", name: "Daugmale", land: "livzeme", unlocked: true, lon: 24.43, lat: 56.84, note: "Great Liv hillfort and market above the Daugava crossing, at the height of its power." },
+  { id: "dignaja", name: "Dignāja", land: "selija", unlocked: false, lon: 26.06, lat: 56.39, labelDy: 16, note: "Selonian fort on the Daugava's left bank, facing the Latgalian shore across the water." },
+  { id: "grobina", name: "Grobiņa", land: "kursa", unlocked: false, lon: 21.16, lat: 56.54, note: "Harbour fort above the Ālande, long past the years when Gotlanders held it." },
   // Balga sits at 19.969,54.568 on a headland that GISCO's 1:1M coastline does
   // not resolve, so the true site clips into the lagoon. Placed 4.0 km inland
   // instead, with 1.1 km of clearance from the coast - the nearest inside point
@@ -142,28 +152,60 @@ const SETTLEMENTS = [
   { id: "honeda", name: "Honeda", land: "notanga", unlocked: true, lon: 19.995, lat: 54.535, note: "Prussian stronghold on the headland above the Vistula Lagoon, watching the shallow crossing." },
   { id: "ikskile", name: "Ikšķile", land: "livzeme", unlocked: false, lon: 24.5, lat: 56.84, labelDy: 16, note: "Liv riverside village; nothing yet marks it out from its neighbours." },
   { id: "impiltis", name: "Impiltis", land: "pilsotas", unlocked: true, lon: 21.22, lat: 56.05, note: "Stronghold of the coastal Curonians above the lagoon shore." },
-  { id: "jersika", name: "Jersika", land: "jersika", unlocked: true, lon: 26.2, lat: 56.27, note: "Seat of the Latgalian princes of the Daugava, looking east to Polotsk." },
+  // Reconstructed: no fort name survives from Nadrawa's interior. Instrutis is
+  // the Prussian form of the river the site sits on, and the coordinate is the
+  // one KALININGRAD_PLACES already vets for this unit.
+  { id: "instrutis", name: "Instrutis", land: "nadrawa", unlocked: false, lon: 21.81, lat: 54.63, note: "Fort where two rivers meet to make the Prieglius, deepest of the Nadruvian holds." },
+  { id: "iru", name: "Iru", land: "ravala", unlocked: false, lon: 24.887, lat: 59.445, labelDy: 16, note: "Hillfort above the Pirita, older than the harbour west of it and quieter every year." },
+  { id: "jersika", name: "Jersika", land: "jersika", unlocked: true, lon: 26.2, lat: 56.27, labelDy: 16, note: "Seat of the Latgalian princes of the Daugava, looking east to Polotsk." },
   { id: "kareda", name: "Kareda", land: "jarvamaa", unlocked: true, lon: 25.75, lat: 58.93, note: "Village among the fields at the heart of the causeway country, where the elders meet." },
+  { id: "kaunas", name: "Kaunas", land: "lietuva", unlocked: false, lon: 23.89, lat: 54.9, note: "Fort where the Neris runs into the Nemunas and both river roads come together." },
   { id: "kaup", name: "Kaup", land: "semba", unlocked: true, lon: 20.53, lat: 54.93, note: "Trading place on the lagoon shore where Prussian amber meets the Baltic sea-road." },
+  { id: "keava", name: "Keava", land: "harjumaa", unlocked: false, lon: 24.79, lat: 58.94, labelDy: 16, note: "Hillfort in the woods south of the great ringfort, holding the road down to Sakala." },
   { id: "kernave", name: "Kernavė", land: "lietuva", unlocked: true, lon: 24.85, lat: 54.89, note: "Cluster of hillforts above the Neris, foremost among the strongholds of Lietuva." },
   { id: "koknese", name: "Koknese", land: "jersika", unlocked: false, lon: 25.44, lat: 56.64, note: "Fortified town on the Daugava's right bank, tollgate of the river road." },
+  { id: "leole", name: "Leole", land: "sakala", unlocked: false, lon: 25.51, lat: 58.56, note: "Timber fort north of the upland's chief seat, holding the tracks toward Järvamaa." },
+  { id: "lihula", name: "Lihula", land: "laanemaa", unlocked: false, lon: 23.84, lat: 58.68, note: "Stronghold on the ridge above the western fields, watching the road down from Matsalu bay." },
   { id: "lindanise", name: "Lindanise", land: "ravala", unlocked: true, lon: 24.74, lat: 59.44, note: "Harbour below the fort where the Gotland run turns east for Novgorod." },
   { id: "medvegalis", name: "Medvėgalis", land: "zemaitija", unlocked: true, lon: 22.11, lat: 55.635, note: "Highest of the Samogitian hillforts, refuge of the lineages around it." },
+  { id: "merkine", name: "Merkinė", land: "dainava", unlocked: false, lon: 24.17, lat: 54.16, note: "Hillfort where the Merkys meets the Nemunas, watching the road south into the forest." },
+  // Reconstructed: Meruniska is one of the Sudovian districts Dusburg names,
+  // used here for the hillfort at its centre - the fort's own name is lost.
+  // The modern Mieruniszki keeps the form and fixes the coordinate.
+  { id: "meruniska", name: "Meruniska", land: "suduva", unlocked: false, lon: 22.444, lat: 54.145, note: "Yotvingian hillfort among the southern lakes, on the track the Mazovians ride up." },
   { id: "mezotne", name: "Mežotne", land: "zemgale", unlocked: false, lon: 24.05, lat: 56.44, note: "Semigallian stronghold guarding the Lielupe river road." },
+  { id: "muhu", name: "Muhu", land: "saaremaa", unlocked: false, lon: 23.15, lat: 58.6, note: "Ringfort on the island in the strait, first landfall for anyone crossing to the mainland." },
+  // Reconstructed: Ornia is the attested Warmian district name; no fort name
+  // survives, so it stands for the settlement at its centre, fixed by the
+  // modern Orneta which keeps the form.
+  { id: "ornia", name: "Ornia", land: "warmi", unlocked: false, lon: 20.135, lat: 54.117, note: "Warmian village between the lagoon country and the lakes, on the track inland from the shore." },
   { id: "otepaa", name: "Otepää", land: "ugandi", unlocked: false, lon: 26.46, lat: 58.06, note: "Upland stronghold of Ugandi on the road from the Rus' towns." },
+  { id: "pada", name: "Pada", land: "virumaa", unlocked: false, lon: 26.62, lat: 59.44, note: "Hillfort and its village on the coast road east, where the Vironian elders take their toll." },
   { id: "punia", name: "Punia", land: "dainava", unlocked: true, lon: 24.09, lat: 54.513, note: "Hillfort above the Nemunas bend, chief refuge of the Dainava bands." },
   { id: "ragaine", name: "Ragaine", land: "nadrawa", unlocked: true, lon: 22.03, lat: 55.03, note: "Fort above the Nemunas where the river road turns inland toward the Samogitian forests." },
   { id: "lecbarg", name: "Lecbarg", land: "warmi", unlocked: true, lon: 20.58, lat: 54.13, note: "Prussian fort above the Alna, where the tracks from the lagoon meet the inland roads." },
   { id: "kwedis", name: "Kwedis", land: "pamede", unlocked: true, lon: 18.93, lat: 53.73, note: "Stronghold above the Vistula's east bank, the Prussian watch on the Polish crossing." },
   { id: "staswiny", name: "Staswiny", land: "galinda", unlocked: true, lon: 21.86, lat: 53.94, note: "Hillfort among the Galindian lakes, reached by causeway and abandoned to the forest in bad years." },
+  // Reconstructed: Sasna is Dusburg's name for the Prussian district on this
+  // march; the settlement at its centre has no recorded name of its own.
+  { id: "sasna", name: "Sasna", land: "pamede", unlocked: false, lon: 20.18, lat: 53.24, note: "Prussian settlement on the southern march, first to see Mazovian riders come up the road." },
+  { id: "satrija", name: "Šatrija", land: "zemaitija", unlocked: false, lon: 22.57, lat: 55.94, note: "Hillfort on the highest hill of the northern Samogitian country, seen a day's ride away." },
   { id: "selpils", name: "Sēlpils", land: "selija", unlocked: true, lon: 25.68, lat: 56.6, labelDy: 16, note: "Old fort of the Selonians on the Daugava's wooded left bank." },
+  // Reconstructed: the largest excavated Galindian hillfort has no recorded
+  // name. Sestin is the Prussian form the modern Szestno preserves, and that
+  // village fixes the coordinate.
+  { id: "sestin", name: "Sestin", land: "galinda", unlocked: false, lon: 21.349, lat: 53.888, note: "Hillfort by the lakes, largest of the holds left standing in this thin-settled country." },
   { id: "soontagana", name: "Soontagana", land: "laanemaa", unlocked: true, lon: 24.08, lat: 58.55, note: "Stronghold of the western Estonians amid bogs, reachable only on winter roads." },
   { id: "sudargas", name: "Sudargas", land: "suduva", unlocked: true, lon: 22.63, lat: 55.04, note: "Line of hillforts above the Nemunas, watching the river road to the west." },
   { id: "talsi", name: "Talsi", land: "kursa", unlocked: true, lon: 22.59, lat: 57.24, note: "Curonian hillfort town among the lakes of Vanema." },
+  { id: "tapiow", name: "Tapiow", land: "notanga", unlocked: false, lon: 21.05, lat: 54.65, note: "Fort at the fork of the Prieglius, holding the water road into the eastern forests." },
   { id: "tarbatu", name: "Tarbatu", land: "ugandi", unlocked: true, lon: 26.72, lat: 58.38, note: "Estonian hillfort above the Emajõgi crossing, key to the eastern road." },
   { id: "tarvanpea", name: "Tarvanpea", land: "virumaa", unlocked: true, lon: 26.355, lat: 59.346, note: "Chief hillfort of the Vironians where the coast road turns toward the east." },
   { id: "tervete", name: "Tērvete", land: "zemgale", unlocked: true, lon: 23.38, lat: 56.48, note: "Chief hillfort of the Semigallians, seat of their strongest chiefs." },
   { id: "trikata", name: "Trikāta", land: "talava", unlocked: true, lon: 25.7, lat: 57.54, note: "Latgalian chief's fort on the upper Gauja, heart of Tālava." },
+  { id: "turi", name: "Türi", land: "jarvamaa", unlocked: false, lon: 25.43, lat: 58.81, note: "Village at the crossing of the Pärnu, where the causeway tracks of the interior meet." },
+  { id: "twangste", name: "Twangste", land: "semba", unlocked: false, lon: 20.51, lat: 54.71, note: "Prussian fort in the oak wood above the Prieglius, where the river turns for the lagoon." },
+  { id: "upyte", name: "Upytė", land: "eastern-aukstaitija", unlocked: false, lon: 24.19, lat: 55.66, note: "Fort above the Nevėžis, seat of the lineages of the northern lake country." },
   { id: "utena", name: "Utena", land: "eastern-aukstaitija", unlocked: true, lon: 25.6, lat: 55.49, note: "Old hillfort seat among the eastern lakes." },
   { id: "valjala", name: "Valjala", land: "saaremaa", unlocked: true, lon: 22.79, lat: 58.4, note: "Chief ringfort of the Osilians, lords of the island sea-roads." },
   { id: "varbola", name: "Varbola", land: "harjumaa", unlocked: true, lon: 24.47, lat: 59.03, note: "Great ringfort of Harjumaa, mightiest stronghold of the Estonian lands." },
@@ -237,7 +279,7 @@ const LANDS = [
       "The wooded inland country behind the coast, ruled by elders from " +
       "hillforts - none greater than the ringfort of Varbola, the " +
       "mightiest stronghold of the Estonian lands.",
-    places: ["Varbola", "Lohu"],
+    places: ["Varbola", "Keava", "Lohu"],
     population: 15000, cohesion: "medium",
   },
   {
@@ -253,7 +295,7 @@ const LANDS = [
       "A broad and prosperous land along the northeastern coast, first of " +
       "the Estonian lands to sight ships from the west. Its districts " +
       "answer to their own elders and to no common lord.",
-    places: ["Tarvanpea", "Mahu"],
+    places: ["Tarvanpea", "Pada", "Mahu"],
     population: 35000, cohesion: "medium",
   },
   {
@@ -263,7 +305,7 @@ const LANDS = [
     flavor:
       "A small inland land of fields and bogs at the crossroads of the " +
       "Estonian interior; armies and traders alike must pass its causeways.",
-    places: ["Kareda"],
+    places: ["Kareda", "Türi"],
     population: 25000, cohesion: "medium",
   },
   {
@@ -339,7 +381,7 @@ const LANDS = [
       "rich on river trade with the Rus' towns and Gotland. The hillfort " +
       "town of Daugmale above the river crossing is the busiest market " +
       "on this coast.",
-    places: ["Daugmale", "Turaida"],
+    places: ["Daugmale", "Ikšķile", "Turaida"],
     population: 20000, cohesion: "medium",
   },
   {
@@ -377,7 +419,7 @@ const LANDS = [
       "The wooded hills of the Selonians on the left bank of the Daugava, " +
       "a scattered people of forest farms below the old fort of Sēlpils, " +
       "with no single center and no common lord.",
-    places: ["Sēlpils", "Viesīte"],
+    places: ["Sēlpils", "Dignāja", "Viesīte"],
     population: 15000, cohesion: "low",
   },
   {
@@ -392,7 +434,7 @@ const LANDS = [
       "Latgalian land on the upper Gauja, paying occasional tribute to " +
       "Pskov, while Liv settlements hold the river's lower reaches. Its " +
       "chiefs rule from timber forts above the valley.",
-    places: ["Beverīna", "Trikāta"],
+    places: ["Beverīna", "Trikāta", "Alūksne"],
     population: 30000, cohesion: "high",
   },
   {
@@ -438,7 +480,7 @@ const LANDS = [
       "The Samogitian uplands between the coast and the river country: " +
       "dense forest, sacred groves, and rival lineages - Karšuva among " +
       "them - who unite only when raiders come.",
-    places: ["Medvėgalis", "Karšuva", "Saulė"],
+    places: ["Medvėgalis", "Šatrija", "Karšuva", "Saulė"],
     population: 70000, cohesion: "low",
   },
   {
@@ -449,7 +491,7 @@ const LANDS = [
       "The land of Lietuva between the Neris and the Nemunas, whose " +
       "war-bands ride yearly against the Rus' towns. Its rival dukes " +
       "feud among themselves as readily as they raid abroad.",
-    places: ["Kernavė", "Vilnia"],
+    places: ["Kernavė", "Kaunas", "Vilnia"],
     population: 60000, cohesion: "medium",
   },
   {
@@ -474,7 +516,7 @@ const LANDS = [
     flavor:
       "Land of the Yotvingian Sudovians, horse-breeders and raiders of the " +
       "western forests, pressed between Mazovian and Rus' spears.",
-    places: ["Šešupė valley"],
+    places: ["Sudargas", "Meruniska", "Šešupė valley"],
     population: 35000, cohesion: "low",
   },
   {
@@ -517,7 +559,7 @@ const LANDS = [
     flavor:
       "The open country south of the Pregolya, running east to Barta: good " +
       "plough land and horse pasture, watched over by forts above the Alle.",
-    places: ["Honeda", "Barta"],
+    places: ["Honeda", "Tapiow", "Barta"],
     population: 30000, cohesion: "medium",
   },
   {
@@ -536,7 +578,7 @@ const LANDS = [
     flavor:
       "Deep forest and marsh along the lower Nemunas, the least settled of " +
       "the Prussian lands and the road by which Samogitian raiders come.",
-    places: ["Ragaine", "Skalva"],
+    places: ["Ragaine", "Instrutis", "Skalva"],
     population: 25000, cohesion: "low",
   },
   {
@@ -580,7 +622,7 @@ const LANDS = [
       "The lake country: more water and forest than field, thinly held by " +
       "scattered lineages. Armies that march into Galinda tend not to find " +
       "anyone to fight.",
-    places: ["Staswiny", "Galindia"],
+    places: ["Staswiny", "Sestin", "Galindia"],
     population: 15000, cohesion: "low",
   },
 ];
@@ -1220,130 +1262,51 @@ const landFeatureById = new Map(
   landFeatures.map((f) => [f.properties.land.id, f]),
 );
 
-// --- Growth sites: the one further site a land can still settle -----------
-// Found a settlement needs somewhere to put the new dot. Four lands already
-// carry an authored locked site (Ikšķile, Koknese, Otepää, Mežotne) and those
-// are used as they are; the rest get one unnamed growth site each, because
-// inventing 22 more named hillforts would be inventing history the map is
-// otherwise careful about.
-//
-// The point is chosen by sampling the land's own polygon on a grid and taking
-// the sample with the best `min(distance to the land's edge, distance to the
-// settlements it already has)`. Both halves are needed: distance from the
-// existing town alone drives the site into a far corner of the land, where it
-// reads as belonging to the neighbour across the border (measured: Žemaitija's
-// and eastern Aukštaitija's first attempts landed one pixel apart), and
-// distance from the edge alone puts it on top of the town already there.
-// Derived from the same geometry the geoContains guard below checks, so it is
-// deterministic and validated like an authored site.
-const GROWTH_GRID = 60;
+// --- The one further site a land can still settle -------------------------
+// Found a settlement needs somewhere to put the new dot, so every land with a
+// spare slot carries exactly one locked entry in SETTLEMENTS above, at the
+// coordinates of a real place. An earlier version generated 21 of those by
+// grid search instead - furthest from the land's edge and from the town
+// already there - and shipped them unnamed and unlabelled, on the reasoning
+// that inventing 21 hillforts was worse than showing none. On the map it read
+// as 21 holes. The separation and label guards below are what that grid
+// search used to give by construction.
 
-function growthSiteFor(land, feature, existing) {
-  const coords = [];
-  const walk = (node) => {
-    if (typeof node[0] === "number") coords.push(node);
-    else node.forEach(walk);
-  };
-  walk(feature.geometry.coordinates);
-  const lons = coords.map((c) => c[0]);
-  const lats = coords.map((c) => c[1]);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const stepLon = (maxLon - minLon) / GROWTH_GRID;
-  const stepLat = (maxLat - minLat) / GROWTH_GRID;
-  // Longitude scaled by cos(lat) so a degree east counts for what it is worth
-  // this far north. Distances are in these scaled degrees throughout.
-  const k = Math.cos(((minLat + maxLat) / 2 * Math.PI) / 180);
-  const cell = Math.min(stepLat, stepLon * k);
-  const at = (i, j) => [minLon + i * stepLon, minLat + j * stepLat];
-  const dist = (a, b) => Math.hypot((a[0] - b[0]) * k, a[1] - b[1]);
-
-  // Contained mask, then a hop count out from the edge (8-connected BFS from
-  // every sample that is not inside the land): a cheap distance-to-edge that
-  // needs no polygon geometry.
-  const n = GROWTH_GRID + 1;
-  const insideMask = new Uint8Array(n * n);
-  const hops = new Int32Array(n * n).fill(-1);
-  const queue = [];
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      const p = at(i, j);
-      if (geoContains(feature, p)) insideMask[i * n + j] = 1;
-      else { hops[i * n + j] = 0; queue.push(i * n + j); }
-    }
-  }
-  for (let q = 0; q < queue.length; q++) {
-    const idx = queue[q];
-    const i = Math.floor(idx / n), j = idx % n;
-    for (let di = -1; di <= 1; di++) {
-      for (let dj = -1; dj <= 1; dj++) {
-        const ni = i + di, nj = j + dj;
-        if (ni < 0 || nj < 0 || ni >= n || nj >= n) continue;
-        const nIdx = ni * n + nj;
-        if (hops[nIdx] !== -1) continue;
-        hops[nIdx] = hops[idx] + 1;
-        queue.push(nIdx);
-      }
-    }
-  }
-
-  let best = null;
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      const idx = i * n + j;
-      if (!insideMask[idx] || hops[idx] < 2) continue; // never hug the edge
-      const p = at(i, j);
-      const score = Math.min(
-        hops[idx] * cell,
-        ...existing.map((s) => dist(p, [s.lon, s.lat])),
-      );
-      if (best === null || score > best.score) {
-        best = { lon: Number(p[0].toFixed(3)), lat: Number(p[1].toFixed(3)), score };
-      }
-    }
-  }
-  if (best === null) {
-    throw new Error(`No interior growth site found in land ${land.id}`);
-  }
-  return {
-    id: `${land.id}-growth`,
-    name: "", // unnamed on purpose: no invented place name, so no map label
-    land: land.id,
-    unlocked: false,
-    lon: best.lon,
-    lat: best.lat,
-    note: `New settlement in ${land.name}.`,
-  };
-}
-
-const GROWTH_SITES = LANDS.flatMap((land) => {
-  const own = SETTLEMENTS.filter((s) => s.land === land.id);
-  if (own.some((s) => !s.unlocked)) return []; // authored locked site already
-  if (own.length >= maxSettlementsFor(land.population)) return []; // no slot
-  return [growthSiteFor(land, landFeatureById.get(land.id), own)];
-});
-
-const ALL_SETTLEMENTS = [...SETTLEMENTS, ...GROWTH_SITES];
-
-// --- Settlement validation: known land, exactly one unlocked per land,
-// exactly one locked "next site" per land that has a spare slot, authored
-// count within the land's slot cap, and the coordinates really fall inside
-// the claimed land (curation guard). Growth sites go through every one of
-// these too - a generated point is not exempt from the guard that caught
-// curation errors in the authored ones.
-const landIdSet = new Set(LANDS.map((l) => l.id));
+// --- Settlement validation: unique id, a name, a known land, exactly one
+// unlocked per land, exactly one locked "next site" per land that has a spare
+// slot, authored count within the land's slot cap, and the coordinates really
+// fall inside the claimed land (curation guard). geoContains is the one that
+// has actually caught curation errors - it is what forced the Balga
+// compromise above - so nothing is exempt from it.
+const landById = new Map(LANDS.map((l) => [l.id, l]));
+const landIdSet = new Set(landById.keys());
+const seenIds = new Set();
 const unlockedPerLand = new Map();
 const lockedPerLand = new Map();
 const authoredPerLand = new Map();
-for (const s of ALL_SETTLEMENTS) {
+for (const s of SETTLEMENTS) {
   if (!landIdSet.has(s.land)) {
     throw new Error(`Settlement ${s.id} claims unknown land ${s.land}`);
+  }
+  if (seenIds.has(s.id)) throw new Error(`Duplicate settlement id ${s.id}`);
+  seenIds.add(s.id);
+  // No nameless dot. A site the player can found is a place with a name, and
+  // the map labels it; a blank here would render as an unlabelled dot with a
+  // tooltip that starts on its second line.
+  if (s.name.trim() === "") throw new Error(`Settlement ${s.id} has no name`);
+  // The land's own place list is the only prose that names its sites, so it
+  // may hold rivers, districts and battles that are not settlements, but it
+  // may not omit a settlement the map draws inside that land.
+  if (!landById.get(s.land).places.includes(s.name)) {
+    throw new Error(
+      `Settlement ${s.name} is missing from the places of land ${s.land}`,
+    );
   }
   authoredPerLand.set(s.land, (authoredPerLand.get(s.land) ?? 0) + 1);
   const per = s.unlocked ? unlockedPerLand : lockedPerLand;
   per.set(s.land, (per.get(s.land) ?? 0) + 1);
 }
-for (const s of ALL_SETTLEMENTS) {
+for (const s of SETTLEMENTS) {
   if (!geoContains(landFeatureById.get(s.land), [s.lon, s.lat])) {
     throw new Error(
       `Settlement ${s.id} at ${s.lon},${s.lat} is not inside land ${s.land}`,
@@ -1527,7 +1490,7 @@ const rivers = RIVERS.flatMap((r) => {
   return [{ id: r.id, name: r.name, major: r.major, path: d }];
 }).sort((a, b) => a.id.localeCompare(b.id));
 
-const settlements = ALL_SETTLEMENTS.map((s) => {
+const settlements = SETTLEMENTS.map((s) => {
   const p = projection([s.lon, s.lat]);
   const inBounds =
     p && p[0] > 0 && p[0] < WIDTH && p[1] > 0 && p[1] < HEIGHT;
@@ -1543,6 +1506,51 @@ const settlements = ALL_SETTLEMENTS.map((s) => {
     ...(s.labelDy !== undefined ? { labelDy: s.labelDy } : {}),
   };
 }).sort((a, b) => a.id.localeCompare(b.id));
+
+// --- Dots and labels must not collide, in pixels ---------------------------
+// Checked here rather than up with the geographic guards because what these
+// protect is the rendered map, and `projection` only exists this far down.
+// Both run over all 51, not the 26 unlocked: any locked site can be revealed
+// mid-game by Found a settlement, and a collision that only appears once
+// somebody plays that card is a collision nobody sees until they do.
+//
+// 7 px is not a taste call: map-render.ts draws every dot at r=3.5, so two
+// centres 7 px apart exactly touch. Measured across the whole map the tightest
+// pair is Daugmale-Iksile at 7.1 px, and the next is Koknese-Selpils at 13 px -
+// which sit in different lands, so the check has to be all-pairs, not
+// per-land. The label box mirrors map-render.ts exactly: text-anchor middle at
+// (x, y + labelDy ?? -7), 12px type per style.css. CHAR_W is deliberately wide
+// for that face, so the guard errs toward complaining.
+const MIN_SETTLEMENT_GAP_PX = 7;
+const LABEL_CHAR_W = 7.2;
+const LABEL_PAD_PX = 2;
+const labelBox = (s) => {
+  const w = s.name.length * LABEL_CHAR_W;
+  const y = s.y + (s.labelDy ?? -7);
+  return { x0: s.x - w / 2, x1: s.x + w / 2, y0: y - 9, y1: y + 3 };
+};
+for (let i = 0; i < settlements.length; i++) {
+  for (let j = i + 1; j < settlements.length; j++) {
+    const a = settlements[i], b = settlements[j];
+    const gap = Math.hypot(a.x - b.x, a.y - b.y);
+    if (gap < MIN_SETTLEMENT_GAP_PX) {
+      throw new Error(
+        `Settlements ${a.id} and ${b.id} are ${gap.toFixed(1)} px apart - ` +
+          `their dots merge into one blob. Move one, or drop the site.`,
+      );
+    }
+    const ba = labelBox(a), bb = labelBox(b);
+    const overlaps =
+      ba.x0 - LABEL_PAD_PX < bb.x1 && bb.x0 - LABEL_PAD_PX < ba.x1 &&
+      ba.y0 - LABEL_PAD_PX < bb.y1 && bb.y0 - LABEL_PAD_PX < ba.y1;
+    if (overlaps) {
+      throw new Error(
+        `Labels ${a.name} and ${b.name} overlap - give one of them a labelDy ` +
+          `to drop it below its dot, the way ikskile and selpils do.`,
+      );
+    }
+  }
+}
 
 const labels = LABELS.flatMap((l) => {
   const projected = projection([l.lon, l.lat]);

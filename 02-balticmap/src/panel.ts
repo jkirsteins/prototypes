@@ -1,10 +1,11 @@
 import type { Settlement } from "./types";
 import { leadClass } from "./view";
 
-/** Growth sites carry no name on purpose (the map invents no place names), so
- *  their tooltip is the note alone rather than a blank first line. */
+/** The one place the settlement tooltip's shape is decided: the place name,
+ *  then what it is in 1100. Every site on the map is named, so there is no
+ *  one-line form. */
 export function settlementTooltipText(s: Settlement): string {
-  return s.name === "" ? s.note : `${s.name}\n${s.note}`;
+  return `${s.name}\n${s.note}`;
 }
 
 /** A run inside a tooltip line that carries its own colour. `lead` marks it as

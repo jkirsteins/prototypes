@@ -15,14 +15,11 @@ const settlements: Settlement[] = [
 ];
 
 describe("settlementTooltipText", () => {
-  it("gives a nameless growth site its note alone, not a blank first line", () => {
-    const growth: Settlement = {
-      id: "talava-growth", name: "", note: "New settlement in Tālava.",
-      land: "talava", unlocked: false, x: 1, y: 2,
-    };
-    expect(settlementTooltipText(growth)).toBe("New settlement in Tālava.");
+  it("names the place on the first line and says what it is on the second", () => {
     expect(settlementTooltipText(settlements[0]))
       .toBe("Trikāta\nLatgalian chief's fort.");
+    expect(settlementTooltipText(settlements[1]))
+      .toBe("Jersika\nSeat of the princes.");
   });
 });
 

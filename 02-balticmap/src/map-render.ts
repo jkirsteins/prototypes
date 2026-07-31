@@ -154,17 +154,15 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     settlementsGroup.appendChild(c);
     settlementDots.set(s.id, c);
     drawn.push(c);
-    // A growth site has no name, deliberately: the map does not invent place
-    // names, so a founded site gets a dot and a tooltip but no label.
-    if (s.name !== "") {
-      const t = el("text");
-      t.classList.add("settlement-label");
-      t.setAttribute("x", String(s.x));
-      t.setAttribute("y", String(s.y + (s.labelDy ?? -7)));
-      t.textContent = s.name;
-      settlementsGroup.appendChild(t);
-      drawn.push(t);
-    }
+    // Every site is named, so every dot gets a label. The pipeline's label
+    // guard is what keeps two of them off each other, using this same offset.
+    const t = el("text");
+    t.classList.add("settlement-label");
+    t.setAttribute("x", String(s.x));
+    t.setAttribute("y", String(s.y + (s.labelDy ?? -7)));
+    t.textContent = s.name;
+    settlementsGroup.appendChild(t);
+    drawn.push(t);
     if (founded) foundedElements.set(s.id, drawn);
   };
   for (const s of data.settlements) {

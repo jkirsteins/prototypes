@@ -93,7 +93,8 @@ describe("renderMap", () => {
     const labels = () => svg.querySelectorAll("text.settlement-label").length;
     const before = { dots: dots(), labels: labels() };
 
-    // An authored locked site keeps its name, so it gets a label.
+    // Every locked site is a named place, so revealing one draws a dot and a
+    // label both - there is no nameless dot left to draw bare.
     const named = data.settlements.find((x) => x.id === "otepaa")!;
     revealSettlement(named);
     expect(dots()).toBe(before.dots + 1);
@@ -101,12 +102,10 @@ describe("renderMap", () => {
     expect(settlementDots.get("otepaa")!.classList.contains("settlement-founded"))
       .toBe(true);
 
-    // A baked growth site has no name, so it gets a dot and no label - the map
-    // invents no place names.
-    const unnamed = data.settlements.find((x) => !x.unlocked && x.name === "")!;
-    revealSettlement(unnamed);
+    const second = data.settlements.find((x) => x.id === "upyte")!;
+    revealSettlement(second);
     expect(dots()).toBe(before.dots + 2);
-    expect(labels()).toBe(before.labels + 1);
+    expect(labels()).toBe(before.labels + 2);
 
     revealSettlement(named); // idempotent: driven from state every refresh
     expect(dots()).toBe(before.dots + 2);
