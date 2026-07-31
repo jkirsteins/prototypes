@@ -67,8 +67,19 @@ export type NoticeRule =
       /** Returns the modal title when this event must interrupt even though
        *  the player has muted popups (`LogPrefs.showPopups`), or null when it
        *  may be swallowed. Reserve it for things done TO the player that change
-       *  what they are allowed to do next - not for merely important news, or
-       *  the mute stops meaning anything.
+       *  the terms they play under - not for merely important news, or the mute
+       *  stops meaning anything. Two kinds qualify, and BOTH directions of each
+       *  do - a change the player is never told about is no less disorienting
+       *  for having been in their favour:
+       *
+       *  - What the player IS. Subjugation walls off their own plays and forces
+       *    tribute into their deck; release takes both back. A muted player
+       *    never told either way discovers it by noticing their cards have
+       *    stopped working, or that cards they were holding are gone.
+       *  - What the player HOLDS. Every vassal lost shrinks the realm, and a
+       *    smaller realm lowers the bar the next rival needs to subjugate them -
+       *    the number `realmShrunkFootnote` prints. Losing one silently means
+       *    playing on against a bar that has moved.
        *
        *  It returns the TITLE rather than a boolean so a rule cannot be marked
        *  critical without saying what happened: a modal that pierced a mute
@@ -76,9 +87,11 @@ export type NoticeRule =
        *  bury the one thing it exists to say.
        *
        *  A function rather than a constant because one event type can be
-       *  critical in one role and not another: `subjugated` fires both when the
+       *  critical in different ways by role: `subjugated` fires both when the
        *  player becomes a vassal and when a rival poaches a vassal from them,
-       *  and only the first takes away their agency. */
+       *  which are the two kinds above and take different titles. A round can
+       *  hold several critical events at once - see `buildRoundSummary` for
+       *  which of their titles becomes the heading. */
       critical?(e: GameEvent, ctx: NoticeCtx): string | null;
     }
   | { kind: "silent"; reason: string };
@@ -414,13 +427,14 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   subjugated: {
     kind: "modal",
     appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) !== null,
-    // Becoming someone's vassal is the one event a muted popup may not
-    // swallow: a forced tribute card enters your deck and your own plays are
-    // walled off until you break free. Losing a different vassal to a rival
-    // is the other role of this same event type and is NOT critical - the
-    // realm shrank, but nothing changed about what you may do next.
+    // Both roles pierce a muted popup, for the two different reasons in the
+    // `critical` doc. Becoming someone's vassal takes your agency: a forced
+    // tribute card enters your deck and your own plays are walled off until you
+    // break free. A rival poaching a vassal leaves your agency alone but shrinks
+    // your realm, which lowers the bar for whoever comes for you next - so it
+    // interrupts too, under its own title rather than the alarming one.
     critical: (e, ctx) =>
-      humanRoleIn(e, ctx) === "self" ? "You were subjugated" : null,
+      humanRoleIn(e, ctx) === "self" ? "You were subjugated" : "A vassal was taken",
     lines: (events, changes, ctx) =>
       subjugatedLines(events, changes, ctx, humanRoleIn(events[0], ctx) ?? "self"),
     footnotes: (events, ctx) => {
@@ -431,6 +445,15 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   released: {
     kind: "modal",
     appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) !== null,
+    // Both roles are the mirror of `subjugated`, and both were being swallowed.
+    // `lord` is what happens to YOUR vassals when you fall - `freeVassalsOf` in
+    // game.ts scatters every one of them - so a muted player was told they owed
+    // fealty and never that their realm had emptied. `self` is the release
+    // itself: the tribute cards leave your deck, hand and discard and your own
+    // plays unlock again, which is exactly the "what you ARE" change that makes
+    // subjugation critical, run backwards.
+    critical: (e, ctx) =>
+      humanRoleIn(e, ctx) === "self" ? "Your overlord fell" : "You lost your vassals",
     lines: (events, _changes, ctx) =>
       releasedLines(events, ctx, humanRoleIn(events[0], ctx) ?? "self"),
     footnotes: (events, ctx) => {
@@ -447,6 +470,11 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // walking out on the human is news, and used to pass unannounced.
     kind: "modal",
     appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) === "lord",
+    // The other way a vassal leaves you, and it shrinks the realm by exactly as
+    // much as a poach does, so it pierces the mute on the same grounds. The
+    // title cannot name the card: it is a plain string, not a Segment, and
+    // "Revolt" in plain text is what the naming convention forbids.
+    critical: (e, ctx) => (humanRoleIn(e, ctx) === "lord" ? "A vassal broke free" : null),
     lines: reclaimedLines,
     footnotes: (_events, ctx) => [realmShrunkFootnote(ctx)],
   },
@@ -605,22 +633,33 @@ export function buildRoundSummary(
     changes: StandingChange[][];
   }[] = [];
   const indexByKey = new Map<string, number>();
-  /** Set by the first critical event in the batch, and only in criticalOnly
-   *  mode does it become the modal's title - a full round summary keeps its
-   *  own heading even when a subjugation is one of the lines in it. */
-  let title: string | null = null;
+  /** The two candidate titles, and only in criticalOnly mode does the winner
+   *  become the modal's heading - a full round summary keeps its own heading
+   *  even when a subjugation is one of the lines in it.
+   *
+   *  A batch is a whole AI round, so several critical events can land in one:
+   *  one rival can subjugate your overlord (freeing you) while another
+   *  subjugates you, and a third poaches a vassal. What the player needs in the
+   *  heading is what they ARE at the end of it, so `self` roles are read to the
+   *  LAST one - events arrive in play order, so that is the standing they wake
+   *  up in. Only when nothing changed what they are does the heading fall to
+   *  what they LOST, and there the FIRST one reads best: the rest are its
+   *  equals and are all still listed as lines. */
+  let selfTitle: string | null = null;
+  let lordTitle: string | null = null;
   events.forEach((e, i) => {
     const rule = NOTICE_RULES[e.type];
     if (rule.kind !== "modal" || !rule.appliesToHuman(e, ctx)) return;
     const criticalTitle = rule.critical?.(e, ctx) ?? null;
     if (opts.criticalOnly && criticalTitle === null) return;
-    // First critical event names the modal. Only one event type is critical
-    // today, so this never has to choose between two competing titles.
-    if (criticalTitle !== null && title === null) title = criticalTitle;
     // The role is part of the key: being subjugated and having a different
     // vassal poached are both `subjugated` events, and merging them would
     // describe one with the other's wording.
     const role = humanRoleIn(e, ctx) ?? "self";
+    if (criticalTitle !== null) {
+      if (role === "self") selfTitle = criticalTitle;
+      else if (lordTitle === null) lordTitle = criticalTitle;
+    }
     const key = `${e.type}:${e.cardId ?? ""}:${e.prevented ? "prevented" : ""}:${role}`;
     let idx = indexByKey.get(key);
     if (idx === undefined) {
@@ -653,6 +692,7 @@ export function buildRoundSummary(
     }
   }
 
+  const title = selfTitle ?? lordTitle;
   return {
     title:
       opts.criticalOnly && title !== null ? title : ROUND_SUMMARY_TITLE,

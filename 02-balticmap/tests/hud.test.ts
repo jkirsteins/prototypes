@@ -561,7 +561,10 @@ describe("activity log filters", () => {
     expect(logTexts).toContain("Alpha played Raid on you (Might +1 -> 0)");
   });
 
-  it("stays silent with popups muted when a rival poaches a vassal from you", () => {
+  /** The other half of the mute's narrow gap: your agency survives a poach, but
+   *  your realm does not, and a smaller realm is a lower bar for whoever comes
+   *  for you next. It interrupts under its own title, not the alarming one. */
+  it("still interrupts for a vassal poached from you with popups muted", () => {
     const { container, hud } = setup();
     popupsCheckbox(container).click(); // off
     let g = playing();
@@ -577,7 +580,76 @@ describe("activity log filters", () => {
       ],
     };
     hud.update(g);
-    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("A vassal was taken");
+  });
+
+  /** Your own fall scatters every vassal you held (`freeVassalsOf` in game.ts),
+   *  and the muted modal used to drop that line and leave you reading only that
+   *  you owed fealty. */
+  it("names the vassals your own subjugation scattered, with popups muted", () => {
+    const { container, hud } = setup();
+    popupsCheckbox(container).click(); // off
+    let g = playing();
+    g = {
+      ...g,
+      overlords: new Map([["beta", "alpha"]]),
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
+        { turn: 1, playerId: 2, type: "released", targetFactionId: "gamma", overlordFactionId: "beta" },
+        { turn: 1, playerId: 2, type: "released", targetFactionId: "delta", overlordFactionId: "beta" },
+      ],
+    };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("You were subjugated");
+    const lines = [...container.querySelectorAll(".notice-line")].map((el) => el.textContent);
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain("Gamma");
+    expect(lines[1]).toContain("Delta");
+  });
+
+  it("still interrupts when your overlord falls and frees you, with popups muted", () => {
+    const { container, hud } = setup();
+    popupsCheckbox(container).click(); // off
+    let g = playing();
+    g = {
+      ...g,
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 3, type: "released", targetFactionId: "beta", overlordFactionId: "alpha" },
+      ],
+    };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("Your overlord fell");
+  });
+
+  it("still interrupts for a vassal breaking free with popups muted", () => {
+    const { container, hud } = setup();
+    popupsCheckbox(container).click(); // off
+    let g = playing();
+    g = {
+      ...g,
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
+        {
+          turn: 1, playerId: 3, type: "reclaimed", cardId: "revolt",
+          targetFactionId: "gamma", overlordFactionId: "beta",
+        },
+      ],
+    };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("A vassal broke free");
+    const lines = [...container.querySelectorAll(".notice-line")].map((el) => el.textContent);
+    // Only the revolt rides through the mute; the Raid stays in the log.
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/cast off/i);
+    const logTexts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
+    expect(logTexts).toContain("Alpha played Raid on you (Might +1 -> 0)");
   });
 });
 

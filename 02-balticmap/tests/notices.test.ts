@@ -756,22 +756,106 @@ describe("critical events pierce a muted popup", () => {
     expect(rule.critical!(becameVassal, ctx)).toBe("You were subjugated");
   });
 
-  it("does not mark a poached vassal critical - the realm shrank, the player did not", () => {
+  /** The other role of the same event type: your agency is intact, but the
+   *  realm is smaller and the bar for the next rival has moved with it. It
+   *  pierces too, under its own title rather than the alarming one. */
+  it("marks a poached vassal critical, under its own title", () => {
     const rule = NOTICE_RULES.subjugated;
     if (rule.kind !== "modal") throw new Error("subjugated must be modal");
     const lostAVassal = ev({
       type: "subjugated", playerId: 3, targetFactionId: "curonia",
       overlordFactionId: "latgale", formerOverlordFactionId: "livs",
     });
-    expect(rule.critical!(lostAVassal, ctx)).toBeNull();
+    expect(rule.critical!(lostAVassal, ctx)).toBe("A vassal was taken");
   });
 
-  it("is the only critical rule in the registry", () => {
+  it("marks a vassal's revolt against the human critical", () => {
+    const rule = NOTICE_RULES.reclaimed;
+    if (rule.kind !== "modal") throw new Error("reclaimed must be modal");
+    const brokeFree = ev({
+      type: "reclaimed", playerId: 3, cardId: "revolt",
+      targetFactionId: "latgale", overlordFactionId: "livs",
+    });
+    expect(rule.critical!(brokeFree, ctx)).toBe("A vassal broke free");
+  });
+
+  /** The human breaking free themselves is their own play. Nothing was done to
+   *  them, so nothing may pierce their mute. */
+  it("does not mark the human's own revolt critical", () => {
+    const rule = NOTICE_RULES.reclaimed;
+    if (rule.kind !== "modal") throw new Error("reclaimed must be modal");
+    const ourOwnRevolt = ev({
+      type: "reclaimed", playerId: 1, cardId: "revolt",
+      targetFactionId: "livs", overlordFactionId: "jersika",
+    });
+    expect(rule.critical!(ourOwnRevolt, ctx)).toBeNull();
+  });
+
+  it("marks both sides of a release critical", () => {
+    const rule = NOTICE_RULES.released;
+    if (rule.kind !== "modal") throw new Error("released must be modal");
+    const yourVassalsScattered = ev({
+      type: "released", targetFactionId: "latgale", overlordFactionId: "livs",
+    });
+    const youWentFree = ev({
+      type: "released", targetFactionId: "livs", overlordFactionId: "jersika",
+    });
+    expect(rule.critical!(yourVassalsScattered, ctx)).toBe("You lost your vassals");
+    expect(rule.critical!(youWentFree, ctx)).toBe("Your overlord fell");
+  });
+
+  /** Not a ban on new critical rules - a requirement that adding one is a
+   *  deliberate edit here rather than a side effect somewhere else. */
+  it("names every critical rule in the registry", () => {
     const critical = ALL_TYPES.filter((t) => {
       const rule = NOTICE_RULES[t];
       return rule.kind === "modal" && rule.critical !== undefined;
     });
-    expect(critical).toEqual(["subjugated"]);
+    expect(critical).toEqual(["subjugated", "released", "reclaimed"]);
+  });
+
+  /** Being subjugated runs `freeVassalsOf` on you, so your whole realm walks
+   *  out in the same breath. This shipped telling a muted player only that they
+   *  owed fealty, and never that they had nothing left. */
+  it("keeps the scattered vassals beside your own subjugation when muted", () => {
+    const events: GameEvent[] = [
+      ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+      ev({ type: "released", targetFactionId: "latgale", overlordFactionId: "livs" }),
+      ev({ type: "released", targetFactionId: "curonia", overlordFactionId: "livs" }),
+    ];
+    const muted = buildRoundSummary(events, ctx, { criticalOnly: true });
+    expect(muted!.title).toBe("You were subjugated");
+    // The two releases collapse into one line naming both, as they do unmuted.
+    expect(muted!.lines).toHaveLength(2);
+    const scattered = plainText(muted!.lines[1].text, nameLookup);
+    expect(scattered).toContain("Latgalians");
+    expect(scattered).toContain("Curonians");
+  });
+
+  it("interrupts a muted round when your overlord falls and frees you", () => {
+    const muted = buildRoundSummary(
+      [ev({ type: "released", playerId: 3, targetFactionId: "livs", overlordFactionId: "jersika" })],
+      ctx, { criticalOnly: true },
+    );
+    expect(muted!.title).toBe("Your overlord fell");
+    expect(muted!.lines).toHaveLength(1);
+    // The actionable half: the forced tribute cards have left your deck.
+    expect(footnoteTexts(muted).join(" ")).toMatch(/removed from your deck/i);
+  });
+
+  /** Two `self` titles can now compete, and role alone cannot order them. The
+   *  heading is the standing the player wakes up in, so the LAST one wins. */
+  it("titles a muted round after where the player ended, not where they passed through", () => {
+    const freed = ev({
+      type: "released", playerId: 3, targetFactionId: "livs", overlordFactionId: "jersika",
+    });
+    const taken = ev({
+      type: "subjugated", targetFactionId: "livs", overlordFactionId: "latgale",
+    });
+    expect(buildRoundSummary([freed, taken], ctx, { criticalOnly: true })!.title)
+      .toBe("You were subjugated");
+    expect(buildRoundSummary([taken, freed], ctx, { criticalOnly: true })!.title)
+      .toBe("Your overlord fell");
   });
 
   it("criticalOnly keeps the subjugation and drops everything else", () => {
@@ -810,16 +894,52 @@ describe("critical events pierce a muted popup", () => {
     expect(footnoteTexts(muted).join(" ")).toMatch(/tribute/i);
   });
 
+  /** Both of these are notice-worthy - unmuted they are lines in the summary -
+   *  and neither costs the player their standing or a vassal, so the mute holds. */
   it("stays silent when a muted round holds nothing critical", () => {
     const events: GameEvent[] = [
       ev({ type: "play", cardId: "raid", targetFactionId: "livs", track: "might", amount: 2 }),
       ev({
-        type: "subjugated", playerId: 3, targetFactionId: "curonia",
+        type: "subjugate-failed", playerId: 3, targetFactionId: "curonia",
         overlordFactionId: "latgale", formerOverlordFactionId: "livs",
       }),
     ];
     expect(buildRoundSummary(events, ctx)).not.toBeNull();
     expect(buildRoundSummary(events, ctx, { criticalOnly: true })).toBeNull();
+  });
+
+  it("criticalOnly keeps a vassal's revolt, with the realm-shrunk warning", () => {
+    const events: GameEvent[] = [
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", track: "might", amount: 2 }),
+      ev({
+        type: "reclaimed", playerId: 3, cardId: "revolt",
+        targetFactionId: "latgale", overlordFactionId: "livs",
+      }),
+    ];
+    const muted = buildRoundSummary(events, ctx, { criticalOnly: true });
+    expect(muted!.title).toBe("A vassal broke free");
+    expect(muted!.lines).toHaveLength(1);
+    expect(lineText(muted)).toContain("Latgalians");
+    expect(footnoteTexts(muted).join(" ")).toMatch(/realm is smaller/i);
+  });
+
+  /** A batch is a whole AI round: one rival can poach a vassal while another
+   *  subjugates you. What you became outranks what you lost, whichever played
+   *  first - otherwise the modal buries the one thing it pierced the mute for. */
+  it("titles a muted round after the subjugation, not the lost vassal, in either order", () => {
+    const becameVassal = ev({
+      type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika",
+    });
+    const brokeFree = ev({
+      type: "reclaimed", playerId: 3, cardId: "revolt",
+      targetFactionId: "latgale", overlordFactionId: "livs",
+    });
+    for (const events of [[brokeFree, becameVassal], [becameVassal, brokeFree]]) {
+      const muted = buildRoundSummary(events, ctx, { criticalOnly: true });
+      expect(muted!.title).toBe("You were subjugated");
+      // Both still get their line - the precedence picks the heading only.
+      expect(muted!.lines).toHaveLength(2);
+    }
   });
 
   /** The standings walk must still see the whole batch. Filtering the input
