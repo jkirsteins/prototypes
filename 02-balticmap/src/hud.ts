@@ -18,7 +18,7 @@ import { memoryStorage, type MetaStorage } from "./meta";
 import { levelWindow, runXp } from "./xp";
 import { standingChangeText, standingsFor } from "./view";
 import {
-  card, cardName, faction, renderSegments, t, theFaction,
+  card, cardName, faction, factionIds, renderSegments, t, theFaction,
   type RichTextHooks, type Segment,
 } from "./rich-text";
 
@@ -72,6 +72,10 @@ export interface Hud {
    *  resolving at a time, and the replaced continuation is by definition
    *  stale. */
   afterPlayAnimation(fn: () => void): void;
+  /** Dims the activity log to the lines that name this faction; null clears.
+   *  The mirror of `HudCallbacks.onHighlightFaction`, which lights the map from
+   *  a name in prose: one hover, two views of it, and the caller sets both. */
+  highlightFaction(factionId: string | null): void;
 }
 
 const FAN_ANGLE_DEG = 5;
@@ -681,6 +685,20 @@ export function createHud(
   let pendingPlayRect: DOMRect | null = null;
   let renderedEvents = 0;
   let lastRenderedTurn = 0;
+  /** The faction the map is currently lighting, so the log can agree with it.
+   *  Held rather than read back off the DOM because entries appended while a
+   *  hover is live have to arrive already dimmed. */
+  let highlightedFaction: string | null = null;
+
+  /** Sets one entry's dimming from `highlightedFaction`. An entry is lit when
+   *  it names that faction - `data-factions`, written in renderLog. */
+  function applyLogHighlight(entry: HTMLElement): void {
+    entry.classList.toggle(
+      "log-lit",
+      highlightedFaction !== null &&
+        (entry.dataset.factions ?? "").split(" ").includes(highlightedFaction),
+    );
+  }
 
   /** Appends entries for events not yet rendered; returns those events so
    *  animations can key off the same diff. */
@@ -785,7 +803,18 @@ export function createHud(
       if (!isObservable(e, humanFactionId)) return;
       const entry = document.createElement("div");
       entry.className = "log-entry log-new";
-      entry.replaceChildren(renderSegments(eventSegments(e, state), richTextHooks));
+      const segs = eventSegments(e, state);
+      entry.replaceChildren(renderSegments(segs, richTextHooks));
+      // Which factions this line is about, for the highlight. Read off the
+      // segments, so a line lights exactly when it visibly names the faction -
+      // plus the actor when that is you, because your own actions render as
+      // "You" and name no faction at all.
+      const named = factionIds(segs);
+      if (e.playerId === 1 && humanFactionId !== undefined && !named.includes(humanFactionId)) {
+        named.push(humanFactionId);
+      }
+      entry.dataset.factions = named.join(" ");
+      applyLogHighlight(entry);
       const impact = impactText(e, changes[i] ?? []);
       if (impact !== null) {
         const span = document.createElement("span");
@@ -1224,6 +1253,19 @@ export function createHud(
       }
       const longestMs = Math.max(...[...liveFlights].map((f) => f.totalMs));
       watchdog = setTimeout(settleTurn, longestMs + FLIGHT_WATCHDOG_SLACK_MS);
+    },
+    highlightFaction(factionId) {
+      // The hover that drives this fires on mousemove, so it arrives once per
+      // pixel of travel across the same name: everything below is skipped
+      // while the answer cannot have changed.
+      if (factionId === highlightedFaction) return;
+      highlightedFaction = factionId;
+      logPanel.classList.toggle("log-highlighting", factionId !== null);
+      for (const entry of logEntries.children) {
+        if (entry instanceof HTMLElement && entry.classList.contains("log-entry")) {
+          applyLogHighlight(entry);
+        }
+      }
     },
   };
 }

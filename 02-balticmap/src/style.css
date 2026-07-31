@@ -683,6 +683,20 @@ svg.map.dragging {
   display: none;
 }
 
+/* Highlighting a faction - hovering its land, or its name anywhere in prose -
+   fades the log back to the lines that name it. Each entry carries the
+   factions it names in data-factions and is tagged .log-lit from that (see
+   applyLogHighlight in hud.ts). Dimming the rest rather than tinting the
+   matches, both because .log-you and .log-mine already own the emphasis
+   register here and because it is the same "fade what is not it" the map does
+   with .region.dimmed. No transition: the halo it echoes appears at once, and
+   a fade would trail a cursor sweeping across regions. The .log-turn
+   separators are left alone - they name no faction, and dimming them would
+   make the log look half-loaded. */
+.activity-log.log-highlighting .log-entry:not(.log-lit) {
+  opacity: 0.35;
+}
+
 .activity-log-entries {
   max-height: 45vh;
   overflow-y: auto;

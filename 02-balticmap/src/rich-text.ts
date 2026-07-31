@@ -55,6 +55,20 @@ export function plainText(segs: Segment[], names: NameLookup): string {
     .join("");
 }
 
+/** Every faction a run of prose names, in order, deduplicated. The counterpart
+ *  to `plainText`: what the line *says*, rather than how it reads. Callers that
+ *  want to know which factions a line is about read it off the segments - the
+ *  same description `renderSegments` turns into hoverable nodes - rather than
+ *  re-deriving it from the event that produced them, which is how the two get
+ *  to disagree. */
+export function factionIds(segs: Segment[]): string[] {
+  const ids: string[] = [];
+  for (const seg of segs) {
+    if (seg.kind === "faction" && !ids.includes(seg.factionId)) ids.push(seg.factionId);
+  }
+  return ids;
+}
+
 /** One `DocumentFragment` per run. Named segments become
  *  `<span class="rt-card">` / `<span class="rt-faction">` with hover handlers,
  *  so `element.textContent` still reads as the whole sentence - which is what

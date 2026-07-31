@@ -61,8 +61,10 @@ function setup(opts?: {
       : {}),
     ...(opts?.lifetimeXp ? { lifetimeXp: opts.lifetimeXp } : {}),
   };
+  // Delta is here for the tests that need a fourth faction; FACTIONS itself
+  // stays three, so nothing else renders it.
   const hud = createHud(container, cb, new Map([
-    ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
+    ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"], ["delta", "Delta"],
   ]), opts?.placeNameFactionIds, opts?.logStorage ?? memoryStorage());
   return { container, cb, hud };
 }
@@ -1582,5 +1584,80 @@ describe("surrender", () => {
     expect(q(container, ".pm-title").textContent).toBe("Surrendered");
     expect(q(container, ".pm-cause").textContent).toContain("You conceded");
     expect(q(container, ".pm-deltas").textContent).toBe("");
+  });
+});
+
+describe("faction highlight in the activity log", () => {
+  // Four factions so a line can name neither the human nor the faction under
+  // test: with three, every pair that excludes the human is the same pair.
+  const FOUR = ["alpha", "beta", "gamma", "delta"];
+
+  /** The human is beta. */
+  function playing(): GameState {
+    return pickFaction(chooseDeck(startGame(newGame(FOUR)), buildDeck()), "beta", seededRng(1));
+  }
+
+  const YOURS: GameEvent = {
+    turn: 1, playerId: 1, type: "play", cardId: "raid", targetFactionId: "alpha",
+  };
+  const THEIRS: GameEvent = {
+    turn: 1, playerId: 3, type: "subjugated",
+    targetFactionId: "delta", overlordFactionId: "gamma",
+  };
+
+  const withEvents = (g: GameState, events: GameEvent[]): GameState =>
+    ({ ...g, log: [...g.log, ...events] });
+
+  const entries = (c: HTMLElement) =>
+    [...c.querySelectorAll(".log-entry")] as HTMLElement[];
+  const lit = (c: HTMLElement) =>
+    entries(c).filter((el) => el.classList.contains("log-lit"))
+      .map((el) => el.textContent ?? "");
+  const entryStarting = (c: HTMLElement, text: string) =>
+    entries(c).find((el) => (el.textContent ?? "").startsWith(text))!;
+
+  it("tags each entry with the factions it names, your own line with yours", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [YOURS, THEIRS]));
+    // "You played Raid on Alpha" names no faction for the actor, so the
+    // human's own faction is added or hovering your realm would light nothing.
+    expect(entryStarting(container, "You played Raid on Alpha").dataset.factions)
+      .toBe("alpha beta");
+    expect(entryStarting(container, "Delta submits to Gamma").dataset.factions)
+      .toBe("delta gamma");
+  });
+
+  it("dims the log to the lines naming the highlighted faction, and clears", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [YOURS, THEIRS]));
+    const panel = q(container, ".activity-log");
+
+    hud.highlightFaction("alpha");
+    expect(panel.classList.contains("log-highlighting")).toBe(true);
+    expect(lit(container)).toEqual(["You played Raid on Alpha"]);
+
+    hud.highlightFaction("gamma");
+    expect(lit(container)).toEqual(["Delta submits to Gamma"]);
+
+    hud.highlightFaction(null);
+    expect(panel.classList.contains("log-highlighting")).toBe(false);
+    expect(lit(container)).toEqual([]);
+  });
+
+  it("lights your own actions when your own faction is highlighted", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [YOURS, THEIRS]));
+    hud.highlightFaction("beta");
+    expect(lit(container)).toEqual(["You played Raid on Alpha"]);
+  });
+
+  it("an entry appended while a highlight is live arrives already dimmed", () => {
+    const { container, hud } = setup();
+    const g = withEvents(playing(), [YOURS]);
+    hud.update(g);
+    hud.highlightFaction("gamma");
+    expect(lit(container)).toEqual([]);
+    hud.update(withEvents(g, [THEIRS]));
+    expect(lit(container)).toEqual(["Delta submits to Gamma"]);
   });
 });

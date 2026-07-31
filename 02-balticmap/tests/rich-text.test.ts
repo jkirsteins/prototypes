@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import {
-  t, card, faction, theFaction, plainText, renderSegments, cardName,
+  t, card, faction, theFaction, factionIds, plainText, renderSegments, cardName,
   type NameLookup, type RichTextHooks,
 } from "../src/rich-text";
 
@@ -19,6 +19,20 @@ describe("cardName", () => {
     expect(cardName("raid")).toBe("Raid");
     expect(cardName("not-a-card")).toBe("not-a-card");
     expect(cardName(undefined)).toBe("");
+  });
+});
+
+describe("factionIds", () => {
+  it("lists every faction named, in order, once each", () => {
+    const segs = [
+      faction("selonians"), t(" submits to "), theFaction("lietuva"),
+      t(", against "), faction("selonians"),
+    ];
+    expect(factionIds(segs)).toEqual(["selonians", "lietuva"]);
+  });
+
+  it("is empty for a line that names no faction", () => {
+    expect(factionIds([t("You drew "), card("raid")])).toEqual([]);
   });
 });
 

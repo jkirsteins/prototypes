@@ -452,10 +452,23 @@ function applyTargeting(): void {
     el.classList.toggle("target-valid", valid);
     el.classList.toggle("target-invalid", armed !== null && !valid);
   }
-  if (armed !== null) applyRealmHover(null); // targeting cues win the map
+  if (armed !== null) applyHighlight(null, null); // targeting cues win the map
   // Arming and disarming both land here without a full refresh, and the badges
   // are part of the targeting picture - see renderThreatBadges.
   renderThreatBadges();
+}
+
+/** The one place a faction highlight is applied. The map halo and the activity
+ *  log are two views of the same hover, so they are always set together and a
+ *  new call site cannot light one and leave the other stale. The log takes the
+ *  faction id rather than the region because a name hovered in prose has an id
+ *  and may have no polygon at all. */
+function applyHighlight(region: Region | null, factionId: string | null): void {
+  applyRealmHover(region);
+  // The same suppression applyRealmHover applies to the map: while a card is
+  // armed the targeting cues own the screen, and a log dimmed to some faction
+  // the player is only passing over would be reading as part of that.
+  hud.highlightFaction(inPlay() && armed === null ? factionId : null);
 }
 
 /** Every polygon belonging to the hovered region's realm root (owner if
@@ -541,7 +554,7 @@ function refresh(): void {
   revealFoundedSettlements();
   renderThreatBadges();
   hud.update(game);
-  applyRealmHover(hoveredRegion);
+  applyHighlight(hoveredRegion, hoveredRegion?.faction ?? null);
 }
 
 /** Banks this run's XP and turnips into the persistent record, once per run.
@@ -685,7 +698,10 @@ const hud = createHud(
       // a name hover here is transient and must not survive the next refresh.
       const regionId = factionId === null ? undefined : regionByFaction.get(factionId);
       const region = regionId === undefined ? null : regionById.get(regionId) ?? null;
-      applyRealmHover(region);
+      // The id goes to the log directly rather than being read back off the
+      // region: the lookup above can miss, and a name with no polygon must
+      // still dim the log to the lines that name it.
+      applyHighlight(region, factionId);
     },
     // Read after bankRunProgress() has folded this run in - the postmortem
     // only ever renders on an ended run, and every route that ends one banks
@@ -761,7 +777,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
     if (region) tooltip.showLines(hoverLines(region), clientX, clientY);
     else tooltip.hide();
     hoveredRegion = region;
-    applyRealmHover(region);
+    applyHighlight(region, region?.faction ?? null);
   },
   onHoverSettlement(settlement, clientX, clientY) {
     if (settlement) {
