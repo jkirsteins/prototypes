@@ -97,11 +97,18 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     pattern.setAttribute("width", "8");
     pattern.setAttribute("height", "8");
     pattern.setAttribute("patternTransform", "rotate(45)");
+    // 6 of the tile's 8 units, near-opaque. At 4 units and 0.45 the two colours
+    // split the land half and half and it read as a third colour belonging to
+    // nobody; at 0.62 the stripe still took a wash of the fill under it. A
+    // vassal's land has to read as its OVERLORD's at a glance, so the stripe is
+    // the overlord's colour and very little else. The vassal keeps the gaps,
+    // which is both what identifies it and what keeps this reading as stripes -
+    // and stripes are what say "held", as opposed to incorporated.
     const stripe = el("rect");
-    stripe.setAttribute("width", "4");
+    stripe.setAttribute("width", "6");
     stripe.setAttribute("height", "8");
     stripe.setAttribute("fill", f.color);
-    stripe.setAttribute("opacity", "0.45");
+    stripe.setAttribute("opacity", "0.94");
     pattern.appendChild(stripe);
     defs.appendChild(pattern);
   }

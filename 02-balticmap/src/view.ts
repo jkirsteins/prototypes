@@ -161,6 +161,29 @@ export function relationshipLine(
     : `Vassal of ${factionName(lord)}, ${holds}`;
 }
 
+/** Is this land a vassal of the human's that is holding a live Revolt? The card
+ *  sits in its deck, hand or discard from the turn it sows Seeds of revolt
+ *  until it plays it, and `liveRevolts` is how the rules already track that -
+ *  Seeds of revolt reads the same list to refuse sowing a second one.
+ *
+ *  Only the human's DIRECT vassals. A rival's restive vassal is not the
+ *  player's business and would fill the map with other people's problems, and
+ *  a vassal of your vassal walks out on them, not on you.
+ *
+ *  Here rather than in main.ts, where the map badge and the hover both want it,
+ *  because a predicate the tests cannot reach is a predicate nobody checks. */
+export function restiveVassalOf(
+  polygonFactionId: string,
+  humanFactionId: string,
+  overlords: Overlords,
+  liveRevolts: readonly string[],
+): boolean {
+  return (
+    overlords.get(polygonFactionId) === humanFactionId &&
+    liveRevolts.includes(polygonFactionId)
+  );
+}
+
 /** The faction whose OWN polygon holds this land: the realm that absorbed it,
  *  or the overlord it owes fealty to. Null when it answers to nobody.
  *

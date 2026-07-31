@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   fitView, clampView, formatLead, holderOf, homeView, panBy,
-  politicalFactionForPolygon, relationshipLine, standingsFor,
+  politicalFactionForPolygon, relationshipLine, restiveVassalOf, standingsFor,
   withArticle,
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
@@ -223,6 +223,45 @@ describe("holderOf", () => {
 
   it("is null for a land that answers to nobody", () => {
     expect(held("zemgale")).toBeNull();
+  });
+});
+
+/** The map badge and the hover both ask this, and neither could be tested where
+ *  it used to live (main.ts). A vassal holding a live Revolt is the one thing
+ *  inside your own realm worth a mark: the card ends your overlordship whenever
+ *  it surfaces, and the only word of it was a single modal on the turn it was
+ *  sown - which a player with popups muted never saw at all. */
+describe("restiveVassalOf", () => {
+  const restive = (
+    polygon: string,
+    overlords: [string, string][],
+    liveRevolts: string[],
+  ) => restiveVassalOf(polygon, "me", new Map(overlords), liveRevolts);
+
+  it("marks a vassal of yours that is holding a live Revolt", () => {
+    expect(restive("zemgale", [["zemgale", "me"]], ["zemgale"])).toBe(true);
+  });
+
+  it("leaves a quiet vassal alone", () => {
+    expect(restive("zemgale", [["zemgale", "me"]], [])).toBe(false);
+  });
+
+  /** Somebody else's restive vassal is not the player's business, and marking
+   *  them would fill the map with other people's problems. */
+  it("ignores a rival's restive vassal", () => {
+    expect(restive("zemgale", [["zemgale", "lietuva"]], ["zemgale"])).toBe(false);
+  });
+
+  /** A vassal of your vassal walks out on THEM, not on you, so the mark belongs
+   *  on the land that will actually leave your realm. */
+  it("ignores a vassal of your vassal", () => {
+    expect(
+      restive("zemgale", [["zemgale", "lietuva"], ["lietuva", "me"]], ["zemgale"]),
+    ).toBe(false);
+  });
+
+  it("says nothing about a free faction holding one", () => {
+    expect(restive("zemgale", [], ["zemgale"])).toBe(false);
   });
 });
 

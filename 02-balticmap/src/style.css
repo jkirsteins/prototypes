@@ -649,6 +649,14 @@ svg.map.dragging {
   font-weight: 700;
 }
 
+/* A vassal of yours holding a live Revolt. Amber rather than the danger red:
+   red on this map means a rival can take you NOW, and this is a thing about to
+   be taken FROM you - the same size of bad news, a different direction. */
+.threat-badge .badge-unrest-mark {
+  fill: #b5701f;
+  font-weight: 700;
+}
+
 .lead-good {
   fill: #2e7d32;
 }

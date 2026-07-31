@@ -33,6 +33,7 @@ import { runTurnips, runXp } from "./xp";
 import { openPack } from "./packs";
 import {
   formatLead, holderOf, leadClass, politicalFactionForPolygon, relationshipLine,
+  restiveVassalOf,
 } from "./view";
 import { factionAdjacencyOf } from "./adjacency";
 import "./style.css";
@@ -50,6 +51,11 @@ const {
  *  region id. Rebuilt by `renderRealmUnions` whenever the realms change. */
 const realmEdgePaths = new Map<string, SVGPathElement>();
 
+/** Every vassal-stripe path with the overlord whose colour it carries, so the
+ *  stripes can be held at that overlord's own intensity. Rebuilt by
+ *  `renderVassalOverlay`. */
+const vassalStripes: { path: SVGPathElement; lord: string }[] = [];
+
 /** One path carrying `d`, clipped by `mask`, appended to `group`. */
 function maskedPath(group: SVGGElement, d: string, mask: string): SVGPathElement {
   const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -64,7 +70,10 @@ function maskedPath(group: SVGGElement, d: string, mask: string): SVGPathElement
 // the attribute is what makes that unconditional: a future toggle added
 // anywhere is carried across without knowing this exists. Only region paths are
 // observed and only edge copies are written, so this cannot feed itself.
-const realmEdgeObserver = new MutationObserver(() => syncRealmEdges());
+const realmEdgeObserver = new MutationObserver(() => {
+  syncRealmEdges();
+  syncVassalStripes();
+});
 
 // map-render.ts doesn't expose a badge group; appended here, last in the SVG
 // (after realm-outline/vassal-overlay, on top of the whole map stack).
@@ -239,6 +248,7 @@ function applyOwnership(): void {
  *  stripe overlay in its overlord's color - not just the human's realm. */
 function renderVassalOverlay(): void {
   vassalOverlayGroup.replaceChildren();
+  vassalStripes.length = 0;
   if (!inPlay()) return;
   for (const [vassal, lord] of game.overlords) {
     for (const factionId of realmOf(vassal, game.overlords, game.incorporated)) {
@@ -250,7 +260,27 @@ function renderVassalOverlay(): void {
       p.setAttribute("fill", `url(#vassal-stripes-${lord})`);
       p.setAttribute("pointer-events", "none");
       vassalOverlayGroup.appendChild(p);
+      vassalStripes.push({ path: p, lord });
     }
+  }
+  syncVassalStripes();
+}
+
+/** The stripes are the OVERLORD's colour, so they carry the overlord's
+ *  intensity - dimmed when its land is dimmed, full when a hover or a targeting
+ *  cue lifts it. They live in their own group, outside the regions, so
+ *  `.region.dimmed` never reached them: a dimmed overlord kept full-strength
+ *  stripes on its vassal and the vassal read as the loudest thing on the map.
+ *
+ *  Read off the lord's COMPUTED opacity rather than mirrored with a class,
+ *  because "how visible is that land right now" is the answer of a dozen rules
+ *  interacting - dimmed, realm-hover, holder-hover, target-invalid - and this
+ *  wants the result, not a second copy of the reasoning. */
+function syncVassalStripes(): void {
+  for (const { path, lord } of vassalStripes) {
+    const regionId = regionByFaction.get(lord);
+    const el = regionId !== undefined ? regionPaths.get(regionId) : undefined;
+    if (el) path.style.opacity = getComputedStyle(el).opacity;
   }
 }
 
@@ -407,6 +437,16 @@ function syncRealmEdges(): void {
   }
 }
 
+/** `restiveVassalOf` bound to the live game - the badge and the hover both ask
+ *  it, and neither should have to assemble the arguments. */
+function unrestOf(factionId: string): boolean {
+  const human = game.players[0];
+  if (!human || !inPlay()) return false;
+  return restiveVassalOf(
+    factionId, human.factionId, game.overlords, viewOf(game).liveRevolts,
+  );
+}
+
 /** One badge per living faction outside the human's realm with a non-zero
  *  lead on either track, anchored at that faction's home region bbox.
  *
@@ -425,12 +465,18 @@ function renderThreatBadges(): void {
   const targets = armed === null ? null : new Set(armedTargets());
   for (const factionId of game.factionIds) {
     if (factionId in game.incorporated) continue; // dead (absorbed)
-    if (humanRealm.has(factionId)) continue; // human, its vassals, its lands
+    // The one thing inside your own realm worth a badge. A vassal that has sown
+    // its Revolt is holding a live card that ends your overlordship whenever it
+    // surfaces, and until now the only word of it was a single modal on the
+    // turn it was sown - which a muted player never saw at all. Every other
+    // land of your realm stays badgeless: there is nothing to race there.
+    const restive = unrestOf(factionId);
+    if (humanRealm.has(factionId) && !restive) continue;
     if (targets !== null && !targets.has(factionId)) continue;
     // Both tracks, both directions and the danger mark in one call, so the
     // badge and the hover breakdown cannot quote different numbers.
     const race = subjugationRaceFor(viewOf(game), human.factionId, factionId);
-    if (race.quiet) continue;
+    if (race.quiet && !restive) continue;
     const regionId = regionByFaction.get(factionId);
     const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
     if (!pathEl) continue;
@@ -441,6 +487,7 @@ function renderThreatBadges(): void {
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     g.classList.add("threat-badge");
     if (race.danger) g.classList.add("danger");
+    if (restive) g.classList.add("restive");
     g.setAttribute("transform", `translate(${cx}, ${cy})`);
 
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -456,15 +503,31 @@ function renderThreatBadges(): void {
       bang.textContent = "! ";
       text.appendChild(bang);
     }
-    const mightTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-    mightTspan.classList.add(leadClass(race.might.lead));
-    mightTspan.textContent = formatLead("M", race.might.lead, race.might.bar);
-    text.appendChild(mightTspan);
-    const statusTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-    statusTspan.classList.add(leadClass(race.status.lead));
-    statusTspan.setAttribute("dx", "9");
-    statusTspan.textContent = formatLead("S", race.status.lead, race.status.bar);
-    text.appendChild(statusTspan);
+    // Two bangs, not one, and its own colour: "!" already means a rival can
+    // take YOU now, and this is the opposite direction - something of yours is
+    // about to be taken. A doubled mark reads as louder rather than as a
+    // different scale, which is right; they are the same size of bad news.
+    if (restive) {
+      const mark = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+      mark.classList.add("badge-unrest-mark");
+      mark.textContent = "!!";
+      text.appendChild(mark);
+    }
+    // A restive vassal of yours has no race to show - you cannot subjugate what
+    // you already hold - so the mark stands alone rather than beside a pair of
+    // dashes. Any land you DO have a race with keeps its numbers.
+    if (!race.quiet) {
+      const mightTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+      mightTspan.classList.add(leadClass(race.might.lead));
+      if (restive) mightTspan.setAttribute("dx", "9");
+      mightTspan.textContent = formatLead("M", race.might.lead, race.might.bar);
+      text.appendChild(mightTspan);
+      const statusTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+      statusTspan.classList.add(leadClass(race.status.lead));
+      statusTspan.setAttribute("dx", "9");
+      statusTspan.textContent = formatLead("S", race.status.lead, race.status.bar);
+      text.appendChild(statusTspan);
+    }
     if (race.allied) {
       const turnsLeft = game.alliances[allianceKey(human.factionId, factionId)] - game.turn;
       const allyTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
@@ -506,6 +569,16 @@ function hoverLines(region: Region): TooltipLine[] {
   if (!inPlay() || !human) return lines;
   const held = allegianceOf(region.faction, human.factionId);
   if (held !== null) lines.push({ text: held });
+  // Straight after "Your vassal", because it is the rest of that sentence. The
+  // card is not named: this line is plain text, and a card name the player
+  // cannot point at is the inert kind AGENTS.md warns about - "a revolt" as an
+  // ordinary English word says the same thing and reads better.
+  if (unrestOf(region.faction)) {
+    lines.push({
+      text: "On the verge of revolt: it holds the card and can play it any turn",
+      tone: "bad",
+    });
+  }
   // The same resolution `interceptClick` uses, or the lines below would answer
   // for a different faction than the click aims at on an absorbed land.
   const f = politicalFactionForPolygon(region.faction, game.incorporated);
