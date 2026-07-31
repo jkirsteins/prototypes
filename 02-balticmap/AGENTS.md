@@ -182,9 +182,14 @@ silent and write down why - and record `amount`/`track` on any event that moves
 a relation counter, or the before/after standings silently drift.
 
 A new deck-buildable card also needs a measured impact and the tier that
-follows from it. Run `npm run rarity` with the card added to `CARDS`, or, for
-a single card, one arm against the frozen reference deck; then set its
-`rarity` from `rarityForImpact`. The conformance test in
+follows from it. Run `npm run rarity` with the card added to `CARDS`, then set
+its `rarity` from `rarityForImpact`. The conformance test in
 `tests/cards.test.ts` fails until you do, and hand-tagging a card fails it
 too. Cards outside `ACQUIRABLE_CARDS` are common by rule and wear no band.
-See the 2026-07-31 card-rarity design doc.
+
+A full pass is the only route today. The 2026-07-31 card-rarity design doc
+describes a cheaper one: a single arm against a frozen reference deck, six
+seconds rather than two minutes, for placing one added card against the
+stored table. Nobody has built it. Eight cards is small enough that the full
+pass is still the honest tool; write the cheap one when the pool passes
+roughly 20 cards.
