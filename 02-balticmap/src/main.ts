@@ -21,7 +21,8 @@ import {
 import { count } from "./plural";
 import {
   cardBlockLine, cardModifierLines, cardRiskLine, explainTargetEligibility,
-  multipliedWord, targetImpactLines, targetOddsLines, subjugationBreakdown,
+  multipliedWord, settlementBlock, targetImpactLines, targetOddsLines,
+  subjugationBreakdown,
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
 import { createHud } from "./hud";
@@ -562,16 +563,18 @@ function renderThreatBadges(): void {
 }
 
 /** What a hover says: what this land is, who holds it, whether a pact stands
- *  between you, what an armed card would do here, and where the Subjugate bars
- *  on its badge come from.
+ *  between you, how many settlements stand on it, what an armed card would do
+ *  here, and where the Subjugate bars on its badge come from.
  *
- *  Everything else the game knows about a land has a home already - population,
- *  cohesion, ruler and settlements are on the click-through panel - and a hover
- *  that recited all of it was seven lines wide and answered no question anybody
- *  was asking. The bar breakdown is the exception that rule allows: the badge
- *  puts a "/6" on the map and nothing else on screen says what builds it. It is
- *  gated on the badge showing that denominator, so it answers the question the
- *  badge raises and appears nowhere else. */
+ *  A hover that recited everything the game knows about a land - population,
+ *  cohesion, ruler - was seven lines wide and answered no question anybody was
+ *  asking. What earns a line here is a figure the player can see on the map and
+ *  cannot get the meaning of anywhere else, and the two blocks below are the
+ *  only ones that qualify. The badge puts a "/6" on the map and nothing else on
+ *  screen says what builds it, so the bar breakdown is gated on the badge
+ *  showing that denominator. The settlement dots are drawn on the polygon and
+ *  both Found a settlement and Population boom turn on how many a land holds
+ *  and how many it still has room for, and nothing else states either. */
 function hoverLines(region: Region): TooltipLine[] {
   const human = game.players[0];
   // The land's OWN faction, never the politically resolved one: an absorbed
@@ -600,6 +603,10 @@ function hoverLines(region: Region): TooltipLine[] {
   // cannot legally touch for another five turns.
   const pact = allianceLine(f, human.factionId);
   if (pact !== null) lines.push({ text: pact, tone: "good" });
+  // `region.faction`, not the resolved `f`: settlements belong to the land, so
+  // an absorbed land must report its own count and not its absorber's. First of
+  // the blocks, so the sentence-shaped lines above stay one group.
+  lines.push(...settlementBlock(viewOf(game), region.faction));
   const breakdown = subjugationBreakdown(viewOf(game), human.factionId, f);
   if (armed !== null) {
     lines.push(...targetImpactLines(

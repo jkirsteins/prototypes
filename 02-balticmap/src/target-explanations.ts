@@ -1,8 +1,8 @@
 import {
   INCORPORATE_RAMP, PACT_MIGHT_BONUS, POACH_CHANCE, SETTLEMENT_BASE_CAP,
-  boomsHeld, failureRiskOf, gripPartsOn, holdsGuard, leadsIn,
+  boomsHeld, failureRiskOf, freeSitesIn, gripPartsOn, holdsGuard, leadsIn,
   omenMultiplier, omensHeld, poachSurchargeOn, raidGainFor, sharedNeighboursOf,
-  subjugationRaceFor, targetEligibilityFor,
+  settlementsIn, subjugationRaceFor, targetEligibilityFor,
   type CardBlockReason,
   type FailureRisk,
   type Guards,
@@ -573,6 +573,43 @@ export function subjugationBreakdown(
     );
   }
   return lines;
+}
+
+/** How many settlements stand on one land, over how many the map authors for
+ *  it. The dots are drawn on the polygon and two cards turn on the number, and
+ *  nothing else on screen states it.
+ *
+ *  Takes the land's OWN faction id, never the politically resolved one.
+ *  `settlements` and `siteCaps` are keyed by the land's own faction, and a
+ *  settlement stays with the land when the land is absorbed - resolving first
+ *  would report the absorber's home count on every land it ever took.
+ *
+ *  The cap is `standing + freeSitesIn` rather than the map's `maxSettlements`,
+ *  which is the same number by construction and reaches it through the rules.
+ *  `settlementsIn` is the one place the unstored starting settlement is added
+ *  back, so counting it here again is exactly the drift its doc comment warns
+ *  about; and going through `freeSitesIn` means an authored cap that moves
+ *  carries this line with it.
+ *
+ *  Says nothing about the allowance. `settlementAllowance` is scoped to the
+ *  actor and not to the land, so it has no place in a block titled "on this
+ *  land" - it is already spelled out where it bites, in the `sat-settlement`
+ *  block reason above.
+ *
+ *  Names no card and no faction, so like `subjugationBreakdown` it satisfies
+ *  the naming rule in AGENTS.md structurally rather than by remembering to. */
+export function settlementBlock(
+  view: RulesView,
+  landFactionId: string,
+): TooltipLine[] {
+  const standing = settlementsIn(view, landFactionId);
+  // "on this land" is load-bearing: the breakdown below this block carries a
+  // realm-wide "from N settlements" row, and the two must not read as one.
+  return [
+    { text: "Settlements", blockStart: true },
+    { amount: `${standing}/${standing + freeSitesIn(view, landFactionId)}`,
+      text: "on this land" },
+  ];
 }
 
 /** Why a card in hand is greyed out, in one line, for its hover tip.

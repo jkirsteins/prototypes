@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { pact, settledOnce, } from "./helpers";
 import {
   GUARD_POSTED, GUARD_RISK, cardModifierLines, cardRiskLine,
-  explainTargetEligibility, subjugationBreakdown, targetImpactLines,
-  targetOddsLines,
+  explainTargetEligibility, settlementBlock, subjugationBreakdown,
+  targetImpactLines, targetOddsLines,
 } from "../src/target-explanations";
 import { CARDS, GUARDS } from "../src/cards";
 import { bumpMight, bumpStatus, type Relations } from "../src/relations";
@@ -697,5 +697,46 @@ describe("subjugationBreakdown", () => {
     expect(lines).toContainEqual({ amount: "+2", text: "from 2 settlements" });
     // Exactly one settlement row across both blocks: Status gets none.
     expect(lines.filter((l) => l.text.includes("settlement"))).toHaveLength(1);
+  });
+});
+
+describe("settlementBlock", () => {
+  const v = (partial: Partial<RulesView> = {}): RulesView => ({
+    relations: {}, overlords: new Map(), incorporated: {}, adjacency: {},
+    factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
+    omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    siteCaps: {}, settlements: {}, booms: {},
+    ...partial,
+  });
+
+  it("counts the settlement every land starts with, against its authored cap", () => {
+    expect(settlementBlock(v({ siteCaps: { alpha: 6 } }), "alpha")).toEqual([
+      { text: "Settlements", blockStart: true },
+      { amount: "1/7", text: "on this land" },
+    ]);
+  });
+
+  it("moves with each founding while the cap stays put", () => {
+    const view = v({ siteCaps: { alpha: 6 }, settlements: { alpha: 2 } });
+    expect(settlementBlock(view, "alpha")[1].amount).toBe("3/7");
+  });
+
+  it("reads 1/1 for a land the map authors no further site for", () => {
+    expect(settlementBlock(v(), "alpha")[1].amount).toBe("1/1");
+  });
+
+  it("answers for the land asked about, not its neighbour", () => {
+    const view = v({
+      siteCaps: { alpha: 6, beta: 1 }, settlements: { alpha: 2 },
+    });
+    expect(settlementBlock(view, "beta")[1].amount).toBe("1/2");
+  });
+
+  it("ignores booms, which raise the allowance and not the land's capacity", () => {
+    // The distinction the block's wording rests on: holding three booms lets
+    // alpha's people support five settlements in a land, but this land is still
+    // only authored for two. `sat-settlement` is where the allowance is said.
+    const view = v({ siteCaps: { alpha: 1 }, booms: { alpha: 3 } });
+    expect(settlementBlock(view, "alpha")[1].amount).toBe("1/2");
   });
 });
