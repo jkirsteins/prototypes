@@ -1,17 +1,18 @@
 import {
-  INCORPORATE_RAMP, POACH_CHANCE, failureRiskOf, gripPartsOn,
-  omenMultiplier, omensHeld, poachSurchargeOn, raidGainFor,
+  INCORPORATE_RAMP, PACT_MIGHT_BONUS, POACH_CHANCE, SETTLEMENT_BASE_CAP,
+  boomsHeld, failureRiskOf, gripPartsOn, holdsGuard, leadsIn,
+  omenMultiplier, omensHeld, poachSurchargeOn, raidGainFor, sharedNeighboursOf,
   subjugationRaceFor, targetEligibilityFor,
   type CardBlockReason,
   type FailureRisk,
+  type Guards,
   type Omens,
   type RulesView,
   type TargetBlockReason,
   type TargetEligibility,
 } from "./playability";
-import { CARDS, DOUBLABLE_CARDS } from "./cards";
+import { CARDS, DOUBLABLE_CARDS, isGuardCard } from "./cards";
 import { count } from "./plural";
-import { leadsOf } from "./relations";
 import { formatLead } from "./view";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
 
@@ -91,8 +92,15 @@ function explainReason(reason: TargetBlockReason): string[] {
       return ["You cannot target yourself."];
     case "not-your-vassal":
       return ["Not your vassal."];
-    case "already-settled":
-      return ["Already settled this game."];
+    case "needs-population":
+      // The one block a card in hand can lift, so it says which: without the
+      // second sentence the player reads "not enough people" as a fact about
+      // the land rather than as a fact about what they are holding.
+      return [
+        `${count(reason.have, "settlement")} here already, and your people ` +
+          `support ${reason.allowance}.`,
+        "A Population boom raises that by one.",
+      ];
     case "no-free-site":
       return ["No room for another settlement."];
     default: {
@@ -149,6 +157,32 @@ const pct = (n: number): string => `${Math.round(n * 100)}%`;
  *  risks cannot drift into three ways of saying it. */
 const SPENT_ANYWAY = "A failed attempt still spends the card.";
 
+/** Per guard, the two things a player can be told about it: the warning before
+ *  aiming a card it turns aside, and the line in hand saying you are already
+ *  holding one. Keyed on the guard card id, and `tests/target-explanations.test.ts`
+ *  checks both records cover every entry in `GUARDS` - a fourth guard that
+ *  reached the rules and not these tables would warn about the wrong card, or
+ *  about nothing.
+ *
+ *  Lowercase common nouns throughout ("a posted bodyguard", "wary neighbours"):
+ *  the capitalized names are the cards, and this is plain text with no way to
+ *  make it a segment the player could point at. See the naming rule in
+ *  AGENTS.md. */
+export const GUARD_RISK: Readonly<Record<string, string>> = {
+  "bodyguard":
+    "A posted bodyguard would turn this aside, and you cannot tell in advance.",
+  "distrustful-neighbour":
+    "Wary neighbours would refuse the pact, and you cannot tell in advance.",
+  "eloping-heirs":
+    "Their heirs may already have slipped away, and you cannot tell in advance.",
+};
+
+export const GUARD_POSTED: Readonly<Record<string, string>> = {
+  "bodyguard": "A bodyguard is already posted.",
+  "distrustful-neighbour": "Your neighbours are already wary.",
+  "eloping-heirs": "Your heirs have already slipped away.",
+};
+
 /** How a card can come back with nothing, in words. Renders `FailureRisk` and
  *  decides nothing: whether a card is fallible at all is `failureRiskOf`'s
  *  question, answered once in the rules.
@@ -158,13 +192,7 @@ const SPENT_ANYWAY = "A failed attempt still spends the card.";
  *  before aiming and another while aiming. */
 export function riskLines(risk: FailureRisk): string[] {
   if (risk.kind === "hidden") {
-    return [
-      // Lowercase "bodyguard", the ordinary English word: the capitalized
-      // Bodyguard is the card, and this is plain text with no way to make it a
-      // segment the player could point at. See the naming rule in AGENTS.md.
-      "A posted bodyguard would turn this aside, and you cannot tell in advance.",
-      SPENT_ANYWAY,
-    ];
+    return [GUARD_RISK[risk.because], SPENT_ANYWAY];
   }
   if (risk.because === "poach") {
     return [
@@ -219,6 +247,12 @@ const CARD_RISK: Record<string, string> = {
   "assassinate-ruler":
     "Can fail: a posted bodyguard turns the blade aside, and nothing tells " +
     "you in advance which rivals have one.",
+  "alliance":
+    "Can fail: neighbours wary enough refuse the pact outright, and nothing " +
+    "tells you in advance which rivals are.",
+  "shrewd-marriage":
+    "Can fail: heirs who have slipped away cannot be married off, and " +
+    "nothing tells you in advance whose have.",
 };
 
 export const cardRiskLine = (cardId: string): string | null =>
@@ -270,7 +304,7 @@ function standingMove(
   next: (before: number) => number,
   multiplier: number,
 ): Impact {
-  const before = leadsOf(view.relations, actorFactionId, targetFactionId)[track];
+  const before = leadsIn(view, actorFactionId, targetFactionId)[track];
   const after = next(before);
   const label = track === "might" ? "Might" : "Status";
   return {
@@ -335,10 +369,32 @@ function availableImpacts(
   }
   if (cardId === "alliance") {
     const turns = view.diplomacyBoost.includes(actorFactionId) ? 10 : 5;
-    return [prose(`No hostile cards between you for ${turns} turns.`)];
+    const shared = sharedNeighboursOf(view, actorFactionId, targetFactionId);
+    return [
+      prose(`No hostile cards between you for ${turns} turns.`),
+      // The pact's frozen set, quoted before the player commits. Naming the
+      // count rather than the factions: the list can run to half a dozen and
+      // the map is already showing which lands border both realms.
+      shared.length > 0
+        ? {
+            amount: `+${PACT_MIGHT_BONUS} Might`,
+            spans: [{
+              text:
+                `for both of you against the ${count(shared.length, "faction")} ` +
+                "bordering both realms, until the pact lapses.",
+            }],
+          }
+        : prose("Your realms share no neighbour, so the pact buys no Might."),
+      ...riskRows(view, actorFactionId, cardId, targetFactionId),
+    ];
   }
   if (cardId === "found-settlement") {
-    return [prose("+1 to the lead others need to subjugate you.")];
+    return [
+      prose("+1 to the Might lead others need to subjugate you."),
+      ...(boomsHeld(view, actorFactionId) > 0
+        ? [prose("Spends one of your held Population booms.")]
+        : []),
+    ];
   }
   return [prose("Available.")];
 }
@@ -554,7 +610,8 @@ export function cardBlockLine(reason: CardBlockReason): string {
 export interface ModifierView {
   omens: Omens;
   diplomacyBoost: string[];
-  bodyguards: string[];
+  guards: Guards;
+  booms: Record<string, number>;
 }
 
 /** What is currently affecting this card for this faction, in words, for the
@@ -586,8 +643,21 @@ export function cardModifierLines(
   if (cardId === "alliance" && view.diplomacyBoost.includes(factionId)) {
     lines.push("Extended diplomacy: this Alliance lasts 10 turns.");
   }
-  if (cardId === "bodyguard" && view.bodyguards.includes(factionId)) {
-    lines.push("A bodyguard is already posted.");
+  // One line per guard, from GUARD_POSTED, so a fourth guard cannot be added to
+  // the rules and stay invisible in the hand.
+  if (isGuardCard(cardId) && holdsGuard(view, factionId, cardId)) {
+    lines.push(GUARD_POSTED[cardId]);
+  }
+  const booms = boomsHeld(view, factionId);
+  if (booms > 0 && (cardId === "found-settlement" || cardId === "population-boom")) {
+    // The only route by which the player learns booms stack and what they buy -
+    // the same hole `favourable-omens` fills above. Stated as the allowance
+    // rather than as the count, because the allowance is the number the block
+    // line on a land will quote back at them.
+    lines.push(
+      `${count(booms, "population boom")} held: your people support ` +
+        `${SETTLEMENT_BASE_CAP + booms} settlements in a land.`,
+    );
   }
   return lines;
 }

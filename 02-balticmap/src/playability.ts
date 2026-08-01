@@ -1,10 +1,29 @@
-import { CARDS, DOUBLABLE_CARDS, isTributeCard } from "./cards";
 import {
-  allianceActive, allianceKey, leadsOf, realmOf,
-  type Incorporated, type Overlords, type Relations,
+  CARDS, DOUBLABLE_CARDS, guardAgainst, isGuardCard, isTributeCard,
+} from "./cards";
+import {
+  allianceActive, leadsOf, pactBetween, realmOf,
+  type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 
 export const SUBJUGATE_THRESHOLD = 2;
+
+/** Settlements a land supports with no Population boom spent on it - the one
+ *  standing there since the map was drawn, plus one. So Found a settlement
+ *  raises a land to its second and stops, and every settlement past that is a
+ *  boom that was held and spent. */
+export const SETTLEMENT_BASE_CAP = 2;
+
+/** Might both allies gain against every faction bordering both realms, for as
+ *  long as their pact lasts. Not a bump: a term `leadsIn` adds and stops
+ *  adding. See `Pact` in src/relations.ts. */
+export const PACT_MIGHT_BONUS = 1;
+
+/** Guard card id -> the faction ids holding that guard unspent. Absent key
+ *  means nobody. Keyed by the CARD rather than by the faction because that is
+ *  the shape every question has: "is this target holding the guard against the
+ *  card I am aiming"? A faction may hold one of each. */
+export type Guards = Readonly<Record<string, string[]>>;
 
 /** Unspent Favourable omens readings per faction. Absent key means none.
  *
@@ -26,21 +45,25 @@ export interface RulesView {
   incorporated: Incorporated;
   adjacency: Record<string, string[]>; // faction id -> adjacent faction ids
   factionIds: string[];
-  alliances: Record<string, number>; // sorted-pair key -> expiry turn
+  alliances: Alliances; // sorted-pair key -> the pact between that pair
   turn: number;
-  bodyguards: string[]; // faction ids holding an unused Bodyguard guard
+  guards: Guards; // guard card id -> faction ids holding it unspent
   omens: Omens; // faction id -> unspent Favourable omens readings held
   diplomacyBoost: string[]; // faction ids holding an unspent Extended diplomacy
-  /** Factions whose land still has a free site to settle. Map-derived and
-   *  static, like `adjacency`: a land's slot cap follows from its population,
-   *  so which lands could ever be built in is not something play changes.
+  /** Faction id -> how many FURTHER settlements the map authors for that land.
+   *  Map-derived and static, like `adjacency`: a land's slot cap follows from
+   *  its population, so how often it could ever be built in is not something
+   *  play changes. Absent or 0 means never again.
    *
    *  Faction ids, like every other id here - the map's region ids are a
    *  different id space and must be translated before they reach the rules. */
-  sites: string[];
-  /** Factions whose land has been settled this game. One site per land, so a
-   *  list of faction ids is the whole state. */
-  settled: string[];
+  siteCaps: Record<string, number>;
+  /** Faction id -> settlements founded in that land this game, not counting the
+   *  one every land starts with. Absent = 0. */
+  settlements: Record<string, number>;
+  /** Faction id -> unspent Population booms, each one allowing a settlement
+   *  past what a land supports unaided. Absent = 0. */
+  booms: Record<string, number>;
   /** `${land}|${lord}` -> consecutive turns that lord has held that land as a
    *  vassal. Drives the Incorporate odds. Absent key means 0. */
   loyalty: Record<string, number>;
@@ -88,6 +111,62 @@ export function subjugationChance(view: RulesView, target: string): number {
   return view.overlords.has(target) ? POACH_CHANCE : 1;
 }
 
+/** Whether `factionId` is holding `guardCardId` unspent. */
+export function holdsGuard(
+  view: { guards: Guards },
+  factionId: string,
+  guardCardId: string,
+): boolean {
+  return (view.guards[guardCardId] ?? []).includes(factionId);
+}
+
+/** The Might `a` gains over `b` from a's active pacts - PACT_MIGHT_BONUS for
+ *  each live pact of a's whose frozen `against` list names b.
+ *
+ *  Summed rather than capped at one: each pact is a separate diplomatic fact,
+ *  and two allies both bordering the same rival is exactly the position the
+ *  card is meant to reward. In practice Alliance is one per deck, so a stack
+ *  needs two pacts running at once.
+ *
+ *  Note this is directional. b's own pacts against a are b's gain, and
+ *  `leadsIn` subtracts them there. */
+export function pactBonusOn(
+  view: { alliances: Alliances; turn: number },
+  a: string,
+  b: string,
+): number {
+  let bonus = 0;
+  for (const [key, pact] of Object.entries(view.alliances)) {
+    if (view.turn >= pact.expiry) continue;
+    if (!key.split("|").includes(a)) continue;
+    if (pact.against.includes(b)) bonus += PACT_MIGHT_BONUS;
+  }
+  return bonus;
+}
+
+/** A's leads over B as the RULES see them: the relation store, plus the Might
+ *  either side's live pacts buy them over the other.
+ *
+ *  This, not `leadsOf`, is what every rule, policy step and readout asks. A
+ *  pact bonus that some surfaces counted and others did not would be a lead the
+ *  map badge and the legality check disagreed about, which is the same class of
+ *  bug as `realmOf` versus `fullRealmOf`.
+ *
+ *  `leadsOf` stays the raw read of the store and keeps exactly one caller that
+ *  wants it: the pre-assassination Status capture in src/game.ts, which reads a
+ *  track no pact touches, from a `relations` value mid-play. */
+export function leadsIn(
+  view: { relations: Relations; alliances: Alliances; turn: number },
+  a: string,
+  b: string,
+): { status: number; might: number } {
+  const raw = leadsOf(view.relations, a, b);
+  return {
+    status: raw.status,
+    might: raw.might + pactBonusOn(view, a, b) - pactBonusOn(view, b, a),
+  };
+}
+
 /** Why a play can come back with nothing. Two shapes, because a player can be
  *  told two different things about it. A roll has a number and the number is
  *  the decision. A guard has none: it is a card the target may or may not be
@@ -98,7 +177,10 @@ export function subjugationChance(view: RulesView, target: string): number {
  *  needed" cannot see that waiting fixes it. */
 export type FailureRisk =
   | { kind: "roll"; chance: number; because: "poach" | "loyalty"; held: number }
-  | { kind: "hidden"; because: "bodyguard" };
+  /** `because` is the GUARD CARD's id, so the wording can name what turns this
+   *  particular card aside. It never says whether the target actually holds
+   *  one. */
+  | { kind: "hidden"; because: string };
 
 /** How this play could come back with nothing, or null when it cannot.
  *
@@ -137,15 +219,57 @@ export function failureRiskOf(
       held: loyaltyOf(view, targetFactionId, actorFactionId),
     };
   }
-  if (cardId === "assassinate-ruler") {
-    // Unconditional, and it must stay that way: `view.bodyguards` is right
-    // there, and reading it would turn this warning into a detector telling
-    // the player exactly which rivals had spent a card defending themselves.
-    // The guard is theirs to know. What the player is owed is that the card
-    // can be turned aside at all, which is true of every target equally.
-    return { kind: "hidden", because: "bodyguard" };
+  const guard = guardAgainst(cardId);
+  if (guard !== undefined) {
+    // Unconditional, and it must stay that way: `view.guards` is right there,
+    // and reading it would turn this warning into a detector telling the player
+    // exactly which rivals had spent a card defending themselves. The guard is
+    // theirs to know. What the player is owed is that the card can be turned
+    // aside at all, which is true of every target equally.
+    return { kind: "hidden", because: guard };
   }
   return null;
+}
+
+/** Settlements standing in `land` right now, counting the one it started with.
+ *  The stored count deliberately omits that one - see `GameState.settlements` -
+ *  and this is the single place it is added back, so the allowance rule and the
+ *  subjugation bar cannot disagree about what "three settlements" means. */
+export function settlementsIn(
+  view: { settlements: Record<string, number> },
+  land: string,
+): number {
+  return 1 + (view.settlements[land] ?? 0);
+}
+
+/** The most settlements this actor's people can support in any one land:
+ *  SETTLEMENT_BASE_CAP, plus one per unspent Population boom they hold.
+ *
+ *  An "up to", not a step. Two booms held do not force the actor at a
+ *  four-settlement land; they may still raise a bare land to its second, and
+ *  `playCard` spends a boom either way. */
+export function settlementAllowance(
+  view: { booms: Record<string, number> },
+  factionId: string,
+): number {
+  return SETTLEMENT_BASE_CAP + (view.booms[factionId] ?? 0);
+}
+
+/** Further settlements the map still authors for `land` - its locked dots less
+ *  the ones already founded. 0 means the map has nothing left to draw there,
+ *  whatever the actor's allowance says. */
+export function freeSitesIn(
+  view: { siteCaps: Record<string, number>; settlements: Record<string, number> },
+  land: string,
+): number {
+  return Math.max(0, (view.siteCaps[land] ?? 0) - (view.settlements[land] ?? 0));
+}
+
+export function boomsHeld(
+  view: { booms: Record<string, number> },
+  factionId: string,
+): number {
+  return view.booms[factionId] ?? 0;
 }
 
 /** The incumbent overlord's hold on a vassal: the larger of their two leads
@@ -153,7 +277,7 @@ export function failureRiskOf(
 export function overlordGrip(view: RulesView, targetFactionId: string): number {
   const lord = view.overlords.get(targetFactionId);
   if (lord === undefined) return 0;
-  const l = leadsOf(view.relations, lord, targetFactionId);
+  const l = leadsIn(view, lord, targetFactionId);
   return Math.max(0, l.status, l.might);
 }
 
@@ -169,7 +293,9 @@ export function poachSurchargeOn(
   return Math.ceil(overlordGrip(view, targetFactionId) / 2);
 }
 
-function reachOf(view: RulesView, factionId: string): Set<string> {
+/** Every faction the actor's realm borders, each land resolved to whoever
+ *  annexed it. This is what "in reach" means for a targeted card. */
+export function reachOf(view: RulesView, factionId: string): Set<string> {
   const realm = realmOf(factionId, view.overlords, view.incorporated);
   const reach = new Set<string>();
   for (const member of realm) {
@@ -178,6 +304,35 @@ function reachOf(view: RulesView, factionId: string): Set<string> {
     }
   }
   return reach;
+}
+
+/** Factions bordering BOTH realms - what a pact between a and b buys them both
+ *  a Might lead over, in faction order.
+ *
+ *  Neither ally's own realm counts, in either direction: a pact does not buy
+ *  you a lead over your own vassal, nor over the ally you just sealed it with.
+ *  An incorporated land is not a faction any more and is excluded with them -
+ *  `reachOf` already resolves such a land to its owner, so this only has to
+ *  drop the realm members themselves.
+ *
+ *  Order comes from `factionIds` rather than from set iteration, so the frozen
+ *  list a pact stores is deterministic and two runs of the same seed record it
+ *  identically. */
+export function sharedNeighboursOf(
+  view: RulesView,
+  a: string,
+  b: string,
+): string[] {
+  const reachA = reachOf(view, a);
+  const reachB = reachOf(view, b);
+  const own = new Set([
+    ...realmOf(a, view.overlords, view.incorporated),
+    ...realmOf(b, view.overlords, view.incorporated),
+  ]);
+  return view.factionIds.filter(
+    (f) => reachA.has(f) && reachB.has(f) && !own.has(f) &&
+      !(f in view.incorporated),
+  );
 }
 
 /** How many lands of the actor's realm border the target's core - the target
@@ -333,7 +488,13 @@ export interface GripParts extends TrackBars {
 export function gripPartsOn(view: RulesView, factionId: string): GripParts {
   const realm = realmOf(factionId, view.overlords, view.incorporated);
   const lands = realm.length;
-  const settlements = realm.filter((m) => view.settled.includes(m)).length;
+  // Summed, not counted: a land can now carry several founded settlements, and
+  // counting settled LANDS would have quietly capped the bar at one per land
+  // while the map drew three dots.
+  const settlements = realm.reduce(
+    (sum, m) => sum + (view.settlements[m] ?? 0),
+    0,
+  );
   const base = SUBJUGATE_THRESHOLD * lands;
   return { lands, settlements, might: base + settlements, status: base };
 }
@@ -434,7 +595,7 @@ export function threatsTo(view: RulesView, factionId: string): Threat[] {
     ) {
       continue;
     }
-    const lead = leadsOf(view.relations, other, factionId);
+    const lead = leadsIn(view, other, factionId);
     const statusShortfall = required.status - lead.status;
     const mightShortfall = required.might - lead.might;
     out.push({
@@ -500,7 +661,7 @@ export function subjugationRaceFor(
   humanFactionId: string,
   rivalFactionId: string,
 ): SubjugationRace {
-  const lead = leadsOf(view.relations, humanFactionId, rivalFactionId);
+  const lead = leadsIn(view, humanFactionId, rivalFactionId);
   const yours = subjugationRequirement(view, humanFactionId, rivalFactionId);
   const theirs = subjugationRequirement(view, rivalFactionId, humanFactionId);
   const track = (t: "might" | "status"): TrackRace =>
@@ -540,7 +701,10 @@ export type TargetBlockReason =
       poachSurcharge: number;
     }
   | { code: "already-vassal" }
-  | { code: "already-settled" }
+  /** The land already holds every settlement the actor's people can support.
+   *  A Population boom is what raises `allowance`; `have` is what stands
+   *  there now, counting the one the land started with. */
+  | { code: "needs-population"; have: number; allowance: number }
   | { code: "no-free-site" }
   | { code: "actor-subjugated" }
   | { code: "overlord-prohibited" }
@@ -557,14 +721,13 @@ export type TargetEligibility =
       reasons: TargetBlockReason[];
     };
 
-function allianceExpiry(
-  view: RulesView,
+export function allianceExpiry(
+  view: { alliances: Alliances; turn: number },
   actor: string,
   candidate: string,
 ): number | undefined {
-  const expiry = view.alliances[allianceKey(actor, candidate)];
-  return expiry !== undefined && allianceActive(view, actor, candidate)
-    ? expiry
+  return allianceActive(view, actor, candidate)
+    ? pactBetween(view, actor, candidate)?.expiry
     : undefined;
 }
 
@@ -639,7 +802,7 @@ export function targetEligibilityFor(
       const grip = gripPartsOn(view, factionId);
       const surcharge = poachSurchargeOn(view, factionId);
       const required = withSurcharge(grip, surcharge);
-      const lead = leadsOf(view.relations, actorFactionId, factionId);
+      const lead = leadsIn(view, actorFactionId, factionId);
       if (!clearsBars(lead, required)) {
         reasons.push({
           code: "insufficient-lead",
@@ -653,10 +816,18 @@ export function targetEligibilityFor(
       }
     }
 
-    if (inward && !view.sites.includes(factionId)) {
+    // Two different refusals, and the order matters: a land the map has no dot
+    // left for can never be built in again, so saying "raise your population"
+    // there would send the player after a boom that would not help. The
+    // allowance is only quoted once the map could actually draw one.
+    if (inward && freeSitesIn(view, factionId) === 0) {
       reasons.push({ code: "no-free-site" });
-    } else if (inward && view.settled.includes(factionId)) {
-      reasons.push({ code: "already-settled" });
+    } else if (inward) {
+      const have = settlementsIn(view, factionId);
+      const allowance = settlementAllowance(view, actorFactionId);
+      if (have >= allowance) {
+        reasons.push({ code: "needs-population", have, allowance });
+      }
     }
 
     return reasons.length === 0
@@ -712,17 +883,21 @@ export function cardBlockReason(
   const overlord = view.overlords.get(factionId);
   const vassalOnly = (): CardBlockReason | null =>
     overlord === undefined ? { code: "needs-overlord" } : null;
-  // Favourable omens is always legal: readings stack, so a second one is a
-  // bigger multiplier rather than a dead card. Listed here explicitly because
-  // the tail of this function answers `unavailable` for untargeted cards.
+  // Favourable omens and Population boom are always legal: both stack, so a
+  // second one is a bigger allowance rather than a dead card, and a boom held
+  // with no settlement to spend it on simply waits. Listed here explicitly
+  // because the tail of this function answers `unavailable` for untargeted
+  // cards.
   if (
-    cardId === "grow-crops" || cardId === "fortify" ||
-    cardId === "favourable-omens"
+    cardId === "grow-crops" || cardId === "fortify" || cardId === "a-feast" ||
+    cardId === "favourable-omens" || cardId === "population-boom"
   ) {
     return null;
   }
-  if (cardId === "bodyguard") {
-    return view.bodyguards.includes(factionId) ? { code: "already-held" } : null;
+  // Every guard, one rule: one unspent copy at a time. A second would be a
+  // wasted turn, since a guard turns aside exactly one card either way.
+  if (isGuardCard(cardId)) {
+    return holdsGuard(view, factionId, cardId) ? { code: "already-held" } : null;
   }
   if (cardId === "extended-diplomacy") {
     return view.diplomacyBoost.includes(factionId)

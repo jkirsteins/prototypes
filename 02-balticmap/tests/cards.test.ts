@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   ACQUIRABLE_CARDS, AI_DECK_GUARANTEED, BASE_RARITY, CARDS, DECK_SIZE,
-  DEFAULT_DECK, RARITY_TIERS, STARTING_KNOWN_CARDS, TRIBUTE_CARDS,
-  buildDeck, buildAiDeck, rarityForImpact, shuffle,
+  DEFAULT_DECK, DOUBLABLE_CARDS, FAN_OUT_CARDS, GUARDS, RARITY_TIERS,
+  STARTING_KNOWN_CARDS, TRIBUTE_CARDS,
+  buildDeck, buildAiDeck, guardAgainst, isGuardCard, rarityForImpact, shuffle,
   type Rng,
 } from "../src/cards";
 import impactData from "../src/data/card-impact.json";
@@ -11,7 +12,8 @@ const NON_BASICS = [
   "raid", "shrewd-marriage", "fortify", "subjugate",
   "incorporate", "seeds-of-revolt",
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
-  "favourable-omens",
+  "favourable-omens", "found-settlement",
+  "population-boom", "a-feast", "distrustful-neighbour", "eloping-heirs",
 ];
 
 function seededRng(seed: number): Rng {
@@ -58,7 +60,7 @@ describe("cards", () => {
     );
     expectProps(
       "incorporate", "Incorporate", true, false, 1, true, false,
-      "epic",
+      "rare",
       "Permanently absorb one of your vassals into your realm.",
     );
     expectProps(
@@ -90,31 +92,99 @@ describe("cards", () => {
     );
     expectProps(
       "alliance", "Alliance", true, false, 1, true, false,
-      "rare",
-      "Seal a pact with one faction in reach: no hostile cards between you for 5 turns.",
+      "common",
+      "Seal a pact with one faction in reach: no hostile cards between you " +
+        "for 5 turns, and +1 Might for both of you against every faction " +
+        "bordering both realms.",
     );
     expectProps(
       "extended-diplomacy", "Extended diplomacy", false, false, 1, true, false,
       "common",
       "Patient envoys: your next Alliance lasts twice as long.",
     );
-    // The one secret card: others see only that a card was played.
+    expectProps(
+      "found-settlement", "Found a settlement", true, false, 1, true, false,
+      "common",
+      "Raise another settlement in one land of your realm, up to what your " +
+        "people support - two, and one more for each Population boom you " +
+        "hold. Each settlement adds +1 to the Might lead others need to " +
+        "subjugate you, and spends a boom.",
+    );
+    expectProps(
+      "population-boom", "Population boom", false, false, 1, true, false,
+      "common",
+      "Your people multiply: one more settlement than your lands would " +
+        "otherwise support. Stacks, and waits in hand until a settlement is " +
+        "founded.",
+    );
+    expectProps(
+      "a-feast", "A feast", false, false, 1, true, false,
+      "rare",
+      "Gain +1 Status over every other living faction at once.",
+    );
+    // The three secret cards: others see only that a card was played.
     expectProps(
       "bodyguard", "Bodyguard", false, true, 1, true, false,
       "common",
       "Post a bodyguard: the next Assassinate ruler against you fails. " +
         "No stacking. Others see only that you played a secret card.",
     );
+    expectProps(
+      "distrustful-neighbour", "Distrustful neighbour", false, true, 1, true, false,
+      "common",
+      "Your neighbours grow wary: the next Alliance sealed with you fails. " +
+        "No stacking. Others see only that you played a secret card.",
+    );
+    expectProps(
+      "eloping-heirs", "Eloping heirs", false, true, 1, true, false,
+      "common",
+      "Your heirs slip away in the night: the next Shrewd marriage against " +
+        "you fails. No stacking. Others see only that you played a secret card.",
+    );
   });
 
-  it("keeps Bodyguard the only secret card", () => {
-    // Not a preference - a guard rail. A secret card must move no relation
-    // counter, because `impactText` in src/hud.ts prints the standings suffix
-    // beside the line whatever the card's name says, and a suffix names the
-    // card in all but words. Bodyguard moves nothing; the next card marked
-    // secret has to be checked against that before this list grows.
+  it("keeps the secret cards and the guards the same set", () => {
+    // Not a preference - a guard rail, and the reason it is an identity rather
+    // than a pinned literal.
+    //
+    // A secret card must move no relation counter, because `impactText` in
+    // src/hud.ts prints the standings suffix beside the line whatever the
+    // card's name says, and a suffix names the card in all but words. It must
+    // also have a reveal clause, or the log insists on "a secret card" forever
+    // about something the player watched happen.
+    //
+    // Being a guard answers both at once: a guard's whole effect is that
+    // SOMEBODY ELSE'S card moved nothing, and `revealedSecrets` reveals it off
+    // the `prevented` play it turned aside. A secret that guards nothing has
+    // neither for free and must write its own; a guard that is not secret hands
+    // rivals a detector for what it is holding.
     const secret = Object.values(CARDS).filter((c) => c.secret).map((c) => c.id);
-    expect(secret).toEqual(["bodyguard"]);
+    expect([...secret].sort()).toEqual(Object.keys(GUARDS).sort());
+  });
+
+  it("aims every guard at a real, targeted card", () => {
+    // Targeted, because `playCard` consumes the guard off `targetFactionId`:
+    // an untargeted card has nobody to check against and would silently never
+    // be turned aside.
+    for (const [guardId, targetId] of Object.entries(GUARDS)) {
+      expect(CARDS[guardId], `${guardId} is not a real card`).toBeDefined();
+      expect(CARDS[targetId], `${targetId} is not a real card`).toBeDefined();
+      expect(CARDS[targetId].targeted, `${targetId} is not targeted`).toBe(true);
+      expect(guardAgainst(targetId)).toBe(guardId);
+      expect(isGuardCard(guardId)).toBe(true);
+      expect(isGuardCard(targetId)).toBe(false);
+    }
+  });
+
+  it("keeps every fan-out card real, untargeted and doublable", () => {
+    // Untargeted because the effect is "against every other living faction",
+    // and doublable because a reading has an obvious number to double - which
+    // `impactText` then renders as "+N against all" rather than a pair.
+    for (const id of FAN_OUT_CARDS) {
+      expect(CARDS[id], `${id} is not a real card`).toBeDefined();
+      expect(CARDS[id].targeted).toBe(false);
+      expect(DOUBLABLE_CARDS.has(id), `${id} is not doublable`).toBe(true);
+    }
   });
 
   it("builds the explicit default deck, favourable-omens included", () => {
@@ -238,17 +308,18 @@ describe("buildAiDeck", () => {
   });
 
   it("an rng that always returns < 0.5 includes non-basics up to DECK_SIZE, guarding overflow", () => {
-    // 11 non-basics now exist (Reclaim independence retired); an rng that
-    // includes all of them must still be capped at DECK_SIZE (same overflow
-    // guard as buildDeck), dropping only favourable-omens (last in CARDS
-    // order) rather than returning 11 cards.
+    // 16 non-basics now exist; an rng that includes all of them must still be
+    // capped at DECK_SIZE (same overflow guard as buildDeck), keeping the
+    // guaranteed pair plus the first of the rest in CARDS declaration order
+    // rather than returning 16 cards.
     const deck = buildAiDeck(() => 0);
-    const count = (id: string) => deck.filter((c) => c === id).length;
-    for (const id of NON_BASICS.filter((id) => id !== "favourable-omens")) {
-      expect(count(id)).toBe(1);
-    }
-    expect(count("favourable-omens")).toBe(0);
     expect(deck).toHaveLength(DECK_SIZE);
+    for (const id of AI_DECK_GUARANTEED) expect(deck).toContain(id);
+    // Everything in the deck is a real non-basic, and nothing is duplicated.
+    for (const id of deck) expect(NON_BASICS).toContain(id);
+    expect(new Set(deck).size).toBe(DECK_SIZE);
+    // The tail of CARDS is what falls off the end.
+    expect(deck).not.toContain("eloping-heirs");
   });
 });
 
@@ -313,6 +384,7 @@ describe("rarity and the acquirable pool", () => {
       "shrewd-marriage", "incorporate",
       "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
       "favourable-omens", "found-settlement",
+      "population-boom", "a-feast", "distrustful-neighbour", "eloping-heirs",
     ]);
     // the escape is a starting card now, not a pack drop
     expect(ACQUIRABLE_CARDS).not.toContain("seeds-of-revolt");

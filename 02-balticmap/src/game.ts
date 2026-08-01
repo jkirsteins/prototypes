@@ -1,18 +1,18 @@
 import {
-  buildDeck, buildAiDeck, shuffle, isTributeCard, CARDS, DECK_SIZE,
-  TRIBUTE_CARDS, type Rng, type TributeTrack,
+  buildDeck, buildAiDeck, shuffle, guardAgainst, isGuardCard, isTributeCard,
+  CARDS, DECK_SIZE, FAN_OUT_CARDS, TRIBUTE_CARDS, type Rng, type TributeTrack,
 } from "./cards";
 
 export type { TributeTrack };
 import {
-  allianceKey, bumpMight, bumpMightAllBy, bumpMightBy, bumpStatus, bumpStatusBy,
-  fullRealmOf, leadsOf, levelStatus,
-  type Incorporated, type Overlords, type Relations,
+  allianceKey, bumpAllBy, bumpMight, bumpMightAllBy, bumpMightBy, bumpStatus,
+  bumpStatusBy, fullRealmOf, leadsOf, levelStatus,
+  type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
-  loyaltyKey, incorporationChance, subjugationChance,
-  type Omens, omenMultiplier, passiveFortifyFor, playableSet, raidGainFor,
-  validTargetsFor,
+  loyaltyKey, incorporationChance, PACT_MIGHT_BONUS, sharedNeighboursOf,
+  subjugationChance, type Guards, type Omens, omenMultiplier, passiveFortifyFor,
+  playableSet, raidGainFor, validTargetsFor,
   type RulesView,
 } from "./playability";
 import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
@@ -20,7 +20,7 @@ import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
   | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
-  | "settled" | "seeded" | "garrisoned"
+  | "settled" | "seeded" | "garrisoned" | "pact-lapsed"
   | "subjugate-failed" | "incorporate-failed"
   | "victory" | "defeat" | "unified" | "surrendered" | "stranded";
 
@@ -46,7 +46,20 @@ export interface GameEvent {
    *  round summary silently, which is why tests/standings.test.ts replays a
    *  full game and checks the walk against the real relations. */
   amount?: number;
-  prevented?: boolean; // play: a nullified Assassinate ruler (Bodyguard)
+  /** play: the card was turned aside by the target's guard (see `GUARDS` in
+   *  src/cards.ts) and did nothing. Also what `revealedSecrets` reads to decide
+   *  that the guard which stopped it is no longer a secret. */
+  prevented?: boolean;
+  /** play (alliance) and pact-lapsed: the factions the pact buys BOTH allies a
+   *  Might lead over, frozen when it was sealed. The two allies are the actor
+   *  and `targetFactionId` on the play, and the actor and `targetFactionId` on
+   *  the lapse.
+   *
+   *  Carried on the event rather than looked up, because a lapse deletes the
+   *  pact it is reporting - and because it is what lets `leadMovesOf` resolve a
+   *  fan-out exactly in BOTH directions, which Fortify's cannot: this list says
+   *  who was affected, so the walk never has to guess who was alive. */
+  pactAgainst?: string[];
   /** play, reclaimed: how many Favourable omens readings this play cashed, so
    *  the log can say by how much. A count rather than the boolean it replaced,
    *  because readings stack: two of them quadruple, and "doubled" could not
@@ -85,19 +98,29 @@ export interface GameState {
   overlords: Overlords; // STORED vassal -> overlord map
   incorporated: Incorporated;
   adjacency: Record<string, string[]>;
-  alliances: Record<string, number>; // sorted-pair key -> expiry turn
+  alliances: Alliances; // sorted-pair key -> the pact between that pair
   /** `${land}|${lord}` -> consecutive turns that lord has held that land.
    *  Ticked in `beginTurn`, read by the Incorporate odds. */
   loyalty: Record<string, number>;
   diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
-  bodyguards: string[]; // faction ids holding an unused Bodyguard guard
+  guards: Guards; // guard card id -> faction ids holding it unspent
   omens: Omens; // faction id -> unspent Favourable omens readings held
-  /** Factions whose land has a site still free to settle - map-derived and
-   *  static, like `adjacency`. Faction ids, not the map's region ids. A faction
-   *  absent here can never be built in. */
-  sites: string[];
-  /** Factions whose land has been settled, in the order founded. */
-  settled: string[];
+  /** Faction id -> how many FURTHER settlements the map authors for that land
+   *  (its locked dots, i.e. `maxSettlements - 1`). Map-derived and static, like
+   *  `adjacency`; faction ids, not the map's region ids. Absent or 0 means the
+   *  land can never be built in again. */
+  siteCaps: Record<string, number>;
+  /** Faction id -> settlements FOUNDED in that land this game. Absent = 0.
+   *
+   *  The one settlement every land starts with is deliberately not counted:
+   *  it would add the same +1 to every land's Might bar, which is no rule at
+   *  all. `settlementsIn` in src/playability.ts is where the standing one is
+   *  added back, and only for the allowance check. */
+  settlements: Record<string, number>;
+  /** Faction id -> unspent Population boom readings, each one allowing a
+   *  settlement past what the land would otherwise support. Absent = 0, and
+   *  shaped like `omens` for the same reason: they stack. */
+  booms: Record<string, number>;
   /** One ruler per faction id, total. Read through `rulerOf`, written only
    *  by `replaceRuler`. */
   rulers: Rulers;
@@ -114,6 +137,13 @@ export interface GameState {
 
 export const OPENING_HAND = 3;
 
+/** Further settlements a land gets in a world nobody handed a map to. Three, so
+ *  a defaulted test world can exercise the base allowance AND a boom past it -
+ *  a cap of 1 would have made every Population boom test unreachable without
+ *  passing a map in. The real map hands `siteCaps` in from `maxSettlements`,
+ *  where the smallest land offers 1 and the largest 8. */
+export const DEFAULT_SITE_CAP = 3;
+
 /** Lands needed to win: a 55 percent majority of the roster, rounded up.
  *  Derived rather than hardcoded so it cannot rot when the map changes. */
 export function victoryRealmSize(factionCount: number): number {
@@ -129,11 +159,12 @@ export function viewOf(state: GameState): RulesView {
     factionIds: state.factionIds,
     alliances: state.alliances,
     turn: state.turn,
-    bodyguards: state.bodyguards,
+    guards: state.guards,
     omens: state.omens,
     diplomacyBoost: state.diplomacyBoost,
-    sites: state.sites,
-    settled: state.settled,
+    siteCaps: state.siteCaps,
+    settlements: state.settlements,
+    booms: state.booms,
     loyalty: state.loyalty,
     liveRevolts: state.players
       .filter((pl) =>
@@ -147,11 +178,12 @@ export function newGame(
   factionIds: string[],
   adjacency?: Record<string, string[]>,
   ethnicities: Record<string, string> = {},
-  /** Faction ids whose land has a free site, from the map. Defaults to every
-   *  faction, the same way `adjacency` defaults to a complete graph: tests get
-   *  a world where Found a settlement is playable everywhere unless they say
-   *  otherwise. */
-  sites?: string[],
+  /** Faction id -> further settlements the map authors for that land, i.e. its
+   *  locked dots. Defaults to `DEFAULT_SITE_CAP` for every faction, the same
+   *  way `adjacency` defaults to a complete graph: tests get a world where
+   *  Found a settlement is playable everywhere unless they say otherwise, and
+   *  where a boom has something to spend itself on. */
+  siteCaps?: Record<string, number>,
 ): GameState {
   return {
     phase: "main-menu",
@@ -166,10 +198,13 @@ export function newGame(
     alliances: {},
     loyalty: {},
     diplomacyBoost: [],
-    bodyguards: [],
+    guards: {},
     omens: {},
-    sites: sites ?? [...factionIds],
-    settled: [],
+    siteCaps:
+      siteCaps ??
+      Object.fromEntries(factionIds.map((id) => [id, DEFAULT_SITE_CAP])),
+    settlements: {},
+    booms: {},
     ethnicities,
     rulers: initialRulers(factionIds, ethnicities),
     humanSeat: 0,
@@ -246,6 +281,10 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     case "draw":
     case "reshuffle":
     case "discard":
+    // A pact lapsing is the clock running out, not something a card did. It is
+    // logged in `beginTurn`, which never opens a batch with a play, so this is
+    // unreachable today - but it is the honest answer if that ever changes.
+    case "pact-lapsed":
     // The run is over. See above.
     case "victory":
     case "defeat":
@@ -321,11 +360,48 @@ function tickLoyalty(state: GameState, land: string): Record<string, number> {
   return out;
 }
 
+/** Pacts the clock has run out on, removed from the record and reported.
+ *
+ *  Deleting rather than leaving the stale entry is what makes "still in the
+ *  record" the guard against reporting the same lapse twice - `beginTurn` runs
+ *  once per seat per round, so a sweep that only compared expiries would log the
+ *  same lapse for every player in turn.
+ *
+ *  It has to be reported at all because a pact carries a Might bonus for both
+ *  allies against the neighbours they share (see `Pact`), so a lapse MOVES
+ *  leads. An unrecorded move is exactly what drifts the standings walk - the
+ *  `amount` rule in CLAUDE.md - and it is also news: hostile cards between the
+ *  two of them are legal again.
+ *
+ *  `playerId` is the seat whose turn is starting, which is whose clock tick
+ *  noticed it, and is nobody's doing. The notice reads the two allies off
+ *  `targetFactionId` and `overlordFactionId` instead. */
+function sweepLapsedPacts(
+  state: GameState,
+  playerId: number,
+): { alliances: Alliances; events: GameEvent[] } {
+  const events: GameEvent[] = [];
+  let alliances = state.alliances;
+  for (const [key, pact] of Object.entries(state.alliances)) {
+    if (state.turn < pact.expiry) continue;
+    const [a, b] = key.split("|");
+    const { [key]: _gone, ...rest } = alliances;
+    alliances = rest;
+    events.push({
+      turn: state.turn, playerId, type: "pact-lapsed",
+      targetFactionId: a, overlordFactionId: b,
+      track: "might", amount: 1, pactAgainst: pact.against,
+    });
+  }
+  return { alliances, events };
+}
+
 export function beginTurn(state: GameState, rng: Rng): GameState {
   if (state.players.length === 0) return state;
   const p = state.players[state.current];
   let { deck, discard } = p;
-  const events: GameEvent[] = [];
+  const lapsed = sweepLapsedPacts(state, p.id);
+  const events: GameEvent[] = [...lapsed.events];
   if (deck.length === 0 && discard.length > 0) {
     deck = shuffle(discard, rng);
     discard = [];
@@ -361,7 +437,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     });
   }
   return {
-    ...state, players, relations, loyalty: tickLoyalty(state, p.factionId),
+    ...state, players, relations, alliances: lapsed.alliances,
+    loyalty: tickLoyalty(state, p.factionId),
     log: appendEvents(state, events), playedThisTurn: false,
   };
 }
@@ -478,9 +555,10 @@ export function playCard(
   let incorporated = state.incorporated;
   let alliances = state.alliances;
   let diplomacyBoost = state.diplomacyBoost;
-  let bodyguards = state.bodyguards;
+  let guards = state.guards;
   let omens = state.omens;
-  let settled = state.settled;
+  let settlements = state.settlements;
+  let booms = state.booms;
   let rulers = state.rulers;
   // A doublable card cashes the whole stack at once, rather than peeling one
   // reading per play. One rule, and no special case for a play made for you:
@@ -528,7 +606,25 @@ export function playCard(
     }
   };
 
-  if (cardId === "raid" && targetId !== undefined) {
+  // One prevented branch for every guard, read off `GUARDS` rather than written
+  // per card. A guard is consumed by the aim, not by the effect: the card is
+  // spent, the turn is gone, and the target's guard is gone too. Card-specific
+  // stamps that survive a prevention (Assassinate ruler's `targetRuler`) sit in
+  // their own branch below, guarded by `prevented`.
+  const guardId = targetId === undefined ? undefined : guardAgainst(cardId);
+  if (
+    guardId !== undefined && targetId !== undefined &&
+    (guards[guardId] ?? []).includes(targetId)
+  ) {
+    guards = {
+      ...guards,
+      [guardId]: guards[guardId].filter((f) => f !== targetId),
+    };
+    prevented = true;
+    if (cardId === "assassinate-ruler") {
+      events[0] = { ...events[0], targetRuler: rulerOf(rulers, targetId).name };
+    }
+  } else if (cardId === "raid" && targetId !== undefined) {
     // Through `raidGainFor` rather than `raidYield * mult`: the card tip and
     // the map preview quote the same call, so the promise and the resolution
     // cannot drift apart.
@@ -538,57 +634,79 @@ export function playCard(
   } else if (cardId === "shrewd-marriage" && targetId !== undefined) {
     relations = bumpStatusBy(relations, p.factionId, targetId, mult);
     events[0] = { ...events[0], amount: mult, track: "status" };
-  } else if (cardId === "fortify") {
+  } else if (FAN_OUT_CARDS.has(cardId)) {
+    // Fortify on Might, A feast on Status - one branch, because the two differ
+    // in nothing but the track. See FAN_OUT_CARDS in src/cards.ts.
+    const track: TributeTrack = cardId === "a-feast" ? "status" : "might";
     const living = state.factionIds.filter(
       (f) => f !== p.factionId && !(f in incorporated),
     );
-    relations = bumpMightAllBy(relations, p.factionId, living, mult);
-    events[0] = { ...events[0], amount: mult, track: "might" };
+    relations = bumpAllBy(relations, p.factionId, living, track, mult);
+    events[0] = { ...events[0], amount: mult, track };
   } else if (cardId === "favourable-omens") {
     omens = { ...omens, [p.factionId]: (omens[p.factionId] ?? 0) + 1 };
+  } else if (cardId === "population-boom") {
+    booms = { ...booms, [p.factionId]: (booms[p.factionId] ?? 0) + 1 };
   } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
-    if (bodyguards.includes(targetId)) {
-      bodyguards = bodyguards.filter((f) => f !== targetId);
-      prevented = true;
-      events[0] = {
-        ...events[0],
-        targetRuler: rulerOf(rulers, targetId).name,
-      };
-    } else {
-      // Captured before assassinate() levels it away: the "before" of a
-      // standings line has to come from somewhere once the reset erases it.
-      const preStatusLead = leadsOf(relations, p.factionId, targetId).status;
-      const out = assassinate(state, rulers, relations, p.factionId, targetId);
-      relations = out.relations;
-      rulers = out.rulers;
-      events[0] = {
-        ...events[0],
-        targetRuler: out.killed,
-        successorRuler: out.successor,
-        amount: preStatusLead,
-        track: "status",
-      };
-    }
+    // Captured before assassinate() levels it away: the "before" of a
+    // standings line has to come from somewhere once the reset erases it.
+    const preStatusLead = leadsOf(relations, p.factionId, targetId).status;
+    const out = assassinate(state, rulers, relations, p.factionId, targetId);
+    relations = out.relations;
+    rulers = out.rulers;
+    events[0] = {
+      ...events[0],
+      targetRuler: out.killed,
+      successorRuler: out.successor,
+      amount: preStatusLead,
+      track: "status",
+    };
   } else if (cardId === "found-settlement" && targetId !== undefined) {
     // The settlement belongs to the land, not to whoever founded it: a vassal's
     // land settled by its overlord keeps the settlement when the vassal leaves,
     // and takes the grip with it. That is the risk the card offers.
-    settled = [...settled, targetId];
+    settlements = {
+      ...settlements,
+      [targetId]: (settlements[targetId] ?? 0) + 1,
+    };
+    // Every founding spends a boom, floored at none - including one that only
+    // reached the second settlement a land supports unaided. That is the price
+    // of the allowance being an "up to" rather than a step: a boom saved for a
+    // big land is a boom not spent on a small one.
+    const held = booms[p.factionId] ?? 0;
+    if (held > 0) booms = { ...booms, [p.factionId]: held - 1 };
     events.push({
       turn: state.turn, playerId: p.id, type: "settled",
       targetFactionId: targetId,
     });
-  } else if (cardId === "bodyguard") {
-    if (!bodyguards.includes(p.factionId)) {
-      bodyguards = [...bodyguards, p.factionId];
+  } else if (isGuardCard(cardId)) {
+    // Posting any of the three guards. Legality already refuses a second copy
+    // while one is unspent (`already-held`), so this cannot stack.
+    const holders = guards[cardId] ?? [];
+    if (!holders.includes(p.factionId)) {
+      guards = { ...guards, [cardId]: [...holders, p.factionId] };
     }
   } else if (cardId === "alliance" && targetId !== undefined) {
     const boosted = diplomacyBoost.includes(p.factionId);
+    // Frozen here and never recomputed - see `Pact` in src/relations.ts for why
+    // a live set would silently drift the standings walk.
+    const against = sharedNeighboursOf(viewOf(state), p.factionId, targetId);
     alliances = {
       ...alliances,
-      [allianceKey(p.factionId, targetId)]: state.turn + (boosted ? 10 : 5),
+      [allianceKey(p.factionId, targetId)]: {
+        expiry: state.turn + (boosted ? 10 : 5),
+        against,
+      },
     };
     if (boosted) diplomacyBoost = diplomacyBoost.filter((f) => f !== p.factionId);
+    // The pact's Might bonus is not a bump: it is a term `leadsIn` adds while
+    // the pact is live and drops when it lapses. It still MOVES leads, so it is
+    // recorded like one - `amount` and `track` for the size, `pactAgainst` for
+    // the pairs, which is what lets the walk resolve both sides of the fan-out.
+    events[0] = {
+      ...events[0], amount: PACT_MIGHT_BONUS, track: "might",
+      pactAgainst: against,
+    };
   } else if (cardId === "extended-diplomacy") {
     if (!diplomacyBoost.includes(p.factionId)) {
       diplomacyBoost = [...diplomacyBoost, p.factionId];
@@ -764,7 +882,7 @@ export function playCard(
 
   return {
     ...state, phase, players, relations, overlords, incorporated,
-    alliances, diplomacyBoost, bodyguards, omens, settled, rulers,
+    alliances, diplomacyBoost, guards, omens, settlements, booms, rulers,
     log: appendEvents(state, events), playedThisTurn: true,
   };
 }

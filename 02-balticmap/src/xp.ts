@@ -27,6 +27,9 @@ export const XP_TABLE: Record<GameEventType, number> = {
   discard: 0,
   tribute: 0,
   garrisoned: 0,
+  // A clock running out, not a choice: the pact was already paid for by the
+  // Alliance that sealed it, which scored as a `play`.
+  "pact-lapsed": 0,
   defeat: 0,
   unified: 0,
   surrendered: 0,

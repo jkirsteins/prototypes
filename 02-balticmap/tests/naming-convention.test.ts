@@ -125,6 +125,18 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "garrisoned", targetFactionId: H, amount: 1 },
     { turn: 1, playerId: 2, type: "garrisoned", targetFactionId: RIVAL, amount: 1 },
   ],
+  "pact-lapsed": [
+    // Both orderings, because the two id fields are symmetric here and the
+    // notice picks the human's ally out of whichever slot they are not in.
+    {
+      turn: 1, playerId: 1, type: "pact-lapsed", targetFactionId: H,
+      overlordFactionId: RIVAL, track: "might", amount: 1, pactAgainst: [],
+    },
+    {
+      turn: 1, playerId: 2, type: "pact-lapsed", targetFactionId: RIVAL,
+      overlordFactionId: H, track: "might", amount: 1, pactAgainst: [],
+    },
+  ],
   "subjugate-failed": [
     {
       turn: 1, playerId: 2, type: "subjugate-failed",

@@ -72,13 +72,21 @@ export interface CardDef {
    *  - **A secret card must move no relation counter.** `impactText` in
    *    src/hud.ts prints `(Might +1 -> 2)` beside the line off the event's
    *    `amount`/`track`, and nothing here hides that suffix. A secret card that
-   *    moved a track would be named in all but words. Bodyguard moves nothing.
+   *    moved a track would be named in all but words. Every guard moves
+   *    nothing: a guard's whole effect is that somebody else's card moved
+   *    nothing either.
    *  - **Secrecy is not a discovery route, and it removes none.** A card is
    *    learnt from a pack (`openPack` in src/meta.ts is the only writer of
    *    `knownCards`), never from witnessing it, so hiding the name costs
    *    nothing here. A card that had no route but being witnessed must not
    *    ship - see the card rule in the repo CLAUDE.md - and marking one secret
-   *    would not change that either way. */
+   *    would not change that either way.
+   *
+   *  Every secret card in the game today is a guard - see `GUARDS` below, which
+   *  also carries the reveal clause each of them needs. The two sets being
+   *  identical is pinned in tests/cards.test.ts rather than assumed: a secret
+   *  card that guards nothing would need its own reveal clause written from
+   *  scratch. */
   secret: boolean;
   /** Copies allowed per deck; null = unlimited (basic filler). */
   maxPerDeck: number | null;
@@ -99,7 +107,7 @@ export const CARDS: Record<string, CardDef> = {
   "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
   "fortify": { id: "fortify", name: "Fortify", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Might over every other living faction at once." },
   "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },
-  "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Permanently absorb one of your vassals into your realm." },
+  "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Permanently absorb one of your vassals into your realm." },
   // Injection-only, like Revolt: a Subjugate shuffles one of each into the
   // vassal's deck (see playCard) and a release strips them out again. They are
   // never deck-buildable and never in a pack.
@@ -108,16 +116,71 @@ export const CARDS: Record<string, CardDef> = {
   "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
   "revolt": { id: "revolt", name: "Revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good." },
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Even the score: the Status lead between you and one faction in reach resets to none." },
-  "alliance": { id: "alliance", name: "Alliance", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns." },
+  "alliance": { id: "alliance", name: "Alliance", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns, and +1 Might for both of you against every faction bordering both realms." },
   "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Patient envoys: your next Alliance lasts twice as long." },
   // Secret. The rules already treat a posted guard as hidden - `failureRiskOf`
-  // in src/playability.ts refuses to read `view.bodyguards` so the Assassinate
+  // in src/playability.ts refuses to read the guard lists so the Assassinate
   // ruler tooltip cannot become a detector - and a log line naming the card was
   // that detector by another route.
   "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card." },
-  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "The signs are read: your next Might or Status gain counts double." },
-  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Settle the free site in one land of your realm. Each settlement adds +1 to the lead others need to subjugate you." },
+  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "The signs are read: your next Might or Status gain counts double." },
+  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
+  // Appended, never inserted: `buildAiDeck` rolls one rng draw per entry here
+  // in declaration order, so where a card sits decides which draw it answers
+  // to. See the warning on DEFAULT_DECK.
+  "population-boom": { id: "population-boom", name: "Population boom", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your people multiply: one more settlement than your lands would otherwise support. Stacks, and waits in hand until a settlement is founded." },
+  "a-feast": { id: "a-feast", name: "A feast", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Gain +1 Status over every other living faction at once." },
+  "distrustful-neighbour": { id: "distrustful-neighbour", name: "Distrustful neighbour", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your neighbours grow wary: the next Alliance sealed with you fails. No stacking. Others see only that you played a secret card." },
+  "eloping-heirs": { id: "eloping-heirs", name: "Eloping heirs", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your heirs slip away in the night: the next Shrewd marriage against you fails. No stacking. Others see only that you played a secret card." },
 };
+
+/** Guard card -> the card it turns aside, once, for whoever posted it.
+ *
+ *  Three cards, one mechanic, one table. Everything that used to be specific to
+ *  Bodyguard reads this instead: `GameState.guards` is keyed by the guard card
+ *  id, `playCard` has one prevented branch, `cardBlockReason` answers
+ *  `already-held` for any of them, `failureRiskOf` returns
+ *  `{ kind: "hidden", because: <guard id> }` for any guarded card, and
+ *  `revealedSecrets` in src/hud.ts pops the queue for `guardAgainst(cardId)`.
+ *
+ *  **A guard is the reveal clause of its own secret.** Secrecy buys the fact
+ *  that you cannot tell which rival is holding one; it does not buy a card
+ *  visibly spent in front of you staying hidden afterwards. So a play that came
+ *  back `prevented` reveals the guard that turned it aside, and the log names
+ *  it from then on. A secret card that is NOT in this table has no reveal
+ *  clause at all and must not ship - see `CardDef.secret`.
+ *
+ *  **A guarded card must be targeted**, because the guard is consumed off
+ *  `targetFactionId`. `tests/cards.test.ts` pins that. */
+export const GUARDS: Readonly<Record<string, string>> = {
+  "bodyguard": "assassinate-ruler",
+  "distrustful-neighbour": "alliance",
+  "eloping-heirs": "shrewd-marriage",
+};
+
+export const isGuardCard = (cardId: string): boolean => cardId in GUARDS;
+
+/** The guard that turns `cardId` aside, or undefined where nothing does.
+ *  The reverse of GUARDS, derived rather than written out so the two cannot
+ *  disagree. */
+const GUARD_BY_TARGET: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(GUARDS).map(([guard, target]) => [target, guard]),
+);
+
+export const guardAgainst = (cardId: string): string | undefined =>
+  GUARD_BY_TARGET[cardId];
+
+/** Cards that move a track against EVERY living faction at once rather than
+ *  against one target. They share a shape three places care about: `playCard`
+ *  fans the bump out, `leadMovesOf` in src/standings.ts can only resolve the
+ *  third-party half of one, and `impactText` in src/hud.ts prints
+ *  "+N Might against all" instead of a single pair's before -> after.
+ *
+ *  A set rather than three `cardId === "fortify" || cardId === "a-feast"`
+ *  chains, which is how the doubling rule drifted before DOUBLABLE_CARDS
+ *  existed. The track each one moves is the card's own business and lives in
+ *  `playCard`; this only says the fan-out shape applies. */
+export const FAN_OUT_CARDS: ReadonlySet<string> = new Set(["fortify", "a-feast"]);
 
 /** Which track a relation counter moves on. Lives here because the tribute
  *  cards below are what fix it per card; `game.ts` re-exports it. */
@@ -148,7 +211,8 @@ export const isTributeCard = (cardId: string): boolean =>
  *  held while subjugated doubles what you pay, which is what stops the card
  *  from being free to sit on. */
 export const DOUBLABLE_CARDS: ReadonlySet<string> = new Set([
-  "raid", "shrewd-marriage", "fortify", "revolt", ...Object.keys(TRIBUTE_CARDS),
+  "raid", "shrewd-marriage", "fortify", "a-feast", "revolt",
+  ...Object.keys(TRIBUTE_CARDS),
 ]);
 
 /** Cards the player knows from their very first game. Everything else in the

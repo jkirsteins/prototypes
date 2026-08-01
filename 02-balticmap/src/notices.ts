@@ -427,6 +427,34 @@ function unrestLines(events: GameEvent[]): SummaryLine[] {
   }];
 }
 
+/** The pact that just lapsed, from the human's side: the OTHER ally. Read off
+ *  the two ids the event carries rather than off `playerId`, which is only
+ *  whose clock tick noticed the expiry and is nobody's doing. */
+function otherAllyIn(e: GameEvent, ctx: NoticeCtx): string | undefined {
+  const [a, b] = [e.targetFactionId, e.overlordFactionId];
+  if (a === ctx.humanFactionId) return b;
+  if (b === ctx.humanFactionId) return a;
+  return undefined;
+}
+
+function pactLapsedLines(
+  events: GameEvent[],
+  changes: StandingChange[][],
+  ctx: NoticeCtx,
+): SummaryLine[] {
+  return events.map((e, i) => ({
+    text: [
+      t("Your pact with "), faction(otherAllyIn(e, ctx) ?? ""),
+      t(" has run out"),
+    ],
+    changes: changesFor(i, changes),
+    // Neutral, not bad. The Might it bought is gone, and so is the truce that
+    // stopped you reaching for them - which of those matters more is the
+    // player's read of the board, not this line's to declare.
+    tone: "neutral",
+  }));
+}
+
 function subjugateFailedLines(events: GameEvent[], _ctx: NoticeCtx, role: NoticeRole): SummaryLine[] {
   if (role === "actor") {
     return events.map((e) => ({
@@ -689,6 +717,28 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
             t("Their card is spent. The longer you stay their vassal, the better their "),
             t("next attempt's odds - breaking free resets that clock."),
           ]],
+  },
+  "pact-lapsed": {
+    kind: "modal",
+    // Only the human's own pacts. Two rivals' pact ending changes nothing the
+    // human can see - the Might it bought was against factions bordering both
+    // of THEIR realms, and if the human was one of those the standings line
+    // says so by itself.
+    appliesToHuman: (e, ctx) => otherAllyIn(e, ctx) !== undefined,
+    // Not critical: the expiry turn has been on the card tip, the map badge and
+    // the pact's own log line since it was sealed, so a muted player is not
+    // being surprised by a number they were never shown. It is still a line,
+    // because their Might lead against several factions moved on a turn they
+    // played nothing.
+    lines: pactLapsedLines,
+    footnotes: (events, ctx) => {
+      const other = otherAllyIn(events[0], ctx);
+      if (other === undefined) return [];
+      return [[
+        t("Hostile cards between you and "), theFaction(other),
+        t(" are legal again, in both directions."),
+      ]];
+    },
   },
   garrisoned: {
     kind: "silent",

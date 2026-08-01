@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { pact, settledOnce, } from "./helpers";
 import {
-  cardModifierLines, cardRiskLine,
+  GUARD_POSTED, GUARD_RISK, cardModifierLines, cardRiskLine,
   explainTargetEligibility, subjugationBreakdown, targetImpactLines,
   targetOddsLines,
 } from "../src/target-explanations";
-import { CARDS } from "../src/cards";
+import { CARDS, GUARDS } from "../src/cards";
 import { bumpMight, bumpStatus, type Relations } from "../src/relations";
 import { standingChangeText } from "../src/view";
 import type { TooltipLine } from "../src/panel";
@@ -128,7 +129,7 @@ describe("explainTargetEligibility", () => {
 });
 
 describe("cardModifierLines", () => {
-  const none = { omens: {}, diplomacyBoost: [], bodyguards: [] };
+  const none = { omens: {}, diplomacyBoost: [], guards: {}, booms: {} };
 
   it("says nothing when no modifier is active", () => {
     expect(cardModifierLines(none, "alpha", "raid")).toEqual([]);
@@ -176,12 +177,12 @@ describe("cardModifierLines", () => {
   });
 
   it("says a bodyguard is already posted", () => {
-    expect(cardModifierLines({ ...none, bodyguards: ["alpha"] }, "alpha", "bodyguard"))
+    expect(cardModifierLines({ ...none, guards: { bodyguard: ["alpha"] } }, "alpha", "bodyguard"))
       .toEqual(["A bodyguard is already posted."]);
   });
 
   it("ignores another faction's modifiers", () => {
-    const v = { omens: { beta: 1 }, diplomacyBoost: ["beta"], bodyguards: ["beta"] };
+    const v = { omens: { beta: 1 }, diplomacyBoost: ["beta"], guards: { bodyguard: ["beta"] }, booms: {} };
     expect(cardModifierLines(v, "alpha", "raid")).toEqual([]);
     expect(cardModifierLines(v, "alpha", "alliance")).toEqual([]);
     expect(cardModifierLines(v, "alpha", "bodyguard")).toEqual([]);
@@ -193,8 +194,9 @@ describe("targetOddsLines", () => {
   const v = (partial: Partial<RulesView> = {}): RulesView => ({
     relations: {}, overlords: new Map(), incorporated: {},
     adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
-    factionIds: ORDER, alliances: {}, turn: 1, bodyguards: [], omens: {},
-    diplomacyBoost: [], loyalty: {}, liveRevolts: [], sites: [], settled: [],
+    factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
+    diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -214,7 +216,7 @@ describe("targetOddsLines", () => {
     ];
     expect(targetOddsLines(v(), "alpha", "assassinate-ruler", "beta"))
       .toEqual(warning);
-    expect(targetOddsLines(v({ bodyguards: ["beta"] }), "alpha", "assassinate-ruler", "beta"))
+    expect(targetOddsLines(v({ guards: { bodyguard: ["beta"] } }), "alpha", "assassinate-ruler", "beta"))
       .toEqual(warning);
   });
 
@@ -273,8 +275,66 @@ describe("cardRiskLine", () => {
     expect(cardRiskLine("assassinate-ruler")).toContain("bodyguard");
   });
 
+  it("warns about the guard on every card one can turn aside", () => {
+    // Three cards are guarded now, and each names its own guard in ordinary
+    // English rather than the card - the naming rule in AGENTS.md.
+    expect(cardRiskLine("alliance")).toContain("wary");
+    expect(cardRiskLine("shrewd-marriage")).toContain("slipped away");
+    for (const guarded of Object.values(GUARDS)) {
+      expect(cardRiskLine(guarded), `${guarded} has no risk line`)
+        .toContain("Can fail");
+    }
+  });
+
+  it("has prose for every guard, in both places a player meets one", () => {
+    // Two tables, one per surface. A fourth guard that reached the rules and
+    // not these would warn about the wrong card, or render `undefined`.
+    for (const guardId of Object.keys(GUARDS)) {
+      expect(GUARD_RISK[guardId], `${guardId} has no risk wording`)
+        .toBeTypeOf("string");
+      expect(GUARD_POSTED[guardId], `${guardId} has no posted wording`)
+        .toBeTypeOf("string");
+      // Lowercase common nouns: the capitalized name is the card, and these
+      // are plain text with no segment to point at.
+      for (const c of Object.values(CARDS)) {
+        expect(GUARD_RISK[guardId]).not.toContain(c.name);
+        expect(GUARD_POSTED[guardId]).not.toContain(c.name);
+      }
+    }
+  });
+
+  it("shows a held guard and a held boom in the hand", () => {
+    const none = { omens: {}, diplomacyBoost: [], guards: {}, booms: {} };
+    for (const guardId of Object.keys(GUARDS)) {
+      expect(cardModifierLines({ ...none, guards: { [guardId]: ["alpha"] } }, "alpha", guardId))
+        .toEqual([GUARD_POSTED[guardId]]);
+      // and not for somebody else's
+      expect(cardModifierLines({ ...none, guards: { [guardId]: ["beta"] } }, "alpha", guardId))
+        .toEqual([]);
+    }
+    // Booms state the allowance, which is the number a blocked land quotes
+    // back - the only route by which a player learns they stack.
+    expect(cardModifierLines({ ...none, booms: { alpha: 2 } }, "alpha", "found-settlement"))
+      .toEqual(["2 population booms held: your people support 4 settlements in a land."]);
+    expect(cardModifierLines({ ...none, booms: { alpha: 1 } }, "alpha", "population-boom"))
+      .toEqual(["1 population boom held: your people support 3 settlements in a land."]);
+    expect(cardModifierLines({ ...none, booms: { alpha: 1 } }, "alpha", "raid")).toEqual([]);
+  });
+
+  it("says what is missing and what fixes it on a land at its allowance", () => {
+    expect(explainTargetEligibility([{
+      state: "blocked",
+      factionId: "beta",
+      reasons: [{ code: "needs-population", have: 2, allowance: 2 }],
+    }], nameOf, noRisk)[0].lines).toEqual([
+      "Beta",
+      "2 settlements here already, and your people support 2.",
+      "A Population boom raises that by one.",
+    ]);
+  });
+
   it("stays silent for a card the rules can never refuse", () => {
-    for (const id of ["raid", "shrewd-marriage", "alliance", "grow-crops", "fortify"]) {
+    for (const id of ["raid", "grow-crops", "fortify", "a-feast", "population-boom"]) {
       expect(cardRiskLine(id)).toBeNull();
     }
   });
@@ -287,8 +347,9 @@ describe("cardRiskLine", () => {
     const view: RulesView = {
       relations: {}, overlords: new Map([["gamma", "beta"]]), incorporated: {},
       adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
-      factionIds: ids, alliances: {}, turn: 1, bodyguards: [], omens: {},
-      diplomacyBoost: [], loyalty: {}, liveRevolts: [], sites: [], settled: [],
+      factionIds: ids, alliances: {}, turn: 1, guards: {}, omens: {},
+      diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    siteCaps: {}, settlements: {}, booms: {},
     };
     const fallible = Object.keys(CARDS).filter((id) =>
       ids.some((target) => failureRiskOf(view, "alpha", id, target) !== null),
@@ -306,8 +367,9 @@ describe("targetImpactLines", () => {
     adjacency: {
       alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"], delta: [],
     },
-    factionIds: ORDER, alliances: {}, turn: 1, bodyguards: [], omens: {},
-    diplomacyBoost: [], loyalty: {}, liveRevolts: [], sites: [], settled: [],
+    factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
+    diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -396,7 +458,7 @@ describe("targetImpactLines", () => {
    *  and an assertion pinned to an index would step straight over it. */
   it("does not leak that the target has a bodyguard posted", () => {
     const guarded = shown(
-      targetImpactLines(v({ bodyguards: ["beta"] }), "alpha", "assassinate-ruler", "beta"),
+      targetImpactLines(v({ guards: { bodyguard: ["beta"] } }), "alpha", "assassinate-ruler", "beta"),
     );
     const unguarded = shown(
       targetImpactLines(v(), "alpha", "assassinate-ruler", "beta"),
@@ -428,16 +490,16 @@ describe("targetImpactLines", () => {
   });
 
   it("says what a settlement buys, on your own land", () => {
-    const view = v({ sites: ["alpha"] });
+    const view = v({ siteCaps: { alpha: 1 } });
     expect(shown(targetImpactLines(view, "alpha", "found-settlement", "alpha")))
       .toEqual([
         "If Found a settlement played here:",
-        "-- +1 to the lead others need to subjugate you.",
+        "-- +1 to the Might lead others need to subjugate you.",
       ]);
   });
 
   it("keeps a refusal one red line, with no block heading over it", () => {
-    const view = v({ alliances: { "alpha|beta": 12 } });
+    const view = v({ alliances: { "alpha|beta": pact(12) } });
     expect(targetImpactLines(view, "alpha", "raid", "beta")).toEqual([
       { text: "Blocked by Alliance until turn 12.", tone: "bad" },
     ]);
@@ -454,7 +516,7 @@ describe("targetImpactLines", () => {
     const view = v({ incorporated: { gamma: "beta" } });
     expect(targetImpactLines(view, "alpha", "subjugate", "beta", true)).toEqual([]);
     // Only that one reason is dropped: an Alliance still has to be said.
-    const allied = v({ alliances: { "alpha|beta": 12 } });
+    const allied = v({ alliances: { "alpha|beta": pact(12) } });
     expect(targetImpactLines(allied, "alpha", "raid", "beta", true)).toHaveLength(1);
   });
 
@@ -491,8 +553,9 @@ describe("subjugationBreakdown", () => {
       alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta", "delta"],
       delta: ["gamma"],
     },
-    factionIds: ORDER, alliances: {}, turn: 1, bodyguards: [], omens: {},
-    diplomacyBoost: [], loyalty: {}, liveRevolts: [], sites: [], settled: [],
+    factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
+    diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -524,7 +587,7 @@ describe("subjugationBreakdown", () => {
     relations = bumpMight(relations, "delta", "beta");
     const view = v({
       overlords: new Map([["gamma", "beta"], ["beta", "delta"]]),
-      settled: ["gamma"],
+      settlements: settledOnce(["gamma"]),
       relations,
     });
     expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([
@@ -543,7 +606,7 @@ describe("subjugationBreakdown", () => {
     // neither bar, and a "(Might only)" note was all that carried the split.
     const view = v({
       overlords: new Map([["gamma", "beta"]]),
-      settled: ["gamma"],
+      settlements: settledOnce(["gamma"]),
       relations: lead("might", "alpha", "beta", 1),
     });
     const lines = subjugationBreakdown(view, "alpha", "beta");
@@ -615,7 +678,7 @@ describe("subjugationBreakdown", () => {
   });
 
   it("still explains the thresholds under a pact, which only suspends them", () => {
-    const view = v({ alliances: { "alpha|beta": 6 } });
+    const view = v({ alliances: { "alpha|beta": pact(6) } });
     expect(subjugationBreakdown(view, "alpha", "beta").map((l) => l.text)).toEqual([
       "Might 0/2. Opponent's thresholds:",
       "from realm size (1 land)",
@@ -627,7 +690,7 @@ describe("subjugationBreakdown", () => {
   it("counts settlements in the plural, and never on the Status track", () => {
     const view = v({
       overlords: new Map([["gamma", "beta"]]),
-      settled: ["beta", "gamma"],
+      settlements: settledOnce(["beta", "gamma"]),
       relations: lead("might", "alpha", "beta", 1),
     });
     const lines = subjugationBreakdown(view, "alpha", "beta");

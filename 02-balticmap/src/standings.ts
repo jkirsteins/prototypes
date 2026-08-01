@@ -1,3 +1,4 @@
+import { FAN_OUT_CARDS } from "./cards";
 import type { GameEvent, TributeTrack } from "./game";
 
 /** The human's lead over `factionId` on one track, immediately before and
@@ -25,27 +26,68 @@ export interface WalkCtx {
   leads(factionId: string): { might: number; status: number };
 }
 
-/** Every way a relation counter moves in game.ts, translated into the
- *  human's view. There are exactly eight bump sites (raid, shrewd marriage,
- *  fortify, assassinate, the subjugate/revolt poach penalty, tribute, and the
- *  passive garrison) and this switch is all eight - see the doc comment on
- *  `GameEvent.amount` and the rule in AGENTS.md. `tests/standings.test.ts`
- *  replays real seeded games and checks this against the actual relations, so
- *  a ninth site that forgets to record its amount fails there rather than
- *  drifting silently in the round summary.
+/** A pact's Might bonus arriving (`sign` 1, the Alliance that sealed it) or
+ *  leaving (`sign` -1, the lapse), in the human's view.
  *
- *  Fortify's "every other living faction" fan-out cannot be reconstructed
- *  from one event alone (which faction was already incorporated, at that
- *  instant, is state this function is not given) - so a THIRD PARTY's
- *  fortify still resolves correctly (it is exactly one pair: the actor
- *  against the human), but a HUMAN-authored fortify returns no move here.
- *  That is not a gap in production use: the human's own play is never part
- *  of the same batch as the AI round this walk is built for (see
- *  `notices.ts`), so this branch never actually needs to fire outside a
- *  synthetic test. The human's own trailing `garrisoned` has the identical
- *  fan-out problem and DOES need to fire in production - `walkStandings`
- *  handles that one directly, rather than here, because the fix needs the
- *  whole batch's faction list, which a single event does not carry. */
+ *  The only fan-out this walk can resolve in BOTH directions, and the reason is
+ *  `pactAgainst`: the event says exactly who was affected, so the human's own
+ *  half needs no guess about who was alive at the time. Fortify's cannot, and
+ *  its doc comment above explains what that costs.
+ *
+ *  Both allies gain against every faction in the list, so:
+ *  - the human in the list loses `amount` against EACH ally;
+ *  - the human as an ally gains `amount` against each faction in the list.
+ *  The human can never be both - `sharedNeighboursOf` excludes both realms. */
+function pactMoves(
+  e: GameEvent,
+  allyA: string | undefined,
+  allyB: string | undefined,
+  humanFactionId: string,
+  sign: 1 | -1 = 1,
+): LeadMove[] {
+  const against = e.pactAgainst;
+  if (e.amount === undefined || against === undefined) return [];
+  if (allyA === undefined || allyB === undefined) return [];
+  const delta = sign * e.amount;
+  if (against.includes(humanFactionId)) {
+    return [allyA, allyB].map((ally) => (
+      { kind: "add", factionId: ally, track: "might", delta: -delta }
+    ));
+  }
+  if (allyA === humanFactionId || allyB === humanFactionId) {
+    return against.map((f) => (
+      { kind: "add", factionId: f, track: "might", delta }
+    ));
+  }
+  return [];
+}
+
+/** Every way the human's lead over somebody moves, translated into the human's
+ *  view. That is the bump sites in game.ts (raid, shrewd marriage, the two
+ *  fan-out cards, assassinate, the subjugate/revolt poach penalty, tribute and
+ *  the passive garrison) PLUS the one term that is not a bump at all: the Might
+ *  a live pact adds through `leadsIn`, which arrives with the Alliance and
+ *  leaves with the `pact-lapsed`. See the doc comment on `GameEvent.amount` and
+ *  the rule in AGENTS.md. `tests/standings.test.ts` replays real seeded games
+ *  and checks this against the actual leads, so a site that forgets to record
+ *  its amount fails there rather than drifting silently in the round summary.
+ *
+ *  A fan-out card's "every other living faction" cannot be reconstructed from
+ *  one event alone (which faction was already incorporated, at that instant, is
+ *  state this function is not given) - so a THIRD PARTY's Fortify or A feast
+ *  still resolves correctly (it is exactly one pair: the actor against the
+ *  human), but a HUMAN-authored one returns no move here. That is not a gap in
+ *  production use: the human's own play is never part of the same batch as the
+ *  AI round this walk is built for (see `notices.ts`), so this branch never
+ *  actually needs to fire outside a synthetic test. The human's own trailing
+ *  `garrisoned` has the identical fan-out problem and DOES need to fire in
+ *  production - `walkStandings` handles that one directly, rather than here,
+ *  because the fix needs the whole batch's faction list, which a single event
+ *  does not carry.
+ *
+ *  The pact fan-out has neither problem, because `pactAgainst` carries the
+ *  affected list on the event itself. That is what `pactMoves` above exploits,
+ *  and it is why a pact was worth freezing at seal time. */
 export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
   const H = ctx.humanFactionId;
   const A = ctx.factionOf(e.playerId);
@@ -61,10 +103,11 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
         if (T === H) return [{ kind: "add", factionId: A, track: e.track, delta: -e.amount }];
         return [];
       }
-      if (e.cardId === "fortify") {
+      if (FAN_OUT_CARDS.has(e.cardId ?? "")) {
         if (e.amount === undefined || e.track === undefined || A === H) return [];
         return [{ kind: "add", factionId: A, track: e.track, delta: -e.amount }];
       }
+      if (e.cardId === "alliance") return pactMoves(e, A, e.targetFactionId, H);
       if (e.cardId === "assassinate-ruler") {
         if (e.amount === undefined || e.prevented) return [];
         const T = e.targetFactionId;
@@ -129,6 +172,12 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
       if (e.amount === undefined || A === H) return [];
       return [{ kind: "add", factionId: A, track: "might", delta: -e.amount }];
     }
+    case "pact-lapsed":
+      // The seal, run backwards. `playerId` here is only whose clock tick
+      // noticed the expiry, so the allies come off the two id fields instead.
+      return pactMoves(
+        e, e.targetFactionId, e.overlordFactionId, H, -1,
+      );
     default:
       return [];
   }

@@ -4,9 +4,10 @@ import {
 } from "./cards";
 import { leadsOf, realmOf } from "./relations";
 import {
-  omenMultiplier, playableSet, raidGainFor, subjugationGripOn,
+  holdsGuard, leadsIn, omenMultiplier, playableSet, raidGainFor, subjugationGripOn,
   subjugationRequirement, poachSurchargeOn, subjugationChance,
   incorporationChance, targetEligibilityFor, threatsTo, validTargetsFor,
+  type RulesView, type Threat,
 } from "./playability";
 import { discardCard, playCard, viewOf, type GameState } from "./game";
 
@@ -42,15 +43,88 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "assassinate-ruler": "5: emergency assassination",
   "raid": "6: finishing play, else 9: build toward the closest subjugation",
   "shrewd-marriage": "6: finishing play, else 9: build toward the closest subjugation",
-  "fortify": "7: defensive fortify",
+  "fortify": "7: defensive fan-out, Might track",
+  "a-feast": "7: defensive fan-out, Status track",
   "found-settlement":
     "7b: settle against a nearing threat, else 9b: settle a spare turn",
   "favourable-omens":
     "8: read the omens before building, stacking on a held reading",
   "extended-diplomacy": "8b: extend the next pact",
-  "bodyguard": "8c: post a guard",
+  "bodyguard": "8c: post the guard whose card is aimed at this position",
+  "eloping-heirs": "8c: post the guard whose card is aimed at this position",
+  "distrustful-neighbour": "8c: post the guard whose card is aimed at this position",
+  "population-boom": "8d: raise the population when it would unlock a settlement",
   "grow-crops": "10: grow crops",
 };
+
+/** The fan-out cards, each with the track it moves and the bar that track
+ *  answers to. Ordered, and step 7 walks it in order when both are in hand and
+ *  both tracks are threatened - Might first, because Might is the fast track
+ *  and so the one a rival is likelier to be closing on. */
+const FAN_OUTS = [
+  { cardId: "fortify", field: "might" as const },
+  { cardId: "a-feast", field: "status" as const },
+];
+
+/** Which guard answers which position, as the question the policy can actually
+ *  ask about each: "is anybody in a position where the card this guard turns
+ *  aside would hurt me?"
+ *
+ *  Written as one table rather than three copies of step 8c, because the three
+ *  guards differ only in what counts as the position worth spending a turn on.
+ *  Every entry names a real position and none falls through to "play it because
+ *  it is in hand" - which is the failure POLICY_COVERAGE exists to stop. */
+interface GuardCase {
+  cardId: string;
+  /** True when posting this guard is worth the turn. */
+  worth(v: RulesView, self: string, threats: Threat[]): boolean;
+}
+
+const GUARD_CASES: GuardCase[] = [
+  {
+    // A Status lead that cannot be cashed this turn is exactly the position
+    // step 5's assassination hunts, so the guard answers a threat this policy
+    // would itself make. A lead you can cash now needs no guard, which is what
+    // the Subjugate check at the call site encodes.
+    cardId: "bodyguard",
+    worth: (v, self) =>
+      targetEligibilityFor(v, self, "subjugate").some((e) => {
+        if (e.state === "irrelevant") return false;
+        const required = subjugationRequirement(v, self, e.factionId);
+        if (required === null) return false;
+        return leadsIn(v, self, e.factionId).status >= required.status;
+      }),
+  },
+  {
+    // Shrewd marriage feeds a rival's Status lead by 1 a play, and the Status
+    // bar is the LOWER of the two on a settled realm. So the position worth
+    // guarding is a rival two plays or fewer from clearing it on Status - the
+    // same near-miss window step 5 defends and step 7b settles against.
+    cardId: "eloping-heirs",
+    worth: (_v, _self, threats) =>
+      threats.some((t) => t.statusShortfall <= 2),
+  },
+  {
+    // A pact freezes hostile cards in BOTH directions, so being courted by a
+    // faction you were about to take is a five-turn tax on your own conquest -
+    // the reasoning step 5 already uses to refuse allying with its own best
+    // target, turned around. Worth a card only while such a target exists.
+    cardId: "distrustful-neighbour",
+    worth: (v, self) =>
+      targetEligibilityFor(v, self, "subjugate").some((e) => {
+        if (e.state === "irrelevant") return false;
+        const required = subjugationRequirement(v, self, e.factionId);
+        if (required === null) return false;
+        const lead = leadsIn(v, self, e.factionId);
+        // Within two plays on either track, counting a flat +1 a play. Raid's
+        // convexity would make this optimistic rather than pessimistic, and a
+        // guard posted a turn early costs nothing but the turn.
+        return (
+          required.might - lead.might <= 2 || required.status - lead.status <= 2
+        );
+      }),
+  },
+];
 
 /** What a play would actually move, so the policy stops assuming every card
  *  is worth exactly 1: Raid scales with border, and any doublable card is
@@ -179,7 +253,7 @@ export function chooseAction(state: GameState): AiAction {
       let bestLead = -Infinity;
       for (const t of targets) {
         const odds = subjugationChance(v, t);
-        const l = leadsOf(state.relations, p.factionId, t);
+        const l = leadsIn(v, p.factionId, t);
         const m = Math.max(l.status, l.might);
         if (odds > bestOdds || (odds === bestOdds && m > bestLead)) {
           best = t;
@@ -234,7 +308,7 @@ export function chooseAction(state: GameState): AiAction {
           (t) =>
             t.statusShortfall <= 1 &&
             legal.includes(t.factionId) &&
-            !state.bodyguards.includes(t.factionId),
+            !holdsGuard(v, t.factionId, "bodyguard"),
         )
         .sort(
           (a, b) =>
@@ -258,7 +332,7 @@ export function chooseAction(state: GameState): AiAction {
       // number.
       const needed = subjugationGripOn(v, t)[field] + poachSurchargeOn(v, t);
       if (
-        leadsOf(state.relations, p.factionId, t)[field] +
+        leadsIn(v, p.factionId, t)[field] +
           gainOf(state, p.factionId, cardId, t) >= needed
       ) {
         return { type: "play", cardIndex: i, targetId: t };
@@ -266,17 +340,20 @@ export function chooseAction(state: GameState): AiAction {
     }
   }
 
-  // 7: defensive fortify
-  const fortify = idxOf("fortify");
-  if (fortify !== undefined) {
+  // 7: defensive fan-out. Fortify answers a rival leading on Might, A feast one
+  // leading on Status; the two are the same play on different tracks, so they
+  // are one step reading FAN_OUTS rather than two branches that would drift.
+  for (const { cardId, field } of FAN_OUTS) {
+    const i = idxOf(cardId);
+    if (i === undefined) continue;
     const threatened = state.factionIds.some(
       (f) =>
         f !== p.factionId &&
         !(f in state.incorporated) &&
         !state.overlords.has(f) &&
-        leadsOf(state.relations, f, p.factionId).might >= 1,
+        leadsIn(v, f, p.factionId)[field] >= 1,
     );
-    if (threatened) return { type: "play", cardIndex: fortify };
+    if (threatened) return { type: "play", cardIndex: i };
   }
 
   // 7b: settle a land while a threat is closing. A settlement adds 1 to the
@@ -328,23 +405,39 @@ export function chooseAction(state: GameState): AiAction {
     return { type: "play", cardIndex: extend };
   }
 
-  // 8c: post a guard on a Status lead that cannot be cashed this turn. This is
-  // exactly the position step 5's assassination hunts, so the guard answers a
-  // threat the AI itself would make. A lead you can cash now needs no guard,
-  // which is what the Subjugate check encodes. An `irrelevant` eligibility
-  // entry means out of reach, so it is also the reach test.
-  const bodyguard = idxOf("bodyguard");
-  if (bodyguard !== undefined && idxOf("subjugate") === undefined) {
-    const worthGuarding = targetEligibilityFor(v, p.factionId, "subjugate").some(
-      (e) => {
-        if (e.state === "irrelevant") return false;
-        const required = subjugationRequirement(v, p.factionId, e.factionId);
-        if (required === null) return false;
-        return leadsOf(state.relations, p.factionId, e.factionId).status >=
-          required.status;
-      },
+  // 8c: post a guard, but only one that answers a position actually on the
+  // board. `GUARD_CASES` holds the per-guard question; the shared conditions
+  // are here. The Subjugate check is one of them: a turn that could instead
+  // take a vassal is never worth a guard, whichever guard it is. An
+  // `irrelevant` eligibility entry means out of reach, so it is also the reach
+  // test inside each case.
+  if (idxOf("subjugate") === undefined) {
+    for (const guard of GUARD_CASES) {
+      const i = idxOf(guard.cardId);
+      if (i === undefined) continue;
+      if (guard.worth(v, p.factionId, threats)) {
+        return { type: "play", cardIndex: i };
+      }
+    }
+  }
+
+  // 8d: raise the population, but only when it would unlock something. A boom
+  // is spent by the next Found a settlement whatever that settlement cost, so
+  // playing one while a land is still legal to settle unaided throws the
+  // allowance away on a settlement that never needed it. The test is therefore
+  // not "do I hold a boom" but "is every land in my realm blocked by the
+  // allowance rather than by the map" - a land the map has no dot left for is
+  // one no boom can help.
+  const boom = idxOf("population-boom");
+  if (boom !== undefined && p.hand.includes("found-settlement")) {
+    const lands = targetEligibilityFor(v, p.factionId, "found-settlement");
+    const settleNow = lands.some((e) => e.state === "available");
+    const wouldUnlock = lands.some(
+      (e) =>
+        e.state === "blocked" &&
+        e.reasons.every((r) => r.code === "needs-population"),
     );
-    if (worthGuarding) return { type: "play", cardIndex: bodyguard };
+    if (!settleNow && wouldUnlock) return { type: "play", cardIndex: boom };
   }
 
   // 9: build toward the closest new subjugation, measured in plays remaining
@@ -357,7 +450,7 @@ export function chooseAction(state: GameState): AiAction {
     for (const t of validTargetsFor(v, p.factionId, cardId)) {
       if (state.overlords.get(t) === p.factionId) continue;
       const needed = subjugationGripOn(v, t)[field] + poachSurchargeOn(v, t);
-      const deficit = needed - leadsOf(state.relations, p.factionId, t)[field];
+      const deficit = needed - leadsIn(v, p.factionId, t)[field];
       const plays = Math.ceil(deficit / gainOf(state, p.factionId, cardId, t));
       const order = state.factionIds.indexOf(t);
       if (

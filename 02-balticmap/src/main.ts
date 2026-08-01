@@ -12,12 +12,13 @@ import {
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import {
-  allianceActive, allianceKey, fullRealmOf, leadsOf, realmOf, realmRootOf,
+  fullRealmOf, pactBetween, realmOf, realmRootOf,
 } from "./relations";
 import {
-  handBlockReason, playableSet, validTargetsFor, targetEligibilityFor,
-  subjugationRaceFor, raidGainFor,
+  allianceExpiry, handBlockReason, leadsIn, PACT_MIGHT_BONUS, playableSet,
+  validTargetsFor, targetEligibilityFor, subjugationRaceFor, raidGainFor,
 } from "./playability";
+import { count } from "./plural";
 import {
   cardBlockLine, cardModifierLines, cardRiskLine, explainTargetEligibility,
   multipliedWord, targetImpactLines, targetOddsLines, subjugationBreakdown,
@@ -35,7 +36,7 @@ import {
   formatLead, holderOf, leadClass, politicalFactionForPolygon, relationshipLine,
   restiveVassalOf,
 } from "./view";
-import { factionAdjacencyOf } from "./adjacency";
+import { factionAdjacencyOf, siteCapsOf, siteListsOf } from "./adjacency";
 import "./style.css";
 
 const data = rawData as MapData;
@@ -92,24 +93,21 @@ const factionById = new Map(data.factions.map((f) => [f.id, f]));
 const regionById = new Map(data.regions.map((r) => [r.id, r]));
 const factionByRegion = new Map(data.regions.map((r) => [r.id, r.faction]));
 const regionByFaction = new Map(data.regions.map((r) => [r.faction, r.id]));
-/** The one further site each land can settle: its locked settlement, if the
- *  land has one. Lands with no spare slot have none and can never be built in,
- *  which is exactly what `sites` tells the rules.
+/** The further sites each land can settle: its locked settlements, in the order
+ *  the map authors them. A land is settled into these one at a time, so the Nth
+ *  founding reveals the Nth dot and the drawing follows the count in state
+ *  rather than keeping a parallel record of which dot went where.
+ *
+ *  Lands with no spare slot have an empty list and can never be built in, which
+ *  is exactly what `siteCaps` tells the rules.
  *
  *  Keyed by FACTION id, not region id. Every land has one faction and every
  *  faction one land, but the two id spaces are different words ("ugandi" the
  *  land, "ugandians" the faction) and the rules speak faction ids throughout.
  *  Keying this by `settlement.land` made the card permanently unplayable, since
  *  no region id is ever a member of a realm. */
-const siteByFaction = new Map(
-  data.settlements
-    .filter((s) => !s.unlocked)
-    .flatMap((s) => {
-      const faction = factionByRegion.get(s.land);
-      return faction === undefined ? [] : [[faction, s] as const];
-    }),
-);
-const SITE_LANDS = [...siteByFaction.keys()];
+const sitesByFaction = siteListsOf(data);
+const SITE_CAPS = siteCapsOf(data);
 const factionAdjacency = factionAdjacencyOf(data);
 const factionEthnicities: Record<string, string> = Object.fromEntries(
   data.factions.map((f) => [f.id, f.ethnicity]),
@@ -137,7 +135,7 @@ let runBanked = false;
 let packReveal: { id: string; isNew: boolean }[] | null = null;
 let game: GameState = newGame(
   data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
-  SITE_LANDS,
+  SITE_CAPS,
 );
 let armed: number | null = null; // hand index of the armed targeted card
 let hoveredRegion: Region | null = null; // region under the cursor, for hover re-apply on refresh
@@ -195,11 +193,20 @@ function allegianceOf(
   );
 }
 
-/** The pact line, when one binds the human and this faction. */
+/** The pact line, when one binds the human and this faction. Names the Might it
+ *  is buying as well as the truce: the bonus is a term in every lead on screen
+ *  (see `leadsIn`), and a player who could not see where it came from would read
+ *  their own badges as a mystery. */
 function allianceLine(f: string, humanFaction: string): string | null {
-  if (!inPlay() || !allianceActive(game, humanFaction, f)) return null;
-  const until = game.alliances[allianceKey(humanFaction, f)];
-  return `Allied until turn ${until} - no hostile cards between you`;
+  if (!inPlay()) return null;
+  const until = allianceExpiry(game, humanFaction, f);
+  if (until === undefined) return null;
+  const shared = pactBetween(game, humanFaction, f)?.against.length ?? 0;
+  const bonus =
+    shared === 0
+      ? ""
+      : `, +${PACT_MIGHT_BONUS} Might for you both against ${count(shared, "shared neighbour")}`;
+  return `Allied until turn ${until} - no hostile cards between you${bonus}`;
 }
 
 function effectiveFaction(f: string): string {
@@ -314,8 +321,8 @@ function applyThreat(
     !humanRealm.has(faction) &&
     !(faction in game.incorporated)
   ) {
-    const theirs = leadsOf(game.relations, faction, humanFaction);
-    const yours = leadsOf(game.relations, humanFaction, faction);
+    const theirs = leadsIn(game, faction, humanFaction);
+    const yours = leadsIn(game, humanFaction, faction);
     const theirBest = Math.max(theirs.status, theirs.might);
     const yourBest = Math.max(yours.status, yours.might);
     threat = Math.min(3, Math.max(0, theirBest));
@@ -534,7 +541,8 @@ function renderThreatBadges(): void {
       text.appendChild(statusTspan);
     }
     if (race.allied) {
-      const turnsLeft = game.alliances[allianceKey(human.factionId, factionId)] - game.turn;
+      const turnsLeft =
+        (allianceExpiry(game, human.factionId, factionId) ?? game.turn) - game.turn;
       const allyTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
       allyTspan.classList.add("lead-ally");
       allyTspan.setAttribute("dx", "9");
@@ -710,11 +718,17 @@ function disarm(): void {
 
 /** Draws the dot for every settlement founded so far, from state, on every
  *  refresh. The map itself is rendered once per page load, so starting a new
- *  game clears the previous game's settlements first. */
+ *  game clears the previous game's settlements first.
+ *
+ *  A land can hold several now, so this reveals the FIRST N of its authored
+ *  locked dots. Which dot is which is not recorded anywhere and does not need
+ *  to be: the count is the state, and the map's own authoring order is a stable
+ *  answer to "where does the next one go". */
 function revealFoundedSettlements(): void {
-  for (const factionId of game.settled) {
-    const site = siteByFaction.get(factionId);
-    if (site !== undefined) revealSettlement(site);
+  for (const [factionId, founded] of Object.entries(game.settlements)) {
+    for (const site of (sitesByFaction.get(factionId) ?? []).slice(0, founded)) {
+      revealSettlement(site);
+    }
   }
 }
 
@@ -787,7 +801,7 @@ const hud = createHud(
       resolving = false;
       game = startGame(newGame(
         data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
-        SITE_LANDS,
+        SITE_CAPS,
       ));
       clearFoundedSettlements();
       disarm();

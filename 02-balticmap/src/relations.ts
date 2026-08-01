@@ -69,13 +69,27 @@ export function leadsOf(
   return { status: ab.status - ba.status, might: ab.might - ba.might };
 }
 
+/** +amount on one track from actor toward every id in others - the Fortify
+ *  effect on Might, the A feast effect on Status. One function taking the
+ *  track, because the two cards differ in nothing else and a second copy is a
+ *  second place for the fan-out to drift. */
+export function bumpAllBy(
+  rel: Relations,
+  actor: string,
+  others: string[],
+  track: "status" | "might",
+  amount: number,
+): Relations {
+  let out = rel;
+  for (const target of others) out = bumpBy(out, actor, target, track, amount);
+  return out;
+}
+
 /** +amount might from actor toward every id in others (the Fortify effect). */
 export function bumpMightAllBy(
   rel: Relations, actor: string, others: string[], amount: number,
 ): Relations {
-  let out = rel;
-  for (const target of others) out = bumpMightBy(out, actor, target, amount);
-  return out;
+  return bumpAllBy(rel, actor, others, "might", amount);
 }
 
 export function bumpMightAll(
@@ -164,13 +178,45 @@ export function allianceKey(a: string, b: string): string {
   return [a, b].sort().join("|");
 }
 
-/** True while a pact between a and b (recorded in `alliances`, sorted-pair
- *  key -> expiry turn) has not yet expired. */
+/** One sealed pact: when it lapses, and which factions it buys both allies a
+ *  Might lead over.
+ *
+ *  `against` is FROZEN at the moment of sealing - the factions bordering both
+ *  realms then, and not a step later. Recomputing it live would have been
+ *  cheaper to write and is the wrong rule: either ally conquering a land, or a
+ *  shared neighbour being incorporated, would silently move the human's Might
+ *  lead with no event behind it, and `src/standings.ts` walks a batch backwards
+ *  from the current leads on the assumption that every move was recorded. See
+ *  the `amount` rule in CLAUDE.md. Frozen, the bonus moves exactly twice - the
+ *  `play` that seals it and the `pact-lapsed` that ends it - and both say so.
+ *
+ *  It is also what makes the pact previewable: the card tip can name the
+ *  factions the pact would buy a lead over, before the player commits. */
+export interface Pact {
+  expiry: number;
+  against: string[];
+}
+
+/** Sorted-pair key -> the pact between that pair. An entry is deleted the turn
+ *  it lapses (see `sweepLapsedPacts` in src/game.ts), so a key present here has
+ *  not necessarily been checked against the clock but has at least not been
+ *  swept yet. `allianceActive` is still the only truth. */
+export type Alliances = Record<string, Pact>;
+
+export function pactBetween(
+  view: { alliances: Alliances },
+  a: string,
+  b: string,
+): Pact | undefined {
+  return view.alliances[allianceKey(a, b)];
+}
+
+/** True while a pact between a and b has not yet expired. */
 export function allianceActive(
-  view: { alliances: Record<string, number>; turn: number },
+  view: { alliances: Alliances; turn: number },
   a: string,
   b: string,
 ): boolean {
-  const expiry = view.alliances[allianceKey(a, b)];
-  return expiry !== undefined && view.turn < expiry;
+  const pact = pactBetween(view, a, b);
+  return pact !== undefined && view.turn < pact.expiry;
 }

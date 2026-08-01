@@ -1,8 +1,9 @@
 import rawData from "./data/map.json";
 import type { MapData } from "./types";
-import { factionAdjacencyOf } from "./adjacency";
+import { factionAdjacencyOf, siteCapsOf } from "./adjacency";
 import {
-  buildAiDeck, buildDeck, CARDS, DECK_SIZE, DEFAULT_DECK, type Rng,
+  buildAiDeck, buildDeck, CARDS, DECK_SIZE, DEFAULT_DECK, GUARDS, guardAgainst,
+  type Rng,
 } from "./cards";
 import {
   advance, chooseDeck, discardCard, newGame, pickFaction, playCard, startGame,
@@ -20,6 +21,10 @@ export const SIM_ADJACENCY: Record<string, string[]> = factionAdjacencyOf(data);
 export const SIM_ETHNICITIES: Record<string, string> = Object.fromEntries(
   data.factions.map((f) => [f.id, f.ethnicity]),
 );
+/** The shipped map's settlement slots. Passed explicitly rather than left to
+ *  `newGame`'s default, so a simulated Zemaitija can be built up eight times
+ *  and a simulated Saaremaa once, exactly as in the game. */
+export const SIM_SITE_CAPS: Record<string, number> = siteCapsOf(data);
 
 /** A deck of nothing but Grow potatoes - the new player's opening mistake. */
 export function potatoDeck(): string[] {
@@ -174,7 +179,7 @@ export function runGame(opts: RunOptions): GameSummary {
   const rng = seededRng(seed);
   let state = pickFaction(
     chooseDeck(
-      startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES)),
+      startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS)),
       opts.humanDeck ?? potatoDeck(),
     ),
     humanFaction,
@@ -439,7 +444,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
   }
   const rng = seededRng(opts.seed);
   const seeded: GameState = {
-    ...newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES),
+    ...newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS),
     humanSeat: null,
   };
   let state = pickFaction(
@@ -554,13 +559,24 @@ export function runWorld(opts: WorldOptions): WorldSummary {
   for (const start of openVassalage.values()) {
     vassalTenures.push(state.turn - start);
   }
-  const preventedAssassinations = plays.filter(
-    (e) => e.cardId === "assassinate-ruler" && e.prevented === true,
-  ).length;
+  // Every guard, not only Bodyguard: three cards share the mechanic now, and a
+  // counter that watched one of them would report the other two as never
+  // posted. `prevented` is stamped on the play the guard turned aside, so the
+  // cashed count is that play's card mapped back to its guard.
+  const preventedByGuard = (guardCardId: string): number =>
+    plays.filter(
+      (e) =>
+        e.prevented === true && e.cardId !== undefined &&
+        guardAgainst(e.cardId) === guardCardId,
+    ).length;
+  const preventedAssassinations = preventedByGuard("bodyguard");
   // Both waste counters are "tokens posted, never cashed", so both floor at 0.
   // A negative value would mean a token was spent twice, which is a bug worth
   // failing loudly for rather than reporting as a tidy zero.
-  const untestedGuards = (playsByCard.bodyguard ?? 0) - preventedAssassinations;
+  const untestedGuards = Object.keys(GUARDS).reduce(
+    (sum, id) => sum + (playsByCard[id] ?? 0) - preventedByGuard(id),
+    0,
+  );
   const unusedBoosts = (playsByCard["extended-diplomacy"] ?? 0) - boostedAlliances;
   if (untestedGuards < 0 || unusedBoosts < 0) {
     throw new Error(

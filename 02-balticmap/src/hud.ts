@@ -1,17 +1,18 @@
-import { CARDS } from "./cards";
+import { CARDS, FAN_OUT_CARDS, guardAgainst } from "./cards";
 import { applyRarityBand } from "./rarity-band";
 import {
   isHumanTurn, victoryRealmSize, viewOf, type GameEvent, type GameState,
 } from "./game";
 import { flyCard, runAnimation, type Flight } from "./animate";
-import { allianceActive, allianceKey, fullRealmOf, leadsOf } from "./relations";
+import { fullRealmOf } from "./relations";
 import {
   buildRoundSummary, isNoticeWorthy, walkCtxOf,
   type NoticeCtx, type RoundSummary,
 } from "./notices";
 import { walkStandings, type StandingChange } from "./standings";
 import {
-  passiveFortifyFor, subjugationGripOn, subjugationRequirement,
+  allianceExpiry, leadsIn, passiveFortifyFor, subjugationGripOn,
+  subjugationRequirement,
 } from "./playability";
 import {
   multipliedWord, type TargetExplanation,
@@ -325,6 +326,15 @@ export function eventSegments(
       return clause(named(e.targetFactionId), "resist", [
         t(" incorporation into "), faction(e.overlordFactionId ?? ""),
       ]);
+    case "pact-lapsed":
+      // Both allies named, neither as the subject: the seat whose clock tick
+      // noticed the expiry did not do this, so a line reading "X ends the pact"
+      // would name an actor where there is none. The verb agrees with "pact",
+      // which is invariant, so `clause` has nothing to agree here.
+      return [
+        t("The pact between "), faction(e.targetFactionId ?? ""),
+        t(" and "), faction(e.overlordFactionId ?? ""), t(" has run out"),
+      ];
     case "garrisoned": {
       // The one line whose subject is not the actor: the garrisons are, and
       // they are plural, so the verb is invariant and `clause` has nothing to
@@ -367,24 +377,35 @@ export function eventSegments(
  *  whatever the log says, and a log that then kept insisting on "a secret card"
  *  would be the one thing lying to you.
  *
- *  There is exactly one clause today: a `play` that came back `prevented` spent
- *  the guard of `targetFactionId`, revealing that faction's most recent
- *  not-yet-revealed secret play. "Most recent not-yet-revealed" is EXACT, not an
- *  approximation - `cardBlockReason` in src/playability.ts makes a second
- *  Bodyguard illegal while the first is unspent, so a faction never has two
- *  secrets in flight, and Bodyguard is the only secret card, so there is no
- *  second kind to confuse it with. A second secret card must state its own link
- *  here rather than inherit this one.
+ *  There is exactly one clause: a `play` that came back `prevented` spent the
+ *  guard of `targetFactionId`, revealing that faction's most recent
+ *  not-yet-revealed play OF THE GUARD THAT STOPPED IT - `guardAgainst(cardId)`
+ *  in src/cards.ts, which is what makes the match exact now that a faction can
+ *  hold all three guards at once.
+ *
+ *  Keying the queue on the faction alone was exact while Bodyguard was the only
+ *  secret card, and the doc comment here said so and said a second secret card
+ *  would have to replace it. Three of them exist now: a rival holding a
+ *  Bodyguard and an Eloping heirs, whose Bodyguard is then spent, would have had
+ *  whichever they played LAST revealed - naming the wrong card on the wrong
+ *  line, with the guard they are still holding given away for free.
+ *
+ *  "Most recent not-yet-revealed of that card" is still exact within a card:
+ *  `cardBlockReason` in src/playability.ts refuses a second copy of any guard
+ *  while the first is unspent, so a faction never has two of one kind in flight.
  *
  *  Derived from the log rather than stored on GameState, and living beside
  *  `isObservable` for the same reason: what the player has seen is a fact about
  *  the player, not about the board. The rules do not change. */
 export function revealedSecrets(state: GameState): Set<number> {
   const out = new Set<number>();
-  /** Per faction, the log indices of its secret plays still unrevealed, oldest
-   *  first. An array rather than a single index so that a future stacking
-   *  secret degrades to "the newest one" instead of silently overwriting. */
+  /** `${factionId}|${cardId}` -> the log indices of that faction's hidden plays
+   *  of that card still unrevealed, oldest first. An array rather than a single
+   *  index so that a future stacking secret degrades to "the newest one"
+   *  instead of silently overwriting. */
   const pending = new Map<string, number[]>();
+  const key = (factionId: string, cardId: string): string =>
+    `${factionId}|${cardId}`;
   state.log.forEach((e, i) => {
     if (e.type !== "play") return;
     // `hidesItsCard`, not "is a secret card": only a play the log actually hid
@@ -392,13 +413,15 @@ export function revealedSecrets(state: GameState): Set<number> {
     // moment you post it, and spending it must not rewrite or flash that line.
     if (hidesItsCard(e)) {
       const factionId = state.players.find((pl) => pl.id === e.playerId)?.factionId;
-      if (factionId === undefined) return;
-      pending.set(factionId, [...(pending.get(factionId) ?? []), i]);
+      if (factionId === undefined || e.cardId === undefined) return;
+      const k = key(factionId, e.cardId);
+      pending.set(k, [...(pending.get(k) ?? []), i]);
       return;
     }
     if (e.prevented !== true || e.targetFactionId === undefined) return;
-    const queue = pending.get(e.targetFactionId);
-    const revealed = queue?.pop();
+    const guard = e.cardId === undefined ? undefined : guardAgainst(e.cardId);
+    if (guard === undefined) return;
+    const revealed = pending.get(key(e.targetFactionId, guard))?.pop();
     if (revealed !== undefined) out.add(revealed);
   });
   return out;
@@ -432,12 +455,15 @@ export function impactText(
   };
 
   const factions = new Set(changes.map((c) => c.factionId));
-  // Your own Fortify: one card, +1 Might against every living faction, so
+  // Your own Fortify or A feast: one card, +1 against every living faction, so
   // there is no single pair to quote. `leadMovesOf` deliberately returns
   // nothing for it (see the doc comment in standings.ts), so the amount comes
   // off the event, exactly as the garrison line's does.
   if (factions.size === 0) {
-    return e.type === "play" && e.cardId === "fortify" ? fanOut() : null;
+    return e.type === "play" && e.cardId !== undefined &&
+      FAN_OUT_CARDS.has(e.cardId)
+      ? fanOut()
+      : null;
   }
   if (factions.size > 1) return fanOut();
 
@@ -773,14 +799,11 @@ export function createHud(
       humanFactionId: human.factionId,
       factionOf: (playerId) =>
         state.players.find((pl) => pl.id === playerId)?.factionId,
-      leads: (other) => leadsOf(state.relations, human.factionId, other),
+      leads: (other) => leadsIn(state, human.factionId, other),
       subjugationGrip: () => subjugationGripOn(viewOf(state), human.factionId),
       subjugationBarAgainstYou: (other) =>
         subjugationRequirement(viewOf(state), other, human.factionId),
-      allianceExpiry: (other) =>
-        allianceActive(state, human.factionId, other)
-          ? state.alliances[allianceKey(human.factionId, other)]
-          : undefined,
+      allianceExpiry: (other) => allianceExpiry(state, human.factionId, other),
     };
   }
 
@@ -1395,7 +1418,7 @@ export function createHud(
    *  a vassalage with no way out. */
   function renderEnderComparison(state: GameState, ender: string): void {
     const human = state.players[0];
-    const l = leadsOf(state.relations, ender, human.factionId);
+    const l = leadsIn(state, ender, human.factionId);
     const line = (label: string, n: number) =>
       `${label}: ${n > 0 ? `they led by ${n}` : n < 0 ? `you led by ${-n}` : "even"}`;
     pmDeltas.textContent = `${line("Might", l.might)} / ${line("Status", l.status)}`;

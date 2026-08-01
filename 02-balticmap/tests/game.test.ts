@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { pact, siteCaps } from "./helpers";
 import {
   newGame, startGame, chooseDeck, pickFaction, beginTurn, playCard, discardCard,
   advance, surrender, viewOf,
@@ -11,8 +12,8 @@ import {
   allianceKey, bumpMight, bumpStatus, getRel, leadsOf, type Relations,
 } from "../src/relations";
 import {
-  INCORPORATE_RAMP, PASSIVE_PER_LANDS, loyaltyKey, playableSet, raidYield,
-  subjugationGripOn,
+  INCORPORATE_RAMP, PASSIVE_PER_LANDS, leadsIn, loyaltyKey, playableSet,
+  raidYield, subjugationGripOn,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
 import { runTurnips, runXp } from "../src/xp";
@@ -91,7 +92,7 @@ describe("setup", () => {
     expect(g.adjacency.alpha.sort()).toEqual(["beta", "delta", "gamma"]);
     expect(g.alliances).toEqual({});
     expect(g.diplomacyBoost).toEqual([]);
-    expect(g.bodyguards).toEqual([]);
+    expect(g.guards).toEqual({});
   });
 
   it("pickFaction deals opening hands of 3 plus the first draw, without opening-draw log spam", () => {
@@ -109,6 +110,7 @@ const NON_BASICS = [
   "incorporate", "seeds-of-revolt",
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens", "found-settlement",
+  "population-boom", "a-feast", "distrustful-neighbour", "eloping-heirs",
 ];
 
 /** A vassalage held long enough that Incorporate is certain, so a test about
@@ -439,7 +441,7 @@ describe("found a settlement", () => {
     const g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
     expect(subjugationGripOn(viewOf(g), "beta")).toEqual({ might: 2, status: 2 });
     const after = playCard(g, 0, rng(), "beta");
-    expect(after.settled).toEqual(["beta"]);
+    expect(after.settlements).toEqual({ beta: 1 });
     // The settlement is garrisoned ground: it raises Might and leaves Status.
     expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 3, status: 2 });
     expect(after.log.filter((e) => e.type === "settled")).toEqual([
@@ -450,7 +452,7 @@ describe("found a settlement", () => {
   it("refuses a land outside the realm and a land with no site", () => {
     const g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
     expect(playCard(g, 0, rng(), "alpha").playedThisTurn).toBe(false);
-    const noSites = { ...g, sites: [] };
+    const noSites = { ...g, siteCaps: {} };
     expect(playCard(noSites, 0, rng(), "beta").playedThisTurn).toBe(false);
   });
 
@@ -466,7 +468,7 @@ describe("found a settlement", () => {
     expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 2, status: 2 });
     expect(subjugationGripOn(viewOf(after), "gamma")) // it keeps it
       .toEqual({ might: 3, status: 2 });
-    expect(after.settled).toEqual(["gamma"]);
+    expect(after.settlements).toEqual({ gamma: 1 });
   });
 
   it("does not double a settlement with a Favourable omens reading", () => {
@@ -651,32 +653,32 @@ describe("diplomacy cards", () => {
     let g = playingState(LINE_ADJ);
     g = withHand(g, 0, ["alliance"]);
     const after = playCard(g, 0, rng(), "alpha");
-    expect(after.alliances[allianceKey("beta", "alpha")]).toBe(g.turn + 5);
+    expect(after.alliances[allianceKey("beta", "alpha")].expiry).toBe(g.turn + 5);
 
     let g2 = playingState(LINE_ADJ);
     g2 = { ...g2, diplomacyBoost: ["beta"] };
     g2 = withHand(g2, 0, ["alliance"]);
     const boosted = playCard(g2, 0, rng(), "alpha");
-    expect(boosted.alliances[allianceKey("beta", "alpha")]).toBe(g2.turn + 10);
+    expect(boosted.alliances[allianceKey("beta", "alpha")].expiry).toBe(g2.turn + 10);
     expect(boosted.diplomacyBoost).not.toContain("beta");
   });
 
   it("alliance can re-target an active ally to renew the pact, overwriting the expiry", () => {
     let g = playingState(LINE_ADJ);
-    g = { ...g, alliances: { [allianceKey("beta", "alpha")]: g.turn + 1 } };
+    g = { ...g, alliances: { [allianceKey("beta", "alpha")]: pact(g.turn + 1) } };
     g = withHand(g, 0, ["alliance"]);
     const after = playCard(g, 0, rng(), "alpha");
-    expect(after.alliances[allianceKey("beta", "alpha")]).toBe(g.turn + 5);
+    expect(after.alliances[allianceKey("beta", "alpha")].expiry).toBe(g.turn + 5);
 
     let g2 = playingState(LINE_ADJ);
     g2 = {
       ...g2,
-      alliances: { [allianceKey("beta", "alpha")]: g2.turn + 1 },
+      alliances: { [allianceKey("beta", "alpha")]: pact(g2.turn + 1) },
       diplomacyBoost: ["beta"],
     };
     g2 = withHand(g2, 0, ["alliance"]);
     const boosted = playCard(g2, 0, rng(), "alpha");
-    expect(boosted.alliances[allianceKey("beta", "alpha")]).toBe(g2.turn + 10);
+    expect(boosted.alliances[allianceKey("beta", "alpha")].expiry).toBe(g2.turn + 10);
     expect(boosted.diplomacyBoost).not.toContain("beta");
   });
 
@@ -729,28 +731,28 @@ describe("raid gain", () => {
 });
 
 describe("bodyguard", () => {
-  it("play appends the actor faction to bodyguards", () => {
+  it("play appends the actor faction to the guard list", () => {
     let g = playingState(LINE_ADJ);
     g = withHand(g, 0, ["bodyguard"]);
     const after = playCard(g, 0, rng());
-    expect(after.bodyguards).toEqual(["beta"]);
+    expect(after.guards).toEqual({ bodyguard: ["beta"] });
   });
 
   it("is unplayable while already guarded (no stacking)", () => {
-    let g = { ...playingState(LINE_ADJ), bodyguards: ["beta"] };
+    let g: GameState = { ...playingState(LINE_ADJ), guards: { bodyguard: ["beta"] } };
     g = withHand(g, 0, ["bodyguard"]);
     expect(playCard(g, 0, rng())).toBe(g); // rejected: not in the playable set
   });
 
   it("assassinate-ruler against a guarded target is nullified: guard consumed, relations untouched, event stamped prevented", () => {
-    let g = { ...playingState(LINE_ADJ), bodyguards: ["alpha"] };
+    let g: GameState = { ...playingState(LINE_ADJ), guards: { bodyguard: ["alpha"] } };
     let rel: Relations = {};
     rel = bumpStatus(rel, "beta", "alpha");
     rel = bumpStatus(rel, "beta", "alpha"); // beta leads alpha by 2 status
     g = withRel(g, rel);
     g = withHand(g, 0, ["assassinate-ruler"]);
     const after = playCard(g, 0, rng(), "alpha");
-    expect(after.bodyguards).not.toContain("alpha");
+    expect(after.guards.bodyguard).not.toContain("alpha");
     expect(getRel(after.relations, "beta", "alpha").status).toBe(2); // untouched
     expect(getRel(after.relations, "alpha", "beta").status).toBe(0); // untouched
     expect(leadsOf(after.relations, "beta", "alpha").status).toBe(2); // lead survives
@@ -761,7 +763,7 @@ describe("bodyguard", () => {
   });
 
   it("a second assassinate-ruler after the guard is consumed succeeds normally", () => {
-    let g = { ...playingState(LINE_ADJ), bodyguards: ["alpha"] };
+    let g: GameState = { ...playingState(LINE_ADJ), guards: { bodyguard: ["alpha"] } };
     let rel: Relations = {};
     rel = bumpStatus(rel, "beta", "alpha");
     rel = bumpStatus(rel, "beta", "alpha");
@@ -782,15 +784,246 @@ describe("bodyguard", () => {
   });
 
   it("assassinate-ruler against an unguarded target still levels status as before", () => {
-    let g = { ...playingState(LINE_ADJ), bodyguards: [] as string[] };
+    let g: GameState = { ...playingState(LINE_ADJ), guards: {} };
     let rel: Relations = {};
     rel = bumpStatus(rel, "beta", "alpha");
     g = withRel(g, rel);
     g = withHand(g, 0, ["assassinate-ruler"]);
     const after = playCard(g, 0, rng(), "alpha");
     expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
-    expect(after.bodyguards).toEqual([]);
+    expect(after.guards).toEqual({});
     expect(after.log.at(-1)?.prevented).toBeUndefined();
+  });
+});
+
+describe("population boom and settlement growth", () => {
+  /** A world where every land has room for several settlements, so the
+   *  allowance rather than the map is what stops a founding. */
+  const roomy = (g: GameState): GameState =>
+    ({ ...g, siteCaps: siteCaps(FACTIONS, 5) });
+
+  it("raises the allowance by one per boom held, and stacks", () => {
+    let g = roomy(withHand(playingState(LINE_ADJ), 0, ["population-boom"]));
+    g = playCard(g, 0, rng());
+    expect(g.booms).toEqual({ beta: 1 });
+    g = withHand({ ...g, playedThisTurn: false }, 0, ["population-boom"]);
+    g = playCard(g, 0, rng());
+    expect(g.booms).toEqual({ beta: 2 });
+  });
+
+  it("spends one boom per settlement founded, and floors at none", () => {
+    let g = roomy(withHand(playingState(LINE_ADJ), 0, ["found-settlement"]));
+    g = { ...g, booms: { beta: 1 } };
+    g = playCard(g, 0, rng(), "beta");
+    expect(g.settlements).toEqual({ beta: 1 });
+    expect(g.booms).toEqual({ beta: 0 });
+    // A second founding with no boom left is refused by legality, not by a
+    // negative count: the land now holds two, which is the base allowance.
+    g = withHand({ ...g, playedThisTurn: false }, 0, ["found-settlement"]);
+    expect(playCard(g, 0, rng(), "beta").playedThisTurn).toBe(false);
+  });
+
+  it("spends a boom even on a founding that did not need one", () => {
+    // The allowance is an "up to", not a step - see the card rule. A boom saved
+    // for a big land is a boom not spent on a bare one, and that is the cost.
+    let g = roomy(withHand(playingState(LINE_ADJ), 0, ["found-settlement"]));
+    g = { ...g, booms: { beta: 2 } };
+    g = playCard(g, 0, rng(), "beta"); // beta had one settlement; base allows this
+    expect(g.booms).toEqual({ beta: 1 });
+  });
+
+  it("lets a boom unlock the settlement the allowance was refusing", () => {
+    let g = roomy(withHand(playingState(LINE_ADJ), 0, ["found-settlement"]));
+    g = { ...g, settlements: { beta: 1 } };
+    expect(playCard(g, 0, rng(), "beta").playedThisTurn).toBe(false);
+    g = { ...g, booms: { beta: 1 } };
+    const after = playCard(g, 0, rng(), "beta");
+    expect(after.settlements).toEqual({ beta: 2 });
+    expect(after.booms).toEqual({ beta: 0 });
+  });
+
+  it("stacks each settlement onto the Might bar and leaves Status alone", () => {
+    let g = roomy(withHand(playingState(LINE_ADJ), 0, ["found-settlement"]));
+    g = { ...g, settlements: { beta: 2 }, booms: { beta: 5 } };
+    expect(subjugationGripOn(viewOf(g), "beta")).toEqual({ might: 4, status: 2 });
+    const after = playCard(g, 0, rng(), "beta");
+    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 5, status: 2 });
+  });
+
+  it("refuses a land the map has no dot left for, whatever the allowance", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
+    g = { ...g, siteCaps: { beta: 1 }, settlements: { beta: 1 }, booms: { beta: 9 } };
+    expect(playCard(g, 0, rng(), "beta").playedThisTurn).toBe(false);
+  });
+
+  it("does not double a boom with a Favourable omens reading", () => {
+    // Nothing about it is a Might or Status gain, so a held reading stays held.
+    let g = withHand(playingState(LINE_ADJ), 0, ["population-boom"]);
+    g = { ...g, omens: { beta: 1 } };
+    const after = playCard(g, 0, rng());
+    expect(after.omens).toEqual({ beta: 1 });
+    expect(after.booms).toEqual({ beta: 1 });
+  });
+});
+
+describe("a feast", () => {
+  it("gains +1 Status over every other living faction at once", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["a-feast"]);
+    g = { ...g, incorporated: { delta: "alpha" } };
+    const after = playCard(g, 0, rng());
+    for (const f of ["alpha", "gamma"]) {
+      expect(leadsOf(after.relations, "beta", f)).toEqual({ status: 1, might: 0 });
+    }
+    // An incorporated land is not a living faction and gains nothing.
+    expect(getRel(after.relations, "beta", "delta").status).toBe(0);
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "a-feast", amount: 1, track: "status",
+    });
+  });
+
+  it("is doubled by a held reading, like Fortify", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["a-feast"]);
+    g = { ...g, omens: { beta: 1 } };
+    const after = playCard(g, 0, rng());
+    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(2);
+    expect(after.omens).toEqual({});
+  });
+});
+
+describe("guards", () => {
+  it("turns aside the Alliance a distrustful neighbour was posted against", () => {
+    let g: GameState = {
+      ...playingState(LINE_ADJ),
+      guards: { "distrustful-neighbour": ["alpha"] },
+    };
+    g = withHand(g, 0, ["alliance"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(after.alliances).toEqual({});
+    expect(after.guards["distrustful-neighbour"]).not.toContain("alpha");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "alliance", targetFactionId: "alpha", prevented: true,
+    });
+    // A prevented pact buys no Might either, so the play carries no amount.
+    expect(after.log.at(-1)?.amount).toBeUndefined();
+    expect(leadsOf(after.relations, "beta", "gamma").might).toBe(0);
+  });
+
+  it("turns aside the Shrewd marriage eloping heirs were posted against", () => {
+    let g: GameState = {
+      ...playingState(LINE_ADJ),
+      guards: { "eloping-heirs": ["alpha"] },
+    };
+    g = withHand(g, 0, ["shrewd-marriage"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
+    expect(after.guards["eloping-heirs"]).toEqual([]);
+    expect(after.log.at(-1)).toMatchObject({ prevented: true });
+    expect(after.log.at(-1)?.amount).toBeUndefined();
+  });
+
+  it("keeps each guard to its own card", () => {
+    // A faction holding only a Bodyguard does not turn aside a marriage.
+    let g: GameState = {
+      ...playingState(LINE_ADJ), guards: { bodyguard: ["alpha"] },
+    };
+    g = withHand(g, 0, ["shrewd-marriage"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(1);
+    expect(after.guards.bodyguard).toEqual(["alpha"]); // untouched
+  });
+
+  it("lets one faction hold all three at once, each spent by its own card", () => {
+    let g: GameState = { ...playingState(LINE_ADJ), guards: {} };
+    for (const id of ["bodyguard", "distrustful-neighbour", "eloping-heirs"]) {
+      g = withHand({ ...g, playedThisTurn: false }, 0, [id]);
+      g = playCard(g, 0, rng());
+    }
+    expect(g.guards).toEqual({
+      "bodyguard": ["beta"],
+      "distrustful-neighbour": ["beta"],
+      "eloping-heirs": ["beta"],
+    });
+    // and each refuses a second copy while unspent
+    for (const id of ["bodyguard", "distrustful-neighbour", "eloping-heirs"]) {
+      const again = withHand({ ...g, playedThisTurn: false }, 0, [id]);
+      expect(playCard(again, 0, rng()).playedThisTurn).toBe(false);
+    }
+  });
+});
+
+describe("the pact's Might bonus", () => {
+  /** A world where beta and alpha both border gamma, and only alpha borders
+   *  delta. Their one shared neighbour is therefore gamma, and delta is the
+   *  control: it borders an ally and still gets nothing. Symmetric, as real
+   *  map adjacency is. */
+  const shared = (): GameState =>
+    withHand(
+      { ...playingState(LINE_ADJ), adjacency: {
+        alpha: ["beta", "gamma", "delta"],
+        beta: ["alpha", "gamma"],
+        gamma: ["alpha", "beta"],
+        delta: ["alpha"],
+      } },
+      0, ["alliance"],
+    );
+
+  it("freezes the shared neighbours onto the pact and raises both leads", () => {
+    const g = shared();
+    const after = playCard(g, 0, rng(), "alpha");
+    const p = after.alliances[allianceKey("beta", "alpha")];
+    // beta reaches alpha and gamma; alpha reaches beta, delta and gamma. The
+    // two allies themselves are excluded, so gamma is the whole list.
+    expect(p.against).toEqual(["gamma"]);
+    expect(p.expiry).toBe(g.turn + 5);
+    // Both allies gain, and the store itself is untouched - the bonus is a term
+    // in `leadsIn`, not a bump.
+    expect(leadsIn(after, "beta", "gamma").might).toBe(1);
+    expect(leadsIn(after, "alpha", "gamma").might).toBe(1);
+    expect(leadsOf(after.relations, "beta", "gamma").might).toBe(0);
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "alliance", amount: 1, track: "might",
+      pactAgainst: ["gamma"],
+    });
+  });
+
+  it("buys nothing when the realms share no neighbour", () => {
+    // beta and gamma are adjacent, and gamma's only other neighbour is delta,
+    // which beta cannot reach.
+    let g = withHand(playingState(LINE_ADJ), 0, ["alliance"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after.alliances[allianceKey("beta", "gamma")].against).toEqual([]);
+    g = after;
+    expect(leadsIn(g, "beta", "delta").might).toBe(0);
+  });
+
+  it("takes the bonus back when the pact lapses, and says so once", () => {
+    let g = playCard(shared(), 0, rng(), "alpha");
+    expect(leadsIn(g, "beta", "gamma").might).toBe(1);
+    // Run the clock past the expiry. `beginTurn` is what sweeps.
+    g = beginTurn({ ...g, turn: g.alliances[allianceKey("beta", "alpha")].expiry }, rng());
+    expect(g.alliances).toEqual({});
+    expect(leadsIn(g, "beta", "gamma").might).toBe(0);
+    const lapses = g.log.filter((e) => e.type === "pact-lapsed");
+    expect(lapses).toHaveLength(1);
+    // The two allies come off the sorted pair key, so which id lands in which
+    // field is alphabetical rather than actor-first. Nothing reads them
+    // positionally: the notice picks out whichever is not the human.
+    expect(lapses[0]).toMatchObject({
+      targetFactionId: "alpha", overlordFactionId: "beta",
+      track: "might", amount: 1, pactAgainst: ["gamma"],
+    });
+    // Swept, so the next seat's turn does not report it again.
+    expect(beginTurn(g, rng()).log.filter((e) => e.type === "pact-lapsed"))
+      .toHaveLength(1);
+  });
+
+  it("holds the bonus for the pact's whole life, without compounding", () => {
+    let g = playCard(shared(), 0, rng(), "alpha");
+    const expiry = g.alliances[allianceKey("beta", "alpha")].expiry;
+    for (let turn = g.turn; turn < expiry; turn++) {
+      g = beginTurn({ ...g, turn }, rng());
+      expect(leadsIn(g, "beta", "gamma").might).toBe(1);
+    }
   });
 });
 
@@ -1062,7 +1295,7 @@ describe("assassinate ruler succession", () => {
   });
 
   it("leaves the ruler alive when a bodyguard turns the blade", () => {
-    let g = { ...playingState(LINE_ADJ), bodyguards: ["alpha"] };
+    let g: GameState = { ...playingState(LINE_ADJ), guards: { bodyguard: ["alpha"] } };
     g = withHand(g, 0, ["assassinate-ruler"]);
     const survivor = rulerOf(g.rulers, "alpha").name;
 
@@ -1509,7 +1742,7 @@ describe("event amount/track", () => {
 
   it("a prevented assassination records no amount - nothing moved", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["assassinate-ruler"]);
-    g = { ...g, bodyguards: ["alpha"] };
+    g = { ...g, guards: { bodyguard: ["alpha"] } };
     const after = playCard(g, 0, rng(), "alpha");
     expect(after.log.at(-1)?.prevented).toBe(true);
     expect(after.log.at(-1)?.amount).toBeUndefined();

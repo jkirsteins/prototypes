@@ -11,7 +11,7 @@ import type { GameEvent, GameEventType } from "../src/game";
 const ALL_TYPES: GameEventType[] = [
   "draw", "play", "reshuffle", "discard",
   "subjugated", "released", "incorporated", "reclaimed", "tribute",
-  "settled", "seeded", "garrisoned",
+  "settled", "seeded", "garrisoned", "pact-lapsed",
   "subjugate-failed", "incorporate-failed",
   "victory", "defeat", "unified", "surrendered",
 ];
@@ -1148,5 +1148,38 @@ describe("critical events pierce a muted popup", () => {
     expect(subjLine, `no subjugation line in ${JSON.stringify(fullTexts)}`)
       .toBeDefined();
     expect(plainText(muted!.lines[0].text, nameLookup)).toBe(subjLine);
+  });
+
+  describe("a pact lapsing", () => {
+    const lapse = (a: string, b: string, against: string[]) => ({
+      turn: 9, playerId: 2, type: "pact-lapsed" as const,
+      targetFactionId: a, overlordFactionId: b,
+      track: "might" as const, amount: 1, pactAgainst: against,
+    });
+
+    it("raises a line naming the other ally, whichever field they sit in", () => {
+      for (const e of [lapse("livs", "jersika", []), lapse("jersika", "livs", [])]) {
+        const summary = buildRoundSummary([e], ctx);
+        expect(plainText(summary!.lines[0].text, nameLookup))
+          .toBe("Your pact with Jersikans has run out");
+      }
+    });
+
+    it("says hostile cards are legal again, in both directions", () => {
+      const summary = buildRoundSummary([lapse("livs", "jersika", [])], ctx);
+      expect(plainText(summary!.footnotes[0], nameLookup)).toBe(
+        "Hostile cards between you and the Jersikans are legal again, in both directions.",
+      );
+    });
+
+    it("stays quiet about two rivals' pact ending", () => {
+      expect(buildRoundSummary([lapse("latgale", "curonia", [])], ctx)).toBeNull();
+    });
+
+    it("does not pierce a mute - the expiry turn was on screen all along", () => {
+      expect(
+        buildRoundSummary([lapse("livs", "jersika", [])], ctx, { criticalOnly: true }),
+      ).toBeNull();
+    });
   });
 });

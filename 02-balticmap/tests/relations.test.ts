@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { pact, } from "./helpers";
 import {
   getRel, bumpStatus, bumpMight, leadsOf, bumpMightAll, realmOf, realmRootOf,
   fullRealmOf,
@@ -115,7 +116,7 @@ describe("alliance helpers", () => {
   });
 
   it("allianceActive is true only before the recorded expiry turn", () => {
-    const alliances = { [allianceKey("alpha", "beta")]: 5 };
+    const alliances = { [allianceKey("alpha", "beta")]: pact(5) };
     expect(allianceActive({ alliances, turn: 4 }, "alpha", "beta")).toBe(true);
     expect(allianceActive({ alliances, turn: 4 }, "beta", "alpha")).toBe(true); // symmetric
     expect(allianceActive({ alliances, turn: 5 }, "alpha", "beta")).toBe(false);

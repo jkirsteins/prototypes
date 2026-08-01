@@ -6,9 +6,10 @@ import {
   type GameState,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
-import { leadsOf } from "../src/relations";
+import { leadsIn } from "../src/playability";
 import {
-  SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, seededRng, potatoDeck,
+  SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS, seededRng,
+  potatoDeck,
   naiveHumanTurn, DECK_ARMS,
 } from "../src/sim";
 import { BASELINE_SEEDS, BASELINE_FACTION, BASELINE_TURN_CAP } from "./baseline-config";
@@ -283,7 +284,7 @@ describe("walkStandings matches real relations across seeded games", () => {
       const rng = seededRng(seed);
       let state: GameState = pickFaction(
         chooseDeck(
-          startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES)),
+          startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS)),
           potatoDeck(),
         ),
         BASELINE_FACTION,
@@ -300,7 +301,12 @@ describe("walkStandings matches real relations across seeded games", () => {
         const ctxForBatch: WalkCtx = {
           humanFactionId,
           factionOf: (playerId) => state.players.find((pl) => pl.id === playerId)?.factionId,
-          leads: (f) => leadsOf(state.relations, humanFactionId, f),
+          // `leadsIn`, not `leadsOf`: a lead now includes the Might a live
+          // pact adds, and the walk has to reconcile against the same
+          // definition the HUD quotes. Reconciling against the raw store
+          // instead would pass while every pact in the game drifted the
+          // summary by 1.
+          leads: (f) => leadsIn(state, humanFactionId, f),
         };
         const changes = walkStandings(batch, ctxForBatch);
         const firstBefore = new Map<string, number>();
@@ -313,7 +319,7 @@ describe("walkStandings matches real relations across seeded games", () => {
         for (const [key, before] of firstBefore) {
           const [factionId, track] = key.split(":") as [string, "might" | "status"];
           const groundTruth =
-            leadsOf(preBatchState.relations, humanFactionId, factionId)[track];
+            leadsIn(preBatchState, humanFactionId, factionId)[track];
           // `|| 0` normalizes -0 to 0: a lead of zero from either direction is
           // the same standing, and Object.is (what .toBe uses) disagrees.
           expect(before || 0, `seed ${seed}, turn ${state.turn}, ${key}`)

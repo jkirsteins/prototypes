@@ -233,7 +233,7 @@ describe("chooseAction priorities", () => {
   it("5: does not fire when every qualifying ruler is guarded", () => {
     let g = base();
     g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 1) };
-    g = { ...g, bodyguards: ["gamma"] };
+    g = { ...g, guards: { bodyguard: ["gamma"] } };
     g = withHand(g, ["assassinate-ruler", "raid"]);
     // spending the card to strip a guard leaves the threat standing
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
@@ -307,6 +307,95 @@ describe("chooseAction priorities", () => {
     g = { ...g, relations: statusLead(g.relations, "alpha", "beta", 1) };
     g = withHand(g, ["bodyguard", "grow-crops"]);
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
+  it("7: answers a Status threat with A feast and a Might threat with Fortify", () => {
+    // The two fan-out cards are one step reading its own track. A rival leading
+    // on Status only must not be answered with Might, and the reverse.
+    let onStatus = base();
+    onStatus = { ...onStatus, relations: statusLead(onStatus.relations, "gamma", "alpha", 1) };
+    onStatus = withHand(onStatus, ["fortify", "a-feast"]);
+    expect(chooseAction(onStatus)).toEqual({ type: "play", cardIndex: 1 });
+
+    let onMight = base();
+    onMight = { ...onMight, relations: lead(onMight.relations, "gamma", "alpha", 1) };
+    onMight = withHand(onMight, ["a-feast", "fortify"]);
+    expect(chooseAction(onMight)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("7: leaves A feast alone when nobody leads on Status", () => {
+    let g = base();
+    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
+    g = withHand(g, ["a-feast", "grow-crops"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
+  it("8c: posts eloping heirs against a Status threat two plays out", () => {
+    let g = base();
+    // gamma needs a Status lead of 2 to take alpha and has 1: one play away.
+    g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 1) };
+    g = withHand(g, ["eloping-heirs", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("8c: leaves eloping heirs alone with no Status threat in sight", () => {
+    const g = withHand(base(), ["eloping-heirs", "grow-crops"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
+  it("8c: posts a distrustful neighbour when a conquest is nearly in reach", () => {
+    // alpha needs 2 over beta and has 1: a pact sealed with beta now would
+    // freeze that conquest for five turns.
+    let g = base();
+    g = { ...g, relations: lead(g.relations, "alpha", "beta", 1) };
+    g = withHand(g, ["distrustful-neighbour", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("8c: leaves a distrustful neighbour alone with nothing worth taking", () => {
+    // Every bar is 2 at a minimum, so "more than two plays away" needs the
+    // actor BEHIND on BOTH tracks: either track within two is enough to make a
+    // pact worth refusing, so a Might-only deficit leaves Status at 2 and the
+    // branch still fires. Each rival leads alpha by 1 on each track.
+    let g = base();
+    let rel = g.relations;
+    for (const f of ["beta", "gamma", "delta"]) {
+      rel = statusLead(lead(rel, f, "alpha", 1), f, "alpha", 1);
+    }
+    g = { ...g, relations: rel };
+    g = withHand(g, ["distrustful-neighbour", "grow-crops"]);
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
+  it("8d: raises the population only when it would unlock a settlement", () => {
+    // Every land of the realm is at its allowance but has map room left, so a
+    // boom is the only thing that makes Found a settlement playable.
+    const roomy = (g: GameState): GameState =>
+      ({ ...g, siteCaps: { alpha: 4, beta: 4, gamma: 4, delta: 4 } });
+    let blocked = roomy(base());
+    blocked = { ...blocked, settlements: { alpha: 1 } };
+    blocked = withHand(blocked, ["population-boom", "found-settlement"]);
+    expect(chooseAction(blocked)).toEqual({ type: "play", cardIndex: 0 });
+
+    // A land it can settle right now: spend the turn settling, not booming -
+    // the boom would be consumed by that same settlement for nothing.
+    const open = withHand(roomy(base()), ["population-boom", "found-settlement"]);
+    expect(chooseAction(open)).toMatchObject({ cardIndex: 1 });
+
+    // No Found a settlement in hand: a boom now is a turn spent on nothing.
+    let noCard = roomy(base());
+    noCard = { ...noCard, settlements: { alpha: 1 } };
+    noCard = withHand(noCard, ["population-boom", "grow-crops"]);
+    expect(chooseAction(noCard)).toMatchObject({ cardIndex: 1 });
+
+    // Blocked by the MAP rather than the allowance: no boom can help. The
+    // turnip is in hand so a fallthrough onto the boom is distinguishable from
+    // the branch actually firing - without it the boom is the only legal card
+    // and step 11 would play it for reasons that are not 8d.
+    let mapped: GameState =
+      { ...base(), siteCaps: { alpha: 1 }, settlements: { alpha: 1 } };
+    mapped = withHand(mapped, ["population-boom", "found-settlement", "grow-crops"]);
+    expect(chooseAction(mapped)).toMatchObject({ cardIndex: 2 });
   });
 
   // Supplementary tests below: the brief's six "8:" tests above mostly pass
@@ -508,27 +597,27 @@ describe("found a settlement (steps 7b and 9b)", () => {
       ...threatened(withHand(base(), ["found-settlement"]), "gamma", 1),
       overlords: new Map([["delta", "alpha"]]),
       incorporated: { beta: "alpha" },
-      settled: ["alpha"], // own land already settled
+      settlements: { alpha: 1 }, // own land already at its allowance
     };
     // beta is annexed and permanent; delta is a vassal that can walk off.
     expect(chooseAction(g)).toMatchObject({ targetId: "beta" });
-    expect(chooseAction({ ...g, settled: ["alpha", "beta"] }))
+    expect(chooseAction({ ...g, settlements: { alpha: 1, beta: 1 } }))
       .toMatchObject({ targetId: "delta" });
   });
 
   it("does not settle a land with no free site", () => {
     const g = {
       ...threatened(withHand(base(), ["found-settlement", "grow-crops"]), "gamma", 1),
-      sites: [], // no land in this world has a spare slot
+      siteCaps: {}, // no land in this world has a spare slot
     };
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1 }); // grows crops
   });
 
-  it("does not settle the same land twice", () => {
+  it("does not settle a land the map has no dot left for", () => {
     const g = {
       ...threatened(withHand(base(), ["found-settlement", "grow-crops"]), "gamma", 1),
-      sites: ["alpha"],
-      settled: ["alpha"],
+      siteCaps: { alpha: 1 },
+      settlements: { alpha: 1 },
     };
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
   });

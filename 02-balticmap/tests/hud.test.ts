@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
+import { pact, } from "./helpers";
 import { createHud, type Hud, type HudCallbacks } from "../src/hud";
 import {
   newGame, startGame, chooseDeck, pickFaction, advance, playCard, beginTurn,
@@ -366,15 +367,18 @@ describe("activity log", () => {
   });
 
   it("leaves a card that moves no standing without a suffix", () => {
+    // Extended diplomacy, not Alliance: an Alliance moves Might now, against
+    // every faction bordering both realms, so it carries a suffix like any
+    // other gain.
     const { container, hud } = setup();
     let g = playing();
-    g = withHand(g, 0, ["alliance"]);
-    g = playCard(g, 0, seededRng(1), "alpha");
+    g = withHand(g, 0, ["extended-diplomacy"]);
+    g = playCard(g, 0, seededRng(1));
     hud.update(g);
     const texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
     );
-    expect(texts).toContain("You played Alliance on Alpha");
+    expect(texts).toContain("You played Extended diplomacy");
     expect(container.querySelectorAll(".log-change")).toHaveLength(0);
   });
 
@@ -955,7 +959,7 @@ describe("subjugation HUD", () => {
 
   it("appends '- prevented' to a nullified Assassinate ruler play, for both the actor and the victim", () => {
     const { container, hud } = setup();
-    let g = { ...playing(), bodyguards: ["alpha"] };
+    let g: GameState = { ...playing(), guards: { bodyguard: ["alpha"] } };
     g = withHand(g, 0, ["assassinate-ruler"]);
     const survivor = rulerOf(g.rulers, "alpha").name;
     g = playCard(g, 0, seededRng(1), "alpha"); // you (beta) are the actor
@@ -968,7 +972,7 @@ describe("subjugation HUD", () => {
     );
 
     const { container: container2, hud: hud2 } = setup();
-    let g2 = { ...playing(), bodyguards: ["beta"], current: 1 }; // alpha acts against you
+    let g2: GameState = { ...playing(), guards: { bodyguard: ["beta"] }, current: 1 }; // alpha acts against you
     g2 = withHand(g2, 1, ["assassinate-ruler"]);
     const ruler = rulerOf(g2.rulers, "alpha").name;
     const ruler2 = rulerOf(g2.rulers, "beta").name;
@@ -1400,7 +1404,7 @@ describe("notice modal", () => {
     let g = playing();
     g = {
       ...g,
-      alliances: { [allianceKey("beta", "alpha")]: 8 },
+      alliances: { [allianceKey("beta", "alpha")]: pact(8) },
       log: [
         ...g.log,
         { turn: 1, playerId: 2, type: "play", cardId: "alliance", targetFactionId: "beta" },
@@ -1691,7 +1695,7 @@ describe("log lines name rulers", () => {
 
   it("names the survivor when a bodyguard turns the blade", () => {
     const { container, hud } = setup();
-    let g = { ...playing(), bodyguards: ["alpha"] };
+    let g: GameState = { ...playing(), guards: { bodyguard: ["alpha"] } };
     g = withHand(g, 0, ["assassinate-ruler"]);
     const survivor = rulerOf(g.rulers, "alpha").name;
     g = playCard(g, 0, seededRng(1), "alpha");
@@ -2111,6 +2115,28 @@ describe("secret cards in the activity log", () => {
     });
     expect(texts(container).some((t) => /a secret card/.test(t))).toBe(true);
     expect(texts(container).some((t) => /Bodyguard/.test(t))).toBe(false);
+  });
+
+  it("reveals the guard that matches the card, not merely the newest", () => {
+    // The property three guards forced. A queue keyed by faction alone was
+    // exact while Bodyguard was the only secret card; with a rival holding two
+    // at once it would reveal whichever they played LAST - naming the wrong
+    // card on the wrong line and giving away a guard they are still holding.
+    const { container, hud } = setup();
+    const g = playing();
+    const heirs: GameEvent =
+      { turn: 1, playerId: 2, type: "play", cardId: "eloping-heirs" };
+    // alpha posts a Bodyguard, then Eloping heirs. The human's marriage is the
+    // card turned aside, so the Eloping heirs is what became public.
+    const marriage: GameEvent = {
+      turn: 3, playerId: 1, type: "play", cardId: "shrewd-marriage",
+      targetFactionId: "alpha", prevented: true,
+    };
+    hud.update({ ...g, log: [...g.log, guard(2), heirs, marriage] });
+    const all = texts(container);
+    expect(all.filter((t) => /played Eloping heirs/.test(t))).toHaveLength(1);
+    expect(all.filter((t) => /played Bodyguard/.test(t))).toHaveLength(0);
+    expect(all.filter((t) => /a secret card/.test(t))).toHaveLength(1);
   });
 
   it("reveals only the guard that was spent, not the one still posted", () => {
