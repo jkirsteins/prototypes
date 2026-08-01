@@ -8,6 +8,34 @@ own bare root; see the repo `AGENTS.md` for why.
 Specs and plans live in `docs/superpowers/`. Read the relevant one before
 changing the code it describes.
 
+## A browser check boots straight into the state it checks
+
+Query params replay the real transitions, so checking something is one
+navigation and the same URL gives the same run every time:
+
+    http://127.0.0.1:4173/prototypes/02/?seed=7&faction=selonians&turns=5&hand=alliance&rel=talavians:might=3
+
+- `seed=N` - seeds the rng.
+- `deck=a,b,c` - deck-screen picks, padded to ten with Grow turnips. Omit for
+  the standard deck.
+- `faction=id` - a **faction** id, not a region id (`selonians`, not `selija`).
+- `turns=N` - plays N rounds with the AI policy on every seat, then hands back
+  on your turn.
+- `hand=a,b,c` - replaces your hand.
+- `rel=faction:might=3,status=-2;other:might=1` - standings as **your signed
+  lead**, the `formatLead` convention the HUD already uses.
+- `popups=off` - sets the existing "Show popups" log pref.
+
+`src/boot-params.ts` owns them, with the ordering rules and their consequences
+in its doc comments; `tests/boot-params.test.ts` pins the behaviour. Two
+properties to preserve: a URL naming no boot param parses to `null`, so a
+player's page is untouched, and a booted run uses memory storage with every
+card known, so it neither banks XP nor inherits a profile's unlocks.
+
+**There is deliberately no `window` handle on the game state.** A browser pass
+asserts what the player can see; state assertions belong in vitest. A refresh
+is a clean start - the run is not persisted, and the way back is the URL.
+
 ## Never interpolate a card or faction name into a string
 
 Every place the game names a card ("Shrewd marriage") or a faction

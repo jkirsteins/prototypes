@@ -66,7 +66,14 @@ export interface HudCallbacks {
 }
 
 export interface Hud {
-  update(state: GameState): void;
+  /** `animate: false` renders the state as already-settled: no card flies, no
+   *  line flashes, and no round summary is raised. It exists for the first
+   *  paint of a state the player did not play into - a `?turns=` boot - where
+   *  the whole log is "fresh" by definition, and the ordinary path would fly a
+   *  card per human event at once and then drop a round-summary modal over the
+   *  board a second after load, unasked. Every later update animates normally,
+   *  because `renderedEvents` has caught up by then. */
+  update(state: GameState, opts?: { animate?: boolean }): void;
   setArmed(index: number | null, cardName?: string): void;
   /** Runs `fn` once the play flight started by the most recent `update()` has
    *  landed. Fires exactly once, always:
@@ -125,7 +132,11 @@ export interface LogPrefs {
   showPopups: boolean;
 }
 
-const LOG_PREFS_KEY = "balticmap-log-prefs-v1";
+/** Exported so a `?popups=off` boot can seed the pref into its own memory
+ *  storage before `createHud` reads it - the param sets the toggle the player
+ *  can set themselves rather than adding a second, hidden way to mute the
+ *  summary. */
+export const LOG_PREFS_KEY = "balticmap-log-prefs-v1";
 const DEFAULT_LOG_PREFS: LogPrefs = { targetingMe: false, showPopups: true };
 
 function loadLogPrefs(storage: MetaStorage): LogPrefs {
@@ -1018,7 +1029,7 @@ export function createHud(
     entry.classList.add("log-revealed");
   }
 
-  function renderLog(state: GameState): GameEvent[] {
+  function renderLog(state: GameState, animate: boolean): GameEvent[] {
     if (state.log.length < renderedEvents) {
       logEntries.replaceChildren();
       renderedEvents = 0;
@@ -1061,7 +1072,7 @@ export function createHud(
       }
       if (!isObservable(e, humanFactionId)) return;
       const entry = document.createElement("div");
-      entry.className = "log-entry log-new";
+      entry.className = animate ? "log-entry log-new" : "log-entry";
       // A secret play revealed by something in this same batch is rendered
       // revealed from the start rather than rewritten a line later - there is
       // nothing to flash at a player who has not seen the hidden version.
@@ -1543,7 +1554,8 @@ export function createHud(
   }
 
   return {
-    update(state) {
+    update(state, opts) {
+      const animate = opts?.animate !== false;
       lastState = state;
       if (state.phase !== "playing") {
         hideSummary();
@@ -1578,13 +1590,15 @@ export function createHud(
         renderPile(discardPile, human.discard.length);
         renderHand(state);
         renderScoreboard(state);
-        const fresh = renderLog(state);
+        const fresh = renderLog(state, animate);
         // Animate first, decide second. `showRoundSummaryIfAny` asks whether a
         // flight is in the air to know whether the turn it is describing has
         // finished, and the flight this batch starts has to exist by then or
         // the answer is stale by one update.
-        animateEvents(fresh);
-        showRoundSummaryIfAny(state, fresh);
+        if (animate) {
+          animateEvents(fresh);
+          showRoundSummaryIfAny(state, fresh);
+        }
       } else if (ended) {
         renderPostmortem(state);
       }

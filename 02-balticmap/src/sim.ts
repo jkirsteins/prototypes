@@ -10,6 +10,7 @@ import {
   viewOf, type GameState,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
+import { seededRng } from "./rng";
 import { aiTakeTurn, chooseAction } from "./ai";
 import { fullRealmOf } from "./relations";
 
@@ -40,15 +41,9 @@ export function potatoesPlusSeedsDeck(): string[] {
   return ["seeds-of-revolt", ...potatoDeck().slice(1)];
 }
 
-/** Linear congruential rng; same generator the tests use, so a seed here
- *  means the same stream everywhere. */
-export function seededRng(seed: number): Rng {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
+/** Re-exported from `./rng`, where it now lives: tests and scripts reach for a
+ *  seed through the harness, and the app must not import the harness. */
+export { seededRng };
 
 export type AiDeckFor = (rng: Rng, factionId: string) => string[];
 

@@ -25,12 +25,17 @@ import {
   subjugationBreakdown,
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
-import { createHud } from "./hud";
+import { createHud, LOG_PREFS_KEY } from "./hud";
 import { createDeckScreen } from "./deck-screen";
 import {
-  applyPack, bankRun, buildPlayerDeck, collectedCount, loadMeta, memoryStorage,
-  pendingPacks, resetMeta, saveMeta, type MetaRecord, type MetaStorage,
+  applyPack, bankRun, buildPlayerDeck, collectedCount, initialMeta, loadMeta,
+  memoryStorage, pendingPacks, resetMeta, saveMeta,
+  type MetaRecord, type MetaStorage,
 } from "./meta";
+import {
+  applyBootParams, BOOT_KNOWN_CARDS, parseBootParams,
+} from "./boot-params";
+import { seededRng } from "./rng";
 import { runTurnips, runXp } from "./xp";
 import { openPack } from "./packs";
 import {
@@ -114,11 +119,31 @@ const factionEthnicities: Record<string, string> = Object.fromEntries(
   data.factions.map((f) => [f.id, f.ethnicity]),
 );
 
-const rng = Math.random;
+/** Null unless the URL names a boot param, in which case every branch below
+ *  reading it takes the testing path. See src/boot-params.ts. */
+const boot = parseBootParams(window.location.search);
+
+const rng = boot?.seed != null ? seededRng(boot.seed) : Math.random;
 const { storage, storageIsPersistent } = ((): {
   storage: MetaStorage;
   storageIsPersistent: boolean;
 } => {
+  // A booted run is sealed off from real progress in both directions: it must
+  // not bank XP into the player's record, and it must not inherit whichever
+  // cards this browser profile happens to have unlocked, or the same URL would
+  // deal a different deck on a different machine. The probe below is skipped
+  // rather than run-and-discarded because the probe itself writes.
+  //
+  // `storageIsPersistent` is reported as the probe would have found it, not
+  // forced: it only decides whether the menu carries a "Reset progress"
+  // button, and a booted page must show the DOM production shows.
+  if (boot !== null) {
+    const mem = memoryStorage();
+    if (boot.popups !== null) {
+      mem.setItem(LOG_PREFS_KEY, JSON.stringify({ showPopups: boot.popups }));
+    }
+    return { storage: mem, storageIsPersistent: true };
+  }
   try {
     const probe = "balticmap-meta-probe";
     window.localStorage.setItem(probe, "1");
@@ -128,7 +153,10 @@ const { storage, storageIsPersistent } = ((): {
     return { storage: memoryStorage(), storageIsPersistent: false };
   }
 })();
-let meta: MetaRecord = loadMeta(storage);
+let meta: MetaRecord =
+  boot === null
+    ? loadMeta(storage)
+    : { ...initialMeta(), knownCards: BOOT_KNOWN_CARDS };
 let runBanked = false;
 /** The pack currently revealed on the deck screen, or null when none is open.
  *  A fresh array per pack: the deck screen compares identity to decide whether
@@ -138,6 +166,17 @@ let game: GameState = newGame(
   data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
   SITE_CAPS,
 );
+if (boot !== null) {
+  // Nothing here may render: `hud` does not exist yet, and a throw at module
+  // scope would abort evaluation and leave a blank page with no menu and no
+  // map - the one failure a test hook must not be able to cause. So the boot
+  // is state-only, and a bad param falls back to the ordinary main menu.
+  try {
+    game = applyBootParams(game, boot, rng);
+  } catch (err) {
+    console.error("boot params ignored:", err);
+  }
+}
 let armed: number | null = null; // hand index of the armed targeted card
 let hoveredRegion: Region | null = null; // region under the cursor, for hover re-apply on refresh
 /** The land clicked to hold its faction's highlight, or null. A pin outranks
@@ -978,7 +1017,18 @@ const deckScreen = createDeckScreen(app, {
   },
 });
 
-hud.update(game);
+// A run booted straight into an ending never passed through the code paths
+// that bank it, and the postmortem's XP bar would animate up from zero.
+if (boot !== null && (game.phase === "victory" || game.phase === "defeat")) {
+  bankRunProgress();
+}
+hud.update(game, { animate: boot === null });
+// A boot that stopped short - an unknown faction id, a deck of card ids that
+// do not exist - leaves the phase at deck-building, whose screen is hidden
+// from page load. Without this the page is a bare map with no way forward.
+if (boot !== null) {
+  deckScreen.update(deckScreenView(game.phase === "deck-building"));
+}
 
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
@@ -1029,3 +1079,9 @@ const interaction = attachInteraction(svg, regionPaths, data, {
     return false;
   },
 });
+
+// Last statement in the file, deliberately. A booted state needs the map
+// painted - ownership, realm outlines, threat badges, settlements - which the
+// first `hud.update` alone does not do. Running it here rather than beside
+// that update keeps it clear of every binding declared between the two.
+if (boot !== null) refresh();

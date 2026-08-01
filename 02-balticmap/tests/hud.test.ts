@@ -763,6 +763,74 @@ describe("card animations", () => {
     vi.useRealTimers();
   });
 
+  // The first paint of a state the player did not play into - a `?turns=` boot,
+  // per src/boot-params.ts. Every event in the log is "fresh" by definition, so
+  // the ordinary path would fly a card per human event at once and then, once
+  // those flights landed, drop a round-summary modal over a board the tester
+  // was already looking at. A modal that arrives a second after load and was
+  // never asked for is the one thing an e2e pass cannot work around.
+  it("renders a fast-forwarded state settled when animate is false", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    let g = playing();
+    // Several rounds of real play, so the log carries human plays and draws.
+    for (let i = 0; i < 12 && g.phase === "playing"; i++) {
+      g = advance(aiTakeTurn(g, seededRng(i + 1)), seededRng(i + 1));
+    }
+    expect(g.log.length).toBeGreaterThan(3);
+
+    hud.update(g, { animate: false });
+    expect(container.querySelectorAll(".flying-card")).toHaveLength(0);
+    expect(container.querySelectorAll(".log-entry.log-new")).toHaveLength(0);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    // Not merely deferred: nothing may surface later either.
+    vi.runAllTimers();
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    // The history is still there to read - it is silent, not dropped.
+    expect(container.querySelectorAll(".log-entry").length).toBeGreaterThan(0);
+    vi.useRealTimers();
+  });
+
+  // The silent paint must not wedge the summary machinery for the rest of the
+  // run: a booted state is where the player then plays, and the round after it
+  // has to interrupt them exactly as any other round would.
+  it("still raises the round summary on the round after a silent paint", () => {
+    let g = playing();
+    for (let i = 0; i < 12 && g.phase === "playing"; i++) {
+      g = advance(aiTakeTurn(g, seededRng(i + 1)), seededRng(i + 1));
+    }
+    const { container, hud } = setup();
+    hud.update(g, { animate: false });
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+
+    g = {
+      ...g,
+      overlords: new Map([["beta", "alpha"]]),
+      log: [
+        ...g.log,
+        { turn: g.turn, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
+      ],
+    };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    const lines = [...container.querySelectorAll(".notice-line")].map((el) => el.textContent);
+    expect(lines.join(" ")).toMatch(/fealty/i);
+  });
+
+  it("animates normally on the update after a silent one", () => {
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    let g = playing();
+    hud.update(g, { animate: false });
+    vi.runAllTimers();
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g);
+    expect(container.querySelectorAll(".flying-card")).toHaveLength(1);
+    vi.runAllTimers();
+    vi.useRealTimers();
+  });
+
   it("does not animate AI actions, but pulses the deck on your reshuffle", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
