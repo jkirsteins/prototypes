@@ -275,18 +275,31 @@ text producers, and `tests/standings.test.ts` replays seeded games against the
 real relations - which is what will catch a pact seal or lapse that forgot its
 amount.
 
-Then play it in the browser through `http://127.0.0.1:4173/prototypes/`:
+Then play it in the browser through `http://127.0.0.1:4173/prototypes/`. All of
+the following were driven through a real run to turn 30:
 
-- Deck with Found a settlement and Population boom. Settle a land, confirm the
-  second dot appears and the Might bar on the hover rises by 1. Try to settle it
-  again and read the `needs-population` block. Play Population boom, settle it
-  again, confirm the boom is gone and the third dot is drawn.
-- Deck with Alliance. Seal a pact and read the card tip beforehand: it should
-  name the factions the pact buys a lead over. Confirm both Might badges move by
-  1 and the round summary quotes before -> after. Wait five turns and confirm the
-  lapse notice fires once and the badges move back.
-- Deck with Distrustful neighbour and Eloping heirs. Post one, confirm the log
-  says "a secret card" and not the name. Have a rival's Alliance or Shrewd
-  marriage turned aside and confirm the line rewrites to name the card.
-- A feast: confirm the log suffix reads `+1 Status against all` and not a
-  single-pair before -> after.
+- **Settlement growth.** A land reached four settlements, and the hover
+  breakdown read `Might -1/7. Your thresholds: 4 from realm size (2 lands), +3
+  from 3 settlements` against `Status +1/2` with no settlement term - the
+  asymmetry the whole change rests on, at a depth one settlement per land could
+  never reach. Each founding drew the next authored dot.
+- **The allowance.** Holding two booms, the card tip read `2 population booms
+  held: your people support 4 settlements in a land`, and a land already at four
+  came back `4 settlements here already, and your people support 4. A Population
+  boom raises that by one.`
+- **The pact.** The armed-card preview named the frozen set before committing
+  (`+1 Might for both of you against the 1 faction bordering both realms, until
+  the pact lapses`), the Might badges moved to `M+1` against the shared
+  neighbours, and the lapse raised its own modal (`Your pact with Lietuva has run
+  out (Might 0 -> -1)`), once per pact.
+- **The guards.** A rival's Shrewd marriage came back `- prevented`, and that
+  faction's earlier `played a secret card` line rewrote itself to `played Eloping
+  heirs` while their *other* held secret stayed hidden - the per-card reveal
+  doing what a per-faction one could not.
+- **A feast** logged `+1 Status against all`.
+
+**One bug the browser pass caught that the tests did not:** a sealed Alliance
+logged `+1 Might against all`, borrowing the fan-out wording for a card that
+hits only the shared neighbours - and reading as a gain even when a rival's pact
+had landed on you. `impactText` now separates the bounded case from the fan-out,
+and `tests/hud.test.ts` pins both forms.
