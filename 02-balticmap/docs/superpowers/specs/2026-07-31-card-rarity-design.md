@@ -176,6 +176,24 @@ The card rule in `CLAUDE.md` gains one line. A new deck-buildable card needs
 a measured impact and the tier that follows from it, next to its
 `POLICY_COVERAGE` branch, its discovery route and its `NOTICE_RULES` entry.
 
+## When the whole table has to be regenerated
+
+Impact is a coefficient on one response variable: the human's final realm
+size. Every threshold in `RARITY_TIERS` is a number of lands. So the table is
+only valid while "how well did this run go" means "how much of the map did
+you end up holding".
+
+Change the scoring and the table stops meaning anything, even though every
+test still passes - the conformance test only checks that each card's tier
+matches its stored number, not that the number still measures the right
+thing. Adding victory points is exactly this case: the response variable
+becomes points rather than lands, so `finalRealmSize` in `summarize` has to
+be replaced or joined by the new score, `npm run rarity` re-run, and both
+thresholds re-cut from the new spread. Their current values do not carry
+over; they are not on the same scale.
+
+Adding a card does not trigger this. Changing what winning means does.
+
 ## Out of scope
 
 - Changing the 70 / 25 / 5 weights. They are the acquisition spec's numbers
