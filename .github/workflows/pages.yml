@@ -14,6 +14,11 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  # Must match the editor the Godot prototypes are authored in, or the export
+  # templates will not match the project and the export fails.
+  GODOT_VERSION: "4.7.1"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -24,14 +29,64 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: "**/package-lock.json"
+      - name: Detect Godot prototypes
+        id: godot
+        run: |
+          if ls [0-9][0-9]-*/project.godot >/dev/null 2>&1; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Cache Godot
+        if: steps.godot.outputs.needed == 'true'
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot-bin
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
+      - name: Install Godot
+        if: steps.godot.outputs.needed == 'true' && steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          mkdir -p "$HOME/godot-bin"
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$HOME/godot-bin/godot"
+          chmod +x "$HOME/godot-bin/godot"
+          # The .tpz is a zip whose payload sits under templates/.
+          dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dest"
+          unzip -q templates.tpz
+          mv templates/* "$dest/"
+          rm -rf godot.zip templates.tpz templates
+      - name: Put Godot on PATH
+        if: steps.godot.outputs.needed == 'true'
+        run: echo "$HOME/godot-bin" >> "$GITHUB_PATH"
       - name: Build and assemble prototypes
         run: |
+          set -euo pipefail
           mkdir -p _site
           for dir in [0-9][0-9]-*/; do
             dir="${dir%/}"
             num="${dir%%-*}"
             echo "Building $dir -> _site/$num"
-            (cd "$dir" && npm ci && npm run build)
+            if [ -f "$dir/package.json" ]; then
+              (cd "$dir" && npm ci && npm run build)
+            elif [ -f "$dir/project.godot" ]; then
+              # --import first: a fresh checkout has no .godot/, and the export
+              # needs the import cache to exist before it can pack anything.
+              (cd "$dir" \
+                && mkdir -p dist \
+                && godot --headless --import \
+                && godot --headless --export-release Web dist/index.html)
+            else
+              echo "::error::$dir has neither package.json nor project.godot, so it cannot be built"
+              exit 1
+            fi
             mkdir -p "_site/$num"
             cp -R "$dir/dist/." "_site/$num/"
           done
