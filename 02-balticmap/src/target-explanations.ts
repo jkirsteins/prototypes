@@ -1,8 +1,8 @@
 import {
   INCORPORATE_RAMP, PACT_MIGHT_BONUS, POACH_CHANCE, SETTLEMENT_BASE_CAP,
   boomsHeld, failureRiskOf, freeSitesIn, gripPartsOn, holdsGuard, leadsIn,
-  omenMultiplier, omensHeld, poachSurchargeOn, raidGainFor, sharedNeighboursOf,
-  settlementsIn, subjugationRaceFor, targetEligibilityFor,
+  omenMultiplier, omensHeld, pactBoostExpiriesOn, poachSurchargeOn, raidGainFor,
+  sharedNeighboursOf, settlementsIn, subjugationRaceFor, targetEligibilityFor,
   type CardBlockReason,
   type FailureRisk,
   type Guards,
@@ -12,6 +12,7 @@ import {
   type TargetEligibility,
 } from "./playability";
 import { CARDS, DOUBLABLE_CARDS, isGuardCard } from "./cards";
+import type { Alliances } from "./relations";
 import { count } from "./plural";
 import { formatLead } from "./view";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
@@ -573,6 +574,34 @@ export function subjugationBreakdown(
     );
   }
   return lines;
+}
+
+/** The amber note under a boosted rival's hover: part of the lead on their
+ *  badge is a live pact's PACT_MIGHT_BONUS, and it lapses with the pact. One
+ *  line per live pact naming them, each with its own expiry.
+ *
+ *  Without it the boost is only legible where it happens to change a sign: a
+ *  shared neighbour at Might 0 wears a +1 the badge shows, while one who
+ *  raided first reads 0 and the pact term inside it is invisible - which is
+ *  exactly the position a player reported as a missing bonus.
+ *
+ *  Amber (`info`) like the armed card's preview, not green: the tone marks
+ *  "temporary, from a card" rather than the sign of a standing. The ally
+ *  themself is never on the frozen list, so their own hover keeps the green
+ *  pact line and never gets this one. Like `subjugationBreakdown`, it takes no
+ *  faction-name lookup and so structurally cannot violate the naming rule:
+ *  "your alliance" is the common noun, lowercase, and the ally goes unnamed
+ *  just as in the pact line itself. */
+export function pactBoostLines(
+  view: { alliances: Alliances; turn: number },
+  humanFactionId: string,
+  hoveredFactionId: string,
+): TooltipLine[] {
+  return pactBoostExpiriesOn(view, humanFactionId, hoveredFactionId)
+    .map((expiry) => ({
+      text: `Your alliance adds +${PACT_MIGHT_BONUS} Might against them until turn ${expiry}`,
+      tone: "info" as const,
+    }));
 }
 
 /** How many settlements stand on one land, over how many the map authors for

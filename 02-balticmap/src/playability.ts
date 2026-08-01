@@ -135,13 +135,26 @@ export function pactBonusOn(
   a: string,
   b: string,
 ): number {
-  let bonus = 0;
+  return pactBoostExpiriesOn(view, a, b).length * PACT_MIGHT_BONUS;
+}
+
+/** The expiry turn of each live pact behind `pactBonusOn` - one entry per
+ *  PACT_MIGHT_BONUS it adds, in the alliance store's order. The hover reads
+ *  this to say when a boosted lead falls back, and sharing the walk with the
+ *  bonus itself is what keeps the two from ever disagreeing about which pacts
+ *  are live. */
+export function pactBoostExpiriesOn(
+  view: { alliances: Alliances; turn: number },
+  a: string,
+  b: string,
+): number[] {
+  const expiries: number[] = [];
   for (const [key, pact] of Object.entries(view.alliances)) {
     if (view.turn >= pact.expiry) continue;
     if (!key.split("|").includes(a)) continue;
-    if (pact.against.includes(b)) bonus += PACT_MIGHT_BONUS;
+    if (pact.against.includes(b)) expiries.push(pact.expiry);
   }
-  return bonus;
+  return expiries;
 }
 
 /** A's leads over B as the RULES see them: the relation store, plus the Might

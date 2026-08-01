@@ -21,8 +21,8 @@ import {
 import { count } from "./plural";
 import {
   cardBlockLine, cardModifierLines, cardRiskLine, explainTargetEligibility,
-  multipliedWord, settlementBlock, targetImpactLines, targetOddsLines,
-  subjugationBreakdown,
+  multipliedWord, pactBoostLines, settlementBlock, targetImpactLines,
+  targetOddsLines, subjugationBreakdown,
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
 import { createHud, LOG_PREFS_KEY } from "./hud";
@@ -639,6 +639,11 @@ function hoverLines(region: Region): TooltipLine[] {
   // cannot legally touch for another five turns.
   const pact = allianceLine(f, human.factionId);
   if (pact !== null) lines.push({ text: pact, tone: "good" });
+  // A shared neighbour of a live pact instead gets the amber note: part of the
+  // lead on their badge is temporary, and this says until when. Without it the
+  // pact term is invisible wherever it does not change the sign - a boosted 0
+  // reads as no bonus at all.
+  lines.push(...pactBoostLines(game, human.factionId, f));
   // `region.faction`, not the resolved `f`: settlements belong to the land, so
   // an absorbed land must report its own count and not its absorber's. First of
   // the blocks, so the sentence-shaped lines above stay one group.

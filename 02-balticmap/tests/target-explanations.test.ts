@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { pact, settledOnce, } from "./helpers";
 import {
   GUARD_POSTED, GUARD_RISK, cardModifierLines, cardRiskLine,
-  explainTargetEligibility, settlementBlock, subjugationBreakdown,
-  targetImpactLines, targetOddsLines,
+  explainTargetEligibility, pactBoostLines, settlementBlock,
+  subjugationBreakdown, targetImpactLines, targetOddsLines,
 } from "../src/target-explanations";
 import { CARDS, GUARDS } from "../src/cards";
 import { bumpMight, bumpStatus, type Relations } from "../src/relations";
@@ -697,6 +697,49 @@ describe("subjugationBreakdown", () => {
     expect(lines).toContainEqual({ amount: "+2", text: "from 2 settlements" });
     // Exactly one settlement row across both blocks: Status gets none.
     expect(lines.filter((l) => l.text.includes("settlement"))).toHaveLength(1);
+  });
+});
+
+describe("pactBoostLines", () => {
+  const v = (partial: Partial<RulesView> = {}): RulesView => ({
+    relations: {}, overlords: new Map(), incorporated: {}, adjacency: {},
+    factionIds: ["alpha", "beta", "gamma", "delta"], alliances: {}, turn: 1,
+    guards: {}, omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    siteCaps: {}, settlements: {}, booms: {},
+    ...partial,
+  });
+
+  it("marks a shared neighbour's temporary Might in amber, with its expiry", () => {
+    const view = v({ alliances: { "alpha|beta": pact(6, ["gamma"]) } });
+    expect(pactBoostLines(view, "alpha", "gamma")).toEqual([
+      { text: "Your alliance adds +1 Might against them until turn 6",
+        tone: "info" },
+    ]);
+    // The bonus is symmetric, so the ally's own hover carries the same line.
+    expect(pactBoostLines(view, "beta", "gamma")).toHaveLength(1);
+  });
+
+  it("gives each live pact its own line and expiry", () => {
+    const view = v({
+      alliances: {
+        "alpha|beta": pact(6, ["gamma"]),
+        "alpha|delta": pact(9, ["gamma"]),
+      },
+    });
+    expect(pactBoostLines(view, "alpha", "gamma").map((l) => l.text)).toEqual([
+      "Your alliance adds +1 Might against them until turn 6",
+      "Your alliance adds +1 Might against them until turn 9",
+    ]);
+  });
+
+  it("says nothing once lapsed, off the frozen list, or about a pact of somebody else's", () => {
+    const alliances = { "alpha|beta": pact(6, ["gamma"]) };
+    expect(pactBoostLines(v({ alliances, turn: 6 }), "alpha", "gamma")).toEqual([]);
+    expect(pactBoostLines(v({ alliances }), "alpha", "delta")).toEqual([]);
+    expect(pactBoostLines(v({ alliances }), "delta", "gamma")).toEqual([]);
+    // The ally is never on the frozen list, so their own hover keeps the green
+    // pact line and never this one.
+    expect(pactBoostLines(v({ alliances }), "alpha", "beta")).toEqual([]);
   });
 });
 
