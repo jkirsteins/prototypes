@@ -284,6 +284,32 @@ describe("naming convention: no card or faction name as raw text", () => {
     expect(/\bYou [a-z]+s\b/.test("You fail to prise Curonians")).toBe(false);
   });
 
+  /** A secret play is the one line that deliberately names no card, and the
+   *  sweep above can only ever say it did not leak one. That is a weaker claim
+   *  than the property being bought - a line reading "Alpha played" would pass
+   *  the sweep too - so the property is stated here directly, in both
+   *  directions: hidden from a rival, named for the player who played it. */
+  it("hides a secret card from a rival's line and names it on your own", () => {
+    const secret = Object.values(CARDS).filter((c) => c.secret);
+    expect(secret.length).toBeGreaterThan(0);
+    for (const c of secret) {
+      const base = { turn: 1, type: "play", cardId: c.id } as const;
+      const theirs = plainText(eventSegments({ ...base, playerId: 2 }, state), names);
+      expect(theirs).toContain("a secret card");
+      for (const other of Object.values(CARDS)) {
+        expect(theirs, `${c.id} leaked ${other.name}`).not.toContain(other.name);
+      }
+      // Revealed, and in the player's own line, the card is a segment again -
+      // a node they can point at, exactly as the naming rule requires.
+      for (const segs of [
+        eventSegments({ ...base, playerId: 2 }, state, true),
+        eventSegments({ ...base, playerId: 1 }, state),
+      ]) {
+        expect(segs.some((s) => s.kind === "card" && s.cardId === c.id)).toBe(true);
+      }
+    }
+  });
+
   it("does not pass vacuously - a raid line actually carries a card and a faction segment", () => {
     const raidByHuman = playEvents.find(
       (e) => e.cardId === "raid" && e.playerId === 1,

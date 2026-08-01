@@ -25,84 +25,96 @@ function seededRng(seed: number): Rng {
 describe("cards", () => {
   it("defines the nine card types with v2 properties", () => {
     const expectProps = (
-      id: string, name: string, targeted: boolean,
+      id: string, name: string, targeted: boolean, secret: boolean,
       maxPerDeck: number | null, deckBuildable: boolean, forced: boolean,
       rarity: string, text: string,
     ) =>
-      expect(CARDS[id]).toEqual({ id, name, targeted, maxPerDeck, deckBuildable, forced, rarity, text });
+      expect(CARDS[id]).toEqual({ id, name, targeted, secret, maxPerDeck, deckBuildable, forced, rarity, text });
     expectProps(
-      "grow-crops", "Grow turnips", false, null, true, false,
+      "grow-crops", "Grow turnips", false, false, null, true, false,
       "common",
       "No effect - a quiet season. Fills out the deck.",
     );
     expectProps(
-      "raid", "Raid", true, 1, true, false,
+      "raid", "Raid", true, false, 1, true, false,
       "common",
       "Gain Might over one faction in reach: +1 for your first land on their " +
         "border, +2 for the second, +3 for the third, and so on.",
     );
     expectProps(
-      "shrewd-marriage", "Shrewd marriage", true, 1, true, false,
+      "shrewd-marriage", "Shrewd marriage", true, false, 1, true, false,
       "common",
       "Gain +1 Status over one faction in reach; your overlord is always courtable.",
     );
     expectProps(
-      "fortify", "Fortify", false, 1, true, false,
+      "fortify", "Fortify", false, false, 1, true, false,
       "common",
       "Gain +1 Might over every other living faction at once.",
     );
     expectProps(
-      "subjugate", "Subjugate", true, 1, true, false,
+      "subjugate", "Subjugate", true, false, 1, true, false,
       "common",
       "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute.",
     );
     expectProps(
-      "incorporate", "Incorporate", true, 1, true, false,
+      "incorporate", "Incorporate", true, false, 1, true, false,
       "epic",
       "Permanently absorb one of your vassals into your realm.",
     );
     expectProps(
-      "pay-military-tribute", "Pay military tribute", false, null, false, true,
+      "pay-military-tribute", "Pay military tribute", false, false, null, false, true,
       "common",
       "Forced: while a vassal, grant your overlord +1 Might.",
     );
     expectProps(
-      "pay-status-tribute", "Pay status tribute", false, null, false, true,
+      "pay-status-tribute", "Pay status tribute", false, false, null, false, true,
       "common",
       "Forced: while a vassal, grant your overlord +1 Status.",
     );
     expectProps(
-      "seeds-of-revolt", "Seeds of revolt", false, 1, true, false,
+      "seeds-of-revolt", "Seeds of revolt", false, false, 1, true, false,
       "common",
       "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time.",
     );
     // Revolt is injection-only now, like the tribute cards: Seeds of revolt puts it
     // in the deck, so it must never be deck-buildable.
     expectProps(
-      "revolt", "Revolt", false, 1, false, false,
+      "revolt", "Revolt", false, false, 1, false, false,
       "common",
       "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good.",
     );
     expectProps(
-      "assassinate-ruler", "Assassinate ruler", true, 1, true, false,
+      "assassinate-ruler", "Assassinate ruler", true, false, 1, true, false,
       "common",
       "Even the score: the Status lead between you and one faction in reach resets to none.",
     );
     expectProps(
-      "alliance", "Alliance", true, 1, true, false,
+      "alliance", "Alliance", true, false, 1, true, false,
       "rare",
       "Seal a pact with one faction in reach: no hostile cards between you for 5 turns.",
     );
     expectProps(
-      "extended-diplomacy", "Extended diplomacy", false, 1, true, false,
+      "extended-diplomacy", "Extended diplomacy", false, false, 1, true, false,
       "common",
       "Patient envoys: your next Alliance lasts twice as long.",
     );
+    // The one secret card: others see only that a card was played.
     expectProps(
-      "bodyguard", "Bodyguard", false, 1, true, false,
+      "bodyguard", "Bodyguard", false, true, 1, true, false,
       "common",
-      "Post a bodyguard: the next Assassinate ruler against you fails. No stacking.",
+      "Post a bodyguard: the next Assassinate ruler against you fails. " +
+        "No stacking. Others see only that you played a secret card.",
     );
+  });
+
+  it("keeps Bodyguard the only secret card", () => {
+    // Not a preference - a guard rail. A secret card must move no relation
+    // counter, because `impactText` in src/hud.ts prints the standings suffix
+    // beside the line whatever the card's name says, and a suffix names the
+    // card in all but words. Bodyguard moves nothing; the next card marked
+    // secret has to be checked against that before this list grows.
+    const secret = Object.values(CARDS).filter((c) => c.secret).map((c) => c.id);
+    expect(secret).toEqual(["bodyguard"]);
   });
 
   it("builds the explicit default deck, favourable-omens included", () => {

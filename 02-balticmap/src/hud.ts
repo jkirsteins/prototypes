@@ -208,10 +208,35 @@ function rulerSuffix(e: GameEvent): string | null {
       : ` - ${e.targetRuler} killed, ${e.successorRuler} succeeds`;
 }
 
+/** Whether this event is a play the log hides the card of: a secret card (see
+ *  `CardDef.secret` in src/cards.ts) played by somebody who is not you. You see
+ *  what you played - the same asymmetry the `draw` line carries.
+ *
+ *  One predicate, because `eventSegments` (which hides) and `revealedSecrets`
+ *  (which un-hides) answering it separately is exactly how the first browser
+ *  pass ended up flashing "You played Bodyguard" as a reveal: the reveal walk
+ *  counted the player's own guard as a secret, so spending it rewrote and
+ *  flashed a line the player had never been shown a hidden version of. */
+function hidesItsCard(e: GameEvent): boolean {
+  return (
+    e.type === "play" && e.playerId !== 1 &&
+    e.cardId !== undefined && CARDS[e.cardId]?.secret === true
+  );
+}
+
 /** One log/postmortem line as segments. Exported (not just used by
  *  createHud) so tests/naming-convention.test.ts can drive every event type
- *  through it directly. */
-export function eventSegments(e: GameEvent, state: GameState): Segment[] {
+ *  through it directly.
+ *
+ *  `reveal` names a secret card (see `CardDef.secret` in src/cards.ts) that
+ *  would otherwise be hidden. Two callers pass it: the postmortem, where the run
+ *  is over and there is nothing left to protect, and `renderLog` for a play
+ *  whose secret `revealedSecrets` says has since become public. */
+export function eventSegments(
+  e: GameEvent,
+  state: GameState,
+  reveal = false,
+): Segment[] {
   const you = e.playerId === 1;
   const actor = actorOf(e, state);
   const humanFactionId = state.players.find((pl) => pl.id === 1)?.factionId;
@@ -222,6 +247,17 @@ export function eventSegments(e: GameEvent, state: GameState): Segment[] {
       // same either way and comes from the same place.
       return clause(actor, "draw", you ? [t(" "), card(e.cardId ?? "")] : [t(" a card")], "past");
     case "play": {
+      // A secret play hides the WHOLE of the rest of the sentence - the card,
+      // its target and its suffix all describe the card, and a target alone
+      // would often name it by elimination.
+      //
+      // Plain text, deliberately, and not a violation of the naming rule in
+      // CLAUDE.md: that rule makes a NAME a node the player can point at, and
+      // there is no name here to point at. Nothing in "a secret card" can fall
+      // behind a rename in src/cards.ts.
+      if (!reveal && hidesItsCard(e)) {
+        return clause(actor, "play", [t(" a secret card")], "past");
+      }
       // rulerSuffix takes precedence over the readings marker: safe only
       // because assassinate-ruler (the only card rulerSuffix fires for) is not
       // in DOUBLABLE_CARDS (src/cards.ts). If it were ever added there, a
@@ -319,6 +355,53 @@ export function eventSegments(e: GameEvent, state: GameState): Segment[] {
         faction(e.overlordFactionId ?? ""),
       ];
   }
+}
+
+/** Indices into `state.log` of the secret plays whose card the player can now
+ *  see. Everything else stays "a secret card".
+ *
+ *  The reveal registry: one clause per way a secret stops being one. Secrecy
+ *  buys a rival the fact that you cannot tell which of them is guarded. It does
+ *  not buy them a card that was visibly spent in front of you staying hidden
+ *  afterwards - your blade turning on nothing tells you what they were holding
+ *  whatever the log says, and a log that then kept insisting on "a secret card"
+ *  would be the one thing lying to you.
+ *
+ *  There is exactly one clause today: a `play` that came back `prevented` spent
+ *  the guard of `targetFactionId`, revealing that faction's most recent
+ *  not-yet-revealed secret play. "Most recent not-yet-revealed" is EXACT, not an
+ *  approximation - `cardBlockReason` in src/playability.ts makes a second
+ *  Bodyguard illegal while the first is unspent, so a faction never has two
+ *  secrets in flight, and Bodyguard is the only secret card, so there is no
+ *  second kind to confuse it with. A second secret card must state its own link
+ *  here rather than inherit this one.
+ *
+ *  Derived from the log rather than stored on GameState, and living beside
+ *  `isObservable` for the same reason: what the player has seen is a fact about
+ *  the player, not about the board. The rules do not change. */
+export function revealedSecrets(state: GameState): Set<number> {
+  const out = new Set<number>();
+  /** Per faction, the log indices of its secret plays still unrevealed, oldest
+   *  first. An array rather than a single index so that a future stacking
+   *  secret degrades to "the newest one" instead of silently overwriting. */
+  const pending = new Map<string, number[]>();
+  state.log.forEach((e, i) => {
+    if (e.type !== "play") return;
+    // `hidesItsCard`, not "is a secret card": only a play the log actually hid
+    // has anything to reveal. Your own guard is on screen by name from the
+    // moment you post it, and spending it must not rewrite or flash that line.
+    if (hidesItsCard(e)) {
+      const factionId = state.players.find((pl) => pl.id === e.playerId)?.factionId;
+      if (factionId === undefined) return;
+      pending.set(factionId, [...(pending.get(factionId) ?? []), i]);
+      return;
+    }
+    if (e.prevented !== true || e.targetFactionId === undefined) return;
+    const queue = pending.get(e.targetFactionId);
+    const revealed = queue?.pop();
+    if (revealed !== undefined) out.add(revealed);
+  });
+  return out;
 }
 
 /** What one log line's event actually did, as a suffix in parentheses: the
@@ -749,6 +832,15 @@ export function createHud(
   let pendingPlayRect: DOMRect | null = null;
   let renderedEvents = 0;
   let lastRenderedTurn = 0;
+  /** The rendered entry for each log index, so a secret play several screens up
+   *  can be rewritten in place when its card becomes public. Sparse: an index
+   *  `isObservable` dropped has no entry, and a rewrite for one simply finds
+   *  nothing. Reset with `renderedEvents`, since a cleared panel invalidates
+   *  every element in it. */
+  const entryByIndex = new Map<number, HTMLElement>();
+  /** Log indices already rendered with their secret revealed, so a reveal
+   *  rewrites its entry once rather than on every subsequent render. */
+  const shownRevealed = new Set<number>();
   /** The faction the map is currently lighting, so the log can agree with it.
    *  Held rather than read back off the DOM because entries appended while a
    *  hover is live have to arrive already dimmed. */
@@ -843,16 +935,65 @@ export function createHud(
     run(0);
   }
 
+  /** Which factions a line is about, for the highlight. Read off the segments,
+   *  so a line lights exactly when it visibly names the faction - plus the actor
+   *  when that is you, because your own actions render as "You" and name no
+   *  faction at all.
+   *
+   *  Shared by the first render and by a reveal's rewrite: revealing a secret
+   *  play can add a faction to the line, so the two must agree on how the list
+   *  is built. */
+  function namedFactions(
+    segs: Segment[],
+    e: GameEvent,
+    humanFactionId: string | undefined,
+  ): string[] {
+    const named = factionIds(segs);
+    if (e.playerId === 1 && humanFactionId !== undefined && !named.includes(humanFactionId)) {
+      named.push(humanFactionId);
+    }
+    return named;
+  }
+
+  /** Rewrites one already-rendered entry to name the secret card it was hiding.
+   *
+   *  The impact suffix is detached and re-appended rather than rebuilt: it comes
+   *  from `walkStandings` over the batch that produced the event, and that batch
+   *  is long gone by the time a reveal fires several turns later. A secret card
+   *  moves no track by rule (see `CardDef.secret` in src/cards.ts) so there is
+   *  never a suffix here to carry - but carrying it is two lines that cannot be
+   *  wrong, where rebuilding it from a walk that no longer exists could be. */
+  function revealEntry(entry: HTMLElement, e: GameEvent, state: GameState): void {
+    const suffix = entry.querySelector(".log-change");
+    const segs = eventSegments(e, state, true);
+    entry.replaceChildren(renderSegments(segs, richTextHooks));
+    if (suffix !== null) entry.appendChild(suffix);
+    entry.dataset.factions =
+      namedFactions(segs, e, state.players[0]?.factionId).join(" ");
+    applyLogHighlight(entry);
+    // A line that rewrites itself several screens up is silent otherwise. The
+    // flash is one CSS animation and nothing waits on it - see the "never
+    // re-derive an animation's duration" rule in CLAUDE.md.
+    entry.classList.add("log-revealed");
+  }
+
   function renderLog(state: GameState): GameEvent[] {
     if (state.log.length < renderedEvents) {
       logEntries.replaceChildren();
       renderedEvents = 0;
       lastRenderedTurn = 0;
+      entryByIndex.clear();
+      shownRevealed.clear();
       hideSummary();
     }
-    const fresh = state.log.slice(renderedEvents);
+    const base = renderedEvents;
+    const fresh = state.log.slice(base);
     const humanFactionId = state.players[0]?.factionId;
     const noticeCtx = buildNoticeCtx(state);
+    // Over the WHOLE log, not just `fresh`: the play a reveal makes public is
+    // by definition an older one, and the event that reveals it is the fresh
+    // one. Cheap - one pass over an append-only array, once per render.
+    const revealed = revealedSecrets(state);
     // Index-parallel to `fresh`, INCLUDING the events isObservable drops: the
     // walk runs backwards from the leads as they stand now, so a hidden event
     // that moved a counter (a rival's garrison, a draw's reshuffle) has to be
@@ -869,6 +1010,7 @@ export function createHud(
     // hidden `seeded`) leaves the cause standing for the next one.
     let cause: HTMLElement | null = null;
     fresh.forEach((e, i) => {
+      const logIndex = base + i;
       if (e.turn !== lastRenderedTurn) {
         const sep = document.createElement("div");
         sep.className = "log-turn";
@@ -879,17 +1021,14 @@ export function createHud(
       if (!isObservable(e, humanFactionId)) return;
       const entry = document.createElement("div");
       entry.className = "log-entry log-new";
-      const segs = eventSegments(e, state);
+      // A secret play revealed by something in this same batch is rendered
+      // revealed from the start rather than rewritten a line later - there is
+      // nothing to flash at a player who has not seen the hidden version.
+      const isRevealed = revealed.has(logIndex);
+      if (isRevealed) shownRevealed.add(logIndex);
+      const segs = eventSegments(e, state, isRevealed);
       entry.replaceChildren(renderSegments(segs, richTextHooks));
-      // Which factions this line is about, for the highlight. Read off the
-      // segments, so a line lights exactly when it visibly names the faction -
-      // plus the actor when that is you, because your own actions render as
-      // "You" and name no faction at all.
-      const named = factionIds(segs);
-      if (e.playerId === 1 && humanFactionId !== undefined && !named.includes(humanFactionId)) {
-        named.push(humanFactionId);
-      }
-      entry.dataset.factions = named.join(" ");
+      entry.dataset.factions = namedFactions(segs, e, humanFactionId).join(" ");
       applyLogHighlight(entry);
       const impact = impactText(e, changes[i] ?? []);
       if (impact !== null) {
@@ -919,9 +1058,20 @@ export function createHud(
           cause?.classList.add("notice-cause");
         }
       }
+      entryByIndex.set(logIndex, entry);
       logEntries.appendChild(entry);
     });
     renderedEvents = state.log.length;
+    // Everything this batch made public that was already on screen hiding it.
+    for (const idx of revealed) {
+      if (shownRevealed.has(idx)) continue;
+      shownRevealed.add(idx);
+      const entry = entryByIndex.get(idx);
+      // Absent when `isObservable` dropped the play, or when the panel was
+      // cleared under it. Nothing to rewrite, and nothing to fix.
+      if (entry === undefined) continue;
+      revealEntry(entry, state.log[idx], state);
+    }
     if (fresh.length > 0) logEntries.scrollTop = logEntries.scrollHeight;
     return fresh;
   }
@@ -1258,6 +1408,11 @@ export function createHud(
           e.targetFactionId === human.factionId,
       )
       .slice(-5);
+    // Names cards in plain text, and deliberately does not hide a secret one:
+    // the postmortem reveals everything (see pmLog below). The filter above is
+    // also why no secret card can reach here today - it keeps only plays aimed
+    // at the human, and Bodyguard is untargeted. A future TARGETED secret card
+    // would land here, and this is the second of the two places it must check.
     pmBuildup.replaceChildren(
       ...plays.map((e) => {
         const d = document.createElement("div");
@@ -1334,7 +1489,9 @@ export function createHud(
       ...state.log.filter((e) => e.type !== "draw").map((e) => {
         const d = document.createElement("div");
         d.className = "log-entry";
-        d.replaceChildren(renderSegments(eventSegments(e, state), richTextHooks));
+        // Reveal: the run is over, so there is no secret left to keep. A player
+        // reading back a finished game is owed what everyone was holding.
+        d.replaceChildren(renderSegments(eventSegments(e, state, true), richTextHooks));
         d.classList.toggle("log-you", involvesHuman(e, human?.factionId));
         // Same nesting as the activity log. No cause to tag here: the
         // postmortem has no filter to hide one.

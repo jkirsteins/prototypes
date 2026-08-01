@@ -41,6 +41,12 @@ Two consequences worth stating outright:
   English word, write it lowercase. The capitalized "Alliance" is the card and
   must be a `card("alliance")` segment. The convention test enforces exactly this.
 
+The one log line that names no card is not an exception to any of this. A secret
+card's play (`CardDef.secret`, below) renders as plain `t(" a secret card")`
+because there is no name in it to point at - and the moment the card is revealed
+it is a `card()` segment again on that same line. Nothing in "a secret card" can
+fall behind a rename in `src/cards.ts`.
+
 `tests/naming-convention.test.ts` is what enforces it, because prose did not
 work - the same lesson `POLICY_COVERAGE` records in the repo `AGENTS.md`. It
 drives every event type through the log and the round summary and fails if any
@@ -180,6 +186,16 @@ route, then play it. Also add a `NOTICE_RULES` entry for any new `GameEventType`
 - the exhaustive `Record` will refuse to compile until you decide modal or
 silent and write down why - and record `amount`/`track` on any event that moves
 a relation counter, or the before/after standings silently drift.
+
+A card marked `secret: true` needs two more things checked, because neither is
+a type error. It must **move no relation counter** - `impactText` prints the
+`(Might +1 -> 2)` suffix beside the line whatever the name says, and a suffix
+names the card in all but words. And it must have a **reveal clause** in
+`revealedSecrets` (src/hud.ts) saying when the card stops being secret, or it is
+hidden forever and the log will contradict what the player has plainly seen
+happen. Both live in the doc comment on `CardDef.secret`; the 2026-08-01
+secret-cards design doc has the reasoning. The secret set is pinned to a literal
+in `tests/cards.test.ts` so it cannot grow without somebody reading this.
 
 A new deck-buildable card also needs a measured impact and the tier that
 follows from it. Run `npm run rarity` with the card added to `CARDS`, then set

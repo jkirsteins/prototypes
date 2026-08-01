@@ -835,6 +835,26 @@ svg.map.dragging {
   }
 }
 
+/* A line that rewrote itself: a secret play whose card has just become public.
+   Longer and warmer than .log-new, because this one has to be noticed several
+   screens above where the player is looking, rather than at the bottom edge
+   where new entries arrive. Nothing in the game logic waits on it. */
+.log-entry.log-revealed {
+  animation: log-reveal 1800ms ease-out;
+}
+
+@keyframes log-reveal {
+  0% {
+    background: #e8d8a8;
+  }
+  40% {
+    background: #e8d8a8;
+  }
+  100% {
+    background: transparent;
+  }
+}
+
 .pile {
   position: absolute;
   bottom: 16px;

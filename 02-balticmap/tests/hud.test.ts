@@ -6,7 +6,7 @@ import {
   type GameState, type GameEvent,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
-import { buildDeck, type Rng } from "../src/cards";
+import { CARDS, buildDeck, type Rng } from "../src/cards";
 import { allianceKey, bumpMight, leadsOf } from "../src/relations";
 import { rulerOf } from "../src/rulers";
 import {
@@ -2004,5 +2004,195 @@ describe("the pinned faction in the status bar", () => {
     hud.update(g);
     expect(q(container, ".status-text").textContent)
       .toBe("Pinned: Gamma - Esc to clear");
+  });
+});
+
+/** The `secret` flag on CardDef, at the surface it exists for. The rules
+ *  already treat a posted guard as hidden - `failureRiskOf` in
+ *  src/playability.ts refuses to read `view.bodyguards` so the Assassinate
+ *  ruler warning cannot become a detector - and the activity log naming the
+ *  card was that detector by another route. */
+describe("secret cards in the activity log", () => {
+  function playing(): GameState {
+    // beta is the human seat, as everywhere else in this file; alpha is
+    // player 2 and gamma player 3.
+    return pickFaction(
+      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
+    );
+  }
+
+  const texts = (container: HTMLElement, sel = ".activity-log .log-entry") =>
+    [...container.querySelectorAll(sel)].map((el) => el.textContent ?? "");
+
+  const guard = (playerId: number, turn = 1): GameEvent =>
+    ({ turn, playerId, type: "play", cardId: "bodyguard" });
+
+  /** An Assassinate ruler that came back turned aside, which spends the
+   *  target's guard and so makes it public. */
+  const turnedBlade = (
+    playerId: number, targetFactionId: string, turn = 2,
+  ): GameEvent => ({
+    turn, playerId, type: "play", cardId: "assassinate-ruler",
+    targetFactionId, prevented: true, targetRuler: "Someruler",
+  });
+
+  it("hides a rival's secret play behind 'a secret card'", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({ ...g, log: [...g.log, guard(2)] });
+    const line = texts(container).find((t) => /a secret card/.test(t))!;
+    expect(line).toBeDefined();
+    expect(line).toMatch(/played a secret card$/);
+    // The whole point: nothing on the line names the card, or any other.
+    for (const c of Object.values(CARDS)) expect(line).not.toContain(c.name);
+  });
+
+  it("still names your own secret play - the hiding is one-sided", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({ ...g, log: [...g.log, guard(1)] });
+    expect(texts(container)).toContain("You played Bodyguard");
+  });
+
+  it("leaves a non-secret card by the same rival alone", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      log: [...g.log, {
+        turn: 1, playerId: 2, type: "play", cardId: "raid",
+        targetFactionId: "gamma", amount: 1, track: "might",
+      }],
+    });
+    expect(texts(container).some((t) => /played Raid on Gamma/.test(t))).toBe(true);
+  });
+
+  it("prints no standings suffix beside a secret line", () => {
+    // The guard rail behind `CardDef.secret`: `impactText` renders the
+    // before -> after from the event's own amount/track and nothing here hides
+    // it, so a secret card that moved a track would be named in all but words.
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({ ...g, log: [...g.log, guard(2)] });
+    const entry = [...container.querySelectorAll(".activity-log .log-entry")].find(
+      (el) => /a secret card/.test(el.textContent ?? ""),
+    )!;
+    expect(entry.querySelector(".log-change")).toBeNull();
+  });
+
+  it("rewrites the earlier line when your blade is turned on that guard", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    const withGuard = { ...g, log: [...g.log, guard(2)] };
+    hud.update(withGuard);
+    expect(texts(container).some((t) => /a secret card/.test(t))).toBe(true);
+
+    hud.update({ ...withGuard, log: [...withGuard.log, turnedBlade(1, "alpha")] });
+    const entry = [...container.querySelectorAll(".activity-log .log-entry")].find(
+      (el) => /played Bodyguard/.test(el.textContent ?? ""),
+    )!;
+    expect(entry).toBeDefined();
+    // Rewritten in place, and marked so a line changing several screens above
+    // where the player is looking is not silent.
+    expect(entry.classList.contains("log-revealed")).toBe(true);
+    expect(texts(container).some((t) => /a secret card/.test(t))).toBe(false);
+  });
+
+  it("reveals nothing when the blade lands - there was no guard to spend", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      log: [...g.log, guard(2), {
+        turn: 2, playerId: 1, type: "play", cardId: "assassinate-ruler",
+        targetFactionId: "alpha", targetRuler: "Someruler",
+        successorRuler: "Somesuccessor", amount: 0, track: "status",
+      }],
+    });
+    expect(texts(container).some((t) => /a secret card/.test(t))).toBe(true);
+    expect(texts(container).some((t) => /Bodyguard/.test(t))).toBe(false);
+  });
+
+  it("reveals only the guard that was spent, not the one still posted", () => {
+    // The property the whole feature rests on. A reveal keyed by faction rather
+    // than by the individual play would un-hide every future guard that rival
+    // posts, which is exactly the detector this replaced.
+    const { container, hud } = setup();
+    const g = playing();
+    let log = [...g.log, guard(2), turnedBlade(1, "alpha")];
+    hud.update({ ...g, log });
+    log = [...log, guard(2, 3)];
+    hud.update({ ...g, log });
+    const all = texts(container);
+    expect(all.filter((t) => /played Bodyguard/.test(t))).toHaveLength(1);
+    expect(all.filter((t) => /a secret card/.test(t))).toHaveLength(1);
+  });
+
+  it("never rewrites or flashes your own guard, which was never hidden", () => {
+    // Found in the browser, not here: your own Bodyguard line read correctly
+    // the whole time, then lit up as a reveal the moment a rival's blade spent
+    // it - announcing a change to a line that had not changed. The cause was
+    // two places deciding what "hidden" means; `hidesItsCard` is now one.
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({ ...g, log: [...g.log, guard(1)] });
+    hud.update({
+      ...g,
+      log: [...g.log, guard(1), turnedBlade(2, "beta")],
+    });
+    const entry = [...container.querySelectorAll(".activity-log .log-entry")].find(
+      (el) => el.textContent === "You played Bodyguard",
+    )!;
+    expect(entry).toBeDefined();
+    expect(entry.classList.contains("log-revealed")).toBe(false);
+  });
+
+  it("reveals a rival's guard spent by another rival's blade", () => {
+    // The fiction is that the blade was publicly turned aside, so it does not
+    // matter whose blade it was.
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g, log: [...g.log, guard(3), turnedBlade(2, "gamma")],
+    });
+    expect(texts(container).some((t) => /played Bodyguard/.test(t))).toBe(true);
+  });
+
+  it("renders a play revealed from the start when both land in one batch", () => {
+    // Nothing to flash at a player who never saw the hidden version.
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({ ...g, log: [...g.log, guard(2), turnedBlade(1, "alpha")] });
+    const entry = [...container.querySelectorAll(".activity-log .log-entry")].find(
+      (el) => /played Bodyguard/.test(el.textContent ?? ""),
+    )!;
+    expect(entry).toBeDefined();
+    expect(entry.classList.contains("log-revealed")).toBe(false);
+  });
+
+  it("names every secret card in the postmortem, with no reveal event at all", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      phase: "defeat",
+      log: [...g.log, guard(2), {
+        turn: 2, playerId: 2, type: "defeat", overlordFactionId: "alpha",
+      }],
+    });
+    const pm = texts(container, ".pm-log .log-entry");
+    expect(pm.some((t) => /played Bodyguard/.test(t))).toBe(true);
+    expect(pm.some((t) => /a secret card/.test(t))).toBe(false);
+  });
+
+  it("forgets its rewrite bookkeeping when the log resets under it", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({ ...g, log: [...g.log, guard(2), turnedBlade(1, "alpha")] });
+    expect(texts(container).some((t) => /played Bodyguard/.test(t))).toBe(true);
+    // A new run: the panel is cleared and the same indices mean other events.
+    hud.update({ ...g, log: [...g.log, guard(2)] });
+    expect(texts(container).some((t) => /a secret card/.test(t))).toBe(true);
+    expect(texts(container).some((t) => /played Bodyguard/.test(t))).toBe(false);
   });
 });
