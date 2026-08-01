@@ -366,6 +366,46 @@ describe("activity log", () => {
     expect(texts).toContain("You played Fortify (+1 Might against all)");
   });
 
+  it("states A feast on its own track, still as a fan-out", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = withHand(g, 0, ["a-feast"]);
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    expect(texts).toContain("You played A feast (+1 Status against all)");
+  });
+
+  it("counts a pact's neighbours rather than calling them all", () => {
+    // A pact hits only the factions bordering BOTH realms. "against all" is the
+    // wording for a card that really does hit every living faction, and using
+    // it here overstates two neighbours by the width of the map.
+    const { container, hud } = setup();
+    // Four factions, not this suite's three: with only one shared neighbour
+    // the line is a single pair and the plural is never exercised.
+    const four = ["alpha", "beta", "gamma", "delta"];
+    let g = pickFaction(
+      chooseDeck(startGame(newGame(four, {
+        // alpha and beta both border gamma and delta, and nothing else is
+        // adjacent, so the pact's frozen set is exactly those two.
+        alpha: ["beta", "gamma", "delta"],
+        beta: ["alpha", "gamma", "delta"],
+        gamma: ["alpha", "beta"],
+        delta: ["alpha", "beta"],
+      })), buildDeck()),
+      "beta", seededRng(1),
+    );
+    g = withHand(g, 0, ["alliance"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    hud.update(g);
+    const texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
+    expect(texts).toContain("You played Alliance on Alpha (+1 Might against 2 factions)");
+  });
+
   it("leaves a card that moves no standing without a suffix", () => {
     // Extended diplomacy, not Alliance: an Alliance moves Might now, against
     // every faction bordering both realms, so it carries a suffix like any

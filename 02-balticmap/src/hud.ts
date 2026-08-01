@@ -10,6 +10,7 @@ import {
   type NoticeCtx, type RoundSummary,
 } from "./notices";
 import { walkStandings, type StandingChange } from "./standings";
+import { count } from "./plural";
 import {
   allianceExpiry, leadsIn, passiveFortifyFor, subjugationGripOn,
   subjugationRequirement,
@@ -446,24 +447,43 @@ export function impactText(
   // log; removing it from the segments would blank it in the postmortem.
   if (e.type === "garrisoned") return null;
 
+  const trackLabel = (track: "status" | "might"): string =>
+    track === "might" ? "Might" : "Status";
+
+  /** A fan-out card: every living faction, so the count is the whole map and
+   *  the amount comes off the event rather than from any one pair. */
   const fanOut = (): { text: string; tone: "good" } | null => {
     if (e.amount === undefined || e.track === undefined) return null;
-    const label = e.track === "might" ? "Might" : "Status";
-    return { text: `+${e.amount} ${label} against all`, tone: "good" };
+    return {
+      text: `+${e.amount} ${trackLabel(e.track)} against all`,
+      tone: "good",
+    };
+  };
+
+  /** Several pairs, but a BOUNDED set of them - a pact's shared neighbours.
+   *  Says how many, because "against all" would overstate two neighbours by the
+   *  width of the map, and signed, because the same event reads as a gain to an
+   *  ally and a loss to the neighbour on the other end of it. */
+  const spread = (): { text: string; tone: "good" | "bad" } | null => {
+    const delta = changes[0].after - changes[0].before;
+    if (delta === 0) return null;
+    return {
+      text:
+        `${delta > 0 ? "+" : ""}${delta} ${trackLabel(changes[0].track)} ` +
+        `against ${count(changes.length, "faction")}`,
+      tone: delta > 0 ? "good" : "bad",
+    };
   };
 
   const factions = new Set(changes.map((c) => c.factionId));
+  const isFanOut =
+    e.type === "play" && e.cardId !== undefined && FAN_OUT_CARDS.has(e.cardId);
   // Your own Fortify or A feast: one card, +1 against every living faction, so
   // there is no single pair to quote. `leadMovesOf` deliberately returns
   // nothing for it (see the doc comment in standings.ts), so the amount comes
   // off the event, exactly as the garrison line's does.
-  if (factions.size === 0) {
-    return e.type === "play" && e.cardId !== undefined &&
-      FAN_OUT_CARDS.has(e.cardId)
-      ? fanOut()
-      : null;
-  }
-  if (factions.size > 1) return fanOut();
+  if (factions.size === 0) return isFanOut ? fanOut() : null;
+  if (factions.size > 1) return isFanOut ? fanOut() : spread();
 
   const net = changes.reduce((sum, c) => sum + (c.after - c.before), 0);
   return {
