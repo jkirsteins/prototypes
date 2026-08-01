@@ -15,7 +15,8 @@ import {
   fullRealmOf, pactBetween, realmOf, realmRootOf,
 } from "./relations";
 import {
-  allianceExpiry, handBlockReason, leadsIn, PACT_MIGHT_BONUS, playableSet,
+  allianceExpiry, handBlockReason, leadsIn, PACT_MIGHT_BONUS,
+  pactBoostExpiriesOn, playableSet,
   validTargetsFor, targetEligibilityFor, subjugationRaceFor, raidGainFor,
 } from "./playability";
 import { count } from "./plural";
@@ -568,6 +569,13 @@ function renderThreatBadges(): void {
     if (!race.quiet) {
       const mightTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
       mightTspan.classList.add(leadClass(race.might.lead));
+      // A live pact of yours is a term inside this figure, so the value wears
+      // amber over its sign colour - the badge-level echo of the hover's amber
+      // note, and the same gate, so the mark never appears where the hover
+      // would not explain it. Only Might: no pact touches Status.
+      if (pactBoostExpiriesOn(game, human.factionId, factionId).length > 0) {
+        mightTspan.classList.add("lead-boosted");
+      }
       if (restive) mightTspan.setAttribute("dx", "9");
       mightTspan.textContent = formatLead("M", race.might.lead, race.might.bar);
       text.appendChild(mightTspan);

@@ -755,6 +755,16 @@ svg.map.dragging {
   fill: #1d4ed8;
 }
 
+/* A badge Might value with a live pact's temporary +1 inside it. Amber over
+   the sign colours above, because on this map amber means "a card's effect,
+   running out" - the unrest mark and the hover's tone-info note say the same.
+   The badge box is white, so this is the unrest mark's light-background amber
+   and not the dark tooltip's #d9b45c. Scoped under .threat-badge to outweigh
+   the single-class lead-* fills. */
+.threat-badge .lead-boosted {
+  fill: #b5701f;
+}
+
 .activity-log {
   position: absolute;
   right: 16px;

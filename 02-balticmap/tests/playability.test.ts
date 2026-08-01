@@ -715,6 +715,22 @@ describe("subjugationRaceFor", () => {
     const race = subjugationRaceFor(allied, "alpha", "beta");
     expect(race.allied).toBe(true);
     expect(race.quiet).toBe(false);
+    // A live pact term inside a dead-even lead is the same kind of loud: gamma
+    // raided alpha to -1 and alpha's pact bought it back to 0, and that 0
+    // falls back to -1 when the pact lapses. It must keep its badge.
+    const boosted = view({
+      relations: mightLead("gamma", "alpha", 1),
+      alliances: { [allianceKey("alpha", "beta")]: pact(6, ["gamma"]) },
+    });
+    const boostedRace = subjugationRaceFor(boosted, "alpha", "gamma");
+    expect(boostedRace.might.lead).toBe(0);
+    expect(boostedRace.quiet).toBe(false);
+    // Their pact against you is between you just the same.
+    const theirs = view({
+      relations: mightLead("alpha", "gamma", 1),
+      alliances: { [allianceKey("gamma", "beta")]: pact(6, ["alpha"]) },
+    });
+    expect(subjugationRaceFor(theirs, "alpha", "gamma").quiet).toBe(false);
   });
 
   it("flags danger once either of their tracks has cleared its bar", () => {

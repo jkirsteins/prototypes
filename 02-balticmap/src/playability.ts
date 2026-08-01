@@ -659,9 +659,12 @@ export interface SubjugationRace {
   /** A pact is running. Neither side may aim a hostile card at the other while
    *  it lasts, so the bars are what will apply once it lapses. */
   allied: boolean;
-  /** Nothing stands between these two: no lead either way and no pact. The map
-   *  draws no badge and the hover offers no breakdown - both read this rather
-   *  than testing the leads themselves. */
+  /** Nothing stands between these two: no lead either way, no pact binding
+   *  them, and no live pact term of either side's inside the leads. The last
+   *  matters because a pact bonus can buy a raided lead back to exactly 0 -
+   *  a 0 that falls back when the pact lapses, which a truly quiet pair has
+   *  no equivalent of. The map draws no badge and the hover offers no
+   *  breakdown - both read this rather than testing the leads themselves. */
   quiet: boolean;
   /** Either of THEIR tracks has already cleared its bar: they can take the
    *  human now. Guarded by the same rule that decides legality, so a faction
@@ -686,7 +689,9 @@ export function subjugationRaceFor(
     might: track("might"),
     status: track("status"),
     allied,
-    quiet: lead.might === 0 && lead.status === 0 && !allied,
+    quiet: lead.might === 0 && lead.status === 0 && !allied &&
+      pactBonusOn(view, humanFactionId, rivalFactionId) === 0 &&
+      pactBonusOn(view, rivalFactionId, humanFactionId) === 0,
     // Their lead over the human is the human's lead negated, measured against
     // their bar. `clearsBars` rather than a hand-written pair of comparisons:
     // one track clearing is enough, and that rule lives in one place.
