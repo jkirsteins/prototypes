@@ -3,7 +3,7 @@ import {
   advance, chooseDeck, isHumanTurn, pickFaction, startGame, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
-import { buildPlayerDeck } from "./meta";
+import { buildPlayerDeck, initialMeta, type MetaRecord } from "./meta";
 import { bumpMightBy, bumpStatusBy, leadsOf, type Relations } from "./relations";
 
 /** Query params that boot the game straight into a chosen state, so a browser
@@ -27,22 +27,41 @@ export interface BootParams {
   seed: number | null;
   /** Cards picked at the deck screen, or null to take the standard deck. */
   deck: string[] | null;
+  /** Where to stop the chain short, or null to run it as far as the other
+   *  params reach. Every other screen is where the chain runs out of params -
+   *  omitting `faction` lands on the faction prompt - but `chooseDeck` runs
+   *  whether or not `deck=` was named, and `buildPlayerDeck` always returns a
+   *  legal deck, so the deck screen is the one stop that has to be asked for.
+   *  A union rather than a string: adding another screen is then a change the
+   *  compiler checks rather than a literal to grep for. */
+  screen: "deck" | null;
   faction: string | null;
   hand: string[] | null;
   rel: RelOverride[];
   turns: number;
+  /** The collection the deck screen offers, or null for every deck-buildable
+   *  card. Named ids are added to what every player starts with rather than
+   *  replacing it, the same union `loadMeta` applies to a stored record, so a
+   *  booted collection is one a real player could actually hold. */
+  known: string[] | null;
+  /** Lifetime XP, which is what `pendingPacks` derives the pack-opening
+   *  overlay from. Null starts at zero. */
+  xp: number | null;
   /** False mutes the AI round summary, via the log pref the player can toggle
    *  themselves. Null leaves the pref alone. */
   popups: boolean | null;
 }
+
+const isDeckBuildable = (id: string): boolean =>
+  CARDS[id]?.deckBuildable === true;
 
 /** A booted run knows every card it could ever deck-build. It runs on memory
  *  storage, so this neither reads nor writes real progress - it exists so that
  *  `?deck=` means the same thing on every machine rather than depending on
  *  which cards that browser profile happens to have unlocked. */
 export const BOOT_KNOWN_CARDS: string[] = Object.values(CARDS)
-  .filter((c) => c.deckBuildable)
-  .map((c) => c.id);
+  .map((c) => c.id)
+  .filter(isDeckBuildable);
 
 /** Rounds a `turns=` fast-forward will run. Above the 150-turn cap the baseline
  *  simulation uses, so it bounds a typo rather than a legitimate value. */
@@ -51,6 +70,12 @@ const MAX_FAST_FORWARD = 200;
 /** Seats stepped before the fast-forward gives up. Generous: a round is one
  *  step per faction, and the shipped map has 26. */
 const MAX_STEPS = 20000;
+
+/** Ceiling on `xp=`, matching the one `isCount` puts on a stored record in
+ *  src/meta.ts. That ceiling is not tidiness: `levelForXp` counts levels in a
+ *  `while` loop, and an unclamped value froze the tab. A URL is the same
+ *  attack surface as a hand-edited record, so it gets the same bound. */
+const MAX_BOOT_XP = 1e9;
 
 const HAND_LIMIT = DECK_SIZE;
 
@@ -88,7 +113,10 @@ function parseRel(raw: string): RelOverride[] {
   return out;
 }
 
-const BOOT_KEYS = ["seed", "deck", "faction", "hand", "rel", "turns", "popups"];
+const BOOT_KEYS = [
+  "seed", "deck", "screen", "faction", "hand", "rel", "turns", "known", "xp",
+  "popups",
+];
 
 /** Null when the URL names no boot param at all, which is the ordinary case:
  *  the caller then leaves every boot line on its normal path, so a player's
@@ -98,16 +126,27 @@ export function parseBootParams(search: string): BootParams | null {
   if (!BOOT_KEYS.some((k) => q.has(k))) return null;
   const deck = q.get("deck");
   const hand = q.get("hand");
+  const known = q.get("known");
   const rel = q.get("rel");
   const popups = q.get("popups");
   const turns = intOr(q.get("turns"), 0) ?? 0;
+  const xp = intOr(q.get("xp"), null);
   return {
     seed: intOr(q.get("seed"), null),
     deck: deck === null ? null : ids(deck),
+    // Normalised here rather than compared downstream, so an unrecognised
+    // value is dropped the way an unparseable `rel` clause is: a boot param
+    // must never be able to blank the page, and a typo landing in the ordinary
+    // run is a better failure than no page at all.
+    screen: q.get("screen") === "deck" ? "deck" : null,
     faction: q.get("faction"),
     hand: hand === null ? null : ids(hand).slice(0, HAND_LIMIT),
     rel: rel === null ? [] : parseRel(rel),
     turns: Math.max(0, Math.min(MAX_FAST_FORWARD, turns)),
+    // `known=` with nothing after it is a value, not an absence: it means the
+    // collection every player starts with, which is the sparse deck screen.
+    known: known === null ? null : ids(known),
+    xp: xp === null ? null : Math.max(0, Math.min(MAX_BOOT_XP, xp)),
     popups:
       popups === null ? null : !["off", "false", "0"].includes(popups.trim()),
   };
@@ -187,6 +226,11 @@ export function applyBootParams(
   state: GameState, params: BootParams, rng: Rng,
 ): GameState {
   let g = startGame(state);
+  // Withholding the click, not inventing a screen: the phase startGame leaves
+  // behind is the one the player sees before they choose, and "Choose your
+  // lands" runs the same chooseDeck from there, so a booted picker continues
+  // into a run rather than dead-ending.
+  if (params.screen === "deck") return g;
   g = chooseDeck(
     g,
     params.deck === null
@@ -200,4 +244,29 @@ export function applyBootParams(
   if (g.phase !== "playing") return g;
   if (params.hand !== null) g = withHand(g, params.hand);
   return withRel(g, params.rel);
+}
+
+/** The progress record a booted page runs on. The counterpart to
+ *  `applyBootParams` for the state that is not in `GameState`: what the deck
+ *  screen offers and what the pack overlay owes.
+ *
+ *  It lives here rather than inline in main.ts so this file keeps owning the
+ *  whole boot contract - a param whose effect is written somewhere else is a
+ *  param the next reader of this file will not find.
+ *
+ *  Both fields go through the ordinary derivations rather than around them.
+ *  `known=` is unioned onto `initialMeta`'s collection, so a booted player
+ *  always holds at least what every player starts with, and `xp` is a lifetime
+ *  counter that `pendingPacks` reads - there is no way to spell "grant me a
+ *  pack" here, only "have earned one". */
+export function applyBootMeta(params: BootParams): MetaRecord {
+  const base = initialMeta();
+  return {
+    ...base,
+    knownCards:
+      params.known === null
+        ? BOOT_KNOWN_CARDS
+        : [...new Set([...base.knownCards, ...params.known.filter(isDeckBuildable)])],
+    xp: params.xp ?? base.xp,
+  };
 }

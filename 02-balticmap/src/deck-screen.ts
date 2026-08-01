@@ -3,6 +3,7 @@ import { runAnimation } from "./animate";
 import { count } from "./plural";
 import { cardName } from "./rich-text";
 import { applyRarityBand } from "./rarity-band";
+import type { TooltipLine } from "./panel";
 
 export interface PackReveal {
   id: string;
@@ -22,6 +23,11 @@ export interface DeckScreenCallbacks {
   onStart(selectedIds: string[]): void;
   onOpenPack(): void; // player clicked the sealed pack
   onDismissReveal(): void; // player clicked Continue on the reveal
+  /** The shared map tooltip, for a tile whose rules text outgrows its box.
+   *  Optional for the same reason RichTextHooks' pair is: a screen built with
+   *  no tooltip renders inert tiles rather than crashing. */
+  onShowTip?(lines: TooltipLine[], clientX: number, clientY: number): void;
+  onHideTip?(): void;
 }
 
 export interface DeckScreen {
@@ -112,7 +118,14 @@ export function createDeckScreen(
   return {
     update(view) {
       root.classList.toggle("hidden", !view.visible);
-      if (!view.visible) return;
+      // A tile that disappears from under the cursor never fires mouseleave,
+      // and the tip is coordinate-driven with no owner - so both routes that
+      // take tiles away have to dismiss it, or it strands over the map. The
+      // other is the pack overlay, below.
+      if (!view.visible) {
+        cb.onHideTip?.();
+        return;
+      }
 
       if (view.savedPicks !== seededPicks) {
         seededPicks = view.savedPicks;
@@ -137,6 +150,7 @@ export function createDeckScreen(
       for (const el of [deckLabel, deckRow, counter, start]) {
         el.classList.toggle("hidden", opening);
       }
+      if (opening) cb.onHideTip?.();
 
       if (view.reveal === null) {
         packCards.replaceChildren();
@@ -197,6 +211,25 @@ export function createDeckScreen(
         text.className = "ds-card-text";
         text.textContent = CARDS[id]?.text ?? "";
         card.append(name, text);
+        // The tile states the card in full, so the tip is the exception and not
+        // the reading surface: it opens only when the text actually spills past
+        // the fixed tile height, which nothing in the pool does today. The
+        // shared position: fixed tooltip rather than a .card-tip-style popup
+        // inside the tile, because .ds-deck is a scroll container and an
+        // absolutely positioned child of a tile would be clipped by it on every
+        // row - the top one worst of all, where it sits entirely outside.
+        //
+        // No focus/blur counterpart on purpose: a focus event carries no
+        // coordinates and would need a second placement path in createTooltip,
+        // for no gain while the tile face already says everything the tip does.
+        card.addEventListener("mousemove", (e) => {
+          if (card.scrollHeight <= card.clientHeight) return;
+          cb.onShowTip?.(
+            [{ text: cardName(id) }, { text: CARDS[id]?.text ?? "" }],
+            e.clientX, e.clientY,
+          );
+        });
+        card.addEventListener("mouseleave", () => cb.onHideTip?.());
         card.addEventListener("click", () => {
           if (selected.has(id)) selected.delete(id);
           else if (selected.size < DECK_SIZE) selected.add(id);

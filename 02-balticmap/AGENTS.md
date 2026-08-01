@@ -18,19 +18,37 @@ navigation and the same URL gives the same run every time:
 - `seed=N` - seeds the rng.
 - `deck=a,b,c` - deck-screen picks, padded to ten with Grow turnips. Omit for
   the standard deck.
+- `screen=deck` - stops on the deck screen instead of picking for you. The one
+  stop that must be asked for: `chooseDeck` runs whether or not `deck=` was
+  named, so nothing else leaves the phase at `deck-building`.
 - `faction=id` - a **faction** id, not a region id (`selonians`, not `selija`).
 - `turns=N` - plays N rounds with the AI policy on every seat, then hands back
   on your turn.
 - `hand=a,b,c` - replaces your hand.
+- `known=a,b,c` - the collection the deck screen offers. **Added** to what every
+  player starts with, never replacing it, so a booted collection is one a real
+  player could hold. Omit for every card; `known=` alone is the starting four.
+- `xp=N` - lifetime XP, which is what `pendingPacks` derives the pack-opening
+  overlay from. One level is one pack, and `xpThresholdForLevel(L)` is
+  `25*L*(L+1)/2`, so `xp=25` owes one pack and `xp=75` two.
 - `rel=faction:might=3,status=-2;other:might=1` - standings as **your signed
   lead**, the `formatLead` convention the HUD already uses.
 - `popups=off` - sets the existing "Show popups" log pref.
 
+The deck screen therefore reads as three URLs rather than a hand-edited
+localStorage record: `?screen=deck` is the full twelve-card picker,
+`?screen=deck&known=` the sparse one, and `?screen=deck&xp=25&known=` a pack
+waiting to be opened whose cards are all new.
+
 `src/boot-params.ts` owns them, with the ordering rules and their consequences
-in its doc comments; `tests/boot-params.test.ts` pins the behaviour. Two
-properties to preserve: a URL naming no boot param parses to `null`, so a
-player's page is untouched, and a booted run uses memory storage with every
-card known, so it neither banks XP nor inherits a profile's unlocks.
+in its doc comments; `tests/boot-params.test.ts` pins the behaviour. It has two
+entry points, because the deck screen reads progress rather than game state:
+`applyBootParams` builds the `GameState` and `applyBootMeta` the `MetaRecord`.
+Three properties to preserve: a URL naming no boot param parses to `null`, so a
+player's page is untouched; a booted run uses memory storage with every card
+known, so it neither banks XP nor inherits a profile's unlocks; and `xp=` is
+clamped, because `levelForXp` counts levels in a loop and an unclamped value
+froze the tab once already (see `isCount` in `src/meta.ts`).
 
 **There is deliberately no `window` handle on the game state.** A browser pass
 asserts what the player can see; state assertions belong in vitest. A refresh
@@ -183,6 +201,44 @@ the same hole.
 Which is also the reading rule for screenshots: when you take one, read the text in
 it before moving on. The browser passes over the pack overlay missed this because
 the screenshot was checked for layout and never read.
+
+## The deck picker is sized to the longest card, and the size is measured
+
+Every picker tile carries its card's whole rules text, so the grid in
+`src/style.css` (`.ds-deck`, `.ds-card`) is one tile size for all of them and the
+longest card sets it. Today that is Found a settlement at 228 characters, nearly
+double the next longest - one outlier decides the layout for sixteen cards.
+
+The two numbers, `grid-template-columns: repeat(auto-fit, 210px)` and
+`grid-auto-rows`, trade against each other: a wider tile spends the outlier in
+fewer lines, which is why 210px needs 146px of height where 190px needed 162.
+Past 210 the line count stops falling and only the width grows.
+
+**Both were measured in a browser, so re-measure them when a card's text grows.**
+Load `?screen=deck` and run:
+
+```js
+[...document.querySelectorAll('.ds-deck .ds-card')]
+  .map(c => [c.querySelector('.ds-card-name')?.textContent,
+             c.scrollHeight - c.clientHeight])
+  .filter(([, spill]) => spill > 0)
+```
+
+An empty array means the row height still clears every card. Anything listed is
+clipped mid-sentence on the screen the player picks their deck on. A card that
+still outgrows the tile falls back to the shared tooltip - the `mousemove` hook
+in `src/deck-screen.ts` opens it only on a tile that actually spills - but that
+is the safety net, not the plan: the picker exists to be read at a glance, and a
+card you have to hover to finish reading has defeated it.
+
+Two things not to undo. `.ds-deck` is the scroll region and **everything the
+player acts on stays outside it** - the counter, the collected line and Choose
+your lands. The bug this replaced was that button clipped off the bottom of a
+short window with `#app` at `overflow: hidden`, i.e. unreachable, and moving it
+inside the grid is the tempting way to bring it back. And the row height comes
+from `grid-auto-rows`, never a `min-height` on the tile: a fixed row is what
+makes every tile identical across all rows, where the old wrapping flex row let
+one long card inflate the five beside it.
 
 ## The human's turn ends when their card lands, not when they click
 

@@ -9,6 +9,7 @@ function setup() {
   document.body.appendChild(container);
   const cb: DeckScreenCallbacks = {
     onStart: vi.fn(), onOpenPack: vi.fn(), onDismissReveal: vi.fn(),
+    onShowTip: vi.fn(), onHideTip: vi.fn(),
   };
   const screen = createDeckScreen(container, cb);
   return { container, cb, screen };
@@ -35,6 +36,47 @@ describe("createDeckScreen", () => {
     );
     q(container, ".ds-start").click();
     expect(cb.onStart).toHaveBeenCalledWith([]);
+  });
+
+  it("keeps the counters and the start button out of the scrolling grid", () => {
+    // .ds-deck is the scroll region, and everything the player needs to act on
+    // has to stay outside it. The bug this replaces was the last row and the
+    // button under it clipped off a short window with no way to reach them, and
+    // the tempting fix next time is to move the button in here with the cards.
+    const { container, screen } = setup();
+    screen.update(view());
+    const grid = q(container, ".ds-deck");
+    for (const sel of [".ds-start", ".ds-counter", ".ds-undiscovered", ".ds-label"]) {
+      expect(grid.contains(q(container, sel))).toBe(false);
+    }
+  });
+
+  it("clears the shared tooltip when the pointer leaves a card", () => {
+    // Only the hide path is testable here: happy-dom performs no layout, so
+    // every scrollHeight and clientHeight is 0 and the tile can never report
+    // the spill that opens the tip. Asserting onShowTip is not called would
+    // lock in the wrong thing. The show path is verified in a browser.
+    const { container, cb, screen } = setup();
+    screen.update(view());
+    const card = container.querySelector(".ds-deck .ds-card") as HTMLElement;
+    card.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+    expect(cb.onHideTip).toHaveBeenCalled();
+  });
+
+  it("clears the shared tooltip when the screen goes away under the cursor", () => {
+    // The tip is coordinate-driven and outlives its tile: a card hovered as the
+    // screen closes never fires mouseleave, and the tip strands over the map.
+    const { cb, screen } = setup();
+    screen.update(view());
+    screen.update(view({ visible: false }));
+    expect(cb.onHideTip).toHaveBeenCalled();
+  });
+
+  it("clears the shared tooltip when a pack hides the builder", () => {
+    const { cb, screen } = setup();
+    screen.update(view());
+    screen.update(view({ pendingPacks: 1 }));
+    expect(cb.onHideTip).toHaveBeenCalled();
   });
 
   it("reports collection progress against the pack pool", () => {

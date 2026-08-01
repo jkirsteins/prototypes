@@ -28,12 +28,12 @@ import { ACQUIRABLE_CARDS, CARDS } from "./cards";
 import { createHud, LOG_PREFS_KEY } from "./hud";
 import { createDeckScreen } from "./deck-screen";
 import {
-  applyPack, bankRun, buildPlayerDeck, collectedCount, initialMeta, loadMeta,
+  applyPack, bankRun, buildPlayerDeck, collectedCount, loadMeta,
   memoryStorage, pendingPacks, resetMeta, saveMeta,
   type MetaRecord, type MetaStorage,
 } from "./meta";
 import {
-  applyBootParams, BOOT_KNOWN_CARDS, parseBootParams,
+  applyBootMeta, applyBootParams, parseBootParams,
 } from "./boot-params";
 import { seededRng } from "./rng";
 import { runTurnips, runXp } from "./xp";
@@ -153,10 +153,7 @@ const { storage, storageIsPersistent } = ((): {
     return { storage: memoryStorage(), storageIsPersistent: false };
   }
 })();
-let meta: MetaRecord =
-  boot === null
-    ? loadMeta(storage)
-    : { ...initialMeta(), knownCards: BOOT_KNOWN_CARDS };
+let meta: MetaRecord = boot === null ? loadMeta(storage) : applyBootMeta(boot);
 let runBanked = false;
 /** The pack currently revealed on the deck screen, or null when none is open.
  *  A fresh array per pack: the deck screen compares identity to decide whether
@@ -988,6 +985,12 @@ function deckScreenView(visible: boolean) {
 }
 
 const deckScreen = createDeckScreen(app, {
+  onShowTip(lines, clientX, clientY) {
+    tooltip.showLines(lines, clientX, clientY);
+  },
+  onHideTip() {
+    tooltip.hide();
+  },
   onOpenPack() {
     if (pendingPacks(meta) === 0 || packReveal !== null) return;
     const drawn = openPack(ACQUIRABLE_CARDS, rng);

@@ -497,30 +497,94 @@ svg.map.dragging {
   letter-spacing: 0.08em;
 }
 
-.ds-unlock,
+/* The picker grid. A grid and not a wrapping flex row, because every tile
+   carries its card's full rules text and so they must all be one size: in a
+   flex row `align-self: stretch` sized each tile from the tallest card in its
+   own row, and one long card inflated five innocent neighbours.
+
+   Fixed 190px tracks, not minmax(190px, 1fr). auto-fit collapses the empty
+   trailing tracks either way, so four tiles centre as four tiles rather than
+   sitting left of centre in a five-track row - but a 1fr track would also
+   stretch those four to fill the box. How wide a card is must not depend on
+   how many cards you own.
+
+   The width has to be stated. auto-fit resolves its repeat count against a
+   definite inline size, and .deck-screen is align-items: center, which leaves
+   this shrink-to-fit; left as auto the whole grid collapses to one column.
+   Five columns are 5x210 + 4x10 = 1090, and the extra 32px is so a classic
+   15-17px scrollbar cannot drop the count to four the moment it starts
+   scrolling - which would add a row and make it scroll further.
+
+   Bounded and scrolling, because html, body and #app are overflow: hidden:
+   before this the last row and the Choose your lands button under it were
+   clipped off the bottom of a short window and simply unreachable. 264px is
+   the chrome outside this box - roughly 216px of title, label, counter,
+   collected line and button plus their gaps - and 24px of air at each end.
+   Everything but the grid stays outside the scroll region, so the button is
+   always on screen. */
 .ds-deck {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, 210px);
+  grid-auto-rows: 160px;
   justify-content: center;
-  max-width: 640px;
+  gap: 10px;
+  width: min(1122px, 100% - 32px);
+  max-height: calc(100vh - 264px);
+  overflow-y: auto;
 }
 
+/* One tile is one card, stated in full, so the picker is read at a glance
+   instead of hovered card by card. Both numbers below were measured against
+   the real pool in a browser, not derived: the longest rules text is Found a
+   settlement at 228 characters, nearly double the next longest, and it is what
+   sets the size. 210px rather than 190 because the two trade against each
+   other - a wider tile spends the outlier in fewer lines, and 210 needs 146px
+   of height where 190 needed 162. Wider and shorter at once, so past 210 the
+   line count stops falling and only the width grows.
+
+   160px is that 146 plus a line of slack for a platform whose font metrics
+   run a little larger. The height comes from the grid's grid-auto-rows and
+   never from a min-height here, so every tile in every row is identical;
+   anything that still outgrows it clips, and the shared tooltip is the safety
+   net (see the mousemove hook in src/deck-screen.ts). Re-measure both numbers
+   when a card's text grows - the console one-liner is in the deck-screen
+   section of AGENTS.md.
+
+   display: flex is load-bearing twice, and neither reason is layout taste. A
+   <button> taller than its content centres that content vertically under the
+   UA stylesheet, which floats the card name into the middle of the tile. And
+   it is what makes overlong text spill past the bottom edge, where the
+   overflow: hidden below catches it.
+
+   font-family: inherit for a related reason: a <button> does not inherit it
+   and nothing else sets it, so this face rendered in the UA default while
+   .ds-pack-card, a div, rendered in system-ui.
+
+   overflow-wrap: break-word, not `anywhere`. `anywhere` breaks any word at any
+   point and is what turned "Assassinate ruler" into "Assassinat / e ruler" at
+   the old 84px. break-word only breaks a word that cannot fit a line by
+   itself, and the longest word in the pool is 72px against a 188px content
+   box, so it never fires today - it is here for a future compound, not for
+   these cards. */
 .ds-card {
   position: relative;
-  width: 84px;
-  /* rules text sets the height: a fixed box spilled its own copy */
-  min-height: 118px;
-  align-self: stretch;
+  display: flex;
+  flex-direction: column;
   border: 1px solid #7a6a55;
   border-radius: 8px;
   background: #fdfaf4;
   color: #3f3428;
+  font-family: inherit;
   font-size: 12px;
-  padding: 6px;
+  /* buttons centre their text; a paragraph of rules has to read left-aligned.
+     .ds-filler re-centres itself below, at higher specificity. */
+  text-align: left;
+  /* 12px at the bottom, not 10: the 4px rarity band sits in that padding. */
+  padding: 10px 10px 12px;
   cursor: pointer;
   opacity: 0.6;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  overflow-wrap: break-word;
 }
 
 .ds-card.selected {
@@ -536,6 +600,9 @@ svg.map.dragging {
   border-style: dashed;
 }
 
+/* Centred in both axes, but read the two properties backwards: .ds-card is a
+   column-direction flex container, so align-items centres horizontally and
+   justify-content vertically. */
 .ds-card.ds-filler {
   background: #f1e9da;
   cursor: default;

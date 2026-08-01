@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
-  applyBootParams, BOOT_KNOWN_CARDS, parseBootParams, type BootParams,
+  applyBootMeta, applyBootParams, BOOT_KNOWN_CARDS, parseBootParams,
+  type BootParams,
 } from "../src/boot-params";
 import {
-  newGame, isHumanTurn, OPENING_HAND, type GameState,
+  chooseDeck, newGame, isHumanTurn, OPENING_HAND, type GameState,
 } from "../src/game";
-import { CARDS, DECK_SIZE } from "../src/cards";
+import { buildPlayerDeck, pendingPacks } from "../src/meta";
+import { CARDS, DECK_SIZE, STARTING_KNOWN_CARDS } from "../src/cards";
 import { leadsOf } from "../src/relations";
 import { seededRng } from "../src/rng";
 
@@ -43,17 +45,20 @@ describe("parseBootParams", () => {
   it("recognises each param on its own", () => {
     expect(parseBootParams("?seed=7")).not.toBeNull();
     expect(parseBootParams("?deck=raid")).not.toBeNull();
+    expect(parseBootParams("?screen=deck")).not.toBeNull();
     expect(parseBootParams("?faction=beta")).not.toBeNull();
     expect(parseBootParams("?hand=raid")).not.toBeNull();
     expect(parseBootParams("?rel=alpha:might=1")).not.toBeNull();
     expect(parseBootParams("?turns=3")).not.toBeNull();
+    expect(parseBootParams("?known=alliance")).not.toBeNull();
+    expect(parseBootParams("?xp=25")).not.toBeNull();
     expect(parseBootParams("?popups=off")).not.toBeNull();
   });
 
   it("defaults everything the URL does not name", () => {
     expect(params("?seed=7")).toEqual({
-      seed: 7, deck: null, faction: null, hand: null, rel: [], turns: 0,
-      popups: null,
+      seed: 7, deck: null, screen: null, faction: null, hand: null, rel: [],
+      turns: 0, known: null, xp: null, popups: null,
     });
   });
 
@@ -61,6 +66,31 @@ describe("parseBootParams", () => {
     expect(params("?deck=raid, subjugate ,fortify").deck)
       .toEqual(["raid", "subjugate", "fortify"]);
     expect(params("?deck=").deck).toEqual([]);
+    expect(params("?known=alliance, bodyguard ").known)
+      .toEqual(["alliance", "bodyguard"]);
+    // An absence and an empty list are different answers: null means "every
+    // card", [] means "only what everyone starts with".
+    expect(params("?known=").known).toEqual([]);
+    expect(params("?seed=1").known).toBeNull();
+  });
+
+  it("reads screen as the one stop it knows, and drops anything else", () => {
+    expect(params("?screen=deck").screen).toBe("deck");
+    // Dropped rather than thrown, like an unparseable rel clause: a typo lands
+    // in the ordinary run, which beats a page that will not build.
+    expect(params("?screen=deckk").screen).toBeNull();
+    expect(params("?screen=").screen).toBeNull();
+  });
+
+  it("clamps xp, so a URL cannot spin levelForXp the way a bad record could", () => {
+    expect(params("?xp=25").xp).toBe(25);
+    expect(params("?xp=0").xp).toBe(0);
+    expect(params("?xp=-5").xp).toBe(0);
+    // The freeze src/meta.ts records: 1e30 sent levelForXp counting for ~2.8e14
+    // iterations. Spelled in digits, not exponent notation - parseInt stops at
+    // the "e", so "1e30" would clamp to 1 and prove nothing.
+    expect(params(`?xp=${"9".repeat(30)}`).xp).toBeLessThanOrEqual(1e9);
+    expect(params("?xp=nonsense").xp).toBeNull();
   });
 
   it("caps the hand so a long list cannot overrun the hand row", () => {
@@ -115,6 +145,33 @@ describe("applyBootParams", () => {
     expect(g.phase).toBe("pick-faction");
     expect(g.humanDeck).toHaveLength(DECK_SIZE);
     expect(g.humanDeck).toContain("raid");
+  });
+
+  it("stops at the deck screen when ?screen=deck", () => {
+    // The only stop that has to be asked for. chooseDeck runs whether or not
+    // ?deck= was named and buildPlayerDeck always returns a legal deck, so
+    // without this the phase could never be left at deck-building.
+    const g = boot("?screen=deck&deck=raid,subjugate");
+    expect(g.phase).toBe("deck-building");
+    // newGame seeds a default humanDeck, so "chooseDeck was withheld" is that
+    // the deck is still that default rather than the one ?deck= asked for.
+    expect(g.humanDeck).toEqual(fresh().humanDeck);
+  });
+
+  it("lets the booted deck screen continue into a run", () => {
+    // Withholding the click, not a dead end: the phase it stops in is the one
+    // "Choose your lands" runs chooseDeck from.
+    const g = chooseDeck(boot("?screen=deck"), buildPlayerDeck(
+      BOOT_KNOWN_CARDS, ["raid", "subjugate"],
+    ));
+    expect(g.phase).toBe("pick-faction");
+    expect(g.humanDeck).toHaveLength(DECK_SIZE);
+  });
+
+  it("ignores the params past the stop, rather than half-applying them", () => {
+    const g = boot("?screen=deck&faction=beta&turns=3");
+    expect(g.phase).toBe("deck-building");
+    expect(g.players).toEqual([]);
   });
 
   it("takes the standard deck when ?deck= is absent", () => {
@@ -220,5 +277,45 @@ describe("applyBootParams", () => {
       const g = boot("?faction=beta&rel=atlantis:might=3;beta:might=9");
       expect(g.relations).toEqual({});
     });
+  });
+});
+
+describe("applyBootMeta", () => {
+  const metaOf = (search: string) => applyBootMeta(params(search));
+
+  it("knows every deck-buildable card when ?known= is absent", () => {
+    expect(metaOf("?screen=deck").knownCards).toEqual(BOOT_KNOWN_CARDS);
+  });
+
+  it("adds ?known= to what every player starts with, rather than replacing it", () => {
+    // The union loadMeta applies to a stored record. A booted collection has to
+    // be one a real player could hold, or the deck screen is being asked to
+    // render a state the game cannot produce.
+    const known = metaOf("?known=alliance").knownCards;
+    expect(known).toEqual(expect.arrayContaining(
+      [...STARTING_KNOWN_CARDS, "alliance"],
+    ));
+    expect(known).not.toContain("incorporate");
+  });
+
+  it("gives the starting collection for an empty ?known=", () => {
+    expect(new Set(metaOf("?known=").knownCards))
+      .toEqual(new Set(["grow-crops", ...STARTING_KNOWN_CARDS]));
+  });
+
+  it("drops ids that are not deck-buildable", () => {
+    const known = metaOf("?known=revolt,notacard,alliance").knownCards;
+    expect(known).toContain("alliance");
+    expect(known).not.toContain("revolt");
+    expect(known).not.toContain("notacard");
+    // Deduped: a starting card named again must not appear twice.
+    expect(new Set(known).size).toBe(known.length);
+  });
+
+  it("owes packs through the xp derivation, not a granted count", () => {
+    expect(pendingPacks(metaOf("?screen=deck"))).toBe(0);
+    // xpThresholdForLevel(1) is 25, so one level is one pack.
+    expect(pendingPacks(metaOf("?xp=25"))).toBe(1);
+    expect(pendingPacks(metaOf("?xp=75"))).toBe(2);
   });
 });
