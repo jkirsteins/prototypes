@@ -28,6 +28,7 @@ var _start_overlay: Control
 var _title_font: FontFile
 var _running := false
 var _skip := false
+var _seq_tweens: Array[Tween] = []
 
 const VIGNETTE_SHADER := "
 shader_type canvas_item;
@@ -130,12 +131,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif _running:
 		# Deliberate inputs only - wheel ticks and synthetic events must not
 		# cut the intro short.
+		# No Space: automation environments have produced phantom Space
+		# keydowns mid-intro; Enter/Escape/click cover deliberate skips.
 		var key_skip: bool = event is InputEventKey and event.pressed \
-			and event.keycode in [KEY_ENTER, KEY_SPACE, KEY_ESCAPE]
+			and event.keycode in [KEY_ENTER, KEY_ESCAPE]
 		var click_skip: bool = event is InputEventMouseButton and event.pressed \
 			and event.button_index == MOUSE_BUTTON_LEFT
 		if key_skip or click_skip:
-			print("DBG skip event: ", event)
 			_skip = true
 
 func _begin_intro() -> void:
@@ -161,13 +163,19 @@ func _run_sequence() -> void:
 
 	_fade_audio(ambient, -38.0, -8.0, 5.0)
 
-	# Rise out of the grass while the black lifts.
+	# Rise out of the grass while the black lifts. Every sequence tween is
+	# tracked so a skip can kill them; a survivor would keep steering the
+	# camera after it leaves the tree, or fade the title back in.
+	_seq_tweens.clear()
 	var cam_tween := create_tween()
 	cam_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	cam_tween.tween_property(_cine_cam, "global_position", mid_pos, 9.0)
 	cam_tween.parallel().tween_method(
 		func(_t: float) -> void: _cine_cam.look_at(look_target), 0.0, 1.0, 9.0)
-	create_tween().tween_property(_fade, "color:a", 0.0, 3.0)
+	_seq_tweens.append(cam_tween)
+	var fade_tween := create_tween()
+	fade_tween.tween_property(_fade, "color:a", 0.0, 3.0)
+	_seq_tweens.append(fade_tween)
 
 	if await _beat(2.0): return
 	if music != null and music.stream != null:
@@ -176,20 +184,24 @@ func _run_sequence() -> void:
 	if await _beat(1.5): return
 
 	# Title card.
-	create_tween().tween_property(_title, "modulate:a", 1.0, 2.2)
+	var title_in := create_tween()
+	title_in.tween_property(_title, "modulate:a", 1.0, 2.2)
+	_seq_tweens.append(title_in)
 	if await _beat(1.2): return
-	create_tween().tween_property(_subtitle, "modulate:a", 1.0, 2.0)
+	var sub_in := create_tween()
+	sub_in.tween_property(_subtitle, "modulate:a", 1.0, 2.0)
+	_seq_tweens.append(sub_in)
 	if await _beat(4.3): return
 	var out := create_tween()
 	out.tween_property(_title, "modulate:a", 0.0, 1.6)
 	out.parallel().tween_property(_subtitle, "modulate:a", 0.0, 1.6)
+	_seq_tweens.append(out)
 	if await _beat(2.2): return
 
 	_finish_intro()
 
 ## Waits, but reports true if the user asked to skip so the caller can bail.
 func _beat(seconds: float) -> bool:
-	print("DBG beat start ", seconds)
 	var elapsed := 0.0
 	while elapsed < seconds:
 		if _skip:
@@ -197,14 +209,16 @@ func _beat(seconds: float) -> bool:
 			return true
 		await get_tree().process_frame
 		elapsed += get_process_delta_time()
-	print("DBG beat done ", seconds)
 	return _skip
 
 func _finish_intro(skipped := false) -> void:
-	print("DBG finish_intro skipped=", skipped, " running=", _running)
 	if not _running:
 		return
 	_running = false
+	for t in _seq_tweens:
+		if t.is_valid():
+			t.kill()
+	_seq_tweens.clear()
 	_title.modulate.a = 0.0
 	_subtitle.modulate.a = 0.0
 	_fade.color.a = 0.0
@@ -228,9 +242,6 @@ func _finish_intro(skipped := false) -> void:
 		hint_tween.tween_property(_hint, "modulate:a", 1.0, 1.0)
 		hint_tween.tween_interval(4.0)
 		hint_tween.tween_property(_hint, "modulate:a", 0.0, 1.5))
-
-func debug_bar_rect() -> Rect2:
-	return Rect2(_bar_top.global_position, _bar_top.size)
 
 func show_letterbox_at_start() -> void:
 	_bar_top.anchor_bottom = BAR_RATIO

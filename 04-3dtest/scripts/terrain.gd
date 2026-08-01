@@ -83,13 +83,49 @@ func _build_mesh() -> void:
 	mi.material_override = _ground_material()
 	add_child(mi)
 
-func _ground_material() -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	var tex_path := "res://assets/textures/grass_albedo.jpg"
-	if ResourceLoader.exists(tex_path):
-		mat.albedo_texture = load(tex_path)
-	mat.albedo_color = Color(0.78, 0.82, 0.55)  # warm the grass toward late sun
-	mat.roughness = 1.0
+const GROUND_SHADER := "
+shader_type spatial;
+
+uniform sampler2D grass_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D dirt_tex : source_color, filter_linear_mipmap, repeat_enable;
+
+varying vec3 world_pos;
+varying float flatness;
+
+void vertex() {
+	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	flatness = NORMAL.y;
+}
+
+void fragment() {
+	// Two widely-spaced tilings multiplied together: each hides the other's
+	// repetition, which photo textures otherwise show badly on open ground.
+	vec3 fine = texture(grass_tex, world_pos.xz * 0.19).rgb;
+	vec3 macro = texture(grass_tex, world_pos.xz * 0.021).rgb;
+	vec3 grass = fine * macro * 2.1;
+	vec3 dirt = texture(dirt_tex, world_pos.xz * 0.16).rgb;
+	float dirt_amt = smoothstep(0.045, 0.16, 1.0 - flatness);
+	ALBEDO = mix(grass, dirt, dirt_amt) * vec3(1.0, 0.98, 0.88);
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.05;
+}
+"
+
+func _ground_material() -> Material:
+	var grass_path := "res://assets/textures/grass_albedo.jpg"
+	var dirt_path := "res://assets/textures/dirt_albedo.jpg"
+	if not ResourceLoader.exists(grass_path):
+		var flat := StandardMaterial3D.new()
+		flat.albedo_color = Color(0.35, 0.38, 0.22)
+		flat.roughness = 1.0
+		return flat
+	var mat := ShaderMaterial.new()
+	var shader := Shader.new()
+	shader.code = GROUND_SHADER
+	mat.shader = shader
+	mat.set_shader_parameter("grass_tex", load(grass_path))
+	mat.set_shader_parameter("dirt_tex",
+		load(dirt_path) if ResourceLoader.exists(dirt_path) else load(grass_path))
 	return mat
 
 func _build_collision() -> void:

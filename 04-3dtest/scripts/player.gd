@@ -30,11 +30,21 @@ var _step_accum := 0.0
 var _footsteps: Array[AudioStream] = []
 var _sfx: AudioStreamPlayer3D
 
+## Animation clips differ per pack; first match wins, case-insensitive.
+const ANIM_SYNONYMS := {
+	"Idle": ["idle", "breathing", "stand"],
+	"Walking_A": ["walking_a", "walk", "walking"],
+	"Running_A": ["running_a", "run", "jog", "sprint", "flee"],
+}
+
 func _ready() -> void:
 	_model = get_node_or_null("Model")
+	if _model == null:
+		_model = _load_model_from_assets()
 	_rig = $CameraRig
 	_arm = $CameraRig/SpringArm3D
 	_camera = $CameraRig/SpringArm3D/Camera3D
+	_arm.add_excluded_object(get_rid())
 	_sfx = AudioStreamPlayer3D.new()
 	_sfx.max_distance = 30.0
 	add_child(_sfx)
@@ -42,11 +52,27 @@ func _ready() -> void:
 	if _model != null:
 		_setup_model()
 
+## The realistic character set shadows the stylized one when present.
+func _load_model_from_assets() -> Node3D:
+	var dir := AssetsUtil.first_model_dir(
+		["res://assets/character_real", "res://assets/character"])
+	if dir == "":
+		return null
+	var scene: PackedScene = load(AssetsUtil.model_files(dir)[0])
+	var inst: Node3D = scene.instantiate()
+	inst.name = "Model"
+	add_child(inst)
+	return inst
+
 func _setup_model() -> void:
 	_anim = _find_anim_player(_model)
 	if _anim != null:
 		for logical in ["Idle", "Walking_A", "Running_A"]:
 			_anim_names[logical] = _resolve_anim(logical)
+		# glTF clips import without looping; force it on the ones we cycle.
+		for real: String in _anim_names.values():
+			if real != "":
+				_anim.get_animation(real).loop_mode = Animation.LOOP_LINEAR
 		_play_anim("Idle")
 	for acc in HIDDEN_ACCESSORIES:
 		var node := _model.find_child(acc, true, false)
@@ -62,13 +88,21 @@ func _find_anim_player(root: Node) -> AnimationPlayer:
 			return found
 	return null
 
-## Import may namespace clip names ("Barbarian/Idle"); match by suffix.
+## Import may namespace clip names ("Barbarian/Idle") and packs name clips
+## differently, so try exact, then suffix, then case-insensitive synonyms.
 func _resolve_anim(logical: String) -> String:
 	if _anim.has_animation(logical):
 		return logical
-	for anim_name in _anim.get_animation_list():
-		if anim_name.ends_with("/" + logical) or anim_name == logical:
+	var all := _anim.get_animation_list()
+	for anim_name in all:
+		if anim_name.ends_with("/" + logical):
 			return anim_name
+	var synonyms: Array = ANIM_SYNONYMS.get(logical, [logical.to_lower()])
+	for syn: String in synonyms:
+		for anim_name in all:
+			var base := anim_name.get_file().to_lower()
+			if base == syn or base.contains(syn):
+				return anim_name
 	push_warning("Animation not found: " + logical)
 	return ""
 

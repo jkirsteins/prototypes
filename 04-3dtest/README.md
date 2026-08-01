@@ -1,8 +1,17 @@
-# 04 - 3D Test
+# 04 - Tevzeme (3D test)
 
 A Godot 4.7.1 3D prototype, exported to Web and deployed alongside the Vite
-prototypes. Currently a hello world: an orange cube spinning under a
-directional light, which is enough to prove the whole pipeline renders.
+prototypes: a cinematic third-person walk through a Baltic countryside
+homestead at golden hour. Click to begin; the camera rises out of the grass,
+a TEVZEME title card fades in and out over letterbox bars, then control
+blends to the player. WASD walks, Shift runs, mouse looks, Esc releases the
+pointer. Footsteps, meadow ambience and a title theme are in. The scene is a
+procedural meadow (simplex-noise terrain, 11k grass cards, scattered pines,
+birches, ferns and boulders) around a hand-placed farmstead: cabin, barn,
+wagon, log fence, barrel, bucket, lantern.
+
+The design doc lives at
+`docs/superpowers/specs/2026-08-01-baltic-countryside-design.md`.
 
 This is the first prototype in the repo that is **not** Vite + TypeScript, so
 several of the repo-wide conventions in the root `CLAUDE.md` do not apply here.
@@ -59,7 +68,26 @@ limits on real-time lights and shadows.
 ## Size
 
 The engine `.wasm` is 38 MB uncompressed, 9.6 MB gzipped, and that is a floor
-paid on every cold load no matter how small the game is. The Vite prototypes
-ship roughly 200 KB. If this prototype is ever dropped, the `Detect Godot
-prototypes` step in `.github/workflows/pages.yml` notices there is no
+paid on every cold load no matter how small the game is. The asset pack adds
+about 75 MB on top (PBR vegetation and buildings, HDRI sky, audio). The Vite
+prototypes ship roughly 200 KB. If this prototype is ever dropped, the `Detect
+Godot prototypes` step in `.github/workflows/pages.yml` notices there is no
 `project.godot` anywhere and skips the whole Godot toolchain install.
+
+## Asset credits
+
+Every asset directory has a `manifest.md` with exact sources. Summary:
+
+- Character: "Monk" model and rig by CDmir (CC0) with animations by
+  hwoarangmy (CC-BY-SA 3.0), via OpenGameArt.
+- Trees: pine by evolveduk (CC-BY 4.0), birch by restlessmonkey (CC-BY 4.0),
+  via Sketchfab.
+- Fence: "Wooden Fences" by minime453 (CC-BY 4.0), via OpenGameArt.
+- Cabin: "medieval_house_1" by Paul Wortmann (CC0). Barn: "Old Wood Barn" by
+  carlosjorgereis (CC0). Wagon: 3TD Starter Pack by Ron Kapaun / 3TD Studios
+  (CC0). All via OpenGameArt.
+- Ferns, shrubs, boulders, mossy rocks, ground-cover grass, barrel, bucket,
+  lantern and the birchwood HDRI sky: Poly Haven (CC0).
+- Ground and roof textures: ambientCG (CC0). Title font: Cinzel (OFL).
+- Audio (footsteps, meadow ambience, title theme): sourced CC0/CC-BY, see
+  `assets/audio/manifest.md`.

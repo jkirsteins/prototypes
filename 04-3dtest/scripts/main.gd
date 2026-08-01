@@ -27,17 +27,6 @@ func _ready() -> void:
 	_cinematic.ambient = _ambient
 	_cinematic.music = _music
 	_cinematic.show_letterbox_at_start()
-	# Temporary diagnostics for the browser console; removed before shipping.
-	print("DBG grass tex exists: ", ResourceLoader.exists("res://assets/textures/grass_albedo.jpg"))
-	print("DBG bar_top rect: ", _cinematic.debug_bar_rect())
-	_debug_dump(_player.get_node("Model"), 0)
-
-func _debug_dump(node: Node, depth: int) -> void:
-	if depth > 6:
-		return
-	print("DBG model node: ", "  ".repeat(depth), node.name, " (", node.get_class(), ")")
-	for child in node.get_children():
-		_debug_dump(child, depth + 1)
 
 func _setup_environment() -> void:
 	var env := Environment.new()
@@ -128,32 +117,54 @@ func _place_player() -> void:
 func _spawn_grass() -> void:
 	var grass := GrassField.new()
 	grass.terrain = _terrain
+	for png in AssetsUtil.files_with_ext("res://assets/nature_real", ["png"]):
+		if png.get_file().to_lower().contains("grass"):
+			grass.card_texture_path = png
+			break
 	add_child(grass)
 
 func _scatter_nature() -> void:
-	var files := _glb_files("res://assets/nature")
+	var dir := AssetsUtil.first_model_dir(
+		["res://assets/nature_real", "res://assets/nature"])
+	if dir == "":
+		return
+	var realistic := dir.ends_with("_real")
 	var trees: Array[String] = []
 	var bushes: Array[String] = []
 	var rocks: Array[String] = []
 	var flowers: Array[String] = []
-	for f in files:
-		var lower := f.get_file().to_lower()
+	for f in AssetsUtil.model_files(dir):
+		# Classify on the full path: downloaded sets often name the file just
+		# "scene.gltf" and carry meaning in the folder name.
+		var lower := f.to_lower()
 		if lower.contains("tree") or lower.contains("birch") or lower.contains("pine") \
 				or lower.contains("spruce") or lower.contains("fir"):
 			trees.append(f)
-		elif lower.contains("bush") or lower.contains("shrub"):
+		elif lower.contains("bush") or lower.contains("shrub") or lower.contains("fern") \
+				or lower.contains("plant"):
 			bushes.append(f)
 		elif lower.contains("rock") or lower.contains("stone") or lower.contains("boulder"):
 			rocks.append(f)
 		elif lower.contains("flower"):
 			flowers.append(f)
+	# Favor the light pine over the 29k-tri birch when both exist.
+	for f in trees.duplicate():
+		if f.to_lower().contains("pine"):
+			trees.append(f)
+			trees.append(f)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = SCATTER_SEED
-	# Kenney models are ~toy scale (a tall pine is 1.9 units), hence the 4-5x.
-	_scatter_set(rng, trees, 180, 32.0, 96.0, Vector2(3.6, 5.6), true, 0.5)
-	_scatter_set(rng, bushes, 70, 24.0, 85.0, Vector2(2.2, 3.6), false, 0.0)
-	_scatter_set(rng, rocks, 28, 18.0, 90.0, Vector2(1.8, 4.0), false, 0.0)
-	_scatter_set(rng, flowers, 130, 6.0, 45.0, Vector2(2.4, 3.4), false, 0.0)
+	if realistic:
+		# Real-scale PBR models: near-unit scale, fewer of them (heavier tris).
+		_scatter_set(rng, trees, 100, 32.0, 96.0, Vector2(0.85, 1.35), true, 0.4)
+		_scatter_set(rng, bushes, 46, 22.0, 85.0, Vector2(0.8, 1.5), false, 0.0)
+		_scatter_set(rng, rocks, 10, 18.0, 90.0, Vector2(0.7, 1.5), false, 0.0)
+	else:
+		# Kenney models are ~toy scale (a tall pine is 1.9 units), hence 4-5x.
+		_scatter_set(rng, trees, 180, 32.0, 96.0, Vector2(3.6, 5.6), true, 0.5)
+		_scatter_set(rng, bushes, 70, 24.0, 85.0, Vector2(2.2, 3.6), false, 0.0)
+		_scatter_set(rng, rocks, 28, 18.0, 90.0, Vector2(1.8, 4.0), false, 0.0)
+		_scatter_set(rng, flowers, 130, 6.0, 45.0, Vector2(2.4, 3.4), false, 0.0)
 
 ## Scatters scenes in an annulus around the center. bias_outward pushes samples
 ## toward the outer radius so trees thicken into a forest edge.
@@ -197,44 +208,91 @@ func _scatter_set(rng: RandomNumberGenerator, paths: Array[String], count: int,
 			inst.add_child(body)
 
 func _place_buildings() -> void:
-	var files := _glb_files("res://assets/buildings")
-	var cabin_path := ""
-	var fence_path := ""
-	for f in files:
-		var lower := f.get_file().to_lower()
-		if cabin_path == "" and (lower.contains("cabin") or lower.contains("house")
-				or lower.contains("hut") or lower.contains("cottage")):
-			cabin_path = f
-		elif fence_path == "" and lower.contains("fence"):
-			fence_path = f
+	var dir := AssetsUtil.first_model_dir(
+		["res://assets/buildings_real", "res://assets/buildings"])
+	var realistic := dir.ends_with("_real")
+	var files: Array[String] = AssetsUtil.model_files(dir) if dir != "" else []
+	# The dwelling by keyword priority: a barn must not win over the house.
+	var cabin_path := _pick(files, ["cabin", "house", "hut", "cottage"])
+	if cabin_path == "":
+		cabin_path = _pick(files, ["barn", "shed"])
+	var h := _terrain.height_at(0.0, 0.0)
+	var cabin: Node3D
 	if cabin_path != "":
-		var cabin: Node3D = (load(cabin_path) as PackedScene).instantiate()
-		var h := _terrain.height_at(0.0, 0.0)
-		cabin.position = Vector3(0, h - 0.05, 0)
-		# KayKit models are toy scale: 5x makes the 0.8-unit house a cottage.
-		cabin.scale = Vector3.ONE * 5.0
-		# Door roughly toward the player spawn.
-		cabin.rotation.y = atan2(PLAYER_SPAWN.x, PLAYER_SPAWN.y)
-		add_child(cabin)
-		_add_box_collider(cabin)
+		cabin = (load(cabin_path) as PackedScene).instantiate()
+		# KayKit models are toy scale and need 5x; realistic models are 1:1.
+		cabin.scale = Vector3.ONE * (1.0 if realistic else 5.0)
+	else:
+		cabin = CabinBuilder.build()
+	cabin.position = Vector3(0, h - 0.05, 0)
+	# Door roughly toward the player spawn.
+	cabin.rotation.y = atan2(PLAYER_SPAWN.x, PLAYER_SPAWN.y)
+	add_child(cabin)
+	_add_box_collider(cabin)
+	# A rail segment fences better than a lone post when both are in the set.
+	var fence_path := _pick(files, ["fence_var", "fence_rail"])
+	if fence_path == "":
+		fence_path = _pick(files, ["fence"])
 	if fence_path != "":
-		var fence_scene: PackedScene = load(fence_path)
-		# A 1.16-unit segment at 3x is ~3.5 m; at radius 14 that subtends ~14.5
-		# degrees, so consecutive segments meet end to end around the arc.
-		for i in 8:
-			var a := deg_to_rad(140.0 + i * 14.5)
-			var r := 14.0
-			var x := cos(a) * r
-			var z := sin(a) * r
-			var wrapper := Node3D.new()
-			wrapper.position = Vector3(x, _terrain.height_at(x, z) - 0.02, z)
-			wrapper.rotation.y = -a + PI / 2.0
-			wrapper.scale = Vector3.ONE * 3.0
-			var seg: Node3D = fence_scene.instantiate()
-			# The pack's fence geometry sits ~1 unit off its pivot; re-center.
-			seg.position = Vector3(1.0, 0.0, 0.0)
-			wrapper.add_child(seg)
-			add_child(wrapper)
+		_place_fence_arc(load(fence_path), 1.0 if realistic else 3.0)
+	if realistic:
+		_place_farmstead(files)
+
+## Homestead dressing around the cabin, hand-laid so the clearing reads as
+## lived-in rather than randomly scattered.
+func _place_farmstead(files: Array[String]) -> void:
+	_drop(files, ["barn"], Vector2(-11.0, -5.0), deg_to_rad(65.0), true)
+	_drop(files, ["wagon", "cart"], Vector2(-6.5, 3.5), deg_to_rad(-30.0), true)
+	_drop(files, ["barrel"], Vector2(2.6, 2.4), 0.0, false)
+	_drop(files, ["bucket"], Vector2(3.2, 1.7), deg_to_rad(40.0), false)
+	_drop(files, ["lantern"], Vector2(1.7, 2.7), deg_to_rad(-15.0), false)
+
+func _drop(files: Array[String], keys: Array, at: Vector2, yaw: float,
+		collide: bool) -> void:
+	var path := _pick(files, keys)
+	if path == "":
+		return
+	var inst: Node3D = (load(path) as PackedScene).instantiate()
+	inst.position = Vector3(at.x, _terrain.height_at(at.x, at.y) - 0.03, at.y)
+	inst.rotation.y = yaw
+	add_child(inst)
+	if collide:
+		_add_box_collider(inst)
+
+func _pick(files: Array[String], keys: Array) -> String:
+	for key: String in keys:
+		for f in files:
+			if f.get_file().to_lower().contains(key):
+				return f
+	return ""
+
+## Places fence segments end to end along an arc, sized from the segment's own
+## bounding box so it works for any pack's geometry and pivot placement.
+func _place_fence_arc(fence_scene: PackedScene, seg_scale: float) -> void:
+	var probe: Node3D = fence_scene.instantiate()
+	add_child(probe)
+	var aabb := _combined_aabb(probe, probe)
+	probe.queue_free()
+	if aabb.size == Vector3.ZERO:
+		return
+	var seg_len: float = maxf(aabb.size.x, aabb.size.z) * seg_scale
+	var long_axis_is_z := aabb.size.z > aabb.size.x
+	var r := 14.0
+	var step := seg_len / r
+	for i in 8:
+		var a := deg_to_rad(140.0) + i * step
+		var x := cos(a) * r
+		var z := sin(a) * r
+		var wrapper := Node3D.new()
+		wrapper.position = Vector3(x, _terrain.height_at(x, z) - 0.02, z)
+		wrapper.rotation.y = -a + PI / 2.0 + (PI / 2.0 if long_axis_is_z else 0.0)
+		wrapper.scale = Vector3.ONE * seg_scale
+		var seg: Node3D = fence_scene.instantiate()
+		# Re-center geometry whose pivot is off to one side.
+		var center := aabb.get_center()
+		seg.position = Vector3(-center.x, 0.0, -center.z)
+		wrapper.add_child(seg)
+		add_child(wrapper)
 
 ## Kenney's deciduous trees share a brown "woodBark" material; overriding the
 ## trunk surfaces to chalk white turns them into passable birches.
@@ -279,29 +337,6 @@ func _combined_aabb(node: Node, root: Node3D) -> AABB:
 			aabb = aabb.merge(child_aabb) if aabb.size != Vector3.ZERO else child_aabb
 	return aabb
 
-## Lists resources by extension. Exported builds list pck entries with .remap
-## or .import suffixes instead of the source names, so those are stripped and
-## the result deduplicated; ResourceLoader.exists confirms loadability.
-func _files_with_ext(dir_path: String, exts: Array) -> Array[String]:
-	var out: Array[String] = []
-	var dir := DirAccess.open(dir_path)
-	if dir == null:
-		return out
-	dir.list_dir_begin()
-	var f := dir.get_next()
-	while f != "":
-		if not dir.current_is_dir():
-			var trimmed := f.trim_suffix(".remap").trim_suffix(".import")
-			var path := dir_path + "/" + trimmed
-			if trimmed.get_extension() in exts and not out.has(path) \
-					and ResourceLoader.exists(path):
-				out.append(path)
-		f = dir.get_next()
-	return out
-
-func _glb_files(dir_path: String) -> Array[String]:
-	return _files_with_ext(dir_path, ["glb", "gltf"])
-
 func _first_file(dir_path: String, exts: Array) -> String:
-	var found := _files_with_ext(dir_path, exts)
+	var found := AssetsUtil.files_with_ext(dir_path, exts)
 	return found[0] if not found.is_empty() else ""

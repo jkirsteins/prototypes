@@ -14,3 +14,7 @@ seamless/tileable, 1024x1024.
 Only albedo maps were kept (plus the wood normal); roughness/AO/displacement
 maps from the zips were discarded to stay in budget. Set uniform roughness
 ~0.9 in Godot materials instead.
+
+## Added for the realistic hut retexture (2026-08-01, main session)
+- thatch_albedo.jpg / thatch_normal_gl.jpg - ambientCG ThatchedRoof001A, CC0, 1K JPG
+- plaster_albedo.jpg / plaster_normal_gl.jpg - ambientCG Plaster001, CC0, 1K JPG
