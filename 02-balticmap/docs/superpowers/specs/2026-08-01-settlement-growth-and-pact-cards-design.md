@@ -205,19 +205,52 @@ the last-resort fallthrough:
 - `found-settlement` - branches 7b and 9b unchanged; they read
   `validTargetsFor`, which the new legality already answers.
 
-## What this costs elsewhere
+## What it cost elsewhere
 
-- **Every committed simulation baseline moves.** `buildAiDeck` rolls one rng
-  draw per deck-buildable non-basic in `CARDS` declaration order; the pool goes
-  from 12 to 16, so every seeded AI deck changes. `npm run capture:baseline`
-  must be rerun and the new bands read rather than rubber-stamped.
-- **One full rarity pass.** The acquirable pool goes from 8 to 12. `npm run
-  rarity` (~2 min) with all four new cards in `CARDS`, then each new card's
-  `rarity` set from `rarityForImpact`. Alliance's own tier is likely to move -
-  it is measured at 0.156 against a rare cut of 0.1125, and this change makes it
-  materially stronger.
-- **`npm run balance`** once the batch settles: play share per card, never-played
-  cards, targeting bias and the stalemate number.
+Growing the pool from 12 deck-buildable non-basics to 16 turned out to matter
+more than any of the five changes.
+
+**Enemy decks got a quarter denser.** `buildAiDeck` rolls each non-basic at 0.5
+against a `DECK_SIZE` cap, so a bigger pool means a fuller enemy deck: 8.66 live
+cards of ten rather than 6.99, measured over 5000 decks. No card changed what it
+does; there is simply more happening per rival per round.
+
+The `flailing-full-deck` scenario is what caught it, and it is re-banded rather
+than diluted back - an enemy holding turnips instead of cards is not a
+difficulty knob worth having, and the roll is what gives each seat a deck of its
+own. The player who holds every card and plays the leftmost one now falls at
+turn 10.5 rather than 40, and is taken as a vassal in 96% of games rather than
+79%. What did *not* move is `defeatShare`, still 0.73 inside its old band: the
+extra subjugations are ones they revolt back out of, which is the Seeds of
+revolt slot doing its job. The other seven scenarios hold their existing bands,
+including `competent-full-deck` - skill still matters.
+
+**Every measured impact roughly halved,** for the same reason: smaller human
+realms compress the outcome the regression fits against. Subjugate 0.684 ->
+0.270, Fortify 0.516 -> 0.247, Incorporate 0.591 -> 0.192. That emptied the epic
+tier against the old 0.389 cut, so the thresholds are re-cut in the gaps of the
+new table: epic at 0.120 (the 0.104 chasm between A feast and Found a
+settlement, twice the width of anything else) and rare at -0.017.
+
+Resulting tiers, from `npm run rarity` at 1500 decks:
+
+| tier | cards |
+|---|---|
+| epic | Incorporate (0.192), A feast (0.172) |
+| rare | Found a settlement (0.068), Shrewd marriage (0.066), Favourable omens (0.041), Assassinate ruler (0.021), Extended diplomacy (0.010) |
+| common | Alliance (-0.043), Population boom (-0.049), Bodyguard (-0.059), Eloping heirs (-0.068), Distrustful neighbour (-0.069) |
+
+**A feast is the strongest new card by a distance** and the only one that
+reaches epic. That is the Status track being starved: it had one +1-a-play
+source and now has a fan-out, and the fan-out is what makes the Status siege a
+real answer to a settled realm.
+
+**Alliance measures negative even with the new bonus.** The pact buys Might for
+*both* sides, and the truce freezes the actor's own conquest for five turns, so
+the card pays a rival as much as it pays you. Worth watching in play: if it
+stays a trap, the bonus wants to be one-sided rather than mutual.
+
+Sim baselines all moved with the rng stream and were recaptured.
 
 ## Deliberately not doing
 

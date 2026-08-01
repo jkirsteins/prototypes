@@ -176,9 +176,27 @@ export const SCENARIOS: Scenario[] = [
       // Attribution measured by disabling the passive and re-running: convex
       // Raid alone accounts for most of it (defeatShare 0.46 of the 0.62), the
       // passive adds the rest. See the realm-tempo plan.
-      subjugatedShare: [0.64, 0.94],     // measured 0.79
-      medianFirstSubjugation: [24, 60],  // measured 40.00
-      defeatShare: [0.47, 0.77],         // measured 0.62
+      // The first two bands answer to the SIZE of the card pool as much as to
+      // any rule. `buildAiDeck` rolls each deck-buildable non-basic at 0.5
+      // against a DECK_SIZE cap, so a bigger pool means a denser enemy deck -
+      // at 16 non-basics an enemy holds 8.66 live cards of ten rather than the
+      // 6.99 it held at 12 - and a flailing player meets more of them per rival
+      // without any card having changed what it does. Every card added to the
+      // pool hardens this scenario again, and this is the band that says so.
+      //
+      // Diluting enemy decks back with turnips is not the fix: an enemy holding
+      // filler instead of cards is not a difficulty knob worth having, and the
+      // roll is what gives each seat a deck of its own.
+      //
+      // `defeatShare` is the band that does NOT move with pool size, and it is
+      // why this scenario's premise survives a first subjugation at turn 10:
+      // the flailing player is taken as a vassal far sooner and rather more
+      // often, and still loses the run about as often, because the extra
+      // subjugations are ones they revolt back out of. That is the Seeds of
+      // revolt slot in the default deck doing its job.
+      subjugatedShare: [0.85, 1],        // measured 0.96
+      medianFirstSubjugation: [6, 20],   // measured 10.50
+      defeatShare: [0.47, 0.77],         // measured 0.73
     },
   },
   {

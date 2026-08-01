@@ -25,86 +25,79 @@ function seededRng(seed: number): Rng {
 }
 
 describe("cards", () => {
-  it("defines the nine card types with v2 properties", () => {
+  it("defines each card's properties and rules text", () => {
+    // Everything but `rarity`, which is not a property of the card's design:
+    // it follows from the measured impact table, and the tier a given card
+    // reaches moves whenever the pool does. Restating it here would be the
+    // hand-tagging that "rarity assignment" below exists to refuse - and would
+    // make every rarity pass a rewrite of this list.
     const expectProps = (
       id: string, name: string, targeted: boolean, secret: boolean,
       maxPerDeck: number | null, deckBuildable: boolean, forced: boolean,
-      rarity: string, text: string,
-    ) =>
-      expect(CARDS[id]).toEqual({ id, name, targeted, secret, maxPerDeck, deckBuildable, forced, rarity, text });
+      text: string,
+    ) => {
+      const { rarity: _tier, ...rest } = CARDS[id];
+      expect(rest).toEqual({ id, name, targeted, secret, maxPerDeck, deckBuildable, forced, text });
+    };
     expectProps(
       "grow-crops", "Grow turnips", false, false, null, true, false,
-      "common",
       "No effect - a quiet season. Fills out the deck.",
     );
     expectProps(
       "raid", "Raid", true, false, 1, true, false,
-      "common",
       "Gain Might over one faction in reach: +1 for your first land on their " +
         "border, +2 for the second, +3 for the third, and so on.",
     );
     expectProps(
       "shrewd-marriage", "Shrewd marriage", true, false, 1, true, false,
-      "common",
       "Gain +1 Status over one faction in reach; your overlord is always courtable.",
     );
     expectProps(
       "fortify", "Fortify", false, false, 1, true, false,
-      "common",
       "Gain +1 Might over every other living faction at once.",
     );
     expectProps(
       "subjugate", "Subjugate", true, false, 1, true, false,
-      "common",
       "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute.",
     );
     expectProps(
       "incorporate", "Incorporate", true, false, 1, true, false,
-      "rare",
       "Permanently absorb one of your vassals into your realm.",
     );
     expectProps(
       "pay-military-tribute", "Pay military tribute", false, false, null, false, true,
-      "common",
       "Forced: while a vassal, grant your overlord +1 Might.",
     );
     expectProps(
       "pay-status-tribute", "Pay status tribute", false, false, null, false, true,
-      "common",
       "Forced: while a vassal, grant your overlord +1 Status.",
     );
     expectProps(
       "seeds-of-revolt", "Seeds of revolt", false, false, 1, true, false,
-      "common",
       "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time.",
     );
     // Revolt is injection-only now, like the tribute cards: Seeds of revolt puts it
     // in the deck, so it must never be deck-buildable.
     expectProps(
       "revolt", "Revolt", false, false, 1, false, false,
-      "common",
       "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good.",
     );
     expectProps(
       "assassinate-ruler", "Assassinate ruler", true, false, 1, true, false,
-      "common",
       "Even the score: the Status lead between you and one faction in reach resets to none.",
     );
     expectProps(
       "alliance", "Alliance", true, false, 1, true, false,
-      "common",
       "Seal a pact with one faction in reach: no hostile cards between you " +
         "for 5 turns, and +1 Might for both of you against every faction " +
         "bordering both realms.",
     );
     expectProps(
       "extended-diplomacy", "Extended diplomacy", false, false, 1, true, false,
-      "common",
       "Patient envoys: your next Alliance lasts twice as long.",
     );
     expectProps(
       "found-settlement", "Found a settlement", true, false, 1, true, false,
-      "common",
       "Raise another settlement in one land of your realm, up to what your " +
         "people support - two, and one more for each Population boom you " +
         "hold. Each settlement adds +1 to the Might lead others need to " +
@@ -112,32 +105,27 @@ describe("cards", () => {
     );
     expectProps(
       "population-boom", "Population boom", false, false, 1, true, false,
-      "common",
       "Your people multiply: one more settlement than your lands would " +
         "otherwise support. Stacks, and waits in hand until a settlement is " +
         "founded.",
     );
     expectProps(
       "a-feast", "A feast", false, false, 1, true, false,
-      "rare",
       "Gain +1 Status over every other living faction at once.",
     );
     // The three secret cards: others see only that a card was played.
     expectProps(
       "bodyguard", "Bodyguard", false, true, 1, true, false,
-      "common",
       "Post a bodyguard: the next Assassinate ruler against you fails. " +
         "No stacking. Others see only that you played a secret card.",
     );
     expectProps(
       "distrustful-neighbour", "Distrustful neighbour", false, true, 1, true, false,
-      "common",
       "Your neighbours grow wary: the next Alliance sealed with you fails. " +
         "No stacking. Others see only that you played a secret card.",
     );
     expectProps(
       "eloping-heirs", "Eloping heirs", false, true, 1, true, false,
-      "common",
       "Your heirs slip away in the night: the next Shrewd marriage against " +
         "you fails. No stacking. Others see only that you played a secret card.",
     );

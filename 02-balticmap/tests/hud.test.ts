@@ -2118,10 +2118,10 @@ describe("secret cards in the activity log", () => {
   });
 
   it("reveals the guard that matches the card, not merely the newest", () => {
-    // The property three guards forced. A queue keyed by faction alone was
-    // exact while Bodyguard was the only secret card; with a rival holding two
-    // at once it would reveal whichever they played LAST - naming the wrong
-    // card on the wrong line and giving away a guard they are still holding.
+    // A queue keyed by faction alone is exact only while one guard exists. A
+    // rival holding two would have whichever they played LAST revealed -
+    // naming the wrong card on the wrong line, and giving away a guard they
+    // are still holding.
     const { container, hud } = setup();
     const g = playing();
     const heirs: GameEvent =

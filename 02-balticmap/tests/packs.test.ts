@@ -34,9 +34,12 @@ describe("openPack", () => {
   });
 
   it("allows duplicates - a pack never guarantees a new card", () => {
-    // Both slots roll the common tier (0) and then index 0 of it.
+    // Both slots roll the common tier (0) and then index 0 of it. Read off the
+    // pool rather than written down: which card sits first in the common tier
+    // follows from the measured impact table, not from the pool's own order.
+    const common = ACQUIRABLE_CARDS.filter((id) => CARDS[id].rarity === BASE_RARITY);
     const pack = openPack(ACQUIRABLE_CARDS, scriptedRng([0, 0, 0, 0]));
-    expect(pack).toEqual([ACQUIRABLE_CARDS[0], ACQUIRABLE_CARDS[0]]);
+    expect(pack).toEqual([common[0], common[0]]);
   });
 
   it("draws from the top tier once it holds a card", () => {

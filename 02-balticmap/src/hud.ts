@@ -380,17 +380,15 @@ export function eventSegments(
  *  There is exactly one clause: a `play` that came back `prevented` spent the
  *  guard of `targetFactionId`, revealing that faction's most recent
  *  not-yet-revealed play OF THE GUARD THAT STOPPED IT - `guardAgainst(cardId)`
- *  in src/cards.ts, which is what makes the match exact now that a faction can
- *  hold all three guards at once.
+ *  in src/cards.ts.
  *
- *  Keying the queue on the faction alone was exact while Bodyguard was the only
- *  secret card, and the doc comment here said so and said a second secret card
- *  would have to replace it. Three of them exist now: a rival holding a
- *  Bodyguard and an Eloping heirs, whose Bodyguard is then spent, would have had
+ *  Matching on the card and not merely on the faction is load-bearing, because
+ *  a faction may hold all three guards at once. A rival holding a Bodyguard and
+ *  an Eloping heirs, whose Bodyguard is then spent, would otherwise have
  *  whichever they played LAST revealed - naming the wrong card on the wrong
- *  line, with the guard they are still holding given away for free.
+ *  line, and giving away the guard they are still holding.
  *
- *  "Most recent not-yet-revealed of that card" is still exact within a card:
+ *  "Most recent not-yet-revealed of that card" is exact within a card:
  *  `cardBlockReason` in src/playability.ts refuses a second copy of any guard
  *  while the first is unspent, so a faction never has two of one kind in flight.
  *

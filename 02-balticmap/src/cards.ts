@@ -22,24 +22,30 @@ export interface RarityTier {
 
 export const RARITY_TIERS = [
   { id: "common", weight: 70, minImpact: Number.NEGATIVE_INFINITY, colour: "#6d6355" },
-  // Thresholds set once from the 1500-deck run in src/data/card-impact.json and
-  // then frozen. They are cut points in the gaps between measured impacts, so a
-  // rerun that nudges a coefficient does not re-tier a card the player owns.
-  // The two cuts are not equally solid, and a maintainer re-tiering should know
-  // which is which before trusting either.
+  // Both cuts sit in GAPS between measured impacts, never on a card, so a
+  // rerun that nudges a coefficient cannot re-tier a card a player already
+  // owns. They are absolute numbers on a scale that the pool's own size moves,
+  // though - a denser enemy field shrinks every human realm and pulls every
+  // coefficient toward zero with it - so adding cards means re-reading the
+  // table and re-cutting, not just tagging the new ones.
   //
-  // 0.389 is the midpoint of the 0.404 chasm between Incorporate (0.591) and
-  // Favourable omens (0.187). That gap is 4.6x wider than anything else in the
-  // table and is the only separation two independent seeds agree on. Epic is
-  // measured.
+  // 0.120 is the midpoint of the 0.104 gap between A feast (0.172) and Found a
+  // settlement (0.068), twice the width of the runner-up and the only clear
+  // separation in the table. Epic is measured, and holds Incorporate and A
+  // feast.
   //
-  // 0.1125 is the midpoint of the 0.087-wide gap between Alliance (0.156) and
-  // Shrewd marriage (0.069) - the widest gap left, but only just: the runner-up
-  // is 0.083, and on seed 2000 Alliance measured 0.073 and would have fallen
-  // common. Rare is a judgement call resting on a gap the noise can cross.
-  // Treat it as a design decision to playtest, not as a measurement.
-  { id: "rare",   weight: 25, minImpact: 0.1125, colour: "#1f6fd0" },
-  { id: "epic",   weight:  5, minImpact: 0.389, colour: "#7b2fbf" },
+  // -0.017 is the midpoint of that runner-up, between Extended diplomacy
+  // (0.010) and Alliance (-0.043). It falls below zero, which reads oddly and
+  // is honest: past the top two, a card's measured contribution to final realm
+  // size is small and often negative, so the rare/common line is a design
+  // decision about what feels worth finding rather than a measurement. Treat it
+  // as something to playtest.
+  //
+  // An empty top tier is a real failure and not a tidy one: `rollTier` falls
+  // back to the base tier, so 5% of pack slots would quietly become common
+  // while the purple band went unused. tests/packs.test.ts refuses it.
+  { id: "rare",   weight: 25, minImpact: -0.017, colour: "#1f6fd0" },
+  { id: "epic",   weight:  5, minImpact: 0.120, colour: "#7b2fbf" },
 ] as const satisfies readonly RarityTier[];
 
 export type CardRarity = (typeof RARITY_TIERS)[number]["id"];
@@ -104,10 +110,10 @@ export interface CardDef {
 export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "No effect - a quiet season. Fills out the deck." },
   "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain Might over one faction in reach: +1 for your first land on their border, +2 for the second, +3 for the third, and so on." },
-  "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
+  "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
   "fortify": { id: "fortify", name: "Fortify", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Might over every other living faction at once." },
   "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },
-  "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Permanently absorb one of your vassals into your realm." },
+  "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Permanently absorb one of your vassals into your realm." },
   // Injection-only, like Revolt: a Subjugate shuffles one of each into the
   // vassal's deck (see playCard) and a release strips them out again. They are
   // never deck-buildable and never in a pack.
@@ -115,33 +121,33 @@ export const CARDS: Record<string, CardDef> = {
   "pay-status-tribute": { id: "pay-status-tribute", name: "Pay status tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, grant your overlord +1 Status." },
   "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
   "revolt": { id: "revolt", name: "Revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good." },
-  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Even the score: the Status lead between you and one faction in reach resets to none." },
+  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Even the score: the Status lead between you and one faction in reach resets to none." },
   "alliance": { id: "alliance", name: "Alliance", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns, and +1 Might for both of you against every faction bordering both realms." },
-  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Patient envoys: your next Alliance lasts twice as long." },
+  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Patient envoys: your next Alliance lasts twice as long." },
   // Secret. The rules already treat a posted guard as hidden - `failureRiskOf`
   // in src/playability.ts refuses to read the guard lists so the Assassinate
   // ruler tooltip cannot become a detector - and a log line naming the card was
   // that detector by another route.
   "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card." },
-  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "The signs are read: your next Might or Status gain counts double." },
-  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
+  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "The signs are read: your next Might or Status gain counts double." },
+  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
   // Appended, never inserted: `buildAiDeck` rolls one rng draw per entry here
   // in declaration order, so where a card sits decides which draw it answers
   // to. See the warning on DEFAULT_DECK.
   "population-boom": { id: "population-boom", name: "Population boom", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your people multiply: one more settlement than your lands would otherwise support. Stacks, and waits in hand until a settlement is founded." },
-  "a-feast": { id: "a-feast", name: "A feast", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Gain +1 Status over every other living faction at once." },
+  "a-feast": { id: "a-feast", name: "A feast", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Gain +1 Status over every other living faction at once." },
   "distrustful-neighbour": { id: "distrustful-neighbour", name: "Distrustful neighbour", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your neighbours grow wary: the next Alliance sealed with you fails. No stacking. Others see only that you played a secret card." },
   "eloping-heirs": { id: "eloping-heirs", name: "Eloping heirs", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your heirs slip away in the night: the next Shrewd marriage against you fails. No stacking. Others see only that you played a secret card." },
 };
 
 /** Guard card -> the card it turns aside, once, for whoever posted it.
  *
- *  Three cards, one mechanic, one table. Everything that used to be specific to
- *  Bodyguard reads this instead: `GameState.guards` is keyed by the guard card
- *  id, `playCard` has one prevented branch, `cardBlockReason` answers
- *  `already-held` for any of them, `failureRiskOf` returns
- *  `{ kind: "hidden", because: <guard id> }` for any guarded card, and
- *  `revealedSecrets` in src/hud.ts pops the queue for `guardAgainst(cardId)`.
+ *  Three cards, one mechanic, one table. Nothing about a guard is written per
+ *  card: `GameState.guards` is keyed by the guard card id, `playCard` has one
+ *  prevented branch, `cardBlockReason` answers `already-held` for any of them,
+ *  `failureRiskOf` returns `{ kind: "hidden", because: <guard id> }` for any
+ *  guarded card, and `revealedSecrets` in src/hud.ts pops the queue for
+ *  `guardAgainst(cardId)`.
  *
  *  **A guard is the reveal clause of its own secret.** Secrecy buys the fact
  *  that you cannot tell which rival is holding one; it does not buy a card
