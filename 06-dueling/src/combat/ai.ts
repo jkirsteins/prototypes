@@ -5,7 +5,8 @@ import type { Duel } from "./engine";
 import type { Fighter } from "./fighter";
 import type { AttackKind, Height, Intent, WeaponProfile } from "./types";
 
-export type AiMode = 0 | 1 | 2 | 3;
+/** Mode 4 is the duelist with the stance tell amputated - a testing mode. */
+export type AiMode = 0 | 1 | 2 | 3 | 4;
 
 /**
  * The AI's reaction is a seeded draw, not a constant: base plus a uniform
@@ -199,7 +200,7 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
   // rng: deterministic and unpredictable, because it depends on what the
   // player did. The window is the sold half of the windup, same as the
   // player's.
-  if (mode === 3 && self.state.kind === "attack") {
+  if ((mode === 3 || mode === 4) && self.state.kind === "attack") {
     const s = self.state;
     if (
       s.phase === "windup" &&
@@ -268,6 +269,12 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     if (opp.parry !== null && guardEffective(opp)) {
       height = opp.parry.coveredLine.height === "high" ? "low" : "high";
     }
+    // Mode 4: the same duelist with the stance tell amputated - every
+    // draw above still burns, so a seeded mode-3 and mode-4 fight stay
+    // comparable, but the plan is pinned to the standing height and
+    // executePlan therefore never moves the stance. A testing mode: what
+    // is still readable without the tell is exactly what it isolates.
+    if (mode === 4) height = self.height;
     ai.sameHeightRun = height === ai.lastHeight ? ai.sameHeightRun + 1 : 1;
     ai.lastHeight = height;
     ai.plan = { attack, height };

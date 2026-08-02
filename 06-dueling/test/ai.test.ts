@@ -193,6 +193,26 @@ test("drill interval exceeds every attack's whiff commitment (steady onset beat)
   }
 });
 
+test("mode 4 duels like the duelist but never moves its stance", () => {
+  // The testing mode: with the height tell removed, whatever remains
+  // readable (measure, cooldown pulse, the windup itself) is isolated.
+  const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+  d.f[0].x = d.f[1].x - 230;
+  const ai = createAiState(3);
+  const startHeight = d.f[1].height;
+  let attacked = false;
+  for (let t = 0; t < 8000; t += TICK) {
+    const ib = aiDecide(d, 4, ai, TICK);
+    expect(ib === "stanceUp" || ib === "stanceDown").toBe(false);
+    tickDuel(d, null, ib);
+    if (d.f[1].state.kind === "attack") attacked = true;
+    expect(d.f[1].height).toBe(startHeight);
+    expect(d.f[1].heightTo).toBe(null);
+    if (d.over) break;
+  }
+  expect(attacked).toBe(true); // otherwise the duelist: it still fights
+});
+
 test("mode 3 crosses the gap and kills an idle opponent", () => {
   const d = createDuel(WEAPONS.longsword, WEAPONS.rapier); // gap 600, out for both
   const startX = d.f[1].x;

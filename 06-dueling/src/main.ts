@@ -30,7 +30,7 @@ const SPEEDS = [0.25, 0.5, 1, 2, 4];
 const state = {
   pWeapon: pick("p", "longsword"),
   eWeapon: pick("e", "rapier"),
-  aiMode: (["0", "1", "2", "3"].includes(params.get("mode") ?? "") ? Number(params.get("mode")) : 0) as AiMode,
+  aiMode: (["0", "1", "2", "3", "4"].includes(params.get("mode") ?? "") ? Number(params.get("mode")) : 0) as AiMode,
   overlay: params.get("overlay") !== "0",
   // A ?seed= pins the AI's jitter so an interesting fight can be replayed.
   seed: Number.isFinite(Number(params.get("seed"))) && params.get("seed") !== null
@@ -151,6 +151,7 @@ document.addEventListener("keydown", (e) => {
     case "1": state.aiMode = 1; break;
     case "2": state.aiMode = 2; break;
     case "3": state.aiMode = 3; break;
+    case "4": state.aiMode = 4; break;
     case "r": startDuel(); break;
     case "m": audio.toggleMute(); break;
     case "`": state.overlay = !state.overlay; break;
