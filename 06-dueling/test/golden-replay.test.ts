@@ -127,7 +127,15 @@ function runScenario(sc: Scenario): { hash: number; endedAt: number | null } {
 describe("golden replay: the simulation is unchanged by the restructure", () => {
   const EXPECTED: Record<string, { hash: number; endedAt: number | null }> = {
     "longsword player advances into mode-3 rapier duelist": { hash: 1489359747, endedAt: 105 },
-    "rapier player against mode-3 longsword, different seed": { hash: 758609725, endedAt: 118 },
+    // Re-recorded at blade-contact, cause verified by per-tick probe: the
+    // duelist's thrust begins at tick 88, the scripted player thrust at
+    // 90 - a same-line near-simultaneous trade. The old build let the
+    // faster rapier resolve first and kill at 118; the blades now cross
+    // at 117 (met, side 1 - the later strike completing the contact),
+    // both resolve parried (118, 133), and the duelist's cut ends the
+    // longer fight at 317. The trade becoming a clash is the spec's
+    // central promise, witnessed in the gate scenario itself.
+    "rapier player against mode-3 longsword, different seed": { hash: 2583423569, endedAt: 317 },
     // Re-recorded at rule D (parry on its own track: the player walks into
     // the first drill strike with the guard riding and parries it), at
     // attack-lines (the drill cycles heights, so its third strike steps the

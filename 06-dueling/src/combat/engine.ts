@@ -139,8 +139,12 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     const tl = atk.state.timeline;
     const baseRecovery = atk.weapon.attacks[atk.state.attack].recovery;
     // The timeline is replaced, never mutated in place: this is its single
-    // post-start write site, at strike resolution.
-    if (gap > atk.weapon.reach) {
+    // post-start write site, at strike resolution. Met is checked BEFORE
+    // reach: a crossing can latch beyond either blade's own reach (the
+    // reach SUM covers wide measure), and steel that met steel ended on
+    // steel - resolving it as a miss would contradict the clash the
+    // simulation already sounded.
+    if (!atk.state.met && gap > atk.weapon.reach) {
       atk.state.timeline = {
         ...tl,
         recoveryEnd: tl.recoveryStart + baseRecovery * atk.weapon.whiffRecoveryFactor,

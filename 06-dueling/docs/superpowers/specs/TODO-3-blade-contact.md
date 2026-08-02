@@ -92,9 +92,23 @@ with two kinds of contact.
 
 All three required, on the same tick:
 
-1. **Both travelling.** Both are `attack` in `strike` with
-   `elapsedMs <= timeline.parryableUntil`. A blade past that mark has arrived;
-   it no longer meets anything.
+1. **Steel in the line, something moving.** Both are `attack` in `strike`,
+   and at least ONE is still travelling (`elapsedMs <= parryableUntil`, with
+   the crossing tick's grace). A delivered blade does not vanish - it stands
+   in the line until its strike ends, and a blade travelling into it finds
+   it; the wound only happens at `strikeEnd`, which is the same doctrine
+   that lets a defender step into a late blade and be hit at resolution.
+   Displacing standing steel before it resolves is the setting-aside. Only
+   two DELIVERED blades never clash, because nothing is moving; a blade past
+   its `strikeEnd` is in recovery and gone from the line.
+
+   An earlier draft required both blades travelling, and playtesting showed
+   why that was wrong: it made the counter's press window (~190ms) narrower
+   than a human reaction (~250ms), so every crossing had to be anticipated
+   rather than read. Steel standing in the line widens the answer window to
+   roughly [begin - 160, begin + 300]ms - reachable on reaction against
+   telegraphed attacks, while the tell-free rapier thrust (press by 160ms)
+   remains uncounterable on reaction, preserving the documented exception.
 2. **Same line.** `lineOf(a).height === lineOf(b).height` and
    `lineOf(a).side === lineOf(b).side`, using `attack-lines`' `lineOf`. Two
    blades have to be in the same place vertically and around the blade to touch.
@@ -152,6 +166,14 @@ strike.
 
 Both attacks in a crossing are marked `met`. Neither can wound. Each resolves to
 `parried` at its own `strikeEnd` and pays **its own weapon's** `parriedPenalty`.
+
+**Met resolves before reach.** A crossing can latch beyond either blade's own
+reach - the reach SUM covers wide measure, so two extended blades genuinely
+cross out where neither could wound - and steel that met steel ended on steel:
+it resolves `parried`, never `whiff`, or the clash the simulation already
+sounded would be contradicted by a "misses" line. The whiff branch applies
+only to unmet blades. (Two wide thrusts can therefore ring; they still can
+never hit, since a wound requires the gap inside the attacker's own reach.)
 
 That is 290 ms for the longsword against 360 ms for the rapier, so after a
 mutual clash the longsword is free 70 ms earlier and owns the next tempo.

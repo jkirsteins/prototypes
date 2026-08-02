@@ -70,15 +70,31 @@ export function parryMeetsAttack(attacker: Fighter, defender: Fighter, gap: numb
   return line.height === p.targetLine.height && line.side === p.targetLine.side;
 }
 
+/** Steel is present in the line: in the strike, travelling or delivered. */
+function inStrike(f: Fighter): boolean {
+  return f.state.kind === "attack" && f.state.phase === "strike";
+}
+
 /**
- * True if two travelling blades cross on this tick. Symmetric in its
- * arguments: neither fighter is the defender. Both blades must be in their
- * meetable half, on the same line (both axes), with their extensions
- * together covering the gap - so the clash tick depends on the distance,
- * and blades genuinely far apart in tempo never meet at all.
+ * True if two attacking blades cross on this tick. Symmetric in its
+ * arguments: neither fighter is the defender. A TRAVELLING blade meets any
+ * steel in its line - the other blade travelling toward it, or already
+ * delivered but still standing in its strike: a delivered blade does not
+ * vanish, it occupies the line until the strike ends. Only two delivered
+ * blades never clash, because nothing is moving. Both must be on one line
+ * (both axes) with their extensions together covering the gap, so the
+ * clash tick depends on the distance and blades far apart in tempo never
+ * meet at all.
+ *
+ * The one-travelling rule is also what makes answering an attack with an
+ * attack humanly possible: requiring both blades in their travelling
+ * halves gave the counter a press window narrower than a reaction time,
+ * so every crossing had to be anticipated. Steel that stands in the line
+ * widens it to a read.
  */
 export function bladesCross(a: Fighter, b: Fighter, gap: number): boolean {
-  if (!travelling(a) || !travelling(b)) return false;
+  if (!inStrike(a) || !inStrike(b)) return false;
+  if (!travelling(a) && !travelling(b)) return false; // two delivered blades: nothing moves
   const la = lineOf(a);
   const lb = lineOf(b);
   if (la.height !== lb.height || la.side !== lb.side) return false;

@@ -79,9 +79,19 @@ describe("bladesCross: conditions falsified independently", () => {
       expect(bladesCross(a, b, gap)).toBe(bladesCross(b, a, gap));
     }
   });
-  test("travel alone fails: one blade is already delivered", () => {
-    const a = attacker(w, "thrust", full + TICK + 1); // past the meetable half and its grace tick
-    const b = attacker(w, "thrust", full);
+  test("a travelling blade meets a delivered one still standing in its strike", () => {
+    const a = attacker(w, "thrust", full + TICK + 1); // delivered, strike not yet over
+    const b = attacker(w, "thrust", full - 20); // still travelling
+    expect(bladesCross(a, b, 100)).toBe(true);
+  });
+  test("motion alone fails: two delivered blades never clash", () => {
+    const a = attacker(w, "thrust", full + TICK + 1);
+    const b = attacker(w, "thrust", full + TICK + 1);
+    expect(bladesCross(a, b, 100)).toBe(false);
+  });
+  test("presence alone fails: a blade past its strike is gone from the line", () => {
+    const a = attacker(w, "thrust", t.windup + t.beat + t.strike + 1); // recovery
+    const b = attacker(w, "thrust", full - 20);
     expect(bladesCross(a, b, 100)).toBe(false);
   });
   test("travel alone fails: one blade is still winding up", () => {
@@ -168,14 +178,49 @@ describe("crossings in real duels", () => {
     expect(ticks[1]).toBeLessThan(ticks[2]);
   });
 
+  test("a reactive counter now crosses: pressed a full reaction after the attack starts", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    d.f[0].x = 1000;
+    d.f[1].x = 1180;
+    // The AI thrust becomes visible at 0; the player answers at 250 - the
+    // human budget. The player's travel begins at 570, inside the AI
+    // blade's delivered-but-standing strike (ends 620): steel in the line.
+    let evs = runMs(d, TICK, null, "thrust");
+    evs = evs.concat(runMs(d, 250 - TICK));
+    evs = evs.concat(runMs(d, 1400, "thrust", null));
+    expect(evs.filter((e) => e.kind === "met").length).toBe(1);
+    expect(evs.some((e) => e.kind === "parried" && e.side === 0)).toBe(true);
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+    expect(d.over).toBe(false);
+  });
+
+  test("two thrusts at wide measure cross mid-air: steel rings, nobody can be wounded", () => {
+    // The reach SUM covers wide gaps: extended blades genuinely cross out
+    // where neither could reach flesh. Steel that met steel ended on steel -
+    // both resolve parried, never whiff, or the clash the simulation
+    // sounded would be contradicted by a "misses" line.
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    d.f[0].x = 1000;
+    d.f[1].x = 1290; // wide for both (LS reach 200, rapier 240), under the 440 sum
+    const evs = runMs(d, 1600, "thrust", "thrust");
+    expect(evs.filter((e) => e.kind === "met").length).toBe(1);
+    expect(evs.some((e) => e.kind === "whiff")).toBe(false);
+    expect(evs.some((e) => e.kind === "parried" && e.side === 0)).toBe(true);
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "hit")).toBe(false);
+    expect(d.over).toBe(false);
+  });
+
   test("disjoint travel windows do not clash: the earlier blade resolves alone", () => {
     const d = createDuel(WEAPONS.rapier, WEAPONS.rapier);
     d.f[0].x = 1000;
     d.f[1].x = 1180;
-    // Side 1's thrust is telegraphed (140ms); launching side 0's thrust 300ms
-    // later puts side 1's travel (400..510) fully before side 0's (620..730).
+    // Steel stands in the line for the WHOLE strike now, so disjoint means
+    // the later travel starts after the earlier strikeEnd (620): side 0's
+    // thrust launched at 420 travels 680..790, into empty air where side
+    // 1's blade used to be.
     let evs = runMs(d, TICK, null, "thrust");
-    evs = evs.concat(runMs(d, 300 - TICK));
+    evs = evs.concat(runMs(d, 420 - TICK));
     evs = evs.concat(runMs(d, 1200, "thrust", null));
     expect(evs.some((e) => e.kind === "met")).toBe(false);
     // Side 1 resolves first and kills side 0 mid-attack.
