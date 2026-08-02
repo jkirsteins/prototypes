@@ -364,7 +364,9 @@ function drawLineTrack(v: View, f: Fighter): void {
  * the tell the whole chain of reads builds on.
  */
 export const HEIGHT_BAND_FRAC: Record<Height, number> = { high: 0.8, middle: 0.55, low: 0.3 };
-const LINE_BAR_OFFSET_PX = 26;
+// Clear of the sprite: the body spans ~28px behind centre at SCALE 2, and a
+// bar overlapping the shoulder was unreadable exactly when it mattered.
+const LINE_BAR_OFFSET_PX = 46;
 const LINE_BAR_H = 18;
 const BODY_PX = 80; // 40 sheet rows of body at SCALE 2
 
