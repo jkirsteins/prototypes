@@ -68,8 +68,8 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
   },
   parry: {
     label: "parry",
-    what: "The guard covers one line: your stance's height, and the side of the attack you pressed against (your standing side if none is visible).",
-    player: "Press early enough for its travels to finish while the blade still flies - a late press is a guard that forms over a wound.",
+    what: "Pressed against a visible attack the guard latches onto it and waits for it; a cold press with nothing to answer runs a short window instead.",
+    player: "The guard must stand when the blade REACHES you - the farther they are, the later that is. Early is safe; the price is being readable.",
     ms: (w) => w.parryRiseMs,
   },
   stance: {
@@ -153,13 +153,13 @@ export function renderHelpHtml(): string {
     </table>
 
     <h2>Meeting the blade</h2>
-    <p>A parry succeeds by meeting the blade while it travels: <b>any overlap</b>
-    between your <b>formed</b> guard and the first ${PARRYABLE_FRACTION * 100}%
-    of the strike counts - and the guard only forms once every travel the press
-    implied completes (its rise, its side rotation, your stance's arrival).
-    It covers one complete line - height and side must both match - so an
-    attack at the height you do not stand at, or on the side you did not press
-    against, walks past it. Pressing early is the safe error; a parry is never
+    <p>A parry meets the blade when the blade <b>reaches</b> it: the farther
+    the attacker, the later in the strike that is (at most the first
+    ${PARRYABLE_FRACTION * 100}%). A press against a visible attack
+    <b>latches</b> onto that attack - the guard will not lapse while it is
+    still coming, and ends with it, met, missed or abandoned. It never
+    retargets: the guard covers the one line it snapshotted, height and side
+    both, so an attack that arrives elsewhere walks past it. A parry is never
     queued, so a press mid-step is simply lost.</p>
     <ul>${parryRows}</ul>
 

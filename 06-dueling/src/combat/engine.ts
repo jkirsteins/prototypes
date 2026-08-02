@@ -68,9 +68,16 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     // simulation only sees a target side.
     const opp = d.f[1 - side];
     const threatVisible = opp.state.kind === "attack" && opp.state.phase !== "recovery";
+    // A parry pressed against a visible attack latches onto that attack's
+    // identity - the absolute time it began - and infers its side. Both
+    // read only what is visible on this tick; a cold press gets neither.
     const r = applyIntent(d.f[side], intent, {
       windupBonusMs: side === 1 ? d.f[side].weapon.telegraphMs : 0,
       targetSide: intent === "parry" && threatVisible ? lineOf(opp).side : undefined,
+      targetAttackStartTime:
+        intent === "parry" && threatVisible && opp.state.kind === "attack"
+          ? d.time - opp.state.elapsedMs
+          : undefined,
     });
     if (r === "accepted" && before !== d.f[side].state.kind) {
       const k = d.f[side].state.kind;
@@ -185,6 +192,26 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     d.over = true;
     d.winner = hits[0];
     emit(d, out, hits[0], "kill", `${d.f[hits[0]].weapon.name} kills`);
+  }
+
+  // A latched parry ends with its attack, however the attack ends: contact
+  // (the parried branch above released it already), a miss, a feint
+  // cancellation, or the attacker struck down. The sweep asks one question -
+  // does the attack this parry waits for still exist, unresolved? - and
+  // releases the guard at its normal recovery price when the answer is no.
+  for (const side of [0, 1] as const) {
+    const f = d.f[side];
+    const p = f.parry;
+    if (p === null || p.targetAttackStartTime === null) continue;
+    const o = d.f[1 - side].state;
+    const alive =
+      o.kind === "attack" &&
+      o.phase !== "recovery" &&
+      Math.abs(d.time - o.elapsedMs - p.targetAttackStartTime) < TICK / 2;
+    if (!alive) {
+      f.parry = null;
+      f.parryRecoveryMs = f.weapon.parryRecoveryMs;
+    }
   }
   return out;
 }

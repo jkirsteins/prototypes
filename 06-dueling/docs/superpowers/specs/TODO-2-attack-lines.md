@@ -157,6 +157,17 @@ track holds a target the blade has not reached. **Only `targetLine` past
 `effectiveAtMs` is covered.** Naming the unarrived target "covered" would be
 the instantaneous parry's lie moved one level down.
 
+**The press also latches.** A parry pressed against a visible attack
+snapshots that attack's identity (the absolute time it began) as
+`targetAttackStartTime`, and a latched parry has NO timed expiry: it waits for
+that attack and ends with it - contact, miss, cancellation, or the attacker
+struck down - at the normal recovery price. Only the predictive cold press,
+with no attack to wait for, runs `parryWindowMs`. The latch never retargets:
+a later redirect leaves the guard covering the line it snapshotted, which is
+what makes deception possible at all. This preserves the early-late tradeoff
+in its honest form: early forms safely but stands readable (and, from
+`line-feints`, feintable); late risks not forming.
+
 **How the covered line is chosen, at the press:**
 
 - **Height** comes from the defender's stance - and a press during a stance

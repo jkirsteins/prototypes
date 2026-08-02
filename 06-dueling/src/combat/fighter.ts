@@ -58,6 +58,15 @@ export interface ParryTrack {
    * moved one level down.
    */
   effectiveAtMs: number;
+  /**
+   * The identity of the attack this parry latched onto at the press: the
+   * absolute duel time that attack began, or null for a predictive cold
+   * press. A latched parry waits for its attack instead of expiring on
+   * the window - and ends with it, however it ends. It never retargets:
+   * a redirect leaves the parry covering the line it snapshotted, which
+   * is the whole reason a feint can work.
+   */
+  targetAttackStartTime: number | null;
 }
 
 /**
@@ -135,7 +144,7 @@ export function createFighter(x: number, facing: 1 | -1, weapon: WeaponProfile):
 export function applyIntent(
   f: Fighter,
   intent: Intent,
-  opts?: { windupBonusMs?: number; targetSide?: Side },
+  opts?: { windupBonusMs?: number; targetSide?: Side; targetAttackStartTime?: number },
 ): "accepted" | "buffered" | "ignored" {
   const k = f.state.kind;
   if (k === "dead" || k === "hitstun") return "ignored";
@@ -202,6 +211,7 @@ export function applyIntent(
           side === f.guardSide ? 0 : f.weapon.sideChangeMs,
           f.heightTo === null ? 0 : f.weapon.heightChangeMs - f.heightT,
         ),
+        targetAttackStartTime: opts?.targetAttackStartTime ?? null,
       };
       return "accepted";
     }
@@ -298,7 +308,12 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
     p.elapsedMs += dt;
     const sideTravel = p.targetLine.side === p.fromLine.side ? 0 : f.weapon.sideChangeMs;
     if (p.elapsedMs >= sideTravel) f.guardSide = p.targetLine.side;
-    if (p.elapsedMs >= f.weapon.parryWindowMs) {
+    // A threat-latched parry (raised against a visible attack) has no
+    // timed expiry: it waits for THAT attack, and the engine ends it when
+    // that attack ends - contact, miss, cancellation, or the attacker
+    // being struck down. Only the predictive cold press, with no attack
+    // to wait for, runs the window.
+    if (p.targetAttackStartTime === null && p.elapsedMs >= f.weapon.parryWindowMs) {
       f.parry = null;
       f.parryRecoveryMs = f.weapon.parryRecoveryMs;
     }

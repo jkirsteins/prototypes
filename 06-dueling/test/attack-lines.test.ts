@@ -157,7 +157,9 @@ describe("the press infers the side; the engine supplies the visible attack", ()
     d2.f[1].x = 1500; // visible, but out of reach: the guard runs its full window
     tickDuel(d2, "cut", null);
     tickDuel(d2, null, "parry");
-    for (let t = 0; t < WEAPONS.longsword.parryWindowMs + WEAPONS.longsword.parryRecoveryMs + 2 * TICK; t += TICK) {
+    // The press latched onto the visible (out-of-reach) cut: it waits for
+    // the whiff at 900ms, then charges recovery - wait past both.
+    for (let t = 0; t < 1700; t += TICK) {
       tickDuel(d2, null, null);
     }
     tickDuel(d2, null, "parry"); // next cold press covers where the guard last stood

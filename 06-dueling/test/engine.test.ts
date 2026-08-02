@@ -124,9 +124,12 @@ describe("attack resolution", () => {
       }
     });
 
-    test("a guard raised too early expires before the blade commits", () => {
-      // Longsword cut: 520ms of preparation against a 200ms rapier guard.
-      expect(outcome("longsword", "rapier", "cut", 0)).toBe("hit");
+    test("a guard latched to a visible slow cut waits it out and meets it", () => {
+      // Longsword cut: 520ms of preparation against a rapier guard whose
+      // window (390ms) would once have lapsed first. The press latches
+      // onto the visible attack and waits - the timed window prices only
+      // predictive cold presses.
+      expect(outcome("longsword", "rapier", "cut", 0)).toBe("parried");
     });
   });
 
