@@ -1,4 +1,4 @@
-# Chains of vassalage: vassal Subjugate/Incorporate, transitive realms, cascading tribute
+# Chains of vassalage: vassal Subjugate/Incorporate, transitive realms
 
 Decided with the user on 2026-08-02. Every "Decided:" line below was an explicit
 answer; the rest follows from the code as it stands.
@@ -7,8 +7,9 @@ answer; the rest follows from the code as it stands.
 
 Vassals may play Subjugate and Incorporate, so chains of vassalage form
 (A -> B -> C, each entry a lord holding the next). The ultimate overlord's
-realm counts everything under it, tribute paid at the bottom of a chain flows
-up hop by hop, and only free factions can win.
+realm counts everything under it, and only free factions can win. (Tribute
+flowing up hop by hop was part of this design and later reversed - see
+section 7.)
 
 ## What does not change
 
@@ -121,39 +122,23 @@ The actor may itself be a vassal; the annexation lands in the actor's own
 Passive Fortify stays with whoever annexed - tempo belongs to the digesting
 lord, not the root.
 
-## 7. Tribute cascade
+## 7. Tribute cascade - REVERSED by the wealth design
 
-Decided: forwarded per hop. When V plays a tribute card in chain
-V -> L -> LL -> ... -> root:
+Decided later the same day (see the 2026-08-02 wealth design, section 3):
+tribute reaches the DIRECT lord only. The cascade below shipped as `8f0cd5e`
+and is removed by the wealth work - the `tribute-forwarded` event type and
+its entries in `NOTICE_RULES`, `nestsUnderItsPlay`, `walkStandings`, the xp
+weights and the hud go with it.
 
-- Hop 1 (exists today): L gains `mult` on the card's track over V, and L's
-  incorporated lands gain the same over V.
-- Each further hop: the next lord gains `mult` on the same track over ITS
-  immediate vassal (the previous link), and that lord's incorporated lands
-  gain the same over that link. LL over L, LLL over LL, up to the root.
-- `mult` is the payer's omen multiplier, once, for every hop: the multiplied
-  tribute is what flows up. Mid-lords' own held readings are untouched.
-- Hostage debt: only V's debt decrements - the play was V's. A forwarded hop
-  is not a payment by the mid-lord and does not move its debt.
-- The walk terminates because the liege rule keeps `overlords` acyclic.
+The reason is consistency with tribute paid in wealth: a track bump can be
+duplicated per hop, a coin cannot, and two tribute rules that differ in reach
+would make the fallback path strictly better for every lord above the first.
+Value still reaches a chain's root because each link's own tribute plays pay
+from the treasury the coins landed in.
 
-Events: the first hop keeps type `tribute`. Each further hop is a new
-`tribute-forwarded` event carrying `track`, `amount`, the mid-lord it was
-taken from and the lord it went to - so `walkStandings` reconstructs every
-counter move exactly and the modal, log and badges cannot disagree. The new
-`GameEventType` forces `NOTICE_RULES` and `nestsUnderItsPlay` decisions at
-compile time:
-
-- `nestsUnderItsPlay`: yes - a forwarded hop is a consequence of the forced
-  tribute play and indents under it, one line per hop with the usual
-  `(Might +1 -> 2)` suffix. Decided: per-hop lines, not a summary; chains are
-  short in practice and a summary would hide numbers the badges show.
-- `NOTICE_RULES`: same rule as `tribute` - notice-worthy when it moves the
-  human's standing (the human is the hop's beneficiary or the one it was
-  taken from).
-- Wording from segments only, faction names never opening the sentence, e.g.
-  "Tribute passed on to [LL] by [L] (Might +1 -> 2)". No card name in the
-  line; the play line above it names the card.
+The original decision, kept for the record: forwarded per hop, each lord
+gaining the payer's multiplied `mult` over its own immediate vassal, hostage
+debt moving only for the payer, per-hop `tribute-forwarded` log lines.
 
 ## 8. Prose and map surfaces
 
@@ -164,10 +149,10 @@ compile time:
   Vassal stripes keep showing the DIRECT lord relationship per pair.
 - The overlord halo keeps haloing the direct lord's realm, which is now that
   lord's full subtree.
-- Card texts: the tribute cards' "grant your overlord +1 Might" gains a short
-  clause about flowing up the chain. Tribute cards are injection-only, so the
-  deck picker's measured tile size is unaffected; Subjugate's text is not
-  growing (its "2 per land of their realm" now simply means the full realm).
+- Card texts: the tribute cards keep naming the direct overlord only (the
+  chain clause left with the cascade - section 7; the wealth design owns
+  their wording now). Subjugate's text is not growing (its "2 per land of
+  their realm" now simply means the full realm).
 
 ## 9. AI and evidence
 
@@ -176,8 +161,8 @@ compile time:
   is covered by the same branches. The emergency-defence step reads
   `threatsTo` and so defends against vassal threats with no new code.
 - `npm run balance` after the batch settles. Expect movement: full-subtree
-  Raid, vassal expansion, cascade tribute all shift bands. The committed
-  seeded fixture will re-derive; that is behaviour change, not rng drift.
+  Raid and vassal expansion shift bands. The committed seeded fixture will
+  re-derive; that is behaviour change, not rng drift.
 
 ## Edge cases pinned by tests
 
@@ -195,10 +180,9 @@ compile time:
 6. Incorporate mid-lord: A incorporates B in A -> B -> C; C is freed with a
    `released` event and stripped tribute cards; B's annexations re-parent to
    A; A's full realm loses C and keeps B's land permanently.
-7. Cascade: C pays military tribute in A -> B -> C with C holding one omen
-   reading: B gains +2 over C, A gains +2 over B, each lord's incorporated
-   lands gain the same over the same link; C's reading is spent; only C's
-   hostage debt (if any) decrements. The modal and log agree per hop.
+7. (Reversed - see section 7.) Tribute in A -> B -> C reaches B only; the
+   wealth design's tests own the tribute rules now, including that no
+   `tribute-forwarded` event is emitted anywhere a chain exists.
 8. Bar: Subjugating B, where B holds vassal C and C has annexed a land with a
    settlement in it, demands 2 per land counting B, C and the annexed land,
    plus 1 on the Might track for the settlement.
@@ -208,9 +192,8 @@ compile time:
     not; a vassal AI subtree at winSize is never the unifier - its root is.
 11. Vassal threats: a vassal whose lead clears the human's bar appears in
     `threatsTo` and flips `danger`.
-12. Naming-convention and standings-agreement suites drive `tribute-forwarded`
-    automatically once it exists; `NOTICE_RULES` and `nestsUnderItsPlay`
-    refuse to compile until classified (that is the point).
+12. (Reversed - see section 7.) `tribute-forwarded` and its suite entries are
+    removed by the wealth work.
 
 ## Out of scope
 

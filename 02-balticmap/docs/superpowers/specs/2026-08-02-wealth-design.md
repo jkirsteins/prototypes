@@ -6,10 +6,10 @@ explicit answer; the rest follows from the code as it stands.
 ## Goal
 
 A per-faction treasury. Settlements generate wealth every round; a vassal's
-tribute pays 1 wealth to its lord before it falls back to the Might/Status
-bump; A feast and Found a settlement cost wealth to play; the human's own
-treasury and income rate sit beside the top status bar. Rivals' treasuries
-are hidden.
+tribute owes 1 per land of its realm, paid to its direct lord in wealth
+before any shortfall falls back to the Might/Status bump; A feast and Found a
+settlement cost wealth to play; the human's own treasury and income rate sit
+beside the top status bar. Rivals' treasuries are hidden.
 
 ## What does not change
 
@@ -19,9 +19,6 @@ are hidden.
 - The tribute cards' injection lifecycle: injected on subjugation, stripped on
   every exit from vassalage, forced while in hand, hostage debt counted in
   plays. Only the resolution inside `playCard`'s tribute branch changes.
-- The zero-wealth tribute path, byte for byte: track bump, omen multiplier
-  spent, incorporated beneficiaries, cascade per the 2026-08-02 vassal-chains
-  design where that has landed.
 - `POLICY_COVERAGE`. Affordability is legality, so `chooseAction` never sees
   an unaffordable play and the existing branches for A feast and Found a
   settlement still name how they are chosen. Whether the AI should SAVE
@@ -52,41 +49,52 @@ there.
   the noise the log filter exists to remove. The HUD rate readout (section 5)
   is where the number lives.
 
-## 3. Tribute pays wealth first (`playCard` tribute branch)
+## 3. Tribute owes 1 per land, pays wealth first (`playCard` tribute branch)
 
-Decided: when the vassal holds at least 1 wealth, the play transfers exactly
-1 wealth vassal -> direct lord and moves no relation counter. With 0 wealth it
-falls back to today's behaviour unchanged.
+Decided: a tribute play owes 1 PER LAND of the payer's own realm - itself plus
+lands incorporated into it, the exact set section 2's income sums over, so you
+pay 1 per land you earn from. A bare vassal owes 1, as today; a vassal holding
+2 incorporated lands owes 3. Vassal lands are excluded here for the same
+reason they are excluded from income: those vassals pay their own tribute.
 
-- Decided: omens exempt. A wealth-paid tribute spends no Favourable omens
-  readings and nothing multiplies it. Consequence for the code: the generic
-  readings-spend at the top of `playCard` becomes conditional - a tribute that
-  will pay in wealth must consume no multiplier and leave the stack held.
-  The fallback path keeps spending and multiplying as today.
-- Only the direct lord receives the coin. The incorporated-beneficiary fan-out
-  exists because relation counters are per-pair; a treasury is one pot.
-- Vassal-chains interaction (2026-08-02 chains design, concurrent work): the
-  track cascade duplicates a BUMP per hop, and a coin cannot duplicate. Rule:
-  a wealth tribute pays the direct lord only and cascades nothing; value still
-  reaches the root because each link's own tribute plays pay wealth first from
-  the treasury those coins landed in. The cascade applies only on the track
-  fallback.
+Decided: mixed payment, wealth first. The play pays `min(owed, treasury)` in
+wealth, transferred vassal -> direct lord, and only the uncovered remainder
+lands as the track bump. A treasury of 2 against 3 owed pays 2 wealth and
++1 on the track; 0 wealth against 1 owed is exactly today's play.
+
+- Decided: omens exempt on the wealth part. Readings are spent only when the
+  remainder is above 0, and they multiply the REMAINDER bump only, never the
+  coins. Consequence for the code: the generic readings-spend at the top of
+  `playCard` becomes conditional on the tribute branch reporting a remainder.
+- Only the direct lord receives the coin - a treasury is one pot. The track
+  remainder keeps today's per-pair fan-out: the lord and the lands
+  incorporated into the lord gain it over the payer.
+- Decided: the tribute cascade (2026-08-02 vassal-chains design section 7,
+  landed as `8f0cd5e`) is REMOVED, so the wealth and track paths stay
+  consistent: tribute reaches the direct lord only, on both paths. Value
+  still reaches a chain's root because each link's own tribute plays pay from
+  the treasury the coins landed in. Removing it deletes the
+  `tribute-forwarded` event type and its entries in `NOTICE_RULES`,
+  `nestsUnderItsPlay`, `walkStandings`, xp weights and the hud, plus its
+  tests. The chains spec carries the reversal note.
 - Hostage debt decrements per play on both paths - the card promises "pay
-  tribute twice" counted in plays.
-- Event: type stays `tribute`. On the wealth path it carries NO `track` and NO
-  `amount` (both mean "moved a relation counter") and instead a new optional
-  `wealth: number` field (always 1 today). `impactText` and the notice line
-  render it as a wealth suffix, e.g. `(1 wealth to overlord)`, so the human
-  lord sees the payment arrive; `walkStandings` ignores events with no
-  `track`, which is what keeps the modal and the log agreeing.
+  tribute twice" counted in plays, whatever was owed or paid.
+- Event: type stays `tribute`. It carries a new optional `wealth: number`
+  (the coins paid) and keeps `track`/`amount` ONLY when a remainder moved a
+  counter - both mean "moved a relation counter", and on a fully-covered
+  payment nothing did. `impactText` and the notice line render the wealth
+  part as a suffix alongside any standing change, e.g. `(2 wealth)` or
+  `(2 wealth, Might +1 -> 2)`, so the modal and the log keep agreeing with
+  `walkStandings`, which reads only `track`/`amount`.
 - Card texts change to state the rule: "Forced: while a vassal, pay 1 wealth
-  to your overlord; with no wealth, grant them +1 Might." (Status likewise.)
-  The two cards are identical while wealth holds out and differ only in their
-  fallback; that is accepted.
-- Stated out loud: paying in wealth keeps the lord's grip from growing, so a
-  solvent vassal is structurally harder to hold and quicker to free itself.
-  That is the intended teeth of the feature; `npm run balance` is the check
-  that it is not degenerate (section 7).
+  per land of your realm to your overlord; what your treasury cannot cover,
+  grant as Might instead." (Status likewise.) The two cards are identical
+  while wealth holds out and differ only in their fallback; that is accepted.
+- Stated out loud, twice over: paying in wealth keeps the lord's grip from
+  growing, so a solvent vassal is structurally harder to hold - and a vassal
+  that incorporates now pays MORE tribute, so growing while subjugated has a
+  real tax. `npm run balance` is the check that neither is degenerate
+  (section 7).
 
 ## 4. Card costs (`src/cards.ts`, `src/playability.ts`)
 
@@ -127,9 +135,12 @@ falls back to today's behaviour unchanged.
 ## 7. Tests and measured gates
 
 - `tests/game.test.ts`: income on turn begin (baseline 1, founded settlements,
-  incorporated lands, vassal lands excluded); wealth tribute transfers 1,
-  moves no counter, spends no readings, works off hostage debt; zero-wealth
-  fallback identical to today; cost deducted on play.
+  incorporated lands, vassal lands excluded); tribute owes 1 per realm land
+  and a fully-covered payment moves no counter and spends no readings; mixed
+  payment (2 wealth against 3 owed pays 2 coins and bumps 1, omens multiplying
+  the 1); a bare broke vassal plays exactly today's +1; hostage debt works off
+  per play on every path; no `tribute-forwarded` event is emitted anywhere a
+  chain exists; cost deducted on play.
 - `tests/cards.test.ts`: the costed set pinned to a literal, like the secret
   set, so a cost cannot appear without somebody reading this design.
 - Legality tests: `cannot-afford` blocks; all-unaffordable hand forces
@@ -148,8 +159,9 @@ falls back to today's behaviour unchanged.
 
 Pick both costed cards in the deck screen. Confirm: they grey out at 0 wealth
 with a readable reason; the readout climbs by the stated rate; founding a
-settlement raises the rate; via `turns=N` into a vassalage, a wealth tribute's
-modal line names wealth and quotes no standing change, and a broke vassal's
-line quotes one. What would look wrong: a wealth-tribute line wearing a
-`(Might +1 -> 2)` suffix, income lines spamming the log, or a balance table
-where A feast is never played.
+settlement raises the rate; via `turns=N` into a vassalage, a fully-covered
+tribute's modal line names wealth and quotes no standing change, a broke
+vassal's quotes only the bump, and a part-covered one shows both. What would
+look wrong: a fully-covered tribute line wearing a `(Might +1 -> 2)` suffix,
+a `tribute-forwarded` line surviving anywhere, income lines spamming the log,
+or a balance table where A feast is never played.
