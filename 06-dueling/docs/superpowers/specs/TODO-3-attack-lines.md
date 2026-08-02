@@ -233,57 +233,56 @@ no amount of HUD text fixes a player who is watching the fighters. The answer is
 not to redraw the sheets for this spec. It is to draw the thing the sheets cannot:
 **a bar over each fighter marking where their blade threatens or guards.**
 
-It is the **same rectangle `drawMeasureBands` already draws on the floor**, lifted
-to the blade's height and thickened. Not a vertical bar: horizontal distance along
-the piste is the only spatial axis the simulation has, so the bar keeps that
-orientation and height is carried by where it sits.
+A short **vertical** bar, fixed length, drawn **behind** the fighter.
 
-- **Horizontal extent:** from the fighter's body centre outward by `reach`, the
-  same value and direction as the floor band.
-- **Vertical position:** one band per `Height`, positions computed from the enum,
-  so enabling `middle` slots in between with no renderer change.
-- **Both fighters share the same Y for a given band.** This is the one place the
-  floor bands' idiom must be inverted: those offset each fighter by `i * 12` so
-  they never collide, and the blade zones must be free to collide, because two
-  zones overlapping is the entire point. Any per-fighter offset breaks it.
-- **Overlap compounds.** Drawn at partial alpha, as the measure bands already are,
-  so the shared region brightens. The contact zone lights up exactly when
-  `gap <= reachA + reachB` holds at a matching height. Per-fighter identity lives
-  on the outline, using the gold and blue tints `drawMeasureBands` already
-  defines; the fill carries the state colour below.
-- **Side:** filled for `inside`, hollow outline for `outside`. Height uses the
-  spatial axis because height is what the defender must match; side gets the
-  cheaper encoding because a guard spans it anyway.
-- **Colour, reusing the existing palette:** `#e6c229` while the blade is meetable,
-  `#6b2f2c` once delivered (both already mean exactly this on the strike bar),
-  `#9b8cff` for an effective guard, dimmed for a guard still rising or a stance
-  with nothing happening.
+- **Position:** `f.x * PX_PER_CM - dir * LINE_BAR_OFFSET`, where `dir` is the
+  facing. It mirrors with the fighter, so it is always behind them and never
+  between the two blades, which is where the eye has to be.
+- **Vertical centre:** the height band. Three positions derived from the sprite
+  metrics in `sheets.ts` rather than hand-placed pixels - fractions of body height
+  above `ARENA.floorY`, so `high` sits at the shoulder, `middle` at the torso and
+  `low` at the thigh. `middle` slots in with no renderer change.
+- **Colour:** the fighter's own tint, the gold and blue `drawMeasureBands` already
+  defines. Identity by colour, since the bar sits beside the fighter it belongs to.
+- **Brightness is the only state channel:** dim for a stance with nothing
+  happening, bright for a live attack or an effective guard.
 
-**This is not an annotation, it is the geometry.** Contact requires
-`gap <= reachA + reachB` and, now, matching heights. Two blade zones at the same
-height overlap on screen exactly when those conditions hold, so **the boxes
-touching is the contact rule, drawn**. The only condition not visible in space is
-the timing one, and that is what the colour carries.
+Both fighters get one. The AI's line must be as legible as the player's, or none
+of the reads in this chain are available.
 
-Because it is the geometry, the renderer reads `reach` and the height bands from
-the same source the contact module does and re-derives nothing, the way the frame
-plan already mirrors the engine's meetable check. A test asserts the drawn extent
-and the contact predicate agree (§8).
+#### Why not a long horizontal zone
 
-Timing follows the timeline marks, per `AGENTS.md` applied to a visual rather than
-a sound: the zone appears dim at `riseStart` (a threat forming), brightens at
-`strikeStart`, darkens at `parryableUntil`, and vanishes at `strikeEnd`. A guard's
-zone appears dim on the press and brightens at `parryRiseMs`.
+An earlier draft of this section drew the bar at reach length, at a shared height,
+so that two of them overlapping would *be* the contact rule. That was wrong.
+`blade-contact` §1 establishes that `gap <= reachA + reachB` is 440 cm, which is
+essentially always true inside fighting measure, so the overlap would be lit
+permanently and would carry no information while covering the sprites. Reach is
+already drawn, on the floor band. Drawing it twice buys nothing.
 
-A stance transition slides the zone between bands over `heightChangeMs`, which is
-what makes the stance move readable at all, and the body gets a matching vertical
-offset on `swordIdle` frame 0. Guards keep `parry-rise`'s rise-and-set frames.
+#### What it deliberately does not show
 
-**It is a bit weird, and it works.** A blade zone is a well-worn fighting-game
-idea, and here it happens to be honest: it draws the simulation's own geometry
-rather than a label about it. It retires the blocking half of the art debt, since
-the game becomes playable by watching the fighters. Height-distinct attack poses
-remain worth doing, but they are now a polish item rather than a prerequisite for
+**Timing.** Row 1's strike bar already shows meetable versus delivered with a
+segmented bar and a cursor. Repeating it here would give one fact two idioms.
+The line bar answers *where*; row 1 answers *when*.
+
+**Side.** It lives in row 3's text. A parry ignores side entirely, so only a
+counter-attacker needs it, which does not yet justify a second spatial encoding.
+Solid fill for `inside` against a hollow outline for `outside` is the reserved
+option if play says otherwise.
+
+#### The slide is the point
+
+A stance change slides the bar between bands over `heightChangeMs`. So does a
+height redirect over `redirectHeightMs`, and a guard shift over `guardShiftMs`.
+That slide is the single most important signal in the chain: it is mode 3's tell
+before it attacks, the feint the defender is racing in `line-feints`, and the
+answer to it. On a short bar a slide is unmistakable; on a long one it would be
+mush. The body gets a matching vertical offset on `swordIdle` frame 0 so the
+sprite does not sit still while its line moves.
+
+**It retires the blocking half of the art debt.** The game becomes playable by
+watching the fighters rather than reading labels. Height-distinct attack poses
+remain worth doing, but they are polish rather than a prerequisite for
 `sustained-bind`.
 
 ### 5.3 Audio
@@ -383,14 +382,16 @@ in `line-feints`'s arithmetic rather than being inherited by accident.
   attack begins; a test asserts no attack starts while `heightTo !== null`.
 - **HUD:** row 3 renders `(attack)`, `(parry)` and `(stance)` in the three cases,
   and renders `MIDDLE` correctly when given a fixture fighter at that height.
-- **Blade zone agrees with the engine:** for a generated spread of gaps and
-  heights, the two drawn zones overlap exactly when the contact module's
-  geometric conditions (reach sum, matching height) both hold. This is the same
-  class as the existing travelling/delivered frame agreement test, and it is what
-  stops the picture and the rules from drifting apart.
-- **Blade zone timing:** the zone's colour changes on the same ticks as
-  `strikeStart`, `parryableUntil`, `strikeEnd` and `parryRiseMs`, asserted at the
-  boundary tick, per `AGENTS.md` applied to a visual.
+- **Line bar agrees with the engine:** the band the bar renders is the height
+  the contact module uses, for a stance, an in-flight attack (its snapshot, not
+  the fighter's current stance) and a raised guard. Same class as the existing
+  travelling/delivered frame agreement test, and it is what stops the picture and
+  the rules from drifting apart.
+- **Line bar mirrors:** the bar is on the opposite side of the body centre from
+  `facing`, asserted for both facings.
+- **Line bar slides:** during a stance transition the bar's centre interpolates
+  between bands over `heightChangeMs` and arrives on the same tick the engine
+  changes `height`, not before it.
 - **Help panel:** the rendered panel cites `heightChangeMs` from `WEAPONS` and
   states the height-must-match, side-is-free rule.
 - **Golden replay:** hash re-recorded.

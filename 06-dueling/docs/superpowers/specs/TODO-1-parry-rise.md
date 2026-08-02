@@ -22,9 +22,12 @@ effective only after `parryRiseMs`. Nothing else changes.
 
 **Delivers:** parries (part 1 of 2; per-line coverage is `attack-lines`).
 
-**Depends on:** `2026-08-02-fighter-state-tracks.md` through step 3 of its §9,
-which extracts `parryMeetsAttack`. §8.2 (defence track) is not required but is
-assumed by the numbers in §5.
+**Depends on:** `2026-08-02-fighter-state-tracks.md`, which has fully landed -
+§8.1's windup cancel in `6daf017` and §8.2's rule D in `dca98c5`. So this spec
+builds on shipped code rather than on a plan: `ParryTrack { t: number }`,
+`parry: ParryTrack | null` and `parryMeetsAttack` all exist as assumed here, and
+§2.2's claim that the track needs no new field is verified rather than
+predicted.
 
 ---
 
