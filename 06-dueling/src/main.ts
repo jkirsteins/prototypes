@@ -159,7 +159,7 @@ loadImages().then((images) => {
         const ib = aiDecide(d, state.aiMode, state.ai, TICK);
         frameEvents.push(...tickDuel(d, ia, ib));
       }
-      audio.frame(frameEvents, state.paused);
+      audio.frame(frameEvents);
       view.overlay = state.overlay;
       drawFrame(view, d, state.aiMode, state.activeSeed, {
         paused: state.paused,

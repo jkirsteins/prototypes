@@ -12,7 +12,7 @@ export const MIN_GAP = 130;
 export interface DuelEvent {
   time: number;
   side: 0 | 1;
-  kind: "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "kill" | "draw" | "step";
+  kind: "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "kill" | "draw" | "step" | "met";
   text: string;
 }
 
@@ -71,7 +71,7 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   }
 
   clampPositions(d);
-  markMetBlades(d);
+  markMetBlades(d, out);
 
   // Gather strike resolutions AFTER both fighters ticked, so same-tick
   // strikes resolve simultaneously (mutual hit = draw).
@@ -130,14 +130,19 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
  * commits" one rule for every weapon, instead of a press time that shifts
  * with each attack's strike duration.
  */
-function markMetBlades(d: Duel): void {
+function markMetBlades(d: Duel, out: DuelEvent[]): void {
   for (const side of [0, 1] as const) {
     const atk = d.f[side];
     const s = atk.state;
     if (s.kind !== "attack" || s.phase !== "strike" || s.met) continue;
     if (s.t > parryableMs(atk.weapon.attacks[s.attack])) continue;
     if (gapOf(d) > atk.weapon.reach) continue; // nothing to meet: out of measure
-    if (d.f[1 - side].state.kind === "parry") s.met = true;
+    if (d.f[1 - side].state.kind === "parry") {
+      s.met = true;
+      // This is the instant of blade contact; "parried" only resolves at
+      // strike end. Presentation-only (the clash sound), so unlogged.
+      out.push({ time: d.time, side, kind: "met", text: "" });
+    }
   }
 }
 

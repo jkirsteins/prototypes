@@ -141,6 +141,26 @@ describe("attack resolution", () => {
   });
 });
 
+describe("met events", () => {
+  test("met fires at blade contact, before parried resolves, and is never logged", () => {
+    const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
+    closeTo(d, 180);
+    const t = WEAPONS.rapier.attacks.thrust;
+    const strikeAt = t.windup + t.beat;
+    const kinds: string[] = [];
+    let ticks = 0;
+    for (let i = 0; i < 300 && !kinds.includes("parried"); i++, ticks++) {
+      const ib = (i + 1) * TICK >= strikeAt && !kinds.includes("met") ? "parry" : null;
+      kinds.push(...tickDuel(d, i === 0 ? "thrust" : null, ib).map((e) => e.kind));
+    }
+    const metAt = kinds.indexOf("met");
+    const parriedAt = kinds.indexOf("parried");
+    expect(metAt).toBeGreaterThanOrEqual(0);
+    expect(parriedAt).toBeGreaterThan(metAt);
+    expect(d.log.some((e) => e.kind === "met")).toBe(false);
+  });
+});
+
 describe("step events", () => {
   test("an accepted advance returns a step event but never logs it", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
