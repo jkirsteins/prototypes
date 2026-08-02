@@ -4,6 +4,7 @@ import { createDuel, tickDuel } from "./combat/engine";
 import { WEAPONS } from "./combat/weapons";
 import { drawFrame } from "./render/draw";
 import { loadImages } from "./render/loader";
+import { showSelect } from "./ui/select";
 import type { AiMode } from "./combat/ai";
 import type { Duel } from "./combat/engine";
 import type { Intent, WeaponId } from "./combat/types";
@@ -18,6 +19,9 @@ const pick = (key: string, fallback: WeaponId): WeaponId => {
   const v = params.get(key);
   return v === "longsword" || v === "rapier" ? v : fallback;
 };
+// Browser-check convention: a p or e param means the URL is asking for a
+// specific matchup, so boot straight into the duel instead of the picker.
+const bootStraightIn = params.has("p") || params.has("e");
 
 const state = {
   pWeapon: pick("p", "longsword"),
@@ -36,8 +40,19 @@ function startDuel(): void {
   state.pending = null;
 }
 
+function openSelect(): void {
+  showSelect({ p: state.pWeapon, e: state.eWeapon }, (p, e) => {
+    state.pWeapon = p;
+    state.eWeapon = e;
+    startDuel();
+  });
+}
+
 document.addEventListener("keydown", (e) => {
   if (e.repeat) return;
+  // The select screen owns the keyboard while no duel is running; it adds
+  // and removes its own listener via showSelect/hideSelect.
+  if (state.duel === null) return;
   switch (e.key.toLowerCase()) {
     case "a": state.held.retreat = true; break;
     case "d": state.held.advance = true; break;
@@ -50,6 +65,7 @@ document.addEventListener("keydown", (e) => {
     case "2": state.aiMode = 2; break;
     case "r": startDuel(); break;
     case "`": state.overlay = !state.overlay; break;
+    case "escape": state.duel = null; openSelect(); break;
   }
 });
 document.addEventListener("keyup", (e) => {
@@ -71,7 +87,8 @@ document.addEventListener("keyup", (e) => {
 
 loadImages().then((images) => {
   const view: View = { ctx, images, overlay: state.overlay };
-  startDuel();
+  if (bootStraightIn) startDuel();
+  else openSelect();
   let last = performance.now();
   let acc = 0;
   const frame = (now: number): void => {

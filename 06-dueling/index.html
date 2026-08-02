@@ -9,10 +9,27 @@
         font-family: ui-monospace, Menlo, monospace; }
       #wrap { display: flex; align-items: center; justify-content: center; height: 100%; }
       canvas { image-rendering: pixelated; background: #1b1e24; }
+      #select { position: fixed; inset: 0; background: rgba(16,18,22,0.96);
+        display: flex; flex-direction: column; align-items: center; justify-content: center; }
+      #select .cols { display: flex; gap: 48px; }
+      #select .col { width: 300px; }
+      #select .option { border: 1px solid #3a404c; padding: 10px 12px; margin: 8px 0; }
+      #select .option.picked { border-color: #e6c229; }
+      #select .col.active h2 { color: #e6c229; }
+      #select .hint { color: #8a8f98; margin-top: 24px; }
+      #select .bar { height: 4px; background: #4aa3df; }
     </style>
   </head>
   <body>
     <div id="wrap"><canvas id="game" width="960" height="540"></canvas></div>
+    <div id="select" hidden>
+      <h1>Choose the swords</h1>
+      <div class="cols">
+        <div class="col" data-col="p"><h2>You</h2></div>
+        <div class="col" data-col="e"><h2>Opponent (AI)</h2></div>
+      </div>
+      <p class="hint">A/D switch column - W/S switch sword - 1/2 direct pick - Enter to duel</p>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
