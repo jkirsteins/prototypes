@@ -2,7 +2,7 @@ import {
   CARDS, DOUBLABLE_CARDS, guardAgainst, isGuardCard, isTributeCard,
 } from "./cards";
 import {
-  allianceActive, fullRealmOf, leadsOf, overlordChainOf, pactBetween, realmOf,
+  allianceActive, fullRealmOf, leadsOf, overlordChainOf, pactBetween,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 
