@@ -36,6 +36,16 @@ export interface ParryTrack {
   t: number;
 }
 
+/**
+ * The guard is formed and can meet a blade. Before this it is only visible:
+ * raising a sword takes time (parryRiseMs), so a press is input to the
+ * simulation, never a formed guard - the same rule every other action
+ * already follows.
+ */
+export function guardEffective(f: Fighter): boolean {
+  return f.parry !== null && f.parry.t >= f.weapon.parryRiseMs;
+}
+
 export interface Fighter {
   x: number;
   facing: 1 | -1;

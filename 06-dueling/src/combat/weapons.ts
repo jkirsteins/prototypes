@@ -20,7 +20,10 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
       cut:    { windup: 420, beat: 100, strike: 380, recovery: 420 },
       thrust: { windup: 260, beat: 60,  strike: 260, recovery: 300 },
     },
-    parryWindowMs: 260,
+    parryRiseMs: 220,
+    // Window = rise + the pre-rise window (260), so the effective span is
+    // unchanged and the rise's whole cost is the earlier press deadline.
+    parryWindowMs: 480,
     parryRecoveryMs: 340,
     feintRecoveryMs: 160,
     parriedPenalty: 290,
@@ -42,7 +45,8 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
       cut:    { windup: 320, beat: 80, strike: 300, recovery: 400 },
       thrust: { windup: 200, beat: 60, strike: 220, recovery: 260 },
     },
-    parryWindowMs: 200,
+    parryRiseMs: 190,
+    parryWindowMs: 390,
     parryRecoveryMs: 400,
     feintRecoveryMs: 120,
     parriedPenalty: 360,

@@ -68,9 +68,9 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry", HelpEntr
   },
   parry: {
     label: "parry",
-    what: "The guard runs on its own clock beside your feet: raised while standing, it persists through a step; attacking or voiding drops it at full recovery cost.",
-    player: "Press early rather than late: any overlap with the strike's meetable half counts.",
-    ms: (w) => w.parryWindowMs,
+    what: "The guard rises first and only the formed guard meets a blade; raised while standing it persists through a step, dropped at full cost by attacking or voiding.",
+    player: "Press early enough for the rise to finish while the blade still travels - a late press is a guard that forms over a wound.",
+    ms: (w) => w.parryRiseMs,
   },
   hitstun: {
     label: "hitstun",
@@ -123,8 +123,8 @@ export function renderHelpHtml(): string {
   const parryRows = ws.map((w) => {
     const t = w.attacks.thrust;
     const meetable = t.strike * PARRYABLE_FRACTION;
-    const window = w.parryWindowMs + meetable;
-    return `<li>${esc(w.name)} thrust: meetable for the strike's first ${meetable}ms; with a ${w.parryWindowMs}ms guard the practical window is ${window}ms wide, opening before the strike does.</li>`;
+    const deadline = w.parryRiseMs - meetable;
+    return `<li>${esc(w.name)} thrust: the guard rises in ${w.parryRiseMs}ms and holds for ${w.parryWindowMs - w.parryRiseMs}ms; the blade is meetable for the strike's first ${meetable}ms, so the last press that can catch it lands ${deadline}ms before the strike starts.</li>`;
   }).join("");
 
   const costs = ws.map((w) => {
@@ -147,10 +147,11 @@ export function renderHelpHtml(): string {
     </table>
 
     <h2>Meeting the blade</h2>
-    <p>A parry succeeds by meeting the blade while it travels, not by being up
-    at the instant of impact: <b>any overlap</b> between your guard and the
-    first ${PARRYABLE_FRACTION * 100}% of the strike counts. Pressing early is
-    the safe error; a parry is never queued, so a press mid-step is simply lost.</p>
+    <p>A parry succeeds by meeting the blade while it travels: <b>any overlap</b>
+    between your <b>formed</b> guard and the first ${PARRYABLE_FRACTION * 100}%
+    of the strike counts - and the guard only forms once its rise completes.
+    Pressing early is the safe error; a parry is never queued, so a press
+    mid-step is simply lost.</p>
     <ul>${parryRows}</ul>
 
     <h2>Measure</h2>

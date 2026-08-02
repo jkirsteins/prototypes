@@ -53,13 +53,16 @@ describe("attack resolution", () => {
   test("parried: attacker eats the penalty, defender counters (dui tempi)", () => {
     const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
     closeTo(d, 180); // inside both reaches
-    // Rapier thrusts; longsword meets the blade as the strike commits.
+    // Rapier thrusts; longsword presses early enough that the guard's rise
+    // completes as the strike begins (a press at the commit itself would be
+    // a guard forming over a wound).
     const t = WEAPONS.rapier.attacks.thrust;
     let evs = runMs(d, TICK, "thrust", null);
     const strikeAt = t.windup + t.beat;
-    evs = evs.concat(runMs(d, strikeAt - TICK));
+    const press = strikeAt - WEAPONS.longsword.parryRiseMs;
+    evs = evs.concat(runMs(d, press - TICK));
     evs = evs.concat(runMs(d, TICK, null, "parry"));
-    evs = evs.concat(runMs(d, t.strike + 2 * TICK));
+    evs = evs.concat(runMs(d, strikeAt - press + t.strike + 2 * TICK));
     expect(evs.some((e) => e.kind === "parried" && e.side === 0)).toBe(true);
     // dui tempi: defender thrusts immediately after the parry resolves
     const evs2 = runMs(d, 2000, null, "thrust");
@@ -90,24 +93,26 @@ describe("attack resolution", () => {
       ["rapier", "rapier", "cut"],
     ];
 
-    test("one rule for every weapon: meeting the blade as it commits always works", () => {
-      // The learnable grammar. Under the old instant-based resolution this
-      // press succeeded for fast attacks and failed for slow ones.
+    test("one rule for every weapon: a press one rise before the deadline always works", () => {
+      // The learnable grammar. The guard must be FORMED while the blade
+      // still travels, so the last viable press is parryableUntil minus the
+      // defender's rise - one rule, every weapon pair.
       for (const [atk, def, kind] of cases) {
         const t = WEAPONS[atk].attacks[kind];
         const strikeAt = t.windup + t.beat;
-        expect(outcome(atk, def, kind, strikeAt)).toBe("parried");
+        const deadline = strikeAt + parryableMs(t) - WEAPONS[def].parryRiseMs;
+        expect(outcome(atk, def, kind, deadline - 2 * TICK)).toBe("parried");
       }
     });
 
-    test("the guard may go up early, while the blade still travels, or anywhere between", () => {
+    test("the guard may go up early, or exactly one rise before the commit", () => {
       for (const [atk, def, kind] of cases) {
         const t = WEAPONS[atk].attacks[kind];
         const strikeAt = t.windup + t.beat;
         const early = strikeAt - WEAPONS[def].parryWindowMs / 2;
-        const late = strikeAt + parryableMs(t) - 30;
+        const formedAtCommit = strikeAt - WEAPONS[def].parryRiseMs;
         expect(outcome(atk, def, kind, Math.max(0, early))).toBe("parried");
-        expect(outcome(atk, def, kind, late)).toBe("parried");
+        expect(outcome(atk, def, kind, Math.max(0, formedAtCommit))).toBe("parried");
       }
     });
 
@@ -137,7 +142,12 @@ describe("attack resolution", () => {
       if (s.kind !== "attack") throw new Error("unreachable");
       s.phase = "strike";
       s.elapsedMs = s.timeline.strikeStart + elapsedOffset;
-      if (defenderParries) applyIntent(d.f[1], "parry");
+      if (defenderParries) {
+        applyIntent(d.f[1], "parry");
+        // A formed guard: the rise condition has its own falsification
+        // tests in parry-rise.test.ts; here it is held true.
+        if (d.f[1].parry !== null) d.f[1].parry.t = WEAPONS.longsword.parryRiseMs;
+      }
       return d;
     };
     const t = WEAPONS.rapier.attacks.thrust;
@@ -172,13 +182,16 @@ describe("attack resolution", () => {
     closeTo(d, 180);
     const t = WEAPONS.rapier.attacks.thrust;
     const strikeAt = t.windup + t.beat;
-    // Guard up half a window before the strike, then step away on the very
-    // next tick: the feet are committed when the blade arrives.
-    const raiseTick = Math.round((strikeAt - WEAPONS.longsword.parryWindowMs / 2) / TICK) - 1;
+    // Guard raised at once (its rise needs the lead), then a step timed so
+    // the feet are mid-travel when the blade arrives at the guard - the
+    // arrival is parryableUntil, and the step must straddle it.
+    const raiseTick = 1;
+    const arriveAt = strikeAt + parryableMs(t);
+    const stepTick = Math.round((arriveAt - WEAPONS.longsword.stepDuration / 2) / TICK);
     const evs: DuelEvent[] = [];
     let steppingAtMet = false;
     for (let i = 0; i < 300 && !evs.some((e) => e.kind === "parried"); i++) {
-      const ib: Intent | null = i === raiseTick ? "parry" : i === raiseTick + 1 ? "retreat" : null;
+      const ib: Intent | null = i === raiseTick ? "parry" : i === stepTick ? "retreat" : null;
       const tick = tickDuel(d, i === 0 ? "thrust" : null, ib);
       if (tick.some((e) => e.kind === "met")) steppingAtMet = d.f[1].state.kind === "step";
       evs.push(...tick);

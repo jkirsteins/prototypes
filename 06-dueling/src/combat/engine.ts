@@ -1,4 +1,4 @@
-import { applyIntent, TICK, tickFighter } from "./fighter";
+import { applyIntent, guardEffective, TICK, tickFighter } from "./fighter";
 import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
 import type { Intent, WeaponProfile } from "./types";
@@ -196,7 +196,7 @@ export function parryMeetsAttack(attacker: Fighter, defender: Fighter, gap: numb
   if (s.kind !== "attack" || s.phase !== "strike") return false;
   if (s.elapsedMs > s.timeline.parryableUntil) return false; // delivered: too late
   if (gap > attacker.weapon.reach) return false; // nothing to meet: out of measure
-  return defender.parry !== null;
+  return guardEffective(defender); // a still-rising guard is visible, not formed
 }
 
 function markMetBlades(d: Duel): void {

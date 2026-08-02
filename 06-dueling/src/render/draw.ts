@@ -1,5 +1,5 @@
 import { ARENA, gapOf } from "../combat/engine";
-import { HIT_STUN_MS } from "../combat/fighter";
+import { HIT_STUN_MS, guardEffective } from "../combat/fighter";
 import { controlsLine } from "../ui/help";
 import { lastLines } from "../combat/log";
 import { zoneFor } from "../combat/measure";
@@ -283,12 +283,32 @@ function bodyFraction(f: Fighter): number | null {
   }
 }
 
-/** Row 2: the parry track - window while up, recovery while spent. */
+/** Row 2: the parry track - rise then window while up, recovery while spent. */
 function drawParryTrack(v: View, f: Fighter): void {
   const cx = f.x * PX_PER_CM;
   const cooling = f.parryRecoveryMs > 0;
   if (f.parry !== null) {
-    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "parry up", "#9b8cff", f.parry.t / f.weapon.parryWindowMs);
+    // The strike bar's idiom, applied to the guard: the rise segment dim,
+    // the effective segment bright, a cursor riding parry.t - so "is my
+    // guard formed yet" is answered the same way "is the blade meetable".
+    const { ctx } = v;
+    const w = f.weapon;
+    const rising = !guardEffective(f);
+    ctx.font = "11px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = rising ? "#6f66a8" : "#9b8cff";
+    ctx.fillText(rising ? "guard rising" : "guard up", cx, ARENA.floorY + ROW2_LABEL_Y);
+    ctx.textAlign = "left";
+    const x = cx - TRACK_BAR_W / 2;
+    const y = ARENA.floorY + ROW2_BAR_Y;
+    const riseW = TRACK_BAR_W * (w.parryRiseMs / w.parryWindowMs);
+    ctx.fillStyle = "#4a4568"; // rise: visible, not yet formed
+    ctx.fillRect(x, y, riseW, TRACK_BAR_H);
+    ctx.fillStyle = "#9b8cff"; // effective span
+    ctx.fillRect(x + riseW, y, TRACK_BAR_W - riseW, TRACK_BAR_H);
+    const cur = Math.min(1, f.parry.t / w.parryWindowMs);
+    ctx.fillStyle = "#e8eaed";
+    ctx.fillRect(x + cur * TRACK_BAR_W - 1, y - 2, 2, TRACK_BAR_H + 4);
   } else if (cooling) {
     drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "recovering", "#6b6675", 1 - f.parryRecoveryMs / f.weapon.parryRecoveryMs);
   } else {

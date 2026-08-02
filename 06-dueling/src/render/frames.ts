@@ -1,4 +1,4 @@
-import { DEATH_ANIM_MS, HIT_STUN_MS } from "../combat/fighter";
+import { DEATH_ANIM_MS, HIT_STUN_MS, guardEffective } from "../combat/fighter";
 import { SHEETS } from "./sheets";
 import type { Fighter } from "../combat/fighter";
 import type { SheetName } from "./sheets";
@@ -60,8 +60,10 @@ export function pickFrame(f: Fighter, timeMs: number): FramePick {
   switch (s.kind) {
     case "ready": {
       // A raised parry drives the pose while standing. No parry sheet in
-      // the template: hold the raised-guard windup frame.
-      if (f.parry !== null) return { sheet: "swordAttack", frame: 1, flip };
+      // the template: the rising guard holds the blade-in-motion windup
+      // frame (trailing arc), the formed guard the settled apex frame -
+      // the rise is drawn, not just simulated.
+      if (f.parry !== null) return { sheet: "swordAttack", frame: guardEffective(f) ? 2 : 1, flip };
       // Settling after a step reads as stillness, not the relaxed idle sway.
       if (f.stepRecoveryMs > 0) return { sheet: "swordIdle", frame: 0, flip };
       const per = IDLE_FRAME_MS / w.animSpeed;

@@ -135,7 +135,14 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // guard riding along and parries it (met t143, parried t150) where the
     // old build stood stranded and the strike whiffed. Same death, t393.
     "drill metronome: parry the first beat, void the second into a whiff": { hash: 1598480532, endedAt: 393 },
-    "parry dummy reads the player's telegraph-free attacks": { hash: 1637068997, endedAt: null },
+    // Re-recorded once at the parry-rise step (TODO-1), the sanctioned
+    // gameplay change: the guard now needs parryRiseMs to form, so the
+    // dummy's reactive answer to the tell-free rapier thrust (260ms of
+    // preparation against 180ms reaction + 190ms rise) forms ~30ms after
+    // the blade stops being meetable - the documented coverage failure,
+    // pinned independently by parry-rise.test.ts. The scripted thrust at
+    // tick 160 therefore kills at tick 188 where the old build was parried.
+    "parry dummy reads the player's telegraph-free attacks": { hash: 3658309345, endedAt: 188 },
   };
 
   for (const sc of SCENARIOS) {

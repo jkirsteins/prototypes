@@ -30,6 +30,8 @@ export interface WeaponProfile {
   /** extra windup on AI attacks: the telegraph the player reads */
   telegraphMs: number;
   attacks: Record<AttackKind, AttackTimings>;
+  /** the guard's travel: visible from the press, effective only after this */
+  parryRiseMs: number;
   parryWindowMs: number;
   /** how long after a spent parry the next one is available; gates only the parry */
   parryRecoveryMs: number;

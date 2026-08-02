@@ -41,7 +41,9 @@ describe("the help panel stays current and concise", () => {
     for (const w of Object.values(WEAPONS)) {
       const t = w.attacks.thrust;
       expect(html).toContain(`${t.strike * 0.5}ms`); // meetable half
-      expect(html).toContain(`${w.parryWindowMs + t.strike * 0.5}ms`); // practical window
+      expect(html).toContain(`${w.parryRiseMs}ms`); // the guard's rise
+      expect(html).toContain(`${w.parryWindowMs - w.parryRiseMs}ms`); // effective hold
+      expect(html).toContain(`${w.parryRiseMs - t.strike * 0.5}ms`); // press deadline before the strike
       expect(html).toContain(`${t.recovery * w.whiffRecoveryFactor}ms`); // whiff cost
       expect(html).toContain(`${t.recovery + w.parriedPenalty}ms`); // parried cost
       expect(html).toContain(`${w.feintRecoveryMs}ms`); // feint cost

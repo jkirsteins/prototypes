@@ -78,13 +78,17 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     if (gapOf(d) > opp.weapon.reach) return null;
     const { phase, elapsedMs, timeline } = opp.state;
     if (phase === "recovery") return null;
-    // Meet the blade as it commits: raise the guard so it is up when the
-    // strike begins, which is when the blade first becomes meetable. The
-    // attack's own timeline is the read - no re-derived phase arithmetic.
+    // Meet the blade as it commits: press so the guard is FORMED when the
+    // strike begins - the press must lead by the rise, plus half the
+    // effective span as margin. With rise 0 this reduces to the old
+    // half-window heuristic; with it, the dummy visibly cannot answer
+    // attacks whose preparation is shorter than reaction + rise (the
+    // rapier thrust - a documented, tested failure, not a bug).
     const untilStrike = timeline.strikeStart - elapsedMs;
+    const lead = self.weapon.parryRiseMs + (self.weapon.parryWindowMs - self.weapon.parryRiseMs) * 0.5;
     if (
       elapsedMs >= AI_REACTION_MS &&
-      untilStrike <= self.weapon.parryWindowMs * 0.5 &&
+      untilStrike <= lead &&
       self.state.kind === "ready" &&
       self.parry === null &&
       self.stepRecoveryMs <= 0 &&
