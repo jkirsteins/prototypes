@@ -649,6 +649,40 @@ describe("found a settlement (steps 7b and 9b)", () => {
   });
 });
 
+describe("vassal seats use the conquest cards", () => {
+  it("a vassal with the lead subjugates rather than growing crops", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "delta"]]) };
+    g = { ...g, relations: lead(g.relations, "alpha", "gamma", 2) };
+    g = withHand(g, ["subjugate", "grow-crops"]);
+    expect(chooseAction(g)).toMatchObject({
+      type: "play", cardIndex: 0, targetId: "gamma",
+    });
+  });
+
+  it("fan-out defence counts vassal rivals as threats", () => {
+    // gamma is delta's vassal AND leads alpha on might: still a threat now
+    let g = base();
+    g = { ...g, overlords: new Map([["gamma", "delta"]]) };
+    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 3) };
+    g = withHand(g, ["fortify", "grow-crops"]);
+    expect(chooseAction(g)).toMatchObject({ type: "play", cardIndex: 0 });
+  });
+
+  it("incorporate refuses a digest whose freed subtree outweighs the land kept", () => {
+    // alpha's vassal gamma holds delta: digesting gamma keeps 1 land and
+    // frees a 1-land subtree - net nothing, so hold the card.
+    let g = base();
+    g = {
+      ...g,
+      overlords: new Map([["gamma", "alpha"], ["delta", "gamma"]]),
+    };
+    g = digestedAll(g, ["gamma"], "alpha");
+    g = withHand(g, ["incorporate", "grow-crops"]);
+    expect(chooseAction(g)).toMatchObject({ type: "play", cardIndex: 1 });
+  });
+});
+
 describe("POLICY_COVERAGE", () => {
   it("names a policy branch for every card in the game", () => {
     expect(Object.keys(POLICY_COVERAGE).sort()).toEqual(Object.keys(CARDS).sort());

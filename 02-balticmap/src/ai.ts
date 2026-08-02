@@ -2,7 +2,7 @@ import {
   CARDS, DOUBLABLE_CARDS, isTributeCard, TRIBUTE_CARDS,
   type Rng, type TributeTrack,
 } from "./cards";
-import { leadsOf, realmOf } from "./relations";
+import { fullRealmOf, leadsOf, realmOf } from "./relations";
 import {
   holdsGuard, leadsIn, omenMultiplier, playableSet, raidGainFor, subjugationGripOn,
   subjugationRequirement, poachSurchargeOn, subjugationChance,
@@ -37,8 +37,8 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "pay-status-tribute": "1: forced tribute, weaker track first",
   "revolt": "2: revolt out of vassalage",
   "seeds-of-revolt": "2a: sow a revolt while a vassal",
-  "incorporate": "3: incorporate the vassal with the best land-times-odds",
-  "subjugate": "4: subjugate the biggest lead",
+  "incorporate": "3: incorporate the best permanent gain net of freed vassals",
+  "subjugate": "4: subjugate the biggest lead (vassal seats included)",
   "alliance": "5: emergency alliance",
   "assassinate-ruler": "5: emergency assassination",
   "take-hostage": "5b: lock a restive vassal's Revolt, biggest realm first",
@@ -193,12 +193,13 @@ export function chooseAction(state: GameState): AiAction {
     if (preferred !== undefined) return { type: "play", cardIndex: preferred };
   }
 
-  // 2: revolt out of vassalage. A vassal cannot Subjugate or Incorporate at all
-  // and every forced tribute compounds the lord's lead against it, so no
-  // vassal turn is better spent elsewhere. Revolt carries no lead condition,
-  // and its parting +1/+1 cuts the lord's lead, delaying re-subjugation.
-  // Playable exactly while subjugated, so idxOf is the whole guard. A forced
-  // tribute still outranks it through playableSet.
+  // 2: revolt out of vassalage. A vassal CAN Subjugate and Incorporate now,
+  // and revolt still outranks both deliberately: only free factions win, and
+  // every forced tribute feeds the whole chain of lords above. Freedom first.
+  // Revolt carries no lead condition, and its parting +1/+1 cuts the lord's
+  // lead, delaying re-subjugation. Playable exactly while subjugated, so
+  // idxOf is the whole guard. A forced tribute still outranks it through
+  // playableSet.
   const revolt = idxOf("revolt");
   if (revolt !== undefined) return { type: "play", cardIndex: revolt };
 
@@ -209,26 +210,42 @@ export function chooseAction(state: GameState): AiAction {
   const seeds = idxOf("seeds-of-revolt");
   if (seeds !== undefined) return { type: "play", cardIndex: seeds };
 
-  // 3: incorporate the vassal that brings the most land. Incorporation is
-  // permanent and carries the vassal's own annexations with it, so realm size
-  // is exactly the land gained - and land is the victory condition. Chains
-  // cannot exist, so a vassal's realm is itself plus what it has annexed.
+  // 3: incorporate the vassal whose digestion nets the most permanent land.
+  // Incorporation keeps the target and its annexations for good, but frees
+  // the target's own vassals (see playCard), so their subtrees are not a
+  // gain - they are the price, and a pyramid big enough to outweigh the kept
+  // land is worth more as vassalage than as one annexation.
   const incorporate = idxOf("incorporate");
   if (incorporate !== undefined) {
     const targets = validTargetsFor(v, p.factionId, "incorporate");
     if (targets.length > 0) {
-      // Land gained, discounted by the odds of actually getting it: a failed
+      // Kept land discounted by the odds of actually getting it: a failed
       // roll burns the only Incorporate in the deck, so a four-land vassal at
       // 20% is worth less than a one-land vassal at 100%. Holding the card
       // costs nothing and the loyalty clock only rises, so below MIN_ODDS the
       // policy waits rather than gambling the card away.
       const MIN_ODDS = 0.5;
       let best: string | null = null;
-      let bestScore = -1;
+      // Starts at 0, so a digest that nets nothing or less is never picked -
+      // the policy holds the card instead.
+      let bestScore = 0;
       for (const t of targets) {
         const odds = incorporationChance(state, p.factionId, t);
         if (odds < MIN_ODDS) continue;
-        const score = odds * realmOf(t, state.overlords, state.incorporated).length;
+        const vassalsOfT = state.factionIds.filter(
+          (f) => state.overlords.get(f) === t,
+        );
+        // realmOf counts t + its vassals + its annexations; dropping the
+        // vassals leaves exactly the lands that turn permanent.
+        const kept =
+          realmOf(t, state.overlords, state.incorporated).length -
+          vassalsOfT.length;
+        const freed = vassalsOfT.reduce(
+          (sum, f) =>
+            sum + fullRealmOf(f, state.overlords, state.incorporated).size,
+          0,
+        );
+        const score = odds * kept - freed;
         if (score > bestScore) {
           best = t;
           bestScore = score;
@@ -280,10 +297,10 @@ export function chooseAction(state: GameState): AiAction {
       const myTargets = validTargetsFor(v, p.factionId, "subjugate");
       // A pact blocks hostile targeted cards in BOTH directions, so allying
       // with your own best target freezes your own conquest for five turns.
-      // The own-vassal check below is defence in depth, not load-bearing:
-      // threatsTo already excludes any faction with an overlord (including
-      // one of your own vassals) from ever appearing as a threat, since a
-      // vassal cannot itself Subjugate.
+      // The own-vassal check below is load-bearing now: vassals can
+      // Subjugate, so your own vassal with a lead appears in threatsTo, and
+      // sealing a pact with it would freeze your own Incorporate for
+      // nothing.
       const pick = threats.find(
         (t) =>
           courtable.includes(t.factionId) &&
@@ -333,12 +350,13 @@ export function chooseAction(state: GameState): AiAction {
     const targets = validTargetsFor(v, p.factionId, "take-hostage");
     if (targets.length > 0) {
       // The vassal with the most land at stake: a revolt walks off with its
-      // whole realm and the tribute it was paying. Ties by faction order, so
+      // whole realm - subtree included, which is why this counts the FULL
+      // realm - and the tribute it was paying. Ties by faction order, so
       // the pick is deterministic - the same convention settlementTarget uses.
       const best = [...targets].sort(
         (a, b) =>
-          realmOf(b, state.overlords, state.incorporated).length -
-            realmOf(a, state.overlords, state.incorporated).length ||
+          fullRealmOf(b, state.overlords, state.incorporated).size -
+            fullRealmOf(a, state.overlords, state.incorporated).size ||
           state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
       )[0];
       return { type: "play", cardIndex: hostage, targetId: best };
@@ -370,11 +388,12 @@ export function chooseAction(state: GameState): AiAction {
   for (const { cardId, field } of FAN_OUTS) {
     const i = idxOf(cardId);
     if (i === undefined) continue;
+    // Vassal rivals count: a vassal with the lead can Subjugate, so it is
+    // exactly as much of a threat as a free one.
     const threatened = state.factionIds.some(
       (f) =>
         f !== p.factionId &&
         !(f in state.incorporated) &&
-        !state.overlords.has(f) &&
         leadsIn(v, f, p.factionId)[field] >= 1,
     );
     if (threatened) return { type: "play", cardIndex: i };
