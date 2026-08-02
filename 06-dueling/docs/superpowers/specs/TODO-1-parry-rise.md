@@ -173,6 +173,14 @@ must stay one, or a feint could be defeated by ear.
 
 The `met` clash cue is unchanged and still fires at blade arrival.
 
+### 4.4 The help panel
+
+Per `CLAUDE.md`, `src/ui/help.ts` is the player-facing statement of the engine's
+rules and is updated **in the same commit**. The rise changes what the parry
+entry means: the guard is no longer up when you press it. One sentence for what
+happens, one for what the player must do, with `parryRiseMs` derived from
+`WEAPONS` through a callback rather than written as a literal.
+
 ---
 
 ## 5. Numbers
@@ -243,13 +251,18 @@ Modes 2 and 3 are unaffected as attackers by this spec.
   it as a documented failure.
 - **Presentation:** `pickFrame` returns frame 1 before `parryRiseMs` and frame 2
   after, asserted at the boundary tick.
+- **Help panel:** the rendered panel cites the shipping `parryRiseMs` and says
+  the guard is not up on the press. The existing length bound still passes.
 - The AGENTS.md describe block gains nothing: no new cue fires here.
 
 ---
 
 ## 8. Out of scope
 
-- Per-line parry coverage. TODO-3.
+- Per-line parry coverage, and the height dimension of the guard. TODO-3 adds a
+  stance whose travel time combines with the rise through a `max`, and the
+  reaction matrix that checks the pair. This spec's numbers are chosen so that
+  matrix comes out right, but it is not asserted until TODO-3.
 - Any change to what a successful parry *pays*. Penalties are untouched.
 - A holdable guard replacing `parryWindowMs`. That only becomes safe once feints
   can deceive about *where* rather than *when*, so it is revisited no earlier

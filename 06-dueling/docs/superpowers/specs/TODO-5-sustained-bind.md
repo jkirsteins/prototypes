@@ -164,6 +164,16 @@ moments.
 No sustained scrape or drone. The bind is 500 ms; a bed under it would be
 ambience, and this project does not do ambience.
 
+### 4.4 Row 3 and the help panel
+
+Row 3 shows the line the bind formed on, as `LOW OUTSIDE (bind)`. Both fighters
+are on it by definition, so both rows read the same, which is the visual
+statement that the two blades are in one place.
+
+Per `CLAUDE.md`, `src/ui/help.ts` is updated in the same commit: the bind is a new
+state, so an undocumented one fails the build, and the entry must also say which
+weapons can enter it.
+
 ---
 
 ## 5. AI

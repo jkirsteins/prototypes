@@ -143,6 +143,13 @@ contact, which is the mechanic drawn.
 The activity log gains no new kind. Both sides log `parried` as they already do,
 so the reader sees two parried lines rather than one parried and one hit.
 
+### 3.3 The help panel
+
+Per `CLAUDE.md`, `src/ui/help.ts` is updated in the same commit. This spec
+changes a contact rule, which is exactly what that panel exists to state: two
+attacks can now meet each other, and a mutual kill requires their travel
+intervals not to overlap.
+
 ---
 
 ## 4. AI

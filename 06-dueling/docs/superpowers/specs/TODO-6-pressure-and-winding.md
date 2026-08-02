@@ -167,6 +167,17 @@ simulating feel, it would be removing it.
 The label reads `bind: they are hard` or `bind: they are soft`, with the bar
 underneath for the margin. Prose for the read, bar for the confidence.
 
+Row 3 keeps showing the bind's line from TODO-5 §4.4, and on a decisive
+resolution the winner's row 3 switches to their new attack's line, which is the
+moment the opening becomes visible.
+
+### 3.4 The help panel
+
+Per `CLAUDE.md`, `src/ui/help.ts` is updated in the same commit. `press` and
+`wind` are new acceptance rules inside a state, and `BIND_LOSS_MS` and
+`BIND_ADVANTAGE_MS` are timings, so all of it is in scope for the panel. Two
+sentences: what pressure means, and that you read theirs rather than yours.
+
 ### 3.2 Sprites
 
 Both fighters hold TODO-5's frozen contact poses through the decision. On a
@@ -254,11 +265,15 @@ counter-attacks into it. It never acts in a bind either.
 ## 6. Out of scope
 
 - **The doc's third bind option, "good geometry -> *Absetzen* as a distinct
-  choice".** With one contact axis and no model of blade angle, a third option
-  would have no state to distinguish it from the other two, and would resolve to
-  a coin flip wearing a technical name. It becomes buildable if blade geometry is
-  ever modelled; until then `press` and `wind` are the honest pair, and
-  *Absetzen* appears as the winner's reward in §2.2 rather than as a choice.
+  choice".** TODO-3 gives blades a side, so the geometry this needs now half
+  exists: a third option could be "go around to the other side" as distinct from
+  winding over the top. It is still deferred, because a three-way inside a 500 ms
+  window with one readable variable is a coin flip wearing a technical name.
+  Revisit it when `wind` has been played and the pressure read is proven, and
+  when the side axis has a second entry (an inside cut, an outside thrust) so
+  going around means something the attacker could also have done. Until then
+  `press` and `wind` are the honest pair, and *Absetzen* appears as the winner's
+  reward in §2.2 rather than as a choice.
 - *Duplieren* and *Mutieren*. They are follow-ups within a continuing bind, and
   this bind resolves in one exchange.
 - Multiple exchanges in one bind, or re-entering a bind from a bind.

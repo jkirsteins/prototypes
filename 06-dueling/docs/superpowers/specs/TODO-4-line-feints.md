@@ -7,9 +7,9 @@ into a short recovery, provoking a parry and punishing its cooldown. It deceives
 about **when**. §10 records that it cannot deceive about **where**, because
 attacks had no lines.
 
-TODO-3 gave them lines. This spec adds the second deception: an attack that sells
-one line and arrives on the other. It also gives the defender the answer, because
-a feint with no answer is not a mixup, it is a win button.
+TODO-3 gave them lines, on two axes. This spec lets an attack in flight change
+either axis, and gives the defender the answer, because a feint with no answer is
+not a mixup, it is a win button.
 
 **Delivers:** feints (line-changing); line-changing feints.
 
@@ -17,15 +17,31 @@ a feint with no answer is not a mixup, it is a win button.
 
 ---
 
-## 1. Two feints, kept distinct
+## 1. Two axes, two victims
+
+A parry covers its height on **both** sides. Two travelling blades must match on
+**both** axes. Those two rules are not the same shape, so changing height and
+changing side deceive different people.
+
+| Redirect | Beats | Does not beat |
+|---|---|---|
+| Height | the guard, which chose a height | nothing relevant |
+| Side | a counter-attacker, whose blade no longer crosses yours | the guard, which spans sides |
+| Both | both | |
+
+That is two distinct lies out of one mechanic, which is more than the single-axis
+version of this spec had. Against a defender who parries you change height;
+against one who trades blades with you, you change side.
+
+### 1.1 Kept distinct from the windup cancel
 
 | | §8.1 cancel | This spec's redirect |
 |---|---|---|
-| Input | dedicated cancel key | the other attack key |
+| Input | dedicated cancel key | arrow (height) or the other attack key (side) |
 | Legal during | `windup` only | `riseEnd` through `parryableUntil`, while not `met` |
-| Result | attack ends, short `feintRecoveryMs` | attack continues on the other line |
+| Result | attack ends, short `feintRecoveryMs` | attack continues on a new line |
 | Deceives about | when | where |
-| Costs | a truncated recovery | `redirectMs` plus a whole new strike |
+| Costs | a truncated recovery | a redirect interval plus a whole new strike |
 
 Both stay. Bailing out and lying are different plays and should feel different.
 
@@ -33,123 +49,145 @@ Both stay. Bailing out and lying are different plays and should feel different.
 
 ## 2. The rule
 
-```ts
-// On an attack state, while phase is windup-past-riseEnd or strike-not-yet-arrived,
-// met === false, and redirected === false:
-redirectAttack(f, toKind);
-```
-
 Legality, all four required:
 
 1. `elapsedMs >= timeline.riseEnd`. Before the stillness the pose has not been
-   sold, so there is nothing to lie about. Redirecting earlier is simply a
-   different attack and should be refused rather than silently allowed.
+   sold, so there is nothing to lie about.
 2. `elapsedMs <= timeline.parryableUntil`. Past that the blade has arrived.
 3. `met === false`. **Once steel has touched steel you are committed.** This is
-   the seam TODO-5 grows the bind out of, and it is why the condition is written
-   now rather than discovered later.
+   the seam TODO-5 grows the bind out of.
 4. `redirected === false`. One redirect per attack, or an attacker could stall
    forever and the tempo economy collapses.
 
+Triggering:
+
+- an arrow during the window changes the attack's **height**
+- the other attack key changes its **side**, which also swaps to that kind's
+  timings
+- both on the same tick changes both
+
+One redirect either way. A height redirect also moves the fighter's stance to the
+new height on completion, because the body went there; the stance is not a
+separate thing that stayed behind.
+
 ### 2.1 Timeline replacement
 
-The attack keeps its identity and clock. Only the future is rewritten, atomically,
-per §2.3 of the state-tracks spec:
+The attack keeps its identity and its clock. Only the future is rewritten,
+atomically, per §2.3 of the state-tracks spec:
 
 ```ts
-s.attack = toKind;
+s.attack = toKind;               // unchanged on a height-only redirect
+s.height = toHeight;             // unchanged on a side-only redirect
 s.redirected = true;
+const d = redirectCost(w, changedHeight, changedSide);   // §3
 s.timeline = {
-  ...s.timeline,                                  // riseStart, riseEnd stay in the past
-  strikeStart:    s.elapsedMs + w.redirectMs,
-  parryableUntil: s.elapsedMs + w.redirectMs + t2.strike * PARRYABLE_FRACTION,
-  strikeEnd:      s.elapsedMs + w.redirectMs + t2.strike,
-  recoveryStart:  s.elapsedMs + w.redirectMs + t2.strike,
-  recoveryEnd:    s.elapsedMs + w.redirectMs + t2.strike + t2.recovery,
+  ...s.timeline,                                 // riseStart, riseEnd stay in the past
+  strikeStart:    s.elapsedMs + d,
+  parryableUntil: s.elapsedMs + d + t2.strike * PARRYABLE_FRACTION,
+  strikeEnd:      s.elapsedMs + d + t2.strike,
+  recoveryStart:  s.elapsedMs + d + t2.strike,
+  recoveryEnd:    s.elapsedMs + d + t2.strike + t2.recovery,
 };
-s.phase = "windup";   // the blade is travelling to the new line, not yet dangerous
+s.phase = "windup";              // travelling to the new line, not yet dangerous
 ```
 
 `elapsedMs` is never reset, so every mark stays absolute and every consumer keeps
 reading one clock against one snapshot. There is no second time origin to get
 wrong. This is the restructure paying for itself.
 
-The new marks come from `toKind`'s timings, not the original's. A cut redirected
-into a thrust arrives with the thrust's strike and recovery, and carries the
-thrust's line.
-
 ### 2.2 What it costs
 
-The redirect always delays the arrival. Against an opponent who was not going to
-defend, it is pure loss: you hand them the tempo. Against one who committed a
-guard, it wins the exchange. That asymmetry is the whole mechanic and it needs no
-extra penalty on top.
-
-Worked example, longsword cut redirected into a thrust at the last legal instant:
-890 + 300 + 260 + 300 = 1750 ms from attack start, against 1500 ms for the
-committed cut. A feint is roughly 250 ms slower at worst.
+The redirect always delays arrival. Against an opponent who was not going to
+defend it is pure loss: you hand them the tempo. Against one who committed, it
+wins the exchange. That asymmetry is the mechanic and it needs no extra penalty.
 
 ---
 
 ## 3. Numbers
 
-| Weapon | `redirectMs` |
-|---|---|
-| Longsword | 300 |
-| Rapier | 220 |
+```ts
+redirectCost(w, height, side) =
+  height && side ? max(w.redirectHeightMs, w.redirectSideMs)
+  : height       ? w.redirectHeightMs
+  :                w.redirectSideMs;
+```
 
-The rapier is the weapon built to defeat contact by going around it, so it
-changes line fastest. Paired with its worse `parriedPenalty` from TODO-2, the two
-weapons now sit at opposite ends of one axis: the longsword wins the exchange
-where steel meets, the rapier wins the exchange where it does not.
+| Weapon | `redirectHeightMs` | `redirectSideMs` | `guardShiftMs` |
+|---|---|---|---|
+| Longsword | 380 | 300 | 180 |
+| Rapier | 350 | 220 | 150 |
 
-**These numbers are load-bearing, not cosmetic.** §4.1 derives the defender's
-answer window from `redirectMs`; shortening it without rechecking that arithmetic
-makes the feint unanswerable.
+Changing height is a larger motion than going around a blade at the point, and it
+is priced accordingly. The rapier changes side fastest: it is the weapon built to
+defeat contact by disengaging, and with its worse `parriedPenalty` from TODO-2
+the two weapons sit at opposite ends of one axis. The longsword wins where steel
+meets; the rapier wins where it does not.
+
+**These numbers are load-bearing.** §4.1 derives the defender's answer from
+them, and §5 makes that a test.
 
 ---
 
-## 4. The defender's answer: changing the guard's line
+## 4. The defender's answer: shifting the guard
 
-Without this section, a reactive redirect beats every parry unconditionally, and
-mode 3 becomes unbeatable rather than unpredictable.
+Without this section a reactive height redirect beats every parry
+unconditionally, and mode 3 becomes unbeatable rather than unpredictable.
+
+A raised guard may **shift** to the other height once per raise, at
+`guardShiftMs`. This is cheaper than TODO-3's `heightChangeMs` cold stance move
+because the blade is already formed and only has to travel; that is exactly what
+*Winden* is, and TODO-6 builds on the same motion.
 
 ```ts
 interface ParryTrack {
   elapsedMs: number;   // since first raised; expires at parryWindowMs
-  riseMs: number;      // since the current line was chosen; effective at parryRiseMs
-  line: AttackLine;
-  changed: boolean;    // one line change per raise
+  shiftMs: number;     // since the current height was chosen
+  shifted: boolean;    // one shift per raise
 }
 
-function guardEffective(f) {
-  return f.parry !== null
-    && f.parry.riseMs >= f.weapon.parryRiseMs
-    && f.parry.elapsedMs < f.weapon.parryWindowMs;
-}
+guardEffective(f) =
+  f.parry !== null
+  && f.parry.shiftMs >= (f.parry.shifted ? f.weapon.guardShiftMs : f.weapon.parryRiseMs)
+  && f.parry.elapsedMs < f.weapon.parryWindowMs;
 ```
 
-Pressing the other guard key while a parry is up **changes its line**: `line`
-switches, `riseMs` resets to 0, `changed` becomes true, and `elapsedMs` continues
-untouched. The guard must rise again, and it still expires when it always would
-have. Changing line late means the new guard may never become effective at all.
+The guard's expiry does **not** refresh on a shift. Shifting late means the new
+height may never become effective. One shift answers one redirect: a single lie
+corrected once, not a wrestling match of key presses.
 
-One change per raise, matching the attacker's one redirect per attack. The
-exchange is a single lie answered by a single correction, not a wrestling match
-of key presses.
+The shift also moves the fighter's stance, for the same reason a height redirect
+does.
 
 ### 4.1 The answer window, checked
 
-Defender sees the redirect at instant R. The redirected blade is meetable from
-`R + redirectMs` until `R + redirectMs + parryable`. For a longsword redirecting
-into a thrust that is `R + 300` to `R + 430`. The defender must press by
-`R + 430 - parryRiseMs` = `R + 210`.
+Defender sees the redirect at R, reacts at `R + PLAYER_REACTION_MS` (250), and
+the guard is effective `guardShiftMs` later. The redirected blade is meetable
+until `R + redirectHeightMs + strike * PARRYABLE_FRACTION`.
 
-Human reaction is roughly 200 to 250 ms. So reading a feint and correcting the
-guard is possible and hard, which is the correct difficulty for the highest-skill
-defensive play in the game. If play says it is impossible rather than hard, the
-lever is `redirectMs` upward, not `parryRiseMs` downward, because `parryRiseMs`
-carries the invariant from TODO-1 §3.1.
+Worst case is the fastest redirected attack, the thrust:
+
+| Weapon | Guard effective | Meetable until | Margin |
+|---|---|---|---|
+| Longsword | R + 430 | R + 510 | 80 ms |
+| Rapier | R + 400 | R + 460 | 60 ms |
+
+Reading a feint and correcting the guard is possible and hard, which is the right
+difficulty for the highest-skill defensive play in the game. As an invariant:
+
+> **`redirectHeightMs + min(strike) * PARRYABLE_FRACTION >= PLAYER_REACTION_MS +
+> guardShiftMs`** for every weapon.
+>
+> **`guardShiftMs < heightChangeMs`**, or shifting a formed guard is not cheaper
+> than starting from cold.
+
+If play says the answer is impossible rather than hard, the lever is
+`redirectHeightMs` upward, not `parryRiseMs` downward: that number carries
+TODO-1 §3.1's invariant, and lowering it would make the attacker's own reactive
+feint unreachable in the process of making the defender's answer reachable.
+
+`guardShiftMs` has no floor at `AI_REACTION_MS`. It is the duration of a motion,
+not a reaction gate; the AI spends its 180 ms deciding and then shifts in
+`guardShiftMs` like anyone else, which is why the rapier's 150 is legal.
 
 ---
 
@@ -157,95 +195,115 @@ carries the invariant from TODO-1 §3.1.
 
 ### 5.1 Sprites
 
-The redirect swaps sheets: an attack that began on `swordAttack` continues on
-`swordStab`, or the reverse. During `redirectMs` the fighter holds the new
-sheet's **loaded** frame (`swordStab` frame 2, or `swordAttack` frame 0), which
-reads as the blade being pulled off its line and re-set. The new strike then
-plays its normal travelling and delivered frames.
+A side redirect swaps sheets: an attack that began on `swordAttack` continues on
+`swordStab`, or the reverse. During the redirect the fighter holds the new
+sheet's **loaded** frame (`swordStab` 2, or `swordAttack` 0), which reads as the
+blade being pulled off its line and re-set.
 
-The sheet swap is abrupt. That is acceptable and arguably correct: a line change
-is a discontinuity in the blade's path, and the player must be able to see it in
-one frame to have any chance at §4.1's window. Smoothing it would hurt.
+A height redirect has no sheet to swap to, per TODO-3 §5.2. It renders as the
+same vertical offset interpolation the stance transition uses, applied over
+`redirectHeightMs`. This is thin, and it is the strongest argument in the chain
+for doing the height-distinct attack art before TODO-5.
 
-### 5.2 Audio: silent, deliberately
+The sheet swap is abrupt, and that is correct: a line change is a discontinuity
+in the blade's path, and the player must see it in one frame to have any chance
+at §4.1's window. Smoothing it would hurt.
 
-No cue fires at the redirect. The `swing` event is already unmapped for the same
+### 5.2 HUD
+
+Row 3 from TODO-3 is where a redirect becomes legible. Its label changes on the
+redirect tick, from `HIGH OUTSIDE (attack)` to `LOW OUTSIDE (attack)`, and that
+change is the signal the player is racing. Row 2 shows the guard's rise
+restarting on a shift with the expiry cursor visibly **not** resetting, since the
+window not refreshing is the cost.
+
+### 5.3 Audio: silent, deliberately
+
+No cue fires at a redirect. The `swing` event is already unmapped for the same
 reason, and here it is stronger: **a feint you can hear is not a feint.** An
-audible redirect would let a player answer correctly without watching, which
-defeats the entire mechanic and would make the line read in TODO-3 pointless.
+audible redirect would let a player answer without watching, which would defeat
+the mechanic and make TODO-3's line read pointless.
 
 The attack still resolves to exactly one outcome sound at its new `strikeEnd`, so
-the one-sound-per-attack rule in `AGENTS.md` holds unchanged. A redirect emits no
-second rise cue: the blade never returns to a windup pose, it travels sideways.
+the one-sound-per-attack rule holds unchanged. A redirect emits no second rise
+cue: the blade never returns to a windup pose, it travels sideways.
 
-### 5.3 HUD
+### 5.4 The help panel
 
-The body row's progress bar redraws against the replaced timeline, which it
-already does for §8.1's cancel. The label shows the new line immediately:
-`strike (low)` where it read `windup (high)`.
-
-The defence row shows the rise restarting on a line change, with the expiry
-cursor visibly **not** resetting. That the window did not refresh is the cost, so
-it must be the visible thing.
+Per `CLAUDE.md`, `src/ui/help.ts` is updated in the same commit. This spec adds
+an acceptance rule (when a redirect is legal), a contact consequence (a guard
+spans sides, so only height lies beat it) and the guard shift. Durations come
+from `WEAPONS` through callbacks.
 
 ---
 
 ## 6. AI
 
-Mode 3 gains the reactive redirect, which is the whole reason this chain of specs
-exists.
+Mode 3 gains the reactive redirect, which is why this chain of specs exists.
 
 ```
-While attacking, if:
-  - the redirect is legal (§2), and
-  - the opponent has a parry up whose line matches this attack's line, and
-  - that parry has been visible for at least AI_REACTION_MS
-then redirect to the other line.
+While attacking, if the redirect is legal (§2), and the opponent's
+guard has been visible for at least AI_REACTION_MS:
+  - if that guard is at this attack's height   -> redirect height
+  - else if the opponent is mid-attack on this attack's side -> redirect side
+  - else do nothing
 ```
 
 Purely reactive, no rng draw, so a seeded replay stays reproducible. It is
-deterministic *and* unpredictable, because what it does depends on what the
-player did.
+deterministic *and* unpredictable, because what it does depends on what you did.
 
 TODO-1 §3.1's invariant is what makes this reachable: any parry that could
 succeed became visible at least `AI_REACTION_MS` before it mattered.
 
-**Mode 3 is now beatable in four ways**, which is the answer to "the duelist is
-solved":
+Mode 1 gains the **guard shift** as a defender, using the same rule the player
+has, so the dummy can be practised against as a feint target that sometimes
+recovers. Mode 2 neither feints nor shifts; its predictability is the point.
+
+### 6.1 Mode 3 is now beatable in five ways
+
+Which is the answer to "the duelist is solved":
 
 - do not parry, and counter-attack into it (TODO-2)
+- stand at the right height early, so its stance tell tells you nothing new
 - parry late, inside the thin band where reaction cannot reach you (TODO-1 §1)
-- parry, read the redirect, and change line (§4)
+- parry, read the redirect, and shift the guard (§4)
 - void, and punish the recovery
-
-Mode 1 and mode 2 do not feint. Mode 1 is a defensive dummy; mode 2's
-predictability is its purpose.
 
 ---
 
 ## 7. Tests
 
-- **Legality:** each of the four conditions in §2 falsified independently while
-  the other three hold. `met === true` refusing the redirect gets its own test,
-  since TODO-5 depends on that edge.
-- **One redirect:** a second redirect on the same attack is refused.
-- **Timeline replacement:** after a redirect, every mark equals `elapsedMs +
-  redirectMs +` the new kind's timings; `riseStart` and `riseEnd` are unchanged
-  and in the past; `elapsedMs` is monotonic across the redirect.
-- **The lie lands:** high guard up and effective, cut redirected to thrust, result
-  is `hit` and not `parried`.
-- **The answer works:** same setup, defender changes line within §4.1's window,
-  result is `parried`. Same setup, defender changes one tick too late, result is
-  `hit`. These two are the spec.
-- **Window does not refresh:** a guard that changes line still expires at its
-  original `parryWindowMs`.
-- **Feint costs tempo:** against an opponent who never parries, a redirected
+- **Legality:** each of the four conditions in §2 falsified independently.
+  `met === true` refusing a redirect gets its own test, since TODO-5 depends on
+  that edge.
+- **One redirect:** a second redirect on the same attack is refused, including
+  the case where the first changed height and the second would change side.
+- **Cost selection:** height-only, side-only and both-axes redirects each take
+  the duration §3 specifies.
+- **Timeline replacement:** every mark equals `elapsedMs + cost +` the resulting
+  kind's timings; `riseStart` and `riseEnd` are unchanged and in the past;
+  `elapsedMs` is monotonic across the redirect.
+- **The height lie lands:** guard up and effective at `high`, attack redirected
+  to `low`, result is `hit`.
+- **The side lie does not beat a guard:** guard up at the attack's height,
+  attack redirected from `outside` to `inside`, result is `parried`.
+- **The side lie beats a counter-attacker:** two crossing blades, one redirects
+  side, they no longer cross and both resolve independently.
+- **The answer works:** defender shifts within §4.1's window, result is
+  `parried`. One tick later, result is `hit`. These two are the spec.
+- **Invariants:** both inequalities in §4.1, per weapon.
+- **Window does not refresh:** a shifted guard still expires at its original
+  `parryWindowMs`.
+- **Stance follows:** after a height redirect the attacker's stance is the new
+  height; after a guard shift the defender's stance is the new height.
+- **Feint costs tempo:** against an opponent who never defends, a redirected
   attack resolves strictly later than the committed one.
-- **AI determinism:** the same seed and the same input script produce the same
-  redirect ticks.
+- **AI determinism:** same seed and input script, same redirect ticks.
 - **Audio contract:** a redirect emits no `windup`, no `met` and no extra sound;
   exactly one outcome sound fires, at the new `strikeEnd`. Belongs in the
   "presentation events follow the simulation, not the input" describe block.
+- **Help panel:** cites the shipping redirect durations and states that a guard
+  spans sides.
 - **Golden replay:** hash re-recorded.
 
 ---
@@ -253,11 +311,13 @@ predictability is its purpose.
 ## 8. Out of scope
 
 - Redirecting after contact. Blocked by condition 3; that is TODO-5 and TODO-6.
-- Chained redirects.
-- Feinting a **step** (drawing a counter-attack with false footwork).
+- Chained redirects, and more than one guard shift per raise.
+- A reachable `middle` height. Enabling it requires deciding what a redirect may
+  reach from where, and §4.1's margins recomputed for a two-way guess. TODO-3 §7.
+- Feinting a **step**, drawing a counter-attack with false footwork.
 - Cancelling into a parry or a void. §10 of the state-tracks spec deferred it and
   nothing here changes that argument.
-- A holdable guard replacing `parryWindowMs`. It becomes arguable **after** this
+- A holdable guard replacing `parryWindowMs`. It becomes arguable after this
   spec, since a held guard is now exactly what a feint eats, but it is a separate
   change and should be judged on play evidence from here.
 
@@ -265,16 +325,19 @@ predictability is its purpose.
 
 ## 9. Playtest gate
 
-Play mode 3 with each weapon, then play the same fight refusing to parry at all.
+Play mode 3 with each weapon, then play the same fight refusing to parry at all,
+then again standing at the height its stance tell predicts.
 
 What to look for:
 
-- Getting feinted feels like being read, not like being cheated. You should be
-  able to say afterwards what you did that told the AI to feint.
-- Correcting the guard after spotting a redirect works often enough to be worth
-  attempting, and rarely enough to feel earned.
+- Getting feinted feels like being read. You should be able to say afterwards
+  what you did that told the AI to feint.
+- Shifting the guard after spotting a height redirect works often enough to be
+  worth attempting and rarely enough to feel earned.
+- The side redirect is visibly a different play: it does nothing to a parrying
+  opponent and saves you against one who trades.
 - Feinting into an opponent who was not defending feels like a wasted tempo.
 
-What would look wrong: the redirect being invisible until it lands. That means
-§5.1's loaded-frame hold is too short to register, and the fix is a longer
-`redirectMs`, not a sound.
+What would look wrong: the height redirect being invisible until it lands. That
+is TODO-3 §5.2's art debt coming due, and the fix is height-distinct attack
+poses, not a sound and not a bigger label.
