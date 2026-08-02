@@ -207,7 +207,7 @@ describe("targetOddsLines", () => {
     adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    respites: {}, siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -360,7 +360,7 @@ describe("cardRiskLine", () => {
       adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
       factionIds: ids, alliances: {}, turn: 1, guards: {}, omens: {},
       diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    respites: {}, siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     };
     const fallible = Object.keys(CARDS).filter((id) =>
       ids.some((target) => failureRiskOf(view, "alpha", id, target) !== null),
@@ -380,7 +380,7 @@ describe("targetImpactLines", () => {
     },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    respites: {}, siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -566,7 +566,7 @@ describe("subjugationBreakdown", () => {
     },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    respites: {}, siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -721,7 +721,7 @@ describe("pactBoostLines", () => {
     relations: {}, overlords: new Map(), incorporated: {}, adjacency: {},
     factionIds: ["alpha", "beta", "gamma", "delta"], alliances: {}, turn: 1,
     guards: {}, omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    respites: {}, siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -765,7 +765,7 @@ describe("respiteLines", () => {
     adjacency: { alpha: ["beta"], beta: ["alpha"] },
     factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
     omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    respites: {}, siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -801,7 +801,7 @@ describe("settlementBlock", () => {
     relations: {}, overlords: new Map(), incorporated: {}, adjacency: {},
     factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
     omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    respites: {}, siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 

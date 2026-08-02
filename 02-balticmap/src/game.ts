@@ -6,14 +6,14 @@ import {
 export type { TributeTrack };
 import {
   allianceKey, bumpAllBy, bumpMight, bumpMightAllBy, bumpMightBy, bumpStatus,
-  bumpStatusBy, fullRealmOf, leadsOf, levelStatus, overlordChainOf,
+  bumpStatusBy, fullRealmOf, incorporatedRealmOf, leadsOf, levelStatus,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
   loyaltyKey, ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES,
   incorporationChance, PACT_MIGHT_BONUS, sharedNeighboursOf,
   subjugationChance, type Guards, type Omens, omenMultiplier, passiveFortifyFor,
-  playableSet, raidGainFor, validTargetsFor,
+  playableSet, raidGainFor, validTargetsFor, wealthIncomeFor,
   type RulesView,
 } from "./playability";
 import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
@@ -22,7 +22,6 @@ import { sweepLapsed } from "./timed";
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
   | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
-  | "tribute-forwarded"
   | "settled" | "seeded" | "garrisoned" | "pact-lapsed"
   | "hostage-taken" | "hostage-returned"
   | "subjugate-failed" | "incorporate-failed"
@@ -50,6 +49,13 @@ export interface GameEvent {
    *  round summary silently, which is why tests/standings.test.ts replays a
    *  full game and checks the walk against the real relations. */
   amount?: number;
+  /** tribute: the coins this payment moved from the vassal to its lord.
+   *  Deliberately not `amount` - that means "moved a relation counter", which
+   *  the coins never do - so a fully-covered payment carries `wealth` alone,
+   *  and a part-covered one carries `wealth` beside the `track`/`amount` of
+   *  its uncovered remainder. The log suffix renders it; the standings walk
+   *  reads only `track`/`amount` and so never sees it. */
+  wealth?: number;
   /** play: the card was turned aside by the target's guard (see `GUARDS` in
    *  src/cards.ts) and did nothing. Also what `revealedSecrets` reads to decide
    *  that the guard which stopped it is no longer a secret. */
@@ -130,6 +136,14 @@ export interface GameState {
    *  `playCard` is the only writer, and every exit from vassalage deletes the
    *  entry so it can never outlive the vassalage that justified it. */
   hostages: Record<string, number>;
+  /** Faction id -> treasury. Absent = 0, never negative, uncapped. Earned in
+   *  `beginTurn` - 1 per settlement standing in the faction's own realm, via
+   *  `wealthIncomeFor` - silently: income moves no relation counter, so no
+   *  walk needs it, and one log line per faction per round is exactly the
+   *  noise the log filter exists to remove. The HUD's own-faction readout is
+   *  where the number lives. Spent in `playCard`, on costed cards
+   *  (`CardDef.wealthCost`) and on tribute. */
+  wealth: Record<string, number>;
   /** Faction id -> the turn its post-escape respite expires. Set the moment a
    *  faction ESCAPES vassalage - Revolt, or freed because its lord fell -
    *  never when it is merely poached, and while it runs nobody may Subjugate
@@ -184,6 +198,7 @@ export function viewOf(state: GameState): RulesView {
     booms: state.booms,
     loyalty: state.loyalty,
     hostages: state.hostages,
+    wealth: state.wealth,
     respites: state.respites,
     liveRevolts: state.players
       .filter((pl) =>
@@ -225,6 +240,7 @@ export function newGame(
     settlements: {},
     booms: {},
     hostages: {},
+    wealth: {},
     respites: {},
     ethnicities,
     rulers: initialRulers(factionIds, ethnicities),
@@ -318,9 +334,6 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     case "incorporated":
     case "reclaimed":
     case "tribute":
-    // A hop of the cascade is a consequence of the forced tribute play it
-    // rode on - one indented line per hop.
-    case "tribute-forwarded":
     case "settled":
     case "seeded":
     case "garrisoned":
@@ -456,8 +469,18 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       targetFactionId: p.factionId, amount: passive,
     });
   }
+  // Settlement income, beside the garrison tick for the same reason it lives
+  // here: a start-of-turn fact of holding land, not a play. Silent - see the
+  // doc on `GameState.wealth` for why no event is logged.
+  const income = wealthIncomeFor(viewOf(state), p.factionId);
+  const wealth = income > 0
+    ? {
+        ...state.wealth,
+        [p.factionId]: (state.wealth[p.factionId] ?? 0) + income,
+      }
+    : state.wealth;
   return {
-    ...state, players, relations, alliances: lapsed.alliances,
+    ...state, players, relations, wealth, alliances: lapsed.alliances,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(state.respites, state.turn, (e) => e).kept,
@@ -585,16 +608,43 @@ export function playCard(
   let hostages = state.hostages;
   let respites = state.respites;
   let rulers = state.rulers;
+  let wealth = state.wealth;
+  // A tribute owes 1 per land of the payer's own realm - the exact set its
+  // income sums over, so you pay 1 per land you earn from - and the treasury
+  // covers what it can before any counter moves. Computed here, before the
+  // readings are spent, because a fully-covered payment is flat coin and must
+  // leave the omens stack held; only an uncovered remainder is a track bump,
+  // and only a track bump cashes readings.
+  const tributeOwed = isTributeCard(cardId)
+    ? incorporatedRealmOf(p.factionId, state.incorporated).size
+    : 0;
+  const tributeCoins = Math.min(tributeOwed, state.wealth[p.factionId] ?? 0);
+  const tributeShortfall = tributeOwed - tributeCoins;
   // A doublable card cashes the whole stack at once, rather than peeling one
   // reading per play. One rule, and no special case for a play made for you:
-  // a forced tribute therefore pays the full multiplier and clears everything,
-  // which is the cost of hoarding readings while somebody's vassal.
+  // a forced tribute paid short therefore pays the full multiplier on the
+  // shortfall and clears everything, which is the cost of hoarding readings
+  // while somebody's vassal.
   const mult = omenMultiplier(state, p.factionId, cardId);
-  const readings = mult > 1 ? (state.omens[p.factionId] ?? 0) : 0;
+  const readings =
+    mult > 1 && !(isTributeCard(cardId) && tributeShortfall === 0)
+      ? (state.omens[p.factionId] ?? 0)
+      : 0;
   if (readings > 0) {
     const spent = { ...omens };
     delete spent[p.factionId];
     omens = spent;
+  }
+  // The cost of a costed card (`CardDef.wealthCost`), spent at the moment of
+  // play, unconditionally: the card is spent, the turn is gone, the cost is
+  // gone. Legality (`cannot-afford`) has already refused a play the treasury
+  // cannot cover, so the floor is defensive.
+  const cardCost = card.wealthCost ?? 0;
+  if (cardCost > 0) {
+    wealth = {
+      ...wealth,
+      [p.factionId]: Math.max(0, (wealth[p.factionId] ?? 0) - cardCost),
+    };
   }
   let phase: GamePhase = state.phase;
   let prevented = false;
@@ -869,34 +919,42 @@ export function playCard(
     if (lord === undefined) return state;
     // Which track this card pays is the card's own business - see TRIBUTE_CARDS.
     const tributeTrack = TRIBUTE_CARDS[cardId];
-    // Tribute is deliberately in the doubling set: readings held while
-    // subjugated multiply what you pay and are all spent doing it, which is
-    // the cost of hoarding them.
-    const bump = tributeTrack === "might" ? bumpMightBy : bumpStatusBy;
-    // The tribute flows up the whole chain, hop by hop: each lord - and the
-    // lands it has incorporated - gains over its OWN vassal, the previous
-    // link, never over the original payer. The payer's omen multiplier sets
-    // the amount once and that multiplied amount is what travels; mid-lords'
-    // own readings are untouched. The liege rule keeps the chain acyclic, so
-    // the walk ends at the root.
-    const chain = overlordChainOf(p.factionId, overlords);
-    let link = p.factionId;
-    for (const beneficiary of chain) {
+    // Wealth first: the coins move vassal -> direct lord and no counter with
+    // them. Only the DIRECT lord - the per-pair fan-out below exists because
+    // relation counters are per-pair, and a treasury is one pot; a chain's
+    // root is still fed, because each link's own tribute plays pay from the
+    // treasury these coins landed in. (The per-hop cascade this replaced is
+    // recorded, reversed, in the 2026-08-02 vassal-chains design.)
+    if (tributeCoins > 0) {
+      wealth = {
+        ...wealth,
+        [p.factionId]: (wealth[p.factionId] ?? 0) - tributeCoins,
+        [lord]: (wealth[lord] ?? 0) + tributeCoins,
+      };
+    }
+    // What the treasury could not cover lands as the track bump, multiplied by
+    // the readings the shortfall cashed - see the spend above. The lord's
+    // incorporated lands gain alongside it, as every bump toward a dead land's
+    // owner always has.
+    const shortfallAmount = tributeShortfall * mult;
+    if (shortfallAmount > 0) {
+      const bump = tributeTrack === "might" ? bumpMightBy : bumpStatusBy;
       const beneficiaries = [
-        beneficiary,
-        ...state.factionIds.filter((f) => incorporated[f] === beneficiary),
+        lord,
+        ...state.factionIds.filter((f) => incorporated[f] === lord),
       ];
       for (const b of beneficiaries) {
-        relations = bump(relations, b, link, mult);
+        relations = bump(relations, b, p.factionId, shortfallAmount);
       }
-      events.push({
-        turn: state.turn, playerId: p.id,
-        type: link === p.factionId ? "tribute" : "tribute-forwarded",
-        targetFactionId: link, overlordFactionId: beneficiary,
-        track: tributeTrack, amount: mult,
-      });
-      link = beneficiary;
     }
+    events.push({
+      turn: state.turn, playerId: p.id, type: "tribute",
+      targetFactionId: p.factionId, overlordFactionId: lord,
+      ...(tributeCoins > 0 ? { wealth: tributeCoins } : {}),
+      ...(shortfallAmount > 0
+        ? { track: tributeTrack, amount: shortfallAmount }
+        : {}),
+    });
     // Each payment works off one unit of the hostage debt, whatever the omens
     // multiplied the tribute itself to - the card promises "pay tribute
     // twice", counted in plays. At zero the hostage goes home and the Revolt
@@ -985,7 +1043,7 @@ export function playCard(
   return {
     ...state, phase, players, relations, overlords, incorporated,
     alliances, diplomacyBoost, guards, omens, settlements, booms, hostages,
-    respites, rulers,
+    wealth, respites, rulers,
     log: appendEvents(state, events), playedThisTurn: true,
   };
 }

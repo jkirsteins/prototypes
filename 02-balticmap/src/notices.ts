@@ -420,21 +420,6 @@ function releasedLines(events: GameEvent[], ctx: NoticeCtx, role: HumanRole): Su
   }));
 }
 
-function tributeForwardedLines(
-  events: GameEvent[],
-  changes: StandingChange[][],
-  _ctx: NoticeCtx,
-): SummaryLine[] {
-  return events.map((e, i) => ({
-    text: [
-      t("Tribute from your vassal passed on to "),
-      faction(e.overlordFactionId ?? ""),
-    ],
-    changes: changesFor(i, changes),
-    tone: "bad" as const,
-  }));
-}
-
 function unrestLines(events: GameEvent[]): SummaryLine[] {
   return [{
     text: [
@@ -648,16 +633,6 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   tribute: {
     kind: "silent",
     reason: "self-initiated (human pays) or human merely benefits",
-  },
-  "tribute-forwarded": {
-    kind: "modal",
-    // Only the mid-lord it was taken from hears about it: their vassal's
-    // forced payment moved THEIR standing toward their own lord, on a turn
-    // they played nothing. The beneficiary merely benefits - the same
-    // reasoning that keeps `tribute` silent - and the original payer already
-    // owns the play this hop nests under.
-    appliesToHuman: (e, ctx) => e.targetFactionId === ctx.humanFactionId,
-    lines: tributeForwardedLines,
   },
   settled: {
     kind: "silent",

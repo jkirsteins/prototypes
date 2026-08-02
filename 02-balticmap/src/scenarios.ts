@@ -204,8 +204,28 @@ export const SCENARIOS: Scenario[] = [
       // often, and still loses the run about as often, because the extra
       // subjugations are ones they revolt back out of. That is the Seeds of
       // revolt slot in the default deck doing its job.
-      subjugatedShare: [0.85, 1],        // measured 0.96
-      medianFirstSubjugation: [6, 20],   // measured 10.50
+      // Both moved on 2026-08-02 by the wealth changeset, and the attribution
+      // was measured before the bands were touched. Disabling the coin
+      // payment alone (tribute forced back to the track) recovered the share
+      // to 0.85 but left the median at 26.5; zeroing the card costs alone
+      // moved nothing. So the share drop is the coin tribute - a lord's grip
+      // no longer grows off its vassals' payments, vassalages are poached and
+      // revolted out of more, and the world holds fewer vassals at any
+      // moment - and the median shift rides on the cascade removal in the
+      // same changeset: lords above the first link no longer accumulate off
+      // every tribute below them, so the big consolidators clear the flailing
+      // player's bar later. Both are the change's intended teeth, not side
+      // effects: a solvent vassal is structurally harder to hold.
+      //
+      // What did NOT move is what lets these bands follow the behaviour:
+      // defeatShare held (0.62, band untouched below), every world arm still
+      // resolves (96-100%), and the potato scenarios are byte-identical -
+      // a one-land naive player banks 1 wealth a turn, owes 1 a tribute, and
+      // its low bar never waited on tribute-built leads anyway. The premise
+      // "not safe" now rests on defeatShare alone, which is where the
+      // vassal-chains changeset had already put it.
+      subjugatedShare: [0.5, 0.85],      // measured 0.67
+      medianFirstSubjugation: [18, 45],  // measured 29.00
       // Ceiling raised from 0.77 (measured 0.73) when Take hostage joined the
       // pool. This is the band whose comment above says it does NOT move with
       // pool size because the extra subjugations are revolted back out of -

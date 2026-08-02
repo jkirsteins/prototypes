@@ -35,10 +35,13 @@ describe("cards", () => {
     const expectProps = (
       id: string, name: string, targeted: boolean, secret: boolean,
       maxPerDeck: number | null, deckBuildable: boolean, forced: boolean,
-      text: string,
+      text: string, wealthCost?: number,
     ) => {
       const { rarity: _tier, ...rest } = CARDS[id];
-      expect(rest).toEqual({ id, name, targeted, secret, maxPerDeck, deckBuildable, forced, text });
+      expect(rest).toEqual({
+        id, name, targeted, secret, maxPerDeck, deckBuildable, forced, text,
+        ...(wealthCost !== undefined ? { wealthCost } : {}),
+      });
     };
     expectProps(
       "grow-crops", "Grow turnips", false, false, null, true, false,
@@ -67,11 +70,13 @@ describe("cards", () => {
     );
     expectProps(
       "pay-military-tribute", "Pay military tribute", false, false, null, false, true,
-      "Forced: while a vassal, grant your overlord +1 Might. Overlords pass it on up their own chain of lords.",
+      "Forced: while a vassal, pay 1 wealth per land of your realm to your " +
+        "overlord; what your treasury cannot cover, grant as Might instead.",
     );
     expectProps(
       "pay-status-tribute", "Pay status tribute", false, false, null, false, true,
-      "Forced: while a vassal, grant your overlord +1 Status. Overlords pass it on up their own chain of lords.",
+      "Forced: while a vassal, pay 1 wealth per land of your realm to your " +
+        "overlord; what your treasury cannot cover, grant as Status instead.",
     );
     expectProps(
       "seeds-of-revolt", "Seeds of revolt", false, false, 1, true, false,
@@ -100,10 +105,11 @@ describe("cards", () => {
     );
     expectProps(
       "found-settlement", "Found a settlement", true, false, 1, true, false,
-      "Raise another settlement in one land of your realm, up to what your " +
-        "people support - two, and one more for each Population boom you " +
-        "hold. Each settlement adds +1 to the Might lead others need to " +
-        "subjugate you, and spends a boom.",
+      "Costs 1 wealth. Raise another settlement in one land of your realm, " +
+        "up to what your people support - two, and one more for each " +
+        "Population boom you hold. Each settlement adds +1 to the Might " +
+        "lead others need to subjugate you, and spends a boom.",
+      1,
     );
     expectProps(
       "population-boom", "Population boom", false, false, 1, true, false,
@@ -113,7 +119,8 @@ describe("cards", () => {
     );
     expectProps(
       "a-feast", "A feast", false, false, 1, true, false,
-      "Gain +1 Status over every other living faction at once.",
+      "Costs 2 wealth. Gain +1 Status over every other living faction at once.",
+      2,
     );
     // The three secret cards: others see only that a card was played.
     expectProps(
@@ -156,6 +163,23 @@ describe("cards", () => {
     // rivals a detector for what it is holding.
     const secret = Object.values(CARDS).filter((c) => c.secret).map((c) => c.id);
     expect([...secret].sort()).toEqual(Object.keys(GUARDS).sort());
+  });
+
+  it("pins the costed set to a literal", () => {
+    // Like the secret set below the guards: a wealth cost changes when a card
+    // is playable at all, so one cannot appear - or change size - without
+    // somebody reading the 2026-08-02 wealth design and updating this.
+    const costed = Object.fromEntries(
+      Object.values(CARDS)
+        .filter((c) => c.wealthCost !== undefined)
+        .map((c) => [c.id, c.wealthCost]),
+    );
+    expect(costed).toEqual({ "a-feast": 2, "found-settlement": 1 });
+    // A forced card with a cost would jam the forced set against an empty
+    // treasury; nothing forces the two apart today except this line.
+    for (const id of Object.keys(costed)) {
+      expect(CARDS[id].forced).toBe(false);
+    }
   });
 
   it("aims every guard at a real, targeted card", () => {

@@ -199,8 +199,9 @@ describe("playCard validation", () => {
   });
 
   it("a tribute card carries its own track - playing it is the whole decision", () => {
+    // Wealth zeroed so the payment falls to the track this test is about.
     let g = playingState(LINE_ADJ);
-    g = { ...g, overlords: new Map([["beta", "gamma"]]) };
+    g = { ...g, overlords: new Map([["beta", "gamma"]]), wealth: {} };
     // free faction: no lord to pay, so neither tribute card resolves
     const free = withHand(playingState(LINE_ADJ), 0, ["pay-military-tribute"]);
     expect(playCard(free, 0, rng())).toBe(free);
@@ -321,55 +322,63 @@ describe("card effects", () => {
     expect(after.phase).toBe("victory");
   });
 
-  it("tribute forwards per hop: each lord gains over its own vassal, to the root", () => {
-    // human beta -> alpha -> gamma, and gamma has annexed delta
+  it("tribute reaches the direct lord only - the cascade is gone", () => {
+    // human beta -> alpha -> gamma, and gamma has annexed delta. A broke
+    // vassal pays the whole tribute on the track, and the chain above the
+    // direct lord sees none of it - each link feeds its own lord with its own
+    // tribute plays. (The per-hop cascade this replaced is recorded, reversed,
+    // in the 2026-08-02 vassal-chains design.)
     let g = asVassal(playingState(LINE_ADJ), "alpha");
     g = {
       ...g,
       overlords: new Map([...g.overlords, ["alpha", "gamma"]]),
       incorporated: { delta: "gamma" },
+      wealth: {},
     };
     g = withHand(g, 0, ["pay-military-tribute"]);
     const after = playCard(g, 0, rng());
-    // hop 1: alpha (the direct lord) over beta
+    // the direct lord gains over the payer
     expect(getRel(after.relations, "alpha", "beta").might).toBe(1);
-    // hop 2: gamma over alpha - NOT over beta
-    expect(getRel(after.relations, "gamma", "alpha").might).toBe(1);
+    // nothing moves anywhere above the direct link
+    expect(getRel(after.relations, "gamma", "alpha").might).toBe(0);
     expect(getRel(after.relations, "gamma", "beta").might).toBe(0);
-    // each hop's beneficiary brings its incorporated lands along
-    expect(getRel(after.relations, "delta", "alpha").might).toBe(1);
-    const forwarded = after.log.filter((e) => e.type === "tribute-forwarded");
-    expect(forwarded).toHaveLength(1);
-    expect(forwarded[0]).toMatchObject({
-      targetFactionId: "alpha", overlordFactionId: "gamma",
+    expect(getRel(after.relations, "delta", "alpha").might).toBe(0);
+    const tributes = after.log.filter((e) => e.type === "tribute");
+    expect(tributes).toHaveLength(1);
+    expect(tributes[0]).toMatchObject({
+      targetFactionId: "beta", overlordFactionId: "alpha",
       track: "might", amount: 1, consequence: true,
     });
+    expect(tributes[0].wealth).toBeUndefined();
   });
 
-  it("the payer's omen stack multiplies every hop once", () => {
+  it("the payer's omen stack multiplies a broke vassal's tribute", () => {
     let g = asVassal(playingState(LINE_ADJ), "alpha");
     g = {
       ...g,
       overlords: new Map([...g.overlords, ["alpha", "gamma"]]),
       omens: { beta: 1 },
+      wealth: {},
     };
     g = withHand(g, 0, ["pay-status-tribute"]);
     const after = playCard(g, 0, rng());
     expect(getRel(after.relations, "alpha", "beta").status).toBe(2);
-    expect(getRel(after.relations, "gamma", "alpha").status).toBe(2);
+    expect(getRel(after.relations, "gamma", "alpha").status).toBe(0);
+    expect(after.omens.beta).toBeUndefined();
   });
 
-  it("only the actual payer's hostage debt moves on a cascade", () => {
+  it("only the payer's own hostage debt moves on a tribute", () => {
     let g = asVassal(playingState(LINE_ADJ), "alpha");
     g = {
       ...g,
       overlords: new Map([...g.overlords, ["alpha", "gamma"]]),
       hostages: { beta: 2, alpha: 2 },
+      wealth: {},
     };
     g = withHand(g, 0, ["pay-military-tribute"]);
     const after = playCard(g, 0, rng());
     expect(after.hostages.beta).toBe(1);
-    expect(after.hostages.alpha).toBe(2); // a forwarded hop is not alpha's play
+    expect(after.hostages.alpha).toBe(2); // alpha played nothing
   });
 
   it("a mid-lord's revolt detaches its whole branch", () => {
@@ -502,7 +511,7 @@ describe("card effects", () => {
       "beta",
       seededRng(1),
     );
-    g = asVassal({ ...g, incorporated: { delta: "gamma" } }, "gamma");
+    g = asVassal({ ...g, incorporated: { delta: "gamma" }, wealth: {} }, "gamma");
     g = withHand(g, 0, ["pay-status-tribute"]);
     const after = playCard(g, 0, rng());
     expect(getRel(after.relations, "gamma", "beta").status).toBe(1);
@@ -1064,7 +1073,7 @@ describe("population boom and settlement growth", () => {
 describe("a feast", () => {
   it("gains +1 Status over every other living faction at once", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["a-feast"]);
-    g = { ...g, incorporated: { delta: "alpha" } };
+    g = { ...g, incorporated: { delta: "alpha" }, wealth: { beta: 2 } };
     const after = playCard(g, 0, rng());
     for (const f of ["alpha", "gamma"]) {
       expect(leadsOf(after.relations, "beta", f)).toEqual({ status: 1, might: 0 });
@@ -1074,14 +1083,109 @@ describe("a feast", () => {
     expect(after.log.at(-1)).toMatchObject({
       type: "play", cardId: "a-feast", amount: 1, track: "status",
     });
+    // The feast is paid for as it is thrown.
+    expect(after.wealth.beta).toBe(0);
+  });
+
+  it("is unplayable until the treasury covers its cost", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["a-feast"]);
+    g = { ...g, wealth: { beta: 1 } };
+    expect(cardBlockReason(viewOf(g), "beta", "a-feast"))
+      .toEqual({ code: "cannot-afford", cost: 2, held: 1 });
+    expect(playCard(g, 0, rng())).toBe(g);
   });
 
   it("is doubled by a held reading, like Fortify", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["a-feast"]);
-    g = { ...g, omens: { beta: 1 } };
+    g = { ...g, omens: { beta: 1 }, wealth: { beta: 2 } };
     const after = playCard(g, 0, rng());
     expect(leadsOf(after.relations, "beta", "alpha").status).toBe(2);
     expect(after.omens).toEqual({});
+  });
+});
+
+describe("wealth", () => {
+  it("banks 1 per settlement in the faction's own realm when its turn begins", () => {
+    // The boot beginTurn already paid the human's first income: one land, its
+    // one starting settlement.
+    const g = playingState(LINE_ADJ);
+    expect(g.wealth.beta).toBe(1);
+    // An annexed land and its founded settlements pay too; a vassal's do not.
+    let g2: GameState = {
+      ...g,
+      incorporated: { delta: "beta" },
+      settlements: { delta: 1 },
+      overlords: new Map([["gamma", "beta"]]),
+    };
+    g2 = beginTurn(g2, rng());
+    // itself (1) + delta (1 starting + 1 founded) = 3 more on top of the 1
+    expect(g2.wealth.beta).toBe(4);
+    expect(g2.wealth.gamma).toBeUndefined();
+  });
+
+  it("tribute pays the treasury before any counter, to the direct lord alone", () => {
+    let g = asVassal(playingState(LINE_ADJ), "gamma");
+    g = { ...g, wealth: { beta: 2 } };
+    g = withHand(g, 0, ["pay-military-tribute"]);
+    const after = playCard(g, 0, rng());
+    expect(after.wealth.beta).toBe(1);
+    expect(after.wealth.gamma).toBe(1);
+    expect(getRel(after.relations, "gamma", "beta").might).toBe(0);
+    const e = after.log.at(-1);
+    expect(e).toMatchObject({ type: "tribute", wealth: 1 });
+    expect(e?.track).toBeUndefined();
+    expect(e?.amount).toBeUndefined();
+  });
+
+  it("a fully-covered tribute leaves the omens stack held", () => {
+    let g = asVassal(playingState(LINE_ADJ), "gamma");
+    g = { ...g, wealth: { beta: 1 }, omens: { beta: 2 } };
+    g = withHand(g, 0, ["pay-military-tribute"]);
+    const after = playCard(g, 0, rng());
+    expect(after.omens.beta).toBe(2);
+    expect(after.wealth.gamma).toBe(1);
+    expect(after.log.at(-1)?.readings).toBeUndefined();
+  });
+
+  it("owes 1 per land of its realm and pays the shortfall on the track", () => {
+    // beta's realm: itself + two incorporated lands -> owes 3, holds 2. The
+    // roster is widened so the lord's full realm stays under the win size.
+    const factions = [...FACTIONS, "epsilon", "zeta", "eta", "theta"];
+    let g = pickFaction(
+      chooseDeck(startGame(newGame(factions)), buildDeck()), "beta",
+      seededRng(1),
+    );
+    g = asVassal(
+      { ...g, incorporated: { epsilon: "beta", zeta: "beta" } }, "gamma",
+    );
+    g = { ...g, wealth: { beta: 2 }, omens: { beta: 1 } };
+    g = withHand(g, 0, ["pay-military-tribute"]);
+    const after = playCard(g, 0, rng());
+    expect(after.wealth.beta).toBe(0);
+    expect(after.wealth.gamma).toBe(2);
+    // shortfall of 1, doubled by the reading the shortfall cashed
+    expect(getRel(after.relations, "gamma", "beta").might).toBe(2);
+    expect(after.omens.beta).toBeUndefined();
+    expect(after.log.at(-1)).toMatchObject({
+      type: "tribute", wealth: 2, track: "might", amount: 2,
+    });
+  });
+
+  it("a wealth-paid tribute still works off the hostage debt", () => {
+    let g = asVassal(playingState(LINE_ADJ), "gamma");
+    g = { ...g, wealth: { beta: 5 }, hostages: { beta: 1 } };
+    g = withHand(g, 0, ["pay-military-tribute"]);
+    const after = playCard(g, 0, rng());
+    expect(after.hostages.beta).toBeUndefined();
+    expect(after.log.at(-1)?.type).toBe("hostage-returned");
+  });
+
+  it("a costed play spends the treasury as part of the play", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
+    g = { ...g, wealth: { beta: 3 } };
+    const after = playCard(g, 0, rng(), "beta");
+    expect(after.wealth.beta).toBe(2);
+    expect(after.settlements.beta).toBe(1);
   });
 });
 
@@ -1272,7 +1376,7 @@ describe("favourable omens", () => {
 
   it("doubles the tribute a vassal pays, which is the cost of hoarding it", () => {
     let g = armed(playingState(LINE_ADJ));
-    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = { ...g, overlords: new Map([["beta", "alpha"]]), wealth: {} };
     g = withHand(g, 0, ["pay-military-tribute"]);
     g = playCard(g, 0, seededRng(1));
     expect(getRel(g.relations, "alpha", "beta").might).toBe(2);
@@ -1315,7 +1419,7 @@ describe("favourable omens", () => {
   it("a forced tribute cashes the whole stack against the overlord", () => {
     // The cost of hoarding readings while somebody's vassal, and the reason
     // the AI policy refuses to read one while it is one.
-    let g: GameState = { ...playingState(LINE_ADJ), omens: { beta: 2 } };
+    let g: GameState = { ...playingState(LINE_ADJ), omens: { beta: 2 }, wealth: {} };
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
     g = withHand(g, 0, ["pay-military-tribute"]);
     g = playCard(g, 0, seededRng(1));
@@ -1955,7 +2059,7 @@ describe("event amount/track", () => {
 
   it("tribute records mult alongside the track it already carried", () => {
     let g = asVassal(playingState(LINE_ADJ), "alpha");
-    g = { ...g, omens: { beta: 1 } };
+    g = { ...g, omens: { beta: 1 }, wealth: {} };
     g = withHand(g, 0, ["pay-military-tribute"]);
     const after = playCard(g, 0, rng());
     expect(after.log.at(-1)).toMatchObject({

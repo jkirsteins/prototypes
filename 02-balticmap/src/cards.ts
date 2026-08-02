@@ -24,28 +24,30 @@ export const RARITY_TIERS = [
   { id: "common", weight: 70, minImpact: Number.NEGATIVE_INFINITY, colour: "#6d6355" },
   // Both cuts sit in GAPS between measured impacts, never on a card, so a
   // rerun that nudges a coefficient cannot re-tier a card a player already
-  // owns. They are absolute numbers on a scale that the pool's own size moves,
-  // though - a denser enemy field shrinks every human realm and pulls every
-  // coefficient toward zero with it - so adding cards means re-reading the
-  // table and re-cutting, not just tagging the new ones. Take hostage joining
-  // the pool was such a re-cut: the coefficients past the top two reordered
-  // outright, so several cards changed tier with it.
+  // owns. They are absolute numbers on a scale that the pool's own rules move,
+  // though - a denser enemy field or a new economy shrinks every human realm
+  // and drags the coefficients with it - so a rules change means re-reading
+  // the table and re-cutting, not just tagging the new cards. The wealth
+  // economy was such a re-cut: costed cards and coin tribute reordered the
+  // table - Found a settlement rose to epic; Eloping heirs and Favourable
+  // omens fell to common.
   //
-  // 0.147 is the midpoint of the 0.058 gap between A feast (0.176) and Found a
-  // settlement (0.118), the widest separation in the table. Epic is measured,
-  // and holds Incorporate and A feast.
+  // 0.139 is the midpoint of the 0.146 gap between A feast (0.212) and Take
+  // hostage (0.066), the runner-up separation. (The widest, above Found a
+  // settlement, would leave epic holding Incorporate alone.) Epic is
+  // measured, and holds Incorporate, Found a settlement and A feast.
   //
-  // 0.044 is the midpoint of the runner-up gap, between Bodyguard (0.065) and
-  // Alliance (0.023). Past the top of the table a card's measured contribution
-  // to final realm size is small and noise-dominated, so the rare/common line
+  // 0.013 is the midpoint of the gap between Bodyguard (0.023) and Alliance
+  // (0.004). Past the top of the table a card's measured contribution to
+  // final realm size is small and noise-dominated, so the rare/common line
   // is a design decision about what feels worth finding rather than a
   // measurement. Treat it as something to playtest.
   //
   // An empty top tier is a real failure and not a tidy one: `rollTier` falls
   // back to the base tier, so 5% of pack slots would quietly become common
   // while the purple band went unused. tests/packs.test.ts refuses it.
-  { id: "rare",   weight: 25, minImpact: 0.044, colour: "#1f6fd0" },
-  { id: "epic",   weight:  5, minImpact: 0.147, colour: "#7b2fbf" },
+  { id: "rare",   weight: 25, minImpact: 0.013, colour: "#1f6fd0" },
+  { id: "epic",   weight:  5, minImpact: 0.139, colour: "#7b2fbf" },
 ] as const satisfies readonly RarityTier[];
 
 export type CardRarity = (typeof RARITY_TIERS)[number]["id"];
@@ -103,6 +105,14 @@ export interface CardDef {
   /** Pack draw tier. Set from the measured impact table, not by hand; see
    *  `rarityForImpact` and tests/cards.test.ts. */
   rarity: CardRarity;
+  /** Wealth the actor must hold and spend to play this card. Absent = free.
+   *  One legality rule reads it - `cannot-afford` in src/playability.ts, so a
+   *  costed card greys out rather than failing - and `playCard` deducts it at
+   *  the moment of play, unconditionally: the card is spent, the turn is
+   *  gone, the cost is gone. The costed set is pinned to a literal in
+   *  tests/cards.test.ts, like the secret set, so a cost cannot appear
+   *  without somebody reading the 2026-08-02 wealth design. */
+  wealthCost?: number;
   /** One-line rules text shown to the player. */
   text: string;
 }
@@ -117,8 +127,8 @@ export const CARDS: Record<string, CardDef> = {
   // Injection-only, like Revolt: a Subjugate shuffles one of each into the
   // vassal's deck (see playCard) and a release strips them out again. They are
   // never deck-buildable and never in a pack.
-  "pay-military-tribute": { id: "pay-military-tribute", name: "Pay military tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, grant your overlord +1 Might. Overlords pass it on up their own chain of lords." },
-  "pay-status-tribute": { id: "pay-status-tribute", name: "Pay status tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, grant your overlord +1 Status. Overlords pass it on up their own chain of lords." },
+  "pay-military-tribute": { id: "pay-military-tribute", name: "Pay military tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, pay 1 wealth per land of your realm to your overlord; what your treasury cannot cover, grant as Might instead." },
+  "pay-status-tribute": { id: "pay-status-tribute", name: "Pay status tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, pay 1 wealth per land of your realm to your overlord; what your treasury cannot cover, grant as Status instead." },
   "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
   "revolt": { id: "revolt", name: "Revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you, and none may subjugate you for 2 turns. Leaves your deck for good." },
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Even the score: the Status lead between you and one faction in reach resets to none." },
@@ -129,15 +139,15 @@ export const CARDS: Record<string, CardDef> = {
   // ruler tooltip cannot become a detector - and a log line naming the card was
   // that detector by another route.
   "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card." },
-  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "The signs are read: your next Might or Status gain counts double." },
-  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
+  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "The signs are read: your next Might or Status gain counts double." },
+  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", wealthCost: 1, text: "Costs 1 wealth. Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
   // Appended, never inserted: `buildAiDeck` rolls one rng draw per entry here
   // in declaration order, so where a card sits decides which draw it answers
   // to. See the warning on DEFAULT_DECK.
   "population-boom": { id: "population-boom", name: "Population boom", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your people multiply: one more settlement than your lands would otherwise support. Stacks, and waits in hand until a settlement is founded." },
-  "a-feast": { id: "a-feast", name: "A feast", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Gain +1 Status over every other living faction at once." },
+  "a-feast": { id: "a-feast", name: "A feast", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", wealthCost: 2, text: "Costs 2 wealth. Gain +1 Status over every other living faction at once." },
   "distrustful-neighbour": { id: "distrustful-neighbour", name: "Distrustful neighbour", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your neighbours grow wary: the next Alliance sealed with you fails. No stacking. Others see only that you played a secret card." },
-  "eloping-heirs": { id: "eloping-heirs", name: "Eloping heirs", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Your heirs slip away in the night: the next Shrewd marriage against you fails. No stacking. Others see only that you played a secret card." },
+  "eloping-heirs": { id: "eloping-heirs", name: "Eloping heirs", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your heirs slip away in the night: the next Shrewd marriage against you fails. No stacking. Others see only that you played a secret card." },
   "take-hostage": { id: "take-hostage", name: "Take hostage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Take a hostage from a vassal of yours whose deck holds a Revolt: the Revolt cannot be played until they pay tribute twice and the hostage goes home." },
 };
 

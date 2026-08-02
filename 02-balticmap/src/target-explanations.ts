@@ -706,6 +706,11 @@ export function cardBlockLine(reason: CardBlockReason): string {
       return "You are already holding an unspent one.";
     case "revolt-live":
       return "A revolt is already sown in your deck.";
+    case "cannot-afford":
+      // Both numbers, because together they are the decision: income arrives
+      // every turn, so "needs 2, you hold 1" says how long to wait. "Wealth"
+      // is a mass noun, so no `count`.
+      return `Needs ${reason.cost} wealth; you hold ${reason.held}.`;
     case "hostage-held":
       // The count is the decision: what unlocks the card is paying the debt
       // down, and how far along that is decides whether to keep feeding the

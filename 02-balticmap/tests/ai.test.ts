@@ -18,11 +18,14 @@ function seededRng(seed: number): Rng {
 const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
 function base(): GameState {
-  // human is beta; make alpha (player 2, index 1) the actor
+  // human is beta; make alpha (player 2, index 1) the actor. Alpha's seat has
+  // not begun a turn yet, so it has banked no income; a treasury covering the
+  // dearest costed card keeps these tests about the POLICY, not about
+  // affordability - which has its own tests in playability.test.ts.
   const g = pickFaction(
     chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
   );
-  return { ...g, current: 1 };
+  return { ...g, current: 1, wealth: { alpha: 2 } };
 }
 
 /** Hold every named land long enough that Incorporate is certain, so a test

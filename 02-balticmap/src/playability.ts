@@ -2,7 +2,8 @@ import {
   CARDS, DOUBLABLE_CARDS, guardAgainst, isGuardCard, isTributeCard,
 } from "./cards";
 import {
-  allianceActive, fullRealmOf, leadsOf, overlordChainOf, pactBetween,
+  allianceActive, fullRealmOf, incorporatedRealmOf, leadsOf, overlordChainOf,
+  pactBetween,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import { activeExpiry, timedActive } from "./timed";
@@ -86,6 +87,11 @@ export interface RulesView {
    *  the vassalage that justified it does - every exit from vassalage deletes
    *  it (see `playCard`). */
   hostages: Record<string, number>;
+  /** Faction id -> treasury. Absent = 0, never negative, uncapped. Earned in
+   *  `beginTurn` (1 per settlement in the faction's own realm, see
+   *  `wealthIncomeFor`), spent on costed cards and on tribute. Read only
+   *  through `wealthOf`. */
+  wealth: Record<string, number>;
   /** Faction id -> the turn its post-escape respite expires (see
    *  `ESCAPE_RESPITE_TURNS`). Bare expiry on the src/timed.ts clock, no
    *  payload; read only through `respiteExpiry`, so a stale unswept entry is
@@ -315,6 +321,34 @@ export function boomsHeld(
   factionId: string,
 ): number {
   return view.booms[factionId] ?? 0;
+}
+
+/** The actor's treasury. Absent = 0. */
+export function wealthOf(
+  view: { wealth: Record<string, number> },
+  factionId: string,
+): number {
+  return view.wealth[factionId] ?? 0;
+}
+
+/** Wealth `factionId` earns when its turn begins: 1 per settlement standing
+ *  in its own realm - itself plus the lands incorporated into it, and
+ *  deliberately no vassals. A vassal is a live seat earning into its own
+ *  treasury, and tribute is the channel by which its wealth reaches the lord;
+ *  counting its lands here would tax them twice.
+ *
+ *  Three callers, one sum: the `beginTurn` tick, the tribute a vassal owes
+ *  (1 per land of the same set, see `playCard`), and the HUD's "+N/turn"
+ *  readout - which is how the promise and the tick cannot drift. */
+export function wealthIncomeFor(
+  view: { incorporated: Incorporated; settlements: Record<string, number> },
+  factionId: string,
+): number {
+  let sum = 0;
+  for (const land of incorporatedRealmOf(factionId, view.incorporated)) {
+    sum += settlementsIn(view, land);
+  }
+  return sum;
 }
 
 /** The incumbent overlord's hold on a vassal: the larger of their two leads
@@ -979,6 +1013,10 @@ export type CardBlockReason =
   | { code: "needs-overlord" }
   | { code: "already-held" }
   | { code: "revolt-live" }
+  /** The card costs more wealth than the actor holds. Carries both numbers
+   *  because together they are the decision: "needs 2, you hold 1" says how
+   *  long to wait, where "cannot afford" alone says nothing. */
+  | { code: "cannot-afford"; cost: number; held: number }
   /** Revolt while the overlord holds a hostage. Carries how many tribute
    *  payments remain, because the count is the decision: a player told only
    *  "locked" cannot see that paying down the debt is what unlocks it. */
@@ -1004,6 +1042,14 @@ export function cardBlockReason(
 ): CardBlockReason | null {
   const card = CARDS[cardId];
   if (!card) return { code: "unavailable" };
+  // Affordability outranks every rule below: an unaffordable card is not
+  // playable on any terms, and one check here is what keeps a new costed card
+  // from having to remember it. The tribute cards carry no cost, so the
+  // forced set is untouched.
+  const cost = card.wealthCost ?? 0;
+  if (cost > wealthOf(view, factionId)) {
+    return { code: "cannot-afford", cost, held: wealthOf(view, factionId) };
+  }
   const overlord = view.overlords.get(factionId);
   const vassalOnly = (): CardBlockReason | null =>
     overlord === undefined ? { code: "needs-overlord" } : null;

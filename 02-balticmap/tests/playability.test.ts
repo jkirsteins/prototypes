@@ -38,6 +38,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     loyalty: {},
     liveRevolts: [],
     hostages: {},
+    wealth: {},
     respites: {},
     siteCaps: siteCaps(ORDER),
     settlements: {},
@@ -307,7 +308,16 @@ describe("found a settlement", () => {
         "beta", "found-settlement",
       ),
     ).toBe(false);
-    expect(isCardPlayable(view(), "beta", "found-settlement")).toBe(true);
+    // Solvent and unblocked: playable. The default view is broke, and a
+    // costed card is refused there before any land is asked - see below.
+    expect(
+      isCardPlayable(view({ wealth: { beta: 1 } }), "beta", "found-settlement"),
+    ).toBe(true);
+  });
+
+  it("is refused before any land question while the treasury is short", () => {
+    expect(cardBlockReason(view(), "beta", "found-settlement"))
+      .toEqual({ code: "cannot-afford", cost: 1, held: 0 });
   });
 
   it("is not blocked by a pact with the land being settled", () => {
@@ -591,6 +601,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       loyalty: {},
       liveRevolts: [],
       hostages: {},
+      wealth: {},
       alliances: {},
       turn: 1,
       guards: {},
@@ -617,6 +628,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       loyalty: {},
       liveRevolts: [],
       hostages: {},
+      wealth: {},
       alliances: {},
       turn: 1,
       guards: {},

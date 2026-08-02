@@ -312,6 +312,16 @@ svg.map.dragging {
   z-index: 6;
 }
 
+/* The player's own treasury, divided from the turn prompt. The bar is light,
+   so the chip inherits its colour; the amber is the accent, not the text. */
+.status-wealth {
+  border-left: 1px solid #d0d0d0;
+  padding-left: 12px;
+  color: #7a5a12;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .hand {
   position: absolute;
   bottom: -30px;
@@ -542,7 +552,7 @@ svg.map.dragging {
 .ds-deck {
   display: grid;
   grid-template-columns: repeat(auto-fit, 210px);
-  grid-auto-rows: 175px;
+  grid-auto-rows: 180px;
   justify-content: center;
   gap: 10px;
   width: min(1122px, 100% - 32px);
@@ -559,9 +569,9 @@ svg.map.dragging {
    of height where 190 needed 162. Wider and shorter at once, so past 210 the
    line count stops falling and only the width grows.
 
-   175px is the measured 161 - the longest tiles' scrollHeight plus border
-   with the labelled rarity ribbon in the bottom padding - plus a line of
-   slack for a platform whose font metrics run a little larger. The height
+   180px is the measured 176 - Found a settlement's scrollHeight with its
+   "Costs 1 wealth." sentence and the labelled rarity ribbon in the bottom
+   padding - plus slack for a platform whose font metrics run larger. The height
    comes from the grid's grid-auto-rows and
    never from a min-height here, so every tile in every row is identical;
    anything that still outgrows it clips, and the shared tooltip is the safety

@@ -47,6 +47,13 @@ export interface BootParams {
   /** Lifetime XP, which is what `pendingPacks` derives the pack-opening
    *  overlay from. Null starts at zero. */
   xp: number | null;
+  /** The human faction's treasury, own faction only - rivals' treasuries are
+   *  hidden, so there is nothing a URL could sanely say about them. Null
+   *  leaves the boot-time income untouched. The two checks it exists for:
+   *  `?hand=a-feast&wealth=1` (greyed out with a readable reason) and a
+   *  vassalage at `wealth=0` (the tribute line quotes a standing change where
+   *  a solvent vassal's quotes coins). */
+  wealth: number | null;
   /** False mutes the AI round summary, via the log pref the player can toggle
    *  themselves. Null leaves the pref alone. */
   popups: boolean | null;
@@ -115,7 +122,7 @@ function parseRel(raw: string): RelOverride[] {
 
 const BOOT_KEYS = [
   "seed", "deck", "screen", "faction", "hand", "rel", "turns", "known", "xp",
-  "popups",
+  "wealth", "popups",
 ];
 
 /** Null when the URL names no boot param at all, which is the ordinary case:
@@ -131,6 +138,7 @@ export function parseBootParams(search: string): BootParams | null {
   const popups = q.get("popups");
   const turns = intOr(q.get("turns"), 0) ?? 0;
   const xp = intOr(q.get("xp"), null);
+  const wealth = intOr(q.get("wealth"), null);
   return {
     seed: intOr(q.get("seed"), null),
     deck: deck === null ? null : ids(deck),
@@ -147,6 +155,10 @@ export function parseBootParams(search: string): BootParams | null {
     // collection every player starts with, which is the sparse deck screen.
     known: known === null ? null : ids(known),
     xp: xp === null ? null : Math.max(0, Math.min(MAX_BOOT_XP, xp)),
+    // The same bound as `xp=`, for the same reason a URL gets any bound at
+    // all: a treasury is only ever displayed and compared, so this one is
+    // hygiene rather than a frozen tab.
+    wealth: wealth === null ? null : Math.max(0, Math.min(MAX_BOOT_XP, wealth)),
     popups:
       popups === null ? null : !["off", "false", "0"].includes(popups.trim()),
   };
@@ -243,6 +255,15 @@ export function applyBootParams(
   g = fastForward(g, params.turns, rng);
   if (g.phase !== "playing") return g;
   if (params.hand !== null) g = withHand(g, params.hand);
+  // After the fast-forward, like `hand` and `rel` and for the same reason:
+  // the number means the treasury as it stands now, not before the income the
+  // forwarded rounds banked.
+  if (params.wealth !== null) {
+    const me = g.players[0]?.factionId;
+    if (me !== undefined) {
+      g = { ...g, wealth: { ...g.wealth, [me]: params.wealth } };
+    }
+  }
   return withRel(g, params.rel);
 }
 

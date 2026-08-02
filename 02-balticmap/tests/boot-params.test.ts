@@ -58,8 +58,22 @@ describe("parseBootParams", () => {
   it("defaults everything the URL does not name", () => {
     expect(params("?seed=7")).toEqual({
       seed: 7, deck: null, screen: null, faction: null, hand: null, rel: [],
-      turns: 0, known: null, xp: null, popups: null,
+      turns: 0, known: null, xp: null, wealth: null, popups: null,
     });
+  });
+
+  it("parses and clamps wealth", () => {
+    expect(params("?wealth=3").wealth).toBe(3);
+    expect(params("?wealth=-2").wealth).toBe(0);
+    expect(params("?wealth=junk").wealth).toBeNull();
+  });
+
+  it("wealth= sets the human treasury as it stands after the fast-forward", () => {
+    const g = boot("?faction=beta&turns=2&wealth=5");
+    expect(g.wealth.beta).toBe(5);
+    // absent, the treasury is whatever the run banked - never zeroed
+    const banked = boot("?faction=beta&turns=2");
+    expect(banked.wealth.beta).toBeGreaterThan(0);
   });
 
   it("splits and trims id lists", () => {

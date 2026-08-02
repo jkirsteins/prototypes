@@ -113,16 +113,6 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
       targetFactionId: RIVAL, overlordFactionId: H, track: "status", amount: 1,
     },
   ],
-  "tribute-forwarded": [
-    {
-      turn: 1, playerId: 2, type: "tribute-forwarded",
-      targetFactionId: H, overlordFactionId: RIVAL, track: "might", amount: 1,
-    },
-    {
-      turn: 1, playerId: 2, type: "tribute-forwarded",
-      targetFactionId: RIVAL, overlordFactionId: H, track: "might", amount: 1,
-    },
-  ],
   settled: [
     { turn: 1, playerId: 1, type: "settled", targetFactionId: H },
     { turn: 1, playerId: 2, type: "settled", targetFactionId: RIVAL },

@@ -371,6 +371,7 @@ describe("activity log", () => {
   it("states A feast on its own track, still as a fan-out", () => {
     const { container, hud } = setup();
     let g = playing();
+    g = { ...g, wealth: { ...g.wealth, [g.players[0].factionId]: 2 } };
     g = withHand(g, 0, ["a-feast"]);
     g = playCard(g, 0, seededRng(1));
     hud.update(g);

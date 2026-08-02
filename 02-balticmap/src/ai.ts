@@ -195,7 +195,7 @@ export function chooseAction(state: GameState): AiAction {
 
   // 2: revolt out of vassalage. A vassal CAN Subjugate and Incorporate now,
   // and revolt still outranks both deliberately: only free factions win, and
-  // every forced tribute feeds the whole chain of lords above. Freedom first.
+  // every forced tribute drains the treasury or feeds the lord. Freedom first.
   // Revolt carries no lead condition, and its parting +1/+1 cuts the lord's
   // lead, delaying re-subjugation. Playable exactly while subjugated, so
   // idxOf is the whole guard. A forced tribute still outranks it through

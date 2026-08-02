@@ -125,23 +125,24 @@ describe("leadMovesOf", () => {
     ]);
   });
 
-  it("tribute forwarded away from the human mid-link subtracts toward the beneficiary", () => {
+  it("a tribute paid fully in wealth moves no lead", () => {
+    // The coins moved no counter, so the event carries no track/amount and
+    // the walk has nothing to say about it.
     const e: GameEvent = {
-      turn: 1, playerId: 2, type: "tribute-forwarded",
-      targetFactionId: H, overlordFactionId: RIVAL, amount: 2, track: "might",
+      turn: 1, playerId: 1, type: "tribute",
+      targetFactionId: H, overlordFactionId: RIVAL, wealth: 1,
     };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, track: "might", delta: -2 },
-    ]);
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
   });
 
-  it("tribute forwarded to the human adds over the link it was taken from", () => {
+  it("a part-covered tribute moves only its shortfall", () => {
     const e: GameEvent = {
-      turn: 1, playerId: 2, type: "tribute-forwarded",
-      targetFactionId: RIVAL, overlordFactionId: H, amount: 2, track: "might",
+      turn: 1, playerId: 1, type: "tribute",
+      targetFactionId: H, overlordFactionId: RIVAL,
+      wealth: 2, amount: 1, track: "might",
     };
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, track: "might", delta: 2 },
+      { kind: "add", factionId: RIVAL, track: "might", delta: -1 },
     ]);
   });
 

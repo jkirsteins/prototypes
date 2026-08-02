@@ -13,7 +13,7 @@ import { walkStandings, type StandingChange } from "./standings";
 import { count } from "./plural";
 import {
   allianceExpiry, leadsIn, passiveFortifyFor, subjugationGripOn,
-  subjugationRequirement,
+  subjugationRequirement, wealthIncomeFor, wealthOf,
 } from "./playability";
 import {
   multipliedWord, type TargetExplanation,
@@ -325,12 +325,6 @@ export function eventSegments(
       return clause(named(e.targetFactionId), "pay", [
         t(" tribute to "), faction(e.overlordFactionId ?? ""),
       ]);
-    case "tribute-forwarded":
-      // The subject is the mid-lord the hop was taken from, not the seat
-      // whose forced play started the cascade.
-      return clause(named(e.targetFactionId), "pass", [
-        t(" tribute on to "), faction(e.overlordFactionId ?? ""),
-      ]);
     case "settled":
       return clause(named(e.targetFactionId), "found", [t(" a new settlement")]);
     case "seeded":
@@ -479,6 +473,20 @@ export function impactText(
   // beside them. Adding one here would print the number twice in the activity
   // log; removing it from the segments would blank it in the postmortem.
   if (e.type === "garrisoned") return null;
+
+  // A tribute's coins moved no counter, so the walk has no line for them and
+  // the amount comes off the event - exactly as the fan-out amounts do. A
+  // part-covered payment shows both halves: the coins, then the standing the
+  // shortfall moved. Tone follows the standing half alone; coins leaving a
+  // vassal are the neutral cost of the card, not a lead moving.
+  if (e.type === "tribute" && e.wealth !== undefined) {
+    const rest = changes.map(standingChangeText).join(", ");
+    const net = changes.reduce((sum, c) => sum + (c.after - c.before), 0);
+    return {
+      text: `${e.wealth} wealth${rest.length > 0 ? `, ${rest}` : ""}`,
+      tone: net > 0 ? "good" : net < 0 ? "bad" : "even",
+    };
+  }
 
   const trackLabel = (track: "status" | "might"): string =>
     track === "might" ? "Might" : "Status";
@@ -692,7 +700,12 @@ export function createHud(
   status.className = "status-bar hidden";
   const statusText = document.createElement("span");
   statusText.className = "status-text";
-  status.append(statusText);
+  // The player's own treasury and its rate, beside the turn prompt. The rate
+  // quotes `wealthIncomeFor` - the same call the beginTurn tick pays - so the
+  // promise and the tick cannot drift. Rivals' treasuries appear nowhere.
+  const wealthChip = document.createElement("span");
+  wealthChip.className = "status-wealth hidden";
+  status.append(statusText, wealthChip);
 
   function makePile(kind: string, label: string) {
     const root = document.createElement("div");
@@ -1454,6 +1467,15 @@ export function createHud(
   let armedIndex: number | null = null;
 
   function renderStatus(state: GameState): void {
+    const humanFaction = state.players[0]?.factionId;
+    const showWealth = state.phase === "playing" && humanFaction !== undefined;
+    wealthChip.classList.toggle("hidden", !showWealth);
+    if (showWealth) {
+      const view = viewOf(state);
+      wealthChip.textContent =
+        `Wealth ${wealthOf(view, humanFaction)} ` +
+        `(+${wealthIncomeFor(view, humanFaction)}/turn)`;
+    }
     if (state.phase === "pick-faction") {
       statusText.textContent = "Choose your faction";
     } else if (state.phase === "playing") {
