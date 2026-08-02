@@ -1,4 +1,5 @@
 import { ARENA, gapOf } from "../combat/engine";
+import { HIT_STUN_MS } from "../combat/fighter";
 import { lastLines } from "../combat/log";
 import { zoneFor } from "../combat/measure";
 import { pickFrame } from "./frames";
@@ -61,12 +62,10 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
   drawFighter(v, d.f[0], d.time);
   drawFighter(v, d.f[1], d.time);
   if (v.overlay) {
-    drawPhaseLabel(v, d.f[0]);
-    drawPhaseLabel(v, d.f[1]);
-    drawStrikeTiming(v, d.f[0]);
-    drawStrikeTiming(v, d.f[1]);
-    drawGuardState(v, d.f[0]);
-    drawGuardState(v, d.f[1]);
+    drawBodyTrack(v, d.f[0]);
+    drawBodyTrack(v, d.f[1]);
+    drawParryTrack(v, d.f[0]);
+    drawParryTrack(v, d.f[1]);
     drawLog(v, d);
     drawSeed(v, seed);
   }
@@ -136,16 +135,137 @@ function drawMeasureBands(v: View, d: Duel): void {
   });
 }
 
-/** Label above a fighter naming their current state (attack states show the phase, not "attack"). */
-function drawPhaseLabel(v: View, f: Fighter): void {
+/**
+ * One presentation idiom per track: a label plus a progress bar in the same
+ * style, so a thrust's recovery and a step's settle read the same way. Row 1
+ * is the body-action track (while its bar runs, non-parry actions are
+ * deferred or refused); row 2 is the parry track (it alone gates the parry).
+ */
+const TRACK_BAR_W = 70;
+const TRACK_BAR_H = 5;
+const ROW1_LABEL_Y = -184;
+const ROW1_BAR_Y = -178;
+const ROW2_LABEL_Y = -165;
+const ROW2_BAR_Y = -159;
+
+function drawTrackRow(
+  v: View, cx: number, labelY: number, barY: number,
+  label: string, color: string, frac: number | null,
+): void {
+  const { ctx } = v;
+  ctx.font = "11px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.fillStyle = color;
+  ctx.fillText(label, cx, ARENA.floorY + labelY);
+  ctx.textAlign = "left";
+  if (frac === null) return;
+  const x = cx - TRACK_BAR_W / 2;
+  const y = ARENA.floorY + barY;
+  ctx.fillStyle = "#2c313a";
+  ctx.fillRect(x, y, TRACK_BAR_W, TRACK_BAR_H);
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, TRACK_BAR_W * Math.max(0, Math.min(1, frac)), TRACK_BAR_H);
+}
+
+/** Row 1: current state or attack phase, with progress through it. */
+function drawBodyTrack(v: View, f: Fighter): void {
   const { ctx } = v;
   const s = f.state;
+  const cx = f.x * PX_PER_CM;
   const label = s.kind === "attack" ? s.phase : s.kind;
-  ctx.fillStyle = PHASE_COLORS[label];
-  ctx.font = "12px ui-monospace, monospace";
-  ctx.textAlign = "center";
-  ctx.fillText(label, f.x * PX_PER_CM, ARENA.floorY - 180);
-  ctx.textAlign = "left";
+  const color = PHASE_COLORS[label];
+
+  if (s.kind === "attack" && s.phase === "strike") {
+    // The one bar with internal structure: meetable / delivered, split at
+    // the timeline's parryable mark, cursor riding the elapsed time.
+    ctx.font = "11px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = color;
+    ctx.fillText(label, cx, ARENA.floorY + ROW1_LABEL_Y);
+    ctx.textAlign = "left";
+    drawCommitCue(v, f, cx);
+    const tl = s.timeline;
+    const strike = tl.strikeEnd - tl.strikeStart;
+    const meetable = (tl.parryableUntil - tl.strikeStart) / strike;
+    const x = cx - TRACK_BAR_W / 2;
+    const y = ARENA.floorY + ROW1_BAR_Y;
+    ctx.fillStyle = "#e6c229"; // meetable
+    ctx.fillRect(x, y, TRACK_BAR_W * meetable, TRACK_BAR_H);
+    ctx.fillStyle = "#6b2f2c"; // delivered: too late to parry
+    ctx.fillRect(x + TRACK_BAR_W * meetable, y, TRACK_BAR_W * (1 - meetable), TRACK_BAR_H);
+    ctx.fillStyle = "#e8eaed";
+    ctx.fillRect(x + Math.min(1, (s.elapsedMs - tl.strikeStart) / strike) * TRACK_BAR_W - 1, y - 2, 2, TRACK_BAR_H + 4);
+    return;
+  }
+
+  drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, bodyFraction(f));
+  drawCommitCue(v, f, cx);
+
+  // Presentation marks inside the windup: where the rise starts (end of an
+  // AI telegraph) and where the stillness begins.
+  if (s.kind === "attack" && s.phase === "windup") {
+    const tl = s.timeline;
+    const x = cx - TRACK_BAR_W / 2;
+    const y = ARENA.floorY + ROW1_BAR_Y;
+    ctx.fillStyle = "#1b1e24";
+    for (const mark of [tl.riseStart, tl.riseEnd]) {
+      if (mark > 0 && mark < tl.strikeStart) {
+        ctx.fillRect(x + (mark / tl.strikeStart) * TRACK_BAR_W, y, 1, TRACK_BAR_H);
+      }
+    }
+  }
+}
+
+/**
+ * Derived commitment cue, visual only: the windup -> strike transition is
+ * the single source of truth, never stored. Underlines the label once the
+ * attack can no longer be abandoned.
+ */
+function drawCommitCue(v: View, f: Fighter, cx: number): void {
+  const s = f.state;
+  if (s.kind !== "attack" || s.phase === "windup") return;
+  v.ctx.fillStyle = PHASE_COLORS[s.phase];
+  v.ctx.fillRect(cx - 14, ARENA.floorY + ROW1_LABEL_Y + 3, 28, 1);
+}
+
+/** Progress through the current body action, or null for no bar. */
+function bodyFraction(f: Fighter): number | null {
+  const s = f.state;
+  switch (s.kind) {
+    case "ready":
+      // Settling after a step: the same track being unavailable, so it
+      // gets the same bar - filling toward being free.
+      return f.stepRecoveryMs > 0 ? 1 - f.stepRecoveryMs / f.weapon.stepRecoveryMs : null;
+    case "step":
+      return s.t / f.weapon.stepDuration;
+    case "void":
+      return s.t / f.weapon.voidDuration;
+    case "hitstun":
+      return s.t / HIT_STUN_MS;
+    case "attack": {
+      const tl = s.timeline;
+      if (s.phase === "windup") return s.elapsedMs / tl.strikeStart;
+      // Recovery reads the resolved timeline, so a whiff visibly shows its
+      // longer exposure and a parried attack its penalty.
+      return (s.elapsedMs - tl.recoveryStart) / (tl.recoveryEnd - tl.recoveryStart);
+    }
+    case "parry": // row 2's business
+    case "dead":
+      return null;
+  }
+}
+
+/** Row 2: the parry track - window while up, recovery while spent. */
+function drawParryTrack(v: View, f: Fighter): void {
+  const cx = f.x * PX_PER_CM;
+  const cooling = f.parryRecoveryMs > 0;
+  if (f.state.kind === "parry") {
+    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "parry up", "#9b8cff", f.state.t / f.weapon.parryWindowMs);
+  } else if (cooling) {
+    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "recovering", "#6b6675", 1 - f.parryRecoveryMs / f.weapon.parryRecoveryMs);
+  } else {
+    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "parry ready", "#5a6070", null);
+  }
 }
 
 /** Right-aligned scrolling combat log, most recent line last. */
@@ -158,46 +278,6 @@ function drawLog(v: View, d: Duel): void {
   lines.forEach((line, i) => {
     ctx.fillText(line, 952, 108 + i * 14);
   });
-  ctx.textAlign = "left";
-}
-
-/**
- * The attacker's strike as a bar: the meetable half bright, the delivered
- * half dark, and a cursor riding the elapsed time. Answers "can I still
- * meet this blade" at a glance while you are learning to read the poses.
- */
-function drawStrikeTiming(v: View, f: Fighter): void {
-  const s = f.state;
-  if (s.kind !== "attack" || s.phase !== "strike") return;
-  const { ctx } = v;
-  const tl = s.timeline;
-  const strike = tl.strikeEnd - tl.strikeStart;
-  const meetable = (tl.parryableUntil - tl.strikeStart) / strike;
-  const w = 70;
-  const x = f.x * PX_PER_CM - w / 2;
-  const y = ARENA.floorY - 162;
-  ctx.fillStyle = "#e6c229"; // meetable
-  ctx.fillRect(x, y, w * meetable, 5);
-  ctx.fillStyle = "#6b2f2c"; // delivered: too late to parry
-  ctx.fillRect(x + w * meetable, y, w * (1 - meetable), 5);
-  ctx.fillStyle = "#e8eaed";
-  ctx.fillRect(x + Math.min(1, (s.elapsedMs - tl.strikeStart) / strike) * w - 1, y - 2, 2, 9);
-}
-
-/** Whether this fighter's guard is up, spent, or ready - the parry's own state. */
-function drawGuardState(v: View, f: Fighter): void {
-  const { ctx } = v;
-  const up = f.state.kind === "parry";
-  const cooling = f.parryRecoveryMs > 0;
-  const x = f.x * PX_PER_CM - 26;
-  const y = ARENA.floorY - 150;
-  ctx.fillStyle = up ? "#9b8cff" : cooling ? "#4a4550" : "#3a404c";
-  const width = cooling && !up ? 52 * (1 - f.parryRecoveryMs / f.weapon.parryRecoveryMs) : 52;
-  ctx.fillRect(x, y, width, 4);
-  ctx.font = "9px ui-monospace, monospace";
-  ctx.fillStyle = up ? "#9b8cff" : cooling ? "#6b6675" : "#5a6070";
-  ctx.textAlign = "center";
-  ctx.fillText(up ? "guard up" : cooling ? "recovering" : "guard ready", f.x * PX_PER_CM, y - 4);
   ctx.textAlign = "left";
 }
 
