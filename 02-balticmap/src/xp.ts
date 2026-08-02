@@ -30,6 +30,9 @@ export const XP_TABLE: Record<GameEventType, number> = {
   reshuffle: 0,
   discard: 0,
   tribute: 0,
+  // Rides on somebody else's forced play: the playerId is the payer's seat,
+  // and nothing about the hop was that player's choice either.
+  "tribute-forwarded": 0,
   garrisoned: 0,
   // A clock running out, not a choice: the pact was already paid for by the
   // Alliance that sealed it, which scored as a `play`.

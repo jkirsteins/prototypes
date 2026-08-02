@@ -118,7 +118,14 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
       }
       return [];
     }
-    case "tribute": {
+    // One case for both: a forwarded hop has the same field semantics per
+    // link - `targetFactionId` is who the tribute was taken from (the
+    // mid-lord, for a hop) and `overlordFactionId` the lord it went to. Each
+    // hop's beneficiary also feeds its incorporated lands, but leads against
+    // dead factions are never displayed, so the walk ignores them - exactly
+    // as the first hop always has.
+    case "tribute":
+    case "tribute-forwarded": {
       if (e.amount === undefined || e.track === undefined) return [];
       const payer = e.targetFactionId;
       const lord = e.overlordFactionId;

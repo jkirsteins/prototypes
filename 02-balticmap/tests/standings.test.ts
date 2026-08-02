@@ -125,6 +125,26 @@ describe("leadMovesOf", () => {
     ]);
   });
 
+  it("tribute forwarded away from the human mid-link subtracts toward the beneficiary", () => {
+    const e: GameEvent = {
+      turn: 1, playerId: 2, type: "tribute-forwarded",
+      targetFactionId: H, overlordFactionId: RIVAL, amount: 2, track: "might",
+    };
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
+      { kind: "add", factionId: RIVAL, track: "might", delta: -2 },
+    ]);
+  });
+
+  it("tribute forwarded to the human adds over the link it was taken from", () => {
+    const e: GameEvent = {
+      turn: 1, playerId: 2, type: "tribute-forwarded",
+      targetFactionId: RIVAL, overlordFactionId: H, amount: 2, track: "might",
+    };
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
+      { kind: "add", factionId: RIVAL, track: "might", delta: 2 },
+    ]);
+  });
+
   it("a poach that takes the human's vassal grants +1/+1 over the poacher", () => {
     const e: GameEvent = {
       turn: 1, playerId: 2, type: "subjugated",

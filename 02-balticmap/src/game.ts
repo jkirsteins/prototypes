@@ -6,7 +6,7 @@ import {
 export type { TributeTrack };
 import {
   allianceKey, bumpAllBy, bumpMight, bumpMightAllBy, bumpMightBy, bumpStatus,
-  bumpStatusBy, fullRealmOf, leadsOf, levelStatus,
+  bumpStatusBy, fullRealmOf, leadsOf, levelStatus, overlordChainOf,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
@@ -21,6 +21,7 @@ import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
   | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
+  | "tribute-forwarded"
   | "settled" | "seeded" | "garrisoned" | "pact-lapsed"
   | "hostage-taken" | "hostage-returned"
   | "subjugate-failed" | "incorporate-failed"
@@ -306,6 +307,9 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     case "incorporated":
     case "reclaimed":
     case "tribute":
+    // A hop of the cascade is a consequence of the forced tribute play it
+    // rode on - one indented line per hop.
+    case "tribute-forwarded":
     case "settled":
     case "seeded":
     case "garrisoned":
@@ -856,22 +860,34 @@ export function playCard(
     if (lord === undefined) return state;
     // Which track this card pays is the card's own business - see TRIBUTE_CARDS.
     const tributeTrack = TRIBUTE_CARDS[cardId];
-    const beneficiaries = [
-      lord,
-      ...state.factionIds.filter((f) => incorporated[f] === lord),
-    ];
     // Tribute is deliberately in the doubling set: readings held while
     // subjugated multiply what you pay and are all spent doing it, which is
     // the cost of hoarding them.
     const bump = tributeTrack === "might" ? bumpMightBy : bumpStatusBy;
-    for (const b of beneficiaries) {
-      relations = bump(relations, b, p.factionId, mult);
+    // The tribute flows up the whole chain, hop by hop: each lord - and the
+    // lands it has incorporated - gains over its OWN vassal, the previous
+    // link, never over the original payer. The payer's omen multiplier sets
+    // the amount once and that multiplied amount is what travels; mid-lords'
+    // own readings are untouched. The liege rule keeps the chain acyclic, so
+    // the walk ends at the root.
+    const chain = overlordChainOf(p.factionId, overlords);
+    let link = p.factionId;
+    for (const beneficiary of chain) {
+      const beneficiaries = [
+        beneficiary,
+        ...state.factionIds.filter((f) => incorporated[f] === beneficiary),
+      ];
+      for (const b of beneficiaries) {
+        relations = bump(relations, b, link, mult);
+      }
+      events.push({
+        turn: state.turn, playerId: p.id,
+        type: link === p.factionId ? "tribute" : "tribute-forwarded",
+        targetFactionId: link, overlordFactionId: beneficiary,
+        track: tributeTrack, amount: mult,
+      });
+      link = beneficiary;
     }
-    events.push({
-      turn: state.turn, playerId: p.id, type: "tribute",
-      targetFactionId: p.factionId, overlordFactionId: lord,
-      track: tributeTrack, amount: mult,
-    });
     // Each payment works off one unit of the hostage debt, whatever the omens
     // multiplied the tribute itself to - the card promises "pay tribute
     // twice", counted in plays. At zero the hostage goes home and the Revolt

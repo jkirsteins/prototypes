@@ -321,6 +321,57 @@ describe("card effects", () => {
     expect(after.phase).toBe("victory");
   });
 
+  it("tribute forwards per hop: each lord gains over its own vassal, to the root", () => {
+    // human beta -> alpha -> gamma, and gamma has annexed delta
+    let g = asVassal(playingState(LINE_ADJ), "alpha");
+    g = {
+      ...g,
+      overlords: new Map([...g.overlords, ["alpha", "gamma"]]),
+      incorporated: { delta: "gamma" },
+    };
+    g = withHand(g, 0, ["pay-military-tribute"]);
+    const after = playCard(g, 0, rng());
+    // hop 1: alpha (the direct lord) over beta
+    expect(getRel(after.relations, "alpha", "beta").might).toBe(1);
+    // hop 2: gamma over alpha - NOT over beta
+    expect(getRel(after.relations, "gamma", "alpha").might).toBe(1);
+    expect(getRel(after.relations, "gamma", "beta").might).toBe(0);
+    // each hop's beneficiary brings its incorporated lands along
+    expect(getRel(after.relations, "delta", "alpha").might).toBe(1);
+    const forwarded = after.log.filter((e) => e.type === "tribute-forwarded");
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]).toMatchObject({
+      targetFactionId: "alpha", overlordFactionId: "gamma",
+      track: "might", amount: 1, consequence: true,
+    });
+  });
+
+  it("the payer's omen stack multiplies every hop once", () => {
+    let g = asVassal(playingState(LINE_ADJ), "alpha");
+    g = {
+      ...g,
+      overlords: new Map([...g.overlords, ["alpha", "gamma"]]),
+      omens: { beta: 1 },
+    };
+    g = withHand(g, 0, ["pay-status-tribute"]);
+    const after = playCard(g, 0, rng());
+    expect(getRel(after.relations, "alpha", "beta").status).toBe(2);
+    expect(getRel(after.relations, "gamma", "alpha").status).toBe(2);
+  });
+
+  it("only the actual payer's hostage debt moves on a cascade", () => {
+    let g = asVassal(playingState(LINE_ADJ), "alpha");
+    g = {
+      ...g,
+      overlords: new Map([...g.overlords, ["alpha", "gamma"]]),
+      hostages: { beta: 2, alpha: 2 },
+    };
+    g = withHand(g, 0, ["pay-military-tribute"]);
+    const after = playCard(g, 0, rng());
+    expect(after.hostages.beta).toBe(1);
+    expect(after.hostages.alpha).toBe(2); // a forwarded hop is not alpha's play
+  });
+
   it("a mid-lord's revolt detaches its whole branch", () => {
     let g = playingState(LINE_ADJ);
     g = asVassal(g, "alpha"); // human beta -> alpha

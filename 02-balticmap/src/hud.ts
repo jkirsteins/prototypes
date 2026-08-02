@@ -325,6 +325,12 @@ export function eventSegments(
       return clause(named(e.targetFactionId), "pay", [
         t(" tribute to "), faction(e.overlordFactionId ?? ""),
       ]);
+    case "tribute-forwarded":
+      // The subject is the mid-lord the hop was taken from, not the seat
+      // whose forced play started the cascade.
+      return clause(named(e.targetFactionId), "pass", [
+        t(" tribute on to "), faction(e.overlordFactionId ?? ""),
+      ]);
     case "settled":
       return clause(named(e.targetFactionId), "found", [t(" a new settlement")]);
     case "seeded":

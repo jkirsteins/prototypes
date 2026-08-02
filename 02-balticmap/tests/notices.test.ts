@@ -11,6 +11,7 @@ import type { GameEvent, GameEventType } from "../src/game";
 const ALL_TYPES: GameEventType[] = [
   "draw", "play", "reshuffle", "discard",
   "subjugated", "released", "incorporated", "reclaimed", "tribute",
+  "tribute-forwarded",
   "settled", "seeded", "garrisoned", "pact-lapsed",
   "subjugate-failed", "incorporate-failed",
   "victory", "defeat", "unified", "surrendered",
@@ -278,6 +279,28 @@ describe("buildRoundSummary: single-event scenarios", () => {
       ev({ type: "defeat", targetFactionId: "livs", overlordFactionId: "jersika" }),
     ];
     expect(buildRoundSummary(silent, ctx)).toBeNull();
+  });
+
+  it("tribute forwarded off the human mid-link gets a line; a benefiting human gets none", () => {
+    // the human's own vassal paid, and the hop moved the human's standing
+    // toward their lord: news, on a turn the human played nothing.
+    const taken = oneSummary(
+      ev({
+        type: "tribute-forwarded", targetFactionId: "livs",
+        overlordFactionId: "jersika", track: "might", amount: 1,
+      }),
+    );
+    expect(lineText(taken)).toBe("Tribute from your vassal passed on to Jersikans");
+    // merely benefiting stays quiet, the same reasoning that keeps `tribute`
+    // silent for the lord.
+    expect(
+      buildRoundSummary([
+        ev({
+          type: "tribute-forwarded", targetFactionId: "jersika",
+          overlordFactionId: "livs", track: "might", amount: 1,
+        }),
+      ], ctx),
+    ).toBeNull();
   });
 
   it("falls back to a blank actor when the faction cannot be resolved", () => {
