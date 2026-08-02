@@ -88,6 +88,20 @@ describe("subjugationRequirement", () => {
       .toEqual({ might: SUBJUGATE_THRESHOLD, status: SUBJUGATE_THRESHOLD });
   });
 
+  it("counts the whole pyramid: vassals of vassals and their annexations", () => {
+    // beta holds gamma, gamma holds delta, delta has annexed epsilon,
+    // and a settlement stands founded in delta.
+    const v = view({
+      factionIds: ["alpha", "beta", "gamma", "delta", "epsilon"],
+      overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]),
+      incorporated: { epsilon: "delta" },
+      settlements: { delta: 1 },
+    });
+    // 4 lands (beta, gamma, delta, epsilon) at 2 each; +1 settlement on Might.
+    expect(subjugationRequirement(v, "alpha", "beta"))
+      .toEqual({ might: 9, status: 8 });
+  });
+
   it("agrees with the number the block reason reports", () => {
     const v = view({ overlords: new Map([["gamma", "beta"]]) });
     const entry = targetEligibilityFor(v, "alpha", "subjugate")

@@ -2,7 +2,7 @@ import {
   CARDS, DOUBLABLE_CARDS, guardAgainst, isGuardCard, isTributeCard,
 } from "./cards";
 import {
-  allianceActive, leadsOf, overlordChainOf, pactBetween, realmOf,
+  allianceActive, fullRealmOf, leadsOf, overlordChainOf, pactBetween, realmOf,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 
@@ -510,9 +510,14 @@ export interface GripParts extends TrackBars {
 /** The lands and settlements behind a faction's grip. Returned as parts rather
  *  than only the totals because a bar cannot be taken apart again afterwards:
  *  the tooltip used to recover the land count by dividing the bar by two, which
- *  a settlement makes wrong. */
+ *  a settlement makes wrong.
+ *
+ *  The FULL realm, to any depth: taking a lord takes its whole pyramid (the
+ *  subjugate branch in src/game.ts keeps the target's vassals), so the bar
+ *  prices every land that would change hands and every settlement founded in
+ *  any of them. */
 export function gripPartsOn(view: RulesView, factionId: string): GripParts {
-  const realm = realmOf(factionId, view.overlords, view.incorporated);
+  const realm = [...fullRealmOf(factionId, view.overlords, view.incorporated)];
   const lands = realm.length;
   // Summed, not counted: a land can now carry several founded settlements, and
   // counting settled LANDS would have quietly capped the bar at one per land
