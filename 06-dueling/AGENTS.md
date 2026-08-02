@@ -45,3 +45,18 @@ at its physical transitions, the engine translates them into `DuelEvent`s
 layer keys exclusively off those events. The describe block "presentation
 events follow the simulation, not the input" in `test/engine.test.ts` pins
 the exact timings - extend it whenever a new cue is added.
+
+## The "?" panel is the rules, and it must not go stale
+
+The help overlay (`src/ui/help.ts`) is the player-facing statement of the
+engine's rules. It must stay **concise** and **current**. Any change to a
+state, phase, timing, acceptance rule or the parryable interval updates
+`HELP` in the same commit. `HELP` is typed as a `Record` over the state and
+phase unions, so an undocumented state fails the build; a rule change that
+does not alter the union will not, and is on you. Durations are derived
+from `WEAPONS` via callbacks, never written as literals - a test asserts
+the rendered panel cites the shipping values.
+
+Concise means: one sentence for what is happening, one for what the player
+must or must not do (a test bounds the length). If an entry needs a
+paragraph, the mechanic is too complicated, not the explanation.

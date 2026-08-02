@@ -3,8 +3,9 @@ import { TICK } from "./combat/fighter";
 import { createDuel, tickDuel } from "./combat/engine";
 import { WEAPONS } from "./combat/weapons";
 import { createAudioEngine } from "./audio/audio";
-import { drawFrame } from "./render/draw";
+import { HELP_BUTTON, drawFrame } from "./render/draw";
 import { loadImages } from "./render/loader";
+import { renderHelpHtml } from "./ui/help";
 import { showSelect } from "./ui/select";
 import type { AiMode } from "./combat/ai";
 import type { Duel, DuelEvent } from "./combat/engine";
@@ -47,7 +48,32 @@ const state = {
   paused: params.get("paused") === "1",
   timescale: SPEEDS.includes(Number(params.get("speed"))) ? Number(params.get("speed")) : 1,
   stepOnce: false,
+  // The "?" panel. Its own flag rather than state.paused, so opening and
+  // closing help can never silently clear a manual pause; it gates the
+  // accumulator only, like all time control.
+  helpOpen: false,
 };
+
+const helpEl = document.getElementById("help") as HTMLElement;
+const helpPanel = helpEl.querySelector(".panel") as HTMLElement;
+helpPanel.innerHTML = renderHelpHtml();
+
+function setHelp(open: boolean): void {
+  state.helpOpen = open;
+  helpEl.hidden = !open;
+}
+// A reference you cannot read without dying is useless: clicking outside
+// the panel closes it, clicks inside stay inside (text selection etc).
+helpEl.addEventListener("click", (e) => {
+  if (e.target === helpEl) setHelp(false);
+});
+canvas.addEventListener("click", (e) => {
+  const r = canvas.getBoundingClientRect();
+  const x = (e.clientX - r.left) * (canvas.width / r.width);
+  const y = (e.clientY - r.top) * (canvas.height / r.height);
+  const b = HELP_BUTTON;
+  if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) setHelp(true);
+});
 
 function startDuel(): void {
   // Without ?seed each duel draws a fresh one so rematches are not replays.
@@ -74,6 +100,16 @@ document.addEventListener("keydown", () => audio.unlock());
 
 document.addEventListener("keydown", (e) => {
   if (e.repeat) return;
+  // Help owns the keyboard while open: only its own toggles and Escape do
+  // anything, so a stray game key cannot act under the panel.
+  if (state.helpOpen) {
+    if (e.key === "Escape" || e.key === "?" || e.key.toLowerCase() === "h") setHelp(false);
+    return;
+  }
+  if (e.key === "?" || (e.key.toLowerCase() === "h" && state.duel !== null)) {
+    setHelp(true);
+    return;
+  }
   // The select screen owns the keyboard while no duel is running; it adds
   // and removes its own listener via showSelect/hideSelect.
   if (state.duel === null) return;
@@ -135,7 +171,10 @@ loadImages().then((images) => {
   let last = performance.now();
   let acc = 0;
   const frame = (now: number): void => {
-    if (state.paused) {
+    if (state.helpOpen) {
+      // Reading time: the sim freezes, and even a queued single-step waits.
+      acc = 0;
+    } else if (state.paused) {
       // Frozen: no wall time enters the accumulator, and any fractional
       // leftover is dropped so the next step is exactly one tick.
       acc = 0;

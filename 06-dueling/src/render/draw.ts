@@ -1,5 +1,6 @@
 import { ARENA, gapOf } from "../combat/engine";
 import { HIT_STUN_MS } from "../combat/fighter";
+import { controlsLine } from "../ui/help";
 import { lastLines } from "../combat/log";
 import { zoneFor } from "../combat/measure";
 import { pickFrame } from "./frames";
@@ -41,8 +42,8 @@ const ATTACK_LISTING: Record<WeaponId, string> = {
   rapier: "thrust: 1 tempo / cut: poor",
 };
 
-const CONTROLS_LINE =
-  "A/D step S void J cut K thrust L parry | 0-3 AI mode R rematch Esc select ` overlay | space pause . step [/] speed";
+/** Built from the same table the help panel lists, so the two cannot drift. */
+const CONTROLS_LINE = controlsLine();
 
 export interface TimeControl {
   paused: boolean;
@@ -71,7 +72,24 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
   }
   drawHud(v, d, aiMode);
   drawTimeControl(v, d, time);
+  drawHelpButton(v);
   if (d.over) drawBanner(v, d);
+}
+
+/** Hit box for the help button; main.ts tests canvas clicks against it. */
+export const HELP_BUTTON = { x: 928, y: 504, w: 24, h: 22 };
+
+/** Always visible, not overlay-gated: the rules must be findable. */
+function drawHelpButton(v: View): void {
+  const { ctx } = v;
+  const b = HELP_BUTTON;
+  ctx.strokeStyle = "#3a404c";
+  ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+  ctx.fillStyle = "#8a8f98";
+  ctx.font = "13px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("?", b.x + b.w / 2, b.y + 16);
+  ctx.textAlign = "left";
 }
 
 /**
