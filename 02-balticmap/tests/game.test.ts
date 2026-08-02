@@ -287,6 +287,40 @@ describe("card effects", () => {
     expect(after.overlords.get("beta")).toBe("alpha");
   });
 
+  it("a vassal human at winSize does not win; their root unifies instead", () => {
+    // human beta holds alpha and gamma (3 lands >= winSize(4) = 3), but owes
+    // fealty to delta - whose realm is therefore all four lands. asVassal
+    // keeps an escape card in the deck so the stranded check stays out of
+    // the way of what this test is about.
+    let g = asVassal(playingState(LINE_ADJ), "delta");
+    g = {
+      ...g,
+      overlords: new Map([
+        ...g.overlords, ["alpha", "beta"], ["gamma", "beta"],
+      ]),
+    };
+    g = withHand(g, 0, ["grow-crops"]);
+    const after = playCard(g, 0, rng());
+    expect(after.phase).toBe("defeat");
+    const unified = after.log.find((e) => e.type === "unified");
+    expect(unified?.overlordFactionId).toBe("delta");
+  });
+
+  it("a free human whose vassal's subtree also crosses still wins", () => {
+    // gamma holds alpha and delta; human beta holds gamma. Both beta (4) and
+    // gamma (3) cross winSize on the same board; the free root wins.
+    let g = playingState(LINE_ADJ);
+    g = {
+      ...g,
+      overlords: new Map([
+        ["alpha", "gamma"], ["delta", "gamma"], ["gamma", "beta"],
+      ]),
+    };
+    g = withHand(g, 0, ["grow-crops"]);
+    const after = playCard(g, 0, rng());
+    expect(after.phase).toBe("victory");
+  });
+
   it("a mid-lord's revolt detaches its whole branch", () => {
     let g = playingState(LINE_ADJ);
     g = asVassal(g, "alpha"); // human beta -> alpha

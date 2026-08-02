@@ -924,20 +924,26 @@ export function playCard(
     });
   } else if (
     humanFaction !== null &&
+    // Only a free faction wins: a vassal's realm is a strict subset of its
+    // root's, so victory belongs to roots - a human mid-lord must revolt
+    // free before their pyramid counts as theirs.
+    !overlords.has(humanFaction) &&
     // `fullRealmOf`, not `realmOf`: a land your vassal annexed is a land you
-    // hold, and the map has always drawn it that way. It also keeps this branch
-    // ahead of the unification one below by construction - the human's full
-    // realm is a superset of any of its vassals', so a vassal can never unify
-    // the Balts out from under the seat that owns it.
+    // hold, and the map has always drawn it that way.
     fullRealmOf(humanFaction, overlords, incorporated).size >= winSize
   ) {
     phase = "victory";
     events.push({ turn: state.turn, playerId: p.id, type: "victory" });
   } else {
+    // Vassals are skipped for the same reason the human branch requires
+    // freedom: a vassal subtree crossing the threshold sits inside its
+    // root's realm, and when both cross on the same play the root is the
+    // unifier the headline names.
     const unifier = state.factionIds.find(
       (f) =>
         f !== humanFaction &&
         !(f in incorporated) &&
+        !overlords.has(f) &&
         fullRealmOf(f, overlords, incorporated).size >= winSize,
     );
     if (unifier !== undefined) {
