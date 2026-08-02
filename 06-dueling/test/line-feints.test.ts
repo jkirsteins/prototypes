@@ -242,6 +242,62 @@ describe("the defender's answer: the guard shift", () => {
   });
 });
 
+describe("the timing tension, exhaustively: when L is pressed decides everything", () => {
+  const t = WEAPONS.longsword.attacks.thrust;
+  const riseEnd = WEAPONS.longsword.telegraphMs + t.windup; // AI thrust's sold half opens
+  const redirectAt = riseEnd + 20;
+
+  /** AI thrust redirected to a cut at `redirectAt`; player presses L at `pressAt`. */
+  function exchange(pressAt: number): { evs: DuelEvent[]; side: string | undefined } {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    d.f[0].x = 1000;
+    d.f[1].x = 1180;
+    let evs = runMs(d, TICK, null, "thrust");
+    evs = evs.concat(runMs(d, redirectAt - TICK));
+    evs = evs.concat(runMs(d, TICK, null, "cut")); // the lie: thrust -> cut
+    evs = evs.concat(runMs(d, pressAt - redirectAt - TICK));
+    evs = evs.concat(runMs(d, TICK, "parry", null));
+    const side = d.f[0].parry?.targetLine.side;
+    evs = evs.concat(runMs(d, 1600));
+    return { evs, side };
+  }
+
+  test("pressed after the redirect, the parry infers the NEW line and meets it", () => {
+    const { evs, side } = exchange(redirectAt + PLAYER_REACTION_MS);
+    expect(side).toBe("outside"); // it saw the cut, not the sold thrust
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+  });
+
+  test("pressed very late, the parry reads the final line correctly and still dies forming", () => {
+    // Deadline: the guard must form by redirect + redirectSideMs + the cut's
+    // meetable half. A press 300ms after the redirect forms 520ms after it -
+    // 30ms past the deadline. Right read, wrong clock.
+    const { evs, side } = exchange(redirectAt + 300);
+    expect(side).toBe("outside");
+    expect(evs.some((e) => e.kind === "hit" && e.side === 1)).toBe(true);
+  });
+
+  test("the dummy answers the player's K-then-J: latch, read the lie, shift once", () => {
+    // The player presents a thrust, the mode-1 dummy latches onto it, the
+    // player redirects to a cut - and the dummy re-aims its guard's side
+    // after a reaction, completing before the redirected blade's deadline.
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    d.f[0].x = 1000;
+    d.f[1].x = 1180;
+    const ai = createAiState(1);
+    const pt = WEAPONS.longsword.attacks.thrust;
+    const playerRiseEnd = pt.windup; // tell-free: 260
+    const evs: DuelEvent[] = [];
+    for (let i = 0; i * TICK < 2400; i++) {
+      const ia: Intent | null =
+        i === 0 ? "thrust" : Math.round((playerRiseEnd + 20) / TICK) === i ? "cut" : null;
+      const ib = aiDecide(d, 1, ai, TICK);
+      evs.push(...tickDuel(d, ia, ib));
+    }
+    expect(evs.some((e) => e.kind === "parried" && e.side === 0)).toBe(true);
+  });
+});
+
 describe("mode 3 feints reactively", () => {
   test("a latched guard shown early gets redirected; the same fight without the guard does not", () => {
     const play = (press: boolean): { redirected: boolean; evs: DuelEvent[] } => {
