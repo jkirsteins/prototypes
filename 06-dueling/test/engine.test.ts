@@ -148,8 +148,7 @@ describe("met events", () => {
     const t = WEAPONS.rapier.attacks.thrust;
     const strikeAt = t.windup + t.beat;
     const kinds: string[] = [];
-    let ticks = 0;
-    for (let i = 0; i < 300 && !kinds.includes("parried"); i++, ticks++) {
+    for (let i = 0; i < 300 && !kinds.includes("parried"); i++) {
       const ib = (i + 1) * TICK >= strikeAt && !kinds.includes("met") ? "parry" : null;
       kinds.push(...tickDuel(d, i === 0 ? "thrust" : null, ib).map((e) => e.kind));
     }
