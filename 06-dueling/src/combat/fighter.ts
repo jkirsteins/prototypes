@@ -25,9 +25,6 @@ export interface Fighter {
 
 export type FighterEvent =
   | { type: "strikeEnd"; attack: AttackKind }
-  | { type: "attackStart"; attack: AttackKind; tell: boolean }
-  | { type: "voidStart" }
-  | { type: "parryStart" }
   | { type: "died" };
 
 export function createFighter(x: number, facing: 1 | -1, weapon: WeaponProfile): Fighter {
@@ -131,24 +128,44 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
         events.push({ type: "died" });
       }
       break;
-    case "attack":
-      // Implemented in Task 7.
+    case "attack": {
+      const timings = f.weapon.attacks[s.attack];
+      s.t += dt;
+      // Walk phases, carrying tick remainder so timing drift never accumulates.
+      let advanced = true;
+      while (advanced) {
+        advanced = false;
+        const dur =
+          s.phase === "pretempo" ? f.weapon.pretempo :
+          s.phase === "windup" ? timings.windup :
+          s.phase === "beat" ? timings.beat :
+          s.phase === "strike" ? timings.strike :
+          s.recoveryMs;
+        if (s.t < dur) break;
+        s.t -= dur;
+        if (s.phase === "pretempo") { s.phase = "windup"; advanced = true; }
+        else if (s.phase === "windup") { s.phase = "beat"; advanced = true; }
+        else if (s.phase === "beat") { s.phase = "strike"; advanced = true; }
+        else if (s.phase === "strike") {
+          s.phase = "recovery";
+          events.push({ type: "strikeEnd", attack: s.attack });
+          // Stop walking: the engine may mutate recoveryMs on this event
+          // before the next tick. Remainder stays in s.t.
+        } else {
+          f.state = { kind: "idle" };
+          flushBuffer(f, events);
+        }
+      }
       break;
+    }
   }
   return events;
 }
 
-function flushBuffer(f: Fighter, events: FighterEvent[]): void {
+function flushBuffer(f: Fighter, _events: FighterEvent[]): void {
   const b = f.buffered;
   f.buffered = null;
-  if (b !== null && startAction(f, b, false)) {
-    emitStart(f, events);
+  if (b !== null) {
+    startAction(f, b, false);
   }
-}
-
-function emitStart(f: Fighter, events: FighterEvent[]): void {
-  const s = f.state;
-  if (s.kind === "attack") events.push({ type: "attackStart", attack: s.attack, tell: s.tell });
-  else if (s.kind === "void") events.push({ type: "voidStart" });
-  else if (s.kind === "parry") events.push({ type: "parryStart" });
 }
