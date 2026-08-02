@@ -13,7 +13,7 @@ describe("storage round-trip", () => {
   it("starts you knowing turnips plus the four starting cards", () => {
     expect(loadMeta(memoryStorage())).toEqual({
       knownCards: ["grow-crops", "raid", "subjugate", "fortify", "seeds-of-revolt"],
-      xp: 0, turnipsGrown: 0, packsOpened: 0, lastPicks: [],
+      xp: 0, turnipsGrown: 0, packsOpened: 0, gamesCompleted: 0, lastPicks: [],
     });
   });
 
@@ -90,6 +90,30 @@ describe("storage round-trip", () => {
     expect(loadMeta(s)).toEqual(rec({ xp: 90, packsOpened: 2, lastPicks: [] }));
   });
 
+  it("keeps a record written before games were counted", () => {
+    const s = memoryStorage();
+    const old: Record<string, unknown> = rec({ xp: 90, packsOpened: 2 });
+    delete old.gamesCompleted;
+    s.setItem(META_STORAGE_KEY, JSON.stringify(old));
+    // Same reasoning as lastPicks above: outside the validation gate, so the
+    // upgrade cannot wipe a collection over a missing counter.
+    expect(loadMeta(s)).toEqual(rec({ xp: 90, packsOpened: 2, gamesCompleted: 0 }));
+  });
+
+  it("sanitizes a nonsense games counter instead of resetting the record", () => {
+    const s = memoryStorage();
+    for (const gamesCompleted of [2.5, -1, "many"]) {
+      s.setItem(META_STORAGE_KEY, JSON.stringify({ ...rec({ xp: 40 }), gamesCompleted }));
+      expect(loadMeta(s)).toEqual(rec({ xp: 40, gamesCompleted: 0 }));
+    }
+  });
+
+  it("round-trips a valid games counter", () => {
+    const s = memoryStorage();
+    saveMeta(s, rec({ gamesCompleted: 3 }));
+    expect(loadMeta(s).gamesCompleted).toBe(3);
+  });
+
   it("sanitizes a nonsense loadout instead of resetting the record", () => {
     const s = memoryStorage();
     const junk: unknown[] = [
@@ -123,14 +147,26 @@ describe("pendingPacks", () => {
   });
 
   it("counts XP levels not yet opened", () => {
-    expect(pendingPacks(rec({ xp: 25 }))).toBe(1);
-    expect(pendingPacks(rec({ xp: 75 }))).toBe(2);
-    expect(pendingPacks(rec({ xp: 75, packsOpened: 2 }))).toBe(0);
+    expect(pendingPacks(rec({ xp: 20 }))).toBe(1);
+    expect(pendingPacks(rec({ xp: 40 }))).toBe(2);
+    expect(pendingPacks(rec({ xp: 40, packsOpened: 2 }))).toBe(0);
+  });
+
+  it("floors the early packs on completed games", () => {
+    expect(pendingPacks(rec({ gamesCompleted: 3 }))).toBe(3);
+    expect(pendingPacks(rec({ gamesCompleted: 9 }))).toBe(5);
+    expect(pendingPacks(rec({ gamesCompleted: 5, packsOpened: 5 }))).toBe(0);
+  });
+
+  it("takes the max of XP level and the pity floor, never the sum", () => {
+    // xp 60 is level 3; two completed games do not add two more packs.
+    expect(pendingPacks(rec({ xp: 60, gamesCompleted: 2 }))).toBe(3);
   });
 
   it("adds hidden turnip milestone packs on top of XP levels", () => {
-    expect(pendingPacks(rec({ xp: 25, turnipsGrown: 10 }))).toBe(2);
+    expect(pendingPacks(rec({ xp: 20, turnipsGrown: 10 }))).toBe(2);
     expect(pendingPacks(rec({ xp: 0, turnipsGrown: 100 }))).toBe(2);
+    expect(pendingPacks(rec({ gamesCompleted: 5, turnipsGrown: 10 }))).toBe(6);
   });
 
   it("never goes negative if packsOpened somehow runs ahead", () => {
@@ -143,12 +179,19 @@ describe("bankRun", () => {
     const next = bankRun(rec({ xp: 30, turnipsGrown: 4 }), 45, 3);
     expect(next.xp).toBe(75);
     expect(next.turnipsGrown).toBe(7);
+    expect(next.gamesCompleted).toBe(1);
   });
 
   it("ignores a nonsense run total rather than corrupting progress", () => {
     const before = rec({ xp: 30 });
     expect(bankRun(before, Number.NaN, 0).xp).toBe(30);
     expect(bankRun(before, -10, 0).xp).toBe(30);
+    expect(bankRun(before, Number.NaN, 0).gamesCompleted).toBe(0);
+    expect(bankRun(before, -10, 0).gamesCompleted).toBe(0);
+  });
+
+  it("does not count a run that banked nothing as a completed game", () => {
+    expect(bankRun(rec(), 0, 0).gamesCompleted).toBe(0);
   });
 });
 

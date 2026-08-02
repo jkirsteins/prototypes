@@ -87,13 +87,22 @@ export function runTurnips(log: GameEvent[]): number {
   ).length;
 }
 
-export const XP_LEVEL_STEP = 25;
+/** The early-progression window: the first EARLY_PACKS completed games each
+ *  pay a pack (the pity floor in src/meta.ts), and the first EARLY_PACKS
+ *  packs opened each guarantee a new card (src/packs.ts). */
+export const EARLY_PACKS = 5;
+export const XP_EARLY_STEP = 20;
+export const XP_LATE_STEP = 25;
 
-/** Triangular growth: 25, 75, 150, 250, 375, ... Fast enough that a first run
- *  earns a pack off the starting three cards, slow enough that packs thin out
- *  as the collection fills. */
+/** Two-piece curve: a flat 20 per level through level EARLY_PACKS, so XP
+ *  keeps pace with the first-five-games pity floor and there is no cliff
+ *  when it ends, then triangular growth (increments 50, 75, 100, ...) so
+ *  packs thin out as the collection fills. Thresholds: 20, 40, 60, 80, 100,
+ *  150, 225, 325, 450, 600, ... */
 export function xpThresholdForLevel(level: number): number {
-  return (XP_LEVEL_STEP * level * (level + 1)) / 2;
+  if (level <= EARLY_PACKS) return XP_EARLY_STEP * level;
+  const n = level - EARLY_PACKS;
+  return XP_EARLY_STEP * EARLY_PACKS + (XP_LATE_STEP * n * (n + 3)) / 2;
 }
 
 /** Highest level fully paid for by `xp`. Walks the curve rather than solving
@@ -103,7 +112,7 @@ export function xpThresholdForLevel(level: number): number {
  *  at 1e9, so a corrupted or hand-edited record cannot hand this a total
  *  large enough to spin for a very long time. */
 export function levelForXp(xp: number): number {
-  if (!Number.isFinite(xp) || xp < XP_LEVEL_STEP) return 0;
+  if (!Number.isFinite(xp) || xp < XP_EARLY_STEP) return 0;
   let level = 0;
   while (xpThresholdForLevel(level + 1) <= xp) level++;
   return level;

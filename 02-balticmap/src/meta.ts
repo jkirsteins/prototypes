@@ -1,5 +1,5 @@
 import { ACQUIRABLE_CARDS, CARDS, DECK_SIZE, STARTING_KNOWN_CARDS } from "./cards";
-import { levelForXp, turnipPacksEarned } from "./xp";
+import { EARLY_PACKS, levelForXp, turnipPacksEarned } from "./xp";
 
 /** Persistent progress: what the player may deck-build, and the two lifetime
  *  counters that pay out packs. `packsOpened` is the only bookkeeping stored -
@@ -10,6 +10,10 @@ export interface MetaRecord {
   xp: number;
   turnipsGrown: number;
   packsOpened: number;
+  /** Runs that banked XP > 0. A run where nothing was played - an instant
+   *  surrender - is not a completed game, so it neither earns nor burns a
+   *  slot of the early-progression pity floor in `pendingPacks`. */
+  gamesCompleted: number;
   /** The loadout confirmed at the last "Choose your lands": the cards the
    *  player picked, not the deck built from them - no Grow turnips filler. It
    *  seeds the deck screen so replaying the same deck is one click. */
@@ -44,6 +48,7 @@ export function initialMeta(): MetaRecord {
     xp: 0,
     turnipsGrown: 0,
     packsOpened: 0,
+    gamesCompleted: 0,
     lastPicks: [],
   };
 }
@@ -72,8 +77,8 @@ export function loadMeta(storage: MetaStorage): MetaRecord {
     if (raw === null) return initialMeta();
     const parsed: unknown = JSON.parse(raw);
     const rec = parsed as {
-      knownCards?: unknown; xp?: unknown;
-      turnipsGrown?: unknown; packsOpened?: unknown; lastPicks?: unknown;
+      knownCards?: unknown; xp?: unknown; turnipsGrown?: unknown;
+      packsOpened?: unknown; gamesCompleted?: unknown; lastPicks?: unknown;
     };
     if (
       !Array.isArray(rec.knownCards) || !isCount(rec.xp) ||
@@ -90,6 +95,12 @@ export function loadMeta(storage: MetaStorage): MetaRecord {
       xp: rec.xp,
       turnipsGrown: rec.turnipsGrown,
       packsOpened: rec.packsOpened,
+      // Like lastPicks below, outside the validation gate: records written
+      // before this field existed lack it, and resetting a whole collection
+      // over a missing game counter would be absurd. Sanitizes to 0, which
+      // can only under-count - the pity floor sits inside a max() with the
+      // XP level, so nobody is owed fewer packs than their XP already pays.
+      gamesCompleted: isCount(rec.gamesCompleted) ? rec.gamesCompleted : 0,
       // Deliberately outside the validation gate above: every record written
       // before this field existed lacks it, and the gate resets the whole
       // record. A missing or nonsense loadout means "nothing preselected",
@@ -122,11 +133,17 @@ export function resetMeta(storage: MetaStorage): MetaRecord {
   return initialMeta();
 }
 
-/** Packs the player has earned but not yet opened. Derived from the two
- *  lifetime counters, so no code path can grant a pack without the XP or the
- *  turnips to back it. */
+/** Packs the player has earned but not yet opened. Derived from the lifetime
+ *  counters, so no code path can grant a pack without the XP, the games or
+ *  the turnips to back it. The pity floor - one pack per completed game for
+ *  the first EARLY_PACKS games - sits inside a max() with the XP level, not a
+ *  sum: both pay for the same early packs, whichever runs ahead. Turnip packs
+ *  stack on top. Both max() terms only ever grow, so `earned` is monotonic
+ *  and `packsOpened` can never strand a pack. */
 export function pendingPacks(meta: MetaRecord): number {
-  const earned = levelForXp(meta.xp) + turnipPacksEarned(meta.turnipsGrown);
+  const earned =
+    Math.max(levelForXp(meta.xp), Math.min(meta.gamesCompleted, EARLY_PACKS)) +
+    turnipPacksEarned(meta.turnipsGrown);
   return Math.max(0, earned - meta.packsOpened);
 }
 
@@ -136,10 +153,12 @@ export function pendingPacks(meta: MetaRecord): number {
 export function bankRun(
   meta: MetaRecord, xpEarned: number, turnipsGrown: number,
 ): MetaRecord {
+  const xp = isCount(xpEarned) ? xpEarned : 0;
   return {
     ...meta,
-    xp: meta.xp + (isCount(xpEarned) ? xpEarned : 0),
+    xp: meta.xp + xp,
     turnipsGrown: meta.turnipsGrown + (isCount(turnipsGrown) ? turnipsGrown : 0),
+    gamesCompleted: meta.gamesCompleted + (xp > 0 ? 1 : 0),
   };
 }
 

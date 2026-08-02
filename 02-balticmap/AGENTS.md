@@ -29,16 +29,23 @@ navigation and the same URL gives the same run every time:
   player starts with, never replacing it, so a booted collection is one a real
   player could hold. Omit for every card; `known=` alone is the starting four.
 - `xp=N` - lifetime XP, which is what `pendingPacks` derives the pack-opening
-  overlay from. One level is one pack, and `xpThresholdForLevel(L)` is
-  `25*L*(L+1)/2`, so `xp=25` owes one pack and `xp=75` two.
+  overlay from. One level is one pack, and `xpThresholdForLevel(L)` is `20*L`
+  through level 5, then the triangular ramp resumes (150, 225, 325, ...), so
+  `xp=20` owes one pack and `xp=40` two. Real profiles are also floored by
+  completed games - the first five games each pay a pack - and the first five
+  packs opened each guarantee a new card, epic first then descending; see
+  `pendingPacks` in `src/meta.ts` and `NEW_CARD_GUARANTEES` in `src/packs.ts`.
+  Boot params carry no games counter, so a booted page owes packs through XP
+  alone.
 - `rel=faction:might=3,status=-2;other:might=1` - standings as **your signed
   lead**, the `formatLead` convention the HUD already uses.
 - `popups=off` - sets the existing "Show popups" log pref.
 
 The deck screen therefore reads as three URLs rather than a hand-edited
 localStorage record: `?screen=deck` is the full twelve-card picker,
-`?screen=deck&known=` the sparse one, and `?screen=deck&xp=25&known=` a pack
-waiting to be opened whose cards are all new.
+`?screen=deck&known=` the sparse one, and `?screen=deck&xp=20&known=` a pack
+waiting to be opened whose cards are all new - and, being the first pack
+against a sparse collection, one whose guaranteed slot is an epic.
 
 `src/boot-params.ts` owns them, with the ordering rules and their consequences
 in its doc comments; `tests/boot-params.test.ts` pins the behaviour. It has two

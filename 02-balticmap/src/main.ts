@@ -965,6 +965,11 @@ const hud = createHud(
     lifetimeXp() {
       return meta.xp;
     },
+    // Named packsWaiting rather than pendingPacks so the callback cannot be
+    // confused with the imported function it wraps.
+    packsWaiting() {
+      return pendingPacks(meta);
+    },
     onShowTip(lines, clientX, clientY) {
       tooltip.showLines(lines, clientX, clientY);
     },
@@ -1006,7 +1011,10 @@ const deckScreen = createDeckScreen(app, {
   },
   onOpenPack() {
     if (pendingPacks(meta) === 0 || packReveal !== null) return;
-    const drawn = openPack(ACQUIRABLE_CARDS, rng);
+    const drawn = openPack(ACQUIRABLE_CARDS, rng, {
+      packIndex: meta.packsOpened,
+      unknownIds: ACQUIRABLE_CARDS.filter((id) => !meta.knownCards.includes(id)),
+    });
     const { meta: next, results } = applyPack(meta, drawn);
     meta = next;
     packReveal = results;

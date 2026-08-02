@@ -54,6 +54,11 @@ export interface HudCallbacks {
    *  Absent where there is no persistent progress to report (tests), in which
    *  case the bar is hidden and only the "+N XP earned" line shows. */
   lifetimeXp?(): number;
+  /** Packs earned but not yet opened, after this run was banked. The pity
+   *  floor and the turnip milestones both grant packs without a level
+   *  crossing, and "N XP to your next pack" would lie beside one - the pack
+   *  is already waiting. Absent where lifetimeXp is (tests). */
+  packsWaiting?(): number;
   /** Lights this faction's realm on the map, exactly as hovering its land
    *  does; null clears. Absent where there is no map (tests), in which case
    *  a hovered faction name in prose is inert. */
@@ -960,7 +965,9 @@ export function createHud(
     pmXpToNext.textContent =
       after.level > before.level
         ? `Level ${after.level} reached - a pack is waiting`
-        : `${after.toNext} XP to your next pack`;
+        : (cb.packsWaiting?.() ?? 0) > 0
+          ? "A pack is waiting"
+          : `${after.toNext} XP to your next pack`;
 
     const pct = (w: { into: number; span: number }): number =>
       w.span === 0 ? 100 : (w.into / w.span) * 100;

@@ -75,21 +75,25 @@ describe("runXp / runTurnips", () => {
 });
 
 describe("level curve", () => {
-  it("uses triangular thresholds", () => {
-    expect(xpThresholdForLevel(1)).toBe(25);
-    expect(xpThresholdForLevel(2)).toBe(75);
-    expect(xpThresholdForLevel(3)).toBe(150);
-    expect(xpThresholdForLevel(4)).toBe(250);
-    expect(xpThresholdForLevel(5)).toBe(375);
+  it("stays flat through the early window, then the triangular ramp resumes", () => {
+    expect(xpThresholdForLevel(1)).toBe(20);
+    expect(xpThresholdForLevel(2)).toBe(40);
+    expect(xpThresholdForLevel(3)).toBe(60);
+    expect(xpThresholdForLevel(4)).toBe(80);
+    expect(xpThresholdForLevel(5)).toBe(100);
+    expect(xpThresholdForLevel(6)).toBe(150);
+    expect(xpThresholdForLevel(7)).toBe(225);
+    expect(xpThresholdForLevel(8)).toBe(325);
+    expect(xpThresholdForLevel(10)).toBe(600);
   });
 
   it("levels on crossing a threshold, not before", () => {
     expect(levelForXp(0)).toBe(0);
-    expect(levelForXp(24)).toBe(0);
-    expect(levelForXp(25)).toBe(1);
-    expect(levelForXp(74)).toBe(1);
-    expect(levelForXp(75)).toBe(2);
-    expect(levelForXp(10_000)).toBe(27);
+    expect(levelForXp(19)).toBe(0);
+    expect(levelForXp(20)).toBe(1);
+    expect(levelForXp(39)).toBe(1);
+    expect(levelForXp(40)).toBe(2);
+    expect(levelForXp(10_000)).toBe(31);
   });
 });
 
@@ -116,23 +120,28 @@ describe("turnip milestones", () => {
 
 describe("levelWindow", () => {
   it("describes a fresh player's climb toward the first pack", () => {
-    expect(levelWindow(0)).toEqual({ level: 0, into: 0, span: 25, toNext: 25 });
+    expect(levelWindow(0)).toEqual({ level: 0, into: 0, span: 20, toNext: 20 });
   });
 
   /** The case that prompted this: 17 XP earned, no level, and the flat
    *  "+17 XP earned" line said nothing about how close that was. */
   it("says how much is left when a run falls short of a level", () => {
-    expect(levelWindow(17)).toEqual({ level: 0, into: 17, span: 25, toNext: 8 });
+    expect(levelWindow(17)).toEqual({ level: 0, into: 17, span: 20, toNext: 3 });
   });
 
   it("resets into the next band exactly on a threshold", () => {
-    expect(levelWindow(25)).toEqual({ level: 1, into: 0, span: 50, toNext: 50 });
-    expect(levelWindow(74)).toEqual({ level: 1, into: 49, span: 50, toNext: 1 });
-    expect(levelWindow(75)).toEqual({ level: 2, into: 0, span: 75, toNext: 75 });
+    expect(levelWindow(20)).toEqual({ level: 1, into: 0, span: 20, toNext: 20 });
+    expect(levelWindow(39)).toEqual({ level: 1, into: 19, span: 20, toNext: 1 });
+    expect(levelWindow(40)).toEqual({ level: 2, into: 0, span: 20, toNext: 20 });
+  });
+
+  it("widens the band where the flat window hands over to the ramp", () => {
+    expect(levelWindow(100)).toEqual({ level: 5, into: 0, span: 50, toNext: 50 });
+    expect(levelWindow(150)).toEqual({ level: 6, into: 0, span: 75, toNext: 75 });
   });
 
   it("keeps into + toNext equal to the span at every point", () => {
-    for (const xp of [0, 1, 24, 25, 26, 74, 75, 200, 1000, 9999]) {
+    for (const xp of [0, 1, 19, 20, 21, 39, 40, 100, 150, 1000, 9999]) {
       const w = levelWindow(xp);
       expect(w.into + w.toNext, `xp ${xp}`).toBe(w.span);
       expect(w.into).toBeGreaterThanOrEqual(0);

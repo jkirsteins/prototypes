@@ -104,19 +104,54 @@ vassalized. Revolting still pays off through the `reclaimed` event.
 
 ## Level curve & pack granting
 
-Also in `xp.ts`:
+Also in `xp.ts` (revised 2026-08-02: the original triangular curve,
+`25 * level * (level + 1) / 2`, made pack #2 already a 2-3 game wait for
+a losing player; the first five games are now a guaranteed welcome):
 
 ```
-xpThresholdForLevel(level) = 25 * level * (level + 1) / 2
+EARLY_PACKS = 5
+XP_EARLY_STEP = 20
+XP_LATE_STEP = 25
+xpThresholdForLevel(level) = 20 * level                    for level <= 5
+                           = 100 + late triangular ramp    past that
 levelForXp(xp) = largest level where xpThresholdForLevel(level) <= xp
 ```
 
-Thresholds: 25, 75, 150, 250, 375, 525, 700, 900, 1125, ... - fast early
-(a rough first run at ~20 turns plausibly clears 25-40 XP from base plays
-alone, so pack #1 is reachable even off a weak Raid/Subjugate/Fortify +
-turnip deck), decelerating later. No hard level cap: XP keeps climbing
-past full collection, and since draws allow duplicates, over-leveling
-becomes duplicate pulls rather than a dead end.
+Thresholds: 20, 40, 60, 80, 100, then 150, 225, 325, 450, 600, ... - the
+increments past level 5 (50, 75, 100, ...) are the old curve's ramp, so
+late pacing is unchanged. A rough first run at ~20 turns clears 25-40 XP
+from base plays alone, so XP alone keeps pace with a pack a game through
+the early window, and there is no cliff when the window ends. No hard
+level cap: XP keeps climbing past full collection, and since draws allow
+duplicates past the guarantee window, over-leveling becomes duplicate
+pulls rather than a dead end.
+
+XP cannot hard-guarantee the early packs - a quick loss can bank under
+20 - so `pendingPacks` also floors the early packs on completed games:
+
+```
+pendingPacks(meta) = max(levelForXp(meta.xp), min(meta.gamesCompleted, EARLY_PACKS))
+                   + turnipPacksEarned(meta.turnipsGrown) - meta.packsOpened
+```
+
+`gamesCompleted` counts runs that banked XP > 0 - an instant surrender
+with nothing played neither earns nor burns a pity slot - and is
+incremented by `bankRun`, the same choke point that banks the XP. A max,
+not a sum: the floor and the level pay for the same first five packs,
+whichever runs ahead. Existing records load with `gamesCompleted: 0` and
+lose nothing under the max; their XP also maps to a higher level under
+the flatter curve, a one-time windfall pack or two - accepted.
+
+The first `EARLY_PACKS` packs opened each guarantee at least one NEW
+card in their first slot, on a descending-rarity schedule
+(`NEW_CARD_GUARANTEES` in `packs.ts`): epic, rare, rare, common, common.
+One epic guarantee, not two - the pool holds two epics, and handing both
+out by pack two would leave no chase card. A scheduled tier holding no
+unknown card falls to the nearest tier below, then climbs above; a
+complete collection reverts the slot to a normal roll. The schedule is
+indexed by packs opened, whatever earned them, so an early
+turnip-milestone pack spends a guarantee slot like any other. The free
+slot never consults the collection - duplicates stay a real outcome.
 
 These numbers are a starting calibration, not gospel - validate with
 `npm run balance` once implemented and adjust `xp.ts`'s constants if real
@@ -142,11 +177,8 @@ turnipPacksEarned(turnipsGrown: number): number // count of milestones crossed
 ```
 
 Each milestone crossed grants exactly one bonus pack, folded into the
-same `pendingPacks` total as XP levels:
-
-```
-pendingPacks(meta) = levelForXp(meta.xp) + turnipPacksEarned(meta.turnipsGrown) - meta.packsOpened
-```
+same `pendingPacks` total as XP levels (the full formula, with the pity
+floor, is in the level-curve section above).
 
 Derived from the log exactly like XP: `runTurnips(log)` counts the
 human's `grow-crops` plays, and banks into `meta.turnipsGrown` at the
@@ -165,7 +197,8 @@ it is banked; only the count matters.
 `MetaRecord` (in `meta.ts`) becomes:
 
 ```ts
-{ knownCards: string[], xp: number, turnipsGrown: number, packsOpened: number }
+{ knownCards: string[], xp: number, turnipsGrown: number, packsOpened: number,
+  gamesCompleted: number }
 ```
 
 `seenPool` is removed. `pendingPacks(meta)` (shown above) is derived,

@@ -314,8 +314,8 @@ describe("applyBootMeta", () => {
 
   it("owes packs through the xp derivation, not a granted count", () => {
     expect(pendingPacks(metaOf("?screen=deck"))).toBe(0);
-    // xpThresholdForLevel(1) is 25, so one level is one pack.
-    expect(pendingPacks(metaOf("?xp=25"))).toBe(1);
-    expect(pendingPacks(metaOf("?xp=75"))).toBe(2);
+    // xpThresholdForLevel(1) is 20, so one level is one pack.
+    expect(pendingPacks(metaOf("?xp=20"))).toBe(1);
+    expect(pendingPacks(metaOf("?xp=40"))).toBe(2);
   });
 });

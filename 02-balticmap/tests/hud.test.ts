@@ -37,6 +37,7 @@ function setup(opts?: {
   onSurrender?: () => void;
   onHighlightFaction?: (factionId: string | null) => void;
   lifetimeXp?: () => number;
+  packsWaiting?: () => number;
   placeNameFactionIds?: Set<string>;
   /** LogPrefs storage. Defaults to a fresh, isolated memoryStorage() per
    *  call - pass the SAME instance to two setup() calls to test that
@@ -61,6 +62,7 @@ function setup(opts?: {
       ? { onHighlightFaction: opts.onHighlightFaction }
       : {}),
     ...(opts?.lifetimeXp ? { lifetimeXp: opts.lifetimeXp } : {}),
+    ...(opts?.packsWaiting ? { packsWaiting: opts.packsWaiting } : {}),
   };
   // Delta is here for the tests that need a fourth faction; FACTIONS itself
   // stays three, so nothing else renders it.
@@ -1319,21 +1321,30 @@ describe("learning loop hud", () => {
     const { container, hud } = setup({ lifetimeXp: () => 17 });
     hud.update(defeated());
     expect(q(container, ".pm-xp-track").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".pm-xp-next").textContent).toBe("8 XP to your next pack");
+    expect(q(container, ".pm-xp-next").textContent).toBe("3 XP to your next pack");
+  });
+
+  /** The pity floor and the turnip milestones both grant packs without a
+   *  level crossing; "N XP to your next pack" beside one would deny a pack
+   *  the player plainly has. */
+  it("says a pack is waiting when one is owed without a level crossing", () => {
+    const { container, hud } = setup({ lifetimeXp: () => 17, packsWaiting: () => 1 });
+    hud.update(defeated());
+    expect(q(container, ".pm-xp-next").textContent).toBe("A pack is waiting");
   });
 
   it("announces the pack when the run crossed a level", () => {
     // The run must actually earn something to cross: `defeated()` alone has
     // the AI acting and the human idle, so its runXp is 0 and no lifetime
     // total could ever put the start and end in different bands.
-    const { container, hud } = setup({ lifetimeXp: () => 25 });
+    const { container, hud } = setup({ lifetimeXp: () => 20 });
     const g = defeated();
     hud.update({
       ...g,
       log: [...g.log, { turn: 1, playerId: 1, type: "play", cardId: "grow-crops" }],
     });
-    // earned 1, so the run started at 24 - inside level 0 - and ended exactly
-    // on the level 1 threshold, where a fresh band reads 0 of 50.
+    // earned 1, so the run started at 19 - inside level 0 - and ended exactly
+    // on the level 1 threshold, where a fresh band reads 0 of 20.
     expect(q(container, ".pm-xp").textContent).toBe("+1 XP earned");
     expect(q(container, ".pm-xp-next").textContent).toBe(
       "Level 1 reached - a pack is waiting",
@@ -1344,7 +1355,7 @@ describe("learning loop hud", () => {
    *  than exactly on it had won a pack, and the line read "49 XP to your next
    *  pack" - a number about the pack after the one just earned. */
   it("announces the pack when the run overshot the threshold", () => {
-    const { container, hud } = setup({ lifetimeXp: () => 26 });
+    const { container, hud } = setup({ lifetimeXp: () => 21 });
     const g = defeated();
     hud.update({
       ...g,
@@ -1354,7 +1365,7 @@ describe("learning loop hud", () => {
         { turn: 1, playerId: 1, type: "play", cardId: "grow-crops" },
       ],
     });
-    // earned 2, so the run ran 24 -> 26, crossing the level-1 threshold at 25
+    // earned 2, so the run ran 19 -> 21, crossing the level-1 threshold at 20
     expect(q(container, ".pm-xp").textContent).toBe("+2 XP earned");
     expect(q(container, ".pm-xp-next").textContent).toBe(
       "Level 1 reached - a pack is waiting",
@@ -1375,8 +1386,8 @@ describe("learning loop hud", () => {
     const { container, hud } = setup({ lifetimeXp: () => 17 });
     hud.update(defeated());
     vi.runAllTimers();
-    // 17 of the 25-XP first band
-    expect(q(container, ".pm-xp-fill").style.width).toBe("68%");
+    // 17 of the 20-XP first band
+    expect(q(container, ".pm-xp-fill").style.width).toBe("85%");
     vi.useRealTimers();
   });
 
