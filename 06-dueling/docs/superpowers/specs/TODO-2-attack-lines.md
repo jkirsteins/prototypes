@@ -8,16 +8,18 @@
 ## Overview
 
 Blade contact is currently universal: a raised guard stops any attack whose
-timing and reach line up, and after `blade-contact` any two travelling blades meet
-regardless of where they are aimed. §3.3 and §10 of the state-tracks spec name
-this as the MVP limitation and reserve `parryMeetsAttack` as the extension point.
+timing and reach line up, regardless of where either blade is aimed. §3.3 and
+§10 of the state-tracks spec name this as the MVP limitation and reserve
+`parryMeetsAttack` as the extension point.
 
 This spec adds the geometry. A line is a **pair**: a height and a side.
 
 **Delivers:** attack lines; parries (part 2 of 2).
 
-**Depends on:** `blade-contact`, which built the contact module the line conditions are
-added to.
+**Depends on:** `parry-rise`. This spec is deliberately sequenced **before**
+`blade-contact`: blades carry a line before they learn to cross, so the crossing
+rule can require line agreement from its first version instead of shipping a
+universal-clash interim in which every same-tempo trade rang steel.
 
 ---
 
@@ -85,9 +87,12 @@ transition lasting `heightChangeMs`. During it:
   read it and react to it. That legibility is the entire reason it takes time.
 - a second arrow press reverses or redirects it, restarting `heightT`.
 
-Stance changes are accepted in `ready`, during `stepRecoveryMs`, and while a parry
-is up. They are refused during `attack`, `void`, `hitstun` and `dead`: those
-commit the body, and the whole point of committing is that you cannot re-aim.
+Stance changes are accepted in `ready` and during `stepRecoveryMs`. They are
+refused during `attack`, `void`, `hitstun` and `dead` - those commit the body,
+and the whole point of committing is that you cannot re-aim - and refused while
+a parry is up: a formed guard is committed to its height in this spec.
+`line-feints` is where moving a raised guard becomes possible, priced as the
+once-per-raise guard shift.
 
 An attack **snapshots** its height into the timeline at launch, alongside every
 other mark. Changing stance afterwards does not steer a blade already in the air;
@@ -118,33 +123,36 @@ defender's job is to be at the right height; finding the blade once you are ther
 is what a guard does.
 
 ```ts
-// contact.ts
 function parryMeetsAttack(attacker, defender, gap) {
-  return ...existing conditions from `parry-rise` and `blade-contact`...
+  return ...existing conditions from `parry-rise`...
     && lineOf(attacker).height === defender.height;      // NEW; side not tested
-}
-
-function bladesCross(a, b, gap) {
-  return ...existing conditions...
-    && lineOf(a).height === lineOf(b).height             // NEW
-    && lineOf(a).side   === lineOf(b).side;              // NEW
 }
 
 function lineOf(f: Fighter): Line;  // height from the attack's snapshot, side from its timings
 ```
 
-Two travelling blades must match on **both** axes, because two blades genuinely
-have to be in the same place to touch. A guard is a defensive position rather
-than a point, so it spans the side axis at its height.
+A guard is a defensive position rather than a point, so it spans the side axis
+at its height:
 
-That asymmetry is the source of the interesting cases:
-
-- A cut and a thrust at the same height **pass each other**. If both are in reach
-  at their own `strikeEnd`, both fighters die. The mutual kill now has a cause a
-  player can name: you both attacked, at the same height, on different sides, and
-  neither of you defended.
-- A guard at the right height stops either of them.
+- A guard at the right height stops a cut and a thrust alike.
 - A guard at the wrong height stops nothing.
+
+Attacks still do not interact with each other - that is `blade-contact`, which
+will require agreement on **both** axes for two travelling blades, because two
+blades genuinely have to be in the same place to touch. Until it lands, the side
+axis is carried by the model and the labels but consumed by nothing; that is the
+price of sequencing the vocabulary before the collisions, and it is one spec
+wide.
+
+**Considered and rejected: snapshotting the side into the parry.** A
+side-matching guard was on the table and is turned down, for three reasons. The
+defender has no side input, so the snapshot would come from a guess or from the
+last attack seen - not from a choice they made. Physically, a formed guard at a
+height closes that height; inside-versus-outside matters to blades in motion,
+not to a static cover. And mechanically it would stack a hidden 50/50 on top of
+the height read, with no control through which the defender could express skill.
+If side coverage is ever wanted, it arrives as a new guard input, not as a
+hidden snapshot.
 
 ---
 
@@ -226,12 +234,12 @@ thing happening.
 Both fighters get the row. The AI's line must be as legible as the player's or
 none of the reads in this chain of specs are available.
 
-### 5.2 The blade zone: a box over the sprite
+### 5.2 The line bar
 
 Attack animations do not change. A high cut and a low cut play the same sheet, and
 no amount of HUD text fixes a player who is watching the fighters. The answer is
 not to redraw the sheets for this spec. It is to draw the thing the sheets cannot:
-**a bar over each fighter marking where their blade threatens or guards.**
+**a bar beside each fighter marking the height their blade threatens or guards.**
 
 A short **vertical** bar, fixed length, drawn **behind** the fighter.
 
@@ -363,16 +371,15 @@ in `line-feints`'s arithmetic rather than being inherited by accident.
   later. Both orderings asserted.
 - **Stance in motion covers nothing:** an attack at the destination height that
   resolves before the transition completes is a `hit`, not a `parried`.
-- **Height condition falsified independently** in `parryMeetsAttack`; **both**
-  conditions falsified independently in `bladesCross`, while all others hold.
+- **Height condition falsified independently** in `parryMeetsAttack` while every
+  other condition holds.
 - **Side is free for a parry:** one stance height, both attack sides, both
   produce `parried`.
-- **Cross-side double:** a cut and a thrust at the same height, both in reach,
-  produce `winner === "draw"`.
-- **No inference:** a fixture weapon declaring `cut.side = "inside"` makes its
-  cut cross a thrust, proving nothing derives side from `AttackKind`.
-- **Acceptance:** arrows refused during `attack`, `void`, `hitstun`, `dead`;
-  accepted in `ready`, during `stepRecoveryMs`, and with a parry up.
+- **No inference:** a fixture weapon declaring `cut.side = "inside"` reports
+  that side through `lineOf` and row 3, proving nothing derives side from
+  `AttackKind`; `blade-contact` extends the same fixture to contact.
+- **Acceptance:** arrows refused during `attack`, `void`, `hitstun`, `dead` and
+  with a parry up; accepted in `ready` and during `stepRecoveryMs`.
 - **Snapshot:** an attack launched at `high` resolves at `high` after the stance
   has moved to `low` mid-flight.
 - **AI height distribution:** over a seeded run, mode 3's attacks are spread
@@ -401,7 +408,7 @@ in `line-feints`'s arithmetic rather than being inherited by accident.
 ## 9. Out of scope
 
 - A reachable `middle` stance. §7.
-- Attack sprites that distinguish height. The blade zone (§5.2) makes them a
+- Attack sprites that distinguish height. The line bar (§5.2) makes them a
   polish item rather than a prerequisite, but they are still worth doing.
 - Outside thrusts, inside cuts, slices. The axes exist for them; no shipped
   weapon declares one, and the fixture weapon in §8 proves the path works.

@@ -51,7 +51,7 @@ Write P for the tick the defender presses parry. The AI can only cancel while
 | | Guard effective over | Viable press window | Unfeintable band |
 |---|---|---|---|
 | Instantaneous parry (today), `parryWindowMs` 260 | [P, P+260] | [440, 890] | [520, 890], 370 ms wide, every press in it fully covered |
-| `parryRiseMs` 220, `parryWindowMs` 380 | [P+220, P+380] | [320, 670] | [520, 670], and presses past ~610 buy under 60 ms of overlap |
+| `parryRiseMs` 220, `parryWindowMs` 480 | [P+220, P+480] | [220, 670] | [520, 670], and presses past ~610 buy under 60 ms of overlap |
 
 The rise adds no feint mechanic. It gives the feint already specified in §8.1
 something to eat, and it turns the defender's timing into a real choice: commit
@@ -124,8 +124,11 @@ feel judgement (§7).
 
 ### 3.2 What the rise does not do
 
-- It does not shorten the effective guard: `parryWindowMs` is retuned so the
-  effective span stays comparable to today's (§5).
+- It does not shorten the effective guard: `parryWindowMs` grows by exactly the
+  rise, so the effective span equals today's (§5). What the rise does cost the
+  defender - the honest accounting - is the **tail**: the last press that can
+  catch a given blade moves `parryRiseMs` earlier. The span is preserved; the
+  deadline is not.
 - It does not gate acceptance. A parry is still accepted from `ready` with
   `parryRecoveryMs === 0`; the rise is inside the window, not before it.
 - It does not affect the guard's early release on a successful parry. That still
@@ -200,14 +203,16 @@ Starting values. Both are playtest knobs; the invariants in §3.1 and §7 are no
 
 | Weapon | `parryRiseMs` | `parryWindowMs` (was) | Effective span | `parryRecoveryMs` |
 |---|---|---|---|---|
-| Longsword | 220 | 380 (260) | 160 ms | 340, unchanged |
-| Rapier | 190 | 330 (200) | 140 ms | 400, unchanged |
+| Longsword | 220 | 480 (260) | 260 ms, as today | 340, unchanged |
+| Rapier | 190 | 390 (200) | 200 ms, as today | 400, unchanged |
 
-The window grows by roughly the rise so the effective guard stays close to
-today's, rather than the rise arriving as a pure nerf.
+The window grows by exactly the rise, so the effective span is unchanged and the
+rise's whole cost is the earlier deadline (§3.2). An earlier draft grew the
+window by less than the rise and still claimed the span was "comparable"; it was
+not - it had quietly cut the longsword's effective guard from 260 ms to 160.
 
 **Watch in play:** total parry commitment is now `parryWindowMs +
-parryRecoveryMs`, 720 ms for the longsword. If defending feels like drowning,
+parryRecoveryMs`, 820 ms for the longsword. If defending feels like drowning,
 `parryRecoveryMs` is the knob, not the rise.
 
 ### 5.1 The rapier consequence, decided deliberately

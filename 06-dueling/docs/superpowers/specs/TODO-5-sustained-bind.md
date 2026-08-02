@@ -17,18 +17,28 @@ This spec makes contact persist, for the weapons whose physics support it.
 
 **Delivers:** binds (part 1 of 2), sustained binds.
 
-**Depends on:** `line-feints`, whose condition 3 (`met === false` blocks a redirect)
-already declared that contact is a commitment.
+**Depends on:** `line-feints`. Its redirect window closes at commitment
+(`strikeStart`), so by the time steel can touch steel no input can steer either
+blade - contact lands on fighters who are already committed, which is what lets
+the bind seize both bodies without stealing a choice either still had.
 
 ---
 
 ## 1. Which contacts persist
 
-From the design doc, and it is physics rather than style: a bind needs a blade
-that can exert and receive lateral force without buckling. Longswords are stiff,
-broad and two-handed, so pressure transmits and the contact is stable. Rapiers are
-thin and one-handed; both blades flex and slide off, and the correct follow-up is
-to go around rather than to wrestle.
+From the design doc: a *sustained* bind needs a blade that can exert and receive
+lateral force without buckling. Longswords are stiff, broad and two-handed, so
+pressure transmits and the contact is stable. Rapier contact is transient - the
+blades flex and slide, and the follow-up is to go around rather than to wrestle.
+
+**`bindCapable: false` is an abstraction, and the spec says so.** A real rapier
+does bind - opposition along the forte is core to its system - but it cannot
+*sustain* pressure the way two longswords can, so the game rounds its contact
+down to instant deflection. That is a modelling rule with a gameplay purpose
+(two weapons that play differently), not a claim that rapier steel cannot touch
+steel. If a rapier bind game is ever wanted, the field becomes a depth or a
+duration rather than a boolean; nothing downstream may assume the boolean means
+"cannot bind at all".
 
 ```ts
 interface WeaponProfile {
@@ -56,23 +66,39 @@ in contact. Anything involving a rapier fights around it.
 ## 2. The bind state
 
 ```ts
-type FighterState =
-  | ...
-  | { kind: "bind"; t: number; partner: 0 | 1 }
-  | ...;
+interface Duel {
+  // ...
+  bind: BindState | null;
+}
+
+interface BindState {
+  t: number;                        // the one clock; owned by the duel
+  line: Line;                       // where the blades are crossed
+  /** Contact snapshot, captured on the entry tick BEFORE the attack and parry
+   *  states are discarded. `pressure-and-winding` derives firmness from this;
+   *  it cannot be recomputed later, because the states it reads are gone. */
+  contact: [BindContact, BindContact];
+}
+
+type BindContact =
+  | { kind: "strike"; progress: number }    // 0..1 through the travelling half
+  | { kind: "guard"; settledMs: number };   // effective time before contact
+
+type FighterState = | ... | { kind: "bind" } | ...;
 
 export const BIND_MS = 500;
 ```
 
-Entering: on the tick contact is detected between two bind-capable weapons, both
-fighters' body states are replaced with `bind`. The attacker's attack ends here;
-its timeline is discarded rather than replaced, because the attack is over. A
-defender's `ParryTrack` is consumed and cleared.
+Entering: on the tick contact is detected between two bind-capable weapons, the
+duel stores the `BindState` - snapshot included, read from the still-live attack
+and parry states - and only then are both fighters' body states replaced with
+the `bind` marker. The attacker's attack ends here; its timeline is discarded,
+because the attack is over. A defender's `ParryTrack` is consumed and cleared.
 
 During: neither fighter moves, accepts an intent, or resolves anything. Both are
 committed. `x` is frozen; the `MIN_GAP` clamp still runs and is a no-op.
 
-Exiting: at `t >= BIND_MS` both return to `ready` and both seed
+Exiting: at `bind.t >= BIND_MS` both return to `ready` and both seed
 `BIND_RECOVERY_MS` = 180, a shared constant rather than a weapon field, because
 both weapons in a bind are by definition the same bind-capable class. In this
 spec the exit is **neutral and symmetric**: the bind
@@ -84,16 +110,15 @@ from an instant ping into a held beat, which is a large change to how the fight
 reads, and it lets the pose freeze in §4 be judged before a mini-game is built on
 top of it.
 
-### 2.1 Why the bind is one state on both fighters, not a pair of states
+### 2.1 Why the bind lives on the duel, not on the fighters
 
-The bind is a single physical event with one clock. Modelling it as two
-independent timers invites them to drift, and the first bug would be one fighter
-leaving the bind a tick before the other. Both `bind` states are created on the
-same tick with the same `t`, both tick with the same `dt`, and a test asserts they
-release on the same tick.
-
-`partner` exists so a bind is self-describing when read from either side, and so
-a future third fighter does not silently break the assumption.
+The bind is a single physical event with one clock. An earlier draft mirrored a
+timed `bind` state onto both fighters and pinned their lockstep with a test.
+That is the bug-shaped version: two copies of one fact, kept equal by
+discipline. The shared object cannot drift, needs no `partner` field to
+self-describe, and gives the contact snapshot exactly one home. The fighters'
+`bind` marker carries no data because nothing about a bind is per-fighter:
+everything about it is about the pair.
 
 ### 2.2 Death during a bind
 
@@ -157,7 +182,7 @@ ship the bind as the longsword's signature moment.
 
 The body row shows `bind` with a progress bar over `BIND_MS`, using the same
 idiom as every other timed state. Both fighters show it, both fill together,
-which is the visual assertion that §2.1 holds.
+driven by the one shared clock (§2.1).
 
 ### 4.3 Audio
 
@@ -199,9 +224,13 @@ outcome worth pacing around.
 - **Capability gate:** longsword against longsword produces a bind; every pairing
   involving a rapier produces the deflection path with unchanged penalties and
   unchanged timings. Table-driven over both contact kinds.
-- **Symmetric entry and exit:** both fighters enter `bind` on the same tick with
-  equal `t`, and both reach `ready` on the same tick. Asserted per tick, not per
-  millisecond.
+- **One clock:** both fighters enter the `bind` marker on the contact tick and
+  both return to `ready` on the tick `duel.bind.t` crosses `BIND_MS`; there are
+  no per-fighter timers to drift, and `duel.bind` is `null` again after exit.
+- **Contact snapshot:** entering a bind stores each side's `BindContact` with
+  the values the live states held on the entry tick, asserted against
+  hand-computed fixtures - and the snapshot remains readable after the attack
+  timeline is discarded.
 - **Frozen:** `x` does not change during a bind; no intent is accepted; no
   `strikeEnd`, `whiff`, `parried` or `hit` is emitted from inside one.
 - **Attack is over:** a bound attack never resolves. No `parried` event, no

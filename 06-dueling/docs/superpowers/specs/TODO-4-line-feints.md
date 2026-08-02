@@ -43,7 +43,7 @@ against one who trades blades with you, you change side.
 | | §8.1 cancel | This spec's redirect |
 |---|---|---|
 | Input | dedicated cancel key | arrow (height) or the other attack key (side) |
-| Legal during | `windup` only | `riseEnd` through `parryableUntil`, while not `met` |
+| Legal during | `windup` only | `riseEnd` through `strikeStart`: the sold half of the windup |
 | Result | attack ends, short `feintRecoveryMs` | attack continues on a new line |
 | Deceives about | when | where |
 | Costs | a truncated recovery | a redirect interval plus a whole new strike |
@@ -54,15 +54,21 @@ Both stay. Bailing out and lying are different plays and should feel different.
 
 ## 2. The rule
 
-Legality, all four required:
+Legality, all three required:
 
 1. `elapsedMs >= timeline.riseEnd`. Before the stillness the pose has not been
    sold, so there is nothing to lie about.
-2. `elapsedMs <= timeline.parryableUntil`. Past that the blade has arrived.
-3. `met === false`. **Once steel has touched steel you are committed.** This is
-   the seam `sustained-bind` grows the bind out of.
-4. `redirected === false`. One redirect per attack, or an attacker could stall
+2. `elapsedMs < timeline.strikeStart`. **Commitment is the windup-to-strike
+   transition** - the state-tracks spec's own invariant, and an earlier draft of
+   this spec broke it by allowing redirects into the travelling half of the
+   strike. Once the blade travels, no input steers it; that is the same rule
+   that makes the whiff honest, and the feint gets no exemption from it.
+3. `redirected === false`. One redirect per attack, or an attacker could stall
    forever and the tempo economy collapses.
+
+A consequence worth naming: contact exists only inside the strike, so no legal
+redirect can ever follow `met`. The seam `sustained-bind` needs - steel touched
+means committed - holds by construction rather than by a fourth condition.
 
 Triggering:
 
@@ -93,7 +99,7 @@ s.timeline = {
   recoveryStart:  s.elapsedMs + d + t2.strike,
   recoveryEnd:    s.elapsedMs + d + t2.strike + t2.recovery,
 };
-s.phase = "windup";              // travelling to the new line, not yet dangerous
+// s.phase is already "windup": the blade never left preparation
 ```
 
 `elapsedMs` is never reset, so every mark stays absolute and every consumer keeps
@@ -142,6 +148,10 @@ A raised guard may **shift** to the other height once per raise, at
 `guardShiftMs`. This is cheaper than `attack-lines`'s `heightChangeMs` cold stance move
 because the blade is already formed and only has to travel; that is exactly what
 *Winden* is, and `pressure-and-winding` builds on the same motion.
+
+The shift input is the arrows - the same keys that move the stance, which
+`attack-lines` refuses while a parry is up. From this spec they stop being
+refused and perform the shift instead.
 
 ```ts
 interface ParryTrack {
@@ -206,9 +216,9 @@ sheet's **loaded** frame (`swordStab` 2, or `swordAttack` 0), which reads as the
 blade being pulled off its line and re-set.
 
 A height redirect has no sheet to swap to, per `attack-lines` §5.2. It renders as
-the blade zone sliding between height bands over `redirectHeightMs`, which is the
+the line bar sliding between height bands over `redirectHeightMs`, which is the
 same motion a stance change draws and is exactly the signal the defender is
-racing. The body gets the matching vertical offset. Without the blade zone this
+racing. The body gets the matching vertical offset. Without the line bar this
 would be nearly invisible; with it, the redirect is the most legible thing on
 screen for the duration of the slide.
 
@@ -259,8 +269,12 @@ guard has been visible for at least AI_REACTION_MS:
 Purely reactive, no rng draw, so a seeded replay stays reproducible. It is
 deterministic *and* unpredictable, because what it does depends on what you did.
 
-`parry-rise` §3.1's invariant is what makes this reachable: any parry that could
-succeed became visible at least `AI_REACTION_MS` before it mattered.
+The deadline is `strikeStart`, so only a guard raised at least `AI_REACTION_MS`
+before commitment can be reactively feinted. A guard raised later is safe from
+the feint - and pays `parry-rise`'s price for lateness, the thin overlap. That
+completes the table `parry-rise` §1 started: commit early and be feintable,
+commit late and be right by a hair, and the band between is where a defender
+lives.
 
 Mode 1 gains the **guard shift** as a defender, using the same rule the player
 has, so the dummy can be practised against as a feint target that sometimes
@@ -280,9 +294,10 @@ Which is the answer to "the duelist is solved":
 
 ## 7. Tests
 
-- **Legality:** each of the four conditions in §2 falsified independently.
-  `met === true` refusing a redirect gets its own test, since `sustained-bind` depends on
-  that edge.
+- **Legality:** each of the three conditions in §2 falsified independently.
+  **Commitment boundary:** a redirect on the tick before `strikeStart` is
+  accepted; on that tick or any later one it is refused, including throughout
+  the strike and the recovery.
 - **One redirect:** a second redirect on the same attack is refused, including
   the case where the first changed height and the second would change side.
 - **Cost selection:** height-only, side-only and both-axes redirects each take
@@ -317,7 +332,9 @@ Which is the answer to "the duelist is solved":
 
 ## 8. Out of scope
 
-- Redirecting after contact. Blocked by condition 3; that is `sustained-bind` and `pressure-and-winding`.
+- Redirecting after commitment. The window closes at `strikeStart`, which also
+  closes it before any possible contact; binds are `sustained-bind` and
+  `pressure-and-winding`.
 - Chained redirects, and more than one guard shift per raise.
 - A reachable `middle` height. Enabling it requires deciding what a redirect may
   reach from where, and §4.1's margins recomputed for a two-way guess. `attack-lines` §7.
@@ -346,5 +363,5 @@ What to look for:
 - Feinting into an opponent who was not defending feels like a wasted tempo.
 
 What would look wrong: the height redirect being invisible until it lands. That
-means the blade zone's slide is too fast or too subtle to register, and the fix is
+means the line bar's slide is too fast or too subtle to register, and the fix is
 its contrast or `redirectHeightMs`, not a sound and not a bigger label.
