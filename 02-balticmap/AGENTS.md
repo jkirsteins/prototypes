@@ -135,9 +135,22 @@ line keeps its own "+N Might against all" inline and `impactText` returns null
 for it. And the "Targeting me" filter never hides an entry tagged `.log-mine` -
 what you played or discarded, and the events your play caused. A filter that
 removes the line you just made is a filter that lies about your own turn. The
-automatic garrison tick and the reshuffle are excluded from `.log-mine`: you did
-not choose them, they fire every round, and they are the noise the filter exists
-to remove.
+automatic garrison tick, the reshuffle and a pact lapsing are excluded from
+`.log-mine`: you did not choose them - a lapse's `playerId` is only the seat
+whose clock tick noticed it - and they are the noise the filter exists to
+remove.
+
+Pinning a land filters the log to that realm: the pinned faction plus the
+lands incorporated into it (`incorporatedRealmOf`), never vassals - a vassal
+acts on its own and is watched by pinning it, which is also why a click on an
+incorporated land pins the owner and a click on a vassal pins the vassal
+(`pinnedFactionId` in src/main.ts, the same `politicalFactionForPolygon` card
+targeting uses). While the pin holds, the checkbox row reads "Filtered to X"
+and the "Targeting me" pref is suspended by CSS, untouched in storage
+(`applyRealmFilter` in src/hud.ts). The same `.log-mine` exemption applies,
+and a play and its consequences show or hide as one unit - any line of the
+batch naming a member keeps the whole batch, the indented-under-nothing rule
+again.
 
 ## A consequence is indented under the play that caused it
 

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { pact, } from "./helpers";
 import {
   getRel, bumpStatus, bumpMight, leadsOf, bumpMightAll, realmOf, realmRootOf,
-  fullRealmOf, overlordChainOf,
+  fullRealmOf, overlordChainOf, incorporatedRealmOf,
   levelStatus, allianceKey, allianceActive, bumpMightBy, bumpStatusBy, bumpMightAllBy,
   type Relations,
 } from "../src/relations";
@@ -88,6 +88,20 @@ describe("fullRealmOf", () => {
     expect([...fullRealmOf("beta", o, inc)].sort()).toEqual(
       ["beta", "delta", "epsilon", "gamma"],
     );
+  });
+});
+
+describe("incorporatedRealmOf", () => {
+  it("is self + incorporated lands, never vassals or their annexations", () => {
+    const inc = { gamma: "alpha", epsilon: "beta" };
+    // with beta alpha's vassal, beta and its annexation epsilon both stay out
+    expect([...incorporatedRealmOf("alpha", inc)].sort()).toEqual(
+      ["alpha", "gamma"],
+    );
+    expect([...incorporatedRealmOf("beta", inc)].sort()).toEqual(
+      ["beta", "epsilon"],
+    );
+    expect([...incorporatedRealmOf("delta", inc)]).toEqual(["delta"]);
   });
 });
 

@@ -861,14 +861,42 @@ svg.map.dragging {
   cursor: pointer;
 }
 
+/* While a pin filters the log, the checkboxes make way for the "Filtered to X"
+   label applyRealmFilter fills in - two filters offered at once would invite
+   the question of how they combine, and the answer (the pin wins) is what the
+   swap says without a word. */
+.activity-log-filtered {
+  display: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.activity-log.filter-realm .activity-log-filter {
+  display: none;
+}
+
+.activity-log.filter-realm .activity-log-filtered {
+  display: inline-flex;
+}
+
 /* Entries are tagged .notice-worthy, .log-mine and .notice-cause at render time
    (see renderLog in hud.ts); toggling this class on the panel shows/hides the
    whole log retroactively, without a re-render. .log-mine is exempt whatever the
    filter says: your own turn is never something you asked to hide. So is
    .notice-cause - the play a shown consequence is indented under, which must not
-   be filtered out from under it. */
-.activity-log.filter-targeting-me
+   be filtered out from under it. Superseded by the realm filter while a pin is
+   held - :not(.filter-realm) - the pref itself stays saved and untouched. */
+.activity-log.filter-targeting-me:not(.filter-realm)
   .log-entry:not(.notice-worthy):not(.log-mine):not(.notice-cause) {
+  display: none;
+}
+
+/* The pinned-realm filter. Membership is applied in JS (applyRealmFilter in
+   hud.ts), not at render time like .notice-worthy: it depends on who is pinned
+   and on current incorporation, both of which move under a rendered entry.
+   .log-mine is exempt for the same reason as above - a filter that removes the
+   line you just made lies about your own turn. */
+.activity-log.filter-realm .log-entry:not(.log-realm):not(.log-mine) {
   display: none;
 }
 
@@ -881,8 +909,10 @@ svg.map.dragging {
    with .region.dimmed. No transition: the halo it echoes appears at once, and
    a fade would trail a cursor sweeping across regions. The .log-turn
    separators are left alone - they name no faction, and dimming them would
-   make the log look half-loaded. */
-.activity-log.log-highlighting .log-entry:not(.log-lit) {
+   make the log look half-loaded. Off while the realm filter holds: the filter
+   already removed what the dim would fade, and a surviving line naming only an
+   incorporated land must not sit at 0.35 under the pin's own highlight. */
+.activity-log.log-highlighting:not(.filter-realm) .log-entry:not(.log-lit) {
   opacity: 0.35;
 }
 

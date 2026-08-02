@@ -4,7 +4,7 @@ import {
   isHumanTurn, victoryRealmSize, viewOf, type GameEvent, type GameState,
 } from "./game";
 import { flyCard, runAnimation, type Flight } from "./animate";
-import { fullRealmOf } from "./relations";
+import { fullRealmOf, incorporatedRealmOf } from "./relations";
 import {
   buildRoundSummary, isNoticeWorthy, walkCtxOf,
   type NoticeCtx, type RoundSummary,
@@ -572,11 +572,13 @@ export function createHud(
    *  hidden by the "Targeting me" filter: a filter that removes the line you
    *  just made is a filter that lies about your own turn.
    *
-   *  The automatic garrison tick and the deck reshuffle are excluded. You did
-   *  not choose either, and both fire every round for the whole late game -
-   *  which is exactly the noise the filter exists to remove. */
+   *  The automatic garrison tick, the deck reshuffle and a pact lapsing are
+   *  excluded. You did not choose any of them - a lapse's playerId is only the
+   *  seat whose clock tick noticed it (see sweepLapsedPacts in game.ts) - and
+   *  they are exactly the noise the filters exist to remove. */
   function isYourDoing(e: GameEvent): boolean {
-    return e.playerId === 1 && e.type !== "garrisoned" && e.type !== "reshuffle";
+    return e.playerId === 1 && e.type !== "garrisoned" &&
+      e.type !== "reshuffle" && e.type !== "pact-lapsed";
   }
 
   function involvesHuman(e: GameEvent, humanFactionId: string | undefined): boolean {
@@ -767,6 +769,11 @@ export function createHud(
       saveLogPrefs(logStorage, logPrefs);
     }),
   );
+  /** Replaces the two checkboxes while a pin filters the log - the swap is
+   *  the .filter-realm rules in style.css, the content applyRealmFilter's. */
+  const logFiltered = document.createElement("span");
+  logFiltered.className = "activity-log-filtered";
+  logFilters.append(logFiltered);
 
   const logEntries = document.createElement("div");
   logEntries.className = "activity-log-entries";
@@ -935,6 +942,53 @@ export function createHud(
     );
   }
 
+  /** Member set of the pinned realm as of `state` - the pinned faction plus
+   *  the lands incorporated into it, never vassals: a vassal acts on its own
+   *  and is watched by pinning it. Null when nothing is pinned. Derived on
+   *  every application rather than frozen at pin time, so an incorporation
+   *  landed while pinned re-files the log on the next render. */
+  function pinnedRealmMembers(state: GameState | null): Set<string> | null {
+    if (pinnedFaction === null || state === null) return null;
+    return incorporatedRealmOf(pinnedFaction, state.incorporated);
+  }
+
+  /** Filters the log to the pinned realm: entries involving a member keep
+   *  `.log-realm` and `.filter-realm` on the panel hides the rest (and swaps
+   *  the filter checkboxes for the "Filtered to X" label). A play and its
+   *  consequences show or hide as one unit - any line of the batch naming a
+   *  member keeps the whole batch - so a consequence is never shown indented
+   *  under nothing and a shown play never loses its effects. A walk over the
+   *  rendered entries, like the highlight dim, because membership depends on
+   *  who is pinned and on current incorporation - not render-time facts the
+   *  way notice-worthiness is. */
+  function applyRealmFilter(state: GameState | null): void {
+    const members = pinnedRealmMembers(state);
+    logPanel.classList.toggle("filter-realm", members !== null);
+    logFiltered.replaceChildren(
+      ...(pinnedFaction !== null && members !== null
+        ? [renderSegments([t("Filtered to "), faction(pinnedFaction)], richTextHooks)]
+        : []),
+    );
+    let batch: HTMLElement[] = [];
+    const flush = () => {
+      const keep =
+        members !== null &&
+        batch.some((el) =>
+          (el.dataset.factions ?? "").split(" ").some((f) => members.has(f)),
+        );
+      for (const el of batch) el.classList.toggle("log-realm", keep);
+      batch = [];
+    };
+    for (const el of logEntries.children) {
+      if (!(el instanceof HTMLElement) || !el.classList.contains("log-entry")) {
+        continue; // .log-turn separators pass through, as with every filter
+      }
+      if (!el.classList.contains("log-consequence")) flush();
+      batch.push(el);
+    }
+    flush();
+  }
+
   /** Appends entries for events not yet rendered; returns those events so
    *  animations can key off the same diff. */
   /** Cancels the in-flight postmortem bar fill, if any. A second postmortem
@@ -1014,7 +1068,9 @@ export function createHud(
   /** Which factions a line is about, for the highlight. Read off the segments,
    *  so a line lights exactly when it visibly names the faction - plus the actor
    *  when that is you, because your own actions render as "You" and name no
-   *  faction at all.
+   *  faction at all. Not for a pact lapse: its playerId is only the seat whose
+   *  clock tick noticed it, the line never says "You", and both allies it IS
+   *  about are already in the segments.
    *
    *  Shared by the first render and by a reveal's rewrite: revealing a secret
    *  play can add a faction to the line, so the two must agree on how the list
@@ -1025,7 +1081,10 @@ export function createHud(
     humanFactionId: string | undefined,
   ): string[] {
     const named = factionIds(segs);
-    if (e.playerId === 1 && humanFactionId !== undefined && !named.includes(humanFactionId)) {
+    if (
+      e.playerId === 1 && e.type !== "pact-lapsed" &&
+      humanFactionId !== undefined && !named.includes(humanFactionId)
+    ) {
       named.push(humanFactionId);
     }
     return named;
@@ -1148,6 +1207,10 @@ export function createHud(
       if (entry === undefined) continue;
       revealEntry(entry, state.log[idx], state);
     }
+    // After the reveal loop - a reveal rewrites data-factions - and before the
+    // scroll, since hiding entries changes scrollHeight. One call classifies
+    // the fresh entries and re-files the old ones after membership drift.
+    applyRealmFilter(state);
     if (fresh.length > 0) logEntries.scrollTop = logEntries.scrollHeight;
     return fresh;
   }
@@ -1651,6 +1714,7 @@ export function createHud(
     setPinned(factionId) {
       if (factionId === pinnedFaction) return;
       pinnedFaction = factionId;
+      applyRealmFilter(lastState);
       // An armed card owns the bar - it is asking for a target, and a click on
       // the map answers it rather than pinning. setArmed(null) renders again.
       if (lastState !== null && armedIndex === null) renderStatus(lastState);

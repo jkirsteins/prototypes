@@ -715,6 +715,17 @@ function applyTargeting(): void {
   renderRealmUnions();
 }
 
+/** The faction a pin answers for: the pinned land's owner when the land was
+ *  incorporated, else its own faction - the same resolution card targeting
+ *  applies, so a vassal's land still pins the vassal. Resolved at read time
+ *  from the land the pin stores, never cached, so an incorporation landed
+ *  while pinned moves the pin to the new owner on the next refresh. */
+function pinnedFactionId(): string | null {
+  return pinnedRegion === null
+    ? null
+    : politicalFactionForPolygon(pinnedRegion.faction, game.incorporated);
+}
+
 /** The one place a faction highlight is applied. The map halo and the activity
  *  log are two views of the same hover, so they are always set together and a
  *  new call site cannot light one and leave the other stale. The log takes the
@@ -727,7 +738,7 @@ function applyHighlight(region: Region | null, factionId: string | null): void {
   // obeys it without a branch of its own.
   if (pinnedRegion !== null) {
     region = pinnedRegion;
-    factionId = pinnedRegion.faction;
+    factionId = pinnedFactionId();
   }
   applyRealmHover(region);
   // The same suppression applyRealmHover applies to the map: while a card is
@@ -817,6 +828,11 @@ function refresh(): void {
   applyTargeting();
   revealFoundedSettlements();
   renderThreatBadges();
+  // Re-resolve the pin before the render it must agree with: an incorporation
+  // this refresh carries can change who the pinned land answers for, and the
+  // status bar and the log filter both read the pin. Free when nothing moved -
+  // setPinned early-returns on an unchanged id.
+  hud.setPinned(pinnedFactionId());
   hud.update(game);
   applyHighlight(hoveredRegion, hoveredRegion?.faction ?? null);
   // The tip outlives the state it describes: it stays up while a card is
@@ -1099,7 +1115,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
   },
   onSelect(region) {
     pinnedRegion = region;
-    hud.setPinned(region?.faction ?? null);
+    hud.setPinned(pinnedFactionId());
     applyHighlight(region, region?.faction ?? null);
   },
   interceptClick(regionId) {

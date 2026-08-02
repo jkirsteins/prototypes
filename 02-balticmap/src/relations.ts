@@ -191,6 +191,22 @@ export function fullRealmOf(
   return members;
 }
 
+/** F plus the lands incorporated into F - no vassals. The pinned-log filter
+ *  wants exactly the actors answerable as F: a vassal acts on its own and is
+ *  watched by pinning it, while an incorporated land never acts and can only
+ *  appear as a target. `incorporated` is flat (incorporate re-parents the
+ *  target's annexations to the actor), so one pass reaches everything. */
+export function incorporatedRealmOf(
+  factionId: string,
+  incorporated: Incorporated,
+): Set<string> {
+  const members = new Set([factionId]);
+  for (const [land, owner] of Object.entries(incorporated)) {
+    if (owner === factionId) members.add(land);
+  }
+  return members;
+}
+
 /** Raises BOTH directions' status counters to the max of the two, so the
  *  status lead becomes 0 (relation counters only grow; Assassinate ruler). */
 export function levelStatus(rel: Relations, a: string, b: string): Relations {

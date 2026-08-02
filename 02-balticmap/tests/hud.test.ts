@@ -2130,6 +2130,155 @@ describe("the pinned faction in the status bar", () => {
   });
 });
 
+describe("realm filter while pinned", () => {
+  // Four factions so a line can sit wholly outside the pinned realm.
+  const FOUR = ["alpha", "beta", "gamma", "delta"];
+
+  /** The human is beta. */
+  function playing(): GameState {
+    return pickFaction(chooseDeck(startGame(newGame(FOUR)), buildDeck()), "beta", seededRng(1));
+  }
+
+  const seatOf = (g: GameState, factionId: string): number =>
+    g.players.find((p) => p.factionId === factionId)!.id;
+  const withEvents = (g: GameState, events: GameEvent[]): GameState =>
+    ({ ...g, log: [...g.log, ...events] });
+  const raid = (g: GameState, by: string, on: string): GameEvent =>
+    ({ turn: 1, playerId: seatOf(g, by), type: "play", cardId: "raid", targetFactionId: on });
+  const entries = (c: HTMLElement) =>
+    [...c.querySelectorAll(".activity-log .log-entry")] as HTMLElement[];
+  const inRealm = (c: HTMLElement) =>
+    entries(c).filter((el) => el.classList.contains("log-realm"))
+      .map((el) => el.textContent ?? "");
+  const checkboxes = (c: HTMLElement) =>
+    [...c.querySelectorAll(".activity-log-filter input")] as HTMLInputElement[];
+
+  it("swaps the checkboxes for a Filtered-to label, and back on unpin", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const panel = q(container, ".activity-log");
+
+    hud.setPinned("gamma");
+    expect(panel.classList.contains("filter-realm")).toBe(true);
+    const label = q(container, ".activity-log-filtered");
+    expect(label.textContent).toBe("Filtered to Gamma");
+    // The name is a segment, not text - it lights the realm like any name.
+    expect(q(label, ".rt-faction").textContent).toBe("Gamma");
+    // The checkboxes are hidden by CSS, not removed: their state is not lost.
+    expect(checkboxes(container)).toHaveLength(2);
+
+    hud.setPinned(null);
+    expect(panel.classList.contains("filter-realm")).toBe(false);
+    expect(q(container, ".activity-log-filtered").textContent).toBe("");
+  });
+
+  it("leaves the Targeting-me pref checked and saved across a pin", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const targetingMe = checkboxes(container)[0];
+    targetingMe.click();
+    hud.setPinned("gamma");
+    hud.setPinned(null);
+    expect(targetingMe.checked).toBe(true);
+    // The class the pref drives is still on the panel; while pinned the CSS
+    // :not(.filter-realm) guard is what suspends it, not any state change.
+    expect(q(container, ".activity-log").classList.contains("filter-targeting-me"))
+      .toBe(true);
+  });
+
+  it("keeps the pinned faction and its incorporated lands, hides the rest", () => {
+    const { container, hud } = setup();
+    const base = { ...playing(), incorporated: { delta: "gamma" } };
+    const g = withEvents(base, [
+      raid(base, "alpha", "delta"), raid(base, "gamma", "alpha"),
+      raid(base, "alpha", "beta"),
+    ]);
+    hud.update(g);
+    hud.setPinned("gamma");
+    const kept = inRealm(container);
+    expect(kept).toHaveLength(2);
+    expect(kept[0]).toContain("Raid on Delta"); // the incorporated land
+    expect(kept[1]).toContain("Raid on Alpha"); // the owner's own play
+  });
+
+  it("does not count a vassal as part of the pinned realm", () => {
+    const { container, hud } = setup();
+    const base = { ...playing(), overlords: new Map([["delta", "gamma"]]) };
+    const g = withEvents(base, [raid(base, "delta", "alpha")]);
+    hud.update(g);
+    hud.setPinned("gamma");
+    expect(inRealm(container)).toEqual([]);
+  });
+
+  it("re-files old entries when an incorporation lands while pinned", () => {
+    const { container, hud } = setup();
+    const g = withEvents(playing(), [raid(playing(), "alpha", "delta")]);
+    hud.update(g);
+    hud.setPinned("gamma");
+    expect(inRealm(container)).toEqual([]);
+    hud.update({ ...g, incorporated: { delta: "gamma" } });
+    expect(inRealm(container)).toHaveLength(1);
+  });
+
+  it("classifies entries appended while the pin is held", () => {
+    const { container, hud } = setup();
+    const g = { ...playing(), incorporated: { delta: "gamma" } };
+    hud.update(g);
+    hud.setPinned("gamma");
+    hud.update(withEvents(g, [raid(g, "alpha", "delta"), raid(g, "alpha", "beta")]));
+    expect(inRealm(container)).toHaveLength(1);
+    expect(inRealm(container)[0]).toContain("Raid on Delta");
+  });
+
+  it("keeps a whole batch when only its consequence touches the realm", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update(withEvents(g, [
+      raid(g, "alpha", "beta"),
+      { turn: 1, playerId: seatOf(g, "alpha"), type: "subjugated",
+        targetFactionId: "gamma", overlordFactionId: "alpha", consequence: true },
+      raid(g, "alpha", "beta"),
+      { turn: 1, playerId: seatOf(g, "alpha"), type: "subjugated",
+        targetFactionId: "delta", overlordFactionId: "alpha", consequence: true },
+    ]));
+    hud.setPinned("gamma");
+    // First play + consequence survive as a unit - the consequence names
+    // gamma - while the identical second batch is wholly outside the realm.
+    expect(inRealm(container)).toHaveLength(2);
+    expect(inRealm(container)[1]).toContain("Gamma submits to Alpha");
+  });
+
+  it("a foreign pact lapse noticed on your clock tick is not yours, and hides", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update(withEvents(g, [
+      // playerId 1: the human's turn beginning is what noticed the lapse.
+      { turn: 1, playerId: 1, type: "pact-lapsed", targetFactionId: "alpha",
+        overlordFactionId: "delta", track: "might", amount: 1, pactAgainst: [] },
+    ]));
+    hud.setPinned("gamma");
+    const entry = entries(container).find((el) =>
+      (el.textContent ?? "").includes("has run out"))!;
+    expect(entry.classList.contains("log-mine")).toBe(false);
+    expect(entry.classList.contains("log-realm")).toBe(false);
+    // Nor is it about your faction: pinning yourself must not surface it.
+    expect((entry.dataset.factions ?? "").split(" ")).not.toContain("beta");
+  });
+
+  it("your own line stays exempt through .log-mine, not through membership", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update(withEvents(g, [
+      { turn: 1, playerId: 1, type: "play", cardId: "raid", targetFactionId: "alpha" },
+    ]));
+    hud.setPinned("gamma");
+    const entry = entries(container).find((el) =>
+      (el.textContent ?? "").startsWith("You played Raid"))!;
+    expect(entry.classList.contains("log-realm")).toBe(false);
+    expect(entry.classList.contains("log-mine")).toBe(true);
+  });
+});
+
 /** The `secret` flag on CardDef, at the surface it exists for. The rules
  *  already treat a posted guard as hidden - `failureRiskOf` in
  *  src/playability.ts refuses to read `view.bodyguards` so the Assassinate
