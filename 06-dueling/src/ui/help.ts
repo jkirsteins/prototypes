@@ -93,7 +93,7 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
 
 /** One source for the key list: the control line and the help panel both read it. */
 export const KEY_GROUPS: Array<Array<[string, string]>> = [
-  [["A/D", "step"], ["S", "void"], ["Up/Dn", "stance"], ["J", "cut"], ["K", "thrust"], ["L", "parry"], ["F", "feint"]],
+  [["A/D", "step"], ["S", "void"], ["Up/Dn/LShift", "stance"], ["J", "cut"], ["K", "thrust"], ["L", "parry"], ["F", "feint"]],
   [["0-3", "AI mode"], ["R", "rematch"], ["Esc", "select"], ["`", "overlay"], ["?", "help"]],
   [["space", "pause"], [".", "step"], ["[/]", "speed"], ["M", "mute"]],
 ];

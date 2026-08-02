@@ -105,8 +105,15 @@ Arrows are unused in `main.ts` today, so nothing is displaced:
 | Key | Was | Is |
 |---|---|---|
 | Arrow up / down | unused | raise / lower the stance |
+| Left Shift | unused | cycle the stance - a toggle while two heights exist |
 | `j` / `k` | cut / thrust | unchanged; they now carry `outside` / `inside` |
 | `l` | parry | unchanged, single key |
+
+Left Shift is input sugar: it resolves at the keypress to the same
+`stanceUp`/`stanceDown` intents the arrows send, aimed away from wherever the
+stance is or is heading, so the simulation never learns a new verb. The arrows
+stay - they are the aimed form, and the day `middle` becomes reachable they
+address it directly while Shift cycles through it.
 
 An earlier draft of this spec split the parry across two keys. That is withdrawn:
 the parry takes its height from the stance, so one key is correct and the second

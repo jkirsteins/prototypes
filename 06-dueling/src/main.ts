@@ -123,6 +123,18 @@ document.addEventListener("keydown", (e) => {
     case "f": state.pending = "feint"; break;
     case "arrowup": state.pending = "stanceUp"; break;
     case "arrowdown": state.pending = "stanceDown"; break;
+    case "shift": {
+      // Left shift cycles the stance: with two reachable heights that is a
+      // toggle away from wherever the stance is, or is heading. Input sugar
+      // only - it resolves to the same stance intents the arrows send, so
+      // the simulation never learns a new verb. Arrows stay for aiming at
+      // a specific height once `middle` exists.
+      if (e.code !== "ShiftLeft") break;
+      const f = state.duel.f[0];
+      const target = f.heightTo ?? f.height;
+      state.pending = target === "high" ? "stanceDown" : "stanceUp";
+      break;
+    }
     case "0": state.aiMode = 0; break;
     case "1": state.aiMode = 1; break;
     case "2": state.aiMode = 2; break;
