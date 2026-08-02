@@ -45,13 +45,13 @@ export const HELP: Record<FighterState["kind"] | AttackPhase, HelpEntry> = {
   },
   attack: {
     label: "attack",
-    what: "A committed cut or thrust walking windup, strike, recovery; nothing cancels it.",
+    what: "A committed cut or thrust walking windup, strike, recovery; only the windup can be abandoned.",
     player: "Choose it when the opponent cannot answer in time - do not throw it into a waiting guard.",
   },
   windup: {
     label: "windup",
     what: "The blade rises and holds; AI attacks add a telegraph before the rise.",
-    player: "This is your reading time: decide now to parry, void or counter.",
+    player: "Reading time: parry, void or counter - or F abandons your own windup (a feint) into a short recovery.",
     ms: (w) => w.attacks.thrust.windup,
   },
   strike: {
@@ -87,7 +87,7 @@ export const HELP: Record<FighterState["kind"] | AttackPhase, HelpEntry> = {
 
 /** One source for the key list: the control line and the help panel both read it. */
 export const KEY_GROUPS: Array<Array<[string, string]>> = [
-  [["A/D", "step"], ["S", "void"], ["J", "cut"], ["K", "thrust"], ["L", "parry"]],
+  [["A/D", "step"], ["S", "void"], ["J", "cut"], ["K", "thrust"], ["L", "parry"], ["F", "feint"]],
   [["0-3", "AI mode"], ["R", "rematch"], ["Esc", "select"], ["`", "overlay"], ["?", "help"]],
   [["space", "pause"], [".", "step"], ["[/]", "speed"], ["M", "mute"]],
 ];
@@ -129,7 +129,7 @@ export function renderHelpHtml(): string {
 
   const costs = ws.map((w) => {
     const t = w.attacks.thrust;
-    return `<li>${esc(w.name)}: a whiffed thrust recovers ${t.recovery * w.whiffRecoveryFactor}ms (x${w.whiffRecoveryFactor}); a parried one ${t.recovery + w.parriedPenalty}ms (+${w.parriedPenalty}ms).</li>`;
+    return `<li>${esc(w.name)}: a whiffed thrust recovers ${t.recovery * w.whiffRecoveryFactor}ms (x${w.whiffRecoveryFactor}); a parried one ${t.recovery + w.parriedPenalty}ms (+${w.parriedPenalty}ms); a feint only ${w.feintRecoveryMs}ms - selling a threat is cheap, missing with one is not.</li>`;
   }).join("");
 
   const keys = KEY_GROUPS.map(

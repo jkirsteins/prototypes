@@ -12,7 +12,7 @@ export interface DuelEvent {
   time: number;
   side: 0 | 1;
   kind:
-    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "kill" | "draw"
+    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "feint" | "kill" | "draw"
     // Presentation-only kinds, returned but never logged. They mark the
     // simulation instant a thing physically happens (a foot plants, a blade
     // starts rising or travelling, a blade arrives at a guard) - which is
@@ -66,6 +66,10 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
       if (k === "attack") emit(d, out, side, "attackStart", `${d.f[side].weapon.name} ${intent} begins`);
       else if (k === "void") emit(d, out, side, "void", `${d.f[side].weapon.name} voids`);
       else if (k === "parry") emit(d, out, side, "parry", `${d.f[side].weapon.name} raises a parry`);
+    } else if (r === "accepted" && intent === "feint") {
+      // The state kind stays "attack" (windup truncates to recovery), so
+      // the kind-change branch above cannot see it.
+      emit(d, out, side, "feint", `${d.f[side].weapon.name} feints -> attack abandoned`);
     }
   }
 

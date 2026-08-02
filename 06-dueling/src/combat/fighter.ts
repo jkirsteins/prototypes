@@ -61,6 +61,23 @@ export function applyIntent(
 ): "accepted" | "buffered" | "ignored" {
   const k = f.state.kind;
   if (k === "dead" || k === "hitstun") return "ignored";
+  // A feint abandons a windup in progress: commitment is the windup ->
+  // strike transition, so this is the one door out of an attack, and it
+  // leads into a short recovery, not into another action. Never queued -
+  // a buffered feint would fire at nothing.
+  if (intent === "feint") {
+    const s = f.state;
+    if (s.kind === "attack" && s.phase === "windup") {
+      s.phase = "recovery";
+      s.timeline = {
+        ...s.timeline,
+        recoveryStart: s.elapsedMs,
+        recoveryEnd: s.elapsedMs + f.weapon.feintRecoveryMs,
+      };
+      return "accepted";
+    }
+    return "ignored";
+  }
   if (k === "ready") {
     // A parry answers something happening right now, so it is never queued
     // and the step-recovery timer does not gate it: the settle after a step
@@ -111,6 +128,8 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
       if (f.parryRecoveryMs > 0) return false;
       f.state = { kind: "parry", t: 0 };
       return true;
+    case "feint":
+      return false; // only meaningful mid-windup; handled in applyIntent
   }
 }
 

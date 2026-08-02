@@ -120,6 +120,7 @@ document.addEventListener("keydown", (e) => {
     case "j": state.pending = "cut"; break;
     case "k": state.pending = "thrust"; break;
     case "l": state.pending = "parry"; break;
+    case "f": state.pending = "feint"; break;
     case "0": state.aiMode = 0; break;
     case "1": state.aiMode = 1; break;
     case "2": state.aiMode = 2; break;

@@ -94,10 +94,12 @@ export function createAudioEngine(): AudioEngine {
     if (ctx === null) return;
     // Windup tones are per-side and stoppable, so they bypass the dedupe:
     // both fighters may rise at once, each at its own rate. A landed hit
-    // chokes the victim's rise (mezzo tempo: the windup died with it).
+    // chokes the victim's rise (mezzo tempo: the windup died with it), and
+    // a feint chokes the feinter's own - the threat was withdrawn.
     for (const e of events) {
       if (e.kind === "windup") startWindup(e.side, e.ms ?? 280);
       else if (e.kind === "hit") chokeWindup((1 - e.side) as 0 | 1);
+      else if (e.kind === "feint") chokeWindup(e.side);
     }
     // At 2x/4x several ticks run per frame; one sound per kind per frame
     // keeps catch-up bursts from stacking identical samples.

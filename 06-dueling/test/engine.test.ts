@@ -167,6 +167,23 @@ describe("attack resolution", () => {
     });
   });
 
+  test("a feinted attack is never meetable and never resolves", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    closeTo(d, 160);
+    let evs = runMs(d, TICK, "cut", null);
+    evs = evs.concat(runMs(d, 5 * TICK)); // a few windup ticks
+    evs = evs.concat(runMs(d, TICK, "feint", "parry")); // cancel as the dummy guards
+    const feint = evs.find((e) => e.kind === "feint");
+    expect(feint).toBeDefined();
+    expect(d.log.some((e) => e.kind === "feint")).toBe(true); // a real action, logged
+    // Run past where the strike would have resolved: no swing, no outcome.
+    evs = evs.concat(runMs(d, 1500));
+    for (const kind of ["swing", "hit", "parried", "whiff", "met"] as const) {
+      expect(evs.filter((e) => e.kind === kind && e.side === 0)).toEqual([]);
+    }
+    expect(d.over).toBe(false);
+  });
+
   test("mutual strikeEnd on the same tick is a draw", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
     closeTo(d, 160);

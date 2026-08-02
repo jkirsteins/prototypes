@@ -41,11 +41,53 @@ describe("attack cascade", () => {
     expect(f.state.timeline.strikeEnd - f.state.timeline.strikeStart).toBe(t.strike);
   });
 
-  test("attacks cannot be cancelled once started", () => {
+  test("attacks cannot be cancelled by movement or defence", () => {
     const f = createFighter(400, 1, WEAPONS.longsword);
     applyIntent(f, "cut");
     expect(applyIntent(f, "void")).toBe("ignored");
     expect(applyIntent(f, "retreat")).toBe("ignored");
+    expect(applyIntent(f, "parry")).toBe("ignored");
+  });
+
+  describe("the feint: the one door out, and only during the windup", () => {
+    test("a feint truncates the windup into a short recovery, then ready", () => {
+      const w = WEAPONS.longsword;
+      const f = createFighter(400, 1, w);
+      applyIntent(f, "cut");
+      const cancelTicks = 6;
+      for (let i = 0; i < cancelTicks; i++) tickFighter(f, TICK);
+      expect(applyIntent(f, "feint")).toBe("accepted");
+      if (f.state.kind !== "attack") throw new Error("unreachable");
+      expect(f.state.phase).toBe("recovery");
+      expect(f.state.timeline.recoveryStart).toBe(f.state.elapsedMs);
+      expect(f.state.timeline.recoveryEnd).toBe(f.state.elapsedMs + w.feintRecoveryMs);
+      // The blade never travels: no strikeBegin, no strikeEnd.
+      const evs: FighterEvent[] = [];
+      for (let t = 0; t < w.feintRecoveryMs + 2 * TICK; t += TICK) evs.push(...tickFighter(f, TICK));
+      expect(evs.some((e) => e.type === "strikeBegin" || e.type === "strikeEnd")).toBe(false);
+      expect(f.state.kind).toBe("ready");
+    });
+
+    test("commitment is the windup -> strike transition: no feint after it", () => {
+      const w = WEAPONS.rapier;
+      const f = createFighter(400, 1, w);
+      const t = w.attacks.thrust;
+      applyIntent(f, "thrust");
+      for (let ms = 0; ms < t.windup + t.beat + TICK; ms += TICK) tickFighter(f, TICK);
+      if (f.state.kind !== "attack") throw new Error("unreachable");
+      expect(f.state.phase).toBe("strike");
+      expect(applyIntent(f, "feint")).toBe("ignored");
+      for (let ms = 0; ms < t.strike; ms += TICK) tickFighter(f, TICK);
+      expect(applyIntent(f, "feint")).toBe("ignored"); // recovery: still locked
+    });
+
+    test("a feint from ready or mid-step does nothing and is never buffered", () => {
+      const f = createFighter(400, 1, WEAPONS.longsword);
+      expect(applyIntent(f, "feint")).toBe("ignored");
+      applyIntent(f, "advance");
+      expect(applyIntent(f, "feint")).toBe("ignored");
+      expect(f.buffered).toBe(null);
+    });
   });
 
   test("engine can extend recovery on strikeEnd (whiff simulation)", () => {

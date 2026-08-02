@@ -9,7 +9,7 @@ export type AttackKind = "cut" | "thrust";
  */
 export type AttackPhase = "windup" | "strike" | "recovery";
 export type Zone = "out" | "wide" | "narrow";
-export type Intent = "advance" | "retreat" | "void" | "cut" | "thrust" | "parry";
+export type Intent = "advance" | "retreat" | "void" | "cut" | "thrust" | "parry" | "feint";
 
 export interface AttackTimings {
   windup: number;
@@ -33,6 +33,8 @@ export interface WeaponProfile {
   parryWindowMs: number;
   /** how long after a spent parry the next one is available; gates only the parry */
   parryRecoveryMs: number;
+  /** recovery after abandoning a windup (a feint): the price of selling a threat */
+  feintRecoveryMs: number;
   /** added to this weapon's recovery when its attack is parried */
   parriedPenalty: number;
   /** multiplies this weapon's recovery when its attack whiffs */

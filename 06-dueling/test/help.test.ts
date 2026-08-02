@@ -44,6 +44,7 @@ describe("the help panel stays current and concise", () => {
       expect(html).toContain(`${w.parryWindowMs + t.strike * 0.5}ms`); // practical window
       expect(html).toContain(`${t.recovery * w.whiffRecoveryFactor}ms`); // whiff cost
       expect(html).toContain(`${t.recovery + w.parriedPenalty}ms`); // parried cost
+      expect(html).toContain(`${w.feintRecoveryMs}ms`); // feint cost
     }
   });
 
