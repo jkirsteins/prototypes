@@ -4,7 +4,8 @@ export type SoundName =
   | "footstep1" | "footstep2" | "footstep3" | "footstep4"
   | "whoosh1" | "whoosh2" | "whoosh3"
   | "clash1" | "clash2" | "clash3"
-  | "hit1";
+  | "hit1"
+  | "windupRise";
 
 /** Files under public/audio/; provenance and processing in public/audio/manifest.md. */
 export const SOUNDS: Record<SoundName, string> = {
@@ -19,6 +20,7 @@ export const SOUNDS: Record<SoundName, string> = {
   clash2:    "clash_02.ogg",
   clash3:    "clash_03.ogg",
   hit1:      "hit_01.ogg",
+  windupRise: "windup_rise.ogg",
 };
 
 export const FOOTSTEPS: SoundName[] = ["footstep1", "footstep2", "footstep3", "footstep4"];
@@ -42,3 +44,12 @@ export const EVENT_SOUNDS: Partial<Record<DuelEvent["kind"], SoundName[]>> = {
   met: ["clash1", "clash2", "clash3"],
   hit: ["hit1"],
 };
+
+/**
+ * The signalling cascade's tempo cue: a low rise through the windup, cut
+ * off by the stillness of the transition beat. Handled outside
+ * EVENT_SOUNDS because it is not fire-and-forget: it stretches to the
+ * attack's windup via playbackRate, plays quieter than outcome sounds,
+ * and is choked early if the windup dies (mezzo tempo interception).
+ */
+export const WINDUP_SOUND: SoundName = "windupRise";

@@ -51,6 +51,19 @@ There is deliberately no ambient bed and no music: tried, found distracting.
   engine's "met" event, emitted at the end of the parryable travel - never
   at the parry keypress, and not at "parried", which resolves later).
 
+## windup_rise.ogg
+
+- Source: synthesized, CC0 (pure-python: exponential sine sweep 90->200 Hz
+  with a soft second harmonic, crescendo envelope, 8 ms release). No
+  third-party material.
+- Duration: 0.28 s (the geometric middle of the four windup durations).
+  Peak -4 dBFS; played at 0.35 gain under the outcome sounds, and
+  playbackRate-stretched to the attack's actual windup, so faster attacks
+  rise faster and higher.
+- Intended use: the signalling cascade's "low rising audio" through an
+  attack's windup, cut off by the stillness of the transition beat. Choked
+  early if the attacker is struck mid-windup.
+
 ## hit_01.ogg
 
 - Source: "RPG Audio" pack by Kenney Vleugels (see above), CC0, original

@@ -60,7 +60,7 @@ What the source design doc covers vs what this prototype implements.
 | Matchup asymmetry | partial (reach/tempo asymmetry only; one contested pairing) |
 | Enemy movement AI / personalities | partial (mode 3 approaches, strikes from narrow measure, backs off; no personalities) |
 | Terrain as matchup tool | not in MVP |
-| Audio tempo cues | partial (footfalls, plus one outcome sound per attack: whiff whoosh, clash at blade arrival, or hit - all tied to simulation instants, never keypresses; no windup/tempo cue sounds. CC0 assets, see public/audio/manifest.md. M mutes; Safari plays silent) |
+| Audio tempo cues | implemented (windup rise cut off by the beat-stillness, footfalls, one outcome sound per attack: whiff whoosh, clash at blade arrival, or hit - all tied to simulation instants, never keypresses. CC0 assets, see public/audio/manifest.md. M mutes; Safari plays silent) |
 | Wall behavior | implemented (fighters cannot overlap or be pushed past arena bounds) |
 | Nachreisen vs a parry-ready attacker | partial (the counter beats whiff recovery only when no approach step is needed; step-inclusive tuning is a follow-up) |
 

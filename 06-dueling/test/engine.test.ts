@@ -188,6 +188,49 @@ describe("presentation events follow the simulation, not the input", () => {
     expect(d.log.some((e) => e.kind === "swing")).toBe(false);
   });
 
+  test("windup fires the tick the blade starts rising, carries its duration, unlogged", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    // Player attacks carry no tell: the rise begins at acceptance.
+    const evs = tickDuel(d, "cut", null);
+    const w = evs.find((e) => e.kind === "windup");
+    expect(w).toBeDefined();
+    if (!w) throw new Error("unreachable");
+    expect(w.side).toBe(0);
+    expect(w.ms).toBe(WEAPONS.longsword.attacks.cut.windup);
+    expect(d.log.some((e) => e.kind === "windup")).toBe(false);
+  });
+
+  test("a telegraphed attack rises only after the pretempo", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    const evs: DuelEvent[] = [];
+    const pre = WEAPONS.rapier.pretempo;
+    for (let i = 0; i < 60 && !evs.some((e) => e.kind === "windup"); i++) {
+      evs.push(...tickDuel(d, null, i === 0 ? "thrust" : null));
+    }
+    const w = evs.find((e) => e.kind === "windup");
+    expect(w).toBeDefined();
+    if (!w) throw new Error("unreachable");
+    expect(w.time).toBeGreaterThanOrEqual(pre);
+    expect(w.time).toBeLessThan(pre + 2 * TICK);
+    expect(w.ms).toBe(WEAPONS.rapier.attacks.thrust.windup);
+  });
+
+  test("a buffered attack rises when the buffer fires, not when it was pressed", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    const w = WEAPONS.longsword;
+    const flushAt = w.stepDuration + w.stancePause;
+    tickDuel(d, "advance", null);
+    const evs: DuelEvent[] = tickDuel(d, "cut", null); // buffered mid-step
+    expect(evs.some((e) => e.kind === "windup")).toBe(false);
+    for (let t = 2 * TICK; t < flushAt + 3 * TICK; t += TICK) {
+      evs.push(...tickDuel(d, null, null));
+    }
+    const rise = evs.find((e) => e.kind === "windup");
+    expect(rise).toBeDefined();
+    if (!rise) throw new Error("unreachable");
+    expect(rise.time).toBeGreaterThanOrEqual(flushAt);
+  });
+
   test("a step event fires when the foot lands, never at acceptance, and is unlogged", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
     const w = WEAPONS.longsword;

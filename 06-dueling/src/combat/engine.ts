@@ -16,10 +16,12 @@ export interface DuelEvent {
     | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "kill" | "draw"
     // Presentation-only kinds, returned but never logged. They mark the
     // simulation instant a thing physically happens (a foot plants, a blade
-    // starts travelling, a blade arrives at a guard) - which is never the
-    // tick the triggering input was accepted.
-    | "step" | "swing" | "met";
+    // starts rising or travelling, a blade arrives at a guard) - which is
+    // never the tick the triggering input was accepted.
+    | "step" | "swing" | "met" | "windup";
   text: string;
+  /** windup only: how long the rise lasts, so audio can match its length. */
+  ms?: number;
 }
 
 export interface Duel {
@@ -48,6 +50,7 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   const out: DuelEvent[] = [];
   const intents: [Intent | null, Intent | null] = [ia, ib];
   const dt = TICK;
+  const wasWindup: [boolean, boolean] = [inWindup(d.f[0]), inWindup(d.f[1])];
 
   for (const side of [0, 1] as const) {
     const intent = intents[side];
@@ -72,6 +75,19 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     for (const e of evs[side]) {
       if (e.type === "footfall") out.push({ time: d.time, side, kind: "step", text: "" });
       else if (e.type === "strikeBegin") out.push({ time: d.time, side, kind: "swing", text: "" });
+    }
+  }
+
+  // The blade starts rising. A before/after comparison rather than emission
+  // at a single call site, because windup begins three ways: at acceptance,
+  // out of pretempo, or from a buffered attack in flushBuffer.
+  for (const side of [0, 1] as const) {
+    const f = d.f[side];
+    if (!wasWindup[side] && inWindup(f) && f.state.kind === "attack") {
+      out.push({
+        time: d.time, side, kind: "windup", text: "",
+        ms: f.weapon.attacks[f.state.attack].windup,
+      });
     }
   }
 
@@ -180,6 +196,10 @@ function clampPositions(d: Duel): void {
     l.x = Math.max(ARENA.left, lClamped - rShortfall);
     r.x = Math.min(ARENA.right, rClamped + lShortfall);
   }
+}
+
+function inWindup(f: Fighter): boolean {
+  return f.state.kind === "attack" && f.state.phase === "windup";
 }
 
 function emit(d: Duel, out: DuelEvent[], side: 0 | 1, kind: DuelEvent["kind"], text: string): void {
