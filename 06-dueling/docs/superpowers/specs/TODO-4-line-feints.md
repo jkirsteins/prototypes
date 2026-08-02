@@ -334,6 +334,16 @@ The AI reads the guard's *visible* covered line - the same row-3 information
 the player has - never the defender's inputs or any pending shift's
 destination.
 
+**Two deviations, decided at implementation:** the crossing-avoidance clause
+("opponent mid-attack on this line -> redirect side") is dropped - uncrossing
+leaves the redirecting attacker mid-windup against a blade that now resolves
+freely, which is suicide, not escape; the clause misread who benefits from a
+crossing. And both-axes redirects/shifts, while supported by the engine's
+cost arithmetic, are not reachable from input: the intent pipeline carries
+one intent per tick, so a both-axes correction is two ticks and two separate
+legality checks. Neither loss is felt: one axis always escapes a full-line
+guard.
+
 Purely reactive, no rng draw, so a seeded replay stays reproducible. It is
 deterministic *and* unpredictable, because what it does depends on what you did.
 

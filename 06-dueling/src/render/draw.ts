@@ -298,10 +298,11 @@ function drawParryTrack(v: View, f: Fighter): void {
     const { ctx } = v;
     const w = f.weapon;
     const rising = !guardEffective(f);
+    const label = rising ? (f.parry.shifted ? "guard shifting" : "guard rising") : "guard up";
     ctx.font = "11px ui-monospace, monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = rising ? "#6f66a8" : "#9b8cff";
-    ctx.fillText(rising ? "guard rising" : "guard up", cx, ARENA.floorY + ROW2_LABEL_Y);
+    ctx.fillText(label, cx, ARENA.floorY + ROW2_LABEL_Y);
     ctx.textAlign = "left";
     const x = cx - TRACK_BAR_W / 2;
     const y = ARENA.floorY + ROW2_BAR_Y;

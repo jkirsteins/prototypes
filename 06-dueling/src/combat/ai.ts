@@ -1,5 +1,6 @@
 import { zoneFor } from "./measure";
 import { gapOf } from "./engine";
+import { lineOf } from "./fighter";
 import type { Duel } from "./engine";
 import type { Fighter } from "./fighter";
 import type { AttackKind, Height, Intent, WeaponProfile } from "./types";
@@ -114,6 +115,22 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     ) {
       return threatHeight === "high" ? "stanceUp" : "stanceDown";
     }
+    // A latched guard whose attack has visibly changed line gets one
+    // correction, after a reaction time: the mismatched axis shifts.
+    if (
+      self.parry !== null &&
+      !self.parry.shifted &&
+      self.parry.elapsedMs >= self.parry.effectiveAtMs &&
+      opp.state.redirectedAtMs !== null &&
+      opp.state.elapsedMs - opp.state.redirectedAtMs >= AI_REACTION_MS
+    ) {
+      const theirs = lineOf(opp);
+      const covered = self.parry.targetLine;
+      if (covered.height !== theirs.height) {
+        return theirs.height === "high" ? "stanceUp" : "stanceDown";
+      }
+      if (covered.side !== theirs.side) return "parry";
+    }
     // Meet the blade where it will BE: press so the guard is formed when
     // the blade arrives at this gap (extension covers it), leading by the
     // rise plus half the effective span as margin. Pressing against the
@@ -139,8 +156,34 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     return null;
   }
 
-  // Modes 2 and 3 share the attack cooldown.
+  // Modes 2 and 3 share the attack cooldown. It ticks in every state -
+  // an attack in flight does not pause the cycle.
   ai.cooldown = Math.max(0, ai.cooldown - dt);
+
+  // Mode 3 reads the defender WHILE attacking: a guard that has stood
+  // long enough to react to, aimed exactly at this attack's line, gets
+  // redirected - the side swap, the cheapest escape. Purely reactive, no
+  // rng: deterministic and unpredictable, because it depends on what the
+  // player did. The window is the sold half of the windup, same as the
+  // player's.
+  if (mode === 3 && self.state.kind === "attack") {
+    const s = self.state;
+    if (
+      s.phase === "windup" &&
+      !s.redirected &&
+      s.elapsedMs >= s.timeline.riseEnd &&
+      s.elapsedMs < s.timeline.strikeStart
+    ) {
+      const g = opp.parry;
+      if (g !== null && g.elapsedMs >= AI_REACTION_MS) {
+        const mine = lineOf(self);
+        if (g.targetLine.height === mine.height && g.targetLine.side === mine.side) {
+          return s.attack === "cut" ? "thrust" : "cut";
+        }
+      }
+    }
+    return null;
+  }
   // Free to act means the settle is over too: deciding during it would
   // buffer the attack, burn the cooldown at decision time, and let the
   // next tick's movement intent overwrite the slot - the attack would

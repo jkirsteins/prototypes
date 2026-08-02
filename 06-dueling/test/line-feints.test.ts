@@ -1,0 +1,317 @@
+import { describe, expect, test } from "vitest";
+import { PLAYER_REACTION_MS, aiDecide, createAiState } from "../src/combat/ai";
+import { TICK, applyIntent, createFighter } from "../src/combat/fighter";
+import { createDuel, tickDuel } from "../src/combat/engine";
+import { PARRYABLE_FRACTION, WEAPONS } from "../src/combat/weapons";
+import type { Duel, DuelEvent } from "../src/combat/engine";
+import type { Intent } from "../src/combat/types";
+
+/**
+ * TODO-4-line-feints.md: an attack in its sold windup may change height
+ * (arrow), side (the other attack key), or both - once. The defender's
+ * raised guard may shift its covered line once per raise. The parry's
+ * snapshot never follows the blade on its own.
+ */
+
+const ws = Object.values(WEAPONS);
+
+function runMs(d: Duel, ms: number, ia: Intent | null = null, ib: Intent | null = null): DuelEvent[] {
+  const evs: DuelEvent[] = [];
+  for (let t = 0; t < ms; t += TICK) {
+    evs.push(...tickDuel(d, ia, ib));
+    ia = null;
+    ib = null;
+  }
+  return evs;
+}
+
+describe("invariants: the answer windows", () => {
+  test("a height redirect is answerable by every weapon pair", () => {
+    for (const atk of ws) {
+      for (const def of ws) {
+        const deadline = atk.redirectHeightMs + atk.attacks.thrust.strike * PARRYABLE_FRACTION;
+        expect(PLAYER_REACTION_MS + def.guardShiftMs).toBeLessThanOrEqual(deadline);
+      }
+    }
+  });
+
+  test("a side redirect is answerable except from the rapier: the disengage must fail", () => {
+    for (const atk of ws) {
+      for (const def of ws) {
+        const deadline = atk.redirectSideMs + atk.attacks.thrust.strike * PARRYABLE_FRACTION;
+        const answerable = PLAYER_REACTION_MS + def.sideChangeMs <= deadline;
+        expect(answerable).toBe(atk.id !== "rapier");
+      }
+    }
+  });
+
+  test("shifting a formed guard beats starting cold, and rotating beats travelling", () => {
+    for (const w of ws) {
+      expect(w.guardShiftMs).toBeLessThan(w.heightChangeMs);
+      expect(w.sideChangeMs).toBeLessThan(w.guardShiftMs);
+    }
+  });
+});
+
+describe("redirect legality", () => {
+  /** A windup at `elapsed`, low stance; returns the redirect acceptance. */
+  function tryRedirect(elapsed: number, intent: Intent): { r: string; f: ReturnType<typeof createFighter> } {
+    const f = createFighter(400, 1, WEAPONS.longsword);
+    applyIntent(f, "thrust");
+    const s = f.state;
+    if (s.kind !== "attack") throw new Error("unreachable");
+    s.elapsedMs = elapsed;
+    return { r: applyIntent(f, intent), f };
+  }
+
+  const tl = () => {
+    const f = createFighter(0, 1, WEAPONS.longsword);
+    applyIntent(f, "thrust");
+    const s = f.state;
+    if (s.kind !== "attack") throw new Error("unreachable");
+    return s.timeline;
+  };
+
+  test("accepted in the sold half of the windup, for height and for side", () => {
+    const t = tl();
+    expect(tryRedirect(t.riseEnd + 1, "stanceUp").r).toBe("accepted");
+    expect(tryRedirect(t.riseEnd + 1, "cut").r).toBe("accepted");
+  });
+  test("refused before the pose is sold", () => {
+    const t = tl();
+    expect(tryRedirect(t.riseEnd - 10, "stanceUp").r).toBe("ignored");
+    expect(tryRedirect(t.riseEnd - 10, "cut").r).toBe("ignored");
+  });
+  test("refused from commitment on: strike and recovery steer nothing", () => {
+    const t = tl();
+    expect(tryRedirect(t.strikeStart, "stanceUp").r).toBe("ignored");
+    expect(tryRedirect(t.strikeStart + 10, "cut").r).toBe("ignored");
+  });
+  test("the same attack kind is not a redirect", () => {
+    const t = tl();
+    expect(tryRedirect(t.riseEnd + 1, "thrust").r).toBe("ignored");
+  });
+  test("one redirect per attack, whichever axis", () => {
+    const t = tl();
+    const { f } = tryRedirect(t.riseEnd + 1, "stanceUp");
+    const s = f.state;
+    if (s.kind !== "attack") throw new Error("unreachable");
+    expect(applyIntent(f, "cut")).toBe("ignored");
+    expect(applyIntent(f, "stanceDown")).toBe("ignored");
+  });
+
+  test("the timeline is replaced from the redirect instant with the new kind's timings", () => {
+    const t = tl();
+    const at = t.riseEnd + 20;
+    const { f } = tryRedirect(at, "cut"); // thrust -> cut: side redirect
+    const s = f.state;
+    if (s.kind !== "attack") throw new Error("unreachable");
+    expect(s.attack).toBe("cut");
+    expect(s.redirected).toBe(true);
+    const w = WEAPONS.longsword;
+    const c = w.attacks.cut;
+    expect(s.timeline.strikeStart).toBeCloseTo(at + w.redirectSideMs, 5);
+    expect(s.timeline.parryableUntil).toBeCloseTo(at + w.redirectSideMs + c.strike * PARRYABLE_FRACTION, 5);
+    expect(s.timeline.strikeEnd).toBeCloseTo(at + w.redirectSideMs + c.strike, 5);
+    expect(s.timeline.recoveryEnd).toBeCloseTo(at + w.redirectSideMs + c.strike + c.recovery, 5);
+    expect(s.timeline.riseEnd).toBe(t.riseEnd); // the past is not rewritten
+    expect(s.phase).toBe("windup");
+  });
+
+  test("a height redirect moves the attacker's stance with the blade", () => {
+    const t = tl();
+    const { f } = tryRedirect(t.riseEnd + 1, "stanceUp");
+    const s = f.state;
+    if (s.kind !== "attack") throw new Error("unreachable");
+    expect(s.height).toBe("high");
+    expect(f.height).toBe("high"); // the body went there
+  });
+});
+
+describe("the lies land against a snapshotted guard", () => {
+  /**
+   * The AI-side telegraphed thrust; the player parries on the tell (latched,
+   * low inside), then the attack redirects. The parry must keep its snapshot
+   * and miss.
+   */
+  function feintExchange(redirect: Intent): DuelEvent[] {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    d.f[0].x = 1000;
+    d.f[1].x = 1180;
+    let evs = runMs(d, TICK, null, "thrust"); // AI thrust: low inside, visible
+    evs = evs.concat(runMs(d, 250 - TICK, "parry", null)); // player latches low inside
+    const t = WEAPONS.longsword.attacks.thrust;
+    const riseEnd = WEAPONS.longsword.telegraphMs + t.windup;
+    evs = evs.concat(runMs(d, riseEnd + 20 - 250)); // into the sold half
+    evs = evs.concat(runMs(d, TICK, null, redirect)); // the lie
+    evs = evs.concat(runMs(d, 1600));
+    return evs.concat([{ time: 0, side: d.winner === 1 ? 1 : 0, kind: "attackStart", text: "probe" }]);
+  }
+
+  test("the height lie lands: redirected high, the low guard covers air", () => {
+    const evs = feintExchange("stanceUp");
+    expect(evs.some((e) => e.kind === "hit" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(false);
+  });
+
+  test("the side lie lands: redirected to the cut, the inside guard covers air", () => {
+    const evs = feintExchange("cut");
+    expect(evs.some((e) => e.kind === "hit" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(false);
+  });
+
+  test("without the redirect the same latched parry meets the thrust", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    d.f[0].x = 1000;
+    d.f[1].x = 1180;
+    let evs = runMs(d, TICK, null, "thrust");
+    evs = evs.concat(runMs(d, 250 - TICK, "parry", null));
+    evs = evs.concat(runMs(d, 1600));
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+  });
+});
+
+describe("the defender's answer: the guard shift", () => {
+  /** Player latches onto the AI thrust; AI redirects at `redirectAt` (abs ms); player shifts at `shiftAt`. */
+  function answered(redirect: Intent, shiftIntent: Intent, redirectAt: number, shiftAt: number): DuelEvent[] {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    d.f[0].x = 1000;
+    d.f[1].x = 1180;
+    let evs = runMs(d, TICK, null, "thrust");
+    evs = evs.concat(runMs(d, 250 - TICK, "parry", null));
+    evs = evs.concat(runMs(d, redirectAt - 250));
+    evs = evs.concat(runMs(d, TICK, null, redirect));
+    evs = evs.concat(runMs(d, shiftAt - redirectAt - TICK));
+    evs = evs.concat(runMs(d, TICK, shiftIntent, null));
+    evs = evs.concat(runMs(d, 1600));
+    return evs;
+  }
+
+  const t = WEAPONS.longsword.attacks.thrust;
+  const riseEnd = WEAPONS.longsword.telegraphMs + t.windup;
+
+  test("a height shift within the window meets the redirected blade", () => {
+    const at = riseEnd + 20;
+    const evs = answered("stanceUp", "stanceUp", at, at + PLAYER_REACTION_MS);
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+  });
+
+  test("a height shift too late is a guard that forms over a wound", () => {
+    const at = riseEnd + 20;
+    // The corrected line must be covered by redirect + guardShift deadline;
+    // reacting 150ms late blows the 80ms margin.
+    const evs = answered("stanceUp", "stanceUp", at, at + PLAYER_REACTION_MS + 150);
+    expect(evs.some((e) => e.kind === "hit" && e.side === 1)).toBe(true);
+  });
+
+  test("a side retarget (press parry again) answers the longsword's side redirect", () => {
+    const at = riseEnd + 20;
+    const evs = answered("cut", "parry", at, at + PLAYER_REACTION_MS);
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+  });
+
+  test("one shift per raise: the second correction is refused", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    d.f[0].x = 1000;
+    d.f[1].x = 1180;
+    runMs(d, TICK, null, "thrust");
+    runMs(d, 250 - TICK, "parry", null);
+    runMs(d, TICK, "stanceUp", null); // shift 1: height
+    const p = d.f[0].parry;
+    if (p === null) throw new Error("no parry");
+    expect(p.shifted).toBe(true);
+    const target = p.targetLine;
+    runMs(d, 10 * TICK, "parry", null); // attempted shift 2: side retarget
+    expect(d.f[0].parry?.targetLine).toEqual(target); // unchanged
+  });
+
+  test("the old line holds while the shift travels", () => {
+    // Attacker thrusts low-inside with no redirect; the defender, latched,
+    // shifts height mid-windup for no reason. Mid-shift the blade arrives on
+    // the OLD line - still met, because coverage moves only on completion.
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    d.f[0].x = 1000;
+    d.f[1].x = 1180;
+    let evs = runMs(d, TICK, null, "thrust");
+    evs = evs.concat(runMs(d, 250 - TICK, "parry", null));
+    const arrivalIsh = WEAPONS.longsword.telegraphMs + t.windup + t.beat + 80;
+    evs = evs.concat(runMs(d, arrivalIsh - 250 - 3 * TICK));
+    evs = evs.concat(runMs(d, TICK, "stanceUp", null)); // shift begins just before arrival
+    evs = evs.concat(runMs(d, 900));
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+  });
+});
+
+describe("mode 3 feints reactively", () => {
+  test("a latched guard shown early gets redirected; the same fight without the guard does not", () => {
+    const play = (press: boolean): { redirected: boolean; evs: DuelEvent[] } => {
+      const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+      d.f[0].x = 1000;
+      d.f[1].x = 1230; // narrow for the rapier: it will attack
+      const ai = createAiState(0x5eed);
+      const evs: DuelEvent[] = [];
+      let redirected = false;
+      for (let i = 0; i * TICK < 4000; i++) {
+        const ib = aiDecide(d, 3, ai, TICK);
+        // The player parries the instant the AI's attack shows.
+        const oppAttacking = d.f[1].state.kind === "attack" && d.f[1].state.phase !== "recovery";
+        const ia: Intent | null = press && oppAttacking && d.f[0].parry === null && d.f[0].parryRecoveryMs <= 0 ? "parry" : null;
+        evs.push(...tickDuel(d, ia, ib));
+        const s = d.f[1].state;
+        if (s.kind === "attack" && s.redirected) redirected = true;
+        if (d.over) break;
+      }
+      return { redirected, evs };
+    };
+    expect(play(true).redirected).toBe(true); // the early guard is bait
+    expect(play(false).redirected).toBe(false); // nothing to deceive
+  });
+
+  test("deterministic: the same seed and script redirect on the same tick", () => {
+    const run = (): string => {
+      const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+      d.f[0].x = 1000;
+      d.f[1].x = 1230;
+      const ai = createAiState(7);
+      const marks: number[] = [];
+      for (let i = 0; i * TICK < 4000; i++) {
+        const ib = aiDecide(d, 3, ai, TICK);
+        const oppAttacking = d.f[1].state.kind === "attack" && d.f[1].state.phase !== "recovery";
+        const ia: Intent | null = oppAttacking && d.f[0].parry === null && d.f[0].parryRecoveryMs <= 0 ? "parry" : null;
+        tickDuel(d, ia, ib);
+        const s = d.f[1].state;
+        if (s.kind === "attack" && s.redirected) marks.push(i);
+        if (d.over) break;
+      }
+      return marks.join(",");
+    };
+    expect(run()).toBe(run());
+  });
+});
+
+describe("presentation stays honest", () => {
+  test("a redirect emits no event and no cue on its tick; one outcome fires at the new strikeEnd", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    d.f[0].x = 1000;
+    d.f[1].x = 1180;
+    runMs(d, TICK, "thrust", null);
+    const t = WEAPONS.longsword.attacks.thrust;
+    runMs(d, t.windup + 20 - TICK);
+    const redirectTick = runMs(d, TICK, "stanceUp", null);
+    expect(redirectTick.filter((e) => e.kind !== "step")).toEqual([]); // silent
+    const rest = runMs(d, 2000);
+    expect(rest.filter((e) => e.kind === "hit").length).toBe(1); // one outcome
+    expect(rest.filter((e) => e.kind === "windup").length).toBe(0); // no second rise
+  });
+
+  test("the help panel cites the redirect and shift durations", () => {
+    // renderHelpHtml is imported lazily to keep this file engine-first.
+    return import("../src/ui/help").then(({ renderHelpHtml }) => {
+      const html = renderHelpHtml();
+      for (const w of ws) {
+        expect(html).toContain(`${w.redirectHeightMs}ms`);
+        expect(html).toContain(`${w.guardShiftMs}ms`);
+      }
+    });
+  });
+});

@@ -1,4 +1,4 @@
-import { attackTimeline } from "./weapons";
+import { attackTimeline, PARRYABLE_FRACTION } from "./weapons";
 import type { AttackTimeline } from "./weapons";
 import type { AttackKind, AttackPhase, Height, Intent, Line, Side, WeaponProfile } from "./types";
 
@@ -26,6 +26,10 @@ export type FighterState =
       height: Height;
       /** Set by the engine when a defending blade met this one inside the parryable window. */
       met: boolean;
+      /** One redirect per attack: the lie has been told. */
+      redirected: boolean;
+      /** When the lie was told (attack clock), for reaction arithmetic. */
+      redirectedAtMs: number | null;
     }
   | { kind: "hitstun"; t: number }
   | { kind: "dead"; t: number };
@@ -67,6 +71,8 @@ export interface ParryTrack {
    * is the whole reason a feint can work.
    */
   targetAttackStartTime: number | null;
+  /** One shift per raise, whichever axis: a single lie corrected once. */
+  shifted: boolean;
 }
 
 /**
@@ -165,14 +171,54 @@ export function applyIntent(
     }
     return "ignored";
   }
+  // In the sold half of a windup, the attack itself can be re-aimed - the
+  // one exception to committed-means-committed, closing at strikeStart:
+  // an arrow redirects its height, the other attack key its side. Once.
+  if (intent === "stanceUp" || intent === "stanceDown" || intent === "cut" || intent === "thrust") {
+    const s = f.state;
+    if (
+      s.kind === "attack" &&
+      s.phase === "windup" &&
+      !s.redirected &&
+      s.elapsedMs >= s.timeline.riseEnd &&
+      s.elapsedMs < s.timeline.strikeStart
+    ) {
+      if (intent === "stanceUp" || intent === "stanceDown") {
+        const toHeight: Height = intent === "stanceUp" ? "high" : "low";
+        if (toHeight === s.height) return "ignored"; // not a lie: already there
+        return redirectAttack(f, s.attack, toHeight);
+      }
+      if (intent !== s.attack) return redirectAttack(f, intent, s.height);
+      return "ignored"; // the same kind again is not a redirect
+    }
+  }
+  // A raised, formed guard may shift its covered line once per raise: an
+  // arrow travels it to the other height (guardShiftMs), a second parry
+  // press re-aims its side (sideChangeMs, same inference as the press).
+  // The old line stays covered until the shift completes.
+  if ((intent === "stanceUp" || intent === "stanceDown") && f.parry !== null) {
+    const p = f.parry;
+    if (p.shifted || p.elapsedMs < p.effectiveAtMs) return "ignored";
+    const toHeight: Height = intent === "stanceUp" ? "high" : "low";
+    if (toHeight === p.targetLine.height) return "ignored";
+    p.fromLine = p.targetLine;
+    p.targetLine = { height: toHeight, side: p.targetLine.side };
+    p.effectiveAtMs = p.elapsedMs + f.weapon.guardShiftMs;
+    p.shifted = true;
+    // The blade travelled: the stance goes with it.
+    f.height = toHeight;
+    f.heightTo = null;
+    f.heightT = 0;
+    return "accepted";
+  }
   // The stance is its own track, like the parry: never queued, and free
   // during the settle. It is refused while the body is committed (you
   // cannot re-aim mid-action) and while a parry is up (a formed guard is
-  // committed to its height; moving a raised guard is a later, priced
-  // mechanic). The arrows reach only high and low - middle stays declared
+  // committed to its height; the guard shift above is the priced way to
+  // move it). The arrows reach only high and low - middle stays declared
   // but unreachable until a third stance earns its way in.
   if (intent === "stanceUp" || intent === "stanceDown") {
-    if (k !== "ready" || f.parry !== null) return "ignored";
+    if (k !== "ready") return "ignored";
     const target: Height = intent === "stanceUp" ? "high" : "low";
     if (f.heightTo === target) return "ignored"; // already going there
     if (f.height === target) {
@@ -192,8 +238,19 @@ export function applyIntent(
     // and the step-recovery timer does not gate it: the settle after a step
     // is short and uncommitted, so a guard may go up during it. Everything
     // else waits the settle out in the one-slot buffer.
+    if (intent === "parry" && f.parry !== null) {
+      const p = f.parry;
+      if (p.shifted || p.elapsedMs < p.effectiveAtMs) return "ignored";
+      const side = opts?.targetSide ?? f.guardSide;
+      if (side === p.targetLine.side) return "ignored"; // nothing to re-aim at
+      p.fromLine = p.targetLine;
+      p.targetLine = { height: p.targetLine.height, side };
+      p.effectiveAtMs = p.elapsedMs + f.weapon.sideChangeMs;
+      p.shifted = true;
+      return "accepted";
+    }
     if (intent === "parry") {
-      if (f.parry !== null || f.parryRecoveryMs > 0) return "ignored";
+      if (f.parryRecoveryMs > 0) return "ignored";
       // The press targets one complete line. The side target is inferred by
       // the caller (the engine reads the visible attack) - syntactic sugar
       // for the human controller, costing nothing because choosing costs
@@ -212,6 +269,7 @@ export function applyIntent(
           f.heightTo === null ? 0 : f.weapon.heightChangeMs - f.heightT,
         ),
         targetAttackStartTime: opts?.targetAttackStartTime ?? null,
+        shifted: false,
       };
       return "accepted";
     }
@@ -258,6 +316,8 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
         // blade launches from where the body truly is.
         height: f.height,
         met: false,
+        redirected: false,
+        redirectedAtMs: null,
       };
       return true;
     case "parry":
@@ -268,6 +328,44 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
     case "stanceDown":
       return false; // the stance lives on its own track; applyIntent moves it
   }
+}
+
+/**
+ * Re-aim an attack mid-windup: the feint that continues. The clock never
+ * resets - only the future marks are rewritten, from this instant plus the
+ * redirect's travel, using the (possibly new) kind's timings. The rise
+ * stays in the past: the pose was sold, and the blade goes somewhere the
+ * sale did not say.
+ */
+function redirectAttack(f: Fighter, toKind: AttackKind, toHeight: Height): "accepted" {
+  const s = f.state;
+  if (s.kind !== "attack") throw new Error("unreachable");
+  const changedHeight = toHeight !== s.height;
+  const changedSide = toKind !== s.attack;
+  const cost = Math.max(
+    changedHeight ? f.weapon.redirectHeightMs : 0,
+    changedSide ? f.weapon.redirectSideMs : 0,
+  );
+  const t2 = f.weapon.attacks[toKind];
+  s.attack = toKind;
+  s.height = toHeight;
+  s.redirected = true;
+  s.redirectedAtMs = s.elapsedMs;
+  s.timeline = {
+    ...s.timeline, // riseStart and riseEnd stay in the past
+    strikeStart: s.elapsedMs + cost,
+    parryableUntil: s.elapsedMs + cost + t2.strike * PARRYABLE_FRACTION,
+    strikeEnd: s.elapsedMs + cost + t2.strike,
+    recoveryStart: s.elapsedMs + cost + t2.strike,
+    recoveryEnd: s.elapsedMs + cost + t2.strike + t2.recovery,
+  };
+  // The body went where the blade went.
+  if (changedHeight) {
+    f.height = toHeight;
+    f.heightTo = null;
+    f.heightT = 0;
+  }
+  return "accepted";
 }
 
 /**

@@ -163,6 +163,15 @@ export function renderHelpHtml(): string {
     queued, so a press mid-step is simply lost.</p>
     <ul>${parryRows}</ul>
 
+    <h2>Lies and answers</h2>
+    <p>In the sold half of a windup an attack may be re-aimed <b>once</b>: an
+    arrow changes its height, the other attack key its kind and side. The
+    blade arrives later for it - a feint into empty air is a lost tempo. A
+    raised guard answers <b>once</b> per raise: an arrow shifts its height, a
+    second parry press re-aims its side at the visible attack. The guard
+    never follows the blade on its own.</p>
+    <ul>${ws.map((w) => `<li>${esc(w.name)}: height feint ${w.redirectHeightMs}ms, side feint ${w.redirectSideMs}ms; your guard shifts height in ${w.guardShiftMs}ms, re-aims side in ${w.sideChangeMs}ms.</li>`).join("")}</ul>
+
     <h2>Measure</h2>
     <p>Three zones per weapon: out (nothing lands), wide (one step from
     danger), narrow (a strike can land). A strike connects only if the gap at

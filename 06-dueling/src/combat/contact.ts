@@ -65,9 +65,16 @@ export function parryMeetsAttack(attacker: Fighter, defender: Fighter, gap: numb
   // advance in lockstep, so subtracting the attacker's overshoot from the
   // parry clock reads the guard's state at that instant exactly.
   const overshoot = Math.max(0, s.elapsedMs - s.timeline.parryableUntil);
-  if (p.elapsedMs - overshoot < p.effectiveAtMs) return false; // rising, rotating or travelling: not formed in time
+  const clock = p.elapsedMs - overshoot;
+  // What the guard covers at that instant: the target once its travels
+  // complete; the OLD line while a shift is still moving (a shift starts
+  // from a formed guard, so fromLine was genuinely covered); nothing while
+  // the initial press is still forming.
+  const covered =
+    clock >= p.effectiveAtMs ? p.targetLine : p.shifted ? p.fromLine : null;
+  if (covered === null) return false;
   const line = lineOf(attacker);
-  return line.height === p.targetLine.height && line.side === p.targetLine.side;
+  return line.height === covered.height && line.side === covered.side;
 }
 
 /** Steel is present in the line: in the strike, travelling or delivered. */

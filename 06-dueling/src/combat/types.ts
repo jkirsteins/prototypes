@@ -50,6 +50,12 @@ export interface WeaponProfile {
   heightChangeMs: number;
   /** the blade's rotation to the other side; must stay under parryRiseMs so a reactive press is gated by the rise alone */
   sideChangeMs: number;
+  /** redirecting an attack's height mid-windup: the larger lie, priced above the side's */
+  redirectHeightMs: number;
+  /** redirecting an attack's side mid-windup: the disengage's motion */
+  redirectSideMs: number;
+  /** a formed guard travelling to the other height: cheaper than a cold stance move, dearer than the rotation */
+  guardShiftMs: number;
   /** the guard's travel: visible from the press, effective only after this */
   parryRiseMs: number;
   parryWindowMs: number;

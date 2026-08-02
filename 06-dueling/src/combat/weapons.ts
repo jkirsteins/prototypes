@@ -22,6 +22,9 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     },
     heightChangeMs: 300,
     sideChangeMs: 120,
+    redirectHeightMs: 380,
+    redirectSideMs: 300,
+    guardShiftMs: 180,
     parryRiseMs: 220,
     // Window = rise + the pre-rise window (260), so the effective span is
     // unchanged and the rise's whole cost is the earlier press deadline.
@@ -53,6 +56,9 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     // boundary. The failure must fail.
     heightChangeMs: 270,
     sideChangeMs: 100,
+    redirectHeightMs: 350,
+    redirectSideMs: 220,
+    guardShiftMs: 150,
     parryRiseMs: 190,
     parryWindowMs: 390,
     parryRecoveryMs: 400,
