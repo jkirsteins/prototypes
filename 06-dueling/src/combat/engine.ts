@@ -77,10 +77,18 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     // A parry pressed against a visible attack latches onto that attack's
     // identity - the absolute time it began - and infers its side. Both
     // read only what is visible on this tick; a cold press gets neither.
-    const r = applyIntent(d.f[side], intent, {
-      windupBonusMs: side === 1 ? d.f[side].weapon.telegraphMs : 0,
+    // A side shift with nothing to read is still an order: flip to the
+    // opposite side (the toggle Caps Lock rides). Inference is input;
+    // the travel is simulated either way.
+    const me = d.f[side];
+    const r = applyIntent(me, intent, {
+      windupBonusMs: side === 1 ? me.weapon.telegraphMs : 0,
       targetSide:
-        (intent === "parry" || intent === "sideShift") && threatVisible ? lineOf(opp).side : undefined,
+        (intent === "parry" || intent === "sideShift") && threatVisible
+          ? lineOf(opp).side
+          : intent === "sideShift" && me.parry !== null
+            ? me.parry.targetLine.side === "inside" ? "outside" : "inside"
+            : undefined,
       targetAttackStartTime:
         intent === "parry" && threatVisible && opp.state.kind === "attack"
           ? d.time - opp.state.elapsedMs

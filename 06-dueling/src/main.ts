@@ -126,7 +126,12 @@ document.addEventListener("keydown", (e) => {
       state.pending = "parry";
       break;
     case "arrowleft":
-    case "arrowright": state.pending = "sideShift"; break;
+    case "arrowright":
+    // Caps Lock is the side axis's Left Shift: with a threat visible the
+    // shift re-aims at it, without one it flips to the other side. macOS
+    // fires keydown only when the lock turns ON - the OFF edge arrives as
+    // a keyup, handled below - so both edges must count as a press.
+    case "capslock": state.pending = "sideShift"; break;
     case "f": state.pending = "feint"; break;
     case "arrowup": state.pending = "stanceUp"; break;
     case "arrowdown": state.pending = "stanceDown"; break;
@@ -189,6 +194,10 @@ document.addEventListener("keyup", (e) => {
       // guard the vanished key can no longer lower. A release with no
       // guard up is a harmless no-op engine-side.
       state.pending = "parryRelease";
+      break;
+    case "capslock":
+      // The lock's OFF edge (see the keydown case): also a press.
+      if (state.duel !== null && !state.helpOpen) state.pending = "sideShift";
       break;
   }
 });

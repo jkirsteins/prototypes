@@ -93,7 +93,7 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
 
 /** One source for the key list: the control line and the help panel both read it. */
 export const KEY_GROUPS: Array<Array<[string, string]>> = [
-  [["A/D", "step"], ["S", "void"], ["Up/Dn/LShift", "stance"], ["J", "cut"], ["K", "thrust"], ["L hold", "guard"], ["Lt/Rt", "re-aim"], ["F", "feint"]],
+  [["A/D", "step"], ["S", "void"], ["Up/Dn/LShift", "stance"], ["J", "cut"], ["K", "thrust"], ["L hold", "guard"], ["Lt/Rt/Caps", "re-aim"], ["F", "feint"]],
   [["0-3", "AI mode"], ["R", "rematch"], ["Esc", "select"], ["`", "overlay"], ["?", "help"]],
   [["space", "pause"], [".", "step"], ["[/]", "speed"], ["M", "mute"]],
 ];
@@ -168,8 +168,9 @@ export function renderHelpHtml(): string {
     changes its height, the other attack key its kind and side. The
     blade arrives later for it - a feint into empty air is a lost tempo. A
     held guard answers as often as it can travel - one shift at a time, each
-    at full cost: up/down arrows shift its height, left/right re-aim its side
-    at the visible attack. The guard never follows the blade on its own.</p>
+    at full cost: up/down arrows shift its height, left/right or Caps Lock
+    re-aim its side at the visible attack, or flip it when nothing shows.
+    The guard never follows the blade on its own.</p>
     <ul>${ws.map((w) => `<li>${esc(w.name)}: height feint ${w.redirectHeightMs}ms, side feint ${w.redirectSideMs}ms; your guard shifts height in ${w.guardShiftMs}ms, re-aims side in ${w.sideChangeMs}ms.</li>`).join("")}</ul>
 
     <h2>Measure</h2>

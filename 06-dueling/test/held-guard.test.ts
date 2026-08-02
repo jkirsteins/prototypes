@@ -157,11 +157,22 @@ describe("shifts on a held guard", () => {
     expect(d.f[0].parry?.phase).toBe("rising"); // unchanged: no shift, no restart
   });
 
-  test("a side shift with no attack visible is a costless no-op, refused", () => {
+  test("a side shift with no attack visible toggles to the opposite side", () => {
+    // With a threat the shift re-aims at it; without one it is still a
+    // meaningful order - flip to the other side - so Caps Lock can work
+    // the side axis the way Left Shift works the heights. The travel is
+    // simulated either way.
     const { d } = heldGuard();
     runMs(d, TICK, "sideShift", null);
-    expect(d.f[0].parry?.phase).toBe("held");
-    expect(d.f[0].parry?.coveredLine.side).toBe("inside");
+    const p = d.f[0].parry;
+    expect(p?.phase).toBe("shifting");
+    expect(p?.targetLine.side).toBe("outside");
+    expect(p?.coveredLine.side).toBe("inside"); // old side covered until arrival
+    runMs(d, WEAPONS.longsword.sideChangeMs + 2 * TICK);
+    expect(d.f[0].parry?.coveredLine.side).toBe("outside");
+    // And back: the toggle repeats, one travel at a time.
+    runMs(d, TICK, "sideShift", null);
+    expect(d.f[0].parry?.targetLine.side).toBe("inside");
   });
 
   test("a side shift re-aims at the visible attack's side over sideChangeMs", () => {
