@@ -115,7 +115,13 @@ describe("a parry covers one complete snapshotted line", () => {
     s.height = atkHeight;
     d.f[1].height = covered.height;
     applyIntent(d.f[1], "parry", { targetSide: covered.side });
-    if (d.f[1].parry !== null) d.f[1].parry.elapsedMs = d.f[1].parry.effectiveAtMs;
+    const p = d.f[1].parry;
+    if (p !== null) {
+      p.phase = "held";
+      p.phaseMs = 0;
+      p.phaseDurationMs = 0;
+      p.settledMs = 200; // formed well before any deadline the tests probe
+    }
     return d;
   }
 
@@ -165,11 +171,12 @@ describe("the press infers the side; the engine supplies the visible attack", ()
     d2.f[1].x = 1500; // visible, but out of reach: the guard runs its full window
     tickDuel(d2, "cut", null);
     tickDuel(d2, null, "parry");
-    // The press latched onto the visible (out-of-reach) cut: it waits for
-    // the whiff at 900ms, then charges recovery - wait past both.
-    for (let t = 0; t < 1700; t += TICK) {
-      tickDuel(d2, null, null);
-    }
+    // The press latched onto the visible (out-of-reach) cut. Under the
+    // held guard the whiff only clears the latch - the guard stands until
+    // released - so release explicitly, then wait out the recovery.
+    for (let t = 0; t < 1000; t += TICK) tickDuel(d2, null, null);
+    tickDuel(d2, null, "parryRelease");
+    for (let t = 0; t < WEAPONS.longsword.parryRecoveryMs + 2 * TICK; t += TICK) tickDuel(d2, null, null);
     tickDuel(d2, null, "parry"); // next cold press covers where the guard last stood
     expect(d2.f[1].parry?.targetLine.side).toBe("outside");
   });
@@ -184,7 +191,7 @@ describe("the press infers the side; the engine supplies the visible attack", ()
     const f = createFighter(400, 1, fixture);
     applyIntent(f, "parry", { targetSide: "outside" }); // guardSide is inside: travel needed
     for (let t = 0; t < 100 + TICK; t += TICK) tickFighter(f, TICK);
-    expect(f.parry?.elapsedMs).toBeGreaterThanOrEqual(fixture.parryRiseMs);
+    expect(f.parry?.visibleMs).toBeGreaterThanOrEqual(fixture.parryRiseMs);
     expect(guardEffective(f)).toBe(false); // risen, but the blade is still crossing
     for (let t = 0; t < 100 + 2 * TICK; t += TICK) tickFighter(f, TICK);
     expect(guardEffective(f)).toBe(true);
@@ -206,7 +213,7 @@ describe("the max rule: rise and height travel do not add", () => {
     // Just before the transition arrives: rise done, but still not effective.
     for (; t < w.heightChangeMs - 2 * TICK; t += TICK) tickFighter(f, TICK);
     if (f.parry === null) throw new Error("parry lost");
-    expect(f.parry.elapsedMs).toBeGreaterThanOrEqual(w.parryRiseMs);
+    expect(f.parry.visibleMs).toBeGreaterThanOrEqual(w.parryRiseMs);
     expect(guardEffective(f)).toBe(false); // a stance in motion covers nothing
     for (; t < w.heightChangeMs + 2 * TICK; t += TICK) tickFighter(f, TICK);
     expect(guardEffective(f)).toBe(true);

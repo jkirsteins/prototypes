@@ -298,7 +298,12 @@ describe("parryMeetsAttack: the travel condition", () => {
     if (s.kind !== "attack") throw new Error("unreachable");
     s.phase = "strike";
     applyIntent(d.f[1], "parry");
-    if (d.f[1].parry !== null) d.f[1].parry.elapsedMs = d.f[1].parry.effectiveAtMs;
+    const p = d.f[1].parry;
+    if (p !== null) {
+      p.phase = "held";
+      p.phaseDurationMs = 0;
+      p.settledMs = 200;
+    }
     s.elapsedMs = s.timeline.strikeStart + parryableMs(t) * 0.5; // extension 120 < 200
     expect(parryMeetsAttack(d.f[0], d.f[1], gapOf(d))).toBe(false);
     s.elapsedMs = s.timeline.strikeStart + parryableMs(t) * 0.9; // extension 216 >= 200

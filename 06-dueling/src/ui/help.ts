@@ -67,9 +67,9 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
     ms: (w) => w.attacks.thrust.recovery,
   },
   parry: {
-    label: "parry",
-    what: "Pressed against a visible attack the guard latches onto it and waits for it; a cold press with nothing to answer runs a short window instead.",
-    player: "The guard must stand when the blade REACHES you - the farther they are, the later that is. Early is safe; the price is being readable.",
+    label: "guard",
+    what: "Hold L: the guard rises, then stands for as long as you hold it; a tap against a visible attack waits for that attack and ends with it.",
+    player: "Release, attack or void lowers it at full recovery. There is no timer - only lines: a held guard covers one, and feints move attacks to the others.",
     ms: (w) => w.parryRiseMs,
   },
   stance: {
@@ -93,7 +93,7 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
 
 /** One source for the key list: the control line and the help panel both read it. */
 export const KEY_GROUPS: Array<Array<[string, string]>> = [
-  [["A/D", "step"], ["S", "void"], ["Up/Dn/LShift", "stance"], ["J", "cut"], ["K", "thrust"], ["L", "parry"], ["F", "feint"]],
+  [["A/D", "step"], ["S", "void"], ["Up/Dn/LShift", "stance"], ["J", "cut"], ["K", "thrust"], ["L hold", "guard"], ["Lt/Rt", "re-aim"], ["F", "feint"]],
   [["0-3", "AI mode"], ["R", "rematch"], ["Esc", "select"], ["`", "overlay"], ["?", "help"]],
   [["space", "pause"], [".", "step"], ["[/]", "speed"], ["M", "mute"]],
 ];
@@ -130,7 +130,7 @@ export function renderHelpHtml(): string {
     const t = w.attacks.thrust;
     const meetable = t.strike * PARRYABLE_FRACTION;
     const deadline = w.parryRiseMs - meetable;
-    return `<li>${esc(w.name)} thrust: the guard rises in ${w.parryRiseMs}ms and holds for ${w.parryWindowMs - w.parryRiseMs}ms; the blade is meetable for the strike's first ${meetable}ms, so the last press that can catch it lands ${deadline}ms before the strike starts.</li>`;
+    return `<li>${esc(w.name)} thrust: the guard rises in ${w.parryRiseMs}ms and then stands as long as the key is held; the blade is meetable for the strike's first ${meetable}ms, so the last press that can catch it lands ${deadline}ms before the strike starts.</li>`;
   }).join("");
 
   const costs = ws.map((w) => {
@@ -167,9 +167,9 @@ export function renderHelpHtml(): string {
     <p>During a windup an attack may be re-aimed <b>once</b>: an arrow
     changes its height, the other attack key its kind and side. The
     blade arrives later for it - a feint into empty air is a lost tempo. A
-    raised guard answers <b>once</b> per raise: an arrow shifts its height, a
-    second parry press re-aims its side at the visible attack. The guard
-    never follows the blade on its own.</p>
+    held guard answers as often as it can travel - one shift at a time, each
+    at full cost: up/down arrows shift its height, left/right re-aim its side
+    at the visible attack. The guard never follows the blade on its own.</p>
     <ul>${ws.map((w) => `<li>${esc(w.name)}: height feint ${w.redirectHeightMs}ms, side feint ${w.redirectSideMs}ms; your guard shifts height in ${w.guardShiftMs}ms, re-aims side in ${w.sideChangeMs}ms.</li>`).join("")}</ul>
 
     <h2>Measure</h2>

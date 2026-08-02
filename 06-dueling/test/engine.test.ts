@@ -109,7 +109,7 @@ describe("attack resolution", () => {
       for (const [atk, def, kind] of cases) {
         const t = WEAPONS[atk].attacks[kind];
         const strikeAt = t.windup + t.beat;
-        const early = strikeAt - WEAPONS[def].parryWindowMs / 2;
+        const early = strikeAt - WEAPONS[def].parryRiseMs - 100; // early press: latched, no expiry
         const formedAtCommit = strikeAt - WEAPONS[def].parryRiseMs;
         expect(outcome(atk, def, kind, Math.max(0, early))).toBe("parried");
         expect(outcome(atk, def, kind, Math.max(0, formedAtCommit))).toBe("parried");
@@ -149,7 +149,12 @@ describe("attack resolution", () => {
         applyIntent(d.f[1], "parry");
         // A formed guard: the rise condition has its own falsification
         // tests in parry-rise.test.ts; here it is held true.
-        if (d.f[1].parry !== null) d.f[1].parry.elapsedMs = d.f[1].parry.effectiveAtMs;
+        const p = d.f[1].parry;
+        if (p !== null) {
+          p.phase = "held";
+          p.phaseDurationMs = 0;
+          p.settledMs = 200;
+        }
       }
       return d;
     };
@@ -248,9 +253,10 @@ describe("presentation events follow the simulation, not the input", () => {
     // The blade arrives when its extension covers the gap: 180 of the
     // rapier's 240 reach is 3/4 of the travelling half.
     const arriveAt = strikeAt + (180 / WEAPONS.rapier.reach) * parryableMs(t);
-    // Guard goes up well before the strike begins; contact must still wait
-    // for the blade to get there.
-    const pressTick = Math.round((strikeAt - WEAPONS.longsword.parryWindowMs / 2) / TICK) - 1;
+    // Guard goes up immediately - the rise (220ms) completes just before the
+    // strike begins (260ms) - and contact must still wait for the blade to
+    // get there, another 3/4 of the travelling half after that.
+    const pressTick = 1;
     const pressTime = (pressTick + 1) * TICK;
     const evs: DuelEvent[] = [];
     for (let i = 0; i < 300 && !evs.some((e) => e.kind === "parried"); i++) {

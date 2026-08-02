@@ -292,31 +292,17 @@ function drawParryTrack(v: View, f: Fighter): void {
   const cx = f.x * PX_PER_CM;
   const cooling = f.parryRecoveryMs > 0;
   if (f.parry !== null) {
-    // The strike bar's idiom, applied to the guard: the rise segment dim,
-    // the effective segment bright, a cursor riding parry.t - so "is my
-    // guard formed yet" is answered the same way "is the blade meetable".
-    const { ctx } = v;
-    const w = f.weapon;
-    const rising = !guardEffective(f);
-    const label = rising ? (f.parry.shifted ? "guard shifting" : "guard rising") : "guard up";
-    ctx.font = "11px ui-monospace, monospace";
-    ctx.textAlign = "center";
-    ctx.fillStyle = rising ? "#6f66a8" : "#9b8cff";
-    ctx.fillText(label, cx, ARENA.floorY + ROW2_LABEL_Y);
-    ctx.textAlign = "left";
-    const x = cx - TRACK_BAR_W / 2;
-    const y = ARENA.floorY + ROW2_BAR_Y;
-    // The dim segment is this press's own forming time - rise, side
-    // rotation, height arrival, whichever gates it - so the bar is honest
-    // per press, not per weapon.
-    const riseW = TRACK_BAR_W * Math.min(1, f.parry.effectiveAtMs / w.parryWindowMs);
-    ctx.fillStyle = "#4a4568"; // forming: visible, not yet covering
-    ctx.fillRect(x, y, riseW, TRACK_BAR_H);
-    ctx.fillStyle = "#9b8cff"; // effective span
-    ctx.fillRect(x + riseW, y, TRACK_BAR_W - riseW, TRACK_BAR_H);
-    const cur = Math.min(1, f.parry.elapsedMs / w.parryWindowMs);
-    ctx.fillStyle = "#e8eaed";
-    ctx.fillRect(x + cur * TRACK_BAR_W - 1, y - 2, 2, TRACK_BAR_H + 4);
+    // The held-guard lifecycle: a bar only where a duration exists. The
+    // held state deliberately has none - a full static bar would imply a
+    // deadline the guard no longer has.
+    const p = f.parry;
+    if (p.phase === "held") {
+      drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "guard held", "#9b8cff", null);
+    } else {
+      const label = p.phase === "rising" ? "guard rising" : "guard shifting";
+      drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, label, p.phase === "rising" ? "#6f66a8" : "#9b8cff",
+        p.phaseMs / p.phaseDurationMs);
+    }
   } else if (cooling) {
     drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "recovering", "#6b6675", 1 - f.parryRecoveryMs / f.weapon.parryRecoveryMs);
   } else {

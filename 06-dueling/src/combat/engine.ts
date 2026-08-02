@@ -1,4 +1,4 @@
-import { applyIntent, lineOf, TICK, tickFighter } from "./fighter";
+import { applyIntent, dropGuard, lineOf, TICK, tickFighter } from "./fighter";
 import { bladesCross, parryMeetsAttack } from "./contact";
 import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
@@ -79,7 +79,8 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     // read only what is visible on this tick; a cold press gets neither.
     const r = applyIntent(d.f[side], intent, {
       windupBonusMs: side === 1 ? d.f[side].weapon.telegraphMs : 0,
-      targetSide: intent === "parry" && threatVisible ? lineOf(opp).side : undefined,
+      targetSide:
+        (intent === "parry" || intent === "sideShift") && threatVisible ? lineOf(opp).side : undefined,
       targetAttackStartTime:
         intent === "parry" && threatVisible && opp.state.kind === "attack"
           ? d.time - opp.state.elapsedMs
@@ -186,12 +187,9 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
         ...tl,
         recoveryEnd: tl.recoveryStart + baseRecovery + atk.weapon.parriedPenalty,
       };
-      // The guard has done its work; release it now rather than leaving
-      // the defender holding against a blade that is no longer coming.
-      if (def.parry !== null) {
-        def.parry = null;
-        def.parryRecoveryMs = def.weapon.parryRecoveryMs;
-      }
+      // The deflection consumes the guard; the still-held key does not
+      // re-raise it (raising needs a fresh press).
+      dropGuard(def);
       emit(d, out, side, "parried", `${atk.weapon.name} parried -> dui tempi counter available`);
     } else {
       hits.push(side);
@@ -205,7 +203,7 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
       def.state.kind === "attack" ? " (into preparation: mezzo tempo)" :
       def.state.kind === "void" ? " (void mistimed)" : "";
     def.state = { kind: "hitstun", t: 0 };
-    def.parry = null; // a landed blade ends any guard
+    dropGuard(def); // a landed blade ends any guard (the charge is moot under hitstun)
     emit(d, out, side, "hit", `${d.f[side].weapon.name} strike lands${flavor}`);
   }
   if (hits.length === 2) {
@@ -218,24 +216,25 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     emit(d, out, hits[0], "kill", `${d.f[hits[0]].weapon.name} kills`);
   }
 
-  // A latched parry ends with its attack, however the attack ends: contact
-  // (the parried branch above released it already), a miss, a feint
-  // cancellation, or the attacker struck down. The sweep asks one question -
-  // does the attack this parry waits for still exist, unresolved? - and
-  // releases the guard at its normal recovery price when the answer is no.
+  // The latch sweep. When the attack a parry latched onto ends - contact
+  // (already released above), a miss, a feint cancellation, the attacker
+  // struck down - the engagement is over: a TAP (release queued) drops at
+  // the normal recovery price, while a still-held key keeps the guard
+  // standing as a plain held guard, latch cleared. Attack-bound versus
+  // key-bound, exactly the distinction the held-guard spec preserves.
   for (const side of [0, 1] as const) {
     const f = d.f[side];
     const p = f.parry;
-    if (p === null || p.targetAttackStartTime === null) continue;
-    const o = d.f[1 - side].state;
-    const alive =
-      o.kind === "attack" &&
-      o.phase !== "recovery" &&
-      Math.abs(d.time - o.elapsedMs - p.targetAttackStartTime) < TICK / 2;
-    if (!alive) {
-      f.parry = null;
-      f.parryRecoveryMs = f.weapon.parryRecoveryMs;
+    if (p === null) continue;
+    if (p.targetAttackStartTime !== null) {
+      const o = d.f[1 - side].state;
+      const alive =
+        o.kind === "attack" &&
+        o.phase !== "recovery" &&
+        Math.abs(d.time - o.elapsedMs - p.targetAttackStartTime) < TICK / 2;
+      if (!alive) p.targetAttackStartTime = null;
     }
+    if (p.releaseQueued && p.targetAttackStartTime === null) dropGuard(f);
   }
   return out;
 }

@@ -201,25 +201,30 @@ describe("the defender's answer: the guard shift", () => {
     expect(evs.some((e) => e.kind === "hit" && e.side === 1)).toBe(true);
   });
 
-  test("a side retarget (press parry again) answers the longsword's side redirect", () => {
+  test("a side retarget (horizontal arrow) answers the longsword's side redirect", () => {
     const at = riseEnd + 20;
-    const evs = answered("cut", "parry", at, at + PLAYER_REACTION_MS);
+    const evs = answered("cut", "sideShift", at, at + PLAYER_REACTION_MS);
     expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
   });
 
-  test("one shift per raise: the second correction is refused", () => {
+  test("one shift AT A TIME: a second input mid-travel is refused; after completion, allowed", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
     d.f[0].x = 1000;
     d.f[1].x = 1180;
     runMs(d, TICK, null, "thrust");
     runMs(d, 250 - TICK, "parry", null);
-    runMs(d, TICK, "stanceUp", null); // shift 1: height
+    runMs(d, TICK, "stanceUp", null); // shift 1: height, in flight
     const p = d.f[0].parry;
     if (p === null) throw new Error("no parry");
-    expect(p.shifted).toBe(true);
-    const target = p.targetLine;
-    runMs(d, 10 * TICK, "parry", null); // attempted shift 2: side retarget
-    expect(d.f[0].parry?.targetLine).toEqual(target); // unchanged
+    expect(p.phase).toBe("shifting");
+    const target = { ...p.targetLine };
+    runMs(d, 2 * TICK, "sideShift", null); // mid-travel: refused
+    expect(d.f[0].parry?.targetLine).toEqual(target);
+    runMs(d, WEAPONS.longsword.guardShiftMs, null, null); // travel completes
+    expect(d.f[0].parry?.phase).toBe("held");
+    // The retired once-per-raise cap stays retired: another shift is legal.
+    runMs(d, TICK, "stanceDown", null);
+    expect(d.f[0].parry?.phase).toBe("shifting");
   });
 
   test("the old line holds while the shift travels", () => {

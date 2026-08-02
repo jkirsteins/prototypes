@@ -11,7 +11,11 @@ export type AttackPhase = "windup" | "strike" | "recovery";
 export type Zone = "out" | "wide" | "narrow";
 export type Intent =
   | "advance" | "retreat" | "void" | "cut" | "thrust" | "parry" | "feint"
-  | "stanceUp" | "stanceDown";
+  | "stanceUp" | "stanceDown"
+  /** keyup: lower the held guard (queued while its latch is engaged) */
+  | "parryRelease"
+  /** horizontal arrows: re-aim a held guard's side at the visible attack */
+  | "sideShift";
 
 /**
  * A line is a pair. Height comes from the attacker's held stance at launch;
@@ -58,7 +62,6 @@ export interface WeaponProfile {
   guardShiftMs: number;
   /** the guard's travel: visible from the press, effective only after this */
   parryRiseMs: number;
-  parryWindowMs: number;
   /** how long after a spent parry the next one is available; gates only the parry */
   parryRecoveryMs: number;
   /** recovery after abandoning a windup (a feint): the price of selling a threat */

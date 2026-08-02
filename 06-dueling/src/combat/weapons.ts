@@ -26,9 +26,6 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     redirectSideMs: 300,
     guardShiftMs: 180,
     parryRiseMs: 220,
-    // Window = rise + the pre-rise window (260), so the effective span is
-    // unchanged and the rise's whole cost is the earlier press deadline.
-    parryWindowMs: 480,
     parryRecoveryMs: 340,
     feintRecoveryMs: 160,
     parriedPenalty: 290,
@@ -60,7 +57,6 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     redirectSideMs: 220,
     guardShiftMs: 150,
     parryRiseMs: 190,
-    parryWindowMs: 390,
     parryRecoveryMs: 400,
     feintRecoveryMs: 120,
     parriedPenalty: 360,

@@ -61,18 +61,14 @@ export function parryMeetsAttack(attacker: Fighter, defender: Fighter, gap: numb
   if (p === null) return false;
   // The travelling() grace tick covers the BLADE's quantization, never the
   // guard's lateness: on the tick that crosses parryableUntil, the guard
-  // must have been formed by the deadline instant itself. Both clocks
-  // advance in lockstep, so subtracting the attacker's overshoot from the
-  // parry clock reads the guard's state at that instant exactly.
+  // must have been formed by the deadline instant itself. settledMs counts
+  // effective time (through shifts - the old line's coverage is unbroken),
+  // so subtracting the attacker's overshoot reads formedness at exactly
+  // that instant. While rising nothing is covered.
+  if (p.phase === "rising") return false;
   const overshoot = Math.max(0, s.elapsedMs - s.timeline.parryableUntil);
-  const clock = p.elapsedMs - overshoot;
-  // What the guard covers at that instant: the target once its travels
-  // complete; the OLD line while a shift is still moving (a shift starts
-  // from a formed guard, so fromLine was genuinely covered); nothing while
-  // the initial press is still forming.
-  const covered =
-    clock >= p.effectiveAtMs ? p.targetLine : p.shifted ? p.fromLine : null;
-  if (covered === null) return false;
+  if (p.settledMs < overshoot) return false; // formed only after the deadline
+  const covered = p.coveredLine;
   const line = lineOf(attacker);
   return line.height === covered.height && line.side === covered.side;
 }

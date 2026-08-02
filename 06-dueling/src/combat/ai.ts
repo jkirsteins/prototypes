@@ -1,6 +1,6 @@
 import { zoneFor } from "./measure";
 import { gapOf } from "./engine";
-import { lineOf } from "./fighter";
+import { guardEffective, lineOf } from "./fighter";
 import type { Duel } from "./engine";
 import type { Fighter } from "./fighter";
 import type { AttackKind, Height, Intent, WeaponProfile } from "./types";
@@ -61,6 +61,8 @@ export interface AiState {
   /** Mode 3 anti-repeat: a seeded run must never read as "always low". */
   lastHeight: Height | null;
   sameHeightRun: number;
+  /** Mode 1: reaction clock toward releasing a guard whose threat is gone. */
+  releaseInMs: number;
   rng: number;
 }
 
@@ -73,6 +75,7 @@ export function createAiState(seed: number = DEFAULT_SEED): AiState {
   return {
     cooldown: 0, next: "thrust", nextHeight: "low",
     plan: null, lastHeight: null, sameHeightRun: 0,
+    releaseInMs: 0,
     rng: seed >>> 0,
   };
 }
@@ -93,13 +96,25 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
   const opp = d.f[0];
 
   if (mode === 1) {
+    // A held guard whose threat is gone comes down after a reaction: the
+    // dummy holds THROUGH the attack, then lowers and recovers for the
+    // next rep. (A deflection consumes the guard by itself.)
+    if (self.parry !== null && opp.state.kind !== "attack") {
+      ai.releaseInMs += dt;
+      if (ai.releaseInMs >= AI_REACTION_MS) {
+        ai.releaseInMs = 0;
+        return "parryRelease";
+      }
+      return null;
+    }
+    ai.releaseInMs = 0;
     if (opp.state.kind !== "attack") return null;
     // Read the threat, not the motion: neither fighter can move mid-attack,
     // so an attack launched from beyond the attacker's own reach can never
     // land. A fencer does not parry out-of-measure attacks; neither does
     // the dummy.
     if (gapOf(d) > opp.weapon.reach) return null;
-    const { phase, elapsedMs, timeline } = opp.state;
+    const { phase, elapsedMs } = opp.state;
     if (phase === "recovery") return null;
     // The stance first: a guard only covers its height, so a dummy at the
     // wrong one must travel - heightChangeMs the player can watch it pay.
@@ -119,33 +134,23 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     // correction, after a reaction time: the mismatched axis shifts.
     if (
       self.parry !== null &&
-      !self.parry.shifted &&
-      self.parry.elapsedMs >= self.parry.effectiveAtMs &&
+      self.parry.phase === "held" &&
       opp.state.redirectedAtMs !== null &&
       opp.state.elapsedMs - opp.state.redirectedAtMs >= AI_REACTION_MS
     ) {
       const theirs = lineOf(opp);
-      const covered = self.parry.targetLine;
+      const covered = self.parry.coveredLine;
       if (covered.height !== theirs.height) {
         return theirs.height === "high" ? "stanceUp" : "stanceDown";
       }
-      if (covered.side !== theirs.side) return "parry";
+      if (covered.side !== theirs.side) return "sideShift";
     }
-    // Meet the blade where it will BE: press so the guard is formed when
-    // the blade arrives at this gap (extension covers it), leading by the
-    // rise plus half the effective span as margin. Pressing against the
-    // strike's start instead would, at near-maximum range, raise a guard
-    // that lapses before the blade ever gets there - the travel model made
-    // where as real as when. The dummy still cannot answer attacks whose
-    // preparation is shorter than reaction + rise (the rapier thrust - a
-    // documented, tested failure, not a bug).
-    const travel = timeline.parryableUntil - timeline.strikeStart;
-    const arrivalAt = timeline.strikeStart + Math.min(1, gapOf(d) / opp.weapon.reach) * travel;
-    const untilArrival = arrivalAt - elapsedMs;
-    const lead = self.weapon.parryRiseMs + (self.weapon.parryWindowMs - self.weapon.parryRiseMs) * 0.5;
+    // With no expiry there is nothing to centre a press inside: the dummy
+    // presses as soon as it has reacted and its stance has arrived, and
+    // HOLDS. The rise and the stance travel still decide what it can
+    // answer - the documented failures (the rapier thrust) stay failures.
     if (
       elapsedMs >= AI_REACTION_MS &&
-      untilArrival <= lead &&
       self.state.kind === "ready" &&
       self.parry === null &&
       self.stepRecoveryMs <= 0 &&
@@ -174,9 +179,9 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
       s.elapsedMs < s.timeline.strikeStart
     ) {
       const g = opp.parry;
-      if (g !== null && g.elapsedMs >= AI_REACTION_MS) {
+      if (g !== null && g.visibleMs >= AI_REACTION_MS) {
         const mine = lineOf(self);
-        if (g.targetLine.height === mine.height && g.targetLine.side === mine.side) {
+        if (g.coveredLine.height === mine.height && g.coveredLine.side === mine.side) {
           return s.attack === "cut" ? "thrust" : "cut";
         }
       }
@@ -228,6 +233,11 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     let height: Height = nextRandom(ai) < 0.5 ? "high" : "low";
     if (height === ai.lastHeight && ai.sameHeightRun >= 2) {
       height = height === "high" ? "low" : "high";
+    }
+    // A standing guard is row-3 information: launch where it is not.
+    // The draws above still burn, so replays stay comparable.
+    if (opp.parry !== null && guardEffective(opp)) {
+      height = opp.parry.coveredLine.height === "high" ? "low" : "high";
     }
     ai.sameHeightRun = height === ai.lastHeight ? ai.sameHeightRun + 1 : 1;
     ai.lastHeight = height;

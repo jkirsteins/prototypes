@@ -43,36 +43,45 @@ export type FighterState =
  * weapon positions.
  */
 export interface ParryTrack {
-  elapsedMs: number;
-  /** Where the blade physically stood at the press: current height, guardSide. */
-  fromLine: Line;
   /**
-   * The one complete line this parry is forming toward, fixed at the press:
-   * height from the stance (its destination if in motion - targeting a
-   * height is allowed, covering it waits for the arrival), side from the
-   * target the press inferred. The guard never retargets itself afterwards.
+   * rising: forming, nothing covered. held: effective on coveredLine,
+   * indefinitely - there is no expiry, the guard lives while the key does.
+   * shifting: still effective on coveredLine (the OLD line) while the
+   * travel to targetLine runs.
    */
+  phase: "rising" | "held" | "shifting";
+  /** ms into the current phase. */
+  phaseMs: number;
+  /** The current travel's duration: the rise's three-way max or the shift's cost; 0 while held. */
+  phaseDurationMs: number;
+  /**
+   * The line the guard is effective on while phase != rising. During a
+   * shift this stays the OLD line - the guard never covers a destination
+   * early and never covers nothing.
+   */
+  coveredLine: Line;
+  /** Where the guard is going (== coveredLine while held). Never auto-retargeted. */
   targetLine: Line;
   /**
-   * When targetLine becomes covered: the max of the rise, the side rotation
-   * (when the target side differed from guardSide) and the height arrival,
-   * computed once at the press. They are concurrent travels; none adds to
-   * another. Before this instant the parry covers nothing - naming the
-   * unarrived target "covered" would be the instantaneous parry's lie
-   * moved one level down.
+   * How long coveredLine has been effective: 0 while rising, counting
+   * through held AND shifting (the old line's coverage is unbroken), reset
+   * to 0 each time a shift completes. sustained-bind snapshots this;
+   * pressure-and-winding turns it into firmness.
    */
-  effectiveAtMs: number;
+  settledMs: number;
   /**
    * The identity of the attack this parry latched onto at the press: the
    * absolute duel time that attack began, or null for a predictive cold
-   * press. A latched parry waits for its attack instead of expiring on
-   * the window - and ends with it, however it ends. It never retargets:
-   * a redirect leaves the parry covering the line it snapshotted, which
-   * is the whole reason a feint can work.
+   * press. A TAP is attack-bound: its queued release fires when this
+   * attack ends. A HELD key is key-bound: the latch clearing leaves the
+   * guard standing. The latch never retargets - a redirect leaves the
+   * guard covering its snapshot, which is the whole reason a feint works.
    */
   targetAttackStartTime: number | null;
-  /** One shift per raise, whichever axis: a single lie corrected once. */
-  shifted: boolean;
+  /** The key came up while the latch was engaged: drop when it disengages. */
+  releaseQueued: boolean;
+  /** ms since the press: how long this guard has been visible at all. */
+  visibleMs: number;
 }
 
 /**
@@ -82,7 +91,15 @@ export interface ParryTrack {
  * guard - the same rule every other action already follows.
  */
 export function guardEffective(f: Fighter): boolean {
-  return f.parry !== null && f.parry.elapsedMs >= f.parry.effectiveAtMs;
+  return f.parry !== null && f.parry.phase !== "rising";
+}
+
+/** Lower the guard and charge its recovery: every way out passes here. */
+export function dropGuard(f: Fighter): void {
+  if (f.parry !== null) {
+    f.parry = null;
+    f.parryRecoveryMs = f.weapon.parryRecoveryMs;
+  }
 }
 
 /**
@@ -198,18 +215,49 @@ export function applyIntent(
   // press re-aims its side (sideChangeMs, same inference as the press).
   // The old line stays covered until the shift completes.
   if ((intent === "stanceUp" || intent === "stanceDown") && f.parry !== null) {
+    // Height shift on a held guard: repeatable, but one travel at a time,
+    // no reversal mid-flight, and refused while rising - the line is
+    // chosen at the press and the guard forms before it moves.
     const p = f.parry;
-    if (p.shifted || p.elapsedMs < p.effectiveAtMs) return "ignored";
+    if (p.phase !== "held") return "ignored";
     const toHeight: Height = intent === "stanceUp" ? "high" : "low";
-    if (toHeight === p.targetLine.height) return "ignored";
-    p.fromLine = p.targetLine;
-    p.targetLine = { height: toHeight, side: p.targetLine.side };
-    p.effectiveAtMs = p.elapsedMs + f.weapon.guardShiftMs;
-    p.shifted = true;
+    if (toHeight === p.coveredLine.height) return "ignored";
+    p.phase = "shifting";
+    p.phaseMs = 0;
+    p.phaseDurationMs = f.weapon.guardShiftMs;
+    p.targetLine = { height: toHeight, side: p.coveredLine.side };
     // The blade travelled: the stance goes with it.
     f.height = toHeight;
     f.heightTo = null;
     f.heightT = 0;
+    return "accepted";
+  }
+  // Side shift (horizontal arrows): re-aim a held guard's side at what a
+  // fresh press would infer. A costless no-op is refused: no visible
+  // attack, or the inferred side already covered.
+  if (intent === "sideShift") {
+    const p = f.parry;
+    if (p === null || p.phase !== "held") return "ignored";
+    const side = opts?.targetSide;
+    if (side === undefined || side === p.coveredLine.side) return "ignored";
+    p.phase = "shifting";
+    p.phaseMs = 0;
+    p.phaseDurationMs = f.weapon.sideChangeMs;
+    p.targetLine = { height: p.coveredLine.height, side };
+    return "accepted";
+  }
+  // The key comes up: lower the guard. While the latch is engaged the
+  // release queues - a TAP's guard finishes its engagement first (the
+  // engine drops it when the latched attack ends). With no latch it drops
+  // now, from any phase.
+  if (intent === "parryRelease") {
+    const p = f.parry;
+    if (p === null) return "ignored";
+    if (p.targetAttackStartTime !== null) {
+      p.releaseQueued = true;
+      return "accepted";
+    }
+    dropGuard(f);
     return "accepted";
   }
   // The stance is its own track, like the parry: never queued, and free
@@ -239,19 +287,8 @@ export function applyIntent(
     // and the step-recovery timer does not gate it: the settle after a step
     // is short and uncommitted, so a guard may go up during it. Everything
     // else waits the settle out in the one-slot buffer.
-    if (intent === "parry" && f.parry !== null) {
-      const p = f.parry;
-      if (p.shifted || p.elapsedMs < p.effectiveAtMs) return "ignored";
-      const side = opts?.targetSide ?? f.guardSide;
-      if (side === p.targetLine.side) return "ignored"; // nothing to re-aim at
-      p.fromLine = p.targetLine;
-      p.targetLine = { height: p.targetLine.height, side };
-      p.effectiveAtMs = p.elapsedMs + f.weapon.sideChangeMs;
-      p.shifted = true;
-      return "accepted";
-    }
     if (intent === "parry") {
-      if (f.parryRecoveryMs > 0) return "ignored";
+      if (f.parry !== null || f.parryRecoveryMs > 0) return "ignored";
       // The press targets one complete line. The side target is inferred by
       // the caller (the engine reads the visible attack) - syntactic sugar
       // for the human controller, costing nothing because choosing costs
@@ -260,17 +297,21 @@ export function applyIntent(
       // height arrival when the stance is in motion. No input teleports
       // steel; the target is covered only from effectiveAtMs.
       const side = opts?.targetSide ?? f.guardSide;
+      const aim: Line = { height: f.heightTo ?? f.height, side };
       f.parry = {
-        elapsedMs: 0,
-        fromLine: { height: f.height, side: f.guardSide },
-        targetLine: { height: f.heightTo ?? f.height, side },
-        effectiveAtMs: Math.max(
+        phase: "rising",
+        phaseMs: 0,
+        phaseDurationMs: Math.max(
           f.weapon.parryRiseMs,
           side === f.guardSide ? 0 : f.weapon.sideChangeMs,
           f.heightTo === null ? 0 : f.weapon.heightChangeMs - f.heightT,
         ),
+        coveredLine: aim,
+        targetLine: aim,
+        settledMs: 0,
         targetAttackStartTime: opts?.targetAttackStartTime ?? null,
-        shifted: false,
+        releaseQueued: false,
+        visibleMs: 0,
       };
       return "accepted";
     }
@@ -301,12 +342,12 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
       f.state = { kind: "step", dir: -1, t: 0 };
       return true;
     case "void":
-      dropParry(f);
+      dropGuard(f);
       f.state = { kind: "void", t: 0 };
       return true;
     case "cut":
     case "thrust":
-      dropParry(f);
+      dropGuard(f);
       f.state = {
         kind: "attack",
         attack: intent,
@@ -328,6 +369,9 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
     case "stanceUp":
     case "stanceDown":
       return false; // the stance lives on its own track; applyIntent moves it
+    case "parryRelease":
+    case "sideShift":
+      return false; // guard-track verbs; applyIntent handles both
   }
 }
 
@@ -369,18 +413,10 @@ function redirectAttack(f: Fighter, toKind: AttackKind, toHeight: Height): "acce
   return "accepted";
 }
 
-/**
- * Committing to your own blade (or to an evasion) abandons the raised
- * defence, priced: the recovery is charged as if the parry had been
- * spent. Steps deliberately do not call this - a parry rides through
- * footwork (rule D).
- */
-function dropParry(f: Fighter): void {
-  if (f.parry !== null) {
-    f.parry = null;
-    f.parryRecoveryMs = f.weapon.parryRecoveryMs;
-  }
-}
+// Committing to your own blade (or to an evasion) abandons the raised
+// defence at full recovery price - dropGuard, the one exit everything
+// shares. Steps deliberately do not: a parry rides through footwork
+// (rule D).
 
 export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
   const events: FighterEvent[] = [];
@@ -397,24 +433,33 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
       f.heightT = 0;
     }
   }
-  // The parry track runs beside the body: it expires on its own clock
-  // whatever the feet are doing, and charges its recovery when spent. The
-  // completion of its side rotation is when the blade physically stands on
-  // the target side, so that is when the standing guardSide updates - a
-  // guard dropped mid-rotation never got there and updates nothing.
+  // The parry track runs beside the body, with no expiry: the guard lives
+  // while the key does. Its travels complete here - the rise into held,
+  // a shift into held with the new line - and the completion of a travel
+  // that changed the side is when the blade physically stands there, so
+  // that is when guardSide updates. settledMs counts whenever coveredLine
+  // is effective, through shifts (the old line's coverage is unbroken),
+  // resetting when a shift lands a fresh line - to the sub-tick remainder
+  // of the travel, not to zero: the travel ends at its continuous instant
+  // inside the tick, and settledMs is compared against the attacker's
+  // continuous overshoot, so dropping the remainder would refuse guards
+  // that were physically formed before the deadline.
   if (f.parry !== null) {
     const p = f.parry;
-    p.elapsedMs += dt;
-    const sideTravel = p.targetLine.side === p.fromLine.side ? 0 : f.weapon.sideChangeMs;
-    if (p.elapsedMs >= sideTravel) f.guardSide = p.targetLine.side;
-    // A threat-latched parry (raised against a visible attack) has no
-    // timed expiry: it waits for THAT attack, and the engine ends it when
-    // that attack ends - contact, miss, cancellation, or the attacker
-    // being struck down. Only the predictive cold press, with no attack
-    // to wait for, runs the window.
-    if (p.targetAttackStartTime === null && p.elapsedMs >= f.weapon.parryWindowMs) {
-      f.parry = null;
-      f.parryRecoveryMs = f.weapon.parryRecoveryMs;
+    p.phaseMs += dt;
+    p.visibleMs += dt;
+    if (p.phase !== "rising") p.settledMs += dt;
+    if (p.phase !== "held" && p.phaseMs >= p.phaseDurationMs) {
+      const arrivedFromRise = p.phase === "rising";
+      const remainder = p.phaseMs - p.phaseDurationMs;
+      p.phase = "held";
+      p.phaseMs = 0;
+      p.phaseDurationMs = 0;
+      p.coveredLine = p.targetLine;
+      p.settledMs = remainder;
+      if (arrivedFromRise || p.coveredLine.side !== f.guardSide) {
+        f.guardSide = p.coveredLine.side;
+      }
     }
   }
   const s = f.state;

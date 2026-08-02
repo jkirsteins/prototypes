@@ -30,12 +30,14 @@ describe("void", () => {
 });
 
 describe("parry", () => {
-  test("parry lasts parryWindowMs, then cooldown blocks re-entry", () => {
+  test("the guard has no timer: it stands until released, then recovery gates re-entry", () => {
     const f = createFighter(400, 1, WEAPONS.rapier);
     expect(applyIntent(f, "parry")).toBe("accepted");
     expect(f.parry).not.toBe(null);
     expect(f.state.kind).toBe("ready"); // the body stays free: parallel track
-    run(f, WEAPONS.rapier.parryWindowMs + TICK);
+    run(f, 2000); // far past any window that ever existed
+    expect(f.parry).not.toBe(null);
+    expect(applyIntent(f, "parryRelease")).toBe("accepted");
     expect(f.parry).toBe(null);
     expect(applyIntent(f, "parry")).toBe("ignored"); // cooling down
     run(f, WEAPONS.rapier.parryRecoveryMs + TICK);

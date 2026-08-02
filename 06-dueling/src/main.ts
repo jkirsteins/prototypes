@@ -39,7 +39,7 @@ const state = {
   activeSeed: 0,
   duel: null as Duel | null,
   ai: createAiState(),
-  held: { advance: false, retreat: false },
+  held: { advance: false, retreat: false, parry: false },
   pending: null as Intent | null,
   // Time control: pause freezes the accumulator, step injects exactly one
   // tick, timescale stretches or compresses wall time. The simulation is a
@@ -119,7 +119,14 @@ document.addEventListener("keydown", (e) => {
     case "s": state.pending = "void"; break;
     case "j": state.pending = "cut"; break;
     case "k": state.pending = "thrust"; break;
-    case "l": state.pending = "parry"; break;
+    case "l":
+      // Hold to keep the guard up; the keyup lowers it. The global e.repeat
+      // guard above keeps auto-repeat from restarting anything.
+      state.held.parry = true;
+      state.pending = "parry";
+      break;
+    case "arrowleft":
+    case "arrowright": state.pending = "sideShift"; break;
     case "f": state.pending = "feint"; break;
     case "arrowup": state.pending = "stanceUp"; break;
     case "arrowdown": state.pending = "stanceDown"; break;
@@ -176,6 +183,23 @@ document.addEventListener("keyup", (e) => {
       state.held.advance = false;
       if (state.duel && state.duel.f[0].buffered === "advance") state.duel.f[0].buffered = null;
       break;
+    case "l":
+      state.held.parry = false;
+      // Replaces even a still-pending press: a tap must never raise a
+      // guard the vanished key can no longer lower. A release with no
+      // guard up is a harmless no-op engine-side.
+      state.pending = "parryRelease";
+      break;
+  }
+});
+
+// A key let go on another window sends no keyup here: lower everything.
+window.addEventListener("blur", () => {
+  state.held.advance = false;
+  state.held.retreat = false;
+  if (state.held.parry) {
+    state.held.parry = false;
+    state.pending = "parryRelease";
   }
 });
 
