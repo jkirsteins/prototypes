@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { expect, test } from "vitest";
 import { TICK } from "../src/combat/fighter";
 import { createDuel, tickDuel } from "../src/combat/engine";
 import { WEAPONS } from "../src/combat/weapons";
