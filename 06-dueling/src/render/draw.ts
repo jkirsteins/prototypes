@@ -32,7 +32,7 @@ export interface View {
  */
 const PHASE_COLORS: Record<AttackPhase | Exclude<FighterState["kind"], "attack">, string> = {
   windup: "#e6c229", strike: "#d64541", recovery: "#57a55a",
-  void: "#4aa3df", parry: "#9b8cff", step: "#cfd3da",
+  void: "#4aa3df", step: "#cfd3da",
   hitstun: "#d64541", dead: "#555a63", ready: "#8a8f98",
 };
 
@@ -267,7 +267,6 @@ function bodyFraction(f: Fighter): number | null {
       // longer exposure and a parried attack its penalty.
       return (s.elapsedMs - tl.recoveryStart) / (tl.recoveryEnd - tl.recoveryStart);
     }
-    case "parry": // row 2's business
     case "dead":
       return null;
   }
@@ -277,8 +276,8 @@ function bodyFraction(f: Fighter): number | null {
 function drawParryTrack(v: View, f: Fighter): void {
   const cx = f.x * PX_PER_CM;
   const cooling = f.parryRecoveryMs > 0;
-  if (f.state.kind === "parry") {
-    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "parry up", "#9b8cff", f.state.t / f.weapon.parryWindowMs);
+  if (f.parry !== null) {
+    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "parry up", "#9b8cff", f.parry.t / f.weapon.parryWindowMs);
   } else if (cooling) {
     drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "recovering", "#6b6675", 1 - f.parryRecoveryMs / f.weapon.parryRecoveryMs);
   } else {

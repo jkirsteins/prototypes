@@ -128,7 +128,13 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
   const EXPECTED: Record<string, { hash: number; endedAt: number | null }> = {
     "longsword player advances into mode-3 rapier duelist": { hash: 1489359747, endedAt: 105 },
     "rapier player against mode-3 longsword, different seed": { hash: 758609725, endedAt: 118 },
-    "drill metronome: parry the first beat, void the second into a whiff": { hash: 2500086817, endedAt: 393 },
+    // Re-recorded once at the rule-D step (parry on its own track), the
+    // sanctioned gameplay change: the parry no longer occupies the body, so
+    // the settle completes underneath it and the stale buffered advance
+    // flushes - the player now walks INTO the first drill strike with the
+    // guard riding along and parries it (met t143, parried t150) where the
+    // old build stood stranded and the strike whiffed. Same death, t393.
+    "drill metronome: parry the first beat, void the second into a whiff": { hash: 1598480532, endedAt: 393 },
     "parry dummy reads the player's telegraph-free attacks": { hash: 1637068997, endedAt: null },
   };
 

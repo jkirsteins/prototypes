@@ -24,7 +24,7 @@ export interface HelpEntry {
   ms?: (w: WeaponProfile) => number;
 }
 
-export const HELP: Record<FighterState["kind"] | AttackPhase, HelpEntry> = {
+export const HELP: Record<FighterState["kind"] | AttackPhase | "parry", HelpEntry> = {
   ready: {
     label: "ready",
     what: "In stance, free to act; after a step a short settle runs first, during which new actions queue.",
@@ -34,7 +34,7 @@ export const HELP: Record<FighterState["kind"] | AttackPhase, HelpEntry> = {
   step: {
     label: "step",
     what: "A committed step of fixed length; held keys chain steps.",
-    player: "You cannot parry mid-step - a press is dropped, not queued.",
+    player: "You cannot raise a parry mid-step, but one already up rides along - plan the defence, then move.",
     ms: (w) => w.stepDuration,
   },
   void: {
@@ -68,7 +68,7 @@ export const HELP: Record<FighterState["kind"] | AttackPhase, HelpEntry> = {
   },
   parry: {
     label: "parry",
-    what: "The guard is up for a fixed window, then needs its own recovery before the next one.",
+    what: "The guard runs on its own clock beside your feet: raised while standing, it persists through a step; attacking or voiding drops it at full recovery cost.",
     player: "Press early rather than late: any overlap with the strike's meetable half counts.",
     ms: (w) => w.parryWindowMs,
   },

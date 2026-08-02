@@ -104,7 +104,10 @@ describe("settle timer boundaries (the off-by-one-tick hiding places)", () => {
     expect(f.state.kind).toBe("attack"); // buffer flushed in the same call
   });
 
-  test("a parry raised mid-settle strands the buffer, exactly as the pause-interrupt did", () => {
+  test("a parry raised mid-settle no longer strands the buffer: the settle completes under it", () => {
+    // Rule D consequence: the parry lives on its own track, so raising it
+    // does not occupy the body - the settle finishes on schedule, the
+    // buffered step fires, and the guard rides along on the new step.
     const w = WEAPONS.longsword;
     const f = createFighter(300, 1, w);
     applyIntent(f, "advance");
@@ -112,9 +115,9 @@ describe("settle timer boundaries (the off-by-one-tick hiding places)", () => {
     run(f, w.stepDuration + TICK);
     expect(f.stepRecoveryMs).toBeGreaterThan(0);
     expect(applyIntent(f, "parry")).toBe("accepted");
-    // The settle expires while the guard is up: no flush from inside parry.
-    run(f, w.parryWindowMs + 2 * TICK);
-    expect(f.state.kind).toBe("ready");
-    expect(f.buffered).toBe("advance"); // still waiting; keyup clears it in play
+    run(f, w.stepRecoveryMs + TICK);
+    expect(f.buffered).toBe(null); // flushed on schedule
+    expect(f.state.kind).toBe("step"); // the buffered step fired
+    expect(f.parry).not.toBe(null); // with the guard still up
   });
 });

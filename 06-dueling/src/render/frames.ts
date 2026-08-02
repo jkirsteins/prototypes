@@ -59,18 +59,20 @@ export function pickFrame(f: Fighter, timeMs: number): FramePick {
   const w = f.weapon;
   switch (s.kind) {
     case "ready": {
+      // A raised parry drives the pose while standing. No parry sheet in
+      // the template: hold the raised-guard windup frame.
+      if (f.parry !== null) return { sheet: "swordAttack", frame: 1, flip };
       // Settling after a step reads as stillness, not the relaxed idle sway.
       if (f.stepRecoveryMs > 0) return { sheet: "swordIdle", frame: 0, flip };
       const per = IDLE_FRAME_MS / w.animSpeed;
       return { sheet: "swordIdle", frame: Math.floor(timeMs / per) % SHEETS.swordIdle.frames, flip };
     }
     case "step":
+      // A carried parry is invisible here (the legs own the sheet); HUD
+      // row 2 keeps it legible.
       return { sheet: "swordRun", frame: span("swordRun", s.t, w.stepDuration, 0, 7), flip };
     case "void":
       return { sheet: "roll", frame: span("roll", s.t, w.voidDuration, 0, 6), flip };
-    case "parry":
-      // No parry sheet in the template: hold the raised-guard windup frame.
-      return { sheet: "swordAttack", frame: 1, flip };
     case "hitstun":
       return { sheet: "hurt", frame: span("hurt", s.t, HIT_STUN_MS, 0, 3), flip };
     case "dead":

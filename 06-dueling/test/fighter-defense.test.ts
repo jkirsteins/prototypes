@@ -33,12 +33,36 @@ describe("parry", () => {
   test("parry lasts parryWindowMs, then cooldown blocks re-entry", () => {
     const f = createFighter(400, 1, WEAPONS.rapier);
     expect(applyIntent(f, "parry")).toBe("accepted");
-    expect(f.state.kind).toBe("parry");
+    expect(f.parry).not.toBe(null);
+    expect(f.state.kind).toBe("ready"); // the body stays free: parallel track
     run(f, WEAPONS.rapier.parryWindowMs + TICK);
-    expect(f.state.kind).toBe("ready");
+    expect(f.parry).toBe(null);
     expect(applyIntent(f, "parry")).toBe("ignored"); // cooling down
     run(f, WEAPONS.rapier.parryRecoveryMs + TICK);
     expect(applyIntent(f, "parry")).toBe("accepted");
+  });
+
+  test("rule D: a raised parry persists through a step, but cannot be raised mid-step", () => {
+    const w = WEAPONS.longsword;
+    const f = createFighter(400, 1, w);
+    expect(applyIntent(f, "parry")).toBe("accepted");
+    expect(applyIntent(f, "advance")).toBe("accepted"); // stepping does not drop it
+    expect(f.state.kind).toBe("step");
+    expect(f.parry).not.toBe(null);
+    run(f, 3 * TICK);
+    expect(f.parry).not.toBe(null); // still up mid-step
+    // A second parry press mid-step is ignored, not queued.
+    expect(applyIntent(f, "parry")).toBe("ignored");
+  });
+
+  test("attacking or voiding out of a raised parry drops it at full recovery cost", () => {
+    for (const intent of ["cut", "void"] as const) {
+      const f = createFighter(400, 1, WEAPONS.longsword);
+      applyIntent(f, "parry");
+      expect(applyIntent(f, intent)).toBe("accepted");
+      expect(f.parry).toBe(null);
+      expect(f.parryRecoveryMs).toBe(WEAPONS.longsword.parryRecoveryMs);
+    }
   });
 });
 
@@ -61,7 +85,7 @@ describe("parry is reactive, never queued", () => {
     expect(f.state.kind).toBe("ready");
     expect(f.stepRecoveryMs).toBeGreaterThan(0); // still settling
     expect(applyIntent(f, "parry")).toBe("accepted"); // the timer does not gate the parry
-    expect(f.state.kind).toBe("parry");
+    expect(f.parry).not.toBe(null);
   });
 });
 

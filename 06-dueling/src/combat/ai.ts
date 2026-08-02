@@ -86,6 +86,7 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
       elapsedMs >= AI_REACTION_MS &&
       untilStrike <= self.weapon.parryWindowMs * 0.5 &&
       self.state.kind === "ready" &&
+      self.parry === null &&
       self.stepRecoveryMs <= 0 &&
       self.parryRecoveryMs <= 0
     ) {

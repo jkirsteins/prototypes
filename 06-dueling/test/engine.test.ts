@@ -167,6 +167,26 @@ describe("attack resolution", () => {
     });
   });
 
+  test("rule D: a parry raised before a step still meets the blade mid-step", () => {
+    const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
+    closeTo(d, 180);
+    const t = WEAPONS.rapier.attacks.thrust;
+    const strikeAt = t.windup + t.beat;
+    // Guard up half a window before the strike, then step away on the very
+    // next tick: the feet are committed when the blade arrives.
+    const raiseTick = Math.round((strikeAt - WEAPONS.longsword.parryWindowMs / 2) / TICK) - 1;
+    const evs: DuelEvent[] = [];
+    let steppingAtMet = false;
+    for (let i = 0; i < 300 && !evs.some((e) => e.kind === "parried"); i++) {
+      const ib: Intent | null = i === raiseTick ? "parry" : i === raiseTick + 1 ? "retreat" : null;
+      const tick = tickDuel(d, i === 0 ? "thrust" : null, ib);
+      if (tick.some((e) => e.kind === "met")) steppingAtMet = d.f[1].state.kind === "step";
+      evs.push(...tick);
+    }
+    expect(evs.some((e) => e.kind === "parried" && e.side === 0)).toBe(true);
+    expect(steppingAtMet).toBe(true); // the guard rode the step to the contact
+  });
+
   test("a feinted attack is never meetable and never resolves", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
     closeTo(d, 160);

@@ -21,15 +21,27 @@ export type FighterState =
       /** Set by the engine when a defending blade met this one inside the parryable window. */
       met: boolean;
     }
-  | { kind: "parry"; t: number }
   | { kind: "hitstun"; t: number }
   | { kind: "dead"; t: number };
+
+/**
+ * The timed defence, on its own track so it can coexist with locomotion:
+ * a parry raised while ready persists through a subsequent step (you carry
+ * a defence you already chose), but cannot be raised mid-step (you cannot
+ * react while your feet are committed). Named parry, not guard - it
+ * expires and recovers, so it is an action; "guard" stays reserved for
+ * weapon positions.
+ */
+export interface ParryTrack {
+  t: number;
+}
 
 export interface Fighter {
   x: number;
   facing: 1 | -1;
   weapon: WeaponProfile;
   state: FighterState;
+  parry: ParryTrack | null;
   buffered: Intent | null;
   /**
    * Settle time left after a step: while > 0, non-parry intents buffer
@@ -51,7 +63,7 @@ export type FighterEvent =
   | { type: "died" };
 
 export function createFighter(x: number, facing: 1 | -1, weapon: WeaponProfile): Fighter {
-  return { x, facing, weapon, state: { kind: "ready" }, buffered: null, stepRecoveryMs: 0, parryRecoveryMs: 0 };
+  return { x, facing, weapon, state: { kind: "ready" }, parry: null, buffered: null, stepRecoveryMs: 0, parryRecoveryMs: 0 };
 }
 
 export function applyIntent(
@@ -84,7 +96,9 @@ export function applyIntent(
     // is short and uncommitted, so a guard may go up during it. Everything
     // else waits the settle out in the one-slot buffer.
     if (intent === "parry") {
-      return startAction(f, intent, 0) ? "accepted" : "ignored";
+      if (f.parry !== null || f.parryRecoveryMs > 0) return "ignored";
+      f.parry = { t: 0 };
+      return "accepted";
     }
     if (f.stepRecoveryMs > 0) {
       f.buffered = intent; // one-slot buffer, last input wins
@@ -92,14 +106,16 @@ export function applyIntent(
     }
     return startAction(f, intent, opts?.windupBonusMs ?? 0) ? "accepted" : "ignored";
   }
-  // A parry buffered mid-step would fire against a blade that has already
-  // landed and burn the cooldown for nothing; the step stays committed.
+  // Rule D: a parry cannot be raised mid-step - you cannot react while
+  // your feet are committed, only carry a defence you already chose. And
+  // it is never buffered: a parry that fires when the step finishes would
+  // be raised against a blade that has already landed.
   if (intent === "parry") return "ignored";
   if (k === "step") {
     f.buffered = intent; // one-slot buffer, last input wins
     return "buffered";
   }
-  return "ignored"; // committed: void, attack, parry
+  return "ignored"; // committed: void, attack
 }
 
 function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean {
@@ -111,10 +127,12 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
       f.state = { kind: "step", dir: -1, t: 0 };
       return true;
     case "void":
+      dropParry(f);
       f.state = { kind: "void", t: 0 };
       return true;
     case "cut":
     case "thrust":
+      dropParry(f);
       f.state = {
         kind: "attack",
         attack: intent,
@@ -125,11 +143,22 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
       };
       return true;
     case "parry":
-      if (f.parryRecoveryMs > 0) return false;
-      f.state = { kind: "parry", t: 0 };
-      return true;
+      return false; // the parry lives on its own track; applyIntent raises it
     case "feint":
       return false; // only meaningful mid-windup; handled in applyIntent
+  }
+}
+
+/**
+ * Committing to your own blade (or to an evasion) abandons the raised
+ * defence, priced: the recovery is charged as if the parry had been
+ * spent. Steps deliberately do not call this - a parry rides through
+ * footwork (rule D).
+ */
+function dropParry(f: Fighter): void {
+  if (f.parry !== null) {
+    f.parry = null;
+    f.parryRecoveryMs = f.weapon.parryRecoveryMs;
   }
 }
 
@@ -138,6 +167,15 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
   const settling = f.stepRecoveryMs > 0;
   f.stepRecoveryMs = Math.max(0, f.stepRecoveryMs - dt);
   f.parryRecoveryMs = Math.max(0, f.parryRecoveryMs - dt);
+  // The parry track runs beside the body: it expires on its own clock
+  // whatever the feet are doing, and charges its recovery when spent.
+  if (f.parry !== null) {
+    f.parry.t += dt;
+    if (f.parry.t >= f.weapon.parryWindowMs) {
+      f.parry = null;
+      f.parryRecoveryMs = f.weapon.parryRecoveryMs;
+    }
+  }
   const s = f.state;
   switch (s.kind) {
     case "ready":
@@ -178,13 +216,6 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
       }
       break;
     }
-    case "parry":
-      s.t += dt;
-      if (s.t >= f.weapon.parryWindowMs) {
-        f.state = { kind: "ready" };
-        f.parryRecoveryMs = f.weapon.parryRecoveryMs;
-      }
-      break;
     case "hitstun":
       s.t += dt;
       if (s.t >= HIT_STUN_MS) {

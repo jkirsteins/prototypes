@@ -65,10 +65,11 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
       const k = d.f[side].state.kind;
       if (k === "attack") emit(d, out, side, "attackStart", `${d.f[side].weapon.name} ${intent} begins`);
       else if (k === "void") emit(d, out, side, "void", `${d.f[side].weapon.name} voids`);
-      else if (k === "parry") emit(d, out, side, "parry", `${d.f[side].weapon.name} raises a parry`);
+    } else if (r === "accepted" && intent === "parry") {
+      // The parry lives on its own track, so acceptance changes no state
+      // kind; same for the feint (windup truncates within the attack).
+      emit(d, out, side, "parry", `${d.f[side].weapon.name} raises a parry`);
     } else if (r === "accepted" && intent === "feint") {
-      // The state kind stays "attack" (windup truncates to recovery), so
-      // the kind-change branch above cannot see it.
       emit(d, out, side, "feint", `${d.f[side].weapon.name} feints -> attack abandoned`);
     }
   }
@@ -142,10 +143,10 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
         ...tl,
         recoveryEnd: tl.recoveryStart + baseRecovery + atk.weapon.parriedPenalty,
       };
-      // The guard has done its work; free it now rather than leaving the
-      // defender committed to a blade that is no longer coming.
-      if (def.state.kind === "parry") {
-        def.state = { kind: "ready" };
+      // The guard has done its work; release it now rather than leaving
+      // the defender holding against a blade that is no longer coming.
+      if (def.parry !== null) {
+        def.parry = null;
         def.parryRecoveryMs = def.weapon.parryRecoveryMs;
       }
       emit(d, out, side, "parried", `${atk.weapon.name} parried -> dui tempi counter available`);
@@ -161,6 +162,7 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
       def.state.kind === "attack" ? " (into preparation: mezzo tempo)" :
       def.state.kind === "void" ? " (void mistimed)" : "";
     def.state = { kind: "hitstun", t: 0 };
+    def.parry = null; // a landed blade ends any guard
     emit(d, out, side, "hit", `${d.f[side].weapon.name} strike lands${flavor}`);
   }
   if (hits.length === 2) {
@@ -194,7 +196,7 @@ export function parryMeetsAttack(attacker: Fighter, defender: Fighter, gap: numb
   if (s.kind !== "attack" || s.phase !== "strike") return false;
   if (s.elapsedMs > s.timeline.parryableUntil) return false; // delivered: too late
   if (gap > attacker.weapon.reach) return false; // nothing to meet: out of measure
-  return defender.state.kind === "parry";
+  return defender.parry !== null;
 }
 
 function markMetBlades(d: Duel): void {
