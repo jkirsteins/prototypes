@@ -1,0 +1,37 @@
+export type WeaponId = "longsword" | "rapier";
+export type AttackKind = "cut" | "thrust";
+export type AttackPhase = "pretempo" | "windup" | "beat" | "strike" | "recovery";
+export type Zone = "out" | "wide" | "narrow";
+export type Intent = "advance" | "retreat" | "void" | "cut" | "thrust" | "parry";
+
+export interface AttackTimings {
+  windup: number;
+  beat: number;
+  strike: number;
+  recovery: number;
+}
+
+export interface WeaponProfile {
+  id: WeaponId;
+  name: string;
+  /** world px; a strike lands if the gap at strike-end is <= reach */
+  reach: number;
+  stepDistance: number;
+  stepDuration: number;
+  /** stance pause between chained steps */
+  stancePause: number;
+  /** tell phase before windup; AI attacks only */
+  pretempo: number;
+  attacks: Record<AttackKind, AttackTimings>;
+  parryWindow: number;
+  parryCooldown: number;
+  /** added to this weapon's recovery when its attack is parried */
+  parriedPenalty: number;
+  /** multiplies this weapon's recovery when its attack whiffs */
+  whiffRecoveryFactor: number;
+  /** sprite playback multiplier: the feel knob */
+  animSpeed: number;
+  voidDistance: number;
+  voidDuration: number;
+  identity: string;
+}
