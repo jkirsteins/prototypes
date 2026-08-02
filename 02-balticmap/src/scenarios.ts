@@ -108,19 +108,29 @@ export const SCENARIOS: Scenario[] = [
       //
       //                    potatoes   plus seeds
       //   subjugatedShare      1.00         1.00   they fall just as often
-      //   medianFirstSubj      6.00         6.00   and just as early
-      //   defeatShare          1.00         0.81   one in five now survives
-      //   medianDefeatTurn     6.00        19.50   and the rest live 13 turns
+      //   medianFirstSubj      6.00         5.00   and just as early
+      //   defeatShare          1.00         0.94   one in seventeen survives
+      //   medianDefeatTurn     6.00        17.00   and the rest live 11 turns
       //
-      // One deck slot buys thirteen turns of play and a fifth of the runs
-      // outright. If defeatShare here ever climbs to meet the 1.00 next door,
-      // the dead-end ending has started firing on players who DID carry the
-      // escape, and it has stopped being a decision - which is the whole
-      // premise of putting Seeds of revolt in STARTING_KNOWN_CARDS.
+      // One deck slot buys eleven turns of play and some runs outright. If
+      // defeatShare here ever climbs to meet the 1.00 next door, the dead-end
+      // ending has started firing on players who DID carry the escape, and it
+      // has stopped being a decision - which is the whole premise of putting
+      // Seeds of revolt in STARTING_KNOWN_CARDS.
+      //
+      // Ceiling raised from 0.92 (measured 0.81, now 0.94) by the
+      // vassal-chains changeset: subjugation carries the target's subtree, so
+      // a poach no longer shatters a realm, lords consolidate faster, and a
+      // passive vassal more often sees the world close out (unified) before
+      // its escape pays off. The turns the slot buys survived intact -
+      // medianDefeatTurn held its band - but 0.94 sits close to the alarm
+      // above, so this is the number to watch in play. If it proves too
+      // punishing, the knobs are elsewhere (HOSTAGE_RETURN_TRIBUTES, the
+      // AI's revolt-first priority), not this band.
       subjugatedShare: [0.85, 1],       // measured 1.00
-      medianFirstSubjugation: [4, 11],  // measured 6.00
-      defeatShare: [0.65, 0.92],        // measured 0.81
-      medianDefeatTurn: [13, 30],       // measured 19.50
+      medianFirstSubjugation: [4, 11],  // measured 5.00
+      defeatShare: [0.65, 0.96],        // measured 0.94
+      medianDefeatTurn: [13, 30],       // measured 17.00
     },
   },
   {
@@ -205,7 +215,15 @@ export const SCENARIOS: Scenario[] = [
       // player's Revolt and the rest is the reshuffled seeds every pool change
       // causes. A lord's tool making vassalage stickier is the card's intent,
       // so the band follows the behaviour.
-      defeatShare: [0.47, 0.85],         // measured 0.79
+      //
+      // Ceiling raised from 0.85 (measured 0.79, now 0.87) by the
+      // vassal-chains changeset: vassal seats keep playing Subjugate and
+      // Incorporate, Raid counts the whole pyramid's border, and tribute
+      // cascades up the chain - so lords the flailing player answers to are
+      // stronger, and their worlds resolve against them slightly more often.
+      // The world arms did not move, so this is pressure on the weak seat,
+      // not a stalemate shift.
+      defeatShare: [0.47, 0.9],          // measured 0.87
     },
   },
   {
