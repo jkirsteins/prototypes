@@ -108,19 +108,22 @@ Nothing else in the engine learns about the rise. `markMetBlades` stays a thin
 caller. The parried branch, the penalties and the early release of the guard are
 untouched.
 
-### 3.1 The invariant that makes reaction possible
-
-The latest parry that can still work is pressed at
-`parryableUntil - parryRiseMs`. An attacker who wants to react to it must do so
-before `parryableUntil`. Subtracting, the attacker's worst-case budget is exactly
-`parryRiseMs`. Therefore:
+### 3.1 The invariant that keeps the guard readable
 
 > **`parryRiseMs >= AI_REACTION_MS`** for every weapon.
 
-Any parry that could possibly succeed becomes visible at least one reaction time
-before it could matter. This is what makes a *reactive* feint reachable rather
-than a blind guess, for the AI and for the player alike. It is a test, not a
-feel judgement (§7).
+A guard becomes effective `parryRiseMs` after it becomes visible, so this
+guarantees that nothing is ever stopped by a guard the attacker had no time to
+see coming: every parry that works was readable for at least one full reaction
+time first. It is a test, not a feel judgement (§7).
+
+What it does **not** guarantee - an earlier draft overclaimed this - is that
+every successful parry can be reactively feinted. The feint's deadline is
+commitment (`strikeStart`, per `line-feints`), not `parryableUntil`, so a parry
+pressed within `AI_REACTION_MS` of commitment is visible but unanswerable: that
+is the late, thin-margin band the table in §1 already prices. Readability is
+what the invariant buys; feintability is bought separately, by the defender
+committing early.
 
 ### 3.2 What the rise does not do
 

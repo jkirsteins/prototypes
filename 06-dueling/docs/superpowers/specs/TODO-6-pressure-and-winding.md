@@ -124,17 +124,44 @@ opponent cannot see it - so the timing of your press carries no tell.
 
 ### 2.3 What winning is worth
 
-The loser enters `exposed` for `BIND_LOSS_MS` and cannot act.
-
-The winner returns to `ready` with `BIND_ADVANTAGE_MS` on the clock. While that
-timer runs, any attack they start **begins at `strikeStart`**: the windup and
-the stillness are skipped, because the blade is already in contact and does not
-have to be gathered. That is *Absetzen*, thrusting from the bind without giving
-up contact, and it is the reward the whole mechanic exists for.
+Both halves of the outcome are concrete state, defined here:
 
 ```ts
-function bindTimeline(w: WeaponProfile, a: AttackKind): AttackTimeline;
-// riseStart = riseEnd = strikeStart = 0; the rest follows the kind's timings
+// The loser: a body-track state, the same shape as hitstun but nonlethal.
+type FighterState = | ... | { kind: "exposed"; t: number } | ...;
+// Accepts no intents; at t >= BIND_LOSS_MS it transitions to ready.
+
+// The winner: a decaying timer on the fighter, the same idiom as
+// stepRecoveryMs and parryRecoveryMs.
+interface Fighter {
+  // ...
+  bindAdvantageMs: number;   // > 0: the thrust from the bind is available
+}
+```
+
+`bindAdvantageMs` is seeded with `BIND_ADVANTAGE_MS` on the resolution tick and
+decays in the `tickFighter` preamble alongside the other two timers - the
+established "time until X changes" idiom, not a new mechanism.
+
+While it is positive, exactly one thing consumes it: **starting a thrust.** The
+thrust zeroes the timer and launches on `bindTimeline`, beginning at
+`strikeStart` - the point is already in contact and on line, so there is
+nothing to gather. Every other accepted intent - a cut, a step, a void, a
+parry - **clears the timer to zero and proceeds on its normal rules.** The
+advantage is the contact; leaving it is choosing safety over the opening, and
+it does not survive in your pocket. That answers the survival questions
+directly: it does not survive stepping, it is consumed by the thrust, and it
+expires on its own if you admire it.
+
+The cut deliberately gets nothing. A cut must gather the blade up and away from
+the bind, which is exactly the preparation the advantage lets you skip; only
+the thrust's geometry matches the position the win left you in. (The shape
+resembles the sources' *Absetzen*, but the reward does not claim the name - a
+distinct *Absetzen* choice remains out of scope, §6.)
+
+```ts
+function bindTimeline(w: WeaponProfile): AttackTimeline;   // thrust only
+// riseStart = riseEnd = strikeStart = 0; strike and recovery from w.attacks.thrust
 ```
 
 | Constant | Value |
@@ -150,12 +177,13 @@ opening immediately kills**. Hesitating 100 ms puts it at 360 ms, and the loser
 is back and can void or counter. Winning the bind is decisive and expires if you
 admire it.
 
-The winner is not forced to attack. Stepping out of measure with the advantage
-is legitimate and sometimes better, since a whiff is still fatal.
+The winner is not forced to thrust. Stepping out of measure is legitimate and
+sometimes better - it spends the advantage on safety instead, since a whiff is
+still fatal.
 
 ### 2.4 The rise cue is not skipped, it does not exist
 
-An attack launched on `bindTimeline` has `riseStart === riseEnd === strikeStart
+The thrust launched on `bindTimeline` has `riseStart === riseEnd === strikeStart
 === 0`, so no `windup` DuelEvent fires and no rise cue plays. This is not a
 special case in the audio layer: the mark-based emission from §3.2 of the
 state-tracks spec produces nothing because there is no interval to cross. The
@@ -216,9 +244,11 @@ Row 3 keeps showing the bind's line from `sustained-bind` §4.4, and on a
 decisive resolution the winner's row 3 switches to their new attack's line -
 the moment the opening becomes visible.
 
-Per `CLAUDE.md`, `src/ui/help.ts` is updated in the same commit. Two sentences:
-the three choices cycle (press beats hold beats wind beats press), and the
-press-war goes to the firmer blade.
+Per `CLAUDE.md`, `src/ui/help.ts` is updated in the same commit. Three
+sentences: the choices cycle (press beats hold beats wind beats press), the
+press-war goes to the firmer blade, and only an immediate thrust spends the
+winner's advantage. `exposed` is a new state, so the typed `HELP` record makes
+an undocumented one fail the build.
 
 ---
 
@@ -264,6 +294,16 @@ counter-attacks into it, and always holds.
 - **The reward window:** a thrust started on the tick the bind is won kills;
   the same thrust started 7 ticks later does not, because `exposed` has ended.
   Both directions, since this pair of numbers is the balance of §2.3.
+- **Advantage decay and consumption:** a thrust started on the last positive
+  tick of `bindAdvantageMs` launches on `bindTimeline`; one tick later it
+  launches on the normal timeline. The thrust zeroes the timer, so a second
+  thrust is normal.
+- **Advantage cleared by anything else:** cut, step, void and parry each zero
+  `bindAdvantageMs` and behave exactly as they would without it, asserted per
+  intent. In particular the cut launches on its full normal timeline.
+- **`exposed`:** accepts no intents for its whole duration, lasts exactly
+  `BIND_LOSS_MS`, transitions to `ready`, and cannot be wounded into a second
+  state by anything that is not a strike resolution.
 - **`bindTimeline`:** every mark before `strikeStart` is 0; no `windup`
   DuelEvent; `swing` at `strikeStart`; exactly one outcome sound at
   `strikeEnd`. In the AGENTS.md describe block.

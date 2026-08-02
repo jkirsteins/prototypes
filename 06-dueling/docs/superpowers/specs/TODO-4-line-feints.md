@@ -145,9 +145,12 @@ Without this section a reactive height redirect beats every parry
 unconditionally, and mode 3 becomes unbeatable rather than unpredictable.
 
 A raised guard may **shift** to the other height once per raise, at
-`guardShiftMs`. This is cheaper than `attack-lines`'s `heightChangeMs` cold stance move
-because the blade is already formed and only has to travel; that is exactly what
-*Winden* is, and `pressure-and-winding` builds on the same motion.
+`guardShiftMs`. This is cheaper than `attack-lines`'s `heightChangeMs` cold
+stance move because the blade is already formed and only has to travel. Call it
+the **guard shift** - changing the parry line - and nothing grander: winding is
+worked *from blade contact*, so the word *Winden* stays reserved for
+`pressure-and-winding`, where contact exists. An earlier draft borrowed the
+term for this motion and was wrong to.
 
 The shift input is the arrows - the same keys that move the stance, which
 `attack-lines` refuses while a parry is up. From this spec they stop being
@@ -197,8 +200,10 @@ difficulty for the highest-skill defensive play in the game. As an invariant:
 
 If play says the answer is impossible rather than hard, the lever is
 `redirectHeightMs` upward, not `parryRiseMs` downward: that number carries
-`parry-rise` §3.1's invariant, and lowering it would make the attacker's own reactive
-feint unreachable in the process of making the defender's answer reachable.
+`parry-rise` §3.1's readability invariant - a guard must be visible at least a
+reaction time before it can stop anything - and lowering it would buy the
+defender's answer by selling the attacker's ability to see guards coming at
+all.
 
 `guardShiftMs` has no floor at `AI_REACTION_MS`. It is the duration of a motion,
 not a reaction gate; the AI spends its 180 ms deciding and then shifts in
