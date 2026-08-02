@@ -346,7 +346,7 @@ describe("mode 3 feints reactively", () => {
 });
 
 describe("presentation stays honest", () => {
-  test("a redirect emits no event and no cue on its tick; one outcome fires at the new strikeEnd", () => {
+  test("a redirect logs a feint on its tick, cues nothing, and one outcome fires at the new strikeEnd", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
     d.f[0].x = 1000;
     d.f[1].x = 1180;
@@ -354,7 +354,13 @@ describe("presentation stays honest", () => {
     const t = WEAPONS.longsword.attacks.thrust;
     runMs(d, t.windup + 20 - TICK);
     const redirectTick = runMs(d, TICK, "stanceUp", null);
-    expect(redirectTick.filter((e) => e.kind !== "step")).toEqual([]); // silent
+    // The lie is visible by design: row 3 flips and the log records it -
+    // only the audio stays silent (the feint kind is unmapped).
+    const feints = redirectTick.filter((e) => e.kind === "feint");
+    expect(feints.length).toBe(1);
+    expect(feints[0].text).toContain("goes high");
+    expect(d.log.some((e) => e.kind === "feint")).toBe(true);
+    expect(redirectTick.filter((e) => !["step", "feint"].includes(e.kind))).toEqual([]);
     const rest = runMs(d, 2000);
     expect(rest.filter((e) => e.kind === "hit").length).toBe(1); // one outcome
     expect(rest.filter((e) => e.kind === "windup").length).toBe(0); // no second rise

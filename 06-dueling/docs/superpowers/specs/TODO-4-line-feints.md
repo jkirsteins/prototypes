@@ -295,9 +295,13 @@ change is the signal the player is racing. Row 2 shows the guard's rise
 restarting on a shift with the expiry cursor visibly **not** resetting, since the
 window not refreshing is the cost.
 
-### 5.3 Audio: silent, deliberately
+### 5.3 Audio silent, log honest
 
-No cue fires at a redirect. The `swing` event is already unmapped for the same
+The redirect writes a log line, like the abandoning feint does - the lie is
+visible by design (row 3's flip is the signal the defender races), so hiding
+it from the activity log protected nothing and made the player's own history
+illegible. Playtesting caught exactly that. What stays silent is the AUDIO:
+no cue fires at a redirect. The `swing` event is already unmapped for the same
 reason, and here it is stronger: **a feint you can hear is not a feint.** An
 audible redirect would let a player answer without watching, which would defeat
 the mechanic and make `attack-lines`'s line read pointless.

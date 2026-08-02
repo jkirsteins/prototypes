@@ -68,6 +68,12 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     // simulation only sees a target side.
     const opp = d.f[1 - side];
     const threatVisible = opp.state.kind === "attack" && opp.state.phase !== "recovery";
+    // Captured for redirect detection: an accepted redirect keeps the state
+    // kind "attack" but flips its redirected flag this tick.
+    const st0 = d.f[side].state;
+    const before0 = st0.kind === "attack"
+      ? { kind: st0.attack, height: st0.height, redirected: st0.redirected }
+      : null;
     // A parry pressed against a visible attack latches onto that attack's
     // identity - the absolute time it began - and infers its side. Both
     // read only what is visible on this tick; a cold press gets neither.
@@ -79,6 +85,24 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
           ? d.time - opp.state.elapsedMs
           : undefined,
     });
+    // The redirect is a visible lie by design - row 3 flips, and the log
+    // records it like the abandoning feint. Only the AUDIO stays silent:
+    // a cue would hand the read to anyone playing by ear.
+    const st1 = d.f[side].state;
+    if (
+      r === "accepted" &&
+      before0 !== null &&
+      !before0.redirected &&
+      st1.kind === "attack" &&
+      st1.redirected
+    ) {
+      const what =
+        before0.kind !== st1.attack
+          ? `${before0.kind} becomes ${st1.attack}`
+          : `${st1.attack} goes ${st1.height}`;
+      emit(d, out, side, "feint", `${d.f[side].weapon.name} feints -> ${what}`);
+      continue;
+    }
     if (r === "accepted" && before !== d.f[side].state.kind) {
       const k = d.f[side].state.kind;
       if (k === "attack") emit(d, out, side, "attackStart", `${d.f[side].weapon.name} ${intent} begins`);
