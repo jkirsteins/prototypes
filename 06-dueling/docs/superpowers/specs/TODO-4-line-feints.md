@@ -45,7 +45,7 @@ have nothing to do.
 | | §8.1 cancel | This spec's redirect |
 |---|---|---|
 | Input | dedicated cancel key | arrow (height) or the other attack key (side) |
-| Legal during | `windup` only | `riseEnd` through `strikeStart`: the sold half of the windup |
+| Legal during | `windup` only | anywhere in the windup, before `strikeStart` |
 | Result | attack ends, short `feintRecoveryMs` | attack continues on a new line |
 | Deceives about | when | where |
 | Costs | a truncated recovery | a redirect interval plus a whole new strike |
@@ -58,15 +58,22 @@ Both stay. Bailing out and lying are different plays and should feel different.
 
 Legality, all three required:
 
-1. `elapsedMs >= timeline.riseEnd`. Before the stillness the pose has not been
-   sold, so there is nothing to lie about.
-2. `elapsedMs < timeline.strikeStart`. **Commitment is the windup-to-strike
+1. `elapsedMs < timeline.strikeStart`. **Commitment is the windup-to-strike
    transition** - the state-tracks spec's own invariant, and an earlier draft of
    this spec broke it by allowing redirects into the travelling half of the
    strike. Once the blade travels, no input steers it; that is the same rule
    that makes the whiff honest, and the feint gets no exemption from it.
-3. `redirected === false`. One redirect per attack, or an attacker could stall
+2. `redirected === false`. One redirect per attack, or an attacker could stall
    forever and the tempo economy collapses.
+
+An earlier draft added a third condition - legal only after `riseEnd`, "the
+sold half" - and playtesting removed it: the beat is 60-100ms, a window a
+human cannot press inside, which made the feint AI-only in practice. The
+whole windup is legal now, mirroring the F-cancel's door. Nothing needed the
+old bound: an early redirect is a WEAK feint, not a free one - the true line
+telegraphs longer and the arrival still pays the full redirect cost - so the
+sold-half concept survives as strategy (late lies are better lies) rather
+than as law.
 
 A consequence worth naming: contact exists only inside the strike, so no legal
 redirect can ever follow `met`. The seam `sustained-bind` needs - steel touched

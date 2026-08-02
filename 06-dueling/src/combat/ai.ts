@@ -171,7 +171,6 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     if (
       s.phase === "windup" &&
       !s.redirected &&
-      s.elapsedMs >= s.timeline.riseEnd &&
       s.elapsedMs < s.timeline.strikeStart
     ) {
       const g = opp.parry;

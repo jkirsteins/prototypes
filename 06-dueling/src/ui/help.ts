@@ -164,8 +164,8 @@ export function renderHelpHtml(): string {
     <ul>${parryRows}</ul>
 
     <h2>Lies and answers</h2>
-    <p>In the sold half of a windup an attack may be re-aimed <b>once</b>: an
-    arrow changes its height, the other attack key its kind and side. The
+    <p>During a windup an attack may be re-aimed <b>once</b>: an arrow
+    changes its height, the other attack key its kind and side. The
     blade arrives later for it - a feint into empty air is a lost tempo. A
     raised guard answers <b>once</b> per raise: an arrow shifts its height, a
     second parry press re-aims its side at the visible attack. The guard

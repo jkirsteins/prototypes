@@ -171,16 +171,17 @@ export function applyIntent(
     }
     return "ignored";
   }
-  // In the sold half of a windup, the attack itself can be re-aimed - the
-  // one exception to committed-means-committed, closing at strikeStart:
-  // an arrow redirects its height, the other attack key its side. Once.
+  // Anywhere in the windup, the attack can be re-aimed - the same door the
+  // F-cancel uses, closing at strikeStart: an arrow redirects its height,
+  // the other attack key its side. Once. (An earlier draft opened only the
+  // beat's 60-100ms - a window a human cannot hit; redirecting early is
+  // legal and merely a weak feint, since the true line telegraphs longer.)
   if (intent === "stanceUp" || intent === "stanceDown" || intent === "cut" || intent === "thrust") {
     const s = f.state;
     if (
       s.kind === "attack" &&
       s.phase === "windup" &&
       !s.redirected &&
-      s.elapsedMs >= s.timeline.riseEnd &&
       s.elapsedMs < s.timeline.strikeStart
     ) {
       if (intent === "stanceUp" || intent === "stanceDown") {

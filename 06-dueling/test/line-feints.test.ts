@@ -72,15 +72,12 @@ describe("redirect legality", () => {
     return s.timeline;
   };
 
-  test("accepted in the sold half of the windup, for height and for side", () => {
+  test("accepted anywhere in the windup, for height and for side", () => {
     const t = tl();
-    expect(tryRedirect(t.riseEnd + 1, "stanceUp").r).toBe("accepted");
+    expect(tryRedirect(t.riseEnd + 1, "stanceUp").r).toBe("accepted"); // the beat
     expect(tryRedirect(t.riseEnd + 1, "cut").r).toBe("accepted");
-  });
-  test("refused before the pose is sold", () => {
-    const t = tl();
-    expect(tryRedirect(t.riseEnd - 10, "stanceUp").r).toBe("ignored");
-    expect(tryRedirect(t.riseEnd - 10, "cut").r).toBe("ignored");
+    expect(tryRedirect(t.riseEnd - 100, "cut").r).toBe("accepted"); // mid-rise: a weak feint, but legal
+    expect(tryRedirect(2, "stanceUp").r).toBe("accepted"); // the same door the F-cancel uses
   });
   test("refused from commitment on: strike and recovery steer nothing", () => {
     const t = tl();

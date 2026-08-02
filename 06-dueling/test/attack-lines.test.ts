@@ -61,16 +61,24 @@ describe("the stance track", () => {
     expect(f.heightTo).toBe(null);
   });
 
-  test("arrows are refused while committed, and while a parry is up", () => {
+  test("arrows are refused while committed - except where they mean something else", () => {
     const w = WEAPONS.longsword;
-    for (const setup of ["cut", "void"] as const) {
-      const f = createFighter(400, 1, w);
-      applyIntent(f, setup);
-      expect(applyIntent(f, "stanceUp")).toBe("ignored");
-    }
+    // During a windup an arrow is not a stance change: it is the height
+    // redirect (line-feints). The body still never re-aims a committed void.
+    const a = createFighter(400, 1, w);
+    applyIntent(a, "cut");
+    expect(applyIntent(a, "stanceUp")).toBe("accepted");
+    const as = a.state;
+    if (as.kind !== "attack") throw new Error("unreachable");
+    expect(as.redirected).toBe(true);
+    const v = createFighter(400, 1, w);
+    applyIntent(v, "void");
+    expect(applyIntent(v, "stanceUp")).toBe("ignored");
+    // A just-pressed, still-forming guard refuses the shift; the formed
+    // guard's shift is line-feints' business.
     const g = createFighter(400, 1, w);
     applyIntent(g, "parry");
-    expect(applyIntent(g, "stanceUp")).toBe("ignored"); // the guard is committed to its height
+    expect(applyIntent(g, "stanceUp")).toBe("ignored");
     // But accepted while settling after a step.
     const h = createFighter(400, 1, w);
     applyIntent(h, "advance");
