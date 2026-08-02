@@ -36,6 +36,14 @@ test("mode 1 parries after the reaction delay, never attacks or moves", () => {
   expect(d.log.filter((e) => e.side === 1 && e.kind === "attackStart")).toEqual([]);
 });
 
+test("mode 1 ignores attacks launched from out of measure", () => {
+  const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+  d.f[0].x = d.f[1].x - 260; // beyond longsword reach 200: the cut cannot land
+  const evs = runWithAi(d, 1, 3000, "cut");
+  expect(evs.some((e) => e.kind === "parry" && e.side === 1)).toBe(false);
+  expect(evs.some((e) => e.kind === "whiff" && e.side === 0)).toBe(true);
+});
+
 test("mode 2 attacks when the player is in its measure, never advances", () => {
   const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
   d.f[0].x = d.f[1].x - 220; // narrow for rapier (reach 240)
@@ -49,6 +57,32 @@ test("mode 2 stays quiet out of measure", () => {
   const d = createDuel(WEAPONS.longsword, WEAPONS.rapier); // gap 600, out for both
   runWithAi(d, 2, 2000);
   expect(d.log.filter((e) => e.side === 1)).toEqual([]);
+});
+
+test("mode 3 decisions: advance to narrow, attack off cooldown, retreat on it", () => {
+  const d = createDuel(WEAPONS.longsword, WEAPONS.rapier); // side 1 is the rapier
+  const ai = createAiState();
+  // gap 600: out of measure -> approach
+  expect(aiDecide(d, 3, ai, TICK)).toBe("advance");
+  // wide measure (240 < 270 <= 290): still approaching
+  d.f[0].x = d.f[1].x - 270;
+  expect(aiDecide(d, 3, ai, TICK)).toBe("advance");
+  // narrow measure (220 <= 240), cooldown ready -> strike
+  d.f[0].x = d.f[1].x - 220;
+  expect(aiDecide(d, 3, ai, TICK)).toBe("thrust");
+  // narrow measure, cooldown running -> back off
+  expect(ai.cooldown).toBeGreaterThan(0);
+  expect(aiDecide(d, 3, ai, TICK)).toBe("retreat");
+});
+
+test("mode 3 crosses the gap and kills an idle opponent", () => {
+  const d = createDuel(WEAPONS.longsword, WEAPONS.rapier); // gap 600, out for both
+  const startX = d.f[1].x;
+  const evs = runWithAi(d, 3, 8000);
+  expect(d.f[1].x).not.toBe(startX); // it moved
+  expect(evs.some((e) => e.kind === "attackStart" && e.side === 1)).toBe(true);
+  expect(d.over).toBe(true);
+  expect(d.winner).toBe(1);
 });
 
 test("determinism: identical runs produce identical logs", () => {

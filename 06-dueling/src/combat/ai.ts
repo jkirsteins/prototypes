@@ -3,7 +3,7 @@ import { gapOf } from "./engine";
 import type { Duel } from "./engine";
 import type { AttackKind, Intent } from "./types";
 
-export type AiMode = 0 | 1 | 2;
+export type AiMode = 0 | 1 | 2 | 3;
 
 export const AI_REACTION_MS = 180;
 export const AI_ATTACK_COOLDOWN_MS = 1400;
@@ -25,6 +25,11 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
 
   if (mode === 1) {
     if (opp.state.kind !== "attack") return null;
+    // Read the threat, not the motion: neither fighter can move mid-attack,
+    // so an attack launched from beyond the attacker's own reach can never
+    // land. A fencer does not parry out-of-measure attacks; neither does
+    // the dummy.
+    if (gapOf(d) > opp.weapon.reach) return null;
     const { phase, t, attack, tell } = opp.state;
     if (phase === "recovery") return null;
     const w = opp.weapon.attacks[attack];
@@ -50,11 +55,27 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     return null;
   }
 
-  // mode 2: attack in place, never step closer
+  // Modes 2 and 3 share the attack cooldown.
   ai.cooldown = Math.max(0, ai.cooldown - dt);
-  if (self.state.kind !== "idle" || ai.cooldown > 0) return null;
+  if (self.state.kind !== "idle") return null;
   if (opp.state.kind === "dead") return null;
-  if (zoneFor(gapOf(d), self.weapon) === "out") return null;
+  const zone = zoneFor(gapOf(d), self.weapon);
+
+  if (mode === 2) {
+    // Attack in place, never step closer.
+    if (ai.cooldown > 0 || zone === "out") return null;
+    return startAttack(ai);
+  }
+
+  // Mode 3, the duelist: approach until an extension can land (narrow
+  // measure), strike on the shared cooldown, and back off out of danger
+  // while the cooldown recovers - approach, strike, retire.
+  if (zone !== "narrow") return "advance";
+  if (ai.cooldown <= 0) return startAttack(ai);
+  return "retreat";
+}
+
+function startAttack(ai: AiState): AttackKind {
   const attack = ai.next;
   ai.next = attack === "thrust" ? "cut" : "thrust";
   ai.cooldown = AI_ATTACK_COOLDOWN_MS;

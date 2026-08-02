@@ -35,7 +35,7 @@ const ATTACK_LISTING: Record<string, string> = {
 };
 
 const CONTROLS_LINE =
-  "A/D step S void J cut K thrust L parry | 0/1/2 AI mode R rematch Esc select ` overlay";
+  "A/D step S void J cut K thrust L parry | 0-3 AI mode R rematch Esc select ` overlay";
 
 export function drawFrame(v: View, d: Duel, aiMode: AiMode): void {
   const { ctx } = v;

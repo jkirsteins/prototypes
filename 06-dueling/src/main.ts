@@ -26,7 +26,7 @@ const bootStraightIn = params.has("p") || params.has("e");
 const state = {
   pWeapon: pick("p", "longsword"),
   eWeapon: pick("e", "rapier"),
-  aiMode: (["0", "1", "2"].includes(params.get("mode") ?? "") ? Number(params.get("mode")) : 0) as AiMode,
+  aiMode: (["0", "1", "2", "3"].includes(params.get("mode") ?? "") ? Number(params.get("mode")) : 0) as AiMode,
   overlay: params.get("overlay") !== "0",
   duel: null as Duel | null,
   ai: createAiState(),
@@ -63,6 +63,7 @@ document.addEventListener("keydown", (e) => {
     case "0": state.aiMode = 0; break;
     case "1": state.aiMode = 1; break;
     case "2": state.aiMode = 2; break;
+    case "3": state.aiMode = 3; break;
     case "r": startDuel(); break;
     case "`": state.overlay = !state.overlay; break;
     case "escape": state.duel = null; openSelect(); break;

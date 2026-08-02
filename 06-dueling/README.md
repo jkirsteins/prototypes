@@ -20,7 +20,8 @@ Boot straight into a matchup with URL params: `/prototypes/06/?p=rapier&e=longsw
 - S: void (back-hop off the line)
 - J: cut (2 tempi), K: thrust (1 tempo)
 - L: parry
-- 0 / 1 / 2: AI mode (passive / parry-only / attack-in-place)
+- 0 / 1 / 2 / 3: AI mode (passive / parry-only / attack-in-place / duelist:
+  approaches to narrow measure, strikes, backs off while recovering)
 - R: rematch, Esc: sword select, backtick: debug overlay
 
 ## HEMA feature matrix
@@ -48,7 +49,7 @@ What the source design doc covers vs what this prototype implements.
 | Cut vs thrust distinction | implemented (different timings per weapon; no armor interactions) |
 | Half-swording, Mordschlag | not in MVP |
 | Matchup asymmetry | partial (reach/tempo asymmetry only; one contested pairing) |
-| Enemy movement AI / personalities | not in MVP (dummy modes 0/1/2 only) |
+| Enemy movement AI / personalities | partial (mode 3 approaches, strikes from narrow measure, backs off; no personalities) |
 | Terrain as matchup tool | not in MVP |
 | Audio tempo cues | not in MVP |
 | Wall behavior | implemented (fighters cannot overlap or be pushed past arena bounds) |
@@ -60,4 +61,7 @@ Turn the overlay on (default), set mode 2, and check: standing in the enemy's
 wide band draws attacks; voiding during its strike produces "misses ->
 Nachreisen" and your counter thrust kills into recovery; parrying produces
 "parried -> dui tempi" with a tighter window. Mode 1 validates your own
-cascade: its parry catches your thrust but leaves it committed on cooldown.
+cascade: its parry catches your thrust but leaves it committed on cooldown,
+and it ignores attacks thrown from out of measure (a non-threat draws no
+reaction). Mode 3 plays the whole loop: watch it close to narrow measure,
+strike, and retire out of danger while its attack recovers.
