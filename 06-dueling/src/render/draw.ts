@@ -108,7 +108,7 @@ function drawLog(v: View, d: Duel): void {
   ctx.fillStyle = "#8a8f98";
   ctx.textAlign = "right";
   lines.forEach((line, i) => {
-    ctx.fillText(line, 952, 24 + i * 14);
+    ctx.fillText(line, 952, 108 + i * 14);
   });
   ctx.textAlign = "left";
 }

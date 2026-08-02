@@ -54,8 +54,18 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("keyup", (e) => {
   switch (e.key.toLowerCase()) {
-    case "a": state.held.retreat = false; break;
-    case "d": state.held.advance = false; break;
+    case "a":
+      state.held.retreat = false;
+      // A tap buffers a step while the previous one is still playing; if the
+      // key comes up before that buffered step fires, drop it so a tap is
+      // one step, not two. Holding still chains steps because the buffer is
+      // refreshed every tick while the key is down.
+      if (state.duel && state.duel.f[0].buffered === "retreat") state.duel.f[0].buffered = null;
+      break;
+    case "d":
+      state.held.advance = false;
+      if (state.duel && state.duel.f[0].buffered === "advance") state.duel.f[0].buffered = null;
+      break;
   }
 });
 
