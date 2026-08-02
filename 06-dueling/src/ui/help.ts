@@ -24,7 +24,7 @@ export interface HelpEntry {
   ms?: (w: WeaponProfile) => number;
 }
 
-export const HELP: Record<FighterState["kind"] | AttackPhase | "parry", HelpEntry> = {
+export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance", HelpEntry> = {
   ready: {
     label: "ready",
     what: "In stance, free to act; after a step a short settle runs first, during which new actions queue.",
@@ -68,9 +68,15 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry", HelpEntr
   },
   parry: {
     label: "parry",
-    what: "The guard rises first and only the formed guard meets a blade; raised while standing it persists through a step, dropped at full cost by attacking or voiding.",
-    player: "Press early enough for the rise to finish while the blade still travels - a late press is a guard that forms over a wound.",
+    what: "The guard covers one line: your stance's height, and the side of the attack you pressed against (your standing side if none is visible).",
+    player: "Press early enough for its travels to finish while the blade still flies - a late press is a guard that forms over a wound.",
     ms: (w) => w.parryRiseMs,
+  },
+  stance: {
+    label: "stance",
+    what: "Your held height: attacks launch from it and your parry covers it, so moving it also tells the opponent where you will defend.",
+    player: "Move it with Up/Down before you need it - a stance in motion covers nothing until it arrives.",
+    ms: (w) => w.heightChangeMs,
   },
   hitstun: {
     label: "hitstun",
@@ -87,7 +93,7 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry", HelpEntr
 
 /** One source for the key list: the control line and the help panel both read it. */
 export const KEY_GROUPS: Array<Array<[string, string]>> = [
-  [["A/D", "step"], ["S", "void"], ["J", "cut"], ["K", "thrust"], ["L", "parry"], ["F", "feint"]],
+  [["A/D", "step"], ["S", "void"], ["Up/Dn", "stance"], ["J", "cut"], ["K", "thrust"], ["L", "parry"], ["F", "feint"]],
   [["0-3", "AI mode"], ["R", "rematch"], ["Esc", "select"], ["`", "overlay"], ["?", "help"]],
   [["space", "pause"], [".", "step"], ["[/]", "speed"], ["M", "mute"]],
 ];
@@ -149,9 +155,12 @@ export function renderHelpHtml(): string {
     <h2>Meeting the blade</h2>
     <p>A parry succeeds by meeting the blade while it travels: <b>any overlap</b>
     between your <b>formed</b> guard and the first ${PARRYABLE_FRACTION * 100}%
-    of the strike counts - and the guard only forms once its rise completes.
-    Pressing early is the safe error; a parry is never queued, so a press
-    mid-step is simply lost.</p>
+    of the strike counts - and the guard only forms once every travel the press
+    implied completes (its rise, its side rotation, your stance's arrival).
+    It covers one complete line - height and side must both match - so an
+    attack at the height you do not stand at, or on the side you did not press
+    against, walks past it. Pressing early is the safe error; a parry is never
+    queued, so a press mid-step is simply lost.</p>
     <ul>${parryRows}</ul>
 
     <h2>Measure</h2>

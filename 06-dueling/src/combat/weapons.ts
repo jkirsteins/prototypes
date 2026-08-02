@@ -17,9 +17,11 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     stepRecoveryMs: 90,
     telegraphMs: 180,
     attacks: {
-      cut:    { windup: 420, beat: 100, strike: 380, recovery: 420 },
-      thrust: { windup: 260, beat: 60,  strike: 260, recovery: 300 },
+      cut:    { windup: 420, beat: 100, strike: 380, recovery: 420, side: "outside" },
+      thrust: { windup: 260, beat: 60,  strike: 260, recovery: 300, side: "inside" },
     },
+    heightChangeMs: 300,
+    sideChangeMs: 120,
     parryRiseMs: 220,
     // Window = rise + the pre-rise window (260), so the effective span is
     // unchanged and the rise's whole cost is the earlier press deadline.
@@ -42,9 +44,15 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     stepRecoveryMs: 70,
     telegraphMs: 140,
     attacks: {
-      cut:    { windup: 320, beat: 80, strike: 300, recovery: 400 },
-      thrust: { windup: 200, beat: 60, strike: 220, recovery: 260 },
+      cut:    { windup: 320, beat: 80, strike: 300, recovery: 400, side: "outside" },
+      thrust: { windup: 200, beat: 60, strike: 220, recovery: 260, side: "inside" },
     },
+    // 270, not 260: at 260 a wrong-stance answer to the rapier thrust
+    // lands EXACTLY on the deadline (250+260 = 510 = its meetable end),
+    // making the matrix's one documented failure a coin flip on a tick
+    // boundary. The failure must fail.
+    heightChangeMs: 270,
+    sideChangeMs: 100,
     parryRiseMs: 190,
     parryWindowMs: 390,
     parryRecoveryMs: 400,

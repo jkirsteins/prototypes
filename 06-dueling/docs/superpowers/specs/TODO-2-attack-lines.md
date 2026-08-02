@@ -92,7 +92,7 @@ refused during `attack`, `void`, `hitstun` and `dead` - those commit the body,
 and the whole point of committing is that you cannot re-aim - and refused while
 a parry is up: a formed guard is committed to its height in this spec.
 `line-feints` is where moving a raised guard becomes possible, priced as the
-once-per-raise guard shift.
+guard shift.
 
 An attack **snapshots** its height into the timeline at launch, alongside every
 other mark. Changing stance afterwards does not steer a blade already in the air;
@@ -125,29 +125,47 @@ the visible threat. Both are fixed at the press:
 ```ts
 interface ParryTrack {
   elapsedMs: number;
-  coveredLine: Line;   // snapshotted at the press; never retargeted after
+  /** Where the blade physically stood at the press: current height, guardSide. */
+  fromLine: Line;
+  /** The one complete line this parry is forming toward, fixed at the press. */
+  targetLine: Line;
+  /** When targetLine is covered: max of the rise, the side rotation, and the
+   *  height arrival, computed once at the press. Before this, nothing is. */
+  effectiveAtMs: number;
 }
 
 function parryMeetsAttack(attacker, defender, gap) {
-  return ...existing conditions from `parry-rise`...
-    && lineOf(attacker).height === defender.parry.coveredLine.height   // NEW
-    && lineOf(attacker).side   === defender.parry.coveredLine.side;    // NEW
+  return ...existing conditions from `parry-rise`, including
+         parry.elapsedMs >= parry.effectiveAtMs...
+    && lineOf(attacker).height === defender.parry.targetLine.height   // NEW
+    && lineOf(attacker).side   === defender.parry.targetLine.side;    // NEW
 }
 
 function lineOf(f: Fighter): Line;  // height from the attack's snapshot, side from its timings
 ```
 
+The target and the coverage are deliberately separate fields, for the same
+reason the press and the formed guard are separate moments: at the press the
+track holds a target the blade has not reached. **Only `targetLine` past
+`effectiveAtMs` is covered.** Naming the unarrived target "covered" would be
+the instantaneous parry's lie moved one level down.
+
 **How the covered line is chosen, at the press:**
 
-- **Height** comes from the defender's current stance. A stance in motion still
-  counts as its old height (§2).
+- **Height** comes from the defender's stance - and a press during a stance
+  transition **targets the destination**, `heightTo`. The distinction is the
+  same as the side's: the parry may *target* a height the body has not
+  reached, but that height is not *covered* until the arrival, which is one
+  of the three terms in `effectiveAtMs`. A stance in motion still counts as
+  its old height for everything else (§2).
 - **Side is inferred immediately, but covered only after its travel.** The
   target side comes from the opponent's currently visible attack: if the
   opponent is in `windup` or `strike`, the parry targets that attack's declared
   side. Only information visible on that tick is read - the inference must
   never inspect a redirect that has not happened yet or any hidden final line.
   If the target differs from the fighter's standing `guardSide`, the blade must
-  travel for `sideChangeMs` (a new weapon field: longsword 120, rapier 100)
+  travel for `sideChangeMs` (a new weapon field: longsword 120, rapier 100;
+  `heightChangeMs` is longsword 300, rapier 270)
   before that side is covered; if it matches, there is nothing to travel.
 - **If no attack is visible**, the target side is `guardSide` itself: a field
   on the fighter, initial value `inside`, updated to the new side whenever a
@@ -219,6 +237,14 @@ with two invariants, alongside `parry-rise` §3.1's:
 > rotation is a smaller motion than raising the blade; the numbers must keep
 > saying so.
 
+The second invariant is a confirmed design choice, not an accident: being on
+the wrong side never slows an initial reactive press, because the rotation is
+real but completes inside the rise. The wrong side's cost lives only where it
+belongs - cold predictive presses that guessed wrong, and (from `line-feints`)
+attacks that change side after the press. If play ever wants a standing-side
+timing penalty, the lever is raising `sideChangeMs` past the rise and deleting
+this invariant - a deliberate act, not a retune drifting into it.
+
 ### 4.1 The matrix
 
 `PLAYER_REACTION_MS` = 250, measured from the tick an attack becomes visible.
@@ -240,7 +266,10 @@ Longsword defender, `parryRiseMs` 220 and `heightChangeMs` 300:
 | Already correct | 250 + 220 = **470** | every attack in the game |
 | Wrong | 250 + 300 = **550** | everything except the rapier thrust |
 
-Rapier defender (190 / 260) has the same shape and the same single failure.
+Rapier defender (190 / 270) has the same shape and the same single failure -
+270 rather than 260 because at 260 its wrong-stance answer to the rapier
+thrust lands exactly on the deadline, and the documented failure must fail
+rather than ride a tick boundary.
 
 **The side axis adds no reaction time to a reactive press - but only because
 the numbers keep it that way.** A reactive parry is pressed against a visible
@@ -283,7 +312,7 @@ It shows one of three things, and always says which in parentheses:
 Heights render from the full enum, so `MIDDLE` appears the day a third stance is
 enabled with no HUD change.
 
-The parry's label is the snapshotted `coveredLine`, never recomputed from the
+The parry's label is the snapshotted `targetLine`, never recomputed from the
 opponent: what you read on row 3 is exactly what the contact rule will consult,
 so a feinted-out guard visibly covers the wrong line. The stance case is not in
 the original list of two but is required: the stance is the read the opponent
@@ -478,7 +507,7 @@ in `line-feints`'s arithmetic rather than being inherited by accident.
   between bands over `heightChangeMs` and arrives on the same tick the engine
   changes `height`, not before it.
 - **Help panel:** the rendered panel cites `heightChangeMs` from `WEAPONS` and
-  states the height-must-match, side-is-free rule.
+  states that a parry covers one complete line, both axes.
 - **Golden replay:** hash re-recorded.
 
 ---

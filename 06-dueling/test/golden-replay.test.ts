@@ -128,13 +128,16 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
   const EXPECTED: Record<string, { hash: number; endedAt: number | null }> = {
     "longsword player advances into mode-3 rapier duelist": { hash: 1489359747, endedAt: 105 },
     "rapier player against mode-3 longsword, different seed": { hash: 758609725, endedAt: 118 },
-    // Re-recorded once at the rule-D step (parry on its own track), the
-    // sanctioned gameplay change: the parry no longer occupies the body, so
-    // the settle completes underneath it and the stale buffered advance
-    // flushes - the player now walks INTO the first drill strike with the
-    // guard riding along and parries it (met t143, parried t150) where the
-    // old build stood stranded and the strike whiffed. Same death, t393.
-    "drill metronome: parry the first beat, void the second into a whiff": { hash: 1598480532, endedAt: 393 },
+    // Re-recorded at rule D (parry on its own track: the player walks into
+    // the first drill strike with the guard riding and parries it), then
+    // once more at attack-lines, cause fully known: the drill now cycles
+    // heights, so its third strike (thrust at HIGH) steps the stance up
+    // first - the rapier's 270ms heightChangeMs - and the killing blow
+    // lands 17 ticks later (410 vs 393) with the stance move visible in
+    // the projection. Modes 1 and 3 scenarios are unchanged: the dummy's
+    // heights already matched, and both mode-3 seeds drew "low" for the
+    // only attack their duels lived to see.
+    "drill metronome: parry the first beat, void the second into a whiff": { hash: 1425637434, endedAt: 410 },
     // Re-recorded once at the parry-rise step (TODO-1), the sanctioned
     // gameplay change: the guard now needs parryRiseMs to form, so the
     // dummy's reactive answer to the tell-free rapier thrust (260ms of

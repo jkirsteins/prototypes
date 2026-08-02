@@ -9,13 +9,29 @@ export type AttackKind = "cut" | "thrust";
  */
 export type AttackPhase = "windup" | "strike" | "recovery";
 export type Zone = "out" | "wide" | "narrow";
-export type Intent = "advance" | "retreat" | "void" | "cut" | "thrust" | "parry" | "feint";
+export type Intent =
+  | "advance" | "retreat" | "void" | "cut" | "thrust" | "parry" | "feint"
+  | "stanceUp" | "stanceDown";
+
+/**
+ * A line is a pair. Height comes from the attacker's held stance at launch;
+ * side is declared per attack. The full enum is modelled even where
+ * gameplay exposes only part of it: `middle` is currently unreachable by
+ * the arrows, and side is coupled to the attack kind - but nothing may
+ * infer either from the kind, so an inside cut or a middle stance is a
+ * data change, not a new concept.
+ */
+export type Height = "high" | "middle" | "low";
+export type Side = "inside" | "outside";
+export interface Line { height: Height; side: Side; }
 
 export interface AttackTimings {
   windup: number;
   beat: number;
   strike: number;
   recovery: number;
+  /** which side of the blade the attack travels: declared, never inferred */
+  side: Side;
 }
 
 export interface WeaponProfile {
@@ -30,6 +46,10 @@ export interface WeaponProfile {
   /** extra windup on AI attacks: the telegraph the player reads */
   telegraphMs: number;
   attacks: Record<AttackKind, AttackTimings>;
+  /** the stance's travel between heights; must exceed parryRiseMs or the wrong height costs nothing */
+  heightChangeMs: number;
+  /** the blade's rotation to the other side; must stay under parryRiseMs so a reactive press is gated by the rise alone */
+  sideChangeMs: number;
   /** the guard's travel: visible from the press, effective only after this */
   parryRiseMs: number;
   parryWindowMs: number;

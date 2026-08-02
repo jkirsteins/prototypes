@@ -85,8 +85,11 @@ test("mode 3 jitter: waits vary within the declared band, never below the floor"
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
     const ai = createAiState(seed);
     d.f[0].x = d.f[1].x - 220; // narrow for the rapier
+    // The first decision may be a stance move toward the planned height;
+    // the planned attack is then still pending on the AiState.
     const chosen = aiDecide(d, 3, ai, TICK);
-    if (chosen !== null) attacks.add(chosen);
+    if (chosen === "cut" || chosen === "thrust") attacks.add(chosen);
+    else if (ai.plan !== null) attacks.add(ai.plan.attack);
     waits.add(ai.cooldown);
     expect(ai.cooldown).toBeGreaterThanOrEqual(floor);
     expect(ai.cooldown).toBeLessThanOrEqual(floor * (1 + DUELIST_JITTER));

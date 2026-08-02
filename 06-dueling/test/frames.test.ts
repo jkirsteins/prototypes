@@ -19,7 +19,7 @@ describe("pickFrame maps fighter state to sheet frames", () => {
   test("cut holds frame 2 through the pre-strike stillness", () => {
     const f = createFighter(300, 1, WEAPONS.longsword);
     const tl = attackTimeline(WEAPONS.longsword, "cut", 0);
-    f.state = { kind: "attack", attack: "cut", phase: "windup", elapsedMs: tl.riseEnd + 1, timeline: tl, met: false };
+    f.state = { kind: "attack", attack: "cut", phase: "windup", elapsedMs: tl.riseEnd + 1, timeline: tl, height: "low", met: false };
     expect(pickFrame(f, 0)).toMatchObject({ sheet: "swordAttack", frame: 2 });
     f.state.elapsedMs = tl.strikeStart - 1;
     expect(pickFrame(f, 0).frame).toBe(2);
@@ -36,7 +36,7 @@ describe("pickFrame maps fighter state to sheet frames", () => {
       const plan = ATTACK_FRAMES[attack];
       const f = createFighter(300, 1, w);
       const tl = attackTimeline(w, attack, 0);
-      f.state = { kind: "attack", attack, phase: "strike", elapsedMs: tl.strikeStart, timeline: tl, met: false };
+      f.state = { kind: "attack", attack, phase: "strike", elapsedMs: tl.strikeStart, timeline: tl, height: "low", met: false };
       expect(pickFrame(f, 0)).toMatchObject({ sheet: plan.sheet, frame: plan.strike[0] });
       f.state.elapsedMs = tl.parryableUntil - 1;
       expect(pickFrame(f, 0).frame).toBe(plan.strike[0]);

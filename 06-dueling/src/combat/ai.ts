@@ -1,11 +1,18 @@
 import { zoneFor } from "./measure";
 import { gapOf } from "./engine";
 import type { Duel } from "./engine";
-import type { AttackKind, Intent, WeaponProfile } from "./types";
+import type { Fighter } from "./fighter";
+import type { AttackKind, Height, Intent, WeaponProfile } from "./types";
 
 export type AiMode = 0 | 1 | 2 | 3;
 
 export const AI_REACTION_MS = 180;
+/**
+ * The human budget the reaction-matrix test is computed against: seeing an
+ * attack and deciding takes about this long, before any blade or body
+ * starts moving. A design constant, not a measured player property.
+ */
+export const PLAYER_REACTION_MS = 250;
 /**
  * Mode 2 is a drill metronome: a fixed, weapon-independent onset beat to
  * train reads against, in real clock time. It must exceed the slowest
@@ -42,6 +49,17 @@ export const DEFAULT_SEED = 0x5eed;
 export interface AiState {
   cooldown: number;
   next: AttackKind;
+  /** Mode 2: the height half of the four-line drill cycle. */
+  nextHeight: Height;
+  /**
+   * Mode 3: the decided-but-not-yet-thrown attack. The height is chosen
+   * with the attack, and the stance moves FIRST - physically honest, and
+   * a second tell the player can read before the telegraph even starts.
+   */
+  plan: { attack: AttackKind; height: Height } | null;
+  /** Mode 3 anti-repeat: a seeded run must never read as "always low". */
+  lastHeight: Height | null;
+  sameHeightRun: number;
   rng: number;
 }
 
@@ -51,7 +69,11 @@ export interface AiState {
  * inside the simulation and would make replays and tests diverge.
  */
 export function createAiState(seed: number = DEFAULT_SEED): AiState {
-  return { cooldown: 0, next: "thrust", rng: seed >>> 0 };
+  return {
+    cooldown: 0, next: "thrust", nextHeight: "low",
+    plan: null, lastHeight: null, sameHeightRun: 0,
+    rng: seed >>> 0,
+  };
 }
 
 /** mulberry32: one multiply-xor round, returns [0, 1) and advances the state. */
@@ -78,12 +100,27 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     if (gapOf(d) > opp.weapon.reach) return null;
     const { phase, elapsedMs, timeline } = opp.state;
     if (phase === "recovery") return null;
+    // The stance first: a guard only covers its height, so a dummy at the
+    // wrong one must travel - heightChangeMs the player can watch it pay.
+    // The press's side target is inferred by the engine from this same
+    // visible attack, like any press.
+    const threatHeight = opp.state.height;
+    if (
+      elapsedMs >= AI_REACTION_MS &&
+      self.height !== threatHeight &&
+      self.heightTo === null &&
+      self.parry === null &&
+      self.state.kind === "ready"
+    ) {
+      return threatHeight === "high" ? "stanceUp" : "stanceDown";
+    }
     // Meet the blade as it commits: press so the guard is FORMED when the
     // strike begins - the press must lead by the rise, plus half the
     // effective span as margin. With rise 0 this reduces to the old
     // half-window heuristic; with it, the dummy visibly cannot answer
     // attacks whose preparation is shorter than reaction + rise (the
-    // rapier thrust - a documented, tested failure, not a bug).
+    // rapier thrust - a documented, tested failure, not a bug), nor ones
+    // whose preparation is shorter than reaction + the stance travel.
     const untilStrike = timeline.strikeStart - elapsedMs;
     const lead = self.weapon.parryRiseMs + (self.weapon.parryWindowMs - self.weapon.parryRiseMs) * 0.5;
     if (
@@ -111,33 +148,68 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
   const zone = zoneFor(gapOf(d), self.weapon);
 
   if (mode === 2) {
-    // The drill metronome: attack in place on a fixed beat, alternating
-    // attacks so both cascades get practised. Predictability is the point.
-    if (ai.cooldown > 0 || zone === "out") return null;
-    return startAttack(ai, DRILL_INTERVAL_MS, alternate(ai));
+    // The drill metronome: attack in place on a fixed beat. The attack
+    // alternates every beat and the height flips after each cut, so a full
+    // cycle drills all four reachable lines - thrust low, cut low, thrust
+    // high, cut high - in a fixed, countable order. Predictability is the
+    // point, and so is the visible stance move before the off-height beats.
+    if (ai.plan === null) {
+      if (ai.cooldown > 0 || zone === "out") return null;
+      const attack = alternate(ai);
+      const height = ai.nextHeight;
+      if (attack === "cut") ai.nextHeight = ai.nextHeight === "low" ? "high" : "low";
+      ai.plan = { attack, height };
+      ai.cooldown = DRILL_INTERVAL_MS;
+    }
+    return executePlan(self, ai);
   }
 
   // Mode 3, the duelist: approach until an extension can land (narrow
   // measure), strike, and back off out of danger while the cycle floor
-  // recovers - approach, strike, retire. Its choice of attack and the
-  // length of its wait are jittered so neither can be anticipated.
+  // recovers - approach, strike, retire. Attack, height and wait are all
+  // seeded draws, so none can be anticipated - but the height is executed
+  // as a stance move BEFORE the attack, which is a tell the player can
+  // read. An anti-repeat cap (never three at one height) keeps a seeded
+  // run from reading as "always low".
+  if (ai.plan !== null) {
+    if (zone !== "narrow") return "advance"; // re-close, the decision stands
+    return executePlan(self, ai);
+  }
   if (zone !== "narrow") return "advance";
   if (ai.cooldown <= 0) {
     const floor = duelistCooldown(self.weapon);
-    const wait = floor * (1 + DUELIST_JITTER * nextRandom(ai));
-    return startAttack(ai, wait, nextRandom(ai) < 0.5 ? "thrust" : "cut");
+    ai.cooldown = floor * (1 + DUELIST_JITTER * nextRandom(ai));
+    const attack: AttackKind = nextRandom(ai) < 0.5 ? "thrust" : "cut";
+    let height: Height = nextRandom(ai) < 0.5 ? "high" : "low";
+    if (height === ai.lastHeight && ai.sameHeightRun >= 2) {
+      height = height === "high" ? "low" : "high";
+    }
+    ai.sameHeightRun = height === ai.lastHeight ? ai.sameHeightRun + 1 : 1;
+    ai.lastHeight = height;
+    ai.plan = { attack, height };
+    return executePlan(self, ai);
   }
   return "retreat";
+}
+
+/**
+ * Carry a decided attack out physically: move the stance first, wait for
+ * it to arrive, then throw. The caller has already established the body is
+ * ready; the stance-first ordering is what turns a hidden decision into a
+ * readable one.
+ */
+function executePlan(self: Fighter, ai: AiState): Intent | null {
+  const p = ai.plan;
+  if (p === null) return null;
+  if (self.heightTo !== null) return null; // stance in motion: wait
+  if (self.height !== p.height) return p.height === "high" ? "stanceUp" : "stanceDown";
+  ai.plan = null;
+  return p.attack;
 }
 
 /** Strict alternation: the drill dummy's predictable attack order. */
 function alternate(ai: AiState): AttackKind {
   const attack = ai.next;
   ai.next = attack === "thrust" ? "cut" : "thrust";
-  return attack;
-}
-
-function startAttack(ai: AiState, cooldown: number, attack: AttackKind): AttackKind {
-  ai.cooldown = cooldown;
   return attack;
 }

@@ -1,5 +1,5 @@
 import { ARENA, gapOf } from "../combat/engine";
-import { HIT_STUN_MS, guardEffective } from "../combat/fighter";
+import { HIT_STUN_MS, guardEffective, lineOf } from "../combat/fighter";
 import { controlsLine } from "../ui/help";
 import { lastLines } from "../combat/log";
 import { zoneFor } from "../combat/measure";
@@ -8,7 +8,7 @@ import { SHEETS } from "./sheets";
 import type { AiMode } from "../combat/ai";
 import type { Duel } from "../combat/engine";
 import type { Fighter, FighterState } from "../combat/fighter";
-import type { AttackPhase, WeaponId, Zone } from "../combat/types";
+import type { AttackPhase, Height, WeaponId, Zone } from "../combat/types";
 import type { SheetName } from "./sheets";
 
 export const SCALE = 3;
@@ -60,6 +60,8 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
   ctx.fillRect(0, ARENA.floorY, 960, 540 - ARENA.floorY);
 
   if (v.overlay) drawMeasureBands(v, d);
+  drawLineBar(v, d.f[0], 0);
+  drawLineBar(v, d.f[1], 1);
   drawFighter(v, d.f[0], d.time);
   drawFighter(v, d.f[1], d.time);
   if (v.overlay) {
@@ -67,6 +69,8 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
     drawBodyTrack(v, d.f[1]);
     drawParryTrack(v, d.f[0]);
     drawParryTrack(v, d.f[1]);
+    drawLineTrack(v, d.f[0]);
+    drawLineTrack(v, d.f[1]);
     drawLog(v, d);
     drawSeed(v, seed);
   }
@@ -301,12 +305,15 @@ function drawParryTrack(v: View, f: Fighter): void {
     ctx.textAlign = "left";
     const x = cx - TRACK_BAR_W / 2;
     const y = ARENA.floorY + ROW2_BAR_Y;
-    const riseW = TRACK_BAR_W * (w.parryRiseMs / w.parryWindowMs);
-    ctx.fillStyle = "#4a4568"; // rise: visible, not yet formed
+    // The dim segment is this press's own forming time - rise, side
+    // rotation, height arrival, whichever gates it - so the bar is honest
+    // per press, not per weapon.
+    const riseW = TRACK_BAR_W * Math.min(1, f.parry.effectiveAtMs / w.parryWindowMs);
+    ctx.fillStyle = "#4a4568"; // forming: visible, not yet covering
     ctx.fillRect(x, y, riseW, TRACK_BAR_H);
     ctx.fillStyle = "#9b8cff"; // effective span
     ctx.fillRect(x + riseW, y, TRACK_BAR_W - riseW, TRACK_BAR_H);
-    const cur = Math.min(1, f.parry.t / w.parryWindowMs);
+    const cur = Math.min(1, f.parry.elapsedMs / w.parryWindowMs);
     ctx.fillStyle = "#e8eaed";
     ctx.fillRect(x + cur * TRACK_BAR_W - 1, y - 2, 2, TRACK_BAR_H + 4);
   } else if (cooling) {
@@ -314,6 +321,73 @@ function drawParryTrack(v: View, f: Fighter): void {
   } else {
     drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "parry ready", "#5a6070", null);
   }
+}
+
+const ROW3_LABEL_Y = -146;
+
+/**
+ * Row 3: the line - a value, not a duration, so a label with no bar. It
+ * always says which thing it describes: the attack's snapshotted line, the
+ * parry's target line (exactly what the contact rule will consult), or the
+ * stance, including its motion. The AI's line must be as legible as the
+ * player's or none of the reads exist.
+ */
+export function lineLabel(f: Fighter): string {
+  const H = (h: Height): string => h.toUpperCase();
+  if (f.state.kind === "attack") {
+    const l = lineOf(f);
+    return `${H(l.height)} ${l.side.toUpperCase()} (attack)`;
+  }
+  if (f.parry !== null) {
+    const t = f.parry.targetLine;
+    return `${H(t.height)} ${t.side.toUpperCase()} (parry)`;
+  }
+  if (f.heightTo !== null) return `${H(f.height)} to ${H(f.heightTo)} (stance)`;
+  return `${H(f.height)} (stance)`;
+}
+
+function drawLineTrack(v: View, f: Fighter): void {
+  const { ctx } = v;
+  const active = f.state.kind === "attack" || f.parry !== null;
+  ctx.font = "10px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.fillStyle = active ? "#cfd3da" : "#5a6070";
+  ctx.fillText(lineLabel(f), f.x * PX_PER_CM, ARENA.floorY + ROW3_LABEL_Y);
+  ctx.textAlign = "left";
+}
+
+/**
+ * The line bar: a short vertical bar behind the fighter whose centre is the
+ * height band - the always-on spatial read of where the blade threatens or
+ * guards. Bands are fractions of body height, derived once, so `middle`
+ * slots in with no renderer change. Its slide during a stance transition is
+ * the tell the whole chain of reads builds on.
+ */
+export const HEIGHT_BAND_FRAC: Record<Height, number> = { high: 0.8, middle: 0.55, low: 0.3 };
+const LINE_BAR_OFFSET_PX = 26;
+const LINE_BAR_H = 18;
+const BODY_PX = 80; // 40 sheet rows of body at SCALE 2
+
+/** The band fraction the bar sits at now, interpolating through a transition. */
+export function lineBarFrac(f: Fighter): number {
+  if (f.state.kind === "attack") return HEIGHT_BAND_FRAC[f.state.height];
+  const from = HEIGHT_BAND_FRAC[f.height];
+  if (f.heightTo === null) return from;
+  const p = Math.min(1, f.heightT / f.weapon.heightChangeMs);
+  return from + (HEIGHT_BAND_FRAC[f.heightTo] - from) * p;
+}
+
+function drawLineBar(v: View, f: Fighter, i: 0 | 1): void {
+  const { ctx } = v;
+  const tints = ["#c9a227", "#4aa3df"]; // the measure bands' fighter tints
+  const x = f.x * PX_PER_CM - f.facing * LINE_BAR_OFFSET_PX;
+  const yMid = ARENA.floorY - lineBarFrac(f) * BODY_PX;
+  const live =
+    (f.state.kind === "attack" && f.state.phase !== "recovery") || guardEffective(f);
+  ctx.globalAlpha = live ? 1 : 0.35;
+  ctx.fillStyle = tints[i];
+  ctx.fillRect(x - 2, yMid - LINE_BAR_H / 2, 4, LINE_BAR_H);
+  ctx.globalAlpha = 1;
 }
 
 /** Right-aligned scrolling combat log, most recent line last. */

@@ -146,7 +146,7 @@ describe("attack resolution", () => {
         applyIntent(d.f[1], "parry");
         // A formed guard: the rise condition has its own falsification
         // tests in parry-rise.test.ts; here it is held true.
-        if (d.f[1].parry !== null) d.f[1].parry.t = WEAPONS.longsword.parryRiseMs;
+        if (d.f[1].parry !== null) d.f[1].parry.elapsedMs = d.f[1].parry.effectiveAtMs;
       }
       return d;
     };

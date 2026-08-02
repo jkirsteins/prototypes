@@ -177,26 +177,39 @@ term for this motion and was wrong to.
 ```ts
 interface ParryTrack {
   elapsedMs: number;      // since first raised; expires at parryWindowMs
-  coveredLine: Line;      // what the guard covers NOW: the old line, until a shift completes
-  shiftTo: Line | null;   // in motion toward this line; null when settled
-  shiftMs: number;        // since the shift began
+  fromLine: Line;         // covered while a shift is in motion: the old line
+  targetLine: Line;       // forming toward this; covered once effective
+  effectiveAtMs: number;  // when targetLine is covered; a shift moves it forward
   shifted: boolean;       // one shift per raise, whichever kind
 }
 ```
 
+A shift reuses `attack-lines`' track shape rather than adding one: it sets
+`fromLine` to the line the guard was covering, `targetLine` to the corrected
+line, and `effectiveAtMs` to `elapsedMs` plus the shift's duration.
+
 The rules, each one a test (§7):
 
-- **The old line holds until the shift completes.** While `shiftTo` is set the
-  guard still covers `coveredLine`, so a blade arriving on the old line
-  mid-shift is still met. `coveredLine` updates only when the shift's duration
-  elapses - the guard never covers the destination early, and never covers
-  nothing.
+- **The old line holds until the shift completes.** While `elapsedMs <
+  effectiveAtMs` the guard covers `fromLine` - a blade arriving on the old
+  line mid-shift is still met - and covers `targetLine` from `effectiveAtMs`
+  on. The guard never covers the destination early, and never covers nothing.
+  (This is the one place `fromLine` carries contact meaning: at the initial
+  press nothing was covered yet, so there it is only where the blade started.)
 - **The expiry does not refresh.** `parryWindowMs` runs from the original
   press. Shifting late means the new line may never become effective before
   the guard lapses.
 - **Once per raise, whichever kind.** Height, side, or both-at-once each
   consume the single shift. One shift answers one redirect - a single lie
   corrected once, not a wrestling match of key presses.
+
+Two of these three rules are scaffolding for the timed window, and
+`held-guard` retires them with it: once the guard no longer expires, the
+expiry rule is vacuous, and the once-per-raise cap is replaced by
+one-shift-at-a-time with each shift paying its full travel time. The
+old-line-holds rule survives unchanged. `held-guard` also moves the side
+retarget off the parry key - a held key has no second press - onto the
+horizontal arrows.
 
 ### 4.1 The answer windows, checked per axis
 
@@ -406,15 +419,16 @@ Which is the answer to "the duelist is solved":
 - Redirecting after commitment. The window closes at `strikeStart`, which also
   closes it before any possible contact; binds are `sustained-bind` and
   `pressure-and-winding`.
-- Chained redirects, and more than one guard shift per raise.
+- Chained redirects, and more than one guard shift per raise (`held-guard`
+  lifts the shift cap when it removes the window).
 - A reachable `middle` height. Enabling it requires deciding what a redirect may
   reach from where, and §4.1's margins recomputed for a two-way guess. `attack-lines` §7.
 - Feinting a **step**, drawing a counter-attack with false footwork.
 - Cancelling into a parry or a void. §10 of the state-tracks spec deferred it and
   nothing here changes that argument.
-- A holdable guard replacing `parryWindowMs`. It becomes arguable after this
-  spec, since a held guard is now exactly what a feint eats, but it is a separate
-  change and should be judged on play evidence from here.
+- A holdable guard replacing `parryWindowMs`. It becomes safe only after this
+  spec, since a held guard is exactly what a feint eats. It is the next spec,
+  `held-guard`, judged on play evidence from here.
 
 ---
 

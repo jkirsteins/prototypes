@@ -33,9 +33,9 @@ describe("guardEffective", () => {
     applyIntent(f, "parry");
     expect(guardEffective(f)).toBe(false); // visible, not yet formed
     if (f.parry === null) throw new Error("parry not raised");
-    f.parry.t = WEAPONS.longsword.parryRiseMs - 1;
+    f.parry.elapsedMs = WEAPONS.longsword.parryRiseMs - 1;
     expect(guardEffective(f)).toBe(false);
-    f.parry.t = WEAPONS.longsword.parryRiseMs;
+    f.parry.elapsedMs = WEAPONS.longsword.parryRiseMs;
     expect(guardEffective(f)).toBe(true);
   });
 });
@@ -57,9 +57,10 @@ describe("parryMeetsAttack: the rise condition, falsified independently", () => 
     };
     d.f[0].state = {
       kind: "attack", attack: "thrust", phase: "strike",
-      elapsedMs: tl.strikeStart + 1, timeline: tl, met: false,
+      elapsedMs: tl.strikeStart + 1, timeline: tl, height: "low", met: false,
     };
-    d.f[1].parry = { t: parryT };
+    applyIntent(d.f[1], "parry");
+    if (d.f[1].parry !== null) d.f[1].parry.elapsedMs = parryT;
     return d;
   }
 
@@ -149,9 +150,9 @@ describe("presentation: the rise is drawn, not just simulated", () => {
     const f = createFighter(400, 1, WEAPONS.longsword);
     applyIntent(f, "parry");
     if (f.parry === null) throw new Error("parry not raised");
-    f.parry.t = WEAPONS.longsword.parryRiseMs - 1;
+    f.parry.elapsedMs = WEAPONS.longsword.parryRiseMs - 1;
     expect(pickFrame(f, 0)).toEqual({ sheet: "swordAttack", frame: 1, flip: false });
-    f.parry.t = WEAPONS.longsword.parryRiseMs;
+    f.parry.elapsedMs = WEAPONS.longsword.parryRiseMs;
     expect(pickFrame(f, 0)).toEqual({ sheet: "swordAttack", frame: 2, flip: false });
   });
 

@@ -1,4 +1,4 @@
-import { applyIntent, guardEffective, TICK, tickFighter } from "./fighter";
+import { applyIntent, guardEffective, lineOf, TICK, tickFighter } from "./fighter";
 import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
 import type { Intent, WeaponProfile } from "./types";
@@ -57,9 +57,15 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     const before = d.f[side].state.kind;
     // The AI's attacks carry a telegraph: extra windup the player can read.
     // The fighter simulation never learns who controls it - it only sees
-    // a windup bonus.
+    // a windup bonus. A parry press infers its side target from the
+    // opponent's currently visible attack - only what is visible on this
+    // tick, never a redirect that has not happened - and the fighter
+    // simulation only sees a target side.
+    const opp = d.f[1 - side];
+    const threatVisible = opp.state.kind === "attack" && opp.state.phase !== "recovery";
     const r = applyIntent(d.f[side], intent, {
       windupBonusMs: side === 1 ? d.f[side].weapon.telegraphMs : 0,
+      targetSide: intent === "parry" && threatVisible ? lineOf(opp).side : undefined,
     });
     if (r === "accepted" && before !== d.f[side].state.kind) {
       const k = d.f[side].state.kind;
@@ -184,19 +190,21 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
  * between the defender's guard and the attack's parryable interval counts,
  * one rule for every weapon.
  *
- * MVP limitation: coverage is universal - a raised parry stops any cut or
- * thrust whose timing and reach line up. Attacks do not yet have lines
- * (high/low, inside/outside), so a feint can provoke an early parry and
- * punish its recovery, but cannot deceive the defender about where the
- * real attack arrives. When lines land, they become one more condition
- * HERE - attack.line in parry.coveredLines - and nowhere else.
+ * Coverage: a parry covers one complete snapshotted line, and the attack
+ * must match it on BOTH axes. The covered line is what this reads - never
+ * the defender's current stance, never any hidden final line of the
+ * attack - so a guard whose snapshot a redirect has outdated visibly
+ * covers the wrong line and misses.
  */
 export function parryMeetsAttack(attacker: Fighter, defender: Fighter, gap: number): boolean {
   const s = attacker.state;
   if (s.kind !== "attack" || s.phase !== "strike") return false;
   if (s.elapsedMs > s.timeline.parryableUntil) return false; // delivered: too late
   if (gap > attacker.weapon.reach) return false; // nothing to meet: out of measure
-  return guardEffective(defender); // a still-rising guard is visible, not formed
+  const p = defender.parry;
+  if (p === null || !guardEffective(defender)) return false; // rising, rotating or travelling: not formed
+  const line = lineOf(attacker);
+  return line.height === p.targetLine.height && line.side === p.targetLine.side;
 }
 
 function markMetBlades(d: Duel): void {
