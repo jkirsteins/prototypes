@@ -1,7 +1,7 @@
-import { describe, expect, test } from "vitest";
-import { AI_REACTION_MS, aiDecide, createAiState } from "../src/combat/ai";
+import { expect, test } from "vitest";
+import { aiDecide, createAiState } from "../src/combat/ai";
 import { TICK } from "../src/combat/fighter";
-import { createDuel, gapOf, tickDuel } from "../src/combat/engine";
+import { createDuel, tickDuel } from "../src/combat/engine";
 import { WEAPONS } from "../src/combat/weapons";
 import type { AiMode } from "../src/combat/ai";
 import type { Duel } from "../src/combat/engine";
