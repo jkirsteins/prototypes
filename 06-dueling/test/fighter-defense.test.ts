@@ -18,12 +18,22 @@ describe("void", () => {
     expect(f.x).toBeCloseTo(400 - WEAPONS.longsword.voidDistance, 5);
     expect(f.state.kind).toBe("idle");
   });
+
+  test("facing=-1 voids backward for its facing (forward in world space)", () => {
+    const f = createFighter(400, -1, WEAPONS.rapier);
+    applyIntent(f, "void");
+    expect(f.state.kind).toBe("void");
+    run(f, WEAPONS.rapier.voidDuration + TICK);
+    expect(f.x).toBeCloseTo(400 + WEAPONS.rapier.voidDistance, 5);
+    expect(f.state.kind).toBe("idle");
+  });
 });
 
 describe("parry", () => {
   test("parry lasts parryWindow, then cooldown blocks re-entry", () => {
     const f = createFighter(400, 1, WEAPONS.rapier);
     expect(applyIntent(f, "parry")).toBe("accepted");
+    expect(f.state.kind).toBe("parry");
     run(f, WEAPONS.rapier.parryWindow + TICK);
     expect(f.state.kind).toBe("idle");
     expect(applyIntent(f, "parry")).toBe("ignored"); // cooling down
@@ -38,6 +48,7 @@ describe("hitstun", () => {
     f.state = { kind: "hitstun", t: 0 };
     const events = run(f, HIT_STUN_MS + 2 * TICK);
     expect(f.state.kind).toBe("dead");
-    expect(events.some((e) => e.type === "died")).toBe(true);
+    const diedEvents = events.filter((e) => e.type === "died");
+    expect(diedEvents.length).toBe(1);
   });
 });
