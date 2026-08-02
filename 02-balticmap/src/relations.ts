@@ -124,35 +124,64 @@ export function realmOf(
   return out;
 }
 
+/** Every ancestor of `factionId` in the overlord chain, nearest first: its
+ *  lord, that lord's lord, and so on to the root. Empty for a free faction.
+ *  The liege rule in src/playability.ts is what keeps `overlords` acyclic -
+ *  a Subjugate may never target the actor's own ancestor - so this walk
+ *  terminates; the `seen` set only defends against a corrupted store. */
+export function overlordChainOf(
+  factionId: string,
+  overlords: Overlords,
+): string[] {
+  const chain: string[] = [];
+  const seen = new Set([factionId]);
+  let cur = overlords.get(factionId);
+  while (cur !== undefined && !seen.has(cur)) {
+    chain.push(cur);
+    seen.add(cur);
+    cur = overlords.get(cur);
+  }
+  return chain;
+}
+
 /** The realm F belongs to, named by its root: whoever holds F if F has been
- *  incorporated, then that faction's overlord if it has one. */
+ *  incorporated, then the top of that faction's overlord chain. */
 export function realmRootOf(
   factionId: string,
   overlords: Overlords,
   incorporated: Incorporated,
 ): string {
   const held = incorporated[factionId] ?? factionId;
-  return overlords.get(held) ?? held;
+  const chain = overlordChainOf(held, overlords);
+  return chain.length === 0 ? held : chain[chain.length - 1];
 }
 
-/** EVERY land under one root, including each vassal's own incorporated lands -
- *  which `realmOf` alone misses, since it only walks one level out from the
- *  faction it is given.
- *
- *  This is the answer to "how much of the map is theirs", so it is what the
- *  scoreboard, the win condition, the postmortem, the ownership shading and the
- *  hover halo all count. `incorporate` re-parents a target's own annexations to
- *  the actor, so `incorporated` is never deeper than one level and these two
- *  steps reach everything. */
+/** EVERY land under one root: vassals of vassals to any depth, plus each
+ *  member's own incorporated lands. This is the answer to "how much of the
+ *  map is theirs" - the scoreboard, the win condition, the postmortem, the
+ *  ownership shading and the hover halo all count it. `incorporated` itself
+ *  stays flat (incorporate re-parents annexations to the actor), so only the
+ *  vassal edges recurse. */
 export function fullRealmOf(
   root: string,
   overlords: Overlords,
   incorporated: Incorporated,
 ): Set<string> {
-  const members = new Set(realmOf(root, overlords, incorporated));
-  for (const member of [...members]) {
+  const members = new Set([root]);
+  const queue = [root];
+  while (queue.length > 0) {
+    const member = queue.pop()!;
+    for (const [vassal, lord] of overlords) {
+      if (lord === member && !members.has(vassal)) {
+        members.add(vassal);
+        queue.push(vassal);
+      }
+    }
     for (const [land, owner] of Object.entries(incorporated)) {
-      if (owner === member) members.add(land);
+      if (owner === member && !members.has(land)) {
+        members.add(land);
+        queue.push(land);
+      }
     }
   }
   return members;
