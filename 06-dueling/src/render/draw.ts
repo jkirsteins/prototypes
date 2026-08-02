@@ -8,7 +8,7 @@ import { SHEETS } from "./sheets";
 import type { AiMode } from "../combat/ai";
 import type { Duel } from "../combat/engine";
 import type { Fighter, FighterState } from "../combat/fighter";
-import type { AttackPhase, WeaponId } from "../combat/types";
+import type { AttackPhase, WeaponId, Zone } from "../combat/types";
 import type { SheetName } from "./sheets";
 
 export const SCALE = 3;
@@ -133,6 +133,16 @@ function drawFighter(v: View, f: Fighter, time: number): void {
   ctx.restore();
 }
 
+/**
+ * "narrow" is the engine's landing predicate (gap <= reach), so it gets a
+ * verdict color: green on the player's row (your attack lands), strike red
+ * on the AI's (theirs lands on you). Other zones keep the identity tint.
+ */
+export function zoneLabelStyle(zone: Zone, fighterIndex: number, tint: string): { color: string; bold: boolean } {
+  if (zone !== "narrow") return { color: tint, bold: false };
+  return { color: fighterIndex === 0 ? "#57a55a" : "#d64541", bold: true };
+}
+
 function drawMeasureBands(v: View, d: Duel): void {
   const { ctx } = v;
   const tints = ["#c9a227", "#4aa3df"]; // fighter 0 gold, fighter 1 blue
@@ -146,9 +156,10 @@ function drawMeasureBands(v: View, d: Duel): void {
     ctx.globalAlpha = 0.18;
     ctx.fillRect(px + dir * f.weapon.reach * PX_PER_CM, y, dir * f.weapon.stepDistance * PX_PER_CM, 5); // wide
     ctx.globalAlpha = 1;
-    ctx.fillStyle = tints[i];
-    ctx.font = "10px ui-monospace, monospace";
     const zone = zoneFor(gapOf(d), f.weapon);
+    const style = zoneLabelStyle(zone, i, tints[i]);
+    ctx.fillStyle = style.color;
+    ctx.font = `${style.bold ? "bold " : ""}10px ui-monospace, monospace`;
     ctx.fillText(`${f.weapon.name}: ${zone}`, px + (dir === 1 ? 4 : -70), y + 14);
   });
 }
