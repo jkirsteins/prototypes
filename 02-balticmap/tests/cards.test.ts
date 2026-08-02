@@ -59,7 +59,7 @@ describe("cards", () => {
     );
     expectProps(
       "subjugate", "Subjugate", true, false, 1, true, false,
-      "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute.",
+      "Turn a faction in reach into your vassal. Needs a Might lead of 2 or a Status lead of 8 per land of their realm. Vassals pay tribute.",
     );
     expectProps(
       "incorporate", "Incorporate", true, false, 1, true, false,

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { pact, settledOnce, siteCaps } from "./helpers";
 import {
   INCORPORATE_RAMP, PASSIVE_PER_LANDS, POACH_CHANCE,
+  SUBJUGATE_STATUS_THRESHOLD,
   SUBJUGATE_THRESHOLD, annexedLandsOf, borderStrength, cardBlockReason,
   gripPartsOn,
   incorporationChance, passiveFortifyFor, raidYield,
@@ -53,21 +54,21 @@ function mightLead(actor: string, target: string, n: number): Relations {
 }
 
 describe("subjugationRequirement", () => {
-  it("is 2 per land of the target's realm", () => {
+  it("is 2 per land of the target's realm on Might, 8 on Status", () => {
     const v = view();
     expect(subjugationRequirement(v, "alpha", "beta"))
-      .toEqual({ might: SUBJUGATE_THRESHOLD, status: SUBJUGATE_THRESHOLD });
+      .toEqual({ might: SUBJUGATE_THRESHOLD, status: SUBJUGATE_STATUS_THRESHOLD });
   });
 
   it("counts the target's vassals, which is what surprises players", () => {
-    // beta holds gamma: two lands, so the bar doubles from 2 to 4.
+    // beta holds gamma: two lands, so each bar doubles.
     const v = view({ overlords: new Map([["gamma", "beta"]]) });
-    expect(subjugationRequirement(v, "alpha", "beta")).toEqual({ might: 4, status: 4 });
+    expect(subjugationRequirement(v, "alpha", "beta")).toEqual({ might: 4, status: 16 });
   });
 
   it("counts lands the target has incorporated", () => {
     const v = view({ incorporated: { gamma: "beta" } });
-    expect(subjugationRequirement(v, "alpha", "beta")).toEqual({ might: 4, status: 4 });
+    expect(subjugationRequirement(v, "alpha", "beta")).toEqual({ might: 4, status: 16 });
   });
 
   it("is null where Subjugate could never apply", () => {
@@ -87,7 +88,7 @@ describe("subjugationRequirement", () => {
   it("answers for a vassal actor aiming at a non-liege", () => {
     const v = view({ overlords: new Map([["alpha", "delta"]]) });
     expect(subjugationRequirement(v, "alpha", "beta"))
-      .toEqual({ might: SUBJUGATE_THRESHOLD, status: SUBJUGATE_THRESHOLD });
+      .toEqual({ might: SUBJUGATE_THRESHOLD, status: SUBJUGATE_STATUS_THRESHOLD });
   });
 
   it("counts the whole pyramid: vassals of vassals and their annexations", () => {
@@ -99,9 +100,10 @@ describe("subjugationRequirement", () => {
       incorporated: { epsilon: "delta" },
       settlements: { delta: 1 },
     });
-    // 4 lands (beta, gamma, delta, epsilon) at 2 each; +1 settlement on Might.
+    // 4 lands (beta, gamma, delta, epsilon): Might 2 each +1 settlement,
+    // Status 8 each.
     expect(subjugationRequirement(v, "alpha", "beta"))
-      .toEqual({ might: 9, status: 8 });
+      .toEqual({ might: 9, status: 32 });
   });
 
   it("agrees with the number the block reason reports", () => {
@@ -331,17 +333,17 @@ describe("gripPartsOn", () => {
       overlords: new Map([["gamma", "beta"]]),
       settlements: settledOnce(["beta", "gamma"]),
     });
-    // Two settlements raise the Might bar to 6 and leave Status at 4.
+    // Two settlements raise the Might bar to 6 and leave Status at 16.
     expect(gripPartsOn(v, "beta"))
-      .toEqual({ lands: 2, settlements: 2, might: 6, status: 4 });
-    expect(subjugationGripOn(v, "beta")).toEqual({ might: 6, status: 4 });
-    expect(subjugationRequirement(v, "alpha", "beta")).toEqual({ might: 6, status: 4 });
+      .toEqual({ lands: 2, settlements: 2, might: 6, status: 16 });
+    expect(subjugationGripOn(v, "beta")).toEqual({ might: 6, status: 16 });
+    expect(subjugationRequirement(v, "alpha", "beta")).toEqual({ might: 6, status: 16 });
   });
 
   it("ignores settlements outside the realm", () => {
     const v = view({ settlements: settledOnce(["alpha", "gamma"]) });
     expect(gripPartsOn(v, "beta"))
-      .toEqual({ lands: 1, settlements: 0, might: 2, status: 2 });
+      .toEqual({ lands: 1, settlements: 0, might: 2, status: 8 });
   });
 
   it("reports the settlements behind an insufficient-lead block", () => {
@@ -351,7 +353,7 @@ describe("gripPartsOn", () => {
       factionId: "gamma",
       reasons: [{
         code: "insufficient-lead",
-        required: { might: 3, status: 2 },
+        required: { might: 3, status: 8 },
         mightLead: 0,
         statusLead: 0,
         realmSize: 1,
@@ -368,16 +370,16 @@ describe("gripPartsOn", () => {
       overlords: new Map([["gamma", "beta"]]),
       settlements: settledOnce(["gamma"]),
     });
-    expect(subjugationGripOn(v, "beta")).toEqual({ might: 5, status: 4 });
+    expect(subjugationGripOn(v, "beta")).toEqual({ might: 5, status: 16 });
   });
 });
 
 describe("subjugationGripOn", () => {
-  it("is 2 per land of the faction's realm, with no eligibility guards", () => {
+  it("is 2 per land on Might and 8 on Status, with no eligibility guards", () => {
     // beta holds gamma: two lands.
     const v = view({ overlords: new Map([["gamma", "beta"]]) });
-    expect(subjugationGripOn(v, "beta")).toEqual({ might: 4, status: 4 });
-    expect(subjugationGripOn(v, "alpha")).toEqual({ might: 2, status: 2 });
+    expect(subjugationGripOn(v, "beta")).toEqual({ might: 4, status: 16 });
+    expect(subjugationGripOn(v, "alpha")).toEqual({ might: 2, status: 8 });
   });
 
   it("is the number subjugationRequirement quotes when the pair is legal", () => {
@@ -410,7 +412,7 @@ describe("targetEligibilityFor", () => {
         { code: "alliance", expiresTurn: 9 },
         {
           code: "insufficient-lead",
-          required: { might: 2, status: 2 },
+          required: { might: 2, status: 8 },
           mightLead: 0,
           statusLead: 0,
           realmSize: 1,
@@ -433,7 +435,7 @@ describe("targetEligibilityFor", () => {
       factionId: "gamma",
       reasons: [{
         code: "insufficient-lead",
-        required: { might: 4, status: 4 },
+        required: { might: 4, status: 16 },
         mightLead: 1,
         statusLead: 0,
         realmSize: 2,
@@ -464,14 +466,18 @@ describe("validTargetsFor", () => {
     expect(validTargetsFor(v, "delta", "raid")).toEqual(["gamma"]);
   });
 
-  it("subjugate requires a lead of SUBJUGATE_THRESHOLD on either track", () => {
+  it("subjugate requires each track's own bar: 2 Might or 8 Status", () => {
     expect(SUBJUGATE_THRESHOLD).toBe(2);
+    expect(SUBJUGATE_STATUS_THRESHOLD).toBe(8);
     const v1 = view({ relations: mightLead("beta", "gamma", 1) });
     expect(validTargetsFor(v1, "beta", "subjugate")).toEqual([]);
     const v2 = view({ relations: mightLead("beta", "gamma", 2) });
     expect(validTargetsFor(v2, "beta", "subjugate")).toEqual(["gamma"]);
     let rel: Relations = {};
-    rel = bumpStatus(rel, "beta", "alpha");
+    for (let i = 0; i < SUBJUGATE_STATUS_THRESHOLD - 1; i++) {
+      rel = bumpStatus(rel, "beta", "alpha");
+    }
+    expect(validTargetsFor(view({ relations: rel }), "beta", "subjugate")).toEqual([]);
     rel = bumpStatus(rel, "beta", "alpha");
     expect(validTargetsFor(view({ relations: rel }), "beta", "subjugate")).toEqual(["alpha"]);
   });
@@ -707,7 +713,7 @@ describe("post-escape respite", () => {
         { code: "respite", expiresTurn: 4 },
         {
           code: "insufficient-lead",
-          required: { might: 2, status: 2 },
+          required: { might: 2, status: 8 },
           mightLead: 0,
           statusLead: 0,
           realmSize: 1,
@@ -871,7 +877,7 @@ describe("subjugationRaceFor", () => {
   it("quotes your bar at a dead-even lead", () => {
     const v = view({ relations: mightLead("alpha", "beta", 1) });
     const race = subjugationRaceFor(v, "alpha", "beta");
-    expect(race.status).toEqual({ lead: 0, bar: 2, takenFactionId: "beta" });
+    expect(race.status).toEqual({ lead: 0, bar: 8, takenFactionId: "beta" });
   });
 
   it("lets the two tracks race toward different realms at once", () => {
@@ -887,7 +893,7 @@ describe("subjugationRaceFor", () => {
     expect(race.might.takenFactionId).toBe("beta");
     expect(race.status.takenFactionId).toBe("alpha");
     expect(race.might.bar).toBe(4);
-    expect(race.status.bar).toBe(4);
+    expect(race.status.bar).toBe(16);
   });
 
   it("adds a settlement to the Might bar alone, so the tracks can differ", () => {
@@ -897,7 +903,7 @@ describe("subjugationRaceFor", () => {
     });
     const race = subjugationRaceFor(v, "alpha", "beta");
     expect(race.might.bar).toBe(3);
-    expect(race.status.bar).toBe(2);
+    expect(race.status.bar).toBe(8);
   });
 
   it("still shows bars while you are somebody's vassal - vassals can take too", () => {
@@ -907,7 +913,7 @@ describe("subjugationRaceFor", () => {
     });
     const race = subjugationRaceFor(v, "alpha", "beta");
     expect(race.might.bar).toBe(2);
-    expect(race.status.bar).toBe(2);
+    expect(race.status.bar).toBe(8);
   });
 
   it("has no bar in either direction against your own vassal", () => {
@@ -990,7 +996,7 @@ describe("threatsTo", () => {
     const [t] = threatsTo(v, "beta");
     expect(t.shortfall).toBe(1);
     expect(t.mightShortfall).toBe(1);
-    expect(t.statusShortfall).toBe(SUBJUGATE_THRESHOLD);
+    expect(t.statusShortfall).toBe(SUBJUGATE_STATUS_THRESHOLD);
   });
 
   it("counts a faction with no lead at all as a threat needing the full bar", () => {
@@ -1063,14 +1069,14 @@ describe("poach surcharge", () => {
 
   it("adds half the incumbent's grip, rounded up", () => {
     // delta leads its vassal gamma by 3 might, so a poacher pays ceil(3/2) = 2
-    // on top of the base bar of 2.
+    // on top of each base bar.
     const v = view({
       overlords: new Map([["gamma", "delta"]]),
       relations: mightLead("delta", "gamma", 3),
     });
     expect(overlordGrip(v, "gamma")).toBe(3);
     expect(poachSurchargeOn(v, "gamma")).toBe(2);
-    expect(subjugationRequirement(v, "beta", "gamma")).toEqual({ might: 4, status: 4 });
+    expect(subjugationRequirement(v, "beta", "gamma")).toEqual({ might: 4, status: 10 });
   });
 
   it("names the surcharge in the block reason so the bar is explicable", () => {
@@ -1084,7 +1090,7 @@ describe("poach surcharge", () => {
       ? entry.reasons.find((r) => r.code === "insufficient-lead")
       : undefined;
     expect(reason).toMatchObject({
-      required: { might: 4, status: 4 }, poachSurcharge: 2,
+      required: { might: 4, status: 10 }, poachSurcharge: 2,
     });
   });
 });

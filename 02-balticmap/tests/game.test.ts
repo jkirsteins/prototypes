@@ -621,11 +621,11 @@ describe("post-escape respite", () => {
 describe("found a settlement", () => {
   it("records the land, logs it, and raises the bar against the realm", () => {
     const g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
-    expect(subjugationGripOn(viewOf(g), "beta")).toEqual({ might: 2, status: 2 });
+    expect(subjugationGripOn(viewOf(g), "beta")).toEqual({ might: 2, status: 8 });
     const after = playCard(g, 0, rng(), "beta");
     expect(after.settlements).toEqual({ beta: 1 });
     // The settlement is garrisoned ground: it raises Might and leaves Status.
-    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 3, status: 2 });
+    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 3, status: 8 });
     expect(after.log.filter((e) => e.type === "settled")).toEqual([
       expect.objectContaining({ type: "settled", targetFactionId: "beta", playerId: 1 }),
     ]);
@@ -645,11 +645,11 @@ describe("found a settlement", () => {
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     let after = playCard(g, 0, rng(), "gamma");
     // 2 lands, +1 Might for the settlement
-    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 5, status: 4 });
+    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 5, status: 16 });
     after = { ...after, overlords: new Map() };
-    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 2, status: 2 });
+    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 2, status: 8 });
     expect(subjugationGripOn(viewOf(after), "gamma")) // it keeps it
-      .toEqual({ might: 3, status: 2 });
+      .toEqual({ might: 3, status: 8 });
     expect(after.settlements).toEqual({ gamma: 1 });
   });
 
@@ -659,7 +659,7 @@ describe("found a settlement", () => {
     g = { ...g, omens: { beta: 1 } };
     const after = playCard(g, 0, rng(), "beta");
     expect(after.omens).toEqual({ beta: 1 });
-    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 3, status: 2 });
+    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 3, status: 8 });
   });
 });
 
@@ -1040,9 +1040,9 @@ describe("population boom and settlement growth", () => {
   it("stacks each settlement onto the Might bar and leaves Status alone", () => {
     let g = roomy(withHand(playingState(LINE_ADJ), 0, ["found-settlement"]));
     g = { ...g, settlements: { beta: 2 }, booms: { beta: 5 } };
-    expect(subjugationGripOn(viewOf(g), "beta")).toEqual({ might: 4, status: 2 });
+    expect(subjugationGripOn(viewOf(g), "beta")).toEqual({ might: 4, status: 8 });
     const after = playCard(g, 0, rng(), "beta");
-    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 5, status: 2 });
+    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 5, status: 8 });
   });
 
   it("refuses a land the map has no dot left for, whatever the allowance", () => {

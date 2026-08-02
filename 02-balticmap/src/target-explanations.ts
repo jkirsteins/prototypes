@@ -515,12 +515,14 @@ function trackBlock(
 ): TooltipLine[] {
   const parts = gripPartsOn(view, takenFactionId);
   const surcharge = poachSurchargeOn(view, takenFactionId);
+  // Each base is recovered from the parts rather than recomputed - Might's is
+  // its bar minus the settlements stacked on it, Status's IS its bar - so the
+  // column never repeats the per-land multiplication and cannot drift from the
+  // heading above it.
+  const base = track === "might" ? parts.might - parts.settlements : parts.status;
   const rows: TooltipLine[] = [
     {
-      // `parts.status` IS the base - gripPartsOn defines it as
-      // SUBJUGATE_THRESHOLD per land - so the column never repeats that
-      // multiplication and cannot drift from the heading above it.
-      amount: `${parts.status}`,
+      amount: `${base}`,
       text: `from realm size (${count(parts.lands, "land")})`,
     },
   ];

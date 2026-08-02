@@ -41,7 +41,7 @@ describe("explainTargetEligibility", () => {
         { code: "alliance", expiresTurn: 12 },
         {
           code: "insufficient-lead",
-          required: { might: 4, status: 4 },
+          required: { might: 4, status: 16 },
           mightLead: 1,
           statusLead: 0,
           realmSize: 2,
@@ -56,7 +56,7 @@ describe("explainTargetEligibility", () => {
       lines: [
         "Gamma",
         "Blocked by Alliance until turn 12.",
-        "Need a Might or Status lead of 4 because their realm has 2 lands.",
+        "Need a Might lead of 4 or a Status lead of 16 because their realm has 2 lands.",
         "Current leads: Might 1, Status 0.",
       ],
     }]);
@@ -519,7 +519,7 @@ describe("targetImpactLines", () => {
   it("names the shortfall when the lead is the only thing missing", () => {
     const view = v({ incorporated: { gamma: "beta" } });
     expect(targetImpactLines(view, "alpha", "subjugate", "beta")[0].text).toBe(
-      "Need a Might or Status lead of 4 because their realm has 2 lands.",
+      "Need a Might lead of 4 or a Status lead of 16 because their realm has 2 lands.",
     );
   });
 
@@ -585,8 +585,8 @@ describe("subjugationBreakdown", () => {
     expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([
       { text: "Might +1/2. Opponent's thresholds:", tone: "good", blockStart: true },
       { amount: "2", text: "from realm size (1 land)" },
-      { text: "Status 0/2. Opponent's thresholds:", tone: "good", blockStart: true },
-      { amount: "2", text: "from realm size (1 land)" },
+      { text: "Status 0/8. Opponent's thresholds:", tone: "good", blockStart: true },
+      { amount: "8", text: "from realm size (1 land)" },
     ]);
   });
 
@@ -606,8 +606,8 @@ describe("subjugationBreakdown", () => {
       { amount: "4", text: "from realm size (2 lands)" },
       { amount: "+1", text: "from 1 settlement" },
       { amount: "+1", text: "from their overlord's support" },
-      { text: "Status 0/5. Opponent's thresholds:", tone: "good", blockStart: true },
-      { amount: "4", text: "from realm size (2 lands)" },
+      { text: "Status 0/17. Opponent's thresholds:", tone: "good", blockStart: true },
+      { amount: "16", text: "from realm size (2 lands)" },
       { amount: "+1", text: "from their overlord's support" },
     ]);
   });
@@ -625,8 +625,8 @@ describe("subjugationBreakdown", () => {
       lines.slice(from, to).reduce((n, l) => n + Number(l.amount), 0);
     expect(lines[0].text).toBe("Might +1/5. Opponent's thresholds:");
     expect(sum(1, 3)).toBe(5);
-    expect(lines[3].text).toBe("Status 0/4. Opponent's thresholds:");
-    expect(sum(4, 5)).toBe(4);
+    expect(lines[3].text).toBe("Status 0/16. Opponent's thresholds:");
+    expect(sum(4, 5)).toBe(16);
   });
 
   it("itemises your own realm, and warns, on a track they are the ones racing", () => {
@@ -641,8 +641,8 @@ describe("subjugationBreakdown", () => {
     expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([
       { text: "Might +2/4. Opponent's thresholds:", tone: "good", blockStart: true },
       { amount: "4", text: "from realm size (2 lands)" },
-      { text: "Status -1/4. Your thresholds:", tone: "bad", blockStart: true },
-      { amount: "4", text: "from realm size (2 lands)" },
+      { text: "Status -1/16. Your thresholds:", tone: "bad", blockStart: true },
+      { amount: "16", text: "from realm size (2 lands)" },
     ]);
   });
 
@@ -663,8 +663,8 @@ describe("subjugationBreakdown", () => {
       { amount: "+2", text: "from your overlord's support" },
       // the human is a vassal, and a vassal can subjugate now: the dead-even
       // status track races the opponent's bar rather than showing nothing.
-      { text: "Status 0/2. Opponent's thresholds:", tone: "good", blockStart: true },
-      { amount: "2", text: "from realm size (1 land)" },
+      { text: "Status 0/8. Opponent's thresholds:", tone: "good", blockStart: true },
+      { amount: "8", text: "from realm size (1 land)" },
     ]);
   });
 
@@ -698,7 +698,7 @@ describe("subjugationBreakdown", () => {
     expect(subjugationBreakdown(view, "alpha", "beta").map((l) => l.text)).toEqual([
       "Might 0/2. Opponent's thresholds:",
       "from realm size (1 land)",
-      "Status 0/2. Opponent's thresholds:",
+      "Status 0/8. Opponent's thresholds:",
       "from realm size (1 land)",
     ]);
   });

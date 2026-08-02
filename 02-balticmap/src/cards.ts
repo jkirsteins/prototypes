@@ -112,7 +112,7 @@ export const CARDS: Record<string, CardDef> = {
   "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain Might over one faction in reach: +1 for your first land on their border, +2 for the second, +3 for the third, and so on." },
   "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
   "fortify": { id: "fortify", name: "Fortify", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Might over every other living faction at once." },
-  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },
+  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Needs a Might lead of 2 or a Status lead of 8 per land of their realm. Vassals pay tribute." },
   "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Permanently absorb one of your vassals into your realm." },
   // Injection-only, like Revolt: a Subjugate shuffles one of each into the
   // vassal's deck (see playCard) and a release strips them out again. They are

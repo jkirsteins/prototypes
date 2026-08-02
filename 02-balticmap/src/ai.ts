@@ -97,8 +97,8 @@ const GUARD_CASES: GuardCase[] = [
       }),
   },
   {
-    // Shrewd marriage feeds a rival's Status lead by 1 a play, and the Status
-    // bar is the LOWER of the two on a settled realm. So the position worth
+    // Shrewd marriage feeds a rival's Status lead by 1 a play, and no
+    // settlement can raise the Status bar against it. So the position worth
     // guarding is a rival two plays or fewer from clearing it on Status - the
     // same near-miss window step 5 defends and step 7b settles against.
     cardId: "eloping-heirs",

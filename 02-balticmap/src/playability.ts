@@ -9,6 +9,12 @@ import { activeExpiry, timedActive } from "./timed";
 
 export const SUBJUGATE_THRESHOLD = 2;
 
+/** Per-land Status bar, four times the Might rate. Status leads climb from
+ *  plays alone and the map offers nothing to build against them - a settlement
+ *  hardens the Might bar only - so the bar's height is the one brake on a
+ *  Status siege: it is meant to be the long way in, not the cheap one. */
+export const SUBJUGATE_STATUS_THRESHOLD = SUBJUGATE_THRESHOLD * 4;
+
 /** Settlements a land supports with no Population boom spent on it - the one
  *  standing there since the map was drawn, plus one. So Found a settlement
  *  raises a land to its second and stops, and every settlement past that is a
@@ -507,14 +513,14 @@ export function passiveFortifyFor(view: RulesView, factionId: string): number {
 }
 
 /** The lead a Subjugate needs, one bar per track. The two are separate because
- *  a settlement is garrisoned ground: it walls off the Might route only.
- *
- *  The asymmetry is deliberate and it runs the other way on the accumulation
- *  side. Might is the fast track - `raidYield` is convex in bordering lands and
- *  `passiveFortifyFor` pays every turn for nothing - so it meets the taller
- *  wall. Status climbs at +1 a play from a single Shrewd marriage per deck, so
- *  it faces the shorter one. A settled realm is therefore soft to a patient
- *  Status siege, and that is the tell the player is meant to read. */
+ *  they price different defences. Might is contested ground - `raidYield` cuts
+ *  both ways and a settlement is garrisoned ground that walls off the Might
+ *  route alone - so it keeps the short per-land rate plus whatever the
+ *  defender built. Status has no counter-building: it climbs from plays alone,
+ *  and fan-outs like A feast raise it against every rival at once, so its
+ *  per-land rate is four times Might's (`SUBJUGATE_STATUS_THRESHOLD`). A
+ *  settled realm still reads as soft to a patient Status siege - the siege is
+ *  just a long campaign now, not a shortcut past the walls. */
 export interface TrackBars {
   might: number;
   status: number;
@@ -546,13 +552,17 @@ export function gripPartsOn(view: RulesView, factionId: string): GripParts {
     (sum, m) => sum + (view.settlements[m] ?? 0),
     0,
   );
-  const base = SUBJUGATE_THRESHOLD * lands;
-  return { lands, settlements, might: base + settlements, status: base };
+  return {
+    lands, settlements,
+    might: SUBJUGATE_THRESHOLD * lands + settlements,
+    status: SUBJUGATE_STATUS_THRESHOLD * lands,
+  };
 }
 
-/** The lead anyone needs against this faction: two per land of its realm,
- *  counting its vassals and the lands it has incorporated, plus - on the Might
- *  track alone - one per settlement founded in any of those lands.
+/** The lead anyone needs against this faction, per track: on Might, two per
+ *  land of its realm - counting its vassals and the lands it has incorporated
+ *  - plus one per settlement founded in any of those lands; on Status, eight
+ *  per land and nothing for settlements.
  *
  *  Bare arithmetic with no eligibility guards, because two callers need it
  *  that way: `subjugationRequirement` applies the guards itself, and the
@@ -585,9 +595,9 @@ function withSurcharge(bars: TrackBars, surcharge: number): TrackBars {
 
 
 /** The lead the actor needs on each track to Subjugate the target: two per
- *  land of the target's realm, counting its vassals and the lands it has
- *  incorporated, plus one per settlement on the Might track, plus the poach
- *  surcharge on both when the target already has a lord. Null when Subjugate
+ *  land of the target's realm on Might (eight on Status), counting its vassals
+ *  and the lands it has incorporated, plus one per settlement on the Might
+ *  track, plus the poach surcharge on both when the target already has a lord. Null when Subjugate
  *  could never apply to that pair at all - self, an incorporated land, the
  *  actor's own direct vassal, or the actor's own liege (any ancestor in its
  *  overlord chain) - so callers can leave the bars off rather than quote
