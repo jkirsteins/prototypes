@@ -1,12 +1,33 @@
 import { zoneFor } from "./measure";
 import { gapOf } from "./engine";
 import type { Duel } from "./engine";
-import type { AttackKind, Intent } from "./types";
+import type { AttackKind, Intent, WeaponProfile } from "./types";
 
 export type AiMode = 0 | 1 | 2 | 3;
 
 export const AI_REACTION_MS = 180;
-export const AI_ATTACK_COOLDOWN_MS = 1400;
+/**
+ * Mode 2 is a drill metronome: a fixed, weapon-independent onset beat to
+ * train reads against, in real clock time. It must exceed the slowest
+ * attack's whiff commitment for every weapon or the beat silently drifts
+ * (an attack scheduled mid-recovery starts late); a test enforces this.
+ */
+export const DRILL_INTERVAL_MS = 2000;
+
+/**
+ * Mode 3's cycle floor. This is a structural guarantee, not a personality
+ * knob: the cooldown runs concurrently with the attack, so it only shapes
+ * behavior as a floor on the whole attack cycle - and the retire step can
+ * only ever fire if that floor outlasts the thrust's worst-case (whiffed)
+ * commitment. Deriving it from the weapon keeps the approach-strike-retire
+ * pulse alive under any retuning. Personality-driven pacing, when it comes,
+ * layers on top as fighter-cognition delays in plain milliseconds.
+ */
+export function duelistCooldown(w: WeaponProfile): number {
+  const t = w.attacks.thrust;
+  const whiffCommit = t.windup + t.beat + t.strike + t.recovery * w.whiffRecoveryFactor;
+  return whiffCommit + w.stepDuration + w.stancePause;
+}
 
 export interface AiState {
   cooldown: number;
@@ -64,20 +85,20 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
   if (mode === 2) {
     // Attack in place, never step closer.
     if (ai.cooldown > 0 || zone === "out") return null;
-    return startAttack(ai);
+    return startAttack(ai, DRILL_INTERVAL_MS);
   }
 
   // Mode 3, the duelist: approach until an extension can land (narrow
-  // measure), strike on the shared cooldown, and back off out of danger
-  // while the cooldown recovers - approach, strike, retire.
+  // measure), strike, and back off out of danger while the weapon-derived
+  // patience recovers - approach, strike, retire.
   if (zone !== "narrow") return "advance";
-  if (ai.cooldown <= 0) return startAttack(ai);
+  if (ai.cooldown <= 0) return startAttack(ai, duelistCooldown(self.weapon));
   return "retreat";
 }
 
-function startAttack(ai: AiState): AttackKind {
+function startAttack(ai: AiState, cooldown: number): AttackKind {
   const attack = ai.next;
   ai.next = attack === "thrust" ? "cut" : "thrust";
-  ai.cooldown = AI_ATTACK_COOLDOWN_MS;
+  ai.cooldown = cooldown;
   return attack;
 }

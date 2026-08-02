@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { aiDecide, createAiState } from "../src/combat/ai";
+import { DRILL_INTERVAL_MS, aiDecide, createAiState, duelistCooldown } from "../src/combat/ai";
 import { TICK } from "../src/combat/fighter";
 import { createDuel, tickDuel } from "../src/combat/engine";
 import { WEAPONS } from "../src/combat/weapons";
@@ -73,6 +73,27 @@ test("mode 3 decisions: advance to narrow, attack off cooldown, retreat on it", 
   // narrow measure, cooldown running -> back off
   expect(ai.cooldown).toBeGreaterThan(0);
   expect(aiDecide(d, 3, ai, TICK)).toBe("retreat");
+});
+
+test("mode 3 cycle floor outlasts every weapon's worst-case thrust commitment", () => {
+  // If this fails, the duelist's retreat can never fire and the
+  // approach-strike-retire pulse silently disappears.
+  for (const w of Object.values(WEAPONS)) {
+    const t = w.attacks.thrust;
+    const whiffCommit = t.windup + t.beat + t.strike + t.recovery * w.whiffRecoveryFactor;
+    expect(duelistCooldown(w)).toBeGreaterThan(whiffCommit);
+  }
+});
+
+test("drill interval exceeds every attack's whiff commitment (steady onset beat)", () => {
+  // The mode-2 metronome only keeps time if no attack is still committed
+  // when the next beat arrives; otherwise onsets silently drift.
+  for (const w of Object.values(WEAPONS)) {
+    for (const t of Object.values(w.attacks)) {
+      const whiffCommit = t.windup + t.beat + t.strike + t.recovery * w.whiffRecoveryFactor;
+      expect(DRILL_INTERVAL_MS).toBeGreaterThan(whiffCommit);
+    }
+  }
 });
 
 test("mode 3 crosses the gap and kills an idle opponent", () => {
