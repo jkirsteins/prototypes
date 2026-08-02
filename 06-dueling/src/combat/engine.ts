@@ -59,7 +59,7 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     // The fighter simulation never learns who controls it - it only sees
     // a windup bonus.
     const r = applyIntent(d.f[side], intent, {
-      windupBonusMs: side === 1 ? d.f[side].weapon.pretempo : 0,
+      windupBonusMs: side === 1 ? d.f[side].weapon.telegraphMs : 0,
     });
     if (r === "accepted" && before !== d.f[side].state.kind) {
       const k = d.f[side].state.kind;
@@ -141,8 +141,8 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
       // The guard has done its work; free it now rather than leaving the
       // defender committed to a blade that is no longer coming.
       if (def.state.kind === "parry") {
-        def.state = { kind: "idle" };
-        def.parryCd = def.weapon.parryCooldown;
+        def.state = { kind: "ready" };
+        def.parryRecoveryMs = def.weapon.parryRecoveryMs;
       }
       emit(d, out, side, "parried", `${atk.weapon.name} parried -> dui tempi counter available`);
     } else {

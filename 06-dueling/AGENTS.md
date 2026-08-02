@@ -20,10 +20,10 @@ a layer:
 
 - a footstep when the step or void hop *finishes* its travel, not when the
   intent is accepted;
-- the low rising tone when the windup phase *begins* (which for tell-less
-  player attacks coincides with acceptance, legitimately: that is when the
-  blade starts rising; telegraphed AI attacks rise only after the
-  pretempo, and buffered attacks when the buffer fires), choked early if
+- the low rising tone when the blade starts rising - the riseStart mark on
+  the attack's timeline (which for tell-less player attacks coincides with
+  acceptance, legitimately; telegraphed AI attacks rise only after their
+  telegraph, and buffered attacks when the buffer fires), choked early if
   the attacker is struck mid-windup;
 - the whoosh when the arc *resolves* having found nothing (whiff) - not
   earlier, because a defender can still step into the blade late in the

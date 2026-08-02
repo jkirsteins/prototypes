@@ -104,7 +104,7 @@ describe("attack resolution", () => {
       for (const [atk, def, kind] of cases) {
         const t = WEAPONS[atk].attacks[kind];
         const strikeAt = t.windup + t.beat;
-        const early = strikeAt - WEAPONS[def].parryWindow / 2;
+        const early = strikeAt - WEAPONS[def].parryWindowMs / 2;
         const late = strikeAt + parryableMs(t) - 30;
         expect(outcome(atk, def, kind, Math.max(0, early))).toBe("parried");
         expect(outcome(atk, def, kind, late)).toBe("parried");
@@ -192,7 +192,7 @@ describe("presentation events follow the simulation, not the input", () => {
     const arriveAt = strikeAt + parryableMs(t);
     // Guard goes up well before the strike begins; contact must still wait
     // for the blade to get there.
-    const pressTick = Math.round((strikeAt - WEAPONS.longsword.parryWindow / 2) / TICK) - 1;
+    const pressTick = Math.round((strikeAt - WEAPONS.longsword.parryWindowMs / 2) / TICK) - 1;
     const pressTime = (pressTick + 1) * TICK;
     const evs: DuelEvent[] = [];
     for (let i = 0; i < 300 && !evs.some((e) => e.kind === "parried"); i++) {
@@ -242,10 +242,10 @@ describe("presentation events follow the simulation, not the input", () => {
     expect(d.log.some((e) => e.kind === "windup")).toBe(false);
   });
 
-  test("a telegraphed attack rises only after the pretempo", () => {
+  test("a telegraphed attack rises only after the telegraphMs", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
     const evs: DuelEvent[] = [];
-    const pre = WEAPONS.rapier.pretempo;
+    const pre = WEAPONS.rapier.telegraphMs;
     for (let i = 0; i < 60 && !evs.some((e) => e.kind === "windup"); i++) {
       evs.push(...tickDuel(d, null, i === 0 ? "thrust" : null));
     }
@@ -260,7 +260,7 @@ describe("presentation events follow the simulation, not the input", () => {
   test("a buffered attack rises when the buffer fires, not when it was pressed", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
     const w = WEAPONS.longsword;
-    const flushAt = w.stepDuration + w.stancePause;
+    const flushAt = w.stepDuration + w.stepRecoveryMs;
     tickDuel(d, "advance", null);
     const evs: DuelEvent[] = tickDuel(d, "cut", null); // buffered mid-step
     expect(evs.some((e) => e.kind === "windup")).toBe(false);
@@ -290,7 +290,7 @@ describe("presentation events follow the simulation, not the input", () => {
     const w = WEAPONS.longsword;
     // Two full step+pause cycles: the second step starts inside flushBuffer,
     // bypassing the engine's acceptance chain, and must still land audibly.
-    const ms = 2 * (w.stepDuration + w.stancePause) + 100;
+    const ms = 2 * (w.stepDuration + w.stepRecoveryMs) + 100;
     let steps = 0;
     for (let t = 0; t < ms; t += TICK) {
       steps += tickDuel(d, "advance", null).filter((e) => e.kind === "step" && e.side === 0).length;

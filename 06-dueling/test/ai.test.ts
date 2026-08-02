@@ -24,7 +24,7 @@ test("mode 0 never acts", () => {
   const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
   d.f[0].x = d.f[1].x - 140;
   runWithAi(d, 0, 2000);
-  expect(d.f[1].state.kind).toBe("idle");
+  expect(d.f[1].state.kind).toBe("ready");
   expect(d.log.filter((e) => e.side === 1)).toEqual([]);
 });
 

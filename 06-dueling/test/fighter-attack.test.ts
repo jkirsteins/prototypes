@@ -20,18 +20,18 @@ describe("attack cascade", () => {
         phases.push(f.state.phase);
       }
       if (evs.some((e) => e.type === "strikeEnd")) strikeEndAt = elapsed;
-      if (f.state.kind === "idle") break;
+      if (f.state.kind === "ready") break;
     }
     expect(phases).toEqual(["windup", "strike", "recovery"]);
     // strikeEnd fires at windup + beat + strike (within one tick)
     expect(strikeEndAt).toBeGreaterThanOrEqual(t.windup + t.beat + t.strike - TICK);
     expect(strikeEndAt).toBeLessThanOrEqual(t.windup + t.beat + t.strike + TICK);
-    expect(f.state.kind).toBe("idle");
+    expect(f.state.kind).toBe("ready");
   });
 
   test("a windup bonus stretches the telegraph without touching the strike", () => {
     const f = createFighter(400, -1, WEAPONS.longsword);
-    const bonus = WEAPONS.longsword.pretempo;
+    const bonus = WEAPONS.longsword.telegraphMs;
     applyIntent(f, "cut", { windupBonusMs: bonus });
     expect(f.state).toMatchObject({ kind: "attack", phase: "windup" });
     if (f.state.kind !== "attack") throw new Error("unreachable");
@@ -67,7 +67,7 @@ describe("attack cascade", () => {
         };
         extended = true;
       }
-      if (f.state.kind === "idle") { idleAt = elapsed; break; }
+      if (f.state.kind === "ready") { idleAt = elapsed; break; }
     }
     expect(extended).toBe(true);
     const expected = t.windup + t.beat + t.strike + t.recovery * WEAPONS.rapier.whiffRecoveryFactor;

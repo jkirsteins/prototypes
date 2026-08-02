@@ -16,7 +16,7 @@ describe("void", () => {
     expect(applyIntent(f, "cut")).toBe("ignored"); // committed
     run(f, WEAPONS.longsword.voidDuration + TICK);
     expect(f.x).toBeCloseTo(400 - WEAPONS.longsword.voidDistance, 5);
-    expect(f.state.kind).toBe("idle");
+    expect(f.state.kind).toBe("ready");
   });
 
   test("facing=-1 voids backward for its facing (forward in world space)", () => {
@@ -25,19 +25,19 @@ describe("void", () => {
     expect(f.state.kind).toBe("void");
     run(f, WEAPONS.rapier.voidDuration + TICK);
     expect(f.x).toBeCloseTo(400 + WEAPONS.rapier.voidDistance, 5);
-    expect(f.state.kind).toBe("idle");
+    expect(f.state.kind).toBe("ready");
   });
 });
 
 describe("parry", () => {
-  test("parry lasts parryWindow, then cooldown blocks re-entry", () => {
+  test("parry lasts parryWindowMs, then cooldown blocks re-entry", () => {
     const f = createFighter(400, 1, WEAPONS.rapier);
     expect(applyIntent(f, "parry")).toBe("accepted");
     expect(f.state.kind).toBe("parry");
-    run(f, WEAPONS.rapier.parryWindow + TICK);
-    expect(f.state.kind).toBe("idle");
+    run(f, WEAPONS.rapier.parryWindowMs + TICK);
+    expect(f.state.kind).toBe("ready");
     expect(applyIntent(f, "parry")).toBe("ignored"); // cooling down
-    run(f, WEAPONS.rapier.parryCooldown + TICK);
+    run(f, WEAPONS.rapier.parryRecoveryMs + TICK);
     expect(applyIntent(f, "parry")).toBe("accepted");
   });
 });
@@ -49,17 +49,18 @@ describe("parry is reactive, never queued", () => {
     expect(f.state.kind).toBe("step");
     expect(applyIntent(f, "parry")).toBe("ignored");
     expect(f.buffered).toBe(null);
-    run(f, WEAPONS.longsword.stepDuration + WEAPONS.longsword.stancePause + 2 * TICK);
-    expect(f.state.kind).toBe("idle"); // no phantom parry fired on completion
-    expect(f.parryCd).toBe(0); // and no cooldown burned
+    run(f, WEAPONS.longsword.stepDuration + WEAPONS.longsword.stepRecoveryMs + 2 * TICK);
+    expect(f.state.kind).toBe("ready"); // no phantom parry fired on completion
+    expect(f.parryRecoveryMs).toBe(0); // and no cooldown burned
   });
 
-  test("a parry may interrupt the stance pause between chained steps", () => {
+  test("a parry may go up during the settle after a step", () => {
     const f = createFighter(400, 1, WEAPONS.longsword);
     applyIntent(f, "advance");
     run(f, WEAPONS.longsword.stepDuration + TICK);
-    expect(f.state.kind).toBe("pause");
-    expect(applyIntent(f, "parry")).toBe("accepted");
+    expect(f.state.kind).toBe("ready");
+    expect(f.stepRecoveryMs).toBeGreaterThan(0); // still settling
+    expect(applyIntent(f, "parry")).toBe("accepted"); // the timer does not gate the parry
     expect(f.state.kind).toBe("parry");
   });
 });

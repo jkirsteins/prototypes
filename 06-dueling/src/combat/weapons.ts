@@ -14,14 +14,14 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     reach: 200,
     stepDistance: 60,
     stepDuration: 260,
-    stancePause: 90,
-    pretempo: 180,
+    stepRecoveryMs: 90,
+    telegraphMs: 180,
     attacks: {
       cut:    { windup: 420, beat: 100, strike: 380, recovery: 420 },
       thrust: { windup: 260, beat: 60,  strike: 260, recovery: 300 },
     },
-    parryWindow: 260,
-    parryCooldown: 340,
+    parryWindowMs: 260,
+    parryRecoveryMs: 340,
     parriedPenalty: 290,
     whiffRecoveryFactor: 2.0,
     animSpeed: 0.85,
@@ -35,14 +35,14 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     reach: 240,
     stepDistance: 50,
     stepDuration: 200,
-    stancePause: 70,
-    pretempo: 140,
+    stepRecoveryMs: 70,
+    telegraphMs: 140,
     attacks: {
       cut:    { windup: 320, beat: 80, strike: 300, recovery: 400 },
       thrust: { windup: 200, beat: 60, strike: 220, recovery: 260 },
     },
-    parryWindow: 200,
-    parryCooldown: 400,
+    parryWindowMs: 200,
+    parryRecoveryMs: 400,
     parriedPenalty: 360,
     whiffRecoveryFactor: 3.0,
     animSpeed: 1.15,
@@ -67,7 +67,7 @@ export function parryableMs(t: AttackTimings): number {
   return t.strike * PARRYABLE_FRACTION;
 }
 
-/** Fastest counter a player can throw: thrust with no pretempo (tell-free). */
+/** Fastest counter a player can throw: thrust with no telegraph (tell-free). */
 export function counterTime(w: WeaponProfile): number {
   const t = w.attacks.thrust;
   return t.windup + t.beat + t.strike;

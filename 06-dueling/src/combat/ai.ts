@@ -26,7 +26,7 @@ export const DRILL_INTERVAL_MS = 2000;
 export function duelistCooldown(w: WeaponProfile): number {
   const t = w.attacks.thrust;
   const whiffCommit = t.windup + t.beat + t.strike + t.recovery * w.whiffRecoveryFactor;
-  return whiffCommit + w.stepDuration + w.stancePause;
+  return whiffCommit + w.stepDuration + w.stepRecoveryMs;
 }
 
 /**
@@ -84,9 +84,10 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     const untilStrike = timeline.strikeStart - elapsedMs;
     if (
       elapsedMs >= AI_REACTION_MS &&
-      untilStrike <= self.weapon.parryWindow * 0.5 &&
-      self.state.kind === "idle" &&
-      self.parryCd <= 0
+      untilStrike <= self.weapon.parryWindowMs * 0.5 &&
+      self.state.kind === "ready" &&
+      self.stepRecoveryMs <= 0 &&
+      self.parryRecoveryMs <= 0
     ) {
       return "parry";
     }
@@ -95,7 +96,12 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
 
   // Modes 2 and 3 share the attack cooldown.
   ai.cooldown = Math.max(0, ai.cooldown - dt);
-  if (self.state.kind !== "idle") return null;
+  // Free to act means the settle is over too: deciding during it would
+  // buffer the attack, burn the cooldown at decision time, and let the
+  // next tick's movement intent overwrite the slot - the attack would
+  // evaporate. The AI waits the settle out, as it waited out the old
+  // pause state.
+  if (self.state.kind !== "ready" || self.stepRecoveryMs > 0) return null;
   if (opp.state.kind === "dead") return null;
   const zone = zoneFor(gapOf(d), self.weapon);
 

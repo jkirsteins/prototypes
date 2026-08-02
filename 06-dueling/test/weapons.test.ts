@@ -9,7 +9,7 @@ describe("attack timeline snapshot", () => {
   // one object, so this is the single place their agreement is asserted.
   for (const w of Object.values(WEAPONS)) {
     for (const kind of KINDS) {
-      for (const bonus of [0, w.pretempo]) {
+      for (const bonus of [0, w.telegraphMs]) {
         test(`${w.id} ${kind} marks are consistent (bonus ${bonus})`, () => {
           const t = w.attacks[kind];
           const tl = attackTimeline(w, kind, bonus);
@@ -41,7 +41,7 @@ describe("weapon identity", () => {
 });
 
 describe("counter-window arithmetic (the doc's tempo economics)", () => {
-  // counterTime = fastest player counter (thrust, no pretempo): windup + beat + strike.
+  // counterTime = fastest player counter (thrust, no telegraphMs): windup + beat + strike.
   for (const atk of Object.values(WEAPONS)) {
     for (const def of Object.values(WEAPONS)) {
       for (const kind of KINDS) {

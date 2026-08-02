@@ -41,7 +41,7 @@ What the source design doc covers vs what this prototype implements.
 |---|---|
 | Measure zones (out/wide/narrow) | implemented (per weapon, asymmetric, drawn on the floor) |
 | Grappling measure | not in MVP |
-| Tempo: committed attacks with readable cascade | implemented (windup/beat/strike/recovery; pretempo tell on AI attacks only) |
+| Tempo: committed attacks with readable cascade | implemented (windup/strike/recovery, with rise and stillness marks inside the windup; telegraph tell on AI attacks only) |
 | Primo tempo / mezzo tempo / Nachreisen | partial (recognized and named in the event log when they happen; not separate mechanics) |
 | Contratempo (strike into strike) | partial (simultaneous strikes resolve, can draw; no geometry advantage) |
 | Void | implemented (backward only) |

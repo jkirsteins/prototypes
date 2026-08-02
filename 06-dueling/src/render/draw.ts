@@ -31,7 +31,7 @@ export interface View {
 const PHASE_COLORS: Record<AttackPhase | Exclude<FighterState["kind"], "attack">, string> = {
   windup: "#e6c229", strike: "#d64541", recovery: "#57a55a",
   void: "#4aa3df", parry: "#9b8cff", step: "#cfd3da",
-  pause: "#cfd3da", hitstun: "#d64541", dead: "#555a63", idle: "#8a8f98",
+  hitstun: "#d64541", dead: "#555a63", ready: "#8a8f98",
 };
 
 /** cut/thrust tempo cost per weapon, shown on the HUD cards. */
@@ -188,11 +188,11 @@ function drawStrikeTiming(v: View, f: Fighter): void {
 function drawGuardState(v: View, f: Fighter): void {
   const { ctx } = v;
   const up = f.state.kind === "parry";
-  const cooling = f.parryCd > 0;
+  const cooling = f.parryRecoveryMs > 0;
   const x = f.x * PX_PER_CM - 26;
   const y = ARENA.floorY - 150;
   ctx.fillStyle = up ? "#9b8cff" : cooling ? "#4a4550" : "#3a404c";
-  const width = cooling && !up ? 52 * (1 - f.parryCd / f.weapon.parryCooldown) : 52;
+  const width = cooling && !up ? 52 * (1 - f.parryRecoveryMs / f.weapon.parryRecoveryMs) : 52;
   ctx.fillRect(x, y, width, 4);
   ctx.font = "9px ui-monospace, monospace";
   ctx.fillStyle = up ? "#9b8cff" : cooling ? "#6b6675" : "#5a6070";

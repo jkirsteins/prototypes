@@ -25,13 +25,14 @@ export interface WeaponProfile {
   reach: number;
   stepDistance: number;
   stepDuration: number;
-  /** stance pause between chained steps */
-  stancePause: number;
-  /** tell phase before windup; AI attacks only */
-  pretempo: number;
+  /** settle after a step before the next action starts; a parry may still be raised during it */
+  stepRecoveryMs: number;
+  /** extra windup on AI attacks: the telegraph the player reads */
+  telegraphMs: number;
   attacks: Record<AttackKind, AttackTimings>;
-  parryWindow: number;
-  parryCooldown: number;
+  parryWindowMs: number;
+  /** how long after a spent parry the next one is available; gates only the parry */
+  parryRecoveryMs: number;
   /** added to this weapon's recovery when its attack is parried */
   parriedPenalty: number;
   /** multiplies this weapon's recovery when its attack whiffs */

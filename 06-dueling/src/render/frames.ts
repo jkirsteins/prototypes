@@ -58,12 +58,12 @@ export function pickFrame(f: Fighter, timeMs: number): FramePick {
   const s = f.state;
   const w = f.weapon;
   switch (s.kind) {
-    case "idle": {
+    case "ready": {
+      // Settling after a step reads as stillness, not the relaxed idle sway.
+      if (f.stepRecoveryMs > 0) return { sheet: "swordIdle", frame: 0, flip };
       const per = IDLE_FRAME_MS / w.animSpeed;
       return { sheet: "swordIdle", frame: Math.floor(timeMs / per) % SHEETS.swordIdle.frames, flip };
     }
-    case "pause":
-      return { sheet: "swordIdle", frame: 0, flip };
     case "step":
       return { sheet: "swordRun", frame: span("swordRun", s.t, w.stepDuration, 0, 7), flip };
     case "void":
