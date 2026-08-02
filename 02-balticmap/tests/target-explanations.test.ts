@@ -195,7 +195,7 @@ describe("targetOddsLines", () => {
     relations: {}, overlords: new Map(), incorporated: {},
     adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
-    diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
@@ -348,7 +348,7 @@ describe("cardRiskLine", () => {
       relations: {}, overlords: new Map([["gamma", "beta"]]), incorporated: {},
       adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
       factionIds: ids, alliances: {}, turn: 1, guards: {}, omens: {},
-      diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+      diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     siteCaps: {}, settlements: {}, booms: {},
     };
     const fallible = Object.keys(CARDS).filter((id) =>
@@ -368,7 +368,7 @@ describe("targetImpactLines", () => {
       alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"], delta: [],
     },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
-    diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
@@ -554,7 +554,7 @@ describe("subjugationBreakdown", () => {
       delta: ["gamma"],
     },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
-    diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
@@ -704,7 +704,7 @@ describe("pactBoostLines", () => {
   const v = (partial: Partial<RulesView> = {}): RulesView => ({
     relations: {}, overlords: new Map(), incorporated: {}, adjacency: {},
     factionIds: ["alpha", "beta", "gamma", "delta"], alliances: {}, turn: 1,
-    guards: {}, omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    guards: {}, omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
@@ -747,7 +747,7 @@ describe("settlementBlock", () => {
   const v = (partial: Partial<RulesView> = {}): RulesView => ({
     relations: {}, overlords: new Map(), incorporated: {}, adjacency: {},
     factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
-    omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [],
+    omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });

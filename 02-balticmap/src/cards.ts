@@ -27,25 +27,25 @@ export const RARITY_TIERS = [
   // owns. They are absolute numbers on a scale that the pool's own size moves,
   // though - a denser enemy field shrinks every human realm and pulls every
   // coefficient toward zero with it - so adding cards means re-reading the
-  // table and re-cutting, not just tagging the new ones.
+  // table and re-cutting, not just tagging the new ones. Take hostage joining
+  // the pool was such a re-cut: the coefficients past the top two reordered
+  // outright, so several cards changed tier with it.
   //
-  // 0.120 is the midpoint of the 0.104 gap between A feast (0.172) and Found a
-  // settlement (0.068), twice the width of the runner-up and the only clear
-  // separation in the table. Epic is measured, and holds Incorporate and A
-  // feast.
+  // 0.147 is the midpoint of the 0.058 gap between A feast (0.176) and Found a
+  // settlement (0.118), the widest separation in the table. Epic is measured,
+  // and holds Incorporate and A feast.
   //
-  // -0.017 is the midpoint of that runner-up, between Extended diplomacy
-  // (0.010) and Alliance (-0.043). It falls below zero, which reads oddly and
-  // is honest: past the top two, a card's measured contribution to final realm
-  // size is small and often negative, so the rare/common line is a design
-  // decision about what feels worth finding rather than a measurement. Treat it
-  // as something to playtest.
+  // 0.044 is the midpoint of the runner-up gap, between Bodyguard (0.065) and
+  // Alliance (0.023). Past the top of the table a card's measured contribution
+  // to final realm size is small and noise-dominated, so the rare/common line
+  // is a design decision about what feels worth finding rather than a
+  // measurement. Treat it as something to playtest.
   //
   // An empty top tier is a real failure and not a tidy one: `rollTier` falls
   // back to the base tier, so 5% of pack slots would quietly become common
   // while the purple band went unused. tests/packs.test.ts refuses it.
-  { id: "rare",   weight: 25, minImpact: -0.017, colour: "#1f6fd0" },
-  { id: "epic",   weight:  5, minImpact: 0.120, colour: "#7b2fbf" },
+  { id: "rare",   weight: 25, minImpact: 0.044, colour: "#1f6fd0" },
+  { id: "epic",   weight:  5, minImpact: 0.147, colour: "#7b2fbf" },
 ] as const satisfies readonly RarityTier[];
 
 export type CardRarity = (typeof RARITY_TIERS)[number]["id"];
@@ -110,7 +110,7 @@ export interface CardDef {
 export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "No effect - a quiet season. Fills out the deck." },
   "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain Might over one faction in reach: +1 for your first land on their border, +2 for the second, +3 for the third, and so on." },
-  "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
+  "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
   "fortify": { id: "fortify", name: "Fortify", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Might over every other living faction at once." },
   "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Needs a lead of 2 per land of their realm. Vassals pay tribute." },
   "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Permanently absorb one of your vassals into your realm." },
@@ -121,14 +121,14 @@ export const CARDS: Record<string, CardDef> = {
   "pay-status-tribute": { id: "pay-status-tribute", name: "Pay status tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, grant your overlord +1 Status." },
   "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
   "revolt": { id: "revolt", name: "Revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good." },
-  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Even the score: the Status lead between you and one faction in reach resets to none." },
-  "alliance": { id: "alliance", name: "Alliance", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns, and +1 Might for both of you against every faction bordering both realms." },
+  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Even the score: the Status lead between you and one faction in reach resets to none." },
+  "alliance": { id: "alliance", name: "Alliance", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns, and +1 Might for both of you against every faction bordering both realms. Sealed again with an ally, the pact runs 5 turns longer." },
   "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Patient envoys: your next Alliance lasts twice as long." },
   // Secret. The rules already treat a posted guard as hidden - `failureRiskOf`
   // in src/playability.ts refuses to read the guard lists so the Assassinate
   // ruler tooltip cannot become a detector - and a log line naming the card was
   // that detector by another route.
-  "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card." },
+  "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card." },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "The signs are read: your next Might or Status gain counts double." },
   "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
   // Appended, never inserted: `buildAiDeck` rolls one rng draw per entry here
@@ -137,7 +137,8 @@ export const CARDS: Record<string, CardDef> = {
   "population-boom": { id: "population-boom", name: "Population boom", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your people multiply: one more settlement than your lands would otherwise support. Stacks, and waits in hand until a settlement is founded." },
   "a-feast": { id: "a-feast", name: "A feast", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Gain +1 Status over every other living faction at once." },
   "distrustful-neighbour": { id: "distrustful-neighbour", name: "Distrustful neighbour", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your neighbours grow wary: the next Alliance sealed with you fails. No stacking. Others see only that you played a secret card." },
-  "eloping-heirs": { id: "eloping-heirs", name: "Eloping heirs", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your heirs slip away in the night: the next Shrewd marriage against you fails. No stacking. Others see only that you played a secret card." },
+  "eloping-heirs": { id: "eloping-heirs", name: "Eloping heirs", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Your heirs slip away in the night: the next Shrewd marriage against you fails. No stacking. Others see only that you played a secret card." },
+  "take-hostage": { id: "take-hostage", name: "Take hostage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Take a hostage from a vassal of yours whose deck holds a Revolt: the Revolt cannot be played until they pay tribute twice and the hostage goes home." },
 };
 
 /** Guard card -> the card it turns aside, once, for whoever posted it.

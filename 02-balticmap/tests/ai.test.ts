@@ -787,3 +787,40 @@ describe("convex Raid valuation", () => {
     expect(action).toMatchObject({ type: "play", cardIndex: 0, targetId: "delta" });
   });
 });
+
+describe("5b: take a hostage", () => {
+  /** Alpha's vassals, each with a live Revolt in its deck. */
+  function restive(g: GameState, vassals: string[]): GameState {
+    return {
+      ...g,
+      overlords: new Map([
+        ...g.overlords,
+        ...vassals.map((v): [string, string] => [v, "alpha"]),
+      ]),
+      players: g.players.map((pl) =>
+        vassals.includes(pl.factionId) ? { ...pl, deck: [...pl.deck, "revolt"] } : pl,
+      ),
+    };
+  }
+
+  it("locks the restive vassal with the most land at stake", () => {
+    let g = base();
+    g = restive(g, ["gamma", "delta"]);
+    // delta's realm is two lands (its own plus an annexation), gamma's one -
+    // a revolt by delta walks off with more, so delta is the pick.
+    g = { ...g, incorporated: { beta: "delta" } };
+    g = withHand(g, ["grow-crops", "take-hostage"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "delta",
+    });
+  });
+
+  it("holds the card while no vassal is restive", () => {
+    let g = base();
+    // A vassal with no Revolt sown is no target, so the card is unplayable and
+    // the turn falls through to filler rather than wasting the lock.
+    g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
+    g = withHand(g, ["grow-crops", "take-hostage"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+});

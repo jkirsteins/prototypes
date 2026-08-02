@@ -137,6 +137,14 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
       overlordFactionId: H, track: "might", amount: 1, pactAgainst: [],
     },
   ],
+  "hostage-taken": [
+    { turn: 1, playerId: 2, type: "hostage-taken", targetFactionId: H, overlordFactionId: RIVAL },
+    { turn: 1, playerId: 1, type: "hostage-taken", targetFactionId: RIVAL, overlordFactionId: H },
+  ],
+  "hostage-returned": [
+    { turn: 1, playerId: 1, type: "hostage-returned", targetFactionId: H, overlordFactionId: RIVAL },
+    { turn: 1, playerId: 2, type: "hostage-returned", targetFactionId: RIVAL, overlordFactionId: H },
+  ],
   "subjugate-failed": [
     {
       turn: 1, playerId: 2, type: "subjugate-failed",

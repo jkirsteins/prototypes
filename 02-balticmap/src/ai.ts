@@ -41,6 +41,7 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "subjugate": "4: subjugate the biggest lead",
   "alliance": "5: emergency alliance",
   "assassinate-ruler": "5: emergency assassination",
+  "take-hostage": "5b: lock a restive vassal's Revolt, biggest realm first",
   "raid": "6: finishing play, else 9: build toward the closest subjugation",
   "shrewd-marriage": "6: finishing play, else 9: build toward the closest subjugation",
   "fortify": "7: defensive fan-out, Might track",
@@ -318,6 +319,29 @@ export function chooseAction(state: GameState): AiAction {
       if (pick !== undefined) {
         return { type: "play", cardIndex: assassinate, targetId: pick.factionId };
       }
+    }
+  }
+
+  // 5b: lock a restive vassal's Revolt. Legality has already narrowed the
+  // targets to this faction's own vassals holding a live Revolt with no
+  // hostage taken, so the only question left is which. The Revolt can surface
+  // any turn and fires the turn it does, while a threshold play (step 6) is
+  // still there next turn - which is why this sits above the finishing plays
+  // and below the emergencies: losing yourself outranks keeping a vassal.
+  const hostage = idxOf("take-hostage");
+  if (hostage !== undefined) {
+    const targets = validTargetsFor(v, p.factionId, "take-hostage");
+    if (targets.length > 0) {
+      // The vassal with the most land at stake: a revolt walks off with its
+      // whole realm and the tribute it was paying. Ties by faction order, so
+      // the pick is deterministic - the same convention settlementTarget uses.
+      const best = [...targets].sort(
+        (a, b) =>
+          realmOf(b, state.overlords, state.incorporated).length -
+            realmOf(a, state.overlords, state.incorporated).length ||
+          state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
+      )[0];
+      return { type: "play", cardIndex: hostage, targetId: best };
     }
   }
 

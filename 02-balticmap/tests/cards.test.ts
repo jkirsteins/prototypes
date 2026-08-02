@@ -14,6 +14,7 @@ const NON_BASICS = [
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens", "found-settlement",
   "population-boom", "a-feast", "distrustful-neighbour", "eloping-heirs",
+  "take-hostage",
 ];
 
 function seededRng(seed: number): Rng {
@@ -90,7 +91,8 @@ describe("cards", () => {
       "alliance", "Alliance", true, false, 1, true, false,
       "Seal a pact with one faction in reach: no hostile cards between you " +
         "for 5 turns, and +1 Might for both of you against every faction " +
-        "bordering both realms.",
+        "bordering both realms. Sealed again with an ally, the pact runs " +
+        "5 turns longer.",
     );
     expectProps(
       "extended-diplomacy", "Extended diplomacy", false, false, 1, true, false,
@@ -128,6 +130,12 @@ describe("cards", () => {
       "eloping-heirs", "Eloping heirs", false, true, 1, true, false,
       "Your heirs slip away in the night: the next Shrewd marriage against " +
         "you fails. No stacking. Others see only that you played a secret card.",
+    );
+    expectProps(
+      "take-hostage", "Take hostage", true, false, 1, true, false,
+      "Take a hostage from a vassal of yours whose deck holds a Revolt: the " +
+        "Revolt cannot be played until they pay tribute twice and the " +
+        "hostage goes home.",
     );
   });
 
@@ -296,7 +304,7 @@ describe("buildAiDeck", () => {
   });
 
   it("an rng that always returns < 0.5 includes non-basics up to DECK_SIZE, guarding overflow", () => {
-    // 16 non-basics now exist; an rng that includes all of them must still be
+    // 17 non-basics now exist; an rng that includes all of them must still be
     // capped at DECK_SIZE (same overflow guard as buildDeck), keeping the
     // guaranteed pair plus the first of the rest in CARDS declaration order
     // rather than returning 16 cards.
@@ -373,6 +381,7 @@ describe("rarity and the acquirable pool", () => {
       "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
       "favourable-omens", "found-settlement",
       "population-boom", "a-feast", "distrustful-neighbour", "eloping-heirs",
+      "take-hostage",
     ]);
     // the escape is a starting card now, not a pack drop
     expect(ACQUIRABLE_CARDS).not.toContain("seeds-of-revolt");

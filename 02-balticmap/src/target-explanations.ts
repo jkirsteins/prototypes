@@ -1,4 +1,5 @@
 import {
+  HOSTAGE_RETURN_TRIBUTES,
   INCORPORATE_RAMP, PACT_MIGHT_BONUS, POACH_CHANCE, SETTLEMENT_BASE_CAP,
   boomsHeld, failureRiskOf, freeSitesIn, gripPartsOn, holdsGuard, leadsIn,
   omenMultiplier, omensHeld, pactBoostExpiriesOn, poachSurchargeOn, raidGainFor,
@@ -93,6 +94,10 @@ function explainReason(reason: TargetBlockReason): string[] {
       return ["You cannot target yourself."];
     case "not-your-vassal":
       return ["Not your vassal."];
+    case "no-revolt":
+      return ["No revolt is sown in their deck, so there is nothing to lock."];
+    case "hostage-already-held":
+      return ["You already hold a hostage of theirs."];
     case "needs-population":
       // The one block a card in hand can lift, so it says which: without the
       // second sentence the player reads "not enough people" as a fact about
@@ -397,6 +402,14 @@ function availableImpacts(
         : []),
     ];
   }
+  if (cardId === "take-hostage") {
+    return [
+      prose("Their Revolt cannot be played while you hold the hostage."),
+      prose(
+        `Returned after ${count(HOSTAGE_RETURN_TRIBUTES, "tribute payment")}.`,
+      ),
+    ];
+  }
   return [prose("Available.")];
 }
 
@@ -660,6 +673,14 @@ export function cardBlockLine(reason: CardBlockReason): string {
       return "You are already holding an unspent one.";
     case "revolt-live":
       return "A revolt is already sown in your deck.";
+    case "hostage-held":
+      // The count is the decision: what unlocks the card is paying the debt
+      // down, and how far along that is decides whether to keep feeding the
+      // lord or wait.
+      return (
+        "Your overlord holds a hostage: " +
+        `${count(reason.remaining, "tribute payment")} will bring them home.`
+      );
     case "no-target":
       return "Nothing in reach is a legal target.";
     case "unavailable":

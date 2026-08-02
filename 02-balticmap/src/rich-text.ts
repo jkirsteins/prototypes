@@ -71,6 +71,7 @@ const VERBS = {
   reshuffle: { third: "reshuffles", past: "reshuffled" },
   resist: { third: "resists", past: "resisted" },
   rule: { third: "rules", past: "ruled" },
+  send: { third: "sends", past: "sent" },
   sow: { third: "sows", past: "sowed" },
   stand: { third: "stands", past: "stood" },
   submit: { third: "submits", past: "submitted" },

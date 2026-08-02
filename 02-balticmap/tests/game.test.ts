@@ -12,8 +12,9 @@ import {
   allianceKey, bumpMight, bumpStatus, getRel, leadsOf, type Relations,
 } from "../src/relations";
 import {
-  INCORPORATE_RAMP, PASSIVE_PER_LANDS, leadsIn, loyaltyKey, playableSet,
-  raidYield, subjugationGripOn,
+  HOSTAGE_RETURN_TRIBUTES, INCORPORATE_RAMP, PASSIVE_PER_LANDS,
+  cardBlockReason, leadsIn, loyaltyKey, playableSet,
+  raidYield, subjugationGripOn, validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
 import { runTurnips, runXp } from "../src/xp";
@@ -111,6 +112,7 @@ const NON_BASICS = [
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens", "found-settlement",
   "population-boom", "a-feast", "distrustful-neighbour", "eloping-heirs",
+  "take-hostage",
 ];
 
 /** A vassalage held long enough that Incorporate is certain, so a test about
@@ -663,12 +665,12 @@ describe("diplomacy cards", () => {
     expect(boosted.diplomacyBoost).not.toContain("beta");
   });
 
-  it("alliance can re-target an active ally to renew the pact, overwriting the expiry", () => {
+  it("alliance re-sealed on an active ally extends the pact: remaining turns + 5", () => {
     let g = playingState(LINE_ADJ);
-    g = { ...g, alliances: { [allianceKey("beta", "alpha")]: pact(g.turn + 1) } };
+    g = { ...g, alliances: { [allianceKey("beta", "alpha")]: pact(g.turn + 4) } };
     g = withHand(g, 0, ["alliance"]);
     const after = playCard(g, 0, rng(), "alpha");
-    expect(after.alliances[allianceKey("beta", "alpha")].expiry).toBe(g.turn + 5);
+    expect(after.alliances[allianceKey("beta", "alpha")].expiry).toBe(g.turn + 9);
 
     let g2 = playingState(LINE_ADJ);
     g2 = {
@@ -678,8 +680,16 @@ describe("diplomacy cards", () => {
     };
     g2 = withHand(g2, 0, ["alliance"]);
     const boosted = playCard(g2, 0, rng(), "alpha");
-    expect(boosted.alliances[allianceKey("beta", "alpha")].expiry).toBe(g2.turn + 10);
+    expect(boosted.alliances[allianceKey("beta", "alpha")].expiry).toBe(g2.turn + 11);
     expect(boosted.diplomacyBoost).not.toContain("beta");
+  });
+
+  it("alliance on a lapsed-but-unswept pact starts fresh: no credit for a dead pact", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, alliances: { [allianceKey("beta", "alpha")]: pact(g.turn) } };
+    g = withHand(g, 0, ["alliance"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(after.alliances[allianceKey("beta", "alpha")].expiry).toBe(g.turn + 5);
   });
 
   it("extended-diplomacy adds the actor to diplomacyBoost, once", () => {
@@ -1775,5 +1785,94 @@ describe("event amount/track", () => {
     const after = playCard(g, 0, rng(), "gamma");
     expect(after.log.at(-1)).toMatchObject({ type: "subjugated" });
     expect(after.log.at(-1)?.amount).toBeUndefined();
+  });
+});
+
+describe("take hostage", () => {
+  /** Makes `vassal` a vassal of `lord` with a live Revolt in its deck - the
+   *  position Take hostage exists for. */
+  function restiveVassal(g: GameState, vassal: string, lord: string): GameState {
+    return {
+      ...g,
+      overlords: new Map([...g.overlords, [vassal, lord]]),
+      players: g.players.map((pl) =>
+        pl.factionId === vassal ? { ...pl, deck: [...pl.deck, "revolt"] } : pl,
+      ),
+    };
+  }
+
+  /** Human beta holding Take hostage over its restive vassal alpha. */
+  function armed(): GameState {
+    return withHand(
+      restiveVassal(playingState(), "alpha", "beta"), 0, ["take-hostage"],
+    );
+  }
+
+  it("records the debt, logs the taking and locks the vassal's Revolt", () => {
+    const g = armed();
+    expect(validTargetsFor(viewOf(g), "beta", "take-hostage")).toEqual(["alpha"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(after.hostages).toEqual({ alpha: HOSTAGE_RETURN_TRIBUTES });
+    expect(after.log.at(-2)).toMatchObject({
+      type: "play", cardId: "take-hostage", targetFactionId: "alpha",
+    });
+    expect(after.log.at(-1)).toMatchObject({
+      type: "hostage-taken", targetFactionId: "alpha",
+      overlordFactionId: "beta", consequence: true,
+    });
+    expect(cardBlockReason(viewOf(after), "alpha", "revolt")).toEqual({
+      code: "hostage-held", remaining: HOSTAGE_RETURN_TRIBUTES,
+    });
+    // The Revolt is locked, not stripped: it stays in the piles, so the vassal
+    // is not stranded and the escape resumes once the debt is paid.
+    expect(after.players[1].deck).toContain("revolt");
+  });
+
+  it("returns the hostage after two tribute payments, on the second's own batch", () => {
+    let g = playCard(armed(), 0, rng(), "alpha");
+    // First tribute: the debt falls, the hostage stays, nothing is logged yet.
+    g = withHand({ ...g, current: 1, playedThisTurn: false }, 1, ["pay-military-tribute"]);
+    g = playCard(g, 0, rng());
+    expect(g.hostages).toEqual({ alpha: 1 });
+    expect(g.log.some((e) => e.type === "hostage-returned")).toBe(false);
+    // Second tribute: the entry goes and the return is that play's consequence.
+    g = withHand({ ...g, playedThisTurn: false }, 1, ["pay-status-tribute"]);
+    g = playCard(g, 0, rng());
+    expect(g.hostages).toEqual({});
+    expect(g.log.at(-1)).toMatchObject({
+      type: "hostage-returned", targetFactionId: "alpha",
+      overlordFactionId: "beta", consequence: true,
+    });
+    expect(cardBlockReason(viewOf(g), "alpha", "revolt")).toBeNull();
+  });
+
+  it("cannot take a second hostage while one is held", () => {
+    const g = withHand(playCard(armed(), 0, rng(), "alpha"), 0, ["take-hostage"]);
+    expect(validTargetsFor(viewOf(g), "beta", "take-hostage")).toEqual([]);
+  });
+
+  it("a poach drops the hostage silently - the debt was to the former lord", () => {
+    let g = playCard(armed(), 0, rng(), "alpha");
+    g = { ...g, current: 2, playedThisTurn: false };
+    g = { ...g, relations: mightLead(g.relations, "gamma", "alpha", 6) };
+    g = withHand(g, 2, ["subjugate"]);
+    g = playCard(g, 0, () => 0, "alpha"); // 0 < POACH_CHANCE: the poach lands
+    expect(g.overlords.get("alpha")).toBe("gamma");
+    expect(g.hostages).toEqual({});
+    expect(g.log.some((e) => e.type === "hostage-returned")).toBe(false);
+  });
+
+  it("a released vassal takes no hostage debt into freedom", () => {
+    // gamma subjugates the lord beta; freeVassalsOf scatters beta's vassals
+    // and the hostage entry goes with the vassalage that justified it.
+    let g = playCard(armed(), 0, rng(), "alpha");
+    g = { ...g, current: 2, playedThisTurn: false };
+    g = { ...g, relations: mightLead(g.relations, "gamma", "beta", 8) };
+    g = withHand(g, 2, ["subjugate"]);
+    g = playCard(g, 0, () => 0, "beta");
+    expect(g.overlords.get("beta")).toBe("gamma");
+    expect(g.overlords.has("alpha")).toBe(false);
+    expect(g.hostages).toEqual({});
+    expect(g.log.some((e) => e.type === "hostage-returned")).toBe(false);
   });
 });

@@ -21,6 +21,10 @@ export const XP_TABLE: Record<GameEventType, number> = {
   released: 1, // your own Subjugate freeing the target's vassals
   "subjugate-failed": 1, // the card was spent and the turn is gone
   "incorporate-failed": 1,
+  "hostage-taken": 2, // locking an escape is a positional play, like seeding one
+  // Fires off the vassal's FORCED tribute - when the human is that vassal it
+  // was not a choice, and when the human is the lord it is not their event.
+  "hostage-returned": 0,
   victory: 15,
   draw: 0,
   reshuffle: 0,

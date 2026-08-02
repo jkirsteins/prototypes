@@ -326,6 +326,17 @@ export function eventSegments(
       return clause(named(e.targetFactionId), "sow", [
         t(" the seeds of revolt against "), faction(e.overlordFactionId ?? ""),
       ]);
+    case "hostage-taken":
+      return clause(named(e.targetFactionId), "send", [
+        t(" a hostage to the camp of "), faction(e.overlordFactionId ?? ""),
+      ]);
+    case "hostage-returned":
+      // Invariant subject, like the pact-lapsed line: the hostage is who
+      // returns, and neither camp is the actor of a debt simply running out.
+      return [
+        t("The hostage of "), faction(e.targetFactionId ?? ""),
+        t(" returns home from "), faction(e.overlordFactionId ?? ""),
+      ];
     case "subjugate-failed":
       // `formerOverlordFactionId` is set only when the target had a lord, so
       // the "from X" phrase is optional - see `optionalPhrase` for what went

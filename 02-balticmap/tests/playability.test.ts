@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { pact, settledOnce, siteCaps } from "./helpers";
 import {
   INCORPORATE_RAMP, PASSIVE_PER_LANDS, POACH_CHANCE,
-  SUBJUGATE_THRESHOLD, annexedLandsOf, borderStrength, gripPartsOn,
+  SUBJUGATE_THRESHOLD, annexedLandsOf, borderStrength, cardBlockReason,
+  gripPartsOn,
   incorporationChance, passiveFortifyFor, raidYield,
   isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
   subjugationChance, subjugationGripOn, subjugationRaceFor,
@@ -34,6 +35,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     diplomacyBoost: [],
     loyalty: {},
     liveRevolts: [],
+    hostages: {},
     siteCaps: siteCaps(ORDER),
     settlements: {},
     booms: {},
@@ -448,6 +450,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       factionIds: ["me", "deadland", "owner"],
       loyalty: {},
       liveRevolts: [],
+      hostages: {},
       alliances: {},
       turn: 1,
       guards: {},
@@ -472,6 +475,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       factionIds: ["me", "target", "land"],
       loyalty: {},
       liveRevolts: [],
+      hostages: {},
       alliances: {},
       turn: 1,
       guards: {},
@@ -826,6 +830,7 @@ describe("seeds of revolt", () => {
     const v = view({
       overlords: new Map([["beta", "alpha"]]),
       liveRevolts: ["beta"],
+      hostages: {},
     });
     expect(isCardPlayable(v, "beta", "seeds-of-revolt")).toBe(false);
   });
@@ -951,5 +956,49 @@ describe("passiveFortifyFor", () => {
     expect(passiveFortifyFor(v, "alpha")).toBe(
       Math.floor(5 / PASSIVE_PER_LANDS),
     );
+  });
+});
+
+describe("take hostage", () => {
+  const restive = (hostages: Record<string, number> = {}): RulesView =>
+    view({
+      overlords: new Map([["beta", "alpha"]]),
+      liveRevolts: ["beta"],
+      hostages,
+    });
+
+  it("targets exactly your own restive vassals", () => {
+    expect(validTargetsFor(restive(), "alpha", "take-hostage")).toEqual(["beta"]);
+    // A vassal with no Revolt sown has nothing to lock.
+    const quiet = view({ overlords: new Map([["beta", "alpha"]]) });
+    expect(targetEligibilityFor(quiet, "alpha", "take-hostage")[1]).toMatchObject({
+      state: "blocked", reasons: [{ code: "no-revolt" }],
+    });
+    // A free faction - or somebody else's vassal - is not yours to take from.
+    const free = view({ liveRevolts: ["beta"] });
+    expect(targetEligibilityFor(free, "alpha", "take-hostage")[1]).toMatchObject({
+      state: "blocked", reasons: [{ code: "not-your-vassal" }],
+    });
+  });
+
+  it("refuses a second hostage while one is held", () => {
+    const v = restive({ beta: 2 });
+    expect(targetEligibilityFor(v, "alpha", "take-hostage")[1]).toMatchObject({
+      state: "blocked", reasons: [{ code: "hostage-already-held" }],
+    });
+    expect(validTargetsFor(v, "alpha", "take-hostage")).toEqual([]);
+  });
+
+  it("locks the vassal's Revolt while the debt is owed, quoting the count", () => {
+    expect(cardBlockReason(restive({ beta: 1 }), "beta", "revolt")).toEqual({
+      code: "hostage-held", remaining: 1,
+    });
+    // No hostage: a vassal's Revolt is as playable as it ever was.
+    expect(cardBlockReason(restive(), "beta", "revolt")).toBeNull();
+    // The lock never outlives vassalage: hostages entries are deleted on every
+    // exit (see playCard), so this pairing cannot arise - but the rule alone
+    // must still answer for a free faction, and it answers needs-overlord.
+    expect(cardBlockReason(view({ hostages: { beta: 1 } }), "beta", "revolt"))
+      .toEqual({ code: "needs-overlord" });
   });
 });

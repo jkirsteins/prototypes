@@ -656,6 +656,57 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       t("before it surfaces ends the threat for good."),
     ]],
   },
+  "hostage-taken": {
+    kind: "modal",
+    // Only the human's own overlord can take one (targeting requires the
+    // vassal bond), so the only role worth a line is the vassal's own: your
+    // escape is locked. The human's own taking is their own aimed play, and a
+    // rival locking a DIFFERENT vassal's Revolt is not observable news the way
+    // the map changing is - the log carries it and nothing more.
+    appliesToHuman: (e, ctx) =>
+      e.playerId !== 1 && e.targetFactionId === ctx.humanFactionId,
+    // Pierces a mute for the same reason subjugation does: what the player's
+    // cards do changed. A Revolt they were holding - possibly in hand right
+    // now - stopped working, and a muted player never told discovers it by
+    // clicking a card that refuses. A plain string: one overlord, one hostage
+    // at a time, so a round can never hold two of these for the human.
+    critical: () => "A hostage was taken",
+    lines: (events, _changes, ctx) =>
+      events.map((e) => ({
+        text: [
+          t("A hostage from your camp is held by "),
+          faction(actorId(e, ctx) ?? ""), t(" - "), card("revolt"),
+          t(" cannot be played until you pay tribute twice"),
+        ],
+        changes: [],
+        tone: "bad" as const,
+      })),
+  },
+  "hostage-returned": {
+    kind: "modal",
+    // The lord's side only. The vassal paying its own second tribute is the
+    // vassal's own play (the same reasoning that keeps `tribute` silent), and
+    // when that vassal is the human the Revolt lighting up in hand plus the
+    // log line say it. The lord, though, learns here or not at all: the threat
+    // they paid a card to freeze is live again, on a turn they played nothing.
+    appliesToHuman: (e, ctx) =>
+      e.playerId !== 1 && e.overlordFactionId === ctx.humanFactionId,
+    lines: (events, _changes, _ctx) =>
+      events.map((e) => ({
+        text: [
+          t("The hostage from "), faction(e.targetFactionId ?? ""),
+          t(" has gone home - their "), card("revolt"),
+          t(" can surface again"),
+        ],
+        changes: [],
+        tone: "bad" as const,
+      })),
+    footnotes: () => [[
+      t("Another "), card("take-hostage"),
+      t(" would lock it again; incorporating them before it surfaces ends "),
+      t("the threat for good."),
+    ]],
+  },
   "subjugate-failed": {
     kind: "modal",
     // A rival trying and failing is exactly the kind of near-miss the player

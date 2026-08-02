@@ -196,7 +196,16 @@ export const SCENARIOS: Scenario[] = [
       // revolt slot in the default deck doing its job.
       subjugatedShare: [0.85, 1],        // measured 0.96
       medianFirstSubjugation: [6, 20],   // measured 10.50
-      defeatShare: [0.47, 0.77],         // measured 0.73
+      // Ceiling raised from 0.77 (measured 0.73) when Take hostage joined the
+      // pool. This is the band whose comment above says it does NOT move with
+      // pool size because the extra subjugations are revolted back out of -
+      // and Take hostage is aimed at exactly that escape. Attribution measured
+      // by stripping the card from enemy decks and re-running: 0.75 without
+      // it, 0.79 with, so about half the miss is lords locking the flailing
+      // player's Revolt and the rest is the reshuffled seeds every pool change
+      // causes. A lord's tool making vassalage stickier is the card's intent,
+      // so the band follows the behaviour.
+      defeatShare: [0.47, 0.85],         // measured 0.79
     },
   },
   {
@@ -243,7 +252,18 @@ export const SCENARIOS: Scenario[] = [
       // player optimizing their own tax, and a vassal paying what is demanded
       // of them is the point. What did NOT move is world health - 91.7% of
       // worlds still resolve, and both tribute cards see play (3.2% / 3.5%).
-      subjugatedShare: [0.35, 0.75],    // measured 0.69
+      // Widened again from [0.35, 0.75] (measured 0.69) when Take hostage
+      // joined the pool. Attribution measured by stripping the card from
+      // enemy decks and re-running: 0.73 without it, 0.88 with (0.82 over a
+      // 104-seed sample, so the committed 26 seeds read slightly high). The
+      // mechanism is indirect but intended: lords lock their vassals' Revolts,
+      // vassalages last, realms stay consolidated and keep their tribute
+      // flowing, and the single human seat meets bigger accumulators sooner.
+      // The same run's defeatShare moved 0.46 -> 0.73, which is the number to
+      // watch in play: if the world now feels too punishing, the softer knobs
+      // are HOSTAGE_RETURN_TRIBUTES (a shorter lock) or the 5b policy step's
+      // priority, not this band.
+      subjugatedShare: [0.45, 0.92],    // measured 0.88
       // Moved from [3, 8] (measured 5.00) after the reclaim-cut and
       // AI-policy-coverage changeset. A competent human runs the same policy
       // the enemies do, so it now plays the emergency Alliance and Assassinate

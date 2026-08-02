@@ -190,7 +190,7 @@ describe("collectedCount", () => {
     expect(collectedCount(initialMeta())).toBe(0);
     const { meta } = applyPack(initialMeta(), ["alliance", "bodyguard"]);
     expect(collectedCount(meta)).toBe(2);
-    expect(ACQUIRABLE_CARDS).toHaveLength(12);
+    expect(ACQUIRABLE_CARDS).toHaveLength(13);
   });
 });
 

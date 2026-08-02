@@ -72,6 +72,13 @@ export interface RulesView {
    *  modelled as a faction-id list like `bodyguards` and `omens` rather than
    *  giving RulesView a view of the piles. */
   liveRevolts: string[];
+  /** Vassal faction id -> tribute payments still owed before the hostage taken
+   *  from it goes home. Absent key means no hostage is held. A count map like
+   *  `omens`, not a list: the number is what the vassal's Revolt block line
+   *  quotes, and it falls with every tribute paid. An entry exists only while
+   *  the vassalage that justified it does - every exit from vassalage deletes
+   *  it (see `playCard`). */
+  hostages: Record<string, number>;
 }
 
 /** Turns of unbroken vassalage after which Incorporate is certain. Below it the
@@ -84,6 +91,12 @@ export const INCORPORATE_RAMP = 5;
  *  faction is never a gamble - the roll exists to defend an existing vassalage,
  *  not to tax expansion. */
 export const POACH_CHANCE = 0.5;
+
+/** Tribute payments a vassal must make before a hostage taken from it goes
+ *  home and its Revolt is playable again. Two, so the lock is real - roughly
+ *  the wait for the tribute cards to cycle round - without deleting the
+ *  escape the way stripping the Revolt would. */
+export const HOSTAGE_RETURN_TRIBUTES = 2;
 
 /** `${land}|${lord}` key for the loyalty clock. */
 export const loyaltyKey = (land: string, lord: string): string =>
@@ -728,7 +741,14 @@ export type TargetBlockReason =
   | { code: "overlord-prohibited" }
   | { code: "incorporated" }
   | { code: "self" }
-  | { code: "not-your-vassal" };
+  | { code: "not-your-vassal" }
+  /** Take hostage: the vassal has no Revolt in its piles, so there is nothing
+   *  to lock. Reads `liveRevolts`, which is exactly what the overlord can
+   *  already see - the `seeded` notice and the map's unrest mark. */
+  | { code: "no-revolt" }
+  /** Take hostage: one hostage per vassal at a time. A second would be a
+   *  wasted card - the Revolt is already locked. */
+  | { code: "hostage-already-held" };
 
 export type TargetEligibility =
   | { state: "irrelevant"; factionId: string }
@@ -777,9 +797,14 @@ export function targetEligibilityFor(
     const specialOverlord =
       (cardId === "shrewd-marriage" || cardId === "alliance") &&
       factionId === actorOverlord;
+    // Incorporate and Take hostage are aimed at your own vassals, who are part
+    // of your realm rather than merely bordering it - reach is the wrong
+    // question for both, so every faction is relevant and the vassal check
+    // below does the narrowing.
+    const vassalCard = cardId === "incorporate" || cardId === "take-hostage";
     const relevant = inward
       ? ownRealm.includes(factionId)
-      : cardId === "incorporate" || reach.has(factionId) || specialOverlord;
+      : vassalCard || reach.has(factionId) || specialOverlord;
     if (!relevant) return { state: "irrelevant", factionId };
 
     const reasons: TargetBlockReason[] = [];
@@ -805,10 +830,18 @@ export function targetEligibilityFor(
     ) {
       reasons.push({ code: "already-vassal" });
     } else if (
-      cardId === "incorporate" &&
+      vassalCard &&
       view.overlords.get(factionId) !== actorFactionId
     ) {
       reasons.push({ code: "not-your-vassal" });
+    } else if (cardId === "take-hostage") {
+      // Ordered: a vassal with no Revolt sown has nothing to lock, and only
+      // once there is one does "already locked" become the answer.
+      if (!view.liveRevolts.includes(factionId)) {
+        reasons.push({ code: "no-revolt" });
+      } else if (factionId in view.hostages) {
+        reasons.push({ code: "hostage-already-held" });
+      }
     }
 
     const expiry = allianceExpiry(view, actorFactionId, factionId);
@@ -877,6 +910,10 @@ export type CardBlockReason =
   | { code: "needs-overlord" }
   | { code: "already-held" }
   | { code: "revolt-live" }
+  /** Revolt while the overlord holds a hostage. Carries how many tribute
+   *  payments remain, because the count is the decision: a player told only
+   *  "locked" cannot see that paying down the debt is what unlocks it. */
+  | { code: "hostage-held"; remaining: number }
   | { code: "no-target" }
   | { code: "unavailable" };
 
@@ -922,7 +959,17 @@ export function cardBlockReason(
       ? { code: "already-held" }
       : null;
   }
-  if (isTributeCard(cardId) || cardId === "revolt") return vassalOnly();
+  if (isTributeCard(cardId)) return vassalOnly();
+  if (cardId === "revolt") {
+    // A hostage in the overlord's camp locks the Revolt without removing it:
+    // the card stays in the piles (so `liveRevolts` and `isStranded` still see
+    // it) and unlocks when the tribute debt is paid down.
+    const held = view.hostages[factionId];
+    return (
+      vassalOnly() ??
+      (held !== undefined ? { code: "hostage-held", remaining: held } : null)
+    );
+  }
   if (cardId === "seeds-of-revolt") {
     // Only a vassal may sow, and only one Revolt may be live at a time. Letting
     // a free faction sow would put a Revolt into an idle hand, where it would

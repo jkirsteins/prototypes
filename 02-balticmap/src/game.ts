@@ -10,7 +10,8 @@ import {
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
-  loyaltyKey, incorporationChance, PACT_MIGHT_BONUS, sharedNeighboursOf,
+  loyaltyKey, HOSTAGE_RETURN_TRIBUTES, incorporationChance, PACT_MIGHT_BONUS,
+  sharedNeighboursOf,
   subjugationChance, type Guards, type Omens, omenMultiplier, passiveFortifyFor,
   playableSet, raidGainFor, validTargetsFor,
   type RulesView,
@@ -21,6 +22,7 @@ export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
   | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
   | "settled" | "seeded" | "garrisoned" | "pact-lapsed"
+  | "hostage-taken" | "hostage-returned"
   | "subjugate-failed" | "incorporate-failed"
   | "victory" | "defeat" | "unified" | "surrendered" | "stranded";
 
@@ -121,6 +123,11 @@ export interface GameState {
    *  settlement past what the land would otherwise support. Absent = 0, and
    *  shaped like `omens` for the same reason: they stack. */
   booms: Record<string, number>;
+  /** Vassal faction id -> tribute payments still owed before the hostage taken
+   *  from it goes home. See `RulesView.hostages` for the shape's reasoning;
+   *  `playCard` is the only writer, and every exit from vassalage deletes the
+   *  entry so it can never outlive the vassalage that justified it. */
+  hostages: Record<string, number>;
   /** One ruler per faction id, total. Read through `rulerOf`, written only
    *  by `replaceRuler`. */
   rulers: Rulers;
@@ -166,6 +173,7 @@ export function viewOf(state: GameState): RulesView {
     settlements: state.settlements,
     booms: state.booms,
     loyalty: state.loyalty,
+    hostages: state.hostages,
     liveRevolts: state.players
       .filter((pl) =>
         pl.deck.includes("revolt") || pl.hand.includes("revolt") ||
@@ -205,6 +213,7 @@ export function newGame(
       Object.fromEntries(factionIds.map((id) => [id, DEFAULT_SITE_CAP])),
     settlements: {},
     booms: {},
+    hostages: {},
     ethnicities,
     rulers: initialRulers(factionIds, ethnicities),
     humanSeat: 0,
@@ -302,6 +311,10 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     case "garrisoned":
     case "subjugate-failed":
     case "incorporate-failed":
+    // The taking follows its play; the return follows the tribute play that
+    // paid the debt off.
+    case "hostage-taken":
+    case "hostage-returned":
       return true;
   }
 }
@@ -559,6 +572,7 @@ export function playCard(
   let omens = state.omens;
   let settlements = state.settlements;
   let booms = state.booms;
+  let hostages = state.hostages;
   let rulers = state.rulers;
   // A doublable card cashes the whole stack at once, rather than peeling one
   // reading per play. One rule, and no special case for a play made for you:
@@ -593,10 +607,24 @@ export function playCard(
       : pl,
   );
 
+  // A hostage never outlives the vassalage it was taken under: the debt was
+  // owed to that lord, and a freed or poached vassal starting its next
+  // vassalage pre-locked would be the same stale-escape bug stripRevolt
+  // exists to prevent, inverted. Deleted silently - the release or poach line
+  // is the story, and a "returned" line beside it would imply the tribute
+  // clock ran out. The `hostage-returned` event belongs to the tribute path
+  // alone.
+  const dropHostageOf = (vassal: string): void => {
+    if (!(vassal in hostages)) return;
+    const { [vassal]: _gone, ...rest } = hostages;
+    hostages = rest;
+  };
+
   const freeVassalsOf = (lord: string): void => {
     for (const [vassal, l] of [...overlords]) {
       if (l === lord) {
         overlords.delete(vassal);
+        dropHostageOf(vassal);
         players = updateFaction(players, vassal, stripVassalCards);
         events.push({
           turn: state.turn, playerId: p.id, type: "released",
@@ -691,10 +719,16 @@ export function playCard(
     // Frozen here and never recomputed - see `Pact` in src/relations.ts for why
     // a live set would silently drift the standings walk.
     const against = sharedNeighboursOf(viewOf(state), p.factionId, targetId);
+    // Re-sealing on a live ally extends the pact rather than restarting it:
+    // the new 5 (or 10) turns stack on whatever the old pact still had. A
+    // lapsed pact not yet swept by lapsePacts earns no credit - Math.max
+    // floors the base at the current turn.
+    const prior = alliances[allianceKey(p.factionId, targetId)];
+    const base = Math.max(prior?.expiry ?? state.turn, state.turn);
     alliances = {
       ...alliances,
       [allianceKey(p.factionId, targetId)]: {
-        expiry: state.turn + (boosted ? 10 : 5),
+        expiry: base + (boosted ? 10 : 5),
         against,
       },
     };
@@ -726,6 +760,7 @@ export function playCard(
   } else if (cardId === "subjugate" && targetId !== undefined) {
     const formerLord = overlords.get(targetId);
     freeVassalsOf(targetId);
+    dropHostageOf(targetId); // the poached vassal's debt was to its former lord
     overlords.set(targetId, p.factionId);
     players = updateFaction(players, targetId, (pl) => {
       const clean = stripVassalCards(pl);
@@ -758,6 +793,7 @@ export function playCard(
     });
   } else if (cardId === "incorporate" && targetId !== undefined) {
     overlords.delete(targetId);
+    dropHostageOf(targetId); // an absorbed people has no camp to return to
     freeVassalsOf(targetId); // defensive: chains never exist
     incorporated = { ...incorporated, [targetId]: p.factionId };
     for (const [land, owner] of Object.entries(incorporated)) {
@@ -784,6 +820,7 @@ export function playCard(
     const former = overlords.get(p.factionId);
     if (former === undefined) return state;
     overlords.delete(p.factionId);
+    dropHostageOf(p.factionId); // defensive: legality refuses Revolt while one is held
     players = updateFaction(players, p.factionId, stripVassalCards);
     // vassal-loss penalty (section 8): the revolting vassal gains +1/+1
     // over the former lord (relation counters only grow). Held readings
@@ -795,6 +832,17 @@ export function playCard(
       turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
       targetFactionId: p.factionId, overlordFactionId: former, amount: mult,
       ...(readings > 0 ? { readings } : {}),
+    });
+  } else if (cardId === "take-hostage" && targetId !== undefined) {
+    // Legality already guarantees the target is this actor's vassal with a
+    // live Revolt and no hostage held, so the branch only records the debt.
+    // The Revolt itself is untouched: locking is `cardBlockReason`'s reading
+    // of this entry, so the card stays in the piles and `isStranded` still
+    // counts it as an escape.
+    hostages = { ...hostages, [targetId]: HOSTAGE_RETURN_TRIBUTES };
+    events.push({
+      turn: state.turn, playerId: p.id, type: "hostage-taken",
+      targetFactionId: targetId, overlordFactionId: p.factionId,
     });
   } else if (isTributeCard(cardId)) {
     const lord = overlords.get(p.factionId);
@@ -817,6 +865,22 @@ export function playCard(
       targetFactionId: p.factionId, overlordFactionId: lord,
       track: tributeTrack, amount: mult,
     });
+    // Each payment works off one unit of the hostage debt, whatever the omens
+    // multiplied the tribute itself to - the card promises "pay tribute
+    // twice", counted in plays. At zero the hostage goes home and the Revolt
+    // block lifts with the entry.
+    const owed = hostages[p.factionId];
+    if (owed !== undefined) {
+      if (owed <= 1) {
+        dropHostageOf(p.factionId);
+        events.push({
+          turn: state.turn, playerId: p.id, type: "hostage-returned",
+          targetFactionId: p.factionId, overlordFactionId: lord,
+        });
+      } else {
+        hostages = { ...hostages, [p.factionId]: owed - 1 };
+      }
+    }
   }
 
   if (prevented) events[0] = { ...events[0], prevented: true };
@@ -882,7 +946,8 @@ export function playCard(
 
   return {
     ...state, phase, players, relations, overlords, incorporated,
-    alliances, diplomacyBoost, guards, omens, settlements, booms, rulers,
+    alliances, diplomacyBoost, guards, omens, settlements, booms, hostages,
+    rulers,
     log: appendEvents(state, events), playedThisTurn: true,
   };
 }
