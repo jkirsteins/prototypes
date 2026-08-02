@@ -1,4 +1,9 @@
-# TODO-1: The guard takes time to form
+# parry-rise: The guard takes time to form
+
+> Specs cite each other by **slug**, never by path. Resolve one with
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
+> yet implemented, and the number is the order; both are dropped on completion,
+> so only the slug is stable and only the slug may be referenced.
 
 ## Overview
 
@@ -15,7 +20,7 @@ already there.
 This spec gives the guard a rise. The blade is visible from the press and
 effective only after `parryRiseMs`. Nothing else changes.
 
-**Delivers:** parries (part 1 of 2; per-line coverage is TODO-3).
+**Delivers:** parries (part 1 of 2; per-line coverage is `attack-lines`).
 
 **Depends on:** `2026-08-02-fighter-state-tracks.md` through step 3 of its §9,
 which extracts `parryMeetsAttack`. §8.2 (defence track) is not required but is
@@ -25,15 +30,17 @@ assumed by the numbers in §5.
 
 ## 1. Why this is first
 
-§9 of the state-tracks spec sequences `§8.1, played, then §8.2, played`. §8.1 is
-the windup cancel: a feint that works by provoking a parry and punishing its
-recovery. Played against an instantaneous parry it will read as a dead mechanic,
-and §8.1's own note names the knob that will get turned in response ("if
-`feintRecoveryMs` is too short, every windup becomes a free probe").
+§8.1 of the state-tracks spec, the windup cancel, has shipped (`6daf017`). It is a
+feint that works by provoking a parry and punishing its recovery, and against an
+instantaneous parry it has nothing to eat: a defender can always wait until the
+cancel window has closed and still catch the blade. It will therefore read as a
+dead mechanic in play, and §8.1's own note names the knob that will get turned in
+response ("if `feintRecoveryMs` is too short, every windup becomes a free probe").
 
-That would be tuning the wrong thing. The cancel is fine; the defender has no
-reason to be baited. Here is the arithmetic, longsword cut with the AI telegraph,
-so `strikeStart` is 700 ms and the meetable window is 700 to 890.
+Turning that knob would be treating the symptom. The cancel is correct; what is
+missing is any reason for the defender to commit early enough to be baited. This
+spec supplies it. Here is the arithmetic, longsword cut with the AI telegraph, so
+`strikeStart` is 700 ms and the meetable window is 700 to 890.
 
 Write P for the tick the defender presses parry. The AI can only cancel while
 `P + AI_REACTION_MS < strikeStart`, so it feints anything pressed before 520.
@@ -47,8 +54,9 @@ The rise adds no feint mechanic. It gives the feint already specified in §8.1
 something to eat, and it turns the defender's timing into a real choice: commit
 early and be readable, or commit late and be right by a hair.
 
-**Amendment to `2026-08-02-fighter-state-tracks.md` §9:** this spec lands between
-step 7 and step 8, and is played before §8.1.
+This spec is therefore the next thing to land, and §8.1 should be judged in play
+only after it. A verdict on the windup cancel gathered against an instantaneous
+parry is a verdict on this missing piece, not on the cancel.
 
 ---
 
@@ -210,7 +218,7 @@ This is a choice, not an accident. A human needs 200 to 250 ms against 260 ms of
 preparation and cannot do it either, and the design doc calls the rapier the
 fastest weapon to land a clean attack. The answers to that thrust are the carried
 guard from §8.2 (raise before it starts), the void, and the counter-attack that
-TODO-2 makes viable. Tune the margin, do not tune it away.
+`blade-contact` makes viable. Tune the margin, do not tune it away.
 
 ---
 
@@ -259,14 +267,14 @@ Modes 2 and 3 are unaffected as attackers by this spec.
 
 ## 8. Out of scope
 
-- Per-line parry coverage, and the height dimension of the guard. TODO-3 adds a
+- Per-line parry coverage, and the height dimension of the guard. `attack-lines` adds a
   stance whose travel time combines with the rise through a `max`, and the
   reaction matrix that checks the pair. This spec's numbers are chosen so that
-  matrix comes out right, but it is not asserted until TODO-3.
+  matrix comes out right, but it is not asserted until `attack-lines`.
 - Any change to what a successful parry *pays*. Penalties are untouched.
 - A holdable guard replacing `parryWindowMs`. That only becomes safe once feints
   can deceive about *where* rather than *when*, so it is revisited no earlier
-  than TODO-4.
+  than `line-feints`.
 - A dedicated guard sprite.
 
 ---

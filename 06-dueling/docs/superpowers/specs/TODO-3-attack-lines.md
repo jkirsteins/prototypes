@@ -1,9 +1,14 @@
-# TODO-3: Attack lines - height stance and blade side
+# attack-lines: Attack lines - height stance and blade side
+
+> Specs cite each other by **slug**, never by path. Resolve one with
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
+> yet implemented, and the number is the order; both are dropped on completion,
+> so only the slug is stable and only the slug may be referenced.
 
 ## Overview
 
 Blade contact is currently universal: a raised guard stops any attack whose
-timing and reach line up, and after TODO-2 any two travelling blades meet
+timing and reach line up, and after `blade-contact` any two travelling blades meet
 regardless of where they are aimed. §3.3 and §10 of the state-tracks spec name
 this as the MVP limitation and reserve `parryMeetsAttack` as the extension point.
 
@@ -11,7 +16,7 @@ This spec adds the geometry. A line is a **pair**: a height and a side.
 
 **Delivers:** attack lines; parries (part 2 of 2).
 
-**Depends on:** TODO-2, which built the contact module the line conditions are
+**Depends on:** `blade-contact`, which built the contact module the line conditions are
 added to.
 
 ---
@@ -36,7 +41,7 @@ Two axes, modelled fully in the engine, exposed to gameplay only in part:
 vocabulary, the contact rules and the HUD are all written over the full enum, so
 enabling a third stance is a change to how far the arrows travel plus one guard
 pose, not a change to the model. It is not enabled now because it would halve the
-value of the feint answer in TODO-4 (§7).
+value of the feint answer in `line-feints` (§7).
 
 ### 1.1 Why the axes are declared, never inferred
 
@@ -86,7 +91,7 @@ commit the body, and the whole point of committing is that you cannot re-aim.
 
 An attack **snapshots** its height into the timeline at launch, alongside every
 other mark. Changing stance afterwards does not steer a blade already in the air;
-only TODO-4's redirect does that.
+only `line-feints`'s redirect does that.
 
 ### 2.1 Input
 
@@ -98,9 +103,9 @@ Arrows are unused in `main.ts` today, so nothing is displaced:
 | `j` / `k` | cut / thrust | unchanged; they now carry `outside` / `inside` |
 | `l` | parry | unchanged, single key |
 
-TODO-3's earlier draft split the parry across two keys. That is withdrawn: the
-parry takes its height from the stance, so one key is correct and the second was
-a duplicate of the arrows.
+An earlier draft of this spec split the parry across two keys. That is withdrawn:
+the parry takes its height from the stance, so one key is correct and the second
+was a duplicate of the arrows.
 
 ---
 
@@ -115,7 +120,7 @@ is what a guard does.
 ```ts
 // contact.ts
 function parryMeetsAttack(attacker, defender, gap) {
-  return ...existing conditions from TODO-1 and TODO-2...
+  return ...existing conditions from `parry-rise` and `blade-contact`...
     && lineOf(attacker).height === defender.height;      // NEW; side not tested
 }
 
@@ -154,7 +159,7 @@ forming a guard there. So:
 guardEffectiveAt = max(parryPress + parryRiseMs, heightArrival)
 ```
 
-with the invariant, alongside TODO-1 §3.1's:
+with the invariant, alongside `parry-rise` §3.1's:
 
 > **`heightChangeMs > parryRiseMs`** for every weapon, or standing on the wrong
 > height costs nothing.
@@ -185,7 +190,7 @@ Rapier defender (190 / 260) has the same shape and the same single failure.
 The design falls out of the numbers rather than being imposed on them: **from the
 right height you can react to anything. From the wrong height you can answer any
 cut and the longsword thrust, but not the rapier thrust.** One documented
-exception, consistent with TODO-1 §5.1, and it makes the stance a prediction
+exception, consistent with `parry-rise` §5.1, and it makes the stance a prediction
 worth making rather than a free choice.
 
 This matrix is a test (§8), not a paragraph. A retune that breaks it fails the
@@ -221,26 +226,58 @@ thing happening.
 Both fighters get the row. The AI's line must be as legible as the player's or
 none of the reads in this chain of specs are available.
 
-### 5.2 Sprites: unchanged for now
+### 5.2 The blade zone: a box over the sprite
 
-Attack animations do not change. A high cut and a low cut play the same sheet.
-This is accepted for this spec: the HUD row carries the information while the
-mechanic is proven, and the sheets get the attention afterwards.
+Attack animations do not change. A high cut and a low cut play the same sheet, and
+no amount of HUD text fixes a player who is watching the fighters. The answer is
+not to redraw the sheets for this spec. It is to draw the thing the sheets cannot:
+**a bar over each fighter marking where their blade threatens or guards.**
 
-A stance transition renders as `swordIdle` frame 0 with a vertical offset
-interpolated over `heightChangeMs`, so the motion is at least visible in the body
-even though the pose is not redrawn. Guards keep TODO-1's rise-and-set pair.
+- **Horizontal extent:** from the fighter's body centre outward by `reach`, the
+  same value `drawMeasureBands` already draws on the floor. This is the blade
+  zone, lifted off the floor to its line's height.
+- **Vertical position:** one band per `Height`, positions computed from the enum,
+  so enabling `middle` moves nothing in the renderer.
+- **Side:** filled for `inside`, hollow outline for `outside`. Height uses the
+  spatial axis because height is what the defender must match; side gets the
+  cheaper encoding because a guard spans it anyway.
+- **Colour, reusing the existing palette:** `#e6c229` while the blade is meetable,
+  `#6b2f2c` once delivered (both already mean exactly this on the strike bar),
+  `#9b8cff` for an effective guard, dimmed for a guard still rising or a stance
+  with nothing happening.
 
-**Named as art debt, and it is the largest in the chain:** until the sheets
-distinguish heights, a player who looks at the fighters instead of the labels
-cannot play this game. That is a reason to sequence the art before TODO-5, not a
-reason to block TODO-3.
+**This is not an annotation, it is the geometry.** Contact requires
+`gap <= reachA + reachB` and, now, matching heights. Two blade zones at the same
+height overlap on screen exactly when those conditions hold, so **the boxes
+touching is the contact rule, drawn**. The only condition not visible in space is
+the timing one, and that is what the colour carries.
+
+Because it is the geometry, the renderer reads `reach` and the height bands from
+the same source the contact module does and re-derives nothing, the way the frame
+plan already mirrors the engine's meetable check. A test asserts the drawn extent
+and the contact predicate agree (§8).
+
+Timing follows the timeline marks, per `AGENTS.md` applied to a visual rather than
+a sound: the zone appears dim at `riseStart` (a threat forming), brightens at
+`strikeStart`, darkens at `parryableUntil`, and vanishes at `strikeEnd`. A guard's
+zone appears dim on the press and brightens at `parryRiseMs`.
+
+A stance transition slides the zone between bands over `heightChangeMs`, which is
+what makes the stance move readable at all, and the body gets a matching vertical
+offset on `swordIdle` frame 0. Guards keep `parry-rise`'s rise-and-set frames.
+
+**It is a bit weird, and it works.** A blade zone is a well-worn fighting-game
+idea, and here it happens to be honest: it draws the simulation's own geometry
+rather than a label about it. It retires the blocking half of the art debt, since
+the game becomes playable by watching the fighters. Height-distinct attack poses
+remain worth doing, but they are now a polish item rather than a prerequisite for
+`sustained-bind`.
 
 ### 5.3 Audio
 
 Silent. No cue for a stance change and none for a line. Height is a visual read
 by construction; an audible one would let a player defend correctly without
-watching and would make TODO-4's feint answerable by ear.
+watching and would make `line-feints`'s feint answerable by ear.
 
 ### 5.4 The help panel
 
@@ -291,14 +328,14 @@ countable order. Predictability remains the point.
 ## 7. Why two heights and not three, today
 
 `middle` exists in the enum and nothing prevents the arrows from reaching it. It
-is left unreachable because of TODO-4, not because of the model.
+is left unreachable because of `line-feints`, not because of the model.
 
 With two heights, spotting a feint's redirect tells you the destination exactly,
-and the guard shift in TODO-4 §4 is a pure reaction test. With three, spotting it
+and the guard shift in `line-feints` §4 is a pure reaction test. With three, spotting it
 leaves you choosing between the other two, so the hardest defensive play in the
 game degrades into a coin flip layered on a reaction test. Enabling `middle`
 therefore requires deciding what a redirect may reach, and that decision belongs
-in TODO-4's arithmetic rather than being inherited by accident.
+in `line-feints`'s arithmetic rather than being inherited by accident.
 
 ---
 
@@ -333,6 +370,14 @@ in TODO-4's arithmetic rather than being inherited by accident.
   attack begins; a test asserts no attack starts while `heightTo !== null`.
 - **HUD:** row 3 renders `(attack)`, `(parry)` and `(stance)` in the three cases,
   and renders `MIDDLE` correctly when given a fixture fighter at that height.
+- **Blade zone agrees with the engine:** for a generated spread of gaps and
+  heights, the two drawn zones overlap exactly when the contact module's
+  geometric conditions (reach sum, matching height) both hold. This is the same
+  class as the existing travelling/delivered frame agreement test, and it is what
+  stops the picture and the rules from drifting apart.
+- **Blade zone timing:** the zone's colour changes on the same ticks as
+  `strikeStart`, `parryableUntil`, `strikeEnd` and `parryRiseMs`, asserted at the
+  boundary tick, per `AGENTS.md` applied to a visual.
 - **Help panel:** the rendered panel cites `heightChangeMs` from `WEAPONS` and
   states the height-must-match, side-is-free rule.
 - **Golden replay:** hash re-recorded.
@@ -342,13 +387,14 @@ in TODO-4's arithmetic rather than being inherited by accident.
 ## 9. Out of scope
 
 - A reachable `middle` stance. §7.
-- Attack sprites that distinguish height. §5.2, named as debt.
+- Attack sprites that distinguish height. The blade zone (§5.2) makes them a
+  polish item rather than a prerequisite, but they are still worth doing.
 - Outside thrusts, inside cuts, slices. The axes exist for them; no shipped
   weapon declares one, and the fixture weapon in §8 proves the path works.
 - Separate attack and guard heights. One shared stance is the decision.
 - Guard *positions* (longpoint, vom Tag). Still reserved; a line is what a guard
   covers, not where the blade rests.
-- Steering an attack in flight. TODO-4.
+- Steering an attack in flight. `line-feints`.
 
 ---
 
@@ -363,6 +409,7 @@ What to look for:
 - Over a few minutes against mode 3, the attacks do not settle into one height.
 - Row 3 answers "where is this going" without you having to think about it.
 
-What would look wrong: needing to read row 3 to know anything at all. That is
-§5.2's art debt arriving, and the fix is height-distinct attack poses before
-TODO-5, not more HUD.
+What would look wrong: needing to read row 3 to know anything at all. That means
+the blade zones are not carrying the read, and the fix is their placement or
+contrast, not more text. If they do carry it, row 3 becomes a confirmation rather
+than the primary channel, which is the outcome to hope for.

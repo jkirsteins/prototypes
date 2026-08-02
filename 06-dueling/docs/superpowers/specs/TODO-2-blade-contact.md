@@ -1,4 +1,9 @@
-# TODO-2: Two blades meet
+# blade-contact: Two blades meet
+
+> Specs cite each other by **slug**, never by path. Resolve one with
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
+> yet implemented, and the number is the order; both are dropped on completion,
+> so only the slug is stable and only the slug may be referenced.
 
 ## Overview
 
@@ -17,8 +22,8 @@ one function to a small module with two entry points.
 
 **Delivers:** attacks-on-attacks, simple blade contact.
 
-**Depends on:** TODO-1. (Strictly it only needs step 3 of the state-tracks §9,
-which extracts `parryMeetsAttack`, but it is sequenced after TODO-1 so the
+**Depends on:** `parry-rise`. (Strictly it only needs step 3 of the state-tracks §9,
+which extracts `parryMeetsAttack`, but it is sequenced after `parry-rise` so the
 contact module is built once, with the rise already inside it.)
 
 ---
@@ -52,7 +57,7 @@ always meet**.
 
 That is the correct outcome and it is worth stating plainly: two people cutting
 at each other on the same line bind, every time. The interesting gate is not
-distance, it is condition 2 (do the travel intervals overlap) and, after TODO-3,
+distance, it is condition 2 (do the travel intervals overlap) and, after `attack-lines`,
 whether they are on the same line. Distance only decides the case where one
 fighter is far enough out that no blade could reach any other blade.
 
@@ -106,7 +111,7 @@ function markMetBlades(d: Duel): void {
 **Why one module rather than one function.** §10 of the state-tracks spec
 promises that attack lines arrive as one added condition in one place. With two
 kinds of contact there are two places, and the only way to keep that promise is
-to make them siblings that are read together. TODO-3 adds the line condition to
+to make them siblings that are read together. `attack-lines` adds the line condition to
 both in the same edit; a test asserts they agree (§5).
 
 The mutual case is checked first and returns early because a fighter cannot both
@@ -159,7 +164,7 @@ sometimes cross blades with a counter-attacking player, which is the new option
 this spec hands the player.
 
 One consequence worth naming: counter-attacking becomes a real answer to the
-rapier thrust that TODO-1 §5.1 left unparryable. That was the intent of
+rapier thrust that `parry-rise` §5.1 left unparryable. That was the intent of
 sequencing this second.
 
 ---
@@ -193,12 +198,12 @@ sequencing this second.
 ## 6. Out of scope
 
 - Contact **persisting**. Here a clash still resolves instantly at each attacker's
-  own `strikeEnd`, exactly as a parry does today. The sustained bind is TODO-5.
+  own `strikeEnd`, exactly as a parry does today. The sustained bind is `sustained-bind`.
 - Any distinction between binding weapons and non-binding weapons. Every clash is
-  currently the same event. `bindCapable` arrives in TODO-5.
+  currently the same event. `bindCapable` arrives in `sustained-bind`.
 - Lines. Two crossing blades currently always meet regardless of where they are
   aimed, the same universal-coverage limitation §3.3 of the state-tracks spec
-  documents for the parry. TODO-3.
+  documents for the parry. `attack-lines`.
 
 ---
 

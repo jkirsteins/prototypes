@@ -1,8 +1,13 @@
-# TODO-6: Pressure and winding
+# pressure-and-winding: Pressure and winding
+
+> Specs cite each other by **slug**, never by path. Resolve one with
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
+> yet implemented, and the number is the order; both are dropped on completion,
+> so only the slug is stable and only the slug may be referenced.
 
 ## Overview
 
-TODO-5 gives the longsword a held beat of contact with no decision in it. This
+`sustained-bind` gives the longsword a held beat of contact with no decision in it. This
 spec puts the decision in: you feel how hard the other blade is pressing, and you
 either push through it or go around it.
 
@@ -11,7 +16,7 @@ reason the longsword is the doc's richest weapon.
 
 **Delivers:** binds (part 2 of 2), pressure, winding.
 
-**Depends on:** TODO-5.
+**Depends on:** `sustained-bind`.
 
 ---
 
@@ -47,7 +52,7 @@ braced.
 
 ### 1.1 What this does to the parry timing choice
 
-TODO-1 made the defender choose between committing early (readable, feintable)
+`parry-rise` made the defender choose between committing early (readable, feintable)
 and committing late (unreadable, thin margin). Late was strictly safer against
 everything except a feint.
 
@@ -86,7 +91,7 @@ behind it.
 
 The decision is locked on the first press and cannot be changed. Choosing nothing
 is legal and common: the bind then breaks neutrally at `BIND_MS`, exactly as
-TODO-5 already does.
+`sustained-bind` already does.
 
 ### 2.1 Resolution
 
@@ -167,7 +172,7 @@ simulating feel, it would be removing it.
 The label reads `bind: they are hard` or `bind: they are soft`, with the bar
 underneath for the margin. Prose for the read, bar for the confidence.
 
-Row 3 keeps showing the bind's line from TODO-5 §4.4, and on a decisive
+Row 3 keeps showing the bind's line from `sustained-bind` §4.4, and on a decisive
 resolution the winner's row 3 switches to their new attack's line, which is the
 moment the opening becomes visible.
 
@@ -180,7 +185,7 @@ sentences: what pressure means, and that you read theirs rather than yours.
 
 ### 3.2 Sprites
 
-Both fighters hold TODO-5's frozen contact poses through the decision. On a
+Both fighters hold `sustained-bind`'s frozen contact poses through the decision. On a
 decisive resolution:
 
 - the winner plays their sheet's travelling frame if they attack, or the normal
@@ -188,7 +193,7 @@ decisive resolution:
 - the loser holds their contact frame through `exposed`, which reads as being
   turned out of the bind and unable to recover
 
-The oscillation from TODO-5 §4.1 gains an amplitude term from the firmness
+The oscillation from `sustained-bind` §4.1 gains an amplitude term from the firmness
 difference, so a lopsided bind visibly leans before it resolves. Renderer-only,
 derived from `d.time` and the two firmness values, outside the simulation.
 
@@ -265,7 +270,7 @@ counter-attacks into it. It never acts in a bind either.
 ## 6. Out of scope
 
 - **The doc's third bind option, "good geometry -> *Absetzen* as a distinct
-  choice".** TODO-3 gives blades a side, so the geometry this needs now half
+  choice".** `attack-lines` gives blades a side, so the geometry this needs now half
   exists: a third option could be "go around to the other side" as distinct from
   winding over the top. It is still deferred, because a three-way inside a 500 ms
   window with one readable variable is a coin flip wearing a technical name.
@@ -278,9 +283,9 @@ counter-attacks into it. It never acts in a bind either.
   this bind resolves in one exchange.
 - Multiple exchanges in one bind, or re-entering a bind from a bind.
 - Rapier bind behaviour. It is `bindCapable: false` and stays that way; the
-  weapon's answer is the disengage from TODO-4.
+  weapon's answer is the disengage from `line-feints`.
 - Grappling, half-swording, and the close-measure *Krieg*.
-- Slow motion during the decision. TODO-5 §3 argues against it and that argument
+- Slow motion during the decision. `sustained-bind` §3 argues against it and that argument
   is unchanged: `BIND_MS` is the lever.
 
 ---

@@ -1,4 +1,9 @@
-# TODO-5: The sustained bind
+# sustained-bind: The sustained bind
+
+> Specs cite each other by **slug**, never by path. Resolve one with
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
+> yet implemented, and the number is the order; both are dropped on completion,
+> so only the slug is stable and only the slug may be referenced.
 
 ## Overview
 
@@ -12,7 +17,7 @@ This spec makes contact persist, for the weapons whose physics support it.
 
 **Delivers:** binds (part 1 of 2), sustained binds.
 
-**Depends on:** TODO-4, whose condition 3 (`met === false` blocks a redirect)
+**Depends on:** `line-feints`, whose condition 3 (`met === false` blocks a redirect)
 already declared that contact is a commitment.
 
 ---
@@ -39,7 +44,7 @@ interface WeaponProfile {
 
 Deflection is unchanged behaviour: `met` is set, the attack resolves to `parried`
 at its own `strikeEnd`, and each weapon pays its own `parriedPenalty`. The
-asymmetry TODO-2 §1.1 relied on now applies specifically to the exchanges the
+asymmetry `blade-contact` §1.1 relied on now applies specifically to the exchanges the
 rapier is in, where "bad in the bind" reads correctly as "worse when its blade is
 knocked off line".
 
@@ -72,7 +77,7 @@ Exiting: at `t >= BIND_MS` both return to `ready` and both seed
 both weapons in a bind are by definition the same bind-capable class. In this
 spec the exit is **neutral and symmetric**: the bind
 ends the exchange with no winner, and the next tempo belongs to whoever reads the
-new position first. Deciding the bind is TODO-6.
+new position first. Deciding the bind is `pressure-and-winding`.
 
 A neutral resolution is worth shipping on its own. It changes a longsword clash
 from an instant ping into a held beat, which is a large change to how the fight
@@ -106,10 +111,10 @@ does not add one.
 The simulation is a fixed 60 Hz tick and every AI decision is expressed in real
 milliseconds, `AI_REACTION_MS` above all. A time scale inside the bind would make
 that constant mean one thing outside the bind and another inside it, and the
-fairness arithmetic in TODO-1 §3.1 and TODO-4 §4.1 would quietly stop holding.
+fairness arithmetic in `parry-rise` §3.1 and `line-feints` §4.1 would quietly stop holding.
 
 `BIND_MS` is 500 ms of real time, which is 30 ticks: room enough for a decision.
-If TODO-6's window proves too fast to read, the lever is `BIND_MS`, not a time
+If `pressure-and-winding`'s window proves too fast to read, the lever is `BIND_MS`, not a time
 scale.
 
 ---
@@ -184,7 +189,7 @@ One consequence to watch: mode 3 with a longsword will now enter binds against a
 parrying player and lose 500 ms of its cycle to them. `duelistCooldown` is derived
 from the thrust's whiffed commitment and does not account for this, so its
 approach-strike-retire pulse will stretch. That is acceptable, and it is not
-worth deriving a bind term into the cooldown until TODO-6 gives the bind an
+worth deriving a bind term into the cooldown until `pressure-and-winding` gives the bind an
 outcome worth pacing around.
 
 ---
@@ -204,7 +209,7 @@ outcome worth pacing around.
 - **Guard consumed:** a defender entering a bind has `parry === null` on exit and
   a charged `parryRecoveryMs`.
 - **One sound:** exactly one `met` fires for a contact that becomes a bind, on the
-  same tick it fired before this spec. Existing AGENTS.md assertions from TODO-2
+  same tick it fired before this spec. Existing AGENTS.md assertions from `blade-contact`
   must pass unedited for the bind path.
 - **Determinism:** the oscillation in §4.1 is renderer-only. The golden replay
   projection must not include it, and a test asserts the projection hash is
@@ -215,7 +220,7 @@ outcome worth pacing around.
 
 ## 7. Out of scope
 
-- Any decision inside the bind. Pressure, winding, pushing through: TODO-6.
+- Any decision inside the bind. Pressure, winding, pushing through: `pressure-and-winding`.
 - Asymmetric bind outcomes. Both fighters currently leave equal.
 - Binds between more than two blades.
 - A crossed-blades sprite. Named as debt in §4.1.
@@ -234,8 +239,8 @@ What to look for:
 - The held beat reads as two fighters locked, not as the game stuttering.
 - Losing 500 ms to a bind feels like a consequence you caused.
 - The rapier fight feels measurably different: quick deflections, no lock, and
-  the disengage from TODO-4 as its natural answer.
+  the disengage from `line-feints` as its natural answer.
 
 What would look wrong: the freeze reading as a hitch or a dropped frame. That
 means the pose stand-in in §4.1 has run out and the crossed-blades art has to
-come before TODO-6, not after it.
+come before `pressure-and-winding`, not after it.

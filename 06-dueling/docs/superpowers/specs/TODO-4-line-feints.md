@@ -1,4 +1,9 @@
-# TODO-4: Line-changing feints
+# line-feints: Line-changing feints
+
+> Specs cite each other by **slug**, never by path. Resolve one with
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
+> yet implemented, and the number is the order; both are dropped on completion,
+> so only the slug is stable and only the slug may be referenced.
 
 ## Overview
 
@@ -7,13 +12,13 @@ into a short recovery, provoking a parry and punishing its cooldown. It deceives
 about **when**. §10 records that it cannot deceive about **where**, because
 attacks had no lines.
 
-TODO-3 gave them lines, on two axes. This spec lets an attack in flight change
+`attack-lines` gave them lines, on two axes. This spec lets an attack in flight change
 either axis, and gives the defender the answer, because a feint with no answer is
 not a mixup, it is a win button.
 
 **Delivers:** feints (line-changing); line-changing feints.
 
-**Depends on:** TODO-3.
+**Depends on:** `attack-lines`.
 
 ---
 
@@ -55,7 +60,7 @@ Legality, all four required:
    sold, so there is nothing to lie about.
 2. `elapsedMs <= timeline.parryableUntil`. Past that the blade has arrived.
 3. `met === false`. **Once steel has touched steel you are committed.** This is
-   the seam TODO-5 grows the bind out of.
+   the seam `sustained-bind` grows the bind out of.
 4. `redirected === false`. One redirect per attack, or an attacker could stall
    forever and the tempo economy collapses.
 
@@ -119,7 +124,7 @@ redirectCost(w, height, side) =
 
 Changing height is a larger motion than going around a blade at the point, and it
 is priced accordingly. The rapier changes side fastest: it is the weapon built to
-defeat contact by disengaging, and with its worse `parriedPenalty` from TODO-2
+defeat contact by disengaging, and with its worse `parriedPenalty` from `blade-contact`
 the two weapons sit at opposite ends of one axis. The longsword wins where steel
 meets; the rapier wins where it does not.
 
@@ -134,9 +139,9 @@ Without this section a reactive height redirect beats every parry
 unconditionally, and mode 3 becomes unbeatable rather than unpredictable.
 
 A raised guard may **shift** to the other height once per raise, at
-`guardShiftMs`. This is cheaper than TODO-3's `heightChangeMs` cold stance move
+`guardShiftMs`. This is cheaper than `attack-lines`'s `heightChangeMs` cold stance move
 because the blade is already formed and only has to travel; that is exactly what
-*Winden* is, and TODO-6 builds on the same motion.
+*Winden* is, and `pressure-and-winding` builds on the same motion.
 
 ```ts
 interface ParryTrack {
@@ -182,7 +187,7 @@ difficulty for the highest-skill defensive play in the game. As an invariant:
 
 If play says the answer is impossible rather than hard, the lever is
 `redirectHeightMs` upward, not `parryRiseMs` downward: that number carries
-TODO-1 §3.1's invariant, and lowering it would make the attacker's own reactive
+`parry-rise` §3.1's invariant, and lowering it would make the attacker's own reactive
 feint unreachable in the process of making the defender's answer reachable.
 
 `guardShiftMs` has no floor at `AI_REACTION_MS`. It is the duration of a motion,
@@ -200,10 +205,12 @@ A side redirect swaps sheets: an attack that began on `swordAttack` continues on
 sheet's **loaded** frame (`swordStab` 2, or `swordAttack` 0), which reads as the
 blade being pulled off its line and re-set.
 
-A height redirect has no sheet to swap to, per TODO-3 §5.2. It renders as the
-same vertical offset interpolation the stance transition uses, applied over
-`redirectHeightMs`. This is thin, and it is the strongest argument in the chain
-for doing the height-distinct attack art before TODO-5.
+A height redirect has no sheet to swap to, per `attack-lines` §5.2. It renders as
+the blade zone sliding between height bands over `redirectHeightMs`, which is the
+same motion a stance change draws and is exactly the signal the defender is
+racing. The body gets the matching vertical offset. Without the blade zone this
+would be nearly invisible; with it, the redirect is the most legible thing on
+screen for the duration of the slide.
 
 The sheet swap is abrupt, and that is correct: a line change is a discontinuity
 in the blade's path, and the player must see it in one frame to have any chance
@@ -211,7 +218,7 @@ at §4.1's window. Smoothing it would hurt.
 
 ### 5.2 HUD
 
-Row 3 from TODO-3 is where a redirect becomes legible. Its label changes on the
+Row 3 from `attack-lines` is where a redirect becomes legible. Its label changes on the
 redirect tick, from `HIGH OUTSIDE (attack)` to `LOW OUTSIDE (attack)`, and that
 change is the signal the player is racing. Row 2 shows the guard's rise
 restarting on a shift with the expiry cursor visibly **not** resetting, since the
@@ -222,7 +229,7 @@ window not refreshing is the cost.
 No cue fires at a redirect. The `swing` event is already unmapped for the same
 reason, and here it is stronger: **a feint you can hear is not a feint.** An
 audible redirect would let a player answer without watching, which would defeat
-the mechanic and make TODO-3's line read pointless.
+the mechanic and make `attack-lines`'s line read pointless.
 
 The attack still resolves to exactly one outcome sound at its new `strikeEnd`, so
 the one-sound-per-attack rule holds unchanged. A redirect emits no second rise
@@ -252,7 +259,7 @@ guard has been visible for at least AI_REACTION_MS:
 Purely reactive, no rng draw, so a seeded replay stays reproducible. It is
 deterministic *and* unpredictable, because what it does depends on what you did.
 
-TODO-1 §3.1's invariant is what makes this reachable: any parry that could
+`parry-rise` §3.1's invariant is what makes this reachable: any parry that could
 succeed became visible at least `AI_REACTION_MS` before it mattered.
 
 Mode 1 gains the **guard shift** as a defender, using the same rule the player
@@ -263,9 +270,9 @@ recovers. Mode 2 neither feints nor shifts; its predictability is the point.
 
 Which is the answer to "the duelist is solved":
 
-- do not parry, and counter-attack into it (TODO-2)
+- do not parry, and counter-attack into it (`blade-contact`)
 - stand at the right height early, so its stance tell tells you nothing new
-- parry late, inside the thin band where reaction cannot reach you (TODO-1 §1)
+- parry late, inside the thin band where reaction cannot reach you (`parry-rise` §1)
 - parry, read the redirect, and shift the guard (§4)
 - void, and punish the recovery
 
@@ -274,7 +281,7 @@ Which is the answer to "the duelist is solved":
 ## 7. Tests
 
 - **Legality:** each of the four conditions in §2 falsified independently.
-  `met === true` refusing a redirect gets its own test, since TODO-5 depends on
+  `met === true` refusing a redirect gets its own test, since `sustained-bind` depends on
   that edge.
 - **One redirect:** a second redirect on the same attack is refused, including
   the case where the first changed height and the second would change side.
@@ -310,10 +317,10 @@ Which is the answer to "the duelist is solved":
 
 ## 8. Out of scope
 
-- Redirecting after contact. Blocked by condition 3; that is TODO-5 and TODO-6.
+- Redirecting after contact. Blocked by condition 3; that is `sustained-bind` and `pressure-and-winding`.
 - Chained redirects, and more than one guard shift per raise.
 - A reachable `middle` height. Enabling it requires deciding what a redirect may
-  reach from where, and §4.1's margins recomputed for a two-way guess. TODO-3 §7.
+  reach from where, and §4.1's margins recomputed for a two-way guess. `attack-lines` §7.
 - Feinting a **step**, drawing a counter-attack with false footwork.
 - Cancelling into a parry or a void. §10 of the state-tracks spec deferred it and
   nothing here changes that argument.
@@ -339,5 +346,5 @@ What to look for:
 - Feinting into an opponent who was not defending feels like a wasted tempo.
 
 What would look wrong: the height redirect being invisible until it lands. That
-is TODO-3 §5.2's art debt coming due, and the fix is height-distinct attack
-poses, not a sound and not a bigger label.
+means the blade zone's slide is too fast or too subtle to register, and the fix is
+its contrast or `redirectHeightMs`, not a sound and not a bigger label.
