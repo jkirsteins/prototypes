@@ -67,11 +67,11 @@ describe("cards", () => {
     );
     expectProps(
       "pay-military-tribute", "Pay military tribute", false, false, null, false, true,
-      "Forced: while a vassal, grant your overlord +1 Might.",
+      "Forced: while a vassal, grant your overlord +1 Might. Overlords pass it on up their own chain of lords.",
     );
     expectProps(
       "pay-status-tribute", "Pay status tribute", false, false, null, false, true,
-      "Forced: while a vassal, grant your overlord +1 Status.",
+      "Forced: while a vassal, grant your overlord +1 Status. Overlords pass it on up their own chain of lords.",
     );
     expectProps(
       "seeds-of-revolt", "Seeds of revolt", false, false, 1, true, false,

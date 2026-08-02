@@ -506,11 +506,13 @@ function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
   const human = game.players[0];
   if (!inPlay() || !human) return;
-  // One level is enough here, unlike applyOwnership: everything `fullRealmOf`
-  // would add is a faction in `game.incorporated`, and the loop below skips
-  // those outright, so the two spellings badge exactly the same lands.
-  const humanRealm = new Set(
-    realmOf(human.factionId, game.overlords, game.incorporated),
+  // The full realm, like applyOwnership: a grand-vassal sits inside the human
+  // realm's outline, and a badge floating on a land the outline claims reads
+  // as a contradiction. Restive DIRECT vassals keep their unrest badge via
+  // `restive` below, and while a card is armed `targets` re-narrows to what
+  // is legal - so a poachable grand-vassal still badges when it matters.
+  const humanRealm = fullRealmOf(
+    human.factionId, game.overlords, game.incorporated,
   );
   const targets = armed === null ? null : new Set(armedTargets());
   for (const factionId of game.factionIds) {

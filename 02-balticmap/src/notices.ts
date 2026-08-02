@@ -606,12 +606,14 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     kind: "modal",
     appliesToHuman: (e, ctx) => humanRoleIn(e, ctx) !== null,
     // Both roles are the mirror of `subjugated`, and both were being swallowed.
-    // `lord` is what happens to YOUR vassals when you fall - `freeVassalsOf` in
-    // game.ts scatters every one of them - so a muted player was told they owed
-    // fealty and never that their realm had emptied. `self` is the release
-    // itself: the tribute cards leave your deck, hand and discard and your own
-    // plays unlock again, which is exactly the "what you ARE" change that makes
-    // subjugation critical, run backwards.
+    // `lord` is what happens to YOUR vassals when their lord is digested -
+    // `freeVassalsOf` in game.ts scatters a mid-lord's vassals on
+    // incorporation (falling to a Subjugate keeps the pyramid intact now) -
+    // so a muted player was told they owed fealty and never that their realm
+    // had emptied. `self` is the release itself: the tribute cards leave your
+    // deck, hand and discard and your own plays unlock again, which is
+    // exactly the "what you ARE" change that makes subjugation critical, run
+    // backwards.
     critical: (e, ctx) =>
       humanRoleIn(e, ctx) === "self" ? "Your overlord fell" : VASSAL_LOST,
     lines: (events, _changes, ctx) =>

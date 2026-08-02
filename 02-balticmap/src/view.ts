@@ -1,4 +1,4 @@
-import type { Incorporated, Overlords } from "./relations";
+import { realmRootOf, type Incorporated, type Overlords } from "./relations";
 import type { TrackBars } from "./playability";
 
 export interface View {
@@ -121,6 +121,17 @@ export function relationshipLine(
 ): string | null {
   const owner = incorporated[polygonFactionId];
   const lord = overlords.get(polygonFactionId);
+  // The chain can run deeper than one link. Name the direct lord and, when
+  // the chain's root is somebody further up, the root - the two ends are what
+  // the player can act on; spelling every middle link is noise.
+  const ultimately = (of: string): string => {
+    const root = realmRootOf(of, overlords, incorporated);
+    const direct = overlords.get(of);
+    if (direct === undefined || root === direct) return "";
+    return root === humanFactionId
+      ? ", ultimately your vassal"
+      : `, ultimately a vassal of ${factionName(root)}`;
+  };
   if (owner === humanFactionId) return "Part of your realm (incorporated)";
   if (owner !== undefined) {
     // Follow the chain. Every land of a vassal's realm carries the overlord's
@@ -133,7 +144,7 @@ export function relationshipLine(
         : ownersLord === humanFactionId
           ? ", itself your vassal"
           : `, itself a vassal of ${factionName(ownersLord)}`;
-    return `Incorporated into ${factionName(owner)}${suffix}`;
+    return `Incorporated into ${factionName(owner)}${suffix}${ultimately(owner)}`;
   }
   // Who this land holds, on top of who holds it. Without it the fealty only
   // ever read one way: a vassal's hover named its lord while the lord's own
@@ -157,8 +168,8 @@ export function relationshipLine(
     return holds === null ? null : capitalize(holds);
   }
   return holds === null
-    ? `Vassal of ${factionName(lord)}`
-    : `Vassal of ${factionName(lord)}, ${holds}`;
+    ? `Vassal of ${factionName(lord)}${ultimately(polygonFactionId)}`
+    : `Vassal of ${factionName(lord)}${ultimately(polygonFactionId)}, ${holds}`;
 }
 
 /** Is this land a vassal of the human's that is holding a live Revolt? The card

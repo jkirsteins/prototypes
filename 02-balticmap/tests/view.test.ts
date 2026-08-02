@@ -306,6 +306,28 @@ describe("relationshipLine", () => {
     expect(line("zemgale", [["zemgale", "lietuva"]])).toBe("Vassal of LIETUVA");
   });
 
+  it("names the direct lord and the chain's root, nothing between", () => {
+    expect(line("zemgale", [
+      ["zemgale", "lietuva"], ["lietuva", "kursa"], ["kursa", "sudovians"],
+    ])).toBe("Vassal of LIETUVA, ultimately a vassal of SUDOVIANS");
+  });
+
+  it("says so when the chain's root is the human", () => {
+    expect(line("zemgale", [["zemgale", "lietuva"], ["lietuva", "me"]]))
+      .toBe("Vassal of LIETUVA, ultimately your vassal");
+  });
+
+  it("adds the chain's root to an absorbed land's story", () => {
+    expect(line(
+      "semba",
+      [["nadruvians", "natangians"], ["natangians", "sudovians"]],
+      { semba: "nadruvians" },
+    )).toBe(
+      "Incorporated into NADRUVIANS, itself a vassal of NATANGIANS, " +
+        "ultimately a vassal of SUDOVIANS",
+    );
+  });
+
   it("keeps the human's own relationships in the second person", () => {
     expect(line("zemgale", [["zemgale", "me"]])).toBe("Your vassal");
     expect(line("lietuva", [["me", "lietuva"]])).toBe("Your overlord");
