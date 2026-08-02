@@ -374,6 +374,23 @@ svg.map.dragging {
   pointer-events: none;
 }
 
+/* The labelled ribbon: same element, grown to name its tier. content reads
+   the data-rarity attribute applyRarityBand stamps, so the tier id is the
+   display text and a new tier needs nothing here. Only the picker and the
+   pack reveal are labelled; the hand keeps the 4px band above. White on
+   every tier colour - all three are dark enough. */
+.rarity-band.rarity-labelled::after {
+  content: attr(data-rarity);
+  height: auto;
+  padding: 3px 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  color: #fff;
+}
+
 .postmortem-overlay {
   position: absolute;
   inset: 0;
@@ -525,7 +542,7 @@ svg.map.dragging {
 .ds-deck {
   display: grid;
   grid-template-columns: repeat(auto-fit, 210px);
-  grid-auto-rows: 160px;
+  grid-auto-rows: 175px;
   justify-content: center;
   gap: 10px;
   width: min(1122px, 100% - 32px);
@@ -542,8 +559,10 @@ svg.map.dragging {
    of height where 190 needed 162. Wider and shorter at once, so past 210 the
    line count stops falling and only the width grows.
 
-   160px is that 146 plus a line of slack for a platform whose font metrics
-   run a little larger. The height comes from the grid's grid-auto-rows and
+   175px is the measured 161 - the longest tiles' scrollHeight plus border
+   with the labelled rarity ribbon in the bottom padding - plus a line of
+   slack for a platform whose font metrics run a little larger. The height
+   comes from the grid's grid-auto-rows and
    never from a min-height here, so every tile in every row is identical;
    anything that still outgrows it clips, and the shared tooltip is the safety
    net (see the mousemove hook in src/deck-screen.ts). Re-measure both numbers
@@ -579,8 +598,9 @@ svg.map.dragging {
   /* buttons centre their text; a paragraph of rules has to read left-aligned.
      .ds-filler re-centres itself below, at higher specificity. */
   text-align: left;
-  /* 12px at the bottom, not 10: the 4px rarity band sits in that padding. */
-  padding: 10px 10px 12px;
+  /* 26px at the bottom, not 10: the labelled rarity ribbon (~19px of text
+     plus its padding) sits in that padding. */
+  padding: 10px 10px 26px;
   cursor: pointer;
   opacity: 0.6;
   overflow: hidden;
@@ -1515,7 +1535,8 @@ svg.map.dragging {
   flex-direction: column;
   gap: 0.4rem;
   width: 13rem;
-  padding: 0.9rem;
+  /* extra at the bottom: the labelled rarity ribbon sits in that padding */
+  padding: 0.9rem 0.9rem 1.8rem;
   border: 1px solid #6b5a34;
   border-radius: 0.5rem;
   background: #1b1710;
