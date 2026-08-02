@@ -114,18 +114,21 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     ) {
       return threatHeight === "high" ? "stanceUp" : "stanceDown";
     }
-    // Meet the blade as it commits: press so the guard is FORMED when the
-    // strike begins - the press must lead by the rise, plus half the
-    // effective span as margin. With rise 0 this reduces to the old
-    // half-window heuristic; with it, the dummy visibly cannot answer
-    // attacks whose preparation is shorter than reaction + rise (the
-    // rapier thrust - a documented, tested failure, not a bug), nor ones
-    // whose preparation is shorter than reaction + the stance travel.
-    const untilStrike = timeline.strikeStart - elapsedMs;
+    // Meet the blade where it will BE: press so the guard is formed when
+    // the blade arrives at this gap (extension covers it), leading by the
+    // rise plus half the effective span as margin. Pressing against the
+    // strike's start instead would, at near-maximum range, raise a guard
+    // that lapses before the blade ever gets there - the travel model made
+    // where as real as when. The dummy still cannot answer attacks whose
+    // preparation is shorter than reaction + rise (the rapier thrust - a
+    // documented, tested failure, not a bug).
+    const travel = timeline.parryableUntil - timeline.strikeStart;
+    const arrivalAt = timeline.strikeStart + Math.min(1, gapOf(d) / opp.weapon.reach) * travel;
+    const untilArrival = arrivalAt - elapsedMs;
     const lead = self.weapon.parryRiseMs + (self.weapon.parryWindowMs - self.weapon.parryRiseMs) * 0.5;
     if (
       elapsedMs >= AI_REACTION_MS &&
-      untilStrike <= lead &&
+      untilArrival <= lead &&
       self.state.kind === "ready" &&
       self.parry === null &&
       self.stepRecoveryMs <= 0 &&

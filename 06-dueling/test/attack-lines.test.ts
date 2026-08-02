@@ -103,7 +103,7 @@ describe("a parry covers one complete snapshotted line", () => {
     const s = d.f[0].state;
     if (s.kind !== "attack") throw new Error("unreachable");
     s.phase = "strike";
-    s.elapsedMs = s.timeline.strikeStart + 1;
+    s.elapsedMs = s.timeline.parryableUntil; // arrived: extension is full reach
     s.height = atkHeight;
     d.f[1].height = covered.height;
     applyIntent(d.f[1], "parry", { targetSide: covered.side });

@@ -57,7 +57,8 @@ describe("parryMeetsAttack: the rise condition, falsified independently", () => 
     };
     d.f[0].state = {
       kind: "attack", attack: "thrust", phase: "strike",
-      elapsedMs: tl.strikeStart + 1, timeline: tl, height: "low", met: false,
+      // At parryableUntil the extension is full reach: arrived at the guard.
+      elapsedMs: tl.parryableUntil, timeline: tl, height: "low", met: false,
     };
     applyIntent(d.f[1], "parry");
     if (d.f[1].parry !== null) d.f[1].parry.elapsedMs = parryT;

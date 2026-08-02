@@ -28,8 +28,12 @@ a layer:
 - the whoosh when the arc *resolves* having found nothing (whiff) - not
   earlier, because a defender can still step into the blade late in the
   strike, so a miss is only knowable at resolution;
-- the clash when the travelling blade *arrives* at the guard (the end of
-  the parryable interval), not when the parry press latched `met`;
+- the clash on the *contact tick* - the first tick the blades occupy the
+  same place. For a parry that is the travelling blade's arrival at the
+  formed guard: its extension covering the gap, which at maximum range is
+  the end of the parryable interval and earlier at any closer gap. For two
+  crossing attacks it is the tick their extensions together cover the gap,
+  and a crossing is ONE clash, never one per side;
 - the hit when the strike *resolves* into a wound.
 
 The engine also emits an unmapped `swing` event (blade starts travelling);

@@ -157,7 +157,8 @@ describe("attack resolution", () => {
       expect(parryMeetsAttack(d.f[0], d.f[1], gapOf(d))).toBe(true);
     });
     test("timing alone fails: the blade is already delivered", () => {
-      const d = setup(parryableMs(t) + 1, 180, true);
+      // Past the grace tick that covers boundary quantization.
+      const d = setup(parryableMs(t) + TICK + 1, 180, true);
       expect(parryMeetsAttack(d.f[0], d.f[1], gapOf(d))).toBe(false);
     });
     test("reach alone fails: nothing to meet out of measure", () => {
@@ -217,17 +218,19 @@ describe("attack resolution", () => {
     expect(d.over).toBe(false);
   });
 
-  test("mutual strikeEnd on the same tick is a draw", () => {
+  test("mutual strikeEnd on the same tick is a draw - when the blades pass on different sides", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
     closeTo(d, 160);
-    // Symmetric no-tell attacks injected directly so both strikeEnds land
-    // on the same tick (a tell-carrying "thrust" intent through tickDuel
-    // would make side 1 strike 180ms later than side 0, and side 0's kill
-    // would end the duel before side 1 lands).
-    applyIntent(d.f[0], "thrust");
+    // A cut (outside) against a thrust (inside): the blades never touch,
+    // and both strikes resolving on one tick is the earned double. Two
+    // same-line thrusts can no longer double this way - they cross and
+    // clang instead, which is blade-contact working as specified. The cut
+    // resolves at 900; inject the thrust 320ms later so both end together.
+    applyIntent(d.f[0], "cut");
+    for (let i = 0; i * TICK < 320; i++) tickDuel(d, null, null);
     applyIntent(d.f[1], "thrust");
     for (let i = 0; i < 3000 / TICK; i++) tickDuel(d, null, null);
-    // identical weapons, same-tick thrusts: both land
+    expect(d.log.some((e) => e.kind === "met")).toBe(false);
     expect(d.over).toBe(true);
     expect(d.winner).toBe("draw");
   });
@@ -239,7 +242,9 @@ describe("presentation events follow the simulation, not the input", () => {
     closeTo(d, 180);
     const t = WEAPONS.rapier.attacks.thrust;
     const strikeAt = t.windup + t.beat;
-    const arriveAt = strikeAt + parryableMs(t);
+    // The blade arrives when its extension covers the gap: 180 of the
+    // rapier's 240 reach is 3/4 of the travelling half.
+    const arriveAt = strikeAt + (180 / WEAPONS.rapier.reach) * parryableMs(t);
     // Guard goes up well before the strike begins; contact must still wait
     // for the blade to get there.
     const pressTick = Math.round((strikeAt - WEAPONS.longsword.parryWindowMs / 2) / TICK) - 1;

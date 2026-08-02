@@ -129,15 +129,15 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     "longsword player advances into mode-3 rapier duelist": { hash: 1489359747, endedAt: 105 },
     "rapier player against mode-3 longsword, different seed": { hash: 758609725, endedAt: 118 },
     // Re-recorded at rule D (parry on its own track: the player walks into
-    // the first drill strike with the guard riding and parries it), then
-    // once more at attack-lines, cause fully known: the drill now cycles
-    // heights, so its third strike (thrust at HIGH) steps the stance up
-    // first - the rapier's 270ms heightChangeMs - and the killing blow
-    // lands 17 ticks later (410 vs 393) with the stance move visible in
-    // the projection. Modes 1 and 3 scenarios are unchanged: the dummy's
-    // heights already matched, and both mode-3 seeds drew "low" for the
-    // only attack their duels lived to see.
-    "drill metronome: parry the first beat, void the second into a whiff": { hash: 1425637434, endedAt: 410 },
+    // the first drill strike with the guard riding and parries it), at
+    // attack-lines (the drill cycles heights, so its third strike steps the
+    // stance up first and the killing blow lands 17 ticks later, 410 vs
+    // 393), and at blade-contact: same death, same tick, but the parried
+    // first beat's met cue now fires at the blade's ARRIVAL at the guard
+    // (extension covering the gap) instead of the parryable-interval
+    // boundary - the travel model locating the clash. The other scenarios
+    // are unchanged: their duels end before any contact timing differs.
+    "drill metronome: parry the first beat, void the second into a whiff": { hash: 4063824542, endedAt: 410 },
     // Re-recorded once at the parry-rise step (TODO-1), the sanctioned
     // gameplay change: the guard now needs parryRiseMs to form, so the
     // dummy's reactive answer to the tell-free rapier thrust (260ms of

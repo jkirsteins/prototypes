@@ -1,7 +1,12 @@
-import { applyIntent, guardEffective, lineOf, TICK, tickFighter } from "./fighter";
+import { applyIntent, lineOf, TICK, tickFighter } from "./fighter";
+import { bladesCross, parryMeetsAttack } from "./contact";
 import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
 import type { Intent, WeaponProfile } from "./types";
+
+// The contact module is the single home of blade geometry; the engine
+// re-exports it so existing consumers keep one import site.
+export { bladesCross, extension, parryMeetsAttack } from "./contact";
 
 /** left/right are cm along the piste (~17 m usable); floorY is canvas px (vertical is render-only). */
 export const ARENA = { left: 120, right: 1800, floorY: 430 };
@@ -108,18 +113,15 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   }
 
   clampPositions(d);
-  markMetBlades(d);
 
-  // The clash sounds when the blade arrives at the guard - the end of its
-  // travel - not when the parry press latched `met` somewhere inside the
-  // parryable window.
-  for (const side of [0, 1] as const) {
-    const s = d.f[side].state;
-    if (s.kind !== "attack" || s.phase !== "strike" || !s.met) continue;
-    const arriveAt = s.timeline.parryableUntil;
-    if (s.elapsedMs >= arriveAt && s.elapsedMs - dt < arriveAt) {
-      out.push({ time: d.time, side, kind: "met", text: "" });
-    }
+  // The clash sounds on the contact tick - the first tick the blades occupy
+  // the same place, which is when `met` latches. For a parry that is the
+  // travelling blade's arrival at the formed guard (at maximum range, the
+  // old parryable-interval boundary; earlier at any closer gap); for a
+  // crossing, the tick both extensions cover the gap. One met per contact,
+  // never one per side - two clash samples on one tick would be a layer.
+  for (const c of markMetBlades(d)) {
+    out.push({ time: d.time, side: c, kind: "met", text: "" });
   }
 
   // Gather strike resolutions AFTER both fighters ticked, so same-tick
@@ -184,35 +186,36 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
 }
 
 /**
- * True if the defender's raised parry meets this attack on this tick: the
- * single site deciding blade contact. A parry succeeds by meeting the blade
- * while it travels, not by being up at the instant of impact - any overlap
- * between the defender's guard and the attack's parryable interval counts,
- * one rule for every weapon.
- *
- * Coverage: a parry covers one complete snapshotted line, and the attack
- * must match it on BOTH axes. The covered line is what this reads - never
- * the defender's current stance, never any hidden final line of the
- * attack - so a guard whose snapshot a redirect has outdated visibly
- * covers the wrong line and misses.
+ * Latch contacts and report the NEW ones: the sides whose met cue fires on
+ * this tick. A thin caller - every geometric condition lives in the contact
+ * module. The mutual case is checked first and returns early, because a
+ * fighter cannot both cross a blade and be parried on the same tick; a
+ * crossing reports ONE contact, carried by the fighter whose strike began
+ * later - the blade whose travel completed the contact.
  */
-export function parryMeetsAttack(attacker: Fighter, defender: Fighter, gap: number): boolean {
-  const s = attacker.state;
-  if (s.kind !== "attack" || s.phase !== "strike") return false;
-  if (s.elapsedMs > s.timeline.parryableUntil) return false; // delivered: too late
-  if (gap > attacker.weapon.reach) return false; // nothing to meet: out of measure
-  const p = defender.parry;
-  if (p === null || !guardEffective(defender)) return false; // rising, rotating or travelling: not formed
-  const line = lineOf(attacker);
-  return line.height === p.targetLine.height && line.side === p.targetLine.side;
-}
-
-function markMetBlades(d: Duel): void {
+function markMetBlades(d: Duel): Array<0 | 1> {
+  const gap = gapOf(d);
+  const a = d.f[0].state;
+  const b = d.f[1].state;
+  if (a.kind === "attack" && b.kind === "attack" && bladesCross(d.f[0], d.f[1], gap)) {
+    if (a.met && b.met) return []; // already latched: no re-emission
+    a.met = true;
+    b.met = true;
+    // "Began later" compares absolute instants: each attack has its own clock.
+    const beganA = d.time - a.elapsedMs + a.timeline.strikeStart;
+    const beganB = d.time - b.elapsedMs + b.timeline.strikeStart;
+    return [beganA >= beganB ? 0 : 1];
+  }
+  const contacts: Array<0 | 1> = [];
   for (const side of [0, 1] as const) {
     const s = d.f[side].state;
     if (s.kind !== "attack" || s.met) continue;
-    if (parryMeetsAttack(d.f[side], d.f[1 - side], gapOf(d))) s.met = true;
+    if (parryMeetsAttack(d.f[side], d.f[1 - side], gap)) {
+      s.met = true;
+      contacts.push(side);
+    }
   }
+  return contacts;
 }
 
 function clampPositions(d: Duel): void {

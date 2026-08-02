@@ -98,6 +98,19 @@ All three required, on the same tick:
 2. **Same line.** `lineOf(a).height === lineOf(b).height` and
    `lineOf(a).side === lineOf(b).side`, using `attack-lines`' `lineOf`. Two
    blades have to be in the same place vertically and around the blade to touch.
+
+   **Side semantics, settled:** sides are self-relative (each fighter's own
+   inside/outside) and matching is label-EQUAL, with no mirroring for the
+   opposed facing. This is the fencing reality for same-handed opponents, not
+   a simplification of it: an engagement in quarte is one blade crossing lying
+   in both fencers' inside lines at once, and the canonical Zornhau-binds-
+   Zornhau meeting is two attacks with equal self-relative labels. The
+   engagement's mirror symmetry folds my inside and their inside onto the same
+   place - which is also why the parry inference needs no translation, and why
+   row 3's labels are directly comparable between fighters: labels match, steel
+   is possible. The flipped sprite is cosmetically a left-hander but the rules
+   declare both fighters same-handed; a true opposite-handed matchup would
+   invert the pairing and is one sign flip here if ever wanted.
 3. **The tips have covered the distance.** `extension(a) + extension(b) >= gap`.
 
 Contact is the **first tick** all three hold. Consequences:
