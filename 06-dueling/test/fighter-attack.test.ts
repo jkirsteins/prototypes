@@ -4,7 +4,7 @@ import { WEAPONS } from "../src/combat/weapons";
 import type { FighterEvent } from "../src/combat/fighter";
 
 describe("attack cascade", () => {
-  test("player thrust: windup -> beat -> strike -> recovery -> idle, phase times per profile", () => {
+  test("player thrust: windup -> strike -> recovery -> idle, phase times per profile", () => {
     const f = createFighter(400, 1, WEAPONS.rapier);
     const t = WEAPONS.rapier.attacks.thrust;
     applyIntent(f, "thrust");
@@ -22,17 +22,23 @@ describe("attack cascade", () => {
       if (evs.some((e) => e.type === "strikeEnd")) strikeEndAt = elapsed;
       if (f.state.kind === "idle") break;
     }
-    expect(phases).toEqual(["windup", "beat", "strike", "recovery"]);
+    expect(phases).toEqual(["windup", "strike", "recovery"]);
     // strikeEnd fires at windup + beat + strike (within one tick)
     expect(strikeEndAt).toBeGreaterThanOrEqual(t.windup + t.beat + t.strike - TICK);
     expect(strikeEndAt).toBeLessThanOrEqual(t.windup + t.beat + t.strike + TICK);
     expect(f.state.kind).toBe("idle");
   });
 
-  test("AI attack includes the pretempo tell", () => {
+  test("a windup bonus stretches the telegraph without touching the strike", () => {
     const f = createFighter(400, -1, WEAPONS.longsword);
-    applyIntent(f, "cut", { tell: true });
-    expect(f.state).toMatchObject({ kind: "attack", phase: "pretempo" });
+    const bonus = WEAPONS.longsword.pretempo;
+    applyIntent(f, "cut", { windupBonusMs: bonus });
+    expect(f.state).toMatchObject({ kind: "attack", phase: "windup" });
+    if (f.state.kind !== "attack") throw new Error("unreachable");
+    const t = WEAPONS.longsword.attacks.cut;
+    expect(f.state.timeline.riseStart).toBe(bonus);
+    expect(f.state.timeline.strikeStart).toBe(bonus + t.windup + t.beat);
+    expect(f.state.timeline.strikeEnd - f.state.timeline.strikeStart).toBe(t.strike);
   });
 
   test("attacks cannot be cancelled once started", () => {

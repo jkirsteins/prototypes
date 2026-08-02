@@ -80,12 +80,17 @@ export function pickFrame(f: Fighter, timeMs: number): FramePick {
       const plan = ATTACK_FRAMES[s.attack];
       const sheet = plan.sheet;
       switch (s.phase) {
-        case "pretempo":
-          return { sheet, frame: plan.windup[0], flip };
-        case "windup":
-          return { sheet, frame: s.elapsedMs < (tl.riseStart + tl.riseEnd) / 2 ? plan.windup[0] : plan.windup[1], flip };
-        case "beat":
-          return { sheet, frame: plan.beat, flip };
+        case "windup": {
+          // One phase, three poses, split at the timeline's presentation
+          // marks: low until the rise's midpoint (the telegraph holds the
+          // first pose), raised through the rest of the rise, then the
+          // held-high stillness until the strike.
+          const frame =
+            s.elapsedMs < (tl.riseStart + tl.riseEnd) / 2 ? plan.windup[0] :
+            s.elapsedMs < tl.riseEnd ? plan.windup[1] :
+            plan.beat;
+          return { sheet, frame, flip };
+        }
         case "strike":
           // The frame flips to "delivered" exactly when the blade stops
           // being meetable, so the visual is the window. Both this and the

@@ -37,7 +37,7 @@ export interface Fighter {
 
 export type FighterEvent =
   | { type: "strikeEnd"; attack: AttackKind }
-  /** The blade begins to travel: the beat-to-strike transition. */
+  /** The blade begins to travel: the windup-to-strike transition. */
   | { type: "strikeBegin" }
   /** A foot plants: a step or void hop finishing its travel. */
   | { type: "footfall" }
@@ -50,12 +50,12 @@ export function createFighter(x: number, facing: 1 | -1, weapon: WeaponProfile):
 export function applyIntent(
   f: Fighter,
   intent: Intent,
-  opts?: { tell?: boolean },
+  opts?: { windupBonusMs?: number },
 ): "accepted" | "buffered" | "ignored" {
   const k = f.state.kind;
   if (k === "dead" || k === "hitstun") return "ignored";
   if (k === "idle") {
-    return startAction(f, intent, opts?.tell ?? false) ? "accepted" : "ignored";
+    return startAction(f, intent, opts?.windupBonusMs ?? 0) ? "accepted" : "ignored";
   }
   // A parry answers something happening right now, so it is never queued:
   // a parry that fires when the step finishes would be raised against a
@@ -64,7 +64,7 @@ export function applyIntent(
   // parry may interrupt it; the step itself stays committed.
   if (intent === "parry") {
     if (k !== "pause") return "ignored";
-    return startAction(f, intent, false) ? "accepted" : "ignored";
+    return startAction(f, intent, 0) ? "accepted" : "ignored";
   }
   if (k === "step" || k === "pause") {
     f.buffered = intent; // one-slot buffer, last input wins
@@ -73,7 +73,7 @@ export function applyIntent(
   return "ignored"; // committed: void, attack, parry
 }
 
-function startAction(f: Fighter, intent: Intent, tell: boolean): boolean {
+function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean {
   switch (intent) {
     case "advance":
       f.state = { kind: "step", dir: 1, t: 0 };
@@ -89,9 +89,9 @@ function startAction(f: Fighter, intent: Intent, tell: boolean): boolean {
       f.state = {
         kind: "attack",
         attack: intent,
-        phase: tell ? "pretempo" : "windup",
+        phase: "windup",
         elapsedMs: 0,
-        timeline: attackTimeline(f.weapon, intent, tell ? f.weapon.pretempo : 0),
+        timeline: attackTimeline(f.weapon, intent, windupBonusMs),
         met: false,
       };
       return true;
@@ -163,9 +163,7 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
       // sequential ifs let a phase shorter than one tick be crossed cleanly.
       const tl = s.timeline;
       s.elapsedMs += dt;
-      if (s.phase === "pretempo" && s.elapsedMs >= tl.riseStart) s.phase = "windup";
-      if (s.phase === "windup" && s.elapsedMs >= tl.riseEnd) s.phase = "beat";
-      if (s.phase === "beat" && s.elapsedMs >= tl.strikeStart) {
+      if (s.phase === "windup" && s.elapsedMs >= tl.strikeStart) {
         s.phase = "strike";
         events.push({ type: "strikeBegin" });
       }
@@ -189,6 +187,6 @@ function flushBuffer(f: Fighter, _events: FighterEvent[]): void {
   const b = f.buffered;
   f.buffered = null;
   if (b !== null) {
-    startAction(f, b, false);
+    startAction(f, b, 0);
   }
 }

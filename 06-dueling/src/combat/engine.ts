@@ -49,13 +49,18 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   const out: DuelEvent[] = [];
   const intents: [Intent | null, Intent | null] = [ia, ib];
   const dt = TICK;
-  const wasWindup: [boolean, boolean] = [inWindup(d.f[0]), inWindup(d.f[1])];
+  const wasRising: [boolean, boolean] = [inRise(d.f[0]), inRise(d.f[1])];
 
   for (const side of [0, 1] as const) {
     const intent = intents[side];
     if (intent === null || d.over) continue;
     const before = d.f[side].state.kind;
-    const r = applyIntent(d.f[side], intent, { tell: side === 1 });
+    // The AI's attacks carry a telegraph: extra windup the player can read.
+    // The fighter simulation never learns who controls it - it only sees
+    // a windup bonus.
+    const r = applyIntent(d.f[side], intent, {
+      windupBonusMs: side === 1 ? d.f[side].weapon.pretempo : 0,
+    });
     if (r === "accepted" && before !== d.f[side].state.kind) {
       const k = d.f[side].state.kind;
       if (k === "attack") emit(d, out, side, "attackStart", `${d.f[side].weapon.name} ${intent} begins`);
@@ -78,11 +83,12 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   }
 
   // The blade starts rising. A before/after comparison rather than emission
-  // at a single call site, because windup begins three ways: at acceptance,
-  // out of pretempo, or from a buffered attack in flushBuffer.
+  // at a single call site, because the rise begins three ways: at acceptance
+  // (no telegraph), when elapsedMs crosses riseStart (telegraphed AI
+  // attacks), or from a buffered attack in flushBuffer.
   for (const side of [0, 1] as const) {
     const f = d.f[side];
-    if (!wasWindup[side] && inWindup(f) && f.state.kind === "attack") {
+    if (!wasRising[side] && inRise(f) && f.state.kind === "attack") {
       out.push({
         time: d.time, side, kind: "windup", text: "",
         ms: f.weapon.attacks[f.state.attack].windup,
@@ -219,8 +225,13 @@ function clampPositions(d: Duel): void {
   }
 }
 
-function inWindup(f: Fighter): boolean {
-  return f.state.kind === "attack" && f.state.phase === "windup";
+/** The blade is visibly rising: past the telegraph, before the strike. */
+function inRise(f: Fighter): boolean {
+  return (
+    f.state.kind === "attack" &&
+    f.state.phase === "windup" &&
+    f.state.elapsedMs >= f.state.timeline.riseStart
+  );
 }
 
 function emit(d: Duel, out: DuelEvent[], side: 0 | 1, kind: DuelEvent["kind"], text: string): void {

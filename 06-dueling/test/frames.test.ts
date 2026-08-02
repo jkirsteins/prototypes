@@ -16,10 +16,10 @@ describe("pickFrame maps fighter state to sheet frames", () => {
     expect(later.frame).toBe(1);
   });
 
-  test("cut holds frame 2 through the whole transition beat", () => {
+  test("cut holds frame 2 through the pre-strike stillness", () => {
     const f = createFighter(300, 1, WEAPONS.longsword);
     const tl = attackTimeline(WEAPONS.longsword, "cut", 0);
-    f.state = { kind: "attack", attack: "cut", phase: "beat", elapsedMs: tl.riseEnd + 1, timeline: tl, met: false };
+    f.state = { kind: "attack", attack: "cut", phase: "windup", elapsedMs: tl.riseEnd + 1, timeline: tl, met: false };
     expect(pickFrame(f, 0)).toMatchObject({ sheet: "swordAttack", frame: 2 });
     f.state.elapsedMs = tl.strikeStart - 1;
     expect(pickFrame(f, 0).frame).toBe(2);

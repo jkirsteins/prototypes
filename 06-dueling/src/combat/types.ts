@@ -1,6 +1,13 @@
 export type WeaponId = "longsword" | "rapier";
 export type AttackKind = "cut" | "thrust";
-export type AttackPhase = "pretempo" | "windup" | "beat" | "strike" | "recovery";
+/**
+ * A phase exists only if it owns a distinct combat invariant. windup:
+ * committed but not dangerous, not meetable. strike: meetable in its first
+ * PARRYABLE_FRACTION, resolves at its end. recovery: exposed, nothing
+ * accepted. Presentation boundaries inside the windup (the AI's telegraph,
+ * the rise, the pre-strike stillness) are AttackTimeline marks, not phases.
+ */
+export type AttackPhase = "windup" | "strike" | "recovery";
 export type Zone = "out" | "wide" | "narrow";
 export type Intent = "advance" | "retreat" | "void" | "cut" | "thrust" | "parry";
 

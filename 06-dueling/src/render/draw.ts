@@ -29,8 +29,8 @@ export interface View {
  * here, never a silently grey label.
  */
 const PHASE_COLORS: Record<AttackPhase | Exclude<FighterState["kind"], "attack">, string> = {
-  pretempo: "#8a8f98", windup: "#e6c229", beat: "#e6c229", strike: "#d64541",
-  recovery: "#57a55a", void: "#4aa3df", parry: "#9b8cff", step: "#cfd3da",
+  windup: "#e6c229", strike: "#d64541", recovery: "#57a55a",
+  void: "#4aa3df", parry: "#9b8cff", step: "#cfd3da",
   pause: "#cfd3da", hitstun: "#d64541", dead: "#555a63", idle: "#8a8f98",
 };
 
