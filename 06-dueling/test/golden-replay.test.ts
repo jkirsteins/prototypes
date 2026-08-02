@@ -15,9 +15,16 @@ import type { Intent, WeaponId } from "../src/combat/types";
  * drift still surfaces: a shifted boundary moves an event's time, a broken
  * remainder moves x.
  *
- * The expected hashes were recorded on the pre-restructure build (9ca5cb3).
- * If one changes, the simulation changed - do not re-record without knowing
- * exactly why.
+ * The expected hashes were recorded on the pre-restructure build (9ca5cb3),
+ * then re-recorded ONCE at the timeline-snapshot step, cause fully known:
+ * the old walker subtracted phase durations from a phase-local clock, and
+ * its accumulated float rounding pushed exact-multiple boundaries (400ms,
+ * 700ms) across a tick edge in path-dependent directions. The absolute-mark
+ * comparison crosses on the mathematically correct tick. Verified by full
+ * per-tick diff against the old build: 6 events moved by exactly one tick
+ * (4 AI swings earlier, 2 rapier-cut parried later); positions, outcomes
+ * and every other event identical. If a hash changes again, the simulation
+ * changed - do not re-record without that level of understanding.
  */
 
 /** FNV-1a 32-bit, accumulated across per-tick projection lines. */
@@ -119,10 +126,10 @@ function runScenario(sc: Scenario): { hash: number; endedAt: number | null } {
 
 describe("golden replay: the simulation is unchanged by the restructure", () => {
   const EXPECTED: Record<string, { hash: number; endedAt: number | null }> = {
-    "longsword player advances into mode-3 rapier duelist": { hash: 1056927124, endedAt: 105 },
-    "rapier player against mode-3 longsword, different seed": { hash: 2192433373, endedAt: 118 },
-    "drill metronome: parry the first beat, void the second into a whiff": { hash: 2459897717, endedAt: 393 },
-    "parry dummy reads the player's telegraph-free attacks": { hash: 4123626432, endedAt: null },
+    "longsword player advances into mode-3 rapier duelist": { hash: 1489359747, endedAt: 105 },
+    "rapier player against mode-3 longsword, different seed": { hash: 758609725, endedAt: 118 },
+    "drill metronome: parry the first beat, void the second into a whiff": { hash: 2500086817, endedAt: 393 },
+    "parry dummy reads the player's telegraph-free attacks": { hash: 1637068997, endedAt: null },
   };
 
   for (const sc of SCENARIOS) {

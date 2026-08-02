@@ -2,7 +2,6 @@ import { applyIntent, TICK, tickFighter } from "./fighter";
 import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
 import type { Intent, WeaponProfile } from "./types";
-import { parryableMs } from "./weapons";
 
 /** left/right are cm along the piste (~17 m usable); floorY is canvas px (vertical is render-only). */
 export const ARENA = { left: 120, right: 1800, floorY: 430 };
@@ -100,8 +99,8 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   for (const side of [0, 1] as const) {
     const s = d.f[side].state;
     if (s.kind !== "attack" || s.phase !== "strike" || !s.met) continue;
-    const arriveAt = parryableMs(d.f[side].weapon.attacks[s.attack]);
-    if (s.t >= arriveAt && s.t - dt < arriveAt) {
+    const arriveAt = s.timeline.parryableUntil;
+    if (s.elapsedMs >= arriveAt && s.elapsedMs - dt < arriveAt) {
       out.push({ time: d.time, side, kind: "met", text: "" });
     }
   }
@@ -118,11 +117,21 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     const def = d.f[1 - side];
     if (atk.state.kind !== "attack") continue; // safety: state must be recovery-phase attack
     const gap = gapOf(d);
+    const tl = atk.state.timeline;
+    const baseRecovery = atk.weapon.attacks[atk.state.attack].recovery;
+    // The timeline is replaced, never mutated in place: this is its single
+    // post-start write site, at strike resolution.
     if (gap > atk.weapon.reach) {
-      atk.state.recoveryMs *= atk.weapon.whiffRecoveryFactor;
+      atk.state.timeline = {
+        ...tl,
+        recoveryEnd: tl.recoveryStart + baseRecovery * atk.weapon.whiffRecoveryFactor,
+      };
       emit(d, out, side, "whiff", `${atk.weapon.name} misses -> Nachreisen window open`);
     } else if (atk.state.met) {
-      atk.state.recoveryMs += atk.weapon.parriedPenalty;
+      atk.state.timeline = {
+        ...tl,
+        recoveryEnd: tl.recoveryStart + baseRecovery + atk.weapon.parriedPenalty,
+      };
       // The guard has done its work; free it now rather than leaving the
       // defender committed to a blade that is no longer coming.
       if (def.state.kind === "parry") {
@@ -157,20 +166,32 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
 }
 
 /**
- * A parry succeeds by meeting the blade while it travels, not by being up
- * at the instant of impact: any overlap between the defender's guard and
- * the attack's parryable interval counts. That makes "meet the blade as it
- * commits" one rule for every weapon, instead of a press time that shifts
- * with each attack's strike duration.
+ * True if the defender's raised parry meets this attack on this tick: the
+ * single site deciding blade contact. A parry succeeds by meeting the blade
+ * while it travels, not by being up at the instant of impact - any overlap
+ * between the defender's guard and the attack's parryable interval counts,
+ * one rule for every weapon.
+ *
+ * MVP limitation: coverage is universal - a raised parry stops any cut or
+ * thrust whose timing and reach line up. Attacks do not yet have lines
+ * (high/low, inside/outside), so a feint can provoke an early parry and
+ * punish its recovery, but cannot deceive the defender about where the
+ * real attack arrives. When lines land, they become one more condition
+ * HERE - attack.line in parry.coveredLines - and nowhere else.
  */
+export function parryMeetsAttack(attacker: Fighter, defender: Fighter, gap: number): boolean {
+  const s = attacker.state;
+  if (s.kind !== "attack" || s.phase !== "strike") return false;
+  if (s.elapsedMs > s.timeline.parryableUntil) return false; // delivered: too late
+  if (gap > attacker.weapon.reach) return false; // nothing to meet: out of measure
+  return defender.state.kind === "parry";
+}
+
 function markMetBlades(d: Duel): void {
   for (const side of [0, 1] as const) {
-    const atk = d.f[side];
-    const s = atk.state;
-    if (s.kind !== "attack" || s.phase !== "strike" || s.met) continue;
-    if (s.t > parryableMs(atk.weapon.attacks[s.attack])) continue;
-    if (gapOf(d) > atk.weapon.reach) continue; // nothing to meet: out of measure
-    if (d.f[1 - side].state.kind === "parry") s.met = true;
+    const s = d.f[side].state;
+    if (s.kind !== "attack" || s.met) continue;
+    if (parryMeetsAttack(d.f[side], d.f[1 - side], gapOf(d))) s.met = true;
   }
 }
 

@@ -1,7 +1,6 @@
 import { ARENA, gapOf } from "../combat/engine";
 import { lastLines } from "../combat/log";
 import { zoneFor } from "../combat/measure";
-import { PARRYABLE_FRACTION } from "../combat/weapons";
 import { pickFrame } from "./frames";
 import { SHEETS } from "./sheets";
 import type { AiMode } from "../combat/ai";
@@ -171,16 +170,18 @@ function drawStrikeTiming(v: View, f: Fighter): void {
   const s = f.state;
   if (s.kind !== "attack" || s.phase !== "strike") return;
   const { ctx } = v;
-  const strike = f.weapon.attacks[s.attack].strike;
+  const tl = s.timeline;
+  const strike = tl.strikeEnd - tl.strikeStart;
+  const meetable = (tl.parryableUntil - tl.strikeStart) / strike;
   const w = 70;
   const x = f.x * PX_PER_CM - w / 2;
   const y = ARENA.floorY - 162;
   ctx.fillStyle = "#e6c229"; // meetable
-  ctx.fillRect(x, y, w * PARRYABLE_FRACTION, 5);
+  ctx.fillRect(x, y, w * meetable, 5);
   ctx.fillStyle = "#6b2f2c"; // delivered: too late to parry
-  ctx.fillRect(x + w * PARRYABLE_FRACTION, y, w * (1 - PARRYABLE_FRACTION), 5);
+  ctx.fillRect(x + w * meetable, y, w * (1 - meetable), 5);
   ctx.fillStyle = "#e8eaed";
-  ctx.fillRect(x + Math.min(1, s.t / strike) * w - 1, y - 2, 2, 9);
+  ctx.fillRect(x + Math.min(1, (s.elapsedMs - tl.strikeStart) / strike) * w - 1, y - 2, 2, 9);
 }
 
 /** Whether this fighter's guard is up, spent, or ready - the parry's own state. */

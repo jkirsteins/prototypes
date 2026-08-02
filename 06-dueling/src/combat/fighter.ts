@@ -1,3 +1,5 @@
+import { attackTimeline } from "./weapons";
+import type { AttackTimeline } from "./weapons";
 import type { AttackKind, AttackPhase, Intent, WeaponProfile } from "./types";
 
 export const TICK = 1000 / 60;
@@ -13,9 +15,10 @@ export type FighterState =
       kind: "attack";
       attack: AttackKind;
       phase: AttackPhase;
-      t: number;
-      recoveryMs: number;
-      tell: boolean;
+      /** Absolute ms since attack start: the attack's only clock. */
+      elapsedMs: number;
+      /** The attack's boundaries, snapshotted at start. See AttackTimeline. */
+      timeline: AttackTimeline;
       /** Set by the engine when a defending blade met this one inside the parryable window. */
       met: boolean;
     }
@@ -87,9 +90,8 @@ function startAction(f: Fighter, intent: Intent, tell: boolean): boolean {
         kind: "attack",
         attack: intent,
         phase: tell ? "pretempo" : "windup",
-        t: 0,
-        recoveryMs: f.weapon.attacks[intent].recovery,
-        tell,
+        elapsedMs: 0,
+        timeline: attackTimeline(f.weapon, intent, tell ? f.weapon.pretempo : 0),
         met: false,
       };
       return true;
@@ -156,36 +158,26 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
       }
       break;
     case "attack": {
-      const timings = f.weapon.attacks[s.attack];
-      s.t += dt;
-      // Walk phases, carrying tick remainder so timing drift never accumulates.
-      let advanced = true;
-      while (advanced) {
-        advanced = false;
-        const dur =
-          s.phase === "pretempo" ? f.weapon.pretempo :
-          s.phase === "windup" ? timings.windup :
-          s.phase === "beat" ? timings.beat :
-          s.phase === "strike" ? timings.strike :
-          s.recoveryMs;
-        if (s.t < dur) break;
-        s.t -= dur;
-        if (s.phase === "pretempo") { s.phase = "windup"; advanced = true; }
-        else if (s.phase === "windup") { s.phase = "beat"; advanced = true; }
-        else if (s.phase === "beat") {
-          s.phase = "strike";
-          events.push({ type: "strikeBegin" });
-          advanced = true;
-        }
-        else if (s.phase === "strike") {
-          s.phase = "recovery";
-          events.push({ type: "strikeEnd", attack: s.attack });
-          // Stop walking: the engine may mutate recoveryMs on this event
-          // before the next tick. Remainder stays in s.t.
-        } else {
-          f.state = { kind: "idle" };
-          flushBuffer(f, events);
-        }
+      // One clock, absolute marks: the phase follows elapsedMs across the
+      // timeline, so tick quantisation has nothing to accumulate in. The
+      // sequential ifs let a phase shorter than one tick be crossed cleanly.
+      const tl = s.timeline;
+      s.elapsedMs += dt;
+      if (s.phase === "pretempo" && s.elapsedMs >= tl.riseStart) s.phase = "windup";
+      if (s.phase === "windup" && s.elapsedMs >= tl.riseEnd) s.phase = "beat";
+      if (s.phase === "beat" && s.elapsedMs >= tl.strikeStart) {
+        s.phase = "strike";
+        events.push({ type: "strikeBegin" });
+      }
+      if (s.phase === "strike" && s.elapsedMs >= tl.strikeEnd) {
+        s.phase = "recovery";
+        events.push({ type: "strikeEnd", attack: s.attack });
+        // Resolution barrier: the engine may replace the timeline (whiff,
+        // parried) in response to strikeEnd, so recoveryEnd is not read
+        // until the next tick.
+      } else if (s.phase === "recovery" && s.elapsedMs >= tl.recoveryEnd) {
+        f.state = { kind: "idle" };
+        flushBuffer(f, events);
       }
       break;
     }

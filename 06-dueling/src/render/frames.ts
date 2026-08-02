@@ -1,5 +1,4 @@
 import { DEATH_ANIM_MS, HIT_STUN_MS } from "../combat/fighter";
-import { PARRYABLE_FRACTION } from "../combat/weapons";
 import { SHEETS } from "./sheets";
 import type { Fighter } from "../combat/fighter";
 import type { SheetName } from "./sheets";
@@ -77,28 +76,32 @@ export function pickFrame(f: Fighter, timeMs: number): FramePick {
     case "dead":
       return { sheet: "death", frame: span("death", Math.min(s.t, DEATH_ANIM_MS - 1), DEATH_ANIM_MS, 0, 9), flip };
     case "attack": {
-      const timings = w.attacks[s.attack];
+      const tl = s.timeline;
       const plan = ATTACK_FRAMES[s.attack];
       const sheet = plan.sheet;
       switch (s.phase) {
         case "pretempo":
           return { sheet, frame: plan.windup[0], flip };
         case "windup":
-          return { sheet, frame: s.t < timings.windup / 2 ? plan.windup[0] : plan.windup[1], flip };
+          return { sheet, frame: s.elapsedMs < (tl.riseStart + tl.riseEnd) / 2 ? plan.windup[0] : plan.windup[1], flip };
         case "beat":
           return { sheet, frame: plan.beat, flip };
         case "strike":
           // The frame flips to "delivered" exactly when the blade stops
-          // being meetable, so the visual is the window. The comparison
-          // must mirror the engine's meetable check (s.t <= parryableMs)
-          // or the two could disagree for one tick at the boundary.
+          // being meetable, so the visual is the window. Both this and the
+          // engine's meetable check read timeline.parryableUntil, so they
+          // cannot disagree.
           return {
             sheet,
-            frame: s.t <= timings.strike * PARRYABLE_FRACTION ? plan.strike[0] : plan.strike[1],
+            frame: s.elapsedMs <= tl.parryableUntil ? plan.strike[0] : plan.strike[1],
             flip,
           };
         case "recovery":
-          return { sheet, frame: span(sheet, s.t, s.recoveryMs, plan.recovery[0], plan.recovery[1]), flip };
+          return {
+            sheet,
+            frame: span(sheet, s.elapsedMs - tl.recoveryStart, tl.recoveryEnd - tl.recoveryStart, plan.recovery[0], plan.recovery[1]),
+            flip,
+          };
       }
     }
   }

@@ -1,4 +1,4 @@
-import type { AttackTimings, WeaponId, WeaponProfile } from "./types";
+import type { AttackKind, AttackTimings, WeaponId, WeaponProfile } from "./types";
 
 /**
  * All distances are centimeters of real-world scale: the fighter sprite's
@@ -71,4 +71,44 @@ export function parryableMs(t: AttackTimings): number {
 export function counterTime(w: WeaponProfile): number {
   const t = w.attacks.thrust;
   return t.windup + t.beat + t.strike;
+}
+
+/**
+ * One attack's boundaries, absolute ms from attack start. Computed once
+ * when the attack begins and stored on it, so the walker, the AI and the
+ * renderer read the same snapshot instead of each re-deriving boundaries
+ * from the live profile - agreement by construction. Never mutated in
+ * place: the engine replaces the object atomically when the strike
+ * resolves (whiff, parried), the single write site.
+ */
+export interface AttackTimeline {
+  /** The blade starts rising: the windup DuelEvent and the rise cue. */
+  riseStart: number;
+  /** The rise ends; the pre-strike stillness begins. Presentation mark. */
+  riseEnd: number;
+  /** The blade starts travelling: swing event, first meetable instant. */
+  strikeStart: number;
+  /** Last instant a parry can meet the blade. */
+  parryableUntil: number;
+  /** The strike resolves: hit, parried or whiff. */
+  strikeEnd: number;
+  /** == strikeEnd, until a cancellation mechanic moves it earlier. */
+  recoveryStart: number;
+  /** Rewritten at resolution: whiff multiplies, parried adds. */
+  recoveryEnd: number;
+}
+
+export function attackTimeline(w: WeaponProfile, a: AttackKind, windupBonusMs: number): AttackTimeline {
+  const t = w.attacks[a];
+  const riseStart = windupBonusMs;
+  const riseEnd = riseStart + t.windup;
+  const strikeStart = riseEnd + t.beat;
+  const strikeEnd = strikeStart + t.strike;
+  return {
+    riseStart, riseEnd, strikeStart,
+    parryableUntil: strikeStart + parryableMs(t),
+    strikeEnd,
+    recoveryStart: strikeEnd,
+    recoveryEnd: strikeEnd + t.recovery,
+  };
 }

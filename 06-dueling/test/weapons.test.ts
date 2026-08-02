@@ -1,8 +1,31 @@
 import { describe, expect, test } from "vitest";
-import { WEAPONS, counterTime } from "../src/combat/weapons";
+import { PARRYABLE_FRACTION, WEAPONS, attackTimeline, counterTime, parryableMs } from "../src/combat/weapons";
 import type { AttackKind } from "../src/combat/types";
 
 const KINDS: AttackKind[] = ["cut", "thrust"];
+
+describe("attack timeline snapshot", () => {
+  // Every consumer (walker, AI, renderer, engine) reads these marks from
+  // one object, so this is the single place their agreement is asserted.
+  for (const w of Object.values(WEAPONS)) {
+    for (const kind of KINDS) {
+      for (const bonus of [0, w.pretempo]) {
+        test(`${w.id} ${kind} marks are consistent (bonus ${bonus})`, () => {
+          const t = w.attacks[kind];
+          const tl = attackTimeline(w, kind, bonus);
+          expect(tl.riseStart).toBe(bonus);
+          expect(tl.riseEnd).toBe(bonus + t.windup);
+          expect(tl.strikeStart).toBe(bonus + t.windup + t.beat);
+          expect(tl.parryableUntil).toBe(tl.strikeStart + parryableMs(t));
+          expect(tl.parryableUntil).toBe(tl.strikeStart + (tl.strikeEnd - tl.strikeStart) * PARRYABLE_FRACTION);
+          expect(tl.strikeEnd).toBe(tl.strikeStart + t.strike);
+          expect(tl.recoveryStart).toBe(tl.strikeEnd);
+          expect(tl.recoveryEnd).toBe(tl.strikeEnd + t.recovery);
+        });
+      }
+    }
+  }
+});
 
 describe("weapon identity", () => {
   test("rapier outranges and outpaces the longsword", () => {

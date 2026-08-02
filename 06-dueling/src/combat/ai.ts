@@ -76,21 +76,14 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     // land. A fencer does not parry out-of-measure attacks; neither does
     // the dummy.
     if (gapOf(d) > opp.weapon.reach) return null;
-    const { phase, t, attack, tell } = opp.state;
+    const { phase, elapsedMs, timeline } = opp.state;
     if (phase === "recovery") return null;
-    const w = opp.weapon.attacks[attack];
-    const pre = tell ? opp.weapon.pretempo : 0;
-    // Time since the attack became visible, and time left until the strike lands.
-    const elapsed =
-      phase === "pretempo" ? t :
-      phase === "windup" ? pre + t :
-      phase === "beat" ? pre + w.windup + t :
-      pre + w.windup + w.beat + t;
     // Meet the blade as it commits: raise the guard so it is up when the
-    // strike begins, which is when the blade first becomes meetable.
-    const untilStrike = pre + w.windup + w.beat - elapsed;
+    // strike begins, which is when the blade first becomes meetable. The
+    // attack's own timeline is the read - no re-derived phase arithmetic.
+    const untilStrike = timeline.strikeStart - elapsedMs;
     if (
-      elapsed >= AI_REACTION_MS &&
+      elapsedMs >= AI_REACTION_MS &&
       untilStrike <= self.weapon.parryWindow * 0.5 &&
       self.state.kind === "idle" &&
       self.parryCd <= 0

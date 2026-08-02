@@ -53,7 +53,12 @@ describe("attack cascade", () => {
       const evs = tickFighter(f, TICK);
       elapsed += TICK;
       if (evs.some((e) => e.type === "strikeEnd") && f.state.kind === "attack") {
-        f.state.recoveryMs *= WEAPONS.rapier.whiffRecoveryFactor;
+        // Replace the timeline atomically, as the engine does on a whiff.
+        const tl = f.state.timeline;
+        f.state.timeline = {
+          ...tl,
+          recoveryEnd: tl.recoveryStart + t.recovery * WEAPONS.rapier.whiffRecoveryFactor,
+        };
         extended = true;
       }
       if (f.state.kind === "idle") { idleAt = elapsed; break; }

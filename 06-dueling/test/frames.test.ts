@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ATTACK_FRAMES, pickFrame } from "../src/render/frames";
 import { TICK, applyIntent, createFighter, tickFighter } from "../src/combat/fighter";
-import { WEAPONS, parryableMs } from "../src/combat/weapons";
+import { WEAPONS, attackTimeline } from "../src/combat/weapons";
 import { SHEETS } from "../src/render/sheets";
 import type { AttackKind, WeaponId } from "../src/combat/types";
 
@@ -18,9 +18,10 @@ describe("pickFrame maps fighter state to sheet frames", () => {
 
   test("cut holds frame 2 through the whole transition beat", () => {
     const f = createFighter(300, 1, WEAPONS.longsword);
-    f.state = { kind: "attack", attack: "cut", phase: "beat", t: 1, recoveryMs: 420, tell: false, met: false };
+    const tl = attackTimeline(WEAPONS.longsword, "cut", 0);
+    f.state = { kind: "attack", attack: "cut", phase: "beat", elapsedMs: tl.riseEnd + 1, timeline: tl, met: false };
     expect(pickFrame(f, 0)).toMatchObject({ sheet: "swordAttack", frame: 2 });
-    f.state.t = WEAPONS.longsword.attacks.cut.beat - 1;
+    f.state.elapsedMs = tl.strikeStart - 1;
     expect(pickFrame(f, 0).frame).toBe(2);
   });
 
@@ -32,17 +33,17 @@ describe("pickFrame maps fighter state to sheet frames", () => {
       ["longsword", "cut"],
     ] as Array<[WeaponId, AttackKind]>) {
       const w = WEAPONS[id];
-      const t = w.attacks[attack];
       const plan = ATTACK_FRAMES[attack];
       const f = createFighter(300, 1, w);
-      f.state = { kind: "attack", attack, phase: "strike", t: 0, recoveryMs: t.recovery, tell: false, met: false };
+      const tl = attackTimeline(w, attack, 0);
+      f.state = { kind: "attack", attack, phase: "strike", elapsedMs: tl.strikeStart, timeline: tl, met: false };
       expect(pickFrame(f, 0)).toMatchObject({ sheet: plan.sheet, frame: plan.strike[0] });
-      f.state.t = parryableMs(t) - 1;
+      f.state.elapsedMs = tl.parryableUntil - 1;
       expect(pickFrame(f, 0).frame).toBe(plan.strike[0]);
-      f.state.t = parryableMs(t) + 1;
+      f.state.elapsedMs = tl.parryableUntil + 1;
       expect(pickFrame(f, 0).frame).toBe(plan.strike[1]);
       // Strike ends on the delivered pose: the sword is where it landed.
-      f.state.t = t.strike - 1;
+      f.state.elapsedMs = tl.strikeEnd - 1;
       expect(pickFrame(f, 0).frame).toBe(plan.strike[1]);
     }
   });
@@ -62,7 +63,7 @@ describe("pickFrame maps fighter state to sheet frames", () => {
           const s = f.state;
           if (s.kind !== "attack") break;
           if (s.phase !== "strike") continue;
-          const meetable = s.t <= parryableMs(w.attacks[attack]);
+          const meetable = s.elapsedMs <= s.timeline.parryableUntil;
           const travelling = pickFrame(f, 0).frame === plan.strike[0];
           expect(travelling).toBe(meetable);
         }

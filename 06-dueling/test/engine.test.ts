@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { applyIntent, TICK } from "../src/combat/fighter";
-import { ARENA, MIN_GAP, createDuel, gapOf, tickDuel } from "../src/combat/engine";
+import { ARENA, MIN_GAP, createDuel, gapOf, parryMeetsAttack, tickDuel } from "../src/combat/engine";
 import { WEAPONS, parryableMs } from "../src/combat/weapons";
 import type { Duel, DuelEvent } from "../src/combat/engine";
 import type { AttackKind, Intent, WeaponId } from "../src/combat/types";
@@ -122,6 +122,48 @@ describe("attack resolution", () => {
     test("a guard raised too early expires before the blade commits", () => {
       // Longsword cut: 520ms of preparation against a 200ms rapier guard.
       expect(outcome("longsword", "rapier", "cut", 0)).toBe("hit");
+    });
+  });
+
+  describe("parryMeetsAttack: each condition falsified independently", () => {
+    // The single site deciding blade contact. These are the contract any
+    // future line-coverage logic must keep passing: with two conditions
+    // held true, the third alone decides.
+    const setup = (elapsedOffset: number, gap: number, defenderParries: boolean) => {
+      const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
+      closeTo(d, gap);
+      applyIntent(d.f[0], "thrust");
+      const s = d.f[0].state;
+      if (s.kind !== "attack") throw new Error("unreachable");
+      s.phase = "strike";
+      s.elapsedMs = s.timeline.strikeStart + elapsedOffset;
+      if (defenderParries) applyIntent(d.f[1], "parry");
+      return d;
+    };
+    const t = WEAPONS.rapier.attacks.thrust;
+
+    test("all three hold: the blade is met", () => {
+      const d = setup(parryableMs(t) - 1, 180, true);
+      expect(parryMeetsAttack(d.f[0], d.f[1], gapOf(d))).toBe(true);
+    });
+    test("timing alone fails: the blade is already delivered", () => {
+      const d = setup(parryableMs(t) + 1, 180, true);
+      expect(parryMeetsAttack(d.f[0], d.f[1], gapOf(d))).toBe(false);
+    });
+    test("reach alone fails: nothing to meet out of measure", () => {
+      const d = setup(parryableMs(t) - 1, WEAPONS.rapier.reach + 10, true);
+      expect(parryMeetsAttack(d.f[0], d.f[1], gapOf(d))).toBe(false);
+    });
+    test("contact alone fails: no parry raised", () => {
+      const d = setup(parryableMs(t) - 1, 180, false);
+      expect(parryMeetsAttack(d.f[0], d.f[1], gapOf(d))).toBe(false);
+    });
+    test("phase alone fails: a windup is not meetable even in measure", () => {
+      const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
+      closeTo(d, 180);
+      applyIntent(d.f[0], "thrust");
+      applyIntent(d.f[1], "parry");
+      expect(parryMeetsAttack(d.f[0], d.f[1], gapOf(d))).toBe(false);
     });
   });
 
