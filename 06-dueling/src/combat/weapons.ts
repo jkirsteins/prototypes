@@ -1,11 +1,18 @@
 import type { WeaponId, WeaponProfile } from "./types";
 
+/**
+ * All distances are centimeters of real-world scale: the fighter sprite's
+ * body reads as a ~175 cm person, so effective reach (body center to point
+ * at full extension), step lengths and the void hop are chosen as plausible
+ * physical values. The renderer converts at PX_PER_CM (0.5 canvas px per cm).
+ * Durations are milliseconds, unchanged by the unit choice.
+ */
 export const WEAPONS: Record<WeaponId, WeaponProfile> = {
   longsword: {
     id: "longsword",
     name: "Longsword",
-    reach: 95,
-    stepDistance: 34,
+    reach: 200,
+    stepDistance: 60,
     stepDuration: 260,
     stancePause: 90,
     pretempo: 180,
@@ -18,15 +25,15 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     parriedPenalty: 290,
     whiffRecoveryFactor: 2.0,
     animSpeed: 0.85,
-    voidDistance: 55,
+    voidDistance: 100,
     voidDuration: 320,
     identity: "The generalist: cuts and thrusts, strong in the bind.",
   },
   rapier: {
     id: "rapier",
     name: "Rapier",
-    reach: 115,
-    stepDistance: 28,
+    reach: 240,
+    stepDistance: 50,
     stepDuration: 200,
     stancePause: 70,
     pretempo: 140,
@@ -39,7 +46,7 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     parriedPenalty: 360,
     whiffRecoveryFactor: 3.0,
     animSpeed: 1.15,
-    voidDistance: 55,
+    voidDistance: 100,
     voidDuration: 320,
     identity: "The thrust specialist: fastest clean attack, bad in the bind.",
   },

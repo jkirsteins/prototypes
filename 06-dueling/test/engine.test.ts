@@ -23,7 +23,7 @@ function closeTo(d: Duel, gap: number) {
 describe("attack resolution", () => {
   test("hit: strike inside reach against an idle defender kills", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
-    closeTo(d, 80); // inside longsword reach 95
+    closeTo(d, 160); // inside longsword reach 200
     const evs = runMs(d, 3000, "thrust", null);
     expect(evs.some((e) => e.kind === "hit" && e.side === 0)).toBe(true);
     expect(d.over).toBe(true);
@@ -32,9 +32,9 @@ describe("attack resolution", () => {
 
   test("whiff: void opens the distance, attacker recovery is extended, counter lands", () => {
     const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
-    // 70: inside rapier reach (115); after the void it is 125 (rapier whiffs);
-    // one longsword advance brings it to 91, inside longsword reach (95).
-    closeTo(d, 70);
+    // 150: inside rapier reach (240); after the void it is 250 (rapier whiffs);
+    // one longsword advance brings it to 190, inside longsword reach (200).
+    closeTo(d, 150);
     // Fighter 0 (rapier) thrusts; fighter 1 (longsword) voids immediately.
     let evs = runMs(d, TICK, "thrust", "void");
     const t = WEAPONS.rapier.attacks.thrust;
@@ -52,7 +52,7 @@ describe("attack resolution", () => {
 
   test("parried: attacker eats the penalty, defender counters (dui tempi)", () => {
     const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
-    closeTo(d, 90); // inside both reaches
+    closeTo(d, 180); // inside both reaches
     // Rapier thrusts; longsword parries just before the strike lands.
     const t = WEAPONS.rapier.attacks.thrust;
     let evs = runMs(d, TICK, "thrust", null);
@@ -69,7 +69,7 @@ describe("attack resolution", () => {
 
   test("mutual strikeEnd on the same tick is a draw", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
-    closeTo(d, 80);
+    closeTo(d, 160);
     // Symmetric no-tell attacks injected directly so both strikeEnds land
     // on the same tick (a tell-carrying "thrust" intent through tickDuel
     // would make side 1 strike 180ms later than side 0, and side 0's kill
@@ -94,8 +94,8 @@ describe("positions", () => {
     const d = createDuel(WEAPONS.rapier, WEAPONS.rapier);
     // Fighter 0 starts against the left wall; sustained retreat+advance
     // pressure keeps pushing it into the wall while fighter 1 closes in.
-    d.f[0].x = 65;
-    d.f[1].x = 95;
+    d.f[0].x = 130;
+    d.f[1].x = 190;
     for (let i = 0; i < 300; i++) {
       tickDuel(d, "retreat", "advance");
       expect(gapOf(d)).toBeGreaterThanOrEqual(MIN_GAP - 0.001);

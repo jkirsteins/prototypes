@@ -63,8 +63,8 @@ function render(): void {
       const div = document.createElement("div");
       div.className = `option${sel[colKey] === id ? " picked" : ""}`;
       const cutLine = id === "longsword" ? "cut: 2 tempi, thrust: 1 tempo" : "thrust: 1 tempo, cut: poor";
-      div.innerHTML = `<strong>${w.name}</strong><div class="bar" style="width:${w.reach * 0.8}px"></div>
-        <small>reach ${w.reach} - ${cutLine}<br>${w.identity}</small>`;
+      div.innerHTML = `<strong>${w.name}</strong><div class="bar" style="width:${w.reach * 0.4}px"></div>
+        <small>effective reach ${w.reach} cm - ${cutLine}<br>${w.identity}</small>`;
       col.appendChild(div);
     }
   }

@@ -3,8 +3,10 @@ import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
 import type { Intent, WeaponProfile } from "./types";
 
-export const ARENA = { left: 60, right: 900, floorY: 430 };
-export const MIN_GAP = 64;
+/** left/right are cm along the piste (~17 m usable); floorY is canvas px (vertical is render-only). */
+export const ARENA = { left: 120, right: 1800, floorY: 430 };
+/** Minimum body-center separation in cm: two fighters in stance just short of touching. */
+export const MIN_GAP = 130;
 
 export interface DuelEvent {
   time: number;
@@ -23,7 +25,7 @@ export interface Duel {
 
 export function createDuel(wa: WeaponProfile, wb: WeaponProfile): Duel {
   return {
-    f: [createFighter(330, 1, wa), createFighter(630, -1, wb)],
+    f: [createFighter(660, 1, wa), createFighter(1260, -1, wb)],
     time: 0,
     over: false,
     winner: null,
@@ -114,7 +116,7 @@ function clampPositions(d: Duel): void {
     // side's share. Hand the absorbed remainder to the other side so the
     // pair still separates by MIN_GAP near arena edges. This assumes the
     // arena is wider than MIN_GAP so both ends never wall-limit at once
-    // (true here: ARENA.right - ARENA.left = 840 >> MIN_GAP = 64).
+    // (true here: ARENA.right - ARENA.left = 1680 >> MIN_GAP = 130).
     const lTarget = l.x - push;
     const lClamped = Math.max(ARENA.left, lTarget);
     const lShortfall = lClamped - lTarget;

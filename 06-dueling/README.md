@@ -3,6 +3,11 @@
 A 2D HEMA fencing duel prototype: measure and tempo as the whole game.
 Spec: `docs/superpowers/specs/2026-08-01-hema-duel-mvp-design.md`.
 
+All horizontal distances are centimeters at human scale: the fighter reads as
+a ~175 cm person, the longsword's effective reach is 200 cm, the rapier's
+240 cm, steps are 50-60 cm, the void hop 100 cm, and the arena is a ~17 m
+piste. The renderer converts at 0.5 canvas px per cm; durations stay in ms.
+
 ## Run
 
 From the repo root: `npm run dev`, then open `http://127.0.0.1:4173/prototypes/06/`. Running this prototype's own `npm run dev` from this directory is fine for a quick look (`http://127.0.0.1:5173/prototypes/06/`), but verify through the root server before calling work done.

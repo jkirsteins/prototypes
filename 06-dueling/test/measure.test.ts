@@ -3,18 +3,18 @@ import { zoneFor } from "../src/combat/measure";
 import { WEAPONS } from "../src/combat/weapons";
 
 describe("measure zones are per-weapon and asymmetric", () => {
-  const ls = WEAPONS.longsword; // reach 95, step 34
-  const rp = WEAPONS.rapier;    // reach 115, step 28
+  const ls = WEAPONS.longsword; // reach 200 cm, step 60 cm
+  const rp = WEAPONS.rapier;    // reach 240 cm, step 50 cm
 
   test("boundaries for longsword", () => {
-    expect(zoneFor(95, ls)).toBe("narrow");
-    expect(zoneFor(95.1, ls)).toBe("wide");
-    expect(zoneFor(129, ls)).toBe("wide");
-    expect(zoneFor(129.1, ls)).toBe("out");
+    expect(zoneFor(200, ls)).toBe("narrow");
+    expect(zoneFor(200.1, ls)).toBe("wide");
+    expect(zoneFor(260, ls)).toBe("wide");
+    expect(zoneFor(260.1, ls)).toBe("out");
   });
 
   test("asymmetry: a gap can be narrow for rapier and wide for longsword", () => {
-    expect(zoneFor(110, rp)).toBe("narrow");
-    expect(zoneFor(110, ls)).toBe("wide");
+    expect(zoneFor(220, rp)).toBe("narrow");
+    expect(zoneFor(220, ls)).toBe("wide");
   });
 });

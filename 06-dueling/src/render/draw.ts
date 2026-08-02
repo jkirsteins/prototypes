@@ -9,6 +9,12 @@ import type { Fighter } from "../combat/fighter";
 import type { SheetName } from "./sheets";
 
 export const SCALE = 3;
+/**
+ * Horizontal world units are centimeters (a ~175 cm fighter). At sprite
+ * scale 3 one canvas px covers 2 cm, so positions and reaches convert to
+ * screen space through this factor.
+ */
+export const PX_PER_CM = 0.5;
 
 export interface View {
   ctx: CanvasRenderingContext2D;
@@ -60,7 +66,7 @@ function drawFighter(v: View, f: Fighter, time: number): void {
   const sx = pick.frame * meta.frameW;
   const dy = ARENA.floorY - meta.feetY * SCALE;
   ctx.save();
-  ctx.translate(f.x, 0);
+  ctx.translate(f.x * PX_PER_CM, 0);
   if (pick.flip) ctx.scale(-1, 1);
   ctx.drawImage(
     img, sx, 0, meta.frameW, meta.frameH,
@@ -75,16 +81,17 @@ function drawMeasureBands(v: View, d: Duel): void {
   d.f.forEach((f, i) => {
     const y = ARENA.floorY + 14 + i * 12;
     const dir = f.facing;
+    const px = f.x * PX_PER_CM;
     ctx.globalAlpha = 0.45;
     ctx.fillStyle = tints[i];
-    ctx.fillRect(f.x, y, dir * f.weapon.reach, 5); // narrow
+    ctx.fillRect(px, y, dir * f.weapon.reach * PX_PER_CM, 5); // narrow
     ctx.globalAlpha = 0.18;
-    ctx.fillRect(f.x + dir * f.weapon.reach, y, dir * f.weapon.stepDistance, 5); // wide
+    ctx.fillRect(px + dir * f.weapon.reach * PX_PER_CM, y, dir * f.weapon.stepDistance * PX_PER_CM, 5); // wide
     ctx.globalAlpha = 1;
     ctx.fillStyle = tints[i];
     ctx.font = "10px ui-monospace, monospace";
     const zone = zoneFor(gapOf(d), f.weapon);
-    ctx.fillText(`${f.weapon.name}: ${zone}`, f.x + (dir === 1 ? 4 : -70), y + 14);
+    ctx.fillText(`${f.weapon.name}: ${zone}`, px + (dir === 1 ? 4 : -70), y + 14);
   });
 }
 
@@ -96,7 +103,7 @@ function drawPhaseLabel(v: View, f: Fighter): void {
   ctx.fillStyle = PHASE_COLORS[label] ?? "#cfd3da";
   ctx.font = "12px ui-monospace, monospace";
   ctx.textAlign = "center";
-  ctx.fillText(label, f.x, ARENA.floorY - 180);
+  ctx.fillText(label, f.x * PX_PER_CM, ARENA.floorY - 180);
   ctx.textAlign = "left";
 }
 
@@ -127,9 +134,9 @@ function drawHud(v: View, d: Duel, aiMode: AiMode): void {
     ctx.font = "12px ui-monospace, monospace";
     ctx.fillStyle = "#cfd3da";
     ctx.fillText(`${card.f.weapon.name} - ${card.label}`, card.x + 10, 26);
-    ctx.fillText(`reach ${card.f.weapon.reach}`, card.x + 10, 46);
+    ctx.fillText(`effective reach ${card.f.weapon.reach} cm`, card.x + 10, 46);
     ctx.fillStyle = card.tint;
-    ctx.fillRect(card.x + 10, 52, card.f.weapon.reach * 0.6, 4);
+    ctx.fillRect(card.x + 10, 52, card.f.weapon.reach * 0.3, 4);
     ctx.fillStyle = "#cfd3da";
     ctx.fillText(ATTACK_LISTING[card.f.weapon.id] ?? "", card.x + 10, 74);
   }

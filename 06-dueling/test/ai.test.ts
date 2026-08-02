@@ -20,7 +20,7 @@ function runWithAi(d: Duel, mode: AiMode, ms: number, playerIntent: Intent | nul
 
 test("mode 0 never acts", () => {
   const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
-  d.f[0].x = d.f[1].x - 60;
+  d.f[0].x = d.f[1].x - 140;
   runWithAi(d, 0, 2000);
   expect(d.f[1].state.kind).toBe("idle");
   expect(d.log.filter((e) => e.side === 1)).toEqual([]);
@@ -28,7 +28,7 @@ test("mode 0 never acts", () => {
 
 test("mode 1 parries after the reaction delay, never attacks or moves", () => {
   const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
-  d.f[0].x = d.f[1].x - 80; // narrow for longsword
+  d.f[0].x = d.f[1].x - 160; // narrow for longsword
   const startX = d.f[1].x;
   const evs = runWithAi(d, 1, 3000, "cut");
   expect(evs.some((e) => e.kind === "parried" && e.side === 0)).toBe(true);
@@ -38,7 +38,7 @@ test("mode 1 parries after the reaction delay, never attacks or moves", () => {
 
 test("mode 2 attacks when the player is in its measure, never advances", () => {
   const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
-  d.f[0].x = d.f[1].x - 100; // narrow for rapier (reach 115)
+  d.f[0].x = d.f[1].x - 220; // narrow for rapier (reach 240)
   const startX = d.f[1].x;
   const evs = runWithAi(d, 2, 4000);
   expect(evs.some((e) => e.kind === "attackStart" && e.side === 1)).toBe(true);
@@ -46,7 +46,7 @@ test("mode 2 attacks when the player is in its measure, never advances", () => {
 });
 
 test("mode 2 stays quiet out of measure", () => {
-  const d = createDuel(WEAPONS.longsword, WEAPONS.rapier); // gap 300, out for both
+  const d = createDuel(WEAPONS.longsword, WEAPONS.rapier); // gap 600, out for both
   runWithAi(d, 2, 2000);
   expect(d.log.filter((e) => e.side === 1)).toEqual([]);
 });
