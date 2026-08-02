@@ -94,7 +94,7 @@ describe("explainTargetEligibility", () => {
       factionId: "beta",
       reasons: [
         { code: "already-vassal" },
-        { code: "actor-subjugated" },
+        { code: "liege" },
         { code: "overlord-prohibited" },
         { code: "incorporated" },
         { code: "self" },
@@ -103,7 +103,7 @@ describe("explainTargetEligibility", () => {
     }], nameOf, noRisk)[0]?.lines).toEqual([
       "Beta",
       "Already your vassal.",
-      "Unavailable while you are subjugated.",
+      "You owe them fealty, directly or through your lords.",
       "You cannot target your overlord.",
       "Already incorporated.",
       "You cannot target yourself.",
@@ -650,15 +650,20 @@ describe("subjugationBreakdown", () => {
       { text: "Might -2/6. Your thresholds:", tone: "bad", blockStart: true },
       { amount: "4", text: "from realm size (2 lands)" },
       { amount: "+2", text: "from your overlord's support" },
+      // the human is a vassal, and a vassal can subjugate now: the dead-even
+      // status track races the opponent's bar rather than showing nothing.
+      { text: "Status 0/2. Opponent's thresholds:", tone: "good", blockStart: true },
+      { amount: "2", text: "from realm size (1 land)" },
     ]);
   });
 
   it("drops a track whose leading side could never subjugate the other", () => {
-    // alpha is gamma's vassal, so alpha's own bar is null. Status sits at a
-    // dead-even 0, which ties to alpha's (null) bar - no denominator on the
-    // badge, so no block here either.
+    // beta is alpha's grand-liege (alpha -> gamma -> beta). Status sits at a
+    // dead-even 0, which goes to the human - whose bar against their own
+    // liege is null, so no denominator and no block. Might, where beta
+    // leads, still shows: a lord may poach its own grand-vassal.
     const view = v({
-      overlords: new Map([["alpha", "gamma"]]),
+      overlords: new Map([["alpha", "gamma"], ["gamma", "beta"]]),
       relations: lead("might", "beta", "alpha", 1),
     });
     expect(subjugationBreakdown(view, "alpha", "beta").map((l) => l.text))

@@ -76,9 +76,16 @@ describe("subjugationRequirement", () => {
     expect(
       subjugationRequirement(view({ overlords: new Map([["beta", "alpha"]]) }), "alpha", "beta"),
     ).toBeNull();
+    // the actor's own liege - anywhere in the chain - can never be taken
     expect(
-      subjugationRequirement(view({ overlords: new Map([["alpha", "delta"]]) }), "alpha", "beta"),
+      subjugationRequirement(view({ overlords: new Map([["alpha", "beta"]]) }), "alpha", "beta"),
     ).toBeNull();
+  });
+
+  it("answers for a vassal actor aiming at a non-liege", () => {
+    const v = view({ overlords: new Map([["alpha", "delta"]]) });
+    expect(subjugationRequirement(v, "alpha", "beta"))
+      .toEqual({ might: SUBJUGATE_THRESHOLD, status: SUBJUGATE_THRESHOLD });
   });
 
   it("agrees with the number the block reason reports", () => {
@@ -91,6 +98,72 @@ describe("subjugationRequirement", () => {
         : undefined;
     expect(reason?.code === "insufficient-lead" ? reason.required : null)
       .toEqual(subjugationRequirement(v, "alpha", "beta"));
+  });
+});
+
+describe("vassal actors", () => {
+  it("a vassal may Subjugate a free faction in reach", () => {
+    // alpha is delta's vassal; alpha leads beta enough to take it
+    const v = view({
+      overlords: new Map([["alpha", "delta"]]),
+      relations: mightLead("alpha", "beta", 2),
+    });
+    expect(validTargetsFor(v, "alpha", "subjugate")).toContain("beta");
+  });
+
+  it("a vassal may Incorporate its own vassal", () => {
+    // gamma -> beta -> alpha: beta is a mid-lord digesting gamma
+    const v = view({
+      overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+      loyalty: { [loyaltyKey("gamma", "beta")]: INCORPORATE_RAMP },
+    });
+    expect(validTargetsFor(v, "beta", "incorporate")).toEqual(["gamma"]);
+  });
+
+  it("no faction in the actor's own overlord chain is subjugable (liege)", () => {
+    // gamma -> beta -> alpha; gamma has crushing leads over both. A full
+    // graph, so the transitive liege is in reach and the refusal is the
+    // liege rule rather than distance.
+    const v = view({
+      adjacency: {
+        alpha: ["beta", "gamma", "delta"], beta: ["alpha", "gamma", "delta"],
+        gamma: ["alpha", "beta", "delta"], delta: ["alpha", "beta", "gamma"],
+      },
+      overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+      relations: {
+        ...mightLead("gamma", "beta", 50),
+        ...mightLead("gamma", "alpha", 50),
+      },
+    });
+    const entries = targetEligibilityFor(v, "gamma", "subjugate");
+    for (const liege of ["beta", "alpha"]) {
+      const entry = entries.find((e) => e.factionId === liege);
+      expect(entry?.state).toBe("blocked");
+      if (entry?.state === "blocked") {
+        expect(entry.reasons.map((r) => r.code)).toContain("liege");
+      }
+    }
+    expect(subjugationRequirement(v, "gamma", "beta")).toBeNull();
+    expect(subjugationRequirement(v, "gamma", "alpha")).toBeNull();
+  });
+
+  it("a lord may poach its own grand-vassal, flattening the pyramid", () => {
+    // gamma -> beta -> alpha: alpha aims at gamma, which is beta's vassal
+    const v = view({
+      overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+      relations: mightLead("alpha", "gamma", 20),
+    });
+    expect(validTargetsFor(v, "alpha", "subjugate")).toContain("gamma");
+    expect(subjugationChance(v, "gamma")).toBe(POACH_CHANCE);
+  });
+
+  it("a vassal with the lead now appears among threats", () => {
+    // beta is alpha's vassal but leads gamma; adjacency puts gamma in reach
+    const v = view({
+      overlords: new Map([["beta", "alpha"]]),
+      relations: mightLead("beta", "gamma", 2),
+    });
+    expect(threatsTo(v, "gamma").map((t) => t.factionId)).toContain("beta");
   });
 });
 
@@ -345,23 +418,25 @@ describe("validTargetsFor", () => {
     expect(validTargetsFor(view({ relations: rel }), "beta", "subjugate")).toEqual(["alpha"]);
   });
 
-  it("subjugate excludes own vassals, incorporated lands, and is dead while subjugated", () => {
+  it("subjugate excludes own vassals and incorporated lands, but not a vassal actor", () => {
     const rel = mightLead("beta", "gamma", 2);
     const own = view({ relations: rel, overlords: new Map([["gamma", "beta"]]) });
     expect(validTargetsFor(own, "beta", "subjugate")).toEqual([]);
     const inc = view({ relations: rel, incorporated: { gamma: "delta" } });
     expect(validTargetsFor(inc, "beta", "subjugate")).toEqual([]);
+    // a vassal actor plays it like anyone else - only its liege is off-limits
     const sub = view({ relations: rel, overlords: new Map([["beta", "alpha"]]) });
-    expect(validTargetsFor(sub, "beta", "subjugate")).toEqual([]);
+    expect(validTargetsFor(sub, "beta", "subjugate")).toEqual(["gamma"]);
   });
 
-  it("incorporate targets own vassals only, dead while subjugated", () => {
+  it("incorporate targets own vassals only, mid-lords included", () => {
     const v = view({ overlords: new Map([["gamma", "beta"], ["alpha", "delta"]]) });
     expect(validTargetsFor(v, "beta", "incorporate")).toEqual(["gamma"]);
+    // a mid-lord digests its own vassal even while owing fealty above
     const sub = view({
       overlords: new Map([["gamma", "beta"], ["beta", "alpha"]]),
     });
-    expect(validTargetsFor(sub, "beta", "incorporate")).toEqual([]);
+    expect(validTargetsFor(sub, "beta", "incorporate")).toEqual(["gamma"]);
   });
 
   it("incorporate excludes a vassal allied with its overlord while the pact holds", () => {
@@ -689,14 +764,14 @@ describe("subjugationRaceFor", () => {
     expect(race.status.bar).toBe(2);
   });
 
-  it("has no bar on either track while you are somebody's vassal", () => {
+  it("still shows bars while you are somebody's vassal - vassals can take too", () => {
     const v = view({
       overlords: new Map([["alpha", "gamma"]]),
       relations: mightLead("alpha", "beta", 2),
     });
     const race = subjugationRaceFor(v, "alpha", "beta");
-    expect(race.might.bar).toBeNull();
-    expect(race.status.bar).toBeNull();
+    expect(race.might.bar).toBe(2);
+    expect(race.status.bar).toBe(2);
   });
 
   it("has no bar in either direction against your own vassal", () => {
@@ -744,14 +819,21 @@ describe("subjugationRaceFor", () => {
     expect(subjugationRaceFor(short, "alpha", "beta").danger).toBe(false);
   });
 
-  it("never flags danger for a faction that could never take you", () => {
-    // beta is gamma's vassal: a vassal subjugates nobody, so the lead it has
-    // built over you is not a threat and must not be marked as one.
-    const v = view({
+  it("flags danger from a vassal rival, but never from your own liege", () => {
+    // beta is gamma's vassal and leads alpha by 9: vassals can Subjugate, so
+    // that lead is a real threat now (a poach, but a threat).
+    const rival = view({
       overlords: new Map([["beta", "gamma"]]),
       relations: mightLead("beta", "alpha", 9),
     });
-    expect(subjugationRaceFor(v, "alpha", "beta").danger).toBe(false);
+    expect(subjugationRaceFor(rival, "alpha", "beta").danger).toBe(true);
+    // your own lord already holds you - whatever its lead, taking you is not
+    // a play it can make, so no danger mark.
+    const liege = view({
+      overlords: new Map([["alpha", "beta"]]),
+      relations: mightLead("beta", "alpha", 9),
+    });
+    expect(subjugationRaceFor(liege, "alpha", "beta").danger).toBe(false);
   });
 });
 
@@ -791,9 +873,9 @@ describe("threatsTo", () => {
     expect(threatsTo(v, "beta").map((t) => t.factionId)).not.toContain("alpha");
   });
 
-  it("ignores a subjugated faction, which cannot subjugate anyone", () => {
+  it("counts a subjugated faction - vassals can subjugate now", () => {
     const v = view({ overlords: new Map([["alpha", "delta"]]) });
-    expect(threatsTo(v, "beta").map((t) => t.factionId)).not.toContain("alpha");
+    expect(threatsTo(v, "beta").map((t) => t.factionId)).toContain("alpha");
   });
 
   it("ignores this faction's own overlord, which already holds it", () => {

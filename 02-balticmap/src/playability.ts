@@ -2,7 +2,7 @@ import {
   CARDS, DOUBLABLE_CARDS, guardAgainst, isGuardCard, isTributeCard,
 } from "./cards";
 import {
-  allianceActive, leadsOf, pactBetween, realmOf,
+  allianceActive, leadsOf, overlordChainOf, pactBetween, realmOf,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 
@@ -563,8 +563,12 @@ function withSurcharge(bars: TrackBars, surcharge: number): TrackBars {
  *  land of the target's realm, counting its vassals and the lands it has
  *  incorporated, plus one per settlement on the Might track, plus the poach
  *  surcharge on both when the target already has a lord. Null when Subjugate
- *  could never apply to that pair at all, so callers can leave the bars off
- *  rather than quote meaningless numbers.
+ *  could never apply to that pair at all - self, an incorporated land, the
+ *  actor's own direct vassal, or the actor's own liege (any ancestor in its
+ *  overlord chain) - so callers can leave the bars off rather than quote
+ *  meaningless numbers. A vassal actor gets real bars against everyone else:
+ *  vassals can Subjugate, which is also why they now show up in `threatsTo`
+ *  and on the map badges.
  *
  *  Same rule as the `insufficient-lead` block reason, kept here so the map
  *  and the tooltip can show the bars without re-deriving them. */
@@ -576,7 +580,9 @@ export function subjugationRequirement(
   if (targetFactionId === actorFactionId) return null;
   if (targetFactionId in view.incorporated) return null;
   if (view.overlords.get(targetFactionId) === actorFactionId) return null;
-  if (view.overlords.get(actorFactionId) !== undefined) return null;
+  if (overlordChainOf(actorFactionId, view.overlords).includes(targetFactionId)) {
+    return null;
+  }
   return withSurcharge(
     subjugationGripOn(view, targetFactionId),
     poachSurchargeOn(view, targetFactionId),
@@ -737,7 +743,7 @@ export type TargetBlockReason =
    *  there now, counting the one the land started with. */
   | { code: "needs-population"; have: number; allowance: number }
   | { code: "no-free-site" }
-  | { code: "actor-subjugated" }
+  | { code: "liege" }
   | { code: "overlord-prohibited" }
   | { code: "incorporated" }
   | { code: "self" }
@@ -783,6 +789,11 @@ export function targetEligibilityFor(
   }
 
   const actorOverlord = view.overlords.get(actorFactionId);
+  // The actor's whole chain of lords. A Subjugate aimed anywhere in it would
+  // close a cycle - `overlords[target] = actor` loops exactly when the target
+  // is an ancestor - so this one block is the entire cycle rule. Incorporate
+  // needs nothing: it only ever targets the actor's own direct vassal.
+  const lieges = new Set(overlordChainOf(actorFactionId, view.overlords));
   const reach = reachOf(view, actorFactionId);
   // Found a settlement is aimed at your own realm, so neither the pact block
   // nor the self and incorporated blocks apply to it: your own land and the
@@ -812,11 +823,8 @@ export function targetEligibilityFor(
     if (factionId in view.incorporated && !inward) {
       reasons.push({ code: "incorporated" });
     }
-    if (
-      actorOverlord !== undefined &&
-      (cardId === "subjugate" || cardId === "incorporate")
-    ) {
-      reasons.push({ code: "actor-subjugated" });
+    if (cardId === "subjugate" && lieges.has(factionId)) {
+      reasons.push({ code: "liege" });
     }
     if (
       factionId === actorOverlord &&

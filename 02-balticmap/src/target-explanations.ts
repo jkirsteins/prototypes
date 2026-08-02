@@ -84,8 +84,8 @@ function explainReason(reason: TargetBlockReason): string[] {
     }
     case "already-vassal":
       return ["Already your vassal."];
-    case "actor-subjugated":
-      return ["Unavailable while you are subjugated."];
+    case "liege":
+      return ["You owe them fealty, directly or through your lords."];
     case "overlord-prohibited":
       return ["You cannot target your overlord."];
     case "incorporated":
