@@ -20,36 +20,27 @@ So: **when you add a new prototype, add its `<li>` link to
 `.github/pages-index.html` in the same change.** Adding the directory is not the
 whole job. The same applies if a prototype is renamed or removed.
 
-## Run the dev server from the root, through the landing page
+## Running a dev server
 
-**From the repo root:**
+Run the prototype's own dev server, from its directory, only when you actually
+need a browser:
 
 ```bash
-npm run dev
+cd NN-name && npm run dev
 ```
 
-Then open `http://127.0.0.1:4173/prototypes/`.
+Each prototype sets `base: "/prototypes/NN/"` in its `vite.config.ts` to match
+how Pages serves this repo, so the page is at
+`http://127.0.0.1:5173/prototypes/NN/`, not at `/`. Stop the server when done.
 
-That starts every prototype's own Vite dev server, each keeping full hot reload,
-and puts a single front door in front of them serving the same landing page
-GitHub Pages uses. Every prototype is reachable from that one page at the same
-URL shape it will have in production. It also warns on startup if a prototype
-exists but is not linked from the landing page.
+There is deliberately no root-level `npm run dev`. The old root orchestrator
+(`scripts/dev.mjs`) spawned `npm run dev` in every `NN-*` directory; a
+directory without its own `package.json` (a Godot project, a docs-only spec)
+made npm walk up to the root package.json and re-run the orchestrator - a fork
+bomb that grew until fork() failed. If a front-door server ever comes back, it
+must skip directories without a `package.json`.
 
-`scripts/dev.mjs` implements this with node builtins only, no dependencies. Child
-Vite servers get port 5100 plus the prototype number, and websocket upgrades are
-proxied so hot reload works through the front door rather than only on the child
-ports.
-
-Do not serve a single prototype at a bare root instead. Each is built with
-`base: "/prototypes/NN/"` in its `vite.config.ts`, matching how Pages serves this
-repo. Serving one on its own at `/` makes its asset paths resolve by accident
-locally while still being wrong in production, and it hides landing-page problems
-like a missing link entirely. Running one prototype's own `npm run dev` directly
-is fine for a quick look, but verify through the root server before calling work
-done.
-
-To check a real production build rather than the dev servers, run `npm run build`
+To check a real production build rather than the dev server, run `npm run build`
 in each prototype and assemble the `dist/` directories the way
 `.github/workflows/pages.yml` does.
 
