@@ -166,17 +166,19 @@ hide a line has to answer the same question.
 interchangeable:
 
 - `realmOf` is what F holds **directly** - itself, its vassals, the lands it
-  incorporated. One level out. This is what the rules that scale to direct
-  holding want, and only those: the subjugation bar and `borderStrength` in
-  `src/playability.ts`, the Incorporate scoring in `src/ai.ts`, and the vassal
-  stripe overlay in `src/main.ts`. Subjugate frees its target's vassals the
-  moment it lands, so those vassals must not raise the target's bar.
-- `fullRealmOf` is **every land under F**, adding each vassal's own annexations.
-  This is the answer to "how much of the map is theirs", so it is what the
-  scoreboard, the win condition, the postmortem, the ownership shading and the
-  hover halo count. `incorporate` re-parents a target's annexations to the
-  actor, so `incorporated` is never deeper than one level and two steps reach
-  everything.
+  incorporated. One level out. This is wanted only where one fealty link is
+  the subject: the vassal stripe overlay in `src/main.ts` (stripes show who a
+  land DIRECTLY answers to) and the Incorporate scoring in `src/ai.ts`
+  (digestion keeps the target's annexations and frees its vassals, so the
+  direct holding is what turns permanent).
+- `fullRealmOf` is **every land under F**: chains of vassalage walked to any
+  depth - vassals may Subjugate, so a vassal can have vassals - plus each
+  member's own annexations. This is the answer to "how much of the map is
+  theirs", so it is what the scoreboard, the win condition, the postmortem,
+  the ownership shading and the hover halo count. It is also what every rule
+  that scales with "the realm" uses: the subjugation bar, `reachOf` and
+  `borderStrength` in `src/playability.ts` - taking a lord takes its whole
+  pyramid, and a grand-vassal's border is the pyramid's border.
 
 The flat version shipped and rotted exactly where you would expect. At turn 35
 the scoreboard read `You 3/15 lands` while four polygons sat inside the player's

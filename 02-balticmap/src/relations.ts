@@ -101,14 +101,16 @@ export function bumpMightAll(
 /** What F holds DIRECTLY: itself, its vassals, its incorporated lands. One
  *  level out - a vassal's own annexations belong to the vassal, not to F.
  *
- *  This is the meaning the rules that scale to direct holding want, and only
- *  those: the subjugation bar and `borderStrength` in `playability.ts`, and the
- *  vassal stripe overlay. Subjugate frees its target's vassals the moment it
- *  lands, so they must not raise that target's bar.
+ *  This is the meaning wanted only where one fealty link is the subject: the
+ *  vassal stripe overlay (stripes show who a land DIRECTLY answers to) and
+ *  the AI's incorporate scoring (digestion keeps the target's annexations and
+ *  frees its vassals, so the direct holding is what turns permanent).
  *
- *  For "how much of the map is F's" - the scoreboard, the win condition, the
- *  ownership shading - use `fullRealmOf`. Picking this one there is what put a
- *  land inside the player's own outline that the scoreboard refused to count. */
+ *  Everything that scales with "the realm" - the subjugation bar, `reachOf`,
+ *  `borderStrength`, the scoreboard, the win condition, the ownership shading
+ *  - uses `fullRealmOf`, which walks chains of vassalage to any depth.
+ *  Picking this one there is what put a land inside the player's own outline
+ *  that the scoreboard refused to count. */
 export function realmOf(
   factionId: string,
   overlords: Overlords,

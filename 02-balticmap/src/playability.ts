@@ -319,10 +319,12 @@ export function poachSurchargeOn(
   return Math.ceil(overlordGrip(view, targetFactionId) / 2);
 }
 
-/** Every faction the actor's realm borders, each land resolved to whoever
- *  annexed it. This is what "in reach" means for a targeted card. */
+/** Every faction the actor's FULL realm borders, each land resolved to
+ *  whoever annexed it. This is what "in reach" means for a targeted card: a
+ *  grand-vassal's border is the pyramid's border, to any depth - the realm is
+ *  ultimately the root's, and its edge is where the root can act. */
 export function reachOf(view: RulesView, factionId: string): Set<string> {
-  const realm = realmOf(factionId, view.overlords, view.incorporated);
+  const realm = fullRealmOf(factionId, view.overlords, view.incorporated);
   const reach = new Set<string>();
   for (const member of realm) {
     for (const adj of view.adjacency[member] ?? []) {
@@ -351,9 +353,11 @@ export function sharedNeighboursOf(
 ): string[] {
   const reachA = reachOf(view, a);
   const reachB = reachOf(view, b);
+  // Full realms, matching `reachOf`: a pact must not buy a lead over either
+  // ally's grand-vassal any more than over a direct one.
   const own = new Set([
-    ...realmOf(a, view.overlords, view.incorporated),
-    ...realmOf(b, view.overlords, view.incorporated),
+    ...fullRealmOf(a, view.overlords, view.incorporated),
+    ...fullRealmOf(b, view.overlords, view.incorporated),
   ]);
   return view.factionIds.filter(
     (f) => reachA.has(f) && reachB.has(f) && !own.has(f) &&
@@ -361,9 +365,12 @@ export function sharedNeighboursOf(
   );
 }
 
-/** How many lands of the actor's realm border the target's core - the target
- *  itself, or a land the target has incorporated. The target's vassals resolve
- *  to themselves, not to their lord.
+/** How many lands of the actor's FULL realm border the target's core - the
+ *  target itself, or a land the target has incorporated. The target's vassals
+ *  resolve to themselves, not to their lord: a vassal is its own faction and
+ *  is raided separately. The actor side counts the whole pyramid, matching
+ *  `reachOf`, so Raid's convex `raidYield` now scales with pyramid-wide
+ *  borders - deliberate, and watched by `npm run balance`.
  *
  *  This mirrors `reachOf`'s `incorporated[adj] ?? adj` resolution deliberately.
  *  Because legality and this number come from the same rule, a Raid that the
@@ -375,7 +382,7 @@ export function borderStrength(
   actorFactionId: string,
   targetFactionId: string,
 ): number {
-  const realm = realmOf(actorFactionId, view.overlords, view.incorporated);
+  const realm = [...fullRealmOf(actorFactionId, view.overlords, view.incorporated)];
   return realm.filter((member) =>
     (view.adjacency[member] ?? []).some(
       (adj) => (view.incorporated[adj] ?? adj) === targetFactionId,
@@ -805,8 +812,11 @@ export function targetEligibilityFor(
   // lands you have annexed are exactly what it is for.
   const inward = cardId === "found-settlement";
   const hostile = cardId !== "alliance" && !inward;
+  // Full realm, like `reachOf`: a lord may found in a grand-vassal's land.
+  // The settlement still belongs to the land and raises whatever bar that
+  // land sits under.
   const ownRealm = inward
-    ? realmOf(actorFactionId, view.overlords, view.incorporated)
+    ? [...fullRealmOf(actorFactionId, view.overlords, view.incorporated)]
     : [];
 
   return view.factionIds.map((factionId): TargetEligibility => {

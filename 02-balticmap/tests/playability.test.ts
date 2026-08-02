@@ -6,6 +6,7 @@ import {
   gripPartsOn,
   incorporationChance, passiveFortifyFor, raidYield,
   isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
+  reachOf, sharedNeighboursOf,
   subjugationChance, subjugationGripOn, subjugationRaceFor,
   subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView,
@@ -178,6 +179,48 @@ describe("vassal actors", () => {
       relations: mightLead("beta", "gamma", 2),
     });
     expect(threatsTo(v, "gamma").map((t) => t.factionId)).toContain("beta");
+  });
+});
+
+describe("full-realm reach", () => {
+  it("reach extends through a vassal's vassal", () => {
+    // gamma -> beta -> alpha on the line map: gamma's border is alpha's now
+    const v = view({
+      overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+    });
+    expect(reachOf(v, "alpha").has("delta")).toBe(true);
+  });
+
+  it("borderStrength counts bordering lands from the whole pyramid", () => {
+    // delta -> gamma -> beta, and alpha touches beta AND the grand-vassal
+    // delta: the direct realm gives 1 bordering land, the pyramid gives 2.
+    const v = view({
+      adjacency: {
+        alpha: ["beta", "delta"], beta: ["alpha", "gamma"],
+        gamma: ["beta", "delta"], delta: ["gamma", "alpha"],
+      },
+      overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]),
+    });
+    expect(borderStrength(v, "beta", "alpha")).toBe(2);
+  });
+
+  it("a pact never buys a lead over the ally's grand-vassal", () => {
+    // delta -> gamma -> beta; alpha allies beta, and delta borders alpha
+    const v = view({
+      adjacency: {
+        alpha: ["beta", "delta"], beta: ["alpha", "gamma"],
+        gamma: ["beta", "delta"], delta: ["gamma", "alpha"],
+      },
+      overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]),
+    });
+    expect(sharedNeighboursOf(v, "alpha", "beta")).toEqual([]);
+  });
+
+  it("Found a settlement reaches a grand-vassal's land", () => {
+    const v = view({
+      overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+    });
+    expect(validTargetsFor(v, "alpha", "found-settlement")).toContain("gamma");
   });
 });
 
