@@ -1,4 +1,4 @@
-import { applyIntent, tickFighter } from "./fighter";
+import { applyIntent, TICK, tickFighter } from "./fighter";
 import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
 import type { Intent, WeaponProfile } from "./types";
@@ -38,7 +38,7 @@ export function gapOf(d: Duel): number {
 export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEvent[] {
   const out: DuelEvent[] = [];
   const intents: [Intent | null, Intent | null] = [ia, ib];
-  const dt = 1000 / 60;
+  const dt = TICK;
 
   for (const side of [0, 1] as const) {
     const intent = intents[side];

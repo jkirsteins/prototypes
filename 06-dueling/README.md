@@ -5,7 +5,9 @@ Spec: `docs/superpowers/specs/2026-08-01-hema-duel-mvp-design.md`.
 
 ## Run
 
-From this directory: `npm run dev`, then open `http://127.0.0.1:5173/prototypes/06/`. Stop the server when done. Boot straight into a matchup: `/prototypes/06/?p=rapier&e=longsword&mode=1`.
+From the repo root: `npm run dev`, then open `http://127.0.0.1:4173/prototypes/06/`. Running this prototype's own `npm run dev` from this directory is fine for a quick look (`http://127.0.0.1:5173/prototypes/06/`), but verify through the root server before calling work done.
+
+Boot straight into a matchup with URL params: `/prototypes/06/?p=rapier&e=longsword&mode=1`. Params: `p` and `e` (longsword | rapier), `mode` (0 passive, 1 parry-only, 2 attack-in-place), `overlay=0` to start with the debug overlay off.
 
 ## Controls
 
@@ -45,6 +47,7 @@ What the source design doc covers vs what this prototype implements.
 | Terrain as matchup tool | not in MVP |
 | Audio tempo cues | not in MVP |
 | Wall behavior | implemented (fighters cannot overlap or be pushed past arena bounds) |
+| Nachreisen vs a parry-ready attacker | partial (the counter beats whiff recovery only when no approach step is needed; step-inclusive tuning is a follow-up) |
 
 ## Verifying HEMA behavior solo
 
