@@ -31,7 +31,8 @@ There is deliberately no ambient bed and no music: tried, found distracting.
   identical tails to the clash samples - so a missed swing sounded like
   blade contact. Air must not clang.
 - Durations: 0.30 / 0.26 / 0.28 s. Peak ~-4 dBFS. Opus 96 kbps, mono.
-- Intended use: a swing that finds no target (whiff).
+- Intended use: the blade starting to travel (the engine's "swing" event,
+  the beat-to-strike transition) - every strike, hit, miss or parried.
 
 ## clash_01.ogg .. clash_03.ogg
 
@@ -45,8 +46,9 @@ There is deliberately no ambient bed and no music: tried, found distracting.
   Codec overshoot on the hard transients leaves decoded peaks at
   -2.9..-3.8 dBFS; close enough.
 - Durations: 0.54 / 0.81 / 0.65 s.
-- Intended use: the guard meets the blade (the engine's "met" tick, the
-  instant of contact - not "parried", which resolves half a strike later).
+- Intended use: the travelling blade arriving at a guard that met it (the
+  engine's "met" event, emitted at the end of the parryable travel - never
+  at the parry keypress, and not at "parried", which resolves later).
 
 ## hit_01.ogg
 

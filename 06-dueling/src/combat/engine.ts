@@ -12,7 +12,13 @@ export const MIN_GAP = 130;
 export interface DuelEvent {
   time: number;
   side: 0 | 1;
-  kind: "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "kill" | "draw" | "step" | "met";
+  kind:
+    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "kill" | "draw"
+    // Presentation-only kinds, returned but never logged. They mark the
+    // simulation instant a thing physically happens (a foot plants, a blade
+    // starts travelling, a blade arrives at a guard) - which is never the
+    // tick the triggering input was accepted.
+    | "step" | "swing" | "met";
   text: string;
 }
 
@@ -53,25 +59,36 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
       if (k === "attack") emit(d, out, side, "attackStart", `${d.f[side].weapon.name} ${intent} begins`);
       else if (k === "void") emit(d, out, side, "void", `${d.f[side].weapon.name} voids`);
       else if (k === "parry") emit(d, out, side, "parry", `${d.f[side].weapon.name} raises a parry`);
-      // Steps go to the returned array only, never d.log: they exist for
-      // presentation (footstep audio), and every step would drown the log.
-      else if (k === "step") out.push({ time: d.time, side, kind: "step", text: "" });
     }
   }
 
   d.time += dt;
   const evs: [FighterEvent[], FighterEvent[]] = [tickFighter(d.f[0], dt), tickFighter(d.f[1], dt)];
 
-  // Chained steps start inside flushBuffer, bypassing the acceptance chain
-  // above, so they surface as fighter events instead.
+  // Physical moments surface as fighter state-machine events, deliberately
+  // not at intent acceptance: the input only feeds the simulation, and the
+  // sound of the outcome belongs to the tick the simulation reaches it.
   for (const side of [0, 1] as const) {
     for (const e of evs[side]) {
-      if (e.type === "stepStart") out.push({ time: d.time, side, kind: "step", text: "" });
+      if (e.type === "footfall") out.push({ time: d.time, side, kind: "step", text: "" });
+      else if (e.type === "strikeBegin") out.push({ time: d.time, side, kind: "swing", text: "" });
     }
   }
 
   clampPositions(d);
-  markMetBlades(d, out);
+  markMetBlades(d);
+
+  // The clash sounds when the blade arrives at the guard - the end of its
+  // travel - not when the parry press latched `met` somewhere inside the
+  // parryable window.
+  for (const side of [0, 1] as const) {
+    const s = d.f[side].state;
+    if (s.kind !== "attack" || s.phase !== "strike" || !s.met) continue;
+    const arriveAt = parryableMs(d.f[side].weapon.attacks[s.attack]);
+    if (s.t >= arriveAt && s.t - dt < arriveAt) {
+      out.push({ time: d.time, side, kind: "met", text: "" });
+    }
+  }
 
   // Gather strike resolutions AFTER both fighters ticked, so same-tick
   // strikes resolve simultaneously (mutual hit = draw).
@@ -130,19 +147,14 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
  * commits" one rule for every weapon, instead of a press time that shifts
  * with each attack's strike duration.
  */
-function markMetBlades(d: Duel, out: DuelEvent[]): void {
+function markMetBlades(d: Duel): void {
   for (const side of [0, 1] as const) {
     const atk = d.f[side];
     const s = atk.state;
     if (s.kind !== "attack" || s.phase !== "strike" || s.met) continue;
     if (s.t > parryableMs(atk.weapon.attacks[s.attack])) continue;
     if (gapOf(d) > atk.weapon.reach) continue; // nothing to meet: out of measure
-    if (d.f[1 - side].state.kind === "parry") {
-      s.met = true;
-      // This is the instant of blade contact; "parried" only resolves at
-      // strike end. Presentation-only (the clash sound), so unlogged.
-      out.push({ time: d.time, side, kind: "met", text: "" });
-    }
+    if (d.f[1 - side].state.kind === "parry") s.met = true;
   }
 }
 

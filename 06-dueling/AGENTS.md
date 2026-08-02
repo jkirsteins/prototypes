@@ -1,0 +1,35 @@
+# 06-dueling
+
+A 1v1 HEMA fencing duel: canvas 2D, fixed 60 Hz tick, single-hit lethality.
+The combat engine (`src/combat/`) is pure and DOM-free; `src/main.ts` feeds
+it intents and hands its returned events to the renderer and audio. Design
+docs live in `docs/` and `hema-2d-fencing-design-doc.md`.
+
+## All contact is emergent from the simulation - input is only input
+
+A keypress in a valid window is never the finished endstate. It is only
+ever *input to the simulation*; whether and when anything physically
+happens - a blade meeting a guard, a strike landing, a foot planting - is
+decided by the engine ticking the fight forward, and presentation (sound,
+animation cues, effects) must key off the simulation reaching that moment,
+never off the input arriving.
+
+Concretely, every cue fires on the tick the engine says the thing occurs:
+
+- a footstep when the step or void hop *finishes* its travel, not when the
+  intent is accepted;
+- a swing whoosh when the strike phase *begins* (the blade starts to
+  travel), hit or miss;
+- the clash when the travelling blade *arrives* at the guard (the end of
+  the parryable interval), not when the parry press latched `met`;
+- the hit when the strike *resolves* into a wound.
+
+This was gotten wrong twice in one day (footsteps at step start, the clash
+at the parry press) and both were audible immediately.
+
+The pattern that holds up: the fighter state machine emits `FighterEvent`s
+at its physical transitions, the engine translates them into `DuelEvent`s
+(unlogged when presentation-only: `step`, `swing`, `met`), and the audio
+layer keys exclusively off those events. The describe block "presentation
+events follow the simulation, not the input" in `test/engine.test.ts` pins
+the exact timings - extend it whenever a new cue is added.

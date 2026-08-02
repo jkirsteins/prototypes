@@ -34,9 +34,10 @@ export interface Fighter {
 
 export type FighterEvent =
   | { type: "strikeEnd"; attack: AttackKind }
-  /** A buffered step fired from flushBuffer. Direct steps are visible to the
-   *  engine at intent acceptance, so only the buffer path needs an event. */
-  | { type: "stepStart" }
+  /** The blade begins to travel: the beat-to-strike transition. */
+  | { type: "strikeBegin" }
+  /** A foot plants: a step or void hop finishing its travel. */
+  | { type: "footfall" }
   | { type: "died" };
 
 export function createFighter(x: number, facing: 1 | -1, weapon: WeaponProfile): Fighter {
@@ -114,7 +115,10 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
       s.t += dt;
       const now = Math.min(s.t, w.stepDuration);
       f.x += ((now - prev) / w.stepDuration) * w.stepDistance * s.dir * f.facing;
-      if (s.t >= w.stepDuration) f.state = { kind: "pause", t: s.t - w.stepDuration };
+      if (s.t >= w.stepDuration) {
+        f.state = { kind: "pause", t: s.t - w.stepDuration };
+        events.push({ type: "footfall" });
+      }
       break;
     }
     case "pause":
@@ -132,6 +136,7 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
       f.x -= ((now - prev) / w.voidDuration) * w.voidDistance * f.facing;
       if (s.t >= w.voidDuration) {
         f.state = { kind: "idle" };
+        events.push({ type: "footfall" });
         flushBuffer(f, events);
       }
       break;
@@ -167,7 +172,11 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
         s.t -= dur;
         if (s.phase === "pretempo") { s.phase = "windup"; advanced = true; }
         else if (s.phase === "windup") { s.phase = "beat"; advanced = true; }
-        else if (s.phase === "beat") { s.phase = "strike"; advanced = true; }
+        else if (s.phase === "beat") {
+          s.phase = "strike";
+          events.push({ type: "strikeBegin" });
+          advanced = true;
+        }
         else if (s.phase === "strike") {
           s.phase = "recovery";
           events.push({ type: "strikeEnd", attack: s.attack });
@@ -184,10 +193,10 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
   return events;
 }
 
-function flushBuffer(f: Fighter, events: FighterEvent[]): void {
+function flushBuffer(f: Fighter, _events: FighterEvent[]): void {
   const b = f.buffered;
   f.buffered = null;
-  if (b !== null && startAction(f, b, false) && (b === "advance" || b === "retreat")) {
-    events.push({ type: "stepStart" });
+  if (b !== null) {
+    startAction(f, b, false);
   }
 }

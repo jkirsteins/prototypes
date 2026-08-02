@@ -24,17 +24,18 @@ export const SOUNDS: Record<SoundName, string> = {
 export const FOOTSTEPS: SoundName[] = ["footstep1", "footstep2", "footstep3", "footstep4"];
 
 /**
- * Which events make a sound. attackStart is deliberately absent: it fires at
- * windup start, long before the blade travels, and buffered attacks skip it
- * entirely. The clash keys off "met" - the tick the guard meets the blade -
- * not "parried", which resolves up to half a strike later. kill/draw share a
- * tick with hit, so they add nothing. Footsteps round-robin through
- * FOOTSTEPS; other multi-entry kinds pick at random.
+ * Which events make a sound. Every key is a physical simulation moment:
+ * "step" a foot planting (step or void hop), "swing" the blade starting to
+ * travel (every strike, hit or miss), "met" the blade arriving at a guard,
+ * "hit" the strike resolving into a wound. Input-acceptance events
+ * (attackStart, void, parry) and outcome bookkeeping (whiff, parried,
+ * kill, draw) are deliberately silent - a keypress is only input to the
+ * simulation, never a sound. Footsteps round-robin through FOOTSTEPS;
+ * other multi-entry kinds pick at random.
  */
 export const EVENT_SOUNDS: Partial<Record<DuelEvent["kind"], SoundName[]>> = {
   step: FOOTSTEPS,
-  void: FOOTSTEPS,
-  whiff: ["whoosh1", "whoosh2", "whoosh3"],
+  swing: ["whoosh1", "whoosh2", "whoosh3"],
   met: ["clash1", "clash2", "clash3"],
   hit: ["hit1"],
 };

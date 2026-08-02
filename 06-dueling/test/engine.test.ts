@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { applyIntent, TICK } from "../src/combat/fighter";
 import { ARENA, MIN_GAP, createDuel, gapOf, tickDuel } from "../src/combat/engine";
 import { WEAPONS, parryableMs } from "../src/combat/weapons";
-import type { Duel } from "../src/combat/engine";
+import type { Duel, DuelEvent } from "../src/combat/engine";
 import type { AttackKind, Intent, WeaponId } from "../src/combat/types";
 
 function runMs(d: Duel, ms: number, ia: Intent | null = null, ib: Intent | null = null) {
@@ -141,47 +141,87 @@ describe("attack resolution", () => {
   });
 });
 
-describe("met events", () => {
-  test("met fires at blade contact, before parried resolves, and is never logged", () => {
+describe("presentation events follow the simulation, not the input", () => {
+  test("met fires when the blade arrives at the guard, not when the parry is pressed", () => {
     const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
     closeTo(d, 180);
     const t = WEAPONS.rapier.attacks.thrust;
     const strikeAt = t.windup + t.beat;
-    const kinds: string[] = [];
-    for (let i = 0; i < 300 && !kinds.includes("parried"); i++) {
-      const ib = (i + 1) * TICK >= strikeAt && !kinds.includes("met") ? "parry" : null;
-      kinds.push(...tickDuel(d, i === 0 ? "thrust" : null, ib).map((e) => e.kind));
+    const arriveAt = strikeAt + parryableMs(t);
+    // Guard goes up well before the strike begins; contact must still wait
+    // for the blade to get there.
+    const pressTick = Math.round((strikeAt - WEAPONS.longsword.parryWindow / 2) / TICK) - 1;
+    const pressTime = (pressTick + 1) * TICK;
+    const evs: DuelEvent[] = [];
+    for (let i = 0; i < 300 && !evs.some((e) => e.kind === "parried"); i++) {
+      evs.push(...tickDuel(d, i === 0 ? "thrust" : null, i === pressTick ? "parry" : null));
     }
-    const metAt = kinds.indexOf("met");
-    const parriedAt = kinds.indexOf("parried");
-    expect(metAt).toBeGreaterThanOrEqual(0);
-    expect(parriedAt).toBeGreaterThan(metAt);
+    const met = evs.find((e) => e.kind === "met");
+    const parried = evs.find((e) => e.kind === "parried");
+    expect(met).toBeDefined();
+    expect(parried).toBeDefined();
+    if (!met || !parried) throw new Error("unreachable");
+    expect(met.time).toBeGreaterThan(pressTime + TICK); // not the press tick
+    expect(met.time).toBeGreaterThanOrEqual(arriveAt);
+    expect(met.time).toBeLessThan(arriveAt + 2 * TICK);
+    expect(met.time).toBeLessThan(parried.time); // before resolution
     expect(d.log.some((e) => e.kind === "met")).toBe(false);
   });
-});
 
-describe("step events", () => {
-  test("an accepted advance returns a step event but never logs it", () => {
+  test("swing fires when the blade starts travelling; a miss still whooshes then whiffs", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
-    const evs = tickDuel(d, "advance", null);
-    expect(evs.some((e) => e.kind === "step" && e.side === 0)).toBe(true);
+    // Out of measure: the swing must sound anyway, the whiff resolves later.
+    const t = WEAPONS.longsword.attacks.cut;
+    const strikeAt = t.windup + t.beat;
+    const evs: DuelEvent[] = [];
+    for (let i = 0; i < 300 && !evs.some((e) => e.kind === "whiff"); i++) {
+      evs.push(...tickDuel(d, i === 0 ? "cut" : null, null));
+    }
+    const swing = evs.find((e) => e.kind === "swing");
+    const whiff = evs.find((e) => e.kind === "whiff");
+    expect(swing).toBeDefined();
+    expect(whiff).toBeDefined();
+    if (!swing || !whiff) throw new Error("unreachable");
+    expect(swing.time).toBeGreaterThanOrEqual(strikeAt);
+    expect(swing.time).toBeLessThan(strikeAt + 2 * TICK);
+    expect(swing.time).toBeLessThan(whiff.time);
+    expect(d.log.some((e) => e.kind === "swing")).toBe(false);
+  });
+
+  test("a step event fires when the foot lands, never at acceptance, and is unlogged", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    const w = WEAPONS.longsword;
+    expect(tickDuel(d, "advance", null).some((e) => e.kind === "step")).toBe(false);
+    let steps = 0;
+    for (let t = TICK; t < w.stepDuration + 2 * TICK; t += TICK) {
+      steps += tickDuel(d, null, null).filter((e) => e.kind === "step" && e.side === 0).length;
+    }
+    expect(steps).toBe(1);
     expect(d.log.some((e) => e.kind === "step")).toBe(false);
   });
 
-  test("a held advance chains steps through the buffer, one event per step", () => {
+  test("a held advance chains steps through the buffer, one landing per step", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
     const w = WEAPONS.longsword;
-    // Long enough for two full step+pause cycles: the second step starts
-    // inside flushBuffer, which bypasses the engine's acceptance chain.
+    // Two full step+pause cycles: the second step starts inside flushBuffer,
+    // bypassing the engine's acceptance chain, and must still land audibly.
     const ms = 2 * (w.stepDuration + w.stancePause) + 100;
     let steps = 0;
     for (let t = 0; t < ms; t += TICK) {
-      for (const e of tickDuel(d, "advance", null)) {
-        if (e.kind === "step" && e.side === 0) steps++;
-      }
+      steps += tickDuel(d, "advance", null).filter((e) => e.kind === "step" && e.side === 0).length;
     }
     expect(steps).toBeGreaterThanOrEqual(2);
-    expect(d.log.some((e) => e.kind === "step")).toBe(false);
+  });
+
+  test("a void hop lands a step event when it finishes", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    const w = WEAPONS.longsword;
+    expect(tickDuel(d, "void", null).some((e) => e.kind === "step")).toBe(false);
+    let landings = 0;
+    for (let t = TICK; t < w.voidDuration + 2 * TICK; t += TICK) {
+      landings += tickDuel(d, null, null).filter((e) => e.kind === "step" && e.side === 0).length;
+    }
+    expect(landings).toBe(1);
   });
 });
 

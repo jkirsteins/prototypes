@@ -25,19 +25,33 @@ describe("discrete steps", () => {
     expect(f.x).toBeCloseTo(600 + WEAPONS.rapier.stepDistance, 5);
   });
 
-  test("a step fired from the buffer emits stepStart; a direct step does not", () => {
-    // Direct steps are observed by the engine at intent acceptance; only the
-    // buffer path is invisible from outside, so only it emits an event.
+  test("footfall fires when the foot lands, not when the step starts", () => {
+    const f = createFighter(300, 1, WEAPONS.longsword);
+    applyIntent(f, "advance");
+    // Mid-travel: no sound yet.
+    const early: string[] = [];
+    for (let t = 0; t < WEAPONS.longsword.stepDuration - 2 * TICK; t += TICK) {
+      for (const e of tickFighter(f, TICK)) early.push(e.type);
+    }
+    expect(early).not.toContain("footfall");
+    // The landing tick carries the event.
+    const late: string[] = [];
+    for (let t = 0; t < 4 * TICK; t += TICK) {
+      for (const e of tickFighter(f, TICK)) late.push(e.type);
+    }
+    expect(late.filter((t) => t === "footfall")).toHaveLength(1);
+  });
+
+  test("a buffered step lands its own footfall", () => {
     const f = createFighter(300, 1, WEAPONS.longsword);
     applyIntent(f, "advance");
     expect(applyIntent(f, "advance")).toBe("buffered");
     const seen: string[] = [];
-    const ms = WEAPONS.longsword.stepDuration + WEAPONS.longsword.stancePause + 2 * TICK;
-    for (let t = 0; t < ms; t += TICK) {
+    const cycle = WEAPONS.longsword.stepDuration + WEAPONS.longsword.stancePause;
+    for (let t = 0; t < 2 * cycle + 4 * TICK; t += TICK) {
       for (const e of tickFighter(f, TICK)) seen.push(e.type);
     }
-    expect(f.state.kind).toBe("step"); // buffered advance fired
-    expect(seen.filter((t) => t === "stepStart")).toHaveLength(1);
+    expect(seen.filter((t) => t === "footfall")).toHaveLength(2);
   });
 
   test("input during a step is buffered (one slot) and fires after the pause", () => {
