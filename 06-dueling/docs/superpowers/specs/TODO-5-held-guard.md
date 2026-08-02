@@ -1,9 +1,9 @@
 # held-guard: The guard stays as long as you hold it
 
 > Specs cite each other by **slug**, never by path. Resolve one with
-> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
-> yet implemented, and the number is the order; both are dropped on completion,
-> so only the slug is stable and only the slug may be referenced.
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` prefix means not yet
+> implemented, `DONE-N-` implemented; N is the order. Prefixes change as work
+> lands, so only the slug is stable and only the slug may be referenced.
 
 > **Distinction to preserve** (added with the threat-latched parry): a TAP
 > against a visible attack latches onto that one attack and ends with it;

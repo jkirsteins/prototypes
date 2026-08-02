@@ -1,9 +1,9 @@
 # pressure-and-winding: Pressure and winding
 
 > Specs cite each other by **slug**, never by path. Resolve one with
-> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
-> yet implemented, and the number is the order; both are dropped on completion,
-> so only the slug is stable and only the slug may be referenced.
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` prefix means not yet
+> implemented, `DONE-N-` implemented; N is the order. Prefixes change as work
+> lands, so only the slug is stable and only the slug may be referenced.
 
 ## Overview
 
@@ -41,8 +41,13 @@ behind the blade. A blade met at the start of its travel is soft; one met just
 before arrival is hard.
 
 **From a `guard` snapshot:** `min(1, settledMs / GUARD_SETTLE_MS)`, with
-`GUARD_SETTLE_MS = 160`. A guard that became effective one tick before contact
-is barely there. A settled guard is braced.
+`GUARD_SETTLE_MS = 160`. `settledMs` is `held-guard`'s settled clock: how long
+the covered line had been effective when contact came, reset each time a guard
+shift completes. A guard that became effective one tick before contact is
+barely there; a settled guard is braced. The guard has no fixed lifetime to
+normalise against - it may have been held for any duration - so firmness reads
+the settled time directly and caps at `GUARD_SETTLE_MS`. A long-held guard
+enters firm; a guard that just shifted to answer a feint enters soft.
 
 ### 1.1 What this does to the parry timing choice
 
@@ -58,6 +63,11 @@ a real decision has:
 |---|---|---|
 | Early | readable, feintable | firm |
 | Late | hard to react to | soft |
+
+The held guard sharpens this trade rather than dulling it: with no expiry,
+nothing forces a late press, so what separates early from late is exactly what
+this section prices - a long-settled line the opponent can read and feint,
+against a fresh or freshly-shifted line that arrives soft.
 
 No new input and no new number produced this. It falls out of the two mechanics
 already built, which is the sign the model is holding together.
@@ -317,9 +327,15 @@ counter-attacks into it, and always holds.
 ## 6. Out of scope
 
 - **A fourth, geometry-flavoured choice** (*Absetzen* as a distinct option,
-  going around on the side axis). Hold already gives the matrix its third pole;
-  a fourth arrives only if blade geometry deepens enough to distinguish it from
-  `wind`, and only with play evidence from this version.
+  going around on the side axis), and more generally **directional winding**:
+  this version's `wind` is one generic button by design, not a choice of
+  which side to wind through. When winding is ever split by contact
+  geometry - different directions attacking different openings, each asking
+  a different defensive response - its data is already reserved:
+  `sustained-bind` §2.3's blade relation, derived from the contact snapshot.
+  None of this version's three choices forks on it, deliberately, and a
+  fourth arrives only if blade geometry deepens enough to distinguish it
+  from `wind`, with play evidence from this version.
 - *Duplieren* and *Mutieren*. Follow-ups within a continuing bind; this bind
   resolves in one exchange.
 - Multiple exchanges in one bind, or re-entering a bind from a bind.

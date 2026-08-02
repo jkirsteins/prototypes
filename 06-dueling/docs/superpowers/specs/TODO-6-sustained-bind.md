@@ -1,9 +1,9 @@
 # sustained-bind: The sustained bind
 
 > Specs cite each other by **slug**, never by path. Resolve one with
-> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
-> yet implemented, and the number is the order; both are dropped on completion,
-> so only the slug is stable and only the slug may be referenced.
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` prefix means not yet
+> implemented, `DONE-N-` implemented; N is the order. Prefixes change as work
+> lands, so only the slug is stable and only the slug may be referenced.
 
 ## Overview
 
@@ -17,10 +17,14 @@ This spec makes contact persist, for the weapons whose physics support it.
 
 **Delivers:** binds (part 1 of 2), sustained binds.
 
-**Depends on:** `line-feints`. Its redirect window closes at commitment
-(`strikeStart`), so by the time steel can touch steel no input can steer either
-blade - contact lands on fighters who are already committed, which is what lets
-the bind seize both bodies without stealing a choice either still had.
+**Depends on:** `held-guard`, and through it `line-feints`. The redirect
+window closes at commitment (`strikeStart`), so by the time steel can touch
+steel no input can steer either blade - contact lands on fighters who are
+already committed, which is what lets the bind seize both bodies without
+stealing a choice either still had. And the guard that contact consumes is
+the held guard: the bind must know that entry spends a guard whose key is
+still down, and the settled time its snapshot records is `held-guard`'s
+settled clock. Those two rules are defined there, consumed here.
 
 ---
 
@@ -76,7 +80,7 @@ interface BindState {
   /** The actual contact line, saved at entry. For two crossing attacks it
    *  is their shared line; for a parried attack it is the attack's line,
    *  which the full-match rule (`attack-lines` §3) guarantees equals the
-   *  parry's coveredLine - so there is exactly one honest value to save,
+   *  parry's covered line - so there is exactly one honest value to save,
    *  and every bind presentation shows this saved line, never a live
    *  recomputation from states that may since have moved. */
   line: Line;
@@ -88,7 +92,10 @@ interface BindState {
 
 type BindContact =
   | { kind: "strike"; progress: number }    // 0..1 through the travelling half
-  | { kind: "guard"; settledMs: number };   // effective time before contact
+  /** `held-guard`'s settled clock at contact: how long the covered line had
+   *  been effective. A completed guard shift resets it, so a guard that just
+   *  corrected a feint reads as freshly set. */
+  | { kind: "guard"; settledMs: number };
 
 type FighterState = | ... | { kind: "bind" } | ...;
 
@@ -99,7 +106,14 @@ Entering: on the tick contact is detected between two bind-capable weapons, the
 duel stores the `BindState` - snapshot included, read from the still-live attack
 and parry states - and only then are both fighters' body states replaced with
 the `bind` marker. The attacker's attack ends here; its timeline is discarded,
-because the attack is over. A defender's `ParryTrack` is consumed and cleared.
+because the attack is over. A defender's `ParryTrack` is consumed and cleared -
+the guard is spent even though the parry key is still physically held, and per
+`held-guard` a spent guard never re-forms from the held key; it takes a fresh
+press. `parryRecoveryMs` is charged on the bind's **exit** tick, not at entry:
+charged at entry it would decay to nothing inside `BIND_MS` (every weapon's
+parry recovery is shorter than 500 ms) and the spent guard would cost nothing.
+Charged at exit it is felt where it matters, in the scramble after, running
+concurrently with `BIND_RECOVERY_MS`.
 
 During: neither fighter moves, accepts an intent, or resolves anything. Both are
 committed. `x` is frozen; the `MIN_GAP` clamp still runs and is a no-op.
@@ -131,6 +145,53 @@ everything about it is about the pair.
 A fighter cannot be struck during a bind: neither is attacking. If a bind is
 somehow entered while the duel is already over, the bind is not created. The
 `dead` and `hitstun` states continue to take precedence over everything.
+
+### 2.3 Blade relation: the geometry is recorded, the meaning is deferred
+
+Two crossed blades hold one more fact than a line: which side of the
+opponent's steel each blade stands on. That fact is what turns a generic
+bind into a **directional position** - it decides which follow-ups are
+naturally available from the contact, which opening each one attacks, and
+which defensive response answers it. *Winden* lives on it: winding through
+on the inside is a different motion, toward a different opening, than
+winding on the outside.
+
+The bind must not lose that fact, and must not spread it either.
+Blade-relative inside/outside is a property of a **formed contact**, never
+of attacks in flight - no `AttackTimings` field, nothing in `lineOf`, no
+per-attack declaration. It is derived bind information, and it exists only
+while a bind does. The shape, when a consumer arrives:
+
+```ts
+type BladeRelation = "inside" | "outside";
+
+interface BindState {
+  // ...
+  relationA: BladeRelation;   // fighter 0's blade relative to fighter 1's
+}
+
+// One stored value is enough; the opponent's is always the inverse:
+//   relationB = opposite(relationA)
+```
+
+No field is added today, because nothing reads one.
+`pressure-and-winding`'s three choices - hold, press, wind - resolve on the
+mixup matrix and the firmness pair alone; its wind is deliberately one
+generic button, not a directional choice. What this spec guarantees instead
+is **sufficiency**: everything a future derivation needs survives the entry
+tick on the snapshot, after the live states are discarded - the contact
+line with its side axis, each side's `BindContact` kind (who was striking,
+who was guarding), and each strike's `progress`. `relationA` is then a pure
+function over the stored snapshot, defined and tested when the first
+mechanic forks on it. (One candidate, not yet the rule: a deflecting guard
+stands opposite the attack's declared side; in a crossing, the blade
+further through its travel holds the line and the other stands outside it.)
+
+Blade-relative inside/outside is derived only when contact forms. The bind
+records what the relation derives from, and `pressure-and-winding` defers
+using it until a winding choice depends on contact geometry - its out of
+scope names that choice, and when it lands the relation comes from here,
+not from new attack state.
 
 ---
 
@@ -243,8 +304,10 @@ outcome worth pacing around.
   `strikeEnd`, `whiff`, `parried` or `hit` is emitted from inside one.
 - **Attack is over:** a bound attack never resolves. No `parried` event, no
   `parriedPenalty`, no recovery from the discarded timeline.
-- **Guard consumed:** a defender entering a bind has `parry === null` on exit and
-  a charged `parryRecoveryMs`.
+- **Guard consumed:** a defender entering a bind has `parry === null` from the
+  entry tick on, `parryRecoveryMs` charged in full on the exit tick (not decayed
+  by the bind), and no guard re-formed by a parry key that stayed held
+  throughout.
 - **One sound:** exactly one `met` fires for a contact that becomes a bind, on the
   same tick it fired before this spec. Existing AGENTS.md assertions from `blade-contact`
   must pass unedited for the bind path.

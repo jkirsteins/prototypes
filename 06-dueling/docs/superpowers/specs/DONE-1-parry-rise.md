@@ -1,9 +1,9 @@
 # parry-rise: The guard takes time to form
 
 > Specs cite each other by **slug**, never by path. Resolve one with
-> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
-> yet implemented, and the number is the order; both are dropped on completion,
-> so only the slug is stable and only the slug may be referenced.
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` prefix means not yet
+> implemented, `DONE-N-` implemented; N is the order. Prefixes change as work
+> lands, so only the slug is stable and only the slug may be referenced.
 
 ## Overview
 
@@ -284,8 +284,8 @@ Modes 2 and 3 are unaffected as attackers by this spec.
   matrix comes out right, but it is not asserted until `attack-lines`.
 - Any change to what a successful parry *pays*. Penalties are untouched.
 - A holdable guard replacing `parryWindowMs`. That only becomes safe once feints
-  can deceive about *where* rather than *when*, so it is revisited no earlier
-  than `line-feints`.
+  can deceive about *where* rather than *when*, so it is specified in
+  `held-guard`, sequenced after `line-feints`.
 - A dedicated guard sprite.
 
 ---

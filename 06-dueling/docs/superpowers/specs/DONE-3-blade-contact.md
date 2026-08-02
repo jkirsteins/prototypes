@@ -1,9 +1,9 @@
 # blade-contact: Two blades meet
 
 > Specs cite each other by **slug**, never by path. Resolve one with
-> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` filename prefix means not
-> yet implemented, and the number is the order; both are dropped on completion,
-> so only the slug is stable and only the slug may be referenced.
+> `ls docs/superpowers/specs/*<slug>*`. A `TODO-N-` prefix means not yet
+> implemented, `DONE-N-` implemented; N is the order. Prefixes change as work
+> lands, so only the slug is stable and only the slug may be referenced.
 
 ## Overview
 
