@@ -23,6 +23,8 @@ const pick = (key: string, fallback: WeaponId): WeaponId => {
 // specific matchup, so boot straight into the duel instead of the picker.
 const bootStraightIn = params.has("p") || params.has("e");
 
+const SPEEDS = [0.25, 0.5, 1, 2, 4];
+
 const state = {
   pWeapon: pick("p", "longsword"),
   eWeapon: pick("e", "rapier"),
@@ -37,6 +39,13 @@ const state = {
   ai: createAiState(),
   held: { advance: false, retreat: false },
   pending: null as Intent | null,
+  // Time control: pause freezes the accumulator, step injects exactly one
+  // tick, timescale stretches or compresses wall time. The simulation is a
+  // pure function of ticks, so none of this can change an outcome - only
+  // when you get to watch it.
+  paused: params.get("paused") === "1",
+  timescale: SPEEDS.includes(Number(params.get("speed"))) ? Number(params.get("speed")) : 1,
+  stepOnce: false,
 };
 
 function startDuel(): void {
@@ -76,6 +85,23 @@ document.addEventListener("keydown", (e) => {
     case "r": startDuel(); break;
     case "`": state.overlay = !state.overlay; break;
     case "escape": state.duel = null; openSelect(); break;
+    case " ":
+      e.preventDefault();
+      state.paused = !state.paused;
+      break;
+    case ".":
+      // Always "advance exactly one tick from a frozen state": pause first
+      // if running, then arm the one-shot step.
+      state.paused = true;
+      state.stepOnce = true;
+      break;
+    case "[":
+    case "]": {
+      const at = SPEEDS.indexOf(state.timescale);
+      const next = at + (e.key === "]" ? 1 : -1);
+      state.timescale = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, next))];
+      break;
+    }
   }
 });
 document.addEventListener("keyup", (e) => {
@@ -102,7 +128,17 @@ loadImages().then((images) => {
   let last = performance.now();
   let acc = 0;
   const frame = (now: number): void => {
-    acc += Math.min(now - last, 250);
+    if (state.paused) {
+      // Frozen: no wall time enters the accumulator, and any fractional
+      // leftover is dropped so the next step is exactly one tick.
+      acc = 0;
+      if (state.stepOnce) {
+        acc = TICK;
+        state.stepOnce = false;
+      }
+    } else {
+      acc += Math.min(now - last, 250) * state.timescale;
+    }
     last = now;
     const d = state.duel;
     if (d) {
@@ -116,7 +152,10 @@ loadImages().then((images) => {
         tickDuel(d, ia, ib);
       }
       view.overlay = state.overlay;
-      drawFrame(view, d, state.aiMode, state.activeSeed);
+      drawFrame(view, d, state.aiMode, state.activeSeed, {
+        paused: state.paused,
+        timescale: state.timescale,
+      });
     }
     requestAnimationFrame(frame);
   };

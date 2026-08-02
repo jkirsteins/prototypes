@@ -1,4 +1,5 @@
 import { DEATH_ANIM_MS, HIT_STUN_MS } from "../combat/fighter";
+import { PARRYABLE_FRACTION } from "../combat/weapons";
 import { SHEETS } from "./sheets";
 import type { Fighter } from "../combat/fighter";
 import type { SheetName } from "./sheets";
@@ -10,6 +11,42 @@ export interface FramePick {
 }
 
 const IDLE_FRAME_MS = 125;
+
+/**
+ * Frames per attack phase, measured from the sheets' own poses rather than
+ * assumed. The strike gets exactly two frames: the blade travelling, then
+ * the blade delivered - so the strike phase always ends on the sword's
+ * furthest-committed pose at the instant it lands, and the swap between
+ * those two frames is the moment the blade stops being meetable. That
+ * makes the parryable window readable from the animation alone, and the
+ * per-weapon phase durations make the same frames play at each weapon's
+ * own speed.
+ */
+interface AttackFramePlan {
+  sheet: SheetName;
+  windup: [number, number];
+  beat: number;
+  /** [blade travelling (parryable), blade delivered (too late)] */
+  strike: [number, number];
+  recovery: [number, number];
+}
+
+export const ATTACK_FRAMES: Record<"cut" | "thrust", AttackFramePlan> = {
+  // swordAttack: 0-1 rising, 2 held high, 3 arc sweeping down, 4 delivered
+  // low, 5 back to stance. The cut reads "meet the sweeping arc": the slash
+  // arc is visible for exactly the meetable half and draws the cut's true
+  // reach (its tip, not the resting blade, is what the reach value means);
+  // when the arc vanishes into the delivered pose the window is over. The
+  // sword pixels alone peak mid-sweep - arc physics, not a sheet error.
+  cut: { sheet: "swordAttack", windup: [0, 1], beat: 2, strike: [3, 4], recovery: [5, 5] },
+  // swordStab: 0-1 coiling, 2-3 loaded, 4-5 point fully extended, 6
+  // retracting. Frames 2 and 3 are near-identical, so the thrust stays in
+  // its loaded pose through the whole meetable half and snaps to full
+  // extension exactly when the window closes. Deliberate, and true to the
+  // weapon: a thrust cannot be parried on reaction once the point flies -
+  // you meet it during the preparation, or not at all.
+  thrust: { sheet: "swordStab", windup: [0, 1], beat: 2, strike: [3, 4], recovery: [5, 6] },
+};
 
 function span(sheet: SheetName, t: number, total: number, first: number, last: number): number {
   const n = last - first + 1;
@@ -41,18 +78,27 @@ export function pickFrame(f: Fighter, timeMs: number): FramePick {
       return { sheet: "death", frame: span("death", Math.min(s.t, DEATH_ANIM_MS - 1), DEATH_ANIM_MS, 0, 9), flip };
     case "attack": {
       const timings = w.attacks[s.attack];
-      const sheet: SheetName = s.attack === "cut" ? "swordAttack" : "swordStab";
+      const plan = ATTACK_FRAMES[s.attack];
+      const sheet = plan.sheet;
       switch (s.phase) {
         case "pretempo":
-          return { sheet, frame: 0, flip };
+          return { sheet, frame: plan.windup[0], flip };
         case "windup":
-          return { sheet, frame: s.t < timings.windup / 2 ? 0 : 1, flip };
+          return { sheet, frame: s.t < timings.windup / 2 ? plan.windup[0] : plan.windup[1], flip };
         case "beat":
-          return { sheet, frame: 2, flip };
+          return { sheet, frame: plan.beat, flip };
         case "strike":
-          return { sheet, frame: span(sheet, s.t, timings.strike, 3, s.attack === "cut" ? 4 : 5), flip };
+          // The frame flips to "delivered" exactly when the blade stops
+          // being meetable, so the visual is the window. The comparison
+          // must mirror the engine's meetable check (s.t <= parryableMs)
+          // or the two could disagree for one tick at the boundary.
+          return {
+            sheet,
+            frame: s.t <= timings.strike * PARRYABLE_FRACTION ? plan.strike[0] : plan.strike[1],
+            flip,
+          };
         case "recovery":
-          return { sheet, frame: SHEETS[sheet].frames - 1, flip };
+          return { sheet, frame: span(sheet, s.t, s.recoveryMs, plan.recovery[0], plan.recovery[1]), flip };
       }
     }
   }

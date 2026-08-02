@@ -1,6 +1,7 @@
 import { ARENA, gapOf } from "../combat/engine";
 import { lastLines } from "../combat/log";
 import { zoneFor } from "../combat/measure";
+import { PARRYABLE_FRACTION } from "../combat/weapons";
 import { pickFrame } from "./frames";
 import { SHEETS } from "./sheets";
 import type { AiMode } from "../combat/ai";
@@ -35,9 +36,14 @@ const ATTACK_LISTING: Record<string, string> = {
 };
 
 const CONTROLS_LINE =
-  "A/D step S void J cut K thrust L parry | 0-3 AI mode R rematch Esc select ` overlay";
+  "A/D step S void J cut K thrust L parry | 0-3 AI mode R rematch Esc select ` overlay | space pause . step [/] speed";
 
-export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number): void {
+export interface TimeControl {
+  paused: boolean;
+  timescale: number;
+}
+
+export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: TimeControl): void {
   const { ctx } = v;
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = "#1b1e24";
@@ -52,11 +58,40 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number): void 
   if (v.overlay) {
     drawPhaseLabel(v, d.f[0]);
     drawPhaseLabel(v, d.f[1]);
+    drawStrikeTiming(v, d.f[0]);
+    drawStrikeTiming(v, d.f[1]);
+    drawGuardState(v, d.f[0]);
+    drawGuardState(v, d.f[1]);
     drawLog(v, d);
     drawSeed(v, seed);
   }
   drawHud(v, d, aiMode);
+  drawTimeControl(v, d, time);
   if (d.over) drawBanner(v, d);
+}
+
+/**
+ * Pause/step/speed indicator. Not overlay-gated: when the game is frozen or
+ * running off-speed the player must be able to see why.
+ */
+function drawTimeControl(v: View, d: Duel, time: TimeControl): void {
+  const { ctx } = v;
+  if (!time.paused && time.timescale === 1) return;
+  ctx.font = "12px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  if (time.paused) {
+    const tick = Math.round(d.time / (1000 / 60));
+    ctx.fillStyle = "#e6c229";
+    ctx.fillText(
+      `PAUSED  t=${(d.time / 1000).toFixed(2)}s  tick ${tick}  (. step, space resume)`,
+      480,
+      112,
+    );
+  } else {
+    ctx.fillStyle = "#8a8f98";
+    ctx.fillText(`${time.timescale}x speed`, 480, 112);
+  }
+  ctx.textAlign = "left";
 }
 
 function drawFighter(v: View, f: Fighter, time: number): void {
@@ -118,6 +153,44 @@ function drawLog(v: View, d: Duel): void {
   lines.forEach((line, i) => {
     ctx.fillText(line, 952, 108 + i * 14);
   });
+  ctx.textAlign = "left";
+}
+
+/**
+ * The attacker's strike as a bar: the meetable half bright, the delivered
+ * half dark, and a cursor riding the elapsed time. Answers "can I still
+ * meet this blade" at a glance while you are learning to read the poses.
+ */
+function drawStrikeTiming(v: View, f: Fighter): void {
+  const s = f.state;
+  if (s.kind !== "attack" || s.phase !== "strike") return;
+  const { ctx } = v;
+  const strike = f.weapon.attacks[s.attack].strike;
+  const w = 70;
+  const x = f.x * PX_PER_CM - w / 2;
+  const y = ARENA.floorY - 162;
+  ctx.fillStyle = "#e6c229"; // meetable
+  ctx.fillRect(x, y, w * PARRYABLE_FRACTION, 5);
+  ctx.fillStyle = "#6b2f2c"; // delivered: too late to parry
+  ctx.fillRect(x + w * PARRYABLE_FRACTION, y, w * (1 - PARRYABLE_FRACTION), 5);
+  ctx.fillStyle = "#e8eaed";
+  ctx.fillRect(x + Math.min(1, s.t / strike) * w - 1, y - 2, 2, 9);
+}
+
+/** Whether this fighter's guard is up, spent, or ready - the parry's own state. */
+function drawGuardState(v: View, f: Fighter): void {
+  const { ctx } = v;
+  const up = f.state.kind === "parry";
+  const cooling = f.parryCd > 0;
+  const x = f.x * PX_PER_CM - 26;
+  const y = ARENA.floorY - 150;
+  ctx.fillStyle = up ? "#9b8cff" : cooling ? "#4a4550" : "#3a404c";
+  const width = cooling && !up ? 52 * (1 - f.parryCd / f.weapon.parryCooldown) : 52;
+  ctx.fillRect(x, y, width, 4);
+  ctx.font = "9px ui-monospace, monospace";
+  ctx.fillStyle = up ? "#9b8cff" : cooling ? "#6b6675" : "#5a6070";
+  ctx.textAlign = "center";
+  ctx.fillText(up ? "guard up" : cooling ? "recovering" : "guard ready", f.x * PX_PER_CM, y - 4);
   ctx.textAlign = "left";
 }
 

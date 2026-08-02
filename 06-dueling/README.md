@@ -14,8 +14,9 @@ From the repo root: `npm run dev`, then open `http://127.0.0.1:4173/prototypes/0
 
 Boot straight into a matchup with URL params: `/prototypes/06/?p=rapier&e=longsword&mode=1`. Params: `p` and `e` (longsword | rapier), `mode` (0 passive, 1 parry-only,
 2 attack-in-place, 3 duelist), `overlay=0` to start with the debug overlay
-off, `seed=<n>` to pin the duelist's jitter. Each duel otherwise draws a
-fresh seed, shown bottom-left with the overlay on, so a fight worth
+off, `seed=<n>` to pin the duelist's jitter, `paused=1` to boot frozen at
+tick 0, `speed=0.25|0.5|1|2|4` to set the timescale. Each duel otherwise
+draws a fresh seed, shown bottom-left with the overlay on, so a fight worth
 repeating can be replayed exactly with `?seed=`.
 
 ## Controls
@@ -27,6 +28,9 @@ repeating can be replayed exactly with `?seed=`.
 - 0 / 1 / 2 / 3: AI mode (passive / parry-only / attack-in-place / duelist:
   approaches to narrow measure, strikes, backs off while recovering)
 - R: rematch, Esc: sword select, backtick: debug overlay
+- Space: pause, . : step one tick (pauses first), [ / ]: slower / faster
+  (0.25x to 4x). Actions pressed while paused queue and fire on the next
+  stepped tick.
 
 ## HEMA feature matrix
 
@@ -68,4 +72,15 @@ Nachreisen" and your counter thrust kills into recovery; parrying produces
 cascade: its parry catches your thrust but leaves it committed on cooldown,
 and it ignores attacks thrown from out of measure (a non-threat draws no
 reaction). Mode 3 plays the whole loop: watch it close to narrow measure,
-strike, and retire out of danger while its attack recovers.
+strike, and retire out of danger while its attack recovers. To study a
+single exchange, pause (space) during the wind-up, queue a parry, and step
+(.) through the strike tick by tick: the strike bar's cursor crosses from
+the meetable half to the delivered half on the same tick the travelling
+frame flips to the delivered pose.
+
+The two weapons read differently by design. A cut shows its slash arc for
+exactly the meetable half - meet the sweeping arc; when the arc vanishes
+into the delivered pose the window is over. A thrust never shows the point
+in flight: it holds the loaded pose through the meetable half and snaps to
+full extension the instant the window closes - you meet a thrust during
+its preparation, or not at all.
