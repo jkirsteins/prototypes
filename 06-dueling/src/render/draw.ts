@@ -6,7 +6,8 @@ import { pickFrame } from "./frames";
 import { SHEETS } from "./sheets";
 import type { AiMode } from "../combat/ai";
 import type { Duel } from "../combat/engine";
-import type { Fighter } from "../combat/fighter";
+import type { Fighter, FighterState } from "../combat/fighter";
+import type { AttackPhase, WeaponId } from "../combat/types";
 import type { SheetName } from "./sheets";
 
 export const SCALE = 3;
@@ -23,14 +24,19 @@ export interface View {
   overlay: boolean;
 }
 
-const PHASE_COLORS: Record<string, string> = {
+/**
+ * Keyed over the state and phase unions (the attack kind always shows its
+ * phase, so it is excluded): a renamed or added state is a compile error
+ * here, never a silently grey label.
+ */
+const PHASE_COLORS: Record<AttackPhase | Exclude<FighterState["kind"], "attack">, string> = {
   pretempo: "#8a8f98", windup: "#e6c229", beat: "#e6c229", strike: "#d64541",
   recovery: "#57a55a", void: "#4aa3df", parry: "#9b8cff", step: "#cfd3da",
   pause: "#cfd3da", hitstun: "#d64541", dead: "#555a63", idle: "#8a8f98",
 };
 
 /** cut/thrust tempo cost per weapon, shown on the HUD cards. */
-const ATTACK_LISTING: Record<string, string> = {
+const ATTACK_LISTING: Record<WeaponId, string> = {
   longsword: "cut: 2 tempi / thrust: 1 tempo",
   rapier: "thrust: 1 tempo / cut: poor",
 };
@@ -136,7 +142,7 @@ function drawPhaseLabel(v: View, f: Fighter): void {
   const { ctx } = v;
   const s = f.state;
   const label = s.kind === "attack" ? s.phase : s.kind;
-  ctx.fillStyle = PHASE_COLORS[label] ?? "#cfd3da";
+  ctx.fillStyle = PHASE_COLORS[label];
   ctx.font = "12px ui-monospace, monospace";
   ctx.textAlign = "center";
   ctx.fillText(label, f.x * PX_PER_CM, ARENA.floorY - 180);
@@ -221,7 +227,7 @@ function drawHud(v: View, d: Duel, aiMode: AiMode): void {
     ctx.fillStyle = card.tint;
     ctx.fillRect(card.x + 10, 52, card.f.weapon.reach * 0.3, 4);
     ctx.fillStyle = "#cfd3da";
-    ctx.fillText(ATTACK_LISTING[card.f.weapon.id] ?? "", card.x + 10, 74);
+    ctx.fillText(ATTACK_LISTING[card.f.weapon.id], card.x + 10, 74);
   }
   ctx.font = "11px ui-monospace, monospace";
   ctx.fillStyle = "#8a8f98";
