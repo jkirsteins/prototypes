@@ -6,7 +6,7 @@ import {
   gripPartsOn,
   incorporationChance, passiveFortifyFor, raidYield,
   isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
-  reachOf, sharedNeighboursOf,
+  reachOf, respiteExpiry, sharedNeighboursOf,
   subjugationChance, subjugationGripOn, subjugationRaceFor,
   subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView,
@@ -37,6 +37,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     loyalty: {},
     liveRevolts: [],
     hostages: {},
+    respites: {},
     siteCaps: siteCaps(ORDER),
     settlements: {},
     booms: {},
@@ -578,6 +579,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       relations: {},
       overlords: new Map(),
       incorporated: { deadland: "owner" },
+      respites: {},
       adjacency: { me: ["deadland"], deadland: ["me", "owner"], owner: ["deadland"] },
       factionIds: ["me", "deadland", "owner"],
       loyalty: {},
@@ -603,6 +605,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       relations: {},
       overlords: new Map(),
       incorporated: { land: "target" },
+      respites: {},
       adjacency: { me: ["target"], target: ["me"], land: ["me"] },
       factionIds: ["me", "target", "land"],
       loyalty: {},
@@ -665,6 +668,82 @@ describe("alliances", () => {
     // so it remains a valid alliance target rather than being excluded.
     expect(validTargetsFor(view({ alliances, turn: 1 }), "beta", "alliance")).toContain("gamma");
     expect(validTargetsFor(view({ alliances, turn: 1 }), "beta", "alliance")).toContain("alpha");
+  });
+});
+
+describe("post-escape respite", () => {
+  it("blocks subjugate with the respite reason while the clock runs", () => {
+    const v = view({
+      relations: mightLead("beta", "gamma", 2),
+      respites: { gamma: 4 },
+      turn: 2,
+    });
+    expect(targetEligibilityFor(v, "beta", "subjugate")).toContainEqual({
+      state: "blocked",
+      factionId: "gamma",
+      reasons: [{ code: "respite", expiresTurn: 4 }],
+    });
+    expect(validTargetsFor({ ...v, turn: 4 }, "beta", "subjugate")).toContain("gamma");
+  });
+
+  it("gates only subjugate; every other card at the escapee stays legal", () => {
+    const v = view({ respites: { gamma: 4 }, turn: 2 });
+    expect(validTargetsFor(v, "beta", "raid")).toContain("gamma");
+    expect(validTargetsFor(v, "beta", "alliance")).toContain("gamma");
+    expect(validTargetsFor(v, "beta", "assassinate-ruler")).toContain("gamma");
+  });
+
+  it("lists the respite after an alliance and before the lead", () => {
+    // The hover quotes only the first reason, so this order is a promise: the
+    // longer-lived pact wins the line, and a time gate outranks a buildable
+    // lead.
+    const alliances = { [allianceKey("beta", "gamma")]: pact(9) };
+    const v = view({ alliances, respites: { gamma: 4 }, turn: 2 });
+    expect(targetEligibilityFor(v, "beta", "subjugate")).toContainEqual({
+      state: "blocked",
+      factionId: "gamma",
+      reasons: [
+        { code: "alliance", expiresTurn: 9 },
+        { code: "respite", expiresTurn: 4 },
+        {
+          code: "insufficient-lead",
+          required: { might: 2, status: 2 },
+          mightLead: 0,
+          statusLead: 0,
+          realmSize: 1,
+          settlements: 0,
+          poachSurcharge: 0,
+        },
+      ],
+    });
+  });
+
+  it("threatsTo goes quiet for a protected subject and wakes at expiry", () => {
+    const v = view({
+      relations: mightLead("beta", "gamma", 2),
+      respites: { gamma: 4 },
+      turn: 2,
+    });
+    expect(threatsTo(v, "gamma")).toEqual([]);
+    expect(threatsTo({ ...v, turn: 4 }, "gamma").map((t) => t.factionId))
+      .toContain("beta");
+  });
+
+  it("subjugationRaceFor keeps danger through a respite", () => {
+    // The alliance precedent: the bars and the mark are what will apply once
+    // the clock lapses, contextualized by the badge countdown, not hidden.
+    const v = view({
+      relations: mightLead("beta", "alpha", 2),
+      respites: { alpha: 4 },
+      turn: 2,
+    });
+    expect(subjugationRaceFor(v, "alpha", "beta").danger).toBe(true);
+  });
+
+  it("respiteExpiry answers only while the clock runs", () => {
+    expect(respiteExpiry(view({ respites: { beta: 5 }, turn: 4 }), "beta")).toBe(5);
+    expect(respiteExpiry(view({ respites: { beta: 5 }, turn: 5 }), "beta")).toBeUndefined();
+    expect(respiteExpiry(view(), "beta")).toBeUndefined();
   });
 });
 

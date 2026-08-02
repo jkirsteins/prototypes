@@ -16,13 +16,13 @@ import {
 } from "./relations";
 import {
   allianceExpiry, handBlockReason, leadsIn, PACT_MIGHT_BONUS,
-  pactBoostExpiriesOn, playableSet,
+  pactBoostExpiriesOn, playableSet, respiteExpiry,
   validTargetsFor, targetEligibilityFor, subjugationRaceFor, raidGainFor,
 } from "./playability";
 import { count } from "./plural";
 import {
   cardBlockLine, cardModifierLines, cardRiskLine, explainTargetEligibility,
-  multipliedWord, pactBoostLines, settlementBlock, targetImpactLines,
+  multipliedWord, pactBoostLines, respiteLines, settlementBlock, targetImpactLines,
   targetOddsLines, subjugationBreakdown,
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
@@ -37,6 +37,7 @@ import {
   applyBootMeta, applyBootParams, parseBootParams,
 } from "./boot-params";
 import { seededRng } from "./rng";
+import { untilTurn } from "./timed";
 import { runTurnips, runXp } from "./xp";
 import { openPack } from "./packs";
 import {
@@ -244,7 +245,7 @@ function allianceLine(f: string, humanFaction: string): string | null {
     shared === 0
       ? ""
       : `, +${PACT_MIGHT_BONUS} Might for you both against ${count(shared, "shared neighbour")}`;
-  return `Allied until turn ${until} - no hostile cards between you${bonus}`;
+  return `Allied ${untilTurn(until)} - no hostile cards between you${bonus}`;
 }
 
 function effectiveFaction(f: string): string {
@@ -494,6 +495,20 @@ function unrestOf(factionId: string): boolean {
   );
 }
 
+/** One countdown tspan on a badge: a timed status's letter and the turns it
+ *  has left, in that status's colour. Every timed status the badge counts
+ *  down (a pact's A, a respite's R) goes through here, so they all share the
+ *  `expiry - turn` arithmetic and the 9px gap. */
+function appendCountdown(
+  text: SVGTextElement, letter: string, turnsLeft: number, className: string,
+): void {
+  const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+  tspan.classList.add(className);
+  tspan.setAttribute("dx", "9");
+  tspan.textContent = `${letter}${turnsLeft}`;
+  text.appendChild(tspan);
+}
+
 /** One badge per living faction outside the human's realm with a non-zero
  *  lead on either track, anchored at that faction's home region bbox.
  *
@@ -588,13 +603,15 @@ function renderThreatBadges(): void {
       text.appendChild(statusTspan);
     }
     if (race.allied) {
-      const turnsLeft =
-        (allianceExpiry(game, human.factionId, factionId) ?? game.turn) - game.turn;
-      const allyTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-      allyTspan.classList.add("lead-ally");
-      allyTspan.setAttribute("dx", "9");
-      allyTspan.textContent = `A${turnsLeft}`;
-      text.appendChild(allyTspan);
+      const expiry = allianceExpiry(game, human.factionId, factionId) ?? game.turn;
+      appendCountdown(text, "A", expiry - game.turn, "lead-ally");
+    }
+    // A faction under its post-escape respite cannot be subjugated, so the
+    // race its numbers describe is paused: the countdown says for how long,
+    // the same treatment the pact's A gives an equally illegal attack.
+    const respite = respiteExpiry(game, factionId);
+    if (respite !== undefined) {
+      appendCountdown(text, "R", respite - game.turn, "lead-respite");
     }
     g.appendChild(text);
     badgeGroup.appendChild(g);
@@ -654,6 +671,11 @@ function hoverLines(region: Region): TooltipLine[] {
   // pact term is invisible wherever it does not change the sign - a boosted 0
   // reads as no bonus at all.
   lines.push(...pactBoostLines(game, human.factionId, f));
+  // The respite note rides beside the pact note for the same reason: part of
+  // what the bars imply - "this faction can be taken" - is temporarily false,
+  // and this says until when. On the human's own land it is the one surface
+  // carrying the fact at all, since their realm draws no badge.
+  lines.push(...respiteLines(game, human.factionId, f));
   // `region.faction`, not the resolved `f`: settlements belong to the land, so
   // an absorbed land must report its own count and not its absorber's. First of
   // the blocks, so the sentence-shaped lines above stay one group.

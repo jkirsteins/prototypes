@@ -5,6 +5,7 @@ import {
   allianceActive, fullRealmOf, leadsOf, overlordChainOf, pactBetween,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
+import { activeExpiry, timedActive } from "./timed";
 
 export const SUBJUGATE_THRESHOLD = 2;
 
@@ -79,6 +80,11 @@ export interface RulesView {
    *  the vassalage that justified it does - every exit from vassalage deletes
    *  it (see `playCard`). */
   hostages: Record<string, number>;
+  /** Faction id -> the turn its post-escape respite expires (see
+   *  `ESCAPE_RESPITE_TURNS`). Bare expiry on the src/timed.ts clock, no
+   *  payload; read only through `respiteExpiry`, so a stale unswept entry is
+   *  inert by construction. */
+  respites: Record<string, number>;
 }
 
 /** Turns of unbroken vassalage after which Incorporate is certain. Below it the
@@ -97,6 +103,13 @@ export const POACH_CHANCE = 0.5;
  *  the wait for the tribute cards to cycle round - without deleting the
  *  escape the way stripping the Revolt would. */
 export const HOSTAGE_RETURN_TRIBUTES = 2;
+
+/** Turns a faction that ESCAPED vassalage - Revolt, or freed because its lord
+ *  fell - cannot be subjugated by anyone. Two, so an escape is a real window
+ *  to act in rather than a state the next Subjugate undoes before the escaper
+ *  moves, without parking the faction outside the game the way a long truce
+ *  would. Being poached is not an escape and grants nothing. */
+export const ESCAPE_RESPITE_TURNS = 2;
 
 /** `${land}|${lord}` key for the loyalty clock. */
 export const loyaltyKey = (land: string, lord: string): string =>
@@ -163,7 +176,7 @@ export function pactBoostExpiriesOn(
 ): number[] {
   const expiries: number[] = [];
   for (const [key, pact] of Object.entries(view.alliances)) {
-    if (view.turn >= pact.expiry) continue;
+    if (!timedActive(pact.expiry, view.turn)) continue;
     if (!key.split("|").includes(a)) continue;
     if (pact.against.includes(b)) expiries.push(pact.expiry);
   }
@@ -734,6 +747,12 @@ export function subjugationRaceFor(
 
 export type TargetBlockReason =
   | { code: "alliance"; expiresTurn: number }
+  /** The candidate escaped vassalage within the last ESCAPE_RESPITE_TURNS
+   *  turns, so Subjugate cannot touch it. The same field shape as `alliance`
+   *  and deliberately its own code: the two are different facts with
+   *  different prose, and a merged "timed" code would make every consumer
+   *  switch twice. */
+  | { code: "respite"; expiresTurn: number }
   | {
       code: "insufficient-lead";
       /** The bar on each track. They differ by the settlement count. */
@@ -782,9 +801,18 @@ export function allianceExpiry(
   actor: string,
   candidate: string,
 ): number | undefined {
-  return allianceActive(view, actor, candidate)
-    ? pactBetween(view, actor, candidate)?.expiry
-    : undefined;
+  return activeExpiry(pactBetween(view, actor, candidate)?.expiry, view.turn);
+}
+
+/** The turn a faction's post-escape respite runs out, while it is running.
+ *  The one read every rule and surface goes through - the eligibility check,
+ *  the hover lines and the badge countdown cannot disagree about whether the
+ *  respite stands because they all ask this. */
+export function respiteExpiry(
+  view: { respites: Record<string, number>; turn: number },
+  factionId: string,
+): number | undefined {
+  return activeExpiry(view.respites[factionId], view.turn);
 }
 
 /** Structured eligibility for every faction, in faction order. */
@@ -873,6 +901,14 @@ export function targetEligibilityFor(
     }
 
     if (cardId === "subjugate") {
+      // Before the lead reasons, because the hover quotes only the FIRST
+      // reason: a time gate nothing the actor plays can lift outranks a lead
+      // they could be building right now - the same relative position the
+      // alliance reason holds above.
+      const respite = respiteExpiry(view, factionId);
+      if (respite !== undefined) {
+        reasons.push({ code: "respite", expiresTurn: respite });
+      }
       const grip = gripPartsOn(view, factionId);
       const surcharge = poachSurchargeOn(view, factionId);
       const required = withSurcharge(grip, surcharge);

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { pact, settledOnce, } from "./helpers";
 import {
   GUARD_POSTED, GUARD_RISK, cardModifierLines, cardRiskLine,
-  explainTargetEligibility, pactBoostLines, settlementBlock,
+  explainTargetEligibility, pactBoostLines, respiteLines, settlementBlock,
   subjugationBreakdown, targetImpactLines, targetOddsLines,
 } from "../src/target-explanations";
 import { CARDS, GUARDS } from "../src/cards";
@@ -86,6 +86,17 @@ describe("explainTargetEligibility", () => {
     expect(explainTargetEligibility([
       { state: "irrelevant", factionId: "delta" },
     ], nameOf, noRisk)).toEqual([]);
+  });
+
+  it("formats the respite blocker", () => {
+    expect(explainTargetEligibility([{
+      state: "blocked",
+      factionId: "beta",
+      reasons: [{ code: "respite", expiresTurn: 7 }],
+    }], nameOf, noRisk)[0]?.lines).toEqual([
+      "Beta",
+      "Escaped vassalage recently; cannot be subjugated until turn 7.",
+    ]);
   });
 
   it("formats each relationship and identity blocker", () => {
@@ -196,7 +207,7 @@ describe("targetOddsLines", () => {
     adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -349,7 +360,7 @@ describe("cardRiskLine", () => {
       adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
       factionIds: ids, alliances: {}, turn: 1, guards: {}, omens: {},
       diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, siteCaps: {}, settlements: {}, booms: {},
     };
     const fallible = Object.keys(CARDS).filter((id) =>
       ids.some((target) => failureRiskOf(view, "alpha", id, target) !== null),
@@ -369,7 +380,7 @@ describe("targetImpactLines", () => {
     },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -555,7 +566,7 @@ describe("subjugationBreakdown", () => {
     },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -710,7 +721,7 @@ describe("pactBoostLines", () => {
     relations: {}, overlords: new Map(), incorporated: {}, adjacency: {},
     factionIds: ["alpha", "beta", "gamma", "delta"], alliances: {}, turn: 1,
     guards: {}, omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 
@@ -748,12 +759,49 @@ describe("pactBoostLines", () => {
   });
 });
 
+describe("respiteLines", () => {
+  const v = (partial: Partial<RulesView> = {}): RulesView => ({
+    relations: {}, overlords: new Map(), incorporated: {},
+    adjacency: { alpha: ["beta"], beta: ["alpha"] },
+    factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
+    omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
+    respites: {}, siteCaps: {}, settlements: {}, booms: {},
+    ...partial,
+  });
+
+  it("amber note on a protected rival, green on the human's own land", () => {
+    expect(respiteLines(v({ respites: { beta: 6 }, turn: 4 }), "alpha", "beta")).toEqual([
+      { text: "Escaped vassalage recently: none may subjugate them until turn 6",
+        tone: "info" },
+    ]);
+    expect(respiteLines(v({ respites: { alpha: 6 }, turn: 4 }), "alpha", "alpha")).toEqual([
+      { text: "You escaped vassalage recently: none may subjugate you until turn 6",
+        tone: "good" },
+    ]);
+  });
+
+  it("says nothing once the clock has run out, or with no respite at all", () => {
+    expect(respiteLines(v({ respites: { beta: 6 }, turn: 6 }), "alpha", "beta")).toEqual([]);
+    expect(respiteLines(v(), "alpha", "beta")).toEqual([]);
+  });
+
+  it("is the single line an armed Subjugate shows at a protected target", () => {
+    let relations: Relations = {};
+    relations = bumpMight(bumpMight(relations, "alpha", "beta"), "alpha", "beta");
+    const view = v({ relations, respites: { beta: 6 }, turn: 4 });
+    expect(targetImpactLines(view, "alpha", "subjugate", "beta", false)).toEqual([
+      { text: "Escaped vassalage recently; cannot be subjugated until turn 6.",
+        tone: "bad" },
+    ]);
+  });
+});
+
 describe("settlementBlock", () => {
   const v = (partial: Partial<RulesView> = {}): RulesView => ({
     relations: {}, overlords: new Map(), incorporated: {}, adjacency: {},
     factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
     omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    siteCaps: {}, settlements: {}, booms: {},
+    respites: {}, siteCaps: {}, settlements: {}, booms: {},
     ...partial,
   });
 

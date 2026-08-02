@@ -785,6 +785,13 @@ svg.map.dragging {
   fill: #b5701f;
 }
 
+/* The respite countdown: this faction escaped vassalage and cannot be
+   subjugated again until the count runs out. The same temporary-and-running-
+   out amber as the boosted value above, scoped for the same reason. */
+.threat-badge .lead-respite {
+  fill: #b5701f;
+}
+
 .activity-log {
   position: absolute;
   right: 16px;

@@ -81,7 +81,7 @@ describe("cards", () => {
     // in the deck, so it must never be deck-buildable.
     expectProps(
       "revolt", "Revolt", false, false, 1, false, false,
-      "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you. Leaves your deck for good.",
+      "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you, and none may subjugate you for 2 turns. Leaves your deck for good.",
     );
     expectProps(
       "assassinate-ruler", "Assassinate ruler", true, false, 1, true, false,

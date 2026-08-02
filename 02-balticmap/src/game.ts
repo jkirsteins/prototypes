@@ -10,13 +10,14 @@ import {
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
-  loyaltyKey, HOSTAGE_RETURN_TRIBUTES, incorporationChance, PACT_MIGHT_BONUS,
-  sharedNeighboursOf,
+  loyaltyKey, ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES,
+  incorporationChance, PACT_MIGHT_BONUS, sharedNeighboursOf,
   subjugationChance, type Guards, type Omens, omenMultiplier, passiveFortifyFor,
   playableSet, raidGainFor, validTargetsFor,
   type RulesView,
 } from "./playability";
 import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
+import { sweepLapsed } from "./timed";
 
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
@@ -129,6 +130,14 @@ export interface GameState {
    *  `playCard` is the only writer, and every exit from vassalage deletes the
    *  entry so it can never outlive the vassalage that justified it. */
   hostages: Record<string, number>;
+  /** Faction id -> the turn its post-escape respite expires. Set the moment a
+   *  faction ESCAPES vassalage - Revolt, or freed because its lord fell -
+   *  never when it is merely poached, and while it runs nobody may Subjugate
+   *  it (see `ESCAPE_RESPITE_TURNS`). Bare expiry on the src/timed.ts clock;
+   *  swept silently in `beginTurn`, because a lapse moves no relation counter
+   *  and the badge already counted it down. `respiteExpiry` is the only
+   *  reader, so the sweep is hygiene rather than correctness. */
+  respites: Record<string, number>;
   /** One ruler per faction id, total. Read through `rulerOf`, written only
    *  by `replaceRuler`. */
   rulers: Rulers;
@@ -175,6 +184,7 @@ export function viewOf(state: GameState): RulesView {
     booms: state.booms,
     loyalty: state.loyalty,
     hostages: state.hostages,
+    respites: state.respites,
     liveRevolts: state.players
       .filter((pl) =>
         pl.deck.includes("revolt") || pl.hand.includes("revolt") ||
@@ -215,6 +225,7 @@ export function newGame(
     settlements: {},
     booms: {},
     hostages: {},
+    respites: {},
     ethnicities,
     rulers: initialRulers(factionIds, ethnicities),
     humanSeat: 0,
@@ -379,16 +390,12 @@ function tickLoyalty(state: GameState, land: string): Record<string, number> {
 
 /** Pacts the clock has run out on, removed from the record and reported.
  *
- *  Deleting rather than leaving the stale entry is what makes "still in the
- *  record" the guard against reporting the same lapse twice - `beginTurn` runs
- *  once per seat per round, so a sweep that only compared expiries would log the
- *  same lapse for every player in turn.
- *
  *  It has to be reported at all because a pact carries a Might bonus for both
  *  allies against the neighbours they share (see `Pact`), so a lapse MOVES
  *  leads. An unrecorded move is exactly what drifts the standings walk - the
  *  `amount` rule in CLAUDE.md - and it is also news: hostile cards between the
- *  two of them are legal again.
+ *  two of them are legal again. The delete-and-report dedup itself lives on
+ *  `sweepLapsed` in src/timed.ts; only the event mapping is pact business.
  *
  *  `playerId` is the seat whose turn is starting, which is whose clock tick
  *  noticed it, and is nobody's doing. The notice reads the two allies off
@@ -397,20 +404,16 @@ function sweepLapsedPacts(
   state: GameState,
   playerId: number,
 ): { alliances: Alliances; events: GameEvent[] } {
-  const events: GameEvent[] = [];
-  let alliances = state.alliances;
-  for (const [key, pact] of Object.entries(state.alliances)) {
-    if (state.turn < pact.expiry) continue;
+  const { kept, lapsed } = sweepLapsed(state.alliances, state.turn, (p) => p.expiry);
+  const events: GameEvent[] = lapsed.map(([key, pact]) => {
     const [a, b] = key.split("|");
-    const { [key]: _gone, ...rest } = alliances;
-    alliances = rest;
-    events.push({
+    return {
       turn: state.turn, playerId, type: "pact-lapsed",
       targetFactionId: a, overlordFactionId: b,
       track: "might", amount: 1, pactAgainst: pact.against,
-    });
-  }
-  return { alliances, events };
+    };
+  });
+  return { alliances: kept, events };
 }
 
 export function beginTurn(state: GameState, rng: Rng): GameState {
@@ -455,6 +458,9 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   }
   return {
     ...state, players, relations, alliances: lapsed.alliances,
+    // The lapsed half is discarded: a run-out respite moves nothing and the
+    // badge already counted it down, so there is nothing to report.
+    respites: sweepLapsed(state.respites, state.turn, (e) => e).kept,
     loyalty: tickLoyalty(state, p.factionId),
     log: appendEvents(state, events), playedThisTurn: false,
   };
@@ -577,6 +583,7 @@ export function playCard(
   let settlements = state.settlements;
   let booms = state.booms;
   let hostages = state.hostages;
+  let respites = state.respites;
   let rulers = state.rulers;
   // A doublable card cashes the whole stack at once, rather than peeling one
   // reading per play. One rule, and no special case for a play made for you:
@@ -629,6 +636,7 @@ export function playCard(
       if (l === lord) {
         overlords.delete(vassal);
         dropHostageOf(vassal);
+        respites = { ...respites, [vassal]: state.turn + ESCAPE_RESPITE_TURNS };
         players = updateFaction(players, vassal, stripVassalCards);
         events.push({
           turn: state.turn, playerId: p.id, type: "released",
@@ -832,6 +840,7 @@ export function playCard(
     if (former === undefined) return state;
     overlords.delete(p.factionId);
     dropHostageOf(p.factionId); // defensive: legality refuses Revolt while one is held
+    respites = { ...respites, [p.factionId]: state.turn + ESCAPE_RESPITE_TURNS };
     players = updateFaction(players, p.factionId, stripVassalCards);
     // vassal-loss penalty (section 8): the revolting vassal gains +1/+1
     // over the former lord (relation counters only grow). Held readings
@@ -976,7 +985,7 @@ export function playCard(
   return {
     ...state, phase, players, relations, overlords, incorporated,
     alliances, diplomacyBoost, guards, omens, settlements, booms, hostages,
-    rulers,
+    respites, rulers,
     log: appendEvents(state, events), playedThisTurn: true,
   };
 }

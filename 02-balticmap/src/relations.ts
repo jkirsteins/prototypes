@@ -1,3 +1,5 @@
+import { timedActive } from "./timed";
+
 export interface Relation {
   status: number;
   might: number;
@@ -248,6 +250,5 @@ export function allianceActive(
   a: string,
   b: string,
 ): boolean {
-  const pact = pactBetween(view, a, b);
-  return pact !== undefined && view.turn < pact.expiry;
+  return timedActive(pactBetween(view, a, b)?.expiry, view.turn);
 }

@@ -1,11 +1,12 @@
 import type { GameEvent, GameEventType } from "./game";
-import type { TrackBars } from "./playability";
+import { ESCAPE_RESPITE_TURNS, type TrackBars } from "./playability";
 import { TRIBUTE_CARDS } from "./cards";
 import { count, plural } from "./plural";
 import {
   card, faction, joinSegments, optionalPhrase, t, theFaction, type Segment,
 } from "./rich-text";
 import { walkStandings, type StandingChange, type WalkCtx } from "./standings";
+import { untilTurn } from "./timed";
 import { barPhrase } from "./view";
 
 /** One notice-worthy event, rendered as one line: the card, who did it, and
@@ -341,7 +342,7 @@ function allianceLines(
     return {
       text: [
         card("alliance"), t(" sealed with you by "), faction(id ?? ""),
-        ...(expiry !== undefined ? [t(`, until turn ${expiry}`)] : []),
+        ...(expiry !== undefined ? [t(`, ${untilTurn(expiry)}`)] : []),
       ],
       changes: [],
       tone: "good" as const,
@@ -385,7 +386,8 @@ function reclaimedLines(
   return events.map((e, i) => ({
     text: [
       card("revolt"), t(" by "), faction(e.targetFactionId ?? ""),
-      t(" cast off your overlordship"),
+      t(" cast off your overlordship, and they cannot be subjugated again "),
+      t(untilTurn(e.turn + ESCAPE_RESPITE_TURNS)),
     ],
     changes: changesFor(i, changes),
     tone: "bad",
@@ -398,7 +400,8 @@ function releasedLines(events: GameEvent[], ctx: NoticeCtx, role: HumanRole): Su
       text: [
         t("Your subjugation released "),
         ...joinSegments(events.map((e) => [faction(e.targetFactionId ?? "")])),
-        t(" from your service"),
+        t(" from your service; none may subjugate them "),
+        t(untilTurn(events[0].turn + ESCAPE_RESPITE_TURNS)),
       ],
       changes: [],
       tone: "neutral",
@@ -409,7 +412,8 @@ function releasedLines(events: GameEvent[], ctx: NoticeCtx, role: HumanRole): Su
       t("The fall of "),
       ...(e.overlordFactionId !== undefined ? [faction(e.overlordFactionId)] : [t("your overlord")]),
       t(" to "), faction(actorId(e, ctx) ?? ""),
-      t(" released you from vassalage"),
+      t(" released you from vassalage, and none may subjugate you "),
+      t(untilTurn(e.turn + ESCAPE_RESPITE_TURNS)),
     ],
     changes: [],
     tone: "good",

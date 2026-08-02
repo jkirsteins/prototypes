@@ -155,7 +155,9 @@ describe("buildRoundSummary: single-event scenarios", () => {
     const s = oneSummary(
       ev({ type: "released", playerId: 3, targetFactionId: "livs" }),
     )!;
-    expect(lineText(s)).toBe("The fall of your overlord to Latgalians released you from vassalage");
+    expect(lineText(s)).toBe(
+      "The fall of your overlord to Latgalians released you from vassalage, and none may subjugate you until turn 5",
+    );
     expect(footnoteTexts(s)).toEqual([
       "Pay military tribute and Pay status tribute were removed from your deck, hand and discard.",
     ]);
@@ -185,7 +187,9 @@ describe("buildRoundSummary: single-event scenarios", () => {
         targetFactionId: "curonia", overlordFactionId: "livs", amount: 1,
       }),
     )!;
-    expect(lineText(s)).toBe("Revolt by Curonians cast off your overlordship");
+    expect(lineText(s)).toBe(
+      "Revolt by Curonians cast off your overlordship, and they cannot be subjugated again until turn 5",
+    );
     expect(footnoteTexts(s)[0]).toContain("Your realm is smaller");
   });
 
@@ -223,7 +227,9 @@ describe("buildRoundSummary: single-event scenarios", () => {
         overlordFactionId: "livs",
       }),
     )!;
-    expect(lineText(s)).toBe("Your subjugation released Curonians from your service");
+    expect(lineText(s)).toBe(
+      "Your subjugation released Curonians from your service; none may subjugate them until turn 5",
+    );
     // no Pay Tribute footnote - that consequence belongs to the "subjugated"
     // notice for the same round, not this side-effect
     expect(s.footnotes).toEqual([]);
@@ -333,7 +339,9 @@ describe("buildRoundSummary: single-event scenarios", () => {
     const s = oneSummary(
       ev({ type: "released", playerId: 3, targetFactionId: "livs", overlordFactionId: "jersika" }),
     )!;
-    expect(lineText(s)).toBe("The fall of Jersikans to Latgalians released you from vassalage");
+    expect(lineText(s)).toBe(
+      "The fall of Jersikans to Latgalians released you from vassalage, and none may subjugate you until turn 5",
+    );
   });
 
   it("raid against the human names the card and the actor, and reports the Might swing", () => {
@@ -563,8 +571,12 @@ describe("buildRoundSummary: batch grouping", () => {
     ];
     const s = buildRoundSummary(events, ctx)!;
     expect(s.lines).toHaveLength(2);
-    expect(lineText(s, 0)).toBe("The fall of Jersikans to Latgalians released you from vassalage");
-    expect(lineText(s, 1)).toBe("The fall of your overlord to Curonians released you from vassalage");
+    expect(lineText(s, 0)).toBe(
+      "The fall of Jersikans to Latgalians released you from vassalage, and none may subjugate you until turn 3",
+    );
+    expect(lineText(s, 1)).toBe(
+      "The fall of your overlord to Curonians released you from vassalage, and none may subjugate you until turn 4",
+    );
     expect(footnoteTexts(s)).toEqual([
       "Pay military tribute and Pay status tribute were removed from your deck, hand and discard.",
     ]);

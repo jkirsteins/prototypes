@@ -1463,7 +1463,7 @@ describe("notice modal", () => {
       targetFactionId: "gamma", overlordFactionId: "beta", amount: 1,
     }]));
     expect(lineTexts(container)).toEqual([
-      "Revolt by Gamma cast off your overlordship (Might +1 -> 0, Status +1 -> 0)",
+      "Revolt by Gamma cast off your overlordship, and they cannot be subjugated again until turn 3 (Might +1 -> 0, Status +1 -> 0)",
     ]);
   });
 
@@ -1491,7 +1491,7 @@ describe("notice modal", () => {
     hud.update(withEvents(playing(), [subjugatedYou, releasedYou]));
     expect(lineTexts(container)).toEqual([
       "Subjugate by Alpha - you owe fealty to them",
-      "The fall of your overlord to Gamma released you from vassalage",
+      "The fall of your overlord to Gamma released you from vassalage, and none may subjugate you until turn 3",
     ]);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     q(container, ".notice-continue").click();

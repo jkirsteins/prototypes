@@ -3,6 +3,7 @@ import {
   INCORPORATE_RAMP, PACT_MIGHT_BONUS, POACH_CHANCE, SETTLEMENT_BASE_CAP,
   boomsHeld, failureRiskOf, freeSitesIn, gripPartsOn, holdsGuard, leadsIn,
   omenMultiplier, omensHeld, pactBoostExpiriesOn, poachSurchargeOn, raidGainFor,
+  respiteExpiry,
   sharedNeighboursOf, settlementsIn, subjugationRaceFor, targetEligibilityFor,
   type CardBlockReason,
   type FailureRisk,
@@ -17,6 +18,7 @@ import type { Alliances } from "./relations";
 import { count } from "./plural";
 import { formatLead } from "./view";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
+import { untilTurn } from "./timed";
 
 /** How much a Favourable omens stack multiplies by, in words. One table, two
  *  grammatical forms: the adjective for a promise ("counts double") and the
@@ -58,7 +60,11 @@ export interface TargetExplanation {
 function explainReason(reason: TargetBlockReason): string[] {
   switch (reason.code) {
     case "alliance":
-      return [`Blocked by Alliance until turn ${reason.expiresTurn}.`];
+      return [`Blocked by Alliance ${untilTurn(reason.expiresTurn)}.`];
+    case "respite":
+      return [
+        `Escaped vassalage recently; cannot be subjugated ${untilTurn(reason.expiresTurn)}.`,
+      ];
     case "insufficient-lead": {
       const lands = count(reason.realmSize, "land");
       const settled =
@@ -612,9 +618,34 @@ export function pactBoostLines(
 ): TooltipLine[] {
   return pactBoostExpiriesOn(view, humanFactionId, hoveredFactionId)
     .map((expiry) => ({
-      text: `Your alliance adds +${PACT_MIGHT_BONUS} Might against them until turn ${expiry}`,
+      text: `Your alliance adds +${PACT_MIGHT_BONUS} Might against them ${untilTurn(expiry)}`,
       tone: "info" as const,
     }));
+}
+
+/** The respite note beside a hovered faction that escaped vassalage. Nameless
+ *  prose like the pact note above, and for the same structural reason: no
+ *  faction-name lookup, no naming-rule risk. Two voices, because the fact
+ *  reads differently by side: on a rival it is amber - a window on the race
+ *  that is closing - while on the human's own land it is the one surface that
+ *  says the protection is theirs, since their realm draws no badge. */
+export function respiteLines(
+  view: { respites: Record<string, number>; turn: number },
+  humanFactionId: string,
+  hoveredFactionId: string,
+): TooltipLine[] {
+  const expiry = respiteExpiry(view, hoveredFactionId);
+  if (expiry === undefined) return [];
+  if (hoveredFactionId === humanFactionId) {
+    return [{
+      text: `You escaped vassalage recently: none may subjugate you ${untilTurn(expiry)}`,
+      tone: "good",
+    }];
+  }
+  return [{
+    text: `Escaped vassalage recently: none may subjugate them ${untilTurn(expiry)}`,
+    tone: "info",
+  }];
 }
 
 /** How many settlements stand on one land, over how many the map authors for

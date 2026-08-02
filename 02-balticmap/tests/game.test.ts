@@ -12,8 +12,8 @@ import {
   allianceKey, bumpMight, bumpStatus, getRel, leadsOf, type Relations,
 } from "../src/relations";
 import {
-  HOSTAGE_RETURN_TRIBUTES, INCORPORATE_RAMP, PASSIVE_PER_LANDS,
-  cardBlockReason, leadsIn, loyaltyKey, playableSet,
+  ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES, INCORPORATE_RAMP,
+  PASSIVE_PER_LANDS, cardBlockReason, leadsIn, loyaltyKey, playableSet,
   raidYield, subjugationGripOn, validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
@@ -540,6 +540,81 @@ describe("card effects", () => {
     const won = playCard(big, 0, rng());
     expect(won.phase).toBe("victory");
     expect(won.log.at(-1)?.type).toBe("victory");
+  });
+});
+
+describe("post-escape respite", () => {
+  /** An rng returning a fixed value, so a roll's outcome is chosen, not hoped. */
+  const fixed = (v: number): Rng => () => v;
+
+  it("revolt grants a respite the former lord cannot subjugate through", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["beta", "gamma"]]) };
+    g = withRel(g, mightLead(g.relations, "gamma", "beta", 9));
+    g = withHand(g, 0, ["revolt"]);
+    const after = playCard(g, 0, rng());
+    expect(after.respites.beta).toBe(g.turn + ESCAPE_RESPITE_TURNS);
+    // gamma still holds a lead far past the bar; only the respite blocks it
+    expect(validTargetsFor(viewOf(after), "gamma", "subjugate")).not.toContain("beta");
+    expect(validTargetsFor(viewOf({ ...after, respites: {} }), "gamma", "subjugate"))
+      .toContain("beta");
+  });
+
+  it("the respite is over ON its expiry turn", () => {
+    let g = playingState(LINE_ADJ);
+    g = withRel(g, mightLead(g.relations, "gamma", "beta", 9));
+    g = { ...g, respites: { beta: g.turn + ESCAPE_RESPITE_TURNS } };
+    const lastBlocked = { ...g, turn: g.turn + ESCAPE_RESPITE_TURNS - 1 };
+    expect(validTargetsFor(viewOf(lastBlocked), "gamma", "subjugate")).not.toContain("beta");
+    const open = { ...g, turn: g.turn + ESCAPE_RESPITE_TURNS };
+    expect(validTargetsFor(viewOf(open), "gamma", "subjugate")).toContain("beta");
+  });
+
+  it("vassals freed by their lord's incorporation get the respite", () => {
+    let g = playingState(LINE_ADJ);
+    g = {
+      ...g,
+      overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]),
+      loyalty: { [loyaltyKey("gamma", "beta")]: INCORPORATE_RAMP },
+    };
+    g = withHand(g, 0, ["incorporate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after.incorporated.gamma).toBe("beta");
+    expect(after.respites.delta).toBe(g.turn + ESCAPE_RESPITE_TURNS);
+    // the digested lord itself escaped nothing
+    expect(after.respites).not.toHaveProperty("gamma");
+  });
+
+  it("a subjugation - straight take or poach - grants no respite", () => {
+    let g = playingState(LINE_ADJ);
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    g = withHand(g, 0, ["subjugate"]);
+    expect(playCard(g, 0, rng(), "gamma").respites).toEqual({});
+
+    // A poach changes the lord; the vassal never went free.
+    let h = playingState(LINE_ADJ);
+    h = { ...h, overlords: new Map([["gamma", "delta"]]) };
+    h = withRel(h, mightLead(h.relations, "beta", "gamma", 9));
+    h = withHand(h, 0, ["subjugate"]);
+    const poached = playCard(h, 0, fixed(0.1), "gamma");
+    expect(poached.overlords.get("gamma")).toBe("beta");
+    expect(poached.respites).toEqual({});
+  });
+
+  it("a lapsed respite is swept silently and a re-escape overwrites a stale entry", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, respites: { alpha: g.turn } }; // already run out
+    const swept = beginTurn(g, rng());
+    expect(swept.respites).toEqual({});
+    const fresh = swept.log.slice(g.log.length);
+    expect(
+      fresh.every((e) => ["draw", "reshuffle", "garrisoned"].includes(e.type)),
+    ).toBe(true);
+
+    let h = playingState(LINE_ADJ);
+    h = { ...h, overlords: new Map([["beta", "gamma"]]), respites: { beta: h.turn } };
+    h = withHand(h, 0, ["revolt"]);
+    expect(playCard(h, 0, rng()).respites.beta).toBe(h.turn + ESCAPE_RESPITE_TURNS);
   });
 });
 
