@@ -110,8 +110,21 @@ function clampPositions(d: Duel): void {
   if (gap < MIN_GAP) {
     const push = (MIN_GAP - gap) / 2;
     const [l, r] = d.f[0].x <= d.f[1].x ? [d.f[0], d.f[1]] : [d.f[1], d.f[0]];
-    l.x = Math.max(ARENA.left, l.x - push);
-    r.x = Math.min(ARENA.right, r.x + push);
+    // Each side wants to move by `push`, but a wall can absorb part of one
+    // side's share. Hand the absorbed remainder to the other side so the
+    // pair still separates by MIN_GAP near arena edges. This assumes the
+    // arena is wider than MIN_GAP so both ends never wall-limit at once
+    // (true here: ARENA.right - ARENA.left = 840 >> MIN_GAP = 40).
+    const lTarget = l.x - push;
+    const lClamped = Math.max(ARENA.left, lTarget);
+    const lShortfall = lClamped - lTarget;
+
+    const rTarget = r.x + push;
+    const rClamped = Math.min(ARENA.right, rTarget);
+    const rShortfall = rTarget - rClamped;
+
+    l.x = Math.max(ARENA.left, lClamped - rShortfall);
+    r.x = Math.min(ARENA.right, rClamped + lShortfall);
   }
 }
 

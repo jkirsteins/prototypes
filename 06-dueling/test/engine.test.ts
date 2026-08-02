@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { applyIntent, TICK } from "../src/combat/fighter";
-import { MIN_GAP, createDuel, gapOf, tickDuel } from "../src/combat/engine";
+import { ARENA, MIN_GAP, createDuel, gapOf, tickDuel } from "../src/combat/engine";
 import { WEAPONS } from "../src/combat/weapons";
 import type { Duel } from "../src/combat/engine";
 import type { Intent } from "../src/combat/types";
@@ -88,5 +88,21 @@ describe("positions", () => {
     const d = createDuel(WEAPONS.rapier, WEAPONS.rapier);
     for (let i = 0; i < 3000 / TICK; i++) tickDuel(d, "advance", "advance");
     expect(gapOf(d)).toBeGreaterThanOrEqual(MIN_GAP - 0.001);
+  });
+
+  test("MIN_GAP holds every tick even when a fighter is pinned at the arena wall", () => {
+    const d = createDuel(WEAPONS.rapier, WEAPONS.rapier);
+    // Fighter 0 starts against the left wall; sustained retreat+advance
+    // pressure keeps pushing it into the wall while fighter 1 closes in.
+    d.f[0].x = 65;
+    d.f[1].x = 95;
+    for (let i = 0; i < 300; i++) {
+      tickDuel(d, "retreat", "advance");
+      expect(gapOf(d)).toBeGreaterThanOrEqual(MIN_GAP - 0.001);
+      expect(d.f[0].x).toBeGreaterThanOrEqual(ARENA.left);
+      expect(d.f[0].x).toBeLessThanOrEqual(ARENA.right);
+      expect(d.f[1].x).toBeGreaterThanOrEqual(ARENA.left);
+      expect(d.f[1].x).toBeLessThanOrEqual(ARENA.right);
+    }
   });
 });
