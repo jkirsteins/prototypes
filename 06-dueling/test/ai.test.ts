@@ -1,16 +1,17 @@
 import { describe, expect, test } from "vitest";
 import {
-  DRILL_INTERVAL_MS, DUELIST_JITTER, aiDecide, createAiState, duelistCooldown,
+  AI_REACTION_BASE_MS, AI_REACTION_JITTER_MS, DRILL_INTERVAL_MS, DUELIST_JITTER,
+  aiDecide, createAiState, drawReaction, duelistCooldown,
 } from "../src/combat/ai";
-import { TICK } from "../src/combat/fighter";
+import { TICK, applyIntent, tickFighter } from "../src/combat/fighter";
 import { createDuel, tickDuel } from "../src/combat/engine";
 import { WEAPONS } from "../src/combat/weapons";
 import type { AiMode } from "../src/combat/ai";
 import type { Duel } from "../src/combat/engine";
 import type { Intent } from "../src/combat/types";
 
-function runWithAi(d: Duel, mode: AiMode, ms: number, playerIntent: Intent | null = null) {
-  const ai = createAiState();
+function runWithAi(d: Duel, mode: AiMode, ms: number, playerIntent: Intent | null = null, seed?: number) {
+  const ai = createAiState(seed);
   const evs = [];
   for (let t = 0; t < ms; t += TICK) {
     const ib = aiDecide(d, mode, ai, TICK);
@@ -19,6 +20,51 @@ function runWithAi(d: Duel, mode: AiMode, ms: number, playerIntent: Intent | nul
   }
   return evs;
 }
+
+describe("the reaction is a seeded draw, not a constant", () => {
+  const lo = AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[0];
+  const hi = AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[1];
+
+  test("every draw lands inside the declared band, and the band is 200-420", () => {
+    expect(lo).toBe(200);
+    expect(hi).toBe(420);
+    const ai = createAiState(0xfeed);
+    const draws = Array.from({ length: 200 }, () => drawReaction(ai));
+    for (const r of draws) {
+      expect(r).toBeGreaterThanOrEqual(lo);
+      expect(r).toBeLessThanOrEqual(hi);
+    }
+    expect(new Set(draws.map((r) => Math.round(r))).size).toBeGreaterThan(20); // jitter is real
+  });
+
+  test("the same seed draws the same reactions; a different seed differs", () => {
+    const a = createAiState(11);
+    const b = createAiState(11);
+    const c = createAiState(12);
+    const sa = Array.from({ length: 10 }, () => drawReaction(a));
+    const sb = Array.from({ length: 10 }, () => drawReaction(b));
+    const sc = Array.from({ length: 10 }, () => drawReaction(c));
+    expect(sa).toEqual(sb);
+    expect(sa).not.toEqual(sc);
+  });
+
+  test("mode 1 presses only after its drawn reaction - never inside 200ms, varying by seed", () => {
+    const delays = new Set<number>();
+    for (let seed = 1; seed <= 12; seed++) {
+      const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+      d.f[0].x = d.f[1].x - 160;
+      const evs = runWithAi(d, 1, 3000, "cut", seed);
+      const start = evs.find((e) => e.kind === "attackStart" && e.side === 0);
+      const press = evs.find((e) => e.kind === "parry" && e.side === 1);
+      if (!start || !press) throw new Error("no exchange");
+      const delay = press.time - start.time;
+      expect(delay).toBeGreaterThanOrEqual(lo);
+      expect(delay).toBeLessThanOrEqual(hi + 2 * TICK);
+      delays.add(Math.round(delay));
+    }
+    expect(delays.size).toBeGreaterThan(1); // the jitter reaches behavior
+  });
+});
 
 test("mode 0 never acts", () => {
   const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
@@ -69,11 +115,19 @@ test("mode 3 decisions: advance to narrow, attack off cooldown, retreat on it", 
   // wide measure (240 < 270 <= 290): still approaching
   d.f[0].x = d.f[1].x - 270;
   expect(aiDecide(d, 3, ai, TICK)).toBe("advance");
-  // narrow measure (220 <= 240), cooldown ready -> strike (jittered choice)
+  // narrow measure (220 <= 240), cooldown ready -> commit to a strike. The
+  // drawn height may differ from the stance, in which case the visible
+  // tell is a stance move first; follow the plan through to the attack.
   d.f[0].x = d.f[1].x - 220;
-  expect(["thrust", "cut"]).toContain(aiDecide(d, 3, ai, TICK));
+  let intent = aiDecide(d, 3, ai, TICK);
+  expect(ai.cooldown).toBeGreaterThan(0); // the decision burned the cooldown
+  for (let i = 0; i < 60 && intent !== "thrust" && intent !== "cut"; i++) {
+    if (intent !== null) applyIntent(d.f[1], intent);
+    tickFighter(d.f[1], TICK);
+    intent = aiDecide(d, 3, ai, TICK);
+  }
+  expect(["thrust", "cut"]).toContain(intent);
   // narrow measure, cooldown running -> back off
-  expect(ai.cooldown).toBeGreaterThan(0);
   expect(aiDecide(d, 3, ai, TICK)).toBe("retreat");
 });
 

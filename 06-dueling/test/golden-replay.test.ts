@@ -126,16 +126,23 @@ function runScenario(sc: Scenario): { hash: number; endedAt: number | null } {
 
 describe("golden replay: the simulation is unchanged by the restructure", () => {
   const EXPECTED: Record<string, { hash: number; endedAt: number | null }> = {
-    "longsword player advances into mode-3 rapier duelist": { hash: 1489359747, endedAt: 105 },
-    // Re-recorded at blade-contact, cause verified by per-tick probe: the
-    // duelist's thrust begins at tick 88, the scripted player thrust at
-    // 90 - a same-line near-simultaneous trade. The old build let the
-    // faster rapier resolve first and kill at 118; the blades now cross
-    // at 117 (met, side 1 - the later strike completing the contact),
-    // both resolve parried (118, 133), and the duelist's cut ends the
-    // longer fight at 317. The trade becoming a clash is the spec's
-    // central promise, witnessed in the gate scenario itself.
-    "rapier player against mode-3 longsword, different seed": { hash: 2583423569, endedAt: 317 },
+    // The two mode-3 scenarios re-recorded at the jittered-reaction step,
+    // cause verified by per-tick probe: createAiState now consumes one rng
+    // draw for the initial reaction, so every subsequent seeded draw -
+    // cooldown, attack, height - shifts, and both duelist fights re-roll
+    // wholesale. Here the duelist commits at tick 85 and its thrust kills
+    // at 135; the scripted parry at 120 forms ~300ms after the blade
+    // stopped being meetable. The drill scenario (mode 2, no reaction
+    // gate, no rng draws) hashing IDENTICALLY across the same change is
+    // the control that pins the cause to the rng stream.
+    "longsword player advances into mode-3 rapier duelist": { hash: 28558235, endedAt: 135 },
+    // Same rng-stream shift: the duelist now launches at tick 106, 16
+    // ticks after the scripted player thrust at 90, and dies mid-windup
+    // at 118 - the near-simultaneous trade the old recording witnessed
+    // (blades crossing at 117) simply is not scheduled this roll. The
+    // crossing mechanics stay pinned by blade-contact.test.ts, not by
+    // this gate.
+    "rapier player against mode-3 longsword, different seed": { hash: 3216415018, endedAt: 118 },
     // Re-recorded at rule D (parry on its own track: the player walks into
     // the first drill strike with the guard riding and parries it), at
     // attack-lines (the drill cycles heights, so its third strike steps the
@@ -146,14 +153,14 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // boundary - the travel model locating the clash. The other scenarios
     // are unchanged: their duels end before any contact timing differs.
     "drill metronome: parry the first beat, void the second into a whiff": { hash: 4063824542, endedAt: 410 },
-    // Re-recorded once at the parry-rise step (TODO-1), the sanctioned
-    // gameplay change: the guard now needs parryRiseMs to form, so the
-    // dummy's reactive answer to the tell-free rapier thrust (260ms of
-    // preparation against 180ms reaction + 190ms rise) forms ~30ms after
-    // the blade stops being meetable - the documented coverage failure,
-    // pinned independently by parry-rise.test.ts. The scripted thrust at
-    // tick 160 therefore kills at tick 188 where the old build was parried.
-    "parry dummy reads the player's telegraph-free attacks": { hash: 3658309345, endedAt: 188 },
+    // Re-recorded at parry-rise (the guard needs parryRiseMs to form, so
+    // the tell-free rapier thrust kills at 188 where the old build was
+    // parried) and again at the jittered-reaction step: seed 7 draws a
+    // 203ms reaction where the constant was 180, so the dummy's press
+    // lands two ticks later (173, was 171). Same fight, same documented
+    // death at 188 - only the press tick moved, which is exactly what a
+    // slower reaction should change and nothing more.
+    "parry dummy reads the player's telegraph-free attacks": { hash: 4097846637, endedAt: 188 },
   };
 
   for (const sc of SCENARIOS) {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { AI_REACTION_MS, aiDecide, createAiState } from "../src/combat/ai";
+import { AI_REACTION_BASE_MS, AI_REACTION_JITTER_MS, aiDecide, createAiState } from "../src/combat/ai";
 import { TICK, applyIntent, createFighter, guardEffective, tickFighter } from "../src/combat/fighter";
 import { createDuel, gapOf, parryMeetsAttack, tickDuel } from "../src/combat/engine";
 import { WEAPONS, parryableMs } from "../src/combat/weapons";
@@ -17,10 +17,19 @@ import type { AttackKind, WeaponId } from "../src/combat/types";
 const ws = Object.values(WEAPONS);
 
 describe("invariants", () => {
-  test("the rise keeps every guard readable: parryRiseMs >= AI_REACTION_MS", () => {
-    for (const w of ws) expect(w.parryRiseMs).toBeGreaterThanOrEqual(AI_REACTION_MS);
+  test("every rise is readable within the AI's slowest reaction, never all faster than its quickest", () => {
+    // The old guarantee - every rise outlasts THE reaction - died with the
+    // constant: reactions now draw from [200, 420]ms, and the rapier's
+    // 190ms rise undercuts even the quickest. What must still hold is the
+    // ordering that makes guards playable both ways: no rise is so slow
+    // the AI always answers it before it forms (rise < slowest reaction),
+    // and the band is wide enough that a fast rise sometimes beats the
+    // draw - the duelist reads guards like a human, not a metronome.
+    const slowest = AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[1];
+    const quickest = AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[0];
+    for (const w of ws) expect(w.parryRiseMs).toBeLessThan(slowest);
+    expect(ws.some((w) => w.parryRiseMs < quickest)).toBe(true);
   });
-
 });
 
 describe("guardEffective", () => {
@@ -122,35 +131,50 @@ describe("the rise changes what a press timing is worth (full duels)", () => {
 describe("mode 1 coverage: what the dummy can still answer on reaction", () => {
   /**
    * Player attacks carry no telegraph, so the dummy has windup+beat of
-   * visible preparation. The rapier thrust (260ms) is too fast for any
-   * reactive guard to form - the one documented failure, TODO-1 §5.1.
+   * visible preparation - minus a reaction that is now a draw from
+   * [200, 420]ms, so each matchup has an answer PER BOUND: what the
+   * dummy manages on its quickest draw and on its slowest. Rows where
+   * the two differ are exactly the matchups the jitter makes human: the
+   * same attack sometimes gets in and sometimes meets steel. The rapier
+   * thrust stays the documented failure at both bounds (TODO-1 §5.1).
    */
-  const table: Array<{ def: WeaponId; atk: WeaponId; kind: AttackKind; result: "parried" | "hit" }> = [
-    { def: "longsword", atk: "longsword", kind: "cut", result: "parried" },
-    { def: "longsword", atk: "longsword", kind: "thrust", result: "parried" },
-    { def: "longsword", atk: "rapier", kind: "cut", result: "parried" },
-    { def: "longsword", atk: "rapier", kind: "thrust", result: "hit" },
-    { def: "rapier", atk: "longsword", kind: "cut", result: "parried" },
-    { def: "rapier", atk: "longsword", kind: "thrust", result: "parried" },
-    { def: "rapier", atk: "rapier", kind: "cut", result: "parried" },
-    { def: "rapier", atk: "rapier", kind: "thrust", result: "hit" },
+  const table: Array<{
+    def: WeaponId; atk: WeaponId; kind: AttackKind;
+    quick: "parried" | "hit"; slow: "parried" | "hit";
+  }> = [
+    { def: "longsword", atk: "longsword", kind: "cut", quick: "parried", slow: "parried" },
+    { def: "longsword", atk: "longsword", kind: "thrust", quick: "parried", slow: "hit" },
+    { def: "longsword", atk: "rapier", kind: "cut", quick: "parried", slow: "hit" },
+    { def: "longsword", atk: "rapier", kind: "thrust", quick: "hit", slow: "hit" },
+    { def: "rapier", atk: "longsword", kind: "cut", quick: "parried", slow: "parried" },
+    { def: "rapier", atk: "longsword", kind: "thrust", quick: "parried", slow: "hit" },
+    { def: "rapier", atk: "rapier", kind: "cut", quick: "parried", slow: "hit" },
+    { def: "rapier", atk: "rapier", kind: "thrust", quick: "hit", slow: "hit" },
   ];
 
+  const bounds = {
+    quick: AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[0],
+    slow: AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[1],
+  } as const;
+
   for (const row of table) {
-    test(`${row.atk} ${row.kind} against a ${row.def} dummy: ${row.result}`, () => {
-      const d = createDuel(WEAPONS[row.atk], WEAPONS[row.def]);
-      d.f[0].x = 1000;
-      d.f[1].x = 1000 + Math.min(WEAPONS[row.atk].reach, WEAPONS[row.def].reach) - 20;
-      const ai = createAiState(1);
-      const t = WEAPONS[row.atk].attacks[row.kind];
-      const evs = [];
-      for (let i = 0; i * TICK < t.windup + t.beat + t.strike + 3 * TICK; i++) {
-        const ib = aiDecide(d, 1, ai, TICK);
-        evs.push(...tickDuel(d, i === 0 ? row.kind : null, ib));
-      }
-      const got = evs.some((e) => e.kind === "parried") ? "parried" : evs.some((e) => e.kind === "hit") ? "hit" : "none";
-      expect(got).toBe(row.result);
-    });
+    for (const bound of ["quick", "slow"] as const) {
+      test(`${row.atk} ${row.kind} against a ${row.def} dummy, ${bound}est reaction: ${row[bound]}`, () => {
+        const d = createDuel(WEAPONS[row.atk], WEAPONS[row.def]);
+        d.f[0].x = 1000;
+        d.f[1].x = 1000 + Math.min(WEAPONS[row.atk].reach, WEAPONS[row.def].reach) - 20;
+        const ai = createAiState(1);
+        ai.reactionMs = bounds[bound]; // pin the draw to the bound under test
+        const t = WEAPONS[row.atk].attacks[row.kind];
+        const evs = [];
+        for (let i = 0; i * TICK < t.windup + t.beat + t.strike + 3 * TICK; i++) {
+          const ib = aiDecide(d, 1, ai, TICK);
+          evs.push(...tickDuel(d, i === 0 ? row.kind : null, ib));
+        }
+        const got = evs.some((e) => e.kind === "parried") ? "parried" : evs.some((e) => e.kind === "hit") ? "hit" : "none";
+        expect(got).toBe(row[bound]);
+      });
+    }
   }
 });
 

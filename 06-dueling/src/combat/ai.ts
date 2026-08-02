@@ -7,7 +7,17 @@ import type { AttackKind, Height, Intent, WeaponProfile } from "./types";
 
 export type AiMode = 0 | 1 | 2 | 3;
 
-export const AI_REACTION_MS = 180;
+/**
+ * The AI's reaction is a seeded draw, not a constant: base plus a uniform
+ * jitter, so every reaction lands in [200, 420]ms. A fixed number made the
+ * AI a metronome the player could set a clock by; jitter per episode makes
+ * each read humanly uneven while (seed, inputs) still replays exactly. One
+ * draw is held for the whole episode - the threshold must not wander while
+ * a single stimulus is being reacted to - and consumed when the decision
+ * fires, so the next stimulus gets a fresh draw.
+ */
+export const AI_REACTION_BASE_MS = 280;
+export const AI_REACTION_JITTER_MS: readonly [number, number] = [-80, 140];
 /**
  * The human budget the reaction-matrix test is computed against: seeing an
  * attack and deciding takes about this long, before any blade or body
@@ -63,6 +73,8 @@ export interface AiState {
   sameHeightRun: number;
   /** Mode 1: reaction clock toward releasing a guard whose threat is gone. */
   releaseInMs: number;
+  /** The current episode's drawn reaction; consumed and redrawn on each fired decision. */
+  reactionMs: number;
   rng: number;
 }
 
@@ -72,12 +84,15 @@ export interface AiState {
  * inside the simulation and would make replays and tests diverge.
  */
 export function createAiState(seed: number = DEFAULT_SEED): AiState {
-  return {
+  const ai: AiState = {
     cooldown: 0, next: "thrust", nextHeight: "low",
     plan: null, lastHeight: null, sameHeightRun: 0,
     releaseInMs: 0,
+    reactionMs: 0,
     rng: seed >>> 0,
   };
+  ai.reactionMs = drawReaction(ai);
+  return ai;
 }
 
 /** mulberry32: one multiply-xor round, returns [0, 1) and advances the state. */
@@ -87,6 +102,12 @@ function nextRandom(ai: AiState): number {
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+/** One reaction episode's threshold: base plus uniform jitter, in [200, 420]. */
+export function drawReaction(ai: AiState): number {
+  const [lo, hi] = AI_REACTION_JITTER_MS;
+  return AI_REACTION_BASE_MS + lo + (hi - lo) * nextRandom(ai);
 }
 
 /** Decides side 1's intent. Deterministic given the AiState seed. */
@@ -101,8 +122,9 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     // next rep. (A deflection consumes the guard by itself.)
     if (self.parry !== null && opp.state.kind !== "attack") {
       ai.releaseInMs += dt;
-      if (ai.releaseInMs >= AI_REACTION_MS) {
+      if (ai.releaseInMs >= ai.reactionMs) {
         ai.releaseInMs = 0;
+        ai.reactionMs = drawReaction(ai);
         return "parryRelease";
       }
       return null;
@@ -122,12 +144,13 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     // visible attack, like any press.
     const threatHeight = opp.state.height;
     if (
-      elapsedMs >= AI_REACTION_MS &&
+      elapsedMs >= ai.reactionMs &&
       self.height !== threatHeight &&
       self.heightTo === null &&
       self.parry === null &&
       self.state.kind === "ready"
     ) {
+      ai.reactionMs = drawReaction(ai);
       return threatHeight === "high" ? "stanceUp" : "stanceDown";
     }
     // A latched guard whose attack has visibly changed line gets one
@@ -136,26 +159,31 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
       self.parry !== null &&
       self.parry.phase === "held" &&
       opp.state.redirectedAtMs !== null &&
-      opp.state.elapsedMs - opp.state.redirectedAtMs >= AI_REACTION_MS
+      opp.state.elapsedMs - opp.state.redirectedAtMs >= ai.reactionMs
     ) {
       const theirs = lineOf(opp);
       const covered = self.parry.coveredLine;
       if (covered.height !== theirs.height) {
+        ai.reactionMs = drawReaction(ai);
         return theirs.height === "high" ? "stanceUp" : "stanceDown";
       }
-      if (covered.side !== theirs.side) return "sideShift";
+      if (covered.side !== theirs.side) {
+        ai.reactionMs = drawReaction(ai);
+        return "sideShift";
+      }
     }
     // With no expiry there is nothing to centre a press inside: the dummy
     // presses as soon as it has reacted and its stance has arrived, and
     // HOLDS. The rise and the stance travel still decide what it can
     // answer - the documented failures (the rapier thrust) stay failures.
     if (
-      elapsedMs >= AI_REACTION_MS &&
+      elapsedMs >= ai.reactionMs &&
       self.state.kind === "ready" &&
       self.parry === null &&
       self.stepRecoveryMs <= 0 &&
       self.parryRecoveryMs <= 0
     ) {
+      ai.reactionMs = drawReaction(ai);
       return "parry";
     }
     return null;
@@ -179,9 +207,10 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
       s.elapsedMs < s.timeline.strikeStart
     ) {
       const g = opp.parry;
-      if (g !== null && g.visibleMs >= AI_REACTION_MS) {
+      if (g !== null && g.visibleMs >= ai.reactionMs) {
         const mine = lineOf(self);
         if (g.coveredLine.height === mine.height && g.coveredLine.side === mine.side) {
+          ai.reactionMs = drawReaction(ai);
           return s.attack === "cut" ? "thrust" : "cut";
         }
       }
