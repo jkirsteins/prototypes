@@ -22,21 +22,23 @@ not a mixup, it is a win button.
 
 ---
 
-## 1. Two axes, two victims
+## 1. Two axes, two lies
 
-A parry covers its height on **both** sides. Two travelling blades must match on
-**both** axes. Those two rules are not the same shape, so changing height and
-changing side deceive different people.
+A parry covers one complete snapshotted line (`attack-lines` §3). Two
+travelling blades must match on both axes (`blade-contact` §2.1). So a redirect
+on **either** axis escapes a committed guard, and a side redirect additionally
+uncrosses a counter-attacker's blade.
 
-| Redirect | Beats | Does not beat |
+| Redirect | Beats | The defender's answer |
 |---|---|---|
-| Height | the guard, which chose a height | nothing relevant |
-| Side | a counter-attacker, whose blade no longer crosses yours | the guard, which spans sides |
-| Both | both | |
+| Height | a parry covering the old height; a counter-attack at it | shift the guard's height (arrow) |
+| Side | a parry covering the old side; a counter-attack crossing on it | retarget the guard's side (press parry again) |
+| Both | a parry unless it corrects both axes | both inputs together |
 
-That is two distinct lies out of one mechanic, which is more than the single-axis
-version of this spec had. Against a defender who parries you change height;
-against one who trades blades with you, you change side.
+The parry stays on the line it snapshotted until a shift *completes* - it never
+tracks the blade on its own. That is what makes both lies real: a guard that
+followed the attack automatically could not be deceived, and this spec would
+have nothing to do.
 
 ### 1.1 Kept distinct from the windup cancel
 
@@ -123,91 +125,132 @@ redirectCost(w, height, side) =
   :                w.redirectSideMs;
 ```
 
-| Weapon | `redirectHeightMs` | `redirectSideMs` | `guardShiftMs` |
-|---|---|---|---|
-| Longsword | 380 | 300 | 180 |
-| Rapier | 350 | 220 | 150 |
+| Weapon | `redirectHeightMs` | `redirectSideMs` | `guardShiftMs` (height) | `sideChangeMs` (from `attack-lines`) |
+|---|---|---|---|---|
+| Longsword | 380 | 300 | 180 | 120 |
+| Rapier | 350 | 220 | 150 | 100 |
 
-Changing height is a larger motion than going around a blade at the point, and it
-is priced accordingly. The rapier changes side fastest: it is the weapon built to
-defeat contact by disengaging, and with its worse `parriedPenalty` from `blade-contact`
-the two weapons sit at opposite ends of one axis. The longsword wins where steel
-meets; the rapier wins where it does not.
+The defender's side retarget introduces no new constant: it is the same
+`sideChangeMs` rotation `attack-lines` defined for the initial press, because
+it is the same physical motion - the blade crossing to the other side of the
+line. Only `guardShiftMs` is new here, the formed guard travelling between
+heights.
 
-**These numbers are load-bearing.** §4.1 derives the defender's answer from
-them, and §5 makes that a test.
+Changing height is a larger motion than going around a blade at the point, so
+it costs more - on both sides of the exchange. The attacker's height redirect
+is slower than its side redirect, and the defender's height shift (the blade
+travels) is slower than its side retarget (the blade rotates). The rapier
+changes side fastest: it is the weapon built to defeat contact by disengaging,
+and with its worse `parriedPenalty` from `blade-contact` the two weapons sit at
+opposite ends of one axis. The longsword wins where steel meets; the rapier
+wins where it does not.
+
+**These numbers are load-bearing.** §4.1 derives the defender's answers from
+them, and §5 makes the inequalities tests.
 
 ---
 
 ## 4. The defender's answer: shifting the guard
 
-Without this section a reactive height redirect beats every parry
+Without this section a reactive redirect on either axis beats every parry
 unconditionally, and mode 3 becomes unbeatable rather than unpredictable.
 
-A raised guard may **shift** to the other height once per raise, at
-`guardShiftMs`. This is cheaper than `attack-lines`'s `heightChangeMs` cold
-stance move because the blade is already formed and only has to travel. Call it
-the **guard shift** - changing the parry line - and nothing grander: winding is
+A raised guard may **shift its covered line once per raise**. Call it the
+**guard shift** - changing the parry line - and nothing grander: winding is
 worked *from blade contact*, so the word *Winden* stays reserved for
 `pressure-and-winding`, where contact exists. An earlier draft borrowed the
 term for this motion and was wrong to.
 
-The shift input is the arrows - the same keys that move the stance, which
-`attack-lines` refuses while a parry is up. From this spec they stop being
-refused and perform the shift instead.
+**The controls, explicitly - nothing retargets automatically:**
+
+- **An arrow** while the parry is up shifts the guard's **height**, over
+  `guardShiftMs`. (These are the keys `attack-lines` refuses while a parry is
+  up; from this spec they perform the shift instead.) The shift also moves the
+  fighter's stance, for the same reason a height redirect moves the attacker's.
+- **Pressing parry again** while the parry is up retargets the guard's
+  **side**, over `sideChangeMs`, to the side of the currently visible
+  attack - the same inference and the same simulated rotation as the original
+  press, reading only what is visible on that tick.
+- **Both on the same tick** shifts both axes in one motion, over the larger of
+  the two durations.
 
 ```ts
 interface ParryTrack {
-  elapsedMs: number;   // since first raised; expires at parryWindowMs
-  shiftMs: number;     // since the current height was chosen
-  shifted: boolean;    // one shift per raise
+  elapsedMs: number;      // since first raised; expires at parryWindowMs
+  coveredLine: Line;      // what the guard covers NOW: the old line, until a shift completes
+  shiftTo: Line | null;   // in motion toward this line; null when settled
+  shiftMs: number;        // since the shift began
+  shifted: boolean;       // one shift per raise, whichever kind
 }
-
-guardEffective(f) =
-  f.parry !== null
-  && f.parry.shiftMs >= (f.parry.shifted ? f.weapon.guardShiftMs : f.weapon.parryRiseMs)
-  && f.parry.elapsedMs < f.weapon.parryWindowMs;
 ```
 
-The guard's expiry does **not** refresh on a shift. Shifting late means the new
-height may never become effective. One shift answers one redirect: a single lie
-corrected once, not a wrestling match of key presses.
+The rules, each one a test (§7):
 
-The shift also moves the fighter's stance, for the same reason a height redirect
-does.
+- **The old line holds until the shift completes.** While `shiftTo` is set the
+  guard still covers `coveredLine`, so a blade arriving on the old line
+  mid-shift is still met. `coveredLine` updates only when the shift's duration
+  elapses - the guard never covers the destination early, and never covers
+  nothing.
+- **The expiry does not refresh.** `parryWindowMs` runs from the original
+  press. Shifting late means the new line may never become effective before
+  the guard lapses.
+- **Once per raise, whichever kind.** Height, side, or both-at-once each
+  consume the single shift. One shift answers one redirect - a single lie
+  corrected once, not a wrestling match of key presses.
 
-### 4.1 The answer window, checked
+### 4.1 The answer windows, checked per axis
 
 Defender sees the redirect at R, reacts at `R + PLAYER_REACTION_MS` (250), and
-the guard is effective `guardShiftMs` later. The redirected blade is meetable
-until `R + redirectHeightMs + strike * PARRYABLE_FRACTION`.
+the corrected line is covered one shift later. The redirected blade is meetable
+until `R + redirectMs + strike * PARRYABLE_FRACTION`. Worst case is the
+redirect into the thrust.
 
-Worst case is the fastest redirected attack, the thrust:
+**Height redirects - answerable against every weapon:**
 
-| Weapon | Guard effective | Meetable until | Margin |
+| Attacker | Corrected at (LS / R defender) | Meetable until | Margin |
 |---|---|---|---|
-| Longsword | R + 430 | R + 510 | 80 ms |
-| Rapier | R + 400 | R + 460 | 60 ms |
+| Longsword (380) | R + 430 / R + 400 | R + 510 | 80 / 110 ms |
+| Rapier (350) | R + 430 / R + 400 | R + 460 | 30 / 60 ms |
 
-Reading a feint and correcting the guard is possible and hard, which is the right
-difficulty for the highest-skill defensive play in the game. As an invariant:
+**Side redirects - answerable against the longsword; the rapier's is the
+disengage, and it is deliberately below the line:**
 
-> **`redirectHeightMs + min(strike) * PARRYABLE_FRACTION >= PLAYER_REACTION_MS +
-> guardShiftMs`** for every weapon.
+| Attacker | Corrected at (LS / R defender) | Meetable until | Margin |
+|---|---|---|---|
+| Longsword (300) | R + 370 / R + 350 | R + 430 | 60 / 80 ms |
+| Rapier (220) | R + 370 / R + 350 | R + 330 | **-40 / -20 ms** |
+
+The rapier's side redirect cannot be answered by chasing it with the guard.
+That is not a hole; it is the weapon. The disengage is what a rapier *is* - the
+design doc gives it exactly this identity - and it mirrors the two documented
+exceptions before it (`parry-rise` §5.1, `attack-lines` §4.1): one attack per
+axis that prediction, distance or a counter must answer instead of reaction.
+Your answers to it are the void, not over-committing the guard, and the
+counter-attack `blade-contact` made safe.
+
+As invariants, tested per weapon pair:
+
+> **Height:** `redirectHeightMs + thrust.strike * PARRYABLE_FRACTION >=
+> PLAYER_REACTION_MS + guardShiftMs` - for every attacker/defender pair.
 >
-> **`guardShiftMs < heightChangeMs`**, or shifting a formed guard is not cheaper
-> than starting from cold.
+> **Side:** the same inequality with `redirectSideMs` and `sideChangeMs` -
+> for every pair **except a rapier attacker**, which must fall short: the
+> disengage staying unanswerable-by-shift is asserted, not tolerated.
+>
+> **`guardShiftMs < heightChangeMs`**, or shifting a formed guard is not
+> cheaper than a cold stance move; and **`sideChangeMs < guardShiftMs`**,
+> or rotating the blade is not cheaper than travelling with it.
 
-If play says the answer is impossible rather than hard, the lever is
+If play says a height answer is impossible rather than hard, the lever is
 `redirectHeightMs` upward, not `parryRiseMs` downward: that number carries
 `parry-rise` §3.1's readability invariant - a guard must be visible at least a
 reaction time before it can stop anything - and lowering it would buy the
 defender's answer by selling the attacker's ability to see guards coming at
 all.
 
-`guardShiftMs` has no floor at `AI_REACTION_MS`. It is the duration of a motion,
-not a reaction gate; the AI spends its 180 ms deciding and then shifts in
-`guardShiftMs` like anyone else, which is why the rapier's 150 is legal.
+The shift durations have no floor at `AI_REACTION_MS`. They are durations of
+motions, not reaction gates; the AI spends its 180 ms deciding and then shifts
+like anyone else.
 
 ---
 
@@ -253,9 +296,9 @@ cue: the blade never returns to a windup pose, it travels sideways.
 ### 5.4 The help panel
 
 Per `CLAUDE.md`, `src/ui/help.ts` is updated in the same commit. This spec adds
-an acceptance rule (when a redirect is legal), a contact consequence (a guard
-spans sides, so only height lies beat it) and the guard shift. Durations come
-from `WEAPONS` through callbacks.
+an acceptance rule (when a redirect is legal), a contact consequence (a redirect
+on either axis escapes a guard's covered line) and the guard shift with its two
+inputs. Durations come from `WEAPONS` through callbacks.
 
 ---
 
@@ -266,10 +309,17 @@ Mode 3 gains the reactive redirect, which is why this chain of specs exists.
 ```
 While attacking, if the redirect is legal (§2), and the opponent's
 guard has been visible for at least AI_REACTION_MS:
-  - if that guard is at this attack's height   -> redirect height
-  - else if the opponent is mid-attack on this attack's side -> redirect side
+  - if that guard's covered line matches this attack's line
+      -> redirect the axis that escapes cheapest: side if the covered
+         side matches, else height
+  - else if the opponent is mid-attack, crossing on this attack's line
+      -> redirect side
   - else do nothing
 ```
+
+The AI reads the guard's *visible* covered line - the same row-3 information
+the player has - never the defender's inputs or any pending shift's
+destination.
 
 Purely reactive, no rng draw, so a seeded replay stays reproducible. It is
 deterministic *and* unpredictable, because what it does depends on what you did.
@@ -310,27 +360,43 @@ Which is the answer to "the duelist is solved":
 - **Timeline replacement:** every mark equals `elapsedMs + cost +` the resulting
   kind's timings; `riseStart` and `riseEnd` are unchanged and in the past;
   `elapsedMs` is monotonic across the redirect.
-- **The height lie lands:** guard up and effective at `high`, attack redirected
-  to `low`, result is `hit`.
-- **The side lie does not beat a guard:** guard up at the attack's height,
-  attack redirected from `outside` to `inside`, result is `parried`.
-- **The side lie beats a counter-attacker:** two crossing blades, one redirects
-  side, they no longer cross and both resolve independently.
-- **The answer works:** defender shifts within §4.1's window, result is
-  `parried`. One tick later, result is `hit`. These two are the spec.
-- **Invariants:** both inequalities in §4.1, per weapon.
+- **The height lie lands:** guard covering `high inside`, attack redirected to
+  `low` on the same side, result is `hit`.
+- **The side lie lands:** guard covering the attack's height and `outside`,
+  attack redirected to `inside` at the same height, result is `hit` - the
+  parry's snapshotted side does not follow the blade.
+- **The parry never reads a future redirect:** a parry pressed during the
+  attacker's windup covers the side visible on the press tick; a redirect on a
+  later tick does not retroactively change what was snapshotted.
+- **The side lie also uncrosses a counter-attacker:** two crossing blades, one
+  redirects side, they no longer cross and both resolve independently.
+- **The height answer works:** defender's height shift completes within §4.1's
+  window, result is `parried`; one tick later, `hit`.
+- **The side answer works:** against a longsword side redirect, a retarget
+  (parry pressed again) completing in time is `parried`; one tick later, `hit`.
+  Against a rapier side redirect the retarget is always late - the disengage
+  exception, asserted as `hit`.
+- **Old line holds mid-shift:** a blade arriving on the guard's old covered
+  line while a shift is in motion is still `parried`; the destination line is
+  not covered until the shift's duration elapses.
+- **Invariants:** the height inequality for every pair, the side inequality
+  for every pair except the rapier attacker (which must fail), and both
+  ordering invariants (`guardShiftMs < heightChangeMs`,
+  `sideChangeMs < guardShiftMs`), per §4.1.
 - **Window does not refresh:** a shifted guard still expires at its original
   `parryWindowMs`.
+- **One shift per raise, whichever kind:** after a side retarget, a height
+  shift on the same raise is refused, and the reverse.
 - **Stance follows:** after a height redirect the attacker's stance is the new
-  height; after a guard shift the defender's stance is the new height.
+  height; after a height shift the defender's stance is the new height.
 - **Feint costs tempo:** against an opponent who never defends, a redirected
   attack resolves strictly later than the committed one.
 - **AI determinism:** same seed and input script, same redirect ticks.
 - **Audio contract:** a redirect emits no `windup`, no `met` and no extra sound;
   exactly one outcome sound fires, at the new `strikeEnd`. Belongs in the
   "presentation events follow the simulation, not the input" describe block.
-- **Help panel:** cites the shipping redirect durations and states that a guard
-  spans sides.
+- **Help panel:** cites the shipping redirect and shift durations and states
+  that a guard covers one complete line.
 - **Golden replay:** hash re-recorded.
 
 ---
@@ -362,9 +428,13 @@ What to look for:
 - Getting feinted feels like being read. You should be able to say afterwards
   what you did that told the AI to feint.
 - Shifting the guard after spotting a height redirect works often enough to be
-  worth attempting and rarely enough to feel earned.
-- The side redirect is visibly a different play: it does nothing to a parrying
-  opponent and saves you against one who trades.
+  worth attempting and rarely enough to feel earned; the side retarget (L
+  again) feels like the same skill with a smaller motion.
+- The two lies read differently on row 3: a height redirect slides the line
+  bar, a side redirect flips the label - and your guard visibly keeps its old
+  covered line until your correction lands.
+- The rapier's side redirect feels like a disengage should: uncatchable by the
+  guard, answered by distance or steel instead.
 - Feinting into an opponent who was not defending feels like a wasted tempo.
 
 What would look wrong: the height redirect being invisible until it lands. That

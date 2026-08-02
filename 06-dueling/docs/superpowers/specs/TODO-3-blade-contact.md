@@ -116,12 +116,17 @@ Contact is the **first tick** all three hold. Consequences:
 ### 2.2 parryMeetsAttack
 
 The same physical rule with one side standing still. To the conditions
-`parry-rise` and `attack-lines` already put here (guard effective, height
-match), this spec adds the travel condition:
+`parry-rise` and `attack-lines` already put here - guard effective, and the
+attack's line matching the parry's snapshotted `coveredLine` on **both** axes -
+this spec adds the travel condition:
 
 ```
 extension(attacker) >= gap
 ```
+
+The contact reads `parry.coveredLine`, never the defender's current stance and
+never any hidden final line of the attack: the snapshot taken at the press is
+the guard, and this function consults nothing else about where it stands.
 
 `met` latches on the first tick every condition holds - which is
 `max(arrival tick, guard-effective tick)` - and can latch until the end of the

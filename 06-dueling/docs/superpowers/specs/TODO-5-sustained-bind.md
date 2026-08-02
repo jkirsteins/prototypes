@@ -73,7 +73,13 @@ interface Duel {
 
 interface BindState {
   t: number;                        // the one clock; owned by the duel
-  line: Line;                       // where the blades are crossed
+  /** The actual contact line, saved at entry. For two crossing attacks it
+   *  is their shared line; for a parried attack it is the attack's line,
+   *  which the full-match rule (`attack-lines` §3) guarantees equals the
+   *  parry's coveredLine - so there is exactly one honest value to save,
+   *  and every bind presentation shows this saved line, never a live
+   *  recomputation from states that may since have moved. */
+  line: Line;
   /** Contact snapshot, captured on the entry tick BEFORE the attack and parry
    *  states are discarded. `pressure-and-winding` derives firmness from this;
    *  it cannot be recomputed later, because the states it reads are gone. */
@@ -196,9 +202,11 @@ ambience, and this project does not do ambience.
 
 ### 4.4 Row 3 and the help panel
 
-Row 3 shows the line the bind formed on, as `LOW OUTSIDE (bind)`. Both fighters
-are on it by definition, so both rows read the same, which is the visual
-statement that the two blades are in one place.
+Row 3 shows the saved `bind.line` - the contact line captured at entry - as
+`LOW OUTSIDE (bind)`. Both fighters are on it by definition, so both rows read
+the same, which is the visual statement that the two blades are in one place.
+The label reads the snapshot, not the fighters' current stances, for the same
+reason the firmness does: the states that formed the contact are gone.
 
 Per `CLAUDE.md`, `src/ui/help.ts` is updated in the same commit: the bind is a new
 state, so an undocumented one fails the build, and the entry must also say which

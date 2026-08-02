@@ -116,43 +116,78 @@ was a duplicate of the arrows.
 
 ## 3. What a parry covers
 
-**Height must match. Side is free.**
+**A parry covers one complete line. Height and side must both match the
+parry's snapshotted covered line.**
 
-A raised guard covers its stance height against an attack on either side. The
-defender's job is to be at the right height; finding the blade once you are there
-is what a guard does.
+The player chooses the height through the stance. The game infers the side from
+the visible threat. Both are fixed at the press:
 
 ```ts
+interface ParryTrack {
+  elapsedMs: number;
+  coveredLine: Line;   // snapshotted at the press; never retargeted after
+}
+
 function parryMeetsAttack(attacker, defender, gap) {
   return ...existing conditions from `parry-rise`...
-    && lineOf(attacker).height === defender.height;      // NEW; side not tested
+    && lineOf(attacker).height === defender.parry.coveredLine.height   // NEW
+    && lineOf(attacker).side   === defender.parry.coveredLine.side;    // NEW
 }
 
 function lineOf(f: Fighter): Line;  // height from the attack's snapshot, side from its timings
 ```
 
-A guard is a defensive position rather than a point, so it spans the side axis
-at its height:
+**How the covered line is chosen, at the press:**
 
-- A guard at the right height stops a cut and a thrust alike.
-- A guard at the wrong height stops nothing.
+- **Height** comes from the defender's current stance. A stance in motion still
+  counts as its old height (§2).
+- **Side is inferred immediately, but covered only after its travel.** The
+  target side comes from the opponent's currently visible attack: if the
+  opponent is in `windup` or `strike`, the parry targets that attack's declared
+  side. Only information visible on that tick is read - the inference must
+  never inspect a redirect that has not happened yet or any hidden final line.
+  If the target differs from the fighter's standing `guardSide`, the blade must
+  travel for `sideChangeMs` (a new weapon field: longsword 120, rapier 100)
+  before that side is covered; if it matches, there is nothing to travel.
+- **If no attack is visible**, the target side is `guardSide` itself: a field
+  on the fighter, initial value `inside`, updated to the new side whenever a
+  parry's side travel completes (at the press when no travel was needed). Your
+  guard defaults to where it last was.
+
+The inferred line is the parry's **target**, fixed at the press. The guard
+never automatically follows the attack afterwards: if the attack changes line
+after the press (a `line-feints` redirect), the parry keeps its target, and
+misses. That is the entire point - a guard that tracked the blade could never
+be deceived, and the side axis would do no work against defenders.
+
+**Inference is input; coverage is simulation.** This is `CLAUDE.md`'s
+keypress-is-only-input rule applied to targeting. The inference is syntactic
+sugar for the human controller - it answers "which side did I mean?" without a
+dedicated side key - and it costs nothing because choosing costs nothing. What
+can never be instantaneous is the *outcome*: the blade physically standing on
+the covered side. If the blade is on the wrong side, it travels there, over
+`sideChangeMs`, on the simulation's clock, exactly as the rise and the stance
+transition already do. No input ever teleports steel.
+
+The coverage cases, exhaustively:
+
+| Attack vs covered line | Result |
+|---|---|
+| Same height, same side | parried (timing and reach holding) |
+| Same height, different side | hit |
+| Different height, same side | hit |
+| Different height, different side | hit |
+
+An earlier draft ruled that a parry covers both sides at its height, on the
+argument that the defender had no side input. The inference resolves that
+objection: the side *is* chosen by the defender - implicitly, by when they
+press. Pressing against a visible thrust covers inside because that is what
+answering a thrust means. What the defender does not get is a guard that keeps
+covering everything a feint could turn the attack into.
 
 Attacks still do not interact with each other - that is `blade-contact`, which
-will require agreement on **both** axes for two travelling blades, because two
-blades genuinely have to be in the same place to touch. Until it lands, the side
-axis is carried by the model and the labels but consumed by nothing; that is the
-price of sequencing the vocabulary before the collisions, and it is one spec
-wide.
-
-**Considered and rejected: snapshotting the side into the parry.** A
-side-matching guard was on the table and is turned down, for three reasons. The
-defender has no side input, so the snapshot would come from a guess or from the
-last attack seen - not from a choice they made. Physically, a formed guard at a
-height closes that height; inside-versus-outside matters to blades in motion,
-not to a static cover. And mechanically it would stack a hidden 50/50 on top of
-the height read, with no control through which the defender could express skill.
-If side coverage is ever wanted, it arrives as a new guard input, not as a
-hidden snapshot.
+requires agreement on **both** axes for two travelling blades, because two
+blades genuinely have to be in the same place to touch.
 
 ---
 
@@ -163,14 +198,26 @@ do not add. They are the same motion: moving your blade to a new height *is*
 forming a guard there. So:
 
 ```ts
-/** The tick a guard becomes able to meet a blade. */
-guardEffectiveAt = max(parryPress + parryRiseMs, heightArrival)
+/** The tick a guard becomes able to meet a blade: every travel must have
+ *  arrived - the rise, the side rotation (when the target side differs from
+ *  guardSide), and the height transition. They run concurrently; none adds
+ *  to another. */
+guardEffectiveAt = max(
+  parryPress + parryRiseMs,
+  parryPress + (targetSide !== guardSide ? sideChangeMs : 0),
+  heightArrival,
+)
 ```
 
-with the invariant, alongside `parry-rise` §3.1's:
+with two invariants, alongside `parry-rise` §3.1's:
 
 > **`heightChangeMs > parryRiseMs`** for every weapon, or standing on the wrong
 > height costs nothing.
+>
+> **`sideChangeMs < parryRiseMs`** for every weapon, or §4.1's claim that a
+> reactive press is gated by the rise alone stops being true. The side
+> rotation is a smaller motion than raising the blade; the numbers must keep
+> saying so.
 
 ### 4.1 The matrix
 
@@ -194,6 +241,17 @@ Longsword defender, `parryRiseMs` 220 and `heightChangeMs` 300:
 | Wrong | 250 + 300 = **550** | everything except the rapier thrust |
 
 Rapier defender (190 / 260) has the same shape and the same single failure.
+
+**The side axis adds no reaction time to a reactive press - but only because
+the numbers keep it that way.** A reactive parry is pressed against a visible
+attack, so the inference in §3 targets the right side for free; the side's
+*travel* (`sideChangeMs`, when the blade stands on the other side) runs
+concurrently with the rise and is shorter than it, so the rise dominates and
+the matrix stays height-driven. That ordering is the `sideChangeMs <
+parryRiseMs` invariant, not a coincidence. The side bites in two ways:
+pressing with no attack visible (a predictive guard on `guardSide`, which the
+opponent's other side simply beats), and, from `line-feints` on, an attack
+that changes side after the press.
 
 The design falls out of the numbers rather than being imposed on them: **from the
 right height you can react to anything. From the wrong height you can answer any
@@ -219,17 +277,17 @@ It shows one of three things, and always says which in parentheses:
 | Situation | Label |
 |---|---|
 | Attacking | `HIGH OUTSIDE (attack)` |
-| Parry up | `LOW ANY (parry)` |
+| Parry up | `HIGH INSIDE (parry)` - the complete covered line, both axes |
 | Neither | `LOW (stance)`, or `LOW to HIGH (stance)` while a transition runs |
 
 Heights render from the full enum, so `MIDDLE` appears the day a third stance is
 enabled with no HUD change.
 
-The parry reads `ANY` on the side axis because that is literally the rule in §3,
-and printing it is cheaper than a player inferring it from three deaths. The
-stance case is not in your original list of two but is required: the stance is the
-read the opponent has to make, so it cannot be invisible while it is the only
-thing happening.
+The parry's label is the snapshotted `coveredLine`, never recomputed from the
+opponent: what you read on row 3 is exactly what the contact rule will consult,
+so a feinted-out guard visibly covers the wrong line. The stance case is not in
+the original list of two but is required: the stance is the read the opponent
+has to make, so it cannot be invisible while it is the only thing happening.
 
 Both fighters get the row. The AI's line must be as legible as the player's or
 none of the reads in this chain of specs are available.
@@ -273,10 +331,10 @@ already drawn, on the floor band. Drawing it twice buys nothing.
 segmented bar and a cursor. Repeating it here would give one fact two idioms.
 The line bar answers *where*; row 1 answers *when*.
 
-**Side.** It lives in row 3's text. A parry ignores side entirely, so only a
-counter-attacker needs it, which does not yet justify a second spatial encoding.
-Solid fill for `inside` against a hollow outline for `outside` is the reserved
-option if play says otherwise.
+**Side.** It lives in row 3's text. The side matters to every contact - a parry
+covers exactly one - but it is a binary with no spatial meaning in a flat side
+view, so text carries it until play shows it needs more. Solid fill for
+`inside` against a hollow outline for `outside` is the reserved option.
 
 #### The slide is the point
 
@@ -304,8 +362,9 @@ watching and would make `line-feints`'s feint answerable by ear.
 Per `CLAUDE.md`, `src/ui/help.ts` is the player-facing statement of the rules and
 is updated **in the same commit**. This spec adds a state (the stance
 transition), an acceptance rule (when arrows are refused) and a contact rule
-(height must match, side is free). All three get an entry, one sentence for what
-is happening and one for what the player must do, and durations come from
+(a parry covers one complete line: your stance's height, and the side of the
+attack you pressed against). All three get an entry, one sentence for what is
+happening and one for what the player must do, and durations come from
 `WEAPONS` via callbacks rather than literals.
 
 ---
@@ -334,10 +393,12 @@ attacks at the same height) stops the rng from producing a run that reads as a
 bug. That rule is seeded state on `AiState`, not a hidden timer.
 
 **Mode 1, the parry dummy.** Reads the incoming attack's height and moves its
-stance to match, then parries. The stance move costs `heightChangeMs`, so the
-dummy now visibly fails against attacks that are too fast for it to travel and
-guard in time. That is the matrix in §4.1 being demonstrated rather than
-described, and it is the drill: attack from a height the dummy is not standing at.
+stance to match, then parries - and its press, like any press against a visible
+attack, snapshots that attack's side through the same inference the player
+gets. The stance move costs `heightChangeMs`, so the dummy now visibly fails
+against attacks that are too fast for it to travel and guard in time. That is
+the matrix in §4.1 being demonstrated rather than described, and it is the
+drill: attack from a height the dummy is not standing at.
 
 **Mode 2, the drill metronome.** Alternates height alongside its existing
 attack alternation, so a full cycle drills all four reachable lines in a fixed,
@@ -371,13 +432,29 @@ in `line-feints`'s arithmetic rather than being inherited by accident.
   later. Both orderings asserted.
 - **Stance in motion covers nothing:** an attack at the destination height that
   resolves before the transition completes is a `hit`, not a `parried`.
-- **Height condition falsified independently** in `parryMeetsAttack` while every
+- **The coverage table, exhaustively:** same height and same side is `parried`;
+  same height with a different side, a different height with the same side, and
+  both different are each `hit`. Four constructed cases, the contract of §3.
+- **Height and side falsified independently** in `parryMeetsAttack` while every
   other condition holds.
-- **Side is free for a parry:** one stance height, both attack sides, both
-  produce `parried`.
+- **The press targets the visible attack's side:** a parry pressed against a
+  visible thrust targets `inside`; the same press against a visible cut targets
+  `outside`. The inference reads only what is visible on the press tick - there
+  is no redirect yet to ignore, and `line-feints` extends this test to prove
+  the parry never reads one.
+- **Side coverage is simulated, never instant:** with `guardSide` on the other
+  side, the target side is covered only `sideChangeMs` after the press - a
+  blade meetable before that, at the target side's height, is met by nothing.
+  With `guardSide` already matching, coverage waits only on the rise. Both
+  orderings of the three-way `max` asserted.
+- **Invariant:** `sideChangeMs < parryRiseMs` per weapon, so a reactive press
+  stays gated by the rise alone.
+- **`guardSide` persists:** initially `inside`; it updates when a parry's side
+  travel completes, and the next cold press covers where the guard last stood.
 - **No inference:** a fixture weapon declaring `cut.side = "inside"` reports
-  that side through `lineOf` and row 3, proving nothing derives side from
-  `AttackKind`; `blade-contact` extends the same fixture to contact.
+  that side through `lineOf` and row 3, and a parry pressed against its visible
+  cut covers `inside` - proving nothing derives side from `AttackKind`;
+  `blade-contact` extends the same fixture to contact.
 - **Acceptance:** arrows refused during `attack`, `void`, `hitstun`, `dead` and
   with a parry up; accepted in `ready` and during `stepRecoveryMs`.
 - **Snapshot:** an attack launched at `high` resolves at `high` after the stance
@@ -387,8 +464,9 @@ in `line-feints`'s arithmetic rather than being inherited by accident.
   the test that stops the "always attacks low" failure from returning silently.
 - **AI stance ordering:** mode 3 completes its stance transition before its
   attack begins; a test asserts no attack starts while `heightTo !== null`.
-- **HUD:** row 3 renders `(attack)`, `(parry)` and `(stance)` in the three cases,
-  and renders `MIDDLE` correctly when given a fixture fighter at that height.
+- **HUD:** row 3 renders `(attack)`, `(parry)` and `(stance)` in the three cases;
+  the parry case shows the complete covered line, both axes, straight from the
+  snapshot; and `MIDDLE` renders correctly for a fixture fighter at that height.
 - **Line bar agrees with the engine:** the band the bar renders is the height
   the contact module uses, for a stance, an in-flight attack (its snapshot, not
   the fighter's current stance) and a raised guard. Same class as the existing
@@ -415,7 +493,8 @@ in `line-feints`'s arithmetic rather than being inherited by accident.
 - Separate attack and guard heights. One shared stance is the decision.
 - Guard *positions* (longpoint, vom Tag). Still reserved; a line is what a guard
   covers, not where the blade rests.
-- Steering an attack in flight. `line-feints`.
+- Steering an attack in flight, and moving a raised guard's covered line (the
+  guard shift and side retarget). `line-feints`.
 
 ---
 
@@ -427,6 +506,9 @@ What to look for:
   height in time feels like a race you can win.
 - Being caught on the wrong height against a rapier thrust kills you, and it
   feels like you were out of position rather than cheated.
+- A reactive parry never feels side-punished: pressing against a visible attack
+  covers its side without you thinking about sides at all. If you die on the
+  side axis in this spec, it should only ever be a cold, predictive press.
 - Over a few minutes against mode 3, the attacks do not settle into one height.
 - Row 3 answers "where is this going" without you having to think about it.
 
