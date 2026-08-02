@@ -223,4 +223,39 @@ describe("rarity band", () => {
     expect(el.classList.contains("rarity-band")).toBe(false);
     expect(el.style.getPropertyValue("--rarity")).toBe("");
   });
+
+  it("labels a pack-pool card with its tier when asked", () => {
+    const el = document.createElement("div");
+    const id = ACQUIRABLE_CARDS[0];
+    applyRarityBand(el, id, { labelled: true });
+    expect(el.classList.contains("rarity-labelled")).toBe(true);
+    expect(el.dataset.rarity).toBe(CARDS[id].rarity);
+  });
+
+  it("stays band-only by default", () => {
+    const el = document.createElement("div");
+    applyRarityBand(el, ACQUIRABLE_CARDS[0]);
+    expect(el.classList.contains("rarity-labelled")).toBe(false);
+    expect(el.dataset.rarity).toBeUndefined();
+  });
+
+  it("never labels a card that never came from a pack", () => {
+    const el = document.createElement("div");
+    applyRarityBand(el, "grow-crops", { labelled: true });
+    expect(el.classList.contains("rarity-labelled")).toBe(false);
+    expect(el.dataset.rarity).toBeUndefined();
+  });
+
+  it("labels every picker tile that carries a band", () => {
+    // The starting four are not pack-pool cards, so the default view offers
+    // nothing banded; borrow acquirable cards to have tiles to assert on.
+    const { container, screen } = setup();
+    screen.update(view({ knownCards: [...START, ...ACQUIRABLE_CARDS.slice(0, 3)] }));
+    const tiles = [...container.querySelectorAll(".ds-deck .ds-card.rarity-band")];
+    expect(tiles.length).toBeGreaterThan(0);
+    for (const tile of tiles) {
+      expect(tile.classList.contains("rarity-labelled")).toBe(true);
+      expect((tile as HTMLElement).dataset.rarity).toBeTruthy();
+    }
+  });
 });
