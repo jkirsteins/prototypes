@@ -2,11 +2,12 @@ import { aiDecide, createAiState } from "./combat/ai";
 import { TICK } from "./combat/fighter";
 import { createDuel, tickDuel } from "./combat/engine";
 import { WEAPONS } from "./combat/weapons";
+import { createAudioEngine } from "./audio/audio";
 import { drawFrame } from "./render/draw";
 import { loadImages } from "./render/loader";
 import { showSelect } from "./ui/select";
 import type { AiMode } from "./combat/ai";
-import type { Duel } from "./combat/engine";
+import type { Duel, DuelEvent } from "./combat/engine";
 import type { Intent, WeaponId } from "./combat/types";
 import type { View } from "./render/draw";
 
@@ -66,6 +67,11 @@ function openSelect(): void {
   });
 }
 
+const audio = createAudioEngine();
+// Browsers gate audio behind a user gesture; any keypress (select screen or
+// duel) unlocks the context. Idempotent after the first.
+document.addEventListener("keydown", () => audio.unlock());
+
 document.addEventListener("keydown", (e) => {
   if (e.repeat) return;
   // The select screen owns the keyboard while no duel is running; it adds
@@ -83,6 +89,7 @@ document.addEventListener("keydown", (e) => {
     case "2": state.aiMode = 2; break;
     case "3": state.aiMode = 3; break;
     case "r": startDuel(); break;
+    case "m": audio.toggleMute(); break;
     case "`": state.overlay = !state.overlay; break;
     case "escape": state.duel = null; openSelect(); break;
     case " ":
@@ -142,6 +149,7 @@ loadImages().then((images) => {
     last = now;
     const d = state.duel;
     if (d) {
+      const frameEvents: DuelEvent[] = [];
       while (acc >= TICK) {
         acc -= TICK;
         let ia: Intent | null = state.pending;
@@ -149,8 +157,9 @@ loadImages().then((images) => {
         if (ia === null && state.held.advance) ia = "advance";
         if (ia === null && state.held.retreat) ia = "retreat";
         const ib = aiDecide(d, state.aiMode, state.ai, TICK);
-        tickDuel(d, ia, ib);
+        frameEvents.push(...tickDuel(d, ia, ib));
       }
+      audio.frame(frameEvents, state.paused);
       view.overlay = state.overlay;
       drawFrame(view, d, state.aiMode, state.activeSeed, {
         paused: state.paused,

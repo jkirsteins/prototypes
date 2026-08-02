@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { applyIntent, TICK } from "../src/combat/fighter";
 import { ARENA, MIN_GAP, createDuel, gapOf, tickDuel } from "../src/combat/engine";
-import { WEAPONS } from "../src/combat/weapons";
+import { WEAPONS, parryableMs } from "../src/combat/weapons";
 import type { Duel } from "../src/combat/engine";
-import type { Intent } from "../src/combat/types";
+import type { AttackKind, Intent, WeaponId } from "../src/combat/types";
 
 function runMs(d: Duel, ms: number, ia: Intent | null = null, ib: Intent | null = null) {
   const evs = [];
@@ -53,18 +53,76 @@ describe("attack resolution", () => {
   test("parried: attacker eats the penalty, defender counters (dui tempi)", () => {
     const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
     closeTo(d, 180); // inside both reaches
-    // Rapier thrusts; longsword parries just before the strike lands.
+    // Rapier thrusts; longsword meets the blade as the strike commits.
     const t = WEAPONS.rapier.attacks.thrust;
     let evs = runMs(d, TICK, "thrust", null);
-    const landAt = t.windup + t.beat + t.strike;
-    const parryAt = landAt - WEAPONS.longsword.parryWindow / 2;
-    evs = evs.concat(runMs(d, parryAt - TICK));
+    const strikeAt = t.windup + t.beat;
+    evs = evs.concat(runMs(d, strikeAt - TICK));
     evs = evs.concat(runMs(d, TICK, null, "parry"));
-    evs = evs.concat(runMs(d, landAt - parryAt + 2 * TICK));
+    evs = evs.concat(runMs(d, t.strike + 2 * TICK));
     expect(evs.some((e) => e.kind === "parried" && e.side === 0)).toBe(true);
     // dui tempi: defender thrusts immediately after the parry resolves
     const evs2 = runMs(d, 2000, null, "thrust");
     expect(evs2.some((e) => e.kind === "hit" && e.side === 1)).toBe(true);
+  });
+
+  describe("the parryable interval", () => {
+    /** Runs one exchange with the defender's guard raised `offset` ms after the attack starts. */
+    const outcome = (atk: WeaponId, def: WeaponId, kind: AttackKind, offset: number) => {
+      const d = createDuel(WEAPONS[atk], WEAPONS[def]);
+      closeTo(d, 180); // inside both reaches
+      // Elapsed time after tick i is (i + 1) * TICK, so this is the tick on
+      // which the guard is up at `offset` ms into the attack.
+      const pressTick = Math.max(0, Math.round(offset / TICK) - 1);
+      for (let i = 0; i < 300; i++) {
+        const evs = tickDuel(d, i === 0 ? kind : null, i === pressTick ? "parry" : null);
+        for (const e of evs) {
+          if (e.kind === "parried" || e.kind === "hit" || e.kind === "whiff") return e.kind;
+        }
+      }
+      return "none";
+    };
+
+    const cases: Array<[WeaponId, WeaponId, AttackKind]> = [
+      ["rapier", "longsword", "thrust"],
+      ["longsword", "rapier", "cut"],
+      ["longsword", "longsword", "thrust"],
+      ["rapier", "rapier", "cut"],
+    ];
+
+    test("one rule for every weapon: meeting the blade as it commits always works", () => {
+      // The learnable grammar. Under the old instant-based resolution this
+      // press succeeded for fast attacks and failed for slow ones.
+      for (const [atk, def, kind] of cases) {
+        const t = WEAPONS[atk].attacks[kind];
+        const strikeAt = t.windup + t.beat;
+        expect(outcome(atk, def, kind, strikeAt)).toBe("parried");
+      }
+    });
+
+    test("the guard may go up early, while the blade still travels, or anywhere between", () => {
+      for (const [atk, def, kind] of cases) {
+        const t = WEAPONS[atk].attacks[kind];
+        const strikeAt = t.windup + t.beat;
+        const early = strikeAt - WEAPONS[def].parryWindow / 2;
+        const late = strikeAt + parryableMs(t) - 30;
+        expect(outcome(atk, def, kind, Math.max(0, early))).toBe("parried");
+        expect(outcome(atk, def, kind, late)).toBe("parried");
+      }
+    });
+
+    test("once the blade is delivered it cannot be met", () => {
+      for (const [atk, def, kind] of cases) {
+        const t = WEAPONS[atk].attacks[kind];
+        const strikeAt = t.windup + t.beat;
+        expect(outcome(atk, def, kind, strikeAt + parryableMs(t) + 40)).toBe("hit");
+      }
+    });
+
+    test("a guard raised too early expires before the blade commits", () => {
+      // Longsword cut: 520ms of preparation against a 200ms rapier guard.
+      expect(outcome("longsword", "rapier", "cut", 0)).toBe("hit");
+    });
   });
 
   test("mutual strikeEnd on the same tick is a draw", () => {
@@ -80,6 +138,31 @@ describe("attack resolution", () => {
     // identical weapons, same-tick thrusts: both land
     expect(d.over).toBe(true);
     expect(d.winner).toBe("draw");
+  });
+});
+
+describe("step events", () => {
+  test("an accepted advance returns a step event but never logs it", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    const evs = tickDuel(d, "advance", null);
+    expect(evs.some((e) => e.kind === "step" && e.side === 0)).toBe(true);
+    expect(d.log.some((e) => e.kind === "step")).toBe(false);
+  });
+
+  test("a held advance chains steps through the buffer, one event per step", () => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    const w = WEAPONS.longsword;
+    // Long enough for two full step+pause cycles: the second step starts
+    // inside flushBuffer, which bypasses the engine's acceptance chain.
+    const ms = 2 * (w.stepDuration + w.stancePause) + 100;
+    let steps = 0;
+    for (let t = 0; t < ms; t += TICK) {
+      for (const e of tickDuel(d, "advance", null)) {
+        if (e.kind === "step" && e.side === 0) steps++;
+      }
+    }
+    expect(steps).toBeGreaterThanOrEqual(2);
+    expect(d.log.some((e) => e.kind === "step")).toBe(false);
   });
 });
 

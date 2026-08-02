@@ -86,13 +86,12 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
       phase === "windup" ? pre + t :
       phase === "beat" ? pre + w.windup + t :
       pre + w.windup + w.beat + t;
-    const remaining = pre + w.windup + w.beat + w.strike - elapsed;
-    // Needs AI_REACTION_MS of visible attack to react, then times the parry
-    // to intercept the lands-instant (not the windup - a parry raised at the
-    // windup would expire before a slow cut arrives).
+    // Meet the blade as it commits: raise the guard so it is up when the
+    // strike begins, which is when the blade first becomes meetable.
+    const untilStrike = pre + w.windup + w.beat - elapsed;
     if (
       elapsed >= AI_REACTION_MS &&
-      remaining <= self.weapon.parryWindow * 0.75 &&
+      untilStrike <= self.weapon.parryWindow * 0.5 &&
       self.state.kind === "idle" &&
       self.parryCd <= 0
     ) {

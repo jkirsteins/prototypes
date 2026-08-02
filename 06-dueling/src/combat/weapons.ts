@@ -1,4 +1,4 @@
-import type { WeaponId, WeaponProfile } from "./types";
+import type { AttackTimings, WeaponId, WeaponProfile } from "./types";
 
 /**
  * All distances are centimeters of real-world scale: the fighter sprite's
@@ -51,6 +51,21 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     identity: "The thrust specialist: fastest clean attack, bad in the bind.",
   },
 };
+
+/**
+ * The strike splits in two equal halves, and the blade can only be met in
+ * the first: while it is travelling, not once it has arrived. The renderer
+ * gives each half its own frame, so the parryable interval is legible from
+ * the animation alone - the moment the sword reaches its delivered pose,
+ * the chance to meet it is gone. Keep this in step with the strike frame
+ * plan in render/frames.ts (a test asserts they agree).
+ */
+export const PARRYABLE_FRACTION = 0.5;
+
+/** How long after the strike begins the blade can still be met. */
+export function parryableMs(t: AttackTimings): number {
+  return t.strike * PARRYABLE_FRACTION;
+}
 
 /** Fastest counter a player can throw: thrust with no pretempo (tell-free). */
 export function counterTime(w: WeaponProfile): number {

@@ -9,7 +9,16 @@ export type FighterState =
   | { kind: "step"; dir: 1 | -1; t: number }
   | { kind: "pause"; t: number }
   | { kind: "void"; t: number }
-  | { kind: "attack"; attack: AttackKind; phase: AttackPhase; t: number; recoveryMs: number; tell: boolean }
+  | {
+      kind: "attack";
+      attack: AttackKind;
+      phase: AttackPhase;
+      t: number;
+      recoveryMs: number;
+      tell: boolean;
+      /** Set by the engine when a defending blade met this one inside the parryable window. */
+      met: boolean;
+    }
   | { kind: "parry"; t: number }
   | { kind: "hitstun"; t: number }
   | { kind: "dead"; t: number };
@@ -25,6 +34,9 @@ export interface Fighter {
 
 export type FighterEvent =
   | { type: "strikeEnd"; attack: AttackKind }
+  /** A buffered step fired from flushBuffer. Direct steps are visible to the
+   *  engine at intent acceptance, so only the buffer path needs an event. */
+  | { type: "stepStart" }
   | { type: "died" };
 
 export function createFighter(x: number, facing: 1 | -1, weapon: WeaponProfile): Fighter {
@@ -40,6 +52,15 @@ export function applyIntent(
   if (k === "dead" || k === "hitstun") return "ignored";
   if (k === "idle") {
     return startAction(f, intent, opts?.tell ?? false) ? "accepted" : "ignored";
+  }
+  // A parry answers something happening right now, so it is never queued:
+  // a parry that fires when the step finishes would be raised against a
+  // blade that has already landed, and would burn the cooldown for nothing.
+  // The stance pause between chained steps is short and uncommitted, so a
+  // parry may interrupt it; the step itself stays committed.
+  if (intent === "parry") {
+    if (k !== "pause") return "ignored";
+    return startAction(f, intent, false) ? "accepted" : "ignored";
   }
   if (k === "step" || k === "pause") {
     f.buffered = intent; // one-slot buffer, last input wins
@@ -68,6 +89,7 @@ function startAction(f: Fighter, intent: Intent, tell: boolean): boolean {
         t: 0,
         recoveryMs: f.weapon.attacks[intent].recovery,
         tell,
+        met: false,
       };
       return true;
     case "parry":
@@ -162,10 +184,10 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
   return events;
 }
 
-function flushBuffer(f: Fighter, _events: FighterEvent[]): void {
+function flushBuffer(f: Fighter, events: FighterEvent[]): void {
   const b = f.buffered;
   f.buffered = null;
-  if (b !== null) {
-    startAction(f, b, false);
+  if (b !== null && startAction(f, b, false) && (b === "advance" || b === "retreat")) {
+    events.push({ type: "stepStart" });
   }
 }

@@ -42,6 +42,28 @@ describe("parry", () => {
   });
 });
 
+describe("parry is reactive, never queued", () => {
+  test("a parry during a step is ignored, not buffered into a late guard", () => {
+    const f = createFighter(400, 1, WEAPONS.longsword);
+    applyIntent(f, "advance");
+    expect(f.state.kind).toBe("step");
+    expect(applyIntent(f, "parry")).toBe("ignored");
+    expect(f.buffered).toBe(null);
+    run(f, WEAPONS.longsword.stepDuration + WEAPONS.longsword.stancePause + 2 * TICK);
+    expect(f.state.kind).toBe("idle"); // no phantom parry fired on completion
+    expect(f.parryCd).toBe(0); // and no cooldown burned
+  });
+
+  test("a parry may interrupt the stance pause between chained steps", () => {
+    const f = createFighter(400, 1, WEAPONS.longsword);
+    applyIntent(f, "advance");
+    run(f, WEAPONS.longsword.stepDuration + TICK);
+    expect(f.state.kind).toBe("pause");
+    expect(applyIntent(f, "parry")).toBe("accepted");
+    expect(f.state.kind).toBe("parry");
+  });
+});
+
 describe("hitstun", () => {
   test("hitstun leads to dead and emits died", () => {
     const f = createFighter(400, 1, WEAPONS.longsword);

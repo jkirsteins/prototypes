@@ -25,6 +25,21 @@ describe("discrete steps", () => {
     expect(f.x).toBeCloseTo(600 + WEAPONS.rapier.stepDistance, 5);
   });
 
+  test("a step fired from the buffer emits stepStart; a direct step does not", () => {
+    // Direct steps are observed by the engine at intent acceptance; only the
+    // buffer path is invisible from outside, so only it emits an event.
+    const f = createFighter(300, 1, WEAPONS.longsword);
+    applyIntent(f, "advance");
+    expect(applyIntent(f, "advance")).toBe("buffered");
+    const seen: string[] = [];
+    const ms = WEAPONS.longsword.stepDuration + WEAPONS.longsword.stancePause + 2 * TICK;
+    for (let t = 0; t < ms; t += TICK) {
+      for (const e of tickFighter(f, TICK)) seen.push(e.type);
+    }
+    expect(f.state.kind).toBe("step"); // buffered advance fired
+    expect(seen.filter((t) => t === "stepStart")).toHaveLength(1);
+  });
+
   test("input during a step is buffered (one slot) and fires after the pause", () => {
     const f = createFighter(300, 1, WEAPONS.longsword);
     applyIntent(f, "advance");
