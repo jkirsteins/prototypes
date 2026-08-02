@@ -105,11 +105,34 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
         flushBuffer(f, events);
       }
       break;
-    case "void":
-    case "attack":
+    case "void": {
+      const w = f.weapon;
+      const prev = Math.min(s.t, w.voidDuration);
+      s.t += dt;
+      const now = Math.min(s.t, w.voidDuration);
+      f.x -= ((now - prev) / w.voidDuration) * w.voidDistance * f.facing;
+      if (s.t >= w.voidDuration) {
+        f.state = { kind: "idle" };
+        flushBuffer(f, events);
+      }
+      break;
+    }
     case "parry":
+      s.t += dt;
+      if (s.t >= f.weapon.parryWindow) {
+        f.state = { kind: "idle" };
+        f.parryCd = f.weapon.parryCooldown;
+      }
+      break;
     case "hitstun":
-      // Implemented in Tasks 6 and 7.
+      s.t += dt;
+      if (s.t >= HIT_STUN_MS) {
+        f.state = { kind: "dead", t: 0 };
+        events.push({ type: "died" });
+      }
+      break;
+    case "attack":
+      // Implemented in Task 7.
       break;
   }
   return events;
