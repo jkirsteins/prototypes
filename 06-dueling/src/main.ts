@@ -28,6 +28,11 @@ const state = {
   eWeapon: pick("e", "rapier"),
   aiMode: (["0", "1", "2", "3"].includes(params.get("mode") ?? "") ? Number(params.get("mode")) : 0) as AiMode,
   overlay: params.get("overlay") !== "0",
+  // A ?seed= pins the AI's jitter so an interesting fight can be replayed.
+  seed: Number.isFinite(Number(params.get("seed"))) && params.get("seed") !== null
+    ? Number(params.get("seed"))
+    : undefined,
+  activeSeed: 0,
   duel: null as Duel | null,
   ai: createAiState(),
   held: { advance: false, retreat: false },
@@ -35,8 +40,12 @@ const state = {
 };
 
 function startDuel(): void {
+  // Without ?seed each duel draws a fresh one so rematches are not replays.
+  // The draw happens here, outside the simulation, and the overlay shows it
+  // so a fight worth repeating can be recovered with ?seed=.
+  state.activeSeed = state.seed ?? Math.floor(Math.random() * 0xffffffff);
   state.duel = createDuel(WEAPONS[state.pWeapon], WEAPONS[state.eWeapon]);
-  state.ai = createAiState();
+  state.ai = createAiState(state.activeSeed);
   state.pending = null;
 }
 
@@ -107,7 +116,7 @@ loadImages().then((images) => {
         tickDuel(d, ia, ib);
       }
       view.overlay = state.overlay;
-      drawFrame(view, d, state.aiMode);
+      drawFrame(view, d, state.aiMode, state.activeSeed);
     }
     requestAnimationFrame(frame);
   };

@@ -29,16 +29,41 @@ export function duelistCooldown(w: WeaponProfile): number {
   return whiffCommit + w.stepDuration + w.stancePause;
 }
 
+/**
+ * Jitter on the duelist's decisions, as a fraction of its cycle floor. Big
+ * enough to defeat anticipation, small enough that the pulse stays legible.
+ * Jitter belongs on decisions only: varying a wind-up's length would break
+ * the signalling grammar the player is meant to carry between opponents.
+ */
+export const DUELIST_JITTER = 0.25;
+
+export const DEFAULT_SEED = 0x5eed;
+
 export interface AiState {
   cooldown: number;
   next: AttackKind;
+  rng: number;
 }
 
-export function createAiState(): AiState {
-  return { cooldown: 0, next: "thrust" };
+/**
+ * Seeded so a fight is reproducible from (seed, inputs) while staying
+ * unpredictable to the player. Unseeded rng would be a hidden channel
+ * inside the simulation and would make replays and tests diverge.
+ */
+export function createAiState(seed: number = DEFAULT_SEED): AiState {
+  return { cooldown: 0, next: "thrust", rng: seed >>> 0 };
 }
 
-/** Decides side 1's intent. Deterministic: no rng anywhere. */
+/** mulberry32: one multiply-xor round, returns [0, 1) and advances the state. */
+function nextRandom(ai: AiState): number {
+  ai.rng = (ai.rng + 0x6d2b79f5) >>> 0;
+  let t = ai.rng;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+/** Decides side 1's intent. Deterministic given the AiState seed. */
 export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent | null {
   if (mode === 0 || d.over) return null;
   const self = d.f[1];
@@ -83,22 +108,33 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
   const zone = zoneFor(gapOf(d), self.weapon);
 
   if (mode === 2) {
-    // Attack in place, never step closer.
+    // The drill metronome: attack in place on a fixed beat, alternating
+    // attacks so both cascades get practised. Predictability is the point.
     if (ai.cooldown > 0 || zone === "out") return null;
-    return startAttack(ai, DRILL_INTERVAL_MS);
+    return startAttack(ai, DRILL_INTERVAL_MS, alternate(ai));
   }
 
   // Mode 3, the duelist: approach until an extension can land (narrow
-  // measure), strike, and back off out of danger while the weapon-derived
-  // patience recovers - approach, strike, retire.
+  // measure), strike, and back off out of danger while the cycle floor
+  // recovers - approach, strike, retire. Its choice of attack and the
+  // length of its wait are jittered so neither can be anticipated.
   if (zone !== "narrow") return "advance";
-  if (ai.cooldown <= 0) return startAttack(ai, duelistCooldown(self.weapon));
+  if (ai.cooldown <= 0) {
+    const floor = duelistCooldown(self.weapon);
+    const wait = floor * (1 + DUELIST_JITTER * nextRandom(ai));
+    return startAttack(ai, wait, nextRandom(ai) < 0.5 ? "thrust" : "cut");
+  }
   return "retreat";
 }
 
-function startAttack(ai: AiState, cooldown: number): AttackKind {
+/** Strict alternation: the drill dummy's predictable attack order. */
+function alternate(ai: AiState): AttackKind {
   const attack = ai.next;
   ai.next = attack === "thrust" ? "cut" : "thrust";
+  return attack;
+}
+
+function startAttack(ai: AiState, cooldown: number, attack: AttackKind): AttackKind {
   ai.cooldown = cooldown;
   return attack;
 }

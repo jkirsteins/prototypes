@@ -1,5 +1,7 @@
-import { expect, test } from "vitest";
-import { DRILL_INTERVAL_MS, aiDecide, createAiState, duelistCooldown } from "../src/combat/ai";
+import { describe, expect, test } from "vitest";
+import {
+  DRILL_INTERVAL_MS, DUELIST_JITTER, aiDecide, createAiState, duelistCooldown,
+} from "../src/combat/ai";
 import { TICK } from "../src/combat/fighter";
 import { createDuel, tickDuel } from "../src/combat/engine";
 import { WEAPONS } from "../src/combat/weapons";
@@ -67,12 +69,50 @@ test("mode 3 decisions: advance to narrow, attack off cooldown, retreat on it", 
   // wide measure (240 < 270 <= 290): still approaching
   d.f[0].x = d.f[1].x - 270;
   expect(aiDecide(d, 3, ai, TICK)).toBe("advance");
-  // narrow measure (220 <= 240), cooldown ready -> strike
+  // narrow measure (220 <= 240), cooldown ready -> strike (jittered choice)
   d.f[0].x = d.f[1].x - 220;
-  expect(aiDecide(d, 3, ai, TICK)).toBe("thrust");
+  expect(["thrust", "cut"]).toContain(aiDecide(d, 3, ai, TICK));
   // narrow measure, cooldown running -> back off
   expect(ai.cooldown).toBeGreaterThan(0);
   expect(aiDecide(d, 3, ai, TICK)).toBe("retreat");
+});
+
+test("mode 3 jitter: waits vary within the declared band, never below the floor", () => {
+  const floor = duelistCooldown(WEAPONS.rapier);
+  const waits = new Set<number>();
+  const attacks = new Set<string>();
+  for (let seed = 1; seed <= 40; seed++) {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    const ai = createAiState(seed);
+    d.f[0].x = d.f[1].x - 220; // narrow for the rapier
+    const chosen = aiDecide(d, 3, ai, TICK);
+    if (chosen !== null) attacks.add(chosen);
+    waits.add(ai.cooldown);
+    expect(ai.cooldown).toBeGreaterThanOrEqual(floor);
+    expect(ai.cooldown).toBeLessThanOrEqual(floor * (1 + DUELIST_JITTER));
+  }
+  expect(waits.size).toBeGreaterThan(5); // genuinely varying, not a constant
+  expect(attacks).toEqual(new Set(["thrust", "cut"])); // both attacks reachable
+});
+
+test("mode 2 keeps its fixed beat and strict alternation despite the shared rng", () => {
+  const runs = [1, 2, 3].map((seed) => {
+    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    const ai = createAiState(seed);
+    d.f[0].x = d.f[1].x - 220;
+    const picks: Array<Intent | null> = [];
+    for (let i = 0; i < Math.floor(9000 / TICK); i++) {
+      const intent = aiDecide(d, 2, ai, TICK);
+      if (intent !== null) picks.push(intent);
+      tickDuel(d, null, null);
+      if (d.over) break;
+    }
+    return picks;
+  });
+  // Drill dummy is seed-independent: same order, same beat, every time.
+  expect(runs[1]).toEqual(runs[0]);
+  expect(runs[2]).toEqual(runs[0]);
+  expect(runs[0].slice(0, 2)).toEqual(["thrust", "cut"]);
 });
 
 test("mode 3 cycle floor outlasts every weapon's worst-case thrust commitment", () => {
@@ -106,16 +146,26 @@ test("mode 3 crosses the gap and kills an idle opponent", () => {
   expect(d.winner).toBe(1);
 });
 
-test("determinism: identical runs produce identical logs", () => {
-  const script = (d: Duel) => {
-    const ai = createAiState();
-    for (let i = 0; i < Math.floor(5000 / TICK); i++) {
+describe("reproducibility", () => {
+  const script = (d: Duel, mode: AiMode, seed: number) => {
+    const ai = createAiState(seed);
+    for (let i = 0; i < Math.floor(9000 / TICK); i++) {
       const ia: Intent | null = i === 30 ? "advance" : i === 60 ? "thrust" : i === 200 ? "void" : null;
-      tickDuel(d, ia, aiDecide(d, 2, ai, TICK));
+      tickDuel(d, ia, aiDecide(d, mode, ai, TICK));
     }
     return d.log.map((e) => `${e.time.toFixed(3)}|${e.side}|${e.kind}|${e.text}`);
   };
-  const a = script(createDuel(WEAPONS.longsword, WEAPONS.rapier));
-  const b = script(createDuel(WEAPONS.longsword, WEAPONS.rapier));
-  expect(a).toEqual(b);
+  const run = (mode: AiMode, seed: number) =>
+    script(createDuel(WEAPONS.longsword, WEAPONS.rapier), mode, seed);
+
+  test("same seed and inputs replay a fight exactly", () => {
+    expect(run(3, 12345)).toEqual(run(3, 12345));
+    expect(run(2, 7)).toEqual(run(2, 7));
+  });
+
+  test("different seeds give the duelist a different fight", () => {
+    // Jitter has to actually change something, or it is decoration.
+    const seeds = [1, 2, 3, 4, 5, 6].map((s) => run(3, s).join("\n"));
+    expect(new Set(seeds).size).toBeGreaterThan(1);
+  });
 });

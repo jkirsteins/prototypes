@@ -37,7 +37,7 @@ const ATTACK_LISTING: Record<string, string> = {
 const CONTROLS_LINE =
   "A/D step S void J cut K thrust L parry | 0-3 AI mode R rematch Esc select ` overlay";
 
-export function drawFrame(v: View, d: Duel, aiMode: AiMode): void {
+export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number): void {
   const { ctx } = v;
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = "#1b1e24";
@@ -53,6 +53,7 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode): void {
     drawPhaseLabel(v, d.f[0]);
     drawPhaseLabel(v, d.f[1]);
     drawLog(v, d);
+    drawSeed(v, seed);
   }
   drawHud(v, d, aiMode);
   if (d.over) drawBanner(v, d);
@@ -118,6 +119,15 @@ function drawLog(v: View, d: Duel): void {
     ctx.fillText(line, 952, 108 + i * 14);
   });
   ctx.textAlign = "left";
+}
+
+/** The AI's jitter seed, so a fight worth repeating can be replayed with ?seed=. */
+function drawSeed(v: View, seed: number): void {
+  const { ctx } = v;
+  ctx.font = "11px ui-monospace, monospace";
+  ctx.fillStyle = "#8a8f98";
+  ctx.textAlign = "left";
+  ctx.fillText(`seed ${seed}`, 8, 512);
 }
 
 /** Per-fighter cards (weapon, reach, attack tempo) plus the bottom controls line. */
