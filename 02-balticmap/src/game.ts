@@ -759,7 +759,9 @@ export function playCard(
     });
   } else if (cardId === "subjugate" && targetId !== undefined) {
     const formerLord = overlords.get(targetId);
-    freeVassalsOf(targetId);
+    // The target's own vassals come along: taking a lord takes its pyramid,
+    // which is why the bar in src/playability.ts prices the full realm. Its
+    // hostages of them survive too - those vassalages are untouched.
     dropHostageOf(targetId); // the poached vassal's debt was to its former lord
     overlords.set(targetId, p.factionId);
     players = updateFaction(players, targetId, (pl) => {
@@ -794,7 +796,12 @@ export function playCard(
   } else if (cardId === "incorporate" && targetId !== undefined) {
     overlords.delete(targetId);
     dropHostageOf(targetId); // an absorbed people has no camp to return to
-    freeVassalsOf(targetId); // defensive: chains never exist
+    // A real rule, not defense: digesting a mid-lord frees its vassals.
+    // Fealty was to the lord that just vanished, and re-parenting them would
+    // make Incorporate strictly better than the pyramid it consumes. The
+    // trade is deliberate - the freed subtree leaves your full realm in
+    // exchange for one permanent land - and the AI prices it (src/ai.ts).
+    freeVassalsOf(targetId);
     incorporated = { ...incorporated, [targetId]: p.factionId };
     for (const [land, owner] of Object.entries(incorporated)) {
       if (owner === targetId) incorporated = { ...incorporated, [land]: p.factionId };

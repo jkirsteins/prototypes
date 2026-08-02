@@ -255,9 +255,9 @@ describe("card effects", () => {
     expect(g.overlords.size).toBe(0); // input untouched
   });
 
-  it("subjugate poaches and frees the target's own vassals with tribute cleanup", () => {
+  it("subjugating a lord takes its whole pyramid, releasing nobody", () => {
     let g = playingState(LINE_ADJ);
-    // gamma holds delta; beta out-leads and takes gamma
+    // gamma holds delta; beta out-leads and takes gamma - and delta with it
     g = { ...g, overlords: new Map([["delta", "gamma"]]) };
     let deltaP = g.players.find((p) => p.factionId === "delta")!;
     deltaP = { ...deltaP, deck: [...deltaP.deck, ...Object.keys(TRIBUTE_CARDS)] };
@@ -268,13 +268,33 @@ describe("card effects", () => {
     g = withHand(g, 0, ["subjugate"]);
     const after = playCard(g, 0, rng(), "gamma");
     expect(after.overlords.get("gamma")).toBe("beta");
-    expect(after.overlords.has("delta")).toBe(false);
-    const freedDelta = after.players.find((p) => p.factionId === "delta")!;
+    expect(after.overlords.get("delta")).toBe("gamma"); // chain intact
+    const stillVassal = after.players.find((p) => p.factionId === "delta")!;
     expect(
-      [...freedDelta.deck, ...freedDelta.hand, ...freedDelta.discard]
+      [...stillVassal.deck, ...stillVassal.hand, ...stillVassal.discard]
         .filter(isTributeCard),
-    ).toHaveLength(0);
-    expect(after.log.some((e) => e.type === "released" && e.targetFactionId === "delta")).toBe(true);
+    ).toHaveLength(2); // delta keeps paying gamma
+    expect(after.log.some((e) => e.type === "released")).toBe(false);
+  });
+
+  it("a vassal subjugates a free faction, deepening the chain", () => {
+    let g = playingState(LINE_ADJ);
+    g = asVassal(g, "alpha"); // human beta owes fealty to alpha
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after.overlords.get("gamma")).toBe("beta");
+    expect(after.overlords.get("beta")).toBe("alpha");
+  });
+
+  it("a mid-lord's revolt detaches its whole branch", () => {
+    let g = playingState(LINE_ADJ);
+    g = asVassal(g, "alpha"); // human beta -> alpha
+    g = { ...g, overlords: new Map([...g.overlords, ["gamma", "beta"]]) };
+    g = withHand(g, 0, ["revolt"]);
+    const after = playCard(g, 0, rng());
+    expect(after.overlords.has("beta")).toBe(false);
+    expect(after.overlords.get("gamma")).toBe("beta"); // still beta's
   });
 
   it("poaching bumps the vassal's lead over the former lord by +1 Might and +1 Status", () => {
@@ -616,14 +636,19 @@ describe("event enrichment", () => {
     expect(ev?.formerOverlordFactionId).toBeUndefined();
   });
 
-  it("stamps the fallen lord on released events", () => {
+  it("incorporating a mid-lord frees its vassals, stamping the fallen lord", () => {
     let g = playingState(LINE_ADJ);
-    g = { ...g, overlords: new Map([["delta", "gamma"]]) };
-    // gamma's realm (self + vassal delta) is size 2, so the scaled subjugate
-    // threshold here is 4, not the flat 2.
-    g = withRel(g, mightLead(g.relations, "beta", "gamma", 4));
-    g = withHand(g, 0, ["subjugate"]);
+    // human beta holds gamma, and gamma holds delta; digesting gamma frees
+    // delta - the trade the card now offers a pyramid-builder.
+    g = {
+      ...g,
+      overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]),
+      loyalty: { [loyaltyKey("gamma", "beta")]: INCORPORATE_RAMP },
+    };
+    g = withHand(g, 0, ["incorporate"]);
     const after = playCard(g, 0, rng(), "gamma");
+    expect(after.incorporated.gamma).toBe("beta");
+    expect(after.overlords.has("delta")).toBe(false);
     const rel = after.log.find((e) => e.type === "released");
     expect(rel?.targetFactionId).toBe("delta");
     expect(rel?.overlordFactionId).toBe("gamma");
@@ -1862,17 +1887,17 @@ describe("take hostage", () => {
     expect(g.log.some((e) => e.type === "hostage-returned")).toBe(false);
   });
 
-  it("a released vassal takes no hostage debt into freedom", () => {
-    // gamma subjugates the lord beta; freeVassalsOf scatters beta's vassals
-    // and the hostage entry goes with the vassalage that justified it.
+  it("a poached mid-lord keeps its vassals and the hostages it holds of them", () => {
+    // gamma subjugates the lord beta; beta's own vassalage over alpha - and
+    // the hostage debt alpha owes beta - both survive the change of liege.
     let g = playCard(armed(), 0, rng(), "alpha");
     g = { ...g, current: 2, playedThisTurn: false };
     g = { ...g, relations: mightLead(g.relations, "gamma", "beta", 8) };
     g = withHand(g, 2, ["subjugate"]);
     g = playCard(g, 0, () => 0, "beta");
     expect(g.overlords.get("beta")).toBe("gamma");
-    expect(g.overlords.has("alpha")).toBe(false);
-    expect(g.hostages).toEqual({});
+    expect(g.overlords.get("alpha")).toBe("beta"); // subtree came along
+    expect(g.hostages).toEqual({ alpha: HOSTAGE_RETURN_TRIBUTES });
     expect(g.log.some((e) => e.type === "hostage-returned")).toBe(false);
   });
 });
