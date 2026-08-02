@@ -98,19 +98,30 @@ the floor so the asymmetry is visible.
 
 ### 4.2 Fighter state machine
 
-States: `idle`, `step` (advance or retreat, committed until it completes),
-`void`, `attack` (with internal phase: pretempo, windup, beat, strike,
-recovery), `parry`, `hitstun`, `dead`.
+*Restructured on 2026-08-02 - the authoritative description is
+`2026-08-02-fighter-state-tracks.md`. Summary of what ships:*
+
+Body states: `ready`, `step` (advance or retreat, committed until it
+completes), `void`, `attack` (with phase: windup, strike, recovery),
+`hitstun`, `dead`. The old `pause` state is now a `stepRecoveryMs` timer on
+the fighter, and the old `pretempo`/`beat` phases are marks on an immutable
+per-attack timeline (`riseStart`, `riseEnd`) - the AI's telegraph arrives
+as an explicit windup bonus. The timed parry lives on a parallel track
+(`parry: { t } | null`) beside the body.
 
 Transitions worth stating:
 
-- Steps are discrete: tap = one step, hold = chained steps with a short stance
-  pause between them, release = finish current step, never stop mid-step.
-  Input during a step is queued and fires on completion (one-slot buffer).
-- An attack cannot be cancelled once wind-up begins (committed attacks only;
-  feints are out of scope).
-- Parry: press puts the fighter in parry for `parryWindow` ms, then a
-  `parryCooldown` during which parry cannot be re-entered (not spam-safe).
+- Steps are discrete: tap = one step, hold = chained steps with a short
+  settle between them (`stepRecoveryMs`), release = finish current step,
+  never stop mid-step. Input during a step or settle is queued and fires
+  when the settle completes (one-slot buffer).
+- Commitment is the windup -> strike transition: during the windup an attack
+  can be abandoned with a feint (`feintRecoveryMs` of recovery, nothing
+  else); from the strike on, nothing cancels it.
+- Parry: raised only while `ready` (a settle does not gate it, a step
+  refuses it), up for `parryWindowMs`, then `parryRecoveryMs` before the
+  next. A raised parry persists through a subsequent step; attacking or
+  voiding drops it at full recovery cost.
 - Void: a back-hop of `voidDistance` over `voidDuration` ms; the fighter is
   committed for the whole duration and cannot act during it.
 - `hitstun` leads to `dead` in the MVP (single-hit lethality); hurt and death
