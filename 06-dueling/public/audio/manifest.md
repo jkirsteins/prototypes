@@ -31,8 +31,9 @@ There is deliberately no ambient bed and no music: tried, found distracting.
   identical tails to the clash samples - so a missed swing sounded like
   blade contact. Air must not clang.
 - Durations: 0.30 / 0.26 / 0.28 s. Peak ~-4 dBFS. Opus 96 kbps, mono.
-- Intended use: the blade starting to travel (the engine's "swing" event,
-  the beat-to-strike transition) - every strike, hit, miss or parried.
+- Intended use: an arc that found nothing (the "whiff" resolution). Each
+  attack makes exactly one sound - whoosh, clash or hit - so the whoosh is
+  the miss outcome, not a per-swing layer.
 
 ## clash_01.ogg .. clash_03.ogg
 

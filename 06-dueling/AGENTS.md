@@ -14,15 +14,22 @@ decided by the engine ticking the fight forward, and presentation (sound,
 animation cues, effects) must key off the simulation reaching that moment,
 never off the input arriving.
 
-Concretely, every cue fires on the tick the engine says the thing occurs:
+Concretely, every cue fires on the tick the engine says the thing occurs,
+and every attack resolves to exactly one sound - a readable outcome, never
+a layer:
 
 - a footstep when the step or void hop *finishes* its travel, not when the
   intent is accepted;
-- a swing whoosh when the strike phase *begins* (the blade starts to
-  travel), hit or miss;
+- the whoosh when the arc *resolves* having found nothing (whiff) - not
+  earlier, because a defender can still step into the blade late in the
+  strike, so a miss is only knowable at resolution;
 - the clash when the travelling blade *arrives* at the guard (the end of
   the parryable interval), not when the parry press latched `met`;
 - the hit when the strike *resolves* into a wound.
+
+The engine also emits an unmapped `swing` event (blade starts travelling);
+it is deliberately silent - sounding every attack would make the whoosh
+carry no information.
 
 This was gotten wrong twice in one day (footsteps at step start, the clash
 at the parry press) and both were audible immediately.
