@@ -233,11 +233,24 @@ no amount of HUD text fixes a player who is watching the fighters. The answer is
 not to redraw the sheets for this spec. It is to draw the thing the sheets cannot:
 **a bar over each fighter marking where their blade threatens or guards.**
 
+It is the **same rectangle `drawMeasureBands` already draws on the floor**, lifted
+to the blade's height and thickened. Not a vertical bar: horizontal distance along
+the piste is the only spatial axis the simulation has, so the bar keeps that
+orientation and height is carried by where it sits.
+
 - **Horizontal extent:** from the fighter's body centre outward by `reach`, the
-  same value `drawMeasureBands` already draws on the floor. This is the blade
-  zone, lifted off the floor to its line's height.
+  same value and direction as the floor band.
 - **Vertical position:** one band per `Height`, positions computed from the enum,
-  so enabling `middle` moves nothing in the renderer.
+  so enabling `middle` slots in between with no renderer change.
+- **Both fighters share the same Y for a given band.** This is the one place the
+  floor bands' idiom must be inverted: those offset each fighter by `i * 12` so
+  they never collide, and the blade zones must be free to collide, because two
+  zones overlapping is the entire point. Any per-fighter offset breaks it.
+- **Overlap compounds.** Drawn at partial alpha, as the measure bands already are,
+  so the shared region brightens. The contact zone lights up exactly when
+  `gap <= reachA + reachB` holds at a matching height. Per-fighter identity lives
+  on the outline, using the gold and blue tints `drawMeasureBands` already
+  defines; the fill carries the state colour below.
 - **Side:** filled for `inside`, hollow outline for `outside`. Height uses the
   spatial axis because height is what the defender must match; side gets the
   cheaper encoding because a guard spans it anyway.
