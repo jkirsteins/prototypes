@@ -1,4 +1,5 @@
 import { HIT_STUN_MS } from "../combat/fighter";
+import { BIND_MS } from "../combat/engine";
 import { PARRYABLE_FRACTION, WEAPONS } from "../combat/weapons";
 import type { FighterState } from "../combat/fighter";
 import type { AttackPhase, WeaponProfile } from "../combat/types";
@@ -88,6 +89,12 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
     label: "dead",
     what: "One clean hit kills; there are no wounds and no second chances.",
     player: "R for a rematch, Esc to pick different swords.",
+  },
+  bind: {
+    label: "bind",
+    what: "Two longswords hold contact and both bodies are seized; rapier contact always deflects instead.",
+    player: "Nothing acts inside it - the attack and the guard it consumed are spent, and the next tempo goes to whoever reads the exit first.",
+    ms: () => BIND_MS,
   },
 };
 

@@ -312,7 +312,10 @@ describe("AI heights", () => {
       evs.push(...tickDuel(d, i === 0 ? "cut" : null, ib));
       if (d.over) break;
     }
-    expect(evs.some((e) => e.kind === "parried")).toBe(true);
+    // Two longswords: the successful stop is a bind since sustained-bind,
+    // so the met contact is the dummy's answer landing.
+    expect(evs.some((e) => e.kind === "met")).toBe(true);
+    expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 
   test("mode 1 from the wrong stance cannot answer the longsword thrust any more", () => {

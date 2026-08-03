@@ -1,6 +1,7 @@
 import { DEATH_ANIM_MS, HIT_STUN_MS, guardEffective } from "../combat/fighter";
 import { SHEETS } from "./sheets";
 import type { Fighter } from "../combat/fighter";
+import type { BindContact } from "../combat/engine";
 import type { SheetName } from "./sheets";
 
 export interface FramePick {
@@ -53,6 +54,29 @@ function span(sheet: SheetName, t: number, total: number, first: number, last: n
   return Math.min(idx, SHEETS[sheet].frames - 1);
 }
 
+/**
+ * The bind freeze: each fighter holds the pose they were in when the
+ * blades touched, read from the duel's contact snapshot (the fighter's own
+ * bind state deliberately carries nothing). The attack kind is derived
+ * from the saved contact line's side axis, resting on the declared-side
+ * table (cut is outside, thrust is inside, for every weapon) - the same
+ * declaration lineOf reads, so the two cannot disagree.
+ *
+ * The thrust holds swordStab 4, the EXTENDED frame, not its travelling
+ * frame 3 - a coiled pose with the point still back does not read as steel
+ * in contact. The bind is a frozen instant of presentation, not a claim
+ * about which half of the strike the simulation was in; parryableUntil and
+ * every other timing are untouched by this choice, which is why this frame
+ * may break the strict rule that strike frames mirror the meetable check.
+ */
+export function pickBindFrame(f: Fighter, contact: BindContact, side: "inside" | "outside"): FramePick {
+  const flip = f.facing === -1;
+  if (contact.kind === "guard") return { sheet: "swordAttack", frame: 2, flip };
+  return side === "outside"
+    ? { sheet: "swordAttack", frame: 3, flip } // cut, mid-arc
+    : { sheet: "swordStab", frame: 4, flip }; // thrust, extended
+}
+
 export function pickFrame(f: Fighter, timeMs: number): FramePick {
   const flip = f.facing === -1;
   const s = f.state;
@@ -77,6 +101,11 @@ export function pickFrame(f: Fighter, timeMs: number): FramePick {
       return { sheet: "roll", frame: span("roll", s.t, w.voidDuration, 0, 6), flip };
     case "hitstun":
       return { sheet: "hurt", frame: span("hurt", s.t, HIT_STUN_MS, 0, 3), flip };
+    case "bind":
+      // The renderer resolves the real pose via pickBindFrame with the
+      // duel's snapshot; this arm exists for callers without one and
+      // holds the formed-guard apex as a neutral crossed stance.
+      return { sheet: "swordAttack", frame: 2, flip };
     case "dead":
       return { sheet: "death", frame: span("death", Math.min(s.t, DEATH_ANIM_MS - 1), DEATH_ANIM_MS, 0, 9), flip };
     case "attack": {

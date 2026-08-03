@@ -164,7 +164,10 @@ describe("the lies land against a snapshotted guard", () => {
     let evs = runMs(d, TICK, null, "thrust");
     evs = evs.concat(runMs(d, 250 - TICK, "parry", null));
     evs = evs.concat(runMs(d, 1600));
-    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+    // Two longswords: the stop is a bind since sustained-bind - the met
+    // contact is the guard succeeding, and nobody is hit.
+    expect(evs.some((e) => e.kind === "met" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 });
 
@@ -190,7 +193,10 @@ describe("the defender's answer: the guard shift", () => {
   test("a height shift within the window meets the redirected blade", () => {
     const at = riseEnd + 20;
     const evs = answered("stanceUp", "stanceUp", at, at + PLAYER_REACTION_MS);
-    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+    // Two longswords: the stop is a bind since sustained-bind - the met
+    // contact is the guard succeeding, and nobody is hit.
+    expect(evs.some((e) => e.kind === "met" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 
   test("a height shift too late is a guard that forms over a wound", () => {
@@ -204,7 +210,10 @@ describe("the defender's answer: the guard shift", () => {
   test("a side retarget (horizontal arrow) answers the longsword's side redirect", () => {
     const at = riseEnd + 20;
     const evs = answered("cut", "sideShift", at, at + PLAYER_REACTION_MS);
-    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+    // Two longswords: the stop is a bind since sustained-bind - the met
+    // contact is the guard succeeding, and nobody is hit.
+    expect(evs.some((e) => e.kind === "met" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 
   test("one shift AT A TIME: a second input mid-travel is refused; after completion, allowed", () => {
@@ -240,7 +249,10 @@ describe("the defender's answer: the guard shift", () => {
     evs = evs.concat(runMs(d, arrivalIsh - 250 - 3 * TICK));
     evs = evs.concat(runMs(d, TICK, "stanceUp", null)); // shift begins just before arrival
     evs = evs.concat(runMs(d, 900));
-    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+    // Two longswords: the stop is a bind since sustained-bind - the met
+    // contact is the guard succeeding, and nobody is hit.
+    expect(evs.some((e) => e.kind === "met" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 });
 
@@ -267,7 +279,10 @@ describe("the timing tension, exhaustively: when L is pressed decides everything
   test("pressed after the redirect, the parry infers the NEW line and meets it", () => {
     const { evs, side } = exchange(redirectAt + PLAYER_REACTION_MS);
     expect(side).toBe("outside"); // it saw the cut, not the sold thrust
-    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+    // Two longswords: the stop is a bind since sustained-bind - the met
+    // contact is the guard succeeding, and nobody is hit.
+    expect(evs.some((e) => e.kind === "met" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 
   test("pressed very late, the parry reads the final line correctly and still dies forming", () => {
@@ -296,7 +311,10 @@ describe("the timing tension, exhaustively: when L is pressed decides everything
       const ib = aiDecide(d, 1, ai, TICK);
       evs.push(...tickDuel(d, ia, ib));
     }
-    expect(evs.some((e) => e.kind === "parried" && e.side === 0)).toBe(true);
+    // Two longswords: the stop is a bind since sustained-bind - the met
+    // contact is the guard succeeding, and nobody is hit.
+    expect(evs.some((e) => e.kind === "met" && e.side === 0)).toBe(true);
+    expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 });
 

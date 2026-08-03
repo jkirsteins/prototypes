@@ -81,6 +81,10 @@ describe("attack resolution", () => {
         const evs = tickDuel(d, i === 0 ? kind : null, i === pressTick ? "parry" : null);
         for (const e of evs) {
           if (e.kind === "parried" || e.kind === "hit" || e.kind === "whiff") return e.kind;
+          // Two longswords: the stop is a bind since sustained-bind, and
+          // the met that enters it is the same instant the deflection
+          // fired before. The interval rules under test are unchanged.
+          if (e.kind === "met" && d.bind !== null) return "parried";
         }
       }
       return "none";

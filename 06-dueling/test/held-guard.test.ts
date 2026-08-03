@@ -57,9 +57,12 @@ describe("the held lifecycle", () => {
     runMs(d, TICK, "parry", null); // cold press, held (no release)
     runMs(d, 2000);
     expect(d.f[0].parry?.phase).toBe("held");
-    // The AI thrust arrives on the covered line (low inside).
+    // The AI thrust arrives on the covered line (low inside). Two
+    // longswords: the stop is a bind since sustained-bind - the met is
+    // the guard answering, and nobody is hit.
     const evs = runMs(d, 1400, null, "thrust");
-    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "met" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 
   test("release drops from rising, held and shifting alike, at recovery price", () => {

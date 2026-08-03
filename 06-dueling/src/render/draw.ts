@@ -1,12 +1,12 @@
-import { ARENA, gapOf } from "../combat/engine";
+import { ARENA, BIND_MS, gapOf } from "../combat/engine";
 import { HIT_STUN_MS, guardEffective, lineOf } from "../combat/fighter";
 import { controlsLine } from "../ui/help";
 import { lastLines } from "../combat/log";
 import { zoneFor } from "../combat/measure";
-import { pickFrame } from "./frames";
+import { pickBindFrame, pickFrame } from "./frames";
 import { SHEETS } from "./sheets";
 import type { AiMode } from "../combat/ai";
-import type { Duel } from "../combat/engine";
+import type { BindState, Duel } from "../combat/engine";
 import type { Fighter, FighterState } from "../combat/fighter";
 import type { AttackPhase, Height, WeaponId, Zone } from "../combat/types";
 import type { SheetName } from "./sheets";
@@ -34,6 +34,7 @@ const PHASE_COLORS: Record<AttackPhase | Exclude<FighterState["kind"], "attack">
   windup: "#e6c229", strike: "#d64541", recovery: "#57a55a",
   void: "#4aa3df", step: "#cfd3da",
   hitstun: "#d64541", dead: "#555a63", ready: "#8a8f98",
+  bind: "#c9822f",
 };
 
 /** cut/thrust tempo cost per weapon, shown on the HUD cards. */
@@ -62,15 +63,15 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
   if (v.overlay) drawMeasureBands(v, d);
   drawLineBar(v, d.f[0], 0);
   drawLineBar(v, d.f[1], 1);
-  drawFighter(v, d.f[0], d.time);
-  drawFighter(v, d.f[1], d.time);
+  drawFighter(v, d.f[0], d.time, d.bind, 0);
+  drawFighter(v, d.f[1], d.time, d.bind, 1);
   if (v.overlay) {
-    drawBodyTrack(v, d.f[0]);
-    drawBodyTrack(v, d.f[1]);
+    drawBodyTrack(v, d.f[0], d.bind);
+    drawBodyTrack(v, d.f[1], d.bind);
     drawParryTrack(v, d.f[0]);
     drawParryTrack(v, d.f[1]);
-    drawLineTrack(v, d.f[0]);
-    drawLineTrack(v, d.f[1]);
+    drawLineTrack(v, d.f[0], d.bind);
+    drawLineTrack(v, d.f[1], d.bind);
     drawLog(v, d);
     drawSeed(v, seed);
   }
@@ -120,15 +121,29 @@ function drawTimeControl(v: View, d: Duel, time: TimeControl): void {
   ctx.textAlign = "left";
 }
 
-function drawFighter(v: View, f: Fighter, time: number): void {
+/**
+ * The bind strain: a small deterministic horizontal offset, opposite in
+ * phase between the two fighters, so a frozen bind reads as two bodies
+ * pushing on each other rather than a screenshot. Renderer-only - it reads
+ * d.time and never enters the simulation, so replays cannot see it.
+ */
+export function bindStrainOffset(timeMs: number, side: 0 | 1): number {
+  const a = Math.sin(timeMs / 45) * 0.9;
+  return side === 0 ? a : -a;
+}
+
+function drawFighter(v: View, f: Fighter, time: number, bind: BindState | null, side: 0 | 1): void {
   const { ctx } = v;
-  const pick = pickFrame(f, time);
+  const bound = f.state.kind === "bind" && bind !== null;
+  const pick = bound && bind !== null
+    ? pickBindFrame(f, bind.contact[side], bind.line.side)
+    : pickFrame(f, time);
   const meta = SHEETS[pick.sheet];
   const img = v.images[pick.sheet];
   const sx = pick.frame * meta.frameW;
   const dy = ARENA.floorY - meta.feetY * SCALE;
   ctx.save();
-  ctx.translate(f.x * PX_PER_CM, 0);
+  ctx.translate(f.x * PX_PER_CM + (bound ? bindStrainOffset(time, side) : 0), 0);
   if (pick.flip) ctx.scale(-1, 1);
   ctx.drawImage(
     img, sx, 0, meta.frameW, meta.frameH,
@@ -201,12 +216,19 @@ function drawTrackRow(
 }
 
 /** Row 1: current state or attack phase, with progress through it. */
-function drawBodyTrack(v: View, f: Fighter): void {
+function drawBodyTrack(v: View, f: Fighter, bind: BindState | null): void {
   const { ctx } = v;
   const s = f.state;
   const cx = f.x * PX_PER_CM;
   const label = s.kind === "attack" ? s.phase : s.kind;
   const color = PHASE_COLORS[label];
+
+  if (s.kind === "bind") {
+    // Both fighters show the one shared clock filling together - the same
+    // timed-state idiom as everything else, driven by the duel's BindState.
+    drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, bind === null ? null : bind.t / BIND_MS);
+    return;
+  }
 
   if (s.kind === "attack" && s.phase === "strike") {
     // The one bar with internal structure: meetable / delivered, split at
@@ -284,6 +306,10 @@ function bodyFraction(f: Fighter): number | null {
     }
     case "dead":
       return null;
+    case "bind":
+      // Unreachable from drawBodyTrack (the bind bar returns early with
+      // the shared clock, which a lone fighter cannot supply); no bar.
+      return null;
   }
 }
 
@@ -319,8 +345,16 @@ const ROW3_LABEL_Y = -146;
  * stance, including its motion. The AI's line must be as legible as the
  * player's or none of the reads exist.
  */
-export function lineLabel(f: Fighter): string {
+export function lineLabel(f: Fighter, bind: BindState | null = null): string {
   const H = (h: Height): string => h.toUpperCase();
+  if (f.state.kind === "bind" && bind !== null) {
+    // The saved contact line, never a live recomputation: the states that
+    // formed the contact are gone. Both fighters are on it by definition,
+    // so both rows read the same - the visual statement that two blades
+    // are in one place.
+    const l = bind.line;
+    return `${H(l.height)} ${l.side.toUpperCase()} (bind)`;
+  }
   if (f.state.kind === "attack") {
     const l = lineOf(f);
     return `${H(l.height)} ${l.side.toUpperCase()} (attack)`;
@@ -333,13 +367,13 @@ export function lineLabel(f: Fighter): string {
   return `${H(f.height)} (stance)`;
 }
 
-function drawLineTrack(v: View, f: Fighter): void {
+function drawLineTrack(v: View, f: Fighter, bind: BindState | null): void {
   const { ctx } = v;
-  const active = f.state.kind === "attack" || f.parry !== null;
+  const active = f.state.kind === "attack" || f.state.kind === "bind" || f.parry !== null;
   ctx.font = "10px ui-monospace, monospace";
   ctx.textAlign = "center";
   ctx.fillStyle = active ? "#cfd3da" : "#5a6070";
-  ctx.fillText(lineLabel(f), f.x * PX_PER_CM, ARENA.floorY + ROW3_LABEL_Y);
+  ctx.fillText(lineLabel(f, bind), f.x * PX_PER_CM, ARENA.floorY + ROW3_LABEL_Y);
   ctx.textAlign = "left";
 }
 

@@ -32,7 +32,15 @@ export type FighterState =
       redirectedAtMs: number | null;
     }
   | { kind: "hitstun"; t: number }
-  | { kind: "dead"; t: number };
+  | { kind: "dead"; t: number }
+  /**
+   * Seized in a sustained bind. Deliberately a bare marker: nothing about
+   * a bind is per-fighter - the clock, the contact line and the entry
+   * snapshot all live on the duel's shared BindState, the single home of
+   * one physical event. Two mirrored copies kept equal by discipline was
+   * the bug-shaped version.
+   */
+  | { kind: "bind" };
 
 /**
  * The timed defence, on its own track so it can coexist with locomotion:
@@ -508,6 +516,10 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
         f.state = { kind: "dead", t: 0 };
         events.push({ type: "died" });
       }
+      break;
+    case "bind":
+      // The body is seized; the duel's shared clock decides when it is
+      // released. Nothing per-fighter advances here.
       break;
     case "attack": {
       // One clock, absolute marks: the phase follows elapsedMs across the

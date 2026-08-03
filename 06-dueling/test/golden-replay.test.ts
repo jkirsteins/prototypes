@@ -101,6 +101,25 @@ const SCENARIOS: Scenario[] = [
       return s;
     })(),
   },
+  {
+    // The longsword mirror: the one pairing where contact binds instead of
+    // deflecting. Added with sustained-bind so the gate witnesses the bind
+    // path - entry on the met tick, the 500ms freeze, and the symmetric
+    // scramble after - which no other scenario reaches.
+    name: "longsword mirror: the parried cut binds, both scramble out",
+    p: "longsword", e: "longsword", mode: 1, seed: 3, ticks: 1800,
+    script: (() => {
+      const s: Record<number, Intent> = {};
+      for (let t = 0; t < 120; t++) s[t] = "advance";
+      // The cut, not the thrust: its 520ms of tell-free preparation is
+      // readable even at the slow end of the dummy's drawn reaction (seed
+      // 3 draws 358ms), so the guard reliably forms and the contact binds.
+      s[150] = "cut";
+      s[205] = "advance"; // refused inside the bind: proves the freeze
+      s[430] = "cut"; // after the exit, from the scramble
+      return s;
+    })(),
+  },
 ];
 
 function runScenario(sc: Scenario): { hash: number; endedAt: number | null } {
@@ -161,6 +180,14 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // death at 188 - only the press tick moved, which is exactly what a
     // slower reaction should change and nothing more.
     "parry dummy reads the player's telegraph-free attacks": { hash: 4097846637, endedAt: 188 },
+    // Recorded at sustained-bind, the spec that introduced the scenario:
+    // per-tick probe shows the cut's met at tick 195 followed by NO
+    // resolution events (the bind swallowed the attack), the scripted
+    // advance at 205 refused (both bodies frozen), a second bind at 471,
+    // and no death - two held beats, two symmetric scrambles. The four
+    // pre-existing scenarios hash identically across the bind change
+    // (none reaches a longsword-mirror contact), which is the control.
+    "longsword mirror: the parried cut binds, both scramble out": { hash: 915003746, endedAt: null },
   };
 
   for (const sc of SCENARIOS) {

@@ -2,7 +2,7 @@ import { applyIntent, dropGuard, lineOf, TICK, tickFighter } from "./fighter";
 import { bladesCross, parryMeetsAttack } from "./contact";
 import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
-import type { Intent, WeaponProfile } from "./types";
+import type { Intent, Line, WeaponProfile } from "./types";
 
 // The contact module is the single home of blade geometry; the engine
 // re-exports it so existing consumers keep one import site.
@@ -28,11 +28,44 @@ export interface DuelEvent {
   ms?: number;
 }
 
+/** The bind's held beat, real milliseconds. If pressure-and-winding's
+ *  window proves too fast to read, this is the lever - never a time scale,
+ *  which would make every reaction constant mean two things. */
+export const BIND_MS = 500;
+/** Seeded into both bodies at exit: shared, not per-weapon, because both
+ *  weapons in a bind are by definition the same bind-capable class. */
+export const BIND_RECOVERY_MS = 180;
+
+/** One side's part of the contact, snapshotted on the entry tick BEFORE the
+ *  attack and parry states are discarded. pressure-and-winding derives
+ *  firmness from this; it cannot be recomputed later, because the states it
+ *  reads are gone. */
+export type BindContact =
+  | { kind: "strike"; progress: number } // 0..1 through the travelling half
+  /** held-guard's settled clock at contact: how long the covered line had
+   *  been effective. A completed guard shift resets it, so a guard that
+   *  just corrected a feint reads as freshly set. */
+  | { kind: "guard"; settledMs: number };
+
+/** A single physical event with one clock, so it lives on the duel - never
+ *  mirrored onto the fighters, whose `bind` markers carry no data. */
+export interface BindState {
+  t: number;
+  /** The actual contact line, saved at entry. For two crossing attacks it
+   *  is their shared line; for a parried attack it is the attack's line,
+   *  which the full-match rule guarantees equals the parry's covered line.
+   *  Every bind presentation shows this saved value, never a live
+   *  recomputation from states that have since moved. */
+  line: Line;
+  contact: [BindContact, BindContact];
+}
+
 export interface Duel {
   f: [Fighter, Fighter];
   time: number;
   over: boolean;
   winner: 0 | 1 | "draw" | null;
+  bind: BindState | null;
   log: DuelEvent[];
 }
 
@@ -42,6 +75,7 @@ export function createDuel(wa: WeaponProfile, wb: WeaponProfile): Duel {
     time: 0,
     over: false,
     winner: null,
+    bind: null,
     log: [],
   };
 }
@@ -128,6 +162,29 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   d.time += dt;
   const evs: [FighterEvent[], FighterEvent[]] = [tickFighter(d.f[0], dt), tickFighter(d.f[1], dt)];
 
+  // The bind's shared clock, advanced after the fighters tick (their bind
+  // marker is a no-op there) and before contact detection, so a bind formed
+  // later this tick starts at t = 0 and exit-tick charges stand un-decayed.
+  // The exit is neutral and symmetric: both bodies return to ready and seed
+  // BIND_RECOVERY_MS, and a fighter whose guard the entry consumed pays
+  // parryRecoveryMs HERE - charged at entry it would decay to nothing
+  // inside BIND_MS and the spent guard would cost nothing; charged at exit
+  // it is felt where it matters, in the scramble after.
+  if (d.bind !== null) {
+    d.bind.t += dt;
+    if (d.bind.t >= BIND_MS) {
+      for (const side of [0, 1] as const) {
+        const f = d.f[side];
+        f.state = { kind: "ready" };
+        f.stepRecoveryMs = BIND_RECOVERY_MS;
+        if (d.bind.contact[side].kind === "guard") {
+          f.parryRecoveryMs = f.weapon.parryRecoveryMs;
+        }
+      }
+      d.bind = null;
+    }
+  }
+
   // Physical moments surface as fighter state-machine events, deliberately
   // not at intent acceptance: the input only feeds the simulation, and the
   // sound of the outcome belongs to the tick the simulation reaches it.
@@ -160,8 +217,33 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   // old parryable-interval boundary; earlier at any closer gap); for a
   // crossing, the tick both extensions cover the gap. One met per contact,
   // never one per side - two clash samples on one tick would be a layer.
-  for (const c of markMetBlades(d)) {
+  const contacts = markMetBlades(d);
+  for (const c of contacts) {
     out.push({ time: d.time, side: c, kind: "met", text: "" });
+  }
+
+  // Two bind-capable weapons turn the contact into a bind on the met tick:
+  // the snapshot is read from the still-live attack and parry states, then
+  // both bodies are replaced with the bare marker. The attack is over (its
+  // timeline is discarded, so it can never resolve), and the guard is
+  // consumed even though the parry key is still physically down - a spent
+  // guard never re-forms from a held key. Not entered when the duel is
+  // already over: dead takes precedence over everything.
+  if (
+    contacts.length > 0 &&
+    !d.over &&
+    d.bind === null &&
+    d.f[0].weapon.bindCapable &&
+    d.f[1].weapon.bindCapable
+  ) {
+    const line = lineOf(d.f[contacts[0]]);
+    const contact = [snapshotContact(d.f[0]), snapshotContact(d.f[1])] as [BindContact, BindContact];
+    d.bind = { t: 0, line, contact };
+    for (const f of d.f) {
+      f.state = { kind: "bind" };
+      f.parry = null; // consumed without charge; the charge lands at exit
+      f.buffered = null;
+    }
   }
 
   // Gather strike resolutions AFTER both fighters ticked, so same-tick
@@ -255,6 +337,17 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
  * crossing reports ONE contact, carried by the fighter whose strike began
  * later - the blade whose travel completed the contact.
  */
+/** One side's part of a forming bind, read while the states are still live. */
+function snapshotContact(f: Fighter): BindContact {
+  const s = f.state;
+  if (s.kind === "attack") {
+    const tl = s.timeline;
+    const progress = Math.max(0, Math.min(1, (s.elapsedMs - tl.strikeStart) / (tl.parryableUntil - tl.strikeStart)));
+    return { kind: "strike", progress };
+  }
+  return { kind: "guard", settledMs: f.parry?.settledMs ?? 0 };
+}
+
 function markMetBlades(d: Duel): Array<0 | 1> {
   const gap = gapOf(d);
   const a = d.f[0].state;

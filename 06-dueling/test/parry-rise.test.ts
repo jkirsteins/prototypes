@@ -107,6 +107,10 @@ describe("the rise changes what a press timing is worth (full duels)", () => {
     }
     if (evs.some((e) => e.kind === "parried")) return "parried";
     if (evs.some((e) => e.kind === "hit")) return "hit";
+    // Two longswords: the guard stopping the blade is a bind since
+    // sustained-bind, so the met contact IS the successful stop. The
+    // timing rules under test are identical on both paths.
+    if (evs.some((e) => e.kind === "met")) return "parried";
     return "none";
   }
 
@@ -171,7 +175,12 @@ describe("mode 1 coverage: what the dummy can still answer on reaction", () => {
           const ib = aiDecide(d, 1, ai, TICK);
           evs.push(...tickDuel(d, i === 0 ? row.kind : null, ib));
         }
-        const got = evs.some((e) => e.kind === "parried") ? "parried" : evs.some((e) => e.kind === "hit") ? "hit" : "none";
+        // "parried" means the guard stopped the blade: the deflection
+        // event, or (two longswords, since sustained-bind) the met that
+        // enters the bind. The reaction arithmetic is the same either way.
+        const got =
+          evs.some((e) => e.kind === "parried" || e.kind === "met") ? "parried" :
+          evs.some((e) => e.kind === "hit") ? "hit" : "none";
         expect(got).toBe(row[bound]);
       });
     }
