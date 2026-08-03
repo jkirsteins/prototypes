@@ -181,11 +181,15 @@ function bindTimeline(w: WeaponProfile): AttackTimeline;   // thrust only
 | `GUARD_SETTLE_MS` | 160 |
 | `FIRMNESS_EPSILON` | 0.15 |
 
-The arithmetic the first two are chosen for: a longsword thrust from the bind
-resolves in 260 ms, inside the loser's 320 ms of exposure, so **taking the
-opening immediately kills**. Hesitating 100 ms puts it at 360 ms, and the loser
-is back and can void or counter. Winning the bind is decisive and expires if you
-admire it.
+The arithmetic the first two are chosen for, worked with longsword numbers: a
+longsword thrust from the bind resolves in 260 ms, inside the loser's 320 ms of
+exposure, so **taking the opening immediately kills**. Hesitating 100 ms puts it
+at 360 ms, and the loser is back and can void or counter. Winning the bind is
+decisive and expires if you admire it. The deciding inequality - `bindTimeline`
+resolution against `BIND_LOSS_MS` - is per weapon, from that weapon's own thrust
+timings: every pairing `canBind` sustains (the rapier mirror included) gets its
+own version of this trade from the same formula, never from the longsword's
+numbers asserted globally.
 
 The winner is not forced to thrust. Stepping out of measure is legitimate and
 sometimes better - it spends the advantage on safety instead, since a whiff is
@@ -320,6 +324,10 @@ counter-attacks into it, and always holds.
 - **Neutral break is silent:** no `bindBreak` event at all.
 - **AI determinism and coverage:** same seed and input script, same choices and
   lock ticks; over a long seeded run all three choices occur.
+- **The reward arithmetic is per pairing:** the §2.3 kill window
+  (`bindTimeline` resolution against `BIND_LOSS_MS`) is computed from `WEAPONS`
+  for every pairing `canBind` sustains and pinned, so a retune moves the trade
+  visibly instead of silently breaking §2.3's promise.
 - **Golden replay:** hash re-recorded.
 
 ---
@@ -339,9 +347,13 @@ counter-attacks into it, and always holds.
 - *Duplieren* and *Mutieren*. Follow-ups within a continuing bind; this bind
   resolves in one exchange.
 - Multiple exchanges in one bind, or re-entering a bind from a bind.
-- Rapier bind behaviour. `bindCapable: false` stays, as the abstraction
-  `sustained-bind` §1 documents; the rapier's answer is the disengage from
-  `line-feints`.
+- Retuning the rapier mirror's bind game. Bindability is derived, never
+  declared (`canBind`, `sustained-bind` §1): under the shipping stiffness
+  numbers the mixed pairing deflects - there the rapier's answer is the
+  disengage from `line-feints` - while the rapier mirror binds and enters
+  this spec's mixup by the same derivation, its budgets falling out of §2.3's
+  per-weapon arithmetic. If the rapier mirror plays badly, the knobs are the
+  shared constants and `bladeStiffness`, never a weapon branch or flag.
 - Grappling, half-swording, and the close-measure *Krieg*.
 - Slow motion during the decision. `sustained-bind` §3 argues against it and
   that argument is unchanged: `BIND_MS` is the lever.
@@ -350,7 +362,8 @@ counter-attacks into it, and always holds.
 
 ## 7. Playtest gate
 
-This is the last spec in the chain, so play the whole thing, not just the bind.
+This is the last spec in the chain, so play the whole thing, not just the
+bind - and both mirrors, since the rapier mirror binds by the same derivation.
 
 What to look for:
 
@@ -361,8 +374,8 @@ What to look for:
 - Getting outguessed feels like being read, not like losing a coin flip you had
   no hand in.
 - The early-versus-late guard choice from §1.1 bites: you commit guards earlier
-  against a longsword than against a rapier, because you want to be firm where
-  binds happen.
+  in the pairings that bind (the mirrors) than in the mixed pairing, because
+  you want to be firm where binds happen.
 - Across a session against mode 3: are you losing to feints, to binds, or to
   measure? All three should happen. If one dominates, that is where the next
   spec goes.

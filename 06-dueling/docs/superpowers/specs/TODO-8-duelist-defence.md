@@ -52,10 +52,10 @@ with which tool. `held-guard` §9 said so explicitly: the trigger "arrives in
 
 Last is the only correct place for it. A defence policy chooses over the
 complete kit, and a policy written mid-chain would have been rewritten by
-every spec that followed - and the bind proves the sequencing concretely: a
-longsword duelist that parries enters binds as the **defender**, so the bind
-game must already exist and already have an AI strategy, or every successful
-AI parry would dead-end. `pressure-and-winding` §4 supplied that strategy;
+every spec that followed - and the bind proves the sequencing concretely: in
+any pairing `canBind` sustains, a duelist that parries enters binds as the
+**defender**, so the bind game must already exist and already have an AI
+strategy, or every successful AI parry would dead-end. `pressure-and-winding` §4 supplied that strategy;
 this spec only routes new traffic into it.
 
 This spec adds the policy and nothing else. Every reflex stays where it was
@@ -232,7 +232,7 @@ the pulse resumes on its cooldown.
 
 No scripted riposte. A successful deflection leaves the duelist with
 whatever its cooldown and zone say next, exactly as before; where a riposte
-exists by rights - the longsword bind won through `pressure-and-winding` -
+exists by rights - a bind won through `pressure-and-winding` -
 the bind advantage already is one, and this spec routes the AI into that
 game as a defender for the first time. Its firmness there is emergent and
 correct: the standing hold arrives settled and firm, a last-moment reactive
@@ -362,8 +362,9 @@ word "defends", and nothing else changes.
 - **Commitment against its own attack:** no defensive intent is emitted
   while the duelist's own attack state is live; a pending unthrown plan is
   cleared when the menu draws a defence.
-- **Bind entry as defender:** a longsword duelist parry that becomes a
-  bind runs `pressure-and-winding` §4's strategy with the firmness its
+- **Bind entry as defender:** a duelist parry that becomes a bind - in any
+  pairing `canBind` sustains, the rapier mirror as much as the longsword
+  mirror - runs `pressure-and-winding` §4's strategy with the firmness its
   snapshot earned; no special-case path.
 - **Modes 1 and 2 unchanged:** identical decision streams for the same
   seed before and after this spec.
@@ -407,8 +408,9 @@ What to look for:
 - The non-reactively-parryable attack from §5's invariant is never met by
   a reactive guard; when the duelist answers it at all, the answer is
   visibly distance, a trade, or a guard that was already standing.
-- Longsword mirrors now produce binds in both directions, and losing one
-  as the attacker feels different from losing one as the defender.
+- Mirror matches (longsword and rapier alike) now produce binds in both
+  directions, and losing one as the attacker feels different from losing
+  one as the defender.
 - Across a session: you lose to feints, to binds, to measure and now to
   its defence. If its defence never beats you, the weights or the band are
   too soft; if it beats you into passivity, `stand`'s weight is too low or

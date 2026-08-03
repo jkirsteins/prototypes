@@ -40,10 +40,11 @@ that denies it.
 The disarm is an **advantage consumer**, beside the thrust from
 `pressure-and-winding` §2.3. It exists exactly while `bindAdvantageMs > 0`,
 which settles its availability without a new rule: advantage only comes from
-a won bind, binds only form between bind-capable weapons, so the disarm is a
-longsword mechanic for free, and "when the position permits it" means
-precisely "when you hold the advantage" - blade control and leverage, already
-won, never asserted.
+a won bind, binds only form where `canBind` sustains the contact (stiffnesses
+within the band - under the shipping numbers both mirrors, never the mixed
+pairing), so the disarm reaches exactly the pairings that bind, for free, and
+"when the position permits it" means precisely "when you hold the advantage" -
+blade control and leverage, already won, never asserted.
 
 Two places it deliberately does not live:
 
@@ -154,7 +155,11 @@ startDelayMs + durationMs <= BIND_LOSS_MS   // startDelayMs from the resolution 
 
 computed by one shared helper that the engine, the AI (§6.1) and the tests
 all call, never re-derived - the `guardEffectiveAt` discipline from
-`duelist-defence` §5, applied here.
+`duelist-defence` §5, applied here. Its inputs are per pairing - the exposure,
+the advantage window and the competing thrust's budget come from the weapons
+in play - so every pairing `canBind` sustains (the rapier mirror included)
+gets its budgets from the same inequality; the numbers worked below are the
+longsword mirror's.
 
 - **Against a soft grip the disarm is the forgiving win - and that is its
   reason to exist.** Grip 0 is a 200 ms wrench, unresistable from any start
@@ -406,7 +411,8 @@ be rehearsed. Mode 3 resists on its own clock. The difficulty ladder from
 - **The budget boundary:** table-driven over (grip, start delay) pairs one
   tick either side of `startDelayMs + durationMs = BIND_LOSS_MS`, through
   §2.2's shared helper: under strips clean, over is resisted by a
-  well-timed press.
+  well-timed press. Computed for every pairing `canBind` sustains, not only
+  the longsword mirror.
 - **The window:** grip 1 - the resist is legal from the tick `exposed` ends,
   the window is at least 240 ms at an instant start; a press during
   `exposed` is dropped; a parry key held since the bind does not resist, a
@@ -469,9 +475,12 @@ be rehearsed. Mode 3 resists on its own clock. The difficulty ladder from
 - **Geometry-flavoured disarms.** The blade relation `sustained-bind` §2.3
   reserves stays reserved; the grip reads firmness only. If winding ever
   forks on contact geometry, a directional disarm can fork with it.
-- **Rapier disarms.** No binds, no advantage, no disarm - and if a rapier
-  bind game ever arrives (`sustained-bind` §1 names the seam), it brings its
-  own.
+- **Mixed-pairing disarms.** Rapier against longsword deflects (`canBind`),
+  so no bind, no advantage, no disarm there - a derivation, not a rule. The
+  rapier mirror binds, so it reaches the advantage and the disarm through the
+  same door as the longsword mirror, with its budgets from §2.2's shared
+  arithmetic; what stays out of scope is any separate tuning for it beyond
+  those shared constants.
 - **What a bloodless win is worth outside the duel.** Score, reputation,
   capture, a duelist who will not kill - the reasons a fighter with a
   guaranteed thrust in hand chooses the sword instead live in a campaign
@@ -485,7 +494,8 @@ be rehearsed. Mode 3 resists on its own clock. The difficulty ladder from
 ## 9. Playtest gate
 
 Longsword mirror against mode 3, long sessions, entering binds both firm and
-deliberately soft.
+deliberately soft - then a rapier-mirror session to confirm §2.2's shared
+arithmetic carries.
 
 What to look for:
 
