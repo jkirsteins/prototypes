@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { HELP, KEY_GROUPS, controlsLine, renderHelpHtml } from "../src/ui/help";
+import { HELP, KEY_GROUPS, controlsLine, controlsLines, renderHelpHtml } from "../src/ui/help";
 import { WEAPONS } from "../src/combat/weapons";
 
 /**
@@ -56,6 +56,20 @@ describe("the help panel stays current and concise", () => {
         expect(line).toContain(`${key} ${action}`);
         expect(html).toContain(action);
       }
+    }
+  });
+
+  test("every legend line fits the canvas: instructions are always visible", () => {
+    // The HUD centres each line on a 960px canvas in 11px monospace
+    // (~6.6px per glyph), so anything past ~142 characters clips at both
+    // edges - which is exactly how the legend shipped clipped once. Every
+    // key must also appear on one of the lines, so nothing fell off in
+    // the split.
+    const lines = controlsLines();
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(140);
+    const all = lines.join(" | ");
+    for (const group of KEY_GROUPS) {
+      for (const [key, action] of group) expect(all).toContain(`${key} ${action}`);
     }
   });
 });

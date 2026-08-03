@@ -3,6 +3,7 @@ import { TICK } from "./combat/fighter";
 import { createDuel, tickDuel } from "./combat/engine";
 import { WEAPONS } from "./combat/weapons";
 import { createAudioEngine } from "./audio/audio";
+import { advanceBulletTime, bulletTimeActive, bulletTimeScale, createBulletTime } from "./ui/bullettime";
 import { HELP_BUTTON, drawFrame } from "./render/draw";
 import { loadImages } from "./render/loader";
 import { renderHelpHtml } from "./ui/help";
@@ -48,6 +49,11 @@ const state = {
   paused: params.get("paused") === "1",
   timescale: SPEEDS.includes(Number(params.get("speed"))) ? Number(params.get("speed")) : 1,
   stepOnce: false,
+  // Bullet time: while a bind runs, the accumulator's wall-time feed is
+  // eased down so the pressure contest is readable at human speed. Pure
+  // presentation - the simulation stays a fixed-tick function and never
+  // learns about it; see src/ui/bullettime.ts.
+  bullet: createBulletTime(),
   // The "?" panel. Its own flag rather than state.paused, so opening and
   // closing help can never silently clear a manual pause; it gates the
   // accumulator only, like all time control.
@@ -220,6 +226,14 @@ loadImages().then((images) => {
   let last = performance.now();
   let acc = 0;
   const frame = (now: number): void => {
+    // The bullet-time curve advances on raw wall time, whatever the other
+    // time controls are doing; the transition cues fire exactly at the
+    // edges - the bind forming and its aftermath ending are simulation
+    // moments, the eased clock that follows them is not.
+    const wallDt = Math.min(now - last, 250);
+    const edge = advanceBulletTime(state.bullet, wallDt, bulletTimeActive(state.duel));
+    if (edge === "enter") audio.cue("bulletIn");
+    else if (edge === "exit") audio.cue("bulletOut");
     if (state.helpOpen) {
       // Reading time: the sim freezes, and even a queued single-step waits.
       acc = 0;
@@ -232,7 +246,7 @@ loadImages().then((images) => {
         state.stepOnce = false;
       }
     } else {
-      acc += Math.min(now - last, 250) * state.timescale;
+      acc += wallDt * state.timescale * bulletTimeScale(state.bullet);
     }
     last = now;
     const d = state.duel;
@@ -252,6 +266,7 @@ loadImages().then((images) => {
       drawFrame(view, d, state.aiMode, state.activeSeed, {
         paused: state.paused,
         timescale: state.timescale,
+        bulletScale: bulletTimeScale(state.bullet),
       });
     }
     requestAnimationFrame(frame);

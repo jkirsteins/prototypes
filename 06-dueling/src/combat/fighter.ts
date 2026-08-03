@@ -5,11 +5,18 @@ import type { AttackKind, AttackPhase, BindContact, Height, Intent, Line, Side, 
 export const TICK = 1000 / 60;
 export const HIT_STUN_MS = 350;
 export const DEATH_ANIM_MS = 900;
-/** How long the bind's loser is turned out and unable to act. */
-export const BIND_LOSS_MS = 320;
+/** How long the bind's loser is turned out and unable to act. Sized with
+ *  the advantage below so the winner's promise is HONEST: a thrust
+ *  launched on the advantage's last tick still resolves inside this
+ *  (advantage + strike <= exposure, per pairing, test-pinned). The first
+ *  cut shipped 320/200, under which only the first 60ms of the "200ms
+ *  advantage" could actually kill - 133 wall ms under bullet time, an
+ *  unreactable lie of a timer. */
+export const BIND_LOSS_MS = 520;
 /** The winner's opening: while it decays, one immediate thrust launches
- *  from the contact (bindTimeline). Anything else spends it on nothing. */
-export const BIND_ADVANTAGE_MS = 200;
+ *  from the contact (bindTimeline) and kills. Anything else spends it on
+ *  nothing. */
+export const BIND_ADVANTAGE_MS = 240;
 
 export type FighterState =
   | { kind: "ready" }
@@ -412,8 +419,8 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
     case "parry":
       return false; // the parry lives on its own track; applyIntent raises it
     case "press":
-    case "wind":
-      return false; // bind choices lock on the duel's BindState, not the body
+    case "yield":
+      return false; // bind actions start on the duel's BindState, not the body
     case "feint":
       return false; // only meaningful mid-windup; handled in applyIntent
     case "stanceUp":

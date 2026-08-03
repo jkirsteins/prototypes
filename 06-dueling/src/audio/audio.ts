@@ -16,6 +16,9 @@ export interface AudioEngine {
   unlock(): void;
   /** Once per rAF frame with every event of that frame's ticks. */
   frame(events: DuelEvent[]): void;
+  /** A presentation-layer cue (bullet time in/out): played directly by the
+   *  layer that owns the transition, outside the DuelEvent mapping. */
+  cue(name: "bulletIn" | "bulletOut"): void;
   /** Returns true when now muted. */
   toggleMute(): boolean;
 }
@@ -118,11 +121,15 @@ export function createAudioEngine(): AudioEngine {
     }
   };
 
+  const cue = (name: "bulletIn" | "bulletOut"): void => {
+    play(name, 1);
+  };
+
   const toggleMute = (): boolean => {
     muted = !muted;
     if (masterBus !== null) masterBus.gain.value = muted ? 0 : 1;
     return muted;
   };
 
-  return { unlock, frame, toggleMute };
+  return { unlock, frame, cue, toggleMute };
 }

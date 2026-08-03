@@ -70,8 +70,18 @@ inside `canBind` - in that one function.
 
 | Contact | `canBind(a, b)` | Otherwise |
 |---|---|---|
-| Parry meets attack | **bind** | deflection, exactly as today |
+| Parry meets attack | deflection, always | deflection |
 | Two blades cross | **bind** | deflection, exactly as today |
+
+(As built, force-into-force revision: the first cut also bound parried
+attacks in matched steel. Playtest wanted the two defensive modes
+distinct, and the physics agree: a guard RECEIVES a blade and sheds its
+force, adding none of its own, while two crossing attacks are two bodies
+driving force into the contact - which is exactly what the bind's
+pressure contest is made of. So the parry always deflects, whatever the
+steel, and the counter-attack into the blade is the one door into the
+bind. This is a global contact rule, not a weapon property: `canBind`
+still decides pairwise whether a crossing can LOCK.)
 
 Deflection is unchanged behaviour: `met` is set, the attack resolves to `parried`
 at its own `strikeEnd`, and each weapon pays its own `parriedPenalty`. The
@@ -114,8 +124,6 @@ type BindContact =
   | { kind: "guard"; settledMs: number };
 
 type FighterState = | ... | { kind: "bind" } | ...;
-
-export const BIND_MS = 500;
 ```
 
 Entering: on the tick contact is detected between two bind-capable weapons, the
@@ -125,26 +133,25 @@ the `bind` marker. The attacker's attack ends here; its timeline is discarded,
 because the attack is over. A defender's `ParryTrack` is consumed and cleared -
 the guard is spent even though the parry key is still physically held, and per
 `held-guard` a spent guard never re-forms from the held key; it takes a fresh
-press. `parryRecoveryMs` is charged on the bind's **exit** tick, not at entry:
-charged at entry it would decay to nothing inside `BIND_MS` (every weapon's
-parry recovery is shorter than 500 ms) and the spent guard would cost nothing.
-Charged at exit it is felt where it matters, in the scramble after, running
-concurrently with `BIND_RECOVERY_MS`.
+press. `parryRecoveryMs` is charged on the bind's **resolution** tick, not at
+entry: charged at entry it would decay away while the bind runs and the
+spent guard would cost nothing. Charged at exit it is felt where it
+matters, in the scramble after.
 
 During: neither fighter moves, accepts an intent, or resolves anything. Both are
 committed. `x` is frozen; the `MIN_GAP` clamp still runs and is a no-op.
 
-Exiting: at `bind.t >= BIND_MS` both return to `ready` and both seed
-`BIND_RECOVERY_MS` = 180, a shared constant rather than a weapon field, because
-both weapons in a bind are by definition the same bind-capable class. In this
-spec the exit is **neutral and symmetric**: the bind
-ends the exchange with no winner, and the next tempo belongs to whoever reads the
-new position first. Deciding the bind is `pressure-and-winding`.
-
-A neutral resolution is worth shipping on its own. It changes a longsword clash
-from an instant ping into a held beat, which is a large change to how the fight
-reads, and it lets the pose freeze in §4 be judged before a mini-game is built on
-top of it.
+Exiting: (as built, then superseded - this spec shipped a provisional
+**neutral, symmetric** exit at `bind.t >= BIND_MS = 500`, both fighters
+seeding a shared `BIND_RECOVERY_MS`, so the held beat could be judged before
+a decision was built on top of it. `pressure-and-winding`'s control-contest
+revision replaced it: a bind now persists until one fighter wins it
+through pressure or a yield - winner's advantage, loser's exposure - or
+until its clock (`BIND_TIME_LIMIT_MS`) expires on an even contest and
+both fighters shove each other apart, neutral. `BIND_MS` and
+`BIND_RECOVERY_MS` no longer exist. What this spec still owns is everything up to
+the decision: which contacts persist, the entry, the seizure, the snapshot
+and the frozen presentation.)
 
 ### 2.1 Why the bind lives on the duel, not on the fighters
 
@@ -191,9 +198,10 @@ interface BindState {
 ```
 
 No field is added today, because nothing reads one.
-`pressure-and-winding`'s three choices - hold, press, wind - resolve on the
-mixup matrix and the firmness pair alone; its wind is deliberately one
-generic button, not a directional choice. What this spec guarantees instead
+`pressure-and-winding`'s contest - pressure pulses against a committed
+yield - resolves on the shared control value alone; its yield is
+deliberately one generic motion, not a directional choice. What this spec
+guarantees instead
 is **sufficiency**: everything a future derivation needs survives the entry
 tick on the snapshot, after the live states are discarded - the contact
 line with its side axis, each side's `BindContact` kind (who was striking,
@@ -221,9 +229,17 @@ milliseconds, `AI_REACTION_MS` above all. A time scale inside the bind would mak
 that constant mean one thing outside the bind and another inside it, and the
 fairness arithmetic in `parry-rise` §3.1 and `line-feints` §4.1 would quietly stop holding.
 
-`BIND_MS` is 500 ms of real time, which is 30 ticks: room enough for a decision.
-If `pressure-and-winding`'s window proves too fast to read, the lever is `BIND_MS`, not a time
-scale.
+That refusal stands - **inside the simulation**. What playtest demanded and
+shipped instead is bullet time as a presentation effect
+(`src/ui/bullettime.ts`): while a bind runs AND through its aftermath (a
+fighter exposed or holding the bind advantage - the kill-or-escape beat),
+main.ts eases the wall-clock feed into the tick accumulator down to
+`BULLET_TIME_SCALE`, curving in and out, with a cue at each transition. The same class of control as pause and
+the speed keys: the sim remains a pure function of ticks, every AI constant
+keeps meaning the same simulation milliseconds, replays and the golden hash
+cannot see it - only the human gets more wall time per tick, which is the
+point. If the bind's pace in SIMULATION terms needs work, the levers remain
+`pressure-and-winding`'s pulse and drift constants.
 
 ---
 
@@ -263,9 +279,10 @@ ship the bind as the longsword's signature moment.
 
 ### 4.2 HUD
 
-The body row shows `bind` with a progress bar over `BIND_MS`, using the same
-idiom as every other timed state. Both fighters show it, both fill together,
-driven by the one shared clock (§2.1).
+The body row shows `bind` as a label with no bar - the bind has no fixed
+duration to fill toward. The contest itself renders on
+`pressure-and-winding`'s shared control bar, driven by the one shared
+state (§2.1).
 
 ### 4.3 Audio and the activity log
 
@@ -302,11 +319,11 @@ weapons can enter it.
 No decisions are made inside a bind in this spec, so no AI changes are required.
 
 One consequence to watch: mode 3 with a longsword will now enter binds against a
-parrying player and lose 500 ms of its cycle to them. `duelistCooldown` is derived
-from the thrust's whiffed commitment and does not account for this, so its
-approach-strike-retire pulse will stretch. That is acceptable, and it is not
-worth deriving a bind term into the cooldown until `pressure-and-winding` gives the bind an
-outcome worth pacing around.
+parrying player and lose the contest's length of its cycle to them.
+`duelistCooldown` is derived from the thrust's whiffed commitment and does not
+account for this, so its approach-strike-retire pulse will stretch. That is
+acceptable, and it is not worth deriving a bind term into the cooldown until
+play shows the pacing suffers.
 
 ---
 
@@ -315,9 +332,10 @@ outcome worth pacing around.
 - **Capability gate:** longsword against longsword produces a bind; every pairing
   involving a rapier produces the deflection path with unchanged penalties and
   unchanged timings. Table-driven over both contact kinds.
-- **One clock:** both fighters enter the `bind` marker on the contact tick and
-  both return to `ready` on the tick `duel.bind.t` crosses `BIND_MS`; there are
-  no per-fighter timers to drift, and `duel.bind` is `null` again after exit.
+- **One clock:** both fighters enter the `bind` marker on the contact tick,
+  there are no per-fighter timers to drift, and `duel.bind` is `null` again
+  after the contest resolves (the exit itself is `pressure-and-winding`'s
+  to test - no neutral exit exists).
 - **Contact snapshot:** entering a bind stores each side's `BindContact` with
   the values the live states held on the entry tick, asserted against
   hand-computed fixtures - and the snapshot remains readable after the attack

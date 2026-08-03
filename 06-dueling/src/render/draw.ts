@@ -1,7 +1,8 @@
-import { ARENA, BIND_MS, FIRMNESS_EPSILON, gapOf } from "../combat/engine";
+import { ARENA, BIND_ADVANTAGE_MS, gapOf } from "../combat/engine";
+import { bindTimerFrac, netBindForce, yieldOpportunity } from "../combat/bind";
 import { BIND_LOSS_MS } from "../combat/fighter";
 import { HIT_STUN_MS, guardEffective, lineOf } from "../combat/fighter";
-import { controlsLine } from "../ui/help";
+import { controlsLines } from "../ui/help";
 import { lastLines } from "../combat/log";
 import { zoneFor } from "../combat/measure";
 import { pickBindFrame, pickFrame } from "./frames";
@@ -44,12 +45,15 @@ const ATTACK_LISTING: Record<WeaponId, string> = {
   rapier: "thrust: 1 tempo / cut: poor",
 };
 
-/** Built from the same table the help panel lists, so the two cannot drift. */
-const CONTROLS_LINE = controlsLine();
+/** Built from the same table the help panel lists, so the two cannot drift.
+ *  Two lines, each narrower than the canvas: instructions clip nowhere. */
+const CONTROLS_LINES = controlsLines();
 
 export interface TimeControl {
   paused: boolean;
   timescale: number;
+  /** The bullet-time controller's current eased scale (1 = real time). */
+  bulletScale: number;
 }
 
 export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: TimeControl): void {
@@ -67,8 +71,8 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
   drawFighter(v, d.f[0], d.time, d.bind, 0);
   drawFighter(v, d.f[1], d.time, d.bind, 1);
   if (v.overlay) {
-    drawBodyTrack(v, d.f[0], d.bind);
-    drawBodyTrack(v, d.f[1], d.bind);
+    drawBodyTrack(v, d.f[0]);
+    drawBodyTrack(v, d.f[1]);
     drawParryTrack(v, d.f[0], d.bind, 0);
     drawParryTrack(v, d.f[1], d.bind, 1);
     drawLineTrack(v, d.f[0], d.bind);
@@ -77,7 +81,8 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
     drawSeed(v, seed);
   }
   drawHud(v, d, aiMode);
-  drawBindPrompt(v, d); // not overlay-gated: it is a control prompt
+  drawBindBar(v, d); // not overlay-gated: it is the contest's control surface
+  drawOpeningPrompt(v, d); // nor this: the reward has a deadline
   drawTimeControl(v, d, time);
   drawHelpButton(v);
   if (d.over) drawBanner(v, d);
@@ -105,7 +110,6 @@ function drawHelpButton(v: View): void {
  */
 function drawTimeControl(v: View, d: Duel, time: TimeControl): void {
   const { ctx } = v;
-  if (!time.paused && time.timescale === 1) return;
   ctx.font = "12px ui-monospace, monospace";
   ctx.textAlign = "center";
   if (time.paused) {
@@ -116,32 +120,219 @@ function drawTimeControl(v: View, d: Duel, time: TimeControl): void {
       480,
       112,
     );
-  } else {
+  } else if (time.timescale !== 1) {
     ctx.fillStyle = "#8a8f98";
     ctx.fillText(`${time.timescale}x speed`, 480, 112);
+  }
+  // The slowed clock announces itself: without a label, bullet time reads
+  // as the game acting strangely rather than as a granted beat of time.
+  if (!time.paused && time.bulletScale < 0.995) {
+    ctx.fillStyle = "#4aa3df";
+    ctx.fillText(`BULLET TIME ${time.bulletScale.toFixed(2)}x`, 480, 126);
   }
   ctx.textAlign = "left";
 }
 
 /**
- * The bind prompt's text: while unlocked it teaches the keys (a TAP locks,
- * irrevocably - holding adds nothing), and once the player has locked it
- * confirms their own tap so the press feels received. It never shows the
- * opponent's lock: their intent stays hidden until resolution.
+ * The instruction line over the shared bar: ALWAYS instructions, never a
+ * status readout - an earlier cut swapped it for the player's current
+ * action ("pressing", "press recovery"), which hid the instructions for
+ * exactly as long as the player acted. The action already reads from the
+ * PLAYER label under the bar; this line only ever teaches: the yield call
+ * when the player's own window is live, the flurry warning when the
+ * player's pressure is feeding the OPPONENT'S window (sustained mash
+ * into a deep opponent is exactly what a yield turns), the keys
+ * otherwise.
  */
-export function bindPrompt(lock: "press" | "wind" | null): string {
-  if (lock === null) return "BIND - tap J to press, K to wind, or hold fast";
-  return `BIND - ${lock} locked in`;
+export function bindPrompt(ownWindow: boolean, feedingTheirs: boolean): string {
+  if (ownWindow) return "BIND - YIELD NOW: tap K to turn their pressure";
+  if (feedingTheirs) return "BIND - they can turn your flurry: SPACE your taps";
+  return "BIND - J presses, K yields when your band lights";
 }
 
-/** Large control prompt at the top of the scene, only while a bind runs. */
-function drawBindPrompt(v: View, d: Duel): void {
-  if (d.bind === null) return;
+/**
+ * Where the marker renders, in [-1, +1] of the bar's half-width (negative
+ * = left). Pressure shoves the marker in the PRESSER'S facing direction -
+ * the enemy pressing drives the blades toward the player, so the marker
+ * travels toward the player's side of the bar, and symmetrically the
+ * other way. Derived from the enemy's facing, so if the fighters ever
+ * stood swapped the bar would follow the world, not a convention.
+ */
+export function bindMarkerOffset(control: number, enemyFacing: 1 | -1): number {
+  return control * enemyFacing;
+}
+
+/**
+ * One side's status label and recovery fraction for the shared bar,
+ * straight off the live action track - no presentation-only copy.
+ */
+export function bindSideStatus(
+  bind: BindState, side: 0 | 1,
+): { label: string; recovery: number | null } {
+  const a = bind.action[side];
+  switch (a.kind) {
+    case "ready":
+      return yieldOpportunity(bind, side)
+        ? { label: "YIELD NOW", recovery: null }
+        : { label: side === 0 ? "READY" : "HOLDING", recovery: null };
+    case "pressCommit":
+      return { label: "PRESSING", recovery: a.t / a.pulse.commitMs };
+    case "pressActive":
+      return { label: "PRESSING", recovery: a.t / a.pulse.activeMs };
+    case "pressRecover":
+      return { label: side === 0 ? "PRESS RECOVERY" : "RECOVERING", recovery: a.t / a.durationMs };
+    case "yielding":
+      return { label: "YIELDING", recovery: a.t / a.durationMs };
+    case "yieldFailRecover":
+      return { label: "YIELD FAILED", recovery: a.t / a.durationMs };
+  }
+}
+
+/** The headline over the bar: which way the pulse forces push right now. */
+export function bindHeadline(bind: BindState): string {
+  const net = netBindForce(bind.action);
+  if (net < -0.01) return "BIND: PLAYER PRESSURE";
+  if (net > 0.01) return "BIND: ENEMY PRESSURE";
+  return "BIND: NEUTRAL";
+}
+
+/**
+ * The shared control bar, mapped to the WORLD: pressure moves the marker
+ * in the presser's facing direction, so the enemy pressing drives the
+ * marker toward the player's side of the bar - being pushed into your own
+ * territory is losing. Each fighter's yield band therefore sits on their
+ * OWN side (it lights as the marker is shoved into it), and the cap at
+ * each end is tinted by the fighter who WINS there - the far cap, whose
+ * territory you drove the marker through. Everything is derived from the
+ * enemy's facing (bindMarkerOffset), never from a screen convention, and
+ * everything drawn reads live simulation values.
+ */
+const BIND_BAR = { cx: 480, y: 168, halfW: 170, h: 8 };
+
+function drawBindBar(v: View, d: Duel): void {
+  const bind = d.bind;
+  if (bind === null) return;
   const { ctx } = v;
-  ctx.font = "bold 18px ui-monospace, monospace";
+  const b = BIND_BAR;
+  const net = netBindForce(bind.action);
+  const enemyFacing = d.f[1].facing;
+  const tints = ["#c9a227", "#4aa3df"] as const; // fighter 0 gold, fighter 1 blue
+
   ctx.textAlign = "center";
+  ctx.font = "bold 15px ui-monospace, monospace";
   ctx.fillStyle = "#c9822f";
-  ctx.fillText(bindPrompt(d.bind.lock[0]), 480, 150);
+  ctx.fillText(bindHeadline(bind), b.cx, b.y - 22);
+  ctx.font = "12px ui-monospace, monospace";
+  ctx.fillText(bindPrompt(yieldOpportunity(bind, 0), yieldOpportunity(bind, 1)), b.cx, b.y - 8);
+
+  // The range, the neutral mark, the win caps (tinted by their winner:
+  // side 0 wins where control -1 renders, side 1 where +1 renders).
+  const x0 = b.cx - b.halfW;
+  ctx.fillStyle = "#2c313a";
+  ctx.fillRect(x0, b.y, 2 * b.halfW, b.h);
+  ctx.fillStyle = "#8a8f98";
+  ctx.fillRect(b.cx - 1, b.y - 2, 2, b.h + 4);
+  const leftWinner: 0 | 1 = bindMarkerOffset(-1, enemyFacing) < 0 ? 0 : 1;
+  ctx.fillStyle = tints[leftWinner];
+  ctx.fillRect(x0 - 5, b.y - 2, 5, b.h + 4);
+  ctx.fillStyle = tints[1 - leftWinner];
+  ctx.fillRect(b.cx + b.halfW, b.y - 2, 5, b.h + 4);
+
+  // Yield bands: side s's zone sits where s's LOSS endpoint renders -
+  // their own side of the bar, the territory they are pushed back into.
+  const band = (side: 0 | 1): void => {
+    const w = bind.yieldZone[side] * b.halfW;
+    const lit = yieldOpportunity(bind, side);
+    ctx.fillStyle = lit ? "#e6c229" : "#4a4436";
+    const lossOffset = bindMarkerOffset(side === 0 ? 1 : -1, enemyFacing);
+    if (lossOffset > 0) ctx.fillRect(b.cx + b.halfW - w, b.y, w, b.h);
+    else ctx.fillRect(x0, b.y, w, b.h);
+  };
+  band(0);
+  band(1);
+
+  // The bind clock, draining under the range: when it empties the bind
+  // breaks neutral and both fighters are shoved apart.
+  const frac = bindTimerFrac(bind);
+  ctx.fillStyle = "#2c313a";
+  ctx.fillRect(x0, b.y + b.h + 3, 2 * b.halfW, 3);
+  // Drains symmetrically toward the centre, echoing the shove-apart.
+  ctx.fillStyle = frac < 0.25 ? "#d64541" : "#8a8f98";
+  ctx.fillRect(b.cx - frac * b.halfW, b.y + b.h + 3, 2 * frac * b.halfW, 3);
+
+  // The marker, riding the live control value through the world mapping.
+  const mx = b.cx + bindMarkerOffset(bind.control, enemyFacing) * b.halfW;
+  ctx.fillStyle = "#e8eaed";
+  ctx.beginPath();
+  ctx.arc(mx, b.y + b.h / 2, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Net-force chevrons beside the marker, pointing where the marker is
+  // actually being pushed on screen - the presser's facing direction.
+  if (Math.abs(net) > 0.01) {
+    const dir = bindMarkerOffset(net, enemyFacing) > 0 ? 1 : -1;
+    ctx.fillStyle = "#e6c229";
+    ctx.font = "bold 12px ui-monospace, monospace";
+    const glyph = dir > 0 ? ">>" : "<<";
+    ctx.fillText(glyph, mx + dir * 20, b.y + b.h);
+  }
+
+  // Per-side status and recovery bars, each under its fighter's own side
+  // of the bar - the same side their yield band lives on.
+  const status = [bindSideStatus(bind, 0), bindSideStatus(bind, 1)] as const;
+  for (const side of [0, 1] as const) {
+    const s = status[side];
+    const onLeft = bindMarkerOffset(side === 0 ? 1 : -1, enemyFacing) < 0;
+    const labelX = onLeft ? x0 + 40 : b.cx + b.halfW - 40;
+    ctx.fillStyle = s.label === "YIELD NOW" ? "#e6c229" : "#cfd3da";
+    ctx.font = "11px ui-monospace, monospace";
+    ctx.fillText(`${side === 0 ? "PLAYER" : "ENEMY"}: ${s.label}`, labelX, b.y + 22);
+    if (s.recovery !== null) {
+      const w = 60;
+      const x = labelX - w / 2;
+      ctx.fillStyle = "#2c313a";
+      ctx.fillRect(x, b.y + 27, w, 4);
+      ctx.fillStyle = "#8a8f98";
+      ctx.fillRect(x, b.y + 27, w * Math.max(0, Math.min(1, s.recovery)), 4);
+    }
+  }
+  ctx.textAlign = "left";
+}
+
+/**
+ * The winner's conversion command, honest to the geometry: the advantage
+ * thrust kills only if the frozen gap is inside the winner's reach.
+ * Parry-entry binds always are; a CROSSING bind can latch far wider (the
+ * reach SUM covers the gap), and there the thrust would whiff into a
+ * brutal recovery - the prompt must never command it.
+ */
+export function openingPromptText(inReach: boolean): string {
+  return inReach ? "OPENING - K thrusts, NOW" : "OPENING - too wide: step out";
+}
+
+/**
+ * The bind winner's conversion window, spelled out while it runs: the
+ * advantage timer is sized so ANY in-reach thrust launched inside it
+ * kills, but only if the player knows K is the button - playtest showed a
+ * won bind converted with a cut (worthless from the contact, by design)
+ * and read as a broken reward. Draws where the bind bar stood, from live
+ * state.
+ */
+function drawOpeningPrompt(v: View, d: Duel): void {
+  if (d.bind !== null || d.over) return;
+  const adv = d.f[0].bindAdvantageMs;
+  if (adv <= 0) return;
+  const { ctx } = v;
+  const b = BIND_BAR;
+  ctx.textAlign = "center";
+  ctx.font = "bold 15px ui-monospace, monospace";
+  ctx.fillStyle = "#e6c229";
+  ctx.fillText(openingPromptText(gapOf(d) <= d.f[0].weapon.reach), b.cx, b.y - 22);
+  const frac = Math.max(0, Math.min(1, adv / BIND_ADVANTAGE_MS));
+  ctx.fillStyle = "#2c313a";
+  ctx.fillRect(b.cx - b.halfW, b.y - 14, 2 * b.halfW, 4);
+  ctx.fillStyle = "#e6c229";
+  ctx.fillRect(b.cx - frac * b.halfW, b.y - 14, 2 * frac * b.halfW, 4);
   ctx.textAlign = "left";
 }
 
@@ -149,15 +340,15 @@ function drawBindPrompt(v: View, d: Duel): void {
  * The bind strain: a small deterministic horizontal offset, opposite in
  * phase between the two fighters, so a frozen bind reads as two bodies
  * pushing on each other rather than a screenshot. Renderer-only - it reads
- * d.time and never enters the simulation, so replays cannot see it.
+ * d.time and the live net force and never enters the simulation, so
+ * replays cannot see it.
  */
-export function bindStrainOffset(timeMs: number, side: 0 | 1, firm?: [number, number]): number {
-  // The amplitude term: a lopsided bind visibly leans - the softer fighter
-  // is shoved harder. Derived from the stored firmness pair, still pure in
-  // its inputs and still outside the simulation.
-  const lean = firm ? Math.max(0.4, 1 + (firm[1 - side] - firm[side])) : 1;
-  const a = Math.sin(timeMs / 45) * 0.9 * lean;
-  return side === 0 ? a : -a;
+export function bindStrainOffset(timeMs: number, side: 0 | 1, net = 0): number {
+  // The amplitude term: a pulsing bind visibly strains harder, and both
+  // bodies shift toward the side being pushed. Pure in its inputs and
+  // still outside the simulation.
+  const a = Math.sin(timeMs / 45) * 0.9 * (1 + 0.8 * Math.abs(net));
+  return (side === 0 ? a : -a) + net * 2;
 }
 
 function drawFighter(v: View, f: Fighter, time: number, bind: BindState | null, side: 0 | 1): void {
@@ -170,8 +361,11 @@ function drawFighter(v: View, f: Fighter, time: number, bind: BindState | null, 
   const img = v.images[pick.sheet];
   const sx = pick.frame * meta.frameW;
   const dy = ARENA.floorY - meta.feetY * SCALE;
+  // The strain's shove direction follows the presser's facing in the
+  // world, the same mapping the bar's marker uses.
+  const enemyFacing = side === 1 ? f.facing : (-f.facing as 1 | -1);
   ctx.save();
-  ctx.translate(f.x * PX_PER_CM + (bound && bind !== null ? bindStrainOffset(time, side, bind.firmness) : 0), 0);
+  ctx.translate(f.x * PX_PER_CM + (bound && bind !== null ? bindStrainOffset(time, side, netBindForce(bind.action) * enemyFacing) : 0), 0);
   if (pick.flip) ctx.scale(-1, 1);
   ctx.drawImage(
     img, sx, 0, meta.frameW, meta.frameH,
@@ -244,7 +438,7 @@ function drawTrackRow(
 }
 
 /** Row 1: current state or attack phase, with progress through it. */
-function drawBodyTrack(v: View, f: Fighter, bind: BindState | null): void {
+function drawBodyTrack(v: View, f: Fighter): void {
   const { ctx } = v;
   const s = f.state;
   const cx = f.x * PX_PER_CM;
@@ -252,9 +446,9 @@ function drawBodyTrack(v: View, f: Fighter, bind: BindState | null): void {
   const color = PHASE_COLORS[label];
 
   if (s.kind === "bind") {
-    // Both fighters show the one shared clock filling together - the same
-    // timed-state idiom as everything else, driven by the duel's BindState.
-    drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, bind === null ? null : bind.t / BIND_MS);
+    // A label with no bar: the bind has no fixed duration to fill toward.
+    // The contest itself renders on the shared control bar.
+    drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, null);
     return;
   }
 
@@ -343,48 +537,15 @@ function bodyFraction(f: Fighter): number | null {
   }
 }
 
-/**
- * The pressure bars: during a bind, row 2 becomes each fighter's firmness -
- * making a tactile sense visible is the honest way to model Fuehlen; hiding
- * it would not simulate feel, it would remove it. The OPPONENT'S bar is
- * bright because their firmness is what sets your incentives; yours is
- * dimmed. The lighter band on each bar spans the opponent's value plus and
- * minus FIRMNESS_EPSILON: the zone where a press-war grinds neutral. What
- * stays hidden is intent, never pressure.
- */
-function drawPressureBar(v: View, f: Fighter, bind: BindState, side: 0 | 1): void {
-  const { ctx } = v;
-  const cx = f.x * PX_PER_CM;
-  const mine = bind.firmness[side];
-  const theirs = bind.firmness[1 - side];
-  const bright = side === 1; // the player reads the opponent's row
-  const label = !bright
-    ? "bind"
-    : mine > theirs + FIRMNESS_EPSILON ? "bind: they are hard"
-    : mine < theirs - FIRMNESS_EPSILON ? "bind: they are soft"
-    : "bind: even grind";
-  ctx.font = "11px ui-monospace, monospace";
-  ctx.textAlign = "center";
-  ctx.fillStyle = bright ? "#e6c229" : "#6b6675";
-  ctx.fillText(label, cx, ARENA.floorY + ROW2_LABEL_Y);
-  ctx.textAlign = "left";
-  const x = cx - TRACK_BAR_W / 2;
-  const y = ARENA.floorY + ROW2_BAR_Y;
-  ctx.fillStyle = "#2a2e36";
-  ctx.fillRect(x, y, TRACK_BAR_W, TRACK_BAR_H);
-  // The epsilon band around the OPPONENT's firmness.
-  const lo = Math.max(0, theirs - FIRMNESS_EPSILON);
-  const hi = Math.min(1, theirs + FIRMNESS_EPSILON);
-  ctx.fillStyle = bright ? "#4a4436" : "#343841";
-  ctx.fillRect(x + lo * TRACK_BAR_W, y, (hi - lo) * TRACK_BAR_W, TRACK_BAR_H);
-  ctx.fillStyle = bright ? "#e6c229" : "#6b6675";
-  ctx.fillRect(x, y, mine * TRACK_BAR_W, TRACK_BAR_H);
-}
-
-/** Row 2: the parry track - rise then window while up, recovery while spent. */
+/** Row 2: the parry track - rise then window while up, recovery while spent.
+ *  During a bind it mirrors that fighter's live action track, the same
+ *  status the shared bar shows, so the read works at either glance. */
 function drawParryTrack(v: View, f: Fighter, bind: BindState | null, side: 0 | 1): void {
   if (f.state.kind === "bind" && bind !== null) {
-    drawPressureBar(v, f, bind, side);
+    const cx = f.x * PX_PER_CM;
+    const s = bindSideStatus(bind, side);
+    const color = s.label === "YIELD NOW" ? "#e6c229" : "#c9822f";
+    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, s.label.toLowerCase(), color, s.recovery);
     return;
   }
   const cx = f.x * PX_PER_CM;
@@ -485,14 +646,18 @@ function drawLineBar(v: View, f: Fighter, i: 0 | 1): void {
   ctx.globalAlpha = 1;
 }
 
-/** Right-aligned scrolling combat log, most recent line last. */
+/** Right-aligned scrolling combat log, most recent line last. Each line
+ *  is tinted by its actor (the fighter cards' colors), so attribution
+ *  reads at a glance even in a mirror match where the names are equal. */
 function drawLog(v: View, d: Duel): void {
   const { ctx } = v;
+  const events = d.log.slice(-8);
   const lines = lastLines(d.log, 8);
+  const tints = ["#b5a06b", "#7d9fb8"]; // muted fighter tints: log, not HUD
   ctx.font = "11px ui-monospace, monospace";
-  ctx.fillStyle = "#8a8f98";
   ctx.textAlign = "right";
   lines.forEach((line, i) => {
+    ctx.fillStyle = tints[events[i].side];
     ctx.fillText(line, 952, 108 + i * 14);
   });
   ctx.textAlign = "left";
@@ -530,7 +695,8 @@ function drawHud(v: View, d: Duel, aiMode: AiMode): void {
   ctx.font = "11px ui-monospace, monospace";
   ctx.fillStyle = "#8a8f98";
   ctx.textAlign = "center";
-  ctx.fillText(CONTROLS_LINE, 480, 530);
+  ctx.fillText(CONTROLS_LINES[0], 480, 517);
+  ctx.fillText(CONTROLS_LINES[1], 480, 531);
   ctx.textAlign = "left";
 }
 

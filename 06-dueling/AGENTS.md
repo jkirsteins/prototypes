@@ -35,12 +35,17 @@ a layer:
   crossing attacks it is the tick their extensions together cover the gap,
   and a crossing is ONE clash, never one per side;
 - the bind clang (the clash samples pitched down) on that same contact
-  tick when matched steel locks instead of deflecting - it REPLACES the
-  clash as the contact's one sound, never layers on it, so a deflection
-  and a bind are audibly different outcomes;
-- the bindBreak ring on the tick a bind RESOLVES decisively - never on the
-  keypress that locked a choice - and a neutral break is silent: a second
-  clash means somebody won, so the silence carries information too;
+  tick when matched steel CROSSES and locks instead of deflecting - it
+  REPLACES the clash as the contact's one sound, never layers on it, so a
+  deflection and a bind are audibly different outcomes. Only a crossing
+  of two attacks can lock (force into force); a parried blade always
+  deflects with the met's ring, whatever the steel;
+- the bindBreak ring on the tick the bind's control contest RESOLVES
+  decisively - pressure reaching an endpoint or a yield completing - never
+  on the keypress that started a pulse or a yield attempt. The bind
+  clock's expiry breaks NEUTRAL and is deliberately silent: no ring means
+  nobody won, and the shove-apart steps (whose footfalls sound when the
+  feet plant, as always) plus the bullet-time exit sweep carry the rest;
 - the hit when the strike *resolves* into a wound. The bind winner's
   thrust launches with no windup interval to cross, so no rise cue plays -
   not an audio special case, there is simply no mark to hit.
@@ -48,6 +53,15 @@ a layer:
 The engine also emits an unmapped `swing` event (blade starts travelling);
 it is deliberately silent - sounding every attack would make the whoosh
 carry no information.
+
+One pair of cues lives OUTSIDE the DuelEvent mapping on purpose: the
+bullet-time in/out sweeps. Bullet time (src/ui/bullettime.ts) is a
+presentation effect - main.ts eases the wall-clock feed into the tick
+accumulator while a bind runs - so its cues are played by main.ts at the
+easing's own transitions, the same layer that owns pause and the speed
+keys. They mark the clock taking hold and letting go, never a combat
+outcome, and they must not be folded into DuelEvents or allowed to replace
+the bind's own clang and break.
 
 This was gotten wrong twice in one day (footsteps at step start, the clash
 at the parry press) and both were audible immediately.

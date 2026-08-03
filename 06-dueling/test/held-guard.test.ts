@@ -61,7 +61,7 @@ describe("the held lifecycle", () => {
     // longswords: the stop is a bind since sustained-bind - its logged
     // event is the guard answering, and nobody is hit.
     const evs = runMs(d, 1400, null, "thrust");
-    expect(evs.some((e) => e.kind === "bind" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
     expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 

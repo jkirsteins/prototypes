@@ -1,5 +1,5 @@
 import { BIND_LOSS_MS, HIT_STUN_MS } from "../combat/fighter";
-import { BIND_MS } from "../combat/engine";
+import { BIND_TIME_LIMIT_MS } from "../combat/bind";
 import { PARRYABLE_FRACTION, WEAPONS } from "../combat/weapons";
 import type { FighterState } from "../combat/fighter";
 import type { AttackPhase, WeaponProfile } from "../combat/types";
@@ -92,9 +92,9 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
   },
   bind: {
     label: "bind",
-    what: "Matched steel locks (the deep clang) and the mixup runs: J presses, K winds, doing nothing holds - hidden until it resolves.",
-    player: "Press beats hold, hold beats wind, wind beats press; a press-war goes to the firmer blade, and the bright bar is THEIR firmness.",
-    ms: () => BIND_MS,
+    what: "Attacks CROSSING in matched steel lock (deep clang, time slows); a parry only deflects; the bind clock drains toward a shove-apart.",
+    player: "J presses but spends your readiness; K yields committed pressure when your band lights - too early or unfed, it fails and costs.",
+    ms: () => BIND_TIME_LIMIT_MS,
   },
   exposed: {
     label: "exposed",
@@ -111,8 +111,20 @@ export const KEY_GROUPS: Array<Array<[string, string]>> = [
   [["space", "pause"], [".", "step"], ["[/]", "speed"], ["M", "mute"]],
 ];
 
+/**
+ * The bottom legend, split so every line FITS the 960px canvas: the
+ * gameplay keys on one line, session and time control on the other. One
+ * long line was silently clipped at both edges for as long as it
+ * out-measured the canvas - instructions must always be visible, so a
+ * test bounds each line's width now.
+ */
+export function controlsLines(): [string, string] {
+  const fmt = (g: Array<[string, string]>): string => g.map(([k, a]) => `${k} ${a}`).join(" ");
+  return [fmt(KEY_GROUPS[0]), KEY_GROUPS.slice(1).map(fmt).join(" | ")];
+}
+
 export function controlsLine(): string {
-  return KEY_GROUPS.map((g) => g.map(([k, a]) => `${k} ${a}`).join(" ")).join(" | ");
+  return controlsLines().join(" | ");
 }
 
 const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

@@ -314,7 +314,7 @@ describe("AI heights", () => {
     }
     // Two longswords: the successful stop is a bind since sustained-bind,
     // its own logged outcome event - the dummy's answer landing.
-    expect(evs.some((e) => e.kind === "bind")).toBe(true);
+    expect(evs.some((e) => e.kind === "parried")).toBe(true);
     expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 

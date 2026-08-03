@@ -5,7 +5,13 @@ export type SoundName =
   | "whoosh1" | "whoosh2" | "whoosh3"
   | "clash1" | "clash2" | "clash3"
   | "hit1"
-  | "windupRise";
+  | "windupRise"
+  /** Time-control cues (bullet time in/out), played through the engine's
+   *  cue() by main.ts - not DuelEvents, because bullet time is
+   *  presentation (wall-clock easing, like pause and the speed keys) and
+   *  its cues belong to the layer that owns it. The bind's combat sounds
+   *  stay the contest's one-sound-per-moment outcomes. */
+  | "bulletIn" | "bulletOut";
 
 /** Files under public/audio/; provenance and processing in public/audio/manifest.md. */
 export const SOUNDS: Record<SoundName, string> = {
@@ -21,6 +27,8 @@ export const SOUNDS: Record<SoundName, string> = {
   clash3:    "clash_03.ogg",
   hit1:      "hit_01.ogg",
   windupRise: "windup_rise.ogg",
+  bulletIn:  "bullet_in.ogg",
+  bulletOut: "bullet_out.ogg",
 };
 
 export const FOOTSTEPS: SoundName[] = ["footstep1", "footstep2", "footstep3", "footstep4"];
@@ -54,10 +62,11 @@ export const EVENT_SOUNDS: Partial<Record<DuelEvent["kind"], SoundName[]>> = {
  * two audibly different outcomes. One event still means one sound; the
  * engine emits bind INSTEAD of met on the bound path, never both.
  *
- * bindBreak keeps the clash's own pitch: a second RING after the deep
- * clang means somebody won the bind, and a silent break means neutral -
- * the sound carries information, the same argument that keeps swing
- * unmapped.
+ * bindBreak keeps the clash's own pitch: the second RING after the deep
+ * clang is the bind resolving - always decisively, since the control
+ * contest has no neutral break. yieldFail is deliberately unmapped: the
+ * failed rotation has no steel moment, and the resolution stays the
+ * bind's one second sound.
  */
 export const EVENT_RATES: Partial<Record<DuelEvent["kind"], number>> = {
   bind: 0.55,

@@ -70,3 +70,24 @@ There is deliberately no ambient bed and no music: tried, found distracting.
   knifeSlice.ogg.
 - Processing: as the clashes. Duration 0.52 s. Peak -4 dBFS.
 - Intended use: a strike that lands.
+
+## bullet_in.ogg / bullet_out.ogg
+
+- Source: "Quick Zoom / Slow Down" by bevibeldesign, Freesound #366092,
+  https://freesound.org/people/bevibeldesign/sounds/366092/ - License:
+  CC0 1.0. One produced slow-motion transition: a broadband whoosh whose
+  pitch sags downward as time drags. (Replaced the first pick, two Kenney
+  phaser zaps, which read as generic sci-fi rather than time
+  decelerating.)
+- Processing: from the HQ preview transcode; bullet_in is the first 1.8 s
+  (the sag) with a 250 ms tail fade; bullet_out is the first 1.4 s
+  REVERSED, so the same sag becomes the mirrored spin-up - one source,
+  both directions, spectrally coherent. Downmixed to mono, peak
+  normalized to -4 dBFS, short edge fades. Opus 96 kbps, 48 kHz.
+- Durations: 1.81 / 1.41 s.
+- Intended use: the bullet-time transitions - played by main.ts through
+  the audio engine's cue() at the moment the eased wall clock starts
+  slowing (bind formed) and starts recovering (bind ended, decisively or
+  by the clock). These are presentation-layer time cues, not DuelEvents:
+  the bind's combat sounds (the clang, the break) remain the contest's
+  own outcomes and are never replaced or doubled by these.

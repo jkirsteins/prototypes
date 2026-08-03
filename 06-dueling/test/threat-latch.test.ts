@@ -34,7 +34,7 @@ test("a latched parry outlives its window and meets the slow telegraphed cut", (
   evs = evs.concat(runMs(d, 1400));
   // Two longswords: the stop is a bind since sustained-bind - its
     // logged event is the guard succeeding, and nobody is hit.
-    expect(evs.some((e) => e.kind === "bind" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
     expect(evs.some((e) => e.kind === "hit")).toBe(false);
   expect(d.over).toBe(false);
 });

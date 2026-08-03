@@ -31,6 +31,10 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     parriedPenalty: 290,
     whiffRecoveryFactor: 2.0,
     bladeStiffness: 1.0,
+    // The two-handed grip: presses hardest, re-applies and turns slowest.
+    bindAuthority: 1.0,
+    bindHandling: 0.7,
+    rotationalControl: 0.7,
     animSpeed: 0.85,
     voidDistance: 100,
     voidDuration: 320,
@@ -63,6 +67,10 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     parriedPenalty: 360,
     whiffRecoveryFactor: 3.0,
     bladeStiffness: 0.35,
+    // The light single hand: weak pressure, nimble recovery, best rotation.
+    bindAuthority: 0.55,
+    bindHandling: 1.15,
+    rotationalControl: 1.1,
     animSpeed: 1.15,
     voidDistance: 100,
     voidDuration: 320,

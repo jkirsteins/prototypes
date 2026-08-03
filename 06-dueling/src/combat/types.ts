@@ -17,12 +17,13 @@ export type Intent =
   /** horizontal arrows: re-aim a held guard's side at the visible attack */
   | "sideShift"
   /**
-   * The bind choices, on the attack keys - during a bind the engine reads
-   * cut as press and thrust as wind, so no new bindings exist. Hold is the
-   * absence of a lock, not an intent.
+   * The bind actions, on the attack keys - during a bind the engine reads
+   * cut as press (one pressure pulse) and thrust as yield (one committed
+   * yield attempt), so no new bindings exist. Hold is the absence of an
+   * intent, not one.
    */
   | "press"
-  | "wind";
+  | "yield";
 
 /**
  * A line is a pair. Height comes from the attacker's held stance at launch;
@@ -100,6 +101,18 @@ export interface WeaponProfile {
    * number alone and never from a table.
    */
   bladeStiffness: number;
+  /**
+   * In-bind handling properties, physical facts like stiffness - never
+   * capabilities. Every in-bind consequence (pulse shape, control speed,
+   * yield zones, durations, requirements) is derived pairwise from these
+   * in src/combat/bind.ts; no flag, branch or table may shortcut them.
+   */
+  /** how much force one pressure pulse transmits (longsword 1.0 anchor) */
+  bindAuthority: number;
+  /** how quickly pressure is applied and recovered from */
+  bindHandling: number;
+  /** how quickly and precisely the blade yields around a contact */
+  rotationalControl: number;
   /** sprite playback multiplier: the feel knob */
   animSpeed: number;
   voidDistance: number;

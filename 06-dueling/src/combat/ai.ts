@@ -1,5 +1,6 @@
 import { zoneFor } from "./measure";
-import { BIND_MS, gapOf } from "./engine";
+import { gapOf } from "./engine";
+import { YIELD_FORCE_MIN, inYieldZone, incomingForce, netBindForce, yieldOpportunity } from "./bind";
 import { guardEffective, lineOf } from "./fighter";
 import type { Duel } from "./engine";
 import type { Fighter } from "./fighter";
@@ -75,12 +76,20 @@ export interface AiState {
   /** Mode 1: reaction clock toward releasing a guard whose threat is gone. */
   releaseInMs: number;
   /**
-   * Modes 3/4: the seeded bind plan - a mixed-strategy draw made once at
-   * bind entry (choice weighted by the visible firmness incentives, lock
-   * tick uniform inside the beat), cleared when the bind ends. Hold locks
-   * nothing, deliberately.
+   * Modes 3/4: the in-bind policy state, created at bind entry and cleared
+   * when the bind ends. The temperament is one seeded draw; `obs` is the
+   * ring buffer of per-tick observations that makes every read delayed -
+   * a decision consumes the newest sample at least the drawn reaction
+   * old, never the current tick.
    */
-  bindPlan: { choice: "hold" | "press" | "wind"; lockAtMs: number } | null;
+  bind: {
+    /** 0 patient .. 1 relentless: pulse cadence, and how readily the
+     *  duelist keeps pressing while being pushed. */
+    aggression: number;
+    /** Earliest bind time for the next pulse; redrawn after each one. */
+    nextPressAtMs: number;
+    obs: Array<{ t: number; control: number; incoming: number; opportunity: boolean }>;
+  } | null;
   /** The current episode's drawn reaction; consumed and redrawn on each fired decision. */
   reactionMs: number;
   rng: number;
@@ -96,7 +105,7 @@ export function createAiState(seed: number = DEFAULT_SEED): AiState {
     cooldown: 0, next: "thrust", nextHeight: "low",
     plan: null, lastHeight: null, sameHeightRun: 0,
     releaseInMs: 0,
-    bindPlan: null,
+    bind: null,
     reactionMs: 0,
     rng: seed >>> 0,
   };
@@ -202,28 +211,72 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
   // an attack in flight does not pause the cycle.
   ai.cooldown = Math.max(0, ai.cooldown - dt);
 
-  // The bind mixup: a seeded MIXED strategy, never a read - with the
-  // matrix there is nothing to be right about before the opponent moves.
-  // Base weights hold 0.4 / press 0.3 / wind 0.3, tilted a few tenths by
-  // the visible incentives: toward press with its own firmness advantage
-  // (it can afford the press-war), toward wind with the opponent's. Both
-  // draws happen once, at entry, so a replay is reproducible and the AI
-  // conditions on exactly the information the player has.
-  if (self.state.kind !== "bind") ai.bindPlan = null;
+  // The bind contest: the duelist plays the same pressure/yield game as
+  // the player, through the same intents, paying the same commitment. It
+  // reads only DELAYED observations - each tick's control and yield
+  // window enter a ring buffer, and a decision consumes the newest sample
+  // at least the drawn reaction old, never the current tick - so a yield
+  // it misses was missed by its reaction or its own spent recovery, never
+  // by a scripted error. The temperament (one seeded draw at entry) sets
+  // the pulse cadence and how stubbornly it presses while being pushed:
+  // across seeds it leans on sustained pressure, probes with spaced
+  // pulses, or holds yield-ready.
+  if (self.state.kind !== "bind") ai.bind = null;
   if ((mode === 3 || mode === 4) && self.state.kind === "bind" && d.bind !== null) {
-    if (ai.bindPlan === null) {
-      const diff = d.bind.firmness[1] - d.bind.firmness[0];
-      const press = 0.3 + 0.25 * Math.max(0, diff);
-      const wind = 0.3 + 0.25 * Math.max(0, -diff);
-      const hold = 1 - press - wind;
-      const roll = nextRandom(ai);
-      const choice = roll < hold ? "hold" : roll < hold + press ? "press" : "wind";
-      // The lock lands inside the beat; drawn even for hold so the rng
-      // stream does not depend on the choice it produced.
-      ai.bindPlan = { choice, lockAtMs: nextRandom(ai) * (BIND_MS * 0.8) };
+    const bind = d.bind;
+    if (ai.bind === null) {
+      const aggression = nextRandom(ai);
+      ai.bind = { aggression, nextPressAtMs: 60 + nextRandom(ai) * 240, obs: [] };
     }
-    const bp = ai.bindPlan;
-    if (bp.choice !== "hold" && d.bind.t >= bp.lockAtMs) return bp.choice;
+    const bs = ai.bind;
+    bs.obs.push({
+      t: bind.t,
+      control: bind.control,
+      incoming: incomingForce(netBindForce(bind.action), 1),
+      opportunity: yieldOpportunity(bind, 1),
+    });
+    if (bs.obs.length > 120) bs.obs.shift();
+    let delayed: (typeof bs.obs)[number] | null = null;
+    let prior: (typeof bs.obs)[number] | null = null;
+    for (let i = bs.obs.length - 1; i >= 0; i--) {
+      if (bs.obs[i].t <= bind.t - ai.reactionMs) {
+        delayed = bs.obs[i];
+        prior = bs.obs[i - 1] ?? bs.obs[i];
+        break;
+      }
+    }
+    if (delayed === null || prior === null) return null; // nothing old enough to react to
+    if (bind.action[1].kind !== "ready") return null; // committed: pay it out
+    // The yield read is TIMED, not just reacted to: like a player watching
+    // the marker glide toward their band, the duelist extrapolates its
+    // delayed samples to now. Still only delayed observables - the slope
+    // of two old samples - never the current tick.
+    const slope = delayed.t > prior.t ? (delayed.control - prior.control) / (delayed.t - prior.t) : 0;
+    const est = delayed.control + slope * (bind.t - delayed.t);
+    if (delayed.opportunity || (inYieldZone(est, 1, bind.yieldZone[1]) && delayed.incoming >= YIELD_FORCE_MIN)) {
+      ai.reactionMs = drawReaction(ai);
+      return "yield";
+    }
+    if (bind.t >= bs.nextPressAtMs) {
+      // Being pushed toward its own loss, a patient duelist holds its
+      // readiness for the coming yield window instead of spending it.
+      if (delayed.control <= -0.35 && bs.aggression < 0.5) {
+        bs.nextPressAtMs = bind.t + 90;
+        return null;
+      }
+      // Humanlike cadence, never a metronome: the base sits NEAR the
+      // pulse cycle rather than at it, every gap is jittered, and a
+      // seeded breather interrupts the bursts - so a player who commits
+      // to a sustained mash gains real ground during the rests. The
+      // imperfection lives entirely in timing (the constitution's rule),
+      // and a metronomic AI was unbeatable in the tap war by any human.
+      const breather = nextRandom(ai) < 0.2;
+      const gap = breather
+        ? 400 + nextRandom(ai) * 350
+        : (215 + (1 - bs.aggression) * 265) * (0.8 + 0.5 * nextRandom(ai));
+      bs.nextPressAtMs = bind.t + gap;
+      return "press";
+    }
     return null;
   }
   if (self.state.kind === "bind") return null; // modes 1/2 always hold
@@ -233,8 +286,10 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
   // redirected - the side swap, the cheapest escape. Purely reactive, no
   // rng: deterministic and unpredictable, because it depends on what the
   // player did. The window is the sold half of the windup, same as the
-  // player's.
-  if ((mode === 3 || mode === 4) && self.state.kind === "attack") {
+  // player's. Mode 3 ONLY: mode 4 is the testing dummy with the lies
+  // amputated - no stance tell, and no redirects either, so its attacks
+  // fly exactly where they launched.
+  if (mode === 3 && self.state.kind === "attack") {
     const s = self.state;
     if (
       s.phase === "windup" &&

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { applyIntent, TICK } from "../src/combat/fighter";
-import { ARENA, BIND_MS, MIN_GAP, createDuel, gapOf, parryMeetsAttack, tickDuel } from "../src/combat/engine";
+import { ARENA, MIN_GAP, createDuel, gapOf, parryMeetsAttack, tickDuel } from "../src/combat/engine";
 import { WEAPONS, parryableMs } from "../src/combat/weapons";
 import type { Duel, DuelEvent } from "../src/combat/engine";
 import type { AttackKind, Intent, WeaponId } from "../src/combat/types";
@@ -278,10 +278,11 @@ describe("presentation events follow the simulation, not the input", () => {
     expect(d.log.some((e) => e.kind === "met")).toBe(false);
   });
 
-  test("bind fires at the contact tick - the blade's arrival at the guard, not the press", () => {
-    // The matched-steel twin of the met test above: same contact instant,
-    // a different outcome event. One sound - the bind REPLACES the met,
-    // never layers on it - and it is logged, unlike the met.
+  test("a matched-steel parry still deflects: met at the blade's arrival, never a bind", () => {
+    // Force-into-force revision: a guard receives and sheds the blade -
+    // only a CROSSING of two attacks locks. The mirror parry therefore
+    // keeps the deflection's met, at the arrival tick, exactly like the
+    // mixed pairing above.
     const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
     closeTo(d, 180);
     const t = WEAPONS.longsword.attacks.thrust;
@@ -290,42 +291,50 @@ describe("presentation events follow the simulation, not the input", () => {
     const pressTick = 1; // rise (220ms) completes before the strike (320ms)
     const pressTime = (pressTick + 1) * TICK;
     const evs: DuelEvent[] = [];
-    for (let i = 0; i < 300 && !evs.some((e) => e.kind === "bind"); i++) {
+    for (let i = 0; i < 300 && !evs.some((e) => e.kind === "parried"); i++) {
       evs.push(...tickDuel(d, i === 0 ? "thrust" : null, i === pressTick ? "parry" : null));
     }
-    const bind = evs.find((e) => e.kind === "bind");
-    expect(bind).toBeDefined();
-    if (!bind) throw new Error("unreachable");
-    expect(evs.some((e) => e.kind === "met")).toBe(false);
-    expect(bind.time).toBeGreaterThan(pressTime + TICK); // not the press tick
-    expect(bind.time).toBeGreaterThanOrEqual(arriveAt);
-    expect(bind.time).toBeLessThan(arriveAt + 2 * TICK);
-    expect(d.log.filter((e) => e.kind === "bind").length).toBe(1); // logged outcome
+    expect(evs.some((e) => e.kind === "bind")).toBe(false);
+    const met = evs.find((e) => e.kind === "met");
+    expect(met).toBeDefined();
+    if (!met) throw new Error("unreachable");
+    expect(met.time).toBeGreaterThan(pressTime + TICK); // not the press tick
+    expect(met.time).toBeGreaterThanOrEqual(arriveAt);
+    expect(met.time).toBeLessThan(arriveAt + 2 * TICK);
+    expect(evs.some((e) => e.kind === "parried")).toBe(true);
   });
 
-  test("bindBreak fires on the resolution tick, never on the keypress that locked the choice", () => {
-    // Press locked early in the bind; the dummy holds, so resolution waits
-    // for BIND_MS. The ring must land on that tick - a break sounding at
-    // the lock would be the exact class of bug this block exists to catch.
+  test("bindBreak fires on the resolution tick, never on a keypress tick", () => {
+    // The player presses; the dummy holds. Each press only STARTS a pulse
+    // - the ring lands on the tick the simulation drives control to the
+    // endpoint, well after the last keypress. A break sounding at a press
+    // would be the exact class of bug this block exists to catch.
     const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
     closeTo(d, 180);
     let evs: DuelEvent[] = [];
-    evs = evs.concat(runMs(d, TICK, "parry", null));
-    evs = evs.concat(runMs(d, 600));
+    // The crossing entry: both thrust, the AI's telegraphed blade arrives
+    // into the player's standing one (parries never bind).
+    let ia: Intent | null = "thrust";
+    let ib: Intent | null = "thrust";
     for (let t = 0; t < 1600 && d.bind === null; t += TICK) {
-      evs = evs.concat(tickDuel(d, null, t === 0 ? "thrust" : null));
+      evs = evs.concat(tickDuel(d, ia, ib));
+      ia = null;
+      ib = null;
     }
-    const bind = evs.find((e) => e.kind === "bind");
-    if (!bind || d.bind === null) throw new Error("no bind");
-    const lockTime = d.time + TICK; // the press goes in on the next tick
-    evs = evs.concat(runMs(d, TICK, "press", null));
-    expect(evs.some((e) => e.kind === "bindBreak")).toBe(false); // silent lock
-    while (d.bind !== null) evs = evs.concat(runMs(d, TICK));
+    if (d.bind === null) throw new Error("no bind");
+    let lastPressTime = 0;
+    let guard = 0;
+    while (d.bind !== null && guard++ < 600) {
+      const ia: Intent | null = d.bind.action[0].kind === "ready" ? "press" : null;
+      if (ia !== null) lastPressTime = d.time + TICK; // accepted next tick
+      const out = runMs(d, TICK, ia, null);
+      if (ia !== null) expect(out.some((e) => e.kind === "bindBreak")).toBe(false); // silent press
+      evs = evs.concat(out);
+    }
     const brk = evs.find((e) => e.kind === "bindBreak");
     expect(brk).toBeDefined();
     if (!brk) throw new Error("unreachable");
-    expect(brk.time).toBeGreaterThan(lockTime + TICK); // not the lock tick
-    expect(brk.time).toBeCloseTo(bind.time + BIND_MS, 0); // the beat's end
+    expect(brk.time).toBeGreaterThan(lastPressTime + TICK); // not a keypress tick
   });
 
   test("swing fires when the blade starts travelling; a miss still whooshes then whiffs", () => {

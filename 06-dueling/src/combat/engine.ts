@@ -1,12 +1,18 @@
 import { BIND_ADVANTAGE_MS, applyIntent, dropGuard, lineOf, TICK, tickFighter } from "./fighter";
 import { bladesCross, canBind, parryMeetsAttack } from "./contact";
+import { applyBindInputs, createBindContest, firmness, tickBindContest } from "./bind";
+import type { BindInput } from "./bind";
+import type { BindState } from "./bind";
 import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
-import type { BindContact, Intent, Line, WeaponProfile } from "./types";
+import type { BindContact, Intent, WeaponProfile } from "./types";
 
-// The contact module is the single home of blade geometry; the engine
-// re-exports it so existing consumers keep one import site.
+// The contact and bind modules are the single homes of blade geometry and
+// the bind contest; the engine re-exports both so existing consumers keep
+// one import site.
 export { bladesCross, canBind, extension, parryMeetsAttack } from "./contact";
+export { firmness, GUARD_SETTLE_MS } from "./bind";
+export type { BindAction, BindState } from "./bind";
 
 /** left/right are cm along the piste (~17 m usable); floorY is canvas px (vertical is render-only). */
 export const ARENA = { left: 120, right: 1800, floorY: 430 };
@@ -17,7 +23,7 @@ export interface DuelEvent {
   time: number;
   side: 0 | 1;
   kind:
-    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "feint" | "bind" | "bindBreak" | "kill" | "draw"
+    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "feint" | "bind" | "bindBreak" | "yieldFail" | "kill" | "draw"
     // Presentation-only kinds, returned but never logged. They mark the
     // simulation instant a thing physically happens (a foot plants, a blade
     // starts rising or travelling, a blade arrives at a guard) - which is
@@ -28,63 +34,13 @@ export interface DuelEvent {
   ms?: number;
 }
 
-/** The bind's held beat, real milliseconds. If pressure-and-winding's
- *  window proves too fast to read, this is the lever - never a time scale,
- *  which would make every reaction constant mean two things. */
-export const BIND_MS = 500;
-/** Seeded into both bodies at a neutral exit: shared, not per-weapon,
- *  because both weapons in a bind are by definition matched steel. */
-export const BIND_RECOVERY_MS = 180;
-/** A guard is fully braced this long after its covered line settles. */
-export const GUARD_SETTLE_MS = 160;
-/** Press-wars closer than this in firmness grind neutral. */
-export const FIRMNESS_EPSILON = 0.15;
 // The loser's exposure and the winner's advantage live on the fighter
 // (fighter.ts constants); re-exported so bind tuning reads in one place.
 export { BIND_ADVANTAGE_MS, BIND_LOSS_MS } from "./fighter";
 
-/** A locked bind choice; hold is the absence of one, never a value. */
-export type BindChoice = "press" | "wind";
-
-/**
- * Pressure is derived, never rolled: a pure function of one side's entry
- * snapshot. A strike is as firm as it was far through its travel (the body
- * is behind the blade); a guard is as firm as its covered line had been
- * settled, capped at GUARD_SETTLE_MS - it has no fixed lifetime to
- * normalise against. Derived once at entry and stored on the bind, because
- * the states it reads are discarded there.
- */
-export function firmness(c: BindContact, _w: WeaponProfile): number {
-  if (c.kind === "strike") return c.progress;
-  return Math.min(1, c.settledMs / GUARD_SETTLE_MS);
-}
-
 // BindContact moved to types.ts (the fighter's exposed state carries one);
 // re-exported here so consumers keep one import site.
 export type { BindContact } from "./types";
-
-/** A single physical event with one clock, so it lives on the duel - never
- *  mirrored onto the fighters, whose `bind` markers carry no data. */
-export interface BindState {
-  t: number;
-  /** The actual contact line, saved at entry. For two crossing attacks it
-   *  is their shared line; for a parried attack it is the attack's line,
-   *  which the full-match rule guarantees equals the parry's covered line.
-   *  Every bind presentation shows this saved value, never a live
-   *  recomputation from states that have since moved. */
-  line: Line;
-  contact: [BindContact, BindContact];
-  /** Derived from `contact` at entry; the visible half of the mixup. */
-  firmness: [number, number];
-  /**
-   * The hidden half: each side's locked choice, or null (= hold). Locks
-   * are irrevocable and NOTHING observable changes when one lands - no
-   * event, no log line, no state change - because a visible choice would
-   * collapse the matrix back into a reaction test. Firmness is visible
-   * because it is feel; this is hidden because it is intent.
-   */
-  lock: [BindChoice | null, BindChoice | null];
-}
 
 export interface Duel {
   f: [Fighter, Fighter];
@@ -116,22 +72,29 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   const dt = TICK;
   const wasRising: [boolean, boolean] = [inRise(d.f[0]), inRise(d.f[1])];
 
+  // Inside a bind the attack keys are the bind keys: cut presses, thrust
+  // yields (no new bindings), and the AI may send press/yield directly.
+  // Both sides' inputs are handed to the contest TOGETHER so contested
+  // beats are arbitrated fairly - sequential handling silently gave side
+  // 0 every same-tick race. Every other intent from a bound fighter is
+  // consumed here and dropped: nothing steps, voids, attacks, parries or
+  // walks out of a bind.
+  if (d.bind !== null && !d.over) {
+    const bi: [BindInput | null, BindInput | null] = [null, null];
+    for (const side of [0, 1] as const) {
+      const intent = intents[side];
+      if (intent === null || d.f[side].state.kind !== "bind") continue;
+      bi[side] =
+        intent === "cut" || intent === "press" ? "press" :
+        intent === "thrust" || intent === "yield" ? "yield" : null;
+      intents[side] = null;
+    }
+    applyBindInputs(d.bind, bi);
+  }
+
   for (const side of [0, 1] as const) {
     const intent = intents[side];
     if (intent === null || d.over) continue;
-    // Inside a bind the attack keys are the bind keys: cut locks press,
-    // thrust locks wind (no new bindings), and the AI may send press/wind
-    // directly. A lock is irrevocable and observably SILENT - no event, no
-    // log, no state change - because a visible choice would collapse the
-    // mixup into a reaction test. Every other intent is seized with the
-    // body.
-    if (d.bind !== null && d.f[side].state.kind === "bind") {
-      const choice: BindChoice | null =
-        intent === "cut" || intent === "press" ? "press" :
-        intent === "thrust" || intent === "wind" ? "wind" : null;
-      if (choice !== null && d.bind.lock[side] === null) d.bind.lock[side] = choice;
-      continue;
-    }
     const before = d.f[side].state.kind;
     // The AI's attacks carry a telegraph: extra windup the player can read.
     // The fighter simulation never learns who controls it - it only sees
@@ -201,21 +164,24 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   d.time += dt;
   const evs: [FighterEvent[], FighterEvent[]] = [tickFighter(d.f[0], dt), tickFighter(d.f[1], dt)];
 
-  // The bind's shared clock, advanced after the fighters tick (their bind
-  // marker is a no-op there) and before contact detection, so a bind formed
-  // later this tick starts at t = 0 and exit-tick charges stand un-decayed.
-  // The exit is neutral and symmetric: both bodies return to ready and seed
-  // BIND_RECOVERY_MS, and a fighter whose guard the entry consumed pays
-  // parryRecoveryMs HERE - charged at entry it would decay to nothing
-  // inside BIND_MS and the spent guard would cost nothing; charged at exit
-  // it is felt where it matters, in the scramble after.
+  // The bind's contest, advanced after the fighters tick (their bind
+  // marker is a no-op there) and before contact detection, so a bind
+  // formed later this tick starts at t = 0 and resolution-tick charges
+  // stand un-decayed. tickBindContest integrates the pulse forces and the
+  // anti-stall drift into the shared control value and judges completing
+  // yields; the bind ends ONLY through a winner - pressure reaching an
+  // endpoint or a yield completing - never through a timeout or a neutral
+  // break.
   if (d.bind !== null) {
-    d.bind.t += dt;
-    // Resolution fires at BIND_MS, or early on the tick both sides have
-    // locked - hold is the absence of a lock, so any pairing with hold
-    // waits the full beat, and locking early carries no tell.
-    const bothLocked = d.bind.lock[0] !== null && d.bind.lock[1] !== null;
-    if (d.bind.t >= BIND_MS || bothLocked) resolveBind(d, out);
+    const r = tickBindContest(d.bind, dt);
+    for (const yf of r.yieldFails) {
+      // Logged so a lost bind explains itself; unmapped in audio - the
+      // failed rotation has no steel moment, the resolution is the moment.
+      emit(d, out, yf.side, "yieldFail",
+        `${d.f[yf.side].weapon.name} yields into nothing -> off balance`);
+    }
+    if (r.winner !== null && r.cause !== null) resolveBind(d, out, r.winner, r.cause);
+    else if (r.expired) releaseBind(d);
   }
 
   // Physical moments surface as fighter state-machine events, deliberately
@@ -250,36 +216,44 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   // old parryable-interval boundary; earlier at any closer gap); for a
   // crossing, the tick both extensions cover the gap. One met per contact,
   // never one per side - two clash samples on one tick would be a layer.
-  // Matched steel (canBind: stiffnesses within the band) turns the contact
-  // into a bind on the contact tick; anything else keeps the deflection.
-  // One contact, one sound: the bind REPLACES the met as the contact's
-  // outcome event - a logged one, like parried and hit - so a deflection
-  // and a lock are audibly and legibly different outcomes, never a layer.
-  // The snapshot is read from the still-live attack and parry states, then
-  // both bodies are replaced with the bare marker. The attack is over (its
-  // timeline is discarded, so it can never resolve), and the guard is
-  // consumed even though the parry key is still physically down - a spent
-  // guard never re-forms from a held key. Not entered when the duel is
-  // already over: dead takes precedence over everything.
+  // Only a CROSSING in matched steel (canBind: stiffnesses within the
+  // band) locks into a bind: two attacks are two bodies driving force
+  // into the contact, which is what a bind's pressure contest is made of.
+  // A parried blade ALWAYS deflects, matched steel or not - a guard
+  // receives and sheds the force, adding none of its own - so the two
+  // defensive modes stay distinct: parry to deflect, counter-attack into
+  // the blade to seize it. One contact, one sound: the bind REPLACES the
+  // met as the contact's outcome event - a logged one, like parried and
+  // hit - so a deflection and a lock are audibly and legibly different
+  // outcomes, never a layer. The snapshot is read from the still-live
+  // attack states, then both bodies are replaced with the bare marker
+  // (the attacks are over; their timelines are discarded and can never
+  // resolve). Not entered when the duel is already over: dead takes
+  // precedence over everything.
   const contacts = markMetBlades(d);
   const binding =
-    contacts.length > 0 && !d.over && d.bind === null && canBind(d.f[0].weapon, d.f[1].weapon);
+    contacts.crossing && !d.over && d.bind === null && canBind(d.f[0].weapon, d.f[1].weapon);
   if (binding) {
-    const line = lineOf(d.f[contacts[0]]);
+    const carrier = contacts.sides[0];
+    const line = lineOf(d.f[carrier]);
     const contact = [snapshotContact(d.f[0]), snapshotContact(d.f[1])] as [BindContact, BindContact];
+    const firm: [number, number] =
+      [firmness(contact[0], d.f[0].weapon), firmness(contact[1], d.f[1].weapon)];
     d.bind = {
-      t: 0, line, contact,
-      firmness: [firmness(contact[0], d.f[0].weapon), firmness(contact[1], d.f[1].weapon)],
-      lock: [null, null],
+      t: 0, line, contact, firmness: firm,
+      // The contest: starting control, ready action tracks, derived
+      // zones and the drift's direction - all from the entry facts, with
+      // the bind event's carrier as the tie cascade's terminal fact.
+      ...createBindContest(contact, firm, [d.f[0].weapon, d.f[1].weapon], carrier),
     };
     for (const f of d.f) {
       f.state = { kind: "bind" };
-      f.parry = null; // consumed without charge; the charge lands at exit
+      f.parry = null; // no guard is up mid-attack; cleared for safety
       f.buffered = null;
     }
-    emit(d, out, contacts[0], "bind", `${d.f[contacts[0]].weapon.name} bound -> both blades held`);
+    emit(d, out, carrier, "bind", `${d.f[carrier].weapon.name} bound -> both blades held`);
   } else {
-    for (const c of contacts) {
+    for (const c of contacts.sides) {
       out.push({ time: d.time, side: c, kind: "met", text: "" });
     }
   }
@@ -376,52 +350,20 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
  * later - the blade whose travel completed the contact.
  */
 /**
- * The mixup matrix. Distinct choices resolve on the cycle - press beats
- * hold (a static blade is shoved aside), hold beats wind (winding needs
- * pressure to work around), wind beats press (their drive is redirected
- * past you) - and the press-war goes to the firmer blade, grinding neutral
- * inside FIRMNESS_EPSILON. Hold-hold and wind-wind break neutral. No
- * choice dominates at any firmness, so the bind cannot be solved by
- * looking: the visible bars set the stakes, never the answer.
+ * The bind ends - always decisively, since the contest has no neutral
+ * exit. The winner leaves clean carrying BIND_ADVANTAGE_MS (no settle -
+ * the immediate thrust is the whole point), the loser is turned out into
+ * `exposed` holding the pose the bind froze them in, and one logged
+ * bindBreak fires on THIS tick - the tick the simulation resolved the
+ * contest, never a keypress tick. A fighter whose guard the entry consumed
+ * pays parryRecoveryMs here, where it is felt.
  */
-function bindWinner(
-  lock: [BindChoice | null, BindChoice | null],
-  firm: [number, number],
-): 0 | 1 | null {
-  const [a, b] = lock;
-  if (a === b) {
-    if (a === "press") {
-      const diff = firm[0] - firm[1];
-      if (Math.abs(diff) < FIRMNESS_EPSILON) return null; // the neutral grind
-      return diff > 0 ? 0 : 1;
-    }
-    return null; // hold-hold, wind-wind
-  }
-  const beats =
-    (a === "press" && b === null) || (a === null && b === "wind") || (a === "wind" && b === "press");
-  return beats ? 0 : 1;
-}
-
-/**
- * The bind ends. Neutral: both to ready with the shared settle, silently -
- * the absence of a second clash IS the information. Decisive: the winner
- * exits clean carrying BIND_ADVANTAGE_MS (no settle - the immediate thrust
- * is the whole point), the loser is turned out into `exposed` holding the
- * pose the bind froze them in, and one logged bindBreak fires on THIS
- * tick, never on the keypress that locked the choice. Either way a fighter
- * whose guard the entry consumed pays parryRecoveryMs here, where it is
- * felt.
- */
-function resolveBind(d: Duel, out: DuelEvent[]): void {
+function resolveBind(d: Duel, out: DuelEvent[], winner: 0 | 1, cause: "pressure" | "yield"): void {
   const bind = d.bind;
   if (bind === null) return;
-  const winner = bindWinner(bind.lock, bind.firmness);
   for (const side of [0, 1] as const) {
     const f = d.f[side];
-    if (winner === null) {
-      f.state = { kind: "ready" };
-      f.stepRecoveryMs = BIND_RECOVERY_MS;
-    } else if (side === winner) {
+    if (side === winner) {
       f.state = { kind: "ready" };
       f.bindAdvantageMs = BIND_ADVANTAGE_MS;
     } else {
@@ -431,8 +373,30 @@ function resolveBind(d: Duel, out: DuelEvent[]): void {
       f.parryRecoveryMs = f.weapon.parryRecoveryMs;
     }
   }
-  if (winner !== null) {
-    emit(d, out, winner, "bindBreak", `${d.f[winner].weapon.name} wins the bind -> opening`);
+  const how = cause === "pressure" ? "presses through the bind" : "yields and turns the bind";
+  emit(d, out, winner, "bindBreak", `${d.f[winner].weapon.name} ${how} -> opening`);
+  d.bind = null;
+}
+
+/**
+ * The bind clock ran out: an evenly matched contest breaks NEUTRAL. Both
+ * fighters shove each other apart - an involuntary retreat step through
+ * their own step machinery, so the separation is simulated travel (with
+ * its footfall and settle), never a teleport. No winner, no advantage, no
+ * exposure, and deliberately no sound of its own: silence where a second
+ * clash would ring is the information that nobody won, and the growing
+ * gap carries the rest. A fighter whose guard the entry consumed still
+ * pays parryRecoveryMs here - the guard was spent either way.
+ */
+function releaseBind(d: Duel): void {
+  const bind = d.bind;
+  if (bind === null) return;
+  for (const side of [0, 1] as const) {
+    const f = d.f[side];
+    f.state = { kind: "step", dir: -1, t: 0 };
+    if (bind.contact[side].kind === "guard") {
+      f.parryRecoveryMs = f.weapon.parryRecoveryMs;
+    }
   }
   d.bind = null;
 }
@@ -448,18 +412,18 @@ function snapshotContact(f: Fighter): BindContact {
   return { kind: "guard", settledMs: f.parry?.settledMs ?? 0 };
 }
 
-function markMetBlades(d: Duel): Array<0 | 1> {
+function markMetBlades(d: Duel): { sides: Array<0 | 1>; crossing: boolean } {
   const gap = gapOf(d);
   const a = d.f[0].state;
   const b = d.f[1].state;
   if (a.kind === "attack" && b.kind === "attack" && bladesCross(d.f[0], d.f[1], gap)) {
-    if (a.met && b.met) return []; // already latched: no re-emission
+    if (a.met && b.met) return { sides: [], crossing: false }; // already latched: no re-emission
     a.met = true;
     b.met = true;
     // "Began later" compares absolute instants: each attack has its own clock.
     const beganA = d.time - a.elapsedMs + a.timeline.strikeStart;
     const beganB = d.time - b.elapsedMs + b.timeline.strikeStart;
-    return [beganA >= beganB ? 0 : 1];
+    return { sides: [beganA >= beganB ? 0 : 1], crossing: true };
   }
   const contacts: Array<0 | 1> = [];
   for (const side of [0, 1] as const) {
@@ -470,7 +434,7 @@ function markMetBlades(d: Duel): Array<0 | 1> {
       contacts.push(side);
     }
   }
-  return contacts;
+  return { sides: contacts, crossing: false };
 }
 
 function clampPositions(d: Duel): void {

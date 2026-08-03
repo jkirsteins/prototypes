@@ -102,21 +102,20 @@ const SCENARIOS: Scenario[] = [
     })(),
   },
   {
-    // The longsword mirror: the one pairing where contact binds instead of
-    // deflecting. Added with sustained-bind so the gate witnesses the bind
-    // path - entry on the met tick, the 500ms freeze, and the symmetric
-    // scramble after - which no other scenario reaches.
-    name: "longsword mirror: the parried cut binds, both scramble out",
-    p: "longsword", e: "longsword", mode: 1, seed: 3, ticks: 1800,
+    // The longsword mirror: the one pairing where a CROSSING binds
+    // instead of deflecting (parries never bind since the force-into-
+    // force revision). The player counter-thrusts into the drill's
+    // telegraphed beat so the gate witnesses the bind path - the crossing
+    // entry, the seizure, the drift resolution and the exposure after -
+    // which no other scenario reaches.
+    name: "longsword mirror: the counter-thrust crosses the drill's beat and binds",
+    p: "longsword", e: "longsword", mode: 2, seed: 3, ticks: 1800,
     script: (() => {
       const s: Record<number, Intent> = {};
-      for (let t = 0; t < 120; t++) s[t] = "advance";
-      // The cut, not the thrust: its 520ms of tell-free preparation is
-      // readable even at the slow end of the dummy's drawn reaction (seed
-      // 3 draws 358ms), so the guard reliably forms and the contact binds.
-      s[150] = "cut";
-      s[205] = "advance"; // refused inside the bind: proves the freeze
-      s[430] = "cut"; // after the exit, from the scramble
+      for (let t = 0; t < 120; t++) s[t] = "advance"; // close from out of measure
+      s[130] = "thrust"; // into the drill's first beat: the blades cross
+      s[200] = "advance"; // dropped inside the bind: proves the seizure
+      s[500] = "cut"; // after the drift resolution, from the scramble
       return s;
     })(),
   },
@@ -183,14 +182,30 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // Recorded at sustained-bind (per-tick probe: the cut's contact at
     // tick 195 followed by NO resolution events - the bind swallowed the
     // attack - the scripted advance at 205 refused, a second contact at
-    // 471, no death), then re-recorded when the bind became a logged
-    // outcome event: the same probe shows a tick-identical stream with
-    // the unlogged met at 195 and 471 now the logged bind - the kind
-    // string is the only difference, positions and outcomes byte-equal.
-    // The four pre-existing scenarios hash identically both times (none
-    // reaches a matched-steel contact: the rapier-mirror scenario dies at
-    // 188, before its first contact), which is the control.
-    "longsword mirror: the parried cut binds, both scramble out": { hash: 73993540, endedAt: null },
+    // 471, no death), re-recorded when the bind became a logged outcome
+    // event (kind string only, positions byte-equal), and re-recorded
+    // again at the pressure-and-winding control-contest revision, cause
+    // verified by per-tick probe: both binds still form on their exact
+    // old ticks (195 and 471), but each now resolves DECISIVELY by the
+    // calm-drift pressure win instead of the old neutral 500ms exit -
+    // the first at tick 368 toward the player (entry firmness 0.95 vs
+    // 0.71, leadSign -1), whose exposure-and-advantage scramble then
+    // still meets the scripted cut at 430 into the second bind, resolved
+    // at tick 652 toward the dummy. No death either way (endedAt null).
+    // The four other scenarios hash identically across the change (none
+    // reaches a matched-steel contact), which is the control.
+    // Rewritten (script and all) at the force-into-force revision: a
+    // parried blade never binds any more, so the old parried-cut entry
+    // stopped witnessing the bind path. This script counter-thrusts into
+    // the drill's first telegraphed beat; per-tick probe: the blades
+    // cross and bind at tick 155, the scripted advance at 200 is dropped
+    // inside the seizure, the calm drift resolves it decisively at 336
+    // (bindBreak, the standing blade's side), the loser rides out the
+    // exposure, and the scripted cut at 500 restarts the exchange. No
+    // death (endedAt null). The four other scenarios hash identically
+    // across the revision - none reaches a matched-steel crossing - which
+    // is the control.
+    "longsword mirror: the counter-thrust crosses the drill's beat and binds": { hash: 1383350728, endedAt: null },
   };
 
   for (const sc of SCENARIOS) {

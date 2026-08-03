@@ -43,7 +43,7 @@ to the mechanic it shipped:
 | Mode 3 redirects reactively as an attacker | `line-feints` §6 |
 | Mode 1 shifts its guard as a feint target | `line-feints` §6 |
 | The hold-release lifecycle and the shift rule for a held guard | `held-guard` §9 |
-| The bind mixed strategy (hold / press / wind) | `pressure-and-winding` §4 |
+| The in-bind pressure/yield policy | `pressure-and-winding` §9 |
 
 Those are reflexes: what to do once a defence exists. What none of them
 defines is the **policy** - when the duelist chooses to defend at all, and
@@ -55,7 +55,7 @@ complete kit, and a policy written mid-chain would have been rewritten by
 every spec that followed - and the bind proves the sequencing concretely: in
 any pairing `canBind` sustains, a duelist that parries enters binds as the
 **defender**, so the bind game must already exist and already have an AI
-strategy, or every successful AI parry would dead-end. `pressure-and-winding` §4 supplied that strategy;
+strategy, or every successful AI parry would dead-end. `pressure-and-winding` §9 supplied that policy;
 this spec only routes new traffic into it.
 
 This spec adds the policy and nothing else. Every reflex stays where it was
@@ -75,9 +75,10 @@ everything in this spec:
 
 - The AI reads only the **observable projection** - the same state row 3
   prints and the golden replay hashes. Never the opponent's input buffer,
-  never a redirect that has not happened, never the hidden bind intent
-  (`pressure-and-winding` §2.2's hidden lock extends to this spec
-  unchanged).
+  never a redirect that has not happened, never anything the projection
+  excludes. (Since `pressure-and-winding`'s control-contest revision the
+  bind itself holds no hidden state at all - only physical actions already
+  begun - and in-bind reads are additionally delayed per its §9.)
 - Every read is at least `AI_REACTION_MS` old.
 - It pays every cost the player pays: the rise, the stance travel, the
   shift durations, `parryRecoveryMs`, and the held-guard input lifecycle -
@@ -109,18 +110,18 @@ Four honest weaknesses, all structural, none of them sabotage:
 3. **It plays a mixed strategy, not the best response.** One seeded draw
    per threat over four answers (§4). It sometimes eats an attack it could
    have parried, because it drew *stand* - or drew *counter* and lost the
-   trade - which reads as being outguessed, the same feeling the bind
-   matrix already produces, not as a scripted whiff.
+   trade - which reads as being outguessed, the same feeling the bind's
+   seeded temperament already produces, not as a scripted whiff.
 4. **It does not predict.** No opponent modelling, no habit counting, no
    inspecting anything a player could not see. Its only "prediction" is the
    standing hold `held-guard` §9 already gave it while it waits - a guard
    on a readable line that the player can simply go around.
 
 **Explicitly forbidden: error rates.** No knob makes a formed guard drop,
-mistime or misread on purpose. `pressure-and-winding` §4 deleted
-`DUELIST_BIND_ERROR` for exactly this reason: uncertainty belongs in the
-draw and the latency, not in sabotaging mechanics that otherwise work. A
-guard the duelist forms works exactly like yours.
+mistime or misread on purpose. `pressure-and-winding` §9 refuses an
+error-rate flag for exactly this reason: uncertainty belongs in the draws,
+the latency and commitment already spent, not in sabotaging mechanics that
+otherwise work. A guard the duelist forms works exactly like yours.
 
 ---
 
@@ -235,8 +236,9 @@ whatever its cooldown and zone say next, exactly as before; where a riposte
 exists by rights - a bind won through `pressure-and-winding` -
 the bind advantage already is one, and this spec routes the AI into that
 game as a defender for the first time. Its firmness there is emergent and
-correct: the standing hold arrives settled and firm, a last-moment reactive
-press arrives soft (`pressure-and-winding` §1.1). The blade relation
+correct: the standing hold arrives settled and firm, entering the contest
+with control leaning its way; a last-moment reactive press arrives soft
+and starts the contest being pushed (`pressure-and-winding` §1, §3.1). The blade relation
 `sustained-bind` §2.3 reserves needs no handling here at all: this spec
 enters the existing bind policy and nothing more; bind geometry and its
 eventual use belong to `sustained-bind` and `pressure-and-winding`.
@@ -364,8 +366,8 @@ word "defends", and nothing else changes.
   cleared when the menu draws a defence.
 - **Bind entry as defender:** a duelist parry that becomes a bind - in any
   pairing `canBind` sustains, the rapier mirror as much as the longsword
-  mirror - runs `pressure-and-winding` §4's strategy with the firmness its
-  snapshot earned; no special-case path.
+  mirror - runs `pressure-and-winding` §9's policy from the starting
+  control its snapshot earned; no special-case path.
 - **Modes 1 and 2 unchanged:** identical decision streams for the same
   seed before and after this spec.
 - **Golden replay:** hash re-recorded.

@@ -396,11 +396,11 @@ its own price; nothing here grants cover for free during a strike.
 - and, for a bind, **on the bind's exit tick**.
 
 The bind case is the one that needs a decision, so it is decided: charged at
-entry, the whole recovery (340/400 ms) would decay to nothing inside
-`BIND_MS` (500 ms) and a consumed guard would cost nothing. Charged at exit,
-it runs concurrently with `BIND_RECOVERY_MS` and the defender re-guards
-late in the post-bind scramble, which is the consequence a spent guard
-should have. `sustained-bind` §2 states the same rule from its side.
+entry, the whole recovery (340/400 ms) would decay away while the bind's
+contest runs and a consumed guard would cost nothing. Charged on the bind's
+resolution tick, the defender re-guards late in the post-bind scramble,
+which is the consequence a spent guard should have. `sustained-bind` §2
+states the same rule from its side.
 
 While `parryRecoveryMs > 0` the guard cannot be raised. That is the existing
 semantics - the timer gates only the parry - and it is unchanged: attacks,
