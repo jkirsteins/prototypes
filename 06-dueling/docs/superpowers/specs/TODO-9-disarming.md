@@ -139,22 +139,37 @@ durationMs = DISARM_SOFT_MS
 
 | Constant | Value |
 |---|---|
-| `DISARM_SOFT_MS` | 260 |
+| `DISARM_SOFT_MS` | 200 |
 | `DISARM_FIRM_MS` | 560 |
 | `DISARM_FAIL_RECOVERY_MS` | 300 |
 | `DISARM_RESIST_RECOVERY_MS` | 180 |
 
 The arithmetic the first two are chosen for, against `BIND_LOSS_MS` = 320 and
-the 200 ms advantage window:
+the 200 ms advantage window. One inequality decides everything - an attempt
+is unresistable exactly when it ends inside the loser's exposure:
 
-- **A soft grip stripped promptly is unresistable.** Grip 0, attempt started
-  within 60 ms of the resolution: 260 ms of wrench ends inside the loser's
-  320 ms of exposure, and the sword is gone before they can act - the same
-  decisiveness arithmetic as the kill thrust (260 + 60 = 320). Every tick of
-  hesitation past that budget is a tick of resist window handed over.
+```ts
+startDelayMs + durationMs <= BIND_LOSS_MS   // startDelayMs from the resolution tick
+```
+
+computed by one shared helper that the engine, the AI (§6.1) and the tests
+all call, never re-derived - the `guardEffectiveAt` discipline from
+`duelist-defence` §5, applied here.
+
+- **Against a soft grip the disarm is the forgiving win - and that is its
+  reason to exist.** Grip 0 is a 200 ms wrench, unresistable from any start
+  in the first 120 ms of the advantage: twice the thrust's 60 ms budget.
+  Both conversions win the same duel, so without this asymmetry the disarm
+  would be dominated - slower, deniable, worth no more - and the button
+  would be dead. Past 60 ms of hesitation the thrust no longer kills, and
+  against a loose sword the disarm still does: it is the one guaranteed
+  conversion left to a winner who did not take the opening instantly. The
+  budget shrinks as the grip firms - equal to the thrust's at grip 1/6,
+  gone at grip 1/3.
 - **A firm grip is always resistable.** Grip 1, even at an instant start:
   560 - 320 leaves at least 240 ms of grip still to break after the loser is
-  free. The disarm against a braced opponent is a test they get to answer.
+  free. Attempting it is a deliberate gamble against a braced opponent - a
+  test they get to answer, never a win the arithmetic promises.
 
 The attempt begins on the tick the cut-key intent is accepted: the advantage
 timer is zeroed, `duel.disarm` is created with its duration fixed from the
@@ -277,36 +292,56 @@ same intents, and every draw comes from the seeded rng. And §3's prohibition
 stands: no error rates, no deliberate mistiming - uncertainty lives in the
 draws and the latency, never in sabotage.
 
-### 6.1 Converting a won bind: one seeded draw, mode 3
+### 6.1 Converting a won bind: a plan formed in the bind, fired on the win
 
-On the tick mode 3 wins a bind decisively, it draws once, seeded, over three
-conversions:
+Mode 3 never decides at the moment of victory, because the constitution
+forbids it: the resolution reveals the opponent's hidden choice, and no read
+younger than `AI_REACTION_MS` may steer an action. The answer is the human
+one - anticipation. At its in-bind decision tick, the same seeded moment
+`pressure-and-winding` §4 already gives it, the duelist draws one extra
+hidden value alongside hold / press / wind: a **conversion plan**, what
+winning this bind would be for. The plan reads nothing the in-bind choice
+does not already read - the same delayed observable snapshot - so its
+legality is inherited, not argued fresh. And it always exists by resolution:
+an early resolution needs both locks, the duelist cannot lock before it has
+decided, and every pairing involving hold waits for `BIND_MS`.
 
-| Conversion | Base weight | What it does |
+If the bind resolves the duelist's way, the plan fires after a seeded delay
+drawn from `DUELIST_CONVERT_DELAY_MS = [0, 60]` - execution jitter on a
+decision already made, a fencer who knew what the win was for before it
+came. If the bind is lost or breaks neutral, the plan dies unread. **No draw
+of any kind happens on the resolution tick**, and a test pins that: the
+win's content is a trigger, never an input. A wider delay band would be the
+forbidden error rate wearing a costume - a duelist that planned `disarm` and
+then dawdled past the budget would be mistiming a working mechanic on
+purpose.
+
+The plan's menu is gated by arithmetic before it is weighted by personality.
+From its delayed read of the loser's firmness - static since the entry tick,
+so the delayed read equals the value the engine will save; the delay is what
+makes the read legal, and the staleness costs nothing - the duelist predicts
+whether a strip would still be unresistable at the delay ceiling, through
+§2.2's shared helper, never a re-derived copy:
+
+| Predicted strip at the 60 ms ceiling | Draw | Base weights |
 |---|---|---|
-| thrust | 0.55 | the kill from `bindTimeline`, as `pressure-and-winding` built it |
-| disarm | 0.25 | the attempt, via the same cut-key intent the player uses |
-| withdraw | 0.20 | step out; the advantage clears on the step, per the existing rule |
+| unresistable (grip at most 1/6 with shipping constants - derived from the helper, never written as a literal) | thrust / disarm / withdraw | 0.40 / 0.40 / 0.20 |
+| resistable | thrust / withdraw | 0.80 / 0.20 |
 
-The weights tilt by the saved grip - the visible incentive, the same idiom as
-the in-bind tilt in `pressure-and-winding` §4: a few tenths toward `disarm`
-as the loser's firmness falls (a soft grip strips before resistance is
-possible, and the duelist takes the certain bloodless win) and toward
-`thrust` as it rises (a firm grip always leaves a resist window, so the
-surer conversion is the point). This is when the duelist prefers taking the
-sword over everything else it could do with the position: **when the bars
-say the sword is loose.** The in-bind hold / press / wind draw is not touched.
+In the unresistable region both conversions are guaranteed wins, so choosing
+between them is personality, not policy - mercy the duelist can afford, and
+the weights are the knob. In the resistable region **disarm is not in the
+draw at all**: a resistable attempt hands the opponent a save and the
+initiative, for the same victory the thrust takes outright, and
+`duelist-defence` §3 forbids self-sabotage dressed as variety. This is when
+the duelist prefers taking the sword over everything else the position
+offers: **when its own delayed read says the sword is already loose.** The
+in-bind hold / press / wind draw is not touched.
 
-The chosen conversion fires after a seeded delay drawn from
-`DUELIST_CONVERT_DELAY_MS = [0, 60]` - human jitter inside the budget where
-both promises hold: at the 60 ms ceiling the thrust still kills and the
-soft-grip disarm still strips clean. A wider band would be the forbidden
-error rate wearing a costume: a duelist that drew `disarm` and then dawdled
-past the budget would be mistiming a working mechanic on purpose.
-
-The choice is hidden until it launches, like every unthrown plan: before the
-attempt's or thrust's first tick, the opponent-observable projection is
-identical whichever was drawn.
+The plan is hidden like the bind intent it rides beside: through the whole
+bind and up to the conversion's first tick, the opponent-observable
+projection is identical whichever plan was drawn - or whether one was drawn
+at all.
 
 ### 6.2 Resisting: recognition from the projection, on the defence clock
 
@@ -341,10 +376,13 @@ manageable.
 Mode 1 never attempts a disarm - it converts nothing, as before - and as a
 victim it resists on the earliest legal tick, the perfect trigger that makes
 it the drill: practice your grip timing against an opponent that always
-answers when it can. Mode 2 never resists, because mode 2 never defends;
-binding it (it always holds) and stripping it is the first place the full
-sequence can be rehearsed. Mode 3 resists on its own clock. The difficulty
-ladder from `duelist-defence` §6 extends itself.
+answers when it can. Mode 2 never resists - a drill decision, not a
+derivation: the resist is its own single-answer state, outside the defence
+menu, so "mode 2 never defends" would not settle it by itself. This spec
+settles it, keeping mode 2 the transparent metronome; binding it (it always
+holds) and stripping it unopposed is the first place the full sequence can
+be rehearsed. Mode 3 resists on its own clock. The difficulty ladder from
+`duelist-defence` §6 extends itself.
 
 ---
 
@@ -361,10 +399,14 @@ ladder from `duelist-defence` §6 extends itself.
   firmness on the resolution tick and is still readable after `duel.bind` is
   null; `durationMs` is fixed at the attempt's start and immune to anything
   after it. Table-driven over grip 0, 1 and the boundaries.
-- **The unresistable strip:** grip 0, attempt started inside the 60 ms
+- **The unresistable strip:** grip 0, attempt started inside the 120 ms
   budget - the victim goes from `exposed` to `disarmed` without ever being
   `gripped`, and a parry key pressed on every tick throughout changes
   nothing.
+- **The budget boundary:** table-driven over (grip, start delay) pairs one
+  tick either side of `startDelayMs + durationMs = BIND_LOSS_MS`, through
+  §2.2's shared helper: under strips clean, over is resisted by a
+  well-timed press.
 - **The window:** grip 1 - the resist is legal from the tick `exposed` ends,
   the window is at least 240 ms at an instant start; a press during
   `exposed` is dropped; a parry key held since the bind does not resist, a
@@ -381,16 +423,25 @@ ladder from `duelist-defence` §6 extends itself.
   disarm outcome distinct from a kill, and no event follows it.
 - **Recoveries:** 300 and 180 seeded on the resist tick, concurrent, on the
   existing timer idiom.
-- **AI conversion:** over a long seeded run all three conversions occur; the
-  tilt is real - soft-loser fixtures raise the disarm share inside a wide
-  pinned band, a drift alarm, not a tuning lock; every convert delay falls
-  inside `DUELIST_CONVERT_DELAY_MS`.
+- **A plan, not a reaction:** the conversion plan is drawn on the duelist's
+  in-bind decision tick, and no draw of any kind fires on the resolution
+  tick. Two duels identical through the bind except the opponent's hidden
+  lock produce identical duelist draws and rng stream through resolution -
+  only whether the plan fires differs. A lost or neutral bind leaves the
+  plan unread.
+- **The gate:** no AI-initiated attempt is ever resisted - equivalently, no
+  victim of an AI disarm ever reaches `gripped`, over long seeded runs. In
+  soft-grip fixtures all three conversions occur; in firm-grip fixtures only
+  thrust and withdraw do. Every convert delay falls inside
+  `DUELIST_CONVERT_DELAY_MS`, and the prediction is asserted to call the
+  same duration helper the engine strips with - one function, not a copy.
 - **AI resist:** never earlier than `max(exposureEnd, visibleTick +
   AI_REACTION_MS)`; every latency inside the band; a firm duelist always
   resists in time; a soft duelist stripped inside the budget never resists.
-- **Hidden until launch:** before the conversion's first tick the
-  opponent-observable projection is identical whether the winner drew thrust
-  or disarm - the inverse-projection idiom from `pressure-and-winding` §5.
+- **Hidden until launch:** through the whole bind and up to the conversion's
+  first tick, the opponent-observable projection is identical whichever plan
+  was drawn, or whether one was drawn at all - the inverse-projection idiom
+  from `pressure-and-winding` §5.
 - **No future information:** two duels identical through tick T and differing
   only after T produce identical duelist decisions through T -
   `duelist-defence`'s test, extended over the new decisions.
@@ -421,7 +472,13 @@ ladder from `duelist-defence` §6 extends itself.
 - **Rapier disarms.** No binds, no advantage, no disarm - and if a rapier
   bind game ever arrives (`sustained-bind` §1 names the seam), it brings its
   own.
-- **Personality knobs** beyond the conversion weights and their tilt.
+- **What a bloodless win is worth outside the duel.** Score, reputation,
+  capture, a duelist who will not kill - the reasons a fighter with a
+  guaranteed thrust in hand chooses the sword instead live in a campaign
+  layer this prototype does not have. Inside this spec the disarm earns its
+  place mechanically (the wider soft-grip budget, §2.2); when a meta-layer
+  ever arrives, the distinct disarm outcome §4 records is the hook it reads.
+- **Personality knobs** beyond the conversion weights.
 
 ---
 
@@ -435,6 +492,9 @@ What to look for:
 - You choose the disarm because the bars say soft, and it reads as taking
   what the opponent's own entry offered - the early-versus-late guard trade
   from `pressure-and-winding` §1.1 now has a third tooth.
+- The hesitation save is real: you miss the thrust's instant against a soft
+  grip, reach for the cut key instead, and the sword still comes away -
+  §2.2's wider budget, felt in the hand.
 - The resist beat is readable at speed: exposure bar out, grip bar still
   filling, press. A save feels like a save.
 - Being disarmed by the duelist traces back to your own soft entry, not to a
@@ -442,8 +502,9 @@ What to look for:
 - Winning by disarm feels like a win - cleaner, not lesser, than the thrust.
 
 What would look wrong: the disarm dominating the thrust (always the pick -
-`DISARM_SOFT_MS` or the tilt is too kind) or never picked (dead weight - the
-base weights are the knob); the resist reading as a reflex test with no
-fight in it (the window lever is `DISARM_FIRM_MS`, never a buffer). The
-constitution in `duelist-defence` §2 and the unresistable-strip arithmetic
-in §2.2 are not knobs at all.
+the soft-grip budget is too wide, and `DISARM_SOFT_MS` is the knob) or never
+picked (dead weight - the unresistable region is too thin to visit, or the
+weights bury it); the resist reading as a reflex test with no fight in it
+(the window lever is `DISARM_FIRM_MS`, never a buffer). The constitution in
+`duelist-defence` §2 and the unresistable-strip inequality in §2.2 are not
+knobs at all.
