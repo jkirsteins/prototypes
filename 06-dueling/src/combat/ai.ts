@@ -1,5 +1,5 @@
 import { zoneFor } from "./measure";
-import { gapOf } from "./engine";
+import { BIND_MS, gapOf } from "./engine";
 import { guardEffective, lineOf } from "./fighter";
 import type { Duel } from "./engine";
 import type { Fighter } from "./fighter";
@@ -74,6 +74,13 @@ export interface AiState {
   sameHeightRun: number;
   /** Mode 1: reaction clock toward releasing a guard whose threat is gone. */
   releaseInMs: number;
+  /**
+   * Modes 3/4: the seeded bind plan - a mixed-strategy draw made once at
+   * bind entry (choice weighted by the visible firmness incentives, lock
+   * tick uniform inside the beat), cleared when the bind ends. Hold locks
+   * nothing, deliberately.
+   */
+  bindPlan: { choice: "hold" | "press" | "wind"; lockAtMs: number } | null;
   /** The current episode's drawn reaction; consumed and redrawn on each fired decision. */
   reactionMs: number;
   rng: number;
@@ -89,6 +96,7 @@ export function createAiState(seed: number = DEFAULT_SEED): AiState {
     cooldown: 0, next: "thrust", nextHeight: "low",
     plan: null, lastHeight: null, sameHeightRun: 0,
     releaseInMs: 0,
+    bindPlan: null,
     reactionMs: 0,
     rng: seed >>> 0,
   };
@@ -193,6 +201,32 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
   // Modes 2 and 3 share the attack cooldown. It ticks in every state -
   // an attack in flight does not pause the cycle.
   ai.cooldown = Math.max(0, ai.cooldown - dt);
+
+  // The bind mixup: a seeded MIXED strategy, never a read - with the
+  // matrix there is nothing to be right about before the opponent moves.
+  // Base weights hold 0.4 / press 0.3 / wind 0.3, tilted a few tenths by
+  // the visible incentives: toward press with its own firmness advantage
+  // (it can afford the press-war), toward wind with the opponent's. Both
+  // draws happen once, at entry, so a replay is reproducible and the AI
+  // conditions on exactly the information the player has.
+  if (self.state.kind !== "bind") ai.bindPlan = null;
+  if ((mode === 3 || mode === 4) && self.state.kind === "bind" && d.bind !== null) {
+    if (ai.bindPlan === null) {
+      const diff = d.bind.firmness[1] - d.bind.firmness[0];
+      const press = 0.3 + 0.25 * Math.max(0, diff);
+      const wind = 0.3 + 0.25 * Math.max(0, -diff);
+      const hold = 1 - press - wind;
+      const roll = nextRandom(ai);
+      const choice = roll < hold ? "hold" : roll < hold + press ? "press" : "wind";
+      // The lock lands inside the beat; drawn even for hold so the rng
+      // stream does not depend on the choice it produced.
+      ai.bindPlan = { choice, lockAtMs: nextRandom(ai) * (BIND_MS * 0.8) };
+    }
+    const bp = ai.bindPlan;
+    if (bp.choice !== "hold" && d.bind.t >= bp.lockAtMs) return bp.choice;
+    return null;
+  }
+  if (self.state.kind === "bind") return null; // modes 1/2 always hold
 
   // Mode 3 reads the defender WHILE attacking: a guard that has stood
   // long enough to react to, aimed exactly at this attack's line, gets

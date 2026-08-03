@@ -1,4 +1,4 @@
-import { HIT_STUN_MS } from "../combat/fighter";
+import { BIND_LOSS_MS, HIT_STUN_MS } from "../combat/fighter";
 import { BIND_MS } from "../combat/engine";
 import { PARRYABLE_FRACTION, WEAPONS } from "../combat/weapons";
 import type { FighterState } from "../combat/fighter";
@@ -92,9 +92,15 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
   },
   bind: {
     label: "bind",
-    what: "Evenly matched steel locks and both bodies are seized (the deep clang); mismatched blades deflect instead.",
-    player: "Nothing acts inside it - the attack and the guard it consumed are spent, and the next tempo goes to whoever reads the exit first.",
+    what: "Matched steel locks (the deep clang) and the mixup runs: J presses, K winds, doing nothing holds - hidden until it resolves.",
+    player: "Press beats hold, hold beats wind, wind beats press; a press-war goes to the firmer blade, and the bright bar is THEIR firmness.",
     ms: () => BIND_MS,
+  },
+  exposed: {
+    label: "exposed",
+    what: "The bind was lost: turned out of contact, unable to act, mortally open - a second clash sounded the break.",
+    player: "The winner's immediate thrust kills; any other move or a moment's hesitation spends their advantage, and you are back.",
+    ms: () => BIND_LOSS_MS,
   },
 };
 

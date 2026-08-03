@@ -116,6 +116,24 @@ export interface AttackTimeline {
   recoveryEnd: number;
 }
 
+/**
+ * The bind winner's thrust: the point is already in contact and on line, so
+ * there is nothing to gather - every mark before strikeStart is zero, and
+ * the strike and recovery are the weapon's own thrust timings. No windup
+ * interval exists, so no rise cue plays: not a special case in the audio
+ * layer, just no interval to cross.
+ */
+export function bindTimeline(w: WeaponProfile): AttackTimeline {
+  const t = w.attacks.thrust;
+  return {
+    riseStart: 0, riseEnd: 0, strikeStart: 0,
+    parryableUntil: parryableMs(t),
+    strikeEnd: t.strike,
+    recoveryStart: t.strike,
+    recoveryEnd: t.strike + t.recovery,
+  };
+}
+
 export function attackTimeline(w: WeaponProfile, a: AttackKind, windupBonusMs: number): AttackTimeline {
   const t = w.attacks[a];
   const riseStart = windupBonusMs;

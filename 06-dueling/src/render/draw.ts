@@ -1,4 +1,5 @@
-import { ARENA, BIND_MS, gapOf } from "../combat/engine";
+import { ARENA, BIND_MS, FIRMNESS_EPSILON, gapOf } from "../combat/engine";
+import { BIND_LOSS_MS } from "../combat/fighter";
 import { HIT_STUN_MS, guardEffective, lineOf } from "../combat/fighter";
 import { controlsLine } from "../ui/help";
 import { lastLines } from "../combat/log";
@@ -34,7 +35,7 @@ const PHASE_COLORS: Record<AttackPhase | Exclude<FighterState["kind"], "attack">
   windup: "#e6c229", strike: "#d64541", recovery: "#57a55a",
   void: "#4aa3df", step: "#cfd3da",
   hitstun: "#d64541", dead: "#555a63", ready: "#8a8f98",
-  bind: "#c9822f",
+  bind: "#c9822f", exposed: "#d64541",
 };
 
 /** cut/thrust tempo cost per weapon, shown on the HUD cards. */
@@ -68,8 +69,8 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
   if (v.overlay) {
     drawBodyTrack(v, d.f[0], d.bind);
     drawBodyTrack(v, d.f[1], d.bind);
-    drawParryTrack(v, d.f[0]);
-    drawParryTrack(v, d.f[1]);
+    drawParryTrack(v, d.f[0], d.bind, 0);
+    drawParryTrack(v, d.f[1], d.bind, 1);
     drawLineTrack(v, d.f[0], d.bind);
     drawLineTrack(v, d.f[1], d.bind);
     drawLog(v, d);
@@ -127,8 +128,12 @@ function drawTimeControl(v: View, d: Duel, time: TimeControl): void {
  * pushing on each other rather than a screenshot. Renderer-only - it reads
  * d.time and never enters the simulation, so replays cannot see it.
  */
-export function bindStrainOffset(timeMs: number, side: 0 | 1): number {
-  const a = Math.sin(timeMs / 45) * 0.9;
+export function bindStrainOffset(timeMs: number, side: 0 | 1, firm?: [number, number]): number {
+  // The amplitude term: a lopsided bind visibly leans - the softer fighter
+  // is shoved harder. Derived from the stored firmness pair, still pure in
+  // its inputs and still outside the simulation.
+  const lean = firm ? Math.max(0.4, 1 + (firm[1 - side] - firm[side])) : 1;
+  const a = Math.sin(timeMs / 45) * 0.9 * lean;
   return side === 0 ? a : -a;
 }
 
@@ -143,7 +148,7 @@ function drawFighter(v: View, f: Fighter, time: number, bind: BindState | null, 
   const sx = pick.frame * meta.frameW;
   const dy = ARENA.floorY - meta.feetY * SCALE;
   ctx.save();
-  ctx.translate(f.x * PX_PER_CM + (bound ? bindStrainOffset(time, side) : 0), 0);
+  ctx.translate(f.x * PX_PER_CM + (bound && bind !== null ? bindStrainOffset(time, side, bind.firmness) : 0), 0);
   if (pick.flip) ctx.scale(-1, 1);
   ctx.drawImage(
     img, sx, 0, meta.frameW, meta.frameH,
@@ -310,11 +315,55 @@ function bodyFraction(f: Fighter): number | null {
       // Unreachable from drawBodyTrack (the bind bar returns early with
       // the shared clock, which a lone fighter cannot supply); no bar.
       return null;
+    case "exposed":
+      return s.t / BIND_LOSS_MS;
   }
 }
 
+/**
+ * The pressure bars: during a bind, row 2 becomes each fighter's firmness -
+ * making a tactile sense visible is the honest way to model Fuehlen; hiding
+ * it would not simulate feel, it would remove it. The OPPONENT'S bar is
+ * bright because their firmness is what sets your incentives; yours is
+ * dimmed. The lighter band on each bar spans the opponent's value plus and
+ * minus FIRMNESS_EPSILON: the zone where a press-war grinds neutral. What
+ * stays hidden is intent, never pressure.
+ */
+function drawPressureBar(v: View, f: Fighter, bind: BindState, side: 0 | 1): void {
+  const { ctx } = v;
+  const cx = f.x * PX_PER_CM;
+  const mine = bind.firmness[side];
+  const theirs = bind.firmness[1 - side];
+  const bright = side === 1; // the player reads the opponent's row
+  const label = !bright
+    ? "bind"
+    : mine > theirs + FIRMNESS_EPSILON ? "bind: they are hard"
+    : mine < theirs - FIRMNESS_EPSILON ? "bind: they are soft"
+    : "bind: even grind";
+  ctx.font = "11px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.fillStyle = bright ? "#e6c229" : "#6b6675";
+  ctx.fillText(label, cx, ARENA.floorY + ROW2_LABEL_Y);
+  ctx.textAlign = "left";
+  const x = cx - TRACK_BAR_W / 2;
+  const y = ARENA.floorY + ROW2_BAR_Y;
+  ctx.fillStyle = "#2a2e36";
+  ctx.fillRect(x, y, TRACK_BAR_W, TRACK_BAR_H);
+  // The epsilon band around the OPPONENT's firmness.
+  const lo = Math.max(0, theirs - FIRMNESS_EPSILON);
+  const hi = Math.min(1, theirs + FIRMNESS_EPSILON);
+  ctx.fillStyle = bright ? "#4a4436" : "#343841";
+  ctx.fillRect(x + lo * TRACK_BAR_W, y, (hi - lo) * TRACK_BAR_W, TRACK_BAR_H);
+  ctx.fillStyle = bright ? "#e6c229" : "#6b6675";
+  ctx.fillRect(x, y, mine * TRACK_BAR_W, TRACK_BAR_H);
+}
+
 /** Row 2: the parry track - rise then window while up, recovery while spent. */
-function drawParryTrack(v: View, f: Fighter): void {
+function drawParryTrack(v: View, f: Fighter, bind: BindState | null, side: 0 | 1): void {
+  if (f.state.kind === "bind" && bind !== null) {
+    drawPressureBar(v, f, bind, side);
+    return;
+  }
   const cx = f.x * PX_PER_CM;
   const cooling = f.parryRecoveryMs > 0;
   if (f.parry !== null) {

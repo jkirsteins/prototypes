@@ -15,7 +15,14 @@ export type Intent =
   /** keyup: lower the held guard (queued while its latch is engaged) */
   | "parryRelease"
   /** horizontal arrows: re-aim a held guard's side at the visible attack */
-  | "sideShift";
+  | "sideShift"
+  /**
+   * The bind choices, on the attack keys - during a bind the engine reads
+   * cut as press and thrust as wind, so no new bindings exist. Hold is the
+   * absence of a lock, not an intent.
+   */
+  | "press"
+  | "wind";
 
 /**
  * A line is a pair. Height comes from the attacker's held stance at launch;
@@ -28,6 +35,20 @@ export type Intent =
 export type Height = "high" | "middle" | "low";
 export type Side = "inside" | "outside";
 export interface Line { height: Height; side: Side; }
+
+/**
+ * One side's part of a bind contact, snapshotted on the entry tick BEFORE
+ * the attack and parry states are discarded. Firmness derives from this;
+ * it cannot be recomputed later, because the states it reads are gone.
+ * Lives here (not in engine.ts) so the fighter's exposed state can carry
+ * the pose it was frozen in without an import cycle.
+ */
+export type BindContact =
+  | { kind: "strike"; progress: number } // 0..1 through the travelling half
+  /** held-guard's settled clock at contact: how long the covered line had
+   *  been effective. A completed guard shift resets it, so a guard that
+   *  just corrected a feint reads as freshly set. */
+  | { kind: "guard"; settledMs: number };
 
 export interface AttackTimings {
   windup: number;

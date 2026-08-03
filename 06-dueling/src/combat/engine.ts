@@ -1,8 +1,8 @@
-import { applyIntent, dropGuard, lineOf, TICK, tickFighter } from "./fighter";
+import { BIND_ADVANTAGE_MS, applyIntent, dropGuard, lineOf, TICK, tickFighter } from "./fighter";
 import { bladesCross, canBind, parryMeetsAttack } from "./contact";
 import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
-import type { Intent, Line, WeaponProfile } from "./types";
+import type { BindContact, Intent, Line, WeaponProfile } from "./types";
 
 // The contact module is the single home of blade geometry; the engine
 // re-exports it so existing consumers keep one import site.
@@ -17,7 +17,7 @@ export interface DuelEvent {
   time: number;
   side: 0 | 1;
   kind:
-    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "feint" | "bind" | "kill" | "draw"
+    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "feint" | "bind" | "bindBreak" | "kill" | "draw"
     // Presentation-only kinds, returned but never logged. They mark the
     // simulation instant a thing physically happens (a foot plants, a blade
     // starts rising or travelling, a blade arrives at a guard) - which is
@@ -32,20 +32,36 @@ export interface DuelEvent {
  *  window proves too fast to read, this is the lever - never a time scale,
  *  which would make every reaction constant mean two things. */
 export const BIND_MS = 500;
-/** Seeded into both bodies at exit: shared, not per-weapon, because both
- *  weapons in a bind are by definition the same bind-capable class. */
+/** Seeded into both bodies at a neutral exit: shared, not per-weapon,
+ *  because both weapons in a bind are by definition matched steel. */
 export const BIND_RECOVERY_MS = 180;
+/** A guard is fully braced this long after its covered line settles. */
+export const GUARD_SETTLE_MS = 160;
+/** Press-wars closer than this in firmness grind neutral. */
+export const FIRMNESS_EPSILON = 0.15;
+// The loser's exposure and the winner's advantage live on the fighter
+// (fighter.ts constants); re-exported so bind tuning reads in one place.
+export { BIND_ADVANTAGE_MS, BIND_LOSS_MS } from "./fighter";
 
-/** One side's part of the contact, snapshotted on the entry tick BEFORE the
- *  attack and parry states are discarded. pressure-and-winding derives
- *  firmness from this; it cannot be recomputed later, because the states it
- *  reads are gone. */
-export type BindContact =
-  | { kind: "strike"; progress: number } // 0..1 through the travelling half
-  /** held-guard's settled clock at contact: how long the covered line had
-   *  been effective. A completed guard shift resets it, so a guard that
-   *  just corrected a feint reads as freshly set. */
-  | { kind: "guard"; settledMs: number };
+/** A locked bind choice; hold is the absence of one, never a value. */
+export type BindChoice = "press" | "wind";
+
+/**
+ * Pressure is derived, never rolled: a pure function of one side's entry
+ * snapshot. A strike is as firm as it was far through its travel (the body
+ * is behind the blade); a guard is as firm as its covered line had been
+ * settled, capped at GUARD_SETTLE_MS - it has no fixed lifetime to
+ * normalise against. Derived once at entry and stored on the bind, because
+ * the states it reads are discarded there.
+ */
+export function firmness(c: BindContact, _w: WeaponProfile): number {
+  if (c.kind === "strike") return c.progress;
+  return Math.min(1, c.settledMs / GUARD_SETTLE_MS);
+}
+
+// BindContact moved to types.ts (the fighter's exposed state carries one);
+// re-exported here so consumers keep one import site.
+export type { BindContact } from "./types";
 
 /** A single physical event with one clock, so it lives on the duel - never
  *  mirrored onto the fighters, whose `bind` markers carry no data. */
@@ -58,6 +74,16 @@ export interface BindState {
    *  recomputation from states that have since moved. */
   line: Line;
   contact: [BindContact, BindContact];
+  /** Derived from `contact` at entry; the visible half of the mixup. */
+  firmness: [number, number];
+  /**
+   * The hidden half: each side's locked choice, or null (= hold). Locks
+   * are irrevocable and NOTHING observable changes when one lands - no
+   * event, no log line, no state change - because a visible choice would
+   * collapse the matrix back into a reaction test. Firmness is visible
+   * because it is feel; this is hidden because it is intent.
+   */
+  lock: [BindChoice | null, BindChoice | null];
 }
 
 export interface Duel {
@@ -93,6 +119,19 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   for (const side of [0, 1] as const) {
     const intent = intents[side];
     if (intent === null || d.over) continue;
+    // Inside a bind the attack keys are the bind keys: cut locks press,
+    // thrust locks wind (no new bindings), and the AI may send press/wind
+    // directly. A lock is irrevocable and observably SILENT - no event, no
+    // log, no state change - because a visible choice would collapse the
+    // mixup into a reaction test. Every other intent is seized with the
+    // body.
+    if (d.bind !== null && d.f[side].state.kind === "bind") {
+      const choice: BindChoice | null =
+        intent === "cut" || intent === "press" ? "press" :
+        intent === "thrust" || intent === "wind" ? "wind" : null;
+      if (choice !== null && d.bind.lock[side] === null) d.bind.lock[side] = choice;
+      continue;
+    }
     const before = d.f[side].state.kind;
     // The AI's attacks carry a telegraph: extra windup the player can read.
     // The fighter simulation never learns who controls it - it only sees
@@ -172,17 +211,11 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   // it is felt where it matters, in the scramble after.
   if (d.bind !== null) {
     d.bind.t += dt;
-    if (d.bind.t >= BIND_MS) {
-      for (const side of [0, 1] as const) {
-        const f = d.f[side];
-        f.state = { kind: "ready" };
-        f.stepRecoveryMs = BIND_RECOVERY_MS;
-        if (d.bind.contact[side].kind === "guard") {
-          f.parryRecoveryMs = f.weapon.parryRecoveryMs;
-        }
-      }
-      d.bind = null;
-    }
+    // Resolution fires at BIND_MS, or early on the tick both sides have
+    // locked - hold is the absence of a lock, so any pairing with hold
+    // waits the full beat, and locking early carries no tell.
+    const bothLocked = d.bind.lock[0] !== null && d.bind.lock[1] !== null;
+    if (d.bind.t >= BIND_MS || bothLocked) resolveBind(d, out);
   }
 
   // Physical moments surface as fighter state-machine events, deliberately
@@ -234,7 +267,11 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   if (binding) {
     const line = lineOf(d.f[contacts[0]]);
     const contact = [snapshotContact(d.f[0]), snapshotContact(d.f[1])] as [BindContact, BindContact];
-    d.bind = { t: 0, line, contact };
+    d.bind = {
+      t: 0, line, contact,
+      firmness: [firmness(contact[0], d.f[0].weapon), firmness(contact[1], d.f[1].weapon)],
+      lock: [null, null],
+    };
     for (const f of d.f) {
       f.state = { kind: "bind" };
       f.parry = null; // consumed without charge; the charge lands at exit
@@ -338,6 +375,68 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
  * crossing reports ONE contact, carried by the fighter whose strike began
  * later - the blade whose travel completed the contact.
  */
+/**
+ * The mixup matrix. Distinct choices resolve on the cycle - press beats
+ * hold (a static blade is shoved aside), hold beats wind (winding needs
+ * pressure to work around), wind beats press (their drive is redirected
+ * past you) - and the press-war goes to the firmer blade, grinding neutral
+ * inside FIRMNESS_EPSILON. Hold-hold and wind-wind break neutral. No
+ * choice dominates at any firmness, so the bind cannot be solved by
+ * looking: the visible bars set the stakes, never the answer.
+ */
+function bindWinner(
+  lock: [BindChoice | null, BindChoice | null],
+  firm: [number, number],
+): 0 | 1 | null {
+  const [a, b] = lock;
+  if (a === b) {
+    if (a === "press") {
+      const diff = firm[0] - firm[1];
+      if (Math.abs(diff) < FIRMNESS_EPSILON) return null; // the neutral grind
+      return diff > 0 ? 0 : 1;
+    }
+    return null; // hold-hold, wind-wind
+  }
+  const beats =
+    (a === "press" && b === null) || (a === null && b === "wind") || (a === "wind" && b === "press");
+  return beats ? 0 : 1;
+}
+
+/**
+ * The bind ends. Neutral: both to ready with the shared settle, silently -
+ * the absence of a second clash IS the information. Decisive: the winner
+ * exits clean carrying BIND_ADVANTAGE_MS (no settle - the immediate thrust
+ * is the whole point), the loser is turned out into `exposed` holding the
+ * pose the bind froze them in, and one logged bindBreak fires on THIS
+ * tick, never on the keypress that locked the choice. Either way a fighter
+ * whose guard the entry consumed pays parryRecoveryMs here, where it is
+ * felt.
+ */
+function resolveBind(d: Duel, out: DuelEvent[]): void {
+  const bind = d.bind;
+  if (bind === null) return;
+  const winner = bindWinner(bind.lock, bind.firmness);
+  for (const side of [0, 1] as const) {
+    const f = d.f[side];
+    if (winner === null) {
+      f.state = { kind: "ready" };
+      f.stepRecoveryMs = BIND_RECOVERY_MS;
+    } else if (side === winner) {
+      f.state = { kind: "ready" };
+      f.bindAdvantageMs = BIND_ADVANTAGE_MS;
+    } else {
+      f.state = { kind: "exposed", t: 0, contact: bind.contact[side], lineSide: bind.line.side };
+    }
+    if (bind.contact[side].kind === "guard") {
+      f.parryRecoveryMs = f.weapon.parryRecoveryMs;
+    }
+  }
+  if (winner !== null) {
+    emit(d, out, winner, "bindBreak", `${d.f[winner].weapon.name} wins the bind -> opening`);
+  }
+  d.bind = null;
+}
+
 /** One side's part of a forming bind, read while the states are still live. */
 function snapshotContact(f: Fighter): BindContact {
   const s = f.state;

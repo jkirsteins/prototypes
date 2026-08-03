@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { applyIntent, TICK } from "../src/combat/fighter";
-import { ARENA, MIN_GAP, createDuel, gapOf, parryMeetsAttack, tickDuel } from "../src/combat/engine";
+import { ARENA, BIND_MS, MIN_GAP, createDuel, gapOf, parryMeetsAttack, tickDuel } from "../src/combat/engine";
 import { WEAPONS, parryableMs } from "../src/combat/weapons";
 import type { Duel, DuelEvent } from "../src/combat/engine";
 import type { AttackKind, Intent, WeaponId } from "../src/combat/types";
@@ -301,6 +301,31 @@ describe("presentation events follow the simulation, not the input", () => {
     expect(bind.time).toBeGreaterThanOrEqual(arriveAt);
     expect(bind.time).toBeLessThan(arriveAt + 2 * TICK);
     expect(d.log.filter((e) => e.kind === "bind").length).toBe(1); // logged outcome
+  });
+
+  test("bindBreak fires on the resolution tick, never on the keypress that locked the choice", () => {
+    // Press locked early in the bind; the dummy holds, so resolution waits
+    // for BIND_MS. The ring must land on that tick - a break sounding at
+    // the lock would be the exact class of bug this block exists to catch.
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    closeTo(d, 180);
+    let evs: DuelEvent[] = [];
+    evs = evs.concat(runMs(d, TICK, "parry", null));
+    evs = evs.concat(runMs(d, 600));
+    for (let t = 0; t < 1600 && d.bind === null; t += TICK) {
+      evs = evs.concat(tickDuel(d, null, t === 0 ? "thrust" : null));
+    }
+    const bind = evs.find((e) => e.kind === "bind");
+    if (!bind || d.bind === null) throw new Error("no bind");
+    const lockTime = d.time + TICK; // the press goes in on the next tick
+    evs = evs.concat(runMs(d, TICK, "press", null));
+    expect(evs.some((e) => e.kind === "bindBreak")).toBe(false); // silent lock
+    while (d.bind !== null) evs = evs.concat(runMs(d, TICK));
+    const brk = evs.find((e) => e.kind === "bindBreak");
+    expect(brk).toBeDefined();
+    if (!brk) throw new Error("unreachable");
+    expect(brk.time).toBeGreaterThan(lockTime + TICK); // not the lock tick
+    expect(brk.time).toBeCloseTo(bind.time + BIND_MS, 0); // the beat's end
   });
 
   test("swing fires when the blade starts travelling; a miss still whooshes then whiffs", () => {

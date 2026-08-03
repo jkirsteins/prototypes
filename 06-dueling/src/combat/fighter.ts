@@ -1,10 +1,15 @@
-import { attackTimeline, PARRYABLE_FRACTION } from "./weapons";
+import { attackTimeline, bindTimeline, PARRYABLE_FRACTION } from "./weapons";
 import type { AttackTimeline } from "./weapons";
-import type { AttackKind, AttackPhase, Height, Intent, Line, Side, WeaponProfile } from "./types";
+import type { AttackKind, AttackPhase, BindContact, Height, Intent, Line, Side, WeaponProfile } from "./types";
 
 export const TICK = 1000 / 60;
 export const HIT_STUN_MS = 350;
 export const DEATH_ANIM_MS = 900;
+/** How long the bind's loser is turned out and unable to act. */
+export const BIND_LOSS_MS = 320;
+/** The winner's opening: while it decays, one immediate thrust launches
+ *  from the contact (bindTimeline). Anything else spends it on nothing. */
+export const BIND_ADVANTAGE_MS = 200;
 
 export type FighterState =
   | { kind: "ready" }
@@ -40,7 +45,16 @@ export type FighterState =
    * one physical event. Two mirrored copies kept equal by discipline was
    * the bug-shaped version.
    */
-  | { kind: "bind" };
+  | { kind: "bind" }
+  /**
+   * Turned out of a lost bind: nonlethal hitstun-shaped, accepts nothing,
+   * ends into ready at BIND_LOSS_MS. Unlike the bind marker this carries
+   * data, because what it holds IS per-fighter: the pose the fighter was
+   * frozen in when turned out (their contact snapshot and the bind line's
+   * side axis), which the renderer keeps drawing - the duel's BindState is
+   * gone by now, so the fighter itself is the only honest home.
+   */
+  | { kind: "exposed"; t: number; contact: BindContact; lineSide: Side };
 
 /**
  * The timed defence, on its own track so it can coexist with locomotion:
@@ -154,6 +168,8 @@ export interface Fighter {
   stepRecoveryMs: number;
   /** Time until the next parry is available. Gates only the parry. */
   parryRecoveryMs: number;
+  /** The bind winner's decaying opening; see BIND_ADVANTAGE_MS. */
+  bindAdvantageMs: number;
 }
 
 export type FighterEvent =
@@ -166,13 +182,28 @@ export type FighterEvent =
 
 export function createFighter(x: number, facing: 1 | -1, weapon: WeaponProfile): Fighter {
   return {
-    x, facing, weapon, state: { kind: "ready" }, parry: null,
+    x, facing, weapon, state: { kind: "ready" }, parry: null, bindAdvantageMs: 0,
     height: "low", heightTo: null, heightT: 0, guardSide: "inside",
     buffered: null, stepRecoveryMs: 0, parryRecoveryMs: 0,
   };
 }
 
 export function applyIntent(
+  f: Fighter,
+  intent: Intent,
+  opts?: { windupBonusMs?: number; targetSide?: Side; targetAttackStartTime?: number },
+): "accepted" | "buffered" | "ignored" {
+  const r = applyIntentInner(f, intent, opts);
+  // The bind advantage is the contact: only the immediate thrust uses it
+  // (startAction reads the still-set timer to pick bindTimeline), and any
+  // OTHER action that goes through - accepted or buffered - is leaving the
+  // contact, so the timer does not survive in your pocket. A refused
+  // intent changes nothing and clears nothing.
+  if (r !== "ignored") f.bindAdvantageMs = 0;
+  return r;
+}
+
+function applyIntentInner(
   f: Fighter,
   intent: Intent,
   opts?: { windupBonusMs?: number; targetSide?: Side; targetAttackStartTime?: number },
@@ -361,7 +392,15 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
         attack: intent,
         phase: "windup",
         elapsedMs: 0,
-        timeline: attackTimeline(f.weapon, intent, windupBonusMs),
+        // The bind winner's thrust launches from the contact: while the
+        // advantage timer is live (the wrapper zeroes it only after this
+        // runs), the point is already on line and the timeline starts at
+        // strikeStart. Only the thrust's geometry matches the position
+        // the win left you in - the cut deliberately gets nothing.
+        timeline:
+          intent === "thrust" && f.bindAdvantageMs > 0
+            ? bindTimeline(f.weapon)
+            : attackTimeline(f.weapon, intent, windupBonusMs),
         // A stance mid-transition still covers its old height, and the
         // blade launches from where the body truly is.
         height: f.height,
@@ -372,6 +411,9 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
       return true;
     case "parry":
       return false; // the parry lives on its own track; applyIntent raises it
+    case "press":
+    case "wind":
+      return false; // bind choices lock on the duel's BindState, not the body
     case "feint":
       return false; // only meaningful mid-windup; handled in applyIntent
     case "stanceUp":
@@ -431,6 +473,7 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
   const settling = f.stepRecoveryMs > 0;
   f.stepRecoveryMs = Math.max(0, f.stepRecoveryMs - dt);
   f.parryRecoveryMs = Math.max(0, f.parryRecoveryMs - dt);
+  f.bindAdvantageMs = Math.max(0, f.bindAdvantageMs - dt);
   // The stance track runs beside everything: a transition in flight
   // arrives on its own clock whatever the body is doing.
   if (f.heightTo !== null) {
@@ -520,6 +563,13 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
     case "bind":
       // The body is seized; the duel's shared clock decides when it is
       // released. Nothing per-fighter advances here.
+      break;
+    case "exposed":
+      // Turned out of a lost bind: hitstun-shaped but nonlethal, and only
+      // a strike resolution can interrupt it. No buffer flush on exit -
+      // nothing could have buffered, since exposed accepts no intents.
+      s.t += dt;
+      if (s.t >= BIND_LOSS_MS) f.state = { kind: "ready" };
       break;
     case "attack": {
       // One clock, absolute marks: the phase follows elapsedMs across the

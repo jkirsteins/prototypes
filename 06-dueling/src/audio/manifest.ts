@@ -43,6 +43,7 @@ export const EVENT_SOUNDS: Partial<Record<DuelEvent["kind"], SoundName[]>> = {
   whiff: ["whoosh1", "whoosh2", "whoosh3"],
   met: ["clash1", "clash2", "clash3"],
   bind: ["clash1", "clash2", "clash3"],
+  bindBreak: ["clash1", "clash2", "clash3"],
   hit: ["hit1"],
 };
 
@@ -52,6 +53,11 @@ export const EVENT_SOUNDS: Partial<Record<DuelEvent["kind"], SoundName[]>> = {
  * the met's ring reads as steel knocked away - the same contact instant,
  * two audibly different outcomes. One event still means one sound; the
  * engine emits bind INSTEAD of met on the bound path, never both.
+ *
+ * bindBreak keeps the clash's own pitch: a second RING after the deep
+ * clang means somebody won the bind, and a silent break means neutral -
+ * the sound carries information, the same argument that keeps swing
+ * unmapped.
  */
 export const EVENT_RATES: Partial<Record<DuelEvent["kind"], number>> = {
   bind: 0.55,

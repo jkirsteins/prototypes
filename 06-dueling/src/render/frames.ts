@@ -77,6 +77,10 @@ export function pickBindFrame(f: Fighter, contact: BindContact, side: "inside" |
     : { sheet: "swordStab", frame: 4, flip }; // thrust, extended
 }
 
+// The exposed loser holds the pose the bind froze them in - the state
+// carries its own contact snapshot precisely because the duel's BindState
+// is gone by resolution.
+
 export function pickFrame(f: Fighter, timeMs: number): FramePick {
   const flip = f.facing === -1;
   const s = f.state;
@@ -106,6 +110,10 @@ export function pickFrame(f: Fighter, timeMs: number): FramePick {
       // duel's snapshot; this arm exists for callers without one and
       // holds the formed-guard apex as a neutral crossed stance.
       return { sheet: "swordAttack", frame: 2, flip };
+    case "exposed":
+      // Turned out of a lost bind: the contact pose, held - reads as
+      // being unable to recover, which is exactly what the state is.
+      return pickBindFrame(f, s.contact, s.lineSide);
     case "dead":
       return { sheet: "death", frame: span("death", Math.min(s.t, DEATH_ANIM_MS - 1), DEATH_ANIM_MS, 0, 9), flip };
     case "attack": {

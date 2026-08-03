@@ -38,7 +38,12 @@ a layer:
   tick when matched steel locks instead of deflecting - it REPLACES the
   clash as the contact's one sound, never layers on it, so a deflection
   and a bind are audibly different outcomes;
-- the hit when the strike *resolves* into a wound.
+- the bindBreak ring on the tick a bind RESOLVES decisively - never on the
+  keypress that locked a choice - and a neutral break is silent: a second
+  clash means somebody won, so the silence carries information too;
+- the hit when the strike *resolves* into a wound. The bind winner's
+  thrust launches with no windup interval to cross, so no rise cue plays -
+  not an audio special case, there is simply no mark to hit.
 
 The engine also emits an unmapped `swing` event (blade starts travelling);
 it is deliberately silent - sounding every attack would make the whoosh
