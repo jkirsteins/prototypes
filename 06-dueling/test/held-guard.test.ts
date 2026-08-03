@@ -58,10 +58,10 @@ describe("the held lifecycle", () => {
     runMs(d, 2000);
     expect(d.f[0].parry?.phase).toBe("held");
     // The AI thrust arrives on the covered line (low inside). Two
-    // longswords: the stop is a bind since sustained-bind - the met is
-    // the guard answering, and nobody is hit.
+    // longswords: the stop is a bind since sustained-bind - its logged
+    // event is the guard answering, and nobody is hit.
     const evs = runMs(d, 1400, null, "thrust");
-    expect(evs.some((e) => e.kind === "met" && e.side === 1)).toBe(true);
+    expect(evs.some((e) => e.kind === "bind" && e.side === 1)).toBe(true);
     expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 

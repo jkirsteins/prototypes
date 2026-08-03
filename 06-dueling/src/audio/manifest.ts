@@ -42,7 +42,19 @@ export const EVENT_SOUNDS: Partial<Record<DuelEvent["kind"], SoundName[]>> = {
   step: FOOTSTEPS,
   whiff: ["whoosh1", "whoosh2", "whoosh3"],
   met: ["clash1", "clash2", "clash3"],
+  bind: ["clash1", "clash2", "clash3"],
   hit: ["hit1"],
+};
+
+/**
+ * Per-kind playback rate (default 1). The bind reuses the clash samples
+ * pitched well down: deeper and longer, it reads as steel LOCKING where
+ * the met's ring reads as steel knocked away - the same contact instant,
+ * two audibly different outcomes. One event still means one sound; the
+ * engine emits bind INSTEAD of met on the bound path, never both.
+ */
+export const EVENT_RATES: Partial<Record<DuelEvent["kind"], number>> = {
+  bind: 0.55,
 };
 
 /**

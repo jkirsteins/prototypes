@@ -1,12 +1,12 @@
 import { applyIntent, dropGuard, lineOf, TICK, tickFighter } from "./fighter";
-import { bladesCross, parryMeetsAttack } from "./contact";
+import { bladesCross, canBind, parryMeetsAttack } from "./contact";
 import type { Fighter, FighterEvent } from "./fighter";
 import { createFighter } from "./fighter";
 import type { Intent, Line, WeaponProfile } from "./types";
 
 // The contact module is the single home of blade geometry; the engine
 // re-exports it so existing consumers keep one import site.
-export { bladesCross, extension, parryMeetsAttack } from "./contact";
+export { bladesCross, canBind, extension, parryMeetsAttack } from "./contact";
 
 /** left/right are cm along the piste (~17 m usable); floorY is canvas px (vertical is render-only). */
 export const ARENA = { left: 120, right: 1800, floorY: 430 };
@@ -17,7 +17,7 @@ export interface DuelEvent {
   time: number;
   side: 0 | 1;
   kind:
-    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "feint" | "kill" | "draw"
+    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "feint" | "bind" | "kill" | "draw"
     // Presentation-only kinds, returned but never logged. They mark the
     // simulation instant a thing physically happens (a foot plants, a blade
     // starts rising or travelling, a blade arrives at a guard) - which is
@@ -217,25 +217,21 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   // old parryable-interval boundary; earlier at any closer gap); for a
   // crossing, the tick both extensions cover the gap. One met per contact,
   // never one per side - two clash samples on one tick would be a layer.
-  const contacts = markMetBlades(d);
-  for (const c of contacts) {
-    out.push({ time: d.time, side: c, kind: "met", text: "" });
-  }
-
-  // Two bind-capable weapons turn the contact into a bind on the met tick:
-  // the snapshot is read from the still-live attack and parry states, then
+  // Matched steel (canBind: stiffnesses within the band) turns the contact
+  // into a bind on the contact tick; anything else keeps the deflection.
+  // One contact, one sound: the bind REPLACES the met as the contact's
+  // outcome event - a logged one, like parried and hit - so a deflection
+  // and a lock are audibly and legibly different outcomes, never a layer.
+  // The snapshot is read from the still-live attack and parry states, then
   // both bodies are replaced with the bare marker. The attack is over (its
   // timeline is discarded, so it can never resolve), and the guard is
   // consumed even though the parry key is still physically down - a spent
   // guard never re-forms from a held key. Not entered when the duel is
   // already over: dead takes precedence over everything.
-  if (
-    contacts.length > 0 &&
-    !d.over &&
-    d.bind === null &&
-    d.f[0].weapon.bindCapable &&
-    d.f[1].weapon.bindCapable
-  ) {
+  const contacts = markMetBlades(d);
+  const binding =
+    contacts.length > 0 && !d.over && d.bind === null && canBind(d.f[0].weapon, d.f[1].weapon);
+  if (binding) {
     const line = lineOf(d.f[contacts[0]]);
     const contact = [snapshotContact(d.f[0]), snapshotContact(d.f[1])] as [BindContact, BindContact];
     d.bind = { t: 0, line, contact };
@@ -243,6 +239,11 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
       f.state = { kind: "bind" };
       f.parry = null; // consumed without charge; the charge lands at exit
       f.buffered = null;
+    }
+    emit(d, out, contacts[0], "bind", `${d.f[contacts[0]].weapon.name} bound -> both blades held`);
+  } else {
+    for (const c of contacts) {
+      out.push({ time: d.time, side: c, kind: "met", text: "" });
     }
   }
 

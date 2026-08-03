@@ -34,6 +34,10 @@ a layer:
   the end of the parryable interval and earlier at any closer gap. For two
   crossing attacks it is the tick their extensions together cover the gap,
   and a crossing is ONE clash, never one per side;
+- the bind clang (the clash samples pitched down) on that same contact
+  tick when matched steel locks instead of deflecting - it REPLACES the
+  clash as the contact's one sound, never layers on it, so a deflection
+  and a bind are audibly different outcomes;
 - the hit when the strike *resolves* into a wound.
 
 The engine also emits an unmapped `swing` event (blade starts travelling);
@@ -49,6 +53,23 @@ at its physical transitions, the engine translates them into `DuelEvent`s
 layer keys exclusively off those events. The describe block "presentation
 events follow the simulation, not the input" in `test/engine.test.ts` pins
 the exact timings - extend it whenever a new cue is added.
+
+## Capabilities emerge from physical properties, never from flags
+
+What a weapon can DO in an interaction is derived from its declared
+physical properties, never stored as a capability boolean or a pairwise
+table. The bind is the model case: each weapon declares `bladeStiffness`
+(a number with physical meaning), and whether a CONTACT sustains into a
+bind is `canBind(a, b)` in `src/combat/contact.ts` - one symmetric
+derivation over both blades' properties. Two longswords lock, two rapiers
+lock, a rapier against a longsword is blown off line - and every future
+sword gets its combinations from its stiffness alone, with no table to
+update. A `bindCapable: boolean` shipped briefly and was wrong twice over:
+it flattened a pair property onto one weapon (making rapier-rapier
+undeservedly deflect), and it could not scale past two swords. When a new
+interaction needs a gate, declare the property it physically depends on
+and derive the gate in one function; if two properties seem to demand a
+table, the properties are wrong, not the rule.
 
 ## The "?" panel is the rules, and it must not go stale
 

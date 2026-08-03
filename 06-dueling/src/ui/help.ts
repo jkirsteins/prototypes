@@ -92,7 +92,7 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
   },
   bind: {
     label: "bind",
-    what: "Two longswords hold contact and both bodies are seized; rapier contact always deflects instead.",
+    what: "Evenly matched steel locks and both bodies are seized (the deep clang); mismatched blades deflect instead.",
     player: "Nothing acts inside it - the attack and the guard it consumed are spent, and the next tempo goes to whoever reads the exit first.",
     ms: () => BIND_MS,
   },

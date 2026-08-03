@@ -35,35 +35,51 @@ lateral force without buckling. Longswords are stiff, broad and two-handed, so
 pressure transmits and the contact is stable. Rapier contact is transient - the
 blades flex and slide, and the follow-up is to go around rather than to wrestle.
 
-**`bindCapable: false` is an abstraction, and the spec says so.** A real rapier
-does bind - opposition along the forte is core to its system - but it cannot
-*sustain* pressure the way two longswords can, so the game rounds its contact
-down to instant deflection. That is a modelling rule with a gameplay purpose
-(two weapons that play differently), not a claim that rapier steel cannot touch
-steel. If a rapier bind game is ever wanted, the field becomes a depth or a
-duration rather than a boolean; nothing downstream may assume the boolean means
-"cannot bind at all".
+**Bindability is derived, never declared.** (As built - an earlier draft
+gated on a `bindCapable: boolean` per weapon, which was wrong twice over:
+it flattened a PAIR property onto one weapon, wrongly making rapier
+against rapier deflect, and it could not scale past two swords without
+becoming a table. See AGENTS.md "Capabilities emerge from physical
+properties".) Each weapon declares one physical property:
 
 ```ts
 interface WeaponProfile {
   // ...
-  bindCapable: boolean;   // longsword true, rapier false
+  /** Relative lateral stiffness; longsword 1.0 is the anchor. */
+  bladeStiffness: number;   // longsword 1.0, rapier 0.35
 }
 ```
 
-| Contact | Both `bindCapable` | Otherwise |
+and whether a contact sustains is one symmetric derivation in
+`src/combat/contact.ts`:
+
+```ts
+export const BIND_STIFFNESS_RATIO = 0.6;
+canBind(a, b) = min(stiffness) / max(stiffness) >= BIND_STIFFNESS_RATIO
+```
+
+A sustained bind needs blades that can hold each other's lateral pressure:
+stiffnesses within the band of each other. Below it the stiffer blade
+simply blows the whippier one off line and the contact deflects. So two
+longswords lock; two rapiers also lock (evenly matched, if whippier,
+steel); a rapier against a longsword cannot bind effectively. Future
+swords land on whichever side their stiffness puts them, pairing by
+pairing, with no table to maintain. If steel so floppy that even its
+mirror cannot hold pressure ever ships, a stiffness floor joins the ratio
+inside `canBind` - in that one function.
+
+| Contact | `canBind(a, b)` | Otherwise |
 |---|---|---|
 | Parry meets attack | **bind** | deflection, exactly as today |
 | Two blades cross | **bind** | deflection, exactly as today |
 
 Deflection is unchanged behaviour: `met` is set, the attack resolves to `parried`
 at its own `strikeEnd`, and each weapon pays its own `parriedPenalty`. The
-asymmetry `blade-contact` §1.1 relied on now applies specifically to the exchanges the
-rapier is in, where "bad in the bind" reads correctly as "worse when its blade is
-knocked off line".
+asymmetry `blade-contact` §1.1 relied on now applies specifically to the
+mismatched exchanges, where "bad in the bind" reads correctly as "worse when its
+blade is knocked off line".
 
-The result is two genuinely different games. Longsword against longsword fights
-in contact. Anything involving a rapier fights around it.
+The result: matched steel fights in contact, mismatched steel fights around it.
 
 ---
 
@@ -251,15 +267,21 @@ The body row shows `bind` with a progress bar over `BIND_MS`, using the same
 idiom as every other timed state. Both fighters show it, both fill together,
 driven by the one shared clock (§2.1).
 
-### 4.3 Audio
+### 4.3 Audio and the activity log
 
-The `met` clash already fires at the contact instant and is unchanged, so an
-attack that ends in a bind still resolves to exactly one sound. The bind itself
-adds no cue: it is a held state, not a moment, and `AGENTS.md` maps cues to
-moments.
+(As built - the first cut kept the unlogged `met` on the bind path and no
+log line; playtest wanted the bind legible in the log and by ear.) A
+contact that locks emits a logged `bind` DuelEvent **instead of** `met`,
+on the same contact tick `met` would have fired: one contact, one sound,
+and the event kind itself carries the outcome, like `parried` versus
+`hit`. Audio maps `bind` to the clash samples pitched well down - a
+deeper, longer clang that reads as steel holding rather than steel
+knocked away. Deflections keep the unlogged `met` and its ring untouched.
 
-No sustained scrape or drone. The bind is 500 ms; a bed under it would be
-ambience, and this project does not do ambience.
+The bind's 500 ms hold itself adds no cue: it is a held state, not a
+moment, and `AGENTS.md` maps cues to moments. No sustained scrape or
+drone - a bed under it would be ambience, and this project does not do
+ambience.
 
 ### 4.4 Row 3 and the help panel
 
@@ -308,9 +330,9 @@ outcome worth pacing around.
   entry tick on, `parryRecoveryMs` charged in full on the exit tick (not decayed
   by the bind), and no guard re-formed by a parry key that stayed held
   throughout.
-- **One sound:** exactly one `met` fires for a contact that becomes a bind, on the
-  same tick it fired before this spec. Existing AGENTS.md assertions from `blade-contact`
-  must pass unedited for the bind path.
+- **One sound:** exactly one `bind` fires for a contact that locks - on the
+  same tick `met` fired before this spec, replacing it, never joined by it -
+  and it is logged. Deflection paths keep `met` and its timings unedited.
 - **Determinism:** the oscillation in §4.1 is renderer-only. The golden replay
   projection must not include it, and a test asserts the projection hash is
   identical with the renderer stubbed out.

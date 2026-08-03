@@ -1,5 +1,6 @@
 import { lineOf, TICK } from "./fighter";
 import type { Fighter } from "./fighter";
+import type { WeaponProfile } from "./types";
 
 /**
  * Blade contact, in one module: the travel model and the two ways steel
@@ -9,6 +10,30 @@ import type { Fighter } from "./fighter";
  * where they are read together. Line conditions (attack-lines) and travel
  * conditions (blade-contact) live here and nowhere else.
  */
+
+/**
+ * A sustained bind needs blades that can HOLD each other's lateral
+ * pressure: stiffnesses within this band of each other. Below it the
+ * stiffer blade simply blows the whippier one off line and the contact
+ * deflects. 0.6 places the shipping pair correctly - the longsword mirror
+ * (1.0/1.0) and the rapier mirror (0.35/0.35) both lock, longsword against
+ * rapier (0.35) does not - and future swords land on whichever side their
+ * stiffness puts them.
+ */
+export const BIND_STIFFNESS_RATIO = 0.6;
+
+/**
+ * Whether a contact between these two blades sustains into a bind, derived
+ * from their physical properties - never a flag, never a pairwise table.
+ * Symmetric by construction. When floppier steel arrives (a blade so
+ * flexible that even its mirror cannot hold pressure), a stiffness floor
+ * joins the ratio here, in this one function.
+ */
+export function canBind(a: WeaponProfile, b: WeaponProfile): boolean {
+  const lo = Math.min(a.bladeStiffness, b.bladeStiffness);
+  const hi = Math.max(a.bladeStiffness, b.bladeStiffness);
+  return lo / hi >= BIND_STIFFNESS_RATIO;
+}
 
 /**
  * How far this fighter's blade extends from their body centre, in cm. The

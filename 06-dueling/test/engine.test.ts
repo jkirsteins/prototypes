@@ -81,10 +81,10 @@ describe("attack resolution", () => {
         const evs = tickDuel(d, i === 0 ? kind : null, i === pressTick ? "parry" : null);
         for (const e of evs) {
           if (e.kind === "parried" || e.kind === "hit" || e.kind === "whiff") return e.kind;
-          // Two longswords: the stop is a bind since sustained-bind, and
-          // the met that enters it is the same instant the deflection
-          // fired before. The interval rules under test are unchanged.
-          if (e.kind === "met" && d.bind !== null) return "parried";
+          // Matched steel: the stop is a bind since sustained-bind, its
+          // own logged outcome event at the same contact instant the
+          // deflection fired before. The interval rules are unchanged.
+          if (e.kind === "bind") return "parried";
         }
       }
       return "none";
@@ -276,6 +276,31 @@ describe("presentation events follow the simulation, not the input", () => {
     expect(met.time).toBeLessThan(arriveAt + 2 * TICK);
     expect(met.time).toBeLessThan(parried.time); // before resolution
     expect(d.log.some((e) => e.kind === "met")).toBe(false);
+  });
+
+  test("bind fires at the contact tick - the blade's arrival at the guard, not the press", () => {
+    // The matched-steel twin of the met test above: same contact instant,
+    // a different outcome event. One sound - the bind REPLACES the met,
+    // never layers on it - and it is logged, unlike the met.
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    closeTo(d, 180);
+    const t = WEAPONS.longsword.attacks.thrust;
+    const strikeAt = t.windup + t.beat; // player side: no telegraph
+    const arriveAt = strikeAt + (180 / WEAPONS.longsword.reach) * parryableMs(t);
+    const pressTick = 1; // rise (220ms) completes before the strike (320ms)
+    const pressTime = (pressTick + 1) * TICK;
+    const evs: DuelEvent[] = [];
+    for (let i = 0; i < 300 && !evs.some((e) => e.kind === "bind"); i++) {
+      evs.push(...tickDuel(d, i === 0 ? "thrust" : null, i === pressTick ? "parry" : null));
+    }
+    const bind = evs.find((e) => e.kind === "bind");
+    expect(bind).toBeDefined();
+    if (!bind) throw new Error("unreachable");
+    expect(evs.some((e) => e.kind === "met")).toBe(false);
+    expect(bind.time).toBeGreaterThan(pressTime + TICK); // not the press tick
+    expect(bind.time).toBeGreaterThanOrEqual(arriveAt);
+    expect(bind.time).toBeLessThan(arriveAt + 2 * TICK);
+    expect(d.log.filter((e) => e.kind === "bind").length).toBe(1); // logged outcome
   });
 
   test("swing fires when the blade starts travelling; a miss still whooshes then whiffs", () => {

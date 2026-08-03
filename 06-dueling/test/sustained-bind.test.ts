@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { TICK } from "../src/combat/fighter";
+import { canBind } from "../src/combat/contact";
 import { BIND_MS, BIND_RECOVERY_MS, createDuel, tickDuel } from "../src/combat/engine";
 import { WEAPONS } from "../src/combat/weapons";
 import type { Duel, DuelEvent } from "../src/combat/engine";
@@ -34,26 +35,53 @@ function parryBindDuel(): { d: Duel; evs: DuelEvent[] } {
   return { d, evs };
 }
 
-describe("capability gate", () => {
-  test("longsword steel is bindCapable, rapier steel is not", () => {
-    expect(WEAPONS.longsword.bindCapable).toBe(true);
-    expect(WEAPONS.rapier.bindCapable).toBe(false);
+describe("capability: bindability is emergent from blade properties, never a flag", () => {
+  test("stiffness is the declared physical property, and the longsword is the stiffer", () => {
+    expect(WEAPONS.longsword.bladeStiffness).toBeGreaterThan(WEAPONS.rapier.bladeStiffness);
+    expect(WEAPONS.rapier.bladeStiffness).toBeGreaterThan(0);
   });
 
-  test("longsword parried by longsword binds: both fighters, one shared state", () => {
+  test("matched steel sustains, mismatched steel cannot - derived, symmetric", () => {
+    // The rule, not a table: a contact sustains when neither blade can
+    // simply overpower the other's lateral hold, i.e. the stiffnesses are
+    // within a band of each other. Two longswords lock; two rapiers lock
+    // (evenly matched, if whippier steel); a rapier against a longsword is
+    // blown off line and the contact deflects. Future swords slot in by
+    // their stiffness alone.
+    expect(canBind(WEAPONS.longsword, WEAPONS.longsword)).toBe(true);
+    expect(canBind(WEAPONS.rapier, WEAPONS.rapier)).toBe(true);
+    expect(canBind(WEAPONS.longsword, WEAPONS.rapier)).toBe(false);
+    expect(canBind(WEAPONS.rapier, WEAPONS.longsword)).toBe(false);
+  });
+
+  test("longsword parried by longsword binds, and the bind is a logged outcome event", () => {
     const { d, evs } = parryBindDuel();
-    expect(evs.some((e) => e.kind === "met")).toBe(true);
+    expect(evs.filter((e) => e.kind === "bind").length).toBe(1);
+    expect(evs.some((e) => e.kind === "met")).toBe(false); // replaced, not layered
     expect(evs.some((e) => e.kind === "parried")).toBe(false); // the attack never resolves
-    expect(d.log.filter((e) => e.kind === "met")).toEqual([]); // met stays unlogged
-    // The bind formed and exited within the run; verify it existed by its
-    // consequences below and via the frozen/exit tests.
+    expect(d.log.filter((e) => e.kind === "bind").length).toBe(1); // in the activity log
   });
 
-  test("every rapier pairing keeps the deflection path: parried event, penalty, no bind", () => {
+  test("rapier against rapier also binds: matched steel, weaker but even", () => {
+    const d = createDuel(WEAPONS.rapier, WEAPONS.rapier);
+    d.f[0].x = 1000;
+    d.f[1].x = 1180;
+    let evs = runMs(d, TICK, "parry", null);
+    evs = evs.concat(runMs(d, 600));
+    let bound = false;
+    for (let t = 0; t < 1800 && !bound; t += TICK) {
+      evs = evs.concat(tickDuel(d, null, t === 0 ? "thrust" : null));
+      if (d.bind !== null) bound = true;
+    }
+    expect(bound).toBe(true);
+    expect(evs.some((e) => e.kind === "bind")).toBe(true);
+    expect(evs.some((e) => e.kind === "parried")).toBe(false);
+  });
+
+  test("mixed pairings keep the deflection path: met, parried event, penalty, no bind", () => {
     const pairs: Array<[WeaponId, WeaponId]> = [
       ["longsword", "rapier"],
       ["rapier", "longsword"],
-      ["rapier", "rapier"],
     ];
     for (const [pw, ew] of pairs) {
       const d = createDuel(WEAPONS[pw], WEAPONS[ew]);
@@ -63,6 +91,7 @@ describe("capability gate", () => {
       evs = evs.concat(runMs(d, 600));
       evs = evs.concat(runMs(d, 1800, null, "thrust"));
       expect(d.bind).toBe(null);
+      expect(evs.some((e) => e.kind === "bind")).toBe(false);
       expect(evs.some((e) => e.kind === "met" && e.side === 1)).toBe(true);
       expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
       const s = d.f[1].state;
@@ -75,7 +104,7 @@ describe("capability gate", () => {
 });
 
 describe("entry", () => {
-  test("both fighters enter the bind marker on the met tick, exactly one met, none logged", () => {
+  test("both fighters enter the bind marker on the bind tick, exactly one bind event", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
     d.f[0].x = 1000;
     d.f[1].x = 1180;
@@ -85,7 +114,7 @@ describe("entry", () => {
     for (let t = 0; t < 1600 && !metTickSeen; t += TICK) {
       const out = tickDuel(d, null, t === 0 ? "thrust" : null);
       evs = evs.concat(out);
-      if (out.some((e) => e.kind === "met")) {
+      if (out.some((e) => e.kind === "bind")) {
         metTickSeen = true;
         expect(d.f[0].state.kind).toBe("bind");
         expect(d.f[1].state.kind).toBe("bind");
@@ -94,7 +123,8 @@ describe("entry", () => {
       }
     }
     expect(metTickSeen).toBe(true);
-    expect(evs.filter((e) => e.kind === "met").length).toBe(1);
+    expect(evs.filter((e) => e.kind === "bind").length).toBe(1);
+    expect(evs.some((e) => e.kind === "met")).toBe(false); // replaced, not layered
   });
 
   test("the snapshot records the strike's progress and the guard's settled clock", () => {
@@ -151,7 +181,8 @@ describe("entry", () => {
     expect(c0.progress).toBe(1);
     expect(c1.progress).toBeLessThan(0.2);
     evs = evs.concat(runMs(d, 1000));
-    expect(evs.filter((e) => e.kind === "met").length).toBe(1);
+    expect(evs.filter((e) => e.kind === "bind").length).toBe(1); // a crossing is ONE bind
+    expect(evs.some((e) => e.kind === "met")).toBe(false);
     expect(evs.some((e) => e.kind === "hit")).toBe(false);
     expect(evs.some((e) => e.kind === "parried")).toBe(false);
   });
@@ -179,7 +210,7 @@ describe("during: one clock, frozen bodies", () => {
     expect(d.f[0].state.kind).toBe("bind");
     expect(d.f[1].state.kind).toBe("bind");
     expect(d.f[0].buffered).toBe(null); // not even buffered
-    expect(evs.filter((e) => e.kind !== "met")).toEqual([]);
+    expect(evs).toEqual([]); // nothing sounds, logs or resolves inside
   });
 
   test("nothing resolves out of a bind: no strikeEnd events, no whiff, parried or hit", () => {

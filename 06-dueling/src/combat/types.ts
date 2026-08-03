@@ -71,16 +71,14 @@ export interface WeaponProfile {
   /** multiplies this weapon's recovery when its attack whiffs */
   whiffRecoveryFactor: number;
   /**
-   * Whether this steel can SUSTAIN contact - both blades capable turns a
-   * contact into a bind instead of a deflection. An abstraction, and the
-   * sustained-bind spec says so: a real rapier does bind (opposition along
-   * the forte is core to its system) but cannot sustain pressure the way
-   * two longswords can, so the game rounds its contact down to instant
-   * deflection. Nothing downstream may read `false` as "cannot bind at
-   * all"; if a rapier bind game is ever wanted this becomes a depth or a
-   * duration, not a boolean.
+   * Relative lateral stiffness of the blade: how much sideways force it
+   * can exert and receive without buckling (longsword 1.0 is the anchor).
+   * A physical property, not a capability flag - whether a CONTACT can be
+   * sustained is derived pairwise from both blades' stiffness by
+   * contact.canBind, so new swords get their bind combinations from this
+   * number alone and never from a table.
    */
-  bindCapable: boolean;
+  bladeStiffness: number;
   /** sprite playback multiplier: the feel knob */
   animSpeed: number;
   voidDistance: number;

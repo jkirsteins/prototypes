@@ -180,14 +180,17 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // death at 188 - only the press tick moved, which is exactly what a
     // slower reaction should change and nothing more.
     "parry dummy reads the player's telegraph-free attacks": { hash: 4097846637, endedAt: 188 },
-    // Recorded at sustained-bind, the spec that introduced the scenario:
-    // per-tick probe shows the cut's met at tick 195 followed by NO
-    // resolution events (the bind swallowed the attack), the scripted
-    // advance at 205 refused (both bodies frozen), a second bind at 471,
-    // and no death - two held beats, two symmetric scrambles. The four
-    // pre-existing scenarios hash identically across the bind change
-    // (none reaches a longsword-mirror contact), which is the control.
-    "longsword mirror: the parried cut binds, both scramble out": { hash: 915003746, endedAt: null },
+    // Recorded at sustained-bind (per-tick probe: the cut's contact at
+    // tick 195 followed by NO resolution events - the bind swallowed the
+    // attack - the scripted advance at 205 refused, a second contact at
+    // 471, no death), then re-recorded when the bind became a logged
+    // outcome event: the same probe shows a tick-identical stream with
+    // the unlogged met at 195 and 471 now the logged bind - the kind
+    // string is the only difference, positions and outcomes byte-equal.
+    // The four pre-existing scenarios hash identically both times (none
+    // reaches a matched-steel contact: the rapier-mirror scenario dies at
+    // 188, before its first contact), which is the control.
+    "longsword mirror: the parried cut binds, both scramble out": { hash: 73993540, endedAt: null },
   };
 
   for (const sc of SCENARIOS) {

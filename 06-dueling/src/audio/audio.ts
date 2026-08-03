@@ -1,5 +1,5 @@
 import type { DuelEvent } from "../combat/engine";
-import { EVENT_SOUNDS, FOOTSTEPS, SOUNDS, WINDUP_SOUND } from "./manifest";
+import { EVENT_RATES, EVENT_SOUNDS, FOOTSTEPS, SOUNDS, WINDUP_SOUND } from "./manifest";
 import type { SoundName } from "./manifest";
 
 /**
@@ -113,7 +113,7 @@ export function createAudioEngine(): AudioEngine {
         footstepAt = (footstepAt + 1) % pool.length;
         play(pool[footstepAt], 1 + (Math.random() - 0.5) * 0.1);
       } else {
-        play(pool[Math.floor(Math.random() * pool.length)], 1);
+        play(pool[Math.floor(Math.random() * pool.length)], EVENT_RATES[e.kind] ?? 1);
       }
     }
   };
