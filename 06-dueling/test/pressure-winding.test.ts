@@ -351,6 +351,21 @@ describe("bindTimeline and its cues", () => {
   });
 });
 
+describe("the bind prompt", () => {
+  test("unlocked it teaches the keys; locked it confirms the tap, without naming a beat to act on", async () => {
+    const { bindPrompt } = await import("../src/render/draw");
+    const open = bindPrompt(null);
+    expect(open).toContain("J");
+    expect(open).toContain("K");
+    expect(bindPrompt("press")).toMatch(/locked/);
+    expect(bindPrompt("wind")).toMatch(/locked/);
+    // The confirmation must not reveal which choice would win - it names
+    // the player's own lock only, which they already know.
+    expect(bindPrompt("press")).toContain("press");
+    expect(bindPrompt("wind")).toContain("wind");
+  });
+});
+
 describe("AI in the bind", () => {
   test("same seed, same fight: the duelist's bind play replays exactly", async () => {
     const { aiDecide, createAiState } = await import("../src/combat/ai");

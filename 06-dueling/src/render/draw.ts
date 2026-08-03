@@ -77,6 +77,7 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
     drawSeed(v, seed);
   }
   drawHud(v, d, aiMode);
+  drawBindPrompt(v, d); // not overlay-gated: it is a control prompt
   drawTimeControl(v, d, time);
   drawHelpButton(v);
   if (d.over) drawBanner(v, d);
@@ -119,6 +120,28 @@ function drawTimeControl(v: View, d: Duel, time: TimeControl): void {
     ctx.fillStyle = "#8a8f98";
     ctx.fillText(`${time.timescale}x speed`, 480, 112);
   }
+  ctx.textAlign = "left";
+}
+
+/**
+ * The bind prompt's text: while unlocked it teaches the keys (a TAP locks,
+ * irrevocably - holding adds nothing), and once the player has locked it
+ * confirms their own tap so the press feels received. It never shows the
+ * opponent's lock: their intent stays hidden until resolution.
+ */
+export function bindPrompt(lock: "press" | "wind" | null): string {
+  if (lock === null) return "BIND - tap J to press, K to wind, or hold fast";
+  return `BIND - ${lock} locked in`;
+}
+
+/** Large control prompt at the top of the scene, only while a bind runs. */
+function drawBindPrompt(v: View, d: Duel): void {
+  if (d.bind === null) return;
+  const { ctx } = v;
+  ctx.font = "bold 18px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#c9822f";
+  ctx.fillText(bindPrompt(d.bind.lock[0]), 480, 150);
   ctx.textAlign = "left";
 }
 
