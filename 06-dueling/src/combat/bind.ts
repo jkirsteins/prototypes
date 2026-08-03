@@ -265,23 +265,39 @@ export function incomingForce(net: number, side: 0 | 1): number {
   return Math.max(0, side === 0 ? net : -net);
 }
 
+/** The opponent's pulse is committed or active: the beat is theirs, and
+ *  it locks BOTH of this side's verbs - press and yield alike. */
+export function beatClaimedAgainst(bind: BindState, side: 0 | 1): boolean {
+  const opp = bind.action[1 - side];
+  return opp.kind === "pressCommit" || opp.kind === "pressActive";
+}
+
 /**
- * The visible yield window: inside the own zone, with meaningful pressure
- * to turn. Evaluated live - there is no canYield flag anywhere. This is
- * the SAME condition a starting yield snapshots as its success, so the
- * lit band is an honest promise: tap K while it flashes and the yield
- * wins (unless the endpoint outruns the motion). The caller's action
- * track must also be ready for a yield to start, but the window itself
- * is a fact about the contest, not about readiness.
+ * Catchable force exists: inside the own zone, with the opponent's gross
+ * push live or still on the blade (memory). This is the THREAT - what
+ * the presser risks leaving behind - independent of whose beat it is.
  */
-export function yieldOpportunity(bind: BindState, side: 0 | 1): boolean {
+export function yieldThreat(bind: BindState, side: 0 | 1): boolean {
   if (!inYieldZone(bind.control, side, bind.yieldZone[side])) return false;
-  // The opponent's GROSS force, live or remembered: your own simultaneous
-  // press opposes their push but does not make it uncatchable.
   return (
     pulseForce(bind.action[1 - side]) >= YIELD_FORCE_MIN ||
     bind.sinceForce[side] <= YIELD_MEMORY_MS
   );
+}
+
+/**
+ * The visible yield window: the threat, AND the beat is free. Whoever
+ * presses first locks the other side's yield along with their press -
+ * without that lock, a deep defender's yield was a guaranteed answer to
+ * any pressure and pressing was never correct. The escape hatch is
+ * TIMED: the gap between the opponent's pulses, where the memory still
+ * holds their spent force. Evaluated live - no canYield flag anywhere -
+ * and it is the SAME condition a starting yield snapshots as its
+ * success, so the lit band remains an honest promise: tap K while it
+ * flashes and the yield wins (unless the endpoint outruns the motion).
+ */
+export function yieldOpportunity(bind: BindState, side: 0 | 1): boolean {
+  return yieldThreat(bind, side) && !beatClaimedAgainst(bind, side);
 }
 
 /**
@@ -339,11 +355,10 @@ export function startPress(bind: BindState, side: 0 | 1): boolean {
  * when the motion completes; a press outside the window commits the whole
  * failing motion.
  */
-export function startYield(bind: BindState, side: 0 | 1): boolean {
-  if (bind.action[side].kind !== "ready") {
-    bind.pending[side] = { intent: "yield", ageMs: 0 };
-    return false;
-  }
+/** Commit the yield motion; success is the honest window's snapshot -
+ *  which includes the beat being free, so a K into the opponent's claim
+ *  is a committed, DOOMED rotation. */
+function beginYield(bind: BindState, side: 0 | 1): void {
   bind.pending[side] = null;
   bind.action[side] = {
     kind: "yielding",
@@ -351,6 +366,32 @@ export function startYield(bind: BindState, side: 0 | 1): boolean {
     durationMs: bind.yieldDurationMs[side],
     succeeded: yieldOpportunity(bind, side),
   };
+}
+
+/** The PENDING path's gate: a queued K waits (within its grace) for both
+ *  its own track and a free beat - leniency for input alignment must not
+ *  fire into certain failure. */
+function tryYield(bind: BindState, side: 0 | 1): boolean {
+  if (bind.action[side].kind !== "ready") return false;
+  if (beatClaimedAgainst(bind, side)) return false;
+  beginYield(bind, side);
+  return true;
+}
+
+/**
+ * A fresh yield input. Into the OPPONENT'S claimed beat it still COMMITS
+ * - and fails, with the full penalty: they pressed first, and a blocked
+ * K that cost nothing could simply be spammed until it landed in a gap,
+ * which would make the yield a guaranteed answer to pressure again. The
+ * mistimed K is the mistake the whole beat design exists to punish. A K
+ * blocked only by one's own unfinished action waits in the grace slot.
+ */
+export function startYield(bind: BindState, side: 0 | 1): boolean {
+  if (bind.action[side].kind !== "ready") {
+    bind.pending[side] = { intent: "yield", ageMs: 0 };
+    return false;
+  }
+  beginYield(bind, side);
   return true;
 }
 
@@ -360,19 +401,17 @@ export type BindInput = "press" | "yield";
 /**
  * One tick's bind inputs, arbitrated with full information: handling the
  * sides sequentially would silently hand every contested beat to side 0.
- * Yields are independent - a claim never blocks them, because the
- * opponent's shove is exactly what a yield answers. Contested same-tick
- * presses ALTERNATE against the last claimant (the first ever contested
- * beat goes to the side that entered WITHOUT the initiative, a small
- * documented compensation); the loser of the contention loses the turn.
+ * PRESSES RESOLVE FIRST - pressing first denies the same-tick yield along
+ * with the counter-press, which is the whole value of pressing. Contested
+ * same-tick presses ALTERNATE against the last claimant (the first ever
+ * contested beat goes to the side that entered WITHOUT the initiative, a
+ * small documented compensation); the loser of the contention loses the
+ * turn.
  */
 export function applyBindInputs(
   bind: BindState,
   inputs: [BindInput | null, BindInput | null],
 ): void {
-  for (const side of [0, 1] as const) {
-    if (inputs[side] === "yield") startYield(bind, side);
-  }
   const w0 = inputs[0] === "press";
   const w1 = inputs[1] === "press";
   if (w0 && w1) {
@@ -388,6 +427,9 @@ export function applyBindInputs(
     startPress(bind, 0);
   } else if (w1) {
     startPress(bind, 1);
+  }
+  for (const side of [0, 1] as const) {
+    if (inputs[side] === "yield") startYield(bind, side);
   }
 }
 
@@ -492,10 +534,10 @@ export function tickBindContest(bind: BindState, dt: number): BindTickResult {
       p.ageMs += dt;
       if (p.ageMs > BIND_INPUT_GRACE_MS) bind.pending[side] = null;
       else if (a.kind === "ready") {
-        // A pending press also waits out an opponent's claim (it predates
+        // A pending input also waits out an opponent's claim (it predates
         // the claim, so it is not a lost turn) - but only within its TTL.
         if (p.intent === "press") claimPress(bind, side);
-        else startYield(bind, side);
+        else tryYield(bind, side);
         a = bind.action[side];
       }
     }

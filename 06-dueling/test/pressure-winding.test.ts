@@ -12,6 +12,7 @@ import {
   bindTimerFrac, createBindContest, deriveInitialBindControl, derivePressurePulse,
   deriveYieldDuration, deriveYieldZone,
   applyBindInputs, incomingForce, netBindForce, startPress, startYield, tickBindContest,
+  yieldThreat,
   pulseForce,
   yieldOpportunity,
 } from "../src/combat/bind";
@@ -291,13 +292,12 @@ describe("yield", () => {
     expect(bind.action[0].kind).toBe("ready");
   });
 
-  test("outside the zone even heavy incoming pressure does not make it succeed", () => {
+  test("outside the zone even a fresh remembered push does not make it succeed", () => {
     const bind = fixtureBind(LS, LS, { control: 0.3 });
-    const pulse = derivePressurePulse(LS);
-    bind.action[1] = { kind: "pressActive", t: pulse.activeMs / 4, pulse };
+    bind.sinceForce[0] = 0; // their push just passed: catchable force exists
     startYield(bind, 0);
     const r = tickMs(bind, deriveYieldDuration(LS) + 2 * TICK);
-    // Plenty of force flowing - position, not force, is what failed.
+    // Plenty to turn - position, not force, is what failed.
     expect(r.winner).toBe(null);
     expect(r.yieldFails.length).toBe(1);
   });
@@ -324,16 +324,31 @@ describe("yield", () => {
     expect(r2.cause).toBe("pressure");
   });
 
-  test("a correct yield turns committed incoming pressure into the bind win", () => {
-    const bind = fixtureBind(LS, LS, { control: 0.85 });
-    // A quarter into the active window: the sine has real force to turn.
+  test("their beat dooms a fresh K; the gap after it is the catch", () => {
+    // During their claimed beat the window is dark - they pressed first -
+    // and a K anyway COMMITS the doomed rotation: deep in the zone, the
+    // fail's jolt loses the bind outright. (A blocked K that cost nothing
+    // could be spammed until it landed in a gap, and the yield would be a
+    // guaranteed answer to pressure again.)
+    const doomed = fixtureBind(LS, LS, { control: 0.85 });
     const pulse = derivePressurePulse(LS);
-    bind.action[1] = { kind: "pressActive", t: pulse.activeMs / 4, pulse };
-    expect(yieldOpportunity(bind, 0)).toBe(true);
-    startYield(bind, 0);
-    const r = tickMs(bind, deriveYieldDuration(LS) + 2 * TICK);
-    expect(r.winner).toBe(0);
-    expect(r.cause).toBe("yield");
+    doomed.action[1] = { kind: "pressActive", t: pulse.activeMs / 4, pulse };
+    expect(yieldThreat(doomed, 0)).toBe(true); // force to turn exists...
+    expect(yieldOpportunity(doomed, 0)).toBe(false); // ...but the beat is theirs
+    expect(startYield(doomed, 0)).toBe(true); // committed regardless
+    const r1 = tickMs(doomed, deriveYieldDuration(LS) + 2 * TICK);
+    expect(r1.winner).toBe(1);
+    expect(r1.cause).toBe("pressure");
+    // The beat frees into their recovery: the spent force is still on
+    // the blade (memory) and the TIMED K catches it.
+    const gap = fixtureBind(LS, LS, { control: 0.85 });
+    gap.action[1] = { kind: "pressRecover", t: 0, durationMs: pulse.recoveryMs };
+    gap.sinceForce[0] = 0;
+    expect(yieldOpportunity(gap, 0)).toBe(true);
+    expect(startYield(gap, 0)).toBe(true);
+    const r2 = tickMs(gap, deriveYieldDuration(LS) + 2 * TICK);
+    expect(r2.winner).toBe(0);
+    expect(r2.cause).toBe("yield");
   });
 
   test("the window has memory: a push stays catchable briefly after its force passes", () => {
@@ -360,11 +375,13 @@ describe("yield", () => {
     startPress(bind, 0); // the player's own tap claims the beat: busy through its cycle
     // The enemy mashes throughout, claiming the beat the moment it frees,
     // so real force is mid-flow when the player's queued K fires.
-    for (let t = 0; t < 150; t += TICK) {
+    for (let t = 0; t < 180; t += TICK) {
       startPress(bind, 1);
       tickMs(bind, TICK);
     }
     expect(startYield(bind, 0)).toBe(false); // own recovery: queued, not eaten
+    // The pending K waits out the enemy's claimed beat too, and fires in
+    // the first gap - the enemy's own recovery - within its grace.
     let r = tickMs(bind, TICK);
     let guard = 0;
     while (r.winner === null && guard++ < 100) {
@@ -375,15 +392,13 @@ describe("yield", () => {
     expect(r.cause).toBe("yield");
   });
 
-  test("the catch is decided at the press: force leaving mid-motion does not spoil it", () => {
-    // Snapshot rule: the blade caught the push at the press; the opponent
-    // easing off during the turning motion changes nothing.
+  test("the catch is decided at the press: the memory expiring mid-motion does not spoil it", () => {
+    // Snapshot rule: the blade caught the remembered push at the press;
+    // nothing that happens during the turning motion un-catches it.
     const bind = fixtureBind(LS, LS, { control: 0.85 });
-    const pulse = derivePressurePulse(LS);
-    bind.action[1] = { kind: "pressActive", t: pulse.activeMs / 4, pulse };
+    bind.sinceForce[0] = YIELD_MEMORY_MS - TICK; // the window's last moment
     expect(yieldOpportunity(bind, 0)).toBe(true);
     startYield(bind, 0);
-    // The pulse ends long before the yield motion does; nobody re-presses.
     const r = tickMs(bind, deriveYieldDuration(LS) + 2 * TICK);
     expect(r.winner).toBe(0);
     expect(r.cause).toBe("yield");
@@ -407,8 +422,7 @@ describe("yield", () => {
     // Deep enough that a mashing opponent crosses the last sliver before
     // the turning motion completes - the catch was real, the race lost.
     const bind = fixtureBind(LS, LS, { control: 0.995 });
-    const pulse = derivePressurePulse(LS);
-    bind.action[1] = { kind: "pressActive", t: pulse.activeMs / 4, pulse };
+    bind.sinceForce[0] = 0; // caught in the gap, on remembered force
     expect(yieldOpportunity(bind, 0)).toBe(true);
     startYield(bind, 0);
     let r = tickMs(bind, TICK);
@@ -576,15 +590,15 @@ describe("resolution and the reward", () => {
   test("a successful yield enters the same reward: bind win, not duel win", () => {
     const d = enterBind();
     if (d.bind === null) throw new Error("unreachable");
-    // Force the contest to the player's danger edge, then feed a pulse to
-    // turn: the engine path from a real yield press to the resolution.
+    // Force the contest to the player's danger edge, feed a whole pulse,
+    // then catch its spent force in the GAP - the beat locks the yield
+    // while the pulse itself runs.
     d.bind.control = 0.85;
     runMs(d, TICK, null, "press");
-    // Wait out the enemy commit so real force is flowing.
     const pulse = derivePressurePulse(LS);
-    runMs(d, pulse.commitMs + TICK);
+    runMs(d, pulse.commitMs + pulse.activeMs + TICK);
     if (d.bind === null) throw new Error("resolved early");
-    expect(yieldOpportunity(d.bind, 0)).toBe(true);
+    expect(yieldOpportunity(d.bind, 0)).toBe(true); // their recovery: the window
     const evs: DuelEvent[] = [];
     evs.push(...runMs(d, TICK, "yield", null));
     let guard = 0;
@@ -765,10 +779,19 @@ describe("the HUD reads live simulation state", () => {
     tickMs(bind, pulse.activeMs / 2 + TICK);
     expect(bindSideStatus(bind, 0).label).toBe("PRESS RECOVERY");
     expect(bindSideStatus(bind, 1).label).toBe("HOLDING");
-    // The yield window lights only with position AND live incoming force.
+    // During the opponent's claimed beat, "READY" would lie: both verbs
+    // are locked out, and the bar tracks their claim for the timed answer.
     const hot = fixtureBind(LS, LS, { control: 0.85 });
     expect(bindSideStatus(hot, 0).label).toBe("READY"); // no force to turn
     hot.action[1] = { kind: "pressActive", t: pulse.activeMs / 2, pulse };
+    expect(yieldOpportunity(hot, 0)).toBe(false); // the beat is theirs
+    const blocked = bindSideStatus(hot, 0);
+    expect(blocked.label).toBe("THEIR BEAT");
+    expect(blocked.recovery).toBeGreaterThan(0);
+    expect(blocked.recovery).toBeLessThan(1);
+    // The beat frees into their recovery: the spent force is the window.
+    hot.action[1] = { kind: "pressRecover", t: 0, durationMs: pulse.recoveryMs };
+    hot.sinceForce[0] = 0;
     expect(yieldOpportunity(hot, 0)).toBe(true);
     expect(bindSideStatus(hot, 0).label).toBe("YIELD NOW");
     expect(bindPrompt(true, false)).toContain("YIELD NOW");

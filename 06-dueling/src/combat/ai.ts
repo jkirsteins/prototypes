@@ -1,6 +1,6 @@
 import { zoneFor } from "./measure";
 import { gapOf } from "./engine";
-import { YIELD_FORCE_MIN, inYieldZone, incomingForce, netBindForce, yieldOpportunity } from "./bind";
+import { yieldOpportunity } from "./bind";
 import { guardEffective, lineOf } from "./fighter";
 import type { Duel } from "./engine";
 import type { Fighter } from "./fighter";
@@ -88,7 +88,7 @@ export interface AiState {
     aggression: number;
     /** Earliest bind time for the next pulse; redrawn after each one. */
     nextPressAtMs: number;
-    obs: Array<{ t: number; control: number; incoming: number; opportunity: boolean }>;
+    obs: Array<{ t: number; control: number; opportunity: boolean }>;
   } | null;
   /** The current episode's drawn reaction; consumed and redrawn on each fired decision. */
   reactionMs: number;
@@ -229,31 +229,24 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
       ai.bind = { aggression, nextPressAtMs: 60 + nextRandom(ai) * 240, obs: [] };
     }
     const bs = ai.bind;
-    bs.obs.push({
-      t: bind.t,
-      control: bind.control,
-      incoming: incomingForce(netBindForce(bind.action), 1),
-      opportunity: yieldOpportunity(bind, 1),
-    });
+    bs.obs.push({ t: bind.t, control: bind.control, opportunity: yieldOpportunity(bind, 1) });
     if (bs.obs.length > 120) bs.obs.shift();
     let delayed: (typeof bs.obs)[number] | null = null;
-    let prior: (typeof bs.obs)[number] | null = null;
     for (let i = bs.obs.length - 1; i >= 0; i--) {
       if (bs.obs[i].t <= bind.t - ai.reactionMs) {
         delayed = bs.obs[i];
-        prior = bs.obs[i - 1] ?? bs.obs[i];
         break;
       }
     }
-    if (delayed === null || prior === null) return null; // nothing old enough to react to
+    if (delayed === null) return null; // nothing old enough to react to
     if (bind.action[1].kind !== "ready") return null; // committed: pay it out
-    // The yield read is TIMED, not just reacted to: like a player watching
-    // the marker glide toward their band, the duelist extrapolates its
-    // delayed samples to now. Still only delayed observables - the slope
-    // of two old samples - never the current tick.
-    const slope = delayed.t > prior.t ? (delayed.control - prior.control) / (delayed.t - prior.t) : 0;
-    const est = delayed.control + slope * (bind.t - delayed.t);
-    if (delayed.opportunity || (inYieldZone(est, 1, bind.yieldZone[1]) && delayed.incoming >= YIELD_FORCE_MIN)) {
+    // Yield only on a delayed sighting of the honest window (a gap in the
+    // opponent's beats with catchable force). Every attempt is a gamble
+    // that the gap still exists when the K lands - a mistimed K commits a
+    // doomed rotation - and that risk is the design, not a flaw: an
+    // earlier extrapolating read fired K regardless of whose beat ran,
+    // which under punished mistimes was seeded self-destruction.
+    if (delayed.opportunity) {
       ai.reactionMs = drawReaction(ai);
       return "yield";
     }

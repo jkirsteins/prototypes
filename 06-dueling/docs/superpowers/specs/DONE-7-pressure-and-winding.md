@@ -243,19 +243,23 @@ width = clamp(YIELD_ZONE_BASE * rotationalControl_self
               * (0.75 + 0.25 * bindAuthority_opp), 0.12, 0.40)
 ```
 
-A **yield opportunity** (the HUD's YIELD NOW) exists while: control is
-inside the zone, and the OPPONENT'S gross pulse force is either flowing
-now (above `YIELD_FORCE_MIN`) or flowed within the last `YIELD_MEMORY_MS`.
-Gross, not net - your own simultaneous press opposes their push but does
-not make it uncatchable. The memory is what makes the window humanly
-hittable at tap tempo: raw force flickers on and off five times a second
-(an unhittable strobe when the window was instantaneous), but a committed
-push does not vanish between micro-shoves, so the band stays SOLIDLY lit
-while the opponent genuinely presses and goes dark only when they
-genuinely stop. No `canYield` flag exists anywhere - the opportunity is
-this condition, evaluated live, and since the snapshot revision below it
-IS the success condition, the lit band is an honest promise by
-construction.
+A **yield opportunity** (the HUD's YIELD NOW) exists while all three
+hold: control is inside the zone; the OPPONENT'S gross pulse force is
+either flowing now (above `YIELD_FORCE_MIN`) or flowed within the last
+`YIELD_MEMORY_MS` (a committed push does not vanish between micro-shoves
+- without the memory the window was an unhittable 5Hz strobe); and **the
+beat is free** - the opponent has no pulse committed or active. The beat
+term is the escape-hatch revision: whoever presses first locks the other
+side's yield along with their counter-press. Without it, the memory-lit
+window made a deep defender's yield a GUARANTEED answer to any pressure
+(probed at 40/40 against a sustained mash), so pressing into the zone
+was never correct and pressure lost its point. The window is therefore
+the GAP between the opponent's pulses, where their spent force is still
+on the blade - a longsword masher leaves a recurring ~70ms sim gap, a
+rapier masher barely any, both derived from the same handling numbers.
+No `canYield` flag exists anywhere - the opportunity is this condition,
+evaluated live, and since it IS the success snapshot, the lit band
+remains an honest promise by construction.
 
 ### 5.2 The attempt
 
@@ -282,7 +286,7 @@ Three outcomes:
 
 | Outcome | Condition | Result |
 |---|---|---|
-| missed | the press caught no window - outside the zone, or no real force flowing | the whole motion still commits, then fails: control jolts `YIELD_FAIL_PENALTY` toward the yielder's loss - deep in the zone that crosses the endpoint and loses the bind outright - then `YIELD_FAIL_RECOVERY_MS` of recovery |
+| missed | the press caught no window - outside the zone, no catchable force, or the OPPONENT'S beat was running (they pressed first; same-tick contention resolves presses before yields) | the whole motion still commits, then fails: control jolts `YIELD_FAIL_PENALTY` toward the yielder's loss - deep in the zone that crosses the endpoint and loses the bind outright - then `YIELD_FAIL_RECOVERY_MS` of recovery. Committing the doomed K is deliberate: a blocked K that cost nothing could be spammed until it landed in a gap, and the guarantee would return |
 | caught | the press landed inside the lit window | **the yielding fighter wins the bind** when the motion completes |
 | too late | control reaches the endpoint mid-motion (the opponent's continued taps outran the turn) | the pressing fighter wins by pressure; the yield never finishes |
 
@@ -429,8 +433,12 @@ PLAYER <-----------|-----------> ENEMY
 - the bind clock drains under the range, symmetrically toward the centre
   (echoing the shove-apart it ends in), reddening near empty;
 - under each end, that fighter's action state (READY / PRESSING / PRESS
-  RECOVERY / YIELD NOW / YIELDING / YIELD FAILED / HOLDING) with a small
-  recovery bar while one runs.
+  RECOVERY / YIELD NOW / YIELDING / YIELD FAILED / HOLDING / THEIR BEAT)
+  with a small progress bar while one runs. THEIR BEAT replaces the lying
+  READY while the opponent's claim locks both verbs; its bar fills
+  through the claim so the answer - J to counter-claim, K to catch the
+  spent force - can be timed into the gap instead of sprayed into the
+  lockout.
 
 Nothing hidden is shown: every label reports a physical action already
 begun, which since this revision is *all* the bind state there is - the
@@ -477,12 +485,13 @@ with no error-rate flag anywhere. Its constraints:
   pulse cycle rather than at it, every gap is jittered, and a seeded
   breather interrupts the bursts, because a machine-perfect presser was
   unbeatable in the beat race by any human;
-- it attempts a yield when its delayed read shows its own opportunity
-  live, or when the trajectory of two delayed samples extrapolates into
-  its zone with force still incoming - timing, the way a player watches
-  the marker glide toward the band, built only from old samples; the
-  reaction delay plus any commitment it already spent is exactly how it
-  misses yields - emergent lateness, never scripted failure;
+- it attempts a yield only on a delayed sighting of the honest window (a
+  gap in the opponent's beats with catchable force); every attempt is a
+  gamble that the gap still exists when the K lands, and a mistimed K
+  commits the doomed rotation like anyone's - emergent risk, never
+  scripted failure. (An earlier extrapolating read fired K regardless of
+  whose beat ran, which under punished mistimes was seeded
+  self-destruction; it is gone.);
 - every draw comes from the existing seeded rng, so replays reproduce.
 
 Modes 1 and 2 hold: they never press and never yield. Against them the

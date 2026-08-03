@@ -1,5 +1,5 @@
 import { ARENA, BIND_ADVANTAGE_MS, gapOf } from "../combat/engine";
-import { bindTimerFrac, netBindForce, yieldOpportunity } from "../combat/bind";
+import { bindTimerFrac, netBindForce, yieldOpportunity, yieldThreat } from "../combat/bind";
 import { BIND_LOSS_MS } from "../combat/fighter";
 import { HIT_STUN_MS, guardEffective, lineOf } from "../combat/fighter";
 import { controlsLines } from "../ui/help";
@@ -171,10 +171,21 @@ export function bindSideStatus(
 ): { label: string; recovery: number | null } {
   const a = bind.action[side];
   switch (a.kind) {
-    case "ready":
-      return yieldOpportunity(bind, side)
-        ? { label: "YIELD NOW", recovery: null }
-        : { label: side === 0 ? "READY" : "HOLDING", recovery: null };
+    case "ready": {
+      if (yieldOpportunity(bind, side)) return { label: "YIELD NOW", recovery: null };
+      // The beat is theirs: a press OR a yield right now is a LOST turn -
+      // they pressed first. "READY" here would lie; the bar fills through
+      // their claim so the answer (J to counter-claim, K to turn the
+      // spent force) can be TIMED into the gap instead of sprayed into
+      // the lockout.
+      const opp = bind.action[1 - side];
+      if (opp.kind === "pressCommit" || opp.kind === "pressActive") {
+        const claimMs = opp.pulse.commitMs + opp.pulse.activeMs;
+        const at = opp.kind === "pressCommit" ? opp.t : opp.pulse.commitMs + opp.t;
+        return { label: "THEIR BEAT", recovery: at / claimMs };
+      }
+      return { label: side === 0 ? "READY" : "HOLDING", recovery: null };
+    }
     case "pressCommit":
       return { label: "PRESSING", recovery: a.t / a.pulse.commitMs };
     case "pressActive":
@@ -223,7 +234,7 @@ function drawBindBar(v: View, d: Duel): void {
   ctx.fillStyle = "#c9822f";
   ctx.fillText(bindHeadline(bind), b.cx, b.y - 22);
   ctx.font = "12px ui-monospace, monospace";
-  ctx.fillText(bindPrompt(yieldOpportunity(bind, 0), yieldOpportunity(bind, 1)), b.cx, b.y - 8);
+  ctx.fillText(bindPrompt(yieldOpportunity(bind, 0), yieldThreat(bind, 1)), b.cx, b.y - 8);
 
   // The range, the neutral mark, the win caps (tinted by their winner:
   // side 0 wins where control -1 renders, side 1 where +1 renders).
