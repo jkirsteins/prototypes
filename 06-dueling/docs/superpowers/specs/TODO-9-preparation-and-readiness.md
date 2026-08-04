@@ -243,8 +243,9 @@ replaces. Requirement:
   makes the human's access equal, which is the doctrine again from the
   other side.
 
-The player's attacks start later after the keypress (thrust: strike
-begins ~500ms after input, was 320; cut: ~700, was 520). This is
+The player's attacks start later after the keypress (longsword thrust:
+strike begins ~500ms after input, was 320; longsword cut: ~700, was
+520; rapier thrust: ~400, was 260; rapier cut: ~540, was 400). This is
 preparation made visible, not input lag - the rise cue and the windup
 animation begin on acceptance exactly as today, and the frame spans
 stretch automatically since `frames.ts` scales poses to phase durations.
@@ -280,11 +281,14 @@ it fits the length budget.
 - **The litmus: thrust parry-ability.** This spec's acceptance
   criterion, layered so the physics is never gated on policy knobs:
   1. *Physics (mode 1, deterministic):* a same-line thrust at a ready
-     dummy is PARRIED; a wrong-height rapier thrust is NEVER met by a
-     reactively-formed guard. The one band-edge pairing (longsword
-     defender vs same-line rapier thrust, parryable up to ~505ms
-     draws) pins "parried at most draws, missed at the slowest" over
-     seeds instead of always.
+     dummy is PARRIED; at the mean reaction, a wrong-height rapier
+     thrust is not met by a guard formed after visibility (at the
+     200ms floor the table says it can be - the pin is per-seed:
+     parried exactly when that seed's drawn reaction fits the
+     arithmetic). The one band-edge pairing (longsword defender vs
+     same-line rapier thrust, parryable up to ~505ms draws) pins
+     "parried at most draws, missed at the slowest" over seeds
+     instead of always.
   2. *Symmetry:* the same thrust-vs-ready-defender scenario with
      controllers swapped - AI thrust into a parry-pressing scripted
      defender, player thrust into the dummy - produces the same
