@@ -352,10 +352,11 @@ draws one extra value: a **conversion plan**, what winning this bind would
 be for. Drawn at entry, it always exists by resolution, however the contest
 ends.
 
-With both conversions guaranteed, the plan needs no arithmetic gate - the
-first draft's feasibility table died with the resist - and the draw is pure
-personality. BOTH the plan and its execution delay are drawn at bind
-entry - the resolution tick draws nothing, fires only what already exists:
+The disarm needs no feasibility gate - it is guaranteed from every
+advantage (§2.2) - and the thrust is excluded when the entry gap exceeds
+its reach; past that one arithmetic gate the draw is pure personality.
+BOTH the plan and its execution delay are drawn at bind entry - the
+resolution tick draws nothing, fires only what already exists:
 
 ```ts
 // in AiState.bind, drawn at entry beside the temperament:
@@ -471,6 +472,10 @@ place the full sequence can be rehearsed, which keeps it the drill. Modes
   cleared, the fighter is `ready` holding the advantage - and the stored
   `ai.conversion` still fires the planned intent at its dueAt, in mode 3
   AND mode 4. A lost bind leaves `ai.conversion` null.
+- **The plan owns the output:** between bind victory and the conversion's
+  dueAt, `aiDecide` issues NO other intent - no pulse step, no attack,
+  nothing that would consume the advantage out from under the plan -
+  across seeds and both converting modes.
 - **Hidden until launch:** through the whole bind and up to the
   conversion's first tick, the opponent-observable projection is identical
   whichever plan was drawn, or whether one was drawn at all - the
