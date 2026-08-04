@@ -65,6 +65,7 @@ export type ActionId =
   // duel verbs (become Intents)
   | "advance" | "retreat" | "void" | "cut" | "thrust" | "guard"
   | "feint" | "stanceUp" | "stanceDown" | "sideShift"
+  | "disarm" // the disarming spec's advantage conversion (keyboard I)
   // session verbs
   | "pause" | "rematch" | "reselect" | "help"
   // select-screen verbs (the direct picks are keyboard-only, like debug)
@@ -251,7 +252,9 @@ Constants, in gamepad.ts beside their use:
   becoming a held direction. On at 0.5, off at 0.35, so a stick resting
   near threshold cannot machine-gun step intents.
 - Buttons use `GamepadButton.pressed` (the browser's own digital view),
-  never raw `value`. No triggers are bound, so no analog threshold exists.
+  never raw `value` - triggers included: the right trigger binds the
+  disarm as a digital press through the same `pressed` flag, so no analog
+  threshold exists anywhere.
 
 Browser quirks the module must absorb:
 
@@ -328,6 +331,7 @@ complete; anything absent from it is keyboard-only by design.
 | thrust     | north face button              | 3          | Y          | Triangle   |
 | sideShift  | left bumper                    | 4          | LB         | L1         |
 | guard      | right bumper, hold             | 5          | RB hold    | R1 hold    |
+| disarm     | right trigger                  | 7          | RT         | R2         |
 | stanceUp   | d-pad up                       | 12         | Dpad up    | Dpad up    |
 | stanceDown | d-pad down                     | 13         | Dpad dn    | Dpad dn    |
 | pause      | start (live duel; resumes when paused) | 9  | Start      | Options    |
@@ -348,6 +352,12 @@ Rationale, brief:
   the plain `cut` and `thrust` intents.
 - **Guard on a held bumper** because the guard is the one held control
   (`held-guard`), and a bumper is the button a finger rests on.
+- **Disarm on the right trigger** (the `disarming` spec's advantage
+  conversion, keyboard I): the squeeze reads as the grab that takes the
+  sword, the trigger is reachable without leaving the face buttons the
+  opening's other conversion (thrust) lives on, and like the key it does
+  nothing outside the advantage window - the engine ignores it, no
+  resolver branch needed.
 - **Start and Back are contextual on duel state** (live-unpaused, paused,
   decided) - three branches in main.ts, not a mode system: live and
   unpaused, Start pauses and Back opens help; paused, Start resumes and
@@ -408,6 +418,15 @@ substitutes them. The complete inventory of today's offenders:
 Non-offender, checked and kept: `bindPrompt`'s "SPACE your taps" is the verb
 *to space*, not the space bar. It stays, because renaming it would trade a
 good instruction for a lint.
+
+Forward obligation, mirrored from the `disarming` spec: whichever of the
+two specs lands second integrates the disarm. If `disarming` is already
+in, its opening-prompt two-conversion text and its `disarming`/`disarmed`
+HELP entries join the sweep table above ({thrust}/{disarm} tokens); if
+this spec lands first, those strings are BORN with tokens when disarming
+arrives, and the `disarm` action, labels and binding here are dormant
+until then - a label for a verb that does not exist yet is harmless, a
+verb without a label is a build error.
 
 `View` (in draw.ts) gains a `labels: Labels` field; `src/main.ts` refreshes
 it each frame from `activeLabels()`. That is one field, and it keeps draw.ts
@@ -484,7 +503,9 @@ Order inside the rAF callback, before the accumulator drains:
      duel -> `feint`;
    - every other control: help open -> null; select -> its sel* action
      per `PAD_BINDINGS` (button 0 confirms here, voids in a duel);
-     duel -> its combat verb per `PAD_BINDINGS`.
+     duel -> its combat verb per `PAD_BINDINGS` (the right trigger's
+     `disarm` included: it resolves like any combat verb, and the engine
+     ignoring it outside the advantage is the engine's business).
 5. Keyboard listeners (duel, select, help) additionally call
    `noteKeyboardInput()` on every keydown with `e.repeat === false` -
    the gate travels with the call, since not every listener filters
@@ -589,7 +610,9 @@ Unit tests, all pure, no browser:
   the existing per-line width bound in `test/help.test.ts` runs against
   both schemes' legends.
 - **Prompt texts:** `bindPrompt` / `openingPromptText` / banner text cite
-  the scheme's own cut/thrust/rematch labels. `test/pressure-winding.test.ts`
+  the scheme's own cut/thrust/rematch labels - and once `disarming` is in,
+  the opening prompt cites both conversions' labels ({thrust}, {disarm})
+  per scheme. `test/pressure-winding.test.ts`
   currently pins the literals "J" and "K" - it changes to assert against
   `KEYBOARD_LABELS.cut` / `.thrust`, plus a pad-scheme case asserting
   `PAD_LABELS.xbox.cut` / `.thrust`.

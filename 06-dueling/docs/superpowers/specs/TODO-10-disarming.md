@@ -351,9 +351,19 @@ entry - the resolution tick draws nothing, fires only what already exists:
 // in AiState.bind, drawn at entry beside the temperament:
 conversionPlan: "thrust" | "disarm" | "withdraw";
 conversionDelayMs: number;   // seeded from DUELIST_CONVERT_DELAY_MS = [0, 60]
-// set on the win, never drawn there:
-conversionDueAt: number | null;
+
+// on AiState itself - NOT inside ai.bind, which the policy clears the
+// tick the fighter leaves the bind state; a plan stored there would die
+// on the winning tick, before it could ever fire:
+conversion: { plan: "thrust" | "disarm" | "withdraw"; dueAt: number } | null;
 ```
+
+The lifecycle across the teardown: at entry, plan and delay are drawn into
+`ai.bind`. On the resolution tick the bind policy's state is torn down as
+today - and the win TRANSFERS the plan into `ai.conversion` with
+`dueAt = d.time + conversionDelayMs` (a copy of drawn values, not a draw);
+a loss discards it with the rest. Subsequent `aiDecide` calls fire the
+stored intent once `d.time >= dueAt`, while the advantage lives.
 
 | Draw | Base weights |
 |---|---|
@@ -431,6 +441,10 @@ place the full sequence can be rehearsed, which keeps it the drill. Modes
   differs. A lost bind leaves the plan unread.
 - **The mix is real:** over seeded runs all three conversions occur; every
   convert delay falls inside `DUELIST_CONVERT_DELAY_MS`.
+- **The plan survives the teardown:** the bind resolves, `ai.bind` is
+  cleared, the fighter is `ready` holding the advantage - and the stored
+  `ai.conversion` still fires the planned intent at its dueAt, in mode 3
+  AND mode 4. A lost bind leaves `ai.conversion` null.
 - **Hidden until launch:** through the whole bind and up to the
   conversion's first tick, the opponent-observable projection is identical
   whichever plan was drawn, or whether one was drawn at all - the
