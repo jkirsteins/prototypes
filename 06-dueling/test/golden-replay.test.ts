@@ -154,13 +154,16 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // gate, no rng draws) hashing IDENTICALLY across the same change is
     // the control that pins the cause to the rng stream.
     "longsword player advances into mode-3 rapier duelist": { hash: 28558235, endedAt: 135 },
-    // Same rng-stream shift: the duelist now launches at tick 106, 16
-    // ticks after the scripted player thrust at 90, and dies mid-windup
-    // at 118 - the near-simultaneous trade the old recording witnessed
-    // (blades crossing at 117) simply is not scheduled this roll. The
-    // crossing mechanics stay pinned by blade-contact.test.ts, not by
-    // this gate.
-    "rapier player against mode-3 longsword, different seed": { hash: 3216415018, endedAt: 118 },
+    // Re-recorded at the defence-lite reflex: the player's thrust at 90
+    // now latches a THREAT on the duelist - one seeded roll consumed,
+    // closing suppressed while the blade flies - which shifts the rng
+    // stream and the approach cadence. Per-tick probe: the outcome is
+    // unchanged (the duelist still dies to that thrust at tick 118,
+    // before its drawn reaction lands); only the pre-death movement
+    // pattern and later-would-be draws differ. The sibling mode-3
+    // scenario hashing identically (its duelist killed at 135 before any
+    // player attack threatened it in measure) is the control.
+    "rapier player against mode-3 longsword, different seed": { hash: 1736812404, endedAt: 118 },
     // Re-recorded at rule D (parry on its own track: the player walks into
     // the first drill strike with the guard riding and parries it), at
     // attack-lines (the drill cycles heights, so its third strike steps the
@@ -205,7 +208,13 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // death (endedAt null). The four other scenarios hash identically
     // across the revision - none reaches a matched-steel crossing - which
     // is the control.
-    "longsword mirror: the counter-thrust crosses the drill's beat and binds": { hash: 1383350728, endedAt: null },
+    // Re-recorded at the one-gap zone revision: endpoint resistance is
+    // gone (it only multiplied how many gaps a zone crossing offered),
+    // so the calm drift crosses the final stretch unimpeded. Per-tick
+    // probe: the bind still forms at tick 155 and still resolves toward
+    // the same winner (side 1), just earlier - 318 instead of 336. No
+    // death either way (endedAt null).
+    "longsword mirror: the counter-thrust crosses the drill's beat and binds": { hash: 2610723091, endedAt: null },
   };
 
   for (const sc of SCENARIOS) {

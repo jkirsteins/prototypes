@@ -1,7 +1,7 @@
 import { zoneFor } from "./measure";
 import { gapOf } from "./engine";
 import { yieldOpportunity } from "./bind";
-import { guardEffective, lineOf } from "./fighter";
+import { TICK, guardEffective, lineOf } from "./fighter";
 import type { Duel } from "./engine";
 import type { Fighter } from "./fighter";
 import type { AttackKind, Height, Intent, WeaponProfile } from "./types";
@@ -76,6 +76,13 @@ export interface AiState {
   /** Mode 1: reaction clock toward releasing a guard whose threat is gone. */
   releaseInMs: number;
   /**
+   * Modes 3/4: the one live threat - a visible, in-measure attack,
+   * identified by its start instant. One seeded roll per threat decides
+   * the answer once the reaction elapses; back-to-back attacks latch
+   * distinct threats with distinct rolls.
+   */
+  threat: { startedAt: number; roll: number; answered: boolean } | null;
+  /**
    * Modes 3/4: the in-bind policy state, created at bind entry and cleared
    * when the bind ends. The temperament is one seeded draw; `obs` is the
    * ring buffer of per-tick observations that makes every read delayed -
@@ -105,6 +112,7 @@ export function createAiState(seed: number = DEFAULT_SEED): AiState {
     cooldown: 0, next: "thrust", nextHeight: "low",
     plan: null, lastHeight: null, sameHeightRun: 0,
     releaseInMs: 0,
+    threat: null,
     bind: null,
     reactionMs: 0,
     rng: seed >>> 0,
@@ -300,6 +308,57 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     }
     return null;
   }
+  // Defence-lite (a slice of duelist-defence, brought forward at
+  // playtest: cuts always killed the duelist, and it sometimes STEPPED
+  // INTO them). A visible, in-measure attack latches ONE threat with one
+  // seeded roll; after the drawn reaction the duelist answers - a parry
+  // when one can still form (stance matches and the rise beats the
+  // meetable window, the engine's own arithmetic), a retreat out of
+  // reach otherwise or by draw - and sometimes stands. Either way, while
+  // a live blade points at it the duelist NEVER closes: the whole
+  // approach/attack pulse below is suppressed until the threat resolves.
+  if (mode === 3 || mode === 4) {
+    const os = opp.state;
+    if (os.kind !== "attack" || os.phase === "recovery") {
+      ai.threat = null;
+    } else {
+      // An in-measure attack is a THREAT and gets one answered roll; an
+      // out-of-measure one is theatre and gets none (mode 1's rule). But
+      // a live blade suppresses closing EITHER way - the first cut of
+      // this reflex only suppressed in measure, and the duelist's
+      // approach pulse marched it back into a still-flying cut the
+      // moment its own retreat had carried it out of reach.
+      if (gapOf(d) <= opp.weapon.reach) {
+        const startedAt = d.time - os.elapsedMs;
+        if (ai.threat === null || Math.abs(ai.threat.startedAt - startedAt) >= TICK / 2) {
+          ai.threat = { startedAt, roll: nextRandom(ai), answered: false };
+        }
+        const th = ai.threat;
+        if (
+          !th.answered &&
+          os.elapsedMs >= ai.reactionMs &&
+          self.state.kind === "ready" &&
+          self.stepRecoveryMs <= 0
+        ) {
+          th.answered = true;
+          ai.reactionMs = drawReaction(ai);
+          const canParry =
+            self.parry === null &&
+            self.parryRecoveryMs <= 0 &&
+            self.height === os.height &&
+            self.heightTo === null &&
+            os.elapsedMs + self.weapon.parryRiseMs <= os.timeline.parryableUntil;
+          if (th.roll < 0.55 && canParry) return "parry";
+          if (th.roll < 0.85) return "retreat"; // infeasible parries downgrade here
+          // else: stand - no defensive action, and no closing either.
+        }
+      } else {
+        ai.threat = null;
+      }
+      return null; // a fencer does not walk onto a blade
+    }
+  }
+
   // Free to act means the settle is over too: deciding during it would
   // buffer the attack, burn the cooldown at decision time, and let the
   // next tick's movement intent overwrite the slot - the attack would

@@ -28,14 +28,14 @@ export const PULSE_ACTIVE_MS = 100;
 /** A pulse's spent time, scaled by its peak and divided by bindHandling:
  *  hard pressure recovers slower, nimble weapons recover faster. */
 export const PULSE_RECOVERY_BASE_MS = 50;
-/** Yield-zone width scale; the derived width is clamped to the band.
- *  Wide enough that the marker visibly TRAVELS inside a zone under
- *  pressure - narrower zones sat entirely inside the endpoint-resistance
- *  region and one pulse quantum, so the marker only ever touched the edge
- *  before something resolved. */
-export const YIELD_ZONE_BASE = 0.4;
-export const YIELD_ZONE_MIN = 0.12;
-export const YIELD_ZONE_MAX = 0.45;
+/** The yield zone spans about this many OPPOSING pulses of travel:
+ *  pushing through it takes one shove, and the gap after that shove is
+ *  THE yield opportunity - precisely one. (A playtest revision: the old
+ *  fixed-fraction width held six-plus gaps, so pressing into the band
+ *  fed the defender chance after chance until one landed.) */
+export const YIELD_ZONE_GAPS = 1.4;
+export const YIELD_ZONE_MIN = 0.05;
+export const YIELD_ZONE_MAX = 0.25;
 /** A yield motion's base duration, divided by rotationalControl. Scaled
  *  to the tap tempo: about one tap cycle, so a catch resolves as a beat
  *  and not a freeze-frame. */
@@ -65,10 +65,11 @@ export const YIELD_MEMORY_MS = 160;
  * spamming a key still cannot queue a train of actions.
  */
 export const BIND_INPUT_GRACE_MS = 120;
-/** A failed yield's control jolt toward the yielder's own loss. Smaller
- *  than a zone's width: a fail at the zone's shallow edge is survivable
- *  (hurt, recovering, deeper in danger), while a fail deep in the zone
- *  still crosses the endpoint and loses the bind outright. */
+/** A failed yield's control jolt toward the yielder's own loss. Wider
+ *  than the one-gap zones: ANY failed yield inside the zone crosses the
+ *  endpoint and loses the bind outright - the doomed K is the mistake
+ *  the whole beat design punishes - while a fail out in open water is
+ *  survivable at the jolt plus the recovery. */
 export const YIELD_FAIL_PENALTY = 0.18;
 /** About two tap cycles on top of the wasted motion: a real punish for a
  *  blind K, without freezing the fighter out of the tempo. */
@@ -95,13 +96,6 @@ export const INITIAL_CONTROL_MAX = 0.35;
  * better than one that cannot end.)
  */
 export const BIND_TIME_LIMIT_MS = 5000;
-/** Approaching an endpoint, the losing side's structure resists: motion
- *  TOWARD the nearer endpoint scales down linearly across this band, so
- *  the last stretch - the yield zones live in it - is slow enough to
- *  answer with a timed yield instead of a frame-perfect one. Motion away
- *  from the endpoint is never scaled: escaping is easier than finishing. */
-export const ENDPOINT_RESIST_START = 0.6;
-export const ENDPOINT_RESIST_FACTOR = 0.65;
 
 /**
  * Pressure is derived, never rolled: a pure function of one side's entry
@@ -246,7 +240,12 @@ export function netBindForce(action: [BindAction, BindAction]): number {
  * authority. Derived at entry, stored on the bind.
  */
 export function deriveYieldZone(self: WeaponProfile, opp: WeaponProfile): number {
-  const raw = YIELD_ZONE_BASE * self.rotationalControl * (0.75 + 0.25 * opp.bindAuthority);
+  // One opposing pulse's uncontested travel is one GAP; the band holds
+  // YIELD_ZONE_GAPS of them (scaled by own rotation), so its width reads
+  // directly as "how many answers crossing it offers".
+  const gapTravel =
+    CONTROL_GAIN * (2 / Math.PI) * opp.bindAuthority * (PULSE_ACTIVE_MS / 1000);
+  const raw = YIELD_ZONE_GAPS * self.rotationalControl * gapTravel;
   return Math.max(YIELD_ZONE_MIN, Math.min(YIELD_ZONE_MAX, raw));
 }
 
@@ -489,17 +488,10 @@ export function tickBindContest(bind: BindState, dt: number): BindTickResult {
     const redirectedAway = inc * (1 - YIELD_DRIVE_FACTOR);
     effNet += side === 0 ? -redirectedAway : redirectedAway;
   }
-  let delta = (CONTROL_GAIN * effNet + bindDrift(bind)) * dtS;
-  // Endpoint resistance: only motion pushing further toward the nearer
-  // endpoint is slowed, by the depth already reached at the tick's start.
-  if (delta * bind.control > 0 && Math.abs(bind.control) > ENDPOINT_RESIST_START) {
-    const depth = Math.min(
-      1,
-      (Math.abs(bind.control) - ENDPOINT_RESIST_START) / (1 - ENDPOINT_RESIST_START),
-    );
-    delta *= 1 - ENDPOINT_RESIST_FACTOR * depth;
-  }
-  bind.control += delta;
+  // No endpoint resistance any more: it existed to stretch reactive
+  // transit time in the pre-beat model, and under the gap model it only
+  // multiplied how many gaps a zone crossing offered.
+  bind.control += (CONTROL_GAIN * effNet + bindDrift(bind)) * dtS;
 
   const endpoint = (): 0 | 1 | null =>
     bind.control <= -1 ? 0 : bind.control >= 1 ? 1 : null;

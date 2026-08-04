@@ -44,6 +44,7 @@ to the mechanic it shipped:
 | Mode 1 shifts its guard as a feint target | `line-feints` §6 |
 | The hold-release lifecycle and the shift rule for a held guard | `held-guard` §9 |
 | The in-bind pressure/yield policy | `pressure-and-winding` §9 |
+| Defence-lite: one threat per visible in-measure attack, one seeded roll (parry if formable / retreat / stand), closing suppressed while any live blade points in | shipped early in `src/combat/ai.ts` at playtest (cuts always killed the duelist, and it stepped INTO them); this spec's full menu, latency band and feasibility matrix SUPERSEDE it |
 
 Those are reflexes: what to do once a defence exists. What none of them
 defines is the **policy** - when the duelist chooses to defend at all, and

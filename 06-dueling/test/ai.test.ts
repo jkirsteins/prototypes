@@ -213,6 +213,66 @@ test("mode 4 duels like the duelist but never moves its stance", () => {
   expect(attacked).toBe(true); // otherwise the duelist: it still fights
 });
 
+describe("defence-lite: the duelist answers a visible attack", () => {
+  const floor = AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[0];
+
+  test("over seeds it parries, retreats or stands - never advances into a live blade, never inside the floor", () => {
+    const answers = new Set<string>();
+    for (let seed = 1; seed <= 40 && answers.size < 3; seed++) {
+      const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+      // 140, not narrow's edge: the retire pulse's first step (cooldown
+      // is poked high) carries the duelist to exactly 200 - still inside
+      // the cut's reach, so the threat is real when the reaction lands.
+      d.f[0].x = d.f[1].x - 140;
+      const ai = createAiState(seed);
+      ai.cooldown = 5000; // keep its own attack pulse out of the exchange
+      let answered: string | null = null;
+      let cutAt: number | null = null;
+      for (let tick = 0; tick < 90; tick++) {
+        const ia: Intent | null = tick === 0 ? "cut" : null;
+        const ib = aiDecide(d, 3, ai, TICK);
+        const threatLive =
+          d.f[0].state.kind === "attack" && d.f[0].state.phase !== "recovery";
+        if (cutAt === null && d.f[0].state.kind === "attack") cutAt = d.time;
+        if (threatLive && ib === "advance") throw new Error("advanced into a live blade");
+        if (threatLive && (ib === "parry" || ib === "retreat") && answered === null) {
+          answered = ib;
+          // The answer never beats the drawn reaction's floor.
+          expect(d.time - (cutAt ?? 0)).toBeGreaterThanOrEqual(floor);
+        }
+        tickDuel(d, ia, ib);
+        if (d.over) break;
+      }
+      answers.add(answered ?? "stand");
+    }
+    expect(answers).toEqual(new Set(["parry", "retreat", "stand"]));
+  });
+
+  test("a cut at narrow no longer always kills the duelist", () => {
+    let kills = 0;
+    let saves = 0;
+    for (let seed = 1; seed <= 30; seed++) {
+      const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+      d.f[0].x = d.f[1].x - 140; // see above: in reach even after the retire step
+      const ai = createAiState(seed);
+      ai.cooldown = 5000;
+      let ia: Intent | null = "cut";
+      for (let t = 0; t < 2500; t += TICK) {
+        const ib = aiDecide(d, 3, ai, TICK);
+        tickDuel(d, ia, ib);
+        ia = null;
+        if (d.over) break;
+      }
+      if (d.over && d.winner === 0) kills++;
+      else saves++;
+    }
+    // Some die (stand, or an unlucky draw), some parry or step out: the
+    // answer is a mixed strategy, not a wall and not a victim.
+    expect(kills).toBeGreaterThan(0);
+    expect(saves).toBeGreaterThan(0);
+  });
+});
+
 test("mode 3 crosses the gap and kills an idle opponent", () => {
   const d = createDuel(WEAPONS.longsword, WEAPONS.rapier); // gap 600, out for both
   const startX = d.f[1].x;

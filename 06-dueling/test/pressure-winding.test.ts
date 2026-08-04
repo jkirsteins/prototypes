@@ -302,26 +302,18 @@ describe("yield", () => {
     expect(r.yieldFails.length).toBe(1);
   });
 
-  test("in the zone without incoming pressure the yield starves: shallow fails survive, deep fails lose", () => {
-    // At the zone's shallow edge the penalty jolt hurts but stays short
-    // of the endpoint: the yielder recovers, deeper in danger.
+  test("a starved yield inside the one-gap zone loses outright", () => {
+    // The penalty jolt is wider than the zone itself: any in-zone fail
+    // crosses the endpoint. Far from the zones (the other test above)
+    // the same fail is survivable at the jolt plus the recovery.
     const zone = deriveYieldZone(LS, LS);
-    const shallow = fixtureBind(LS, LS, { control: 1 - zone + 0.01 });
-    expect(yieldOpportunity(shallow, 0)).toBe(false); // in the zone, but nothing to turn
-    startYield(shallow, 0);
-    const r1 = tickMs(shallow, deriveYieldDuration(LS) + 2 * TICK);
-    expect(r1.yieldFails.length).toBe(1);
-    expect(r1.winner).toBe(null);
-    expect(shallow.control).toBeCloseTo(1 - zone + 0.01 + YIELD_FAIL_PENALTY, 5);
-    expect(shallow.action[0].kind).toBe("yieldFailRecover");
-    // Deep in the zone the same starved fail crosses the endpoint: the
-    // bind is lost outright, a pressure win for the opponent.
-    const deep = fixtureBind(LS, LS, { control: 0.9 });
-    startYield(deep, 0);
-    const r2 = tickMs(deep, deriveYieldDuration(LS) + 2 * TICK);
-    expect(r2.yieldFails.length).toBe(1);
-    expect(r2.winner).toBe(1);
-    expect(r2.cause).toBe("pressure");
+    const bind = fixtureBind(LS, LS, { control: 1 - zone + 0.01 });
+    expect(yieldOpportunity(bind, 0)).toBe(false); // in the zone, but nothing to turn
+    startYield(bind, 0);
+    const r = tickMs(bind, deriveYieldDuration(LS) + 2 * TICK);
+    expect(r.yieldFails.length).toBe(1);
+    expect(r.winner).toBe(1);
+    expect(r.cause).toBe("pressure");
   });
 
   test("their beat dooms a fresh K; the gap after it is the catch", () => {
@@ -330,7 +322,7 @@ describe("yield", () => {
     // fail's jolt loses the bind outright. (A blocked K that cost nothing
     // could be spammed until it landed in a gap, and the yield would be a
     // guaranteed answer to pressure again.)
-    const doomed = fixtureBind(LS, LS, { control: 0.85 });
+    const doomed = fixtureBind(LS, LS, { control: 0.93 });
     const pulse = derivePressurePulse(LS);
     doomed.action[1] = { kind: "pressActive", t: pulse.activeMs / 4, pulse };
     expect(yieldThreat(doomed, 0)).toBe(true); // force to turn exists...
@@ -341,7 +333,7 @@ describe("yield", () => {
     expect(r1.cause).toBe("pressure");
     // The beat frees into their recovery: the spent force is still on
     // the blade (memory) and the TIMED K catches it.
-    const gap = fixtureBind(LS, LS, { control: 0.85 });
+    const gap = fixtureBind(LS, LS, { control: 0.93 });
     gap.action[1] = { kind: "pressRecover", t: 0, durationMs: pulse.recoveryMs };
     gap.sinceForce[0] = 0;
     expect(yieldOpportunity(gap, 0)).toBe(true);
@@ -371,7 +363,10 @@ describe("yield", () => {
     // landed during the player's own recovery, vanished silently, and
     // the endpoint arrived. Now it queues, fires at readiness, and the
     // memory-lit window makes the catch.
-    const bind = fixtureBind(LS, LS, { control: 0.85 });
+    // Deep enough that the swings of the exchange keep the marker inside
+    // the one-gap zone when the queued K finally fires - but with enough
+    // room that the enemy's mid-yield pulse cannot outrun the catch.
+    const bind = fixtureBind(LS, LS, { control: 0.955 });
     startPress(bind, 0); // the player's own tap claims the beat: busy through its cycle
     // The enemy mashes throughout, claiming the beat the moment it frees,
     // so real force is mid-flow when the player's queued K fires.
@@ -395,7 +390,7 @@ describe("yield", () => {
   test("the catch is decided at the press: the memory expiring mid-motion does not spoil it", () => {
     // Snapshot rule: the blade caught the remembered push at the press;
     // nothing that happens during the turning motion un-catches it.
-    const bind = fixtureBind(LS, LS, { control: 0.85 });
+    const bind = fixtureBind(LS, LS, { control: 0.93 });
     bind.sinceForce[0] = YIELD_MEMORY_MS - TICK; // the window's last moment
     expect(yieldOpportunity(bind, 0)).toBe(true);
     startYield(bind, 0);
@@ -803,7 +798,7 @@ describe("the HUD reads live simulation state", () => {
     expect(bindSideStatus(bind, 1).label).toBe("HOLDING");
     // During the opponent's claimed beat, "READY" would lie: both verbs
     // are locked out, and the bar tracks their claim for the timed answer.
-    const hot = fixtureBind(LS, LS, { control: 0.85 });
+    const hot = fixtureBind(LS, LS, { control: 0.93 });
     expect(bindSideStatus(hot, 0).label).toBe("READY"); // no force to turn
     hot.action[1] = { kind: "pressActive", t: pulse.activeMs / 2, pulse };
     expect(yieldOpportunity(hot, 0)).toBe(false); // the beat is theirs

@@ -216,14 +216,13 @@ loss. Both press: the forces subtract, and near-equal authority mostly
 stalls the marker while both burn their readiness. Neither presses: only
 the §6 drift moves it, slowly.
 
-One structural term shapes the integration: **endpoint resistance**.
-Motion pushing further toward the nearer endpoint, once past
-`ENDPOINT_RESIST_START`, scales down linearly to
-`1 - ENDPOINT_RESIST_FACTOR` at the endpoint; motion away is never
-scaled. The losing structure fights the last stretch, which is what makes
-the yield zones - which live in that stretch - answerable by timing
-instead of by frame-perfect reaction. Without it a single committed pulse
-crossed a whole zone faster than any human or AI reaction.
+(As built, one-gap revision: an earlier **endpoint resistance** term
+slowed motion through the final stretch, added when the yield was a
+reactive catch that needed transit time. Under the beat/gap model the
+timing cue is the GAP between pulses, and the resistance only multiplied
+how many gaps a zone crossing offered - six-plus, each a fresh yield
+chance, which is why pressing into the band always lost. It is removed;
+the integration is unscaled everywhere.)
 
 ---
 
@@ -235,13 +234,20 @@ incoming force, and it can fail three ways.
 ### 5.1 The zone and the opportunity
 
 Each side has a **yield zone**: the band of `control` next to its loss
-endpoint, width derived at entry from the yielding blade's rotation against
-the opponent's authority:
+endpoint. Its width is measured in GAPS - one opposing pulse's
+uncontested travel is one gap, and the band holds `YIELD_ZONE_GAPS` of
+them (scaled by own rotation), so the width reads directly as "how many
+answers crossing it offers": about one.
 
 ```ts
-width = clamp(YIELD_ZONE_BASE * rotationalControl_self
-              * (0.75 + 0.25 * bindAuthority_opp), 0.12, 0.40)
+gapTravel = CONTROL_GAIN * (2/pi) * bindAuthority_opp * PULSE_ACTIVE_MS
+width = clamp(YIELD_ZONE_GAPS * rotationalControl_self * gapTravel,
+              0.05, 0.25)
 ```
+
+Pushing through the band takes one shove, and the gap after that shove
+is THE yield opportunity - precisely one. (The old fixed-fraction width
+held six-plus gaps and fed the defender chance after chance.)
 
 A **yield opportunity** (the HUD's YIELD NOW) exists while all three
 hold: control is inside the zone; the OPPONENT'S gross pulse force is
@@ -381,14 +387,13 @@ that seeded it.)
 | `PULSE_COMMIT_BASE_MS` | 20 |
 | `PULSE_ACTIVE_MS` | 100 |
 | `PULSE_RECOVERY_BASE_MS` | 50 |
-| `ENDPOINT_RESIST_START` / `ENDPOINT_RESIST_FACTOR` | 0.6, 0.65 |
-| `YIELD_ZONE_BASE` | 0.40 (clamped 0.12..0.45) |
+| `YIELD_ZONE_GAPS` | 1.4 (clamped to width 0.05..0.25) |
 | `YIELD_BASE_MS` | 120 (about one tap cycle) |
 | `YIELD_DRIVE_FACTOR` | 0.35 |
 | `YIELD_FORCE_MIN` | 0.25 |
 | `YIELD_MEMORY_MS` | 160 (longer than a mash's longest force-free stretch) |
 | `BIND_INPUT_GRACE_MS` | 120 |
-| `YIELD_FAIL_PENALTY` | 0.18 (under a zone's width: shallow in-zone fails survive, deep ones cross the endpoint) |
+| `YIELD_FAIL_PENALTY` | 0.18 (wider than the one-gap zones: any in-zone fail loses outright) |
 | `YIELD_FAIL_RECOVERY_MS` | 200 |
 | `DRIFT_GRACE_MS` | 600 (of calm) |
 | `DRIFT_BASE` / `DRIFT_RAMP` / `DRIFT_MAX` | 0.2 /s, +0.25 /s per calm s, 0.8 /s |
