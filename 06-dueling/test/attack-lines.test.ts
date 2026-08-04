@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { PLAYER_REACTION_MS, aiDecide, createAiState } from "../src/combat/ai";
+import { AI_REACTION_BASE_MS, AI_REACTION_JITTER_MS, PLAYER_REACTION_MS, aiDecide, createAiState } from "../src/combat/ai";
 import { TICK, applyIntent, createFighter, guardEffective, lineOf, tickFighter } from "../src/combat/fighter";
 import { createDuel, gapOf, parryMeetsAttack, tickDuel } from "../src/combat/engine";
 import type { Duel } from "../src/combat/engine";
@@ -20,13 +20,13 @@ import type { AttackKind, WeaponProfile } from "../src/combat/types";
 const ws = Object.values(WEAPONS);
 
 describe("invariants", () => {
-  test("standing on the wrong height must cost something: heightChangeMs > parryRiseMs", () => {
-    for (const w of ws) expect(w.heightChangeMs).toBeGreaterThan(w.parryRiseMs);
+  test("standing on the wrong height must cost something: heightChangeMs > firmUpMs", () => {
+    for (const w of ws) expect(w.heightChangeMs).toBeGreaterThan(w.firmUpMs);
   });
-
-  test("a reactive press stays gated by the rise alone: sideChangeMs < parryRiseMs", () => {
-    for (const w of ws) expect(w.sideChangeMs).toBeLessThan(w.parryRiseMs);
-  });
+  // (The old sideChangeMs < rise invariant died with the rise itself:
+  // under preparation-and-readiness the wrong-side press is decided by
+  // guardFormationMs's max, and sideChangeMs may legitimately exceed the
+  // firm-up.)
 
   test("the reaction matrix: from the right stance everything is answerable, from the wrong one everything except the rapier thrust", () => {
     // Pure arithmetic over WEAPONS, per TODO-2 §4.1: telegraphed attacks,
@@ -36,8 +36,8 @@ describe("invariants", () => {
       for (const atk of ws) {
         for (const kind of ["cut", "thrust"] as const) {
           const t = atk.attacks[kind];
-          const deadline = atk.telegraphMs + t.windup + t.beat + parryableMs(t);
-          const rightStance = PLAYER_REACTION_MS + def.parryRiseMs;
+          const deadline = t.windup + t.beat + parryableMs(t);
+          const rightStance = PLAYER_REACTION_MS + def.firmUpMs;
           const wrongStance = PLAYER_REACTION_MS + def.heightChangeMs;
           expect(rightStance).toBeLessThanOrEqual(deadline); // always answerable in stance
           const answerable = wrongStance <= deadline;
@@ -182,16 +182,16 @@ describe("the press infers the side; the engine supplies the visible attack", ()
   });
 
   test("side coverage is simulated: a fixture where the rotation outlasts the rise", () => {
-    // Shipping weapons keep sideChangeMs < parryRiseMs, so the rise gates a
+    // Shipping weapons keep sideChangeMs < firmUpMs, so the rise gates a
     // press. The three-way max is still real logic: falsify it with a
     // fixture whose rotation is slower than its rise.
     const fixture: WeaponProfile = structuredClone(WEAPONS.longsword);
-    fixture.parryRiseMs = 100;
+    fixture.firmUpMs = 100;
     fixture.sideChangeMs = 200;
     const f = createFighter(400, 1, fixture);
     applyIntent(f, "parry", { targetSide: "outside" }); // guardSide is inside: travel needed
     for (let t = 0; t < 100 + TICK; t += TICK) tickFighter(f, TICK);
-    expect(f.parry?.visibleMs).toBeGreaterThanOrEqual(fixture.parryRiseMs);
+    expect(f.parry?.visibleMs).toBeGreaterThanOrEqual(fixture.firmUpMs);
     expect(guardEffective(f)).toBe(false); // risen, but the blade is still crossing
     for (let t = 0; t < 100 + 2 * TICK; t += TICK) tickFighter(f, TICK);
     expect(guardEffective(f)).toBe(true);
@@ -213,7 +213,7 @@ describe("the max rule: rise and height travel do not add", () => {
     // Just before the transition arrives: rise done, but still not effective.
     for (; t < w.heightChangeMs - 2 * TICK; t += TICK) tickFighter(f, TICK);
     if (f.parry === null) throw new Error("parry lost");
-    expect(f.parry.visibleMs).toBeGreaterThanOrEqual(w.parryRiseMs);
+    expect(f.parry.visibleMs).toBeGreaterThanOrEqual(w.firmUpMs);
     expect(guardEffective(f)).toBe(false); // a stance in motion covers nothing
     for (; t < w.heightChangeMs + 2 * TICK; t += TICK) tickFighter(f, TICK);
     expect(guardEffective(f)).toBe(true);
@@ -318,19 +318,31 @@ describe("AI heights", () => {
     expect(evs.some((e) => e.kind === "hit")).toBe(false);
   });
 
-  test("mode 1 from the wrong stance cannot answer the longsword thrust any more", () => {
-    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
-    d.f[0].x = 1000;
-    d.f[1].x = 1180;
-    d.f[0].height = "high";
-    const ai = createAiState(7);
-    const evs = [];
-    for (let i = 0; i * TICK < 2000; i++) {
-      const ib = aiDecide(d, 1, ai, TICK);
-      evs.push(...tickDuel(d, i === 0 ? "thrust" : null, ib));
-      if (d.over) break;
-    }
-    expect(evs.some((e) => e.kind === "hit" && e.side === 0)).toBe(true);
+  test("mode 1 from the wrong stance answers the longsword thrust only on a sharp read", () => {
+    // preparation-and-readiness: the wrong-height answer costs the stance
+    // travel (300ms), so the folded thrust (deadline 630) is caught by a
+    // floor read - stance at 200, arrived 500, pressed a tick later,
+    // formed ~627: a deliberate 3ms squeak the deterministic engine
+    // resolves the same way every run - and NOT by a slow read.
+    const run = (reactionMs: number) => {
+      const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+      d.f[0].x = 1000;
+      d.f[1].x = 1180;
+      d.f[0].height = "high";
+      const ai = createAiState(7);
+      ai.reactionMs = reactionMs;
+      const evs = [];
+      for (let i = 0; i * TICK < 2000; i++) {
+        const ib = aiDecide(d, 1, ai, TICK);
+        evs.push(...tickDuel(d, i === 0 ? "thrust" : null, ib));
+        if (d.over) break;
+      }
+      return evs;
+    };
+    const slow = run(AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[1]);
+    expect(slow.some((e) => e.kind === "hit" && e.side === 0)).toBe(true);
+    const sharp = run(AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[0]);
+    expect(sharp.some((e) => e.kind === "parried" || e.kind === "bind")).toBe(true);
   });
 });
 
@@ -351,7 +363,7 @@ describe("presentation: row 3 names the line", () => {
 
   test("a stance shows itself, and its motion", () => {
     const a = f();
-    expect(lineLabel(a)).toBe("LOW (stance)");
+    expect(lineLabel(a)).toBe("READY: LOW INSIDE");
     applyIntent(a, "stanceUp");
     expect(lineLabel(a)).toBe("LOW to HIGH (stance)");
   });
@@ -359,7 +371,7 @@ describe("presentation: row 3 names the line", () => {
   test("the full enum renders: a fixture at middle", () => {
     const a = f();
     a.height = "middle";
-    expect(lineLabel(a)).toBe("MIDDLE (stance)");
+    expect(lineLabel(a)).toBe("READY: MIDDLE INSIDE");
   });
 
   test("the help panel cites heightChangeMs and the coverage rule", () => {

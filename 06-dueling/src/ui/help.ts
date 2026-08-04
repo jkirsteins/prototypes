@@ -69,9 +69,9 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
   },
   parry: {
     label: "guard",
-    what: "Hold L: the guard rises, then stands for as long as you hold it; a tap against a visible attack waits for that attack and ends with it.",
-    player: "Release, attack or void lowers it at full recovery. There is no timer - only lines: a held guard covers one, and feints move attacks to the others.",
-    ms: (w) => w.parryRiseMs,
+    what: "Hold L: the resting blade firms into a guard, then stands for as long as you hold it; a tap against a visible attack waits for that attack and ends with it.",
+    player: "Fastest on the line your blade already rests in (READY shows it); another line costs the travel. Release, attack or void lowers it at full recovery.",
+    ms: (w) => w.firmUpMs,
   },
   stance: {
     label: "stance",
@@ -154,8 +154,8 @@ export function renderHelpHtml(): string {
   const parryRows = ws.map((w) => {
     const t = w.attacks.thrust;
     const meetable = t.strike * PARRYABLE_FRACTION;
-    const deadline = w.parryRiseMs - meetable;
-    return `<li>${esc(w.name)} thrust: the guard rises in ${w.parryRiseMs}ms and then stands as long as the key is held; the blade is meetable for the strike's first ${meetable}ms, so the last press that can catch it lands ${deadline}ms before the strike starts.</li>`;
+    const deadline = w.firmUpMs - meetable;
+    return `<li>${esc(w.name)} thrust: a guard on the resting line firms in ${w.firmUpMs}ms and stands as long as the key is held; the blade is meetable for the strike's first ${meetable}ms, so the last same-line press that can catch it lands ${deadline}ms before the strike starts.</li>`;
   }).join("");
 
   const costs = ws.map((w) => {

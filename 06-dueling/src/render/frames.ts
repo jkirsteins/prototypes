@@ -43,8 +43,11 @@ export const ATTACK_FRAMES: Record<"cut" | "thrust", AttackFramePlan> = {
   // retracting. Frames 2 and 3 are near-identical, so the thrust stays in
   // its loaded pose through the whole meetable half and snaps to full
   // extension exactly when the window closes. Deliberate, and true to the
-  // weapon: a thrust cannot be parried on reaction once the point flies -
-  // you meet it during the preparation, or not at all.
+  // weapon under preparation-and-readiness: you meet a thrust during its
+  // preparation from the line your blade already rests in - same-line
+  // thrusts are parryable at ordinary reactions, wrong-height rapier
+  // thrusts may escape, wrong-side attacks are generally still answerable
+  // - and once the point flies, the chance is gone.
   thrust: { sheet: "swordStab", windup: [0, 1], beat: 2, strike: [3, 4], recovery: [5, 6] },
 };
 

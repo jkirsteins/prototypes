@@ -34,12 +34,14 @@ function crossingDuel(w: WeaponId = "longsword"): { d: Duel; evs: DuelEvent[] } 
   d.f[0].x = 1000;
   d.f[1].x = 1180;
   let evs: DuelEvent[] = [];
-  let ia: Intent | null = "thrust";
-  let ib: Intent | null = "thrust";
-  for (let t = 0; t < 1600 && d.bind === null; t += TICK) {
-    evs = evs.concat(tickDuel(d, ia, ib));
-    ia = null;
-    ib = null;
+  // Side 1 presses 9 ticks late, so side 0's blade is delivered and
+  // standing when side 1's travel reaches it - the standing-vs-arriving
+  // asymmetry the entry snapshot reads. (It used to come free from the
+  // AI-only telegraph; symmetric preparation means the stagger is now
+  // the fixture's own, explicit choice.)
+  let tick = 0;
+  for (; tick * TICK < 1600 && d.bind === null; tick++) {
+    evs = evs.concat(tickDuel(d, tick === 0 ? "thrust" : null, tick === 9 ? "thrust" : null));
   }
   return { d, evs };
 }

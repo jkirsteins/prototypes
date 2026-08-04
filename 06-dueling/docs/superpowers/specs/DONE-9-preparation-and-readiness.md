@@ -280,19 +280,21 @@ it fits the length budget.
   table: every same-line attack parryable at floor and mean.
 - **The litmus: thrust parry-ability.** This spec's acceptance
   criterion, layered so the physics is never gated on policy knobs:
-  1. *Physics (mode 1, deterministic):* a same-line thrust at a ready
-     dummy is PARRIED; at the mean reaction, a wrong-height rapier
-     thrust is not met by a guard formed after visibility (at the
-     200ms floor the table says it can be - the pin is per-seed:
+  1. *Physics (mode 1, deterministic):* at the mean reaction, every
+     same-line thrust against a ready dummy is parried; across seeded
+     reactions, outcomes match the computed matrix. The band edge,
+     stated exactly: a longsword defender (firm-up 110) parries the
+     same-line rapier thrust (deadline 510) on reaction draws up to
+     400ms and misses above; a rapier defender (firm-up 85) parries it
+     across the full 200-420ms band. At the mean, a wrong-height
+     rapier thrust is not met by a guard formed after visibility (at
+     the 200ms floor the table says it can be - the pin is per-seed:
      parried exactly when that seed's drawn reaction fits the
-     arithmetic). The one band-edge pairing (longsword defender vs
-     same-line rapier thrust, parryable up to ~505ms draws) pins
-     "parried at most draws, missed at the slowest" over seeds
-     instead of always.
-  2. *Symmetry:* the same thrust-vs-ready-defender scenario with
-     controllers swapped - AI thrust into a parry-pressing scripted
-     defender, player thrust into the dummy - produces the same
-     contact outcome. Parry-ability may never depend on who holds the
+     arithmetic).
+  2. *Symmetry:* run the same attack and parry intent ticks with
+     controller ownership swapped - both sides scripted, no AI policy
+     in the loop. The contact outcome and the timelines must be
+     identical. Parry-ability may never depend on who holds the
      controller.
   3. *Policy band (mode 3, drift alarm):* same-line thrusts against a
      ready duelist end parried in a wide pinned band - nonzero, not

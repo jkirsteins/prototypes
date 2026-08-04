@@ -133,13 +133,15 @@ export function dropGuard(f: Fighter): void {
 
 /**
  * How long a guard pressed toward `aim` takes to form, from this fighter's
- * current posture: the three-way max of the rise, the side rotation and
- * the height travel - concurrent, never summed. The parry acceptance
- * below, the duelist's defence policy and the feasibility-matrix test all
- * call this one function, so what the AI believes a guard costs can never
- * drift from what the engine charges. A stance standing at the wrong
- * height pays the full travel (the press must follow a stance intent);
- * one already in motion pays only the remainder.
+ * current posture: the three-way max of the firm-up (the blade already
+ * RESTS in a line - stance height + guardSide - and only needs to brace),
+ * the side rotation and the height travel - concurrent, never summed. The
+ * parry acceptance below, the duelist's defence policy and the
+ * feasibility-matrix test all call this one function, so what the AI
+ * believes a guard costs can never drift from what the engine charges. A
+ * stance standing at the wrong height pays the full travel (the press
+ * must follow a stance intent); one already in motion pays only the
+ * remainder.
  */
 export function guardFormationMs(f: Fighter, aim: Line): number {
   const heightTravel =
@@ -149,7 +151,7 @@ export function guardFormationMs(f: Fighter, aim: Line): number {
         ? f.weapon.heightChangeMs - f.heightT
         : f.weapon.heightChangeMs;
   return Math.max(
-    f.weapon.parryRiseMs,
+    f.weapon.firmUpMs,
     aim.side === f.guardSide ? 0 : f.weapon.sideChangeMs,
     heightTravel,
   );
@@ -222,7 +224,7 @@ export function createFighter(x: number, facing: 1 | -1, weapon: WeaponProfile):
 export function applyIntent(
   f: Fighter,
   intent: Intent,
-  opts?: { windupBonusMs?: number; targetSide?: Side; targetAttackStartTime?: number },
+  opts?: { targetSide?: Side; targetAttackStartTime?: number },
 ): "accepted" | "buffered" | "ignored" {
   const r = applyIntentInner(f, intent, opts);
   // The bind advantage is the contact: only the immediate thrust uses it
@@ -237,7 +239,7 @@ export function applyIntent(
 function applyIntentInner(
   f: Fighter,
   intent: Intent,
-  opts?: { windupBonusMs?: number; targetSide?: Side; targetAttackStartTime?: number },
+  opts?: { targetSide?: Side; targetAttackStartTime?: number },
 ): "accepted" | "buffered" | "ignored" {
   const k = f.state.kind;
   if (k === "dead" || k === "hitstun") return "ignored";
@@ -385,7 +387,7 @@ function applyIntentInner(
       f.buffered = intent; // one-slot buffer, last input wins
       return "buffered";
     }
-    return startAction(f, intent, opts?.windupBonusMs ?? 0) ? "accepted" : "ignored";
+    return startAction(f, intent) ? "accepted" : "ignored";
   }
   // Rule D: a parry cannot be raised mid-step - you cannot react while
   // your feet are committed, only carry a defence you already chose. And
@@ -399,7 +401,7 @@ function applyIntentInner(
   return "ignored"; // committed: void, attack
 }
 
-function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean {
+function startAction(f: Fighter, intent: Intent): boolean {
   switch (intent) {
     case "advance":
       f.state = { kind: "step", dir: 1, t: 0 };
@@ -427,7 +429,7 @@ function startAction(f: Fighter, intent: Intent, windupBonusMs: number): boolean
         timeline:
           intent === "thrust" && f.bindAdvantageMs > 0
             ? bindTimeline(f.weapon)
-            : attackTimeline(f.weapon, intent, windupBonusMs),
+            : attackTimeline(f.weapon, intent),
         // A stance mid-transition still covers its old height, and the
         // blade launches from where the body truly is.
         height: f.height,
@@ -628,6 +630,6 @@ function flushBuffer(f: Fighter, _events: FighterEvent[]): void {
   const b = f.buffered;
   f.buffered = null;
   if (b !== null) {
-    startAction(f, b, 0);
+    startAction(f, b);
   }
 }

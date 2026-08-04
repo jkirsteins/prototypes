@@ -138,7 +138,7 @@ describe("the lies land against a snapshotted guard", () => {
     let evs = runMs(d, TICK, null, "thrust"); // AI thrust: low inside, visible
     evs = evs.concat(runMs(d, 250 - TICK, "parry", null)); // player latches low inside
     const t = WEAPONS.longsword.attacks.thrust;
-    const riseEnd = WEAPONS.longsword.telegraphMs + t.windup;
+    const riseEnd = t.windup;
     evs = evs.concat(runMs(d, riseEnd + 20 - 250)); // into the sold half
     evs = evs.concat(runMs(d, TICK, null, redirect)); // the lie
     evs = evs.concat(runMs(d, 1600));
@@ -188,7 +188,7 @@ describe("the defender's answer: the guard shift", () => {
   }
 
   const t = WEAPONS.longsword.attacks.thrust;
-  const riseEnd = WEAPONS.longsword.telegraphMs + t.windup;
+  const riseEnd = t.windup;
 
   test("a height shift within the window meets the redirected blade", () => {
     const at = riseEnd + 20;
@@ -245,7 +245,7 @@ describe("the defender's answer: the guard shift", () => {
     d.f[1].x = 1180;
     let evs = runMs(d, TICK, null, "thrust");
     evs = evs.concat(runMs(d, 250 - TICK, "parry", null));
-    const arrivalIsh = WEAPONS.longsword.telegraphMs + t.windup + t.beat + 80;
+    const arrivalIsh = t.windup + t.beat + 80;
     evs = evs.concat(runMs(d, arrivalIsh - 250 - 3 * TICK));
     evs = evs.concat(runMs(d, TICK, "stanceUp", null)); // shift begins just before arrival
     evs = evs.concat(runMs(d, 900));
@@ -258,7 +258,7 @@ describe("the defender's answer: the guard shift", () => {
 
 describe("the timing tension, exhaustively: when L is pressed decides everything", () => {
   const t = WEAPONS.longsword.attacks.thrust;
-  const riseEnd = WEAPONS.longsword.telegraphMs + t.windup; // AI thrust's sold half opens
+  const riseEnd = t.windup; // AI thrust's sold half opens
   const redirectAt = riseEnd + 20;
 
   /** AI thrust redirected to a cut at `redirectAt`; player presses L at `pressAt`. */
@@ -287,9 +287,12 @@ describe("the timing tension, exhaustively: when L is pressed decides everything
 
   test("pressed very late, the parry reads the final line correctly and still dies forming", () => {
     // Deadline: the guard must form by redirect + redirectSideMs + the cut's
-    // meetable half. A press 300ms after the redirect forms 520ms after it -
-    // 30ms past the deadline. Right read, wrong clock.
-    const { evs, side } = exchange(redirectAt + 300);
+    // meetable half (950 into the attack). A press 400ms after the redirect
+    // pays max(firmUp, sideChange) = 120 and forms at 980 - 30ms past the
+    // deadline. Right read, wrong clock. (Under the old raise-from-nothing
+    // rise the same death needed only a 300ms-late press; readiness bought
+    // the defender a real hundred milliseconds here.)
+    const { evs, side } = exchange(redirectAt + 400);
     expect(side).toBe("outside");
     expect(evs.some((e) => e.kind === "hit" && e.side === 1)).toBe(true);
   });

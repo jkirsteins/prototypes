@@ -50,12 +50,12 @@ function enterBind(x1 = 1180): Duel {
   const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
   d.f[0].x = 1000;
   d.f[1].x = x1;
-  let ia: Intent | null = "thrust";
-  let ib: Intent | null = "thrust";
-  for (let t = 0; t < 1600; t += TICK) {
-    tickDuel(d, ia, ib);
-    ia = null;
-    ib = null;
+  // Side 1 presses 9 ticks late: side 0's blade stands delivered when
+  // side 1's travel arrives, so the entry is firm-vs-soft and the lead
+  // is side 0's - the asymmetry these tests read. (Formerly supplied by
+  // the AI-only telegraph; the stagger is explicit under symmetry.)
+  for (let tick = 0; tick * TICK < 1600; tick++) {
+    tickDuel(d, tick === 0 ? "thrust" : null, tick === 9 ? "thrust" : null);
     if (d.bind !== null) return d;
   }
   throw new Error("no bind formed");

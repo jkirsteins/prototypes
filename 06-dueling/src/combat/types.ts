@@ -69,12 +69,10 @@ export interface WeaponProfile {
   stepDuration: number;
   /** settle after a step before the next action starts; a parry may still be raised during it */
   stepRecoveryMs: number;
-  /** extra windup on AI attacks: the telegraph the player reads */
-  telegraphMs: number;
   attacks: Record<AttackKind, AttackTimings>;
-  /** the stance's travel between heights; must exceed parryRiseMs or the wrong height costs nothing */
+  /** the stance's travel between heights; must exceed firmUpMs or the wrong height costs nothing */
   heightChangeMs: number;
-  /** the blade's rotation to the other side; must stay under parryRiseMs so a reactive press is gated by the rise alone */
+  /** the blade's rotation to the other side; with firmUpMs it decides the wrong-side press via guardFormationMs's max */
   sideChangeMs: number;
   /** redirecting an attack's height mid-windup: the larger lie, priced above the side's */
   redirectHeightMs: number;
@@ -82,8 +80,14 @@ export interface WeaponProfile {
   redirectSideMs: number;
   /** a formed guard travelling to the other height: cheaper than a cold stance move, dearer than the rotation */
   guardShiftMs: number;
-  /** the guard's travel: visible from the press, effective only after this */
-  parryRiseMs: number;
+  /**
+   * Firming a blade that already RESTS in a line (stance height +
+   * guardSide) into an engaged, braced guard: grip, structure, point
+   * orientation. The floor of guardFormationMs's max - travels to any
+   * OTHER line cost their own time on top. Named for what it is: the
+   * sword was never fully down, so there is no "rise" from nothing.
+   */
+  firmUpMs: number;
   /** how long after a spent parry the next one is available; gates only the parry */
   parryRecoveryMs: number;
   /** recovery after abandoning a windup (a feint): the price of selling a threat */

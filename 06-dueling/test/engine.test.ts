@@ -59,7 +59,7 @@ describe("attack resolution", () => {
     const t = WEAPONS.rapier.attacks.thrust;
     let evs = runMs(d, TICK, "thrust", null);
     const strikeAt = t.windup + t.beat;
-    const press = strikeAt - WEAPONS.longsword.parryRiseMs;
+    const press = strikeAt - WEAPONS.longsword.firmUpMs;
     evs = evs.concat(runMs(d, press - TICK));
     evs = evs.concat(runMs(d, TICK, null, "parry"));
     evs = evs.concat(runMs(d, strikeAt - press + t.strike + 2 * TICK));
@@ -104,7 +104,7 @@ describe("attack resolution", () => {
       for (const [atk, def, kind] of cases) {
         const t = WEAPONS[atk].attacks[kind];
         const strikeAt = t.windup + t.beat;
-        const deadline = strikeAt + parryableMs(t) - WEAPONS[def].parryRiseMs;
+        const deadline = strikeAt + parryableMs(t) - WEAPONS[def].firmUpMs;
         expect(outcome(atk, def, kind, deadline - 2 * TICK)).toBe("parried");
       }
     });
@@ -113,8 +113,8 @@ describe("attack resolution", () => {
       for (const [atk, def, kind] of cases) {
         const t = WEAPONS[atk].attacks[kind];
         const strikeAt = t.windup + t.beat;
-        const early = strikeAt - WEAPONS[def].parryRiseMs - 100; // early press: latched, no expiry
-        const formedAtCommit = strikeAt - WEAPONS[def].parryRiseMs;
+        const early = strikeAt - WEAPONS[def].firmUpMs - 100; // early press: latched, no expiry
+        const formedAtCommit = strikeAt - WEAPONS[def].firmUpMs;
         expect(outcome(atk, def, kind, Math.max(0, early))).toBe("parried");
         expect(outcome(atk, def, kind, Math.max(0, formedAtCommit))).toBe("parried");
       }
@@ -236,10 +236,11 @@ describe("attack resolution", () => {
     // A cut (outside) against a thrust (inside): the blades never touch,
     // and both strikes resolving on one tick is the earned double. Two
     // same-line thrusts can no longer double this way - they cross and
-    // clang instead, which is blade-contact working as specified. The cut
-    // resolves at 900; inject the thrust 320ms later so both end together.
+    // clang instead, which is blade-contact working as specified. The
+    // folded cut resolves at 1080, the thrust 760 after ITS start:
+    // inject it 19 ticks later so both end on one tick.
     applyIntent(d.f[0], "cut");
-    for (let i = 0; i * TICK < 320; i++) tickDuel(d, null, null);
+    for (let i = 0; i < 19; i++) tickDuel(d, null, null);
     applyIntent(d.f[1], "thrust");
     for (let i = 0; i < 3000 / TICK; i++) tickDuel(d, null, null);
     expect(d.log.some((e) => e.kind === "met")).toBe(false);
@@ -369,18 +370,18 @@ describe("presentation events follow the simulation, not the input", () => {
     expect(d.log.some((e) => e.kind === "windup")).toBe(false);
   });
 
-  test("a telegraphed attack rises only after the telegraphMs", () => {
+  test("an AI attack rises at acceptance, exactly like a player attack", () => {
+    // preparation-and-readiness: the preparation is the windup itself,
+    // whoever throws it - there is no AI-only pre-rise telegraph any more.
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
     const evs: DuelEvent[] = [];
-    const pre = WEAPONS.rapier.telegraphMs;
     for (let i = 0; i < 60 && !evs.some((e) => e.kind === "windup"); i++) {
       evs.push(...tickDuel(d, null, i === 0 ? "thrust" : null));
     }
     const w = evs.find((e) => e.kind === "windup");
     expect(w).toBeDefined();
     if (!w) throw new Error("unreachable");
-    expect(w.time).toBeGreaterThanOrEqual(pre);
-    expect(w.time).toBeLessThan(pre + 2 * TICK);
+    expect(w.time).toBeLessThan(2 * TICK);
     expect(w.ms).toBe(WEAPONS.rapier.attacks.thrust.windup);
   });
 

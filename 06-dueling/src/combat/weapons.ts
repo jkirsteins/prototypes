@@ -15,21 +15,32 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     stepDistance: 60,
     stepDuration: 260,
     stepRecoveryMs: 90,
-    telegraphMs: 180,
+    // Windups are the WHOLE preparation, shown identically by whichever
+    // fighter throws the attack (preparation-and-readiness: the old
+    // AI-only telegraphMs is folded in - one simulation for both).
     attacks: {
-      cut:    { windup: 420, beat: 100, strike: 380, recovery: 420, side: "outside" },
-      thrust: { windup: 260, beat: 60,  strike: 260, recovery: 300, side: "inside" },
+      cut:    { windup: 600, beat: 100, strike: 380, recovery: 420, side: "outside" },
+      thrust: { windup: 440, beat: 60,  strike: 260, recovery: 300, side: "inside" },
     },
     heightChangeMs: 300,
     sideChangeMs: 120,
     redirectHeightMs: 380,
     redirectSideMs: 300,
     guardShiftMs: 180,
-    parryRiseMs: 220,
+    // Firming the resting blade into an engaged guard - not a raise from
+    // nothing; wrong-line answers pay the travels via guardFormationMs.
+    firmUpMs: 110,
     parryRecoveryMs: 340,
     feintRecoveryMs: 160,
-    parriedPenalty: 290,
-    whiffRecoveryFactor: 2.0,
+    // 480/2.7 (were 290/2.0): symmetric preparation grew every punisher's
+    // counter to its full folded tempo (the slowest, this longsword's
+    // thrust, lands 760ms after the window opens), so the punished
+    // windows grow with it or the doc's tempo economics - every whiffed
+    // or parried attack punishable by either weapon's thrust, void
+    // always outpricing parry - silently dies. The economics test pins
+    // all of it; margins kept clear of tick boundaries.
+    parriedPenalty: 480,
+    whiffRecoveryFactor: 2.7,
     bladeStiffness: 1.0,
     // The two-handed grip: presses hardest, re-applies and turns slowest.
     bindAuthority: 1.0,
@@ -47,10 +58,9 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     stepDistance: 50,
     stepDuration: 200,
     stepRecoveryMs: 70,
-    telegraphMs: 140,
     attacks: {
-      cut:    { windup: 320, beat: 80, strike: 300, recovery: 400, side: "outside" },
-      thrust: { windup: 200, beat: 60, strike: 220, recovery: 260, side: "inside" },
+      cut:    { windup: 460, beat: 80, strike: 300, recovery: 400, side: "outside" },
+      thrust: { windup: 340, beat: 60, strike: 220, recovery: 260, side: "inside" },
     },
     // 270, not 260: at 260 a wrong-stance answer to the rapier thrust
     // lands EXACTLY on the deadline (250+260 = 510 = its meetable end),
@@ -61,11 +71,15 @@ export const WEAPONS: Record<WeaponId, WeaponProfile> = {
     redirectHeightMs: 350,
     redirectSideMs: 220,
     guardShiftMs: 150,
-    parryRiseMs: 190,
+    firmUpMs: 85,
     parryRecoveryMs: 400,
     feintRecoveryMs: 120,
-    parriedPenalty: 360,
-    whiffRecoveryFactor: 3.0,
+    // 520/3.1 (were 360/3.0): the same tempo-economics scaling as the
+    // longsword's - see its comment; the whiff factor's tenth keeps the
+    // whiffed thrust (806) above the parried one (780), void beating
+    // parry with a clean margin.
+    parriedPenalty: 520,
+    whiffRecoveryFactor: 3.1,
     bladeStiffness: 0.35,
     // The light single hand: weak pressure, nimble recovery, best rotation.
     bindAuthority: 0.55,
@@ -142,9 +156,9 @@ export function bindTimeline(w: WeaponProfile): AttackTimeline {
   };
 }
 
-export function attackTimeline(w: WeaponProfile, a: AttackKind, windupBonusMs: number): AttackTimeline {
+export function attackTimeline(w: WeaponProfile, a: AttackKind): AttackTimeline {
   const t = w.attacks[a];
-  const riseStart = windupBonusMs;
+  const riseStart = 0;
   const riseEnd = riseStart + t.windup;
   const strikeStart = riseEnd + t.beat;
   const strikeEnd = strikeStart + t.strike;

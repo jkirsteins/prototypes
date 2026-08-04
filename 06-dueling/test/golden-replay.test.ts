@@ -86,8 +86,11 @@ const SCENARIOS: Scenario[] = [
       const s: Record<number, Intent> = {};
       for (let t = 0; t < 111; t++) s[t] = "advance"; // close from out of measure
       s[128] = "parry"; // up as the first drill strike arrives
-      s[240] = "void"; // hop out of the second: whiff, extended recovery
-      for (let t = 280; t < 341; t++) s[t] = "advance"; // re-close; the third kills
+      // Re-choreographed at preparation-and-readiness: the drill beat grew
+      // to 2400ms (the folded windups grew the whiff commitments it must
+      // outlast), so the second strike arrives at ~tick 285, not ~233.
+      s[265] = "void"; // hop out of the second: whiff, extended recovery
+      for (let t = 300; t < 361; t++) s[t] = "advance"; // re-close; the third kills
       return s;
     })(),
   },
@@ -153,7 +156,14 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // stopped being meetable. The drill scenario (mode 2, no reaction
     // gate, no rng draws) hashing IDENTICALLY across the same change is
     // the control that pins the cause to the rng stream.
-    "longsword player advances into mode-3 rapier duelist": { hash: 28558235, endedAt: 135 },
+    // Re-recorded at preparation-and-readiness, cause pinned by a full
+    // per-tick diff against the old build: across all 3600 ticks exactly
+    // ONE thing changed - the duelist's windup event (the rise cue) fires
+    // at acceptance now (riseStart is 0: preparation is symmetric, the
+    // AI-only pre-rise telegraph is gone), where it used to fire
+    // telegraphMs in. Positions, the commit at 85, the kill at 135 and
+    // every other event are byte-identical.
+    "longsword player advances into mode-3 rapier duelist": { hash: 3599407005, endedAt: 135 },
     // Re-recorded at the defence-lite reflex: the player's thrust at 90
     // now latches a THREAT on the duelist - one seeded roll consumed,
     // closing suppressed while the blade flies - which shifts the rng
@@ -169,7 +179,13 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // where the lite slice froze it - per-tick probe: the committed cut
     // launches at 111, and the player's thrust still kills at the same
     // tick 118, same winner. The commitment is the only difference.
-    "rapier player against mode-3 longsword, different seed": { hash: 407615250, endedAt: 118 },
+    // Re-recorded at preparation-and-readiness: the player's rapier
+    // thrust now shows its full preparation (windup 340, was 200), so the
+    // same kill lands at tick 127 instead of 118. Per-tick probe: the
+    // duelist's exchange is unchanged in shape - the same stand roll, the
+    // same committed cut thrown at 111 - it simply dies 9 ticks later to
+    // the slower, honest thrust. Winner and path identical.
+    "rapier player against mode-3 longsword, different seed": { hash: 2752051279, endedAt: 127 },
     // Re-recorded at rule D (parry on its own track: the player walks into
     // the first drill strike with the guard riding and parries it), at
     // attack-lines (the drill cycles heights, so its third strike steps the
@@ -179,15 +195,28 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // (extension covering the gap) instead of the parryable-interval
     // boundary - the travel model locating the clash. The other scenarios
     // are unchanged: their duels end before any contact timing differs.
-    "drill metronome: parry the first beat, void the second into a whiff": { hash: 4063824542, endedAt: 410 },
-    // Re-recorded at parry-rise (the guard needs parryRiseMs to form, so
+    // Re-recorded (and re-choreographed, see the script) at
+    // preparation-and-readiness: the 2400ms drill beat moved the second
+    // and third strikes. Per-tick probe: the documented path is intact -
+    // first beat parried (met 142, parried 150), the void at 265 takes
+    // the second beat to a whiff at 307, and the third kills at 455.
+    "drill metronome: parry the first beat, void the second into a whiff": { hash: 1226490514, endedAt: 455 },
+    // Re-recorded at parry-rise (the guard needs firmUpMs to form, so
     // the tell-free rapier thrust kills at 188 where the old build was
     // parried) and again at the jittered-reaction step: seed 7 draws a
     // 203ms reaction where the constant was 180, so the dummy's press
     // lands two ticks later (173, was 171). Same fight, same documented
     // death at 188 - only the press tick moved, which is exactly what a
     // slower reaction should change and nothing more.
-    "parry dummy reads the player's telegraph-free attacks": { hash: 4097846637, endedAt: 188 },
+    // Re-recorded at preparation-and-readiness - and the scenario's own
+    // premise upgraded under it: the player's attacks are no longer
+    // telegraph-free (nothing is), and the dummy's resting-line readiness
+    // now PARRIES the first two attacks it once died to (thrust met at
+    // 188, cut met at 338 - the litmus visible inside the golden). The
+    // third attack kills at 497: the dummy's drawn reaction presses at
+    // 485 and the guard forms a breath too late. Same seed, same rules,
+    // a fencing exchange instead of an execution.
+    "parry dummy reads the player's telegraph-free attacks": { hash: 1147746251, endedAt: 497 },
     // Recorded at sustained-bind (per-tick probe: the cut's contact at
     // tick 195 followed by NO resolution events - the bind swallowed the
     // attack - the scripted advance at 205 refused, a second contact at
@@ -220,7 +249,14 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // probe: the bind still forms at tick 155 and still resolves toward
     // the same winner (side 1), just earlier - 318 instead of 336. No
     // death either way (endedAt null).
-    "longsword mirror: the counter-thrust crosses the drill's beat and binds": { hash: 2610723091, endedAt: null },
+    // Re-recorded at preparation-and-readiness: the player's folded
+    // thrust reaches the crossing later, so the bind forms at tick 163
+    // (was 155) and the calm drift resolves it at 296 (was 318; the
+    // entry firmnesses shifted with the meeting geometry). Per-tick
+    // probe: the whole documented path survives - crossing entry,
+    // seizure (the scripted advance at 200 dropped), decisive drift
+    // resolution, exposure, and the scramble after. No death either way.
+    "longsword mirror: the counter-thrust crosses the drill's beat and binds": { hash: 2738748713, endedAt: null },
   };
 
   for (const sc of SCENARIOS) {

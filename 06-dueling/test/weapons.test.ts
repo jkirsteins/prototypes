@@ -9,20 +9,18 @@ describe("attack timeline snapshot", () => {
   // one object, so this is the single place their agreement is asserted.
   for (const w of Object.values(WEAPONS)) {
     for (const kind of KINDS) {
-      for (const bonus of [0, w.telegraphMs]) {
-        test(`${w.id} ${kind} marks are consistent (bonus ${bonus})`, () => {
-          const t = w.attacks[kind];
-          const tl = attackTimeline(w, kind, bonus);
-          expect(tl.riseStart).toBe(bonus);
-          expect(tl.riseEnd).toBe(bonus + t.windup);
-          expect(tl.strikeStart).toBe(bonus + t.windup + t.beat);
-          expect(tl.parryableUntil).toBe(tl.strikeStart + parryableMs(t));
-          expect(tl.parryableUntil).toBe(tl.strikeStart + (tl.strikeEnd - tl.strikeStart) * PARRYABLE_FRACTION);
-          expect(tl.strikeEnd).toBe(tl.strikeStart + t.strike);
-          expect(tl.recoveryStart).toBe(tl.strikeEnd);
-          expect(tl.recoveryEnd).toBe(tl.strikeEnd + t.recovery);
-        });
-      }
+      test(`${w.id} ${kind} marks are consistent`, () => {
+        const t = w.attacks[kind];
+        const tl = attackTimeline(w, kind);
+        expect(tl.riseStart).toBe(0);
+        expect(tl.riseEnd).toBe(t.windup);
+        expect(tl.strikeStart).toBe(t.windup + t.beat);
+        expect(tl.parryableUntil).toBe(tl.strikeStart + parryableMs(t));
+        expect(tl.parryableUntil).toBe(tl.strikeStart + (tl.strikeEnd - tl.strikeStart) * PARRYABLE_FRACTION);
+        expect(tl.strikeEnd).toBe(tl.strikeStart + t.strike);
+        expect(tl.recoveryStart).toBe(tl.strikeEnd);
+        expect(tl.recoveryEnd).toBe(tl.strikeEnd + t.recovery);
+      });
     }
   }
 });
@@ -41,7 +39,7 @@ describe("weapon identity", () => {
 });
 
 describe("counter-window arithmetic (the doc's tempo economics)", () => {
-  // counterTime = fastest player counter (thrust, no telegraphMs): windup + beat + strike.
+  // counterTime = fastest counter (thrust; preparation is symmetric now): windup + beat + strike.
   for (const atk of Object.values(WEAPONS)) {
     for (const def of Object.values(WEAPONS)) {
       for (const kind of KINDS) {

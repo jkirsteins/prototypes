@@ -29,15 +29,14 @@ describe("attack cascade", () => {
     expect(f.state.kind).toBe("ready");
   });
 
-  test("a windup bonus stretches the telegraph without touching the strike", () => {
+  test("preparation is the windup itself: the rise starts at acceptance", () => {
     const f = createFighter(400, -1, WEAPONS.longsword);
-    const bonus = WEAPONS.longsword.telegraphMs;
-    applyIntent(f, "cut", { windupBonusMs: bonus });
+    applyIntent(f, "cut");
     expect(f.state).toMatchObject({ kind: "attack", phase: "windup" });
     if (f.state.kind !== "attack") throw new Error("unreachable");
     const t = WEAPONS.longsword.attacks.cut;
-    expect(f.state.timeline.riseStart).toBe(bonus);
-    expect(f.state.timeline.strikeStart).toBe(bonus + t.windup + t.beat);
+    expect(f.state.timeline.riseStart).toBe(0);
+    expect(f.state.timeline.strikeStart).toBe(t.windup + t.beat);
     expect(f.state.timeline.strikeEnd - f.state.timeline.strikeStart).toBe(t.strike);
   });
 

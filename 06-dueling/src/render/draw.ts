@@ -618,7 +618,11 @@ export function lineLabel(f: Fighter, bind: BindState | null = null): string {
     return `${H(t.height)} ${t.side.toUpperCase()} (parry)`;
   }
   if (f.heightTo !== null) return `${H(f.height)} to ${H(f.heightTo)} (stance)`;
-  return `${H(f.height)} (stance)`;
+  // No guard up: the RESTING LINE, side included. preparation-and-readiness
+  // made this line decide reaction timing (a same-line press pays only the
+  // firm-up), so it must be as readable as any guard - a hidden guardSide
+  // deciding who can parry what would be worse than the model it replaced.
+  return `READY: ${H(f.height)} ${f.guardSide.toUpperCase()}`;
 }
 
 function drawLineTrack(v: View, f: Fighter, bind: BindState | null): void {

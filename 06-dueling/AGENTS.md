@@ -21,10 +21,11 @@ a layer:
 - a footstep when the step or void hop *finishes* its travel, not when the
   intent is accepted;
 - the low rising tone when the blade starts rising - the riseStart mark on
-  the attack's timeline (which for tell-less player attacks coincides with
-  acceptance, legitimately; telegraphed AI attacks rise only after their
-  telegraph, and buffered attacks when the buffer fires), choked early if
-  the attacker is struck mid-windup;
+  the attack's timeline, which coincides with acceptance for every
+  directly-accepted attack (preparation is symmetric: the windup IS the
+  whole telegraph, and there is no AI-only pre-rise bonus any more);
+  buffered attacks rise when the buffer fires; choked early if the
+  attacker is struck mid-windup;
 - the whoosh when the arc *resolves* having found nothing (whiff) - not
   earlier, because a defender can still step into the blade late in the
   strike, so a miss is only knowable at resolution;
@@ -78,6 +79,20 @@ at its physical transitions, the engine translates them into `DuelEvent`s
 layer keys exclusively off those events. The describe block "presentation
 events follow the simulation, not the input" in `test/engine.test.ts` pins
 the exact timings - extend it whenever a new cue is added.
+
+## One simulation for both fighters
+
+The simulation is identical for the human's fighter and the AI's. The ONLY
+permitted asymmetry is that the AI emulates reaction time in its policy
+layer (`ai.ts`), because it has none naturally. No phase, duration,
+capability or timeline may condition on which side controls a fighter - an
+AI's signal is a human's signal. The one historical violation (an AI-only
+`telegraphMs` windup bonus in the engine) was deleted by
+preparation-and-readiness: attack preparation is the weapon's own windup,
+shown identically by whoever throws it, and a timeline-symmetry test pins
+this. If a change needs the AI to be easier to read, put the time into the
+weapon's own numbers - both fighters pay it - or into AI policy delays,
+never into side-conditional physics.
 
 ## Interaction outcomes emerge from properties, never weapon identity
 

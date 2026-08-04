@@ -32,7 +32,11 @@ export const PLAYER_REACTION_MS = 250;
  * attack's whiff commitment for every weapon or the beat silently drifts
  * (an attack scheduled mid-recovery starts late); a test enforces this.
  */
-export const DRILL_INTERVAL_MS = 2000;
+export const DRILL_INTERVAL_MS = 2400;
+// (2400, not 2000: preparation-and-readiness folded the telegraph into
+// every windup and scaled the punished recoveries to match, so the worst
+// whiff commitment - the longsword cut's - grew to 2214ms. The beat must
+// outlast it or the drill silently drifts; a test enforces exactly this.)
 
 /**
  * Mode 3's cycle floor. This is a structural guarantee, not a personality

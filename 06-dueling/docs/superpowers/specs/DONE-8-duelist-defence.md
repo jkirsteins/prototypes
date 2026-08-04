@@ -311,7 +311,11 @@ answerable by 30-60 ms (by defender weapon). A sharp draw against the slowest th
 occasionally catch it; that margin is the difference between a rule and a
 tendency.
 
-One invariant sits above the table:
+One invariant sits above the table (SUPERSEDED: `preparation-and-readiness`
+re-founded guard formation on the resting line and recomputed this matrix
+with margins per entry; the temporal guarantee below no longer holds and
+its replacement - computed table plus playtest targets, no weapon-name
+branches - lives in that spec's §4):
 
 > **For every weapon pairing, at least one player attack must remain
 > unanswerable by reactive defence at the reaction band's mean from the

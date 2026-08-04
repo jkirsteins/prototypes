@@ -1,14 +1,9 @@
 import { describe, expect, test } from "vitest";
-import {
-  AI_REACTION_BASE_MS,
-  AI_REACTION_JITTER_MS,
-  aiDecide,
-  createAiState,
-} from "../src/combat/ai";
+import { aiDecide, createAiState } from "../src/combat/ai";
 import { ARENA, createDuel, tickDuel } from "../src/combat/engine";
-import { TICK, createFighter, guardFormationMs } from "../src/combat/fighter";
+import { TICK, createFighter, guardFormationMs, lineOf } from "../src/combat/fighter";
 import { WEAPONS, attackTimeline } from "../src/combat/weapons";
-import type { Intent, WeaponId } from "../src/combat/types";
+import type { Intent, Line } from "../src/combat/types";
 
 /**
  * The duelist-defence policy (spec §4, §5): the four-answer menu, the
@@ -17,9 +12,6 @@ import type { Intent, WeaponId } from "../src/combat/types";
  * function the engine's parry acceptance runs, so what the tests believe
  * a guard costs can never drift from what the engine charges.
  */
-
-const FLOOR = AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[0];
-const MEAN = AI_REACTION_BASE_MS + (AI_REACTION_JITTER_MS[0] + AI_REACTION_JITTER_MS[1]) / 2;
 
 /** The cornered-duelist fixture: the retire pulse has nowhere to go, so
  *  the gap the scenario sets is the gap the exchange is fought at. */
@@ -32,87 +24,80 @@ function corneredDuel(gap: number, mode: 3 | 4, seed: number) {
   return { d, ai, mode };
 }
 
-describe("the feasibility matrix, computed not asserted (spec §5)", () => {
+describe("the matrix, recomputed (preparation-and-readiness §4)", () => {
   /**
-   * For every (defender, attacker, attack, stance, latency): can a guard
-   * formed in reaction meet the attack? Player attacks carry no telegraph.
-   * A wrong stance pays the full height travel (concurrent with the rise,
-   * via guardFormationMs) plus one tick for the stance intent that must
-   * precede the press.
+   * Verdict and MARGIN per entry, computed through guardFormationMs - the
+   * same function the parry acceptance and the live policy run - against
+   * the resting-line relations {same, wrongHeight, wrongSide} at the
+   * reaction band's floor, mean and ceiling. Margins are pinned so a
+   * future retune that flips or tightens an entry fails visibly; the
+   * within-tick entries (P10, P0, P5, -10) are deliberate - reactions are
+   * drawn from a continuous band, so a small margin at a probe point only
+   * says where inside the band the flip point sits, and the engine is
+   * deterministic (the boundary tick-ordering pin lives in
+   * preparation-readiness.test.ts). No branch on weapon names anywhere.
    */
-  function answerable(
-    def: WeaponId,
-    atk: WeaponId,
-    kind: "cut" | "thrust",
-    stanceRight: boolean,
-    latencyMs: number,
-  ): boolean {
-    const f = createFighter(0, 1, WEAPONS[def]);
-    const aim = { height: stanceRight ? f.height : "high", side: f.guardSide } as const;
-    const formation = guardFormationMs(f, aim) + (stanceRight ? 0 : TICK);
-    return latencyMs + formation <= attackTimeline(WEAPONS[atk], kind, 0).parryableUntil;
-  }
-
-  test("the matrix at the reaction floor and mean, pinned", () => {
-    const matrix: Record<string, boolean> = {};
+  test("verdicts and margins at floor, mean and ceiling, pinned", () => {
+    const LATS = [200, 310, 420];
+    const matrix: Record<string, string> = {};
     for (const def of ["longsword", "rapier"] as const) {
       for (const atk of ["longsword", "rapier"] as const) {
         for (const kind of ["cut", "thrust"] as const) {
-          for (const stance of ["right", "wrong"] as const) {
-            for (const [label, lat] of [["floor", FLOOR], ["mean", MEAN]] as const) {
-              matrix[`${def} vs ${atk} ${kind} ${stance} ${label}`] =
-                answerable(def, atk, kind, stance === "right", lat);
-            }
+          const deadline = attackTimeline(WEAPONS[atk], kind).parryableUntil;
+          for (const rel of ["same", "wrongHeight", "wrongSide"] as const) {
+            const f = createFighter(0, 1, WEAPONS[def]);
+            const aim: Line = {
+              height: rel === "wrongHeight" ? "high" : f.height,
+              side: rel === "wrongSide" ? "outside" : f.guardSide,
+            };
+            const formation = guardFormationMs(f, aim);
+            matrix[`${def} vs ${atk} ${kind} ${rel}`] = LATS.map((lat) => {
+              const m = deadline - (lat + formation);
+              return `${m >= 0 ? "P" : "-"}${m}`;
+            }).join(" ");
           }
         }
       }
     }
     expect(matrix).toEqual({
-      "longsword vs longsword cut right floor": true,
-      "longsword vs longsword cut right mean": true,
-      "longsword vs longsword cut wrong floor": true,
-      "longsword vs longsword cut wrong mean": true,
-      // The knife-edge the spec keeps deliberately: a floor draw catches
-      // the slowest thrust by 30ms; a typical read does not.
-      "longsword vs longsword thrust right floor": true,
-      "longsword vs longsword thrust right mean": false,
-      "longsword vs longsword thrust wrong floor": false,
-      "longsword vs longsword thrust wrong mean": false,
-      "longsword vs rapier cut right floor": true,
-      "longsword vs rapier cut right mean": true,
-      "longsword vs rapier cut wrong floor": true,
-      "longsword vs rapier cut wrong mean": false,
-      "longsword vs rapier thrust right floor": false,
-      "longsword vs rapier thrust right mean": false,
-      "longsword vs rapier thrust wrong floor": false,
-      "longsword vs rapier thrust wrong mean": false,
-      "rapier vs longsword cut right floor": true,
-      "rapier vs longsword cut right mean": true,
-      "rapier vs longsword cut wrong floor": true,
-      "rapier vs longsword cut wrong mean": true,
-      "rapier vs longsword thrust right floor": true,
-      "rapier vs longsword thrust right mean": false,
-      "rapier vs longsword thrust wrong floor": false,
-      "rapier vs longsword thrust wrong mean": false,
-      "rapier vs rapier cut right floor": true,
-      "rapier vs rapier cut right mean": true,
-      "rapier vs rapier cut wrong floor": true,
-      "rapier vs rapier cut wrong mean": false,
-      "rapier vs rapier thrust right floor": false,
-      "rapier vs rapier thrust right mean": false,
-      "rapier vs rapier thrust wrong floor": false,
-      "rapier vs rapier thrust wrong mean": false,
+      "longsword vs longsword cut same": "P580 P470 P360",
+      "longsword vs longsword cut wrongHeight": "P390 P280 P170",
+      "longsword vs longsword cut wrongSide": "P570 P460 P350",
+      "longsword vs longsword thrust same": "P320 P210 P100",
+      "longsword vs longsword thrust wrongHeight": "P130 P20 --90",
+      "longsword vs longsword thrust wrongSide": "P310 P200 P90",
+      "longsword vs rapier cut same": "P380 P270 P160",
+      "longsword vs rapier cut wrongHeight": "P190 P80 --30",
+      "longsword vs rapier cut wrongSide": "P370 P260 P150",
+      "longsword vs rapier thrust same": "P200 P90 --20",
+      "longsword vs rapier thrust wrongHeight": "P10 --100 --210",
+      "longsword vs rapier thrust wrongSide": "P190 P80 --30",
+      "rapier vs longsword cut same": "P605 P495 P385",
+      "rapier vs longsword cut wrongHeight": "P420 P310 P200",
+      "rapier vs longsword cut wrongSide": "P590 P480 P370",
+      "rapier vs longsword thrust same": "P345 P235 P125",
+      "rapier vs longsword thrust wrongHeight": "P160 P50 --60",
+      "rapier vs longsword thrust wrongSide": "P330 P220 P110",
+      "rapier vs rapier cut same": "P405 P295 P185",
+      "rapier vs rapier cut wrongHeight": "P220 P110 P0",
+      "rapier vs rapier cut wrongSide": "P390 P280 P170",
+      "rapier vs rapier thrust same": "P225 P115 P5",
+      "rapier vs rapier thrust wrongHeight": "P40 --70 --180",
+      "rapier vs rapier thrust wrongSide": "P210 P100 --10",
     });
   });
 
-  test("invariant: every pairing keeps an attack unanswerable at the mean; every cut answers at the floor", () => {
+  test("same-line readiness target: every attack parryable at floor and mean, for every pairing", () => {
     for (const def of ["longsword", "rapier"] as const) {
       for (const atk of ["longsword", "rapier"] as const) {
-        const unanswerable = (["cut", "thrust"] as const).some(
-          (k) => !answerable(def, atk, k, true, MEAN),
-        );
-        expect(unanswerable, `${def} vs ${atk}`).toBe(true);
-        expect(answerable(def, atk, "cut", true, FLOOR), `${def} vs ${atk} cut`).toBe(true);
+        for (const kind of ["cut", "thrust"] as const) {
+          const deadline = attackTimeline(WEAPONS[atk], kind).parryableUntil;
+          const f = createFighter(0, 1, WEAPONS[def]);
+          const formation = guardFormationMs(f, { height: f.height, side: f.guardSide });
+          for (const lat of [200, 310]) {
+            expect(lat + formation, `${def} vs ${atk} ${kind} at ${lat}`).toBeLessThanOrEqual(deadline);
+          }
+        }
       }
     }
   });
@@ -207,9 +192,13 @@ describe("the guard answer (spec §4.2.1)", () => {
     expect(ai.threat?.line?.height).toBe("low"); // the read lags it
   });
 
-  test("an unanswerable threat downgrades to retreat, never a doomed press", () => {
-    // A rapier thrust is unanswerable at any latency (the matrix above):
-    // every guard roll must downgrade - the duelist steps, never presses.
+  test("no doomed press, ever: any guard the duelist starts can still form in time", () => {
+    // Under readiness the same-line rapier thrust IS answerable on most
+    // draws, so "never parries the thrust" stopped being true - the
+    // surviving universal is the downgrade rule itself: whenever the
+    // duelist presses, the engine's own arithmetic says the guard forms
+    // before the visible attack's parryableUntil; infeasible cases step
+    // back instead.
     for (let seed = 1; seed <= 40; seed++) {
       const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
       d.f[1].x = ARENA.right;
@@ -217,9 +206,15 @@ describe("the guard answer (spec §4.2.1)", () => {
       const ai = createAiState(seed);
       ai.cooldown = 5000;
       let ia: Intent | null = "thrust";
-      for (let tick = 0; tick < 60; tick++) {
+      for (let tick = 0; tick < 90; tick++) {
         const ib = aiDecide(d, 3, ai, TICK);
-        expect(ib).not.toBe("parry");
+        const os = d.f[0].state;
+        if (ib === "parry" && os.kind === "attack") {
+          const aim = ai.threat?.line ?? lineOf(d.f[0]);
+          expect(os.elapsedMs + guardFormationMs(d.f[1], aim)).toBeLessThanOrEqual(
+            os.timeline.parryableUntil,
+          );
+        }
         tickDuel(d, ia, ib);
         ia = null;
         if (d.over) break;

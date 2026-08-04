@@ -9,7 +9,7 @@ import type { AttackKind, WeaponId } from "../src/combat/types";
 
 /**
  * TODO-1-parry-rise.md: the guard is visible from the press and effective
- * only after parryRiseMs. The engine-level tests drive real duels tick by
+ * only after firmUpMs. The engine-level tests drive real duels tick by
  * tick; nothing pokes parry.t by hand except the boundary tests, which pin
  * the exact tick the rise completes.
  */
@@ -27,8 +27,8 @@ describe("invariants", () => {
     // draw - the duelist reads guards like a human, not a metronome.
     const slowest = AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[1];
     const quickest = AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[0];
-    for (const w of ws) expect(w.parryRiseMs).toBeLessThan(slowest);
-    expect(ws.some((w) => w.parryRiseMs < quickest)).toBe(true);
+    for (const w of ws) expect(w.firmUpMs).toBeLessThan(slowest);
+    expect(ws.some((w) => w.firmUpMs < quickest)).toBe(true);
   });
 });
 
@@ -39,9 +39,9 @@ describe("guardEffective", () => {
     applyIntent(f, "parry");
     expect(guardEffective(f)).toBe(false); // visible, not yet formed
     let t = 0;
-    for (; t < WEAPONS.longsword.parryRiseMs - 2 * TICK; t += TICK) tickFighter(f, TICK);
+    for (; t < WEAPONS.longsword.firmUpMs - 2 * TICK; t += TICK) tickFighter(f, TICK);
     expect(guardEffective(f)).toBe(false);
-    for (; t < WEAPONS.longsword.parryRiseMs + 2 * TICK; t += TICK) tickFighter(f, TICK);
+    for (; t < WEAPONS.longsword.firmUpMs + 2 * TICK; t += TICK) tickFighter(f, TICK);
     expect(guardEffective(f)).toBe(true);
   });
 });
@@ -69,7 +69,7 @@ describe("parryMeetsAttack: the rise condition, falsified independently", () => 
     applyIntent(d.f[1], "parry");
     const p = d.f[1].parry;
     if (p !== null) {
-      const rise = WEAPONS.longsword.parryRiseMs;
+      const rise = WEAPONS.longsword.firmUpMs;
       if (parryT >= rise) {
         p.phase = "held";
         p.phaseMs = 0;
@@ -83,12 +83,12 @@ describe("parryMeetsAttack: the rise condition, falsified independently", () => 
   }
 
   test("a still-rising guard does not meet, all other conditions holding", () => {
-    const d = setup(WEAPONS.longsword.parryRiseMs - 1);
+    const d = setup(WEAPONS.longsword.firmUpMs - 1);
     expect(parryMeetsAttack(d.f[0], d.f[1], gapOf(d))).toBe(false);
   });
 
   test("a formed guard meets, one tick past the rise", () => {
-    const d = setup(WEAPONS.longsword.parryRiseMs);
+    const d = setup(WEAPONS.longsword.firmUpMs);
     expect(parryMeetsAttack(d.f[0], d.f[1], gapOf(d))).toBe(true);
   });
 });
@@ -116,7 +116,7 @@ describe("the rise changes what a press timing is worth (full duels)", () => {
 
   const t = WEAPONS.longsword.attacks.cut;
   const strikeAt = t.windup + t.beat;
-  const rise = WEAPONS.longsword.parryRiseMs;
+  const rise = WEAPONS.longsword.firmUpMs;
 
   test("an early press still parries: the guard is formed before the blade travels", () => {
     expect(outcome(strikeAt - rise - 60)).toBe("parried");
@@ -134,26 +134,29 @@ describe("the rise changes what a press timing is worth (full duels)", () => {
 
 describe("mode 1 coverage: what the dummy can still answer on reaction", () => {
   /**
-   * Player attacks carry no telegraph, so the dummy has windup+beat of
-   * visible preparation - minus a reaction that is now a draw from
-   * [200, 420]ms, so each matchup has an answer PER BOUND: what the
-   * dummy manages on its quickest draw and on its slowest. Rows where
-   * the two differ are exactly the matchups the jitter makes human: the
-   * same attack sometimes gets in and sometimes meets steel. The rapier
-   * thrust stays the documented failure at both bounds (TODO-1 §5.1).
+   * The dummy has the attack's whole preparation visible - minus a
+   * reaction drawn from [200, 420]ms, so each matchup has an answer PER
+   * BOUND: what the dummy manages on its quickest draw and on its
+   * slowest. Under preparation-and-readiness the dummy's blade RESTS in
+   * a line (low, inside), so these low attacks are answered from
+   * readiness: cuts pay the side rotation (outside), thrusts only the
+   * firm-up - which is why nearly every row now parries, and the rapier
+   * thrust at a slow read is what still gets in. (The slow rapier-mirror
+   * row is the model's 5ms ceiling margin falling to tick quantization:
+   * the press lands at 433ms, not 420.)
    */
   const table: Array<{
     def: WeaponId; atk: WeaponId; kind: AttackKind;
     quick: "parried" | "hit"; slow: "parried" | "hit";
   }> = [
     { def: "longsword", atk: "longsword", kind: "cut", quick: "parried", slow: "parried" },
-    { def: "longsword", atk: "longsword", kind: "thrust", quick: "parried", slow: "hit" },
-    { def: "longsword", atk: "rapier", kind: "cut", quick: "parried", slow: "hit" },
-    { def: "longsword", atk: "rapier", kind: "thrust", quick: "hit", slow: "hit" },
+    { def: "longsword", atk: "longsword", kind: "thrust", quick: "parried", slow: "parried" },
+    { def: "longsword", atk: "rapier", kind: "cut", quick: "parried", slow: "parried" },
+    { def: "longsword", atk: "rapier", kind: "thrust", quick: "parried", slow: "hit" },
     { def: "rapier", atk: "longsword", kind: "cut", quick: "parried", slow: "parried" },
-    { def: "rapier", atk: "longsword", kind: "thrust", quick: "parried", slow: "hit" },
-    { def: "rapier", atk: "rapier", kind: "cut", quick: "parried", slow: "hit" },
-    { def: "rapier", atk: "rapier", kind: "thrust", quick: "hit", slow: "hit" },
+    { def: "rapier", atk: "longsword", kind: "thrust", quick: "parried", slow: "parried" },
+    { def: "rapier", atk: "rapier", kind: "cut", quick: "parried", slow: "parried" },
+    { def: "rapier", atk: "rapier", kind: "thrust", quick: "parried", slow: "hit" },
   ];
 
   const bounds = {
@@ -199,6 +202,6 @@ describe("presentation: the rise is drawn, not just simulated", () => {
 
   test("the help panel cites each weapon's shipping rise", () => {
     const html = renderHelpHtml();
-    for (const w of ws) expect(html).toContain(`${w.parryRiseMs}ms`);
+    for (const w of ws) expect(html).toContain(`${w.firmUpMs}ms`);
   });
 });

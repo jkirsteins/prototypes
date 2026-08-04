@@ -97,9 +97,10 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     const intent = intents[side];
     if (intent === null || d.over) continue;
     const before = d.f[side].state.kind;
-    // The AI's attacks carry a telegraph: extra windup the player can read.
-    // The fighter simulation never learns who controls it - it only sees
-    // a windup bonus. A parry press infers its side target from the
+    // One simulation for both fighters: an attack's preparation is the
+    // weapon's own windup, whoever throws it (preparation-and-readiness
+    // deleted the AI-only telegraph bonus - the doctrine's lone
+    // violation). A parry press infers its side target from the
     // opponent's currently visible attack - only what is visible on this
     // tick, never a redirect that has not happened - and the fighter
     // simulation only sees a target side.
@@ -119,7 +120,6 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
     // the travel is simulated either way.
     const me = d.f[side];
     const r = applyIntent(me, intent, {
-      windupBonusMs: side === 1 ? me.weapon.telegraphMs : 0,
       targetSide:
         (intent === "parry" || intent === "sideShift") && threatVisible
           ? lineOf(opp).side

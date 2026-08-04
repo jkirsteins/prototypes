@@ -152,18 +152,22 @@ describe("crossings in real duels", () => {
     const evs = runMs(d, 1400, "thrust", "thrust");
     const met = evs.find((e) => e.kind === "met");
     if (met === undefined) throw new Error("no met");
-    // Telegraphed rapier thrust travels 400..510; LS thrust travels 320..450.
-    // Overlap starts at 400; extensions cover 180 shortly after. The cue must
-    // land inside the overlap, strictly before the earliest parryableUntil.
-    expect(met.time).toBeGreaterThanOrEqual(400);
-    expect(met.time).toBeLessThan(450);
+    // Symmetric preparation: the AI rapier thrust travels 400..510, the
+    // player's folded LS thrust 500..630. Overlap starts at 500, where the
+    // delivered-side rapier extension (218 of 240) already covers the 180
+    // gap - the cue lands on the first shared-strike tick, strictly before
+    // the earliest parryableUntil.
+    expect(met.time).toBeGreaterThanOrEqual(500);
+    expect(met.time).toBeLessThan(510);
   });
 
   test("the contact tick moves with the gap: closer fighters clash earlier", () => {
-    // Longsword vs the telegraphed rapier: travel windows overlap 400..450,
-    // so the crossing instant is decided by the gap alone. (A longsword
-    // mirror would not clash at all - its telegraph pushes the AI's travel
-    // fully past the player's, which is itself the disjoint-tempo rule.)
+    // LS player thrust (travel 500..630) into the AI rapier thrust's
+    // delivered blade (full 240 from 510, standing to 620). At gaps past
+    // that lone extension the crossing waits for the player's blade to
+    // grow the difference, so the clash instant is decided by the gap.
+    // (Gaps under ~240 all clash on the first shared-strike tick and
+    // would tie - the old pre-fold gaps did exactly that.)
     const metAt = (gap: number): number => {
       const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
       d.f[0].x = 1000;
@@ -173,21 +177,25 @@ describe("crossings in real duels", () => {
       if (met === undefined) throw new Error(`no met at gap ${gap}`);
       return met.time;
     };
-    const ticks = [metAt(140), metAt(200), metAt(280)];
+    const ticks = [metAt(280), metAt(320), metAt(380)];
     expect(ticks[0]).toBeLessThan(ticks[1]);
     expect(ticks[1]).toBeLessThan(ticks[2]);
   });
 
   test("a reactive counter now crosses: pressed a full reaction after the attack starts", () => {
-    const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
+    const d = createDuel(WEAPONS.rapier, WEAPONS.longsword);
     d.f[0].x = 1000;
     d.f[1].x = 1180;
-    // The AI thrust becomes visible at 0; the player answers at 250 - the
-    // human budget. The player's travel begins at 570, inside the AI
-    // blade's delivered-but-standing strike (ends 620): steel in the line.
+    // The AI longsword thrust becomes visible at 0; the player answers
+    // at 250 - the human budget. The rapier thrust's travel begins at
+    // 650, inside the longsword blade's delivered-but-standing strike
+    // (500..760): steel in the line. (The pre-fold version countered
+    // with the longsword; its folded preparation now outlives a rapier
+    // blade's stand, so the counter that still fits is the fast one -
+    // the same tempo arithmetic the duelist-defence counter obeys.)
     let evs = runMs(d, TICK, null, "thrust");
     evs = evs.concat(runMs(d, 250 - TICK));
-    evs = evs.concat(runMs(d, 1400, "thrust", null));
+    evs = evs.concat(runMs(d, 1600, "thrust", null));
     expect(evs.filter((e) => e.kind === "met").length).toBe(1);
     expect(evs.some((e) => e.kind === "parried" && e.side === 0)).toBe(true);
     expect(evs.some((e) => e.kind === "parried" && e.side === 1)).toBe(true);
@@ -232,10 +240,11 @@ describe("crossings in real duels", () => {
     const d = createDuel(WEAPONS.longsword, WEAPONS.rapier);
     d.f[0].x = 1000;
     d.f[1].x = 1190; // inside both reaches
-    // LS cut resolves at 900. The AI rapier thrust (telegraph 140) resolves
-    // 620 after launch: launch it at 280 so both strikes end on one tick.
+    // The folded LS cut resolves at 1080. The AI rapier thrust resolves
+    // 620 after launch: launch it at tick 27 so both strikes end on one
+    // tick (empirically probed - quantization decides the exact tick).
     let evs = runMs(d, TICK, "cut", null);
-    evs = evs.concat(runMs(d, 280 - TICK));
+    evs = evs.concat(runMs(d, 27 * TICK - TICK));
     evs = evs.concat(runMs(d, 1000, null, "thrust"));
     expect(evs.some((e) => e.kind === "met")).toBe(false); // different sides: no steel
     expect(evs.some((e) => e.kind === "draw")).toBe(true);
@@ -277,7 +286,7 @@ describe("the parry clash arrives with the blade", () => {
     const t = WEAPONS.rapier.attacks.thrust;
     const strikeStart = t.windup + t.beat;
     // Press so the guard becomes effective inside the travel but after arrival.
-    const press = strikeStart + parryableMs(t) - WEAPONS.longsword.parryRiseMs - 2 * TICK;
+    const press = strikeStart + parryableMs(t) - WEAPONS.longsword.firmUpMs - 2 * TICK;
     let evs = runMs(d, TICK, "thrust", null);
     evs = evs.concat(runMs(d, press - TICK));
     evs = evs.concat(runMs(d, TICK, null, "parry"));
