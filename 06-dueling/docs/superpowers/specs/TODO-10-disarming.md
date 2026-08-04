@@ -79,10 +79,18 @@ section (§5), against a finished surface.
 owns (J cut, K thrust, L parry). While `bindAdvantageMs > 0`, I consumes the
 advantage and starts the disarm; at any other time it does nothing.
 
+**Obligation on `gamepad-support`:** that spec promises the pad as a
+complete second first-class device, so when this spec lands, the disarm
+joins its contract in the same change or the promise is broken: a
+`"disarm"` `ActionId`, keyboard and pad labels, a pad binding, prompt and
+help resolution through the shared label layer, and the routing tests.
+Whichever spec lands second carries the integration - stated here so
+neither can claim the other owned it.
+
 The first draft reused the cut key, since a cut is useless inside the
 advantage window anyway. Review rejected it on an accidental-input argument:
 today, mashing J in the opening costs a harmless wasted cut; an overloaded J
-would commit maskers to a conversion they never chose. Key overloading is
+would commit mashers to a conversion they never chose. Key overloading is
 fine in a long, signposted mode (the bind's J/K precedent stands); it is a
 trap in a 240ms window where the same key already means something else.
 The prompt teaches the key in the moment (§4.2), so discoverability is the
@@ -120,6 +128,13 @@ interface Fighter {
    *  timer. Read once, if the advantage converts to a disarm attempt;
    *  meaningless and unread otherwise. */
   bindAdvantageGrip: number;
+  /** The winner's own contact snapshot and the bind line's side axis,
+   *  saved on the same tick for the same reason: if the advantage
+   *  converts to a disarm, the attempt's frozen scene (§2.2, §4.1)
+   *  needs the winner's pose, and the bind that knew it is gone. The
+   *  loser's half already survives inside their `exposed` state. */
+  bindAdvantageContact: BindContact | null;
+  bindAdvantageLineSide: Side | null;
 }
 ```
 
@@ -137,11 +152,24 @@ argument, applied unchanged:
 interface Duel {
   // ...
   disarm: DisarmState | null;
+  /** How the duel ended, for the banner and the record: a kill, a draw,
+   *  or a taken sword. Null while it runs. */
+  outcome: "kill" | "draw" | "disarm" | null;
 }
 
 interface DisarmState {
   t: number;            // the one clock
   durationMs: number;   // fixed at the attempt's start, from the saved grip
+  /** The presentation snapshot: both contact poses and the line's side
+   *  axis, held frozen through the attempt. duel.bind died at the
+   *  contest's resolution, so the attempt re-assembles its scene from
+   *  what survived: the victim's pose lives in their `exposed` state
+   *  already (it carries contact + lineSide for exactly this reason),
+   *  and the attacker's own contact snapshot is SAVED at resolution
+   *  beside the grip (§2.1) and copied in here. The strain oscillation
+   *  is a pure function of the clock and needs no state. */
+  contact: [BindContact, BindContact];
+  lineSide: Side;
 }
 
 type FighterState =
@@ -150,6 +178,10 @@ type FighterState =
   | { kind: "disarmed" }    // terminal, like dead
   | ...;
 ```
+
+(Kill and draw populate `outcome` too - one field, three honest values -
+so the banner stops inferring the ending from `winner` alone. The existing
+end-of-duel paths gain their one-line writes in this spec.)
 
 ```ts
 durationMs = DISARM_SOFT_MS
@@ -179,10 +211,15 @@ the sword leaves their hand, exactly as they are still staggering when the
 thrust lands. Choosing between them is choosing what the win MEANS, never
 how reliable it is.
 
-A future weapon may honestly break the symmetry only through the matrix:
-if its properties ever make one conversion's invariant fail while the
-other's holds, that is a property-derived pairing fact, computed and
-pinned - never a sporadic failure of an offered conversion, which review
+Stated honestly, per review: under THIS spec, every pairing that can bind
+can always disarm - the duration derives from the loser's grip and two
+global constants, so no current weapon property can make one conversion's
+invariant fail while the other's holds. If a future spec wants
+weapon-shaped disarms, it must first add the deciding physical property
+(a hilt's retention, a grip's leverage) and feed it into this duration
+derivation - at which point the invariant becomes per-pairing arithmetic
+and the matrix can honestly diverge. Never a capability boolean, and
+never a sporadic failure of an offered conversion, which review
 established is a trap and not a mechanic.
 
 The attempt begins on the tick the I intent is accepted: the advantage
@@ -191,10 +228,22 @@ saved grip, and the attacker enters `disarming` - **committed**, accepting
 no intents until resolution, exactly as an attack past `strikeStart` is.
 Both fighters' `x` freeze at the contact gap; the `MIN_GAP` clamp still
 runs and is a no-op. The victim's exposure continues unchanged and simply
-never ends: at `disarm.t >= durationMs` the victim goes straight from
-`exposed` to `disarmed`. Nobody can be struck during an attempt - neither
-fighter is attacking. `dead` and `hitstun` keep their precedence over
-everything, as always.
+never ends: the attempt resolves before it can. Nobody can be struck
+during an attempt - neither fighter is attacking. `dead` and `hitstun`
+keep their precedence over everything, as always.
+
+**Resolution is atomic**, one tick, every field named:
+
+```ts
+// at disarm.t >= durationMs
+victim.state = { kind: "disarmed" };     // straight from exposed, never ready
+attacker.state = { kind: "ready" };      // holding the sword, free
+d.disarm = null;
+d.over = true;
+d.winner = attackerSide;
+d.outcome = "disarm";
+emit(d, out, attackerSide, "disarmed", ...);  // the one logged outcome event
+```
 
 ---
 
@@ -280,7 +329,12 @@ comes from the seeded rng. No error rates, no deliberate mistiming.
 
 ### 5.1 Converting a won bind: a plan formed in the bind, fired on the win
 
-Mode 3 never decides at the moment of victory, because the constitution
+Everything in this section applies to modes 3 AND 4 alike - mode 4 is the
+duelist with the stance tell amputated, and its in-bind policy is already
+mode 3's (`pressure-and-winding` §9); the conversion plan rides the same
+shared block. Modes 1 and 2 draw no plans and convert nothing (§5.3).
+
+The duelist never decides at the moment of victory, because the constitution
 forbids it: the resolution tick is younger than any legal read. The answer
 is the human one - anticipation. At bind entry, beside the seeded
 temperament draw `pressure-and-winding` §9 already gives it, the duelist
@@ -290,24 +344,34 @@ ends.
 
 With both conversions guaranteed, the plan needs no arithmetic gate - the
 first draft's feasibility table died with the resist - and the draw is pure
-personality:
+personality. BOTH the plan and its execution delay are drawn at bind
+entry - the resolution tick draws nothing, fires only what already exists:
+
+```ts
+// in AiState.bind, drawn at entry beside the temperament:
+conversionPlan: "thrust" | "disarm" | "withdraw";
+conversionDelayMs: number;   // seeded from DUELIST_CONVERT_DELAY_MS = [0, 60]
+// set on the win, never drawn there:
+conversionDueAt: number | null;
+```
 
 | Draw | Base weights |
 |---|---|
 | thrust / disarm / withdraw | 0.40 / 0.40 / 0.20 |
 
 The weights are playtest knobs (a merciful duelist is a personality, and
-`duelist-defence` §9 reserved personalities as layered constants). Withdraw
-means the plan is to spend the advantage on nothing - step away - the
-opponent-shaped mercy of not converting at all; it already exists as
-"advantage cleared by anything else" and costs no new mechanics.
+`duelist-defence` §9 reserved personalities as layered constants).
+**Withdraw is the normal retreat intent**, issued as the conversion: it
+spends the advantage on a step away ("advantage cleared by anything else"),
+costing no new mechanics - the opponent-shaped mercy of not converting.
 
-If the bind resolves the duelist's way, the plan fires after a seeded delay
-drawn from `DUELIST_CONVERT_DELAY_MS = [0, 60]` - execution jitter on a
-decision already made. The delay ceiling plus the firmest strip still fits
-the invariant (60 + 260 << 520). If the bind is lost, the plan dies unread.
-**No draw of any kind happens on the resolution tick**, and a test pins
-that. The plan is hidden, and legitimately so: it is a plan about the
+If the bind resolves the duelist's way, `conversionDueAt` is set from the
+already-drawn delay and the plan fires when the clock reaches it -
+execution jitter on a decision made at entry, a fencer who knew what the
+win was for before it came. The delay ceiling plus the firmest strip still
+fits the invariant (60 + 260 << 520). If the bind is lost, the plan dies
+unread. **No draw of any kind happens on the resolution tick**, and a test
+pins that. The plan is hidden, and legitimately so: it is a plan about the
 duelist's own future action, not bind state; through the whole bind and up
 to the conversion's first tick, the opponent-observable projection is
 identical whichever plan was drawn.
@@ -325,7 +389,8 @@ Mode 1 never converts (it attacks nothing, as before). Mode 2 never
 converts either - the metronome holds in binds and its losses end like
 anyone's. Both are one sentence because §2.2 removed everything there was
 to decide; binding mode 2 (it always holds) and stripping it is the first
-place the full sequence can be rehearsed, which keeps it the drill.
+place the full sequence can be rehearsed, which keeps it the drill. Modes
+3 and 4 are the converting modes, per §5.1.
 
 ---
 
