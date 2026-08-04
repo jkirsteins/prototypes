@@ -132,6 +132,30 @@ export function dropGuard(f: Fighter): void {
 }
 
 /**
+ * How long a guard pressed toward `aim` takes to form, from this fighter's
+ * current posture: the three-way max of the rise, the side rotation and
+ * the height travel - concurrent, never summed. The parry acceptance
+ * below, the duelist's defence policy and the feasibility-matrix test all
+ * call this one function, so what the AI believes a guard costs can never
+ * drift from what the engine charges. A stance standing at the wrong
+ * height pays the full travel (the press must follow a stance intent);
+ * one already in motion pays only the remainder.
+ */
+export function guardFormationMs(f: Fighter, aim: Line): number {
+  const heightTravel =
+    f.height === aim.height && f.heightTo === null
+      ? 0
+      : f.heightTo === aim.height
+        ? f.weapon.heightChangeMs - f.heightT
+        : f.weapon.heightChangeMs;
+  return Math.max(
+    f.weapon.parryRiseMs,
+    aim.side === f.guardSide ? 0 : f.weapon.sideChangeMs,
+    heightTravel,
+  );
+}
+
+/**
  * The line an attack occupies: height from the launch snapshot, side from
  * the attack's own declaration. Nothing may infer either from the attack
  * kind - an inside cut is a data change, and this is where that promise
@@ -347,11 +371,7 @@ function applyIntentInner(
       f.parry = {
         phase: "rising",
         phaseMs: 0,
-        phaseDurationMs: Math.max(
-          f.weapon.parryRiseMs,
-          side === f.guardSide ? 0 : f.weapon.sideChangeMs,
-          f.heightTo === null ? 0 : f.weapon.heightChangeMs - f.heightT,
-        ),
+        phaseDurationMs: guardFormationMs(f, aim),
         coveredLine: aim,
         targetLine: aim,
         settledMs: 0,

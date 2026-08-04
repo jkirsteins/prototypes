@@ -1,10 +1,10 @@
 import { zoneFor } from "./measure";
 import { gapOf } from "./engine";
 import { yieldOpportunity } from "./bind";
-import { TICK, guardEffective, lineOf } from "./fighter";
+import { TICK, guardEffective, guardFormationMs, lineOf } from "./fighter";
 import type { Duel } from "./engine";
 import type { Fighter } from "./fighter";
-import type { AttackKind, Height, Intent, WeaponProfile } from "./types";
+import type { AttackKind, Height, Intent, Line, WeaponProfile } from "./types";
 
 /** Mode 4 is the duelist with the stance tell amputated - a testing mode. */
 export type AiMode = 0 | 1 | 2 | 3 | 4;
@@ -79,9 +79,19 @@ export interface AiState {
    * Modes 3/4: the one live threat - a visible, in-measure attack,
    * identified by its start instant. One seeded roll per threat decides
    * the answer once the reaction elapses; back-to-back attacks latch
-   * distinct threats with distinct rolls.
+   * distinct threats with distinct rolls. `line` is the threat's line as
+   * the policy last legitimately read it: a redirect younger than the
+   * drawn reaction is invisible, so the read lags the lie by design.
    */
-  threat: { startedAt: number; roll: number; answered: boolean } | null;
+  threat: {
+    startedAt: number;
+    roll: number;
+    answered: boolean;
+    answer: "guard" | "retreat" | "counter" | "stand" | null;
+    line: Line | null;
+    /** The retreat draw is one step, not a rout: fired once. */
+    executed: boolean;
+  } | null;
   /**
    * Modes 3/4: the in-bind policy state, created at bind entry and cleared
    * when the bind ends. The temperament is one seeded draw; `obs` is the
@@ -308,13 +318,13 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
     }
     return null;
   }
-  // Defence-lite (a slice of duelist-defence, brought forward at
-  // playtest: cuts always killed the duelist, and it sometimes STEPPED
-  // INTO them). A visible, in-measure attack latches ONE threat with one
-  // seeded roll; after the drawn reaction the duelist answers - a parry
-  // when one can still form (stance matches and the rise beats the
-  // meetable window, the engine's own arithmetic), a retreat out of
-  // reach otherwise or by draw - and sometimes stands. Either way, while
+  // The defence policy (duelist-defence): a visible, in-measure attack
+  // latches ONE threat with one seeded roll over four answers - guard
+  // 0.40, retreat 0.20, counter-attack 0.15, stand 0.25 - fired after
+  // the drawn reaction. The guard answer checks feasibility with the
+  // engine's own arithmetic (guardFormationMs) and downgrades honestly
+  // to retreat; the counter is drawn like a normal plan, and its
+  // crossing is the duelist's one door into the bind. Either way, while
   // a live blade points at it the duelist NEVER closes: the whole
   // approach/attack pulse below is suppressed until the threat resolves.
   if (mode === 3 || mode === 4) {
@@ -329,34 +339,99 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
       // approach pulse marched it back into a still-flying cut the
       // moment its own retreat had carried it out of reach.
       if (gapOf(d) <= opp.weapon.reach) {
+        // The latch waits out the duelist's own attack: committed is
+        // committed, the trade stands, and no roll burns until the
+        // blade comes home.
         const startedAt = d.time - os.elapsedMs;
-        if (ai.threat === null || Math.abs(ai.threat.startedAt - startedAt) >= TICK / 2) {
-          ai.threat = { startedAt, roll: nextRandom(ai), answered: false };
+        if (
+          self.state.kind !== "attack" &&
+          (ai.threat === null || Math.abs(ai.threat.startedAt - startedAt) >= TICK / 2)
+        ) {
+          ai.threat = {
+            startedAt, roll: nextRandom(ai),
+            answered: false, answer: null, line: lineOf(opp), executed: false,
+          };
         }
         const th = ai.threat;
         if (
+          th !== null &&
           !th.answered &&
           os.elapsedMs >= ai.reactionMs &&
           self.state.kind === "ready" &&
           self.stepRecoveryMs <= 0
         ) {
           th.answered = true;
+          const reaction = ai.reactionMs;
           ai.reactionMs = drawReaction(ai);
-          const canParry =
-            self.parry === null &&
-            self.parryRecoveryMs <= 0 &&
-            self.height === os.height &&
-            self.heightTo === null &&
-            os.elapsedMs + self.weapon.parryRiseMs <= os.timeline.parryableUntil;
-          if (th.roll < 0.55 && canParry) return "parry";
-          if (th.roll < 0.85) return "retreat"; // infeasible parries downgrade here
-          // else: stand - no defensive action, and no closing either.
+          // The read is delayed: the line latched with the threat is the
+          // pre-redirect original, and it refreshes to the current line
+          // only when any redirect is older than the reaction - a young
+          // lie is invisible, so the decision aims where the attack
+          // stood before it. (The side of any press still rides the
+          // engine's inference from the CURRENT visible attack - the
+          // same sugar the player's press gets.)
+          if (os.redirectedAtMs === null || os.elapsedMs - os.redirectedAtMs >= reaction) {
+            th.line = lineOf(opp);
+          }
+          th.answer =
+            th.roll < 0.4 ? "guard"
+            : th.roll < 0.6 ? "retreat"
+            : th.roll < 0.75 ? "counter"
+            : "stand";
+          // A defence pre-empts a pending unthrown plan; stand lets it
+          // proceed (committed is committed - its stance move already told).
+          if (th.answer !== "stand") ai.plan = null;
+          if (th.answer === "counter") ai.plan = drawPlan(self, opp, ai, mode);
+        }
+        if (th?.answered) {
+          if (th.answer === "guard") {
+            const intent = guardAnswer(self, opp, ai, th);
+            if (th.answer === "guard") return intent;
+            // downgraded: fall through to the retreat branch this tick
+          }
+          if (th.answer === "retreat") {
+            if (
+              !th.executed &&
+              self.state.kind === "ready" &&
+              self.stepRecoveryMs <= 0
+            ) {
+              th.executed = true;
+              return "retreat";
+            }
+            return null;
+          }
+          if (th.answer === "counter") {
+            if (self.state.kind === "ready" && self.stepRecoveryMs <= 0) {
+              return executePlan(self, ai);
+            }
+            return null;
+          }
+          // stand: no defensive action - but a plan decided BEFORE the
+          // threat still proceeds.
+          if (ai.plan !== null && self.state.kind === "ready" && self.stepRecoveryMs <= 0) {
+            return executePlan(self, ai);
+          }
         }
       } else {
         ai.threat = null;
       }
       return null; // a fencer does not walk onto a blade
     }
+    // No live threat: a guard left standing from an answered one comes
+    // down after a reaction, exactly mode 1's release lifecycle - the
+    // duelist pays the input lifecycle like anyone else, and a guard
+    // that never came down would be a permanent wall the menu never
+    // priced.
+    if (self.parry !== null && os.kind !== "attack") {
+      ai.releaseInMs += dt;
+      if (ai.releaseInMs >= ai.reactionMs) {
+        ai.releaseInMs = 0;
+        ai.reactionMs = drawReaction(ai);
+        return "parryRelease";
+      }
+      return null;
+    }
+    ai.releaseInMs = 0;
   }
 
   // Free to act means the settle is over too: deciding during it would
@@ -400,28 +475,118 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
   if (ai.cooldown <= 0) {
     const floor = duelistCooldown(self.weapon);
     ai.cooldown = floor * (1 + DUELIST_JITTER * nextRandom(ai));
-    const attack: AttackKind = nextRandom(ai) < 0.5 ? "thrust" : "cut";
-    let height: Height = nextRandom(ai) < 0.5 ? "high" : "low";
-    if (height === ai.lastHeight && ai.sameHeightRun >= 2) {
-      height = height === "high" ? "low" : "high";
-    }
-    // A standing guard is row-3 information: launch where it is not.
-    // The draws above still burn, so replays stay comparable.
-    if (opp.parry !== null && guardEffective(opp)) {
-      height = opp.parry.coveredLine.height === "high" ? "low" : "high";
-    }
-    // Mode 4: the same duelist with the stance tell amputated - every
-    // draw above still burns, so a seeded mode-3 and mode-4 fight stay
-    // comparable, but the plan is pinned to the standing height and
-    // executePlan therefore never moves the stance. A testing mode: what
-    // is still readable without the tell is exactly what it isolates.
-    if (mode === 4) height = self.height;
-    ai.sameHeightRun = height === ai.lastHeight ? ai.sameHeightRun + 1 : 1;
-    ai.lastHeight = height;
-    ai.plan = { attack, height };
+    ai.plan = drawPlan(self, opp, ai, mode);
     return executePlan(self, ai);
   }
   return "retreat";
+}
+
+/**
+ * One attack plan, drawn the one way the duelist draws attacks: seeded
+ * kind and height, the anti-repeat cap, the standing-guard avoid, and
+ * mode 4's pinned height. The pulse and the counter-attack answer share
+ * this, so a counter is drawn exactly like a planned attack - same
+ * draws, same stance-first tell, no special counter grammar to learn.
+ */
+function drawPlan(
+  self: Fighter,
+  opp: Fighter,
+  ai: AiState,
+  mode: AiMode,
+): { attack: AttackKind; height: Height } {
+  const attack: AttackKind = nextRandom(ai) < 0.5 ? "thrust" : "cut";
+  let height: Height = nextRandom(ai) < 0.5 ? "high" : "low";
+  if (height === ai.lastHeight && ai.sameHeightRun >= 2) {
+    height = height === "high" ? "low" : "high";
+  }
+  // A standing guard is row-3 information: launch where it is not.
+  // The draws above still burn, so replays stay comparable.
+  if (opp.parry !== null && guardEffective(opp)) {
+    height = opp.parry.coveredLine.height === "high" ? "low" : "high";
+  }
+  // Mode 4: the same duelist with the stance tell amputated - every
+  // draw above still burns, so a seeded mode-3 and mode-4 fight stay
+  // comparable, but the plan is pinned to the standing height and
+  // executePlan therefore never moves the stance. A testing mode: what
+  // is still readable without the tell is exactly what it isolates.
+  if (mode === 4) height = self.height;
+  ai.sameHeightRun = height === ai.lastHeight ? ai.sameHeightRun + 1 : 1;
+  ai.lastHeight = height;
+  return { attack, height };
+}
+
+/**
+ * Carry the guard answer out against whatever the guard is already doing
+ * (duelist-defence §4.2.1): press from cold - stance first - keep holding
+ * a matching line, shift a wrong one, let an in-motion travel arrive.
+ * Every path checks feasibility with the engine's own arithmetic
+ * (guardFormationMs, the same function the parry acceptance runs) and
+ * downgrades to retreat - by rewriting th.answer, which the caller then
+ * executes - whenever the steel cannot arrive before parryableUntil: a
+ * press that cannot form is noise, not imperfection. The wrong-line
+ * correction doubles as the line-feints shift reflex: th.line refreshes
+ * only once a redirect is older than the drawn reaction, so a lie told
+ * inside the duelist's shift latency defeats the guard exactly as it
+ * defeats a human.
+ */
+function guardAnswer(
+  self: Fighter,
+  opp: Fighter,
+  ai: AiState,
+  th: NonNullable<AiState["threat"]>,
+): Intent | null {
+  const os = opp.state;
+  if (os.kind !== "attack") return null;
+  if (os.redirectedAtMs === null || os.elapsedMs - os.redirectedAtMs >= ai.reactionMs) {
+    th.line = lineOf(opp);
+  }
+  const line = th.line;
+  if (line === null) return null;
+  const deadline = os.timeline.parryableUntil;
+  const p = self.parry;
+  if (p === null) {
+    if (self.state.kind !== "ready") return null; // feet committed: wait
+    if (os.elapsedMs + self.parryRecoveryMs + guardFormationMs(self, line) > deadline) {
+      th.answer = "retreat";
+      return null;
+    }
+    if (self.height !== line.height && self.heightTo === null) {
+      return line.height === "high" ? "stanceUp" : "stanceDown";
+    }
+    if (self.parryRecoveryMs > 0) return null; // press the moment it clears
+    return "parry";
+  }
+  if (p.phase === "held") {
+    if (p.coveredLine.height === line.height && p.coveredLine.side === line.side) {
+      return null; // the answer is to keep holding
+    }
+    if (p.coveredLine.height !== line.height) {
+      if (os.elapsedMs + self.weapon.guardShiftMs > deadline) {
+        th.answer = "retreat";
+        return null;
+      }
+      return line.height === "high" ? "stanceUp" : "stanceDown";
+    }
+    if (os.elapsedMs + self.weapon.sideChangeMs > deadline) {
+      th.answer = "retreat";
+      return null;
+    }
+    return "sideShift";
+  }
+  // Rising or shifting: a travel toward the threat that arrives in time
+  // needs nothing; a shift whose OLD line matches stays covered for as
+  // long as it runs (held-guard's old-line-holds rule). Anything else
+  // cannot retarget mid-travel - downgrade.
+  const arrivesAt = os.elapsedMs + (p.phaseDurationMs - p.phaseMs);
+  const toward =
+    p.targetLine.height === line.height && p.targetLine.side === line.side;
+  const oldCovers =
+    p.phase === "shifting" &&
+    p.coveredLine.height === line.height &&
+    p.coveredLine.side === line.side;
+  if (oldCovers || (toward && arrivesAt <= deadline)) return null;
+  th.answer = "retreat";
+  return null;
 }
 
 /**

@@ -53,16 +53,34 @@ with which tool. `held-guard` §9 said so explicitly: the trigger "arrives in
 
 Last is the only correct place for it. A defence policy chooses over the
 complete kit, and a policy written mid-chain would have been rewritten by
-every spec that followed - and the bind proves the sequencing concretely: in
-any pairing `canBind` sustains, a duelist that parries enters binds as the
-**defender**, so the bind game must already exist and already have an AI
-strategy, or every successful AI parry would dead-end. `pressure-and-winding` §9 supplied that policy;
-this spec only routes new traffic into it.
+every spec that followed - today's chain proves it: since the
+force-into-force revision a parried blade NEVER binds, so the old
+sequencing argument (that an AI parry would dead-end into the bind game)
+is not merely stale, it is inverted. The bind's one door is the crossing,
+and this spec's COUNTER-ATTACK adds a defender-born blade the player can
+cross. Note what the arithmetic does NOT allow: a reactive counter can
+never cross the attack it answers - the fast counter flies on the other
+side (a thrust's inside against a cut's outside), and the matching-side
+one launches reaction + telegraph + windup after the trigger, past its
+meetable window - so the counter binds only when the player throws a
+FURTHER attack into its standing steel (`blade-contact`'s delivered-blade
+rule). `pressure-and-winding` §9 supplies the in-bind policy that
+crossing lands in; this spec routes traffic into it.
+
+**A defence-lite slice already shipped** (in `src/combat/ai.ts`, at
+playtest: cuts always killed the duelist and it stepped INTO them): one
+threat latched per visible in-measure attack, one seeded roll over
+parry-if-formable / retreat / stand, and closing suppressed under any
+live blade. This spec ABSORBS that slice: the trigger and the
+no-closing rule stand as built, and the menu below replaces the lite
+roll.
 
 This spec adds the policy and nothing else. Every reflex stays where it was
-specified and is invoked, not copied. Mode 1's press mechanics (stance
-first, react, press) are promoted to a shared helper that both modes call -
-mode 1 with its perfect trigger, mode 3 through the imperfect policy below.
+specified and is invoked, not copied. The guard answer follows mode 1's
+press pattern (stance first, wait for arrival, press) through the policy's
+own executor; mode 1's inline code is deliberately untouched, because §6
+pins its decision stream byte-for-byte and a "behavior-preserving" refactor
+of a pinned stream is risk purchased for nothing.
 `duelistCooldown`'s own comment reserved this slot: "personality-driven
 pacing, when it comes, layers on top as fighter-cognition delays in plain
 milliseconds." This spec is that layer, for defence.
@@ -96,11 +114,14 @@ The duelist must be beatable, and beatable in ways that read as fencing.
 Four honest weaknesses, all structural, none of them sabotage:
 
 1. **It reacts like a fencer, not a tick-handler.** Each incoming threat
-   gets a decision latency drawn seeded from
-   `DUELIST_DEFENCE_LATENCY_MS = [AI_REACTION_MS, AI_REACTION_MS + 220]`,
-   i.e. 180 to 400 ms, mean 290 - a touch worse than the player's 250 ms
-   budget. A fast draw feels sharp; a slow draw *is* the opening. The floor
-   is `AI_REACTION_MS` and nothing in this spec may react faster (test).
+   is answered on the SHARED drawn reaction (`drawReaction`: base plus
+   seeded jitter, [200, 420] ms, mean 310) - one clock idiom for the whole
+   AI, not a second latency band; a spec-specific
+   `DUELIST_DEFENCE_LATENCY_MS` was dropped when the codebase moved every
+   reaction to the seeded draw. Mean 310 is a touch worse than the
+   player's 250 ms budget: a fast draw feels sharp; a slow draw *is* the
+   opening. The floor is the draw's own (200 ms) and nothing in this spec
+   may react faster (test).
 2. **It commits.** Once it presses, it owns the snapshot: its guard covers
    the line from its delayed read - the observable snapshot
    `AI_REACTION_MS` before the decision tick (§4.2.1) - and it corrects
@@ -143,11 +164,20 @@ only the `line-feints` §6 shift reflex may answer the lie.
 ```ts
 interface AiState {
   // ...
-  /** The one live threat: which attack (by start tick), when the answer
-   *  fires, and whether it already has. */
-  threat: { attackStartTick: number; latencyMs: number; answered: boolean } | null;
+  /** The one live threat: which attack (by its start instant), the menu
+   *  roll, the chosen answer once the reaction elapses, and the line as
+   *  read at that decision (delayed per §4.2.1). */
+  threat: {
+    startedAt: number; roll: number; answered: boolean;
+    answer: "guard" | "retreat" | "counter" | "stand" | null;
+    line: Line | null; executed: boolean;
+  } | null;
 }
 ```
+
+The latch itself waits out the duelist's own attack (§4.1's commitment
+rule: no draw while committed), so a threat that outlives the trade is
+latched - and rolled - only when the duelist's blade comes home.
 
 No draw happens at all when the attack cannot land: mode 1's out-of-measure
 rule (an attack launched from beyond the attacker's own reach is ignored)
@@ -166,8 +196,8 @@ One seeded draw over four answers, weights zone-independent to start
 | Answer | Weight | What it does |
 |---|---|---|
 | guard | 0.40 | cover the threat's line: press from cold, shift a wrong-line hold, keep holding a matching one (§4.2.1) |
-| void | 0.20 | void immediately on the decision tick; a held guard drops on acceptance (`held-guard` §7); whether it escapes is measure, as for the player |
-| counter-attack | 0.15 | launch an attack drawn like its normal plan (seeded kind and height, stance first), dropping a held guard on acceptance; `blade-contact` decides what the two blades do |
+| retreat | 0.20 | one step back on the decision tick; whether it escapes is measure, as for the player. (The first draft said void here; playtest of the lite slice settled on the step - it proved the right evasion in play, keeps a held guard riding per rule D, and leaves the committed, guard-dropping void as the player's tool) |
+| counter-attack | 0.15 | launch an attack drawn like its normal plan (seeded kind and height, stance first, same anti-repeat), dropping a held guard on acceptance; `blade-contact` decides what the two blades do. It loses every direct trade by construction (reaction + telegraph make it the slower blade - §3.3's priced gamble); its value is the standing steel it leaves in the line, which punishes a chase and is the AI's door into the bind (§1, §4.3) |
 | stand | 0.25 | no defensive action, and no new attack plan while this threat is live (§4.2.2) |
 
 The weights are a personality, and playtest knobs. What is not a knob:
@@ -176,12 +206,15 @@ be attacked into), and no answer's weight reaches one.
 
 #### 4.2.1 The guard answer, over whatever the guard is already doing
 
-**Every line comparison below reads the threat's line from the observable
-snapshot at `decisionTick - AI_REACTION_MS`** - the §2 rule applied to the
-freshest read the decision is allowed. A redirect inside that window is
-invisible to this decision: the guard line it selects is computed from the
-delayed snapshot, never from the current tick, and only the `line-feints`
-§6 shift reflex - on its own delayed clock - may answer the lie later.
+**The height comparison below reads the threat's line from the delayed
+snapshot** - the §2 rule applied to the freshest read the decision is
+allowed: a redirect younger than the drawn reaction is invisible, so the
+stance and shift targets are chosen from the line as it stood BEFORE the
+young lie, and only the `line-feints` §6 shift reflex - on its own delayed
+clock - may answer it later. (As built the delay governs the HEIGHT axis
+only: the side of any press is the engine's inference from the currently
+visible attack - the same syntactic sugar the player's own press gets, so
+following it is symmetric, not superhuman.)
 
 `held-guard` §9 lets the duelist wait with a guard already up, rising or
 mid-shift, so the guard branch must never assume a cold start - and a
@@ -199,24 +232,26 @@ what the track is doing:
   answered only by the `line-feints` §6 shift reflex, on its own rule.
 - **Rising:** toward the threat's line and forming in time - continue,
   nothing to issue. Toward any other line - no retarget exists, because
-  shifts are refused while rising (`held-guard` §6): downgrade to void.
+  shifts are refused while rising (`held-guard` §6): downgrade to
+  retreat.
 - **Shifting:** toward the threat's line and completing in time -
   continue. Old covered line matching the threat - also continue: the old
   line stays protected for as long as the shift runs (`held-guard` §6's
   old-line-holds rule). Neither the old nor the target line matching - a
-  second shift cannot start while one is active: downgrade to void.
+  second shift cannot start while one is active: downgrade to retreat.
 
 **Every guard answer checks feasibility with the engine's own arithmetic
 and downgrades honestly.** The formation deadline is `attack-lines` §4's
-rule, called through the shared `guardEffectiveAt` helper and never
-re-derived: the decision tick plus the **max** of the rise, the remaining
-height travel and the side travel - the travels run concurrently, they are
-never summed. A shift's deadline is its own duration (`held-guard` §6). If
-the formed guard or completed shift would land past the visible attack's
-`parryableUntil`, the duelist starts neither: it downgrades to void, which
-drops any held guard normally. A press that cannot form is not
-imperfection, it is noise, and it would teach the player that AI guards
-are decorative.
+rule, called through the shared `guardFormationMs` helper - extracted
+from the engine's own parry acceptance, so the policy, the test and the
+live guard literally share one function: the **max** of the rise, the
+remaining height travel and the side travel - concurrent, never summed -
+plus one tick when a stance intent must precede the press. A shift's
+deadline is its own duration (`held-guard` §6). If the formed guard or
+completed shift would land past the visible attack's `parryableUntil`,
+the duelist starts neither: it downgrades to retreat. A press that
+cannot form is not imperfection, it is noise, and it would teach the
+player that AI guards are decorative.
 
 #### 4.2.2 What stand means
 
@@ -233,16 +268,19 @@ the pulse resumes on its cooldown.
 ### 4.3 After the exchange
 
 No scripted riposte. A successful deflection leaves the duelist with
-whatever its cooldown and zone say next, exactly as before; where a riposte
-exists by rights - a bind won through `pressure-and-winding` -
-the bind advantage already is one, and this spec routes the AI into that
-game as a defender for the first time. Its firmness there is emergent and
-correct: the standing hold arrives settled and firm, entering the contest
-with control leaning its way; a last-moment reactive press arrives soft
-and starts the contest being pushed (`pressure-and-winding` §1, §3.1). The blade relation
-`sustained-bind` §2.3 reserves needs no handling here at all: this spec
-enters the existing bind policy and nothing more; bind geometry and its
-eventual use belong to `sustained-bind` and `pressure-and-winding`.
+whatever its cooldown and zone say next, exactly as before; where a
+riposte exists by rights - a bind won through `pressure-and-winding` -
+the bind advantage already is one, and the counter-attack is how a
+DEFENDING duelist can reach that game: its thrown blade stands delivered
+in the line, and a player who chases into it crosses steel (§1's
+arithmetic; the direct trade it just lost is the other, priced outcome).
+Its firmness there is emergent and correct: entry firmness is strike
+travel progress, so the standing, delivered counter enters firm against
+the arriving chase, starting the contest leaning the duelist's way
+(`pressure-and-winding` §1, §3.1). The blade relation `sustained-bind`
+§2.3 reserves needs no handling here at all: this spec enters the
+existing bind policy and nothing more; bind geometry and its eventual use
+belong to `sustained-bind` and `pressure-and-winding`.
 
 ---
 
@@ -258,27 +296,35 @@ other.
 The defender's side of the arithmetic is `attack-lines` §4's rule and no
 other: the decision tick plus the three-way `max` of the rise, the
 remaining height travel and the side travel - concurrent, never summed -
-obtained by calling the engine's `guardEffectiveAt` helper, the same
-function the live policy uses, so the test and the behaviour cannot drift
-apart.
+obtained by calling the engine's `guardFormationMs` helper, the same
+function the live parry acceptance uses, so the test and the behaviour
+cannot drift apart.
 
 That table is a test, not a paragraph, in the same style as the two
 matrices before it: computed for every (defender weapon, attacker weapon,
-attack, stance right or wrong, latency at floor and at ceiling) and pinned,
-so a retune moves it visibly. The expected shape, to be confirmed by the
-computation when this lands: cuts answerable from the right stance, the
-tell-less thrusts not, echoing `parry-rise` §5.1.
+attack, stance right or wrong, latency at floor and at mean) and pinned,
+so a retune moves it visibly. The shape under the shipping numbers: cuts
+answerable from the right stance, the tell-less thrusts not - echoing
+`parry-rise` §5.1 - with one knife-edge exception: at the very floor of
+the reaction band from the correct stance, the longsword thrust is
+answerable by 30-60 ms (by defender weapon). A sharp draw against the slowest thrust SHOULD
+occasionally catch it; that margin is the difference between a rule and a
+tendency.
 
 One invariant sits above the table:
 
 > **For every weapon pairing, at least one player attack must remain
-> unanswerable by reactive defence even at the latency floor from the
-> correct stance.** The player always keeps a guaranteed
+> unanswerable by reactive defence at the reaction band's mean from the
+> correct stance** - under the shipping numbers, every thrust. (The first
+> draft demanded this at the band's floor; the shipping arithmetic says
+> the longsword thrust squeaks under a floor draw, and that knife-edge is
+> kept deliberately rather than slowing the duelist's whole band to
+> manufacture an absolute.) The player always keeps a
 > non-reactively-parryable attack - not a guaranteed hit: the void, the
 > counter, a guard that was already standing, and distance may all still
-> answer it. What may never answer it is a guard formed in reaction. If a retune ever
-> makes everything reactively answerable, the latency floor rises before
-> anything else moves.
+> answer it. What may never answer it is a guard formed in reaction to a
+> typical read. If a retune ever makes everything answerable at the mean,
+> the reaction base rises before anything else moves.
 
 ---
 
@@ -287,8 +333,11 @@ One invariant sits above the table:
 Mode 1 keeps its perfect trigger and stays the drill: the place to learn a
 mechanic against an opponent that always answers when it can and tells you
 when it cannot. Mode 2 stays the metronome and still never defends. The
-policy, the latency draws and the menu exist only in mode 3; a test pins
-modes 1 and 2's decision streams unchanged for the same seed.
+policy, the latency draws and the menu exist only in modes 3 and 4 - mode
+4 is the duelist with the stance tell amputated, and it defends exactly
+like mode 3 (its counter-attack plan pins its standing height, like every
+mode-4 plan); a test pins modes 1 and 2's decision streams unchanged for
+the same seed.
 
 The difficulty ladder falls out for free: mode 2 never defends, mode 1
 always defends and predictably, mode 3 defends sometimes and on its own
@@ -315,10 +364,10 @@ word "defends", and nothing else changes.
 
 - **Determinism:** same seed and input script, same threat latencies, same
   menu draws, same defensive intent ticks.
-- **The floor:** no defensive intent ever fires earlier than
-  `AI_REACTION_MS` after the threat became visible; every latency draw
-  falls inside `DUELIST_DEFENCE_LATENCY_MS`, and over a long seeded run
-  the draws span the band rather than clustering at one end.
+- **The floor:** no defensive intent ever fires earlier than the reaction
+  band's floor (200 ms) after the threat became visible; the draws span
+  the band rather than clustering at one end (the existing `drawReaction`
+  tests already pin the band itself).
 - **No future information:** two duels identical through tick T and
   differing only in the attacker's inputs after T produce identical
   duelist decisions through T - `held-guard`'s test, extended to the
@@ -332,28 +381,30 @@ word "defends", and nothing else changes.
   draw issues no new intent and the hold persists through resolution; with
   a wrong-line hold it issues shift intents and never a press; and no
   `parry` intent is ever emitted while `parry !== null`.
-- **The read is delayed:** a redirect less than `AI_REACTION_MS` before
-  the decision tick does not change the AI's selected guard line; the same
-  redirect one tick earlier than that does.
+- **The read is delayed:** a redirect younger than the drawn reaction at
+  the decision tick does not change the AI's selected guard HEIGHT; an
+  older redirect does (§4.2.1's as-built rule: the side axis rides the
+  engine's press inference, same as the player's).
 - **In-motion guards:** a guard rising toward the threat's line in time
   issues nothing and meets the blade; rising toward another line
-  downgrades to void; a shift completing on the threat's line in time
-  continues; a threat on an active shift's old line is met while the shift
-  runs; a threat matching neither line of an active shift downgrades to
-  void.
+  downgrades to retreat; a shift completing on the threat's line in time
+  continues; a threat on an active shift's old line is met while the
+  shift runs; a threat matching neither line of an active shift
+  downgrades to retreat.
 - **Stand suppresses the pulse:** a stand draw creates no new attack plan
   while its threat is live, existing movement continues, and an
   already-held guard stays up - and may still produce a `parried`. The
   pulse resumes on its cooldown after resolution.
 - **Feasibility matrix:** computed from `WEAPONS` through the shared
-  `guardEffectiveAt` helper and pinned, with the §5 invariant asserted per
-  pairing.
+  `guardFormationMs` helper and pinned, with the §5 invariant asserted
+  per pairing.
 - **The downgrade:** a threat constructed so no guard can form in time
-  yields a void, never a press; a wrong-line hold whose correcting shift
-  cannot complete in time voids instead of shifting; and no duelist press
-  or shift ever completes past the visible attack's `parryableUntil`. The
-  check calls the engine's `guardEffectiveAt` helper - asserted to be the
-  same function the matrix uses, not a re-derived copy of the `max`.
+  yields a retreat, never a press; a wrong-line hold whose correcting
+  shift cannot complete in time retreats instead of shifting; and no
+  duelist press or shift ever completes past the visible attack's
+  `parryableUntil`. The check calls the engine's `guardFormationMs`
+  helper - the same function the matrix and the live acceptance use, not
+  a re-derived copy of the `max`.
 - **The mix is real:** over a long seeded run against a scripted attacker,
   all four answers occur, and the fraction of in-measure attacks answered
   at all sits inside a wide pinned band - a drift alarm, not a tuning
@@ -365,10 +416,13 @@ word "defends", and nothing else changes.
 - **Commitment against its own attack:** no defensive intent is emitted
   while the duelist's own attack state is live; a pending unthrown plan is
   cleared when the menu draws a defence.
-- **Bind entry as defender:** a duelist parry that becomes a bind - in any
-  pairing `canBind` sustains, the rapier mirror as much as the longsword
-  mirror - runs `pressure-and-winding` §9's policy from the starting
-  control its snapshot earned; no special-case path.
+- **Bind entry as defender:** a player attack thrown INTO the duelist's
+  standing counter - cut, feint, chase, in a pairing `canBind` sustains -
+  crosses steel and enters the bind, running `pressure-and-winding` §9's
+  policy from the starting control the delivered blade's firmness earned;
+  no special-case path. (A duelist parry never binds: parries deflect,
+  per the force-into-force revision; and the counter never crosses the
+  attack it answers, per §1's arithmetic.)
 - **Modes 1 and 2 unchanged:** identical decision streams for the same
   seed before and after this spec.
 - **Golden replay:** hash re-recorded.
@@ -387,9 +441,9 @@ word "defends", and nothing else changes.
 - **Scripted ripostes** after a deflection. §4.3.
 - **Predictive stance play** beyond `held-guard` §9's standing hold - no
   deliberate line-baiting, no guard camping strategy.
-- **Defensive footwork** beyond the existing retire pulse and the void
-  draw - no measure feints, no false-distance play (`line-feints` §8
-  already defers step feints for the player too).
+- **Defensive footwork** beyond the existing retire pulse and the retreat
+  draw - no voids, no measure feints, no false-distance play
+  (`line-feints` §8 already defers step feints for the player too).
 - Any change to modes 1 and 2.
 
 ---

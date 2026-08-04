@@ -213,12 +213,12 @@ test("mode 4 duels like the duelist but never moves its stance", () => {
   expect(attacked).toBe(true); // otherwise the duelist: it still fights
 });
 
-describe("defence-lite: the duelist answers a visible attack", () => {
+describe("the defence policy: the duelist answers a visible attack", () => {
   const floor = AI_REACTION_BASE_MS + AI_REACTION_JITTER_MS[0];
 
-  test("over seeds it parries, retreats or stands - never advances into a live blade, never inside the floor", () => {
+  test("over seeds every menu answer appears - never advancing into a live blade, never inside the floor", () => {
     const answers = new Set<string>();
-    for (let seed = 1; seed <= 40 && answers.size < 3; seed++) {
+    for (let seed = 1; seed <= 60 && answers.size < 4; seed++) {
       const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
       // 140, not narrow's edge: the retire pulse's first step (cooldown
       // is poked high) carries the duelist to exactly 200 - still inside
@@ -226,26 +226,26 @@ describe("defence-lite: the duelist answers a visible attack", () => {
       d.f[0].x = d.f[1].x - 140;
       const ai = createAiState(seed);
       ai.cooldown = 5000; // keep its own attack pulse out of the exchange
-      let answered: string | null = null;
       let cutAt: number | null = null;
+      let seen: string | null = null;
       for (let tick = 0; tick < 90; tick++) {
         const ia: Intent | null = tick === 0 ? "cut" : null;
         const ib = aiDecide(d, 3, ai, TICK);
+        if (ai.threat?.answer && seen === null) seen = ai.threat.answer;
         const threatLive =
           d.f[0].state.kind === "attack" && d.f[0].state.phase !== "recovery";
         if (cutAt === null && d.f[0].state.kind === "attack") cutAt = d.time;
         if (threatLive && ib === "advance") throw new Error("advanced into a live blade");
-        if (threatLive && (ib === "parry" || ib === "retreat") && answered === null) {
-          answered = ib;
-          // The answer never beats the drawn reaction's floor.
+        if (threatLive && ib !== null && ib !== "parryRelease") {
+          // No answer intent ever beats the drawn reaction's floor.
           expect(d.time - (cutAt ?? 0)).toBeGreaterThanOrEqual(floor);
         }
         tickDuel(d, ia, ib);
         if (d.over) break;
       }
-      answers.add(answered ?? "stand");
+      if (seen !== null) answers.add(seen);
     }
-    expect(answers).toEqual(new Set(["parry", "retreat", "stand"]));
+    expect(answers).toEqual(new Set(["guard", "retreat", "counter", "stand"]));
   });
 
   test("a cut at narrow no longer always kills the duelist", () => {

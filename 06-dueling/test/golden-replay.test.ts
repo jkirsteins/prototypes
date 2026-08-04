@@ -163,7 +163,13 @@ describe("golden replay: the simulation is unchanged by the restructure", () => 
     // pattern and later-would-be draws differ. The sibling mode-3
     // scenario hashing identically (its duelist killed at 135 before any
     // player attack threatened it in measure) is the control.
-    "rapier player against mode-3 longsword, different seed": { hash: 1736812404, endedAt: 118 },
+    // Re-recorded at the full defence policy: the same threat's roll now
+    // draws STAND, and stand honours a plan decided BEFORE the threat
+    // (the duelist's stanceUp tell at tick 88 predates the thrust at 90)
+    // where the lite slice froze it - per-tick probe: the committed cut
+    // launches at 111, and the player's thrust still kills at the same
+    // tick 118, same winner. The commitment is the only difference.
+    "rapier player against mode-3 longsword, different seed": { hash: 407615250, endedAt: 118 },
     // Re-recorded at rule D (parry on its own track: the player walks into
     // the first drill strike with the guard riding and parries it), at
     // attack-lines (the drill cycles heights, so its third strike steps the
