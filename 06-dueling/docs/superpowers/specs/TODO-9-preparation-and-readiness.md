@@ -277,10 +277,25 @@ it fits the length budget.
   the same.
 - **Same-line readiness target:** asserted per pairing from the computed
   table: every same-line attack parryable at floor and mean.
-- **Emergence, both directions:** a seeded live-play probe where the
-  duelist parries a same-line player thrust, and mode 1 parries one
-  after its reaction; the mirror probe where a wrong-height rapier
-  thrust is never met by a guard formed after visibility.
+- **The litmus: thrust parry-ability.** This spec's acceptance
+  criterion, layered so the physics is never gated on policy knobs:
+  1. *Physics (mode 1, deterministic):* a same-line thrust at a ready
+     dummy is PARRIED; a wrong-height rapier thrust is NEVER met by a
+     reactively-formed guard. The one band-edge pairing (longsword
+     defender vs same-line rapier thrust, parryable up to ~505ms
+     draws) pins "parried at most draws, missed at the slowest" over
+     seeds instead of always.
+  2. *Symmetry:* the same thrust-vs-ready-defender scenario with
+     controllers swapped - AI thrust into a parry-pressing scripted
+     defender, player thrust into the dummy - produces the same
+     contact outcome. Parry-ability may never depend on who holds the
+     controller.
+  3. *Policy band (mode 3, drift alarm):* same-line thrusts against a
+     ready duelist end parried in a wide pinned band - nonzero, not
+     dominant - proving the physics reaches live play through the
+     menu without freezing the menu weights.
+  Implementation of this spec is DONE only when all three layers pass;
+  §9's felt version is the fourth, human layer.
 - **Rename sweep:** no `parryRiseMs` remains in src or tests.
 - **Feel guards:** `duelistCooldown` still outlasts the worst-case whiff
   commitment (existing test, new numbers); the drill interval test
