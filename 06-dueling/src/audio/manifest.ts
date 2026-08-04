@@ -52,6 +52,12 @@ export const EVENT_SOUNDS: Partial<Record<DuelEvent["kind"], SoundName[]>> = {
   met: ["clash1", "clash2", "clash3"],
   bind: ["clash1", "clash2", "clash3"],
   bindBreak: ["clash1", "clash2", "clash3"],
+  // The strip's resolution: steel wrenched free. The clash pool for now,
+  // pitched between the met's ring and the bind's clang; the named debt
+  // is a clatter sample (the sword hitting the ground) to distinguish a
+  // taken sword from struck steel. The duel-over banner lands the same
+  // frame, so the readability loss is small and temporary.
+  disarmed: ["clash1", "clash2", "clash3"],
   pulse: ["clash1", "clash2", "clash3"],
   hit: ["hit1"],
 };
@@ -78,6 +84,7 @@ export const EVENT_SOUNDS: Partial<Record<DuelEvent["kind"], SoundName[]>> = {
 export const EVENT_RATES: Partial<Record<DuelEvent["kind"], number>> = {
   bind: 0.55,
   pulse: 0.32,
+  disarmed: 0.45,
 };
 
 /** Per-kind gain (default 1): cues that must sit UNDER the outcomes.

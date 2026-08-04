@@ -1,4 +1,4 @@
-import { BIND_LOSS_MS, HIT_STUN_MS } from "../combat/fighter";
+import { BIND_LOSS_MS, HIT_STUN_MS, DISARM_FIRM_MS, DISARM_SOFT_MS } from "../combat/fighter";
 import { BIND_TIME_LIMIT_MS } from "../combat/bind";
 import { PARRYABLE_FRACTION, WEAPONS } from "../combat/weapons";
 import type { FighterState } from "../combat/fighter";
@@ -99,14 +99,26 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
   exposed: {
     label: "exposed",
     what: "The bind was lost: turned out of contact, unable to act, mortally open - a second clash sounded the break.",
-    player: "The winner's immediate thrust kills; any other move or a moment's hesitation spends their advantage, and you are back.",
+    player: "The winner's thrust (K) kills and their grip (I) takes your sword - both guaranteed; anything else spends the advantage, and you are back.",
     ms: () => BIND_LOSS_MS,
+  },
+  disarming: {
+    label: "disarming",
+    what: "The bind's winner grips the loser's blade at the contact; how firmly it was held at entry decides how long the strip takes.",
+    player: "Committed and guaranteed on both sides: the wrestle resolves inside the stagger, and the duel ends with the sword taken.",
+    ms: () => DISARM_FIRM_MS,
+  },
+  disarmed: {
+    label: "disarmed",
+    what: "The sword is taken and the duel is over - a bloodless win, recorded as a disarm, not a kill.",
+    player: "R rematches, Esc reselects - and the entry that arrived soft is what lost the sword.",
+    ms: () => DISARM_SOFT_MS,
   },
 };
 
 /** One source for the key list: the control line and the help panel both read it. */
 export const KEY_GROUPS: Array<Array<[string, string]>> = [
-  [["A/D", "step"], ["S", "void"], ["Up/Dn/LShift", "stance"], ["J", "cut"], ["K", "thrust"], ["L hold", "guard"], ["Lt/Rt/Caps", "re-aim"], ["F", "feint"]],
+  [["A/D", "step"], ["S", "void"], ["Up/Dn/LShift", "stance"], ["J", "cut"], ["K", "thrust"], ["I", "disarm"], ["L hold", "guard"], ["Lt/Rt/Caps", "re-aim"], ["F", "feint"]],
   [["0-4", "AI mode"], ["R", "rematch"], ["Esc", "select"], ["`", "overlay"], ["?", "help"]],
   [["space", "pause"], [".", "step"], ["[/]", "speed"], ["M", "mute"]],
 ];

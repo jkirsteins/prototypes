@@ -8,7 +8,7 @@ import { zoneFor } from "../combat/measure";
 import { pickBindFrame, pickFrame } from "./frames";
 import { SHEETS } from "./sheets";
 import type { AiMode } from "../combat/ai";
-import type { BindState, Duel } from "../combat/engine";
+import type { DisarmState, BindState, Duel } from "../combat/engine";
 import type { Fighter, FighterState } from "../combat/fighter";
 import type { AttackPhase, Height, WeaponId, Zone } from "../combat/types";
 import type { SheetName } from "./sheets";
@@ -37,6 +37,7 @@ const PHASE_COLORS: Record<AttackPhase | Exclude<FighterState["kind"], "attack">
   void: "#4aa3df", step: "#cfd3da",
   hitstun: "#d64541", dead: "#555a63", ready: "#8a8f98",
   bind: "#c9822f", exposed: "#d64541",
+  disarming: "#c9822f", disarmed: "#555a63",
 };
 
 /** cut/thrust tempo cost per weapon, shown on the HUD cards. */
@@ -71,8 +72,8 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
   drawFighter(v, d.f[0], d.time, d.bind, 0);
   drawFighter(v, d.f[1], d.time, d.bind, 1);
   if (v.overlay) {
-    drawBodyTrack(v, d.f[0]);
-    drawBodyTrack(v, d.f[1]);
+    drawBodyTrack(v, d.f[0], d.disarm);
+    drawBodyTrack(v, d.f[1], d.disarm);
     drawParryTrack(v, d.f[0], d.bind, 0);
     drawParryTrack(v, d.f[1], d.bind, 1);
     drawLineTrack(v, d.f[0], d.bind);
@@ -328,7 +329,14 @@ function drawBindBar(v: View, d: Duel): void {
  * brutal recovery - the prompt must never command it.
  */
 export function openingPromptText(inReach: boolean): string {
-  return inReach ? "OPENING - K thrusts, NOW" : "OPENING - too wide: step out";
+  // Reach-honesty extends to the pair (disarming spec): the thrust needs
+  // the frozen gap inside reach; the disarm grips steel that is already
+  // touching steel and has no reach condition to fail. The prompt never
+  // advertises an action that would whiff - on a wide bind the disarm is
+  // the only conversion that lands, and the prompt says exactly that.
+  return inReach
+    ? "OPENING - K kills, I takes the sword"
+    : "OPENING - too wide to thrust: I takes the sword";
 }
 
 /**
@@ -459,12 +467,21 @@ function drawTrackRow(
 }
 
 /** Row 1: current state or attack phase, with progress through it. */
-function drawBodyTrack(v: View, f: Fighter): void {
+function drawBodyTrack(v: View, f: Fighter, disarm: DisarmState | null = null): void {
   const { ctx } = v;
   const s = f.state;
   const cx = f.x * PX_PER_CM;
   const label = s.kind === "attack" ? s.phase : s.kind;
   const color = PHASE_COLORS[label];
+
+  if (s.kind === "disarming" && disarm !== null) {
+    // The grip bar: the duel's one disarm clock filling toward the taken
+    // sword. Its fill SPEED is the grip made visible - a soft opponent
+    // strips fast, a braced one slowly (duration fixed from the saved
+    // grip at the attempt's start).
+    drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, disarm.t / disarm.durationMs);
+    return;
+  }
 
   if (s.kind === "bind") {
     // A label with no bar: the bind has no fixed duration to fill toward.
@@ -555,6 +572,12 @@ function bodyFraction(f: Fighter): number | null {
       return null;
     case "exposed":
       return s.t / BIND_LOSS_MS;
+    case "disarming":
+      // The grip bar runs on the duel's clock; drawBodyTrack special-cases
+      // it with the DisarmState, the same shape as the bind's early return.
+      return null;
+    case "disarmed":
+      return null; // terminal, like dead: no bar
   }
 }
 
@@ -601,6 +624,11 @@ const ROW3_LABEL_Y = -146;
  */
 export function lineLabel(f: Fighter, bind: BindState | null = null): string {
   const H = (h: Height): string => h.toUpperCase();
+  // A grip has no line, and neither fighter is READY to answer anything:
+  // the plain stance form, no readiness claim.
+  if (f.state.kind === "disarming" || f.state.kind === "disarmed") {
+    return `${H(f.height)} (stance)`;
+  }
   if (f.state.kind === "bind" && bind !== null) {
     // The saved contact line, never a live recomputation: the states that
     // formed the contact are gone. Both fighters are on it by definition,
@@ -732,7 +760,9 @@ function drawBanner(v: View, d: Duel): void {
   const text =
     winner === "draw"
       ? "MUTUAL DEATH - draw"
-      : `${d.f[winner ?? 0].weapon.name.toUpperCase()} KILLS - R to rematch, Esc to reselect`;
+      : d.outcome === "disarm"
+        ? `${d.f[winner ?? 0].weapon.name.toUpperCase()} TAKES THE SWORD - a bloodless win - R to rematch`
+        : `${d.f[winner ?? 0].weapon.name.toUpperCase()} KILLS - R to rematch, Esc to reselect`;
   ctx.fillStyle = "#e8eaed";
   ctx.font = "28px ui-monospace, monospace";
   ctx.textAlign = "center";

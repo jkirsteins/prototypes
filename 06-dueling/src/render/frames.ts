@@ -113,6 +113,13 @@ export function pickFrame(f: Fighter, timeMs: number): FramePick {
       // duel's snapshot; this arm exists for callers without one and
       // holds the formed-guard apex as a neutral crossed stance.
       return { sheet: "swordAttack", frame: 2, flip };
+    case "disarming":
+    case "disarmed":
+      // The frozen scene: each fighter carries the contact pose their
+      // state saved - the winner's from the bind's resolution, the
+      // loser's straight through exposed. The wrestle reads because
+      // nothing moves.
+      return pickBindFrame(f, s.contact, s.lineSide);
     case "exposed":
       // Turned out of a lost bind: the contact pose, held - reads as
       // being unable to recover, which is exactly what the state is.

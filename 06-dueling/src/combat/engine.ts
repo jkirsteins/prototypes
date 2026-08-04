@@ -1,4 +1,4 @@
-import { BIND_ADVANTAGE_MS, applyIntent, dropGuard, lineOf, TICK, tickFighter } from "./fighter";
+import { BIND_ADVANTAGE_MS, applyIntent, disarmDurationMs, dropGuard, lineOf, TICK, tickFighter } from "./fighter";
 import { bladesCross, canBind, parryMeetsAttack } from "./contact";
 import { applyBindInputs, createBindContest, firmness, tickBindContest } from "./bind";
 import type { BindInput } from "./bind";
@@ -23,7 +23,7 @@ export interface DuelEvent {
   time: number;
   side: 0 | 1;
   kind:
-    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "feint" | "bind" | "bindBreak" | "yieldFail" | "kill" | "draw"
+    | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "feint" | "bind" | "bindBreak" | "yieldFail" | "kill" | "draw" | "disarmed"
     // Presentation-only kinds, returned but never logged. They mark the
     // simulation instant a thing physically happens (a foot plants, a blade
     // starts rising or travelling, a blade arrives at a guard, a bind
@@ -48,8 +48,22 @@ export interface Duel {
   time: number;
   over: boolean;
   winner: 0 | 1 | "draw" | null;
+  /** How the duel ended - a kill, a mutual draw, or a taken sword - so
+   *  the banner and the record never infer the ending from winner alone. */
+  outcome: "kill" | "draw" | "disarm" | null;
   bind: BindState | null;
+  disarm: DisarmState | null;
   log: DuelEvent[];
+}
+
+/** One physical event, one clock, owned by the duel - the bind's §2.1
+ *  argument applied to the strip. The frozen scene lives on the two
+ *  fighters' states (disarming/exposed carry the poses), not here. */
+export interface DisarmState {
+  t: number;
+  /** Fixed at the attempt's start from the saved grip; immune to
+   *  anything after it. */
+  durationMs: number;
 }
 
 export function createDuel(wa: WeaponProfile, wb: WeaponProfile): Duel {
@@ -58,7 +72,9 @@ export function createDuel(wa: WeaponProfile, wb: WeaponProfile): Duel {
     time: 0,
     over: false,
     winner: null,
+    outcome: null,
     bind: null,
+    disarm: null,
     log: [],
   };
 }
@@ -96,6 +112,28 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   for (const side of [0, 1] as const) {
     const intent = intents[side];
     if (intent === null || d.over) continue;
+    // The disarm starts on the duel, not the body (like the bind verbs):
+    // accepted only from ready while the advantage lives, it consumes the
+    // advantage and freezes the winner into the grip. At any other time
+    // the intent does NOTHING - deliberately not a fall-through to some
+    // other action, so the key is inert outside its window. The start is
+    // silent (the clash was spent at contact); the resolution has the
+    // sound.
+    if (intent === "disarm") {
+      const me = d.f[side];
+      if (
+        d.disarm === null &&
+        me.bindAdvantageMs > 0 &&
+        me.state.kind === "ready" &&
+        me.bindAdvantageContact !== null &&
+        me.bindAdvantageLineSide !== null
+      ) {
+        d.disarm = { t: 0, durationMs: disarmDurationMs(me.bindAdvantageGrip) };
+        me.state = { kind: "disarming", contact: me.bindAdvantageContact, lineSide: me.bindAdvantageLineSide };
+        me.bindAdvantageMs = 0;
+      }
+      continue;
+    }
     const before = d.f[side].state.kind;
     // One simulation for both fighters: an attack's preparation is the
     // weapon's own windup, whoever throws it (preparation-and-readiness
@@ -164,6 +202,31 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
 
   d.time += dt;
   const evs: [FighterEvent[], FighterEvent[]] = [tickFighter(d.f[0], dt), tickFighter(d.f[1], dt)];
+
+  // The disarm's one clock. Resolution is ATOMIC - every duel field in
+  // one tick - and guaranteed by the twin invariant: the victim is still
+  // exposed when the strip completes (240 + 260 <= 520, test-pinned), so
+  // the sword leaves a hand that never got to act.
+  if (d.disarm !== null && !d.over) {
+    d.disarm.t += dt;
+    const attackerSide: 0 | 1 = d.f[0].state.kind === "disarming" ? 0 : 1;
+    const attacker = d.f[attackerSide];
+    const victim = d.f[1 - attackerSide];
+    if (d.disarm.t >= d.disarm.durationMs) {
+      const vs = victim.state;
+      victim.state = {
+        kind: "disarmed",
+        contact: vs.kind === "exposed" ? vs.contact : { kind: "strike", progress: 1 },
+        lineSide: vs.kind === "exposed" ? vs.lineSide : d.f[attackerSide].bindAdvantageLineSide ?? "inside",
+      };
+      attacker.state = { kind: "ready" };
+      d.disarm = null;
+      d.over = true;
+      d.winner = attackerSide;
+      d.outcome = "disarm";
+      emit(d, out, attackerSide, "disarmed", `${attacker.weapon.name} takes the sword -> bloodless win`);
+    }
+  }
 
   // The bind's contest, advanced after the fighters tick (their bind
   // marker is a no-op there) and before contact detection, so a bind
@@ -318,10 +381,12 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   if (hits.length === 2) {
     d.over = true;
     d.winner = "draw";
+    d.outcome = "draw";
     emit(d, out, 0, "draw", "mutual strike: both fighters fall");
   } else if (hits.length === 1) {
     d.over = true;
     d.winner = hits[0];
+    d.outcome = "kill";
     emit(d, out, hits[0], "kill", `${d.f[hits[0]].weapon.name} kills`);
   }
 
@@ -373,6 +438,13 @@ function resolveBind(d: Duel, out: DuelEvent[], winner: 0 | 1, cause: "pressure"
     if (side === winner) {
       f.state = { kind: "ready" };
       f.bindAdvantageMs = BIND_ADVANTAGE_MS;
+      // The disarm's inputs, saved while the bind still knows them: the
+      // LOSER's firmness (how strippable the sword is) and the winner's
+      // own contact pose + line side (the frozen scene, if the advantage
+      // converts to a strip). Unread unless it does.
+      f.bindAdvantageGrip = bind.firmness[1 - winner];
+      f.bindAdvantageContact = bind.contact[side];
+      f.bindAdvantageLineSide = bind.line.side;
     } else {
       f.state = { kind: "exposed", t: 0, contact: bind.contact[side], lineSide: bind.line.side };
     }

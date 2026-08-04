@@ -160,17 +160,17 @@ interface Duel {
 interface DisarmState {
   t: number;            // the one clock
   durationMs: number;   // fixed at the attempt's start, from the saved grip
-  /** The presentation snapshot: both contact poses and the line's side
-   *  axis, held frozen through the attempt. duel.bind died at the
-   *  contest's resolution, so the attempt re-assembles its scene from
-   *  what survived: the victim's pose lives in their `exposed` state
-   *  already (it carries contact + lineSide for exactly this reason),
-   *  and the attacker's own contact snapshot is SAVED at resolution
-   *  beside the grip (§2.1) and copied in here. The strain oscillation
-   *  is a pure function of the clock and needs no state. */
-  contact: [BindContact, BindContact];
-  lineSide: Side;
 }
+
+// The presentation snapshot - both contact poses and the line's side
+// axis, frozen through the attempt - lives ON THE TWO STATES that render
+// it (as built; the review draft put it here, and the equivalent home
+// won): the victim's pose rides exposed into `disarmed`, and the
+// attacker's saved-at-resolution snapshot (§2.1) rides into
+// `{ kind: "disarming"; contact; lineSide }`. The renderer's exposed
+// arm already resolves poses exactly this way, so the frozen scene
+// costs zero new plumbing. The strain oscillation is a pure function
+// of the clock and needs no state.
 
 type FighterState =
   | ...

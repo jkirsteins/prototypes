@@ -110,7 +110,18 @@ export interface AiState {
     /** Earliest bind time for the next pulse; redrawn after each one. */
     nextPressAtMs: number;
     obs: Array<{ t: number; control: number; opportunity: boolean }>;
+    /** The conversion plan, drawn AT ENTRY (disarming §5.1): what winning
+     *  this bind would be for. Anticipation, because the resolution tick
+     *  is younger than any legal read - a fencer who knows what the win
+     *  is for before it comes. The thrust is excluded at entry when the
+     *  frozen gap exceeds its reach; the disarm needs no gate. */
+    conversionPlan: "thrust" | "disarm" | "withdraw";
+    conversionDelayMs: number;
   } | null;
+  /** The plan, transferred out of ai.bind on the first decide after a WON
+   *  bind (ai.bind dies with the bind state; a plan stored there would
+   *  die on the winning tick). While this exists it OWNS the AI's output. */
+  conversion: { plan: "thrust" | "disarm" | "withdraw"; dueAt: number } | null;
   /** The current episode's drawn reaction; consumed and redrawn on each fired decision. */
   reactionMs: number;
   rng: number;
@@ -128,6 +139,7 @@ export function createAiState(seed: number = DEFAULT_SEED): AiState {
     releaseInMs: 0,
     threat: null,
     bind: null,
+    conversion: null,
     reactionMs: 0,
     rng: seed >>> 0,
   };
@@ -243,12 +255,47 @@ export function aiDecide(d: Duel, mode: AiMode, ai: AiState, dt: number): Intent
   // the pulse cadence and how stubbornly it presses while being pushed:
   // across seeds it leans on sustained pressure, probes with spaced
   // pulses, or holds yield-ready.
-  if (self.state.kind !== "bind") ai.bind = null;
+  // Leaving the bind: the FIRST decide after the teardown transfers the
+  // entry-drawn conversion plan if the bind was won (a copy, never a
+  // draw), or discards it - then, while ai.conversion exists, it OWNS
+  // the output before every normal policy branch: the pulse issuing a
+  // step or attack during the 0-60ms delay would consume the advantage
+  // through the cleared-by-anything rule and destroy the plan.
+  if (self.state.kind !== "bind") {
+    if (ai.bind !== null) {
+      if (self.bindAdvantageMs > 0) {
+        ai.conversion = { plan: ai.bind.conversionPlan, dueAt: d.time + ai.bind.conversionDelayMs };
+      }
+      ai.bind = null;
+    }
+    if (ai.conversion !== null) {
+      if (self.bindAdvantageMs <= 0) {
+        ai.conversion = null; // the advantage died first: plan moot
+        return null;
+      }
+      if (d.time < ai.conversion.dueAt) return null; // committed, waiting
+      const plan = ai.conversion.plan;
+      ai.conversion = null;
+      return plan === "withdraw" ? "retreat" : plan;
+    }
+  }
   if ((mode === 3 || mode === 4) && self.state.kind === "bind" && d.bind !== null) {
     const bind = d.bind;
     if (ai.bind === null) {
       const aggression = nextRandom(ai);
-      ai.bind = { aggression, nextPressAtMs: 60 + nextRandom(ai) * 240, obs: [] };
+      const nextPressAtMs = 60 + nextRandom(ai) * 240;
+      // The conversion plan: personality over the conversions the entry
+      // arithmetic allows. The gap is frozen from the entry tick, so the
+      // reach gate reads entry-observable state - no reaction-time
+      // exception is needed and none is taken. Weights 0.40/0.40/0.20,
+      // renormalized to 2/3, 1/3 when the thrust cannot land.
+      const inReach = gapOf(d) <= self.weapon.reach;
+      const roll = nextRandom(ai);
+      const conversionPlan: "thrust" | "disarm" | "withdraw" = inReach
+        ? roll < 0.4 ? "thrust" : roll < 0.8 ? "disarm" : "withdraw"
+        : roll < 2 / 3 ? "disarm" : "withdraw";
+      const conversionDelayMs = nextRandom(ai) * 60;
+      ai.bind = { aggression, nextPressAtMs, obs: [], conversionPlan, conversionDelayMs };
     }
     const bs = ai.bind;
     bs.obs.push({ t: bind.t, control: bind.control, opportunity: yieldOpportunity(bind, 1) });

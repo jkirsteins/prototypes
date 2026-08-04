@@ -12,6 +12,8 @@ export type Zone = "out" | "wide" | "narrow";
 export type Intent =
   | "advance" | "retreat" | "void" | "cut" | "thrust" | "parry" | "feint"
   | "stanceUp" | "stanceDown"
+  /** the advantage's second conversion: take the sword (disarming spec) */
+  | "disarm"
   /** keyup: lower the held guard (queued while its latch is engaged) */
   | "parryRelease"
   /** horizontal arrows: re-aim a held guard's side at the visible attack */

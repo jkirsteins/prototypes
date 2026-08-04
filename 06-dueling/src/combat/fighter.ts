@@ -15,8 +15,25 @@ export const DEATH_ANIM_MS = 900;
 export const BIND_LOSS_MS = 520;
 /** The winner's opening: while it decays, one immediate thrust launches
  *  from the contact (bindTimeline) and kills. Anything else spends it on
- *  nothing. */
+ *  nothing - except the disarm, the advantage's second conversion. */
 export const BIND_ADVANTAGE_MS = 240;
+/** The disarm's duration band: stripping a loose grip is quick, a braced
+ *  one slow. Sized for the TWIN of the thrust's honesty invariant: the
+ *  slowest strip from the advantage's last tick still resolves inside the
+ *  loser's exposure (BIND_ADVANTAGE_MS + DISARM_FIRM_MS = 500 <= 520,
+ *  the same 20ms margin, test-pinned beside the thrust's) - so BOTH
+ *  conversions are guarantees and choosing is choosing what the win
+ *  means, never how reliable it is. The disarm has no reach condition:
+ *  the blades are already met, wide binds included. */
+export const DISARM_SOFT_MS = 180;
+export const DISARM_FIRM_MS = 260;
+
+/** The one duration derivation, shared by the engine, the AI's plan and
+ *  the tests - the guardFormationMs discipline: what anyone believes a
+ *  strip costs can never drift from what the engine charges. */
+export function disarmDurationMs(grip: number): number {
+  return DISARM_SOFT_MS + grip * (DISARM_FIRM_MS - DISARM_SOFT_MS);
+}
 
 export type FighterState =
   | { kind: "ready" }
@@ -61,7 +78,21 @@ export type FighterState =
    * side axis), which the renderer keeps drawing - the duel's BindState is
    * gone by now, so the fighter itself is the only honest home.
    */
-  | { kind: "exposed"; t: number; contact: BindContact; lineSide: Side };
+  | { kind: "exposed"; t: number; contact: BindContact; lineSide: Side }
+  /**
+   * Gripping the loser's blade at the contact: committed, accepts
+   * nothing, resolved by the duel's DisarmState clock. Carries the
+   * winner's own frozen contact pose (saved at the bind's resolution)
+   * for the same reason exposed carries the loser's - the disarm's
+   * frozen scene is distributed onto the two states that render it.
+   */
+  | { kind: "disarming"; contact: BindContact; lineSide: Side }
+  /**
+   * The sword is taken: terminal, like dead. Keeps the pose the strip
+   * ended in (copied from the exposed state it replaces) so the loser
+   * is drawn held, not snapped to a stance.
+   */
+  | { kind: "disarmed"; contact: BindContact; lineSide: Side };
 
 /**
  * The timed defence, on its own track so it can coexist with locomotion:
@@ -203,6 +234,17 @@ export interface Fighter {
   parryRecoveryMs: number;
   /** The bind winner's decaying opening; see BIND_ADVANTAGE_MS. */
   bindAdvantageMs: number;
+  /** The bind loser's firmness, saved on the resolution tick beside the
+   *  timer. Read once, if the advantage converts to a disarm attempt;
+   *  meaningless and unread otherwise. */
+  bindAdvantageGrip: number;
+  /** The winner's own contact snapshot and the bind line's side axis,
+   *  saved on the same tick for the same reason: if the advantage
+   *  converts to a disarm, the attempt's frozen scene needs the winner's
+   *  pose, and the bind that knew it is gone. The loser's half already
+   *  survives inside their exposed state. */
+  bindAdvantageContact: BindContact | null;
+  bindAdvantageLineSide: Side | null;
 }
 
 export type FighterEvent =
@@ -216,6 +258,7 @@ export type FighterEvent =
 export function createFighter(x: number, facing: 1 | -1, weapon: WeaponProfile): Fighter {
   return {
     x, facing, weapon, state: { kind: "ready" }, parry: null, bindAdvantageMs: 0,
+    bindAdvantageGrip: 0, bindAdvantageContact: null, bindAdvantageLineSide: null,
     height: "low", heightTo: null, heightT: 0, guardSide: "inside",
     buffered: null, stepRecoveryMs: 0, parryRecoveryMs: 0,
   };
@@ -242,7 +285,7 @@ function applyIntentInner(
   opts?: { targetSide?: Side; targetAttackStartTime?: number },
 ): "accepted" | "buffered" | "ignored" {
   const k = f.state.kind;
-  if (k === "dead" || k === "hitstun") return "ignored";
+  if (k === "dead" || k === "hitstun" || k === "disarming" || k === "disarmed") return "ignored";
   // A feint abandons a windup in progress: commitment is the windup ->
   // strike transition, so this is the one door out of an attack, and it
   // leads into a short recovery, not into another action. Never queued -
@@ -443,6 +486,8 @@ function startAction(f: Fighter, intent: Intent): boolean {
     case "press":
     case "yield":
       return false; // bind actions start on the duel's BindState, not the body
+    case "disarm":
+      return false; // the attempt starts on the duel's DisarmState; the engine intercepts it
     case "feint":
       return false; // only meaningful mid-windup; handled in applyIntent
     case "stanceUp":
@@ -592,6 +637,12 @@ export function tickFighter(f: Fighter, dt: number): FighterEvent[] {
     case "bind":
       // The body is seized; the duel's shared clock decides when it is
       // released. Nothing per-fighter advances here.
+      break;
+    case "disarming":
+      // Committed to the grip; the duel's DisarmState clock resolves it.
+      break;
+    case "disarmed":
+      // Terminal, like dead: the duel is over and nothing advances.
       break;
     case "exposed":
       // Turned out of a lost bind: hitstun-shaped but nonlethal, and only

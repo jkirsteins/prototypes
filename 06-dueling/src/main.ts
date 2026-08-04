@@ -125,6 +125,7 @@ document.addEventListener("keydown", (e) => {
     case "s": state.pending = "void"; break;
     case "j": state.pending = "cut"; break;
     case "k": state.pending = "thrust"; break;
+    case "i": state.pending = "disarm"; break;
     case "l":
       // Hold to keep the guard up; the keyup lowers it. The global e.repeat
       // guard above keeps auto-repeat from restarting anything.
