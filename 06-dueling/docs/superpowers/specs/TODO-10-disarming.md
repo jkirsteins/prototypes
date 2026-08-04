@@ -205,11 +205,18 @@ BIND_ADVANTAGE_MS + DISARM_FIRM_MS <= BIND_LOSS_MS   // 240 + 260 = 500 <= 520
 
 - with the same 20ms margin the thrust's invariant carries, clear of the
 tick boundary per the `preparation-and-readiness` §4 discipline, and
-test-pinned per pairing `canBind` sustains beside the thrust's. Both
-conversions are therefore guarantees: the loser is still staggering when
-the sword leaves their hand, exactly as they are still staggering when the
-thrust lands. Choosing between them is choosing what the win MEANS, never
-how reliable it is.
+test-pinned per pairing `canBind` sustains beside the thrust's.
+
+Both invariants are TIME guarantees. The thrust carries one further
+condition the disarm does not: REACH. A crossing can bind beyond either
+fighter's individual reach (the reach SUM covers wide measure), the gap
+freezes there, and the opening prompt is already honest about the thrust
+whiffing across it. The disarm has no reach condition to fail: the
+blades are ALREADY met - the grip travels down steel that is touching
+steel - so it is guaranteed from every advantage, wide binds included.
+Within thrust reach, choosing between the conversions is choosing what
+the win MEANS; beyond it, the disarm is the only conversion that lands,
+which gives the mercy a mechanical niche no weight table has to buy.
 
 Stated honestly, per review: under THIS spec, every pairing that can bind
 can always disarm - the duration derives from the loser's grip and two
@@ -288,10 +295,13 @@ version's inventory, not this spec's.)
 The OPENING prompt (the advantage window's existing coach, reach-honest
 since `duelist-defence`) becomes the two-conversion prompt: the kill and
 the sword, each with its key - the bind prompt's teach-the-keys-in-the-
-moment pattern, applied to the window where the choice lives. Both
-conversions are guaranteed (§2.2), so the prompt needs NO risk annotation -
-an earlier draft's "(they can resist)" died with the resist. The thrust's
-reach-honesty stays as is.
+moment pattern, applied to the window where the choice lives. Its
+reach-honesty extends to the pair: within thrust reach it shows BOTH
+conversions; on a wide bind it shows the disarm alone, because the
+thrust would whiff (§2.2) and the prompt does not advertise actions that
+fail. No risk annotation exists in either form - an earlier draft's
+"(they can resist)" died with the resist; whatever the prompt shows is
+guaranteed.
 
 The body rows read `disarming` on the attacker with one progress bar over
 `durationMs`, driven by the duel's clock - the bind bar's idiom. The grip
@@ -358,19 +368,35 @@ conversionDelayMs: number;   // seeded from DUELIST_CONVERT_DELAY_MS = [0, 60]
 conversion: { plan: "thrust" | "disarm" | "withdraw"; dueAt: number } | null;
 ```
 
-The lifecycle across the teardown: at entry, plan and delay are drawn into
-`ai.bind`. On the resolution tick the bind policy's state is torn down as
-today - and the win TRANSFERS the plan into `ai.conversion` with
-`dueAt = d.time + conversionDelayMs` (a copy of drawn values, not a draw);
-a loss discards it with the rest. Subsequent `aiDecide` calls fire the
-stored intent once `d.time >= dueAt`, while the advantage lives.
+The lifecycle across the teardown, sequenced where it can actually run -
+`aiDecide` executes BEFORE `tickDuel`, and the engine never mutates
+`AiState`, so "on the resolution tick" is not a place AI code exists:
 
-| Draw | Base weights |
-|---|---|
-| thrust / disarm / withdraw | 0.40 / 0.40 / 0.20 |
+1. Bind entry draws plan and delay into `ai.bind`.
+2. On the FIRST `aiDecide` after the fighter leaves the bind state,
+   BEFORE clearing `ai.bind`, inspect `self.bindAdvantageMs`.
+3. Positive (the bind was won): transfer -
+   `ai.conversion = { plan, dueAt: d.time + conversionDelayMs }` - a copy
+   of entry-drawn values, never a draw.
+4. Not positive (lost, or shoved apart): discard.
+5. Then clear `ai.bind`, as the policy already does.
+6. A zero-delay conversion fires during that same `aiDecide` call;
+   otherwise later calls fire the stored intent once `d.time >= dueAt`,
+   while the advantage lives.
 
-The weights are playtest knobs (a merciful duelist is a personality, and
-`duelist-defence` §9 reserved personalities as layered constants).
+| Entry gap vs own thrust reach | Draw | Base weights |
+|---|---|---|
+| within reach | thrust / disarm / withdraw | 0.40 / 0.40 / 0.20 |
+| beyond reach | disarm / withdraw | 0.40 / 0.20 renormalized (2/3, 1/3) |
+
+The gate is §2.2's reach condition, read at entry: the gap is frozen
+from the entry tick, so the bind's own snapshot - information every
+delayed read already contains - decides whether a thrust could land, and
+a plan the arithmetic forbids is excluded BEFORE the personality draws,
+with the remaining weights renormalized. No reaction-time exception is
+needed and none is taken. The weights are playtest knobs (a merciful
+duelist is a personality, and `duelist-defence` §9 reserved personalities
+as layered constants).
 **Withdraw is the normal retreat intent**, issued as the conversion: it
 spends the advantage on a step away ("advantage cleared by anything else"),
 costing no new mechanics - the opponent-shaped mercy of not converting.
@@ -453,8 +479,13 @@ place the full sequence can be rehearsed, which keeps it the drill. Modes
   differing only after T produce identical duelist decisions through T -
   `duelist-defence`'s test, extended over the new decisions.
 - **The prompt:** during the advantage the opening prompt names both
-  conversions and their keys; the thrust's reach-honesty is unchanged; no
-  risk annotation exists anywhere (there is no risk to annotate).
+  conversions and their keys within thrust reach, and the disarm alone
+  on a wide bind; no risk annotation exists anywhere (there is no risk
+  to annotate).
+- **The wide bind:** a crossing bound beyond thrust reach - the disarm
+  still strips inside the invariant; the AI's entry draw excludes thrust
+  and renormalizes (no seeded run from a wide entry ever plans thrust);
+  the prompt shows the disarm alone.
 - **Help:** the rendered panel documents the two new states and cites the
   shipping constants.
 - **Golden replay:** hash re-recorded only if a scenario reaches an

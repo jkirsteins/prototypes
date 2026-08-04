@@ -619,6 +619,13 @@ Unit tests, all pure, no browser:
 - **Select actions:** `handleSelectAction` moves columns, toggles swords,
   direct-picks (`selPickFirst`/`selPickSecond`, matching keys 1/2 exactly)
   and confirms identically to the key path (call both, compare state).
+- **The disarm control:** one RT press edge in a duel resolves to
+  `disarm` exactly once; a held trigger produces no repeat edges (the
+  edge test's rule, asserted for this control specifically); RT resolves
+  to null while help is open and on the select screen; and outside a
+  bind advantage the routed intent reaches the engine and is harmlessly
+  ignored - pinned end to end, since this is the one binding whose verb
+  is usually inert.
 - **Contextual resolution (via `resolvePadEdge`):** every (UI state,
   physical edge) pair yields at most one action - Start resolves to
   exactly one of help-close, `selConfirm`, `rematch` or `pause` in any
