@@ -21,24 +21,24 @@ exchange:
    unphysical one; the AI, reading honestly through a human-like
    reaction, correctly cannot answer it.
 2. **The defender's readiness ignores the resting blade.** A cold parry
-   pays the full `parryRiseMs` as if the sword hung at the fighter's
-   knees. But a sword is never fully lowered: the stance height and
-   `guardSide` already place the blade IN a line at all times. A fighter
-   holding low and attacked low is substantially ready; the engine
-   charges them as if they were unarmed.
+   pays the full rise as if the sword hung at the fighter's knees. But a
+   sword is never fully lowered: the stance height and `guardSide`
+   already place the blade IN a line at all times. A fighter holding low
+   and attacked low is substantially ready; the engine charges them as
+   if they were unarmed.
 
 This spec fixes both. Preparation becomes a property of the weapon,
 shown identically by both fighters; guard formation becomes the physical
 distance between where the blade already rests and where the threat is.
-Thrust parries then EMERGE where the mental model says they should: an
-attack into the line the defender's blade rests in is parryable at
-ordinary reactions, an attack aimed away from it restores the race.
-Nothing is hardcoded per side, and no outcome is asserted - the
-feasibility matrix is recomputed from the retuned properties and pinned.
+The reaction matrix is computed from the shared properties and pinned -
+and where this spec names desired matchup shapes, those are **playtest
+targets, not weapon-identity rules**: timing values may be tuned for
+gameplay, tests never branch on weapon names, and no tuning happens
+silently (§4).
 
 **Delivers:** the symmetry doctrine (enforced and documented), symmetric
-attack preparation, resting-line guard readiness, the recomputed
-reaction matrix and its positional invariant.
+attack preparation, resting-line guard readiness, the visible resting
+line, the recomputed reaction matrix.
 
 **Depends on:** `duelist-defence` (supersedes its §5 invariant), and
 through it the chain.
@@ -56,9 +56,17 @@ This was always the project's intent (`AGENTS.md`'s emergent-outcomes
 rule is its sibling), but it was never written down as a constraint on
 the ENGINE, and exactly one violation existed: the `telegraphMs` windup
 bonus. Implementation adds the doctrine to `AGENTS.md` beside the
-emergent-outcomes rule, and a test pins the engine's symmetry: the same
-weapon, attack and tick produce byte-identical attack timelines for side
-0 and side 1.
+emergent-outcomes rule.
+
+The enforcement is precise, not a blanket grep - side comparisons are
+legitimate for orientation, ownership and opponent selection:
+
+- A test pins timeline symmetry directly: the same weapon and attack
+  produce byte-identical attack timelines whichever fighter throws it.
+- Controller-dependent **timing inputs** are prohibited structurally:
+  `telegraphMs` is deleted from the profile, `attackTimeline` loses its
+  bonus parameter, and `applyIntent` loses `windupBonusMs` - the
+  channels by which per-side timing could exist are gone, not guarded.
 
 AI reaction emulation stays where it lives today - in `ai.ts`, as policy
 (delayed reads, drawn reactions, delayed in-bind observations). Policy
@@ -66,37 +74,31 @@ may differ per controller; physics may not.
 
 ---
 
-## 2. Symmetric preparation: the fold
+## 2. Symmetric preparation: the pure fold
 
 `telegraphMs` is deleted. Each attack's windup becomes the whole
-preparation, shown by everyone who throws that attack:
+preparation, shown by everyone who throws that attack. The fold is pure -
+today's AI totals, unmodified - so nothing the player has learned to
+read changes, and no number is nudged in the same motion that removes
+the asymmetry (any retune is a separate, §4-governed decision):
 
-| | today (player / AI) | proposed (both) |
+| | today (player / AI) | folded (both) |
 |---|---|---|
 | longsword cut windup | 420 / 600 | **600** |
-| longsword thrust windup | 260 / 440 | **420** |
+| longsword thrust windup | 260 / 440 | **440** |
 | rapier cut windup | 320 / 460 | **460** |
 | rapier thrust windup | 200 / 340 | **340** |
 
-The AI's attacks keep (almost) their current totals, so nothing the
-player has learned to read changes; the player's attacks gain the
-preparation they were skipping. The longsword thrust folds to 420
-rather than 440: §4's boundary-margin rule - the cross-height answer at
-the mean reaction would otherwise land within 3ms of the deadline, and
-a documented failure must fail (the precedent is the existing
-"270, not 260" comment on `heightChangeMs`).
-
 Emergent corrections the fold carries with it, all wanted:
 
-- `attackTimeline`'s `windupBonusMs` parameter and the engine's
-  side-conditional disappear entirely.
+- The engine's side-conditional disappears entirely.
 - `duelistCooldown` derives from thrust timings that now include the
   preparation, so the pulse's floor grows by the folded amount - the old
   floor under-counted the AI's real commitment.
 - Redirect and feint windows widen for both fighters equally (the windup
   is longer, and the windup is where lies live). Feints get stronger on
-  both sides of the board - this is the attacker's §4 counterweight, not
-  an accident.
+  both sides of the board - this is the attacker's counterweight in the
+  §4 matrix, not an accident.
 - The bind winner's advantage thrust is untouched: `bindTimeline` has no
   windup to fold into.
 
@@ -104,22 +106,27 @@ Emergent corrections the fold carries with it, all wanted:
 
 ## 3. Readiness: the blade was never down
 
-`parryRiseMs` is re-founded. Today it models raising a sword from
-nothing (220/190ms) and is charged flat. It becomes the **firm-up**: the
-small motion that turns a blade already resting in a line into an
-engaged, braced guard - grip, structure, point orientation. The travels
-keep carrying the real cost of being wrong about the line:
+The flat rise is re-founded, and **renamed** - keeping the old name
+would preserve the old false model:
 
+```ts
+parryRiseMs -> firmUpMs
 ```
-guardFormationMs(f, aim) = max(firmUp, heightTravel(f, aim), sideTravel(f, aim))
+
+`firmUpMs` is the small motion that turns a blade already resting in a
+line into an engaged, braced guard - grip, structure, point orientation.
+The travels keep carrying the real cost of being wrong about the line:
+
+```ts
+guardFormationMs(f, aim) = max(firmUpMs, heightTravelMs(f, aim), sideTravelMs(f, aim))
 ```
 
 The shape already exists - `guardFormationMs` is shared by the engine's
 parry acceptance, the duelist's policy and the matrix test, which is
-exactly why this change is one number's meaning and no new code paths.
+exactly why this change is one property's meaning and no new code paths.
 Proposed values, playtest knobs both:
 
-| | firmUp (was parryRiseMs) |
+| | firmUpMs (was parryRiseMs) |
 |---|---|
 | longsword | **110** (was 220) |
 | rapier | **85** (was 190) |
@@ -127,6 +134,8 @@ Proposed values, playtest knobs both:
 The resting line is what the simulation already tracks: stance height
 plus `guardSide`. No new state, no new properties - readiness is DERIVED
 from where the blade demonstrably is, per the emergent-outcomes rule.
+The rename sweeps code, tests and the help panel's derivations;
+historical DONE specs keep the old name as a record of what they built.
 
 What this deliberately does not touch: `heightChangeMs`, `sideChangeMs`,
 `guardShiftMs`, the rising/held/shifting parry track, held-guard
@@ -136,45 +145,57 @@ sword up from the ground is gone.
 
 ---
 
-## 4. The matrix that emerges, and the new invariant
+## 4. The matrix, computed - findings and playtest targets
 
-With both fixes in, the reaction arithmetic (reaction draw + formation
-vs. visibility-to-`parryableUntil`) produces this structure - computed
-and pinned at implementation, stated here as intent:
+The rule, stated once: **the matrix is computed from shared properties.
+Named matchup outcomes are playtest targets, not weapon-identity rules.
+Timing may be tuned for gameplay, but tests do not branch on weapon
+names, and no value is changed silently to make prose true - every
+retune is a documented decision against the computed table.**
 
-- **Same line as the resting blade** (right height, right side): every
-  attack, thrusts included, is parryable at the mean reaction; the
-  fastest thrust (rapier, 510ms window) still escapes the slowest
-  draws. "Holding low, attacked low - naturally I'd be ready."
-- **Wrong height**: thrusts escape ordinary reactions (the 300/270ms
-  height travel eats the window); cuts remain answerable. "Attacking
-  high when the sword is low - they might not have the time."
-- **Wrong side, right height**: between the two - the 120/100ms side
-  travel lets most attacks be answered, later.
+Computed at the proposed numbers (pure fold, firmUpMs 110/85; formation
+same-line = firmUp, wrong-height = max(firmUp, heightChange), wrong-side
+= max(firmUp, sideChange); cost = reaction + formation vs. deadline =
+windup + beat + strike/2). P = parryable, `-` = escapes; `!` marks a
+verdict within one tick of its deadline:
 
-The `duelist-defence` §5 invariant (a temporal guarantee: some attack
-always outruns reaction) is SUPERSEDED by a positional one:
+| defender vs attack | deadline | floor 200 | mean 310 | ceil 420 |
+|---|---|---|---|---|
+| LS vs LS cut, any line | 890 | P | P | P |
+| LS vs LS thrust: same / wrongH / wrongS | 630 | P / P / P | P / P / P | P / - / P |
+| LS vs R cut: same / wrongH / wrongS | 690 | P / P / P | P / P / P | P / - / P |
+| LS vs R thrust: same / wrongH / wrongS | 510 | P / P!10 / P | P / - / P | - / - / - |
+| R vs LS cut, any line | 890 | P | P | P |
+| R vs LS thrust: same / wrongH / wrongS | 630 | P / P / P | P / P / P | P / - / P |
+| R vs R cut: same / wrongH / wrongS | 690 | P / P / P | P / P / P | P / P!0 / P |
+| R vs R thrust: same / wrongH / wrongS | 510 | P / P / P | P / - / P | P!5 / - / -!10 |
 
-> **For every pairing, and every line the defender's blade can rest in,
-> at least one attack aimed at a different line escapes a mean-reaction
-> guard - and every attack aimed into the resting line does not.** The
-> attacker's guarantee is no longer "one unanswerable attack" but "the
-> defender cannot rest everywhere": win by aiming where the blade is
-> not, by drawing it out of line first (feints, now stronger, §2), by
-> tempo (attacking a committed or recovering body), or by outdrawing a
-> slow read. The defender's guarantee is that steel resting in the
-> attacked line, plus an ordinary reaction, means steel meeting steel.
+**Findings, stated plainly:**
 
-**Boundary-margin rule:** no pinned pass/fail in the matrix may land
-within one tick (17ms) of its deadline; where the raw fold produces
-one, the nearest authored property is nudged and the nudge documented
-in a comment beside the number (the `heightChangeMs` 270 comment is the
-template). §2's longsword thrust trim is the first application.
-
-Tuning risk, named honestly: this makes reactive defence broadly
-stronger, on both sides. If playtest finds defence too available, the
-knobs are the thrust windups (down), firmUp (up), and the travel costs -
-in that order; the doctrine and the derivation are not knobs.
+1. **Same-line readiness holds everywhere**: every attack into the
+   resting line is parryable at floor and mean, for every pairing.
+   "Holding low, attacked low - naturally I'd be ready." This is the
+   spec's core promise and the primary playtest target.
+2. **The longsword attacker has no mean-reaction escape at any line,
+   against either defender.** Its thrust aimed off-height clears only
+   slow (ceiling-ish) reads. The earlier draft's invariant ("every
+   pairing keeps an off-line attack that escapes a mean guard") is
+   FALSE at these numbers and is withdrawn, not tuned into truth. The
+   longsword attacker's wins must come from draw variance, tempo
+   (attacking a committed or recovering body), feints (now stronger,
+   §2), and the bind. Whether that is enough - or whether the longsword
+   thrust needs a justified trim - is a playtest question, decided
+   against this table, in the open.
+3. **Only the rapier thrust aimed off-height escapes mean reads.** The
+   thrust specialist keeps a true tempo weapon; its identity line stays
+   honest.
+4. **Four boundary verdicts sit within one tick** (flagged `!` above).
+   The matrix test computes margins and FLAGS any within-tick verdict
+   rather than silently pinning a coin flip; each flagged case is
+   resolved by a deliberate, documented tuning decision (the
+   `heightChangeMs` "270, not 260" comment is the template) - during
+   implementation for the pins to be stable, during playtest for the
+   feel.
 
 ---
 
@@ -187,41 +208,62 @@ playtest complaint this spec was born from resolves without touching
 `ai.ts`. Mode 1's dummy likewise begins meeting same-line thrusts after
 its reaction, which makes the drill able to teach thrust-parries for the
 first time. The `duelist-defence` feasibility-matrix test is recomputed
-against the new numbers and the §4 invariant replaces its old one.
+against the new numbers, and its temporal invariant is superseded by
+§4's computed-table-plus-targets rule.
 
 ---
 
-## 6. Presentation
+## 6. Presentation: the resting line must be readable
+
+The resting line now decides reaction timing before any parry exists, so
+it must be VISIBLE - for both fighters, at all times. A hidden
+`guardSide` deciding who can parry what would be worse than the model it
+replaces. Requirement:
+
+- The player can look at either fighter and know their resting height,
+  their resting side, and therefore which attacks that fighter is
+  currently prepared to answer quickly.
+- Concretely: the status rows gain the resting line when no guard is up
+  (e.g. `READY: LOW INSIDE`), and/or the blade's rendered rest pose is
+  placed at the resting line so the sprite itself is the indicator.
+  Stance height is already visible; the side axis is the new obligation.
+- The AI already reads this from the observable projection; this section
+  makes the human's access equal, which is the doctrine again from the
+  other side.
 
 The player's attacks start later after the keypress (thrust: strike
-begins ~480ms after input, was 320; cut: ~700, was 520). This is
+begins ~500ms after input, was 320; cut: ~700, was 520). This is
 preparation made visible, not input lag - the rise cue and the windup
 animation begin on acceptance exactly as today, and the frame spans
 stretch automatically since `frames.ts` scales poses to phase durations.
 The `frames.ts` comment asserting a thrust "cannot be parried on
-reaction" is rewritten to the §4 truth (same-line: yes; out of line:
-no). The help panel's durations are derived from `WEAPONS` and follow by
-themselves; its parry entry gains the resting-line sentence if it fits
-the length budget.
+reaction" is rewritten to §4's truth (same-line: yes; out of line:
+mostly no). The help panel's durations are derived from `WEAPONS` and
+follow by themselves; its parry entry gains the resting-line sentence if
+it fits the length budget.
 
 ---
 
 ## 7. Tests
 
 - **Symmetry pin:** identical attack timelines for both sides, same
-  weapon and attack; no caller of `attackTimeline` passes a bonus; grep
-  guard: no `side ===` conditional inside the combat simulation
-  (`src/combat/`, excluding `ai.ts`).
+  weapon and attack; `attackTimeline` has no bonus parameter and
+  `applyIntent` no `windupBonusMs`; no `telegraphMs` on any profile.
+  (No blanket `side ===` grep: orientation, ownership and opponent
+  selection legitimately compare sides.)
 - **The matrix, recomputed:** every (defender, attacker, attack,
   resting-line relation in {same, wrong-height, wrong-side}, reaction in
-  {floor, mean, ceiling}) through `guardFormationMs`, pinned, with the
-  §4 positional invariant asserted per pairing and the boundary-margin
-  rule asserted for every entry (no verdict within one tick of its
-  deadline).
+  {floor, mean, ceiling}) through `guardFormationMs`, pinned - with
+  margins computed and a hard assertion that no PINNED verdict sits
+  within one tick of its deadline (flagged cases must have been resolved
+  by documented tuning first). No branch on weapon names anywhere.
+- **Same-line readiness target:** asserted per pairing from the computed
+  table: every same-line attack parryable at floor and mean.
 - **Emergence, both directions:** a seeded live-play probe where the
   duelist parries a same-line player thrust, and mode 1 parries one
-  after its reaction; the mirror probe where a wrong-height thrust is
-  never met by a guard formed after visibility.
+  after its reaction; the mirror probe where a wrong-height rapier
+  thrust is never met by a guard formed after visibility.
+- **Rename sweep:** no `parryRiseMs` remains in src or tests.
 - **Feel guards:** `duelistCooldown` still outlasts the worst-case whiff
   commitment (existing test, new numbers); the drill interval test
   likewise.
@@ -237,8 +279,8 @@ the length budget.
 - Attack-speed properties per line, opposition/blade-taking on the
   thrust (that is the bind's territory), or any new defensive verb.
 - AI policy changes of any kind.
-- Rebalancing the bind, measure, or footwork numbers - only windups,
-  firmUp and (if the margin rule demands) named nudges move.
+- Rebalancing the bind, measure, or footwork numbers - only the fold,
+  the rename, and §4-documented tuning decisions move values.
 
 ---
 
@@ -247,16 +289,23 @@ the length budget.
 Longsword mirror first, then rapier against longsword, both seats of
 the asymmetry gone.
 
+- Can you read either fighter's resting line at a glance - height AND
+  side - without a guard being up? If not, §6 failed and the mechanic
+  is a hidden stat.
 - Thrust at the height their blade rests in: sometimes met by steel now,
   at human-looking speeds - and when it is, you can name what you did
   wrong (you attacked into their guard's home).
-- Thrust at the other height: the old race, still yours to win.
+- Thrust at the other height: the race, still winnable - cleanly with
+  the rapier, only against slow reads with the longsword. Does the
+  longsword attacker still have enough ways in (tempo, feints, the
+  bind), or does §4's finding 2 need a documented trim?
 - Your own attacks feel weightier - the preparation is real. If the game
   reads sluggish rather than deliberate, the windups are the knob and
   the doctrine is not.
 - The duelist visibly parries; the drill can teach a thrust-parry.
 - Feints matter more on both sides. If every exchange becomes
-  feint-first, defence got too strong: §4's knob order.
+  feint-first, defence got too strong: thrust windups down, firmUp up,
+  travels last.
 
 What would look wrong: any exchange where who-controls-the-fighter
 explains an outcome difference. That is now the one unforgivable bug.
