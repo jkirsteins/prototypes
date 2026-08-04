@@ -26,9 +26,10 @@ export interface DuelEvent {
     | "attackStart" | "whiff" | "parried" | "hit" | "void" | "parry" | "feint" | "bind" | "bindBreak" | "yieldFail" | "kill" | "draw"
     // Presentation-only kinds, returned but never logged. They mark the
     // simulation instant a thing physically happens (a foot plants, a blade
-    // starts rising or travelling, a blade arrives at a guard) - which is
-    // never the tick the triggering input was accepted.
-    | "step" | "swing" | "met" | "windup";
+    // starts rising or travelling, a blade arrives at a guard, a bind
+    // shove's force lands) - which is never the tick the triggering input
+    // was accepted.
+    | "step" | "swing" | "met" | "windup" | "pulse";
   text: string;
   /** windup only: how long the rise lasts, so audio can match its length. */
   ms?: number;
@@ -174,6 +175,12 @@ export function tickDuel(d: Duel, ia: Intent | null, ib: Intent | null): DuelEve
   // break.
   if (d.bind !== null) {
     const r = tickBindContest(d.bind, dt);
+    // The bind's rhythm, made audible: one unlogged thud per shove, on
+    // the tick its FORCE lands (commit -> active) - never the keypress.
+    // The silence after each thud IS the yield gap.
+    for (const side of r.pulseStarts) {
+      out.push({ time: d.time, side, kind: "pulse", text: "" });
+    }
     for (const yf of r.yieldFails) {
       // Logged so a lost bind explains itself; unmapped in audio - the
       // failed rotation has no steel moment, the resolution is the moment.

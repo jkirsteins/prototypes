@@ -455,8 +455,14 @@ Audio keeps the one-sound-per-event rules: `bindBreak` fires only on a
 DECISIVE resolution tick, never on a keypress, and the clock's neutral
 expiry is silent (§6). A failed yield emits a logged, unmapped `yieldFail`
 DuelEvent; the log is the development-mode explanation of every lost
-bind. Pulses and yields add no sounds of their own: they are held
-motions, not moments, and the resolution is the moment.
+bind. Each pressure pulse emits one unlogged `pulse` event on the tick
+its FORCE lands (commit to active, never the keypress), mapped to a low
+quiet grind - the bind is a rhythm contest, and the thud is its beat:
+the silence after each thud IS the yield gap. Rhythm-game telegraphy
+carries through the visuals too: the lit yield band pulsates, the marker
+breathes with the live force curve, and THEIR BEAT's fill bar turns hot
+in its last stretch as the answerable gap approaches. Yields add no
+sound of their own; the resolution is their moment.
 
 ### 8.3 Help panel
 

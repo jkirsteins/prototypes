@@ -1,5 +1,5 @@
 import type { DuelEvent } from "../combat/engine";
-import { EVENT_RATES, EVENT_SOUNDS, FOOTSTEPS, SOUNDS, WINDUP_SOUND } from "./manifest";
+import { EVENT_GAINS, EVENT_RATES, EVENT_SOUNDS, FOOTSTEPS, SOUNDS, WINDUP_SOUND } from "./manifest";
 import type { SoundName } from "./manifest";
 
 /**
@@ -56,14 +56,21 @@ export function createAudioEngine(): AudioEngine {
     }
   };
 
-  const play = (name: SoundName, rate: number): void => {
+  const play = (name: SoundName, rate: number, gain = 1): void => {
     if (ctx === null || sfxBus === null) return;
     const buf = buffers.get(name);
     if (buf === undefined) return; // still decoding, or failed: skip silently
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = rate;
-    src.connect(sfxBus);
+    if (gain !== 1) {
+      const g = ctx.createGain();
+      g.gain.value = gain;
+      src.connect(g);
+      g.connect(sfxBus);
+    } else {
+      src.connect(sfxBus);
+    }
     src.start();
   };
 
@@ -116,7 +123,7 @@ export function createAudioEngine(): AudioEngine {
         footstepAt = (footstepAt + 1) % pool.length;
         play(pool[footstepAt], 1 + (Math.random() - 0.5) * 0.1);
       } else {
-        play(pool[Math.floor(Math.random() * pool.length)], EVENT_RATES[e.kind] ?? 1);
+        play(pool[Math.floor(Math.random() * pool.length)], EVENT_RATES[e.kind] ?? 1, EVENT_GAINS[e.kind] ?? 1);
       }
     }
   };

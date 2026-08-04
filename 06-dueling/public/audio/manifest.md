@@ -71,6 +71,15 @@ There is deliberately no ambient bed and no music: tried, found distracting.
 - Processing: as the clashes. Duration 0.52 s. Peak -4 dBFS.
 - Intended use: a strike that lands.
 
+## the pulse thud (no new file)
+
+- Reuses the clash samples at playbackRate 0.32 and gain 0.22 (under the
+  0.7 sfx bus): a low, quiet grind, one per bind pressure pulse, on the
+  tick its force lands. Deliberately subtle - the bind is a rhythm
+  contest and the thud keeps its beat as texture; the silence after each
+  thud is the yield gap. It must never compete with the bind clang
+  (rate 0.55, full gain) or the break.
+
 ## bullet_in.ogg / bullet_out.ogg
 
 - Source: "Quick Zoom / Slow Down" by bevibeldesign, Freesound #366092,

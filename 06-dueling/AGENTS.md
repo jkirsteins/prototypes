@@ -50,6 +50,12 @@ a layer:
   thrust launches with no windup interval to cross, so no rise cue plays -
   not an audio special case, there is simply no mark to hit.
 
+- the pulse thud (clash pitched far down, quiet) when a bind shove's
+  FORCE lands - the commit-to-active transition, never the J keypress.
+  The bind is a rhythm contest and the thud is its beat: the silence
+  after each thud is the yield gap, so the rhythm itself is the
+  information that earns pulses a sound.
+
 The engine also emits an unmapped `swing` event (blade starts travelling);
 it is deliberately silent - sounding every attack would make the whoosh
 carry no information.

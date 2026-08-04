@@ -436,6 +436,28 @@ describe("yield", () => {
   });
 });
 
+describe("the bind's rhythm is simulated, not input-driven", () => {
+  test("the pulse thud fires when the shove's force lands, never on the keypress, and is unlogged", () => {
+    const d = enterBind();
+    if (d.bind === null) throw new Error("unreachable");
+    const pulse = derivePressurePulse(LS);
+    const pressEvs = runMs(d, TICK, "press", null);
+    expect(pressEvs.some((e) => e.kind === "pulse")).toBe(false); // the keypress is silent
+    // The commit is the gathering; the thud lands when force does.
+    const evs: DuelEvent[] = [];
+    let ticks = 0;
+    while (!evs.some((e) => e.kind === "pulse") && ticks++ < 20) evs.push(...runMs(d, TICK));
+    const thud = evs.find((e) => e.kind === "pulse");
+    expect(thud).toBeDefined();
+    if (!thud) throw new Error("unreachable");
+    // The press tick itself already ran one dt of the commit, so the
+    // force lands one tick earlier than a naive ceil from the press.
+    expect(ticks).toBe(Math.ceil(pulse.commitMs / TICK) - 1);
+    expect(thud.side).toBe(0);
+    expect(d.log.some((e) => e.kind === "pulse")).toBe(false); // presentation-only
+  });
+});
+
 describe("anti-stall drift", () => {
   test("two passive fighters resolve toward the entry initiative, by pressure", () => {
     const d = enterBind();

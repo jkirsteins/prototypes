@@ -52,6 +52,7 @@ export const EVENT_SOUNDS: Partial<Record<DuelEvent["kind"], SoundName[]>> = {
   met: ["clash1", "clash2", "clash3"],
   bind: ["clash1", "clash2", "clash3"],
   bindBreak: ["clash1", "clash2", "clash3"],
+  pulse: ["clash1", "clash2", "clash3"],
   hit: ["hit1"],
 };
 
@@ -67,9 +68,23 @@ export const EVENT_SOUNDS: Partial<Record<DuelEvent["kind"], SoundName[]>> = {
  * contest has no neutral break. yieldFail is deliberately unmapped: the
  * failed rotation has no steel moment, and the resolution stays the
  * bind's one second sound.
+ *
+ * pulse is the bind's RHYTHM made audible: one low grinding thud per
+ * shove, on the tick its force lands - pitched below even the bind clang
+ * and played quiet (EVENT_GAINS), so the beat reads as texture under the
+ * outcome sounds. The silence after each thud is the yield gap; the
+ * rhythm is the information, which is why pulses earn a sound at all.
  */
 export const EVENT_RATES: Partial<Record<DuelEvent["kind"], number>> = {
   bind: 0.55,
+  pulse: 0.32,
+};
+
+/** Per-kind gain (default 1): cues that must sit UNDER the outcomes.
+ *  The pulse thud is deliberately SUBTLE - a felt texture keeping the
+ *  beat, never competing with the clang, the break or the hit. */
+export const EVENT_GAINS: Partial<Record<DuelEvent["kind"], number>> = {
+  pulse: 0.22,
 };
 
 /**

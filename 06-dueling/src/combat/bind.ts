@@ -438,6 +438,9 @@ export interface BindTickResult {
   cause: "pressure" | "yield" | null;
   /** Yields that resolved as failures this tick: turned without force. */
   yieldFails: Array<{ side: 0 | 1 }>;
+  /** Sides whose pulse's FORCE landed this tick (commit -> active): the
+   *  shove's physical moment, and the audible beat of the bind's rhythm. */
+  pulseStarts: Array<0 | 1>;
   /** The clock ran out with no winner: the bind breaks neutral. Play is
    *  given the whole tick first - a winner on the expiry tick still wins. */
   expired: boolean;
@@ -457,7 +460,7 @@ export function bindTimerFrac(bind: BindState): number {
  * yield completion on the same tick go to the presser, deterministically.
  */
 export function tickBindContest(bind: BindState, dt: number): BindTickResult {
-  const result: BindTickResult = { winner: null, cause: null, yieldFails: [], expired: false };
+  const result: BindTickResult = { winner: null, cause: null, yieldFails: [], pulseStarts: [], expired: false };
   bind.t += dt;
   const dtS = dt / 1000;
   const bothReady = bind.action[0].kind === "ready" && bind.action[1].kind === "ready";
@@ -515,6 +518,7 @@ export function tickBindContest(bind: BindState, dt: number): BindTickResult {
     a.t += dt;
     if (a.kind === "pressCommit" && a.t >= a.pulse.commitMs) {
       a = bind.action[side] = { kind: "pressActive", t: a.t - a.pulse.commitMs, pulse: a.pulse };
+      result.pulseStarts.push(side);
     }
     if (a.kind === "pressActive" && a.t >= a.pulse.activeMs) {
       a = bind.action[side] = {

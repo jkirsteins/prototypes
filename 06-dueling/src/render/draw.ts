@@ -251,13 +251,17 @@ function drawBindBar(v: View, d: Duel): void {
 
   // Yield bands: side s's zone sits where s's LOSS endpoint renders -
   // their own side of the bar, the territory they are pushed back into.
+  // A lit band PULSATES (renderer-only, pure in d.time): the rhythm
+  // game's "hit now" flash, not a static highlight.
   const band = (side: 0 | 1): void => {
     const w = bind.yieldZone[side] * b.halfW;
     const lit = yieldOpportunity(bind, side);
+    if (lit) ctx.globalAlpha = 0.65 + 0.35 * Math.abs(Math.sin(d.time / 55));
     ctx.fillStyle = lit ? "#e6c229" : "#4a4436";
     const lossOffset = bindMarkerOffset(side === 0 ? 1 : -1, enemyFacing);
     if (lossOffset > 0) ctx.fillRect(b.cx + b.halfW - w, b.y, w, b.h);
     else ctx.fillRect(x0, b.y, w, b.h);
+    ctx.globalAlpha = 1;
   };
   band(0);
   band(1);
@@ -272,10 +276,12 @@ function drawBindBar(v: View, d: Duel): void {
   ctx.fillRect(b.cx - frac * b.halfW, b.y + b.h + 3, 2 * frac * b.halfW, 3);
 
   // The marker, riding the live control value through the world mapping.
+  // Its radius breathes with the live net force - the shove's sine curve
+  // made visible, so the beat is felt on the marker itself.
   const mx = b.cx + bindMarkerOffset(bind.control, enemyFacing) * b.halfW;
   ctx.fillStyle = "#e8eaed";
   ctx.beginPath();
-  ctx.arc(mx, b.y + b.h / 2, 6, 0, Math.PI * 2);
+  ctx.arc(mx, b.y + b.h / 2, 6 + 3 * Math.min(1, Math.abs(net)), 0, Math.PI * 2);
   ctx.fill();
 
   // Net-force chevrons beside the marker, pointing where the marker is
@@ -301,10 +307,14 @@ function drawBindBar(v: View, d: Duel): void {
     if (s.recovery !== null) {
       const w = 60;
       const x = labelX - w / 2;
+      const frac = Math.max(0, Math.min(1, s.recovery));
       ctx.fillStyle = "#2c313a";
       ctx.fillRect(x, b.y + 27, w, 4);
-      ctx.fillStyle = "#8a8f98";
-      ctx.fillRect(x, b.y + 27, w * Math.max(0, Math.min(1, s.recovery)), 4);
+      // The approach cue: THEIR BEAT's bar turns hot in its last stretch
+      // - the gap is coming, ready the answer. Rhythm games telegraph
+      // the hit moment; this is ours.
+      ctx.fillStyle = s.label === "THEIR BEAT" && frac >= 0.7 ? "#e6c229" : "#8a8f98";
+      ctx.fillRect(x, b.y + 27, w * frac, 4);
     }
   }
   ctx.textAlign = "left";
