@@ -402,13 +402,32 @@ as layered constants).
 spends the advantage on a step away ("advantage cleared by anything else"),
 costing no new mechanics - the opponent-shaped mercy of not converting.
 
-If the bind resolves the duelist's way, `conversionDueAt` is set from the
-already-drawn delay and the plan fires when the clock reaches it -
+If the bind resolves the duelist's way, `ai.conversion.dueAt` is set from
+the already-drawn delay and the plan fires when the clock reaches it -
 execution jitter on a decision made at entry, a fencer who knew what the
 win was for before it came. The delay ceiling plus the firmest strip still
 fits the invariant (60 + 260 << 520). If the bind is lost, the plan dies
 unread. **No draw of any kind happens on the resolution tick**, and a test
-pins that. The plan is hidden, and legitimately so: it is a plan about the
+pins that.
+
+**While `ai.conversion` exists it OWNS the AI's output** - checked before
+every normal policy branch, or the pulse could issue a step or an attack
+during the 0-60ms delay, consume the advantage through the
+cleared-by-anything rule, and destroy the planned conversion:
+
+```ts
+if (ai.conversion !== null) {
+  if (self.bindAdvantageMs <= 0) {
+    ai.conversion = null;   // the advantage died first: plan moot
+    return null;
+  }
+  if (d.time < ai.conversion.dueAt) return null;  // committed, waiting
+  const intent =
+    ai.conversion.plan === "withdraw" ? "retreat" : ai.conversion.plan;
+  ai.conversion = null;
+  return intent;
+}
+``` The plan is hidden, and legitimately so: it is a plan about the
 duelist's own future action, not bind state; through the whole bind and up
 to the conversion's first tick, the opponent-observable projection is
 identical whichever plan was drawn.
