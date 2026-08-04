@@ -16,10 +16,12 @@ exchange:
    every AI attack `telegraphMs` of extra windup and the player none
    (`engine.ts`, `side === 1 ? telegraphMs : 0`). That is a physics
    difference keyed on who holds the controller - the one thing this
-   project must never do. A player thrust is currently a thrust with
-   zero visible preparation, which is not a fast attack, it is an
-   unphysical one; the AI, reading honestly through a human-like
-   reaction, correctly cannot answer it.
+   project must never do. Player attacks currently receive less
+   preparation than identical AI attacks, because only the AI pays
+   `telegraphMs` - the player's thrust shows 200/260ms of windup where
+   the same weapon in AI hands shows 340/440; the AI, reading honestly
+   through a human-like reaction, correctly cannot answer the shortened
+   version.
 2. **The defender's readiness ignores the resting blade.** A cold parry
    pays the full rise as if the sword hung at the fighter's knees. But a
    sword is never fully lowered: the stance height and `guardSide`
@@ -189,13 +191,20 @@ verdict within one tick of its deadline:
 3. **Only the rapier thrust aimed off-height escapes mean reads.** The
    thrust specialist keeps a true tempo weapon; its identity line stays
    honest.
-4. **Four boundary verdicts sit within one tick** (flagged `!` above).
-   The matrix test computes margins and FLAGS any within-tick verdict
-   rather than silently pinning a coin flip; each flagged case is
-   resolved by a deliberate, documented tuning decision (the
-   `heightChangeMs` "270, not 260" comment is the template) - during
-   implementation for the pins to be stable, during playtest for the
-   feel.
+4. **Four boundary verdicts sit within one tick** (flagged `!` above),
+   and they are ACCEPTED as deterministic - no value changes for them,
+   and none is deferred to implementation. The justification is not
+   tolerance but arithmetic: reactions are drawn from a CONTINUOUS band,
+   so the matrix's floor/mean/ceiling are probe points on a continuum,
+   and a small margin at a probe point is not a coin flip anywhere in
+   the simulation - it only marks where inside the band the flip point
+   sits ("P by 5ms at the ceiling" means parryable across essentially
+   the whole band; "miss by 10ms" means parryable up to a 410ms draw).
+   The shared derivation is exact and the engine is deterministic, so
+   the pins are stable; the test pins each verdict WITH its margin, so
+   any future retune that flips or tightens one fails visibly instead
+   of silently, and the engine's own behavior at an exact boundary (the
+   0ms case) is pinned by a dedicated tick-ordering test.
 
 ---
 
@@ -223,10 +232,13 @@ replaces. Requirement:
 - The player can look at either fighter and know their resting height,
   their resting side, and therefore which attacks that fighter is
   currently prepared to answer quickly.
-- Concretely: the status rows gain the resting line when no guard is up
-  (e.g. `READY: LOW INSIDE`), and/or the blade's rendered rest pose is
-  placed at the resting line so the sprite itself is the indicator.
-  Stance height is already visible; the side axis is the new obligation.
+- The REQUIRED mechanism is the HUD: the status rows show the resting
+  line for both fighters whenever no guard is up - `READY: LOW INSIDE` -
+  and a test pins its presence and correctness against the fighter's
+  height and `guardSide`. Placing the blade's rendered rest pose at the
+  resting line is an optional art improvement on top, never the
+  requirement's carrier. Stance height is already visible; the side
+  axis is the new obligation.
 - The AI already reads this from the observable projection; this section
   makes the human's access equal, which is the doctrine again from the
   other side.
@@ -237,8 +249,9 @@ preparation made visible, not input lag - the rise cue and the windup
 animation begin on acceptance exactly as today, and the frame spans
 stretch automatically since `frames.ts` scales poses to phase durations.
 The `frames.ts` comment asserting a thrust "cannot be parried on
-reaction" is rewritten to §4's truth (same-line: yes; out of line:
-mostly no). The help panel's durations are derived from `WEAPONS` and
+reaction" is rewritten to §4's computed truth: same-line attacks are
+parryable at ordinary reactions; wrong-height rapier thrusts may
+escape; wrong-side attacks are generally still answerable. The help panel's durations are derived from `WEAPONS` and
 follow by themselves; its parry entry gains the resting-line sentence if
 it fits the length budget.
 
@@ -253,10 +266,15 @@ it fits the length budget.
   selection legitimately compare sides.)
 - **The matrix, recomputed:** every (defender, attacker, attack,
   resting-line relation in {same, wrong-height, wrong-side}, reaction in
-  {floor, mean, ceiling}) through `guardFormationMs`, pinned - with
-  margins computed and a hard assertion that no PINNED verdict sits
-  within one tick of its deadline (flagged cases must have been resolved
-  by documented tuning first). No branch on weapon names anywhere.
+  {floor, mean, ceiling}) through `guardFormationMs`, pinned verdict AND
+  margin per entry (§4's finding 4: boundaries are deterministic and
+  accepted; the pinned margins make any future flip or tightening fail
+  visibly). No branch on weapon names anywhere.
+- **Boundary tick-ordering:** a scenario constructed at the 0ms-margin
+  entry (rapier mirror, wrong-height ceiling read) pins which way the
+  engine's own contact arithmetic resolves an exact-deadline formation,
+  so the model's boundary convention and the engine's are demonstrably
+  the same.
 - **Same-line readiness target:** asserted per pairing from the computed
   table: every same-line attack parryable at floor and mean.
 - **Emergence, both directions:** a seeded live-play probe where the
