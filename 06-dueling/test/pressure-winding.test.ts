@@ -5,6 +5,7 @@ import {
   BIND_ADVANTAGE_MS, BIND_LOSS_MS, GUARD_SETTLE_MS, createDuel, firmness, tickDuel,
 } from "../src/combat/engine";
 import {
+  BIND_TRACK_GAPS,
   BIND_TIME_LIMIT_MS, CONTROL_GAIN, DRIFT_GRACE_MS, PULSE_COMMIT_BASE_MS,
   PULSE_RECOVERY_BASE_MS, YIELD_FAIL_PENALTY, YIELD_FAIL_RECOVERY_MS,
   YIELD_ZONE_MAX, YIELD_ZONE_MIN,
@@ -348,7 +349,11 @@ describe("yield", () => {
     // if the window were instantaneous. The memory keeps the band SOLID
     // while the opponent genuinely presses, and lets it go dark only
     // when they genuinely stop.
-    const bind = fixtureBind(LS, LS, { control: 0.85 });
+    // 0.55: the fed pulse (one gap, 0.25 at BIND_TRACK_GAPS = 4) CARRIES
+    // control into the one-gap zone (~[0.755, 1]) instead of crossing the
+    // endpoint - the shove that lands you in the band is the one whose
+    // remembered force the yield catches.
+    const bind = fixtureBind(LS, LS, { control: 0.55 });
     startPress(bind, 1);
     const pulse = derivePressurePulse(LS);
     tickMs(bind, pulse.commitMs + pulse.activeMs + TICK);
@@ -366,7 +371,7 @@ describe("yield", () => {
     // Deep enough that the swings of the exchange keep the marker inside
     // the one-gap zone when the queued K finally fires - but with enough
     // room that the enemy's mid-yield pulse cannot outrun the catch.
-    const bind = fixtureBind(LS, LS, { control: 0.955 });
+    const bind = fixtureBind(LS, LS, { control: 0.8 });
     startPress(bind, 0); // the player's own tap claims the beat: busy through its cycle
     // The enemy mashes throughout, claiming the beat the moment it frees,
     // so real force is mid-flow when the player's queued K fires.
@@ -522,8 +527,9 @@ describe("the bind clock", () => {
     expect(bind.t).toBeGreaterThanOrEqual(BIND_TIME_LIMIT_MS);
     expect(bind.t).toBeLessThan(BIND_TIME_LIMIT_MS + 2 * TICK);
     // Alternating claimed beats swing the marker but net nothing: at
-    // expiry it sits within one shove of even, never near an endpoint.
-    expect(Math.abs(bind.control)).toBeLessThan(0.15);
+    // expiry it sits within about one shove (1/BIND_TRACK_GAPS) of even,
+    // never near an endpoint.
+    expect(Math.abs(bind.control)).toBeLessThan(1 / BIND_TRACK_GAPS + 0.1);
   });
 
   test("the HUD's timer fraction is a pure read of the clock", () => {
@@ -610,7 +616,7 @@ describe("resolution and the reward", () => {
     // Force the contest to the player's danger edge, feed a whole pulse,
     // then catch its spent force in the GAP - the beat locks the yield
     // while the pulse itself runs.
-    d.bind.control = 0.85;
+    d.bind.control = 0.55; // one fed pulse lands the player in the zone
     runMs(d, TICK, null, "press");
     const pulse = derivePressurePulse(LS);
     runMs(d, pulse.commitMs + pulse.activeMs + TICK);

@@ -241,6 +241,7 @@ answers crossing it offers": about one.
 
 ```ts
 gapTravel = CONTROL_GAIN * (2/pi) * bindAuthority_opp * PULSE_ACTIVE_MS
+          = bindAuthority_opp / BIND_TRACK_GAPS   // the gain is derived
 width = clamp(YIELD_ZONE_GAPS * rotationalControl_self * gapTravel,
               0.05, 0.25)
 ```
@@ -383,7 +384,8 @@ that seeded it.)
 | `BIND_LOSS_MS` | 520 |
 | `BIND_ADVANTAGE_MS` | 240 (advantage + thrust strike <= exposure, per pairing) |
 | `GUARD_SETTLE_MS` | 160 |
-| `CONTROL_GAIN` | 1.4 /s per unit force |
+| `BIND_TRACK_GAPS` | 4 (as built, playtest revision: the whole track measured in anchor taps, same idiom as the yield band - the old opaque 1.4 gain made an 11-gap track, "too many taps") |
+| `CONTROL_GAIN` | derived: one anchor pulse travels 1/BIND_TRACK_GAPS |
 | `PULSE_COMMIT_BASE_MS` | 20 |
 | `PULSE_ACTIVE_MS` | 100 |
 | `PULSE_RECOVERY_BASE_MS` | 50 |
@@ -393,7 +395,7 @@ that seeded it.)
 | `YIELD_FORCE_MIN` | 0.25 |
 | `YIELD_MEMORY_MS` | 160 (longer than a mash's longest force-free stretch) |
 | `BIND_INPUT_GRACE_MS` | 120 |
-| `YIELD_FAIL_PENALTY` | 0.18 (wider than the one-gap zones: any in-zone fail loses outright) |
+| `YIELD_FAIL_PENALTY` | 0.3 (above the zone clamp, so any in-zone fail loses outright at every track width) |
 | `YIELD_FAIL_RECOVERY_MS` | 200 |
 | `DRIFT_GRACE_MS` | 600 (of calm) |
 | `DRIFT_BASE` / `DRIFT_RAMP` / `DRIFT_MAX` | 0.2 /s, +0.25 /s per calm s, 0.8 /s |

@@ -12,11 +12,6 @@ import type { BindContact, Line, WeaponProfile } from "./types";
 
 /** A guard is fully braced this long after its covered line settles. */
 export const GUARD_SETTLE_MS = 160;
-/** Control units per second per unit of net force. Sized so a clean
- *  uncontested mash beats a passive holder comfortably inside the bind
- *  clock - unbuffered inputs drop some presses, and the tax must not eat
- *  the whole margin. */
-export const CONTROL_GAIN = 1.4;
 /** A pulse's gathering time, divided by the weapon's bindHandling. */
 export const PULSE_COMMIT_BASE_MS = 20;
 /** A pulse's force window: the sine curve's base, shared by all weapons.
@@ -28,6 +23,19 @@ export const PULSE_ACTIVE_MS = 100;
 /** A pulse's spent time, scaled by its peak and divided by bindHandling:
  *  hard pressure recovers slower, nimble weapons recover faster. */
 export const PULSE_RECOVERY_BASE_MS = 50;
+/** The whole track, measured the same way as the yield band: how many
+ *  UNCONTESTED anchor-weapon taps carry control from the centre to an
+ *  endpoint. The playtest verdict on the old opaque gain was "too many
+ *  taps" (an 11-gap track); four reads as a short, winnable tug, and
+ *  the number is the thing a tuner would actually want to say. Weapons
+ *  scale by their own authority: the rapier's lighter press makes ITS
+ *  track longer, from the same property that narrows its zones. */
+export const BIND_TRACK_GAPS = 4;
+/** Control units per second per unit of net force - DERIVED from the
+ *  track width: one anchor pulse (authority 1, the sine's 2/pi mean
+ *  over PULSE_ACTIVE_MS) travels exactly 1/BIND_TRACK_GAPS. */
+export const CONTROL_GAIN = 1 / (BIND_TRACK_GAPS * (2 / Math.PI) * (PULSE_ACTIVE_MS / 1000));
+
 /** The yield zone spans about this many OPPOSING pulses of travel:
  *  pushing through it takes one shove, and the gap after that shove is
  *  THE yield opportunity - precisely one. (A playtest revision: the old
@@ -70,7 +78,7 @@ export const BIND_INPUT_GRACE_MS = 120;
  *  endpoint and loses the bind outright - the doomed K is the mistake
  *  the whole beat design punishes - while a fail out in open water is
  *  survivable at the jolt plus the recovery. */
-export const YIELD_FAIL_PENALTY = 0.18;
+export const YIELD_FAIL_PENALTY = 0.3;
 /** About two tap cycles on top of the wasted motion: a real punish for a
  *  blind K, without freezing the fighter out of the tempo. */
 export const YIELD_FAIL_RECOVERY_MS = 200;
