@@ -27,18 +27,43 @@ export const CLIPS: Record<ClipName, { file: string; durationS: number }> = {
   gsDeath:    { file: "great-sword-death.glb",    durationS: 2.375 },
 };
 
-/** Curated timestamps (seconds). Provisional until Task 7's screenshot
- *  pass; the STRUCTURE is what the tests pin down. */
+/**
+ * Curated timestamps (seconds), picked frame by frame from screenshots.
+ *
+ * gsSlash is a four-swing combo, not one cut. The attack poses come from
+ * its first swing (0.30 .. 0.86), the only one that stays on the floor
+ * through a full cock-and-cleave; the swing ends in a leap, so the
+ * recovery is borrowed from the combo's closing swing (3.28 .. 3.46),
+ * which settles into the same forward guard the clip opens on.
+ */
 export const POSE_T = {
-  slash: { windupLow: 0.10, windupHigh: 0.25, still: 0.35, travelling: 0.50, delivered: 0.65, recoveryStart: 0.70, recoveryEnd: 0.95 },
-  stab:  { windupLow: 0.10, windupHigh: 0.20, still: 0.30, travelling: 0.45, delivered: 0.60, recoveryStart: 0.65, recoveryEnd: 0.90 },
-  block: { rise: 0.10, formed: 0.30 },
-  walk:  { start: 0.0, end: 0.95 },
-  dodge: { start: 0.05, end: 0.85 },
-  impact:{ start: 0.05, end: 0.60 },
-  death: { start: 0.0, end: 0.95 },
-  bindContact: 0.50,          // the fighter's frozen slash contact
-  bindCounterpartBlock: 0.30, // the static counterpart's formed block
+  slash: {
+    windupLow: 0.30,     // hands lifting past the head, guard broken
+    windupHigh: 0.50,    // hands high behind the head, upright and open
+    still: 0.61,         // deepest cock: hands back, knees loaded
+    travelling: 0.78,    // long stride, blade mid-arc at head height
+    delivered: 0.86,     // deep lunge, arms driven fully out front
+    recoveryStart: 3.28, // upright, blade dropping back toward the line
+    recoveryEnd: 3.46,   // the clip's own guard, where an idle resumes
+  },
+  stab: {
+    windupLow: 0.15,     // tallest frame, weapon hand still low
+    windupHigh: 0.36,    // hand drawing up and back, weight sinking
+    still: 0.48,         // deepest coil, point cocked above the shoulder
+    travelling: 0.70,    // compact over the front foot, arm swinging through
+    delivered: 1.05,     // lunge at full reach, the clip's furthest point
+    recoveryStart: 1.50, // arm withdrawing from the lunge
+    recoveryEnd: 1.95,   // back upright over the feet
+  },
+  // great-sword-blocking.glb holds one crouched guard for its whole
+  // 0.958 s (hips vary by 4 mm), so these two only bracket that hold.
+  block: { rise: 0.10, formed: 0.70 },
+  walk:  { start: 0.0, end: 0.646 },  // exactly one stride of the two-step cycle
+  dodge: { start: 0.0, end: 1.20 },   // crouch, hop back, land, rise
+  impact:{ start: 0.03, end: 0.92 },  // struck, thrown back, back over the feet
+  death: { start: 0.0, end: 2.30 },   // standing to settled prone
+  bindContact: 0.86,          // the cut arrested at full extension, arms into the guard
+  bindCounterpartBlock: 0.70, // the static counterpart's formed block
 };
 
 export interface PosePick {
