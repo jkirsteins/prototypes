@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>07 - Rendertest</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #14161a; color: #cfd3da;
+        font-family: ui-monospace, Menlo, monospace; }
+      #wrap { display: flex; flex-direction: column; align-items: center;
+        justify-content: center; height: 100%; gap: 10px; }
+      canvas { background: #1b1e24; }
+      #status { font-size: 13px; color: #8a8f98; }
+    </style>
+  </head>
+  <body>
+    <div id="wrap">
+      <canvas id="stage" width="960" height="540"></canvas>
+      <div id="status">loading model...</div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
