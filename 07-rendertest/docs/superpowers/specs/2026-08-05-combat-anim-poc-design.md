@@ -32,8 +32,8 @@ machine, readability by the user playing it.
   from timeMs) and the mixer is advanced with `mixer.update(0)` so dt
   never moves a pose. The same PosePick must produce the same skeleton
   regardless of what played before; e2e proves it by comparing sampled
-  bone world transforms after reaching the same PosePick via different
-  preceding states, not by action weights alone.
+  bone transforms relative to the fighter root after reaching the same
+  PosePick via different preceding states, not by action weights alone.
 - **The same `AttackTimeline`.** Seven fields, same names (`riseStart`,
   `riseEnd`, `strikeStart`, `parryableUntil`, `strikeEnd`, `recoveryStart`,
   `recoveryEnd`), absolute ms from attack start, snapshotted at launch.
