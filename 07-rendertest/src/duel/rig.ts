@@ -7,23 +7,91 @@ import type { ClipName, PosePick } from "./poses";
 /** 06's fighter is a ~175 cm person; duel mode normalizes to match. */
 const FIGHTER_HEIGHT_M = 1.75;
 
-// Calibration constants - Task 8 solves the real values; these are the
-// starting guesses. The sword's blade axis, read from Sword.glb's mesh
-// bounds after FBX2glTF's baked node transform (Step 1): local mesh-space
-// combined min (-0.00386, -0.00120, -0.00494) max (0.00386, 0.00108,
-// 0.03859), which after the "Sword" node's own rotation (-90 deg about x)
-// and scale (100) becomes world-space min (-0.386, -0.494, -0.108) max
-// (0.386, 3.859, 0.120) - dims x=0.771 y=4.353 z=0.229. The long axis is
-// y, tip toward +y, matching this file's defaults below.
-export const SWORD_SOCKET_POS = new THREE.Vector3(0, 0.05, 0.02);
-export const SWORD_SOCKET_EULER = new THREE.Euler(Math.PI / 2, 0, 0);
-export const BLADE_LENGTH_SCALE = 1.0;
-/** Wrist-origin to palm-center offset, meters, in hand-bone local space. */
-export const PALM_OFFSET = new THREE.Vector3(0, 0.08, 0.01);
-/** Grip segment ends and blade tip, sword-local, BEFORE blade scaling. */
-export const GRIP_A = new THREE.Vector3(0, 0.02, 0);
-export const GRIP_B = new THREE.Vector3(0, 0.22, 0);
-export const TIP_LOCAL = new THREE.Vector3(0, 1.0, 0);
+// Sword.glb's own units, read from its mesh bounds after FBX2glTF's baked
+// node transform (a -90 deg turn about x and a x100 scale): the model runs
+// along +y from the pommel at y = -0.494 to the tip at y = 3.859, i.e.
+// 4.353 units of sword, x spanning +/-0.386 at the crossguard. Its four
+// primitives separate cleanly: Metal blade y 0.689 .. 3.859, Brown
+// crossguard y 0.583 .. 0.689, Red grip y -0.162 .. 0.583, Gold pommel and
+// fittings down to y -0.494. Everything below in sword units is expressed
+// against that model and multiplied by BLADE_LENGTH_SCALE to reach meters.
+
+// Both hands are read from the rig itself rather than guessed. The finger
+// bones' own bind offsets put the right hand's knuckle row along z (Index1
+// z +0.022, Pinky1 z -0.037), the fingers along -x (Middle1 x -0.092) and
+// the thumb below the palm plane, so the palm centre - where a grip lies -
+// is half way to the knuckles, one grip radius into the palm side:
+// (-0.043, -0.020, -0.008) right, mirrored in x for the left.
+//
+// The blade runs along the hand's -y and the pommel along +y. That comes
+// from the clips, not from anatomy: at the delivered cut the off-hand sits
+// 19.3 cm from the right hand along hand-local (0.065, 0.971, -0.229),
+// i.e. up the grip toward the pommel, and pointing the blade the other way
+// down that same line drives the point forward (0.96 of a unit of world +x
+// per unit of blade). The roll is 0 so the blade's flat faces the camera;
+// rolled 90 degrees it disappears edge-on in this side-view stage.
+
+/** Sword origin (its own y = 0) in the right palm group, meters. The y is
+ *  the palm centre plus the seat: the right palm rides at sword y = 0.50,
+ *  just under the crossguard, so y = -0.020 + 0.50 x BLADE_LENGTH_SCALE. */
+export const SWORD_SOCKET_POS = new THREE.Vector3(-0.043, 0.140, -0.008);
+export const SWORD_SOCKET_EULER = new THREE.Euler(Math.PI, 0, 0);
+/** Uniform meters-per-sword-unit: 4.353 sword units x this is the whole
+ *  weapon, pommel to tip, so 0.32 is a 1.39 m great sword against the
+ *  1.75 m fighter - the top of the 1.0-1.4 m band, chosen there because
+ *  reach is the scarce quantity (see the reach note below). */
+export const BLADE_LENGTH_SCALE = 0.32;
+/** Wrist-origin to palm-centre offset, meters, in the left palm group. */
+export const PALM_OFFSET = new THREE.Vector3(0.043, -0.020, -0.008);
+/** Grip segment ends and blade tip, sword units, BEFORE blade scaling.
+ *  GRIP_A is the pommel end of the Red grip, GRIP_B the crossguard end;
+ *  at 0.32 that is a 23.8 cm grip, two-handed. */
+export const GRIP_A = new THREE.Vector3(0, -0.162, 0);
+export const GRIP_B = new THREE.Vector3(0, 0.583, 0);
+export const TIP_LOCAL = new THREE.Vector3(0, 3.859, 0);
+
+// Measured with these values (paused, KeyJ then step 1000 / KeyK then step
+// 700, forward reach = (tipWorldX - rootWorldX) x facing):
+//   cut delivered    reach 1.57 m, left palm 9.1 cm off the grip
+//   thrust delivered reach 1.40 m, left palm 27.6 cm off the grip
+//   parry formed     left palm 38.5 cm off the grip
+//   idle             left palm 44.3 cm off the grip
+// The spec's 2.00 m (LONGSWORD.reachCm) is NOT reachable and no scale can
+// make it so. At their most extended frame these clips carry the sword
+// hand 0.50 m (cut) and 0.63 m (thrust) ahead of the root, and the blade
+// leaves that hand only 0.97 (cut) / 0.69 (thrust) aligned with the line,
+// so a tip 2.00 m out needs 1.99 m of weapon for the cut and 2.57 m for
+// the thrust - a lance, and two different lances. Closing that gap is a
+// question for reachCm or for the poses, not for a scale here.
+//
+// The off-hand distances above are likewise not a socket the calibration
+// missed. In the source clips the two hands are 15.7 cm apart through the
+// whole of great-sword-idle and 6.7 cm through great-sword-blocking, and
+// the hand-local direction from the sword hand to the off-hand holds to
+// within 15 degrees across that family - one hilt, two hands. On this rig
+// the same measurements come out 57.4 cm, 38.2 cm and 70 degrees of
+// spread, so the retarget, not the choreography, is what lets the
+// off-hand go. upward-thrust is the exception that is real: its own
+// skeleton holds the hands 50 cm apart at the thrust.
+
+/** `?markers` on the duel URL draws the calibration points (tip, both grip
+ *  ends, left palm) as small unlit spheres that read through the mesh. */
+const DEBUG_MARKERS = typeof location !== "undefined" && new URLSearchParams(location.search).has("markers");
+
+/** A calibration point: an empty in the release build, a sphere under
+ *  `?markers`. Radius is in meters because every marker hangs off a
+ *  scale-compensated group. */
+function marker(color: number): THREE.Object3D {
+  const o = new THREE.Object3D();
+  if (!DEBUG_MARKERS) return o;
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.018, 10, 8),
+    new THREE.MeshBasicMaterial({ color, depthTest: false }),
+  );
+  dot.renderOrder = 10;
+  o.add(dot);
+  return o;
+}
 
 export interface RigSample {
   activeClip: string | null;
@@ -138,16 +206,7 @@ export async function loadDuelRig(baseUrl: string): Promise<DuelRig> {
     actions.set(name, action);
   }
 
-  // Sword prop + markers on the right hand.
   const swordGltf = await loader.loadAsync(`${baseUrl}models/Sword.glb`);
-  const swordGroup = new THREE.Group();
-  swordGroup.add(swordGltf.scene);
-  swordGltf.scene.scale.y *= BLADE_LENGTH_SCALE; // blade axis per Step 1
-  const tip = new THREE.Object3D(); tip.position.copy(TIP_LOCAL).multiplyScalar(BLADE_LENGTH_SCALE); swordGroup.add(tip);
-  const gripA = new THREE.Object3D(); gripA.position.copy(GRIP_A); swordGroup.add(gripA);
-  const gripB = new THREE.Object3D(); gripB.position.copy(GRIP_B); swordGroup.add(gripB);
-  swordGroup.position.copy(SWORD_SOCKET_POS);
-  swordGroup.setRotationFromEuler(SWORD_SOCKET_EULER);
 
   let rightHand: THREE.Object3D | null = null;
   let leftHand: THREE.Object3D | null = null;
@@ -165,10 +224,37 @@ export async function loadDuelRig(baseUrl: string): Promise<DuelRig> {
   // guard alone leaves their type as `never` at the call sites below.
   const rightHandBone: THREE.Object3D = rightHand;
   const leftHandBone: THREE.Object3D = leftHand;
-  rightHandBone.add(swordGroup);
-  const leftPalm = new THREE.Object3D();
+
+  // Both hand bones inherit Xbot's Armature scale (0.01) times
+  // normalizeToHeight's fit factor, so anything parented straight onto
+  // them is drawn about a hundredth of its stated size - a 1.4 m sword
+  // arrives a centimeter long. Each attachment therefore hangs off a group
+  // whose scale cancels that inherited factor, which is what lets
+  // SWORD_SOCKET_POS, PALM_OFFSET and the marker radii all be plain
+  // meters. The factor is read once in bind pose; no clip animates bone
+  // scale, so it stays true for every pose.
+  root.updateWorldMatrix(true, true);
+  const metersOn = (bone: THREE.Object3D): THREE.Group => {
+    const g = new THREE.Group();
+    g.scale.setScalar(1 / bone.getWorldScale(new THREE.Vector3()).x);
+    bone.add(g);
+    return g;
+  };
+
+  // Sword prop + markers on the right hand.
+  const swordGroup = new THREE.Group();
+  swordGroup.position.copy(SWORD_SOCKET_POS);
+  swordGroup.setRotationFromEuler(SWORD_SOCKET_EULER);
+  metersOn(rightHandBone).add(swordGroup);
+  swordGltf.scene.scale.setScalar(BLADE_LENGTH_SCALE);
+  swordGroup.add(swordGltf.scene);
+  const tip = marker(0xff4444); tip.position.copy(TIP_LOCAL).multiplyScalar(BLADE_LENGTH_SCALE); swordGroup.add(tip);
+  const gripA = marker(0x44ff66); gripA.position.copy(GRIP_A).multiplyScalar(BLADE_LENGTH_SCALE); swordGroup.add(gripA);
+  const gripB = marker(0x4488ff); gripB.position.copy(GRIP_B).multiplyScalar(BLADE_LENGTH_SCALE); swordGroup.add(gripB);
+
+  const leftPalm = marker(0xff44ff);
   leftPalm.position.copy(PALM_OFFSET);
-  leftHandBone.add(leftPalm);
+  metersOn(leftHandBone).add(leftPalm);
 
   let current: { pick: PosePick } | null = null;
 

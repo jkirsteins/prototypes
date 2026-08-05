@@ -45,7 +45,11 @@ export const POSE_T = {
     windupHigh: 0.50,    // hands high behind the head, upright and open
     still: 0.61,         // deepest cock: hands back, knees loaded
     travelling: 0.78,    // long stride, blade mid-arc at head height
-    delivered: 0.86,     // deep lunge, arms driven fully out front
+    // 0.84 is the furthest-forward frame in the whole clip (tip 1.572 m
+    // ahead of the root) and the only frame of the swing whose off-hand is
+    // inside the 10 cm grip gate, at 9.1 cm. bindContact below is a
+    // separate pick: the cut arrested, not the cut at full extension.
+    delivered: 0.84,     // deep lunge, arms driven fully out front
     recoveryStart: 3.28, // upright, blade dropping back toward the line
     recoveryEnd: 3.46,   // the clip's own guard, where an idle resumes
   },
@@ -58,7 +62,10 @@ export const POSE_T = {
     windupHigh: 0.30,    // deepest draw, torso leaning off the line, knees loaded
     still: 0.48,         // coil held, front foot gathering for the step in
     travelling: 0.68,    // compact and upright, the point driving up past the head
-    delivered: 0.78,     // deep lunge, weapon arm out front, point furthest forward
+    // 0.76 is the clip's own furthest-forward point (tip 1.404 m ahead of
+    // the root). The off-hand is 27.6 cm off the grip here and no frame of
+    // the drive does better - this clip holds it clear of the hilt.
+    delivered: 0.76,     // deep lunge, weapon arm out front, point furthest forward
     recoveryStart: 1.08, // still lunged, the arm starting to fold back
     recoveryEnd: 1.30,   // off the lunge, hands drawn in over a wide guard
   },
