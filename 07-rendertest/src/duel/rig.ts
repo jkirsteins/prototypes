@@ -22,27 +22,16 @@ const FIGHTER_HEIGHT_M = 1.75;
 // the thumb below the palm plane, so the palm centre - where a grip lies -
 // is half way to the knuckles, one grip radius into the palm side:
 // (-0.043, -0.020, -0.008) right, mirrored in x for the left.
-//
-// The blade runs along the hand's -y and the pommel along +y. That comes
-// from the clips, not from anatomy: at the delivered cut the off-hand sits
-// 19.3 cm from the right hand along hand-local (0.065, 0.971, -0.229),
-// i.e. up the grip toward the pommel, and pointing the blade the other way
-// down that same line drives the point forward (0.96 of a unit of world +x
-// per unit of blade). The roll is 0 so the blade's flat faces the camera;
-// rolled 90 degrees it disappears edge-on in this side-view stage.
 
-/** Sword origin (its own y = 0) in the right palm group, meters. The y is
- *  the palm centre plus the seat: the right palm rides at sword y = 0.50,
- *  just under the crossguard, so y = -0.020 + 0.50 x BLADE_LENGTH_SCALE. */
-export const SWORD_SOCKET_POS = new THREE.Vector3(-0.043, 0.140, -0.008);
-export const SWORD_SOCKET_EULER = new THREE.Euler(Math.PI, 0, 0);
 /** Uniform meters-per-sword-unit: 4.353 sword units x this is the whole
  *  weapon, pommel to tip, so 0.32 is a 1.39 m great sword against the
  *  1.75 m fighter - the top of the 1.0-1.4 m band, chosen there because
  *  reach is the scarce quantity (see the reach note below). */
 export const BLADE_LENGTH_SCALE = 0.32;
-/** Wrist-origin to palm-centre offset, meters, in the left palm group. */
+/** Wrist-origin to palm-centre offset, meters, in the left palm group; the
+ *  right is the same point mirrored in x, and the socket is seated on it. */
 export const PALM_OFFSET = new THREE.Vector3(0.043, -0.020, -0.008);
+const PALM_OFFSET_RIGHT = new THREE.Vector3(-0.043, -0.020, -0.008);
 /** Grip segment ends and blade tip, sword units, BEFORE blade scaling.
  *  GRIP_A is the pommel end of the Red grip, GRIP_B the crossguard end;
  *  at 0.32 that is a 23.8 cm grip, two-handed. */
@@ -50,29 +39,72 @@ export const GRIP_A = new THREE.Vector3(0, -0.162, 0);
 export const GRIP_B = new THREE.Vector3(0, 0.583, 0);
 export const TIP_LOCAL = new THREE.Vector3(0, 3.859, 0);
 
+// The socket is solved from the clips, not guessed, and it is solved
+// against the retarget below: the hilt line lives in the right hand's local
+// frame, and that frame is exactly what a wrong retarget gets wrong. These
+// numbers only mean anything with the parent-frame conjugation in
+// retargetRotationsToRestPose.
+//
+// GRIP_AXIS is the direction from the right palm to the left palm in
+// right-hand-local axes, averaged over the great-sword family under that
+// retarget: idle 0.54 (0.574, -0.099, -0.813), slash 0.84 (0.496, -0.134,
+// -0.858), block 0.70 (0.275, 0.272, -0.922). The three sit within 18
+// degrees of the mean - one hilt held by two hands, which is what a
+// two-handed weapon should look like and what the axis is fitted to.
+// upward-thrust is left out of the fit on purpose: its own skeleton holds
+// the hands 46 cm apart, so it has no hilt line to contribute.
+// (Refitting on the delivered cut's final 0.88 rather than 0.84 turns the
+// axis by 2.4 degrees, well inside the family spread, so it is not worth
+// re-baking.)
+const GRIP_AXIS = new THREE.Vector3(0.460, 0.014, -0.888).normalize();
+/** Sword +y is the tip, so the blade points away from the off-hand: the
+ *  left hand rides the pommel end of the grip, the right hand the guard
+ *  end, the ordinary great-sword hold. */
+const BLADE_DIR = GRIP_AXIS.clone().negate();
+/** Turn about the blade so the flat faces this side-view stage rather than
+ *  going edge-on and reading as a one-pixel line. Swept at 5 degrees:
+ *  pi/2 holds the flat 0.85 (idle) / 0.99 (cut) / 0.60 (parry) toward the
+ *  camera, the best all-round value; more favours the idle at the parry's
+ *  expense, less the other way. */
+const BLADE_ROLL = Math.PI / 2;
+/** Where the right palm rides on the blade, in sword units: just under the
+ *  crossguard (Red grip runs -0.162 .. 0.583). The off-hand then lands at
+ *  sword y 0.02 (idle) .. 0.33 (parry), inside the grip with the pommel
+ *  behind it. */
+const GRIP_SEAT = 0.5;
+
+const SWORD_UP = new THREE.Vector3(0, 1, 0);
+/** Sword origin (its own y = 0) in the right palm group, meters: the palm
+ *  centre walked back down the blade by the seat. */
+export const SWORD_SOCKET_POS = PALM_OFFSET_RIGHT.clone()
+  .addScaledVector(BLADE_DIR, -GRIP_SEAT * BLADE_LENGTH_SCALE);
+/** Sword-local to right-palm-group rotation. Derived rather than written
+ *  as an Euler triple: the hilt line is oblique in the hand's frame, so
+ *  the triple would be three opaque numbers (XYZ -0.838, 0.904, 2.304). */
+export const SWORD_SOCKET_QUAT = new THREE.Quaternion()
+  .setFromUnitVectors(SWORD_UP, BLADE_DIR)
+  .multiply(new THREE.Quaternion().setFromAxisAngle(SWORD_UP, BLADE_ROLL));
+
 // Measured with these values (paused, KeyJ then step 1000 / KeyK then step
 // 700, forward reach = (tipWorldX - rootWorldX) x facing):
-//   cut delivered    reach 1.57 m, left palm 9.1 cm off the grip
-//   thrust delivered reach 1.40 m, left palm 27.6 cm off the grip
-//   parry formed     left palm 38.5 cm off the grip
-//   idle             left palm 44.3 cm off the grip
+//   cut delivered    reach 1.464 m, left palm 1.3 cm off the grip
+//   thrust delivered reach 1.412 m, left palm 32.1 cm off the grip
+//   parry formed     reach 0.911 m, left palm 1.7 cm off the grip
+//   idle             reach 1.117 m, left palm 2.8 cm off the grip
 // The spec's 2.00 m (LONGSWORD.reachCm) is NOT reachable and no scale can
 // make it so. At their most extended frame these clips carry the sword
-// hand 0.50 m (cut) and 0.63 m (thrust) ahead of the root, and the blade
-// leaves that hand only 0.97 (cut) / 0.69 (thrust) aligned with the line,
-// so a tip 2.00 m out needs 1.99 m of weapon for the cut and 2.57 m for
-// the thrust - a lance, and two different lances. Closing that gap is a
+// hand 0.41 m (cut) and 0.67 m (thrust) ahead of the hips, and the blade
+// leaves that hand 0.97 (cut) / 0.66 (thrust) aligned with the line, so a
+// tip 2.00 m out needs about 2.1 m of weapon for the cut and 2.6 m for the
+// thrust - a lance, and two different lances. Closing that gap is a
 // question for reachCm or for the poses, not for a scale here.
 //
-// The off-hand distances above are likewise not a socket the calibration
-// missed. In the source clips the two hands are 15.7 cm apart through the
-// whole of great-sword-idle and 6.7 cm through great-sword-blocking, and
-// the hand-local direction from the sword hand to the off-hand holds to
-// within 15 degrees across that family - one hilt, two hands. On this rig
-// the same measurements come out 57.4 cm, 38.2 cm and 70 degrees of
-// spread, so the retarget, not the choreography, is what lets the
-// off-hand go. upward-thrust is the exception that is real: its own
-// skeleton holds the hands 50 cm apart at the thrust.
+// The off-hand rides the hilt everywhere the source clips hold it there:
+// the two hands are 15.1 cm apart through great-sword-idle and 6.5 cm
+// through great-sword-blocking, matching the source to within 3% (its own
+// 15.7 and 6.7 cm at a 0.97 size ratio). upward-thrust is the exception,
+// and it is real rather than a rig defect: its own skeleton holds the
+// hands 46-52 cm apart through the drive, so no socket can close it.
 
 /** `?markers` on the duel URL draws the calibration points (tip, both grip
  *  ends, left palm) as small unlit spheres that read through the mesh. */
@@ -139,40 +171,62 @@ function stripRootMotion(clip: THREE.AnimationClip): void {
 }
 
 /**
- * Re-expresses every rotation keyframe relative to Xbot's own rest pose.
+ * Re-expresses every rotation keyframe against Xbot's own rest pose.
  *
- * Xbot.glb's own bind pose has every bone's local quaternion at identity
- * (verified across the whole rig) - its native idle/walk clips store each
- * frame's ABSOLUTE local rotation directly, with "identity" meaning
- * "T-pose". The Task 4 mocap clips were converted straight from Mixamo's
- * raw FBX export, whose skeleton keeps Mixamo's own per-bone local axis
- * convention: many bones' bind pose is NOT identity (e.g. LeftUpLeg's own
- * rest quaternion is close to a 180-degree turn). Applying those clips'
- * absolute local quaternions directly onto Xbot's identity-rest bones
- * therefore lands each bone ~180 degrees from where it belongs - the
- * source of the collapsed/curled pose this function fixes.
+ * Xbot.glb's bind pose has every bone's local quaternion at identity
+ * (verified across the whole rig) and, because the parents are identity
+ * too, every bone's rest WORLD rotation is identity as well. Its native
+ * idle/walk clips therefore store each frame's absolute local rotation
+ * directly, with "identity" meaning "T-pose". The Task 4 mocap clips came
+ * from Mixamo's raw FBX export, whose skeleton keeps Mixamo's own per-bone
+ * axis convention: most bones' rest quaternion is not identity (LeftUpLeg
+ * is close to a 180 degree turn, LeftShoulder is [0.484, 0.571, -0.526,
+ * 0.403]). Played straight onto Xbot the skeleton curls up.
  *
- * Since Xbot's target rest is identity everywhere, the correction reduces
- * to: for each keyframe quaternion As, replace it with restQuat^-1 * As -
- * "the clip's pose expressed relative to the clip's OWN rest", which is
- * exactly what Xbot's identity-rest convention expects as an absolute
- * local quaternion. restQuat comes from the same clip file's own scene
- * graph (its bind pose), not Xbot's.
+ * The retarget must reproduce, on the target, the same WORLD rotation
+ * *change* each source bone undergoes. For source bone b with rest local
+ * `r_b`, animated local `q_b` and source rest world rotation of its PARENT
+ * `W_p`, the bone's world rotation goes from `W_p * r_b` to `W_p * q_b`,
+ * so the world-space delta is `W_p * (q_b * r_b^-1) * W_p^-1`. On a target
+ * whose rest world rotations are all identity, that delta IS the local
+ * quaternion to write:
+ *
+ *     q'_b = W_p * (q_b * r_b^-1) * W_p^-1
+ *
+ * `q_b * r_b^-1` is the delta taken in the PARENT's frame, not the bone's
+ * own; conjugating by `W_p` carries it from the source parent's frame into
+ * the world frame the target's identity rest shares. Writing the bone-local
+ * form `r_b^-1 * q_b` instead is only equal where the source rest frames
+ * are already world-aligned, which Mixamo's are not: big joints land close
+ * enough to look plausible, wrists accumulate the whole chain's error, and
+ * a two-handed grip is judged at the wrists.
+ *
+ * `r_b` and `W_p` both come from the clip file's own scene graph, which the
+ * loader leaves in its rest pose; nothing here reads Xbot.
  */
 function retargetRotationsToRestPose(clip: THREE.AnimationClip, restScene: THREE.Object3D): void {
-  const restQuats = new Map<string, THREE.Quaternion>();
-  restScene.traverse((o) => restQuats.set(o.name, o.quaternion.clone()));
+  restScene.updateWorldMatrix(true, true);
+  const restLocal = new Map<string, THREE.Quaternion>();
+  const parentRestWorld = new Map<string, THREE.Quaternion>();
+  restScene.traverse((o) => {
+    restLocal.set(o.name, o.quaternion.clone());
+    parentRestWorld.set(o.name, o.parent ? o.parent.getWorldQuaternion(new THREE.Quaternion()) : new THREE.Quaternion());
+  });
   for (const track of clip.tracks) {
     if (!(track instanceof THREE.QuaternionKeyframeTrack)) continue;
     const boneName = track.name.slice(0, track.name.lastIndexOf(".quaternion"));
-    const rest = restQuats.get(boneName);
-    if (!rest) continue;
+    const rest = restLocal.get(boneName);
+    const wp = parentRestWorld.get(boneName);
+    if (!rest || !wp) continue;
     const restInv = rest.clone().invert();
+    const wpInv = wp.clone().invert();
     const v = track.values;
     const q = new THREE.Quaternion();
     for (let i = 0; i < v.length; i += 4) {
       q.set(v[i], v[i + 1], v[i + 2], v[i + 3]);
-      q.premultiply(restInv);
+      q.multiply(restInv);
+      q.premultiply(wp);
+      q.multiply(wpInv);
       v[i] = q.x; v[i + 1] = q.y; v[i + 2] = q.z; v[i + 3] = q.w;
     }
   }
@@ -244,7 +298,7 @@ export async function loadDuelRig(baseUrl: string): Promise<DuelRig> {
   // Sword prop + markers on the right hand.
   const swordGroup = new THREE.Group();
   swordGroup.position.copy(SWORD_SOCKET_POS);
-  swordGroup.setRotationFromEuler(SWORD_SOCKET_EULER);
+  swordGroup.quaternion.copy(SWORD_SOCKET_QUAT);
   metersOn(rightHandBone).add(swordGroup);
   swordGltf.scene.scale.setScalar(BLADE_LENGTH_SCALE);
   swordGroup.add(swordGltf.scene);

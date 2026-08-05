@@ -45,11 +45,14 @@ export const POSE_T = {
     windupHigh: 0.50,    // hands high behind the head, upright and open
     still: 0.61,         // deepest cock: hands back, knees loaded
     travelling: 0.78,    // long stride, blade mid-arc at head height
-    // 0.84 is the furthest-forward frame in the whole clip (tip 1.572 m
-    // ahead of the root) and the only frame of the swing whose off-hand is
-    // inside the 10 cm grip gate, at 9.1 cm. bindContact below is a
-    // separate pick: the cut arrested, not the cut at full extension.
-    delivered: 0.84,     // deep lunge, arms driven fully out front
+    // 0.86 and 0.88 tie for the furthest-forward frame of the whole clip
+    // (tip 1.465 m and 1.464 m ahead of the root) and both hold the
+    // off-hand on the hilt (1.5 cm, 1.3 cm off the grip). 0.88 is the pick
+    // because it is the one where the blade has come down onto the line -
+    // horizontal at chest height, 0.97 of it along the forward axis,
+    // against 0.91 and 25 degrees of lift at 0.86. bindContact below stays
+    // a separate, earlier pick: the cut arrested mid-arc, not landed.
+    delivered: 0.88,     // deep lunge, arms driven fully out front
     recoveryStart: 3.28, // upright, blade dropping back toward the line
     recoveryEnd: 3.46,   // the clip's own guard, where an idle resumes
   },
@@ -62,9 +65,12 @@ export const POSE_T = {
     windupHigh: 0.30,    // deepest draw, torso leaning off the line, knees loaded
     still: 0.48,         // coil held, front foot gathering for the step in
     travelling: 0.68,    // compact and upright, the point driving up past the head
-    // 0.76 is the clip's own furthest-forward point (tip 1.404 m ahead of
-    // the root). The off-hand is 27.6 cm off the grip here and no frame of
-    // the drive does better - this clip holds it clear of the hilt.
+    // 0.76 is the last frame of the drive itself (tip 1.412 m ahead of the
+    // root); past 0.80 the clip has stopped driving and simply holds the
+    // arm out, so its slightly longer reach is not a thrust. The off-hand
+    // is 32.1 cm off the grip here and the whole drive is no better - this
+    // clip holds it clear of the hilt, hands 46-52 cm apart in its own
+    // skeleton, so it is the choreography and not the rig.
     delivered: 0.76,     // deep lunge, weapon arm out front, point furthest forward
     recoveryStart: 1.08, // still lunged, the arm starting to fold back
     recoveryEnd: 1.30,   // off the lunge, hands drawn in over a wide guard
