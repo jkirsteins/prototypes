@@ -12,18 +12,19 @@ export type ClipName =
   | "gsIdle" | "gsWalk" | "gsSlash" | "gsBlock" | "gsImpact"
   | "dodgeBack" | "stab" | "unarmedIdle" | "gsDeath";
 
-/** durationS values are measured from the converted GLBs (Task 4 fills
- *  them); 1.0 is a provisional stand-in that keeps the math testable. */
+/** durationS values are measured from the converted GLBs (Task 4): the max
+ *  input accessor time across animations[0]'s samplers, read from each
+ *  GLB's JSON chunk. */
 export const CLIPS: Record<ClipName, { file: string; durationS: number }> = {
-  gsIdle:     { file: "great-sword-idle.glb",     durationS: 1.0 },
-  gsWalk:     { file: "great-sword-walk.glb",     durationS: 1.0 },
-  gsSlash:    { file: "great-sword-slash.glb",    durationS: 1.0 },
-  gsBlock:    { file: "great-sword-blocking.glb", durationS: 1.0 },
-  gsImpact:   { file: "great-sword-impact.glb",   durationS: 1.0 },
-  dodgeBack:  { file: "dodge-backward.glb",       durationS: 1.0 },
-  stab:       { file: "stabbing.glb",             durationS: 1.0 },
-  unarmedIdle:{ file: "unarmed-idle.glb",         durationS: 1.0 },
-  gsDeath:    { file: "great-sword-death.glb",    durationS: 1.0 },
+  gsIdle:     { file: "great-sword-idle.glb",     durationS: 2.000 },
+  gsWalk:     { file: "great-sword-walk.glb",     durationS: 1.292 },
+  gsSlash:    { file: "great-sword-slash.glb",    durationS: 3.500 },
+  gsBlock:    { file: "great-sword-blocking.glb", durationS: 0.958 },
+  gsImpact:   { file: "great-sword-impact.glb",   durationS: 1.250 },
+  dodgeBack:  { file: "dodge-backward.glb",       durationS: 1.625 },
+  stab:       { file: "stabbing.glb",             durationS: 2.625 },
+  unarmedIdle:{ file: "unarmed-idle.glb",         durationS: 1.875 },
+  gsDeath:    { file: "great-sword-death.glb",    durationS: 2.375 },
 };
 
 /** Curated timestamps (seconds). Provisional until Task 7's screenshot
