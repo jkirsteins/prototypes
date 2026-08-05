@@ -7,11 +7,22 @@ walking left and right.
 
 Spec: `docs/superpowers/specs/2026-08-05-3d-character-2d-render-design.md`.
 
-The character is `public/models/Xbot.glb`, the gray Mixamo X Bot mannequin
-vendored from the three.js examples repository. It renders through an
-orthographic camera locked to a straight side view, which removes
-perspective convergence so the frame reads flat like 06. World units are
-the glTF's own meters (~1.8 m mannequin).
+Two characters, picked with `?model=`:
+
+- `knight` (default) - the Quaternius animated knight (CC0), converted
+  from the pack's `KnightCharacter.fbx` with FBX2glTF (the `fbx2gltf` npm
+  package's bundled binary) to `public/models/Knight.glb`.
+- `xbot` - the gray Mixamo X Bot mannequin vendored from the three.js
+  examples repository (`public/models/Xbot.glb`), recolored from its
+  baked-in salmon materials to dummy grays.
+
+Everything renders through an orthographic camera locked to a straight
+side view, which removes perspective convergence so the frame reads flat
+like 06. Models are normalized to 1.8 m and their feet rest on y = 0.
+Each model's `clipNaturalSpeedMS` (the ground speed its walk clip was
+authored for) was measured, not eyeballed: the `__character` e2e hook
+samples a foot bone's world x while walking, and the planted-foot drift
+during a stance phase is the error in the constant.
 
 ## Run
 

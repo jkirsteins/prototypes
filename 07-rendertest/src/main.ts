@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { loadCharacter } from "./character";
+import { loadCharacter, pickModel } from "./character";
 import { trackKeys } from "./input";
 import { createMovement, updateMovement } from "./movement";
 import { createStage } from "./scene";
@@ -11,12 +11,13 @@ const stage = createStage(canvas);
 const input = trackKeys();
 const movement = createMovement();
 
-loadCharacter(`${import.meta.env.BASE_URL}models/Xbot.glb`)
+loadCharacter(`${import.meta.env.BASE_URL}models/`, pickModel(location.search))
   .then((character) => {
     stage.scene.add(character.root);
     status.textContent = "A / D or arrow keys to walk";
-    // e2e hook: lets a CDP driver assert position/facing without pixel-reading.
-    Object.assign(window, { __movement: movement });
+    // e2e hooks: let a CDP driver assert position/facing and measure foot
+    // skate (planted-foot world drift) without pixel-reading.
+    Object.assign(window, { __movement: movement, __character: character.root });
 
     const clock = new THREE.Clock();
     stage.renderer.setAnimationLoop(() => {
