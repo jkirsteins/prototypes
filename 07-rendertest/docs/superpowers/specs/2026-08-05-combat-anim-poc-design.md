@@ -26,9 +26,14 @@ machine, readability by the user playing it.
   as in 06. Loops are only where 06 loops (idles).
 - **No animation-system state may leak between frames.** rig.ts applies a
   PosePick by hard reset: exactly one action active at weight 1, its time
-  set explicitly, paused unless the pick loops. No crossfades, no fade
-  tails - the same PosePick must produce the same skeleton regardless of
-  what played before. E2e samples action weights to prove it.
+  set explicitly, EVERY action paused always - looping picks do not run
+  free either; their clipTime is computed from timeMs in pickPose
+  (`(timeMs / 1000) % clipDuration`, exactly how 06 derives idle frames
+  from timeMs) and the mixer is advanced with `mixer.update(0)` so dt
+  never moves a pose. The same PosePick must produce the same skeleton
+  regardless of what played before; e2e proves it by comparing sampled
+  bone world transforms after reaching the same PosePick via different
+  preceding states, not by action weights alone.
 - **The same `AttackTimeline`.** Seven fields, same names (`riseStart`,
   `riseEnd`, `strikeStart`, `parryableUntil`, `strikeEnd`, `recoveryStart`,
   `recoveryEnd`), absolute ms from attack start, snapshotted at launch.
@@ -51,7 +56,13 @@ machine, readability by the user playing it.
 
 ## States in scope
 
-Everything 06's `pickFrame` renders, driven by keys:
+06's `pickFrame` branches, driven by keys. Two branches have no separate
+trigger because they add no new renderer evidence: `disarming` and
+`exposed` both render as a held contact pose - the identical
+paused-timestamp mechanism the bind freeze (B) demonstrates. The coverage
+claim is: every DISTINCT pose mechanism in `pickFrame` is exercised;
+disarming/exposed are covered by the bind's mechanism, not by their own
+keys.
 
 | state | trigger | clip source |
 |---|---|---|
@@ -93,7 +104,6 @@ PoC reproduces that condition or the gate would be untestable.
   The walk demo stays the default page, untouched.
 - Sword prop: the Quaternius pack's separate `FBX/Sword.fbx` (CC0),
   converted with FBX2glTF to `public/models/Sword.glb` and committed.
-  Knight.glb contains no sword mesh - the prop is its own asset.
 - Clips: each Mixamo animation ships as its own small without-skin GLB in
   `public/models/clips/`, committed; tracks bind to Xbot's `mixamorig`
   bones by name. Xbot stays the only skinned model in duel mode.
@@ -148,12 +158,26 @@ Procedure:
 
 ## Two-handed grip verification
 
-Great Sword clips are two-handed; the prop follows the right hand only. At
-every curated non-unarmed pose, the e2e hook measures the left palm bone's
-distance to the hilt's grip segment (point-to-segment, world space). Gate:
-within 10 cm at attack and parry poses (mocap hands are not exact), and
-the screenshots are examined for a visibly floating off-hand. If a pose
-fails, its timestamp is re-curated; if the clip family fundamentally
+Great Sword clips are two-handed; the prop follows the right hand only.
+Xbot's `mixamorig` hand bones originate at the wrists, so raw bone origins
+cannot measure a grip. Definitions:
+
+- **Palm markers**: one calibrated child node under each hand bone, offset
+  from wrist to palm center; the offsets are set once during rig setup and
+  confirmed by screenshot (marker rendered as a debug dot in the palm).
+- **Sword socket**: the prop parents to the right hand via an explicit
+  local transform (position + rotation), calibrated so the hilt lies in
+  the right palm across the curated poses - parenting alone guarantees
+  nothing about visual alignment, so the socket transform is itself a
+  calibrated, recorded value.
+- **Grip segment**: two markers at the ends of the hilt's grip section, in
+  the sword's local space.
+
+At every curated non-unarmed pose, the e2e hook measures the LEFT palm
+marker's distance to the grip segment (point-to-segment, world space).
+Gate: within 10 cm at attack and parry poses (mocap hands are not exact),
+and the screenshots are examined for a visibly floating off-hand. If a
+pose fails, its timestamp is re-curated; if the clip family fundamentally
 separates the hands, that is a finding for the report, not a silent pass.
 
 ## Verification
@@ -163,8 +187,10 @@ separates the hands, that is a finding for the report, not a silent pass.
   values.
 - e2e in Chrome devtools (or the headless CDP fallback): for each state,
   trigger via key event, sample the hook at timeline marks to assert the
-  active clip, clipTime, paused flag and single-action weight are exactly
-  what `pickPose` says; screenshot every phase pose; tip-at-reach within
+  active clip, clipTime and paused flag are exactly what `pickPose` says;
+  prove history independence by sampling bone world transforms after
+  reaching the same PosePick via at least two different preceding states
+  and asserting equality; screenshot every phase pose; tip-at-reach within
   2 cm at delivered poses; grip gate as above; console clean.
 - **Ground contact is per state**, not uniform: idle/windup/strike/
   recovery/parry/bind/unarmed require a support foot on the band (lowest
