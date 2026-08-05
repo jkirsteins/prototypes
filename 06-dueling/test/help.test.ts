@@ -67,7 +67,10 @@ describe("the help panel stays current and concise", () => {
     // key must also appear on one of the lines, so nothing fell off in
     // the split.
     const lines = controlsLines();
-    for (const line of lines) expect(line.length).toBeLessThanOrEqual(140);
+    // 110, not 140: the PS legend measured overflowing at ~128 chars in
+    // the 960px canvas at the legend font - the bound now reflects what
+    // actually fits, for every scheme.
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(110);
     const all = lines.join(" | ");
     for (const group of keyGroups(KEYBOARD_LABELS)) {
       for (const [key, action] of group) expect(all).toContain(`${key} ${action}`);
@@ -75,7 +78,7 @@ describe("the help panel stays current and concise", () => {
     // The pad scheme's legend obeys the same bound - both kinds.
     for (const kind of ["xbox", "ps"] as const) {
       for (const line of controlsLines(PAD_LABELS[kind])) {
-        expect(line.length).toBeLessThanOrEqual(140);
+        expect(line.length).toBeLessThanOrEqual(110);
       }
     }
   });

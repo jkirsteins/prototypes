@@ -33,7 +33,7 @@ export type Labels = Record<ActionId, string>;
 
 export const KEYBOARD_LABELS: Labels = {
   advance: "D", retreat: "A", void: "S", cut: "J", thrust: "K",
-  guard: "L hold", feint: "F", stanceUp: "Up", stanceDown: "Dn",
+  guard: "L", feint: "F", stanceUp: "Up", stanceDown: "Dn",
   sideShift: "Lt/Rt/Caps", disarm: "I",
   pause: "space", rematch: "R", reselect: "Esc", help: "?",
   selLeft: "A/Left", selRight: "D/Right", selToggle: "W/S",
@@ -47,21 +47,22 @@ export const KEYBOARD_LABELS: Labels = {
  *  as keyboard (src/ui/help.ts). */
 export const PAD_LABELS: Record<PadKind, Labels> = {
   xbox: {
-    advance: "Stick/Dpad", retreat: "Stick/Dpad", void: "A", cut: "X",
-    thrust: "Y", guard: "RB hold", feint: "B", stanceUp: "Dpad up",
-    stanceDown: "Dpad dn", sideShift: "LB", disarm: "RT",
+    advance: "Stick/Dpad", retreat: "Stick/Dpad", void: "Y", cut: "X",
+    thrust: "A", guard: "RB", feint: "B", stanceUp: "D-up",
+    stanceDown: "D-dn", sideShift: "LB", disarm: "RT",
     pause: "Start", rematch: "Start", reselect: "Back", help: "Back",
     selLeft: "Dpad/Stick", selRight: "Dpad/Stick", selToggle: "Dpad/Stick",
     selConfirm: "A / Start", selPickFirst: "1", selPickSecond: "2",
     aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
   },
+  // PS face buttons render as their glyphs to keep the legend narrow.
   ps: {
-    advance: "Stick/Dpad", retreat: "Stick/Dpad", void: "Cross", cut: "Square",
-    thrust: "Triangle", guard: "R1 hold", feint: "Circle", stanceUp: "Dpad up",
-    stanceDown: "Dpad dn", sideShift: "L1", disarm: "R2",
+    advance: "Stick/Dpad", retreat: "Stick/Dpad", void: "\u25b3", cut: "\u25a1",
+    thrust: "\u2715", guard: "R1", feint: "\u25cb", stanceUp: "D-up",
+    stanceDown: "D-dn", sideShift: "L1", disarm: "R2",
     pause: "Options", rematch: "Options", reselect: "Share", help: "Share",
     selLeft: "Dpad/Stick", selRight: "Dpad/Stick", selToggle: "Dpad/Stick",
-    selConfirm: "Cross / Options", selPickFirst: "1", selPickSecond: "2",
+    selConfirm: "\u2715 / Options", selPickFirst: "1", selPickSecond: "2",
     aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
   },
 };
@@ -77,14 +78,18 @@ export type PadControl =
  *  Standard-mapping indices (W3C layout). The right trigger binds the
  *  disarm as a digital press (GamepadButton.pressed, like every button
  *  here): the squeeze reads as the grab that takes the sword, and like
- *  the I key it is inert outside the advantage window. */
+ *  the I key it is inert outside the advantage window. The thrust rides
+ *  the BOTTOM face button and the void the top (playtest override of
+ *  the first draft's pairing): the kill and the bind's yield live on
+ *  the easiest reach, and button 0 still confirms on the select screen
+ *  - the resolver keeps one meaning per context. */
 export const PAD_BINDINGS: Partial<Record<ActionId, PadControl[]>> = {
   advance: [{ kind: "axis", index: 0, sign: 1 }, { kind: "button", index: 15 }],
   retreat: [{ kind: "axis", index: 0, sign: -1 }, { kind: "button", index: 14 }],
-  void: [{ kind: "button", index: 0 }],
+  void: [{ kind: "button", index: 3 }],
   feint: [{ kind: "button", index: 1 }],
   cut: [{ kind: "button", index: 2 }],
-  thrust: [{ kind: "button", index: 3 }],
+  thrust: [{ kind: "button", index: 0 }],
   sideShift: [{ kind: "button", index: 4 }],
   guard: [{ kind: "button", index: 5 }],
   disarm: [{ kind: "button", index: 7 }],

@@ -325,10 +325,10 @@ complete; anything absent from it is keyboard-only by design.
 |------------|--------------------------------|------------|------------|------------|
 | advance    | left stick right, d-pad right  | axis 0 +, btn 15 | Stick/Dpad | Stick/Dpad |
 | retreat    | left stick left, d-pad left    | axis 0 -, btn 14 | Stick/Dpad | Stick/Dpad |
-| void       | south face button              | 0          | A          | Cross      |
-| feint      | east face button               | 1          | B          | Circle     |
-| cut        | west face button               | 2          | X          | Square     |
-| thrust     | north face button              | 3          | Y          | Triangle   |
+| thrust     | south face button              | 0          | A          | (cross glyph) |
+| feint      | east face button               | 1          | B          | (circle glyph) |
+| cut        | west face button               | 2          | X          | (square glyph) |
+| void       | north face button              | 3          | Y          | (triangle glyph) |
 | sideShift  | left bumper                    | 4          | LB         | L1         |
 | guard      | right bumper, hold             | 5          | RB hold    | R1 hold    |
 | disarm     | right trigger                  | 7          | RT         | R2         |
@@ -345,11 +345,17 @@ complete; anything absent from it is keyboard-only by design.
 
 Rationale, brief:
 
-- **Cut and thrust on the two upper face buttons** keeps the bind's two
-  verbs (`pressure-and-winding`: J presses, K yields) on the same physical
-  pair - the pad player's bind reads "X presses, Y yields when your band
-  lights" with zero new engine plumbing, because J and K already resolve to
-  the plain `cut` and `thrust` intents.
+- **Thrust on the bottom face button, void on the top** (as built,
+  playtest override of the first draft's upper-pair layout): the kill -
+  and with it the bind's yield and the advantage conversion - lives on
+  the easiest reach. Cut stays west, so the bind's two verbs read "X
+  presses, A yields" with zero new engine plumbing, because J and K
+  already resolve to the plain `cut` and `thrust` intents. Button 0
+  still confirms on the select screen; the resolver keeps one meaning
+  per context. PS face labels render as their glyphs (as built) to keep
+  the legend inside the canvas - the width bound in the help test
+  dropped from 140 to 110 characters after the PS legend measured
+  overflowing at ~128.
 - **Guard on a held bumper** because the guard is the one held control
   (`held-guard`), and a bumper is the button a finger rests on.
 - **Disarm on the right trigger** (the `disarming` spec's advantage

@@ -26,12 +26,12 @@ describe("the scheme store", () => {
     expect(activeScheme()).toBe("keyboard");
     noteGamepadInput("Xbox Wireless Controller");
     expect(activeScheme()).toBe("pad");
-    expect(activeLabels().thrust).toBe("Y");
+    expect(activeLabels().thrust).toBe("A");
     noteKeyboardInput();
     expect(activeScheme()).toBe("keyboard");
     expect(activeLabels().thrust).toBe("K");
     noteGamepadInput("DualSense Wireless Controller");
-    expect(activeLabels().thrust).toBe("Triangle");
+    expect(activeLabels().thrust).toBe("\u2715");
     notePadGone();
     expect(activeScheme()).toBe("keyboard");
   });
@@ -46,7 +46,7 @@ describe("the scheme store", () => {
     noteGamepadInput("054c DualShock 4");
     expect(fired).toBe(2); // kind changed, scheme did not
     expect(activeScheme()).toBe("pad");
-    expect(activeLabels().guard).toBe("R1 hold");
+    expect(activeLabels().guard).toBe("R1");
   });
 
   test("PadKind derivation", () => {
@@ -63,7 +63,7 @@ describe("labels and tokens", () => {
     expect(resolveLabels("{thrust} kills, {disarm} takes the sword", KEYBOARD_LABELS)).toBe(
       "K kills, I takes the sword",
     );
-    expect(resolveLabels("{thrust} kills", PAD_LABELS.xbox)).toBe("Y kills");
+    expect(resolveLabels("{thrust} kills", PAD_LABELS.xbox)).toBe("A kills");
     expect(resolveLabels("{nonsense}", KEYBOARD_LABELS)).toBe("{nonsense}");
   });
 });
@@ -96,10 +96,11 @@ describe("the contextual resolver (§7.2)", () => {
     expect(resolvePadEdge(ui({ helpOpen: true }), { kind: "button", index: 7 })).toBe(null);
   });
 
-  test("button 0 confirms on the select screen and voids in a duel", () => {
+  test("button 0 confirms on the select screen and thrusts in a duel; the top face voids", () => {
     const a = { kind: "button", index: 0 } as const;
     expect(resolvePadEdge(ui({ selectOpen: true, duelLive: false }), a)).toBe("selConfirm");
-    expect(resolvePadEdge(ui(), a)).toBe("void");
+    expect(resolvePadEdge(ui(), a)).toBe("thrust"); // the kill and the yield on the easiest reach
+    expect(resolvePadEdge(ui(), { kind: "button", index: 3 })).toBe("void");
   });
 
   test("the disarm control: RT resolves to disarm in a duel, exactly once per edge, null under help and selection", () => {

@@ -3,7 +3,7 @@ import { bindTimerFrac, netBindForce, yieldOpportunity, yieldThreat } from "../c
 import { BIND_LOSS_MS } from "../combat/fighter";
 import { HIT_STUN_MS, guardEffective, lineOf } from "../combat/fighter";
 import { controlsLines } from "../ui/help";
-import { KEYBOARD_LABELS, onControlsChange, resolveLabels } from "../input/scheme";
+import { KEYBOARD_LABELS, resolveLabels } from "../input/scheme";
 import type { Labels } from "../input/scheme";
 import { lastLines } from "../combat/log";
 import { zoneFor } from "../combat/measure";
@@ -54,13 +54,13 @@ const ATTACK_LISTING: Record<WeaponId, string> = {
 /** Built from the same table the help panel lists, so the two cannot drift.
  *  Two lines, each narrower than the canvas: instructions clip nowhere. */
 let CONTROLS_LINES = controlsLines();
-// The legend follows the active scheme within a frame: recomputed on the
-// controls-change callback, never per draw.
-onControlsChange(() => {
-  CONTROLS_LINES = controlsLines(activeViewLabels);
-});
-/** The labels drawFrame last received; the change callback reads them so
- *  the cache rebuild uses the same scheme the frame renders with. */
+/** The labels drawFrame last received. The legend cache rebuilds when
+ *  they change identity - the tables are interned constants, so this is
+ *  one comparison per frame and the rebuild always uses the labels the
+ *  SAME frame renders with. (An earlier cut rebuilt in the
+ *  controls-change callback, which fires before the frame refreshes
+ *  activeViewLabels - so the legend showed the PREVIOUS scheme's
+ *  buttons, pad names under keyboard play and back.) */
 let activeViewLabels: Labels = KEYBOARD_LABELS;
 
 export interface TimeControl {
@@ -71,7 +71,10 @@ export interface TimeControl {
 }
 
 export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: TimeControl): void {
-  activeViewLabels = v.labels;
+  if (v.labels !== activeViewLabels) {
+    activeViewLabels = v.labels;
+    CONTROLS_LINES = controlsLines(v.labels);
+  }
   const { ctx } = v;
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = "#1b1e24";
