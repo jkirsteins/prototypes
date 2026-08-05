@@ -1,4 +1,6 @@
 import { BIND_LOSS_MS, HIT_STUN_MS, DISARM_FIRM_MS, DISARM_SOFT_MS } from "../combat/fighter";
+import { KEYBOARD_LABELS, resolveLabels } from "../input/scheme";
+import type { Labels } from "../input/scheme";
 import { BIND_TIME_LIMIT_MS } from "../combat/bind";
 import { PARRYABLE_FRACTION, WEAPONS } from "../combat/weapons";
 import type { FighterState } from "../combat/fighter";
@@ -51,8 +53,8 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
   },
   windup: {
     label: "windup",
-    what: "The blade rises and holds; AI attacks add a telegraph before the rise.",
-    player: "Reading time: parry, void or counter - or F abandons your own windup (a feint) into a short recovery.",
+    what: "The blade rises and holds - the windup is the whole preparation, identical for both fighters.",
+    player: "Reading time: parry, void or counter - or {feint} abandons your own windup (a feint) into a short recovery.",
     ms: (w) => w.attacks.thrust.windup,
   },
   strike: {
@@ -69,37 +71,37 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
   },
   parry: {
     label: "guard",
-    what: "Hold L: the resting blade firms into a guard, then stands for as long as you hold it; a tap against a visible attack waits for that attack and ends with it.",
+    what: "Hold {guard}: the resting blade firms into a guard and stands while held; a tap against a visible attack waits for that attack and ends with it.",
     player: "Fastest on the line your blade already rests in (READY shows it); another line costs the travel. Release, attack or void lowers it at full recovery.",
     ms: (w) => w.firmUpMs,
   },
   stance: {
     label: "stance",
     what: "Your held height: attacks launch from it and your parry covers it, so moving it also tells the opponent where you will defend.",
-    player: "Move it with Up/Down before you need it - a stance in motion covers nothing until it arrives.",
+    player: "Move it with {stanceUp}/{stanceDown} before you need it - a stance in motion covers nothing until it arrives.",
     ms: (w) => w.heightChangeMs,
   },
   hitstun: {
     label: "hitstun",
     what: "A blade has landed; the fight is decided.",
-    player: "Nothing - watch, then R to rematch.",
+    player: "Nothing - watch, then {rematch} to rematch.",
     ms: () => HIT_STUN_MS,
   },
   dead: {
     label: "dead",
     what: "One clean hit kills; there are no wounds and no second chances.",
-    player: "R for a rematch, Esc to pick different swords.",
+    player: "{rematch} for a rematch, {reselect} to pick different swords.",
   },
   bind: {
     label: "bind",
     what: "Attacks CROSSING in matched steel lock (deep clang, time slows); a parry only deflects; the bind clock drains toward a shove-apart.",
-    player: "J presses but spends your readiness; K yields committed pressure when your band lights - too early or unfed, it fails and costs.",
+    player: "{cut} presses but spends your readiness; {thrust} yields committed pressure when your band lights - too early or unfed, it fails and costs.",
     ms: () => BIND_TIME_LIMIT_MS,
   },
   exposed: {
     label: "exposed",
     what: "The bind was lost: turned out of contact, unable to act, mortally open - a second clash sounded the break.",
-    player: "The winner's thrust (K) kills and their grip (I) takes your sword - both guaranteed; anything else spends the advantage, and you are back.",
+    player: "The winner's thrust ({thrust}) kills and their grip ({disarm}) takes your sword - both guaranteed; anything else spends the advantage, and you are back.",
     ms: () => BIND_LOSS_MS,
   },
   disarming: {
@@ -111,32 +113,55 @@ export const HELP: Record<FighterState["kind"] | AttackPhase | "parry" | "stance
   disarmed: {
     label: "disarmed",
     what: "The sword is taken and the duel is over - a bloodless win, recorded as a disarm, not a kill.",
-    player: "R rematches, Esc reselects - and the entry that arrived soft is what lost the sword.",
+    player: "{rematch} rematches, {reselect} reselects - and the entry that arrived soft is what lost the sword.",
     ms: () => DISARM_SOFT_MS,
   },
 };
 
-/** One source for the key list: the control line and the help panel both read it. */
-export const KEY_GROUPS: Array<Array<[string, string]>> = [
-  [["A/D", "step"], ["S", "void"], ["Up/Dn/LShift", "stance"], ["J", "cut"], ["K", "thrust"], ["I", "disarm"], ["L hold", "guard"], ["Lt/Rt/Caps", "re-aim"], ["F", "feint"]],
-  [["0-4", "AI mode"], ["R", "rematch"], ["Esc", "select"], ["`", "overlay"], ["?", "help"]],
-  [["space", "pause"], [".", "step"], ["[/]", "speed"], ["M", "mute"]],
-];
+/** Two labels for one row, collapsed when a scheme gives them one name
+ *  (the pad's movement stick covers both directions). */
+const pair = (a: string, b: string): string => (a === b ? a : `${a}/${b}`);
+
+/** One source for the key list, built from the scheme's labels: the
+ *  control line and the help panel both read it. UI strings never spell
+ *  a key or button - they reference actions (gamepad-support). The
+ *  session and time-control groups render keyboard labels under every
+ *  scheme - and stay TRUE there, because both devices are always live
+ *  and those verbs are keyboard-only by design. */
+export function keyGroups(labels: Labels): Array<Array<[string, string]>> {
+  return [
+    [
+      [pair(labels.retreat, labels.advance), "step"], [labels.void, "void"],
+      [pair(labels.stanceUp, labels.stanceDown), "stance"], [labels.cut, "cut"],
+      [labels.thrust, "thrust"], [labels.disarm, "disarm"],
+      [`${labels.guard} hold`, "guard"], [labels.sideShift, "re-aim"], [labels.feint, "feint"],
+    ],
+    [
+      [labels.aiMode, "AI mode"], [labels.rematch, "rematch"],
+      [labels.reselect, "select"], [labels.overlay, "overlay"], [labels.help, "help"],
+    ],
+    [
+      [labels.pause, "pause"], [labels.stepTick, "step"],
+      [labels.speed, "speed"], [labels.mute, "mute"],
+    ],
+  ];
+}
 
 /**
  * The bottom legend, split so every line FITS the 960px canvas: the
  * gameplay keys on one line, session and time control on the other. One
  * long line was silently clipped at both edges for as long as it
  * out-measured the canvas - instructions must always be visible, so a
- * test bounds each line's width now.
+ * test bounds each line's width now, for both schemes.
  */
-export function controlsLines(): [string, string] {
+export function controlsLines(labels: Labels = KEYBOARD_LABELS): [string, string] {
+  const groups = keyGroups(labels);
   const fmt = (g: Array<[string, string]>): string => g.map(([k, a]) => `${k} ${a}`).join(" ");
-  return [fmt(KEY_GROUPS[0]), KEY_GROUPS.slice(1).map(fmt).join(" | ")];
+  return [fmt(groups[0]), groups.slice(1).map(fmt).join(" | ")];
 }
 
-export function controlsLine(): string {
-  return controlsLines().join(" | ");
+export function controlsLine(labels: Labels = KEYBOARD_LABELS): string {
+  return controlsLines(labels).join(" | ");
 }
 
 const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -145,7 +170,8 @@ const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;"
  * The panel body as HTML. Pure string building - no DOM - so the currency
  * test can assert against it without a browser.
  */
-export function renderHelpHtml(): string {
+export function renderHelpHtml(labels: Labels = KEYBOARD_LABELS): string {
+  const r = (text: string): string => resolveLabels(text, labels);
   const ws = Object.values(WEAPONS);
   const times = (e: HelpEntry): string => {
     if (!e.ms) return "";
@@ -157,8 +183,8 @@ export function renderHelpHtml(): string {
     .map((e) => `
       <tr>
         <td class="l">${esc(e.label)}</td>
-        <td>${esc(e.what)}</td>
-        <td class="p">${esc(e.player)}</td>
+        <td>${esc(r(e.what))}</td>
+        <td class="p">${esc(r(e.player))}</td>
         <td class="t">${esc(times(e))}</td>
       </tr>`)
     .join("");
@@ -175,12 +201,12 @@ export function renderHelpHtml(): string {
     return `<li>${esc(w.name)}: a whiffed thrust recovers ${t.recovery * w.whiffRecoveryFactor}ms (x${w.whiffRecoveryFactor}); a parried one ${t.recovery + w.parriedPenalty}ms (+${w.parriedPenalty}ms); a feint only ${w.feintRecoveryMs}ms - selling a threat is cheap, missing with one is not.</li>`;
   }).join("");
 
-  const keys = KEY_GROUPS.map(
+  const keys = keyGroups(labels).map(
     (g) => `<p class="keys">${g.map(([k, a]) => `<b>${esc(k)}</b> ${esc(a)}`).join(" &nbsp; ")}</p>`,
   ).join("");
 
   return `
-    <h1>How the duel works <span class="close">(Esc closes)</span></h1>
+    <h1>How the duel works <span class="close">(${esc(labels.reselect)} closes)</span></h1>
     <p>Fixed 60Hz simulation, single-hit lethality. Every action commits you;
     the game is choosing the right one while reading the opponent's.</p>
 
@@ -201,13 +227,13 @@ export function renderHelpHtml(): string {
     <ul>${parryRows}</ul>
 
     <h2>Lies and answers</h2>
-    <p>During a windup an attack may be re-aimed <b>once</b>: an arrow
-    changes its height, the other attack key its kind and side. The
+    <p>During a windup an attack may be re-aimed <b>once</b>: ${esc(r("{stanceUp}/{stanceDown}"))}
+    change its height, the other attack key its kind and side. The
     blade arrives later for it - a feint into empty air is a lost tempo. A
     held guard answers as often as it can travel - one shift at a time, each
-    at full cost: up/down arrows shift its height, left/right or Caps Lock
-    re-aim its side at the visible attack, or flip it when nothing shows.
-    The guard never follows the blade on its own.</p>
+    at full cost: ${esc(r("{stanceUp}/{stanceDown}"))} shift its height,
+    ${esc(r("{sideShift}"))} re-aims its side at the visible attack, or flips
+    it when nothing shows. The guard never follows the blade on its own.</p>
     <ul>${ws.map((w) => `<li>${esc(w.name)}: height feint ${w.redirectHeightMs}ms, side feint ${w.redirectSideMs}ms; your guard shifts height in ${w.guardShiftMs}ms, re-aims side in ${w.sideChangeMs}ms.</li>`).join("")}</ul>
 
     <h2>Measure</h2>

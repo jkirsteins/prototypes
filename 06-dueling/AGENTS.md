@@ -80,6 +80,17 @@ layer keys exclusively off those events. The describe block "presentation
 events follow the simulation, not the input" in `test/engine.test.ts` pins
 the exact timings - extend it whenever a new cue is added.
 
+## Two control schemes, one action table
+
+Keyboard and gamepad are both first-class; on-screen text follows whichever
+was touched last. Every control is an `ActionId` in `src/input/scheme.ts`
+with a label per scheme, and UI strings never spell a key or button - they
+reference actions via {action} tokens resolved through the active scheme.
+Adding or changing a control means: extend the union, add labels to every
+scheme table, bind it in `PAD_BINDINGS` (or state why it is keyboard-only),
+and write prose with tokens. The typed Records fail the build on a missing
+label; the help tests catch unresolved tokens and stale legends.
+
 ## One simulation for both fighters
 
 The simulation is identical for the human's fighter and the AI's. The ONLY

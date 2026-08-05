@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { HELP, KEY_GROUPS, controlsLine, controlsLines, renderHelpHtml } from "../src/ui/help";
+import { HELP, controlsLine, controlsLines, keyGroups, renderHelpHtml } from "../src/ui/help";
+import { KEYBOARD_LABELS, PAD_LABELS } from "../src/input/scheme";
 import { WEAPONS } from "../src/combat/weapons";
 
 /**
@@ -51,7 +52,7 @@ describe("the help panel stays current and concise", () => {
 
   test("the key list is the same table the control line draws from", () => {
     const line = controlsLine();
-    for (const group of KEY_GROUPS) {
+    for (const group of keyGroups(KEYBOARD_LABELS)) {
       for (const [key, action] of group) {
         expect(line).toContain(`${key} ${action}`);
         expect(html).toContain(action);
@@ -68,8 +69,14 @@ describe("the help panel stays current and concise", () => {
     const lines = controlsLines();
     for (const line of lines) expect(line.length).toBeLessThanOrEqual(140);
     const all = lines.join(" | ");
-    for (const group of KEY_GROUPS) {
+    for (const group of keyGroups(KEYBOARD_LABELS)) {
       for (const [key, action] of group) expect(all).toContain(`${key} ${action}`);
+    }
+    // The pad scheme's legend obeys the same bound - both kinds.
+    for (const kind of ["xbox", "ps"] as const) {
+      for (const line of controlsLines(PAD_LABELS[kind])) {
+        expect(line.length).toBeLessThanOrEqual(140);
+      }
     }
   });
 });

@@ -1,4 +1,5 @@
 import { WEAPONS } from "../combat/weapons";
+import { activeLabels, noteKeyboardInput, onControlsChange, resolveLabels } from "../input/scheme";
 import type { WeaponId } from "../combat/types";
 
 const IDS: WeaponId[] = ["longsword", "rapier"];
@@ -11,6 +12,38 @@ interface SelectState {
 }
 
 let sel: SelectState | null = null;
+
+/** main.ts's pad path needs to know who owns the input. */
+export function isSelectOpen(): boolean {
+  return sel !== null;
+}
+
+/** One body for both devices: the key handler and the pad path call this,
+ *  so the two cannot drift (gamepad-support §6). */
+export function handleSelectAction(
+  a: "selLeft" | "selRight" | "selToggle" | "selConfirm" | "selPickFirst" | "selPickSecond",
+): void {
+  if (!sel) return;
+  switch (a) {
+    case "selLeft": sel.activeCol = "p"; break;
+    case "selRight": sel.activeCol = "e"; break;
+    case "selToggle": toggle(); break;
+    case "selPickFirst": set(IDS[0]); break;
+    case "selPickSecond": set(IDS[1]); break;
+    case "selConfirm": {
+      const { p, e: ew, onStart } = sel;
+      hideSelect();
+      onStart(p, ew);
+      return;
+    }
+  }
+  render();
+}
+
+// The hint follows the active scheme like every control reference.
+onControlsChange(() => {
+  if (sel !== null) render();
+});
 
 export function showSelect(current: { p: WeaponId; e: WeaponId }, onStart: SelectState["onStart"]): void {
   sel = { p: current.p, e: current.e, activeCol: "p", onStart };
@@ -29,16 +62,19 @@ export function hideSelect(): void {
 
 function onKey(e: KeyboardEvent): void {
   if (!sel) return;
+  if (!e.repeat) noteKeyboardInput();
   const k = e.key.toLowerCase();
-  if (k === "a" || k === "arrowleft") sel.activeCol = "p";
-  else if (k === "d" || k === "arrowright") sel.activeCol = "e";
-  else if (k === "w" || k === "s" || k === "arrowup" || k === "arrowdown") toggle();
-  else if (k === "1") set(IDS[0]);
-  else if (k === "2") set(IDS[1]);
-  else if (k === "enter") { const { p, e: ew, onStart } = sel; hideSelect(); onStart(p, ew); return; }
-  else return;
+  const action =
+    k === "a" || k === "arrowleft" ? "selLeft"
+    : k === "d" || k === "arrowright" ? "selRight"
+    : k === "w" || k === "s" || k === "arrowup" || k === "arrowdown" ? "selToggle"
+    : k === "1" ? "selPickFirst"
+    : k === "2" ? "selPickSecond"
+    : k === "enter" ? "selConfirm"
+    : null;
+  if (action === null) return;
   e.preventDefault();
-  render();
+  handleSelectAction(action);
 }
 
 function toggle(): void {
@@ -53,6 +89,15 @@ function set(id: WeaponId): void {
 
 function render(): void {
   if (!sel) return;
+  const hint = document.querySelector("#select .hint");
+  if (hint) {
+    // The direct-pick clause stays under both schemes: the keyboard is
+    // always live, so 1/2 keep working while the pad drives the labels.
+    hint.textContent = resolveLabels(
+      "{selLeft} or {selRight} switch column - {selToggle} switch sword - {selPickFirst}/{selPickSecond} direct pick - {selConfirm} to duel",
+      activeLabels(),
+    );
+  }
   for (const colKey of ["p", "e"] as const) {
     const col = document.querySelector(`#select .col[data-col="${colKey}"]`);
     if (!col) continue;

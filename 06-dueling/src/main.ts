@@ -7,7 +7,13 @@ import { advanceBulletTime, bulletTimePhase, bulletTimeScale, createBulletTime }
 import { HELP_BUTTON, drawFrame } from "./render/draw";
 import { loadImages } from "./render/loader";
 import { renderHelpHtml } from "./ui/help";
-import { showSelect } from "./ui/select";
+import { handleSelectAction, isSelectOpen, showSelect } from "./ui/select";
+import { createPadSnapshot, discardPadSnapshot, readPads } from "./input/gamepad";
+import {
+  activeLabels, noteGamepadInput, noteKeyboardInput, notePadGone,
+  onControlsChange, resolvePadEdge,
+} from "./input/scheme";
+import type { ActionId, UiSnapshot } from "./input/scheme";
 import type { AiMode } from "./combat/ai";
 import type { Duel, DuelEvent } from "./combat/engine";
 import type { Intent, WeaponId } from "./combat/types";
@@ -40,7 +46,15 @@ const state = {
   activeSeed: 0,
   duel: null as Duel | null,
   ai: createAiState(),
-  held: { advance: false, retreat: false, parry: false },
+  // Held actions are owned per SOURCE and consumed as one effective
+  // level, so one device releasing can never lower what the other still
+  // holds; every edge-triggered consequence (the parry press, the
+  // release, the buffered-step drop) keys off the EFFECTIVE level's
+  // transitions (gamepad-support §7.1).
+  held: {
+    keyboard: { advance: false, retreat: false, guard: false },
+    pad: { advance: false, retreat: false, guard: false },
+  },
   pending: null as Intent | null,
   // Time control: pause freezes the accumulator, step injects exactly one
   // tick, timescale stretches or compresses wall time. The simulation is a
@@ -62,12 +76,17 @@ const state = {
 
 const helpEl = document.getElementById("help") as HTMLElement;
 const helpPanel = helpEl.querySelector(".panel") as HTMLElement;
-helpPanel.innerHTML = renderHelpHtml();
 
 function setHelp(open: boolean): void {
   state.helpOpen = open;
   helpEl.hidden = !open;
+  // Rendered on open (and re-rendered on a scheme change while open), so
+  // the panel always speaks the active device's language.
+  if (open) helpPanel.innerHTML = renderHelpHtml(activeLabels());
 }
+onControlsChange(() => {
+  if (state.helpOpen) helpPanel.innerHTML = renderHelpHtml(activeLabels());
+});
 // A reference you cannot read without dying is useless: clicking outside
 // the panel closes it, clicks inside stay inside (text selection etc).
 helpEl.addEventListener("click", (e) => {
@@ -81,6 +100,74 @@ canvas.addEventListener("click", (e) => {
   if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) setHelp(true);
 });
 
+type HeldAction = "advance" | "retreat" | "guard";
+const effective = (a: HeldAction): boolean => state.held.keyboard[a] || state.held.pad[a];
+
+/** Write one source's level and emit the effective transition's
+ *  consequences: guard rise -> parry press, guard fall -> release,
+ *  movement fall -> buffered-step drop. */
+function setHeld(source: "keyboard" | "pad", action: HeldAction, value: boolean): void {
+  const before = effective(action);
+  state.held[source][action] = value;
+  const after = effective(action);
+  if (before === after) return;
+  if (action === "guard") {
+    state.pending = after ? "parry" : "parryRelease";
+  } else if (!after && state.duel) {
+    const dir = action === "advance" ? "advance" : "retreat";
+    if (state.duel.f[0].buffered === dir) state.duel.f[0].buffered = null;
+  }
+}
+
+function clearHeldSource(source: "keyboard" | "pad"): void {
+  setHeld(source, "advance", false);
+  setHeld(source, "retreat", false);
+  setHeld(source, "guard", false);
+}
+
+let padSnap = createPadSnapshot();
+
+function uiSnapshot(): UiSnapshot {
+  return {
+    helpOpen: state.helpOpen,
+    selectOpen: isSelectOpen(),
+    duelLive: state.duel !== null && !state.duel.over,
+    paused: state.paused,
+    decided: state.duel?.over === true,
+  };
+}
+
+/** Apply one resolved pad action - the resolver decided the meaning, this
+ *  only routes it onto the same paths the keyboard writes. Movement and
+ *  guard are levels (section 7.1), never edge-applied here. */
+function applyPadAction(a: ActionId): void {
+  switch (a) {
+    case "void": case "cut": case "thrust": case "feint":
+    case "stanceUp": case "stanceDown": case "sideShift": case "disarm":
+      state.pending = a;
+      break;
+    case "pause":
+      state.paused = !state.paused;
+      break;
+    case "rematch":
+      startDuel();
+      break;
+    case "reselect":
+      state.duel = null;
+      openSelect();
+      break;
+    case "help":
+      setHelp(!state.helpOpen);
+      break;
+    case "selLeft": case "selRight": case "selToggle": case "selConfirm":
+    case "selPickFirst": case "selPickSecond":
+      handleSelectAction(a);
+      break;
+    default:
+      break; // movement/guard levels, debug verbs: not edge-driven
+  }
+}
+
 function startDuel(): void {
   // Without ?seed each duel draws a fresh one so rematches are not replays.
   // The draw happens here, outside the simulation, and the overlay shows it
@@ -92,6 +179,14 @@ function startDuel(): void {
 }
 
 function openSelect(): void {
+  // Entering selection ends a fight rather than pausing one: no hold may
+  // survive into the next duel, on either device - the pad snapshot is
+  // discarded (everything still engaged goes stale until released) and
+  // BOTH held sources clear, fixing the old wart where a D held across
+  // the select screen entered the new duel already advancing.
+  discardPadSnapshot(padSnap);
+  clearHeldSource("keyboard");
+  clearHeldSource("pad");
   showSelect({ p: state.pWeapon, e: state.eWeapon }, (p, e) => {
     state.pWeapon = p;
     state.eWeapon = e;
@@ -100,12 +195,17 @@ function openSelect(): void {
 }
 
 const audio = createAudioEngine();
-// Browsers gate audio behind a user gesture; any keypress (select screen or
-// duel) unlocks the context. Idempotent after the first.
+// Browsers gate audio behind a user gesture; any keypress or click
+// (select screen or duel) unlocks the context. Idempotent after the
+// first. A gamepad press is NOT a user activation in any browser, so a
+// purely pad-driven session plays silent until the player clicks or
+// presses a key once - a stated limitation, not a bug to chase.
 document.addEventListener("keydown", () => audio.unlock());
+document.addEventListener("pointerdown", () => audio.unlock());
 
 document.addEventListener("keydown", (e) => {
   if (e.repeat) return;
+  noteKeyboardInput();
   // Help owns the keyboard while open: only its own toggles and Escape do
   // anything, so a stray game key cannot act under the panel.
   if (state.helpOpen) {
@@ -120,17 +220,18 @@ document.addEventListener("keydown", (e) => {
   // and removes its own listener via showSelect/hideSelect.
   if (state.duel === null) return;
   switch (e.key.toLowerCase()) {
-    case "a": state.held.retreat = true; break;
-    case "d": state.held.advance = true; break;
+    case "a": setHeld("keyboard", "retreat", true); break;
+    case "d": setHeld("keyboard", "advance", true); break;
     case "s": state.pending = "void"; break;
     case "j": state.pending = "cut"; break;
     case "k": state.pending = "thrust"; break;
     case "i": state.pending = "disarm"; break;
     case "l":
       // Hold to keep the guard up; the keyup lowers it. The global e.repeat
-      // guard above keeps auto-repeat from restarting anything.
-      state.held.parry = true;
-      state.pending = "parry";
+      // guard above keeps auto-repeat from restarting anything. The press
+      // fires through the effective level's rise (a pad-held guard means
+      // no transition, so nothing fires - which is the point).
+      setHeld("keyboard", "guard", true);
       break;
     case "arrowleft":
     case "arrowright":
@@ -185,23 +286,19 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("keyup", (e) => {
   switch (e.key.toLowerCase()) {
     case "a":
-      state.held.retreat = false;
-      // A tap buffers a step while the previous one is still playing; if the
-      // key comes up before that buffered step fires, drop it so a tap is
-      // one step, not two. Holding still chains steps because the buffer is
-      // refreshed every tick while the key is down.
-      if (state.duel && state.duel.f[0].buffered === "retreat") state.duel.f[0].buffered = null;
+      // The buffered-step drop keys off the EFFECTIVE fall inside
+      // setHeld: a tap is one step, not two, and a direction the pad
+      // still holds drops nothing.
+      setHeld("keyboard", "retreat", false);
       break;
     case "d":
-      state.held.advance = false;
-      if (state.duel && state.duel.f[0].buffered === "advance") state.duel.f[0].buffered = null;
+      setHeld("keyboard", "advance", false);
       break;
     case "l":
-      state.held.parry = false;
-      // Replaces even a still-pending press: a tap must never raise a
-      // guard the vanished key can no longer lower. A release with no
-      // guard up is a harmless no-op engine-side.
-      state.pending = "parryRelease";
+      // The release fires through the effective fall - a tap must never
+      // leave a guard its vanished key can no longer lower, and a
+      // pad-held guard survives a keyboard tap untouched.
+      setHeld("keyboard", "guard", false);
       break;
     case "capslock":
       // The lock's OFF edge (see the keydown case): also a press.
@@ -210,18 +307,18 @@ document.addEventListener("keyup", (e) => {
   }
 });
 
-// A key let go on another window sends no keyup here: lower everything.
+// A key let go on another window sends no keyup here: lower everything,
+// both sources - and discard the pad snapshot, so the next focused poll
+// only seeds (a button held across the blur reads as nothing until it is
+// released and pressed afresh, exactly like the keyboard).
 window.addEventListener("blur", () => {
-  state.held.advance = false;
-  state.held.retreat = false;
-  if (state.held.parry) {
-    state.held.parry = false;
-    state.pending = "parryRelease";
-  }
+  clearHeldSource("keyboard");
+  clearHeldSource("pad");
+  discardPadSnapshot(padSnap);
 });
 
 loadImages().then((images) => {
-  const view: View = { ctx, images, overlay: state.overlay };
+  const view: View = { ctx, images, overlay: state.overlay, labels: activeLabels() };
   if (bootStraightIn) startDuel();
   else openSelect();
   let last = performance.now();
@@ -232,6 +329,26 @@ loadImages().then((images) => {
     // edges - the bind forming and its aftermath ending are simulation
     // moments, the eased clock that follows them is not.
     const wallDt = Math.min(now - last, 250);
+    // The pad poll, before the accumulator drains, so pad intents enter
+    // ticks with the same latency as key events (gamepad-support §7.2).
+    const gate = state.helpOpen || isSelectOpen();
+    const pads = typeof navigator !== "undefined" && navigator.getGamepads ? navigator.getGamepads() : [];
+    const pf = readPads(padSnap, pads, gate);
+    padSnap = pf.next;
+    if (pf.frame.padGone) {
+      notePadGone();
+      clearHeldSource("pad");
+      // The hands just left the controls: pause a live, undecided duel.
+      if (state.duel !== null && !state.duel.over) state.paused = true;
+    }
+    if (pf.frame.activity && pf.frame.activePadId !== null) noteGamepadInput(pf.frame.activePadId);
+    setHeld("pad", "advance", pf.frame.held.advance);
+    setHeld("pad", "retreat", pf.frame.held.retreat);
+    setHeld("pad", "guard", pf.frame.held.guard);
+    for (const padEdge of pf.frame.pressed) {
+      const action = resolvePadEdge(uiSnapshot(), padEdge);
+      if (action !== null) applyPadAction(action);
+    }
     const edge = advanceBulletTime(state.bullet, wallDt, bulletTimePhase(state.duel));
     if (edge === "enter") audio.cue("bulletIn");
     else if (edge === "exit") audio.cue("bulletOut");
@@ -257,13 +374,14 @@ loadImages().then((images) => {
         acc -= TICK;
         let ia: Intent | null = state.pending;
         state.pending = null;
-        if (ia === null && state.held.advance) ia = "advance";
-        if (ia === null && state.held.retreat) ia = "retreat";
+        if (ia === null && effective("advance")) ia = "advance";
+        if (ia === null && effective("retreat")) ia = "retreat";
         const ib = aiDecide(d, state.aiMode, state.ai, TICK);
         frameEvents.push(...tickDuel(d, ia, ib));
       }
       audio.frame(frameEvents);
       view.overlay = state.overlay;
+      view.labels = activeLabels();
       drawFrame(view, d, state.aiMode, state.activeSeed, {
         paused: state.paused,
         timescale: state.timescale,

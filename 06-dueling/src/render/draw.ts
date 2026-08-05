@@ -3,6 +3,8 @@ import { bindTimerFrac, netBindForce, yieldOpportunity, yieldThreat } from "../c
 import { BIND_LOSS_MS } from "../combat/fighter";
 import { HIT_STUN_MS, guardEffective, lineOf } from "../combat/fighter";
 import { controlsLines } from "../ui/help";
+import { KEYBOARD_LABELS, onControlsChange, resolveLabels } from "../input/scheme";
+import type { Labels } from "../input/scheme";
 import { lastLines } from "../combat/log";
 import { zoneFor } from "../combat/measure";
 import { pickBindFrame, pickFrame } from "./frames";
@@ -25,6 +27,9 @@ export interface View {
   ctx: CanvasRenderingContext2D;
   images: Record<SheetName, HTMLImageElement>;
   overlay: boolean;
+  /** The active scheme's labels; refreshed by main.ts each frame so the
+   *  pure text helpers stay parameterized and testable per scheme. */
+  labels: Labels;
 }
 
 /**
@@ -48,7 +53,15 @@ const ATTACK_LISTING: Record<WeaponId, string> = {
 
 /** Built from the same table the help panel lists, so the two cannot drift.
  *  Two lines, each narrower than the canvas: instructions clip nowhere. */
-const CONTROLS_LINES = controlsLines();
+let CONTROLS_LINES = controlsLines();
+// The legend follows the active scheme within a frame: recomputed on the
+// controls-change callback, never per draw.
+onControlsChange(() => {
+  CONTROLS_LINES = controlsLines(activeViewLabels);
+});
+/** The labels drawFrame last received; the change callback reads them so
+ *  the cache rebuild uses the same scheme the frame renders with. */
+let activeViewLabels: Labels = KEYBOARD_LABELS;
 
 export interface TimeControl {
   paused: boolean;
@@ -58,6 +71,7 @@ export interface TimeControl {
 }
 
 export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: TimeControl): void {
+  activeViewLabels = v.labels;
   const { ctx } = v;
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = "#1b1e24";
@@ -145,10 +159,16 @@ function drawTimeControl(v: View, d: Duel, time: TimeControl): void {
  * into a deep opponent is exactly what a yield turns), the keys
  * otherwise.
  */
-export function bindPrompt(ownWindow: boolean, feedingTheirs: boolean): string {
-  if (ownWindow) return "BIND - YIELD NOW: tap K to turn their pressure";
+export function bindPrompt(
+  ownWindow: boolean,
+  feedingTheirs: boolean,
+  labels: Labels = KEYBOARD_LABELS,
+): string {
+  // "SPACE your taps" is the verb to space, not the space bar - checked
+  // and kept by the gamepad sweep.
+  if (ownWindow) return resolveLabels("BIND - YIELD NOW: tap {thrust} to turn their pressure", labels);
   if (feedingTheirs) return "BIND - they can turn your flurry: SPACE your taps";
-  return "BIND - J presses, K yields when your band lights";
+  return resolveLabels("BIND - {cut} presses, {thrust} yields when your band lights", labels);
 }
 
 /**
@@ -235,7 +255,7 @@ function drawBindBar(v: View, d: Duel): void {
   ctx.fillStyle = "#c9822f";
   ctx.fillText(bindHeadline(bind), b.cx, b.y - 22);
   ctx.font = "12px ui-monospace, monospace";
-  ctx.fillText(bindPrompt(yieldOpportunity(bind, 0), yieldThreat(bind, 1)), b.cx, b.y - 8);
+  ctx.fillText(bindPrompt(yieldOpportunity(bind, 0), yieldThreat(bind, 1), activeViewLabels), b.cx, b.y - 8);
 
   // The range, the neutral mark, the win caps (tinted by their winner:
   // side 0 wins where control -1 renders, side 1 where +1 renders).
@@ -328,15 +348,18 @@ function drawBindBar(v: View, d: Duel): void {
  * reach SUM covers the gap), and there the thrust would whiff into a
  * brutal recovery - the prompt must never command it.
  */
-export function openingPromptText(inReach: boolean): string {
+export function openingPromptText(inReach: boolean, labels: Labels = KEYBOARD_LABELS): string {
   // Reach-honesty extends to the pair (disarming spec): the thrust needs
   // the frozen gap inside reach; the disarm grips steel that is already
   // touching steel and has no reach condition to fail. The prompt never
   // advertises an action that would whiff - on a wide bind the disarm is
   // the only conversion that lands, and the prompt says exactly that.
-  return inReach
-    ? "OPENING - K kills, I takes the sword"
-    : "OPENING - too wide to thrust: I takes the sword";
+  return resolveLabels(
+    inReach
+      ? "OPENING - {thrust} kills, {disarm} takes the sword"
+      : "OPENING - too wide to thrust: {disarm} takes the sword",
+    labels,
+  );
 }
 
 /**
@@ -356,7 +379,7 @@ function drawOpeningPrompt(v: View, d: Duel): void {
   ctx.textAlign = "center";
   ctx.font = "bold 15px ui-monospace, monospace";
   ctx.fillStyle = "#e6c229";
-  ctx.fillText(openingPromptText(gapOf(d) <= d.f[0].weapon.reach), b.cx, b.y - 22);
+  ctx.fillText(openingPromptText(gapOf(d) <= d.f[0].weapon.reach, activeViewLabels), b.cx, b.y - 22);
   const frac = Math.max(0, Math.min(1, adv / BIND_ADVANTAGE_MS));
   ctx.fillStyle = "#2c313a";
   ctx.fillRect(b.cx - b.halfW, b.y - 14, 2 * b.halfW, 4);
@@ -765,10 +788,12 @@ function drawBanner(v: View, d: Duel): void {
       : d.outcome === "disarm"
         ? `${d.f[winner ?? 0].weapon.name.toUpperCase()} TAKES THE SWORD`
         : `${d.f[winner ?? 0].weapon.name.toUpperCase()} KILLS`;
-  const detail =
+  const detail = resolveLabels(
     d.outcome === "disarm"
-      ? "a bloodless win - R to rematch, Esc to reselect"
-      : "R to rematch, Esc to reselect";
+      ? "a bloodless win - {rematch} to rematch, {reselect} to reselect"
+      : "{rematch} to rematch, {reselect} to reselect",
+    activeViewLabels,
+  );
   ctx.fillStyle = "#e8eaed";
   ctx.font = "28px ui-monospace, monospace";
   ctx.textAlign = "center";
