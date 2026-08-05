@@ -293,12 +293,16 @@ the outcome instead. Enough to judge the mechanic; the clatter and the
 fall are still owed. (The pack's punch sets remain the wide version's
 inventory.)
 
-**Pacing, as built:** the aftermath - exposure, the advantage's
-kill-or-disarm choice, and the strip itself - deepens the already-running
+**Pacing, as built (second playtest revision):** the OPEN choice - a
+live advantage, nothing yet committed - deepens the already-running
 bullet time to its own floor (`BULLET_AFTERMATH_SCALE` 0.15, 3x the
-bind's 0.45), scoped to exactly that beat: the bind's tap tempo is
-untouched, and the 240ms window reads as ~1.6s of wall clock.
-Presentation-only, per the bullet-time doctrine.
+bind's 0.45), and the moment the choice is COMMITTED (either conversion,
+any other advantage-spending action, or expiry) time releases on a fast
+250ms curve (`BULLET_COMMIT_OUT_MS`): the outcome is decided, and a
+guaranteed strip crawling by in slow motion taught nothing. The bind's
+tap tempo is untouched; the 240ms decision window reads as ~1.6s of
+wall clock; the execution plays at speed. Presentation-only, per the
+bullet-time doctrine.
 
 ### 4.2 HUD: the opening prompt teaches both conversions
 

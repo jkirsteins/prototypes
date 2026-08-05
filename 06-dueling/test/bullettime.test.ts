@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   BULLET_IN_MS, BULLET_OUT_MS, BULLET_TIME_SCALE,
-  BULLET_AFTERMATH_SCALE, BULLET_DEEPEN_MS,
+  BULLET_AFTERMATH_SCALE, BULLET_COMMIT_OUT_MS, BULLET_DEEPEN_MS,
   advanceBulletTime, bulletTimeActive, bulletTimeScale, createBulletTime,
 } from "../src/ui/bullettime";
 import { BIND_ADVANTAGE_MS, createDuel } from "../src/combat/engine";
@@ -49,24 +49,42 @@ describe("bullet time controller", () => {
     expect(bulletTimeScale(bt)).toBe(1);
   });
 
-  test("slowed time covers the bind AND its aftermath, and releases on a decided duel", () => {
-    // The aftermath - a fighter exposed, or holding the bind advantage -
-    // is the kill-or-escape beat the slowdown exists to make readable; an
-    // earlier cut released time at resolution and the winner's thrust
-    // landed at full speed, unseen.
+  test("slowed time covers the bind and the OPEN choice, and releases the moment it is committed", () => {
+    // The aftermath depth lasts exactly as long as someone holds a live
+    // advantage - the read-and-choose beat. Spending it (a committed
+    // conversion, any other action) or letting it expire makes the
+    // decision, and a decided outcome needs no slow progress bar - the
+    // exposed stagger alone holds nothing.
     expect(bulletTimeActive(null)).toBe(false);
     const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
     expect(bulletTimeActive(d)).toBe(false);
     d.f[1].state = { kind: "exposed", t: 0, contact: { kind: "guard", settledMs: 0 }, lineSide: "inside" };
-    expect(bulletTimeActive(d)).toBe(true); // the loser is still turned out
-    d.f[1].state = { kind: "ready" };
+    expect(bulletTimeActive(d)).toBe(false); // stagger alone: the choice is gone
     d.f[0].bindAdvantageMs = BIND_ADVANTAGE_MS;
-    expect(bulletTimeActive(d)).toBe(true); // the winner's opening still lives
+    expect(bulletTimeActive(d)).toBe(true); // the winner's opening: the open choice
     d.f[0].bindAdvantageMs = 0;
-    expect(bulletTimeActive(d)).toBe(false);
+    expect(bulletTimeActive(d)).toBe(false); // committed or expired: released
     d.f[0].bindAdvantageMs = BIND_ADVANTAGE_MS;
     d.over = true;
     expect(bulletTimeActive(d)).toBe(false); // a decided duel eases out through the death
+  });
+
+  test("the committed exit is fast; the ordinary exit keeps the standard curve", () => {
+    // From the aftermath depth (a conversion was just committed) the
+    // release curves out over BULLET_COMMIT_OUT_MS - immediate to the
+    // hand, still soft to the eye. A bind that ends with no aftermath
+    // (the shove-apart) keeps the slow exit.
+    const committed = createBulletTime();
+    advanceBulletTime(committed, BULLET_IN_MS + 100, "bind");
+    advanceBulletTime(committed, BULLET_DEEPEN_MS + 100, "aftermath");
+    advanceBulletTime(committed, BULLET_COMMIT_OUT_MS + 20, "off");
+    expect(bulletTimeScale(committed)).toBeCloseTo(1, 5);
+    const shoved = createBulletTime();
+    advanceBulletTime(shoved, BULLET_IN_MS + 100, "bind");
+    advanceBulletTime(shoved, BULLET_COMMIT_OUT_MS + 20, "off");
+    expect(bulletTimeScale(shoved)).toBeLessThan(0.9); // still easing: the slow curve
+    advanceBulletTime(shoved, BULLET_OUT_MS, "off");
+    expect(bulletTimeScale(shoved)).toBeCloseTo(1, 5);
   });
 
   test("edges fire exactly once, at the transition, in both directions", () => {

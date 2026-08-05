@@ -34,6 +34,12 @@ export const BULLET_AFTERMATH_SCALE = 0.15;
 export const BULLET_IN_MS = 600;
 /** Wall ms to curve fully out after the bind resolves. */
 export const BULLET_OUT_MS = 900;
+/** Wall ms to curve out after a COMMITTED conversion: once the winner
+ *  has chosen - thrust, disarm, or anything else that spends the
+ *  advantage - the outcome is already decided and watching it crawl
+ *  teaches nothing. Fast enough to read as immediate, still a curve,
+ *  never a snap. */
+export const BULLET_COMMIT_OUT_MS = 250;
 /** Wall ms for the aftermath's extra deepening: fast, because the beat
  *  it protects is short - but curved, never a snap. */
 export const BULLET_DEEPEN_MS = 200;
@@ -52,13 +58,16 @@ export function bulletTimeActive(d: Duel | null): boolean {
 }
 
 /** Which depth the moment warrants: the bind's tap-tempo slowdown, or
- *  the aftermath's deeper read-and-choose floor (a fighter exposed, an
- *  advantage live, or the strip itself running). */
+ *  the aftermath's deeper read-and-choose floor - which lasts exactly as
+ *  long as the CHOICE is open: someone holds a live advantage. The
+ *  moment it is spent (a conversion committed, any other action taken)
+ *  or expires, the decision is made and time releases - the guaranteed
+ *  execution needs no slow progress bar. (The exposed stagger alone no
+ *  longer holds time: with the advantage gone the beat is over.) */
 export function bulletTimePhase(d: Duel | null): "off" | "bind" | "aftermath" {
   if (d === null || d.over) return "off";
   if (d.bind !== null) return "bind";
-  if (d.disarm !== null) return "aftermath";
-  if (d.f.some((f) => f.state.kind === "exposed" || f.bindAdvantageMs > 0)) return "aftermath";
+  if (d.f.some((f) => f.bindAdvantageMs > 0)) return "aftermath";
   return "off";
 }
 
@@ -92,7 +101,10 @@ export function advanceBulletTime(
   const edge: "enter" | "exit" | null =
     active && !bt.wasActive ? "enter" : !active && bt.wasActive ? "exit" : null;
   bt.wasActive = active;
-  const step = active ? wallDtMs / BULLET_IN_MS : -wallDtMs / BULLET_OUT_MS;
+  // Leaving from the aftermath depth means a conversion was committed:
+  // the fast exit. Every other release keeps the standard curve.
+  const outMs = bt.depth > 0 ? BULLET_COMMIT_OUT_MS : BULLET_OUT_MS;
+  const step = active ? wallDtMs / BULLET_IN_MS : -wallDtMs / outMs;
   bt.level = Math.max(0, Math.min(1, bt.level + step));
   // The deepening: toward 1 while the aftermath runs, on its own fast
   // clock. On the way OUT it holds and lets the main level carry the
