@@ -22,7 +22,10 @@ export const CLIPS: Record<ClipName, { file: string; durationS: number }> = {
   gsBlock:    { file: "great-sword-blocking.glb", durationS: 0.958 },
   gsImpact:   { file: "great-sword-impact.glb",   durationS: 1.250 },
   dodgeBack:  { file: "dodge-backward.glb",       durationS: 1.625 },
-  stab:       { file: "stabbing.glb",             durationS: 2.625 },
+  // Mixamo "Upward Thrust", not "Stabbing": stabbing.glb stands
+  // three-quarters to camera with both arms up and never drives a point
+  // forward in the picture plane, so no timestamp in it reads as a thrust.
+  stab:       { file: "upward-thrust.glb",        durationS: 2.333 },
   unarmedIdle:{ file: "unarmed-idle.glb",         durationS: 1.875 },
   gsDeath:    { file: "great-sword-death.glb",    durationS: 2.375 },
 };
@@ -46,14 +49,18 @@ export const POSE_T = {
     recoveryStart: 3.28, // upright, blade dropping back toward the line
     recoveryEnd: 3.46,   // the clip's own guard, where an idle resumes
   },
+  // upward-thrust.glb opens on a held on-guard (0.05 .. 0.48: point cocked
+  // over the rear shoulder, off-hand out on the line), drives through
+  // 0.50 .. 0.78, then withdraws to a wide guard by 1.30. Past 1.50 it
+  // turns and lifts a leg, so nothing after that is usable.
   stab: {
-    windupLow: 0.15,     // tallest frame, weapon hand still low
-    windupHigh: 0.36,    // hand drawing up and back, weight sinking
-    still: 0.48,         // deepest coil, point cocked above the shoulder
-    travelling: 0.70,    // compact over the front foot, arm swinging through
-    delivered: 1.05,     // lunge at full reach, the clip's furthest point
-    recoveryStart: 1.50, // arm withdrawing from the lunge
-    recoveryEnd: 1.95,   // back upright over the feet
+    windupLow: 0.10,     // on guard: point cocked back, off-hand out on the line
+    windupHigh: 0.30,    // deepest draw, torso leaning off the line, knees loaded
+    still: 0.48,         // coil held, front foot gathering for the step in
+    travelling: 0.68,    // compact and upright, the point driving up past the head
+    delivered: 0.78,     // deep lunge, weapon arm out front, point furthest forward
+    recoveryStart: 1.08, // still lunged, the arm starting to fold back
+    recoveryEnd: 1.30,   // off the lunge, hands drawn in over a wide guard
   },
   // great-sword-blocking.glb holds one crouched guard for its whole
   // 0.958 s (hips vary by 4 mm), so these two only bracket that hold.
