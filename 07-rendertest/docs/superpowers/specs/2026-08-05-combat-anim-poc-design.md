@@ -187,11 +187,16 @@ separates the hands, that is a finding for the report, not a silent pass.
   values.
 - e2e in Chrome devtools (or the headless CDP fallback): for each state,
   trigger via key event, sample the hook at timeline marks to assert the
-  active clip, clipTime and paused flag are exactly what `pickPose` says;
-  prove history independence by sampling bone world transforms after
-  reaching the same PosePick via at least two different preceding states
-  and asserting equality; screenshot every phase pose; tip-at-reach within
-  2 cm at delivered poses; grip gate as above; console clean.
+  active clip, clipTime, paused flag AND that exactly one action has
+  weight 1 with all others at 0 (the contract's single-action rule,
+  verified directly); prove history independence by sampling bone
+  transforms RELATIVE TO THE FIGHTER ROOT (local position/quaternion/
+  scale per bone, small numeric tolerance) after reaching the same
+  PosePick via at least two different preceding states and asserting
+  equality - root-relative because world transforms include the
+  engine-owned position and facing; screenshot every phase pose;
+  tip-at-reach within 2 cm at delivered poses; grip gate as above;
+  console clean.
 - **Ground contact is per state**, not uniform: idle/windup/strike/
   recovery/parry/bind/unarmed require a support foot on the band (lowest
   foot bone within tolerance of y = 0); void may be airborne mid-hop but
