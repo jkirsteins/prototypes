@@ -24,10 +24,19 @@ import type { Duel } from "../combat/engine";
  *  the tapping feel dead. 0.45x keeps the cinematic slowdown while a
  *  tap cycle stays a sub-half-second wall rhythm. */
 export const BULLET_TIME_SCALE = 0.45;
+/** The AFTERMATH's deeper floor: the you-won-the-bind beat - kill or
+ *  disarm, or scramble free - runs 3x slower again than the bind
+ *  itself, because it is one read-and-choose moment, not a tap rhythm:
+ *  the 240ms advantage window stretches to ~1.6s of wall clock. Only
+ *  this beat deepens; the bind's tap tempo is untouched. */
+export const BULLET_AFTERMATH_SCALE = 0.15;
 /** Wall ms to curve fully in after the bind forms. */
 export const BULLET_IN_MS = 600;
 /** Wall ms to curve fully out after the bind resolves. */
 export const BULLET_OUT_MS = 900;
+/** Wall ms for the aftermath's extra deepening: fast, because the beat
+ *  it protects is short - but curved, never a snap. */
+export const BULLET_DEEPEN_MS = 200;
 
 /**
  * Whether slowed time is warranted right now: the bind itself, and its
@@ -39,20 +48,33 @@ export const BULLET_OUT_MS = 900;
  * the ease-out then plays through the death.
  */
 export function bulletTimeActive(d: Duel | null): boolean {
-  if (d === null || d.over) return false;
-  if (d.bind !== null) return true;
-  return d.f.some((f) => f.state.kind === "exposed" || f.bindAdvantageMs > 0);
+  return bulletTimePhase(d) !== "off";
+}
+
+/** Which depth the moment warrants: the bind's tap-tempo slowdown, or
+ *  the aftermath's deeper read-and-choose floor (a fighter exposed, an
+ *  advantage live, or the strip itself running). */
+export function bulletTimePhase(d: Duel | null): "off" | "bind" | "aftermath" {
+  if (d === null || d.over) return "off";
+  if (d.bind !== null) return "bind";
+  if (d.disarm !== null) return "aftermath";
+  if (d.f.some((f) => f.state.kind === "exposed" || f.bindAdvantageMs > 0)) return "aftermath";
+  return "off";
 }
 
 export interface BulletTime {
   /** 0 = real time, 1 = fully in bullet time; eased linearly, shaped on read. */
   level: number;
+  /** 0 = the bind's floor, 1 = the aftermath's deeper floor; eased on its
+   *  own faster clock so the already-running slowdown deepens further the
+   *  moment the bind resolves into the choice. */
+  depth: number;
   /** Last target, for edge detection (null = never observed). */
   wasActive: boolean;
 }
 
 export function createBulletTime(): BulletTime {
-  return { level: 0, wasActive: false };
+  return { level: 0, depth: 0, wasActive: false };
 }
 
 /**
@@ -64,19 +86,32 @@ export function createBulletTime(): BulletTime {
 export function advanceBulletTime(
   bt: BulletTime,
   wallDtMs: number,
-  active: boolean,
+  phase: "off" | "bind" | "aftermath",
 ): "enter" | "exit" | null {
+  const active = phase !== "off";
   const edge: "enter" | "exit" | null =
     active && !bt.wasActive ? "enter" : !active && bt.wasActive ? "exit" : null;
   bt.wasActive = active;
   const step = active ? wallDtMs / BULLET_IN_MS : -wallDtMs / BULLET_OUT_MS;
   bt.level = Math.max(0, Math.min(1, bt.level + step));
+  // The deepening: toward 1 while the aftermath runs, on its own fast
+  // clock. On the way OUT it holds and lets the main level carry the
+  // ease back to real time (the scale releases from wherever it was, no
+  // pop), resetting once time is fully released.
+  if (phase === "aftermath") {
+    bt.depth = Math.min(1, bt.depth + wallDtMs / BULLET_DEEPEN_MS);
+  } else if (bt.level === 0) {
+    bt.depth = 0;
+  }
   return edge;
 }
 
 /** The multiplier to apply to the accumulator's wall-time feed. */
 export function bulletTimeScale(bt: BulletTime): number {
-  const l = bt.level;
-  const shaped = l * l * (3 - 2 * l); // smoothstep: soft at both ends
-  return 1 - (1 - BULLET_TIME_SCALE) * shaped;
+  const smooth = (x: number): number => x * x * (3 - 2 * x);
+  // The floor slides from the bind's scale to the aftermath's as depth
+  // eases in; the main level then blends real time toward that floor.
+  const floor =
+    BULLET_TIME_SCALE - (BULLET_TIME_SCALE - BULLET_AFTERMATH_SCALE) * smooth(bt.depth);
+  return 1 - (1 - floor) * smooth(bt.level);
 }

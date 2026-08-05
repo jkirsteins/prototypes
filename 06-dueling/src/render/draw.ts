@@ -757,15 +757,24 @@ function drawHud(v: View, d: Duel, aiMode: AiMode): void {
 function drawBanner(v: View, d: Duel): void {
   const { ctx } = v;
   const winner = d.winner;
-  const text =
+  // Two lines so no outcome can overflow the canvas: the verdict big,
+  // the controls small beneath it.
+  const verdict =
     winner === "draw"
       ? "MUTUAL DEATH - draw"
       : d.outcome === "disarm"
-        ? `${d.f[winner ?? 0].weapon.name.toUpperCase()} TAKES THE SWORD - a bloodless win - R to rematch`
-        : `${d.f[winner ?? 0].weapon.name.toUpperCase()} KILLS - R to rematch, Esc to reselect`;
+        ? `${d.f[winner ?? 0].weapon.name.toUpperCase()} TAKES THE SWORD`
+        : `${d.f[winner ?? 0].weapon.name.toUpperCase()} KILLS`;
+  const detail =
+    d.outcome === "disarm"
+      ? "a bloodless win - R to rematch, Esc to reselect"
+      : "R to rematch, Esc to reselect";
   ctx.fillStyle = "#e8eaed";
   ctx.font = "28px ui-monospace, monospace";
   ctx.textAlign = "center";
-  ctx.fillText(text, 480, 240);
+  ctx.fillText(verdict, 480, 232);
+  ctx.font = "15px ui-monospace, monospace";
+  ctx.fillStyle = "#b9bec7";
+  ctx.fillText(detail, 480, 258);
   ctx.textAlign = "left";
 }

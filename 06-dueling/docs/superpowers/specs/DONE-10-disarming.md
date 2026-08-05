@@ -280,15 +280,25 @@ per the emergent-outcomes rule. Never as a flat chance.
 ### 4.1 Sprites
 
 Both fighters hold their `sustained-bind` §4.1 contact poses through the
-attempt - the freeze already reads as a wrestle, and the deterministic
-strain oscillation continues through it; this is the one state where the
-strain is literal. On success the loser holds that pose into `disarmed`.
+attempt - the freeze already reads as a wrestle. On success (as built,
+playtest revision) the loser does NOT hold the contact pose: a frozen
+stance implying a sword they no longer have read wrong the first time it
+was seen. `disarmed` renders the pack's UNARMED idle, looping - visibly
+alive, visibly beaten, visibly not dead - from the `idle` sheet added
+for it; the state still carries the final contact pose as data.
 
-**Art debt, named:** there is no grip frame and no dropped-sword frame, so
-the taken sword simply stops being part of the fight without being seen to
-fall. Enough to judge the mechanic, not enough to ship it as the longsword's
-mercy ending. (The sprite pack's swordless and punch sets are the wide
-version's inventory, not this spec's.)
+**Art debt, named:** there is no grip frame and no dropped-sword frame,
+so the taken sword is never seen to fall - the empty-handed idle carries
+the outcome instead. Enough to judge the mechanic; the clatter and the
+fall are still owed. (The pack's punch sets remain the wide version's
+inventory.)
+
+**Pacing, as built:** the aftermath - exposure, the advantage's
+kill-or-disarm choice, and the strip itself - deepens the already-running
+bullet time to its own floor (`BULLET_AFTERMATH_SCALE` 0.15, 3x the
+bind's 0.45), scoped to exactly that beat: the bind's tap tempo is
+untouched, and the 240ms window reads as ~1.6s of wall clock.
+Presentation-only, per the bullet-time doctrine.
 
 ### 4.2 HUD: the opening prompt teaches both conversions
 

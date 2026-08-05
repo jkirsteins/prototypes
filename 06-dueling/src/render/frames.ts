@@ -114,12 +114,16 @@ export function pickFrame(f: Fighter, timeMs: number): FramePick {
       // holds the formed-guard apex as a neutral crossed stance.
       return { sheet: "swordAttack", frame: 2, flip };
     case "disarming":
-    case "disarmed":
-      // The frozen scene: each fighter carries the contact pose their
-      // state saved - the winner's from the bind's resolution, the
-      // loser's straight through exposed. The wrestle reads because
+      // The frozen scene: the winner holds the contact pose their state
+      // saved at the bind's resolution. The wrestle reads because
       // nothing moves.
       return pickBindFrame(f, s.contact, s.lineSide);
+    case "disarmed":
+      // The sword is gone: the UNARMED idle, looping - visibly alive,
+      // visibly beaten, visibly not dead. (The state still carries the
+      // final contact pose as data; the renderer prefers showing empty
+      // hands over a freeze that implies a sword.)
+      return { sheet: "idle", frame: Math.floor(timeMs / IDLE_FRAME_MS) % SHEETS.idle.frames, flip };
     case "exposed":
       // Turned out of a lost bind: the contact pose, held - reads as
       // being unable to recover, which is exactly what the state is.

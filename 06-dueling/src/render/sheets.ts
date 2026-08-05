@@ -1,6 +1,6 @@
 export type SheetName =
   | "swordIdle" | "swordRun" | "swordAttack" | "swordStab"
-  | "roll" | "hurt" | "death";
+  | "roll" | "hurt" | "death" | "idle";
 
 export interface SheetMeta {
   file: string;
@@ -30,4 +30,9 @@ export const SHEETS: Record<SheetName, SheetMeta> = {
   roll:        { file: "roll.png",         frameW: 48, frameH: 48, frames: 7,  feetY: 40, originX: 24 },
   hurt:        { file: "hurt.png",         frameW: 48, frameH: 48, frames: 4,  feetY: 40, originX: 24 },
   death:       { file: "death.png",        frameW: 48, frameH: 48, frames: 10, feetY: 40, originX: 24 },
+  // The UNARMED idle (the pack's base character, no sword): the disarmed
+  // loser's stand. 480x48 measured = 10 frames; feetY/originX follow the
+  // pack's uniform 48px-sheet ground line and centering, which every
+  // measured sibling above landed on (40 / 24).
+  idle:        { file: "idle.png",         frameW: 48, frameH: 48, frames: 10, feetY: 40, originX: 24 },
 };

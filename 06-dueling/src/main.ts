@@ -3,7 +3,7 @@ import { TICK } from "./combat/fighter";
 import { createDuel, tickDuel } from "./combat/engine";
 import { WEAPONS } from "./combat/weapons";
 import { createAudioEngine } from "./audio/audio";
-import { advanceBulletTime, bulletTimeActive, bulletTimeScale, createBulletTime } from "./ui/bullettime";
+import { advanceBulletTime, bulletTimePhase, bulletTimeScale, createBulletTime } from "./ui/bullettime";
 import { HELP_BUTTON, drawFrame } from "./render/draw";
 import { loadImages } from "./render/loader";
 import { renderHelpHtml } from "./ui/help";
@@ -232,7 +232,7 @@ loadImages().then((images) => {
     // edges - the bind forming and its aftermath ending are simulation
     // moments, the eased clock that follows them is not.
     const wallDt = Math.min(now - last, 250);
-    const edge = advanceBulletTime(state.bullet, wallDt, bulletTimeActive(state.duel));
+    const edge = advanceBulletTime(state.bullet, wallDt, bulletTimePhase(state.duel));
     if (edge === "enter") audio.cue("bulletIn");
     else if (edge === "exit") audio.cue("bulletOut");
     if (state.helpOpen) {
