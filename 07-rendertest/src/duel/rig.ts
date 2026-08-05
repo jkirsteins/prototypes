@@ -44,6 +44,17 @@ export interface DuelRig {
   sample(): RigSample;
 }
 
+/** Xbot.glb's Hips bone sits under an "Armature" node with a baked 0.01
+ *  scale (its own bind pose and native idle/walk clips carry Hips.y in
+ *  raw centimeters, e.g. ~103, corrected to ~1.03 m by that scale). The
+ *  Task 4 mocap clips (great-sword-*, dodge-backward, stabbing,
+ *  unarmed-idle) are separately-converted glTF files whose Hips.y is
+ *  already in meters (e.g. ~0.95-1.0) - applied raw onto Xbot's Hips
+ *  bone, the same 0.01 Armature scale crushes it another 100x, collapsing
+ *  the whole skeleton onto the floor. Scaling by 100 here re-expresses it
+ *  in the centimeters Xbot's Armature scale expects, cancelling out. */
+const HIPS_Y_UNIT_SCALE = 100;
+
 /** Zeroes x/z of the root translation track so the engine alone moves
  *  the fighter (the spec's in-place rule), keeping y (crouch/jump). */
 function stripRootMotion(clip: THREE.AnimationClip): void {
@@ -51,7 +62,51 @@ function stripRootMotion(clip: THREE.AnimationClip): void {
     if (!track.name.endsWith(".position")) continue;
     if (!/Hips/.test(track.name)) continue;
     const v = track.values;
-    for (let i = 0; i < v.length; i += 3) { v[i] = 0; v[i + 2] = 0; }
+    for (let i = 0; i < v.length; i += 3) {
+      v[i] = 0;
+      v[i + 1] *= HIPS_Y_UNIT_SCALE;
+      v[i + 2] = 0;
+    }
+  }
+}
+
+/**
+ * Re-expresses every rotation keyframe relative to Xbot's own rest pose.
+ *
+ * Xbot.glb's own bind pose has every bone's local quaternion at identity
+ * (verified across the whole rig) - its native idle/walk clips store each
+ * frame's ABSOLUTE local rotation directly, with "identity" meaning
+ * "T-pose". The Task 4 mocap clips were converted straight from Mixamo's
+ * raw FBX export, whose skeleton keeps Mixamo's own per-bone local axis
+ * convention: many bones' bind pose is NOT identity (e.g. LeftUpLeg's own
+ * rest quaternion is close to a 180-degree turn). Applying those clips'
+ * absolute local quaternions directly onto Xbot's identity-rest bones
+ * therefore lands each bone ~180 degrees from where it belongs - the
+ * source of the collapsed/curled pose this function fixes.
+ *
+ * Since Xbot's target rest is identity everywhere, the correction reduces
+ * to: for each keyframe quaternion As, replace it with restQuat^-1 * As -
+ * "the clip's pose expressed relative to the clip's OWN rest", which is
+ * exactly what Xbot's identity-rest convention expects as an absolute
+ * local quaternion. restQuat comes from the same clip file's own scene
+ * graph (its bind pose), not Xbot's.
+ */
+function retargetRotationsToRestPose(clip: THREE.AnimationClip, restScene: THREE.Object3D): void {
+  const restQuats = new Map<string, THREE.Quaternion>();
+  restScene.traverse((o) => restQuats.set(o.name, o.quaternion.clone()));
+  for (const track of clip.tracks) {
+    if (!(track instanceof THREE.QuaternionKeyframeTrack)) continue;
+    const boneName = track.name.slice(0, track.name.lastIndexOf(".quaternion"));
+    const rest = restQuats.get(boneName);
+    if (!rest) continue;
+    const restInv = rest.clone().invert();
+    const v = track.values;
+    const q = new THREE.Quaternion();
+    for (let i = 0; i < v.length; i += 4) {
+      q.set(v[i], v[i + 1], v[i + 2], v[i + 3]);
+      q.premultiply(restInv);
+      v[i] = q.x; v[i + 1] = q.y; v[i + 2] = q.z; v[i + 3] = q.w;
+    }
   }
 }
 
@@ -74,6 +129,7 @@ export async function loadDuelRig(baseUrl: string): Promise<DuelRig> {
     const gltf = await loader.loadAsync(`${baseUrl}models/clips/${meta.file}`);
     const clip = gltf.animations[0];
     if (!clip) throw new Error(`${meta.file} has no animation`);
+    retargetRotationsToRestPose(clip, gltf.scene);
     stripRootMotion(clip);
     const action = mixer.clipAction(clip);
     action.play();
