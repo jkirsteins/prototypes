@@ -54,6 +54,14 @@ export interface Character {
   update(m: Movement, dtSeconds: number): void;
 }
 
+/** Scales obj so its bounding height is targetM and rests its feet on y = 0. */
+export function normalizeToHeight(obj: THREE.Object3D, targetM: number): void {
+  const box = new THREE.Box3().setFromObject(obj);
+  const scale = targetM / (box.max.y - box.min.y);
+  obj.scale.setScalar(scale);
+  obj.position.y = -box.min.y * scale;
+}
+
 /**
  * Loads a model and drives it from Movement: position along x, an instant
  * yaw flip for facing, walk while moving with the clip's timeScale tied to
@@ -70,10 +78,7 @@ export async function loadCharacter(baseUrl: string, spec: ModelSpec): Promise<C
 
   // Normalize source units: scale to a human height and rest the feet on
   // y = 0. The bounding box is taken in bind pose, close enough for both.
-  const box = new THREE.Box3().setFromObject(inner);
-  const scale = TARGET_HEIGHT_M / (box.max.y - box.min.y);
-  inner.scale.setScalar(scale);
-  inner.position.y = -box.min.y * scale;
+  normalizeToHeight(inner, TARGET_HEIGHT_M);
   const root = new THREE.Group();
   root.add(inner);
 
