@@ -22,13 +22,6 @@ export interface ModelSpec {
 }
 
 export const MODELS: Record<string, ModelSpec> = {
-  // Quaternius knight (CC0), converted from the pack's FBX with FBX2glTF.
-  knight: {
-    file: "Knight.glb",
-    idleClip: "HumanArmature|Idle",
-    walkClip: "HumanArmature|Walking",
-    clipNaturalSpeedMS: 0.98,
-  },
   // The three.js examples mannequin. Ships with salmon-colored materials;
   // recolored to the neutral grays a practice dummy should have.
   xbot: {
@@ -40,13 +33,20 @@ export const MODELS: Record<string, ModelSpec> = {
       mat.color.set(mat.name.includes("Joints") ? 0x3a404c : 0xb8bec8);
     },
   },
+  // Quaternius knight (CC0), converted from the pack's FBX with FBX2glTF.
+  knight: {
+    file: "Knight.glb",
+    idleClip: "HumanArmature|Idle",
+    walkClip: "HumanArmature|Walking",
+    clipNaturalSpeedMS: 0.98,
+  },
 };
 
 /** URL-param model selection; unknown names fall back to the default so a
  *  typo cannot break the page. */
 export function pickModel(search: string): ModelSpec {
-  const name = new URLSearchParams(search).get("model") ?? "knight";
-  return MODELS[name] ?? MODELS.knight;
+  const name = new URLSearchParams(search).get("model") ?? "xbot";
+  return MODELS[name] ?? MODELS.xbot;
 }
 
 export interface Character {

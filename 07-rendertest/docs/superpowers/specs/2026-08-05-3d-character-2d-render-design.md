@@ -33,9 +33,10 @@ standing, because a walk frozen mid-stride reads as broken. Idle is a
 rendering-quality choice, not new scope: it is baked into the same file.
 
 Amended same day: a second character, the Quaternius animated knight
-(CC0, converted from the user's downloaded FBX pack with FBX2glTF), is the
-default; `?model=xbot` selects the mannequin. Both run through the same
-model spec table (file, clip names, measured natural walk speed).
+(CC0, converted from the user's downloaded FBX pack with FBX2glTF), is
+available as `?model=knight`; the mannequin stays the default. Both run
+through the same model spec table (file, clip names, measured natural
+walk speed).
 
 ## Structure
 

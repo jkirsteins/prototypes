@@ -9,12 +9,12 @@ Spec: `docs/superpowers/specs/2026-08-05-3d-character-2d-render-design.md`.
 
 Two characters, picked with `?model=`:
 
-- `knight` (default) - the Quaternius animated knight (CC0), converted
-  from the pack's `KnightCharacter.fbx` with FBX2glTF (the `fbx2gltf` npm
-  package's bundled binary) to `public/models/Knight.glb`.
-- `xbot` - the gray Mixamo X Bot mannequin vendored from the three.js
-  examples repository (`public/models/Xbot.glb`), recolored from its
-  baked-in salmon materials to dummy grays.
+- `xbot` (default) - the gray Mixamo X Bot mannequin vendored from the
+  three.js examples repository (`public/models/Xbot.glb`), recolored from
+  its baked-in salmon materials to dummy grays.
+- `knight` - the Quaternius animated knight (CC0), converted from the
+  pack's `KnightCharacter.fbx` with FBX2glTF (the `fbx2gltf` npm package's
+  bundled binary) to `public/models/Knight.glb`.
 
 Everything renders through an orthographic camera locked to a straight
 side view, which removes perspective convergence so the frame reads flat
