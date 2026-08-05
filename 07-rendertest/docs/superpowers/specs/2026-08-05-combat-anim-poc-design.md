@@ -5,35 +5,49 @@
 Answer the one question the Mixamo catalog research could not: can curated
 timestamps from mocap clips produce combat phase poses as readable as
 06-dueling's hand-picked sprite frames, under 06's exact timing discipline?
-If yes, this renderer is conceptually transplantable into 06: swap
-`render/draw.ts`'s sprite blitting for this, keep the combat engine as is.
 
-One fighter, no opponent, no hit resolution. Keys force state transitions
-directly. Success is judged the repo way: the numbers are asserted by
-machine, the readability by the user playing it.
+What a pass proves: phase-pose readability and the renderer contract
+(state-sampled poses driven by 06's timeline shapes) - enough to transplant
+the RENDERING approach into 06 by replacing `render/draw.ts`'s sprite
+blitting while keeping the combat engine as is. What it does not prove:
+weapon/character modularity (a second handling family, prop swapping, other
+skins). Those claims wait for their own evidence.
+
+One fighter, no opponent logic, no hit resolution. Keys force state
+transitions directly. Success is judged the repo way: numbers asserted by
+machine, readability by the user playing it.
 
 ## Constraints carried over from 06 (the transplant contract)
 
 - **Pose is a pure function of combat state.** No free-running animation
   during combat states: `pickPose(state, timeMs)` returns
   `{ clip, clipTime, mode: "held" | "loop" }` exactly as 06's `pickFrame`
-  returns `{ sheet, frame, flip }`. Loops are only where 06 loops (idles).
+  returns `{ sheet, frame, flip }`. `timeMs` exists only for looping idles,
+  as in 06. Loops are only where 06 loops (idles).
+- **No animation-system state may leak between frames.** rig.ts applies a
+  PosePick by hard reset: exactly one action active at weight 1, its time
+  set explicitly, paused unless the pick loops. No crossfades, no fade
+  tails - the same PosePick must produce the same skeleton regardless of
+  what played before. E2e samples action weights to prove it.
 - **The same `AttackTimeline`.** Seven fields, same names (`riseStart`,
   `riseEnd`, `strikeStart`, `parryableUntil`, `strikeEnd`, `recoveryStart`,
   `recoveryEnd`), absolute ms from attack start, snapshotted at launch.
-- **Timings copied verbatim from 06's longsword**: cut 600/100/380/420,
-  thrust 440/60/260/300 (windup/beat/strike/recovery), `PARRYABLE_FRACTION`
-  0.5, step 260 ms, void 320 ms, hitstun 06's `HIT_STUN_MS`, death 06's
-  `DEATH_ANIM_MS`. Rapier is a data swap and is NOT built.
-- **The strike contract**: the pose swaps from "travelling" to "delivered"
-  exactly at `parryableUntil` - the visual is the parry window.
-- **The bind copes like 06 copes**: no bind animation exists anywhere; the
-  fighter freezes at a curated contact timestamp (mixer paused), exactly as
-  `pickBindFrame` freezes on a contact frame.
-- **The engine owns position.** All clips play in place; root motion is
-  stripped or downloaded as in-place. World x comes from the state layer.
-- **Units**: 1 cm = 0.01 world m. The fighter normalizes to 1.75 m (06's
-  ~175 cm person). Longsword reach 200 cm = tip at 2.00 m from body center.
+- **Timings and distances copied verbatim from 06's longsword**: cut
+  600/100/380/420, thrust 440/60/260/300 (windup/beat/strike/recovery),
+  `PARRYABLE_FRACTION` 0.5, step 260 ms over 60 cm, void 320 ms over
+  100 cm (both linearly interpolated per tick, as 06's fighter.ts does),
+  hitstun 350 ms, death 900 ms. Rapier is a data swap and is NOT built.
+- **The strike contract**: the travelling pose is retained while
+  `elapsedMs <= parryableUntil` and swaps to delivered immediately after -
+  the same inclusive boundary as 06's frames.ts. The visual is the parry
+  window.
+- **The engine owns position, facing and displacement.** All clips play in
+  place; states.ts owns x and facing and applies step/void displacement
+  over the state's duration. Root motion in clips is stripped or
+  downloaded as in-place.
+- **Units**: 1 cm = 0.01 world m. The duel fighter normalizes to 1.75 m
+  (06's ~175 cm person) via a target-height parameter on the loader; the
+  walk demo keeps its existing 1.8 m default untouched.
 
 ## States in scope
 
@@ -53,48 +67,74 @@ Everything 06's `pickFrame` renders, driven by keys:
 | death | X | Two Handed Sword Death, scrubbed once, holds last pose |
 | reset | R | back to guard idle |
 
+**The bind is staged as a bind.** A lone fighter frozen mid-slash cannot
+read as pressure. B also places a static counterpart: a second, mirrored
+Xbot instance frozen at the complementary contact timestamp, positioned so
+the blades meet. No opponent logic - it is scenery, the visual condition
+the bind gate needs. In 06 this reading comes from two opposed bodies; the
+PoC reproduces that condition or the gate would be untestable.
+
 ## Architecture
 
-- `src/duel/timings.ts` - the timing table and `AttackTimeline` builder,
-  field-for-field 06's `weapons.ts` shapes, longsword numbers.
+- `src/duel/timings.ts` - the timing/distance table and `AttackTimeline`
+  builder, field-for-field 06's `weapons.ts` shapes, longsword numbers.
 - `src/duel/states.ts` - minimal state machine (the PoC stand-in for 06's
   fighter): key events enter states, elapsed ms advances them, attacks walk
-  their timeline phases. Pure, vitest-covered.
-- `src/duel/poses.ts` - THE artifact: `pickPose(state) -> PosePick` with a
-  curated timestamp table per clip (the 3D analogue of `ATTACK_FRAMES`).
-  Pure, vitest-covered at every boundary (rise midpoint, riseEnd,
-  parryableUntil inclusive/exclusive, recovery span, death clamp).
-- `src/duel/rig.ts` - applies a PosePick to the AnimationMixer (action
-  selection, `action.time`, paused vs playing), attaches the sword prop
-  (the knight pack's Sword mesh) to the right-hand bone, exposes the blade
-  tip marker.
+  their timeline phases, step/void apply displacement. Owns x and facing.
+  Pure, vitest-covered.
+- `src/duel/poses.ts` - THE artifact: `pickPose(state, timeMs) -> PosePick`
+  with a curated timestamp table per clip (the 3D analogue of
+  `ATTACK_FRAMES`). Pure, vitest-covered at every boundary (rise midpoint,
+  riseEnd, parryableUntil inclusive/exclusive, recovery span, death clamp).
+- `src/duel/rig.ts` - applies a PosePick to the AnimationMixer under the
+  hard-reset rule, attaches the sword prop to the right-hand bone, exposes
+  the blade tip and grip markers.
 - `src/duel/main-duel.ts` - wiring; reached via `?mode=duel` from main.ts.
   The walk demo stays the default page, untouched.
+- Sword prop: the Quaternius pack's separate `FBX/Sword.fbx` (CC0),
+  converted with FBX2glTF to `public/models/Sword.glb` and committed.
+  Knight.glb contains no sword mesh - the prop is its own asset.
 - Clips: each Mixamo animation ships as its own small without-skin GLB in
-  `public/models/clips/`; tracks bind to Xbot's `mixamorig` bones by name.
-  Xbot stays the only skinned model. Knight mode is irrelevant here.
+  `public/models/clips/`, committed; tracks bind to Xbot's `mixamorig`
+  bones by name. Xbot stays the only skinned model in duel mode.
 
-## Clip acquisition (automated, login delegated)
+## Clip acquisition (automated attempt, manual fallback, committed result)
 
 `tools/mixamo-fetch.mjs` (committed, rerunnable): I open mixamo.com in
 Chrome via devtools automation, the user logs in (credentials, captchas,
-account are the user's alone - never automated). The script then reads the
-session's bearer token and drives Mixamo's own export API per clip: request
-FBX export (in place where the option exists, without skin), poll until
-ready, download. Each FBX converts with the same FBX2glTF binary used for
-the knight. Shopping list: Great Sword Idle, Great Sword Walk, Great Sword
-Slash, Great Sword Blocking, Great Sword Impact, Standing Dodge Backward,
+account are the user's alone - never automated). The script reads the
+session's bearer token and drives Mixamo's export flow per clip: request
+FBX export (in place where the option exists, without skin), poll, download.
+
+This rides an undocumented API, so it is a convenience, not a dependency:
+the supported fallback is the user clicking Download in Mixamo's UI with
+the same settings and dropping the FBX files in Downloads. Either way the
+FBX conversion runs once, offline, with fbx2gltf@0.9.7-p1 (pinned), and
+the RESULTING GLBs are committed - the build never re-fetches or
+re-converts, so reproducibility comes from git, not from Mixamo.
+
+Shopping list: Great Sword Idle, Great Sword Walk, Great Sword Slash,
+Great Sword Blocking, Great Sword Impact, Standing Dodge Backward,
 Stabbing, Unarmed Idle, Two Handed Sword Death.
 
 ## Reach calibration (in scope, with its consequence handled)
 
 06's measure game requires the visual blade tip to agree with the weapon's
-`reach`. Calibration procedure:
+`reach`. Definitions first:
 
-1. A tip marker sits at the blade end of the sword prop.
-2. At each delivered pose (cut and thrust), the e2e hook reads the tip's
-   world x offset from body center.
-3. The blade scale is solved so the tip lands at 2.00 m (200 cm reach).
+- **Measure origin**: the fighter root node's world x - the same value
+  states.ts owns as x, i.e. 06's body-center semantics.
+- **Forward reach**: `facing * (tipWorldX - rootWorldX)`. Signed by
+  facing so it is correct after flips; y and z do not contribute (06's
+  reach is horizontal).
+
+Procedure:
+
+1. A tip marker sits at the blade end of the sword prop; grip markers sit
+   at both ends of the hilt's grip segment.
+2. At each delivered pose (cut and thrust), the e2e hook reads forward
+   reach as defined above.
+3. The blade scale is solved so forward reach lands at 2.00 m (200 cm).
    A floor line at reach is drawn (debug overlay) so the tip visibly
    meets it.
 4. **The consequence is part of the loop**: after solving, screenshots of
@@ -103,24 +143,42 @@ Stabbing, Unarmed Idle, Two Handed Sword Death.
    fighter, and visually neither stubby nor lance-like. If it fails, the
    delivered-pose timestamp is re-curated (more or less arm extension) and
    the scale re-solved, until BOTH the numeric assert and the visual check
-   pass. The final calibration numbers (timestamp, scale, measured tip x)
-   are recorded in the completion report.
+   pass. Final numbers (timestamp, scale, measured reach) go in the
+   completion report.
+
+## Two-handed grip verification
+
+Great Sword clips are two-handed; the prop follows the right hand only. At
+every curated non-unarmed pose, the e2e hook measures the left palm bone's
+distance to the hilt's grip segment (point-to-segment, world space). Gate:
+within 10 cm at attack and parry poses (mocap hands are not exact), and
+the screenshots are examined for a visibly floating off-hand. If a pose
+fails, its timestamp is re-curated; if the clip family fundamentally
+separates the hands, that is a finding for the report, not a silent pass.
 
 ## Verification
 
-- vitest: `states.ts` transitions; `poses.ts` boundary exactness (the
-  parryableUntil swap above all); timing table equals 06's values.
+- vitest: `states.ts` transitions and displacement; `poses.ts` boundary
+  exactness (the parryableUntil swap above all); timing table equals 06's
+  values.
 - e2e in Chrome devtools (or the headless CDP fallback): for each state,
   trigger via key event, sample the hook at timeline marks to assert the
-  active clip, clipTime and paused flag are exactly what `pickPose` says;
-  screenshot every phase pose; assert feet grounded (band contact),
-  tip-at-reach within 2 cm at delivered poses, console clean.
+  active clip, clipTime, paused flag and single-action weight are exactly
+  what `pickPose` says; screenshot every phase pose; tip-at-reach within
+  2 cm at delivered poses; grip gate as above; console clean.
+- **Ground contact is per state**, not uniform: idle/windup/strike/
+  recovery/parry/bind/unarmed require a support foot on the band (lowest
+  foot bone within tolerance of y = 0); void may be airborne mid-hop but
+  must land; death must END in ground contact (prone); steps are not
+  gated (scrubbed locomotion, parity with 06's sprites). Step/void foot
+  drift is measured and reported, not gated - 06's sprite scrubbing does
+  not guarantee it either, and parity is the standard here.
 - Final human gate, per repo convention: a short "what to play and what
   would look wrong" list - windup stillness must read as a telegraph, the
   travelling-to-delivered swap must read as the window closing, the bind
-  freeze must read as pressure and not a glitch.
+  scene must read as two blades in pressure, not a glitch.
 
 ## Non-goals
 
-Two fighters, hit detection, HUD, audio, the rapier, weapon switching,
-transplant itself (06 is untouched by this work).
+Opponent logic, hit detection, HUD, audio, the rapier, weapon or character
+modularity claims, transplant itself (06 is untouched by this work).
