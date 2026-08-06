@@ -160,7 +160,7 @@ never from a canned entry pose.
 |---|---|
 | Redirect (height or side) | Continue smoothly from the currently sampled pose into the redirected trajectory's clip, entering it at the phase-equivalent point. |
 | Abandoned feint | Recover from the current sampled pose toward the resulting guard - a fading offset over the recovery region, never a jump to a canned recovery start. |
-| Bind entry | Freeze the contact-conformed pose and hand it to the bind state - it is the `BladeTrack`'s `frozen` pose, so the bind, exposed, disarming and disarmed states all render from real geometry after the attack is gone. |
+| Bind entry | The engine freezes the pose and its contact CONSTRAINT (`RenderSource.contact`); the renderer re-solves the conforming IK from that constraint every frame, so the bind, exposed, disarming and disarmed states all draw from real geometry after the attack is gone - without the engine ever storing a pose the renderer computed. |
 | Struck | Blend from the actual interrupted pose into hitstun or death; the blend is deterministic and bounded like every other correction. |
 | Parried / whiffed recovery | The recovery region is RETIMED within the asset's declared speed range (`parriedPenalty` lengthens it, `whiffRecoveryFactor` multiplies it); out-of-range cases follow section 3's exception-clip rule. |
 | Movement truncation | The feet stabilize deterministically between `movementStopped` and the engine's derived plant tick - no teleport, no slide, and the plant is visually on the ground when the footfall sounds. |
