@@ -1461,8 +1461,10 @@ render time, never literals - including derived transition examples.
 ## 9. Suitability matrix and tempo economics
 
 **The matrix is computed, then pinned.** A test builds, from the shared
-derivations at baseline attributes: for every realization x weapon x
-handling mode x attack x movement mode x initial measure - hold demand
+derivations at baseline attributes: for every realization x available
+weapon x attack x movement mode x initial measure - realization
+already being position x handling mode, so handling is not a separate
+axis, and available because the rapier has no two-handed rows - hold demand
 (strain rate), transition times to adjacent slots, windup per attack,
 coverage, and where the attacker's root and the gap end up. The pinned
 shape must show, among others, the worked example from the design

@@ -204,11 +204,24 @@ mid-switch displaces the pose but does not abort the switch**: the
 `handlingTransition` runs to its engagement endpoint regardless, since
 the hands finish arranging themselves whatever the blade is doing,
 while the `BladeTrack`'s destination is rewritten to the displaced
-geometry (`guard-positions` section 4). The fighter therefore ends the
-switch in the new mode but knocked off line, and the standing levels
+geometry (`guard-positions` section 4).
+
+**The displaced destination keeps following the engagement, or the two
+would part company.** The grip-bearing coordinates -
+`secondaryHandCm` and `torsoProfileDeg` - are `BladePose` fields, so
+freezing them at the deflection tick while `engagement` ran on to its
+endpoint would hand the engine a full two-hand couple over a drawn
+off-hand still short of the socket: two sources for one visible fact,
+and precisely the engine-versus-picture disagreement the renderer
+contract forbids. So the displacement moves the destination's BLADE -
+its `primaryHandCm`, `weaponAngleDeg` and `lateral` - and leaves the
+two grip coordinates resolving from the live engagement toward the
+target realization, as they were doing before the steel arrived.
+
+The fighter therefore ends the switch in the new mode, hands where the
+new mode puts them, and knocked off line; the standing levels then
 transition them out of THAT pose rather than out of the realization
-they were aiming for. Engagement and blade geometry are separate
-tracks precisely so this can be said without contradiction. Reach, control torque, all three bind quantities (each
+they were aiming for. Reach, control torque, all three bind quantities (each
 reads control torque, so each genuinely moves with the mode -
 `physical-foundations` 4.3) and the strain rate re-derive on the
 completion tick; nothing is cached.
