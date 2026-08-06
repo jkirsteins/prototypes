@@ -188,8 +188,9 @@ switch actually costs, all emergent:
 - **contact resistance**: any contact during the switch reads the
   momentary control torque, which is one-handed at best mid-rearrange -
   a parry or bind met mid-switch is met weakly;
-- being struck mid-switch is being struck: no special state, the
-  existing rules apply to whatever the interpolated geometry covers.
+- being struck mid-switch is being struck: no special state, and the
+  existing rules apply to the line the switch's endpoints cover,
+  which the continuity rule keeps covered throughout.
 
 On completion the fighter stands in the same family's realization for
 the new mode. Reach, control torque, all three bind quantities (each

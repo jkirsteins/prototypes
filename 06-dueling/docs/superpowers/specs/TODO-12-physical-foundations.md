@@ -107,7 +107,11 @@ derivation needs to change - only inputs.
 type HandlingMode = "oneHanded" | "twoHanded";
 ```
 
-The fighter carries `handlingMode`. How the hands control the weapon is
+The fighter carries `engagement` in [0,1] (4.1); `handlingMode` is the
+LABEL for its endpoints, computed where a data selection needs one -
+which realization row to stand in, which gate to check - and a switch
+in progress simply has no label, because nothing that matters mid-
+switch consults one. How the hands control the weapon is
 a separate concept from the guard (where the blade is) and the body
 stance (lower body) - the full composition lives in `guard-positions`;
 this spec owns only the mode and its physics.
@@ -127,7 +131,8 @@ conventionalScore(f, w, mode) =
 
 wieldRatio(f, w, engagement) =           // 1.0 = fully competent
     controlTorquePeak(f, w, engagement)
-  / (inertiaGripKgM2(w) * TARGET_ALPHA)  // the torque a fencer needs to
+  / (inertiaGripKgM2(w) * TARGET_ALPHA)  // TARGET_ALPHA in rad/s^2: the
+                                         // torque a fencer needs to
                                          // turn THIS blade briskly
 conventionalMode = argmax over AVAILABLE modes
 ```
@@ -155,9 +160,11 @@ briskly than one wrist can deliver, so its one-handed ratio sits below
 1 and drags the score under the two-handed one despite the extra
 reach; a light, close-balanced sword turns fine in either hand, both
 ratios saturate, and the reach decides for one-handed. Both outcomes
-fall out of `inertiaGripKgM2` and the couple, with no weapon named. A heavy longsword
-one-handed never saturates (its ratio stays below 1 and drags the
-score down), so it starts two-handed; a light, close-balanced sword
+fall out of `inertiaGripKgM2` and the couple, with no weapon named. A heavy longsword one-handed
+falls short of saturation by enough to matter: two-handed wins when
+its one-handed ratio is below `reach2H / reach1H` (200/225.5 = 0.887
+at baseline), not merely below 1, so the calibration has a real
+threshold to hit rather than a trivial one; a light, close-balanced sword
 with a long hilt saturates in both modes and starts one-handed for
 the reach, which is the historically right answer and one no
 tautology could produce.
@@ -521,8 +528,11 @@ anything depends on it.
   shape (longsword: both; rapier: one-handed only). The test names no
   weapon in its logic - it pins the computed matrix, so a future sword
   lands in the matrix without new control flow. It also asserts a
-  **clearance margin**: no shipping weapon sits within `GATE_MARGIN` of
-  either threshold, so a gate verdict is never a rounding accident
+  **clearance margin** per threshold, each in that threshold's own
+  units - three lengths (primary-socket clearance, hilt fit, socket
+  separation) and one torque (the shoulder-sustain hold gate) - so no
+  shipping weapon sits near a boundary and a gate verdict is never a
+  rounding accident
   The rapier's 5 cm socket against a 4.61 cm half-hand is 0.4 cm of
   clearance where every other gate margin is 1.4 cm or more: milestone zero
   MUST move it, not may.
@@ -536,6 +546,11 @@ anything depends on it.
   the two weapons. The baseline ships the longsword two-handed and the
   rapier one-handed, so a derivation that collapsed to the bare wrist
   would hide behind the equivalence test; this is what catches it.
+- **Strain calibration constraint**, named because two specs depend on
+  it: `REST_FRACTION` must sit between the two-handed and the
+  one-handed extended-guard demands, so that a two-handed guard rests
+  indefinitely while `grip-switching`'s one-handed Terza actually
+  tires. The workbook solves for it and this test pins both sides.
 - **Strain unit tests:** synthetic above-threshold demand accumulates,
   decays, and scales the two effect factors; baseline inputs produce
   zero forever.

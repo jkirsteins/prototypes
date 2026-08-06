@@ -189,7 +189,9 @@ Every ARMED position carries the same weapon core - including
 rows need because transitions into and out of them are priced by the
 same derivation as any other (and `grip-switching` measures torso
 travel). Only `guard` rows add family, side variant, handling mode and
-a slot, and only `guard` rows are standable and selectable. `unarmed` carries the BODY core only, precisely so nothing can derive
+a slot, and `guard` rows are standable and selectable; `unarmed` is standable
+but never selectable - it is where a disarmed fighter is put, not a
+place anyone chooses to go. `unarmed` carries the BODY core only, precisely so nothing can derive
 a blade for a fighter who has none - it is outside the sixteen-realization roster and outside
 every coverage rule. Per guard realization row, on top of the core:
 
@@ -255,8 +257,7 @@ covered(row, weapon) =              // row: an authored realization
     : none
 ```
 
-**Coverage is defined at every instant, and a transition never blanks
-it.** Coverage is computed from an authored ROW's geometry - which
+**A transition from an authored row never blanks coverage.** Coverage is computed from an authored ROW's geometry - which
 keeps `sideOf` a simple variant lookup with a defined answer - and a
 fighter in motion is always covered by one of the two rows their
 transition runs between:
@@ -269,6 +270,13 @@ transition runs between:
   fresh clocks.
 - **A line covered by BOTH endpoints is continuous** - no gap, no
   reset, its clock never interrupted.
+- **A transition that starts from MID-MOTION has no source row**
+  (`fromId` is null), so only its destination will cover and the
+  fighter is genuinely open until it arrives. That is the honest
+  price of changing your mind mid-travel: the blade is nowhere in
+  particular, and the model says so rather than inventing a row for
+  it. Reaching a guard and then leaving it is the covered case; two
+  changes of mind in a row is not.
 
 Three rules that were fighting each other now all hold:
 
@@ -317,8 +325,9 @@ and `firmness()` both read the entry for the line actually contacted.
 **The lifecycle, for every variant.** `settled` and `transitioning`
 maintain entries by the three rules above. **`attacking` clears the
 map on the launch tick and holds it empty**: an attacking fighter
-covers nothing, which is today's rule (`dropGuard` on cut, thrust and
-void, and a landed blade ending the guard) and a pinned test. At
+covers nothing, which is today's rule (`dropGuard` on cut and thrust,
+and a landed blade ending the guard) and a pinned test. A void is
+locomotion, not an attack, and keeps its covering row - see below. At
 `combinedEnd` the track returns to `settled` at the resulting guard
 and that row's lines enter the map fresh. `frozen` keeps whatever the
 contact tick left, since the bind reads those clocks and nothing is
@@ -357,10 +366,13 @@ thrust (declared `inside`) by the other, for a right-handed fighter.
 centre branch is the guard's identity made explicit. Historically the
 longpoint is a threat, not a parry - its defense is that the point
 stands in the opponent's way, which in this model is its near-direct
-thrust (section 6), not a coverage claim. A validation test asserts
-the formula returns `none` for every centre-variant realization; if a
-sided longpoint variant or a middle-line attack ever ships, coverage
-for it arrives through the same formula's non-centre branch, in data.
+thrust (section 6), not a coverage claim. A validation test asserts the formula returns `none` for every
+centre-variant realization. Middle-line attacks DO ship in v1 - a
+fighter standing in Langort throws one - and they are answered by the
+sided guards whose blades span the middle band, which is what
+`bands(seg)` is for. What no v1 row provides is a centre guard that
+covers; if a sided longpoint variant ever ships, its coverage arrives
+through the same formula's non-centre branch, in data.
 
 **The deciding contact model stays categorical - an explicit choice.**
 Two options existed: keep the abstract line-plus-scalar-extension
@@ -441,10 +453,10 @@ rather than from a phase label. Its other arguments are unchanged -
 it still takes the attacker and the gap, because the extension and
 overshoot checks need them. Everything else stands -
 side match, the settle requirement with its overshoot semantics, and
-the grace tick for blade quantization only. The existing held-guard
-and line-feint tests that pin shift-covers-the-old-line and the
-running clock keep passing BECAUSE of the continuity rule above; a
-test that asserted a mid-shift blackout would not, and none does.
+the grace tick for blade quantization only. The two held-guard assertions that pin
+shift-covers-the-old-line and the running clock still HOLD under the
+continuity rule above, though their code is rewritten (section 4); a
+test asserting a mid-shift blackout would not hold, and none does.
 
 ## 5. Transitions, derived
 
@@ -513,7 +525,9 @@ cites the durations), two in `render/draw.ts`. Tests: `attack-lines`
 invariant and a profile-mutating fixture), `held-guard`,
 `line-feints`, `parry-rise`, `engine`, `help`, `blade-contact`,
 `fighter-defense`, `threat-latch`, `pressure-winding` and
-`sustained-bind`. Each moves to `transitionMs` between the two rows
+`sustained-bind`. One does not merely re-plumb: `fighter-defense`
+asserts that a VOID clears the guard, which this spec deliberately
+reverses (below), so that half of its loop inverts and says so. Each moves to `transitionMs` between the two rows
 it was approximating; the help panel's callbacks read the derivation,
 so its cited numbers stay true by construction. **A guard test
 asserts no reader of any deleted field survives anywhere, source or
@@ -810,8 +824,9 @@ model change. No continuations system ships now.
 **Resulting guards and the held levels sequence; neither wins.** The
 input levels (guard button, height stop, side) are standing TARGETS,
 never teleports - and the resulting guard is where the body PHYSICALLY
-arrives at recovery's end, so the two can disagree: a released-guard
-fighter's cut can legitimately end in extended Left Pflug. The rule:
+arrives at recovery's end, so the two can disagree: a fighter holding
+the extended levels throws a cut and legitimately ends in withdrawn
+Alber, the family the cut's own row names. The rule:
 the attack always arrives in its snapshotted resulting guard; on the
 first tick after `combinedEnd`, if the standing levels select a
 different slot, an ordinary derived transition toward it begins,
