@@ -57,10 +57,12 @@ const PARRY_FORM_MS = 180;
 const STEP_MS = 260;
 const VOID_MS = 320;
 
-/** The curated timestamp table, restated from poses.ts. */
+/** The curated warp anchors and scrub ranges, restated from poses.ts.
+ *  An attack plays one contiguous clip segment, every frame in order;
+ *  anchors pin the clip time at the timeline marks. */
 const T = {
-  slash: { windupLow: 0.30, windupHigh: 0.50, still: 0.61, travelling: 0.78, delivered: 0.88, recoveryStart: 3.28, recoveryEnd: 3.46 },
-  stab:  { windupLow: 0.06, windupHigh: 0.20, still: 0.32, travelling: 0.40, delivered: 0.58, recoveryStart: 1.05, recoveryEnd: 1.30 },
+  slash: { start: 0.30, beatIn: 0.59, still: 0.61, midArc: 0.78, delivered: 0.88, end: 1.20 },
+  stab:  { start: 0.06, beatIn: 0.30, still: 0.32, midArc: 0.40, delivered: 0.58, end: 1.30 },
   block: { rise: 0.10, formed: 0.70 },
   walk:  { start: 0.0, end: 0.646 },
   dodge: { start: 0.0, end: 1.20 },
@@ -90,6 +92,13 @@ const REACH = { cut: 1.464, thrust: 1.560, tolM: 0.02 };
 const GRIP = { gateCm: 10, thrustCm: 78.5, thrustTolCm: 8 };
 const GROUND_TOL = 0.05;
 const BONE_TOL = 1e-4;
+/** Continuity gates per 16 ms attack step, split by unit: quaternion
+ *  components live in 0..1, while the Hips position track is in
+ *  centimeter-scale local units (the 100x unit correction), so they need
+ *  separate thresholds. The fastest warp segment (the thrust withdrawal,
+ *  2.4x) stays well under both; a skipped clip segment blows past them. */
+const CONTINUITY_QUAT_TOL = 0.35;
+const CONTINUITY_POS_TOL = 6;
 
 const lerp = (a, b, f) => a + (b - a) * Math.min(1, Math.max(0, f));
 
@@ -327,18 +336,18 @@ async function main() {
     const marks = [
       // name,            keys,        step, clip,         clipTime,                                    ground
       ["idle",            [],           400, "gsIdle",     null,                                        true],
-      ["cut-150-rising",  ["KeyJ"],     150, "gsSlash",    windupT("cut", 150),                         false],
-      ["cut-300-windupHigh", ["KeyJ"],  300, "gsSlash",    T.slash.windupHigh,                          false],
-      ["cut-650-still",   ["KeyJ"],     650, "gsSlash",    T.slash.still,                               true],
-      ["cut-700-travelling", ["KeyJ"],  700, "gsSlash",    T.slash.travelling,                          true],
-      ["cut-890-midstrike", ["KeyJ"],   890, "gsSlash",    strikeT("cut", 890),                         false],
-      ["cut-1079-delivered", ["KeyJ"], 1079, "gsSlash",    strikeT("cut", 1079),                        true],
-      ["cut-1200-recovery",  ["KeyJ"], 1200, "gsSlash",    recoveryT("cut", 1200),                      false],
-      ["cut-1300-recovery",  ["KeyJ"], 1300, "gsSlash",    recoveryT("cut", 1300),                      true],
-      ["thrust-470-still", ["KeyK"],    470, "stab",       T.stab.still,                                false],
-      ["thrust-500-travelling", ["KeyK"], 500, "stab",     T.stab.travelling,                           false],
-      ["thrust-630-midstrike",  ["KeyK"], 630, "stab",     strikeT("thrust", 630),                      false],
-      ["thrust-759-delivered",  ["KeyK"], 759, "stab",     strikeT("thrust", 759),                      true],
+      ["cut-150-rising",  ["KeyJ"],     150, "gsSlash",    warpT("cut", 150),                           false],
+      ["cut-600-beatIn",  ["KeyJ"],     600, "gsSlash",    T.slash.beatIn,                              false],
+      ["cut-650-beat",    ["KeyJ"],     650, "gsSlash",    warpT("cut", 650),                           true],
+      ["cut-700-still",   ["KeyJ"],     700, "gsSlash",    T.slash.still,                               true],
+      ["cut-890-midArc",  ["KeyJ"],     890, "gsSlash",    T.slash.midArc,                              false],
+      ["cut-1080-delivered", ["KeyJ"], 1080, "gsSlash",    T.slash.delivered,                           true],
+      ["cut-1300-followthrough", ["KeyJ"], 1300, "gsSlash", warpT("cut", 1300),                         true],
+      ["thrust-440-beatIn", ["KeyK"],   440, "stab",       T.stab.beatIn,                               false],
+      ["thrust-500-still", ["KeyK"],    500, "stab",       T.stab.still,                                false],
+      ["thrust-630-midArc", ["KeyK"],   630, "stab",       T.stab.midArc,                               false],
+      ["thrust-760-delivered", ["KeyK"], 760, "stab",      T.stab.delivered,                            true],
+      ["thrust-900-withdrawal", ["KeyK"], 900, "stab",     warpT("thrust", 900),                        false],
       ["parry-100-rise",  ["KeyL"],     100, "gsBlock",    parryT(100),                                 true],
       ["parry-250-formed",["KeyL"],     250, "gsBlock",    parryT(250),                                 true],
       ["hitstun-200",     ["KeyH"],     200, "gsImpact",   lerp(T.impact.start, T.impact.end, 200 / HIT_STUN_MS), true],
@@ -402,8 +411,8 @@ async function main() {
 
     // ================================================== 4. reach
     console.log("\n-- reach (measured visual reach, see the REACH note) --");
-    const cutDelivered = samples.get("cut-1079-delivered");
-    const thrustDelivered = samples.get("thrust-759-delivered");
+    const cutDelivered = samples.get("cut-1080-delivered");
+    const thrustDelivered = samples.get("thrust-760-delivered");
     for (const [name, got, want] of [
       ["cut delivered", cutDelivered, REACH.cut],
       ["thrust delivered", thrustDelivered, REACH.thrust],
@@ -416,7 +425,7 @@ async function main() {
 
     // ================================================== 5. grip
     console.log("\n-- two-handed grip --");
-    for (const name of ["idle", "cut-1079-delivered", "parry-250-formed"]) {
+    for (const name of ["idle", "cut-1080-delivered", "parry-250-formed"]) {
       const g = samples.get(name).s.leftPalmToGripCm;
       check(g <= GRIP.gateCm, `grip: ${name} off-hand on the hilt`,
         `${f3(g)} cm <= ${GRIP.gateCm}`);
@@ -475,6 +484,46 @@ async function main() {
     const bindB = await cdp.eval(SAMPLE);
     boneCmp(bindA.s.boneLocal, bindB.s.boneLocal, "bind via ready vs via unarmed");
 
+    // ================================================== 6b. continuity
+    // The every-frame-in-order contract: stepping an attack in 16 ms
+    // increments, consecutive skeletons must differ by at most what the
+    // fastest warp segment can move in 16 ms. A pose jump (skipped clip
+    // segment, held-then-snap) shows up as a spike here.
+    console.log("\n-- attack continuity (16 ms steps, bone-local deltas) --");
+    for (const [label, key, endMs] of [["cut", "KeyJ", 1500], ["thrust", "KeyK", 1060]]) {
+      await drive(cdp, [key], 0);
+      let prevSample = await cdp.eval(SAMPLE);
+      let worstQ = 0;
+      let worstQAt = 0;
+      let worstP = 0;
+      let worstPAt = 0;
+      for (let ms = 16; ms <= endMs; ms += 16) {
+        await cdp.eval("window.__duel.step(16)");
+        const cur = await cdp.eval(SAMPLE);
+        for (const bone of Object.keys(cur.s.boneLocal)) {
+          const a = prevSample.s.boneLocal[bone];
+          const b = cur.s.boneLocal[bone];
+          // position 0..2 and scale 7..9 in local units; the quaternion
+          // 3..6 is sign-corrected first (q and -q are the same rotation).
+          for (const i of [0, 1, 2, 7, 8, 9]) {
+            const d = Math.abs(b[i] - a[i]);
+            if (d > worstP) { worstP = d; worstPAt = ms; }
+          }
+          const dot = a[3] * b[3] + a[4] * b[4] + a[5] * b[5] + a[6] * b[6];
+          const sign = dot < 0 ? -1 : 1;
+          for (const i of [3, 4, 5, 6]) {
+            const d = Math.abs(sign * b[i] - a[i]);
+            if (d > worstQ) { worstQ = d; worstQAt = ms; }
+          }
+        }
+        prevSample = cur;
+      }
+      check(worstQ <= CONTINUITY_QUAT_TOL, `${label}: no rotation jumps across the whole attack`,
+        `worst 16 ms quat delta ${worstQ.toFixed(4)} at ${worstQAt} ms, tol ${CONTINUITY_QUAT_TOL}`);
+      check(worstP <= CONTINUITY_POS_TOL, `${label}: no translation jumps across the whole attack`,
+        `worst 16 ms pos delta ${worstP.toFixed(3)} local units at ${worstPAt} ms, tol ${CONTINUITY_POS_TOL}`);
+    }
+
     // ================================================== 7. foot drift
     console.log("\n-- foot drift during the scrubbed states (measured, not gated) --");
     for (const [label, key, ms] of [["step (KeyD)", "KeyD", 420], ["void (KeyS)", "KeyS", 480]]) {
@@ -509,32 +558,24 @@ function parryT(ms) {
   return ms < PARRY_FORM_MS ? T.block.rise : T.block.formed;
 }
 
-function recoveryT(kind, ms) {
+/** The attack warp, restated: monotonic piecewise-linear clip time pinned
+ *  at the timeline marks (recoveryStart == strikeEnd). */
+function warpT(kind, ms) {
   const tl = TL[kind];
   const t = kind === "cut" ? T.slash : T.stab;
-  return lerp(t.recoveryStart, t.recoveryEnd,
-    (ms - tl.recoveryStart) / (tl.recoveryEnd - tl.recoveryStart));
-}
-
-/** The strike scrubs travelling -> delivered across the whole window
- *  (recoveryStart == strikeEnd), arriving as the strike resolves. */
-function strikeT(kind, ms) {
-  const tl = TL[kind];
-  const t = kind === "cut" ? T.slash : T.stab;
-  return lerp(t.travelling, t.delivered,
-    (ms - tl.strikeStart) / (tl.recoveryStart - tl.strikeStart));
-}
-
-/** The rise scrubs low -> high -> still through its midpoint, then the
- *  stillness beat holds. */
-function windupT(kind, ms) {
-  const tl = TL[kind];
-  const t = kind === "cut" ? T.slash : T.stab;
-  const mid = tl.riseEnd / 2;
-  if (ms >= tl.riseEnd) return t.still;
-  return ms < mid
-    ? lerp(t.windupLow, t.windupHigh, ms / mid)
-    : lerp(t.windupHigh, t.still, (ms - mid) / (tl.riseEnd - mid));
+  const anchors = [
+    [0, t.start], [tl.riseEnd, t.beatIn], [tl.strikeStart, t.still],
+    [tl.parryableUntil, t.midArc], [tl.recoveryStart, t.delivered],
+    [tl.recoveryEnd, t.end],
+  ];
+  for (let i = 1; i < anchors.length; i += 1) {
+    if (ms <= anchors[i][0]) {
+      const [m0, c0] = anchors[i - 1];
+      const [m1, c1] = anchors[i];
+      return lerp(c0, c1, (ms - m0) / (m1 - m0));
+    }
+  }
+  return t.end;
 }
 
 /**

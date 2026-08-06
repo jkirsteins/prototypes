@@ -46,13 +46,13 @@ machine, readability by the user playing it.
   `elapsedMs <= parryableUntil` and swaps to delivered immediately after -
   the same inclusive boundary as 06's frames.ts. The visual is the parry
   window.
-  (Amended 2026-08-06 after the first playtest: attacks now PLAY - each
-  phase scrubs its clip segment across its timeline window,
-  piecewise-linear in elapsed ms, with the blade arriving at delivered as
-  the strike resolves and the stillness beat still held as the telegraph.
-  The discrete swap is gone; the window's closing reads from the blade's
-  continuous position. Pose purity is unchanged. See the completion
-  report's "Amendment: continuous playback".)
+  (Amended 2026-08-06 after playtests: attacks now PLAY as one contiguous
+  clip segment, every frame in order, under a monotonic time-warp pinned
+  to the timeline marks - only playback speed varies per stretch. The
+  discrete swap is gone; the window's closing reads from the blade's
+  continuous position, and continuity is machine-gated in the e2e. Pose
+  purity is unchanged. See the completion report's "Amendment: continuous
+  playback".)
 - **The engine owns position, facing and displacement.** All clips play in
   place; states.ts owns x and facing and applies step/void displacement
   over the state's duration. Root motion in clips is stripped or

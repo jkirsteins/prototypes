@@ -37,55 +37,57 @@ export const CLIPS: Record<ClipName, { file: string; durationS: number }> = {
 };
 
 /**
- * Curated timestamps (seconds), picked frame by frame from screenshots.
- *
- * gsSlash is a four-swing combo, not one cut. The attack poses come from
- * its first swing (0.30 .. 0.86), the only one that stays on the floor
- * through a full cock-and-cleave; the swing ends in a leap, so the
- * recovery is borrowed from the combo's closing swing (3.28 .. 3.46),
- * which settles into the same forward guard the clip opens on.
+ * An attack is one CONTIGUOUS clip segment played start to end, every
+ * frame in order. The only freedom is the time-warp: at each timeline
+ * mark the clip must be at the paired anchor timestamp, and between
+ * marks clip time interpolates linearly - so different stretches play
+ * slower or faster, but nothing is skipped, held-and-jumped, or
+ * reordered. The beat (riseEnd .. strikeStart) maps to a sliver of clip
+ * (beatIn .. still), so the telegraph reads as motion nearly stopping
+ * while the fighter keeps breathing.
  */
-export const POSE_T = {
+export interface AttackWarp {
+  clip: ClipName;
+  /** Anchor timestamps, strictly ascending: clip time at riseStart,
+   *  riseEnd, strikeStart, parryableUntil, strikeEnd, recoveryEnd. */
+  start: number; beatIn: number; still: number;
+  midArc: number; delivered: number; end: number;
+}
+
+export const WARP: Record<"slash" | "stab", AttackWarp> = {
+  // gsSlash is a four-swing combo; the segment is its first swing plus
+  // follow-through (0.30 .. 1.20): rise, deepest cock, the arc, the
+  // landed lunge, then the grounded turn-and-gather before the combo
+  // re-cocks for swing two (which is where the segment must stop).
   slash: {
-    windupLow: 0.30,     // hands lifting past the head, guard broken
-    windupHigh: 0.50,    // hands high behind the head, upright and open
-    still: 0.61,         // deepest cock: hands back, knees loaded
-    travelling: 0.78,    // long stride, blade mid-arc at head height
-    // 0.86 and 0.88 tie for the furthest-forward frame of the whole clip
-    // (tip 1.465 m and 1.464 m ahead of the root) and both hold the
-    // off-hand on the hilt (1.5 cm, 1.3 cm off the grip). 0.88 is the pick
-    // because it is the one where the blade has come down onto the line -
-    // horizontal at chest height, 0.97 of it along the forward axis,
-    // against 0.91 and 25 degrees of lift at 0.86. bindContact below stays
-    // a separate, earlier pick: the cut arrested mid-arc, not landed.
-    delivered: 0.88,     // deep lunge, arms driven fully out front
-    recoveryStart: 3.28, // upright, blade dropping back toward the line
-    recoveryEnd: 3.46,   // the clip's own guard, where an idle resumes
+    clip: "gsSlash",
+    start: 0.30,     // hands lifting past the head, guard broken
+    beatIn: 0.59,    // almost at the deepest cock; the beat creeps from here
+    still: 0.61,     // deepest cock: hands back, knees loaded
+    midArc: 0.78,    // long stride, blade mid-arc: the last meetable look
+    // 0.88 is the furthest-forward frame with the blade down on the line
+    // (tip 1.464 m ahead of the root, horizontal at chest height).
+    delivered: 0.88, // deep lunge, arms driven fully out front
+    end: 1.20,       // follow-through gathered, blade at the hip
   },
-  // stabbing-3.glb is one clean thrust and nothing else: a low guard with
-  // the point on the line (0.00 .. 0.10), the blade swinging up to a
-  // vertical cock (0.12 .. 0.34), the drive (0.36 .. 0.50), a held
-  // extension (0.50 .. 0.95), the withdrawal (1.00 .. 1.25) and then its
-  // own hip guard from 1.28 to the end. That shape is why it was taken
-  // over upward-thrust.glb, whose windup was one held pose.
+  // stabbing-3.glb is one clean thrust: low guard, vertical cock, the
+  // drive, held extension, withdrawal, hip guard. One segment covers it
+  // all (0.06 .. 1.30) - the clip is contiguous by nature.
+  // The off-hand is thrown back throughout (78 cm off the grip): a
+  // one-handed lunge, and no clip in the catalog thrusts two-handed.
   stab: {
-    windupLow: 0.06,     // low guard: hilt at the hip, point forward on the line
-    windupHigh: 0.20,    // blade swung up to 45 degrees, hands leaving the hip
-    still: 0.32,         // deepest cock: blade vertical, hands at the chest, weight back
-    travelling: 0.40,    // the arm coming out, point already 1.13 m ahead and climbing
-    // The drive covers 1.05 m of point travel between travelling and
-    // delivered - the pair the whole clip search was for. 0.50 reaches
-    // marginally further (1.59 m) but on a steeper blade; by 0.58 the
-    // lunge has settled and the blade has come down to about 22 degrees,
-    // which is the nearest this catalog gets to a level line.
-    // The off-hand is thrown back, 78 cm off the grip: this is a
-    // one-handed lunge, and no clip in the catalog thrusts with both
-    // hands on the hilt (upward-thrust.glb, the best of the rest, still
-    // held it 32 cm clear).
-    delivered: 0.58,     // full extension, deep lunge, point 1.55 m ahead of the root
-    recoveryStart: 1.05, // the arm folding back, blade coming up off the line
-    recoveryEnd: 1.30,   // settled onto the clip's own hip guard, where an idle resumes
+    clip: "stab",
+    start: 0.06,     // low guard: hilt at the hip, point forward on the line
+    beatIn: 0.30,    // nearly cocked; the beat creeps the last sliver
+    still: 0.32,     // deepest cock: blade vertical, hands at the chest
+    midArc: 0.40,    // the arm coming out, point 1.13 m ahead and climbing
+    delivered: 0.58, // full extension, deep lunge, point 1.55 m ahead
+    end: 1.30,       // withdrawn onto the clip's own hip guard
   },
+};
+
+/** Non-attack scrub ranges and freezes, curated from screenshots. */
+export const POSE_T = {
   // great-sword-blocking.glb holds one crouched guard for its whole
   // 0.958 s (hips vary by 4 mm), so these two only bracket that hold.
   block: { rise: 0.10, formed: 0.70 },
@@ -123,39 +125,29 @@ export function pickPose(d: Duelist, timeMs: number): PosePick {
     case "parry": return { clip: "gsBlock", clipTime: s.t < PARRY_FORM_MS ? POSE_T.block.rise : POSE_T.block.formed, mode: "held" };
     case "bind": return { clip: "gsSlash", clipTime: POSE_T.bindContact, mode: "held" };
     case "attack": {
-      const t = s.attack === "cut" ? POSE_T.slash : POSE_T.stab;
-      const clip = s.attack === "cut" ? "gsSlash" as const : "stab" as const;
+      const wv = s.attack === "cut" ? WARP.slash : WARP.stab;
       const tl = s.timeline;
-      switch (s.phase) {
-        case "windup": {
-          // The rise plays low -> high -> still (windupHigh is a via point
-          // that keeps the curated pacing), then the stillness holds
-          // through the beat: the telegraph is motion stopping.
-          const riseMid = (tl.riseStart + tl.riseEnd) / 2;
-          const clipTime =
-            s.elapsedMs < riseMid
-              ? lerp(t.windupLow, t.windupHigh, (s.elapsedMs - tl.riseStart) / (riseMid - tl.riseStart))
-              : s.elapsedMs < tl.riseEnd
-                ? lerp(t.windupHigh, t.still, (s.elapsedMs - riseMid) / (tl.riseEnd - riseMid))
-                : t.still;
-          return { clip, clipTime, mode: "held" };
+      // The warp: clip time is monotonic piecewise-linear in elapsedMs,
+      // pinned at the timeline marks. The phase field plays no part here -
+      // the whole attack is one continuous playback.
+      const anchors: [number, number][] = [
+        [tl.riseStart, wv.start],
+        [tl.riseEnd, wv.beatIn],
+        [tl.strikeStart, wv.still],
+        [tl.parryableUntil, wv.midArc],
+        [tl.strikeEnd, wv.delivered],
+        [tl.recoveryEnd, wv.end],
+      ];
+      let clipTime = wv.end;
+      for (let i = 1; i < anchors.length; i += 1) {
+        if (s.elapsedMs <= anchors[i][0]) {
+          const [m0, c0] = anchors[i - 1];
+          const [m1, c1] = anchors[i];
+          clipTime = lerp(c0, c1, (s.elapsedMs - m0) / (m1 - m0));
+          break;
         }
-        case "strike":
-          // The blade travels continuously and arrives at the delivered
-          // pose exactly when the strike resolves; the meetable half of
-          // the window is the first half of the visible travel.
-          return {
-            clip,
-            clipTime: lerp(t.travelling, t.delivered, (s.elapsedMs - tl.strikeStart) / (tl.strikeEnd - tl.strikeStart)),
-            mode: "held",
-          };
-        case "recovery":
-          return {
-            clip,
-            clipTime: lerp(t.recoveryStart, t.recoveryEnd, (s.elapsedMs - tl.recoveryStart) / (tl.recoveryEnd - tl.recoveryStart)),
-            mode: "held",
-          };
       }
+      return { clip: wv.clip, clipTime, mode: "held" };
     }
   }
 }

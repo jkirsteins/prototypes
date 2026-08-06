@@ -20,14 +20,17 @@ preceding states produces a **bit-identical** skeleton - the bone-local
 comparison across four different histories came back with a maximum
 component delta of 0.0, not merely within tolerance.
 
-The attacks PLAY rather than snap (amended after the first playtest, see
-"Amendment: continuous playback" below): each phase scrubs its clip
-segment across its timeline window, piecewise-linear in elapsed ms, so
-the animation moves continuously while the combat marks still land where
-the timeline says. The blade arrives at the delivered pose exactly as the
-strike resolves; the meetable half of the parry window corresponds to the
-first half of the visible travel. The one deliberate hold is the
-pre-strike stillness beat - motion stopping is the telegraph.
+The attacks PLAY rather than snap (amended after playtests, see
+"Amendment: continuous playback" below): each attack is one CONTIGUOUS
+clip segment played start to end, every frame in order, under a
+monotonic time-warp pinned to the timeline marks - different stretches
+run slower or faster, nothing is skipped or reordered. The blade reaches
+the mid-arc as the parry window closes and the delivered pose exactly as
+the strike resolves; the beat maps to a sliver of clip so the telegraph
+reads as motion nearly stopping. Machine-checked: stepping both attacks
+in 16 ms increments, the largest bone rotation change per step is 0.30
+quaternion units (fast genuine motion in the thrust withdrawal) - no
+pose jumps anywhere.
 
 Readability holds for the cut, the parry, the step, the void, the hitstun,
 the bind and the death. Each reads as its phase and each is distinguishable
@@ -90,18 +93,18 @@ weight 1 with every other at exactly 0, and every action reports paused.
 | mark | clip @ t | ground gate | lowest foot y |
 |---|---|---|---|
 | idle (step 400) | gsIdle, looping | yes | +0.004 |
-| cut 150 rising | gsSlash 0.40 (scrub low..high) | - | +0.006 |
-| cut 300 windupHigh | gsSlash 0.50 | - | +0.005 |
-| cut 650 still | gsSlash 0.61 (held beat) | yes | +0.005 |
-| cut 700 travelling | gsSlash 0.78 (strike starts) | yes | +0.007 |
-| cut 890 mid-strike | gsSlash 0.83 (scrubbing) | - | +0.010 |
-| cut 1079 delivered | gsSlash 0.8797 (strike resolves) | yes | +0.011 |
-| cut 1200 recovery | gsSlash 3.3314 | - | +0.003 |
-| cut 1300 recovery | gsSlash 3.3743 | yes | +0.003 |
-| thrust 470 still | stab 0.32 (held beat) | - | +0.002 |
-| thrust 500 travelling | stab 0.40 (strike starts) | - | +0.003 |
-| thrust 630 mid-strike | stab 0.49 (scrubbing) | - | +0.002 |
-| thrust 759 delivered | stab 0.5793 (strike resolves) | yes | +0.003 |
+| cut 150 rising | gsSlash 0.3725 (warping to the cock) | - | +0.006 |
+| cut 600 beat in | gsSlash 0.59 (the beat creep begins) | - | +0.005 |
+| cut 650 beat | gsSlash 0.60 (creeping) | yes | +0.005 |
+| cut 700 still | gsSlash 0.61 (deepest cock, strike starts) | yes | +0.005 |
+| cut 890 mid-arc | gsSlash 0.78 (parry window closes) | - | +0.007 |
+| cut 1080 delivered | gsSlash 0.88 (strike resolves) | yes | +0.011 |
+| cut 1300 follow-through | gsSlash 1.0476 | yes | +0.005 |
+| thrust 440 beat in | stab 0.30 | - | +0.002 |
+| thrust 500 still | stab 0.32 (cock, strike starts) | - | +0.002 |
+| thrust 630 mid-arc | stab 0.40 (parry window closes) | - | +0.003 |
+| thrust 760 delivered | stab 0.58 (strike resolves) | yes | +0.003 |
+| thrust 900 withdrawal | stab 0.916 | - | +0.003 |
 | parry 100 rise | gsBlock 0.10 | yes | +0.002 |
 | parry 250 formed | gsBlock 0.70 | yes | +0.002 |
 | hitstun 200 | gsImpact 0.5386 | yes | +0.004 |
@@ -156,12 +159,12 @@ to the directory passed as the second argument:
 
 ```
 01-idle.png                 02-cut-150-rising.png
-03-cut-300-windupHigh.png   04-cut-650-still.png
-05-cut-700-travelling.png   06-cut-890-midstrike.png
-07-cut-1079-delivered.png   08-cut-1200-recovery.png
-09-cut-1300-recovery.png    10-thrust-470-still.png
-11-thrust-500-travelling.png 12-thrust-630-midstrike.png
-13-thrust-759-delivered.png 14-parry-100-rise.png
+03-cut-600-beatIn.png       04-cut-650-beat.png
+05-cut-700-still.png        06-cut-890-midArc.png
+07-cut-1080-delivered.png   08-cut-1300-followthrough.png
+09-thrust-440-beatIn.png    10-thrust-500-still.png
+11-thrust-630-midArc.png    12-thrust-760-delivered.png
+13-thrust-900-withdrawal.png 14-parry-100-rise.png
 15-parry-250-formed.png     16-hitstun-200.png
 17-void-160-midhop.png      18-void-320-landed.png
 19-step-130.png             20-bind.png
@@ -433,34 +436,43 @@ order. Space pauses; `?markers` adds the calibration dots.
 
 ## Amendment: continuous playback (2026-08-06)
 
-The first playtest judged the original renderer's attack cadence "choppy":
-faithful to 06's sprite mechanism, windup and strike held a handful of
-discrete curated poses and snapped between them. Six pixel-art frames read
-as animation; a smooth-shaded mesh teleporting between five poses reads as
-dropped frames. The two media do not share this convention.
+Playtests judged the original renderer's attack cadence "choppy", twice.
+The first version was faithful to 06's sprite mechanism: windup and
+strike held a handful of discrete curated poses and snapped between
+them. Six pixel-art frames read as animation; a smooth-shaded mesh
+teleporting between five poses reads as dropped frames. A first repair
+scrubbed within each phase but still skipped clip segments at the phase
+boundaries (stillness to mid-arc, delivered to a different swing for the
+recovery), which read as pieces cut out of the motion.
 
-The remedy keeps every contract and changes only the time mapping in
-`pickPose`: windup scrubs low -> high -> still across the rise (the
-curated marks became via points), the stillness beat still holds as the
-telegraph, and the strike scrubs travelling -> delivered across the whole
-strike window, arriving exactly as the strike resolves. Clip time is now
-piecewise-linear in elapsed ms instead of piecewise-constant - still a
-pure function of state, still applied paused with `mixer.update(0)`,
-still bit-identical across histories.
+The final design is first-principles: an attack is ONE contiguous clip
+segment played start to end, every frame in order, and the only freedom
+is a monotonic time-warp - the `WARP` anchor table pins clip time to
+each timeline mark (riseStart, riseEnd, strikeStart, parryableUntil,
+strikeEnd, recoveryEnd) and interpolates linearly between them. The cut
+plays gsSlash 0.30 .. 1.20 (its first swing plus the grounded
+follow-through, stopping where the combo re-cocks); the thrust plays
+stabbing-3 0.06 .. 1.30 (the whole clip is one motion). The beat maps to
+a sliver of clip (0.59 .. 0.61 and 0.30 .. 0.32) so the telegraph reads
+as motion nearly stopping while the fighter keeps breathing. Clip time
+stays a pure function of state, applied paused with `mixer.update(0)`,
+bit-identical across histories.
 
-One semantic changed: 06's discrete travelling/delivered swap AT
-`parryableUntil` no longer exists. The window's closing is now carried by
-the blade's continuous position (the meetable half is the first half of
-the visible travel), which trades the sprite renderer's single-frame
-legibility cue for physical continuity. A transplant into 06 would keep
-the engine's `parryableUntil` untouched; only the visual cue differs.
+Continuity is now machine-gated, because eyes missed it twice: the e2e
+steps both attacks in 16 ms increments and asserts the largest per-step
+bone change stays under thresholds (rotation 0.35 quaternion units,
+translation 6 local units) that genuine fast motion approaches (0.30 at
+the thrust withdrawal's 2.4x) and any skipped segment blows past.
 
-A side effect worth knowing: each phase plays at the speed its window
-dictates, not the speed the mocap was authored at - the cut's strike
-covers 0.10 s of clip in 380 ms of sim (about 0.26x), so the swing reads
-deliberate rather than ballistic. That is 06's tempo design showing
-through, not a bug.
+Two semantics changed against the original spec. The discrete
+travelling/delivered swap AT `parryableUntil` no longer exists - the
+window's closing is carried by the blade's continuous position (mid-arc
+at the close, landed at the resolve). And each stretch plays at the
+speed its combat window dictates, not the authored speed - the cut's
+strike runs deliberate rather than ballistic; that is 06's tempo design
+showing through. The one remaining seam is the state boundary into idle
+after recovery, the same place 06's sprite renderer snaps.
 
-All 143 e2e assertions re-pass at the remapped marks; reach re-measured
-1.464 m / 1.559 m at the true delivered instants; grip and history
-independence unchanged.
+All 147 e2e assertions pass (143 prior plus the four continuity gates);
+reach unchanged at 1.464 m / 1.560 m - the delivered anchors land on the
+same calibrated frames; grip and history independence unchanged.

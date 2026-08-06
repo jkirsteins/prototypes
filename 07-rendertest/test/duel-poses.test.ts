@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDuelist, handleEvent, tick } from "../src/duel/states";
-import { CLIPS, POSE_T, pickPose } from "../src/duel/poses";
+import { CLIPS, POSE_T, WARP, pickPose } from "../src/duel/poses";
 import type { Duelist } from "../src/duel/states";
 
 const atElapsed = (attack: "cut" | "thrust", elapsedMs: number): Duelist => {
@@ -20,48 +20,50 @@ describe("pickPose", () => {
     expect(pickPose(d, 0).clipTime).toBe(0);
   });
 
-  it("windup: scrubs low through high to still across the rise, then holds the beat", () => {
-    // cut rise 0..600, midpoint 300
-    expect(pickPose(atElapsed("cut", 0), 0).clipTime).toBeCloseTo(POSE_T.slash.windupLow);
-    expect(pickPose(atElapsed("cut", 300), 0).clipTime).toBeCloseTo(POSE_T.slash.windupHigh);
-    expect(pickPose(atElapsed("cut", 150), 0).clipTime).toBeCloseTo(
-      (POSE_T.slash.windupLow + POSE_T.slash.windupHigh) / 2,
-    );
-    expect(pickPose(atElapsed("cut", 450), 0).clipTime).toBeCloseTo(
-      (POSE_T.slash.windupHigh + POSE_T.slash.still) / 2,
-    );
-    // the stillness beat holds from riseEnd to strikeStart: the telegraph
-    expect(pickPose(atElapsed("cut", 620), 0).clipTime).toBe(POSE_T.slash.still);
-    expect(pickPose(atElapsed("cut", 699), 0).clipTime).toBe(POSE_T.slash.still);
+  it("attack anchors land on the timeline marks (cut)", () => {
+    // cut timeline: rise 0..600, beat to 700, parryable to 890, strike
+    // ends 1080, recovery ends 1500
+    expect(pickPose(atElapsed("cut", 0), 0).clipTime).toBeCloseTo(WARP.slash.start);
+    expect(pickPose(atElapsed("cut", 600), 0).clipTime).toBeCloseTo(WARP.slash.beatIn);
+    expect(pickPose(atElapsed("cut", 700), 0).clipTime).toBeCloseTo(WARP.slash.still);
+    expect(pickPose(atElapsed("cut", 890), 0).clipTime).toBeCloseTo(WARP.slash.midArc);
+    expect(pickPose(atElapsed("cut", 1080), 0).clipTime).toBeCloseTo(WARP.slash.delivered);
+    expect(pickPose(atElapsed("cut", 1499), 0).clipTime).toBeLessThanOrEqual(WARP.slash.end);
   });
 
-  it("strike: the blade travels continuously, arriving at delivered when the strike resolves", () => {
-    // cut strike 700..1080: starts at travelling, midpoint of the window is
-    // the midpoint of the travel, delivered only as the strike resolves
-    expect(pickPose(atElapsed("cut", 700), 0).clipTime).toBeCloseTo(POSE_T.slash.travelling);
-    expect(pickPose(atElapsed("cut", 890), 0).clipTime).toBeCloseTo(
-      (POSE_T.slash.travelling + POSE_T.slash.delivered) / 2,
-    );
-    const nearEnd = pickPose(atElapsed("cut", 1079), 0).clipTime;
-    expect(nearEnd).toBeLessThanOrEqual(POSE_T.slash.delivered);
-    expect(nearEnd).toBeGreaterThan(POSE_T.slash.travelling);
-    // monotonic through the window
-    expect(pickPose(atElapsed("cut", 1000), 0).clipTime).toBeGreaterThan(
-      pickPose(atElapsed("cut", 800), 0).clipTime,
-    );
-    // thrust strike 500..760
-    expect(pickPose(atElapsed("thrust", 500), 0).clipTime).toBeCloseTo(POSE_T.stab.travelling);
-    expect(pickPose(atElapsed("thrust", 630), 0).clipTime).toBeCloseTo(
-      (POSE_T.stab.travelling + POSE_T.stab.delivered) / 2,
-    );
+  it("attack anchors land on the timeline marks (thrust)", () => {
+    // thrust timeline: rise 0..440, beat to 500, parryable to 630, strike
+    // ends 760, recovery ends 1060
+    expect(pickPose(atElapsed("thrust", 0), 0).clipTime).toBeCloseTo(WARP.stab.start);
+    expect(pickPose(atElapsed("thrust", 440), 0).clipTime).toBeCloseTo(WARP.stab.beatIn);
+    expect(pickPose(atElapsed("thrust", 500), 0).clipTime).toBeCloseTo(WARP.stab.still);
+    expect(pickPose(atElapsed("thrust", 630), 0).clipTime).toBeCloseTo(WARP.stab.midArc);
+    expect(pickPose(atElapsed("thrust", 760), 0).clipTime).toBeCloseTo(WARP.stab.delivered);
   });
 
-  it("recovery scrubs its range and never exceeds it", () => {
-    const early = pickPose(atElapsed("cut", 1081), 0).clipTime;
-    const late = pickPose(atElapsed("cut", 1499), 0).clipTime;
-    expect(early).toBeGreaterThanOrEqual(POSE_T.slash.recoveryStart);
-    expect(late).toBeLessThanOrEqual(POSE_T.slash.recoveryEnd);
-    expect(late).toBeGreaterThan(early);
+  it("attacks play every frame in order: monotonic clip time, no jumps", () => {
+    for (const [attack, warp, marks] of [
+      ["cut", WARP.slash, [0, 600, 700, 890, 1080, 1500]],
+      ["thrust", WARP.stab, [0, 440, 500, 630, 760, 1060]],
+    ] as const) {
+      const endMs = marks[marks.length - 1];
+      // The largest allowed 10 ms advance is the fastest warp segment's
+      // speed; anything bigger is a skip, not a speed-up.
+      let maxRate = 0;
+      const clips = [warp.start, warp.beatIn, warp.still, warp.midArc, warp.delivered, warp.end];
+      for (let i = 1; i < clips.length; i += 1) {
+        maxRate = Math.max(maxRate, (clips[i] - clips[i - 1]) / ((marks[i] - marks[i - 1]) / 1000));
+      }
+      let prev = pickPose(atElapsed(attack, 0), 0).clipTime;
+      for (let ms = 10; ms < endMs; ms += 10) {
+        const now = pickPose(atElapsed(attack, ms), 0).clipTime;
+        expect(now).toBeGreaterThanOrEqual(prev);
+        expect(now - prev).toBeLessThanOrEqual(maxRate * 0.011);
+        prev = now;
+      }
+      // anchors strictly ascend, so the whole segment is played in order
+      for (let i = 1; i < clips.length; i += 1) expect(clips[i]).toBeGreaterThan(clips[i - 1]);
+    }
   });
 
   it("parry rises then forms at PARRY_FORM_MS; death clamps at its end", () => {
