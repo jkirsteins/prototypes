@@ -97,8 +97,8 @@ exactly 1 at zero strain) - never the raw strain accumulator, which
 is identically zero at baseline. The slowest-moving part sets the
 tempo; within one family the realizations are close and the off-hand's
 travel usually dominates, but the formula, not that assumption, is
-normative. `TORSO_ACCEL` and `torsoOmegaCap` are calibration constants
-of this spec's tuning.
+normative. `TORSO_ACCEL` and `torsoOmegaCap` come from `guard-positions`
+alongside the rest of the motion profile.
 
 Mid-switch control is defined, not improvised. `engagement` is the
 fighter's physical truth and `handlingMode` only a label derived from

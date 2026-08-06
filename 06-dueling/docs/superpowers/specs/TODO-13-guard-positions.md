@@ -90,7 +90,7 @@ canonical two-handed Ochs is one realization of the family, not the
 family itself.
 
 **The lower body is one canonical configuration shared by every
-realization in this version** - guard changes move hands and blade
+realization in this version** - guard changes move the upper body
 only, so the animation can never change feet the simulation did not
 price. Lead foot, weight and width arrive with the stance extension,
 which will also add their travel to the transition derivation (see
@@ -468,8 +468,8 @@ transitionMs(from, to, weapon, fighter) =    // reads f.engagement
        profileMs(torsoArcRad,   TORSO_ACCEL / s, torsoOmegaCap / s) )
   + SETTLE_MS
 
-s        = strainFactor(fighter)          // >= 1; BOTH terms of BOTH
-                                          // profiles, never just one
+s        = strainFactor(fighter)          // >= 1; BOTH terms of ALL
+                                          // FOUR profiles, never one
 alpha    = controlTorquePeak(f, w, f.engagement) / inertiaGripKgM2   // rad/s^2
 omegaCap = OMEGA_CAL * handSpeedMps                              // rad/s
 
@@ -491,8 +491,10 @@ degrees and converted by `rad()` at the call.
 
 Torque over inertia is an ACCELERATION, not a speed - the time comes
 from this motion profile, stated here exactly so every implementer
-derives the same milliseconds from the same physical data. `HAND_ACCEL`
-and `OMEGA_CAL` are calibration constants of the section 9 tuning;
+derives the same milliseconds from the same physical data. `HAND_ACCEL`, `OMEGA_CAL`, `TORSO_ACCEL` and `torsoOmegaCap` are
+calibration constants of the section 9 tuning - all four live here,
+since this is the spec that first needs them, and `grip-switching`
+reads them rather than declaring its own;
 `strainFactor` is `physical-foundations`' strain effect (1.0 at zero
 strain).
 
@@ -535,9 +537,9 @@ invariant and a profile-mutating fixture), `held-guard`,
 asserts that a VOID clears the guard, which this spec deliberately
 reverses (below), so that half of its loop inverts and says so. Each moves to `transitionMs` between the two rows
 it was approximating; the help panel's callbacks read the derivation,
-so its cited numbers stay true by construction. **A guard test
-asserts no reader of any deleted field survives anywhere, source or
-test** - the same shape as `physical-foundations`' reach guard, and
+so its cited numbers stay true by construction. **A guard test asserts no reader of
+any deleted field survives anywhere, source or test - including the
+attack timings deleted in section 6** - the same shape as `physical-foundations`' reach guard, and
 for the same reason.
 
 **One assertion must change its form, not just its plumbing.** The
@@ -1031,6 +1033,15 @@ future named attack that wants a different exit declares it in data.
   is a mid-windup change of launch config, priced by the derived
   transition from the blade's current interpolated position -
   `redirectHeightMs`/`redirectSideMs` are deleted.
+
+**`AttackTimings.windup` and `.recovery` are deleted too**, being
+derived above, while `strike`, `side` and `feintRecoveryMs` stay
+authored. They have the largest reader set in the codebase and it is
+named for the same reason as the others: `weapons.ts`'s
+`attackTimeline` and `counterTime`, `engine.ts`'s windup event and
+`baseRecovery`, `ai.ts`'s whiff commit, `fighter.ts`'s redirect, and
+three sites in `ui/help.ts`. The guard test covers these alongside
+the five guard-timing fields.
 
 Timeline marks (`riseStart`, `riseEnd`, `strikeStart`,
 `parryableUntil`, `strikeEnd`) keep their meanings; only their values

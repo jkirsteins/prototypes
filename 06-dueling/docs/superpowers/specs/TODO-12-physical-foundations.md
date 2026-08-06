@@ -265,8 +265,8 @@ This function and `contactArmM` are the spine of the model: bind
 authority, displacement resistance and contest reads all go through
 them.
 
-**Displacement resistance**, named here because three specs consume
-it: how strongly a fighter holds a line against steel pushing on it.
+**Displacement resistance**, named here because two later specs
+consume it: how strongly a fighter holds a line against steel pushing on it.
 
 ```
 displacementResistanceN(f, w, engagement) =
@@ -351,9 +351,11 @@ difference is on the record with fresh evidence behind it.
 
 **The bind API changes shape, and that is part of this deliverable.**
 Every read site in `src/combat/bind.ts` takes a `WeaponProfile` and
-nothing else - `lead(firm, w)`, `deriveInitialBindControl(firm, ws)`,
+nothing else today - `lead(firm, w)`, `deriveInitialBindControl(firm, ws)`,
 `derivePressurePulse(w)`, `deriveYieldZone(self, opp)` and
-`deriveYieldDuration(self)`. All five take the `Fighter` instead, so
+`deriveYieldDuration(self)`, plus `createBindContest`, which holds the
+weapon pair and calls `lead` directly. All six take the `Fighter`
+instead, so
 they read attributes AND the live `engagement` - never a mode label,
 which could not express a fighter interrupted mid-switch at 0.9. The bind's own formulas - what it does
 with authority, handling and rotational control - do not change.
@@ -534,7 +536,7 @@ anything depends on it.
   shipping weapon sits near a boundary and a gate verdict is never a
   rounding accident
   The rapier's 5 cm socket against a 4.61 cm half-hand is 0.4 cm of
-  clearance where every other gate margin is 1.39 cm or more: milestone zero
+  clearance where every other LENGTH gate margin is 1.39 cm or more: milestone zero
   MUST move it, not may.
 - **Conventional-mode matrix test:** compute `conventionalMode` for
   every weapon x the baseline body and pin the shape (longsword
@@ -557,7 +559,7 @@ anything depends on it.
   different balance points, not because of how many hands hold them.
   The workbook solves for it and this test pins both sides.
 - **Strain unit tests:** synthetic above-threshold demand accumulates,
-  decays, and scales the two effect factors; baseline inputs produce
+  decays, and moves `strainFactor` in the direction that hurts; baseline inputs produce
   zero forever.
 - **Doctrine test:** attributes are read from the fighter, never from
   the side; the timeline-symmetry test extends to cover two fighters
