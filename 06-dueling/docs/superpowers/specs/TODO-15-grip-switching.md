@@ -140,17 +140,22 @@ Its rules, stated once:
   attack and a switch can never overlap from either side); steps and
   voids may start and continue freely - the hands, not the feet, are
   busy.
-- **Interruption freezes the engagement it had.** Being struck or
-  entering a bind clears the transition but does NOT snap the mode to
-  an endpoint: the fighter keeps the engagement the switch had
+- **Interruption freezes the engagement it had.** The reachable case
+  is being struck - single-hit lethality means that is where a switch
+  usually ends, and the frozen engagement is what the death pose is
+  drawn from. A bind cannot interrupt a switch (a bind needs two
+  attacking blades and attacks are refused while a switch runs), so
+  the rule is stated for the general case and exercised today by the
+  hit. Interruption clears the transition but does NOT snap the mode
+  to an endpoint: the fighter keeps the engagement the switch had
   reached, stored beside the frozen pose - and since every derivation
   reads engagement rather than the mode label (control torque, reach,
   the bind quantities), there is nothing left that can disagree with
   the geometry. A hand caught halfway onto the hilt is halfway onto
   the hilt, and the engine sees the value the renderer draws.
-  Leaving the interrupting state resumes the switch from there, or
-  abandons it back to the nearer endpoint if the player asks; either
-  way the change is a transition, not a snap.
+  Should a survivable interruption ever exist, leaving it resumes the
+  switch from that engagement or abandons it back toward an endpoint;
+  either way the change is a transition, not a snap.
 
 Because the track is concurrent, the renderer must draw the
 combination: `skeletal-renderer` section 7 owns it - deterministic
@@ -168,11 +173,12 @@ on mode); only the realization's display name may, where traditions
 name the same geometry differently (Langort <-> Terza in the longpoint
 family).
 
-There is no scripted vulnerability. **Coverage follows the
-interpolated blade geometry through the same derivation as always** -
-taking the off-hand away does not move the point out of the line, so a
-switch inside an extended guard largely keeps covering, and the
-simulation never declares a visibly-in-line blade absent. What the
+There is no scripted vulnerability. **Both endpoints of the switch are
+the same family and side variant, so they cover the same line, and
+`guard-positions`' continuity rule keeps that line covered for the
+whole transition** - taking the off-hand off the hilt does not move
+the point out of the line, and the simulation never declares a
+visibly-in-line blade absent. What the
 switch actually costs, all emergent:
 
 - **tempo**: no attack, feint, or guard change may start while the

@@ -142,9 +142,8 @@ reserves); the withdrawn column keeps two. stanceUp/stanceDown move
 between the current column's stops; toggling extension at `middle`
 retracts to the slot map's authored target (Vom Tag by default - the
 gather to the shoulder - and the map lives in positions.json, not
-code). Its side comes from the fighter's latched guard side, the same
-latch today's `f.guardSide` keeps, so retracting from a centre row
-never has to invent one.
+code). Its side comes from the track's latched side (section 4), so
+retracting from a centre row never has to invent one.
 Ochs, Pflug and Vom Tag take sideShift; longpoint and Alber ignore it.
 
 No new ActionIds. The `guard` button's meaning sharpens from "parry
@@ -282,10 +281,12 @@ Three rules that were fighting each other now all hold:
   including the one documented failure, the rapier disengage that must
   stay too fast to chase.
 - *A handling switch never blanks the defence.* Its two endpoints are
-  the same family and side variant in different modes, so they cover
-  the SAME line: the third rule applies, coverage is continuous, and
-  `grip-switching`'s "no scripted vulnerability" is structural rather
-  than promised.
+  the same family and side variant in different modes, so they are authored to cover
+  the SAME line: the third rule then applies and coverage is
+  continuous, which is what `grip-switching`'s "no scripted
+  vulnerability" rests on. A data test asserts both mode realizations
+  of every family agree on what they cover, so the authoring cannot
+  drift out from under the claim.
 
 **Each covered line carries its own clock**, because `bands(seg)` is a
 SET and a transition can have two rows covering different lines at
@@ -302,11 +303,24 @@ LineKey = `${height}:${side}`       // a string: Line is a structural
 ```
 
 An entry appears when a line starts being covered and is DELETED when
-it stops, so a line freshly covered at a transition's completion
-starts from zero rather than inheriting the age of the line the
-fighter was previously holding - which is what today's
-`settledMs = remainder` reset exists to prevent. `parryMeetsAttack`
+it stops, so a freshly covered line never inherits the age of the line
+the fighter was previously holding. It starts at the **sub-tick
+remainder**, not at zero: the clock is compared against the attacker's
+continuous overshoot, so a guard that physically formed before the
+deadline must not be refused for having formed between two ticks -
+which is exactly why today's reset carries the remainder rather than
+clearing to zero, and the overshoot semantics carry over intact. `parryMeetsAttack`
 and `firmness()` both read the entry for the line actually contacted.
+
+**The lifecycle, for every variant.** `settled` and `transitioning`
+maintain entries by the three rules above. **`attacking` clears the
+map on the launch tick and holds it empty**: an attacking fighter
+covers nothing, which is today's rule (`dropGuard` on cut, thrust and
+void, and a landed blade ending the guard) and a pinned test. At
+`combinedEnd` the track returns to `settled` at the resulting guard
+and that row's lines enter the map fresh. `frozen` keeps whatever the
+contact tick left, since the bind reads those clocks and nothing is
+moving.
 
 Extended guards (Ochs, Langort/Terza, Pflug) cover their band;
 withdrawn guards (Vom Tag, Alber) cover nothing - they are
@@ -332,9 +346,9 @@ and lines scale together, the two validation tests below hold at every
 body rather than only the baseline, and `physical-foundations`'
 promise that attribute variation needs "only inputs" survives. Mixing
 absolute poses with proportional edges would have made which bands a
-Pflug spans depend on the fighter's height in a way nobody authored. So a cut (declared `outside`) is
-answered by the sword-arm-side guards and a thrust (declared
-`inside`) by the other, for a right-handed fighter.
+Pflug spans depend on the fighter's height in a way nobody authored. Because `sideOf` maps the sword-arm-side variant to `outside`, a cut
+(declared `outside`) is answered by the sword-arm-side guards and a
+thrust (declared `inside`) by the other, for a right-handed fighter.
 
 **The centre longpoint covers nothing, by encoding:** the formula's
 centre branch is the guard's identity made explicit. Historically the
@@ -361,7 +375,7 @@ Blade-segment contact is a named future extension: if it ever comes,
 it replaces the internals of `parryMeetsAttack`/`bladesCross` in that
 one module, and this paragraph is its door.
 
-**Five consumers of the deleted parry object need new meanings, and
+**The consumers of the deleted parry object need new meanings, and
 here they are.** A guard is now a position the fighter occupies, not a
 raised action that can be spent:
 
@@ -386,6 +400,16 @@ raised action that can be spent:
 - `fighter.ts`'s refusal to parry while recovering disappears with it:
   there is no parry to refuse. What limits a defender is where the
   blade physically is and how long the derived travel takes.
+- `fighter.ts`'s `dropGuard` on cut, thrust and void, and `engine.ts`
+  ending the guard on a landed blade, become the `attacking` variant's
+  empty `coveredSince` above - same rule, expressed as the track's
+  lifecycle rather than as a field being nulled.
+- The held-guard LATCH (`targetAttackStartTime`, `releaseQueued`,
+  `visibleMs`, swept each tick) moves onto the `BladeTrack` unchanged
+  in meaning: it governs when a released input actually starts the
+  return transition, which is an input-timing concern and survives the
+  parry object's deletion untouched. `f.guardSide` becomes the
+  track's latched side, written when a side travel completes.
 - `engine.ts` charges `parryRecoveryMs` at bind resolution and at a
   neutral break, on the side whose contact was a guard. Both become
   the same derived transition from the frozen pose (section 4's exit
@@ -394,13 +418,16 @@ raised action that can be spent:
   fighters by how far each actually has to come back. That is the
   intent, and the tempo economics are re-proven with it (section 9).
 
-`contact.parryMeetsAttack` is rewritten to read
-`(track, line)` - the track carries both the covered lines and their
-clocks - instead of the parry object. Two parts of its
+`contact.parryMeetsAttack` is rewritten to read the defender's
+`BladeTrack` - which carries the covered lines and their clocks -
+instead of the parry object, keeping its attacker and gap arguments. Two parts of its
 contract change and the change is deliberate, so the carry-over of its
 tests is not blanket: the height comparison becomes membership in the
-covered band (`covered.heights.has(line.height)`), and coverage comes
-from live geometry rather than a phase label. Everything else stands -
+union of the currently covering rows' bands, read through
+`coveredSince`, and coverage comes from which rows are covering
+rather than from a phase label. Its other arguments are unchanged -
+it still takes the attacker and the gap, because the extension and
+overshoot checks need them. Everything else stands -
 side match, the settle requirement with its overshoot semantics, and
 the grace tick for blade quantization only. The existing held-guard
 and line-feint tests that pin shift-covers-the-old-line and the
@@ -548,8 +575,9 @@ lost.
 
 This is a TRACK beside the body state, never an arm of the exclusive
 state machine - and the reason a guard change, a step and a handling
-switch can be reasoned about independently. Coverage (section 4) reads
-the track's current pose. During an attack the track is `attacking`
+switch can be reasoned about independently. Coverage (section 4) reads the
+track's covering ROWS - the source row through a transition, the
+destination from completion. During an attack the track is `attacking`
 and the attack owns it; at `combinedEnd` it returns to `settled` at
 the snapshotted resulting guard.
 
@@ -586,7 +614,7 @@ mechanism:
 | Bind breaks neutral (clock expiry, shove-apart) | Both fighters go `transitioning` with `fromPose` = the frozen pose, `toId` = the guard their held input levels currently select (section 6's sequencing rule, unchanged). |
 | Bind winner takes the advantage thrust | The attack launches with `sourceGuardId` = the frozen pose's provenance and the frozen pose as its launch geometry - `bindTimeline`'s no-windup thrust already starts from contact, and this is why that is physically honest: the point is already there. The track becomes `attacking`. |
 | Winner declines the thrust / returns to ready | Same as neutral break: `transitioning` from the frozen pose to the level-selected guard. |
-| Exposed fighter recovers | `transitioning` from the frozen pose to the level-selected guard, over the exposure's own recovery duration - being turned out of a bind costs the travel back, which is what "exposed" means. |
+| Exposed fighter recovers | `transitioning` from the frozen pose to the level-selected guard, priced by `transitionMs` like every other exit. The exposure's own duration is a FLOOR the derived travel is taken against (`max` of the two), so being turned out of a bind always costs at least what the bind spec charges, and more when the blade has further to come back. |
 | Disarming resolves (sword taken) | The loser's track becomes `settled` at the `kind: "unarmed"` position (section 3 - no weapon, no derived blade, coverage `none` by construction); the winner transitions from their frozen pose like any other exit. |
 | Disarmed | Stays `frozen` with `why: "disarmed"` until the round ends - there is no blade to move. |
 
@@ -894,12 +922,13 @@ The body follows a fixed schedule, not a second action track:
   movement's end (below), so the fighter can never accept the next
   action while a foot is still visibly in the air - that follows from
   `combinedEnd >= plantMs + stepRecoveryMs` alone. `PLANT_SETTLE_MS`
-  is separately bounded at or below `stepRecoveryMs` for a different
+  is separately bounded at or below the SMALLEST `stepRecoveryMs`
+  across the roster (70 ms today, the rapier's), for a different
   reason: it caps how far an early truncation can push `combinedEnd`
   out, so being parried at the very start of a lunge costs at most one
   step-recovery of extra commitment rather than an unbounded stumble.
-  A test asserts the bound, so a future retune cannot silently break
-  it.
+  A test asserts the bound over every weapon, so neither a retune nor
+  a new sword can silently break it.
 - Both events fire even if the blade is still in recovery:
   presentation follows the simulation, and both moments ARE
   simulation moments.

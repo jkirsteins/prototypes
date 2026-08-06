@@ -120,9 +120,10 @@ mode**, itself derived, not authored:
 
 ```
 conventionalScore(f, w, mode) =
-    reachCm(f, w, mode)                              // what the mode buys
+    reachCm(f, w, engagementOf(mode))                // what the mode buys
   * min(1, holdCapacityNm(f, engagementOf(mode))    // can you hold it?
            / staticHoldTorqueNm(f, w, restingGuard))
+engagementOf(mode)      = mode == twoHanded ? 1 : 0
 holdCapacityNm(f, engagement) = f.shoulderTorqueSustainNm
                               * (1 + (TWO_ARM_SHARE - 1) * engagement)
 conventionalMode = argmax over AVAILABLE modes
@@ -501,7 +502,7 @@ anything depends on it.
   **clearance margin**: no shipping weapon sits within `GATE_MARGIN` of
   either threshold, so a gate verdict is never a rounding accident
   The rapier's 5 cm socket against a 4.61 cm half-hand is 0.4 cm of
-  clearance where every other margin is 1.4-2.9 cm: milestone zero
+  clearance where every other gate margin is 1.4 cm or more: milestone zero
   MUST move it, not may.
 - **Weapon-blindness test:** one-handed `bindAuthority` DIFFERS between
   the two weapons. The baseline ships the longsword two-handed and the
