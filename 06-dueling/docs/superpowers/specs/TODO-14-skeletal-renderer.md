@@ -133,7 +133,8 @@ promises complete performances; neither may produce a
   presentation-side manifest - the combat engine stores no visual
   asset ids. Target height does NOT multiply the clip set: it selects
   the snapshotted launch and terminal positions
-  (`guard-positions`' `launchByHeight` / `terminalByHeight`), and the
+  (`guard-positions`' `launchBy` / `terminalBy`, keyed by handling mode
+  and height), and the
   same bounded adaptation that fits the clip to its source guard fits
   it to those - validated per height by section 11, with an exception
   clip wherever a height exceeds the correction limits.
@@ -262,6 +263,7 @@ ships without them:
 | asset group | contract |
 |---|---|
 | Guard poses | One pose per realization row (sixteen), authored against the row's `primaryHandCm`, `lateral`, `weaponAngleDeg`, `secondaryHandCm` and `torsoProfileDeg`; validated so the rendered geometry matches the row's numbers within declared tolerance. `lateral` matters most: it is the side axis coverage reads, so a pose drawn on the wrong side of the centreline is a guard defending a line the player cannot see it defending - the failure the geometric model exists to prevent. |
+| Strike trajectories | The authored clip is the source of truth for the LOOK, and `guard-positions`' `trajectoryCurve` is a numeric sampling of that same motion extracted during asset validation for the ENGINE to read. Validation bounds their divergence: a curve that drifts from its clip means the simulation and the picture disagree about where the blade is, which is the failure geometry-based coverage exists to prevent. |
 | Guard transitions | Not authored per pair (that is the sixteen-squared trap): the ENGINE interpolates the pose (`guard-positions` declares that interpolation normative, because coverage now depends on it) and the renderer draws what it produces over the derived `transitionMs`, with the same bounded correction rules as section 4. Exception clips only where a pair reviews badly. |
 | Step / void | In-place locomotion clips, phase-locked to the engine's displacement curve; foot-plant markers required; section 6's drift test applies to these first. |
 | Bind, exposed, disarming, disarmed | Rendered from the `BladeTrack`'s `frozen` pose plus the state's own body treatment; the pressure/yield beats need visible motion mapped to the bind's own events. |

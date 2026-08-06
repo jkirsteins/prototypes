@@ -253,9 +253,9 @@ seg = derivedBlade(pose, weapon)     // section 3: crossguard -> point,
                                      // each with heightCm and advanceCm
 covered(pose, weapon) =              // ANY pose: authored or interpolated
   pose.weaponAngleDeg == null ? none : // unarmed: there is no blade
-  seg.point.advanceCm >= EXTENDED_MIN
-    ? { heights: bands(seg), side: sideOf(pose.lateral) }
-    : none
+  seg.point.advanceCm < EXTENDED_MIN ? none :      // not extended
+  sideOf(pose.lateral) is none ? none :            // straddling: no line
+  { heights: bands(seg), side: sideOf(pose.lateral) }
 
 sideOf(lateral) =                    // lateral in [-1, +1]
   |lateral| < CENTRE_BAND ? none     //   a blade near the centreline
@@ -714,9 +714,9 @@ type RenderSource = {
                               //   All known to the categorical model,
                               //   none of them a renderer result
   blendFrom?: {               // an interruption blends out of what was
-    pose: BladePose,          //   on screen: a SNAPSHOT of the pose
-    startedMs                 //   being left, not a nested source
-  }                           //   (see below)
+    coords,                   //   on screen: the five POSE COORDINATES
+    startedMs                 //   only, never a nested RenderSource -
+  }                           //   see below
 }
 
 // Interpolation is ENGINE-owned and normative: every coordinate of a
@@ -736,10 +736,13 @@ type BladeTrack = { coveredSince: Map<LineKey, ms> } & (   // ALWAYS present
   | { kind: "frozen";        pose: BladePose, why: "bind" | "exposed"
                                   | "disarming" | "disarmed",
                              movement?: MovementOutcome }
-                             // the interrupted attack's movement facts,
-                             // carried over so the feet can still be
-                             // stabilized after the attack is gone
 )
+
+type MovementOutcome = {      // the interrupted attack's movement facts,
+  movementStoppedAtMs,        // carried into the frozen state so the
+  movementStoppedX,           // feet can still be stabilized once the
+  plantMs                     // attack object is gone (plantMs resolved
+}                             // at the truncation tick, section 6)
 ```
 
 **`PoseTarget` exists because not every destination is authored.** A
@@ -784,13 +787,17 @@ exceptions:
   same blades. The engine never stores the solution.
 - *An interrupted performance blends out of the pose on screen*, so
   the renderer needs to know which pose that was. `blendFrom` carries
-  a POSE SNAPSHOT and the tick the blend began. A snapshot rather than
-  a nested `RenderSource` because interruptions compose: a second
-  interruption arriving mid-blend must leave from what is visible NOW,
-  which already contains the first blend. Sampling the current pose
-  collapses that history into one value, so the chain can never grow
-  and no information is lost - whereas replacing a nested source would
-  silently discard the blend in progress.
+  the five pose COORDINATES and the tick the blend began - not a
+  `BladePose`, which would carry a `RenderSource` and reopen the chain
+  one level deeper than the nesting it replaced. Coordinates because
+  interruptions compose: a second interruption arriving mid-blend must
+  leave from what is visible NOW, which already contains the first
+  blend, and sampling the coordinates collapses that history into five
+  numbers that cannot grow. What this deliberately does not preserve
+  is the rest of the body mid-blend; the renderer eases the remainder
+  from its own current state, which is the one place its continuity is
+  allowed to be its own business precisely because nothing in the
+  simulation reads it.
 
 The rule the earlier draft broke stands: adaptation magnitudes,
 correction limits and exception-clip selection are the renderer's, are
@@ -817,6 +824,19 @@ height axis by authoring, which the whole-travel data test holds to
 account, rather than needing a separate
 derivation, and the two tracks cannot disagree because only one of
 them owns a pose.
+
+**The engine samples the strike, which is what makes an attacking
+fighter's coverage computable at all.** A strike's path is authored,
+not interpolated between two rows, so the engine has no transition to
+evaluate - `trajectoryCurve` is what it evaluates instead. At any tick
+of a strike it reads the curve at that progress, positioned between
+the snapshotted launch and terminal poses, and that IS the fighter's
+pose: coverage reads it, a bind entry freezes it, and the renderer
+plays the clip the curve was extracted from. A validation test bounds
+the divergence between curve and asset, because a curve that drifts
+from its animation reintroduces exactly the invisible-contact problem
+geometry was adopted to prevent. Windup and recovery need no curve -
+they are ordinary transitions and interpolate like any other.
 
 **`frozen` is how the blade survives its attack.** Bind entry,
 exposure, disarming and disarmed all outlive the attack state that
@@ -864,6 +884,24 @@ blades, so a met guard is displaced (section 5) and the bind system is
 untouched by this spec beyond the pose a crossing freezes. The
 `BindContact.guard` variant stays in the union and stays unreached.
 
+**Which classification applies is decided by what the blades are
+doing, not by who moved first.** Now that an attacking fighter covers
+lines (below), a contact can satisfy both tests at once: two blades
+crossing while one of them also covers the other's line. The crossing
+wins - it is the stronger physical claim, force meeting force, and it
+is checked first exactly as the engine checks it today. A contact is a
+parry only when the met fighter is NOT extending steel into the same
+line; that is what makes it a deflection rather than a lock.
+
+**A deflection of an attacking blade knocks the ATTACK off line, not
+the track.** The displaced pose (section 5) applies to a fighter whose
+track is `settled` or `transitioning`. A fighter in `attacking` cannot
+become `transitioning` - the attack owns the track - so their
+deflection instead offsets the remaining trajectory by the same
+`displaceRad`: the strike finishes from where it was knocked to, which
+is why a deflected attack misses. The offset rides on the snapshot,
+leaving the curve itself untouched.
+
 ## 6. Attacks as transitions
 
 The vocabulary stays `cut` and `thrust` - generic intents, deliberately
@@ -905,16 +943,31 @@ interface AttackDefinition {
                          // which is how a future continuation attack
                          // exists as pure data
   };
-  launchByHeight;        // Record<Height, PositionId>: where the blade
-                         // gathers to threaten each height
-  trajectoryRef;         // the strike path: renderer cue + authored strike timing
-  terminalByHeight;      // Record<Height, PositionId> - the delivered
-                         // contact pose PER TARGET HEIGHT. A high and a
-                         // low thrust cannot end in the same blade pose,
-                         // so the terminal resolves with the target line
-                         // and is snapshotted with it. Total over the
-                         // reachable heights; a missing row fails the
-                         // data test
+  launchBy;              // Record<HandlingMode, Record<Height, PositionId>>
+                         // where the blade gathers to threaten each
+                         // height, in each grip: a one-handed gather has
+                         // a different off-hand and torso from a
+                         // two-handed one, and the renderer already keys
+                         // its clips this way
+  trajectoryRef;         // the strike path, as TWO artefacts from ONE
+                         // source: the authored animation the renderer
+                         // plays, and `trajectoryCurve` - a compact
+                         // numeric sampling of that same motion
+                         // (primaryHandCm, lateral, weaponAngleDeg,
+                         // torsoProfileDeg against strike progress)
+                         // EXTRACTED from the approved asset during
+                         // validation and committed as engine data.
+                         // The engine reads the curve, the renderer
+                         // plays the clip, and asset validation is what
+                         // keeps them the same motion
+  terminalBy;            // Record<HandlingMode, Record<Height, PositionId>>
+                         // the delivered contact pose per grip and
+                         // target height. A high and a low thrust cannot
+                         // end in the same blade pose, and neither can a
+                         // one- and a two-handed one, so the terminal
+                         // resolves with BOTH and is snapshotted with
+                         // them. Total over the reachable combinations;
+                         // a missing row fails the data test
   resultVariants: {      // named exits; "default" is required on every row
     default;             // Record<Height, GuardDestination> - per target
                          // height, like launch and terminal, because
@@ -1232,9 +1285,13 @@ future named attack that wants a different exit declares it in data.
 derived above, while `strike`, `beat` and `side` stay authored on
 `AttackTimings` and `feintRecoveryMs` stays on the profile. They have the largest reader set in the codebase and it is
 named for the same reason as the others: `weapons.ts`'s
-`attackTimeline`, `counterTime` and `bindTimeline` (which survives -
-the bind winner's no-windup thrust still reads the weapon's own
-recovery), `engine.ts`'s windup event and
+`attackTimeline`, `counterTime` and `bindTimeline` - which survives
+but is REWRITTEN with them: the bind winner's thrust keeps its zero
+windup and the weapon's authored `strike`, and takes its recovery from
+the same derivation every other attack now uses, the transition from
+its terminal position to its resulting guard. It cannot go on reading
+an authored `recovery` that no longer exists. Also `engine.ts`'s
+windup event and
 `baseRecovery`, `ai.ts`'s whiff commit, `fighter.ts`'s redirect, and
 three sites in `ui/help.ts`. The guard test covers these alongside
 the five guard-timing fields.
@@ -1261,8 +1318,14 @@ emulation as its only privilege:
 - reads the opponent's realization and in-flight transitions through
   the existing delayed-read machinery - a guard change is a signal like
   a windup;
-- attacks into uncovered lines; answers threats by transitioning to the
-  covering slot; uses withdrawn guards to load attacks it intends;
+- attacks into uncovered lines - INCLUDING the lines an opponent's own
+  attack covers, since a fighter in windup or recovery is defended by
+  where their blade is (section 4). A named branch decides whether to
+  punish a recovering opponent at all, given what their recovery
+  covers, and it is the branch that carries the biggest behavioural
+  change in this spec;
+- answers threats by transitioning to the covering slot; uses
+  withdrawn guards to load attacks it intends;
 - chooses among stationary, advancing and retreating versions of an
   attack by measure - advancing to reach from wide, retreating to
   strike while leaving - through the SAME attack definitions and
@@ -1273,7 +1336,12 @@ emulation as its only privilege:
 
 ## 8. Help
 
-The "?" panel is rewritten around guards: `HELP` becomes a typed Record
+The "?" panel is rewritten around guards, and it must state the rule
+that changed most: **your blade defends you wherever it is, including
+while you attack and while you void** - a recovery that arrives in a
+guard is a guard, and a blade sweeping past a line is not. That is the
+acceptance rule players will feel first, so it lands in the same
+change. `HELP` becomes a typed Record
 over the realization/state unions (a missing entry fails the build),
 one sentence for what the position is, one for what it covers or
 threatens. All cited durations come from the derivation callbacks at
@@ -1315,7 +1383,11 @@ parried and whiffed attack is punishable" cannot survive retreating
 attacks: escaping the counter is what retreating while striking is
 FOR. The invariant is restated as: **if the defender remains within
 counter-thrust measure when the punishment window opens, the recovery
-contains enough time for the counter to land** - asserted over the
+contains enough time for the counter to land ON A LINE THE RECOVERING
+BLADE DOES NOT COVER**. The second clause is new and follows from
+coverage surviving an attack (section 4): time alone stopped being
+sufficient the moment a recovering fighter could be defended by where
+their blade actually is - asserted over the
 derived timing matrix across realizations, movement modes and initial
 measures. The void-always-outprices-parry invariant stays
 unconditional. Calibration constants are tuned until both hold. The golden replay WILL change: this spec intends new behavior. A
