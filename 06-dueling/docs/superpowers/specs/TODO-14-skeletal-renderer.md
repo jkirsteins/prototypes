@@ -95,6 +95,28 @@ that the PoC never had to draw:
   strike and recovery are semantic REGIONS of that performance, never
   separate clips - `guard-positions` derives their durations, and
   derived timing does not imply fragment assembly.
+- **All three movement variants of one attack share the same blade
+  path relative to the fighter root**, and that shared path IS
+  `guard-positions`' `trajectoryCurve` for that handling mode. The
+  legs differ between them; the arms and the sword do not. Validation
+  measures every clip's blade against the curve and fails any that
+  drifts beyond the declared tolerance.
+
+  This is a constraint on the animator, and it is the one the rest of
+  the model already assumes: movement moves the ROOT and never the
+  reach, the strike timings are identical across movement modes, and
+  the engine composes the root curve separately from the blade. A cut
+  whose arm path changed when the feet moved would contradict all
+  three. Keeping one curve per grip rather than one per grip and
+  movement also keeps the engine's data at two curves per attack
+  instead of six, with no case where it must pick between paths that
+  are supposed to be the same path.
+
+  If a movement mode ever genuinely needs its own blade path - a
+  retreating cut that shortens, say - the escape is to key
+  `trajectoryCurve` by movement as well. That is a data change and a
+  validation-grouping change, not a model change, and this paragraph
+  is where it would be recorded.
 - Engine marks (`riseStart`, `riseEnd`, `strikeStart`,
   `parryableUntil` = the **full-extension** marker, `strikeEnd`,
   `recoveryEnd`) map onto the clip's semantic markers through a
@@ -315,7 +337,9 @@ frame-to-frame continuity; ground contact; blade reach; off-hand grip;
 weapon visibility; clean console; screenshots at semantic marks.
 
 Beyond the PoC, all of these are added and all fail the build when
-violated: foot drift; velocity continuity (the smooth time warp's
+violated: **blade-path agreement across an attack's three movement
+clips, and of all three against `trajectoryCurve`** (section 3, the
+constraint that lets one curve serve three animations); foot drift; velocity continuity (the smooth time warp's
 proof); contact geometry against the categorical verdicts; both
 facings; both fighters.
 

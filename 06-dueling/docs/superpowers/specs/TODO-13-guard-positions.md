@@ -555,21 +555,28 @@ raised action that can be spent:
                                                           // arriving
   displaceRad = DISPLACE_CAL * impactN
               / displacementResistanceN(def, w, engagement)
+  ```
 
-  deflectionOffset(t) = { weaponAngleDeg: displaceRad,
-                          lateral: displaceRad / LATERAL_SPAN_RAD }
-                        * decay(t)
+  which is written into the track's `deflection` (section 5) as
+
+  ```
+  { angleRad:     displaceRad,                  // RADIANS, converted
+    lateralDelta: displaceRad / LATERAL_SPAN_RAD,//  to degrees only
+    startedMs:    now,                          //  when composed onto
+    durationMs:   derived recovery travel }     //  weaponAngleDeg
   ```
 
   The offset is signed **in the direction the attack was travelling** -
   steel arriving on a line drives the guard across it, never further
   out - and the summed `lateral` is clamped to the [-1, +1] the
-  coordinate allows. A strong two-handed guard is barely moved; a
+  coordinate allows when it is composed.
+
+  A strong two-handed guard is barely moved; a
   one-handed or strained one is knocked wide enough that `sideOf`
   stops returning its line, which is what `grip-switching` means by a
-  parry met weakly. `decay(t)` returns the offset to zero over an
-  interval derived like any other travel, which is the recovery -
-  and why `parryRecoveryMs` has nothing left to do.
+  parry met weakly. The decay returns the offset to zero over an
+  interval derived like any other travel, which is the recovery - and
+  why `parryRecoveryMs` has nothing left to do.
 - `parryRecoveryMs` is DELETED from the profile alongside the others.
 - `fighter.ts`'s exported `guardEffective()` - read by `ai.ts`, the
   renderer and the frame picker - becomes the same predicate
@@ -816,7 +823,10 @@ type PoseTarget =             // where a motion is going. NOT every
   | { kind: "row"; id: PositionId }      // destination is authored:
   | { kind: "derived"; pose: BladePose } // a displaced guard is computed
 
-type BladeTrack = { coveredSince: Map<LineKey, Coverage> } & ( // ALWAYS
+type BladeTrack = {
+  coveredSince: Map<LineKey, Coverage>,   // on every variant
+  deflection?: Deflection,                // likewise: an offset outlives
+} & (                                     // the motion it interrupted
   | { kind: "settled";       at: PoseTarget, pose: BladePose }
   | { kind: "transitioning"; fromPose: BladePose,
                              to: PoseTarget, elapsedMs, durationMs }
@@ -826,12 +836,58 @@ type BladeTrack = { coveredSince: Map<LineKey, Coverage> } & ( // ALWAYS
                              movement?: MovementOutcome }
 )
 
+type Deflection = {           // the knock, as engine state
+  angleRad,                   // signed, in the direction the attack
+  lateralDelta,               //   was travelling
+  startedMs, durationMs       // the decay window
+}
+
 type MovementOutcome = {      // the interrupted attack's movement facts,
   movementStoppedAtMs,        // carried into the frozen state so the
   movementStoppedX,           // feet can still be stabilized once the
   plantMs                     // attack object is gone (plantMs resolved
 }                             // at the truncation tick, section 6)
 ```
+
+**`currentPose` is the base motion plus the sampled deflection, and it
+is what every consumer reads.**
+
+```
+currentPose(track, now) =
+    basePose(track, now)                 // the variant's own motion
+  + sample(track.deflection, now)
+
+sample(d, now) = d == null ? zero : {
+    weaponAngleDeg: deg(d.angleRad) * decay(u),
+    lateral:        d.lateralDelta   * decay(u)
+  } where u = (now - d.startedMs) / d.durationMs, clamped to [0, 1]
+```
+
+Coverage, contact, the frozen pose and the renderer all read
+`currentPose`; nothing reads `basePose` directly. The summed `lateral`
+is clamped to [-1, +1] at composition, not in the stored delta.
+
+Three rules make the field behave:
+
+- **It outlives the motion it interrupted.** A blade knocked mid-windup
+  is still recovering its line during the recovery, so `deflection`
+  survives every base-track change - windup to strike, attack to
+  settled, transition to transition - and is cleared only when its
+  decay completes. Being knocked off line is a thing that happened to
+  the fighter, not a property of the motion they happened to be in.
+- **A second knock rebases onto the first.** The new impulse is added
+  to the CURRENT sampled offset, that sum becomes the stored
+  `angleRad` and `lateralDelta`, and `startedMs` and `durationMs`
+  restart. So two blows in quick succession compound rather than
+  cancel, but a single slot holds them and the decay always runs from
+  the magnitude actually reached. Independent stacking tracks would
+  let a flurry drive the blade arbitrarily far; rebasing keeps every
+  outcome inside one clamped offset.
+- **`decay` is a derived travel, not a constant.** `durationMs` comes
+  from the same motion profile as any other blade movement, over the
+  arc the offset has to be recovered - so a heavy blade or a strained
+  fighter takes longer to get the line back, which is the whole point
+  of measuring the knock against `displacementResistanceN`.
 
 **`PoseTarget` exists because not every destination is authored.** A
 guard displaced by a deflection (below) lands at a COMPUTED pose, and
@@ -1083,9 +1139,13 @@ interface AttackDefinition {
                          // motion as engine data, one curve per grip,
                          // because a one-handed cut and a two-handed
                          // cut are different motions and not the same
-                         // motion scaled. Hand-authored first,
-                         // re-extracted from the approved asset at
-                         // validation, divergence bounded by test
+                         // motion scaled. NOT keyed by movement: all
+                         // three movement clips of an attack share one
+                         // blade path relative to the root, which
+                         // skeletal-renderer requires and validates.
+                         // Hand-authored first, re-extracted from the
+                         // approved asset at validation, divergence
+                         // bounded by test
   terminalBy;            // Record<HandlingMode, Record<Height, PositionId>>
                          // the delivered contact pose per grip and
                          // target height. A high and a low thrust cannot
