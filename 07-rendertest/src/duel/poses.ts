@@ -22,10 +22,12 @@ export const CLIPS: Record<ClipName, { file: string; durationS: number }> = {
   gsBlock:    { file: "great-sword-blocking.glb", durationS: 0.958 },
   gsImpact:   { file: "great-sword-impact.glb",   durationS: 1.250 },
   dodgeBack:  { file: "dodge-backward.glb",       durationS: 1.625 },
-  // Mixamo "Upward Thrust", not "Stabbing": stabbing.glb stands
-  // three-quarters to camera with both arms up and never drives a point
-  // forward in the picture plane, so no timestamp in it reads as a thrust.
-  stab:       { file: "upward-thrust.glb",        durationS: 2.333 },
+  // The third of Mixamo's three same-named "Stabbing" products
+  // (c9c61d25-b96c-11e4-a802-0aaa78deedf9), the only one of the catalog's
+  // six point-forward clips that lunges in the picture plane. The first
+  // (stabbing.glb) and second stand three-quarters to camera and punch
+  // with the off-hand; "Upward Thrust" straddles instead of lunging.
+  stab:       { file: "stabbing-3.glb",        durationS: 2.125 },
   unarmedIdle:{ file: "unarmed-idle.glb",         durationS: 1.875 },
   gsDeath:    { file: "great-sword-death.glb",    durationS: 2.375 },
 };
@@ -56,24 +58,29 @@ export const POSE_T = {
     recoveryStart: 3.28, // upright, blade dropping back toward the line
     recoveryEnd: 3.46,   // the clip's own guard, where an idle resumes
   },
-  // upward-thrust.glb opens on a held on-guard (0.05 .. 0.48: point cocked
-  // over the rear shoulder, off-hand out on the line), drives through
-  // 0.50 .. 0.78, then withdraws to a wide guard by 1.30. Past 1.50 it
-  // turns and lifts a leg, so nothing after that is usable.
+  // stabbing-3.glb is one clean thrust and nothing else: a low guard with
+  // the point on the line (0.00 .. 0.10), the blade swinging up to a
+  // vertical cock (0.12 .. 0.34), the drive (0.36 .. 0.50), a held
+  // extension (0.50 .. 0.95), the withdrawal (1.00 .. 1.25) and then its
+  // own hip guard from 1.28 to the end. That shape is why it was taken
+  // over upward-thrust.glb, whose windup was one held pose.
   stab: {
-    windupLow: 0.10,     // on guard: point cocked back, off-hand out on the line
-    windupHigh: 0.30,    // deepest draw, torso leaning off the line, knees loaded
-    still: 0.48,         // coil held, front foot gathering for the step in
-    travelling: 0.68,    // compact and upright, the point driving up past the head
-    // 0.76 is the last frame of the drive itself (tip 1.412 m ahead of the
-    // root); past 0.80 the clip has stopped driving and simply holds the
-    // arm out, so its slightly longer reach is not a thrust. The off-hand
-    // is 32.1 cm off the grip here and the whole drive is no better - this
-    // clip holds it clear of the hilt, hands 46-52 cm apart in its own
-    // skeleton, so it is the choreography and not the rig.
-    delivered: 0.76,     // deep lunge, weapon arm out front, point furthest forward
-    recoveryStart: 1.08, // still lunged, the arm starting to fold back
-    recoveryEnd: 1.30,   // off the lunge, hands drawn in over a wide guard
+    windupLow: 0.06,     // low guard: hilt at the hip, point forward on the line
+    windupHigh: 0.20,    // blade swung up to 45 degrees, hands leaving the hip
+    still: 0.32,         // deepest cock: blade vertical, hands at the chest, weight back
+    travelling: 0.40,    // the arm coming out, point already 1.13 m ahead and climbing
+    // The drive covers 1.05 m of point travel between travelling and
+    // delivered - the pair the whole clip search was for. 0.50 reaches
+    // marginally further (1.59 m) but on a steeper blade; by 0.58 the
+    // lunge has settled and the blade has come down to about 22 degrees,
+    // which is the nearest this catalog gets to a level line.
+    // The off-hand is thrown back, 78 cm off the grip: this is a
+    // one-handed lunge, and no clip in the catalog thrusts with both
+    // hands on the hilt (upward-thrust.glb, the best of the rest, still
+    // held it 32 cm clear).
+    delivered: 0.58,     // full extension, deep lunge, point 1.55 m ahead of the root
+    recoveryStart: 1.05, // the arm folding back, blade coming up off the line
+    recoveryEnd: 1.30,   // settled onto the clip's own hip guard, where an idle resumes
   },
   // great-sword-blocking.glb holds one crouched guard for its whole
   // 0.958 s (hips vary by 4 mm), so these two only bracket that hold.
