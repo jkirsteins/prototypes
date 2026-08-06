@@ -198,7 +198,7 @@ every coverage rule. Per guard realization row, on top of the core:
 
 ```
 {
-  ...WeaponCore,           // primaryHandCm, weaponAngleDeg,
+  ...WeaponCore,           // primaryHandCm, lateral, weaponAngleDeg,
                            // secondaryHandCm, torsoProfileDeg, poseRef
   family, sideVariant, handlingMode, slot,
   displayName,             // "Right Ochs", "Langort", "Terza"
@@ -252,6 +252,7 @@ One shared function reads the realization's **derived** blade geometry
 seg = derivedBlade(pose, weapon)     // section 3: crossguard -> point,
                                      // each with heightCm and advanceCm
 covered(pose, weapon) =              // ANY pose: authored or interpolated
+  pose.weaponAngleDeg == null ? none : // unarmed: there is no blade
   seg.point.advanceCm >= EXTENDED_MIN
     ? { heights: bands(seg), side: sideOf(pose.lateral) }
     : none
@@ -308,13 +309,12 @@ What follows:
   side-redirect outcome (today's rapier disengage being too fast to
   chase) is a target the calibration must still produce - recomputed
   from the derivation, never asserted by weapon name.
-- *A handling switch never blanks the defence*, and now structurally:
-  its two endpoints are the same family and side variant, so the
-  interpolated blade stays inside that line the whole way. A data test
-  asserts it over the WHOLE travel, not just the endpoints - sampling
-  the interpolated pose across every family's mode switch and
-  requiring the covered line never to change - since under geometry
-  matching endpoints alone would not guarantee the path between them.
+- *A handling switch never blanks the defence.* Its endpoints share a
+  `lateral`, so the side it covers cannot move; the height band is an
+  authoring matter, since a switch does move the hands. A data test
+  samples the interpolated pose across the WHOLE travel of every
+  family's mode switch and requires the covered line never to change -
+  endpoints alone would not guarantee the path between them.
 - *Mid-motion restarts need no special case.* A transition beginning
   from an interpolated pose is covered by that pose like any other -
   coverage never depended on having an authored source.
@@ -336,11 +336,20 @@ LineKey = `${height}:${side}`       // a string: Line is a structural
 An entry appears on the tick the interpolated blade begins covering
 that line, carrying the SUB-TICK remainder of the crossing (solved by
 linear interpolation across the tick that crossed it - the same
-precision today's scheduled arrival gets), and is deleted when
-coverage is lost. `CENTRE_BAND` doubles as hysteresis so a blade
-hovering at a boundary cannot delete and recreate a formed guard's
-clock every tick: a line is lost only once the pose is clear of the
-band, not the instant it touches it. Otherwise so a freshly covered line never inherits the age of the line
+precision today's scheduled arrival gets), and is deleted the tick
+coverage is lost.
+
+**Coverage is stateless, and stays that way.** No hysteresis: what a
+pose covers is a pure function of that pose, so two fighters in the
+same posture always cover the same lines however they got there.
+Clock churn at a boundary is prevented at the source instead - a data
+test asserts **no authored row sits within `CENTRE_BAND` of the
+centreline or within `EDGE_MARGIN` of a height-band edge**, so a
+SETTLED pose never hovers on a threshold, and a transition sweeps
+monotonically through one. A fighter cannot ask to stand on a
+boundary, because the only things they can ask for are rows.
+
+So a freshly covered line never inherits the age of the line
 the fighter was previously holding. It starts at the **sub-tick
 remainder**, not at zero: the clock is compared against the attacker's
 continuous overshoot, so a guard that physically formed before the
@@ -441,8 +450,13 @@ raised action that can be spent:
               / displacementResistanceN(def, w, engagement)
   ```
 
-  The destination is `{ kind: "derived" }`: the covering pose rotated
-  by `displaceRad`, computed on the deflection tick. Recovery is then
+  The destination is `{ kind: "derived" }`, computed on the deflection
+  tick: the covering pose rotated by `displaceRad` AND pushed along
+  `lateral` by the same ratio, since a deflection knocks a guard off
+  its line as well as out of its height. That lateral push is exactly
+  how `grip-switching`'s "the guard is turned" happens - a one-handed
+  guard, having little to resist with, is displaced far enough that
+  `sideOf` no longer returns its line. Recovery is then
   an ordinary transition from there back toward whatever the standing
   levels select.
 
@@ -505,11 +519,12 @@ transitionMs(from, to, weapon, fighter) =    // reads f.engagement
   max( profileMs(primaryHandM,  HAND_ACCEL / s,  handSpeedMps / s),
        profileMs(offHandM,      HAND_ACCEL / s,  handSpeedMps / s),
        profileMs(bladeArcRad,   alpha / s,       omegaCap / s),
+       profileMs(lateralArcRad, alpha / s,       omegaCap / s),
        profileMs(torsoArcRad,   TORSO_ACCEL / s, torsoOmegaCap / s) )
   + SETTLE_MS
 
 s        = strainFactor(fighter)          // >= 1; BOTH terms of ALL
-                                          // FOUR profiles, never one
+                                          // FIVE profiles, never one
 alpha    = controlTorquePeak(f, w, f.engagement) / inertiaGripKgM2   // rad/s^2
 omegaCap = OMEGA_CAL * handSpeedMps                              // rad/s
 
@@ -538,8 +553,8 @@ reads them rather than declaring its own;
 `strainFactor` is `physical-foundations`' strain effect (1.0 at zero
 strain).
 
-A transition prices all four authored axes - both hands, the weapon's
-rotation and the torso - by the same `max` over motion profiles that
+A transition prices all five authored axes - both hands, the weapon's
+rotation, the lateral sweep and the torso - by the same `max` over motion profiles that
 `grip-switching`'s `switchMs` uses, so no authored geometry ever moves
 for free. Hand travel is the two realizations' `primaryHandCm` difference
 resolved at THIS fighter's stature (the rows are stature fractions
@@ -548,7 +563,12 @@ fighter's longer travels take proportionally longer rather than being
 computed from the baseline table; the
 blade arc from their `weaponAngleDeg` and derived point positions;
 angular acceleration from `physical-foundations` (peak control torque
-against rotational inertia about the grip, scaled by strain). Heavy
+against rotational inertia about the grip, scaled by strain). The
+LATERAL sweep is the `lateral` difference carried through the same
+angular profile - the blade crosses the body on an arc, and this is
+what replaces the deleted `sideChangeMs`: a right-to-left guard change
+is priced by how far the steel must travel across, against the same
+inertia every other rotation pays. Heavy
 blade + weak grip = slow guard changes, emergently. `SETTLE_MS` lives
 here and only here, and it prices the MOTION - it is not a coverage
 gate at all. Formedness is section 4's rule: a line counts from the
@@ -620,7 +640,8 @@ type BladePose = {            // a geometry snapshot, never an id:
  */
 type RenderSource = {
   performance;                // "guard" | "transition" | trajectoryRef
-  sampledUnit;                // 0..1 through that performance
+  sampledUnit;                // 0..1 through it; 0 for a settled guard,
+                              // whose `from` and `to` are both its row
   from, to;                   // PoseTarget endpoints - a transition
                               // needs both, or two different travels
                               // would share a RenderSource
@@ -722,10 +743,11 @@ copy of the hands: starting a switch puts the `BladeTrack` into
 `to` = the same family's row in the target mode) for the switch's
 own duration, and the handling track carries only what is genuinely
 its own - the mode endpoints and `secondaryHandEngagement`. Coverage
-therefore reads the interpolated pose like any other, and stays
-continuous because both endpoints of a handling switch share their
-`lateral` and their covered band, so the interpolation never leaves
-that line - rather than needing a separate
+therefore reads the interpolated pose like any other. It stays
+continuous on the SIDE axis structurally - both endpoints share their
+`lateral`, so no interpolation can carry the blade across - and on the
+height axis by authoring, which the whole-travel data test holds to
+account, rather than needing a separate
 derivation, and the two tracks cannot disagree because only one of
 them owns a pose.
 
@@ -738,7 +760,7 @@ on both existing variants of the union (the `strike` variant with its
 carries the CONTACTED line's own clock, read from `coveredSince`; they are
 alternatives, not co-resident fields). Everything else the renderer
 needs is already inside `pose.render`: the performance, how far
-through it, the source guard, target height, handling mode and
+through it, both endpoints, the target height, the engagement and the
 movement. One home per fact.
 
 **Leaving `frozen` - every exit, stated.** A frozen pose is a real
@@ -832,8 +854,9 @@ interface AttackDefinition {
                          // OPPOSITE of the definition's declared side
                          // (a blade that travelled through a line
                          // finishes past it), mapped back to a variant
-                         // from the side variant, which rows
-                         // keep for exactly this job.
+                         // to the variant whose `lateral` has
+                         // that sign - rows keep variants for
+                         // exactly this job.
                          // Resolution is total by
                          // construction: a sided family takes exitSide,
                          // a centre-only family (alber, longpoint)
@@ -1132,8 +1155,8 @@ future named attack that wants a different exit declares it in data.
   `redirectHeightMs`/`redirectSideMs` are deleted.
 
 **`AttackTimings.windup` and `.recovery` are deleted too**, being
-derived above, while `strike`, `side` and `feintRecoveryMs` stay
-authored. They have the largest reader set in the codebase and it is
+derived above, while `strike`, `beat` and `side` stay authored on
+`AttackTimings` and `feintRecoveryMs` stays on the profile. They have the largest reader set in the codebase and it is
 named for the same reason as the others: `weapons.ts`'s
 `attackTimeline`, `counterTime` and `bindTimeline` (which survives -
 the bind winner's no-windup thrust still reads the weapon's own

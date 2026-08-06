@@ -114,8 +114,11 @@ The 07 rule carries over verbatim as contract:
   **bounded, deterministic IK/contact correction** conforms the blade
   to the categorical verdict at the tick the engine reports it,
   solved from the CONSTRAINT the engine hands over in
-  `RenderSource.contact` (the gap, the distance along the blade, the
-  line) - never from a solution the engine computed, which it cannot. The
+  `RenderSource.contact` (the gap, the attacker's extension at that
+  tick, and the line) - never from a solution the engine computed,
+  which it cannot. Where that meeting lands along the DEFENDER's blade
+  is the renderer's to work out from its own drawn geometry; the
+  categorical model does not simulate it. The
   full blade path is never procedurally reconstructed from the scalar
   extension value.
 
@@ -192,9 +195,10 @@ The visual split for concurrent actions (`grip-switching`'s
 `handlingTransition` track):
 
 - Attacks: full-body, uninterrupted clips (section 3).
-- Grip switching: **deterministic hand/arm/torso interpolation plus
-  IK**, layered over the lower body's continuing locomotion - steps
-  and voids proceed underneath, as the simulation allows.
+- Grip switching: the engine interpolates the pose as for any
+  transition; the renderer draws it with **IK on the hands and arms**,
+  layered over the lower body's continuing locomotion - steps and
+  voids proceed underneath, as the simulation allows.
 - Combined full-body exception animations only where that layering
   fails visual review.
 
@@ -257,8 +261,8 @@ ships without them:
 
 | asset group | contract |
 |---|---|
-| Guard poses | One pose per realization row (sixteen), authored against the row's `primaryHandCm`, `weaponAngleDeg`, `secondaryHandCm` and `torsoProfileDeg`; validated so the rendered geometry matches the row's numbers within declared tolerance - the pose must not quietly disagree with the data coverage is derived from. |
-| Guard transitions | Not authored per pair (that is the sixteen-squared trap): deterministic interpolation between the two poses over the engine's derived `transitionMs`, with the same bounded correction rules as section 4. Exception clips only where a pair reviews badly. |
+| Guard poses | One pose per realization row (sixteen), authored against the row's `primaryHandCm`, `lateral`, `weaponAngleDeg`, `secondaryHandCm` and `torsoProfileDeg`; validated so the rendered geometry matches the row's numbers within declared tolerance. `lateral` matters most: it is the side axis coverage reads, so a pose drawn on the wrong side of the centreline is a guard defending a line the player cannot see it defending - the failure the geometric model exists to prevent. |
+| Guard transitions | Not authored per pair (that is the sixteen-squared trap): the ENGINE interpolates the pose (`guard-positions` declares that interpolation normative, because coverage now depends on it) and the renderer draws what it produces over the derived `transitionMs`, with the same bounded correction rules as section 4. Exception clips only where a pair reviews badly. |
 | Step / void | In-place locomotion clips, phase-locked to the engine's displacement curve; foot-plant markers required; section 6's drift test applies to these first. |
 | Bind, exposed, disarming, disarmed | Rendered from the `BladeTrack`'s `frozen` pose plus the state's own body treatment; the pressure/yield beats need visible motion mapped to the bind's own events. |
 | Hitstun, death | Full-body clips entered by the blend rule in section 5; death owns `DEATH_ANIM_MS`. |

@@ -174,12 +174,15 @@ on mode); only the realization's display name may, where traditions
 name the same geometry differently (Langort <-> Terza in the longpoint
 family).
 
-There is no scripted vulnerability. **Both endpoints of the switch are
-the same family and side variant, so they cover the same line, and
-`guard-positions`' continuity rule keeps that line covered for the
-whole transition** - taking the off-hand off the hilt does not move
-the point out of the line, and the simulation never declares a
-visibly-in-line blade absent. What the
+There is no scripted vulnerability, and coverage is not special-cased
+to achieve it. **Both endpoints share their `lateral`, so the side the
+switch covers never moves** - taking the off-hand off the hilt does
+not carry the point across the body. The HEIGHT band is an authoring
+matter rather than a structural one, since the two realizations do
+move the hands: `guard-positions` requires a data test that samples
+the whole travel and holds the covered line constant, so a pair of
+realizations that would dip out of their band fails the suite instead
+of silently opening the fighter up. What the
 switch actually costs, all emergent:
 
 - **tempo**: no attack, feint, or guard change may start while the
@@ -192,7 +195,7 @@ switch actually costs, all emergent:
   runs - which is the same fact the interruption rules rest on;
 - being struck mid-switch is being struck: no special state, and the
   existing rules apply to the line the switch's endpoints cover,
-  which the continuity rule keeps covered throughout.
+  which the shared `lateral` keeps covered throughout.
 
 On completion the fighter stands in the same family's realization for
 the new mode. Reach, control torque, all three bind quantities (each
