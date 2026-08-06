@@ -352,20 +352,29 @@ two fighters in the same posture always cover the same lines however
 they got there. (The `coveredSince` MAP is history - that is its job -
 but what it records is never in question.)
 
-Clock churn at a boundary is prevented at the source instead.
-`THRESHOLD_MARGIN` is one declared distance, and a data test asserts
-**no authored row sits within it of any of the three thresholds
-`covered()` reads**: `|lateral| = CENTRE_BAND`, `advanceCm =
-EXTENDED_MIN`, and each height band edge. The first is a distance from
-the THRESHOLD, not from the centreline - a centre row at `lateral = 0`
-is maximally far from it, which is what makes centre rows both legal
-and stably uncovering. A SETTLED pose therefore never hovers on a
-threshold.
+Clock churn at a boundary is prevented at the source instead. A data
+test asserts **no authored row sits near any of the three thresholds
+`covered()` reads**, each measured in its own units, since they are
+not commensurable:
+
+| threshold | margin |
+|---|---|
+| `\|lateral\| = CENTRE_BAND` | `LATERAL_MARGIN`, dimensionless like the coordinate |
+| `advanceCm = EXTENDED_MIN` | `LENGTH_MARGIN`, centimetres |
+| each height band edge | `LENGTH_MARGIN`, centimetres |
+
+Each margin is measured from the THRESHOLD, not from an axis origin.
+That distinction is what makes centre rows legal: a centre row sits at
+`lateral = 0`, `CENTRE_BAND` away from the threshold, so it passes -
+**provided `CENTRE_BAND > LATERAL_MARGIN`, which the calibration must
+honour** and a test asserts, or the four centre realizations would
+fail the very check written to protect them. A SETTLED pose therefore
+never hovers on a threshold.
 
 Derived poses (`PoseTarget`, below) are the one case a row cannot
-police, since a displaced guard could land anywhere. When one settles,
-the engine nudges it clear of the nearest threshold by
-`THRESHOLD_MARGIN` - a deterministic, tiny correction whose only
+police, since a displaced guard can land anywhere. When one settles,
+the engine nudges it clear of the nearest threshold ON EACH AXIS by
+that axis's margin - a deterministic, tiny correction whose only
 purpose is to keep a resting pose off a knife edge.
 
 So a freshly covered line never inherits the age of the line
@@ -400,7 +409,7 @@ replaces the parry's `coveredLine` snapshot: what a guard covers is
 readable from where the blade IS, for both fighters and the AI alike.
 
 `derivedBlade`, `bands`, `sideOf`, `EXTENDED_MIN`, `CENTRE_BAND`,
-`THRESHOLD_MARGIN` and the band edges
+`LATERAL_MARGIN`, `LENGTH_MARGIN` and the band edges
 all live in the one shared coverage module beside `parryMeetsAttack`.
 Every derived location has `advanceCm` (forward of the body centre)
 and `heightCm` (above the floor), computed from the pose's
@@ -570,9 +579,9 @@ from this motion profile, stated here exactly so every implementer
 derives the same milliseconds from the same physical data. `HAND_ACCEL`, `OMEGA_CAL`, `TORSO_ACCEL`, `torsoOmegaCap` and
 `LATERAL_SPAN_RAD` (radians per unit of `lateral` - the conversion
 that turns a dimensionless coordinate into an angle the profile can
-price) are calibration constants of the section 9 tuning - all four live here,
-since this is the spec that first needs them, and `grip-switching`
-reads them rather than declaring its own;
+price) are calibration constants of the section 9 tuning - all five live
+here, since this is the spec that first needs them, and
+`grip-switching` reads them rather than declaring its own;
 `strainFactor` is `physical-foundations`' strain effect (1.0 at zero
 strain).
 
@@ -881,12 +890,11 @@ interface AttackDefinition {
                          // and the single side rule `exitSide` is the
                          // OPPOSITE of the definition's declared side
                          // (a blade that travelled through a line
-                         // finishes past it), mapped back to a variant
-                         // to the variant whose `lateral` has
-                         // that sign - rows keep variants for
-                         // exactly this job.
-                         // Resolution is total by
-                         // construction: a sided family takes exitSide,
+                         // finishes past it), mapped back to the
+                         // variant whose `lateral` carries that sign -
+                         // rows keep variants for exactly this job.
+                         // Resolution is total by construction: a
+                         // sided family takes exitSide,
                          // a centre-only family (alber, longpoint)
                          // resolves to its centre row and ignores it -
                          // so a descending cut from Right Vom Tag lands
