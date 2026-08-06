@@ -186,8 +186,10 @@ switch actually costs, all emergent:
   hands rearrange (steps may continue - the hands, not the feet, are
   busy);
 - **contact resistance**: any contact during the switch reads the
-  momentary control torque, which is one-handed at best mid-rearrange -
-  a parry or bind met mid-switch is met weakly;
+  momentary control torque, which is part-handed mid-rearrange, so a
+  PARRY met then is met weakly. A bind cannot occur here at all - it
+  needs two attacking blades and attacks are refused while a switch
+  runs - which is the same fact the interruption rules rest on;
 - being struck mid-switch is being struck: no special state, and the
   existing rules apply to the line the switch's endpoints cover,
   which the continuity rule keeps covered throughout.

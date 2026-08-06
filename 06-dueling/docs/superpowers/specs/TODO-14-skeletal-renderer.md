@@ -112,7 +112,10 @@ The 07 rule carries over verbatim as contract:
 - **The blade follows the animated hands.** Where exact meeting is
   required - parry contact, bind entry, the delivered pose - a
   **bounded, deterministic IK/contact correction** conforms the blade
-  to the categorical verdict at the tick the engine reports it. The
+  to the categorical verdict at the tick the engine reports it,
+  solved from the CONSTRAINT the engine hands over in
+  `RenderSource.contact` (the gap, the distance along the blade, the
+  line) - never from a solution the engine computed, which it cannot. The
   full blade path is never procedurally reconstructed from the scalar
   extension value.
 
@@ -297,7 +300,15 @@ facings; both fighters.
 Coverage is a product over the INDEPENDENT axes: **every source
 realization (all sixteen - a realization already is position x
 handling mode, so handling is not a separate axis) x every target
-height x all three movement modes**, for every attack definition,
+height x all three movement modes x every weapon x a short stature
+range**, for every attack definition. Weapon and stature are real axes,
+not decoration: the weapon decides grip-socket geometry and blade
+length, stature scales the rig and every measured reach, and section 9's
+reach equality has to hold for each combination rather than for a
+representative one. Defensive transitions are additionally sampled at
+several progress points, not only at their endpoints, since coverage is
+now geometric and the mid-travel frames are where a drawn blade and a
+derived line can disagree,
 plus every interruption branch in section 5 (redirect, abandoned
 feint, bind entry, struck, parried and whiffed retiming, movement
 truncation). The resulting guard is not a free axis - it is derived

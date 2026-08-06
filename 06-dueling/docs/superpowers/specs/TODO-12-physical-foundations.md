@@ -207,8 +207,10 @@ playable and merely bad, which is the design's stated intent.
 
 ## 4. Derivations
 
-All in `src/combat/handling.ts`, all reading (weapon facts, attributes,
-handling mode) - never a weapon id, never a side.
+All in `src/combat/handling.ts`, all reading (weapon facts,
+attributes, continuous `engagement`) - never a weapon id, never a
+side, and never the `handlingMode` label, which exists only to select
+data rows and gates.
 
 ### 4.1 Control torque (leverage)
 

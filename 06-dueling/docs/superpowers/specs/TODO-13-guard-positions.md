@@ -248,55 +248,56 @@ One shared function reads the realization's **derived** blade geometry
 (section 3) with the equipped weapon:
 
 ```
-seg = derivedBlade(row, weapon)      // section 3: crossguard -> point,
+seg = derivedBlade(pose, weapon)     // section 3: crossguard -> point,
                                      // each with heightCm and advanceCm
-covered(row, weapon) =              // row: an authored realization
-  row.sideVariant == "centre" ? none :
+covered(pose, weapon) =              // ANY pose: authored or interpolated
   seg.point.advanceCm >= EXTENDED_MIN
-    ? { heights: bands(seg), side: sideOf(row.sideVariant) }
-    : none
+    ? { heights: bands(seg), side: sideOfSegment(seg) }   // none if the
+    : none                                               // blade straddles
 ```
 
-**A transition from an authored row never blanks coverage.** Coverage is computed from an authored ROW's geometry - which
-keeps `sideOf` a simple variant lookup with a defined answer - and a
-fighter in motion is always covered by one of the two rows their
-transition runs between:
+**Coverage reads the blade where the blade actually is.** `covered`
+takes a POSE - authored or interpolated - so a fighter mid-transition
+is covered by the geometry on screen at that instant, never by the row
+they left. Both axes come from the segment: `bands(seg)` for the
+heights it spans, `sideOfSegment(seg)` for which side of the body
+centreline it lies on, and `none` while it straddles.
 
-- **The source row's covered lines persist for the whole transition**,
-  clocks still running. A blade sweeping away from a line still stands
-  in it well enough to deflect until the fighter is committed
-  elsewhere.
-- **The destination row's covered lines begin at completion**, with
-  fresh clocks.
-- **A line covered by BOTH endpoints is continuous** - no gap, no
-  reset, its clock never interrupted.
-- **A transition that starts from MID-MOTION has no source row**
-  (`fromId` is null), so only its destination will cover and the
-  fighter is genuinely open until it arrives. That is the honest
-  price of changing your mind mid-travel: the blade is nowhere in
-  particular, and the model says so rather than inventing a row for
-  it. Reaching a guard and then leaving it is the covered case; two
-  changes of mind in a row is not.
+**This is the one place where "the renderer must conform" would
+otherwise have been impossible to honour**, which is what decides the
+model. A row-based rule keeps the source guard effective for the whole
+travel, so a blade one frame short of a completely different guard
+still parries - an invisible parry, which no bounded IK correction can
+draw. This project's founding rule is that contact is emergent from
+the simulation and presentation follows it; a defence the renderer
+cannot show inverts that rule. Contact itself stays categorical
+(below); only where the guard IS becomes geometric.
 
-Three rules that were fighting each other now all hold:
+What follows:
 
-- *A guard shift keeps covering the old line until arrival* - today's
-  behaviour exactly. The two tests that pin it ("old side covered
-  until arrival", "the OLD line's clock keeps counting") read
-  `f.parry` and the deleted profile constants, so they are REWRITTEN
-  against the `BladeTrack` and the derivation; what must survive
-  verbatim is their assertions, not their code.
-- *The answer deadlines do not move.* The destination covers at
-  completion, as today, so the tuned side-redirect economics survive -
-  including the one documented failure, the rapier disengage that must
-  stay too fast to chase.
-- *A handling switch never blanks the defence.* Its two endpoints are
-  the same family and side variant in different modes, so they are authored to cover
-  the SAME line: the third rule then applies and coverage is
-  continuous, which is what `grip-switching`'s "no scripted
-  vulnerability" rests on. A data test asserts both mode realizations
-  of every family agree on what they cover, so the authoring cannot
-  drift out from under the claim.
+- *A guard shift stops covering the old line when the blade leaves it
+  and covers the new one when it arrives* - both derived instants,
+  neither pinned to the transition's endpoints. The two held-guard
+  assertions that pin today's phase-based behaviour ("old side covered
+  until arrival", "the OLD line's clock keeps counting") are REWRITTEN
+  against geometry: what survives is their intent - a shifting guard
+  is not helpless, and its clock is not naively reset - not their
+  exact instants.
+- *The defensive timings change deliberately and are recalibrated.* A
+  geometric rule generally covers the destination earlier than arrival
+  does, which shortens the effective answer time. Section 9's tempo
+  economics are re-proven over the derived numbers, and the documented
+  side-redirect outcome (today's rapier disengage being too fast to
+  chase) is a target the calibration must still produce - recomputed
+  from the derivation, never asserted by weapon name.
+- *A handling switch never blanks the defence*, and now structurally:
+  its two endpoints are the same family and side variant, so the
+  interpolated blade stays inside that line the whole way. A data test
+  asserts both mode realizations of every family cover the same line,
+  so the authoring cannot drift out from under the claim.
+- *Mid-motion restarts need no special case.* A transition beginning
+  from an interpolated pose is covered by that pose like any other -
+  coverage never depended on having an authored source.
 
 **Each covered line carries its own clock**, because `bands(seg)` is a
 SET and a transition can have two rows covering different lines at
@@ -336,14 +337,15 @@ moving.
 Extended SIDED guards (Ochs, Pflug) cover their band; the centre
 longpoint covers nothing despite being extended (below); and
 withdrawn guards (Vom Tag, Alber) also cover nothing - they are
-attack-loaded (Vom Tag) or an invitation (Alber). For Vom Tag that is an authoring
-outcome of `EXTENDED_MIN` and for the centre Alber it is the formula's
-centre branch - either way a derivation, never a fact about a name - so a third
+attack-loaded (Vom Tag) or an invitation (Alber). For Vom Tag that is an
+authoring outcome of `EXTENDED_MIN` and for the centred Alber it is the
+straddle rule - either way a derivation, never a fact about a name - so a third
 test asserts every withdrawn-slot realization derives `none`. This
 replaces the parry's `coveredLine` snapshot: what a guard covers is
 readable from where the blade IS, for both fighters and the AI alike.
 
-`derivedBlade`, `bands`, `sideOf`, `EXTENDED_MIN` and the band edges
+`derivedBlade`, `bands`, `sideOfSegment`, `EXTENDED_MIN` and the band
+edges
 all live in the one shared coverage module beside `parryMeetsAttack`.
 Every derived location has `advanceCm` (forward of the body centre)
 and `heightCm` (above the floor), computed from the pose's
@@ -359,16 +361,21 @@ and lines scale together, the two validation tests below hold at every
 body rather than only the baseline, and `physical-foundations`'
 promise that attribute variation needs "only inputs" survives. Mixing
 absolute poses with proportional edges would have made which bands a
-Pflug spans depend on the fighter's height in a way nobody authored. Because `sideOf` maps the sword-arm-side variant to `outside`, a cut
-(declared `outside`) is answered by the sword-arm-side guards and a
-thrust (declared `inside`) by the other, for a right-handed fighter.
+Pflug spans depend on the fighter's height in a way nobody authored. Because `sideOfSegment` calls the sword-arm side `outside`, a cut
+(declared `outside`) is answered by guards whose blade lies on that
+side and a thrust (declared `inside`) by the other, for a right-handed
+fighter. Side VARIANTS stay on authored rows for a different job -
+naming the row, driving `exitSide`, selecting realizations - and
+coverage does not read them.
 
-**The centre longpoint covers nothing, by encoding:** the formula's
-centre branch is the guard's identity made explicit. Historically the
+**The centre longpoint covers nothing, by geometry:** its blade lies
+along the centreline, so `sideOfSegment` returns neither side and the
+guard claims no line - its identity falling out of the formula. Historically the
 longpoint is a threat, not a parry - its defense is that the point
 stands in the opponent's way, which in this model is its near-direct
 thrust (section 6), not a coverage claim. A validation test asserts the formula returns `none` for every
-centre-variant realization. Middle-line attacks DO ship in v1 - a
+centre-variant realization, through the straddle rule rather than a
+special case. Middle-line attacks DO ship in v1 - a
 fighter standing in Langort throws one - and they are answered by the
 sided guards whose blades span the middle band, which is what
 `bands(seg)` is for. What no v1 row provides is a centre guard that
@@ -407,6 +414,11 @@ raised action that can be spent:
   displaceRad = DISPLACE_CAL * impactN
               / displacementResistanceN(def, w, engagement)
   ```
+
+  The destination is `{ kind: "derived" }`: the covering pose rotated
+  by `displaceRad`, computed on the deflection tick. Recovery is then
+  an ordinary transition from there back toward whatever the standing
+  levels select.
 
   so a strong two-handed guard is barely moved and a strained
   one-handed guard is thrown wide. The recovery is that transition
@@ -581,26 +593,42 @@ type BladePose = {            // a geometry snapshot, never an id:
 type RenderSource = {
   performance;                // "guard" | "transition" | trajectoryRef
   sampledUnit;                // 0..1 through that performance
-  fromId, toId;               // the performance's endpoints - a
-                              // transition needs both, or two different
-                              // travels would share a RenderSource
-  targetHeight, handlingMode, movement
+  from, to;                   // PoseTarget endpoints - a transition
+                              // needs both, or two different travels
+                              // would share a RenderSource
+  targetHeight, handlingMode, movement,
+  contact?: {                 // SIMULATION facts about a meeting of
+    gapCm,                    //   steel: everything the renderer needs
+    alongBladeCm,             //   to solve its IK, none of it a
+    line                      //   renderer-computed result
+  },
+  blendFrom?: {               // an interruption blends out of what was
+    source: RenderSource,     //   on screen: the pose being left, and
+    startedMs                 //   when the blend began
+  }
 }
 
+type PoseTarget =             // where a motion is going. NOT every
+  | { kind: "row"; id: PositionId }      // destination is authored:
+  | { kind: "derived"; pose: BladePose } // a displaced guard is computed
+
 type BladeTrack = { coveredSince: Map<LineKey, ms> } & (   // ALWAYS present
-  | { kind: "settled";       at: PositionId, pose: BladePose }
-  | { kind: "transitioning"; fromId: PositionId | null,  // null: from
-                             fromPose: BladePose,        //   mid-motion
-                             toId: PositionId, elapsedMs, durationMs }
+  | { kind: "settled";       at: PoseTarget, pose: BladePose }
+  | { kind: "transitioning"; fromPose: BladePose,
+                             to: PoseTarget, elapsedMs, durationMs }
   | { kind: "attacking";     attack: ActiveAttack }   // the attack owns it
   | { kind: "frozen";        pose: BladePose, why: "bind" | "exposed"
                                   | "disarming" | "disarmed" }
 )
 ```
 
-`fromId` is the source ROW whose coverage persists through the
-transition (section 4); it is null only when a transition starts from
-mid-motion, in which case nothing but the destination will cover.
+**`PoseTarget` exists because not every destination is authored.** A
+guard displaced by a deflection (below) lands at a COMPUTED pose, and
+so does a fighter who changed their mind mid-travel; both are ordinary
+destinations, and a track that could only name authored rows could not
+express either. `settled` therefore records what it settled at, which
+may itself be derived - and coverage, reading geometry, never cares
+which kind it is.
 
 **The source of a transition is a POSE, not an id.** Interrupting a
 transition continues from the blade's actual interpolated geometry,
@@ -617,14 +645,26 @@ knowing anything about bones: it is entirely simulation facts, and the
 renderer resolves them back into a full body deterministically. Two
 fighters with the same `RenderSource` are drawn identically, always.
 
-**No renderer-computed value may live here.** An earlier draft stored
-the active bounded corrections, which only the renderer can compute
-from asset limits - that would have made the engine depend on
-presentation, breaking both this spec's own `poseRef` rule and the
-DOM-free engine. Adaptation is a pure function of
-`(performance, sourceGuardId, targetHeight, handlingMode, movement)`,
-so the renderer recomputes it from what is stored here and nothing is
-lost.
+**Everything here is a simulation fact; nothing is a renderer result.**
+The distinction matters most for the two cases that look like
+exceptions:
+
+- *A frozen contact pose is contact-CONFORMED, and the engine cannot
+  compute the conforming.* What the engine owns is the CONSTRAINT -
+  the gap, how far along the blade the meeting happened, and the line
+  it happened on, all of which the contact derivation already knows.
+  `contact` stores that; the renderer solves its bounded IK from it
+  deterministically, and two viewers of the same constraint draw the
+  same blades. The engine never stores the solution.
+- *An interrupted performance blends out of the pose on screen*, so
+  the renderer needs to know which pose that was. `blendFrom` carries
+  the prior `RenderSource` and the tick the blend began - again simulation
+  facts, and enough to reconstruct the blend without the engine ever
+  holding a bone.
+
+The rule the earlier draft broke stands: adaptation magnitudes,
+correction limits and exception-clip selection are the renderer's, are
+pure functions of what is stored here, and never enter engine state.
 
 This is a TRACK beside the body state, never an arm of the exclusive
 state machine - and the reason a guard change, a step and a handling
@@ -667,7 +707,7 @@ mechanism:
 | exit | resolution |
 |---|---|
 | Bind breaks neutral (clock expiry, shove-apart) | Both fighters go `transitioning` with `fromPose` = the frozen pose, `toId` = the guard their held input levels currently select (section 6's sequencing rule, unchanged). |
-| Bind winner takes the advantage thrust | The attack launches with `sourceGuardId` = the frozen pose's provenance and the frozen pose as its launch geometry - `bindTimeline`'s no-windup thrust already starts from contact, and this is why that is physically honest: the point is already there. The track becomes `attacking`. |
+| Bind winner takes the advantage thrust | The attack launches with `launchPose = { kind: "derived", pose: <the frozen contact pose> }` - `bindTimeline`'s no-windup thrust starts from contact precisely because there is no gather to cross, and the derived launch is what states that in the data. The track becomes `attacking`. |
 | Winner declines the thrust / returns to ready | Same as neutral break: `transitioning` from the frozen pose to the level-selected guard. |
 | Exposed fighter recovers | `transitioning` from the frozen pose to the level-selected guard, priced by `transitionMs` like every other exit. The exposure's own duration is a FLOOR the derived travel is taken against (`max` of the two), so being turned out of a bind always costs at least what the bind spec charges, and more when the blade has further to come back. |
 | Disarming resolves (sword taken) | The loser's track goes `frozen` with `why: "disarmed"`, its pose taken from the `kind: "unarmed"` position (section 3 - no weapon, no derived blade, coverage `none` by construction). It is frozen rather than settled because the round is over on that tick: nothing more will move. The winner transitions from their frozen pose like any other exit. |
@@ -750,7 +790,9 @@ interface AttackDefinition {
                          // OPPOSITE of the definition's declared side
                          // (a blade that travelled through a line
                          // finishes past it), mapped back to a variant
-                         // by the inverse of section 4's sideOf. Resolution is total by
+                         // by the inverse of sideOf, the variant
+                         // mapping section 4 keeps for this job.
+                         // Resolution is total by
                          // construction: a sided family takes exitSide,
                          // a centre-only family (alber, longpoint)
                          // resolves to its centre row and ignores it -
@@ -783,7 +825,14 @@ snapshot pattern `AttackTimeline` already uses):
 
 ```
 { definitionId, sourceGuardId, handlingMode, targetLine,
-  launchConfigurationId, terminalConfigurationId, resultingGuardId,
+  launchPose,                             // PoseTarget - usually the
+                                          // definition's launch row, but
+                                          // the bind winner's thrust
+                                          // launches from the FROZEN
+                                          // contact pose, which is
+                                          // derived and is exactly why
+                                          // that thrust has no windup
+  terminalConfigurationId, resultingGuardId,
   movement, movementStartMs, plannedMovementEndMs,
   movementStartX, movementDistanceCm,     // the PLAN, immutable
   movementStoppedAtMs?, movementStoppedX? // the OUTCOME, written once
