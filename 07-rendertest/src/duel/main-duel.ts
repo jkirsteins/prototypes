@@ -61,6 +61,12 @@ export async function runDuel(): Promise<void> {
     tick(duelist, dtMs);
     lastPick = pickPose(duelist, simTimeMs);
     rig.applyPose(lastPick);
+    // The prop follows the right hand, so it has to be taken away by hand
+    // too: the death clip settles the body prone with the sword arm down,
+    // which runs a 1.39 m blade through the floor, and the disarmed idle
+    // would otherwise stand there still holding what it just lost.
+    const armed = duelist.state.kind !== "dead" && duelist.state.kind !== "unarmed";
+    rig.setSwordVisible(armed);
     rig.root.position.x = duelist.x * CM_TO_M;
     rig.root.rotation.y = (duelist.facing * Math.PI) / 2;
     const bind = duelist.state.kind === "bind";
@@ -86,6 +92,10 @@ export async function runDuel(): Promise<void> {
   Object.assign(window, {
     __duel: {
       duelist,
+      // The fighter's scene root, as the walk demo exposes `__character`:
+      // it lets a driver read a foot bone's world x to measure planted-foot
+      // drift during the unpaused scrubbed states.
+      rigRoot: rig.root,
       pick: () => lastPick,
       sample: () => rig.sample(),
       timeline: () => (duelist.state.kind === "attack" ? duelist.state.timeline : null),
