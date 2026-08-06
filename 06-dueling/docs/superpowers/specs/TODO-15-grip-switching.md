@@ -106,6 +106,14 @@ Its rules, stated once:
   having been read at the actual mid-switch engagement. Nothing
   rewinds, nothing snaps the hands somewhere they were not.
 
+Because the track is concurrent, the renderer must draw the
+combination: `skeletal-renderer` section 6 owns it - deterministic
+hand/arm/torso interpolation plus IK for the switch, layered over
+continuing lower-body locomotion, with full-body exception clips only
+where that layering fails review. The switch is never drawn by
+fragmenting an attack performance, which the mutual exclusion above
+makes structurally impossible anyway.
+
 The switch interpolates the WHOLE realization - primary hand, weapon
 orientation, secondary hand joining or leaving its socket, torso pose -
 between the same guard family's two mode realizations. **The guard

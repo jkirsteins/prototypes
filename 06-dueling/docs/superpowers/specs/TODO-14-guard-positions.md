@@ -42,10 +42,10 @@ not availability.
 **Delivers:** guard data model and JSON file, coverage derivation,
 transition derivation (replacing six authored timing fields), attack
 definitions as data with addressable terminal configurations and
-data-resolved resulting guards, moving attacks as snapshotted combined
-actions, parry as
-event, attacks as transitions, repurposed inputs, AI guard play, help
-rewrite, the suitability matrix test, re-proven tempo economics.
+data-resolved resulting guards, the fighter's blade track, moving
+attacks as snapshotted combined actions, parry as event, attacks as
+transitions, repurposed inputs, AI guard play, help rewrite, the
+suitability matrix test, re-proven tempo economics.
 
 **Depends on:** `physical-foundations` (attributes, handling modes,
 control torque, inertia, strain), `skeletal-renderer` (playtesting
@@ -302,6 +302,28 @@ R<->L arc. Interrupting a transition re-derives from the blade's
 interpolated current position - leaving from wherever you actually are,
 never a table lookup.
 
+**Where the guard lives - the fighter's blade track.** The fighter
+carries its blade position explicitly, so that every consumer (engine,
+AI, renderer, `grip-switching`) reads one field rather than inferring
+posture from the body state:
+
+```
+guardPositionId;      // PositionId: where the blade IS when at rest
+guardTransition;      // nullable { fromId, toId, elapsedMs, durationMs }
+guardSettledMs;       // effective time since the last completion
+```
+
+This is a TRACK beside the body state, never an arm of the exclusive
+state machine - the same shape `grip-switching`'s `handlingTransition`
+takes, and the reason a guard change, a step and a handling switch can
+be reasoned about independently. The blade's interpolated current
+position derives from (`fromId`, `toId`, progress); coverage (section
+4) reads it; interrupting a transition re-derives from that
+interpolated position. During an attack the track is owned by the
+attack - its launch, terminal and resulting positions drive it - and
+`guardPositionId` becomes the resulting guard when the attack releases
+the track at `combinedEnd`.
+
 Defensive flow: pressing toward a new slot starts the transition
 (press-to-move and release semantics preserved from `held-guard`'s
 latch); if the covering guard forms before the blade arrives, the
@@ -371,9 +393,15 @@ derived transition FROM that position.
 
 **The active attack snapshots its resolution at launch** (the same
 snapshot pattern `AttackTimeline` already uses): `{definitionId,
-sourceGuardId, targetLine, terminalConfigurationId, resultingGuardId,
-movement, movementStartMs, movementEndMs, movementStartX,
-movementDistanceCm}`, resolved once, never re-derived mid-flight -
+sourceGuardId, handlingMode, targetLine, terminalConfigurationId,
+resultingGuardId, movement, movementStartMs, movementEndMs,
+movementStartX, movementDistanceCm}`, resolved once, never re-derived
+mid-flight. `handlingMode` is snapshotted at launch like everything
+else - the performance was thrown by the hands that held the sword
+then, and the renderer selects its clip by
+`trajectoryRef + handlingMode + movement` (`skeletal-renderer`
+section 4) without the engine ever storing a visual asset id.
+Continuing:
 `resultingGuardId` is the resolution of the CHOSEN result variant,
 which in v1 is always `default`. The extension point is therefore
 already in the data, not in prose: a future selectable exit is a
@@ -512,6 +540,15 @@ Timeline marks (`riseStart`, `riseEnd`, `strikeStart`,
 `parryableUntil`, `strikeEnd`) keep their meanings; only their values
 become derived. Every presentation-follows-simulation rule and the
 engine test block pinning it carry over unchanged.
+
+**Deriving these durations separately is not an instruction to
+assemble the visuals from fragments.** The engine computes windup,
+strike and recovery as distinct intervals because they are distinct
+physical facts; the renderer expresses them as semantic REGIONS of
+one continuous authored performance whose markers are warped onto
+these marks (`skeletal-renderer` section 3). No part of this spec may
+be read as requiring a guard-transition clip, a strike clip and a
+recovery clip to be played back to back.
 
 ## 7. AI
 
