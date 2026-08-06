@@ -352,11 +352,13 @@ coverage is lost.
 
 **`covered()` is stateless, and stays that way.** No hysteresis: what
 it returns is a pure function of the pose handed to it, so the same
-pose always yields the same lines. What is PUBLISHED to `coveredSince`
-is separately gated by phase (a strike publishes nothing) and by
-`formationMs`; the function never guesses, and the gates are stated where the map is
-maintained rather than hidden inside the function - restated
-elsewhere for the reader, but normative there.
+pose always yields the same lines. Two gates sit outside it, both stated
+where the map is maintained rather than hidden inside the function:
+what PUBLISHES an entry is the phase (committed steel publishes
+nothing - below), and what lets a line ANSWER is `formationMs`,
+carried inside the entry from the moment it is created. A line is
+covered as soon as the blade covers it; it turns steel only once it
+has been braced there.
 
 Clock churn at a boundary is prevented at the source instead. A data
 test asserts **no authored row sits near any of the three thresholds
@@ -396,13 +398,26 @@ contact's own `progress` instead.
 
 **The lifecycle, for every variant.** Every variant maintains entries
 by the one coverage rule above - the current pose, every tick - with
-exactly one interval excepted: **a STRIKE publishes no entries.** The
-map is cleared at `strikeStart` and repopulated from `recoveryStart`
-with fresh clocks - carrying the sub-tick remainder like every other
-clock start, since `recoveryStart` generally falls mid-tick - so a recovery must outlast `formationMs` before it
-answers anything, exactly like any other arrival. That single
-exception is what makes the parry and crossing tests disjoint (below);
-everywhere else, including a windup, the pose speaks for itself.
+one exception: **committed steel publishes no entries.** That is two
+cases which are physically the same case, a blade that is attacking or
+locked being no guard at all:
+
+- **A strike.** The map is cleared at `strikeStart` and repopulated
+  from `recoveryStart` with fresh clocks, carrying the sub-tick
+  remainder like every other clock start since `recoveryStart`
+  generally falls mid-tick. A recovery must then outlast its
+  `formationMs` before it answers anything, exactly like any other
+  arrival.
+- **A `frozen` track** - bind, exposed, disarming, disarmed. Their
+  pose is a delivered strike pose, extended and sided, so `covered()`
+  would happily return a line for it; publishing that line would let a
+  bind's LOSER deflect the winner's advantage thrust, which the bind's
+  own honesty invariant guarantees cannot be answered. A fighter whose
+  blade is locked or beaten is not defending with it.
+
+That exception is what makes the parry and crossing tests disjoint
+(below); everywhere else, including a windup, the pose speaks for
+itself.
 
 **An attacking fighter is not declared uncovered; but a blade in a
 STRIKE is not a guard either.** The three phases differ physically and
@@ -442,12 +457,10 @@ assuming the old one survives.
 
 A void keeps its covering pose for the same reason - see below. At
 `combinedEnd` the track returns to `settled` at the resulting guard.
-`frozen` holds whatever the contact tick left, which is not a third
-rule: its pose is static, so the entries following that pose are
-static too. At a bind entry those entries are in fact EMPTY on both
-sides, since a bind is reached only from two strikes - and that is
-harmless, because the bind reads its contact's `progress`, never a
-formation clock.
+`frozen` publishes nothing at all (below), so its map stays as the
+contact tick left it - empty, since a bind is reached only from two
+strikes and a strike publishes nothing either. That is harmless: the
+bind reads its contact's `progress`, never a formation clock.
 
 Extended SIDED guards (Ochs, Pflug) cover their band; the centre
 longpoint covers nothing despite being extended (below); and
@@ -643,7 +656,7 @@ that turns a dimensionless coordinate into an angle the profile can
 price) are calibration constants of the section 9 tuning, and they live here
 because this is the spec that first needs them - `grip-switching`
 reads them rather than declaring its own. `FORMATION_FRACTION` and
-`MIN_FORMATION_MS` (section 4) join them;
+`MIN_FORMATION_MS` (below) join them;
 `strainFactor` is `physical-foundations`' strain effect (1.0 at zero
 strain).
 
@@ -786,7 +799,7 @@ type PoseTarget =             // where a motion is going. NOT every
   | { kind: "row"; id: PositionId }      // destination is authored:
   | { kind: "derived"; pose: BladePose } // a displaced guard is computed
 
-type BladeTrack = { coveredSince: Map<LineKey, ms> } & (   // ALWAYS present
+type BladeTrack = { coveredSince: Map<LineKey, Coverage> } & ( // ALWAYS
   | { kind: "settled";       at: PoseTarget, pose: BladePose }
   | { kind: "transitioning"; fromPose: BladePose,
                              to: PoseTarget, elapsedMs, durationMs }
@@ -959,7 +972,7 @@ The two tests are therefore disjoint by construction, the engine's
 existing check order is unchanged, and a contact still produces
 exactly one event and one sound.
 
-The displaced pose (section 5) applies to a fighter whose track is
+The displaced pose (section 4) applies to a fighter whose track is
 `settled` or `transitioning` in the ordinary way. A fighter met during
 a WINDUP or a RECOVERY is on an `attacking` track, which the attack
 owns, so the displacement does not move them to a new track: it
@@ -1117,7 +1130,7 @@ poses from the moment they start.
 **The MOVEMENT plan is immutable; the blade plan has exactly two legal
 writers.** The second is a DISPLACEMENT: steel meeting a covering
 blade during a windup or a recovery rewrites that phase's destination
-(`launchPose` or `resultingGuard`) to the derived displaced pose, and
+(`launchPose` or `resultingGuard`) to the section 4 displaced pose, and
 the phase is REPRICED from the blade's current interpolated position
 exactly as a redirect is - no authored geometry moves for free,
 whoever caused the move. A rewritten `launchPose` also rebases the
