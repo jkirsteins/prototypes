@@ -176,8 +176,8 @@ type WeaponCore = BodyCore & {  // + what only an armed position has
 
 type PositionDefinition =
   | WeaponCore & { kind: "guard";  ... }  // + the realization fields below
-  | WeaponCore & { kind: "launch" }       // geometry only
-  | WeaponCore & { kind: "terminal" }     // geometry only
+  | WeaponCore & { kind: "launch";   handlingMode }   // + the grip the
+  | WeaponCore & { kind: "terminal"; handlingMode }   //   map keys by
   | BodyCore   & { kind: "unarmed" }      // NO weapon fields at all:
                                           //   nothing derives a blade,
                                           //   coverage is none by
@@ -349,11 +349,12 @@ linear interpolation across the tick that crossed it - the same
 precision today's scheduled arrival gets), and is deleted the tick
 coverage is lost.
 
-**Coverage is stateless, and stays that way.** No hysteresis: what
-`covered()` returns is a pure function of the pose handed to it, so
-two fighters in the same posture always cover the same lines however
-they got there. (The `coveredSince` MAP is history - that is its job -
-but what it records is never in question.)
+**`covered()` is stateless, and stays that way.** No hysteresis: what
+it returns is a pure function of the pose handed to it, so the same
+pose always yields the same lines. What is PUBLISHED to `coveredSince`
+is separately gated by phase (a strike publishes nothing) and by
+`formationMs`; the function never guesses, and the gate is stated in
+one place rather than hidden inside it.
 
 Clock churn at a boundary is prevented at the source instead. A data
 test asserts **no authored row sits near any of the three thresholds
@@ -389,9 +390,14 @@ which is exactly why today's reset carries the remainder rather than
 clearing to zero, and the overshoot semantics carry over intact. `parryMeetsAttack`
 and `firmness()` both read the entry for the line actually contacted.
 
-**The lifecycle, for every variant.** EVERY variant maintains entries
-by the one coverage rule above - the current pose, every tick - and
-`attacking` is not an exception.
+**The lifecycle, for every variant.** Every variant maintains entries
+by the one coverage rule above - the current pose, every tick - with
+exactly one interval excepted: **a STRIKE publishes no entries.** The
+map is cleared at `strikeStart` and repopulated from `recoveryStart`
+with fresh clocks, so a recovery must outlast `formationMs` before it
+answers anything, exactly like any other arrival. That single
+exception is what makes the parry and crossing tests disjoint (below);
+everywhere else, including a windup, the pose speaks for itself.
 
 **An attacking fighter is not declared uncovered; but a blade in a
 STRIKE is not a guard either.** The three phases differ physically and
@@ -532,16 +538,16 @@ raised action that can be spent:
 - `fighter.ts`'s refusal to parry while recovering disappears with it:
   there is no parry to refuse. What limits a defender is where the
   blade physically is and how long the derived travel takes.
-- `engine.ts`'s `f.parry = null` on attack acceptance ("no guard is up
-  mid-attack") goes the same way as the `dropGuard` calls below: it
-  encodes the very assumption this spec reverses, and its successor is
-  the phase rule of section 4 - a strike offers no guard, a windup or
-  recovery offers whatever its pose covers.
+- `engine.ts`'s `f.parry = null` at BIND ENTRY ("no guard is up
+  mid-attack") needs no successor and keeps its meaning: a bind is
+  entered by two blades mid-strike, and a strike offers no guard under
+  section 4's phase rule, so the line it cleared was already empty.
 - `fighter.ts`'s `dropGuard` on cut and thrust has NO successor, and
   that is a deliberate change: it existed because a parry was a mode
   an attack could not carry, and a position is not a mode. An
-  attacking fighter now covers whatever their blade covers, gated by
-  the settle clock like everyone else (section 4).
+  attacking fighter now covers whatever their blade covers during a
+  windup or a recovery, gated by `formationMs` like everyone else,
+  and covers nothing during the strike itself (section 4).
 - `engine.ts` dropping the STRUCK defender's guard has no successor
   and needs none: the same tick ends the round, and the engine's own
   comment says the charge is moot under hitstun. The struck fighter's
@@ -653,9 +659,22 @@ here and only here, and it prices the MOTION - it is not a coverage
 gate by itself. Formedness is section 4's rule: a line's clock starts
 the tick the interpolated blade begins covering it - generally BEFORE
 the motion finishes - and the line ANSWERS once that clock exceeds
-`formationMs`, this transition's settle portion. `SETTLE_MS` prices
-the settling of the hands; `formationMs` is what a defence must
-outlast, and it is the successor to today's `rising` phase. Because the lower body is one
+`formationMs`.
+
+`formationMs` is a derived fraction of the travel that brought the
+blade there - `FORMATION_FRACTION * transitionMs(from, to, ...)`, so a
+long sweep needs longer bracing than a short firming and neither is
+authored. It is the successor to today's `rising` phase, and it is not
+`SETTLE_MS`: that constant is part of the transition's DURATION, the
+hands coming to rest, while `formationMs` is the interval a covered
+line must outlast before it will turn steel. `FORMATION_FRACTION`
+joins the section 9 calibration constants.
+
+The combined predicate `parryMeetsAttack` evaluates is therefore
+`coveredSince[line] - overshoot >= formationMs`, where `overshoot` is
+the attacker's excess past `parryableUntil` exactly as today - the
+same shape as the shipped `p.settledMs < overshoot` check, with a
+derived requirement in place of a phase label. Because the lower body is one
 shared configuration, transitions move the upper body only; when the
 stance extension separates the lower body, foot, hip and weight travel
 join this same derivation rather than being a free visual.
@@ -924,11 +943,19 @@ The two tests are therefore disjoint by construction, the engine's
 existing check order is unchanged, and a contact still produces
 exactly one event and one sound.
 
-The displaced pose (section 5) consequently applies where it always
-did - to a fighter whose track is `settled` or `transitioning`, which
-now includes one in a windup or a recovery. A fighter mid-strike is
-never displaced by a parry, because a parry cannot meet them; two
-crossing blades resolve through the bind rules, unchanged.
+The displaced pose (section 5) applies to a fighter whose track is
+`settled` or `transitioning` in the ordinary way. A fighter met during
+a WINDUP or a RECOVERY is on an `attacking` track, which the attack
+owns, so the displacement does not move them to a new track: it
+rewrites that phase's DESTINATION in the snapshot to the derived
+displaced pose - the launch pose during a windup, the resulting guard
+during a recovery - and the same interpolation carries them there. One
+writer of blade geometry still, and the knock-off-line is visible in
+the phase it happened in.
+
+A fighter mid-strike is never displaced by a parry, because a parry
+cannot meet them; two crossing blades resolve through the bind rules,
+unchanged, and a crossing that does not lock already deflects both.
 
 ## 6. Attacks as transitions
 
@@ -979,8 +1006,9 @@ interface AttackDefinition {
                          // its clips this way
   trajectoryRef;         // the authored animation the renderer plays
   trajectoryCurve;       // the SAME motion as engine data: normalized
-                         // samples of primaryHandCm, lateral,
-                         // weaponAngleDeg and torsoProfileDeg against
+                         // samples of all five pose coordinates -
+                         // primaryHandCm, lateral, secondaryHandCm,
+                         // weaponAngleDeg, torsoProfileDeg - against
                          // strike progress, each a fraction of its own
                          // launch-to-terminal span so one curve serves
                          // every height and both grips. Hand-authored
@@ -1363,9 +1391,10 @@ emulation as its only privilege:
 ## 8. Help
 
 The "?" panel is rewritten around guards, and it must state the rule
-that changed most: **your blade defends you wherever it is, including
-while you attack and while you void** - a recovery that arrives in a
-guard is a guard, and a blade sweeping past a line is not. That is the
+that changed most: **your blade defends you wherever it is - while you
+gather, while you recover, while you void - but not while you strike,
+because committed steel is an attack, not a guard.** A recovery that
+arrives in a guard is a guard; a blade sweeping past a line is not. That is the
 acceptance rule players will feel first, so it lands in the same
 change. `HELP` becomes a typed Record
 over the realization/state unions (a missing entry fails the build),

@@ -167,6 +167,7 @@ never from a canned entry pose.
 | Bind entry | The engine freezes the pose and its contact CONSTRAINT (`RenderSource.contact`); the renderer re-solves the conforming IK from that constraint every frame, so the bind, exposed, disarming and disarmed states all draw from real geometry after the attack is gone - without the engine ever storing a pose the renderer computed. |
 | Struck | Blend from the actual interrupted pose into hitstun or death; the blend is deterministic and bounded like every other correction. |
 | Parried / whiffed recovery | The recovery region is RETIMED within the asset's declared speed range (`parriedPenalty` lengthens it, `whiffRecoveryFactor` multiplies it); out-of-range cases follow section 3's exception-clip rule. |
+| Deflected windup or recovery | The blade is knocked off line: `guard-positions` rewrites that phase's destination to the displaced pose, so the SAME interpolation carries it there and the renderer simply keeps drawing the phase. No new clip, no special case - the knock is visible because the destination moved. |
 | Movement truncation | The feet stabilize deterministically between `movementStopped` and the engine's derived plant tick - no teleport, no slide, and the plant is visually on the ground when the footfall sounds. |
 
 Every rule here is deterministic and history-independent: the same
