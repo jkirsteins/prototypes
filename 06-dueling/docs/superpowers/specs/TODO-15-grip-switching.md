@@ -83,6 +83,29 @@ engagement, so completed one-handed and two-handed modes are exactly
 its 0 and 1 endpoints. "Met weakly mid-switch" below means this
 number, nothing scripted.
 
+**Where the switch lives - an explicit concurrent track.** The switch
+is a nullable `handlingTransition` field on the fighter (`{from, to,
+elapsedMs, durationMs}`, engagement derived from progress), beside the
+body state - the same shape as the guard-transition track, NEVER a new
+arm of the exclusive state machine. That is what makes "step while
+switching" structurally possible instead of accidentally forbidden.
+Its rules, stated once:
+
+- **May start** while ready or stepping. Refused during attacks,
+  feints, guard transitions, voids, binds, hitstun, and the
+  disarm/exposed/dead states - and refused while one is already
+  running.
+- **While it runs**, attacks, feints and guard changes are refused
+  (one blade, one plan - the mirror of the rule above, so a combined
+  attack and a switch can never overlap from either side); steps and
+  voids may start and continue freely - the hands, not the feet, are
+  busy.
+- **Interruption resolves to the nearer endpoint**: being struck, or
+  entering a bind, clears the transition and sets the mode by the
+  engagement threshold (>= 0.5 -> two-handed), the contact itself
+  having been read at the actual mid-switch engagement. Nothing
+  rewinds, nothing snaps the hands somewhere they were not.
+
 The switch interpolates the WHOLE realization - primary hand, weapon
 orientation, secondary hand joining or leaving its socket, torso pose -
 between the same guard family's two mode realizations. **The guard

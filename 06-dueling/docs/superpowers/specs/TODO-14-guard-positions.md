@@ -336,17 +336,25 @@ interface AttackDefinition {
     preferred;           // GuardSelector[]: where the launch is cheapest -
                          // any guard still transitions into the launch
                          // config at derived cost (guard-priced, never
-                         // guard-gated)
+                         // guard-gated). A GuardSelector names a family,
+                         // a specific guard, or ANY PositionId - terminal
+                         // configurations included, which is how a future
+                         // continuation attack exists as pure data
     required?;           // GuardSelector[]: a future technique MAY gate
                          // itself; v1 rows never set this
   };
   launchConfiguration;   // PositionId
   trajectoryRef;         // the strike path: renderer cue + authored strike timing
   terminalConfiguration; // PositionId - the delivered contact pose, ADDRESSABLE
-  defaultResultingGuard; // a COMPLETE specific position, side resolved by rule
-                         // (attackExitSide / oppositeSourceSide): a crossing
-                         // cut from Right Vom Tag exits left and resolves to
-                         // Left Pflug, side included, never a bare family
+  resultVariants: {      // named exits; "default" is required on every row
+    default;             // GuardDestination: a COMPLETE specific position,
+                         // side resolved by rule (attackExitSide /
+                         // oppositeSourceSide): a crossing cut from Right
+                         // Vom Tag exits left and resolves to Left Pflug,
+                         // side included, never a bare family
+    ...variants?;        // future exits, selected by an input at launch;
+                         // v1 rows author only "default"
+  };
   allowedMovements;      // AttackMovement[]: v1 rows allow all three
   movementTiming: {
     startMark;           // AttackMark: when the feet begin (e.g. late windup)
@@ -365,12 +373,27 @@ derived transition FROM that position.
 snapshot pattern `AttackTimeline` already uses): `{definitionId,
 sourceGuardId, targetLine, terminalConfigurationId, resultingGuardId,
 movement, movementStartMs, movementEndMs, movementStartX,
-movementDistanceCm}`, resolved once, never re-derived mid-flight.
-v1's recovery follows `terminal -> defaultResultingGuard`
-automatically; later, an input can select a different resulting guard,
-a result variant, or another attack launched directly from the
-terminal configuration - data rows and one binding, not new
-architecture. No continuations system ships now.
+movementDistanceCm}`, resolved once, never re-derived mid-flight -
+`resultingGuardId` is the resolution of the CHOSEN result variant,
+which in v1 is always `default`. The extension point is therefore
+already in the data, not in prose: a future selectable exit is a
+named entry in `resultVariants` plus the input that picks it at
+launch, and a future continuation is an `AttackDefinition` whose
+`sourcePolicy` names a terminal `PositionId`. Neither requires a
+model change. No continuations system ships now.
+
+**Resulting guards and the held levels sequence; neither wins.** The
+input levels (guard button, height stop, side) are standing TARGETS,
+never teleports - and the resulting guard is where the body PHYSICALLY
+arrives at recovery's end, so the two can disagree: a released-guard
+fighter's cut can legitimately end in extended Left Pflug. The rule:
+the attack always arrives in its snapshotted resulting guard; on the
+first tick after `combinedEnd`, if the standing levels select a
+different slot, an ordinary derived transition toward it begins,
+priced like any other. A player whose held levels match the result
+stays put; one whose levels disagree pays the travel they are asking
+for. The result is never overridden mid-attack, and the levels are
+never cleared by the attack.
 
 ### Moving attacks: one action, two schedules
 
@@ -384,10 +407,27 @@ because the gap shrinks under it, and finishes closer; a retreating
 one may finish outside the answer. Contact always reads the current
 tick's gap - no special case anywhere in `contact.ts`.
 
+**The attack input is compound.** The engine stops receiving a bare
+attack intent: player input layer and AI policy alike produce an
+
+```
+AttackRequest { definitionId, targetLine, movement }
+```
+
+and the engine accepts the request object whole - the Intent plumbing
+change is part of this spec, because today main.ts hands the engine
+one string per tick and gives a pending attack priority over the held
+direction, which would silently discard the movement. The player's
+`movement` is read from the directions held on the tick the attack key
+is PRESSED: advance held -> advance, retreat held -> retreat, neither
+-> stationary, and **both held -> stationary** (they cancel;
+deterministic, side-symmetric). A buffered attack buffers its whole
+request and fires it verbatim - the movement was chosen at the press,
+not at the buffer's release.
+
 The body follows a fixed schedule, not a second action track:
 
-- Movement is selected at launch (direction held when the attack key
-  is pressed), snapshotted with the attack, and cannot change during
+- Movement is snapshotted with the attack and cannot change during
   it. Direction inputs during the combined action are ignored; feints
   and redirects change the blade's plan, never the movement plan.
 - The movement curve runs between the definition's `movementTiming`
@@ -399,16 +439,36 @@ The body follows a fixed schedule, not a second action track:
   milliseconds before a longsword cut arrives, which is exactly the
   wrongness this timing exists to prevent. Advance and retreat share
   the timing and reverse the displacement.
-- Displacement magnitude and the recovery constant come from the
-  weapon's existing step numbers; the engine owns the root position at
-  every tick (the renderer's clips are in-place, `skeletal-renderer`).
+- **The root math, exactly.** `AttackMark` is the timeline-mark union:
+  `"riseStart" | "riseEnd" | "strikeStart" | "parryableUntil" |
+  "strikeEnd"`. The marks resolve against the attack's snapshotted
+  `AttackTimeline`; a data test validates that `startMark` resolves
+  strictly before `landMark` and the window is positive for every
+  shipping definition x weapon. Default rows: `startMark: "riseEnd"`,
+  `landMark: "parryableUntil"`. The window's duration IS
+  `landMs - startMs` - `stepDuration` prices ordinary steps only and
+  is not consulted; `stepDistance` supplies the displacement magnitude
+  (negated for retreat) and `stepRecoveryMs` still applies after
+  `movementEnd`. The root interpolates as
+  `x(t) = movementStartX + movementDistanceCm * STEP_EASING(u)` with
+  `u` the window fraction and `STEP_EASING` THE SAME shared easing the
+  ordinary step uses (currently linear), so ordinary and combined
+  movement can never drift apart - the live gap, and therefore the
+  contact tick, follows from this formula and nothing else.
+- **Steel truncates movement.** On the tick the strike resolves
+  against steel (parried, bind entry) or the fighter is struck, the
+  movement schedule ends at the current interpolated root - remaining
+  displacement is cancelled and recovery (or the bind, or hitstun)
+  happens where the fighter stands - nothing rewinds. Only a whiff
+  carries the feet through the full window: you committed through
+  empty air. The footfall `step` event fires on the ACTUAL
+  movement-completion tick, scheduled or truncated, even if the blade
+  is still in recovery - presentation follows the simulation, and the
+  foot planting IS a simulation moment.
+- The engine owns the root position at every tick (the renderer's
+  clips are in-place, `skeletal-renderer`).
 - An attack pressed during an ordinary active step stays BUFFERED,
   exactly as today - the combined action exists only from launch.
-- Being struck stops the combined action where the fighter stands:
-  hitstun/death take over at the current root, nothing rewinds.
-- The footfall `step` event fires when the movement completes, even if
-  the blade is still in recovery - presentation follows the
-  simulation, and the foot planting IS a simulation moment.
 - The whole action commits until BOTH schedules finish:
   `combinedEnd = max(attackRecoveryEnd, movementEnd + stepRecoveryMs)`.
 
