@@ -106,14 +106,20 @@ it (`physical-foundations` 4.1), so there is no second quantity to
 keep in step:
 
 ```
-secondaryHandEngagement = lerp(fromEngagement, toEngagement, progress)
+secondaryHandEngagement = lerp(fromEngagement, toEngagement, eased)
   where engagement(twoHanded) = 1, engagement(oneHanded) = 0
-        progress = elapsedMs / durationMs
+        eased = the transition's OWN eased progress - the same curve
+                that moves secondaryHandCm (guard-positions section 5)
 ```
 
 so two-handed -> one-handed DECREASES from 1 to 0 and the reverse
 increases - the direction is in the endpoints, never in an assumption
-about which way a switch runs. The shared control-torque derivation
+about which way a switch runs. **The easing must be the same one the
+pose uses**, because `engagement` is the off-hand's seatedness and
+`secondaryHandCm` is where that hand is: two curves for one physical
+fact would give the engine the couple of one seatedness while the
+renderer drew another, and an interruption would freeze them at
+different ones. The shared control-torque derivation
 takes this number directly and `handSeparationM` reads the weapon
 alone, so BOTH directions scale: an inbound switch gains leverage as
 the hand seats, an outbound one loses it as the hand leaves. "Met
