@@ -68,54 +68,90 @@ the weapon's grip socket when `"onSocket"`), `primaryHandCm`,
 `guard-positions` for exactly this reason:
 
 ```
-switchMs(f, w, family) =                      // from -> to realization
-  max( profileTime(|d secondaryHandCm|, HAND_ACCEL, handSpeed/strain),
-       profileTime(|d primaryHandCm|,   HAND_ACCEL, handSpeed/strain),
-       profileTime(|d weaponAngleDeg|,  alpha,      omegaCap),
-       profileTime(|d torsoProfileDeg|, TORSO_ACCEL, torsoOmegaCap) )
-  + SETTLE
+switchMs(f, w, family) =                    // from -> to realization
+  max( profileMs(|d secondaryHandCm| / 100, HAND_ACCEL / s,  handSpeedMps / s),
+       profileMs(|d primaryHandCm|   / 100, HAND_ACCEL / s,  handSpeedMps / s),
+       profileMs(rad(|d weaponAngleDeg|),   alpha / s,       omegaCap / s),
+       profileMs(rad(|d torsoProfileDeg|),  TORSO_ACCEL / s, torsoOmegaCap / s) )
+  + SETTLE_MS                               // s = strainFactor(f)
 ```
 
-`profileTime`, `alpha` and `omegaCap` are `guard-positions`' shared
-motion profile, unchanged - the slowest-moving part sets the tempo.
-Within one family the realizations are close and the off-hand's
-travel usually dominates; the formula, not that assumption, is
-normative. `TORSO_ACCEL` and `torsoOmegaCap` are calibration
-constants of this spec's tuning.
+Strain scales BOTH terms of ALL FOUR profiles - a strained fighter's
+switch is slower whichever part of the body is setting its tempo. An
+earlier draft left the torso terms unscaled, which would have made a
+torso-dominated switch strain-invariant.
 
-Mid-switch control is defined, not improvised: a
-`secondaryHandEngagement` in [0,1] follows the off-hand's travel
-fraction, and the shared control-torque derivation
-(`physical-foundations` 4.1) accepts it - the couple term scales by
-engagement, so completed one-handed and two-handed modes are exactly
-its 0 and 1 endpoints. "Met weakly mid-switch" below means this
-number, nothing scripted.
+`profileMs`, `alpha` and `omegaCap` are `guard-positions`' shared
+motion profile, unchanged, and `SETTLE_MS` is the same shared constant
+that spec's transitions use - the switch settles like any other blade
+motion, and there is exactly one settle constant in the model.
+**Units are explicit at every call**: `profileMs` returns
+milliseconds (`profileSec * 1000`), so adding `SETTLE_MS` is
+dimensionally sound; hand travels are authored in cm and divided to
+metres; angles are authored in degrees and converted by `rad()`,
+because the angular profile's `alpha` is rad/s^2 and its cap rad/s.
+`strainFactor` is `physical-foundations`' effect function (>= 1,
+exactly 1 at zero strain) - never the raw strain accumulator, which
+is identically zero at baseline. The slowest-moving part sets the
+tempo; within one family the realizations are close and the off-hand's
+travel usually dominates, but the formula, not that assumption, is
+normative. `TORSO_ACCEL` and `torsoOmegaCap` are calibration constants
+of this spec's tuning.
+
+Mid-switch control is defined, not improvised. `engagement` is the
+fighter's physical truth and `handlingMode` only a label derived from
+it (`physical-foundations` 4.1), so there is no second quantity to
+keep in step:
+
+```
+secondaryHandEngagement = lerp(fromEngagement, toEngagement, progress)
+  where engagement(twoHanded) = 1, engagement(oneHanded) = 0
+        progress = elapsedMs / durationMs
+```
+
+so two-handed -> one-handed DECREASES from 1 to 0 and the reverse
+increases - the direction is in the endpoints, never in an assumption
+about which way a switch runs. The shared control-torque derivation
+takes this number directly and `handSeparationM` reads the weapon
+alone, so BOTH directions scale: an inbound switch gains leverage as
+the hand seats, an outbound one loses it as the hand leaves. "Met
+weakly mid-switch" below means this number, nothing scripted.
 
 **Where the switch lives - an explicit concurrent track.** The switch
 is a nullable `handlingTransition` field on the fighter (`{from, to,
-elapsedMs, durationMs}`, engagement derived from progress), beside the
-body state - the same shape as the guard-transition track, NEVER a new
-arm of the exclusive state machine. That is what makes "step while
-switching" structurally possible instead of accidentally forbidden.
+elapsedMs, durationMs}`, engagement lerped from progress as above),
+beside the body state - a track like `guard-positions`' `BladeTrack`,
+NEVER a new arm of the exclusive state machine. That is what makes
+"step while switching" structurally possible instead of accidentally
+forbidden.
 Its rules, stated once:
 
-- **May start** while ready or stepping. Refused during attacks,
-  feints, guard transitions, voids, binds, hitstun, and the
+- **May start** while ready, stepping, or voiding. Refused during
+  attacks, feints, guard transitions, binds, hitstun, and the
   disarm/exposed/dead states - and refused while one is already
-  running.
+  running. The footwork states are symmetric on purpose: if a void may
+  continue through a switch, it may also begin during one, because
+  the hands and the feet are genuinely independent and the rule
+  should not depend on which started first.
 - **While it runs**, attacks, feints and guard changes are refused
   (one blade, one plan - the mirror of the rule above, so a combined
   attack and a switch can never overlap from either side); steps and
   voids may start and continue freely - the hands, not the feet, are
   busy.
-- **Interruption resolves to the nearer endpoint**: being struck, or
-  entering a bind, clears the transition and sets the mode by the
-  engagement threshold (>= 0.5 -> two-handed), the contact itself
-  having been read at the actual mid-switch engagement. Nothing
-  rewinds, nothing snaps the hands somewhere they were not.
+- **Interruption freezes the engagement it had.** Being struck or
+  entering a bind clears the transition but does NOT snap the mode to
+  an endpoint: the fighter keeps the engagement the switch had
+  reached, stored beside the frozen pose - and since every derivation
+  reads engagement rather than the mode label (control torque, reach,
+  the bind quantities), there is nothing left that can disagree with
+  the geometry. A hand caught halfway onto the hilt is halfway onto
+  the hilt, and the engine sees the value the renderer draws.
+  Leaving the interrupting state resumes the switch from there, or
+  abandons it back to the nearer endpoint if the player asks; either
+  way the change is a transition, not a snap.
 
 Because the track is concurrent, the renderer must draw the
-combination: `skeletal-renderer` section 6 owns it - deterministic
+combination: `skeletal-renderer` section 7 owns it - deterministic
 hand/arm/torso interpolation plus IK for the switch, layered over
 continuing lower-body locomotion, with full-body exception clips only
 where that layering fails review. The switch is never drawn by
@@ -147,9 +183,10 @@ switch actually costs, all emergent:
   existing rules apply to whatever the interpolated geometry covers.
 
 On completion the fighter stands in the same family's realization for
-the new mode. Reach, control torque, inertia handling, bind quantities
-and strain rate all re-derive from the new mode on the completion
-tick - nothing is cached.
+the new mode. Reach, control torque, all three bind quantities (each
+reads control torque, so each genuinely moves with the mode -
+`physical-foundations` 4.3) and the strain rate re-derive on the
+completion tick; nothing is cached.
 
 ## 3. Emergent consequences (already derived, now reachable)
 

@@ -176,7 +176,9 @@ interrupted pose is engine state, not renderer memory.
   failing production test here.**
 - Each asset's authored reference root-motion curve and its
   foot-lift/foot-plant markers must match the simulation's
-  displacement curve - `guard-positions`' shared step easing and, for
+  displacement curve IN NORMALIZED UNITS - fraction of total travel
+  against fraction of the window - so one clip serves every weapon
+  whose distance and window differ - `guard-positions`' shared step easing and, for
   moving attacks, the movement window between the definition's marks.
   Animation time still derives entirely from simulation progress;
   this strengthens deterministic locking, it does not weaken it.
@@ -209,17 +211,17 @@ sword scale and the hips scale factor are asset-specific):
 
 ## 9. Reach and contact conformance
 
-- **Drawn reach at the delivered/contact marker must equal the
-  derived `reachCm`.** 07 measured the failure this rule forbids:
-  engine longsword reach 2.00 m against 1.464 m rendered cut reach
-  and 1.560 m thrust. Production assets pass the measurement, or
+- **Drawn reach at the full-extension marker must equal the derived
+  `reachCm`.** 07 measured the failure this rule forbids: engine
+  longsword reach 2.00 m against 1.464 m rendered cut reach and
+  1.560 m thrust. Production assets pass the measurement, or
   `physical-foundations` recalibrates - explicitly, never silently. A
   debug line hiding the mismatch is not acceptable.
 - The exact 07 marker mapping is not imported: it puts a mid-arc pose
   at `parryableUntil` and reaches the delivered pose only at
-  `strikeEnd`, which contradicts the engine's extension and contact
-  meaning. The contact/full-extension marker must land where the
-  engine says the blade is delivered.
+  `strikeEnd`, which contradicts the engine's extension model. The
+  full-extension marker must land on `parryableUntil`, where the
+  engine says the blade is fully delivered.
 - Rendered blades meet exactly when the categorical engine reports
   contact, and visibly do not when it does not - via section 3's
   bounded correction. This is the obligation the old placeholder
@@ -292,15 +294,19 @@ violated: foot drift; velocity continuity (the smooth time warp's
 proof); contact geometry against the categorical verdicts; both
 facings; both fighters.
 
-Coverage is a product, not a sample. The suite runs over **every
-source guard x every resulting guard x every target height x every
-handling mode x all three movement modes**, plus every interruption
-branch in section 5 (redirect, abandoned feint, bind entry, struck,
-parried and whiffed retiming, movement truncation), and asserts for
-each: correction magnitudes inside their declared limits, retiming
-inside the asset's declared range, no drift, continuity across the
-interruption tick, and exception-clip selection where and only where
-the limits are exceeded. A case that needs an exception clip and
+Coverage is a product over the INDEPENDENT axes: **every source
+realization (all sixteen - a realization already is position x
+handling mode, so handling is not a separate axis) x every target
+height x all three movement modes**, for every attack definition,
+plus every interruption branch in section 5 (redirect, abandoned
+feint, bind entry, struck, parried and whiffed retiming, movement
+truncation). The resulting guard is not a free axis - it is derived
+from the definition and the source side - so the suite asserts the
+adaptation reaches whatever the derivation yields rather than
+enumerating destinations. For each case: correction magnitudes inside
+their declared limits, retiming inside the asset's declared range, no
+drift, continuity across the interruption tick, and exception-clip
+selection where and only where the limits are exceeded. A case that needs an exception clip and
 lacks one fails the build - it does not silently over-correct.
 
 ## 12. Do not import from 07
