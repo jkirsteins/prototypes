@@ -189,8 +189,11 @@ Every ARMED position carries the same weapon core - including
 `secondaryHandCm` and `torsoProfileDeg`, which launch and terminal
 rows need because transitions into and out of them are priced by the
 same derivation as any other (and `grip-switching` measures torso
-travel). Only `guard` rows add family, side variant, handling mode and
-a slot, and `guard` rows are the standable, selectable ones; `unarmed` is neither.
+travel). `launch` and `terminal` rows carry a `handlingMode`, since the maps
+that reach them are keyed by one and a key must be checkable against
+its row - a data test asserts they agree, the analogue of the
+`sideVariant`-agrees-with-`lateral` test. Only `guard` rows add family,
+side variant and a slot, and `guard` rows are the standable, selectable ones; `unarmed` is neither.
 It supplies the pose a disarmed fighter is FROZEN in, which is why it
 needs geometry at all. `unarmed` carries the BODY core only, precisely so nothing can derive
 a blade for a fighter who has none - it is outside the sixteen-realization roster and outside
@@ -390,27 +393,41 @@ and `firmness()` both read the entry for the line actually contacted.
 by the one coverage rule above - the current pose, every tick - and
 `attacking` is not an exception.
 
-**An attacking fighter is not declared uncovered; their blade is
-simply where it is.** Today's engine drops the guard on cut and thrust
-because a parry was a MODE that could not survive an attack. Under
-positions there is no mode to drop: a windup gathering through a line
-stands in it, and a recovery arriving in a guard begins covering as it
-arrives - which is what the player can SEE, and declaring otherwise
-would reinstate the geometry-versus-engine disagreement in the one
-phase where the blade moves most.
+**An attacking fighter is not declared uncovered; but a blade in a
+STRIKE is not a guard either.** The three phases differ physically and
+the model follows them:
 
-Two things stop this from quietly making attacks safe:
+- **Windup and recovery are transitions**, and cover exactly like any
+  other transition. A recovery arriving in a guard begins covering as
+  it arrives - which is what the player can SEE, and declaring
+  otherwise reinstated the geometry-versus-engine disagreement this
+  model exists to remove. Today's engine drops the guard on cut and
+  thrust only because a parry was a MODE an attack could not carry; a
+  position is not a mode, so there is nothing to drop.
+- **A strike is steel committed forward**, and the engine already
+  models that: `extension`, and a CROSSING when it meets other steel.
+  A striking blade therefore does not additionally offer a guard.
+  This is not an exception to geometry - it is the same blade,
+  classified by what it is doing rather than counted twice.
 
-- **The settle requirement does the work.** A line answers only once
-  its clock has run (above), and a blade sweeping through a line
-  mid-strike does not linger there. Coverage in passing is real but
-  almost never formed - the physically right answer rather than a
-  balance patch.
-- **The economics are re-proven with it.** An attacker recovering into
-  a covering guard genuinely is defended sooner than today, which
-  moves the punish window. Section 9 re-derives the punishment
-  invariant over the new numbers rather than assuming the old ones
-  survive.
+That split is load-bearing, and it is why the categorical contact
+rules need no new arbitration. Two attacks meeting is a crossing, one
+event, one clash. A guard meeting an attack is a parry. Nothing can be
+both, so no precedence rule is needed, no contact resolves twice, and
+the one-clash-per-contact doctrine survives untouched.
+
+**What still keeps a passing blade from parrying is formation, and it
+is derived.** A line answers only once its clock exceeds
+`formationMs`, the settle portion of the transition that brought the
+blade there - the successor to today's `rising` phase, which geometry
+would otherwise have deleted with nothing in its place. Steel arriving
+in a line has to be braced there before it can turn anything, so a
+windup sweeping through a line covers it honestly and answers nothing.
+
+**The economics are re-proven with it.** An attacker recovering into a
+covering guard is genuinely defended sooner than today, which moves
+the punish window; section 9 re-derives the invariant rather than
+assuming the old one survives.
 
 A void keeps its covering pose for the same reason - see below. At
 `combinedEnd` the track returns to `settled` at the resulting guard.
@@ -515,6 +532,11 @@ raised action that can be spent:
 - `fighter.ts`'s refusal to parry while recovering disappears with it:
   there is no parry to refuse. What limits a defender is where the
   blade physically is and how long the derived travel takes.
+- `engine.ts`'s `f.parry = null` on attack acceptance ("no guard is up
+  mid-attack") goes the same way as the `dropGuard` calls below: it
+  encodes the very assumption this spec reverses, and its successor is
+  the phase rule of section 4 - a strike offers no guard, a windup or
+  recovery offers whatever its pose covers.
 - `fighter.ts`'s `dropGuard` on cut and thrust has NO successor, and
   that is a deliberate change: it existed because a parry was a mode
   an attack could not carry, and a position is not a mode. An
@@ -628,11 +650,12 @@ is priced by how far the steel must travel across, against the same
 inertia every other rotation pays. Heavy
 blade + weak grip = slow guard changes, emergently. `SETTLE_MS` lives
 here and only here, and it prices the MOTION - it is not a coverage
-gate at all. Formedness is section 4's rule: a line counts from the
-tick the interpolated blade begins covering it, which during a
-transition is generally BEFORE the motion finishes - `SETTLE_MS`
-prices the settling of the hands, not the moment steel arrives in a
-line. Because the lower body is one
+gate by itself. Formedness is section 4's rule: a line's clock starts
+the tick the interpolated blade begins covering it - generally BEFORE
+the motion finishes - and the line ANSWERS once that clock exceeds
+`formationMs`, this transition's settle portion. `SETTLE_MS` prices
+the settling of the hands; `formationMs` is what a defence must
+outlast, and it is the successor to today's `rising` phase. Because the lower body is one
 shared configuration, transitions move the upper body only; when the
 stance extension separates the lower body, foot, hip and weight travel
 join this same derivation rather than being a free visual.
@@ -825,18 +848,28 @@ account, rather than needing a separate
 derivation, and the two tracks cannot disagree because only one of
 them owns a pose.
 
-**The engine samples the strike, which is what makes an attacking
-fighter's coverage computable at all.** A strike's path is authored,
-not interpolated between two rows, so the engine has no transition to
-evaluate - `trajectoryCurve` is what it evaluates instead. At any tick
-of a strike it reads the curve at that progress, positioned between
-the snapshotted launch and terminal poses, and that IS the fighter's
-pose: coverage reads it, a bind entry freezes it, and the renderer
-plays the clip the curve was extracted from. A validation test bounds
-the divergence between curve and asset, because a curve that drifts
-from its animation reintroduces exactly the invisible-contact problem
-geometry was adopted to prevent. Windup and recovery need no curve -
-they are ordinary transitions and interpolate like any other.
+**The engine samples the strike, because a bind freezes one.** A
+strike's path is authored rather than interpolated between two rows,
+so there is no transition to evaluate - `trajectoryCurve` is what the
+engine evaluates instead, at that tick's progress, REBASED onto the
+snapshotted launch and terminal poses: the curve is stored normalized
+(each coordinate as a fraction of its own launch-to-terminal span),
+so one curve serves every height and both grips, and the endpoints it
+is stretched between are the ones the attack snapshotted. That gives
+the numeric pose a bind entry writes into `frozen`.
+
+Coverage does not read it - a striking blade offers no guard (section
+4) - so the curve's job is the frozen pose and the renderer's
+conformance, nothing more. Windup and recovery need no curve at all,
+being ordinary transitions.
+
+**The curve does not block this spec on the renderer.** It ships first
+as a hand-authored approximation of the intended motion, which is
+enough for the engine, its tests and the frozen pose; when
+`skeletal-renderer` lands the approved asset, the curve is
+re-extracted from it and a validation test bounds their divergence.
+That keeps the stated one-way order honest - engine and tests green
+first, the animation refining the numbers later, never gating them.
 
 **`frozen` is how the blade survives its attack.** Bind entry,
 exposure, disarming and disarmed all outlive the attack state that
@@ -884,23 +917,18 @@ blades, so a met guard is displaced (section 5) and the bind system is
 untouched by this spec beyond the pose a crossing freezes. The
 `BindContact.guard` variant stays in the union and stays unreached.
 
-**Which classification applies is decided by what the blades are
-doing, not by who moved first.** Now that an attacking fighter covers
-lines (below), a contact can satisfy both tests at once: two blades
-crossing while one of them also covers the other's line. The crossing
-wins - it is the stronger physical claim, force meeting force, and it
-is checked first exactly as the engine checks it today. A contact is a
-parry only when the met fighter is NOT extending steel into the same
-line; that is what makes it a deflection rather than a lock.
+**No contact can be both, so no precedence rule is needed.** A blade
+in a strike is steel and meets other steel as a CROSSING; a blade in
+any other phase is a guard and meets an attack as a PARRY (section 4).
+The two tests are therefore disjoint by construction, the engine's
+existing check order is unchanged, and a contact still produces
+exactly one event and one sound.
 
-**A deflection of an attacking blade knocks the ATTACK off line, not
-the track.** The displaced pose (section 5) applies to a fighter whose
-track is `settled` or `transitioning`. A fighter in `attacking` cannot
-become `transitioning` - the attack owns the track - so their
-deflection instead offsets the remaining trajectory by the same
-`displaceRad`: the strike finishes from where it was knocked to, which
-is why a deflected attack misses. The offset rides on the snapshot,
-leaving the curve itself untouched.
+The displaced pose (section 5) consequently applies where it always
+did - to a fighter whose track is `settled` or `transitioning`, which
+now includes one in a windup or a recovery. A fighter mid-strike is
+never displaced by a parry, because a parry cannot meet them; two
+crossing blades resolve through the bind rules, unchanged.
 
 ## 6. Attacks as transitions
 
@@ -949,17 +977,15 @@ interface AttackDefinition {
                          // a different off-hand and torso from a
                          // two-handed one, and the renderer already keys
                          // its clips this way
-  trajectoryRef;         // the strike path, as TWO artefacts from ONE
-                         // source: the authored animation the renderer
-                         // plays, and `trajectoryCurve` - a compact
-                         // numeric sampling of that same motion
-                         // (primaryHandCm, lateral, weaponAngleDeg,
-                         // torsoProfileDeg against strike progress)
-                         // EXTRACTED from the approved asset during
-                         // validation and committed as engine data.
-                         // The engine reads the curve, the renderer
-                         // plays the clip, and asset validation is what
-                         // keeps them the same motion
+  trajectoryRef;         // the authored animation the renderer plays
+  trajectoryCurve;       // the SAME motion as engine data: normalized
+                         // samples of primaryHandCm, lateral,
+                         // weaponAngleDeg and torsoProfileDeg against
+                         // strike progress, each a fraction of its own
+                         // launch-to-terminal span so one curve serves
+                         // every height and both grips. Hand-authored
+                         // first, re-extracted from the approved asset
+                         // at validation, divergence bounded by test
   terminalBy;            // Record<HandlingMode, Record<Height, PositionId>>
                          // the delivered contact pose per grip and
                          // target height. A high and a low thrust cannot
@@ -1036,8 +1062,8 @@ snapshot pattern `AttackTimeline` already uses):
 ```
 
 The launch, terminal and resulting positions are resolved with the
-target height (`launchByHeight`, `terminalByHeight`, the result rule)
-and snapshotted, so a high and a low thrust carry different terminal
+target height AND the launching handling mode (`launchBy`,
+`terminalBy`, the result rule) and snapshotted, so a high and a low thrust carry different terminal
 poses from the moment they start.
 
 **The MOVEMENT plan is immutable; the blade plan re-resolves on a
