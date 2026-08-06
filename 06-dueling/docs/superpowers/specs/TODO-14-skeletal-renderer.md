@@ -167,7 +167,7 @@ never from a canned entry pose.
 | Bind entry | The engine freezes the pose and its contact CONSTRAINT (`RenderSource.contact`); the renderer re-solves the conforming IK from that constraint every frame, so the bind, exposed, disarming and disarmed states all draw from real geometry after the attack is gone - without the engine ever storing a pose the renderer computed. |
 | Struck | Blend from the actual interrupted pose into hitstun or death; the blend is deterministic and bounded like every other correction. |
 | Parried / whiffed recovery | The recovery region is RETIMED within the asset's declared speed range (`parriedPenalty` lengthens it, `whiffRecoveryFactor` multiplies it); out-of-range cases follow section 3's exception-clip rule. |
-| Deflected windup or recovery | The blade is knocked off line: `guard-positions` rewrites that phase's destination to the displaced pose, so the SAME interpolation carries it there and the renderer simply keeps drawing the phase. No new clip, no special case - the knock is visible because the destination moved. |
+| Deflected windup or recovery | The blade is knocked off line: `guard-positions` rewrites that phase's destination to the displaced pose, so the SAME interpolation carries it there and the renderer keeps drawing the phase - the knock is visible because the destination moved. Bounded like every other adaptation in section 4: a displacement large enough to exceed the declared correction limits needs its exception clip, and section 11 fails the build if one is missing. Displacements CAN be large (a one-handed guard is thrown wide), so this is a real case, not a formality. |
 | Movement truncation | The feet stabilize deterministically between `movementStopped` and the engine's derived plant tick - no teleport, no slide, and the plant is visually on the ground when the footfall sounds. |
 
 Every rule here is deterministic and history-independent: the same
@@ -316,9 +316,10 @@ representative one. Defensive transitions are additionally sampled at
 several progress points, not only at their endpoints, since coverage is
 now geometric and the mid-travel frames are where a drawn blade and a
 derived line can disagree,
-plus every interruption branch in section 5 (redirect, abandoned
-feint, bind entry, struck, parried and whiffed retiming, movement
-truncation). The resulting guard is not a free axis - it is derived
+plus EVERY interruption branch in section 5 (currently redirect,
+abandoned feint, bind entry, struck, parried and whiffed retiming,
+deflected windup or recovery, and movement truncation - the section is
+normative, this list is not). The resulting guard is not a free axis - it is derived
 from the definition and the source side - so the suite asserts the
 adaptation reaches whatever the derivation yields rather than
 enumerating destinations. For each case: correction magnitudes inside
