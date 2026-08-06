@@ -40,7 +40,9 @@ the emergent-outcomes rule. Availability is universal past the
 not availability.
 
 **Delivers:** guard data model and JSON file, coverage derivation,
-transition derivation (replacing six authored timing fields), parry as
+transition derivation (replacing six authored timing fields), attack
+definitions as data with addressable terminal configurations and
+data-resolved resulting guards, parry as
 event, attacks as transitions, repurposed inputs, AI guard play, help
 rewrite, the suitability matrix test, re-proven tempo economics.
 
@@ -63,8 +65,9 @@ Body stance    supplies lead foot, weight, width (FUTURE - baked in for now)
 weapon + handling mode + guard position (+ stance) = complete posture
 ```
 
-A **guard family** (Ochs, Vom Tag, Pflug, Alber, Terza) is a reusable
-concept independent of the equipped weapon. A **specific guard
+A **guard family** (`ochs`, `vomTag`, `pflug`, `alber`, `longpoint` -
+geometric keys, never a tradition's word) is a reusable concept
+independent of the equipped weapon. A **specific guard
 position** is family x side variant (Right Ochs, Left Pflug). A
 **realization** is the authored posture for a specific position under a
 handling mode - the unit a pose belongs to:
@@ -96,7 +99,7 @@ point-forward, released = withdrawn) x **side variant** (sideShift).
 | high, extended   | ochs      | Ochs (R/L)             | one-handed Ochs (R/L)  |
 | middle, extended | longpoint | **Langort**            | **Terza**              |
 | low, extended    | pflug     | Pflug (R/L)            | one-handed Pflug (R/L) |
-| high, withdrawn  | vomTag    | Vom Tag                | one-handed Vom Tag     |
+| high, withdrawn  | vomTag    | Vom Tag (R/L)          | one-handed Vom Tag (R/L) |
 | low, withdrawn   | alber     | Alber                  | one-handed Alber       |
 
 **Input slot, guard family and handling mode are three separate
@@ -108,11 +111,21 @@ two-handed longpoint of the Liechtenauer corpus, Terza the natural
 one-handed form of the Italian one (dall'Agocchie's extended point at
 the face; Alfieri's high/low Terza variants are future data rows, as
 are Fiore's one-handed plays behind the one-handed Ochs and Pflug).
-Every family is authored in BOTH modes - ten realizations - so
-availability is universal, the slot map never depends on handling
-mode, and **switching handling mode never changes the guard family**
+Every family is authored in BOTH modes and every sided family in both
+sides - **sixteen realization rows** (Ochs 2 sides x 2 modes = 4,
+Pflug 4, Vom Tag 4, longpoint 2, Alber 2) - so availability is
+universal, the slot map never depends on handling mode, and
+**switching handling mode never changes the guard family**
 (`grip-switching`). Suitability differences between realizations are
 the derivations' business, never the roster's.
+
+Vom Tag is sided even though it covers nothing: a withdrawn guard's
+side is where the sword RESTS, so it decides transition distances,
+which cuts launch cheaply, and the side an attack exits toward - Right
+Vom Tag is not "protecting" the outside, it is the outside being where
+every next action starts. The schema permits side variants for any
+family; Alber and longpoint ship one centre row each, and adding their
+variants later is a data row, not code.
 
 The extended column has three height stops (`middle` becomes reachable
 - the exact "data change, not a new concept" the `Height` union
@@ -120,8 +133,7 @@ reserves); the withdrawn column keeps two. stanceUp/stanceDown move
 between the current column's stops; toggling extension at `middle`
 retracts to the slot map's authored target (Vom Tag by default - the
 gather to the shoulder - and the map lives in guards.json, not code).
-Ochs and Pflug have R/L variants on sideShift; longpoint, Vom Tag and
-Alber ship one variant each.
+Ochs, Pflug and Vom Tag take sideShift; longpoint and Alber ignore it.
 
 No new ActionIds. The `guard` button's meaning sharpens from "parry
 raised" to "point extended"; muscle memory (holding it = covering)
@@ -192,6 +204,18 @@ attack-loaded (Vom Tag) or an invitation (Alber). This replaces the
 parry's `coveredLine` snapshot: what a guard covers is readable from
 where the blade IS, for both fighters and the AI alike.
 
+**The centre longpoint and `sideOf`, stated exactly:** longpoint's
+derived point lands in the `middle` height band, and no shipping
+attack targets a middle line - so its coverage matches no incoming
+attack and `sideOf` is never evaluated for a centre variant. That is
+not an oversight, it is the guard's identity: historically the
+longpoint is a threat, not a parry - its defense is that the point
+stands in the opponent's way, which in this model is its near-direct
+thrust (section 6), not a coverage claim. A validation test asserts no
+centre-variant realization resolves a covered side; when a middle-line
+attack ever ships, the centre variant's covered side arrives with that
+extension, in data.
+
 **The deciding contact model stays categorical - an explicit choice.**
 Two options existed: keep the abstract line-plus-scalar-extension
 contact (`contact.ts`) as the arbiter of steel meeting steel, or
@@ -221,16 +245,31 @@ quantization only - is unchanged and its tests carry over.
 
 ```
 transitionMs(from, to, weapon, fighter, mode) =
-  max( handTravelM / handSpeed(f, strain),
-       bladeArcRad / angularSpeed(controlTorque, inertia, strain) )
+  max( profileTime(handTravelM, HAND_ACCEL, handSpeedMps / strainFactor),
+       profileTime(bladeArcRad, alpha,     omegaCap) )
   + SETTLE_MS
+
+alpha    = controlTorquePeakNm / inertiaGripKgM2 / strainFactor  // rad/s^2
+omegaCap = OMEGA_CAL * handSpeedMps                              // rad/s
+
+profileTime(dist, acc, cap):   // symmetric accelerate-then-decelerate,
+  peak = sqrt(dist * acc)      // cruising at the cap when it binds
+  peak <= cap ? 2 * sqrt(dist / acc)
+              : dist / cap + cap / acc
 ```
+
+Torque over inertia is an ACCELERATION, not a speed - the time comes
+from this motion profile, stated here exactly so every implementer
+derives the same milliseconds from the same physical data. `HAND_ACCEL`
+and `OMEGA_CAL` are calibration constants of the section 9 tuning;
+`strainFactor` is `physical-foundations`' strain effect (1.0 at zero
+strain).
 
 Hand travel comes from the two realizations' `primaryHandCm`; the
 blade arc from their `weaponAngleDeg` and derived point positions;
-angular speed from `physical-foundations` (peak torque against
-rotational inertia about the grip, scaled by strain). Heavy blade +
-weak grip = slow guard changes, emergently. `SETTLE_MS` lives here and
+angular acceleration from `physical-foundations` (peak control torque
+against rotational inertia about the grip, scaled by strain). Heavy
+blade + weak grip = slow guard changes, emergently. `SETTLE_MS` lives here and
 only here - formedness (section 4) starts when the transition
 completes, with no second settling. Because the lower body is one
 shared configuration, transitions move hands and blade only; when the
@@ -261,8 +300,44 @@ guard prices the attack, it never gates which lines exist:
 
 ```
 current guard + kind + target line
-  -> launch config -> [strike, authored] -> resulting guard
+  -> launch config -> [strike, authored] -> terminal config -> resulting guard
 ```
+
+**Attacks are data, like guards** - the future of named techniques is
+a schema, not a promise in prose. v1 ships exactly two rows:
+
+```
+interface AttackDefinition {
+  id;                    // "genericCut" | "genericThrust" (later "mittelhau", ...)
+  kind;                  // "cut" | "thrust"
+  sourceGuards;          // PREFERRED sources: where the launch is cheapest.
+                         // Never required - any guard transitions into the
+                         // launch config at derived cost (guard-priced,
+                         // never guard-gated, for techniques too)
+  launchConfiguration;   // PositionId
+  trajectoryRef;         // the strike path: renderer cue + authored strike timing
+  terminalConfiguration; // PositionId - the delivered contact pose, ADDRESSABLE
+  defaultResultingGuard; // a COMPLETE specific position, side resolved by rule
+                         // (attackExitSide / oppositeSourceSide): a crossing
+                         // cut from Right Vom Tag exits left and resolves to
+                         // Left Pflug, side included, never a bare family
+}
+```
+
+**Terminal configurations are position rows** in guards.json - not
+selectable as standing guards, but addressable, so the delivered pose
+is a real place the fighter is standing, not an implicit animation
+moment. Recovery is an ordinary derived transition FROM that position.
+
+**The active attack snapshots its resolution at launch** (the same
+snapshot pattern `AttackTimeline` already uses): `{definitionId,
+sourceGuardId, targetLine, terminalConfigurationId, resultingGuardId}`,
+resolved once, never re-derived mid-flight. v1's recovery follows
+`terminal -> defaultResultingGuard` automatically; later, an input can
+select a different resulting guard, a result variant, or another
+attack launched directly from the terminal configuration - data rows
+and one binding, not new architecture. No continuations system ships
+now.
 
 - **Windup, derived:** the transition from the current realization to
   the attack's launch configuration (cut: blade gathered high on the
@@ -276,11 +351,12 @@ current guard + kind + target line
   `strike` timing with `PARRYABLE_FRACTION` unchanged - the travelling
   half, the delivered half, the extension model in `contact.ts`, all as
   today.
-- **Recovery, derived:** the transition from the delivered contact pose
-  to the attack's **resulting guard** (a data field per attack kind and
-  launch family: a descending cut resolves toward Alber; a thrust
-  recovers toward the extended guard of its line). `parriedPenalty` and
-  `whiffRecoveryFactor` still apply on top, as today.
+- **Recovery, derived:** the ordinary transition from the attack's
+  terminal configuration to its snapshotted resulting guard (a
+  descending cut's terminal resolves toward Alber; a thrust recovers
+  toward the extended guard of its line - all from the definition's
+  data). `parriedPenalty` and `whiffRecoveryFactor` still apply on
+  top, as today.
 - **Attack line:** the target line is the attacker's choice. Its
   height defaults to the current guard's height stop and is re-aimed
   with the height keys (during windup, that is the redirect); its side
@@ -355,9 +431,12 @@ be preserved; here the re-record is the deliverable).
 
 ## 10. Out of scope
 
-- Named techniques (Zornhau, Krumphau, ...): a generic cut from Vom Tag
-  is not a Zornhau; those arrive only when their specific trajectories
-  and defensive functions are modelled as separate attack definitions.
+- Named techniques (Zornhau, Krumphau, Mittelhau, ...): a generic cut
+  from Vom Tag is not a Zornhau; those arrive only when their specific
+  trajectories and defensive functions are modelled - and section 6's
+  `AttackDefinition` is deliberately shaped so each arrives as a data
+  row (id, preferred sources, launch, trajectory, terminal, resulting
+  guard), never as new control flow.
 - The independent stance layer (lead foot, weight) - baked into
   realizations for now.
 - Off-hand items (dagger, buckler): `offHand` is data, inert.

@@ -66,6 +66,14 @@ against it.
    retargeted onto it), so a new character costs a mesh, never a new
    copy of every animation. The `N characters x M animations`
    multiplier must not exist.
+8. **Contact conformance is the real spec's burden.** The engine's
+   contact verdicts are categorical (`guard-positions` section 4), so
+   the real spec must state HOW hand animation, weapon attachment and
+   any IK are adjusted so the rendered blades visibly meet exactly
+   when the engine reports contact - and visibly do not when it does
+   not. This is the hardest obligation the import from 07 carries, and
+   it must be demonstrated, not asserted, before `guard-positions`
+   playtests.
 
 ## Out of scope here
 

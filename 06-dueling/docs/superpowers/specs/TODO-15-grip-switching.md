@@ -60,9 +60,27 @@ surfaced, never a silent nothing.
 Switching is a transition, not an instant:
 
 ```
-switchMs(f, w, from, to) derived from the off-hand's travel to/from
-its grip socket (handSpeed, strain-scaled) + a settle constant
+switchMs(f, w, guard) =
+  max( off-hand travel to/from its grip socket,
+       primary-hand travel between the two realizations,
+       weapon rotation between them (profileTime, as guard transitions),
+       torso adjustment )
+  + SETTLE
 ```
+
+The duration prices every motion the switch actually interpolates -
+the same `profileTime` model as `guard-positions` transitions, so the
+slowest-moving part sets the tempo. Within one family the realizations
+are close and the off-hand's travel usually dominates; the formula, not
+that assumption, is normative.
+
+Mid-switch control is defined, not improvised: a
+`secondaryHandEngagement` in [0,1] follows the off-hand's travel
+fraction, and the shared control-torque derivation
+(`physical-foundations` 4.1) accepts it - the couple term scales by
+engagement, so completed one-handed and two-handed modes are exactly
+its 0 and 1 endpoints. "Met weakly mid-switch" below means this
+number, nothing scripted.
 
 The switch interpolates the WHOLE realization - primary hand, weapon
 orientation, secondary hand joining or leaving its socket, torso pose -

@@ -147,13 +147,17 @@ alone:
 handSeparationM(w, mode) = mode == twoHanded
     ? (w.grip2Cm - w.grip1Cm) / 100
     : 0
-controlTorqueNm(f, w, mode, capacity) =
-    wristTorqueNm(f, capacity) + handSeparationM * handForceN(f, capacity)
+controlTorqueNm(f, w, mode, capacity, engagement = modeDefault) =
+    wristTorqueNm(f, capacity)
+    + engagement * handSeparationM * handForceN(f, capacity)
 ```
 
-`capacity` selects peak or sustain. This one function is the spine of
-the model: bind authority, displacement resistance and contest reads
-all go through it.
+`capacity` selects peak or sustain. `engagement` is the secondary
+hand's seatedness in [0,1]: completed modes are its endpoints (0
+one-handed, 1 two-handed), and `grip-switching` evaluates it
+mid-transition - the couple term scales, nothing else changes. This
+one function is the spine of the model: bind authority, displacement
+resistance and contest reads all go through it.
 
 ### 4.2 Rotational inertia: one distribution, two moments
 
@@ -278,6 +282,13 @@ anything depends on it.
   rotationalControl / reach at baseline equal the old constants exactly
   (strict equality, not epsilon - the calibration is solved, not
   approximated).
+- **The worked calibration exists BEFORE engine wiring.** Because the
+  promise is strict equality, implementation starts by committing the
+  calibration workbook: the concrete mass-distribution formula, the
+  numeric `taper` values, both computed moments per weapon, and every
+  calibration constant, solved and cross-checked by the equivalence
+  test (which embeds the solved numbers). If the solve fails, the spec
+  returns for revision - it must not be discovered mid-wiring.
 - **Gate matrix test:** compute `canGripTwoHanded` / `canGripOneHanded`
   over all weapons x the baseline body from the derivations and pin the
   shape (longsword: both; rapier: one-handed only). The test names no
