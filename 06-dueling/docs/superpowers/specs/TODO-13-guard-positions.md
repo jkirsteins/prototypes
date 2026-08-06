@@ -309,12 +309,19 @@ What follows:
   side-redirect outcome (today's rapier disengage being too fast to
   chase) is a target the calibration must still produce - recomputed
   from the derivation, never asserted by weapon name.
+- *Coverage through a travel is sampled, never assumed.* Only
+  `lateral` is read directly and so moves monotonically; the height
+  and extension thresholds are read off a DERIVED point combining an
+  interpolating hand position with an interpolating angle, so a travel
+  can enter and leave a band twice on the way. The whole-travel
+  sampling test therefore covers **every transition in the roster**,
+  not only handling switches: it walks the interpolated pose, records
+  what each travel covers, and pins the result. A travel that flickers
+  is an authoring fault to fix, not a surprise to meet in play.
 - *A handling switch never blanks the defence.* Its endpoints share a
-  `lateral`, so the side it covers cannot move; the height band is an
-  authoring matter, since a switch does move the hands. A data test
-  samples the interpolated pose across the WHOLE travel of every
-  family's mode switch and requires the covered line never to change -
-  endpoints alone would not guarantee the path between them.
+  `lateral`, so the side it covers cannot move - that much is
+  structural. The height band is an authoring matter, since a switch
+  moves the hands, and the same whole-travel test holds it.
 - *Mid-motion restarts need no special case.* A transition beginning
   from an interpolated pose is covered by that pose like any other -
   coverage never depended on having an authored source.
@@ -339,15 +346,27 @@ linear interpolation across the tick that crossed it - the same
 precision today's scheduled arrival gets), and is deleted the tick
 coverage is lost.
 
-**Coverage is stateless, and stays that way.** No hysteresis: what a
-pose covers is a pure function of that pose, so two fighters in the
-same posture always cover the same lines however they got there.
-Clock churn at a boundary is prevented at the source instead - a data
-test asserts **no authored row sits within `CENTRE_BAND` of the
-centreline or within `EDGE_MARGIN` of a height-band edge**, so a
-SETTLED pose never hovers on a threshold, and a transition sweeps
-monotonically through one. A fighter cannot ask to stand on a
-boundary, because the only things they can ask for are rows.
+**Coverage is stateless, and stays that way.** No hysteresis: what
+`covered()` returns is a pure function of the pose handed to it, so
+two fighters in the same posture always cover the same lines however
+they got there. (The `coveredSince` MAP is history - that is its job -
+but what it records is never in question.)
+
+Clock churn at a boundary is prevented at the source instead.
+`THRESHOLD_MARGIN` is one declared distance, and a data test asserts
+**no authored row sits within it of any of the three thresholds
+`covered()` reads**: `|lateral| = CENTRE_BAND`, `advanceCm =
+EXTENDED_MIN`, and each height band edge. The first is a distance from
+the THRESHOLD, not from the centreline - a centre row at `lateral = 0`
+is maximally far from it, which is what makes centre rows both legal
+and stably uncovering. A SETTLED pose therefore never hovers on a
+threshold.
+
+Derived poses (`PoseTarget`, below) are the one case a row cannot
+police, since a displaced guard could land anywhere. When one settles,
+the engine nudges it clear of the nearest threshold by
+`THRESHOLD_MARGIN` - a deterministic, tiny correction whose only
+purpose is to keep a resting pose off a knife edge.
 
 So a freshly covered line never inherits the age of the line
 the fighter was previously holding. It starts at the **sub-tick
@@ -380,8 +399,8 @@ test asserts every withdrawn-slot realization derives `none`. This
 replaces the parry's `coveredLine` snapshot: what a guard covers is
 readable from where the blade IS, for both fighters and the AI alike.
 
-`derivedBlade`, `bands`, `sideOf`, `EXTENDED_MIN`, `CENTRE_BAND` and
-the band edges
+`derivedBlade`, `bands`, `sideOf`, `EXTENDED_MIN`, `CENTRE_BAND`,
+`THRESHOLD_MARGIN` and the band edges
 all live in the one shared coverage module beside `parryMeetsAttack`.
 Every derived location has `advanceCm` (forward of the body centre)
 and `heightCm` (above the floor), computed from the pose's
@@ -408,9 +427,12 @@ naming, `exitSide` and realization selection; coverage reads
 identity falling out of the formula rather than a branch. Historically the
 longpoint is a threat, not a parry - its defense is that the point
 stands in the opponent's way, which in this model is its near-direct
-thrust (section 6), not a coverage claim. A validation test asserts the formula returns `none` for every
-centre-variant realization, through the deadband rather than a
-special case. Middle-line attacks DO ship in v1 - a
+thrust (section 6), not a coverage claim. Two data tests keep the variant and the coordinate honest: the formula
+returns `none` for every centre-variant realization, through the
+deadband rather than a special case; and **every row's `sideVariant`
+agrees with the sign of its `lateral`** - the variant names the row and
+drives `exitSide`, the coordinate decides coverage, and the two may
+never disagree about which side a guard is on. Middle-line attacks DO ship in v1 - a
 fighter standing in Langort throws one - and they are answered by the
 sided guards whose blades span the middle band, which is what
 `bands(seg)` is for. What no v1 row provides is a centre guard that
@@ -451,19 +473,16 @@ raised action that can be spent:
   ```
 
   The destination is `{ kind: "derived" }`, computed on the deflection
-  tick: the covering pose rotated by `displaceRad` AND pushed along
-  `lateral` by the same ratio, since a deflection knocks a guard off
-  its line as well as out of its height. That lateral push is exactly
-  how `grip-switching`'s "the guard is turned" happens - a one-handed
-  guard, having little to resist with, is displaced far enough that
-  `sideOf` no longer returns its line. Recovery is then
-  an ordinary transition from there back toward whatever the standing
-  levels select.
-
-  so a strong two-handed guard is barely moved and a strained
-  one-handed guard is thrown wide. The recovery is that transition
-  run backwards, priced by `transitionMs` like any other - which is
-  why `parryRecoveryMs` has nothing left to do.
+  tick: the covering pose rotated by `displaceRad` and pushed along
+  `lateral` by `displaceRad / LATERAL_SPAN_RAD`, **in the direction
+  the attack was travelling** - steel arriving on a line drives the
+  guard across it, never further out - and clamped to the [-1, +1] the
+  coordinate allows. A strong two-handed guard is barely moved; a
+  one-handed or strained one is thrown wide enough that `sideOf` stops
+  returning its line, which is what `grip-switching` means by a parry
+  met weakly. Recovery is that transition run backwards, priced by
+  `transitionMs` like any other - which is why `parryRecoveryMs` has
+  nothing left to do.
 - `parryRecoveryMs` is DELETED from the profile alongside the others.
 - `fighter.ts`'s refusal to parry while recovering disappears with it:
   there is no parry to refuse. What limits a defender is where the
@@ -520,6 +539,8 @@ transitionMs(from, to, weapon, fighter) =    // reads f.engagement
        profileMs(offHandM,      HAND_ACCEL / s,  handSpeedMps / s),
        profileMs(bladeArcRad,   alpha / s,       omegaCap / s),
        profileMs(lateralArcRad, alpha / s,       omegaCap / s),
+       // lateralArcRad = |d lateral| * LATERAL_SPAN_RAD: the arc the
+       // point sweeps crossing the body from one side to the other
        profileMs(torsoArcRad,   TORSO_ACCEL / s, torsoOmegaCap / s) )
   + SETTLE_MS
 
@@ -546,16 +567,19 @@ degrees and converted by `rad()` at the call.
 
 Torque over inertia is an ACCELERATION, not a speed - the time comes
 from this motion profile, stated here exactly so every implementer
-derives the same milliseconds from the same physical data. `HAND_ACCEL`, `OMEGA_CAL`, `TORSO_ACCEL` and `torsoOmegaCap` are
-calibration constants of the section 9 tuning - all four live here,
+derives the same milliseconds from the same physical data. `HAND_ACCEL`, `OMEGA_CAL`, `TORSO_ACCEL`, `torsoOmegaCap` and
+`LATERAL_SPAN_RAD` (radians per unit of `lateral` - the conversion
+that turns a dimensionless coordinate into an angle the profile can
+price) are calibration constants of the section 9 tuning - all four live here,
 since this is the spec that first needs them, and `grip-switching`
 reads them rather than declaring its own;
 `strainFactor` is `physical-foundations`' strain effect (1.0 at zero
 strain).
 
 A transition prices all five authored axes - both hands, the weapon's
-rotation, the lateral sweep and the torso - by the same `max` over motion profiles that
-`grip-switching`'s `switchMs` uses, so no authored geometry ever moves
+rotation, the lateral sweep and the torso - by the same motion-profile `max` that
+`grip-switching`'s `switchMs` uses (five axes here, four there - a
+switch never moves `lateral`), so no authored geometry ever moves
 for free. Hand travel is the two realizations' `primaryHandCm` difference
 resolved at THIS fighter's stature (the rows are stature fractions
 written in centimetres at the 175 cm baseline, section 3), so a taller
@@ -650,10 +674,12 @@ type RenderSource = {
                               // a switch in progress has no label
   contact?: {                 // SIMULATION facts about a meeting of
     gapCm,                    //   steel: the measure at contact,
-    attackerExtensionCm,      //   how far the attacking blade had
-    line                      //   travelled, and the line - all three
-  },                          //   already known to the categorical
-                              //   model, none of them a renderer result
+    extensionCm,              //   THIS fighter's extension and the
+    otherExtensionCm,         //   opponent's - a bind has two
+    line                      //   attackers, so one number could not
+  },                          //   locate the meeting - and the line.
+                              //   All known to the categorical model,
+                              //   none of them a renderer result
   blendFrom?: {               // an interruption blends out of what was
     source: RenderSource,     //   on screen: the pose being left, and
     startedMs                 //   when the blend began. ONE level deep:
@@ -711,8 +737,10 @@ exceptions:
 
 - *A frozen contact pose is contact-CONFORMED, and the engine cannot
   compute the conforming.* What the engine owns is the CONSTRAINT -
-  the gap, the attacker's extension at that tick, and the line, all
-  three of which the categorical contact derivation already computes.
+  the gap, both blades' extensions at that tick, and the line, all of
+  which the categorical contact derivation already computes (a parry
+  leaves the defender's extension at zero; a bind has two real ones,
+  which is why one number would not do).
   Where along the DEFENDER's blade that lands is the renderer's to
   work out from its own drawn geometry - it is the segment-intersection
   quantity this spec deliberately does not simulate.

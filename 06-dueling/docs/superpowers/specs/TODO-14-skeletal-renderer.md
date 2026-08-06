@@ -114,7 +114,7 @@ The 07 rule carries over verbatim as contract:
   **bounded, deterministic IK/contact correction** conforms the blade
   to the categorical verdict at the tick the engine reports it,
   solved from the CONSTRAINT the engine hands over in
-  `RenderSource.contact` (the gap, the attacker's extension at that
+  `RenderSource.contact` (the gap, both blades' extensions at that
   tick, and the line) - never from a solution the engine computed,
   which it cannot. Where that meeting lands along the DEFENDER's blade
   is the renderer's to work out from its own drawn geometry; the
