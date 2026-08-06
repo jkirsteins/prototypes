@@ -534,7 +534,7 @@ anything depends on it.
   units - three lengths (primary-socket clearance, hilt fit, socket
   separation) and one torque (the shoulder-sustain hold gate) - so no
   shipping weapon sits near a boundary and a gate verdict is never a
-  rounding accident
+  rounding accident.
   The rapier's 5 cm socket against a 4.61 cm half-hand is 0.4 cm of
   clearance where every other LENGTH gate margin is 1.39 cm or more: milestone zero
   MUST move it, not may.

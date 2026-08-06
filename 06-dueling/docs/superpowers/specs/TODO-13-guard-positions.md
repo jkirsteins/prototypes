@@ -336,8 +336,9 @@ moving.
 Extended SIDED guards (Ochs, Pflug) cover their band; the centre
 longpoint covers nothing despite being extended (below); and
 withdrawn guards (Vom Tag, Alber) also cover nothing - they are
-attack-loaded (Vom Tag) or an invitation (Alber). That is an authoring
-outcome of `EXTENDED_MIN`, not a fact about their names, so a third
+attack-loaded (Vom Tag) or an invitation (Alber). For Vom Tag that is an authoring
+outcome of `EXTENDED_MIN` and for the centre Alber it is the formula's
+centre branch - either way a derivation, never a fact about a name - so a third
 test asserts every withdrawn-slot realization derives `none`. This
 replaces the parry's `coveredLine` snapshot: what a guard covers is
 readable from where the blade IS, for both fighters and the AI alike.
@@ -542,10 +543,11 @@ any deleted field survives anywhere, source or test - including the
 attack timings deleted in section 6** - the same shape as `physical-foundations`' reach guard, and
 for the same reason.
 
-**One assertion must change its form, not just its plumbing.** The
-side-redirect test currently reads `expect(answerable).toBe(atk.id
-!== "rapier")`, which branches on a weapon's name - forbidden by the
-emergent-outcomes rule. The rewrite computes the answerable matrix
+**Two assertions must change their form, not just their plumbing.**
+The side-redirect test in `line-feints` reads
+`expect(answerable).toBe(atk.id !== "rapier")`, and `attack-lines`
+does the same through an `isRapierThrust` flag. Both branch on a
+weapon's name - forbidden by the emergent-outcomes rule. The rewrite computes the answerable matrix
 from the derivation and pins its SHAPE; it may document that today's
 rapier redirect is too fast to chase, but it may not require that
 failure because the weapon is called a rapier. The old semantics map onto special cases of the one
@@ -1038,7 +1040,9 @@ future named attack that wants a different exit declares it in data.
 derived above, while `strike`, `side` and `feintRecoveryMs` stay
 authored. They have the largest reader set in the codebase and it is
 named for the same reason as the others: `weapons.ts`'s
-`attackTimeline` and `counterTime`, `engine.ts`'s windup event and
+`attackTimeline`, `counterTime` and `bindTimeline` (which survives -
+the bind winner's no-windup thrust still reads the weapon's own
+recovery), `engine.ts`'s windup event and
 `baseRecovery`, `ai.ts`'s whiff commit, `fighter.ts`'s redirect, and
 three sites in `ui/help.ts`. The guard test covers these alongside
 the five guard-timing fields.

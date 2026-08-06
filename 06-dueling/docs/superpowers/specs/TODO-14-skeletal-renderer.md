@@ -172,7 +172,7 @@ interrupted pose is engine state, not renderer memory.
 
 - The engine owns displacement, but 07's raw clip scrubbing is not
   acceptable: it measured ~55 cm of foot drift during a step and
-  113.5 cm during a void, tolerated in the PoC. **Foot drift is a
+  116.3 cm during a void, tolerated in the PoC. **Foot drift is a
   failing production test here.**
 - Each asset's authored reference root-motion curve and its
   foot-lift/foot-plant markers must match the simulation's
