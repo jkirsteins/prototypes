@@ -3,9 +3,13 @@ import type { Duelist } from "./states";
 
 /**
  * The 3D analogue of 06's ATTACK_FRAMES: curated timestamps into each
- * clip, chosen from screenshots (Task 7 tunes them). Pose is a pure
- * function of state - the strike swap at parryableUntil is inclusive,
- * exactly 06's frames.ts:156.
+ * clip, chosen from screenshots. Pose is a pure function of state, but
+ * unlike 06's discrete sprite frames the clip PLAYS through an attack:
+ * each phase scrubs its clip segment across its timeline window
+ * (piecewise-linear clip time in elapsedMs), so the animation moves
+ * continuously while the combat marks still land where the timeline says.
+ * The one deliberate hold is the pre-strike stillness beat - motion
+ * stopping IS the telegraph.
  */
 
 export type ClipName =
@@ -124,14 +128,27 @@ export function pickPose(d: Duelist, timeMs: number): PosePick {
       const tl = s.timeline;
       switch (s.phase) {
         case "windup": {
+          // The rise plays low -> high -> still (windupHigh is a via point
+          // that keeps the curated pacing), then the stillness holds
+          // through the beat: the telegraph is motion stopping.
+          const riseMid = (tl.riseStart + tl.riseEnd) / 2;
           const clipTime =
-            s.elapsedMs < (tl.riseStart + tl.riseEnd) / 2 ? t.windupLow :
-            s.elapsedMs < tl.riseEnd ? t.windupHigh :
-            t.still;
+            s.elapsedMs < riseMid
+              ? lerp(t.windupLow, t.windupHigh, (s.elapsedMs - tl.riseStart) / (riseMid - tl.riseStart))
+              : s.elapsedMs < tl.riseEnd
+                ? lerp(t.windupHigh, t.still, (s.elapsedMs - riseMid) / (tl.riseEnd - riseMid))
+                : t.still;
           return { clip, clipTime, mode: "held" };
         }
         case "strike":
-          return { clip, clipTime: s.elapsedMs <= tl.parryableUntil ? t.travelling : t.delivered, mode: "held" };
+          // The blade travels continuously and arrives at the delivered
+          // pose exactly when the strike resolves; the meetable half of
+          // the window is the first half of the visible travel.
+          return {
+            clip,
+            clipTime: lerp(t.travelling, t.delivered, (s.elapsedMs - tl.strikeStart) / (tl.strikeEnd - tl.strikeStart)),
+            mode: "held",
+          };
         case "recovery":
           return {
             clip,

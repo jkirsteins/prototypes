@@ -55,7 +55,7 @@ left palm) as dots that read through the mesh.
 | (none) | guard idle | upright, both hands on the hilt at the waist, blade up and forward; the only looping state |
 | D / A | step forward / back | one stride of the walk clip scrubbed over 260 ms while the body moves 60 cm; feet slide (measured, not gated) |
 | S | void (back hop) | crouch, hop back 100 cm over 320 ms with the feet leaving the floor mid-hop, land and rise |
-| J | cut | three held windup poses that read as a telegraph, then a blade mid-arc, then a deep lunge with the blade horizontal on the line, then a settle back to guard |
+| J | cut | the rise plays through to a held stillness (the telegraph is motion stopping), then the blade travels its arc across the strike window, landing in a deep lunge as the strike resolves, then a settle back to guard |
 | K | thrust | low guard, blade swung to a vertical cock, then a deep lunge driving the point 1.05 m forward. One-handed: the off-hand is thrown back (the clip, not the rig) |
 | L (hold) | parry | crouched guard, both hands on the hilt, blade up and forward in front of the body. Rise and formed look identical - the clip has no rise |
 | H | hitstun | struck and thrown back over 350 ms, back over the feet by the end |

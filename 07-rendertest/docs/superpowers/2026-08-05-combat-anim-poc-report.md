@@ -13,15 +13,21 @@ frames, under 06's exact timing discipline?**
 transplant into 06 would have to negotiate.**
 
 The renderer contract holds exactly. Pose is a pure function of combat
-state: every phase mark in the timeline lands on the curated timestamp
-with no drift, exactly one animation action is ever active, every action
-is always paused, and the same `PosePick` reached through different
+state: every phase mark in the timeline lands on the value `pickPose`
+computes with no drift, exactly one animation action is ever active, every
+action is always paused, and the same `PosePick` reached through different
 preceding states produces a **bit-identical** skeleton - the bone-local
 comparison across four different histories came back with a maximum
-component delta of 0.0, not merely within tolerance. The strike swap at
-`parryableUntil` is inclusive to the millisecond (890 ms travelling, 891 ms
-delivered for the cut; 630/631 for the thrust), so the visual parry window
-is the engine's parry window.
+component delta of 0.0, not merely within tolerance.
+
+The attacks PLAY rather than snap (amended after the first playtest, see
+"Amendment: continuous playback" below): each phase scrubs its clip
+segment across its timeline window, piecewise-linear in elapsed ms, so
+the animation moves continuously while the combat marks still land where
+the timeline says. The blade arrives at the delivered pose exactly as the
+strike resolves; the meetable half of the parry window corresponds to the
+first half of the visible travel. The one deliberate hold is the
+pre-strike stillness beat - motion stopping is the telegraph.
 
 Readability holds for the cut, the parry, the step, the void, the hitstun,
 the bind and the death. Each reads as its phase and each is distinguishable
@@ -84,18 +90,18 @@ weight 1 with every other at exactly 0, and every action reports paused.
 | mark | clip @ t | ground gate | lowest foot y |
 |---|---|---|---|
 | idle (step 400) | gsIdle, looping | yes | +0.004 |
-| cut 299 windupLow | gsSlash 0.30 | - | +0.005 |
-| cut 301 windupHigh | gsSlash 0.50 | - | +0.005 |
-| cut 650 still | gsSlash 0.61 | yes | +0.005 |
-| cut 800 travelling | gsSlash 0.78 | yes | +0.007 |
-| cut 890 travelling | gsSlash 0.78 | - | +0.007 |
-| cut 891 delivered | gsSlash 0.88 | - | +0.011 |
-| cut 1000 delivered | gsSlash 0.88 | yes | +0.011 |
+| cut 150 rising | gsSlash 0.40 (scrub low..high) | - | +0.006 |
+| cut 300 windupHigh | gsSlash 0.50 | - | +0.005 |
+| cut 650 still | gsSlash 0.61 (held beat) | yes | +0.005 |
+| cut 700 travelling | gsSlash 0.78 (strike starts) | yes | +0.007 |
+| cut 890 mid-strike | gsSlash 0.83 (scrubbing) | - | +0.010 |
+| cut 1079 delivered | gsSlash 0.8797 (strike resolves) | yes | +0.011 |
 | cut 1200 recovery | gsSlash 3.3314 | - | +0.003 |
 | cut 1300 recovery | gsSlash 3.3743 | yes | +0.003 |
-| thrust 630 travelling | stab 0.40 | - | +0.003 |
-| thrust 631 delivered | stab 0.58 | - | +0.003 |
-| thrust 700 delivered | stab 0.58 | yes | +0.003 |
+| thrust 470 still | stab 0.32 (held beat) | - | +0.002 |
+| thrust 500 travelling | stab 0.40 (strike starts) | - | +0.003 |
+| thrust 630 mid-strike | stab 0.49 (scrubbing) | - | +0.002 |
+| thrust 759 delivered | stab 0.5793 (strike resolves) | yes | +0.003 |
 | parry 100 rise | gsBlock 0.10 | yes | +0.002 |
 | parry 250 formed | gsBlock 0.70 | yes | +0.002 |
 | hitstun 200 | gsImpact 0.5386 | yes | +0.004 |
@@ -136,8 +142,8 @@ Exactly zero, because `applyPose` sets every action's weight and the active
 action's time explicitly and then advances the mixer with `update(0)`.
 Nothing accumulates. Looping idles are excluded from this comparison by
 construction: their clip time is a function of a monotonic `timeMs`, so
-"the same pose" is not reachable twice within one session. The held poses
-above cover the claim.
+"the same pose" is not reachable twice within one session. The
+state-derived poses above cover the claim.
 
 **Reach and grip** are in their own sections below.
 
@@ -149,13 +155,13 @@ drive: none in either window.
 to the directory passed as the second argument:
 
 ```
-01-idle.png                 02-cut-299-windupLow.png
-03-cut-301-windupHigh.png   04-cut-650-still.png
-05-cut-800-travelling.png   06-cut-890-travelling.png
-07-cut-891-delivered.png    08-cut-1000-delivered.png
-09-cut-1200-recovery.png    10-cut-1300-recovery.png
-11-thrust-630-travelling.png 12-thrust-631-delivered.png
-13-thrust-700-delivered.png 14-parry-100-rise.png
+01-idle.png                 02-cut-150-rising.png
+03-cut-300-windupHigh.png   04-cut-650-still.png
+05-cut-700-travelling.png   06-cut-890-midstrike.png
+07-cut-1079-delivered.png   08-cut-1200-recovery.png
+09-cut-1300-recovery.png    10-thrust-470-still.png
+11-thrust-500-travelling.png 12-thrust-630-midstrike.png
+13-thrust-759-delivered.png 14-parry-100-rise.png
 15-parry-250-formed.png     16-hitstun-200.png
 17-void-160-midhop.png      18-void-320-landed.png
 19-step-130.png             20-bind.png
@@ -424,3 +430,37 @@ order. Space pauses; `?markers` adds the calibration dots.
   1 `noApproximativeNumericConstant` on `poses.ts:19` (`durationS: 2.000`
   flagged as an approximate Math.E).
 - `node tools/duel-e2e.mjs <url> <dir>`: 143 pass / 0 fail.
+
+## Amendment: continuous playback (2026-08-06)
+
+The first playtest judged the original renderer's attack cadence "choppy":
+faithful to 06's sprite mechanism, windup and strike held a handful of
+discrete curated poses and snapped between them. Six pixel-art frames read
+as animation; a smooth-shaded mesh teleporting between five poses reads as
+dropped frames. The two media do not share this convention.
+
+The remedy keeps every contract and changes only the time mapping in
+`pickPose`: windup scrubs low -> high -> still across the rise (the
+curated marks became via points), the stillness beat still holds as the
+telegraph, and the strike scrubs travelling -> delivered across the whole
+strike window, arriving exactly as the strike resolves. Clip time is now
+piecewise-linear in elapsed ms instead of piecewise-constant - still a
+pure function of state, still applied paused with `mixer.update(0)`,
+still bit-identical across histories.
+
+One semantic changed: 06's discrete travelling/delivered swap AT
+`parryableUntil` no longer exists. The window's closing is now carried by
+the blade's continuous position (the meetable half is the first half of
+the visible travel), which trades the sprite renderer's single-frame
+legibility cue for physical continuity. A transplant into 06 would keep
+the engine's `parryableUntil` untouched; only the visual cue differs.
+
+A side effect worth knowing: each phase plays at the speed its window
+dictates, not the speed the mocap was authored at - the cut's strike
+covers 0.10 s of clip in 380 ms of sim (about 0.26x), so the swing reads
+deliberate rather than ballistic. That is 06's tempo design showing
+through, not a bug.
+
+All 143 e2e assertions re-pass at the remapped marks; reach re-measured
+1.464 m / 1.559 m at the true delivered instants; grip and history
+independence unchanged.

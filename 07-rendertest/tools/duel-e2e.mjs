@@ -327,18 +327,18 @@ async function main() {
     const marks = [
       // name,            keys,        step, clip,         clipTime,                                    ground
       ["idle",            [],           400, "gsIdle",     null,                                        true],
-      ["cut-299-windupLow",  ["KeyJ"],  299, "gsSlash",    T.slash.windupLow,                           false],
-      ["cut-301-windupHigh", ["KeyJ"],  301, "gsSlash",    T.slash.windupHigh,                          false],
+      ["cut-150-rising",  ["KeyJ"],     150, "gsSlash",    windupT("cut", 150),                         false],
+      ["cut-300-windupHigh", ["KeyJ"],  300, "gsSlash",    T.slash.windupHigh,                          false],
       ["cut-650-still",   ["KeyJ"],     650, "gsSlash",    T.slash.still,                               true],
-      ["cut-800-travelling", ["KeyJ"],  800, "gsSlash",    T.slash.travelling,                          true],
-      ["cut-890-travelling", ["KeyJ"],  890, "gsSlash",    T.slash.travelling,                          false],
-      ["cut-891-delivered",  ["KeyJ"],  891, "gsSlash",    T.slash.delivered,                           false],
-      ["cut-1000-delivered", ["KeyJ"], 1000, "gsSlash",    T.slash.delivered,                           true],
+      ["cut-700-travelling", ["KeyJ"],  700, "gsSlash",    T.slash.travelling,                          true],
+      ["cut-890-midstrike", ["KeyJ"],   890, "gsSlash",    strikeT("cut", 890),                         false],
+      ["cut-1079-delivered", ["KeyJ"], 1079, "gsSlash",    strikeT("cut", 1079),                        true],
       ["cut-1200-recovery",  ["KeyJ"], 1200, "gsSlash",    recoveryT("cut", 1200),                      false],
       ["cut-1300-recovery",  ["KeyJ"], 1300, "gsSlash",    recoveryT("cut", 1300),                      true],
-      ["thrust-630-travelling", ["KeyK"], 630, "stab",     T.stab.travelling,                           false],
-      ["thrust-631-delivered",  ["KeyK"], 631, "stab",     T.stab.delivered,                            false],
-      ["thrust-700-delivered",  ["KeyK"], 700, "stab",     T.stab.delivered,                            true],
+      ["thrust-470-still", ["KeyK"],    470, "stab",       T.stab.still,                                false],
+      ["thrust-500-travelling", ["KeyK"], 500, "stab",     T.stab.travelling,                           false],
+      ["thrust-630-midstrike",  ["KeyK"], 630, "stab",     strikeT("thrust", 630),                      false],
+      ["thrust-759-delivered",  ["KeyK"], 759, "stab",     strikeT("thrust", 759),                      true],
       ["parry-100-rise",  ["KeyL"],     100, "gsBlock",    parryT(100),                                 true],
       ["parry-250-formed",["KeyL"],     250, "gsBlock",    parryT(250),                                 true],
       ["hitstun-200",     ["KeyH"],     200, "gsImpact",   lerp(T.impact.start, T.impact.end, 200 / HIT_STUN_MS), true],
@@ -402,8 +402,8 @@ async function main() {
 
     // ================================================== 4. reach
     console.log("\n-- reach (measured visual reach, see the REACH note) --");
-    const cutDelivered = samples.get("cut-1000-delivered");
-    const thrustDelivered = samples.get("thrust-700-delivered");
+    const cutDelivered = samples.get("cut-1079-delivered");
+    const thrustDelivered = samples.get("thrust-759-delivered");
     for (const [name, got, want] of [
       ["cut delivered", cutDelivered, REACH.cut],
       ["thrust delivered", thrustDelivered, REACH.thrust],
@@ -416,7 +416,7 @@ async function main() {
 
     // ================================================== 5. grip
     console.log("\n-- two-handed grip --");
-    for (const name of ["idle", "cut-1000-delivered", "parry-250-formed"]) {
+    for (const name of ["idle", "cut-1079-delivered", "parry-250-formed"]) {
       const g = samples.get(name).s.leftPalmToGripCm;
       check(g <= GRIP.gateCm, `grip: ${name} off-hand on the hilt`,
         `${f3(g)} cm <= ${GRIP.gateCm}`);
@@ -514,6 +514,27 @@ function recoveryT(kind, ms) {
   const t = kind === "cut" ? T.slash : T.stab;
   return lerp(t.recoveryStart, t.recoveryEnd,
     (ms - tl.recoveryStart) / (tl.recoveryEnd - tl.recoveryStart));
+}
+
+/** The strike scrubs travelling -> delivered across the whole window
+ *  (recoveryStart == strikeEnd), arriving as the strike resolves. */
+function strikeT(kind, ms) {
+  const tl = TL[kind];
+  const t = kind === "cut" ? T.slash : T.stab;
+  return lerp(t.travelling, t.delivered,
+    (ms - tl.strikeStart) / (tl.recoveryStart - tl.strikeStart));
+}
+
+/** The rise scrubs low -> high -> still through its midpoint, then the
+ *  stillness beat holds. */
+function windupT(kind, ms) {
+  const tl = TL[kind];
+  const t = kind === "cut" ? T.slash : T.stab;
+  const mid = tl.riseEnd / 2;
+  if (ms >= tl.riseEnd) return t.still;
+  return ms < mid
+    ? lerp(t.windupLow, t.windupHigh, ms / mid)
+    : lerp(t.windupHigh, t.still, (ms - mid) / (tl.riseEnd - mid));
 }
 
 /**

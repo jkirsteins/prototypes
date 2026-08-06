@@ -20,19 +20,40 @@ describe("pickPose", () => {
     expect(pickPose(d, 0).clipTime).toBe(0);
   });
 
-  it("windup: low until rise midpoint, high until riseEnd, then the still beat", () => {
-    expect(pickPose(atElapsed("cut", 299), 0).clipTime).toBe(POSE_T.slash.windupLow);
-    expect(pickPose(atElapsed("cut", 301), 0).clipTime).toBe(POSE_T.slash.windupHigh);
-    expect(pickPose(atElapsed("cut", 650), 0).clipTime).toBe(POSE_T.slash.still);
+  it("windup: scrubs low through high to still across the rise, then holds the beat", () => {
+    // cut rise 0..600, midpoint 300
+    expect(pickPose(atElapsed("cut", 0), 0).clipTime).toBeCloseTo(POSE_T.slash.windupLow);
+    expect(pickPose(atElapsed("cut", 300), 0).clipTime).toBeCloseTo(POSE_T.slash.windupHigh);
+    expect(pickPose(atElapsed("cut", 150), 0).clipTime).toBeCloseTo(
+      (POSE_T.slash.windupLow + POSE_T.slash.windupHigh) / 2,
+    );
+    expect(pickPose(atElapsed("cut", 450), 0).clipTime).toBeCloseTo(
+      (POSE_T.slash.windupHigh + POSE_T.slash.still) / 2,
+    );
+    // the stillness beat holds from riseEnd to strikeStart: the telegraph
+    expect(pickPose(atElapsed("cut", 620), 0).clipTime).toBe(POSE_T.slash.still);
+    expect(pickPose(atElapsed("cut", 699), 0).clipTime).toBe(POSE_T.slash.still);
   });
 
-  it("strike: travelling retained AT parryableUntil, delivered after (06 frames.ts:156)", () => {
-    // cut timeline: strikeStart 700, parryableUntil 890
-    expect(pickPose(atElapsed("cut", 890), 0).clipTime).toBe(POSE_T.slash.travelling);
-    expect(pickPose(atElapsed("cut", 891), 0).clipTime).toBe(POSE_T.slash.delivered);
-    // thrust: strikeStart 500, parryableUntil 630
-    expect(pickPose(atElapsed("thrust", 630), 0).clipTime).toBe(POSE_T.stab.travelling);
-    expect(pickPose(atElapsed("thrust", 631), 0).clipTime).toBe(POSE_T.stab.delivered);
+  it("strike: the blade travels continuously, arriving at delivered when the strike resolves", () => {
+    // cut strike 700..1080: starts at travelling, midpoint of the window is
+    // the midpoint of the travel, delivered only as the strike resolves
+    expect(pickPose(atElapsed("cut", 700), 0).clipTime).toBeCloseTo(POSE_T.slash.travelling);
+    expect(pickPose(atElapsed("cut", 890), 0).clipTime).toBeCloseTo(
+      (POSE_T.slash.travelling + POSE_T.slash.delivered) / 2,
+    );
+    const nearEnd = pickPose(atElapsed("cut", 1079), 0).clipTime;
+    expect(nearEnd).toBeLessThanOrEqual(POSE_T.slash.delivered);
+    expect(nearEnd).toBeGreaterThan(POSE_T.slash.travelling);
+    // monotonic through the window
+    expect(pickPose(atElapsed("cut", 1000), 0).clipTime).toBeGreaterThan(
+      pickPose(atElapsed("cut", 800), 0).clipTime,
+    );
+    // thrust strike 500..760
+    expect(pickPose(atElapsed("thrust", 500), 0).clipTime).toBeCloseTo(POSE_T.stab.travelling);
+    expect(pickPose(atElapsed("thrust", 630), 0).clipTime).toBeCloseTo(
+      (POSE_T.stab.travelling + POSE_T.stab.delivered) / 2,
+    );
   });
 
   it("recovery scrubs its range and never exceeds it", () => {
