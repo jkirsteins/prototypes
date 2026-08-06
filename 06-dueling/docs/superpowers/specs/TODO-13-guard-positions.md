@@ -496,10 +496,16 @@ raised action that can be spent:
 - `fighter.ts`'s refusal to parry while recovering disappears with it:
   there is no parry to refuse. What limits a defender is where the
   blade physically is and how long the derived travel takes.
-- `fighter.ts`'s `dropGuard` on cut and thrust, and `engine.ts`
-  ending the guard on a landed blade, become the `attacking` variant's
-  empty `coveredSince` above - the same rule, expressed as the track's
-  lifecycle rather than as a field being nulled.
+- `fighter.ts`'s `dropGuard` on cut and thrust becomes the `attacking`
+  variant's empty `coveredSince` above - the same rule, expressed as
+  the track's lifecycle rather than as a field being nulled.
+- `engine.ts` dropping the STRUCK defender's guard has no successor
+  and needs none: the same tick ends the round, and the engine's own
+  comment says the charge is moot under hitstun. The struck fighter's
+  track simply keeps the pose it had, which is what
+  `skeletal-renderer` blends out of. `frozen.why` covers the states
+  that outlive their attack; hitstun and death are not among them
+  because nothing reads their coverage.
 - `dropGuard` on a VOID is a deliberate change, not a mapping: a void
   is locomotion, and under this model the blade goes where the blade
   goes, so a voiding fighter KEEPS the row they were covering. Today's
