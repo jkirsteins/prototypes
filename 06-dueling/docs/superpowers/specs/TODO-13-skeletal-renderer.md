@@ -66,7 +66,20 @@ against it.
    retargeted onto it), so a new character costs a mesh, never a new
    copy of every animation. The `N characters x M animations`
    multiplier must not exist.
-8. **Contact conformance is the real spec's burden.** The engine's
+8. **Moving attacks sample one more axis.** Combined actions
+   (`guard-positions`) mean attack animation samples
+   `attack definition x handling mode x movement mode x attack time`.
+   That is an `attack x movement` asset factor, never
+   `character x weapon x attack x movement` - acceptable
+   implementations include three full-body variants per attack and
+   mode, or one upper-body blade action over movement-specific
+   lower-body animation with corrections, or authored full-body
+   variants only where layering looks bad. Two hard rules either way:
+   the ENGINE owns root displacement (clips are in-place and
+   phase-locked to the simulation's movement curve), and verification
+   covers foot planting, no sliding, blade reach and contact
+   conformance in all three movement modes.
+9. **Contact conformance is the real spec's burden.** The engine's
    contact verdicts are categorical (`guard-positions` section 4), so
    the real spec must state HOW hand animation, weapon attachment and
    any IK are adjusted so the rendered blades visibly meet exactly

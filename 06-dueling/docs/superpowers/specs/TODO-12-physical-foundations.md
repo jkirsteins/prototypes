@@ -223,6 +223,12 @@ matrix test - not a design promise**: it now depends on real blade
 lengths and socket offsets, no longer on hilt length counted as
 forward steel.
 
+One boundary, stated for every later spec: **movement changes the
+fighter's root position and therefore the live gap; it never modifies
+`reachCm`.** An advancing attack (`guard-positions`) lands from
+further away because the gap shrinks under it, not because the sword
+grew.
+
 ### 4.5 Static hold torque
 
 Hold demand is measured **about the shoulder** - the joint that

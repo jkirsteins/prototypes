@@ -27,9 +27,10 @@ pins - the gamble is priced either way, because the opponent's measure
 expectations are set by the two-handed grip they were just fencing.
 
 **Delivers:** the `gripSwitch` action on both schemes, the switch
-transition and its vulnerability, mode-resolved realization morphs
-(Pflug <-> Terza), AI switching policy, help entries, the extended
-suitability matrix tests.
+transition and its emergent costs, mode-resolved realization morphs
+within one family (Langort <-> Terza in `longpoint`; Pflug stays
+Pflug), AI switching policy, help entries, the extended suitability
+matrix tests.
 
 **Depends on:** `physical-foundations` (gates, derivations),
 `guard-positions` (realizations for both modes), `skeletal-renderer`

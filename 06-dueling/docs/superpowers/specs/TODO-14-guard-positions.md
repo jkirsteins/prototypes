@@ -42,7 +42,8 @@ not availability.
 **Delivers:** guard data model and JSON file, coverage derivation,
 transition derivation (replacing six authored timing fields), attack
 definitions as data with addressable terminal configurations and
-data-resolved resulting guards, parry as
+data-resolved resulting guards, moving attacks as snapshotted combined
+actions, parry as
 event, attacks as transitions, repurposed inputs, AI guard play, help
 rewrite, the suitability matrix test, re-proven tempo economics.
 
@@ -132,7 +133,7 @@ The extended column has three height stops (`middle` becomes reachable
 reserves); the withdrawn column keeps two. stanceUp/stanceDown move
 between the current column's stops; toggling extension at `middle`
 retracts to the slot map's authored target (Vom Tag by default - the
-gather to the shoulder - and the map lives in guards.json, not code).
+gather to the shoulder - and the map lives in positions.json, not code).
 Ochs, Pflug and Vom Tag take sideShift; longpoint and Alber ignore it.
 
 No new ActionIds. The `guard` button's meaning sharpens from "parry
@@ -144,9 +145,23 @@ code say what they now do.
 
 ## 3. Guard data
 
-`src/combat/data/guards.json`, imported statically (Vite), validated by
-a test against the TS types - a malformed row fails the suite, so the
-file is editable without touching engine code. Per realization row:
+`src/combat/data/positions.json`, imported statically (Vite),
+validated by a test against the TS types - a malformed row fails the
+suite, so the file is editable without touching engine code. The file
+holds ALL addressable positions as a discriminated union:
+
+```
+type PositionDefinition =
+  | { kind: "guard";    ... }  // realization rows: the full schema below
+  | { kind: "launch";   ... }  // hand + weapon geometry only
+  | { kind: "terminal"; ... }  // hand + weapon geometry only
+```
+
+Launch and terminal rows carry only the geometric core (primary hand,
+weapon orientation, pose ref) - no family, side variant, coverage or
+slot; only `guard` rows are standable and selectable. Attack
+definitions reference all three by stable `PositionId`. Per guard
+realization row:
 
 ```
 {
@@ -193,10 +208,15 @@ One shared function reads the realization's **derived** blade geometry
 ```
 p = derivedPoint(realization, weapon)
 covered(realization, weapon) =
+  realization.sideVariant == "centre" ? none :
   p.advanceCm >= EXTENDED_MIN
     ? { height: band(p.heightCm), side: sideOf(sideVariant, facing) }
     : none
 ```
+
+The centre branch is explicit, not an accident of attack availability:
+a centre variant claims no categorical line, so `sideOf` never runs on
+an input it has no answer for.
 
 Extended guards (Ochs, Langort/Terza, Pflug) cover their line;
 withdrawn guards (Vom Tag, Alber) cover nothing - they are
@@ -204,17 +224,14 @@ attack-loaded (Vom Tag) or an invitation (Alber). This replaces the
 parry's `coveredLine` snapshot: what a guard covers is readable from
 where the blade IS, for both fighters and the AI alike.
 
-**The centre longpoint and `sideOf`, stated exactly:** longpoint's
-derived point lands in the `middle` height band, and no shipping
-attack targets a middle line - so its coverage matches no incoming
-attack and `sideOf` is never evaluated for a centre variant. That is
-not an oversight, it is the guard's identity: historically the
+**The centre longpoint covers nothing, by encoding:** the formula's
+centre branch is the guard's identity made explicit. Historically the
 longpoint is a threat, not a parry - its defense is that the point
 stands in the opponent's way, which in this model is its near-direct
-thrust (section 6), not a coverage claim. A validation test asserts no
-centre-variant realization resolves a covered side; when a middle-line
-attack ever ships, the centre variant's covered side arrives with that
-extension, in data.
+thrust (section 6), not a coverage claim. A validation test asserts
+the formula returns `none` for every centre-variant realization; if a
+sided longpoint variant or a middle-line attack ever ships, coverage
+for it arrives through the same formula's non-centre branch, in data.
 
 **The deciding contact model stays categorical - an explicit choice.**
 Two options existed: keep the abstract line-plus-scalar-extension
@@ -299,8 +316,11 @@ small. An attack takes a **target line** as a free input; the current
 guard prices the attack, it never gates which lines exist:
 
 ```
-current guard + kind + target line
-  -> launch config -> [strike, authored] -> terminal config -> resulting guard
+current guard + definition + target line + movement mode
+  -> launch config
+  -> [strike, authored] while the root follows a fixed movement curve
+  -> terminal config, at the new root position
+  -> resulting guard
 ```
 
 **Attacks are data, like guards** - the future of named techniques is
@@ -310,10 +330,16 @@ a schema, not a promise in prose. v1 ships exactly two rows:
 interface AttackDefinition {
   id;                    // "genericCut" | "genericThrust" (later "mittelhau", ...)
   kind;                  // "cut" | "thrust"
-  sourceGuards;          // PREFERRED sources: where the launch is cheapest.
-                         // Never required - any guard transitions into the
-                         // launch config at derived cost (guard-priced,
-                         // never guard-gated, for techniques too)
+  side;                  // the DECLARED side of the line it travels
+                         // (the AttackTimings.side rule, carried over)
+  sourcePolicy: {
+    preferred;           // GuardSelector[]: where the launch is cheapest -
+                         // any guard still transitions into the launch
+                         // config at derived cost (guard-priced, never
+                         // guard-gated)
+    required?;           // GuardSelector[]: a future technique MAY gate
+                         // itself; v1 rows never set this
+  };
   launchConfiguration;   // PositionId
   trajectoryRef;         // the strike path: renderer cue + authored strike timing
   terminalConfiguration; // PositionId - the delivered contact pose, ADDRESSABLE
@@ -321,23 +347,74 @@ interface AttackDefinition {
                          // (attackExitSide / oppositeSourceSide): a crossing
                          // cut from Right Vom Tag exits left and resolves to
                          // Left Pflug, side included, never a bare family
+  allowedMovements;      // AttackMovement[]: v1 rows allow all three
+  movementTiming: {
+    startMark;           // AttackMark: when the feet begin (e.g. late windup)
+    landMark;            // AttackMark: when the step lands (e.g. delivery)
+  };
 }
 ```
 
-**Terminal configurations are position rows** in guards.json - not
-selectable as standing guards, but addressable, so the delivered pose
-is a real place the fighter is standing, not an implicit animation
-moment. Recovery is an ordinary derived transition FROM that position.
+**Terminal configurations are position rows** in positions.json
+(`kind: "terminal"`) - not selectable as standing guards, but
+addressable, so the delivered pose is a real place the fighter is
+standing, not an implicit animation moment. Recovery is an ordinary
+derived transition FROM that position.
 
 **The active attack snapshots its resolution at launch** (the same
 snapshot pattern `AttackTimeline` already uses): `{definitionId,
-sourceGuardId, targetLine, terminalConfigurationId, resultingGuardId}`,
-resolved once, never re-derived mid-flight. v1's recovery follows
-`terminal -> defaultResultingGuard` automatically; later, an input can
-select a different resulting guard, a result variant, or another
-attack launched directly from the terminal configuration - data rows
-and one binding, not new architecture. No continuations system ships
-now.
+sourceGuardId, targetLine, terminalConfigurationId, resultingGuardId,
+movement, movementStartMs, movementEndMs, movementStartX,
+movementDistanceCm}`, resolved once, never re-derived mid-flight.
+v1's recovery follows `terminal -> defaultResultingGuard`
+automatically; later, an input can select a different resulting guard,
+a result variant, or another attack launched directly from the
+terminal configuration - data rows and one binding, not new
+architecture. No continuations system ships now.
+
+### Moving attacks: one action, two schedules
+
+An attack may be thrown stationary, advancing, or retreating -
+`AttackMovement` - and all three are THE SAME attack definition: same
+source rules, trajectory, target line, terminal configuration,
+resulting guard and timings. Movement moves the fighter's ROOT, and
+therefore the live gap; it never touches `reachCm`
+(`physical-foundations`). An advancing cut reaches from further away
+because the gap shrinks under it, and finishes closer; a retreating
+one may finish outside the answer. Contact always reads the current
+tick's gap - no special case anywhere in `contact.ts`.
+
+The body follows a fixed schedule, not a second action track:
+
+- Movement is selected at launch (direction held when the attack key
+  is pressed), snapshotted with the attack, and cannot change during
+  it. Direction inputs during the combined action are ignored; feints
+  and redirects change the blade's plan, never the movement plan.
+- The movement curve runs between the definition's `movementTiming`
+  marks on the attack's own timeline - the feet do not start at the
+  keypress and do not finish independent of the blade. The default
+  rows start the step in late windup and land it at delivery, so the
+  plant and the delivered pose read as one act; simply running the
+  260ms step from the keypress would plant the feet hundreds of
+  milliseconds before a longsword cut arrives, which is exactly the
+  wrongness this timing exists to prevent. Advance and retreat share
+  the timing and reverse the displacement.
+- Displacement magnitude and the recovery constant come from the
+  weapon's existing step numbers; the engine owns the root position at
+  every tick (the renderer's clips are in-place, `skeletal-renderer`).
+- An attack pressed during an ordinary active step stays BUFFERED,
+  exactly as today - the combined action exists only from launch.
+- Being struck stops the combined action where the fighter stands:
+  hitstun/death take over at the current root, nothing rewinds.
+- The footfall `step` event fires when the movement completes, even if
+  the blade is still in recovery - presentation follows the
+  simulation, and the foot planting IS a simulation moment.
+- The whole action commits until BOTH schedules finish:
+  `combinedEnd = max(attackRecoveryEnd, movementEnd + stepRecoveryMs)`.
+
+Movement does not alter the resulting guard: an advancing and a
+retreating Oberhau both end in the definition's resolved position. A
+future named attack that wants a different exit declares it in data.
 
 - **Windup, derived:** the transition from the current realization to
   the attack's launch configuration (cut: blade gathered high on the
@@ -386,6 +463,10 @@ emulation as its only privilege:
   a windup;
 - attacks into uncovered lines; answers threats by transitioning to the
   covering slot; uses withdrawn guards to load attacks it intends;
+- chooses among stationary, advancing and retreating versions of an
+  attack by measure - advancing to reach from wide, retreating to
+  strike while leaving - through the SAME attack definitions and
+  movement snapshots the player uses; no AI-only movement physics;
 - the policy-coverage discipline applies: each guard-related decision
   branch is named in the AI test suite, so no behaviour ships as
   fallthrough.
@@ -402,9 +483,11 @@ render time, never literals - including derived transition examples.
 
 **The matrix is computed, then pinned.** A test builds, from the shared
 derivations at baseline attributes: for every realization x weapon x
-handling mode - hold demand (strain rate), transition times to adjacent
-slots, windup per attack, coverage. The pinned shape must show, among
-others, the worked example from the design discussion:
+handling mode x attack x movement mode x initial measure - hold demand
+(strain rate), transition times to adjacent slots, windup per attack,
+coverage, and where the attacker's root and the gap end up. The pinned
+shape must show, among others, the worked example from the design
+discussion:
 
 - thrust from Terza (one-handed longpoint): small arc + the one-handed
   profiling reach gain -> fast preparation, long reach (potentially
@@ -413,18 +496,26 @@ others, the worked example from the design discussion:
 - large cut from Terza: high rotational demand + wrist-only torque ->
   slow (emergently poor, worse the heavier the blade);
 - extended one-handed guards accrue strain; withdrawn ones rest;
-- in contact, one hand's control torque -> displaced easily.
+- in contact, one hand's control torque -> displaced easily;
+- an advancing attack reaches from further away and finishes closer; a
+  stationary one preserves measure; a retreating one reaches less
+  reliably and may finish outside the counter - all read from the
+  matrix's end-of-action gap, never asserted by movement-mode name.
 
 No assertion may branch on a weapon or guard name to force a verdict;
 the test pins the derived numbers' shape, so retuning moves the matrix
 without new control flow.
 
-**Tempo economics are re-proven, not preserved.** The invariants from
-the tuning history (every parried and every whiffed attack punishable
-by either weapon's thrust; the void always outpricing the parry) are
-restated as properties over the DERIVED timing matrix and asserted
-across all realizations. Calibration constants are tuned until they
-hold. The golden replay WILL change: this spec intends new behavior. A
+**Tempo economics are re-proven, not preserved - and the punishment
+invariant becomes conditional on measure.** Unconditionally, "every
+parried and whiffed attack is punishable" cannot survive retreating
+attacks: escaping the counter is what retreating while striking is
+FOR. The invariant is restated as: **if the defender remains within
+counter-thrust measure when the punishment window opens, the recovery
+contains enough time for the counter to land** - asserted over the
+derived timing matrix across realizations, movement modes and initial
+measures. The void-always-outprices-parry invariant stays
+unconditional. Calibration constants are tuned until both hold. The golden replay WILL change: this spec intends new behavior. A
 new golden is recorded only after the playtest below signs off - never
 silently (golden-replay refactor gate applies only where behavior must
 be preserved; here the re-record is the deliverable).
@@ -450,8 +541,12 @@ standing in Ochs visibly closes the high line and the AI stops
 attacking into it; dropping to Alber visibly invites and the AI takes
 the bait; a thrust thrown from Pflug/Terza arrives noticeably sooner
 than one gathered from Alber; changing guards under pressure is a real
-decision with a real travel cost. What would look wrong: any guard
-change that snaps instantly; an attack landing through a formed
-covering guard; the AI ignoring your guard when choosing lines; a
-fighter visibly in one posture while the engine treats them as in
-another (the renderer contract exists precisely to forbid this).
+decision with a real travel cost; the same cut thrown stationary,
+advancing and retreating reads as one technique carried by different
+footwork, and the AI visibly retreats out of your answer sometimes.
+What would look wrong: any guard change that snaps instantly; an
+attack landing through a formed covering guard; the AI ignoring your
+guard when choosing lines; an advancing cut whose feet plant long
+before the blade arrives; a fighter visibly in one posture while the
+engine treats them as in another (the renderer contract exists
+precisely to forbid this).
