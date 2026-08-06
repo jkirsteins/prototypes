@@ -199,7 +199,16 @@ switch actually costs, all emergent:
   which the shared `lateral` keeps covered throughout.
 
 On completion the fighter stands in the same family's realization for
-the new mode. Reach, control torque, all three bind quantities (each
+the new mode - unless steel found them on the way. **A deflection
+mid-switch displaces the pose but does not abort the switch**: the
+`handlingTransition` runs to its engagement endpoint regardless, since
+the hands finish arranging themselves whatever the blade is doing,
+while the `BladeTrack`'s destination is rewritten to the displaced
+geometry (`guard-positions` section 4). The fighter therefore ends the
+switch in the new mode but knocked off line, and the standing levels
+transition them out of THAT pose rather than out of the realization
+they were aiming for. Engagement and blade geometry are separate
+tracks precisely so this can be said without contradiction. Reach, control torque, all three bind quantities (each
 reads control torque, so each genuinely moves with the mode -
 `physical-foundations` 4.3) and the strain rate re-derive on the
 completion tick; nothing is cached.

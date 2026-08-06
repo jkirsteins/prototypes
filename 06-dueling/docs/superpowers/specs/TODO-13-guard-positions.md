@@ -562,6 +562,12 @@ raised action that can be spent:
   `transitionMs` like any other - which is why `parryRecoveryMs` has
   nothing left to do.
 - `parryRecoveryMs` is DELETED from the profile alongside the others.
+- `fighter.ts`'s exported `guardEffective()` - read by `ai.ts`, the
+  renderer and the frame picker - becomes the same predicate
+  `parryMeetsAttack` uses: a `coveredSince` entry whose clock has
+  outlasted its `formationMs`. One derivation, three readers, no
+  chance of the AI and the picture disagreeing about whether a guard
+  is up.
 - `fighter.ts`'s refusal to parry while recovering disappears with it:
   there is no parry to refuse. What limits a defender is where the
   blade physically is and how long the derived travel takes.

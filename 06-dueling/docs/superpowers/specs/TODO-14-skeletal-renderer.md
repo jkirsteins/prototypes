@@ -307,8 +307,11 @@ facings; both fighters.
 Coverage is a product over the INDEPENDENT axes: **every source
 realization (all sixteen - a realization already is position x
 handling mode, so handling is not a separate axis) x every target
-height x all three movement modes x every weapon x a short stature
-range**, for every attack definition. Weapon and stature are real axes,
+height x all three movement modes x every AVAILABLE weapon x a short stature
+range** - available because the grid is not rectangular: the rapier
+fails `physical-foundations`' two-handed gate, so its eight
+two-handed realizations do not exist and must not be demanded of the
+asset pipeline, for every attack definition. Weapon and stature are real axes,
 not decoration: the weapon decides grip-socket geometry and blade
 length, stature scales the rig and every measured reach, and section 9's
 reach equality has to hold for each combination rather than for a
