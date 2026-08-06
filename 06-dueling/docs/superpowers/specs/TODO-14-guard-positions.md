@@ -48,7 +48,8 @@ transitions, repurposed inputs, AI guard play, help rewrite, the
 suitability matrix test, re-proven tempo economics.
 
 **Depends on:** `physical-foundations` (attributes, handling modes,
-control torque, inertia, strain), `preparation-and-readiness`,
+control torque, strain), `blade-inertia` (the moments `alpha` and the
+bind quantities read), `preparation-and-readiness`,
 `held-guard`, `attack-lines` (whose mechanics this spec re-founds).
 
 **`skeletal-renderer` is NOT a dependency - it is this spec's

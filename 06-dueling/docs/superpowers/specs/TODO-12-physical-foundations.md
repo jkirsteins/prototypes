@@ -51,12 +51,13 @@ never condition on which side controls the fighter).
 | field       | unit | longsword | rapier | meaning                                    |
 |-------------|------|-----------|--------|--------------------------------------------|
 | `massKg`    | kg   | 1.5       | 1.3    | total mass                                 |
-| `balanceCm` | cm   | 8         | 6      | center of mass forward of the crossguard   |
+| `balanceCm` | cm   | derived   | derived| centre of mass forward of the crossguard - DERIVED by `blade-inertia` from the mass split, and checked against a reference figure rather than authored |
 | `bladeCm`   | cm   | 95        | 112    | crossguard to point                        |
 | `hiltCm`    | cm   | 25        | 12     | grip room behind the crossguard            |
 | `grip1Cm`   | cm   | 7.5       | 5      | primary grip socket centre, behind the crossguard |
 | `grip2Cm`   | cm   | 19        | 10     | secondary grip socket centre, further behind |
-| `taper`     | -    | tuned     | tuned  | mass-distribution coefficient (see 4.2)    |
+| `bladeCoMFraction` | - | tuned | tuned | blade's own mass centre as a fraction of `bladeCm`; replaces `taper` (`blade-inertia`) |
+| `bladeMassFraction`, `gripMassFraction` | - | tuned | tuned | the mass split the moments integrate (`blade-inertia`) |
 
 **The weapon owns its grip sockets.** Hands sit at sockets; every
 distance the derivations use (hand separation, hand-to-point length)
@@ -282,7 +283,7 @@ meets a formed guard, `grip-switching` when contact lands mid-switch.
 ### 4.2 Rotational inertia: one distribution, two moments
 
 A single mass-distribution model over (`massKg`, `balanceCm`,
-`bladeCm`, `taper`) yields **two independent moments**:
+`bladeCm`, and the mass split) yields **two independent moments**:
 
 ```
 inertiaGripKgM2(w)    // about the primary grip socket:
@@ -292,10 +293,17 @@ inertiaContactKgM2(w) // about a mid-blade reference contact point:
 ```
 
 They are different integrals of the same distribution, so their ratios
-across weapons are independent, and `taper` is the per-weapon freedom
-that moves one without the other. The distribution model is
-deliberately simple (a tapered rod plus a pommel point mass behind the
-socket); the acceptance criterion is section 7, not textbook accuracy.
+across weapons are independent.
+
+**`blade-inertia` derives both, and replaces this subsection's model.**
+It gives the distribution (three lumped masses about the front hand),
+the two integrals, and the scaling laws that follow - length cubic,
+mass linear, distribution trading hand speed against bind authority. It
+also replaces `taper` with a measurable `bladeCoMFraction` and demotes
+`balanceCm` from an authored fact to a derived diagnostic, which removes
+this spec's over-determination: mass, balance and taper could disagree
+here, and nothing noticed. Everything below consumes the two moments
+through the same names, so nothing else in this spec changes.
 
 ### 4.3 The bind quantities, derived
 
@@ -504,7 +512,8 @@ anything depends on it.
 
 - **The calibration workbook exists BEFORE engine wiring**, and it is
   milestone zero: the concrete mass-distribution formula, the numeric
-  `taper` values, both computed moments per weapon, `contactArmM`,
+  mass-split values, both computed moments per weapon (`blade-inertia`),
+  `contactArmM`,
   every calibration constant, and the **equivalence report** - each of
   the six derived quantities beside its shipped constant, with the
   deviation. A model that cannot get close with plausible inputs sends
