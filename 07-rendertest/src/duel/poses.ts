@@ -1,4 +1,5 @@
 import { DEATH_ANIM_MS, HIT_STUN_MS, LONGSWORD, PARRY_FORM_MS } from "./timings";
+import { SETTLE_MS } from "./states";
 import type { Duelist } from "./states";
 
 /**
@@ -103,6 +104,10 @@ export interface PosePick {
   clip: ClipName;
   clipTime: number;
   mode: "held" | "loop";
+  /** The settle wind-down: a second pose mixed in at `weight`, with the
+   *  primary at 1 - weight. Deterministic - the weight is a pure function
+   *  of state time, so pose purity is unchanged. */
+  blend?: { clip: ClipName; clipTime: number; weight: number };
 }
 
 /** The static bind counterpart's pose: a formed block meeting the slash. */
@@ -124,6 +129,16 @@ export function pickPose(d: Duelist, timeMs: number): PosePick {
     case "dead": return { clip: "gsDeath", clipTime: lerp(POSE_T.death.start, POSE_T.death.end, s.t / DEATH_ANIM_MS), mode: "held" };
     case "parry": return { clip: "gsBlock", clipTime: s.t < PARRY_FORM_MS ? POSE_T.block.rise : POSE_T.block.formed, mode: "held" };
     case "bind": return { clip: "gsSlash", clipTime: POSE_T.bindContact, mode: "held" };
+    case "settle": {
+      // Wind down into the idle: the finished state's final pose (its
+      // frozen `prior` re-evaluated through this same function) fades out
+      // as the idle fades in.
+      const f = Math.min(1, s.t / SETTLE_MS);
+      const base = pickPose({ ...d, state: { kind: "ready" } }, timeMs);
+      const prior = pickPose({ ...d, state: s.prior }, timeMs);
+      if (prior.clip === base.clip || f >= 1) return base;
+      return { ...base, blend: { clip: prior.clip, clipTime: prior.clipTime, weight: 1 - f } };
+    }
     case "attack": {
       const wv = s.attack === "cut" ? WARP.slash : WARP.stab;
       const tl = s.timeline;

@@ -14,8 +14,10 @@ transplant into 06 would have to negotiate.**
 
 The renderer contract holds exactly. Pose is a pure function of combat
 state: every phase mark in the timeline lands on the value `pickPose`
-computes with no drift, exactly one animation action is ever active, every
-action is always paused, and the same `PosePick` reached through different
+computes with no drift, exactly one animation action is ever active
+(two, with weights summing to 1, during the brief settle wind-down -
+the weight is itself a pure function of state time), every action is
+always paused, and the same `PosePick` reached through different
 preceding states produces a **bit-identical** skeleton - the bone-local
 comparison across four different histories came back with a maximum
 component delta of 0.0, not merely within tolerance.
@@ -470,9 +472,20 @@ window's closing is carried by the blade's continuous position (mid-arc
 at the close, landed at the resolve). And each stretch plays at the
 speed its combat window dictates, not the authored speed - the cut's
 strike runs deliberate rather than ballistic; that is 06's tempo design
-showing through. The one remaining seam is the state boundary into idle
-after recovery, the same place 06's sprite renderer snaps.
+showing through.
 
-All 147 e2e assertions pass (143 prior plus the four continuity gates);
-reach unchanged at 1.464 m / 1.560 m - the delivered anchors land on the
-same calibrated frames; grip and history independence unchanged.
+The last seam - the snap back to the idle when a state ends - closed
+with a settle wind-down: a state that finishes into ready passes through
+`settle`, which carries the finished state frozen at its terminal time
+(the way 06's exposed state carries its contact snapshot) and blends its
+final pose into the idle over 150 ms. The blend weight is a pure
+function of state time, both actions stay paused under `update(0)`, and
+inputs launch from settle exactly as from ready - the wind-down is
+cosmetic, never a lockout. This is the one place two actions carry
+weight at once (summing to 1, asserted); death and the freezes (bind,
+unarmed) do not settle, and reset jumps straight to ready by design.
+
+All 151 e2e assertions pass (143 original, four continuity gates, four
+settle gates); reach unchanged at 1.464 m / 1.560 m - the delivered
+anchors land on the same calibrated frames; grip and history
+independence unchanged.

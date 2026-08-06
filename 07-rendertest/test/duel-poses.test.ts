@@ -79,6 +79,27 @@ describe("pickPose", () => {
     expect(pickPose(d, 0).clipTime).toBeCloseTo(POSE_T.death.end);
   });
 
+  it("settle blends the finished pose into the idle, weights summing to 1", () => {
+    const d = createDuelist();
+    handleEvent(d, "cut");
+    tick(d, 1500); // attack completes into settle
+    expect(d.state.kind).toBe("settle");
+    tick(d, 75); // halfway through SETTLE_MS 150
+    const p = pickPose(d, 4321);
+    expect(p.clip).toBe("gsIdle");
+    expect(p.mode).toBe("loop");
+    expect(p.blend?.clip).toBe("gsSlash");
+    expect(p.blend?.clipTime).toBeCloseTo(WARP.slash.end);
+    expect(p.blend?.weight).toBeCloseTo(0.5);
+    // at the very start of the settle the finished pose still dominates
+    const d2 = createDuelist();
+    handleEvent(d2, "hitstun");
+    tick(d2, 351); // expiry enters settle at t 0: the finished pose still fully dominates
+    const p2 = pickPose(d2, 0);
+    expect(p2.blend?.clip).toBe("gsImpact");
+    expect(p2.blend?.weight).toBeCloseTo(1);
+  });
+
   it("bind freezes the slash contact; every pick is a real clip", () => {
     const d = createDuelist();
     handleEvent(d, "bind");

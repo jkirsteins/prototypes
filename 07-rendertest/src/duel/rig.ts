@@ -318,13 +318,18 @@ export async function loadDuelRig(baseUrl: string): Promise<DuelRig> {
   return {
     root,
     applyPose(p: PosePick): void {
-      // The hard-reset rule: exactly one action at weight 1, every
-      // action paused, time set explicitly, advanced with update(0) so
-      // frame dt can never move a pose.
+      // The hard-reset rule: every action paused, weights set explicitly
+      // each call, times set explicitly, advanced with update(0) so frame
+      // dt can never move a pose. Normally exactly one action carries
+      // weight 1; during a settle wind-down the pick names a second pose
+      // and the two weights sum to 1 - still a pure function of state.
+      const blendWeight = p.blend?.weight ?? 0;
       for (const [name, action] of actions) {
         action.paused = true;
-        action.setEffectiveWeight(name === p.clip ? 1 : 0);
+        const w = name === p.clip ? 1 - blendWeight : name === p.blend?.clip ? blendWeight : 0;
+        action.setEffectiveWeight(w);
         if (name === p.clip) action.time = p.clipTime;
+        else if (name === p.blend?.clip) action.time = p.blend.clipTime;
       }
       mixer.update(0);
       current = { pick: p };

@@ -66,6 +66,10 @@ left palm) as dots that read through the mesh.
 | R | reset | back to guard idle from any state |
 | Space | pause | freezes the frame loop (the e2e hook steps it by hand) |
 
+Every state that ends into the guard idle winds down through a 150 ms
+settle blend rather than snapping - inputs still launch instantly during
+it.
+
 The debug line on the floor is the weapon's `reachCm`, 200 cm, copied from
 06. The blade tip does not meet it, and that gap is deliberate - see the
 report.

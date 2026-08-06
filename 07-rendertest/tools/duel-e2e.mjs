@@ -490,7 +490,9 @@ async function main() {
     // fastest warp segment can move in 16 ms. A pose jump (skipped clip
     // segment, held-then-snap) shows up as a spike here.
     console.log("\n-- attack continuity (16 ms steps, bone-local deltas) --");
-    for (const [label, key, endMs] of [["cut", "KeyJ", 1500], ["thrust", "KeyK", 1060]]) {
+    // endMs runs past the attack into the settle wind-down and the first
+    // idle frames, so the transition back to ready is gated too.
+    for (const [label, key, endMs] of [["cut", "KeyJ", 1500 + 150 + 48], ["thrust", "KeyK", 1060 + 150 + 48]]) {
       await drive(cdp, [key], 0);
       let prevSample = await cdp.eval(SAMPLE);
       let worstQ = 0;
@@ -523,6 +525,32 @@ async function main() {
       check(worstP <= CONTINUITY_POS_TOL, `${label}: no translation jumps across the whole attack`,
         `worst 16 ms pos delta ${worstP.toFixed(3)} local units at ${worstPAt} ms, tol ${CONTINUITY_POS_TOL}`);
     }
+
+    // ================================================== 6c. settle blend
+    // The wind-down: mid-settle the finished pose and the idle mix with
+    // weights summing to 1; after SETTLE_MS the idle stands alone.
+    console.log("\n-- settle wind-down --");
+    // Two steps: the state machine starts the settle at the tick that
+    // crosses recoveryEnd (overshoot within a tick is not carried over),
+    // so cross the boundary first, then advance inside the window.
+    await drive(cdp, ["KeyJ"], 1500);
+    await cdp.eval("window.__duel.step(75)");
+    const settle = await cdp.eval(SAMPLE);
+    const w = settle.s.weights;
+    const nonzero = Object.entries(w).filter(([, v]) => v > 1e-6);
+    check(nonzero.length === 2, "settle: exactly two poses mixed",
+      nonzero.map(([n, v]) => `${n}=${v.toFixed(3)}`).join(" "));
+    const sum = nonzero.reduce((acc, [, v]) => acc + v, 0);
+    check(near(sum, 1, 1e-6), "settle: weights sum to 1", `sum ${sum.toFixed(6)}`);
+    check(near(w.gsIdle ?? 0, 0.5, 0.01) && near(w.gsSlash ?? 0, 0.5, 0.01),
+      "settle: halfway mixes idle and the finished cut evenly",
+      `gsIdle ${f3(w.gsIdle ?? 0)}, gsSlash ${f3(w.gsSlash ?? 0)}`);
+    await cdp.eval("window.__duel.step(80)"); // past SETTLE_MS
+    const settled = await cdp.eval(SAMPLE);
+    const one = Object.entries(settled.s.weights).filter(([, v]) => v > 1e-6);
+    check(one.length === 1 && one[0][0] === "gsIdle" && near(one[0][1], 1, 1e-6),
+      "settle: idle stands alone after the wind-down",
+      one.map(([n, v]) => `${n}=${v.toFixed(3)}`).join(" "));
 
     // ================================================== 7. foot drift
     console.log("\n-- foot drift during the scrubbed states (measured, not gated) --");

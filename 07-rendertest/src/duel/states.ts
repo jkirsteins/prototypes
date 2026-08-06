@@ -10,6 +10,11 @@ import type { AttackKind, AttackTimeline } from "./timings";
 /** Keeps the fighter inside the fixed camera's view (cm). */
 export const PISTE_HALF_CM = 400;
 
+/** The wind-down: a state that ends into ready blends its final pose
+ *  into the idle over this window. Purely cosmetic - inputs launch from
+ *  settle exactly as from ready. */
+export const SETTLE_MS = 150;
+
 export type DuelState =
   | { kind: "ready" }
   | { kind: "step"; dir: 1 | -1; t: number }
@@ -19,7 +24,11 @@ export type DuelState =
   | { kind: "hitstun"; t: number }
   | { kind: "bind" }
   | { kind: "unarmed" }
-  | { kind: "dead"; t: number };
+  | { kind: "dead"; t: number }
+  // The just-finished state rides along frozen at its terminal time, the
+  // way 06's exposed state carries its contact snapshot: the renderer
+  // blends from its final pose into the idle as t runs to SETTLE_MS.
+  | { kind: "settle"; prior: DuelState; t: number };
 
 export interface Duelist {
   x: number;
@@ -41,12 +50,13 @@ export function handleEvent(d: Duelist, e: DuelEvent): void {
   if (e === "flip") { d.facing = d.facing === 1 ? -1 : 1; return; }
   if (e === "death") { d.state = { kind: "dead", t: 0 }; return; }
   if (e === "parryUp") {
-    if (d.state.kind === "parry") d.state = { kind: "ready" };
+    if (d.state.kind === "parry") d.state = { kind: "settle", prior: d.state, t: 0 };
     return;
   }
   // Everything else only launches from ready - the PoC has no
-  // interrupts; states run their course or are reset.
-  if (d.state.kind !== "ready") return;
+  // interrupts; states run their course or are reset. Settle counts as
+  // ready: the wind-down is cosmetic, never an input lockout.
+  if (d.state.kind !== "ready" && d.state.kind !== "settle") return;
   switch (e) {
     case "stepFwd": d.state = { kind: "step", dir: 1, t: 0 }; break;
     case "stepBack": d.state = { kind: "step", dir: -1, t: 0 }; break;
@@ -72,7 +82,7 @@ export function tick(d: Duelist, dtMs: number): void {
       s.t += dtMs;
       const now = Math.min(s.t, w.stepDurationMs);
       d.x = clampX(d.x + ((now - prev) / w.stepDurationMs) * w.stepDistanceCm * s.dir * d.facing);
-      if (s.t > w.stepDurationMs) d.state = { kind: "ready" };
+      if (s.t > w.stepDurationMs) d.state = { kind: "settle", prior: { ...s, t: w.stepDurationMs }, t: 0 };
       break;
     }
     case "void": {
@@ -80,26 +90,31 @@ export function tick(d: Duelist, dtMs: number): void {
       s.t += dtMs;
       const now = Math.min(s.t, w.voidDurationMs);
       d.x = clampX(d.x - ((now - prev) / w.voidDurationMs) * w.voidDistanceCm * d.facing);
-      if (s.t > w.voidDurationMs) d.state = { kind: "ready" };
+      if (s.t > w.voidDurationMs) d.state = { kind: "settle", prior: { ...s, t: w.voidDurationMs }, t: 0 };
       break;
     }
     case "attack": {
       s.elapsedMs += dtMs;
       const tl = s.timeline;
-      if (s.elapsedMs >= tl.recoveryEnd) d.state = { kind: "ready" };
-      else if (s.elapsedMs >= tl.recoveryStart) s.phase = "recovery";
+      if (s.elapsedMs >= tl.recoveryEnd) {
+        d.state = { kind: "settle", prior: { ...s, phase: "recovery", elapsedMs: tl.recoveryEnd }, t: 0 };
+      } else if (s.elapsedMs >= tl.recoveryStart) s.phase = "recovery";
       else if (s.elapsedMs >= tl.strikeStart) s.phase = "strike";
       break;
     }
     case "hitstun":
       s.t += dtMs;
-      if (s.t > HIT_STUN_MS) d.state = { kind: "ready" };
+      if (s.t > HIT_STUN_MS) d.state = { kind: "settle", prior: { ...s, t: HIT_STUN_MS }, t: 0 };
       break;
     case "dead":
       s.t = Math.min(s.t + dtMs, DEATH_ANIM_MS); // holds the final pose
       break;
     case "parry":
       s.t += dtMs; // held until parryUp; t drives the rise-to-formed pose
+      break;
+    case "settle":
+      s.t += dtMs;
+      if (s.t >= SETTLE_MS) d.state = { kind: "ready" };
       break;
     case "ready": case "bind": case "unarmed":
       break;

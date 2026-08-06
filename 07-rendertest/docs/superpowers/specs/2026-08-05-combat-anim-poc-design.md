@@ -50,9 +50,11 @@ machine, readability by the user playing it.
   clip segment, every frame in order, under a monotonic time-warp pinned
   to the timeline marks - only playback speed varies per stretch. The
   discrete swap is gone; the window's closing reads from the blade's
-  continuous position, and continuity is machine-gated in the e2e. Pose
-  purity is unchanged. See the completion report's "Amendment: continuous
-  playback".)
+  continuous position, and continuity is machine-gated in the e2e. A
+  settle wind-down blends a finished state's last pose into the idle
+  over 150 ms - the single sanctioned two-action mix, weights summing to
+  1 as a pure function of state time. Pose purity is unchanged. See the
+  completion report's "Amendment: continuous playback".)
 - **The engine owns position, facing and displacement.** All clips play in
   place; states.ts owns x and facing and applies step/void displacement
   over the state's duration. Root motion in clips is stripped or
