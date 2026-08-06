@@ -65,16 +65,28 @@ their engine work.
 
 ## 2. Deterministic sampling: the hard-reset rule
 
-The 07 rule carries over verbatim as contract:
+The 07 rule carries over as contract, with one boundary made explicit
+that the PoC never had to draw:
 
 - Animation actions remain **paused**; simulation state and simulation
   time select the clip time.
 - Every weight and every clip time is **explicitly set on every
   render**; nothing persists by omission.
-- **Rendering history cannot affect the pose** - bone-level history
-  independence is an acceptance test, not an aspiration.
-- Pausing, tick-stepping, replay and slow motion are exact: the same
-  simulation state always renders the same pixels.
+- **Rendering history cannot affect the BLADE** - the five pose
+  coordinates and the weapon they place are a pure function of
+  simulation state, and bone-level history independence for them is an
+  acceptance test, not an aspiration.
+- **Cosmetic body motion may use renderer history.** Easing a
+  shoulder, an elbow or a trailing hand out of an interrupted
+  performance from the previous frame is allowed, because nothing in
+  the simulation reads those bones: they decide no coverage, no
+  contact and no frozen pose. `guard-positions` carries no blend state
+  for them precisely because it would be state no rule consults.
+- Pausing, tick-stepping, replay and slow motion are exact **in
+  everything the game is played on**: the same simulation state always
+  renders the same blade, the same measure and the same contact. Two
+  replays may differ by a frame of cosmetic easing, which no player
+  can act on and no test asserts.
 
 ## 3. One continuous attack performance
 
@@ -167,14 +179,15 @@ never from a canned entry pose.
 | Bind entry | The engine freezes the pose and its contact CONSTRAINT (`RenderSource.contact`); the renderer re-solves the conforming IK from that constraint every frame, so the bind, exposed, disarming and disarmed states all draw from real geometry after the attack is gone - without the engine ever storing a pose the renderer computed. |
 | Struck | Blend from the actual interrupted pose into hitstun or death; the blend is deterministic and bounded like every other correction. |
 | Parried / whiffed recovery | The recovery region is RETIMED within the asset's declared speed range (`parriedPenalty` lengthens it, `whiffRecoveryFactor` multiplies it); out-of-range cases follow section 3's exception-clip rule. |
-| Deflected windup or recovery | The blade is knocked off line: `guard-positions` rewrites that phase's destination to the displaced pose, so the SAME interpolation carries it there and the renderer keeps drawing the phase - the knock is visible because the destination moved. Bounded like every other adaptation in section 4: a displacement large enough to exceed the declared correction limits needs its exception clip, and section 11 fails the build if one is missing. Displacements CAN be large (a one-handed guard is thrown wide), so this is a real case, not a formality. |
+| Deflected motion (any phase, including a grip switch) | The blade is knocked off line: `guard-positions` adds a decaying deflection OFFSET on top of whatever motion was already running, which continues untouched. The renderer keeps drawing that motion and applies the offset - so a deflected windup is still a windup, and a deflected grip switch still arrives in its new mode. Bounded like every other adaptation in section 4: an offset large enough to exceed the declared correction limits needs its exception clip, and section 11 fails the build if one is missing. Offsets CAN be large (a one-handed guard is thrown wide), so this is a real case, not a formality. |
 | Movement truncation | The feet stabilize deterministically between `movementStopped` and the engine's derived plant tick - no teleport, no slide, and the plant is visually on the ground when the footfall sounds. |
 
-Every rule here is deterministic and history-independent: the same
-simulation state (including "interrupted at this tick from this pose")
-always renders the same pixels, so section 2's guarantees survive
-interruption. The `BladeTrack` pose snapshots exist precisely so an
-interrupted pose is engine state, not renderer memory.
+Every rule here is deterministic and history-independent **for the
+blade**: the same simulation state always puts the steel in the same
+place, because the five pose coordinates come from the `BladeTrack`
+every tick rather than from renderer memory. The surrounding body may
+ease out of the previous frame (section 2), which is why none of these
+rows needs the engine to carry blend state.
 
 ## 6. Root motion and feet
 
@@ -295,7 +308,9 @@ the section 11 measurements do not ship.
 ## 11. Production acceptance tests
 
 Port the 07 browser suite's structure: exact simulation-time sampling;
-independent expected-marker data; bone-level history independence;
+independent expected-marker data; bone-level history independence for
+the blade coordinates and the weapon (cosmetic body bones exempt, per
+section 2);
 frame-to-frame continuity; ground contact; blade reach; off-hand grip;
 weapon visibility; clean console; screenshots at semantic marks.
 

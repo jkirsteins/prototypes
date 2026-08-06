@@ -397,6 +397,15 @@ entry for the line actually contacted. `firmness()` does not - a bind
 comes from two strikes, whose maps are empty, and it reads the
 contact's own `progress` instead.
 
+**At round start every fighter's guard is already formed.** The
+opening `coveredSince` entries are seeded with clocks that already
+exceed their `formationMs`, so the lines the starting guard covers
+answer from the first tick. Fencers come on guard before the bout
+begins; making them serve a formation interval they never travelled
+would open the round with a defenceless instant nobody chose and no
+input could prevent. The same applies to a rematch and to any restart
+that places a fighter in a guard rather than moving them to one.
+
 **The lifecycle, for every variant.** Every variant maintains entries
 by the one coverage rule above - the current pose, every tick - with
 one exception: **committed steel publishes no entries.** That is two
@@ -538,29 +547,29 @@ here they are.** A guard is now a position the fighter occupies, not a
 raised action that can be spent:
 
 - `engine.ts`'s `dropGuard(defender)` on a parried attack disappears.
-  A deflection does not delete a posture; it displaces it. The
-  defender's blade is pushed off line by the impact - an ordinary
-  derived transition away from the covering geometry, whose
-  DESTINATION is the displaced pose:
+  A deflection does not delete a posture; it knocks it off line, as an
+  OFFSET composed on top of whatever the defender was already doing:
 
   ```
   impactN     = attacker's bindAuthority * ANCHOR_FORCE   // the force
                                                           // arriving
   displaceRad = DISPLACE_CAL * impactN
               / displacementResistanceN(def, w, engagement)
+
+  deflectionOffset(t) = { weaponAngleDeg: displaceRad,
+                          lateral: displaceRad / LATERAL_SPAN_RAD }
+                        * decay(t)
   ```
 
-  The destination is `{ kind: "derived" }`, computed on the deflection
-  tick: the covering pose rotated by `displaceRad` and pushed along
-  `lateral` by `displaceRad / LATERAL_SPAN_RAD`, **in the direction
-  the attack was travelling** - steel arriving on a line drives the
-  guard across it, never further out - and clamped to the [-1, +1] the
+  The offset is signed **in the direction the attack was travelling** -
+  steel arriving on a line drives the guard across it, never further
+  out - and the summed `lateral` is clamped to the [-1, +1] the
   coordinate allows. A strong two-handed guard is barely moved; a
-  one-handed or strained one is thrown wide enough that `sideOf` stops
-  returning its line, which is what `grip-switching` means by a parry
-  met weakly. Recovery is that transition run backwards, priced by
-  `transitionMs` like any other - which is why `parryRecoveryMs` has
-  nothing left to do.
+  one-handed or strained one is knocked wide enough that `sideOf`
+  stops returning its line, which is what `grip-switching` means by a
+  parry met weakly. `decay(t)` returns the offset to zero over an
+  interval derived like any other travel, which is the recovery -
+  and why `parryRecoveryMs` has nothing left to do.
 - `parryRecoveryMs` is DELETED from the profile alongside the others.
 - `fighter.ts`'s exported `guardEffective()` - read by `ai.ts`, the
   renderer and the frame picker - becomes the same predicate
@@ -796,11 +805,7 @@ type RenderSource = {
   },                          //   locate the meeting - and the line.
                               //   All known to the categorical model,
                               //   none of them a renderer result
-  blendFrom?: {               // an interruption blends out of what was
-    coords,                   //   on screen: the five POSE COORDINATES
-    startedMs                 //   only, never a nested RenderSource -
-  }                           //   see below
-}
+}                             // no blend state: see below
 
 // Interpolation is ENGINE-owned and normative: every coordinate of a
 // BladePose (primaryHandCm, lateral, weaponAngleDeg, secondaryHandCm,
@@ -868,19 +873,25 @@ exceptions:
   `contact` stores that; the renderer solves its bounded IK from it
   deterministically, and two viewers of the same constraint draw the
   same blades. The engine never stores the solution.
-- *An interrupted performance blends out of the pose on screen*, so
-  the renderer needs to know which pose that was. `blendFrom` carries
-  the five pose COORDINATES and the tick the blend began - not a
-  `BladePose`, which would carry a `RenderSource` and reopen the chain
-  one level deeper than the nesting it replaced. Coordinates because
-  interruptions compose: a second interruption arriving mid-blend must
-  leave from what is visible NOW, which already contains the first
-  blend, and sampling the coordinates collapses that history into five
-  numbers that cannot grow. What this deliberately does not preserve
-  is the rest of the body mid-blend; the renderer eases the remainder
-  from its own current state, which is the one place its continuity is
-  allowed to be its own business precisely because nothing in the
-  simulation reads it.
+- *An interrupted performance blends out of the pose on screen* - and
+  the engine stores NOTHING for it. The five blade coordinates are
+  already deterministic: they come from the track every tick, so an
+  interrupted blade is exactly where the simulation says it is,
+  reproducibly, with no history. The rest of the body is cosmetic, and
+  the renderer may ease it from its own previous frame using whatever
+  history it likes.
+
+  This is a deliberate line, and it is drawn where the consequences
+  are. Blade coordinates decide coverage, contact and the frozen bind
+  pose, so they must be reproducible from simulation state alone -
+  pause, step, replay and slow motion all depend on it. An elbow's
+  path out of an interrupted swing decides nothing; requiring the
+  engine to make it reproducible would mean carrying blend state that
+  no rule reads, which is cost without a claim. So section 2's
+  hard-reset rule binds the blade absolutely and the body loosely: two
+  replays of the same fight are identical in every quantity the game
+  is played on, and may differ by a frame of shoulder easing that
+  nobody can act on.
 
 The rule the earlier draft broke stands: adaptation magnitudes,
 correction limits and exception-clip selection are the renderer's, are
@@ -912,12 +923,26 @@ them owns a pose.
 **The engine samples the strike, because a bind freezes one.** A
 strike's path is authored rather than interpolated between two rows,
 so there is no transition to evaluate - `trajectoryCurve` is what the
-engine evaluates instead, at that tick's progress, REBASED onto the
-snapshotted launch and terminal poses: the curve is stored normalized
-(each coordinate as a fraction of its own launch-to-terminal span),
-so one curve serves every height and both grips, and the endpoints it
-is stretched between are the ones the attack snapshotted. That gives
-the numeric pose a bind entry writes into `frozen`.
+engine evaluates instead. The curve for the attack's handling mode is
+**endpoint interpolation plus an authored offset**, per coordinate:
+
+```
+pose(t) = lerp(launchPose, terminalPose, ease(t)) + curve.offset(t)
+```
+
+The offset is authored in absolute units and is zero at both ends, so
+the strike begins at its launch and arrives at its terminal whatever
+those are, while the arc between them is the animator's. One curve
+per grip serves every HEIGHT, because the endpoints carry the height
+and the offset carries the shape.
+
+Offsets rather than fractions of the launch-to-terminal difference,
+because that difference is zero on some coordinates for some attacks -
+a thrust barely moves `lateral`, and a fraction of zero can express no
+arc at all. An additive offset is well defined however close the
+endpoints sit, which is exactly when a blade's path matters most.
+
+That gives the numeric pose a bind entry writes into `frozen`.
 
 Coverage does not read it - a striking blade offers no guard (section
 4) - so the curve's job is the frozen pose and the renderer's
@@ -985,15 +1010,22 @@ The two tests are therefore disjoint by construction, the engine's
 existing check order is unchanged, and a contact still produces
 exactly one event and one sound.
 
-The displaced pose (section 4) applies to a fighter whose track is
-`settled` or `transitioning` in the ordinary way. A fighter met during
-a WINDUP or a RECOVERY is on an `attacking` track, which the attack
-owns, so the displacement does not move them to a new track: it
-rewrites that phase's DESTINATION in the snapshot to the derived
-displaced pose - the launch pose during a windup, the resulting guard
-during a recovery - and the same interpolation carries them there. One
-writer of blade geometry still, and the knock-off-line is visible in
-the phase it happened in.
+**A deflection is an OFFSET composed with whatever motion the fighter
+was already making, never a rewrite of it.** Section 4 sizes it; this
+is where it lands:
+
+```
+pose(t) = baseMotion(t) + deflectionOffset(t)
+```
+
+`baseMotion` is whatever the track was already doing - a settled pose,
+a guard transition, an attack's windup or recovery, a grip switch
+(`grip-switching`) - and it continues untouched. The offset decays as
+the fighter recovers the line. That composition is what lets a
+displacement apply to every track kind including `attacking`, which
+the attack owns and which nothing else may rewrite: the attack keeps
+driving its phase, the deflection adds its knock, and the sum is the
+pose. One value per coordinate, two owners, no arbitration.
 
 A fighter mid-strike is never displaced by a parry, because a parry
 cannot meet them; two crossing blades resolve through the bind rules,
@@ -1047,15 +1079,13 @@ interface AttackDefinition {
                          // two-handed one, and the renderer already keys
                          // its clips this way
   trajectoryRef;         // the authored animation the renderer plays
-  trajectoryCurve;       // the SAME motion as engine data: normalized
-                         // samples of all five pose coordinates -
-                         // primaryHandCm, lateral, secondaryHandCm,
-                         // weaponAngleDeg, torsoProfileDeg - against
-                         // strike progress, each a fraction of its own
-                         // launch-to-terminal span so one curve serves
-                         // every height and both grips. Hand-authored
-                         // first, re-extracted from the approved asset
-                         // at validation, divergence bounded by test
+  trajectoryCurve;       // Record<HandlingMode, Curve> - the SAME
+                         // motion as engine data, one curve per grip,
+                         // because a one-handed cut and a two-handed
+                         // cut are different motions and not the same
+                         // motion scaled. Hand-authored first,
+                         // re-extracted from the approved asset at
+                         // validation, divergence bounded by test
   terminalBy;            // Record<HandlingMode, Record<Height, PositionId>>
                          // the delivered contact pose per grip and
                          // target height. A high and a low thrust cannot
@@ -1125,10 +1155,10 @@ snapshot pattern `AttackTimeline` already uses):
                                           // derived and is exactly why
                                           // that thrust has no windup
   terminalConfigurationId,
-  resultingGuard,        // PoseTarget, not an id: a deflection during
-                         // the recovery rewrites it to a derived
-                         // displaced pose, the same way launchPose can
-                         // be rewritten during a windup
+  resultingGuard,        // PoseTarget - usually a row, but a redirect
+                         // can resolve it to derived geometry. A
+                         // deflection does NOT write here: it composes
+                         // as an offset (section 4)
   movement, movementStartMs, plannedMovementEndMs,
   movementStartX, movementDistanceCm,     // the PLAN, immutable
   movementStoppedAtMs?, movementStoppedX? // the OUTCOME, written once
@@ -1140,18 +1170,15 @@ target height AND the launching handling mode (`launchBy`,
 `terminalBy`, the result rule) and snapshotted, so a high and a low thrust carry different terminal
 poses from the moment they start.
 
-**The MOVEMENT plan is immutable; the blade plan has exactly two legal
-writers.** The second is a DISPLACEMENT: steel meeting a covering
-blade during a windup or a recovery rewrites that phase's destination
-(`launchPose` or `resultingGuard`) to the section 4 displaced pose, and
-the phase is REPRICED from the blade's current interpolated position
-exactly as a redirect is - no authored geometry moves for free,
-whoever caused the move. A rewritten `launchPose` also rebases the
-strike's curve, which is normalized against its launch and terminal
-(section 5): a blade knocked off line strikes from where it was
-knocked to.
+**The MOVEMENT plan is immutable, and the blade plan has exactly one
+writer: the redirect.** A deflection is not a second writer - it
+composes as an offset on top of whatever the plan produces (section
+4), which is precisely why it needs no permission to touch a plan the
+attack owns and why nothing has to be repriced when steel arrives. The
+plan says where the blade is going; the offset says how far it was
+knocked off the way.
 
-The first is the redirect. A redirect changes the target line mid-windup, and the
+A redirect changes the target line mid-windup, and the
 blade plan is a function of that line, so the redirect tick
 re-resolves `targetLine`, `launchPose`,
 `terminalConfigurationId` and `resultingGuard` from the new line

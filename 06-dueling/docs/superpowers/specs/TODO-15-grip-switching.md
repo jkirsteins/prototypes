@@ -206,29 +206,37 @@ switch actually costs, all emergent:
   which the shared `lateral` keeps covered throughout.
 
 On completion the fighter stands in the same family's realization for
-the new mode - unless steel found them on the way. **A deflection
-mid-switch displaces the pose but does not abort the switch**: the
-`handlingTransition` runs to its engagement endpoint regardless, since
-the hands finish arranging themselves whatever the blade is doing,
-while the `BladeTrack`'s destination is rewritten to the displaced
-geometry (`guard-positions` section 4).
+the new mode - unless steel found them on the way.
 
-**The displaced destination keeps following the engagement, or the two
-would part company.** The grip-bearing coordinates -
-`secondaryHandCm` and `torsoProfileDeg` - are `BladePose` fields, so
-freezing them at the deflection tick while `engagement` ran on to its
-endpoint would hand the engine a full two-hand couple over a drawn
-off-hand still short of the socket: two sources for one visible fact,
-and precisely the engine-versus-picture disagreement the renderer
-contract forbids. So the displacement moves the destination's BLADE -
-its `primaryHandCm`, `weaponAngleDeg` and `lateral` - and leaves the
-two grip coordinates resolving from the live engagement toward the
-target realization, as they were doing before the steel arrived.
+**A deflection mid-switch is a SECOND motion, composed with the first,
+not a rewrite of it.** The two run independently and add:
+
+```
+pose(t) = switchPose(t) + deflectionOffset(t)
+```
+
+- The **grip switch** continues exactly as it would have: the same
+  interpolation toward the target realization, `engagement` on the
+  same eased progress, arriving where the new mode puts the hands.
+  Steel on the blade does not stop hands from finishing their journey
+  along the hilt.
+- The **deflection** contributes a blade offset, sized by
+  `displaceRad` against the fighter's displacement resistance
+  (`guard-positions` section 4) and decaying as the fighter recovers
+  the line.
+
+The final pose is their sum, which is why nothing has to arbitrate
+between them. Composing avoids the trap of rewriting the switch's
+destination: that would have frozen the grip-bearing coordinates at
+the deflection tick while `engagement` ran on to its endpoint, giving
+the engine a full two-hand couple over a drawn off-hand still short of
+the socket. Two motions, two owners, one sum, and every coordinate
+still has exactly one value.
 
 The fighter therefore ends the switch in the new mode, hands where the
-new mode puts them, and knocked off line; the standing levels then
-transition them out of THAT pose rather than out of the realization
-they were aiming for. Reach, control torque, all three bind quantities (each
+new mode puts them, and knocked off line by however much the offset
+has not yet decayed; the standing levels then transition them out of
+where they actually are. Reach, control torque, all three bind quantities (each
 reads control torque, so each genuinely moves with the mode -
 `physical-foundations` 4.3) and the strain rate re-derive on the
 completion tick; nothing is cached.
