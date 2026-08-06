@@ -127,7 +127,8 @@ weakly mid-switch" below means this number, nothing scripted.
 
 **Where the switch lives - an explicit concurrent track.** The switch
 is a nullable `handlingTransition` field on the fighter (`{from, to,
-elapsedMs, durationMs}`, engagement lerped from progress as above),
+elapsedMs, durationMs}`, driving the fighter's `engagement` on the
+eased progress above),
 beside the body state - a track like `guard-positions`' `BladeTrack`,
 NEVER a new arm of the exclusive state machine. That is what makes
 "step while switching" structurally possible instead of accidentally

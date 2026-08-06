@@ -726,7 +726,8 @@ reach table in `physical-foundations`, because a missed one is a
 silent divergence. Source: `fighter.ts`'s `guardFormationMs` (the
 shared derivation the engine and AI must never drift apart on), its
 `dropGuard`, phase-duration, side-travel, stance-height and redirect
-sites, three sites in `ai.ts`, four in `ui/help.ts` (whose panel
+sites, two profile sites in `ai.ts` (beside its fighter-side timer
+reads), four in `ui/help.ts` (whose panel
 cites the durations), two in `render/draw.ts`. Tests: `attack-lines`
 (the largest group, including the `heightChangeMs > firmUpMs`
 invariant and a profile-mutating fixture), `held-guard`,
@@ -897,8 +898,9 @@ the snapshotted resulting guard.
 copy of the hands: starting a switch puts the `BladeTrack` into
 `transitioning` (`fromPose` = the current mode's realization pose,
 `to` = the same family's row in the target mode) for the switch's
-own duration, and the handling track carries only what is genuinely
-its own - the mode endpoints and `secondaryHandEngagement`. Coverage
+own duration, while the handling track drives what is genuinely its
+own - the mode endpoints, and the fighter's `engagement`, which lives
+on the fighter (`physical-foundations` 4.1) rather than on a track. Coverage
 therefore reads the interpolated pose like any other. It stays
 continuous on the SIDE axis structurally - both endpoints share their
 `lateral`, so no interpolation can carry the blade across - and on the
@@ -972,7 +974,7 @@ attack is parried; too late, it lands.
 
 **A parry deflects; it never binds.** That is the shipped rule rather
 than a new one: the engine locks only on a CROSSING of two attacking
-blades, so a met guard is displaced (section 5) and the bind system is
+blades, so a met guard is displaced (section 4) and the bind system is
 untouched by this spec beyond the pose a crossing freezes. The
 `BindContact.guard` variant stays in the union and stays unreached.
 
