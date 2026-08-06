@@ -18,9 +18,13 @@ help panel's understanding of it.
 
 Historical anchor: Fiore's sword in one hand; di Grassi's released-hand
 extension of the two-handed sword's thrust. The model already produces
-the payoff (one-handed longsword reach 245 via the profiling bonus) and
-the price (wrist-only control torque, strain in extended guards); the
-switch makes both reachable in play.
+the payoff (the one-handed profiling bonus adds tens of centimeters of
+derived reach over the same sword two-handed) and the price (wrist-only
+control torque, strain in extended guards); the switch makes both
+reachable in play. Whether the one-handed longsword's reach lands above
+or below the rapier's is a calibration outcome the suitability matrix
+pins - the gamble is priced either way, because the opponent's measure
+expectations are set by the two-handed grip they were just fencing.
 
 **Delivers:** the `gripSwitch` action on both schemes, the switch
 transition and its vulnerability, mode-resolved realization morphs
@@ -56,26 +60,38 @@ surfaced, never a silent nothing.
 Switching is a transition, not an instant:
 
 ```
-switchMs(f, w, from, to) derived from hand travel to/from the hilt
-(handSpeed, strain-scaled) + a settle constant
+switchMs(f, w, from, to) derived from the off-hand's travel to/from
+its grip socket (handSpeed, strain-scaled) + a settle constant
 ```
 
-During the switch the fighter is committed and exposed, matching the
-physical truth of rearranging hands on a live blade:
+The switch interpolates the WHOLE realization - primary hand, weapon
+orientation, secondary hand joining or leaving its socket, torso pose -
+between the same guard family's two mode realizations. **The guard
+family never changes** (`guard-positions`: the slot map does not depend
+on mode); only the realization's display name may, where traditions
+name the same geometry differently (Langort <-> Terza in the longpoint
+family).
 
-- **coverage is suspended** - the current guard's covered line reads as
-  none until the switch completes (the settle clock restarts);
-- **no attack, feint, or guard change may start**; steps may continue
-  (the hands, not the feet, are busy);
+There is no scripted vulnerability. **Coverage follows the
+interpolated blade geometry through the same derivation as always** -
+taking the off-hand away does not move the point out of the line, so a
+switch inside an extended guard largely keeps covering, and the
+simulation never declares a visibly-in-line blade absent. What the
+switch actually costs, all emergent:
+
+- **tempo**: no attack, feint, or guard change may start while the
+  hands rearrange (steps may continue - the hands, not the feet, are
+  busy);
+- **contact resistance**: any contact during the switch reads the
+  momentary control torque, which is one-handed at best mid-rearrange -
+  a parry or bind met mid-switch is met weakly;
 - being struck mid-switch is being struck: no special state, the
-  existing hit rules apply to an uncovered fighter.
+  existing rules apply to whatever the interpolated geometry covers.
 
-On completion the fighter stands in the same slot's realization for
-the new mode. For the low-extended slot that is the Pflug <-> Terza
-morph (`guard-positions` section 2); every other slot swaps to its
-other-handed realization of the same family. Reach, control torque,
-inertia handling, bind quantities and strain rate all re-derive from
-the new mode on the completion tick - nothing is cached.
+On completion the fighter stands in the same family's realization for
+the new mode. Reach, control torque, inertia handling, bind quantities
+and strain rate all re-derive from the new mode on the completion
+tick - nothing is cached.
 
 ## 3. Emergent consequences (already derived, now reachable)
 
@@ -83,8 +99,11 @@ None of these are new rules; they are `physical-foundations` and
 `guard-positions` derivations becoming playable, and the matrix test
 extension (section 5) pins each:
 
-- One-handed longsword in Terza: longest reach in the game (245),
-  near-direct thrust preparation - a real ambush at long measure.
+- One-handed longsword in Terza (the longpoint family's one-handed
+  realization): the profiling bonus adds derived reach the opponent's
+  two-handed measure reads did not price, and the thrust preparation is
+  near-direct - a real ambush at long measure. The exact reach number
+  is calibration, pinned by the matrix, promised nowhere.
 - The same posture held: strain accrues (wrist-only sustain torque
   against a cantilevered 1.5 kg blade), slowing every later transition.
 - Large cuts one-handed: the gather and the arc pay wrist-only torque
@@ -136,9 +155,10 @@ everything else):
 
 Play longsword, switch one-handed at wide measure, and fish with the
 Terza thrust; then get greedy and hold it. What must feel right: the
-reach steal genuinely outranges the rapier's answer once; the strain
-and the first lost bind teach you to switch back; the AI punishes a
-switch thrown in narrow measure. What would look wrong: a switch that
+reach steal genuinely lands from a measure your two-handed grip could
+not touch, exactly once per opponent lesson; the strain and the first
+lost bind teach you to switch back; the AI punishes a switch thrown in
+narrow measure. What would look wrong: a switch that
 feels free (no window, no cost), a one-handed bind that holds its own,
 or the AI never switching and never punishing yours - either would mean
 the derivations or the policy branches are not carrying the design.

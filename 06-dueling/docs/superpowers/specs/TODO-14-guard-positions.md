@@ -14,9 +14,11 @@ implied. This spec replaces that abstraction with its physical original:
 blade is, what it covers, what it threatens, and what any change costs.
 
 - A fighter is always in (or transitioning between) specific guard
-  positions - Right Ochs, Left Pflug, Vom Tag, Alber, Terza.
+  positions - Right Ochs, Vom Tag, Left Pflug, Alber, Langort/Terza.
 - **Coverage is derived from the position's geometry.** There is no
-  separate parry state to maintain.
+  separate parry state to maintain. Steel-on-steel contact itself,
+  however, stays decided by the existing categorical line model -
+  section 4 makes that choice explicit.
 - **A parry is an event, not a mode:** an attack arriving on a line the
   formed guard covers, or the defender reaching the covering guard in
   time. Changing guard IS the defensive action.
@@ -38,7 +40,7 @@ the emergent-outcomes rule. Availability is universal past the
 not availability.
 
 **Delivers:** guard data model and JSON file, coverage derivation,
-transition derivation (replacing five authored timing fields), parry as
+transition derivation (replacing six authored timing fields), parry as
 event, attacks as transitions, repurposed inputs, AI guard play, help
 rewrite, the suitability matrix test, re-proven tempo economics.
 
@@ -73,9 +75,15 @@ realization = guard position x handling mode
 
 A rapier uses Ochs through the one-handed Ochs realization; the
 canonical two-handed Ochs is one realization of the family, not the
-family itself. In this version each realization bakes its canonical
-lower body in; the future stance extension separates it (see
-`skeletal-renderer` for the layered composition).
+family itself.
+
+**The lower body is one canonical configuration shared by every
+realization in this version** - guard changes move hands and blade
+only, so the animation can never change feet the simulation did not
+price. Lead foot, weight and width arrive with the stance extension,
+which will also add their travel to the transition derivation (see
+`skeletal-renderer` for why layering is an optimization target, not a
+guaranteed decomposition).
 
 ## 2. The roster and the input grid
 
@@ -83,24 +91,37 @@ Positions map onto a grid the existing controls already express:
 **height** (stanceUp/stanceDown) x **extension** (guard button held =
 point-forward, released = withdrawn) x **side variant** (sideShift).
 
-| slot            | two-handed realization | one-handed realization |
-|-----------------|------------------------|------------------------|
-| high, extended  | Ochs (R/L)             | Ochs (R/L), one-handed |
-| high, withdrawn | Vom Tag                | Vom Tag, one-handed    |
-| low, extended   | Pflug (R/L)            | **Terza** (R/L)        |
-| low, withdrawn  | Alber                  | Alber, one-handed      |
+| slot             | family    | two-handed realization | one-handed realization |
+|------------------|-----------|------------------------|------------------------|
+| high, extended   | ochs      | Ochs (R/L)             | one-handed Ochs (R/L)  |
+| middle, extended | longpoint | **Langort**            | **Terza**              |
+| low, extended    | pflug     | Pflug (R/L)            | one-handed Pflug (R/L) |
+| high, withdrawn  | vomTag    | Vom Tag                | one-handed Vom Tag     |
+| low, withdrawn   | alber     | Alber                  | one-handed Alber       |
 
-**The one naming resolution to review:** the low-extended slot resolves
-per handling mode. Two-handed low-extended IS Pflug; the natural
-one-handed low-extended guard IS Terza - historically each is that
-slot's canonical form in its mode. Terza's two-handed realization
-("would substantially change its historical form") and Pflug's
-one-handed realization are deliberately not authored; the slot always
-resolves to an authored realization. Every other family has both
-realizations authored. Vom Tag and Alber ship one variant each
-(right-shoulder Vom Tag, centre Alber); Ochs, Pflug and Terza have R/L
-variants selected by sideShift. `middle` height stays modelled but
-unreachable, as today (types.ts pattern).
+**Input slot, guard family and handling mode are three separate
+things.** The slot is an input coordinate; the family is a geometric
+concept (its key is geometric, `longpoint`, not a tradition's word);
+the historical names are **display data on realization rows**, because
+traditions name the same geometry differently - Langort is the
+two-handed longpoint of the Liechtenauer corpus, Terza the natural
+one-handed form of the Italian one (dall'Agocchie's extended point at
+the face; Alfieri's high/low Terza variants are future data rows, as
+are Fiore's one-handed plays behind the one-handed Ochs and Pflug).
+Every family is authored in BOTH modes - ten realizations - so
+availability is universal, the slot map never depends on handling
+mode, and **switching handling mode never changes the guard family**
+(`grip-switching`). Suitability differences between realizations are
+the derivations' business, never the roster's.
+
+The extended column has three height stops (`middle` becomes reachable
+- the exact "data change, not a new concept" the `Height` union
+reserves); the withdrawn column keeps two. stanceUp/stanceDown move
+between the current column's stops; toggling extension at `middle`
+retracts to the slot map's authored target (Vom Tag by default - the
+gather to the shoulder - and the map lives in guards.json, not code).
+Ochs and Pflug have R/L variants on sideShift; longpoint, Vom Tag and
+Alber ship one variant each.
 
 No new ActionIds. The `guard` button's meaning sharpens from "parry
 raised" to "point extended"; muscle memory (holding it = covering)
@@ -118,44 +139,81 @@ file is editable without touching engine code. Per realization row:
 ```
 {
   family, sideVariant, handlingMode,
-  displayName,            // "Right Ochs", "Terza"
-  handAnchorCm: {x, y},   // body-relative, forward/up
-  pointHeightCm,          // where the point sits vertically
-  pointAdvanceCm,         // how far forward of the body the point sits
-  bladeAngleDeg,          // orientation, drives transition arcs
-  leadFoot,               // data now, inert until the stance extension
-  offHand                 // "onHilt" | "free" (free = dagger etc., FUTURE)
+  displayName,             // "Right Ochs", "Langort", "Terza"
+  primaryHandCm: {x, y},   // primary hand transform, body-relative
+  weaponAngleDeg,          // desired weapon orientation
+  poseRef,                 // upper-body pose id for the renderer
+  offHand                  // "onHilt" | "free" (dagger etc., FUTURE)
 }
 ```
 
+**The realization authors the primary hand and the desired weapon
+orientation; everything else about the blade is derived** - the
+geometry must never be overdetermined:
+
+```
+crossguard    = primaryHandCm advanced grip1Cm along weaponAngleDeg
+point         = crossguard advanced bladeCm along weaponAngleDeg
+blade segment = crossguard -> point
+secondary-hand IK target = grip2Cm back along the hilt
+                           (two-handed realizations only)
+```
+
+A longer blade moves the derived point without touching the pose; the
+realization stays weapon-independent, and the secondary hand adapts to
+the weapon's grip sockets (`physical-foundations`) instead of being
+authored per weapon. There is no authored point position, no authored
+blade angle separate from the weapon orientation, and no `leadFoot` -
+the lower body is the single canonical configuration of section 1
+until the stance extension.
+
 Authored values follow the historical postures (Ochs: hilt high beside
 the head, point at the face; Pflug: hilt at hip, point at chest; Vom
-Tag: blade gathered at the shoulder; Alber: point dropped; Terza: arm
-naturally extended, point in line). Exact numbers are authoring, tuned
-within the section 9 constraints.
+Tag: blade gathered at the shoulder; Alber: point dropped; Langort /
+Terza: arm extended, point in line at the face). Exact numbers are
+authoring, tuned within the section 9 constraints.
 
 ## 4. Coverage, derived
 
-One shared function reads a realization's geometry:
+One shared function reads the realization's **derived** blade geometry
+(section 3) with the equipped weapon:
 
 ```
-covered(realization) =
-  pointAdvanceCm >= EXTENDED_MIN
-    ? { height: band(pointHeightCm), side: sideOf(sideVariant, facing) }
+p = derivedPoint(realization, weapon)
+covered(realization, weapon) =
+  p.advanceCm >= EXTENDED_MIN
+    ? { height: band(p.heightCm), side: sideOf(sideVariant, facing) }
     : none
 ```
 
-Extended guards (Ochs, Pflug, Terza) cover their line; withdrawn guards
-(Vom Tag, Alber) cover nothing - they are attack-loaded (Vom Tag) or an
-invitation (Alber). This replaces the parry's `coveredLine` snapshot:
-what a guard covers is readable from where the blade IS, for both
-fighters and the AI alike.
+Extended guards (Ochs, Langort/Terza, Pflug) cover their line;
+withdrawn guards (Vom Tag, Alber) cover nothing - they are
+attack-loaded (Vom Tag) or an invitation (Alber). This replaces the
+parry's `coveredLine` snapshot: what a guard covers is readable from
+where the blade IS, for both fighters and the AI alike.
 
-**Formedness** survives as the transition's settle clock: a guard
-covers only once the transition into it completes (plus the settle
-constant), with the same overshoot-at-the-deadline semantics
+**The deciding contact model stays categorical - an explicit choice.**
+Two options existed: keep the abstract line-plus-scalar-extension
+contact (`contact.ts`) as the arbiter of steel meeting steel, or
+simulate 2D blade segments and derive contact from segment
+intersection. This spec chooses the FIRST. Derived blade geometry
+classifies coverage, prices transitions and drives rendering; but
+whether blades meet is decided exactly as today - line match on both
+axes, extensions covering the gap. Consequences the whole sequence
+must honour: postures and attack trajectories must be authored so the
+categorical verdicts are visually plausible, and the renderer
+(`skeletal-renderer`) must conform to the categorical result - blades
+are drawn meeting when and only when the engine says they meet.
+Blade-segment contact is a named future extension: if it ever comes,
+it replaces the internals of `parryMeetsAttack`/`bladesCross` in that
+one module, and this paragraph is its door.
+
+**Formedness** survives as the transition's completion clock: a guard
+covers once its transition completes - settling is part of
+`transitionMs` (section 5) and is counted exactly once, never again at
+formation - with the same overshoot-at-the-deadline semantics
 `parryMeetsAttack` has today. `contact.parryMeetsAttack` is rewritten to
-read (realization, settle clock) instead of the parry object; its
+read (realization, completion clock) instead of the parry object; its
 contract - formed, covering, both axes match, grace tick for blade
 quantization only - is unchanged and its tests carry over.
 
@@ -168,10 +226,16 @@ transitionMs(from, to, weapon, fighter, mode) =
   + SETTLE_MS
 ```
 
-Hand travel comes from the two realizations' `handAnchorCm`; the blade
-arc from their `bladeAngleDeg` and point positions; angular speed from
-`physical-foundations` (peak torque against rotational inertia, scaled
-by strain). Heavy blade + weak grip = slow guard changes, emergently.
+Hand travel comes from the two realizations' `primaryHandCm`; the
+blade arc from their `weaponAngleDeg` and derived point positions;
+angular speed from `physical-foundations` (peak torque against
+rotational inertia about the grip, scaled by strain). Heavy blade +
+weak grip = slow guard changes, emergently. `SETTLE_MS` lives here and
+only here - formedness (section 4) starts when the transition
+completes, with no second settling. Because the lower body is one
+shared configuration, transitions move hands and blade only; when the
+stance extension separates the lower body, foot, hip and weight travel
+join this same derivation rather than being a free visual.
 
 This derivation **replaces** the authored `heightChangeMs`,
 `sideChangeMs`, `guardShiftMs` and `firmUpMs`, which are deleted from
@@ -192,10 +256,12 @@ carries the formation clock exactly as `settledMs` does today.
 ## 6. Attacks as transitions
 
 The vocabulary stays `cut` and `thrust` - generic intents, deliberately
-small. Each attack is now a transition chain:
+small. An attack takes a **target line** as a free input; the current
+guard prices the attack, it never gates which lines exist:
 
 ```
-current guard -> launch config -> [strike, authored] -> resulting guard
+current guard + kind + target line
+  -> launch config -> [strike, authored] -> resulting guard
 ```
 
 - **Windup, derived:** the transition from the current realization to
@@ -215,10 +281,14 @@ current guard -> launch config -> [strike, authored] -> resulting guard
   launch family: a descending cut resolves toward Alber; a thrust
   recovers toward the extended guard of its line). `parriedPenalty` and
   `whiffRecoveryFactor` still apply on top, as today.
-- **Attack line:** height comes from the current guard family (high
-  from Ochs/Vom Tag, low from Pflug/Alber/Terza), side declared by the
-  attack kind - both exactly as the current stance-height rule, now
-  grounded in a real posture.
+- **Attack line:** the target line is the attacker's choice. Its
+  height defaults to the current guard's height stop and is re-aimed
+  with the height keys (during windup, that is the redirect); its side
+  is the attack definition's DECLARED side, exactly as
+  `AttackTimings.side` today - declared data, never inferred from the
+  kind (the types.ts rule stands). The guard's only influence on the
+  line is price: launching high from Alber pays the travel, it is
+  never refused.
 - **Feints and redirects** re-derive: abandoning a windup transitions
   back (feintRecoveryMs stays authored as the sell-price); a redirect
   is a mid-windup change of launch config, priced by the derived
@@ -260,10 +330,12 @@ handling mode - hold demand (strain rate), transition times to adjacent
 slots, windup per attack, coverage. The pinned shape must show, among
 others, the worked example from the design discussion:
 
-- thrust from Terza, one-handed: small arc + one-handed reach ->
-  fast preparation, longest reach (potentially effective, any sword);
-- large cut from Terza one-handed: high rotational demand + wrist-only
-  torque -> slow (emergently poor, worse the heavier the blade);
+- thrust from Terza (one-handed longpoint): small arc + the one-handed
+  profiling reach gain -> fast preparation, long reach (potentially
+  effective, any sword - where its derived reach lands against the
+  rapier's is calibration, pinned here, promised nowhere);
+- large cut from Terza: high rotational demand + wrist-only torque ->
+  slow (emergently poor, worse the heavier the blade);
 - extended one-handed guards accrue strain; withdrawn ones rest;
 - in contact, one hand's control torque -> displaced easily.
 

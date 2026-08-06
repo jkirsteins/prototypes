@@ -47,9 +47,19 @@ never condition on which side controls the fighter).
 |-------------|------|-----------|--------|--------------------------------------------|
 | `massKg`    | kg   | 1.5       | 1.3    | total mass                                 |
 | `balanceCm` | cm   | 8         | 6      | center of mass forward of the crossguard   |
-| `bladeCm`   | cm   | 100       | 108    | crossguard to point                        |
+| `bladeCm`   | cm   | 105       | 105    | crossguard to point                        |
 | `hiltCm`    | cm   | 25        | 12     | grip room behind the crossguard            |
+| `grip1Cm`   | cm   | 7.5       | 5      | primary grip socket centre, behind the crossguard |
+| `grip2Cm`   | cm   | 19        | 10     | secondary grip socket centre, further behind |
 | `taper`     | -    | tuned     | tuned  | mass-distribution coefficient (see 4.2)    |
+
+**The weapon owns its grip sockets.** Hands sit at sockets; every
+distance the derivations use (hand separation, hand-to-point length)
+is measured from a socket, never from `hiltCm` - the hilt behind the
+hands contributes room and counterweight, not forward length. A
+secondary socket is authored on every weapon; whether a second hand
+FITS there is the section 3 gate's derived verdict, not the data's
+claim (the rapier's socket exists and fails the fit).
 
 `bladeStiffness` stays as-is. The example values are a starting solution;
 implementation may adjust them (and the calibration constants of section
@@ -62,12 +72,21 @@ background should not laugh at them.
 A new `Attributes` record on the fighter (data, not identity - the AI's
 fighter and the human's fighter carry the same struct, per the doctrine):
 
-| field               | unit | baseline | meaning                                   |
-|---------------------|------|----------|-------------------------------------------|
-| `statureCm`         | cm   | 175      | drives arm reach, hand width, travel arcs |
-| `peakTorqueNm`      | N*m  | tuned    | burst capacity: accelerating the blade, resisting displacement |
-| `sustainTorqueNm`   | N*m  | tuned    | holdable capacity: keeping a guard up     |
-| `handSpeedMps`      | m/s  | tuned    | unloaded hand speed cap (agility)         |
+| field                 | unit | baseline | meaning                                   |
+|-----------------------|------|----------|-------------------------------------------|
+| `statureCm`           | cm   | 175      | drives arm reach, hand width, travel arcs |
+| `wristTorquePeakNm`   | N*m  | tuned    | burst torque one wrist/forearm can apply about the grip |
+| `wristTorqueSustainNm`| N*m  | tuned    | wrist torque holdable without strain      |
+| `shoulderTorquePeakNm`| N*m  | tuned    | burst torque about the shoulder (raising, resisting bodily displacement) |
+| `shoulderTorqueSustainNm` | N*m | tuned | shoulder torque holdable: what keeps an extended arm up |
+| `handForcePeakN`      | N    | tuned    | burst push/pull force of one hand (the couple's input) |
+| `handForceSustainN`   | N    | tuned    | holdable push/pull force of one hand      |
+| `handSpeedMps`        | m/s  | tuned    | unloaded hand speed cap (agility)         |
+
+Each derivation names the joint it reads: wrist torque governs point
+control, the two-hand force couple governs leverage on the blade,
+shoulder torque governs holding and moving the extended arm. `peak`
+feeds accelerations and contests; `sustain` feeds holds and strain.
 
 Both fighters ship with the identical baseline body. Attribute selection
 UI, asymmetric bodies and their balance pass are explicitly out of scope
@@ -99,11 +118,13 @@ the `grip-switching` spec; nothing here adds inputs.
 Both live in one shared module (`src/combat/handling.ts`), both are
 thresholds on derived quantities, per the emergent-outcomes rule:
 
-- `canGripTwoHanded(f, w)`: `w.hiltCm >= 2 * handWidthCm(f)` where
-  `handWidthCm = statureCm / 19`. Two hands need room to sit on the
-  hilt. Longsword (25cm vs ~18.4) passes; rapier (12cm) fails.
-- `canGripOneHanded(f, w)`: `staticHoldTorqueNm(w, fullyExtended) <=
-  sustainTorqueNm(f, oneHanded)`. If one arm cannot keep the point up at
+- `canGripTwoHanded(f, w)`: both hands fit their sockets -
+  `w.grip2Cm + handWidthCm(f)/2 <= w.hiltCm` and the sockets are at
+  least a hand apart (`w.grip2Cm - w.grip1Cm >= handWidthCm`), with
+  `handWidthCm = statureCm / 19`. Longsword (19 + 4.6 <= 25, separation
+  11.5) passes; rapier (10 + 4.6 > 12) fails.
+- `canGripOneHanded(f, w)`: `staticHoldTorqueNm(f, w, fullyExtended) <=
+  shoulderTorqueSustainNm(f)`. If one arm cannot keep the point up at
   all, the grip is denied. Both shipping weapons pass at baseline -
   Fiore's sword in one hand is real, and the model must allow it. The
   gate exists for future heavy steel and weak bodies, not for today's
@@ -115,35 +136,45 @@ playable and merely bad, which is the design's stated intent.
 ## 4. Derivations
 
 All in `src/combat/handling.ts`, all reading (weapon facts, attributes,
-grip) - never a weapon id, never a side.
+handling mode) - never a weapon id, never a side.
 
 ### 4.1 Control torque (leverage)
 
-Two hands separated on a hilt form a force couple; one hand has the
-wrist alone:
+Two hands at their sockets form a force couple; one hand has the wrist
+alone:
 
 ```
-handSeparationM(f, w, grip) = grip == twoHanded
-    ? (w.hiltCm - handWidthCm(f)) / 100
+handSeparationM(w, mode) = mode == twoHanded
+    ? (w.grip2Cm - w.grip1Cm) / 100
     : 0
-controlTorqueNm(f, w, grip, capacity) =
-    wristTorqueNm(capacity) + handSeparationM * coupleForceN(capacity)
+controlTorqueNm(f, w, mode, capacity) =
+    wristTorqueNm(f, capacity) + handSeparationM * handForceN(f, capacity)
 ```
 
 `capacity` selects peak or sustain. This one function is the spine of
-the model: bind authority, displacement resistance and the one-hand gate
-all read it.
+the model: bind authority, displacement resistance and contest reads
+all go through it.
 
-### 4.2 Rotational inertia
+### 4.2 Rotational inertia: one distribution, two moments
+
+A single mass-distribution model over (`massKg`, `balanceCm`,
+`bladeCm`, `taper`) yields **two independent moments**:
 
 ```
-inertiaKgM2(w) = w.massKg * radiusOfGyrationM(w)^2
+inertiaGripKgM2(w)    // about the primary grip socket:
+                      // swinging the whole weapon, changing guards
+inertiaContactKgM2(w) // about a mid-blade reference contact point:
+                      // rotating the blade around a bind contact
 ```
 
-with `radiusOfGyration` from a tapered-rod approximation over `bladeCm`,
-`balanceCm` and `taper`. This is deliberately a model, not physics
-homework: one formula, two calibratable inputs, and the acceptance
-criterion is section 7, not textbook accuracy.
+They are different integrals of the same distribution, so their ratios
+across weapons are independent - that independence is load-bearing:
+section 4.3 needs the longsword/rapier grip-moment ratio and
+contact-moment ratio to differ (approximately 2.7 against 1.57 under
+the current shipped constants), and `taper` is the per-weapon freedom
+that lets the calibration hit both. The distribution model is
+deliberately simple (a tapered rod plus a pommel point mass behind the
+socket); the acceptance criterion is section 7, not textbook accuracy.
 
 ### 4.3 The bind quantities, derived
 
@@ -151,55 +182,68 @@ The three authored conclusions become outputs, and the profile fields
 are **deleted**:
 
 ```
-bindAuthority(f, w, grip)     = controlTorquePeak / ANCHOR_TORQUE
-bindHandling(f, w, grip)      = HANDLING_CAL * handSpeedMps / sqrt(inertiaKgM2)
-rotationalControl(f, w, grip) = ROTATION_CAL * wristTorquePeak / inertiaKgM2
+bindAuthority(f, w, mode)     = controlTorquePeak / ANCHOR_TORQUE
+bindHandling(f, w, mode)      = HANDLING_CAL * handSpeedMps / sqrt(inertiaGripKgM2)
+rotationalControl(f, w, mode) = ROTATION_CAL * wristTorquePeakNm / inertiaContactKgM2
 ```
 
 `ANCHOR_TORQUE` is the baseline two-handed longsword's control torque,
 making its authority exactly 1.0 by construction, matching the existing
-anchor comment. The calibration constants and physical inputs are solved
-so the six shipped values (1.0 / 0.7 / 0.7 and 0.55 / 1.15 / 1.1) are
-reproduced **exactly** at baseline. `src/combat/bind.ts` calls the
-derivations at its existing read sites; its formulas do not change.
+anchor comment. The calibration constants and physical inputs are
+solved so the six shipped values (1.0 / 0.7 / 0.7 and 0.55 / 1.15 /
+1.1) are reproduced **exactly** at baseline - feasible because
+handling and rotational control read different moments (4.2); a
+worked solution is part of implementation and the equivalence test is
+its proof. `src/combat/bind.ts` calls the derivations at its existing
+read sites; its formulas do not change.
 
 ### 4.4 Reach, derived
 
-The authored `reach` field is deleted and derived:
+The authored `reach` field is deleted and derived. Forward length is
+measured from the primary hand's socket - the hilt behind the hand is
+counterweight, not reach:
 
 ```
-reachCm(f, w, grip) = armReachCm(f) + w.bladeCm + w.hiltCm
-                    + (grip == oneHanded ? profilingBonusCm(f) : 0)
+reachCm(f, w, mode) = armReachCm(f) + w.grip1Cm + w.bladeCm
+                    + (mode == oneHanded ? profilingBonusCm(f) : 0)
 ```
 
-with `armReachCm = statureCm * 3/7` (= 75 at baseline) and
-`profilingBonusCm = statureCm * 9/35` (= 45): a one-handed grip frees
-the body to turn side-on, adding shoulder rotation to the line. At
-baseline this reproduces the shipped values exactly: longsword
-two-handed 75 + 125 = 200, rapier one-handed 75 + 120 + 45 = 240. It
-also quietly prices the future: a one-handed longsword reaches 245 -
-di Grassi's released-hand extension, emergent - but nothing in this
-spec exposes that grip yet.
+`armReachCm` (body centre to primary hand at full extension) and
+`profilingBonusCm` (the side-on shoulder rotation a one-handed grip
+frees) are stature-proportional; with the section 1 example values,
+longsword two-handed 87.5 + 7.5 + 105 = 200 and rapier one-handed
+87.5 + 5 + 105 + 42.5 = 240 reproduce the shipped reaches exactly.
+Whether a one-handed longsword's derived reach lands above or below
+the rapier's is a **calibration outcome, pinned by the suitability
+matrix test - not a design promise**: it now depends on real blade
+lengths and socket offsets, no longer on hilt length counted as
+forward steel.
 
 ### 4.5 Static hold torque
 
+Hold demand is measured **about the shoulder** - the joint that
+carries an extended arm-plus-weapon cantilever; the wrist merely
+orients the blade:
+
 ```
-staticHoldTorqueNm(w, extension) = w.massKg * g * momentArmM(w, extension)
+staticHoldTorqueNm(f, w, posture) =
+    w.massKg * g * horizontalM(shoulder -> weapon CoM)
 ```
 
-where the moment arm grows as the posture advances the point (a
-withdrawn blade rests near the body; an extended one cantilevers). In
-this spec only two extension inputs exist (the current stance rest and
-the held guard) and both demand far below baseline sustain capacity -
-the quantity becomes load-bearing when `guard-positions` gives postures
-real geometry.
+where the horizontal distance derives from the posture's arm extension
+plus `grip1Cm + balanceCm`. The arm's own mass moment is a constant
+folded into `REST_FRACTION` (section 5), not modelled per posture. In
+this spec only two posture inputs exist (the current stance rest and
+the held guard) and both demand far below the baseline shoulder
+sustain capacity - the quantity becomes load-bearing when
+`guard-positions` gives postures real geometry.
 
 ## 5. Hold strain
 
 A per-fighter accumulator, ticked by the engine:
 
 ```
-demand = staticHoldTorqueNm(current posture) / sustainTorqueNm(f, grip)
+demand = staticHoldTorqueNm(f, w, current posture) / shoulderTorqueSustainNm(f)
 strain' = demand > REST_FRACTION
     ? strain + (demand - REST_FRACTION) * STRAIN_RATE * dt
     : max(0, strain - STRAIN_DECAY * dt)

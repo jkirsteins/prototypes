@@ -26,17 +26,18 @@ against it.
    handling mode + guard realization (+ body stance, later) - the
    composition defined in `guard-positions`. The renderer consumes
    authored pose rows keyed by guard position x handling mode; it never
-   keys a pose on a weapon id. In the current version each realization
-   bakes its canonical lower body into the pose; the future stance
-   extension splits the composition into layers - upper body from
-   guard x handling, lower body from stance, weapon aligned to the
-   handling pose - so the asset count is a sum
-   (`handling x guard upper-body poses + stance lower-body poses`), not
-   a Cartesian product. Combat actions (attacks, large guard
-   transitions) involve hips, torso and arms together and may remain
-   full-body authored animations per combination; the renderer must
-   allow both layered standing poses and full-body action animations to
-   coexist.
+   keys a pose on a weapon id. In the current version every realization
+   shares ONE canonical lower body (`guard-positions` section 1), so
+   guard changes move hands and blade only and the simulation never
+   owes a step it did not price. Conceptually a complete pose depends
+   on `handling x guard x stance` even after the stance extension
+   separates the layers; upper-body/lower-body layering is an
+   **optimization target for asset count, not a guaranteed
+   decomposition** - stance reaches through hips, torso and shoulders
+   into the guard, and combat actions (attacks, large guard
+   transitions) may remain full-body authored animations per
+   combination. The renderer must allow layered standing poses and
+   full-body action animations to coexist.
 2. **The weapon attaches.** The weapon mesh/shape attaches to the hand
    transform; blade length comes from the same profile facts
    (`physical-foundations`) the engine derives reach from, so drawn
@@ -53,6 +54,18 @@ against it.
    express every current state (ready, step, void, attack phases, parry
    rise/formed, bind, hitstun, disarming, disarmed, exposed, dead) at
    least as legibly as the sprites do now.
+6. **Deterministic animation locking.** The 07 prototype's locking
+   discipline carries over explicitly: every rendered pose is a pure
+   function of simulation state and simulation time. No free-running
+   combat clips, no animation-system clocks of its own, no retained
+   animation state that could drift from the engine - pausing,
+   stepping a tick, or bullet time must move the pose exactly as they
+   move the simulation.
+7. **Character modularity.** Poses belong to a shared rig family, not
+   to a character: character meshes are skinned to that rig (or
+   retargeted onto it), so a new character costs a mesh, never a new
+   copy of every animation. The `N characters x M animations`
+   multiplier must not exist.
 
 ## Out of scope here
 
