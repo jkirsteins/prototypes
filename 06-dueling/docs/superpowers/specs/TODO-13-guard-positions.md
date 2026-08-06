@@ -354,8 +354,9 @@ coverage is lost.
 it returns is a pure function of the pose handed to it, so the same
 pose always yields the same lines. Two gates sit outside it, both stated
 where the map is maintained rather than hidden inside the function:
-what PUBLISHES an entry is the phase (committed steel publishes
-nothing - below), and what lets a line ANSWER is `formationMs`,
+what PUBLISHES an entry is what the blade is DOING - committed steel,
+whether striking or locked, publishes nothing (below) - and what lets
+a line ANSWER is `formationMs`,
 carried inside the entry from the moment it is created. A line is
 covered as soon as the blade covers it; it turns steel only once it
 has been braced there.
@@ -415,9 +416,10 @@ locked being no guard at all:
   own honesty invariant guarantees cannot be answered. A fighter whose
   blade is locked or beaten is not defending with it.
 
-That exception is what makes the parry and crossing tests disjoint
-(below); everywhere else, including a windup, the pose speaks for
-itself.
+The STRIKE half of that exception is what makes the parry and crossing
+tests disjoint (below); the frozen half does a different job, keeping
+a locked or beaten blade from defending its owner. Everywhere else,
+including a windup, the pose speaks for itself.
 
 **An attacking fighter is not declared uncovered; but a blade in a
 STRIKE is not a guard either.** The three phases differ physically and
@@ -457,10 +459,13 @@ assuming the old one survives.
 
 A void keeps its covering pose for the same reason - see below. At
 `combinedEnd` the track returns to `settled` at the resulting guard.
-`frozen` publishes nothing at all (below), so its map stays as the
-contact tick left it - empty, since a bind is reached only from two
-strikes and a strike publishes nothing either. That is harmless: the
-bind reads its contact's `progress`, never a formation clock.
+`frozen` publishes nothing at all (above), and CLEARS the map on
+entry rather than inheriting it. For a bind that changes nothing - it
+is reached from two strikes, which published nothing anyway - but a
+disarming is entered from a track that may have live entries, and a
+beaten fighter should not go on covering a line with a blade that is
+being taken from them. The bind reads its contact's `progress`, never
+a formation clock, so nothing wants those entries.
 
 Extended SIDED guards (Ochs, Pflug) cover their band; the centre
 longpoint covers nothing despite being extended (below); and
@@ -945,7 +950,7 @@ mechanism:
 | Bind breaks neutral (clock expiry, shove-apart) | Both fighters go `transitioning` with `fromPose` = the frozen pose, `to` = the guard their held input levels currently select (section 6's sequencing rule, unchanged). |
 | Bind winner takes the advantage thrust | The attack launches with `launchPose = { kind: "derived", pose: <the frozen contact pose> }` - `bindTimeline`'s no-windup thrust starts from contact precisely because there is no gather to cross, and the derived launch is what states that in the data. The track becomes `attacking`. |
 | Winner declines the thrust / returns to ready | Same as neutral break: `transitioning` from the frozen pose to the level-selected guard. |
-| Exposed fighter recovers | `transitioning` from the frozen pose to the level-selected guard, priced by `transitionMs` like every other exit. The exposure's own duration is a FLOOR the derived travel is taken against (`max` of the two), so being turned out of a bind always costs at least what the bind spec charges, and more when the blade has further to come back. |
+| Exposed fighter recovers | The exposure runs FIRST and in full: the loser stays `frozen` for its whole duration, publishing nothing, exactly as the bind spec has always held them. Only when it ends does the track become `transitioning` from that pose to the level-selected guard, priced by `transitionMs`. The two are a SUM, not a max - and it has to be, or the loser would be on a publishing track mid-exposure, their contact pose would cover a line, and they would passively deflect the very advantage thrust the bind's honesty invariant guarantees cannot be answered. Being turned out of a bind therefore costs the exposure plus the travel back, which is more than either alone. |
 | Disarming resolves (sword taken) | The loser's track goes `frozen` with `why: "disarmed"`, its pose taken from the `kind: "unarmed"` position (section 3 - no weapon, no derived blade, coverage `none` by construction). It is frozen rather than settled because the round is over on that tick: nothing more will move. The winner transitions from their frozen pose like any other exit. |
 | Disarmed | Stays as the row above left it until the round ends - there is no blade to move. |
 
