@@ -241,7 +241,7 @@ requires the sword to stay inside.
 06 as the transplant contract requires, and the debug reach line is still
 drawn at 200 cm so the gap is visible on screen rather than hidden. The
 e2e suite asserts the **measured visual reach** instead: 1.464 m at the cut
-and 1.560 m at the thrust, each within 3 cm.
+and 1.560 m at the thrust, each within 2 cm.
 
 This is the PoC's headline transplant finding. 06's measure game - "am I in
 range?" - is played against `reachCm`, and a 3D fighter drawn from these
@@ -420,6 +420,7 @@ order. Space pauses; `?markers` adds the calibration dots.
 - `npx tsc --noEmit` clean.
 - `npm run build` clean (the pre-existing >500 kB chunk advisory only).
 - `npx biome lint 07-rendertest/src 07-rendertest/tools` from the repo
-  root: one pre-existing warning, `noApproximativeNumericConstant` on
-  `poses.ts:19` (`durationS: 2.000` flagged as an approximate Math.E).
+  root: exits 0 with 26 warnings - 25 `noConsole` in the two tools CLIs and
+  1 `noApproximativeNumericConstant` on `poses.ts:19` (`durationS: 2.000`
+  flagged as an approximate Math.E).
 - `node tools/duel-e2e.mjs <url> <dir>`: 143 pass / 0 fail.

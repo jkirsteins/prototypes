@@ -35,7 +35,12 @@ function runWalkDemo(): void {
 }
 
 if (new URLSearchParams(location.search).get("mode") === "duel") {
-  import("./duel/main-duel").then((m) => m.runDuel());
+  const status = document.getElementById("status") as HTMLElement;
+  import("./duel/main-duel")
+    .then((m) => m.runDuel())
+    .catch((err: unknown) => {
+      status.textContent = `failed to start duel mode: ${String(err)}`;
+    });
 } else {
   runWalkDemo();
 }

@@ -88,7 +88,7 @@ export const SWORD_SOCKET_QUAT = new THREE.Quaternion()
 // Measured with these values (paused, KeyJ then step 1000 / KeyK then step
 // 700, forward reach = (tipWorldX - rootWorldX) x facing):
 //   cut delivered    reach 1.464 m, left palm 1.3 cm off the grip
-//   thrust delivered reach 1.412 m, left palm 32.1 cm off the grip
+//   thrust delivered reach 1.560 m, left palm 78.5 cm off the grip
 //   parry formed     reach 0.911 m, left palm 1.7 cm off the grip
 //   idle             reach 1.117 m, left palm 2.8 cm off the grip
 // The spec's 2.00 m (LONGSWORD.reachCm) is NOT reachable and no scale can
@@ -102,9 +102,12 @@ export const SWORD_SOCKET_QUAT = new THREE.Quaternion()
 // The off-hand rides the hilt everywhere the source clips hold it there:
 // the two hands are 15.1 cm apart through great-sword-idle and 6.5 cm
 // through great-sword-blocking, matching the source to within 3% (its own
-// 15.7 and 6.7 cm at a 0.97 size ratio). upward-thrust is the exception,
-// and it is real rather than a rig defect: its own skeleton holds the
-// hands 46-52 cm apart through the drive, so no socket can close it.
+// 15.7 and 6.7 cm at a 0.97 size ratio). The thrust is the exception, and
+// it is choreography rather than a rig defect: stabbing-3.glb (Mixamo's
+// "Stabbing" variant 3) is a one-handed extended thrust whose own skeleton
+// throws the off-hand 78.5 cm from the grip at full extension, so no
+// socket setting closes it. The e2e asserts that value as EXPECTED rather
+// than gating it to 10 cm.
 
 /** `?markers` on the duel URL draws the calibration points (tip, both grip
  *  ends, left palm) as small unlit spheres that read through the mesh. */

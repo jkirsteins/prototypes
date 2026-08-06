@@ -82,7 +82,7 @@ const DURATION = {
  * and that divergence is the PoC's headline transplant finding, not a
  * failure - see the report.
  */
-const REACH = { cut: 1.464, thrust: 1.560, tolM: 0.03 };
+const REACH = { cut: 1.464, thrust: 1.560, tolM: 0.02 };
 /** Grip gate: 10 cm at the poses whose source clips hold the hilt in both
  *  hands. The thrust does not - stabbing-3.glb lunges one-handed with the
  *  off-hand thrown back - so its grip distance is asserted at its known
