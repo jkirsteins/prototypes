@@ -386,17 +386,36 @@ which is exactly why today's reset carries the remainder rather than
 clearing to zero, and the overshoot semantics carry over intact. `parryMeetsAttack`
 and `firmness()` both read the entry for the line actually contacted.
 
-**The lifecycle, for every variant.** `settled` and `transitioning`
-maintain entries by the coverage rule above - the interpolated pose,
-every tick. **`attacking` clears the
-map on the launch tick and holds it empty**: an attacking fighter
-covers nothing, which is today's rule (`dropGuard` on cut and thrust,
-and a landed blade ending the guard) and a pinned test. A void is
-locomotion, not an attack, and keeps its covering row - see below. At
-`combinedEnd` the track returns to `settled` at the resulting guard
-and that row's lines enter the map fresh. `frozen` keeps whatever the
-contact tick left, since the bind reads those clocks and nothing is
-moving.
+**The lifecycle, for every variant.** EVERY variant maintains entries
+by the one coverage rule above - the current pose, every tick - and
+`attacking` is not an exception.
+
+**An attacking fighter is not declared uncovered; their blade is
+simply where it is.** Today's engine drops the guard on cut and thrust
+because a parry was a MODE that could not survive an attack. Under
+positions there is no mode to drop: a windup gathering through a line
+stands in it, and a recovery arriving in a guard begins covering as it
+arrives - which is what the player can SEE, and declaring otherwise
+would reinstate the geometry-versus-engine disagreement in the one
+phase where the blade moves most.
+
+Two things stop this from quietly making attacks safe:
+
+- **The settle requirement does the work.** A line answers only once
+  its clock has run (above), and a blade sweeping through a line
+  mid-strike does not linger there. Coverage in passing is real but
+  almost never formed - the physically right answer rather than a
+  balance patch.
+- **The economics are re-proven with it.** An attacker recovering into
+  a covering guard genuinely is defended sooner than today, which
+  moves the punish window. Section 9 re-derives the punishment
+  invariant over the new numbers rather than assuming the old ones
+  survive.
+
+A void keeps its covering pose for the same reason - see below. At
+`combinedEnd` the track returns to `settled` at the resulting guard.
+`frozen` keeps whatever the contact tick left, since the bind reads
+those clocks and nothing is moving.
 
 Extended SIDED guards (Ochs, Pflug) cover their band; the centre
 longpoint covers nothing despite being extended (below); and
@@ -496,9 +515,11 @@ raised action that can be spent:
 - `fighter.ts`'s refusal to parry while recovering disappears with it:
   there is no parry to refuse. What limits a defender is where the
   blade physically is and how long the derived travel takes.
-- `fighter.ts`'s `dropGuard` on cut and thrust becomes the `attacking`
-  variant's empty `coveredSince` above - the same rule, expressed as
-  the track's lifecycle rather than as a field being nulled.
+- `fighter.ts`'s `dropGuard` on cut and thrust has NO successor, and
+  that is a deliberate change: it existed because a parry was a mode
+  an attack could not carry, and a position is not a mode. An
+  attacking fighter now covers whatever their blade covers, gated by
+  the settle clock like everyone else (section 4).
 - `engine.ts` dropping the STRUCK defender's guard has no successor
   and needs none: the same tick ends the round, and the engine's own
   comment says the charge is moot under hitstun. The struck fighter's
@@ -506,15 +527,13 @@ raised action that can be spent:
   `skeletal-renderer` blends out of. `frozen.why` covers the states
   that outlive their attack; hitstun and death are not among them
   because nothing reads their coverage.
-- `dropGuard` on a VOID is a deliberate change, not a mapping: a void
-  is locomotion, and under this model the blade goes where the blade
-  goes, so a voiding fighter KEEPS the row they were covering. Today's
-  engine drops the guard because the parry was an action that could
-  not survive a hop; a position survives it. Voiding while covered
-  therefore becomes better than it is today, which is the intended
-  consequence of making guards positions - and the tempo economics
-  (section 9) are re-proven with it, since void pricing is one of the
-  invariants they pin.
+- `dropGuard` on a VOID goes the same way and for the same reason: a
+  void is locomotion, the blade goes where the blade goes, and a
+  voiding fighter keeps covering what their pose covers. Voiding and
+  attacking both become better defended than they are today, which is
+  the intended consequence of making guards positions rather than
+  modes - and the tempo economics (section 9) are re-proven with it,
+  since void pricing is one of the invariants they pin.
 - The held-guard LATCH (`targetAttackStartTime`, `releaseQueued`,
   `visibleMs`, swept each tick) moves onto the `BladeTrack` unchanged
   in meaning: it governs when a released input actually starts the
@@ -522,12 +541,11 @@ raised action that can be spent:
   parry object's deletion untouched. `f.guardSide` becomes the
   track's latched side, written when a side travel completes.
 - `engine.ts` charges `parryRecoveryMs` at bind resolution and at a
-  neutral break, on the side whose contact was a guard. Both become
-  the same derived transition from the frozen pose (section 5's exit
-  table) - and note the behaviour change this makes explicit: today
-  only the guard-side pays, whereas a derived travel prices BOTH
-  fighters by how far each actually has to come back. That is the
-  intent, and the tempo economics are re-proven with it (section 9).
+  neutral break, on the side whose contact was a guard - a branch that
+  never fires, since a bind has no guard side. Both charges become the
+  derived transition out of the frozen pose (section 5's exit table),
+  which prices each fighter by how far they actually have to come
+  back; the tempo economics are re-proven with it (section 9).
 
 `contact.parryMeetsAttack` is rewritten to read the defender's
 `BladeTrack` - which carries the covered lines and their clocks -
@@ -696,11 +714,9 @@ type RenderSource = {
                               //   All known to the categorical model,
                               //   none of them a renderer result
   blendFrom?: {               // an interruption blends out of what was
-    source: RenderSource,     //   on screen: the pose being left, and
-    startedMs                 //   when the blend began. ONE level deep:
-  }                           //   a second interruption replaces it
-                              //   rather than nesting, so neither this
-                              //   nor a derived PoseTarget can chain
+    pose: BladePose,          //   on screen: a SNAPSHOT of the pose
+    startedMs                 //   being left, not a nested source
+  }                           //   (see below)
 }
 
 // Interpolation is ENGINE-owned and normative: every coordinate of a
@@ -718,7 +734,11 @@ type BladeTrack = { coveredSince: Map<LineKey, ms> } & (   // ALWAYS present
                              to: PoseTarget, elapsedMs, durationMs }
   | { kind: "attacking";     attack: ActiveAttack }   // the attack owns it
   | { kind: "frozen";        pose: BladePose, why: "bind" | "exposed"
-                                  | "disarming" | "disarmed" }
+                                  | "disarming" | "disarmed",
+                             movement?: MovementOutcome }
+                             // the interrupted attack's movement facts,
+                             // carried over so the feet can still be
+                             // stabilized after the attack is gone
 )
 ```
 
@@ -764,9 +784,13 @@ exceptions:
   same blades. The engine never stores the solution.
 - *An interrupted performance blends out of the pose on screen*, so
   the renderer needs to know which pose that was. `blendFrom` carries
-  the prior `RenderSource` and the tick the blend began - again simulation
-  facts, and enough to reconstruct the blend without the engine ever
-  holding a bone.
+  a POSE SNAPSHOT and the tick the blend began. A snapshot rather than
+  a nested `RenderSource` because interruptions compose: a second
+  interruption arriving mid-blend must leave from what is visible NOW,
+  which already contains the first blend. Sampling the current pose
+  collapses that history into one value, so the chain can never grow
+  and no information is lost - whereas replacing a nested source would
+  silently discard the blend in progress.
 
 The rule the earlier draft broke stands: adaptation magnitudes,
 correction limits and exception-clip selection are the renderer's, are
@@ -797,14 +821,18 @@ them owns a pose.
 **`frozen` is how the blade survives its attack.** Bind entry,
 exposure, disarming and disarmed all outlive the attack state that
 produced them, so the entry tick writes the sampled contact pose into
-the track. `BindContact` gains exactly one field - `pose: BladePose` -
-on both existing variants of the union (the `strike` variant with its
-`progress`, the `guard` variant with its `settledMs` - which now
-carries the CONTACTED line's own clock, read from `coveredSince`; they are
-alternatives, not co-resident fields). Everything else the renderer
-needs is already inside `pose.render`: the performance, how far
-through it, both endpoints, the target height, the engagement and the
-movement. One home per fact.
+the track - and, when the attack was a moving one, its
+`MovementOutcome` too: `{movementStoppedAtMs, movementStoppedX,
+plantMs}`, the three facts the foot stabilization needs. Without them
+the renderer would lose mid-stride feet the moment the attack object
+disappeared, which is the one thing `skeletal-renderer`'s truncation
+rule cannot do without. `BindContact` gains exactly one field - `pose: BladePose`. Only its
+`strike` variant is reachable: a bind forms from a CROSSING of two
+attacking blades, so the `guard` variant stays in the union and stays
+unreached, exactly as today. Everything else the renderer needs is
+already inside `pose.render`: the performance, how far through it,
+both endpoints, the target height, the engagement and the movement.
+One home per fact.
 
 **Leaving `frozen` - every exit, stated.** A frozen pose is a real
 place the blade is, so every way out is an ordinary transition FROM
@@ -828,9 +856,13 @@ them.
 Defensive flow: pressing toward a new slot starts the transition
 (press-to-move and release semantics preserved from `held-guard`'s
 latch); if the covering guard forms before the blade arrives, the
-attack is parried; too late, it lands. Blade contact then enters the
-existing bind system unchanged - the bind's guard-side contact snapshot
-carries the formation clock exactly as `settledMs` does today.
+attack is parried; too late, it lands.
+
+**A parry deflects; it never binds.** That is the shipped rule rather
+than a new one: the engine locks only on a CROSSING of two attacking
+blades, so a met guard is displaced (section 5) and the bind system is
+untouched by this spec beyond the pose a crossing freezes. The
+`BindContact.guard` variant stays in the union and stays unreached.
 
 ## 6. Attacks as transitions
 

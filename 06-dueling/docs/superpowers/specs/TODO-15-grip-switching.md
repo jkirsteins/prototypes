@@ -143,10 +143,11 @@ Its rules, stated once:
 - **Interruption freezes the engagement it had.** The reachable case
   is being struck - single-hit lethality means that is where a switch
   usually ends, and the frozen engagement is what the death pose is
-  drawn from. A bind cannot interrupt a switch (a bind needs two
-  attacking blades and attacks are refused while a switch runs), so
-  the rule is stated for the general case and exercised today by the
-  hit. Interruption clears the transition but does NOT snap the mode
+  drawn from. Neither a bind nor a parry can interrupt one: a bind
+  needs two attacking blades and attacks are refused while a switch
+  runs, and a parry deflects the guard rather than seizing it
+  (`guard-positions` section 4). The rule is stated for the general
+  case and exercised today by the hit. Interruption clears the transition but does NOT snap the mode
   to an endpoint: the fighter keeps the engagement the switch had
   reached - `engagement` is a plain field on the fighter
   (`physical-foundations` 4.1), so nothing needs storing anywhere
