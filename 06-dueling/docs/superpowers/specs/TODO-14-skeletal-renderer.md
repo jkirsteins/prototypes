@@ -13,7 +13,7 @@ sampled from simulation time (25 unit tests, a 151-check browser suite,
 screenshots inspected at semantic marks). This spec imports that
 **architecture** into 06 and defines the production contract around it.
 It deliberately does NOT transplant the 07 assets, marker mappings,
-timings or constants - section 11's do-not-import list is normative,
+timings or constants - section 12's do-not-import list is normative,
 not advisory.
 
 The central production model:
@@ -32,11 +32,16 @@ pipeline, deterministic sampling, the continuous-performance attack
 model with source-guard adaptation, engine-conformant root motion, the
 freelancer asset contract, and the production acceptance suite.
 
-**Depends on:** `physical-foundations` (reach, grip sockets),
-`guard-positions` (positions, timeline marks, movement windows, the
-guard track). `grip-switching` consumes section 6. This spec remains
-the playtest gate for `guard-positions`: engine and tests may land
-first, the game cannot ship visibly without this.
+**Depends on:** `physical-foundations` (reach, grip sockets,
+stature), `guard-positions` (its engine and data contract: positions,
+`BladeTrack`, timeline marks, movement windows, interruption
+outcomes). `grip-switching` follows this spec and consumes section 7.
+
+The order is one-way: `physical-foundations` -> `guard-positions`
+(engine and data) -> `skeletal-renderer` -> `grip-switching`. This
+spec is `guard-positions`' consumer AND its playtest gate - guards
+cannot be played or shipped until this lands, but nothing here blocks
+their engine work.
 
 ---
 
@@ -78,12 +83,28 @@ The 07 rule carries over verbatim as contract:
   strike and recovery are semantic REGIONS of that performance, never
   separate clips - `guard-positions` derives their durations, and
   derived timing does not imply fragment assembly.
-- Engine marks (`riseStart`, `riseEnd`, `strikeStart`, the
-  contact/full-extension moment, `strikeEnd`, `recoveryEnd`) map onto
-  the clip's semantic markers through a **smooth monotonic time warp
-  with declared minimum and maximum speed factors**. The 07
-  piecewise-linear warp, which changes playback speed abruptly at an
-  anchor, is the named defect this requirement exists to fix.
+- Engine marks (`riseStart`, `riseEnd`, `strikeStart`,
+  `parryableUntil` = the **full-extension** marker, `strikeEnd`,
+  `recoveryEnd`) map onto the clip's semantic markers through a
+  **smooth monotonic time warp with declared minimum and maximum
+  speed factors**. The 07 piecewise-linear warp, which changes
+  playback speed abruptly at an anchor, is the named defect this
+  requirement exists to fix.
+- **Full extension and contact are different things.** Full extension
+  is a fixed timeline mark (`parryableUntil`); CONTACT is a dynamic
+  event whose tick depends on the gap and the blade's travel, and at
+  close measure it happens EARLIER than full extension. So the asset
+  carries a full-extension marker, not a "contact" marker; reach
+  equality (section 9) is measured at full extension; and the IK
+  correction (below) runs at the actual contact tick, wherever that
+  falls.
+- **When derived timing falls outside an asset's permitted speed
+  range**, the warp does not silently clamp: the manifest declares
+  the range, a validation test fails any shipping
+  weapon x definition x movement whose derived duration exceeds it,
+  and the resolution is an authored **exception clip** for that case
+  (or retuning). Out-of-range retiming is as much an asset gap as
+  out-of-range pose correction.
 - This supersedes the sprite renderer's discrete-pose language: there
   is no pose flip at `parryableUntil`. Readability comes from the
   authored performance hitting its markers exactly at the simulation's
@@ -91,8 +112,9 @@ The 07 rule carries over verbatim as contract:
 - **The blade follows the animated hands.** Where exact meeting is
   required - parry contact, bind entry, the delivered pose - a
   **bounded, deterministic IK/contact correction** conforms the blade
-  to the categorical verdict. The full blade path is never
-  procedurally reconstructed from the scalar extension value.
+  to the categorical verdict at the tick the engine reports it. The
+  full blade path is never procedurally reconstructed from the scalar
+  extension value.
 
 ## 4. Source-guard adaptation: no asset explosion
 
@@ -101,9 +123,14 @@ promises complete performances; neither may produce a
 `sourceGuard x resultGuard` asset multiplier. The resolution:
 
 - One canonical full animation per `attack x handling x movement`,
-  selected by `trajectoryRef + handling mode + movement mode` from a
+  selected by `trajectoryRef + handlingMode + movement` from a
   presentation-side manifest - the combat engine stores no visual
-  asset ids.
+  asset ids. Target height does NOT multiply the clip set: it selects
+  the snapshotted launch and terminal positions
+  (`guard-positions`' `launchByHeight` / `terminalByHeight`), and the
+  same bounded adaptation that fits the clip to its source guard fits
+  it to those - validated per height by section 11, with an exception
+  clip wherever a height exceeds the correction limits.
 - A **smoothly fading pose offset** during the clip's authored
   preparation region adapts its start to the actual source guard; the
   same during its authored exit region reaches the snapshotted
@@ -117,7 +144,31 @@ This is one continuous performance with a fading offset - never
 stitching attack fragments. The asset budget is a predictable base set
 plus a small number of exceptions.
 
-## 5. Root motion and feet
+## 5. Interrupted performances
+
+One continuous clip covers the attack that runs to completion.
+`guard-positions` preserves several ways a performance ends or changes
+early, and each needs its own continuity rule - these are genuinely
+interrupted actions, not fragment stitching. In every case the rule is
+the same in spirit: **continue from the pose actually on screen**,
+never from a canned entry pose.
+
+| interruption | visual rule |
+|---|---|
+| Redirect (height or side) | Continue smoothly from the currently sampled pose into the redirected trajectory's clip, entering it at the phase-equivalent point. |
+| Abandoned feint | Recover from the current sampled pose toward the resulting guard - a fading offset over the recovery region, never a jump to a canned recovery start. |
+| Bind entry | Freeze the contact-conformed pose and hand it to the bind state - it is the `BladeTrack`'s `frozen` pose, so the bind, exposed, disarming and disarmed states all render from real geometry after the attack is gone. |
+| Struck | Blend from the actual interrupted pose into hitstun or death; the blend is deterministic and bounded like every other correction. |
+| Parried / whiffed recovery | The recovery region is RETIMED within the asset's declared speed range (`parriedPenalty` lengthens it, `whiffRecoveryFactor` multiplies it); out-of-range cases follow section 3's exception-clip rule. |
+| Movement truncation | The feet stabilize deterministically between `movementStopped` and the engine's derived plant tick - no teleport, no slide, and the plant is visually on the ground when the footfall sounds. |
+
+Every rule here is deterministic and history-independent: the same
+simulation state (including "interrupted at this tick from this pose")
+always renders the same pixels, so section 2's guarantees survive
+interruption. The `BladeTrack` pose snapshots exist precisely so an
+interrupted pose is engine state, not renderer memory.
+
+## 6. Root motion and feet
 
 - The engine owns displacement, but 07's raw clip scrubbing is not
   acceptable: it measured ~55 cm of foot drift during a step and
@@ -130,7 +181,7 @@ plus a small number of exceptions.
   Animation time still derives entirely from simulation progress;
   this strengthens deterministic locking, it does not weaken it.
 
-## 6. Grip switching and locomotion layering
+## 7. Grip switching and locomotion layering
 
 The visual split for concurrent actions (`grip-switching`'s
 `handlingTransition` track):
@@ -144,7 +195,7 @@ The visual split for concurrent actions (`grip-switching`'s
 
 The normal attack animations are never fragmented by this layering.
 
-## 7. Weapon attachment and measured geometry
+## 8. Weapon attachment and measured geometry
 
 The 07 concepts carry over; the 07 numbers do not (socket constants,
 sword scale and the hips scale factor are asset-specific):
@@ -154,9 +205,9 @@ sword scale and the hips scale factor are asset-specific):
 - attachment reads `physical-foundations`' grip-socket data, so the
   drawn grip and the derived hand separation agree by construction;
 - a debug visualization exists for calibration and is never how
-  conformance is achieved (section 8).
+  conformance is achieved (section 9).
 
-## 8. Reach and contact conformance
+## 9. Reach and contact conformance
 
 - **Drawn reach at the delivered/contact marker must equal the
   derived `reachCm`.** 07 measured the failure this rule forbids:
@@ -173,9 +224,11 @@ sword scale and the hips scale factor are asset-specific):
   contact, and visibly do not when it does not - via section 3's
   bounded correction. This is the obligation the old placeholder
   called the import's hardest burden, and it is demonstrated by the
-  section 10 suite, not asserted.
+  section 11 suite, not asserted.
 
-## 9. The asset contract
+## 10. The asset contract
+
+### 10.1 Attacks
 
 Each delivered attack includes:
 
@@ -184,18 +237,50 @@ Each delivered attack includes:
 - the canonical Xbot skeleton, rest pose, scale and bone names;
 - declared handling mode and movement mode;
 - semantic markers for `riseStart`, `riseEnd`, `strikeStart`,
-  contact/full-extension, `strikeEnd`, `recoveryEnd`;
+  full extension, `strikeEnd`, `recoveryEnd`;
 - foot-lift, foot-plant and grip-engagement markers;
 - an authored reference root-motion curve, even though the exported
   runtime clip is in-place;
 - the natural animation duration and its permitted retiming range;
 - the source DCC file, the baked GLB, and a validated marker manifest.
 
+### 10.2 Everything else the engine can render
+
+An attack contract alone does not deliver a renderer. Every remaining
+state needs its own assets, mapping and validation rules, and none
+ships without them:
+
+| asset group | contract |
+|---|---|
+| Guard poses | One pose per realization row (sixteen), authored against the row's `primaryHandCm`, `weaponAngleDeg`, `secondaryHandCm` and `torsoProfileDeg`; validated so the rendered geometry matches the row's numbers within declared tolerance - the pose must not quietly disagree with the data coverage is derived from. |
+| Guard transitions | Not authored per pair (that is the sixteen-squared trap): deterministic interpolation between the two poses over the engine's derived `transitionMs`, with the same bounded correction rules as section 4. Exception clips only where a pair reviews badly. |
+| Step / void | In-place locomotion clips, phase-locked to the engine's displacement curve; foot-plant markers required; section 6's drift test applies to these first. |
+| Bind, exposed, disarming, disarmed | Rendered from the `BladeTrack`'s `frozen` pose plus the state's own body treatment; the pressure/yield beats need visible motion mapped to the bind's own events. |
+| Hitstun, death | Full-body clips entered by the blend rule in section 5; death owns `DEATH_ANIM_MS`. |
+| Grip switch | No clip: deterministic interpolation plus IK per section 7. |
+
+### 10.3 Scale and the body
+
+The canonical Xbot authoring height is one number; the RUNTIME body is
+not. Skeleton scale, body centre, palm positions and every measured
+reach derive from the fighter's `statureCm`
+(`physical-foundations`), so a taller fighter is drawn taller and
+measures longer through the same assets. Asset-space constants never
+become gameplay constants.
+
+### 10.4 Side-view readability
+
+The 07 thrust showed a physically attached blade going nearly
+invisible edge-on. The fix must be presentational, never geometric:
+an outline, or a minimum screen-space blade thickness. **Rotating the
+blade away from its simulated orientation to make it visible is
+forbidden** - that would break the contact conformance of section 9.
+
 The animator creates the natural animation first; the engine maps its
 timing marks onto the markers. Assets failing manifest validation or
-the section 10 measurements do not ship.
+the section 11 measurements do not ship.
 
-## 10. Production acceptance tests
+## 11. Production acceptance tests
 
 Port the 07 browser suite's structure: exact simulation-time sampling;
 independent expected-marker data; bone-level history independence;
@@ -205,10 +290,20 @@ weapon visibility; clean console; screenshots at semantic marks.
 Beyond the PoC, all of these are added and all fail the build when
 violated: foot drift; velocity continuity (the smooth time warp's
 proof); contact geometry against the categorical verdicts; both
-facings; both fighters; every handling mode; all three attack
-movement modes.
+facings; both fighters.
 
-## 11. Do not import from 07
+Coverage is a product, not a sample. The suite runs over **every
+source guard x every resulting guard x every target height x every
+handling mode x all three movement modes**, plus every interruption
+branch in section 5 (redirect, abandoned feint, bind entry, struck,
+parried and whiffed retiming, movement truncation), and asserts for
+each: correction magnitudes inside their declared limits, retiming
+inside the asset's declared range, no drift, continuity across the
+interruption tick, and exception-clip selection where and only where
+the limits are exceeded. A case that needs an exception clip and
+lacks one fails the build - it does not silently over-correct.
+
+## 12. Do not import from 07
 
 - The current Mixamo attack and blocking clips as production assets.
 - The invisible parry rise.

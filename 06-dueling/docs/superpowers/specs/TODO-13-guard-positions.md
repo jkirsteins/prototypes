@@ -48,10 +48,18 @@ transitions, repurposed inputs, AI guard play, help rewrite, the
 suitability matrix test, re-proven tempo economics.
 
 **Depends on:** `physical-foundations` (attributes, handling modes,
-control torque, inertia, strain), `skeletal-renderer` (playtesting
-gate - engine and tests may land first, the game cannot ship visibly
-without it), `preparation-and-readiness`, `held-guard`, `attack-lines`
-(whose mechanics this spec re-founds).
+control torque, inertia, strain), `preparation-and-readiness`,
+`held-guard`, `attack-lines` (whose mechanics this spec re-founds).
+
+**`skeletal-renderer` is NOT a dependency - it is this spec's
+consumer, and its playtest gate.** This spec lands first and defines
+the engine and data contract the renderer consumes; the renderer then
+makes it visible. The one non-negotiable consequence of that order is
+that **`guard-positions` must not be declared done, and must not be
+playtested or shipped to the player, until the renderer lands** - the
+sprite pack cannot draw Ochs, Alber, guard transitions, one-handed
+realizations or per-weapon blades. Engine, data and tests may (and
+should) be green well before then.
 
 ---
 
@@ -169,27 +177,38 @@ realization row:
   displayName,             // "Right Ochs", "Langort", "Terza"
   primaryHandCm: {x, y},   // primary hand transform, body-relative
   weaponAngleDeg,          // desired weapon orientation
-  poseRef,                 // upper-body pose id for the renderer
+  secondaryHandCm: {x, y} | "onSocket",
+                           // "onSocket" derives the target from the
+                           // weapon's grip2 socket; an explicit point
+                           // is required whenever offHand is "free" -
+                           // a free hand is somewhere, and the engine
+                           // must be able to measure its travel
+  torsoProfileDeg,         // how far the body is turned side-on
+  poseRef,                 // renderer's pose id - PRESENTATION ONLY:
+                           // the engine never inspects it, so every
+                           // quantity a derivation needs must exist as
+                           // a number in this row
   offHand                  // "onHilt" | "free" (dagger etc., FUTURE)
 }
 ```
 
-**The realization authors the primary hand and the desired weapon
-orientation; everything else about the blade is derived** - the
-geometry must never be overdetermined:
+**The realization authors the hands, the weapon orientation and the
+torso; everything else about the blade is derived** - the geometry
+must never be overdetermined:
 
 ```
 crossguard    = primaryHandCm advanced grip1Cm along weaponAngleDeg
 point         = crossguard advanced bladeCm along weaponAngleDeg
 blade segment = crossguard -> point
-secondary-hand IK target = grip2Cm back along the hilt
-                           (two-handed realizations only)
+secondary hand = secondaryHandCm == "onSocket"
+                   ? grip2Cm back along the hilt   // weapon-adaptive
+                   : the authored point            // a free off-hand
 ```
 
 A longer blade moves the derived point without touching the pose; the
-realization stays weapon-independent, and the secondary hand adapts to
-the weapon's grip sockets (`physical-foundations`) instead of being
-authored per weapon. There is no authored point position, no authored
+realization stays weapon-independent, and an `onSocket` secondary hand
+adapts to the weapon's grip sockets (`physical-foundations`) instead
+of being authored per weapon. There is no authored point position, no authored
 blade angle separate from the weapon orientation, and no `leadFoot` -
 the lower body is the single canonical configuration of section 1
 until the stance extension.
@@ -302,27 +321,52 @@ R<->L arc. Interrupting a transition re-derives from the blade's
 interpolated current position - leaving from wherever you actually are,
 never a table lookup.
 
-**Where the guard lives - the fighter's blade track.** The fighter
-carries its blade position explicitly, so that every consumer (engine,
-AI, renderer, `grip-switching`) reads one field rather than inferring
-posture from the body state:
+**Where the blade lives - the fighter's `BladeTrack`.** The fighter
+carries its blade state explicitly and completely, so that no
+consumer (engine, AI, renderer, `grip-switching`) ever infers posture
+from the body state. It is a discriminated union, and it is the
+SINGLE source of blade truth in every state the fighter can occupy:
 
 ```
-guardPositionId;      // PositionId: where the blade IS when at rest
-guardTransition;      // nullable { fromId, toId, elapsedMs, durationMs }
-guardSettledMs;       // effective time since the last completion
+type BladePose = {            // a geometry snapshot, never an id:
+  primaryHandCm, weaponAngleDeg,   // the interpolable core
+  secondaryHandCm, torsoProfileDeg,
+  sourceId?                   // provenance for the renderer only
+}
+
+type BladeTrack =
+  | { kind: "settled";      at: PositionId, pose: BladePose, settledMs }
+  | { kind: "transitioning"; fromPose: BladePose, toId: PositionId,
+                             elapsedMs, durationMs }
+  | { kind: "attacking";     attack: ActiveAttack }   // the attack owns it
+  | { kind: "frozen";        pose: BladePose, why: "bind" | "exposed"
+                                  | "disarming" | "disarmed" }
 ```
+
+**The source of a transition is a POSE, not an id.** Interrupting a
+transition continues from the blade's actual interpolated geometry,
+which usually corresponds to no authored position at all - so
+`fromPose` is a snapshot and re-deriving a new transition from
+mid-motion is always expressible. `toId` stays an id because the
+destination is always an authored position.
 
 This is a TRACK beside the body state, never an arm of the exclusive
 state machine - the same shape `grip-switching`'s `handlingTransition`
 takes, and the reason a guard change, a step and a handling switch can
-be reasoned about independently. The blade's interpolated current
-position derives from (`fromId`, `toId`, progress); coverage (section
-4) reads it; interrupting a transition re-derives from that
-interpolated position. During an attack the track is owned by the
-attack - its launch, terminal and resulting positions drive it - and
-`guardPositionId` becomes the resulting guard when the attack releases
-the track at `combinedEnd`.
+be reasoned about independently. Coverage (section 4) reads the
+track's current pose. During an attack the track is `attacking` and
+the attack owns it; at `combinedEnd` it returns to `settled` at the
+snapshotted resulting guard.
+
+**`frozen` is how the blade survives its attack.** Bind entry,
+exposure, disarming and disarmed all outlive the attack state that
+produced them, so the entry tick writes the sampled contact pose into
+the track. `BindContact` is extended to carry what re-deriving it
+later cannot: `{ pose: BladePose, sourceGuardId, handlingMode,
+movement, trajectoryRef }` alongside today's kind/progress/settledMs.
+That is exactly the data the renderer needs to hold the contact pose
+and to keep drawing the right weapon in the right hands after the
+attack is gone.
 
 Defensive flow: pressing toward a new slot starts the transition
 (press-to-move and release semantics preserved from `held-guard`'s
@@ -365,12 +409,20 @@ interface AttackDefinition {
     required?;           // GuardSelector[]: a future technique MAY gate
                          // itself; v1 rows never set this
   };
-  launchConfiguration;   // PositionId
+  launchByHeight;        // Record<Height, PositionId>: where the blade
+                         // gathers to threaten each height
   trajectoryRef;         // the strike path: renderer cue + authored strike timing
-  terminalConfiguration; // PositionId - the delivered contact pose, ADDRESSABLE
+  terminalByHeight;      // Record<Height, PositionId> - the delivered
+                         // contact pose PER TARGET HEIGHT. A high and a
+                         // low thrust cannot end in the same blade pose,
+                         // so the terminal resolves with the target line
+                         // and is snapshotted with it. Total over the
+                         // reachable heights; a missing row fails the
+                         // data test
   resultVariants: {      // named exits; "default" is required on every row
-    default;             // GuardDestination: a COMPLETE specific position,
-                         // side resolved by rule (attackExitSide /
+    default;             // GuardDestination: resolves to a COMPLETE
+                         // specific position from (targetHeight, source
+                         // side) by rule (attackExitSide /
                          // oppositeSourceSide): a crossing cut from Right
                          // Vom Tag exits left and resolves to Left Pflug,
                          // side included, never a bare family
@@ -392,11 +444,33 @@ standing, not an implicit animation moment. Recovery is an ordinary
 derived transition FROM that position.
 
 **The active attack snapshots its resolution at launch** (the same
-snapshot pattern `AttackTimeline` already uses): `{definitionId,
-sourceGuardId, handlingMode, targetLine, terminalConfigurationId,
-resultingGuardId, movement, movementStartMs, movementEndMs,
-movementStartX, movementDistanceCm}`, resolved once, never re-derived
-mid-flight. `handlingMode` is snapshotted at launch like everything
+snapshot pattern `AttackTimeline` already uses):
+
+```
+{ definitionId, sourceGuardId, handlingMode, targetLine,
+  launchConfigurationId, terminalConfigurationId, resultingGuardId,
+  movement, movementStartMs, plannedMovementEndMs,
+  movementStartX, movementDistanceCm,     // the PLAN, immutable
+  movementStoppedAtMs?, movementStoppedX? // the OUTCOME, written once
+}
+```
+
+The launch, terminal and resulting positions are resolved with the
+target height (`launchByHeight`, `terminalByHeight`, the result rule)
+and snapshotted, so a high and a low thrust carry different terminal
+poses from the moment they start.
+
+**Plan and outcome are separate fields.** Everything above the line is
+resolved at launch and never re-derived. Truncation does not rewrite
+the plan - it WRITES THE OUTCOME once: `movementStoppedAtMs` and
+`movementStoppedX` are null until steel or a hit ends the travel, and
+`combinedEnd` reads the actual end,
+`movementEnd = movementStoppedAtMs ?? plannedMovementEndMs`. The
+distinction matters to more than bookkeeping: the renderer needs the
+plan to know what the performance intended and the outcome to know
+where it actually stopped.
+
+`handlingMode` is snapshotted at launch like everything
 else - the performance was thrown by the hands that held the sword
 then, and the renderer selects its clip by
 `trajectoryRef + handlingMode + movement` (`skeletal-renderer`
@@ -439,8 +513,15 @@ tick's gap - no special case anywhere in `contact.ts`.
 attack intent: player input layer and AI policy alike produce an
 
 ```
-AttackRequest { definitionId, targetLine, movement }
+AttackRequest { definitionId, targetHeight, movement }
 ```
+
+**The request carries a target HEIGHT, not a whole line.** The side is
+the definition's declared `side` and cannot be contradicted by an
+input - two sources for one axis is exactly the disagreement the
+types.ts rule forbids. The engine composes
+`targetLine = { height: request.targetHeight, side: definition.side }`
+at launch; the resolved line is what gets snapshotted.
 
 and the engine accepts the request object whole - the Intent plumbing
 change is part of this spec, because today main.ts hands the engine
@@ -489,16 +570,29 @@ The body follows a fixed schedule, not a second action track:
   displacement is cancelled and recovery (or the bind, or hitstun)
   happens where the fighter stands - nothing rewinds. Only a whiff
   carries the feet through the full window: you committed through
-  empty air. The footfall `step` event fires on the ACTUAL
-  movement-completion tick, scheduled or truncated, even if the blade
-  is still in recovery - presentation follows the simulation, and the
-  foot planting IS a simulation moment.
+  empty air.
+- **Stopping travelling and planting a foot are two moments.** The
+  root stops at `movementStoppedAtMs`; the foot is not necessarily
+  under the fighter at that instant, because an interrupted step is
+  interrupted mid-stride. So the engine emits `movementStopped` there,
+  and the footfall `step` event on the tick the weight actually
+  settles: `plantMs = movementStoppedAtMs + settleFromStride(u)`,
+  derived from how far through the stride the truncation caught it
+  (zero when the movement completed on schedule, so an uninterrupted
+  step sounds exactly as it does today). The renderer places the foot
+  deterministically across that interval (`skeletal-renderer`) - a
+  planted foot never teleports, and the sound never precedes the
+  weight. Both events fire even if the blade is still in recovery:
+  presentation follows the simulation, and both moments ARE
+  simulation moments.
 - The engine owns the root position at every tick (the renderer's
   clips are in-place, `skeletal-renderer`).
 - An attack pressed during an ordinary active step stays BUFFERED,
   exactly as today - the combined action exists only from launch.
-- The whole action commits until BOTH schedules finish:
-  `combinedEnd = max(attackRecoveryEnd, movementEnd + stepRecoveryMs)`.
+- The whole action commits until BOTH schedules finish, reading the
+  ACTUAL movement end:
+  `combinedEnd = max(attackRecoveryEnd, movementEnd + stepRecoveryMs)`
+  where `movementEnd = movementStoppedAtMs ?? plannedMovementEndMs`.
 
 Movement does not alter the resulting guard: an advancing and a
 retreating Oberhau both end in the definition's resolved position. A

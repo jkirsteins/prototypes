@@ -60,20 +60,28 @@ surfaced, never a silent nothing.
 
 Switching is a transition, not an instant:
 
+Both endpoints are realization rows of the same family in the two
+handling modes, so every travel the switch interpolates is a
+difference of authored numbers - `secondaryHandCm` (resolved through
+the weapon's grip socket when `"onSocket"`), `primaryHandCm`,
+`weaponAngleDeg` and `torsoProfileDeg`, all added to the row schema by
+`guard-positions` for exactly this reason:
+
 ```
-switchMs(f, w, guard) =
-  max( off-hand travel to/from its grip socket,
-       primary-hand travel between the two realizations,
-       weapon rotation between them (profileTime, as guard transitions),
-       torso adjustment )
+switchMs(f, w, family) =                      // from -> to realization
+  max( profileTime(|d secondaryHandCm|, HAND_ACCEL, handSpeed/strain),
+       profileTime(|d primaryHandCm|,   HAND_ACCEL, handSpeed/strain),
+       profileTime(|d weaponAngleDeg|,  alpha,      omegaCap),
+       profileTime(|d torsoProfileDeg|, TORSO_ACCEL, torsoOmegaCap) )
   + SETTLE
 ```
 
-The duration prices every motion the switch actually interpolates -
-the same `profileTime` model as `guard-positions` transitions, so the
-slowest-moving part sets the tempo. Within one family the realizations
-are close and the off-hand's travel usually dominates; the formula, not
-that assumption, is normative.
+`profileTime`, `alpha` and `omegaCap` are `guard-positions`' shared
+motion profile, unchanged - the slowest-moving part sets the tempo.
+Within one family the realizations are close and the off-hand's
+travel usually dominates; the formula, not that assumption, is
+normative. `TORSO_ACCEL` and `torsoOmegaCap` are calibration
+constants of this spec's tuning.
 
 Mid-switch control is defined, not improvised: a
 `secondaryHandEngagement` in [0,1] follows the off-hand's travel
