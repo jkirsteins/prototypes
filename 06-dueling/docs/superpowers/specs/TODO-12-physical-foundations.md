@@ -119,13 +119,16 @@ room. The duel-start mode, however, is the weapon's **conventional
 mode**, itself derived, not authored:
 
 ```
+engagementOf(mode) = mode == twoHanded ? 1 : 0
+
 conventionalScore(f, w, mode) =
-    reachCm(f, w, engagementOf(mode))                // what the mode buys
-  * min(1, holdCapacityNm(f, engagementOf(mode))    // can you hold it?
-           / staticHoldTorqueNm(f, w, restingGuard))
-engagementOf(mode)      = mode == twoHanded ? 1 : 0
-holdCapacityNm(f, engagement) = f.shoulderTorqueSustainNm
-                              * (1 + (TWO_ARM_SHARE - 1) * engagement)
+    reachCm(f, w, engagementOf(mode))              // what the mode BUYS
+  * min(1, wieldRatio(f, w, engagementOf(mode)))   // can you FENCE it?
+
+wieldRatio(f, w, engagement) =           // 1.0 = fully competent
+    controlTorquePeak(f, w, engagement)
+  / (inertiaGripKgM2(w) * TARGET_ALPHA)  // the torque a fencer needs to
+                                         // turn THIS blade briskly
 conventionalMode = argmax over AVAILABLE modes
 ```
 
@@ -137,12 +140,22 @@ and dividing both modes by a mode-independent hold demand does not
 help, because the same divisor cannot reorder them. What actually
 differs per mode is what the mode BUYS: one hand frees the body to
 profile and adds reach. So the score multiplies reach by a control
-term that SATURATES - once a mode can comfortably hold the weapon,
-extra capacity buys nothing, and the reach decides. Both sides of that
-ratio are referenced to the SHOULDER, the joint that actually carries
-the cantilever (4.5); the wrist orients the blade and does not hold it
-out, so wrist torque has no business in this comparison. Two arms
-share the load, worth `TWO_ARM_SHARE > 1`. A heavy longsword
+term that SATURATES - once a mode can WIELD the weapon competently,
+extra torque buys nothing and the reach decides.
+
+**The saturating term asks about wielding, not holding, and that
+distinction is what makes the derivation work at all.** Holding is
+already the one-handed gate's question (section 3), and every weapon
+that passes that gate can by definition hold its resting guard - so a
+hold-based ratio would saturate in BOTH modes for every available
+weapon, reach would always win, and nothing could ever be
+conventionally two-handed. Wielding is the question that actually
+separates them: a longsword's grip moment needs more torque to turn
+briskly than one wrist can deliver, so its one-handed ratio sits below
+1 and drags the score under the two-handed one despite the extra
+reach; a light, close-balanced sword turns fine in either hand, both
+ratios saturate, and the reach decides for one-handed. Both outcomes
+fall out of `inertiaGripKgM2` and the couple, with no weapon named. A heavy longsword
 one-handed never saturates (its ratio stays below 1 and drags the
 score down), so it starts two-handed; a light, close-balanced sword
 with a long hilt saturates in both modes and starts one-handed for
@@ -151,9 +164,12 @@ tautology could produce.
 
 For today's roster: the rapier is one-handed because two-handed is not
 AVAILABLE to it (the hilt gate), so the score is never consulted; the
-longsword is two-handed because its one-handed control ratio stays
-below saturation and cannot pay for the reach the profiling bonus
-would add. In-duel switching is the `grip-switching` spec; nothing
+longsword is two-handed because its one-handed WIELD ratio stays below
+saturation and cannot pay for the reach the profiling bonus would add.
+`TARGET_ALPHA` is calibrated in the workbook so that this holds for
+the shipping longsword and would stop holding for a light enough
+blade - it is the threshold that makes the trade real, and section 7
+pins the resulting conventional-mode matrix. In-duel switching is the `grip-switching` spec; nothing
 here adds inputs.
 
 ### Availability gates - the only hard denies
@@ -209,7 +225,11 @@ so a fighter with both hands visibly on the hilt had no leverage at
 all. One scaler, no gate.
 
 **Engagement is the physical truth; `handlingMode` is a label derived
-from it.** `engagement == 1` is two-handed, `0` is one-handed, and
+from it.** It lives on the FIGHTER as `engagement` in [0,1] - one
+field, always present, whether or not a switch is running - and
+`grip-switching`'s `handlingTransition` only drives it. That is why an
+interrupted switch needs no special storage: the fighter keeps the
+`engagement` they had. `engagement == 1` is two-handed, `0` is one-handed, and
 anything between is a switch in progress. The mode selects DATA -
 which realization row to stand in, which availability gate to check -
 and never appears in a physics formula; every derivation that cares
@@ -426,7 +446,9 @@ A per-fighter accumulator, ticked by the engine:
 
 ```
 demand  = staticHoldTorqueNm(f, w, current posture)
-        / holdCapacityNm(f, f.engagement)      // section 3: two arms share
+        / holdCapacityNm(f, f.engagement)
+holdCapacityNm(f, engagement) =        // two arms share the cantilever
+    f.shoulderTorqueSustainNm * (1 + (TWO_ARM_SHARE - 1) * engagement)
 strain' = demand > REST_FRACTION                    // strain in [0, 1]
     ? min(1, strain + (demand - REST_FRACTION) * STRAIN_RATE * dt)
     : max(0, strain - STRAIN_DECAY * dt)            // dt in MILLISECONDS,
@@ -504,6 +526,12 @@ anything depends on it.
   The rapier's 5 cm socket against a 4.61 cm half-hand is 0.4 cm of
   clearance where every other gate margin is 1.4 cm or more: milestone zero
   MUST move it, not may.
+- **Conventional-mode matrix test:** compute `conventionalMode` for
+  every weapon x the baseline body and pin the shape (longsword
+  two-handed, rapier one-handed). Like the gate matrix it names no
+  weapon in its logic, so `TARGET_ALPHA`'s calibration is what the
+  test actually holds to account - and a future light sword landing
+  one-handed changes the matrix rather than needing new control flow.
 - **Weapon-blindness test:** one-handed `bindAuthority` DIFFERS between
   the two weapons. The baseline ships the longsword two-handed and the
   rapier one-handed, so a derivation that collapsed to the bare wrist

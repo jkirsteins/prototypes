@@ -148,10 +148,11 @@ Its rules, stated once:
   the rule is stated for the general case and exercised today by the
   hit. Interruption clears the transition but does NOT snap the mode
   to an endpoint: the fighter keeps the engagement the switch had
-  reached, stored beside the frozen pose - and since every derivation
-  reads engagement rather than the mode label (control torque, reach,
-  the bind quantities), there is nothing left that can disagree with
-  the geometry. A hand caught halfway onto the hilt is halfway onto
+  reached - `engagement` is a plain field on the fighter
+  (`physical-foundations` 4.1), so nothing needs storing anywhere
+  special, and since every derivation reads it rather than the mode
+  label (control torque, reach, the bind quantities), there is nothing
+  left that can disagree with the geometry. A hand caught halfway onto the hilt is halfway onto
   the hilt, and the engine sees the value the renderer draws.
   Should a survivable interruption ever exist, leaving it resumes the
   switch from that engagement or abandons it back toward an endpoint;

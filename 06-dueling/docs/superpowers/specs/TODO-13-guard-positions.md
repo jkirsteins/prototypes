@@ -273,9 +273,11 @@ transition runs between:
 Three rules that were fighting each other now all hold:
 
 - *A guard shift keeps covering the old line until arrival* - today's
-  behaviour exactly, and the two pinned tests ("old side covered until
-  arrival", "the OLD line's clock keeps counting") keep passing
-  unchanged.
+  behaviour exactly. The two tests that pin it ("old side covered
+  until arrival", "the OLD line's clock keeps counting") read
+  `f.parry` and the deleted profile constants, so they are REWRITTEN
+  against the `BladeTrack` and the derivation; what must survive
+  verbatim is their assertions, not their code.
 - *The answer deadlines do not move.* The destination covers at
   completion, as today, so the tuned side-redirect economics survive -
   including the one documented failure, the rapier disengage that must
@@ -322,8 +324,9 @@ and that row's lines enter the map fresh. `frozen` keeps whatever the
 contact tick left, since the bind reads those clocks and nothing is
 moving.
 
-Extended guards (Ochs, Langort/Terza, Pflug) cover their band;
-withdrawn guards (Vom Tag, Alber) cover nothing - they are
+Extended SIDED guards (Ochs, Pflug) cover their band; the centre
+longpoint covers nothing despite being extended (below); and
+withdrawn guards (Vom Tag, Alber) also cover nothing - they are
 attack-loaded (Vom Tag) or an invitation (Alber). That is an authoring
 outcome of `EXTENDED_MIN`, not a fact about their names, so a third
 test asserts every withdrawn-slot realization derives `none`. This
@@ -400,10 +403,19 @@ raised action that can be spent:
 - `fighter.ts`'s refusal to parry while recovering disappears with it:
   there is no parry to refuse. What limits a defender is where the
   blade physically is and how long the derived travel takes.
-- `fighter.ts`'s `dropGuard` on cut, thrust and void, and `engine.ts`
+- `fighter.ts`'s `dropGuard` on cut and thrust, and `engine.ts`
   ending the guard on a landed blade, become the `attacking` variant's
-  empty `coveredSince` above - same rule, expressed as the track's
+  empty `coveredSince` above - the same rule, expressed as the track's
   lifecycle rather than as a field being nulled.
+- `dropGuard` on a VOID is a deliberate change, not a mapping: a void
+  is locomotion, and under this model the blade goes where the blade
+  goes, so a voiding fighter KEEPS the row they were covering. Today's
+  engine drops the guard because the parry was an action that could
+  not survive a hop; a position survives it. Voiding while covered
+  therefore becomes better than it is today, which is the intended
+  consequence of making guards positions - and the tempo economics
+  (section 9) are re-proven with it, since void pricing is one of the
+  invariants they pin.
 - The held-guard LATCH (`targetAttackStartTime`, `releaseQueued`,
   `visibleMs`, swept each tick) moves onto the `BladeTrack` unchanged
   in meaning: it governs when a released input actually starts the
@@ -412,7 +424,7 @@ raised action that can be spent:
   track's latched side, written when a side travel completes.
 - `engine.ts` charges `parryRecoveryMs` at bind resolution and at a
   neutral break, on the side whose contact was a guard. Both become
-  the same derived transition from the frozen pose (section 4's exit
+  the same derived transition from the frozen pose (section 5's exit
   table) - and note the behaviour change this makes explicit: today
   only the guard-side pays, whereas a derived travel prices BOTH
   fighters by how far each actually has to come back. That is the
@@ -480,9 +492,10 @@ angular acceleration from `physical-foundations` (peak control torque
 against rotational inertia about the grip, scaled by strain). Heavy
 blade + weak grip = slow guard changes, emergently. `SETTLE_MS` lives
 here and only here, and it prices the MOTION - it is not a coverage
-gate. Formedness is section 4's continuity rule: a line counts from
-the instant the geometry begins covering it, whether or not the
-transition that carried it there has finished. Because the lower body is one
+gate. Formedness is section 4's continuity rule: the SOURCE row's
+lines stay covered for the whole travel, and the destination's begin
+when the transition completes - `SETTLE_MS` being part of that
+duration is exactly why a destination line is not covered early. Because the lower body is one
 shared configuration, transitions move hands and blade only; when the
 stance extension separates the lower body, foot, hip and weight travel
 join this same derivation rather than being a free visual.
@@ -491,13 +504,29 @@ This derivation **replaces** the authored `heightChangeMs`,
 `sideChangeMs`, `guardShiftMs`, `firmUpMs` and `parryRecoveryMs`,
 which are deleted from the profile. Their readers are named, like the
 reach table in `physical-foundations`, because a missed one is a
-silent divergence: `fighter.ts`'s `guardFormationMs` (the shared
-derivation the engine and AI must never drift apart on), three sites
-in `ai.ts`, four in `ui/help.ts` (whose panel cites the durations),
-two in `render/draw.ts`, and the pinning tests in `line-feints` and
-`parry-rise`. Each moves to `transitionMs` between the two rows it
-was approximating; the help panel's callbacks read the derivation, so
-its cited numbers stay true by construction. The old semantics map onto special cases of the one
+silent divergence. Source: `fighter.ts`'s `guardFormationMs` (the
+shared derivation the engine and AI must never drift apart on), its
+`dropGuard`, phase-duration, side-travel, stance-height and redirect
+sites, three sites in `ai.ts`, four in `ui/help.ts` (whose panel
+cites the durations), two in `render/draw.ts`. Tests: `attack-lines`
+(the largest group, including the `heightChangeMs > firmUpMs`
+invariant and a profile-mutating fixture), `held-guard`,
+`line-feints`, `parry-rise`, `engine`, `help`, `blade-contact`,
+`fighter-defense`, `threat-latch`, `pressure-winding` and
+`sustained-bind`. Each moves to `transitionMs` between the two rows
+it was approximating; the help panel's callbacks read the derivation,
+so its cited numbers stay true by construction. **A guard test
+asserts no reader of any deleted field survives anywhere, source or
+test** - the same shape as `physical-foundations`' reach guard, and
+for the same reason.
+
+**One assertion must change its form, not just its plumbing.** The
+side-redirect test currently reads `expect(answerable).toBe(atk.id
+!== "rapier")`, which branches on a weapon's name - forbidden by the
+emergent-outcomes rule. The rewrite computes the answerable matrix
+from the derivation and pins its SHAPE; it may document that today's
+rapier redirect is too fast to chase, but it may not require that
+failure because the weapon is called a rapier. The old semantics map onto special cases of the one
 function: firm-up is a transition of near-zero arc (extending in
 place), a height change is the Ochs<->Pflug arc, a side change the
 R<->L arc. Interrupting a transition re-derives from the blade's
@@ -588,7 +617,9 @@ copy of the hands: starting a switch puts the `BladeTrack` into
 `toId` = the same family's row in the target mode) for the switch's
 own duration, and the handling track carries only what is genuinely
 its own - the mode endpoints and `secondaryHandEngagement`. Coverage
-therefore reads the mid-switch geometry through the ordinary
+therefore follows section 4's third rule - both endpoints of a
+handling switch are authored to cover the same line, so that line is
+continuous - rather than any interpolated
 derivation, and the two tracks cannot disagree because only one of
 them owns a pose.
 
@@ -700,7 +731,7 @@ interface AttackDefinition {
                          // a centre-only family (alber, longpoint)
                          // resolves to its centre row and ignores it -
                          // so a descending cut from Right Vom Tag lands
-                         // in Alber, and a low thrust in Left Pflug,
+                         // in Alber, and a low thrust in Right Pflug,
                          // each a COMPLETE position, never a bare family
     ...variants?;        // future exits, selected by an input at launch;
                          // v1 rows author only "default"
