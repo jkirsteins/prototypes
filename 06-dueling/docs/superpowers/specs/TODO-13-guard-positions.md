@@ -142,7 +142,7 @@ reserves); the withdrawn column keeps two. stanceUp/stanceDown move
 between the current column's stops; toggling extension at `middle`
 retracts to the slot map's authored target (Vom Tag by default - the
 gather to the shoulder - and the map lives in positions.json, not
-code). Its side comes from the track's latched side (section 4), so
+code). Its side comes from the track's latched side (section 5), so
 retracting from a centre row never has to invent one.
 Ochs, Pflug and Vom Tag take sideShift; longpoint and Alber ignore it.
 
@@ -181,7 +181,7 @@ type PositionDefinition =
                                           //   nothing derives a blade,
                                           //   coverage is none by
                                           //   construction, and it is the
-                                          //   disarmed fighter's rest
+                                          //   disarmed fighter's frozen pose
 ```
 
 Every ARMED position carries the same weapon core - including
@@ -189,9 +189,9 @@ Every ARMED position carries the same weapon core - including
 rows need because transitions into and out of them are priced by the
 same derivation as any other (and `grip-switching` measures torso
 travel). Only `guard` rows add family, side variant, handling mode and
-a slot, and `guard` rows are standable and selectable; `unarmed` is standable
-but never selectable - it is where a disarmed fighter is put, not a
-place anyone chooses to go. `unarmed` carries the BODY core only, precisely so nothing can derive
+a slot, and `guard` rows are the standable, selectable ones; `unarmed` is neither.
+It supplies the pose a disarmed fighter is FROZEN in, which is why it
+needs geometry at all. `unarmed` carries the BODY core only, precisely so nothing can derive
 a blade for a fighter who has none - it is outside the sixteen-realization roster and outside
 every coverage rule. Per guard realization row, on top of the core:
 
@@ -462,8 +462,10 @@ test asserting a mid-shift blackout would not hold, and none does.
 
 ```
 transitionMs(from, to, weapon, fighter) =    // reads f.engagement
-  max( profileMs(handTravelM, HAND_ACCEL / s, handSpeedMps / s),
-       profileMs(bladeArcRad, alpha / s,      omegaCap / s) )
+  max( profileMs(primaryHandM,  HAND_ACCEL / s,  handSpeedMps / s),
+       profileMs(offHandM,      HAND_ACCEL / s,  handSpeedMps / s),
+       profileMs(bladeArcRad,   alpha / s,       omegaCap / s),
+       profileMs(torsoArcRad,   TORSO_ACCEL / s, torsoOmegaCap / s) )
   + SETTLE_MS
 
 s        = strainFactor(fighter)          // >= 1; BOTH terms of BOTH
@@ -494,7 +496,10 @@ and `OMEGA_CAL` are calibration constants of the section 9 tuning;
 `strainFactor` is `physical-foundations`' strain effect (1.0 at zero
 strain).
 
-Hand travel is the two realizations' `primaryHandCm` difference
+A transition prices all four authored axes - both hands, the weapon's
+rotation and the torso - by the same `max` over motion profiles that
+`grip-switching`'s `switchMs` uses, so no authored geometry ever moves
+for free. Hand travel is the two realizations' `primaryHandCm` difference
 resolved at THIS fighter's stature (the rows are stature fractions
 written in centimetres at the 175 cm baseline, section 3), so a taller
 fighter's longer travels take proportionally longer rather than being
@@ -508,7 +513,7 @@ gate. Formedness is section 4's continuity rule: the SOURCE row's
 lines stay covered for the whole travel, and the destination's begin
 when the transition completes - `SETTLE_MS` being part of that
 duration is exactly why a destination line is not covered early. Because the lower body is one
-shared configuration, transitions move hands and blade only; when the
+shared configuration, transitions move the upper body only; when the
 stance extension separates the lower body, foot, hip and weight travel
 join this same derivation rather than being a free visual.
 
@@ -524,8 +529,9 @@ cites the durations), two in `render/draw.ts`. Tests: `attack-lines`
 (the largest group, including the `heightChangeMs > firmUpMs`
 invariant and a profile-mutating fixture), `held-guard`,
 `line-feints`, `parry-rise`, `engine`, `help`, `blade-contact`,
-`fighter-defense`, `threat-latch`, `pressure-winding` and
-`sustained-bind`. One does not merely re-plumb: `fighter-defense`
+`duelist-defence` (whose feasibility matrix is built on
+`guardFormationMs`), `fighter-defense`, `threat-latch`,
+`pressure-winding` and `sustained-bind`. One does not merely re-plumb: `fighter-defense`
 asserts that a VOID clears the guard, which this spec deliberately
 reverses (below), so that half of its loop inverts and says so. Each moves to `transitionMs` between the two rows
 it was approximating; the help panel's callbacks read the derivation,
@@ -660,8 +666,8 @@ mechanism:
 | Bind winner takes the advantage thrust | The attack launches with `sourceGuardId` = the frozen pose's provenance and the frozen pose as its launch geometry - `bindTimeline`'s no-windup thrust already starts from contact, and this is why that is physically honest: the point is already there. The track becomes `attacking`. |
 | Winner declines the thrust / returns to ready | Same as neutral break: `transitioning` from the frozen pose to the level-selected guard. |
 | Exposed fighter recovers | `transitioning` from the frozen pose to the level-selected guard, priced by `transitionMs` like every other exit. The exposure's own duration is a FLOOR the derived travel is taken against (`max` of the two), so being turned out of a bind always costs at least what the bind spec charges, and more when the blade has further to come back. |
-| Disarming resolves (sword taken) | The loser's track becomes `settled` at the `kind: "unarmed"` position (section 3 - no weapon, no derived blade, coverage `none` by construction); the winner transitions from their frozen pose like any other exit. |
-| Disarmed | Stays `frozen` with `why: "disarmed"` until the round ends - there is no blade to move. |
+| Disarming resolves (sword taken) | The loser's track goes `frozen` with `why: "disarmed"`, its pose taken from the `kind: "unarmed"` position (section 3 - no weapon, no derived blade, coverage `none` by construction). It is frozen rather than settled because the round is over on that tick: nothing more will move. The winner transitions from their frozen pose like any other exit. |
+| Disarmed | Stays as the row above left it until the round ends - there is no blade to move. |
 
 In every armed case the destination is the standing levels' selection,
 so the fighter comes out of contact into the guard they were asking
@@ -1082,7 +1088,10 @@ discussion:
   rapier's is calibration, pinned here, promised nowhere);
 - large cut from Terza: high rotational demand + wrist-only torque ->
   slow (emergently poor, worse the heavier the blade);
-- extended one-handed guards accrue strain; withdrawn ones rest;
+- a HEAVY blade held one-handed in an extended guard accrues strain,
+  while a light one and any withdrawn guard rest - weight and moment
+  arm decide it, not hand count, so the rapier's own Terza is
+  restful and the longsword's is not;
 - in contact, one hand's control torque -> displaced easily;
 - an advancing attack reaches from further away and finishes closer; a
   stationary one preserves measure; a retreating one reaches less

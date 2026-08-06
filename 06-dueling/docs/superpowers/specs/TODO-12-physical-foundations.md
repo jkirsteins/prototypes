@@ -415,8 +415,8 @@ with its resolution:
 | site | resolution |
 |---|---|
 | `measure.ts` (`zoneFor(gap, weapon)`, called from `draw.ts` and `ai.ts`) | takes `(gap, fighter)`; the pure function stays pure, its input widens. |
-| `contact.ts` `extension`, `engine.ts` strike resolution, `ai.ts` (3 sites), `draw.ts` reach guides and `openingPromptText`'s in-range test | all have the fighter in scope already: `reachCm(f, f.weapon, f.engagement)`. |
-| `select.ts` and `draw.ts` weapon-card text ("effective reach N cm") | no fighter exists yet on the select screen: show the **baseline body in the weapon's conventional mode**, labelled as such, so the number the player compares is the one they will fence with. |
+| `contact.ts` `extension`, `engine.ts` strike resolution, `ai.ts` (3 sites), `draw.ts` reach guides, its in-duel HUD card and `openingPromptText`'s in-range test | all have the fighter in scope already: `reachCm(f, f.weapon, f.engagement)`. |
+| `select.ts` weapon-card text ("effective reach N cm") | no fighter exists yet on the select screen: show the **baseline body in the weapon's conventional mode**, labelled as such, so the number the player compares is the one they will fence with. |
 
 Five test files read `WEAPONS.*.reach` directly (`weapons`, `engine`,
 `blade-contact`, `parry-rise`, `preparation-readiness`); they move to
@@ -534,7 +534,7 @@ anything depends on it.
   shipping weapon sits near a boundary and a gate verdict is never a
   rounding accident
   The rapier's 5 cm socket against a 4.61 cm half-hand is 0.4 cm of
-  clearance where every other gate margin is 1.4 cm or more: milestone zero
+  clearance where every other gate margin is 1.39 cm or more: milestone zero
   MUST move it, not may.
 - **Conventional-mode matrix test:** compute `conventionalMode` for
   every weapon x the baseline body and pin the shape (longsword
@@ -547,10 +547,15 @@ anything depends on it.
   rapier one-handed, so a derivation that collapsed to the bare wrist
   would hide behind the equivalence test; this is what catches it.
 - **Strain calibration constraint**, named because two specs depend on
-  it: `REST_FRACTION` must sit between the two-handed and the
-  one-handed extended-guard demands, so that a two-handed guard rests
-  indefinitely while `grip-switching`'s one-handed Terza actually
-  tires. The workbook solves for it and this test pins both sides.
+  it, and it is about WEIGHT rather than hand count: `REST_FRACTION`
+  must sit ABOVE every weapon's demand in its own conventional mode -
+  including the rapier's one-handed Terza, which is its ordinary
+  standing game and must rest indefinitely - and BELOW the demand of a
+  heavy blade held one-handed, so `grip-switching`'s one-handed
+  longsword actually tires. The 1.3 kg rapier and the 1.5 kg longsword
+  sit on opposite sides of it because they weigh different amounts at
+  different balance points, not because of how many hands hold them.
+  The workbook solves for it and this test pins both sides.
 - **Strain unit tests:** synthetic above-threshold demand accumulates,
   decays, and scales the two effect factors; baseline inputs produce
   zero forever.
