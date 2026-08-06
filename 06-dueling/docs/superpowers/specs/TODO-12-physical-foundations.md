@@ -121,10 +121,10 @@ mode**, itself derived, not authored:
 ```
 conventionalScore(f, w, mode) =
     reachCm(f, w, mode)                              // what the mode buys
-  * min(1, holdCapacityNm(f, mode)                   // can you hold it?
+  * min(1, holdCapacityNm(f, engagementOf(mode))    // can you hold it?
            / staticHoldTorqueNm(f, w, restingGuard))
-holdCapacityNm(f, mode) = f.shoulderTorqueSustainNm
-                        * (mode == twoHanded ? TWO_ARM_SHARE : 1)
+holdCapacityNm(f, engagement) = f.shoulderTorqueSustainNm
+                              * (1 + (TWO_ARM_SHARE - 1) * engagement)
 conventionalMode = argmax over AVAILABLE modes
 ```
 
@@ -219,8 +219,10 @@ contradiction to resolve.
 
 **Control torque is a property of the BODY AND GRIP, not of the
 blade.** A wrist applies the torque it can apply whatever it holds, so
-no inertia term belongs here: every consumer already divides by the
-moment that matters to it (4.3), and folding inertia in as well would
+no inertia term belongs here: every consumer already divides by what
+matters to it - the grip or contact MOMENT where the blade must be
+turned (4.3), the contact ARM where a force is wanted - and folding
+inertia in as well would
 double-count it - guard changes and bind handling would scale with the
 inverse SQUARE of blade inertia, which no physics supports. The
 weapon's influence enters where it physically acts, one level down.
@@ -323,9 +325,9 @@ difference is on the record with fresh evidence behind it.
 Every read site in `src/combat/bind.ts` takes a `WeaponProfile` and
 nothing else - `lead(firm, w)`, `deriveInitialBindControl(firm, ws)`,
 `derivePressurePulse(w)`, `deriveYieldZone(self, opp)` and
-`deriveYieldDuration(self)`. All five gain the fighter's attributes
-and handling mode (passing the `Fighter`, or an explicit
-`(attributes, mode)` pair). The bind's own formulas - what it does
+`deriveYieldDuration(self)`. All five take the `Fighter` instead, so
+they read attributes AND the live `engagement` - never a mode label,
+which could not express a fighter interrupted mid-switch at 0.9. The bind's own formulas - what it does
 with authority, handling and rotational control - do not change.
 
 ### 4.4 Reach, derived
@@ -335,7 +337,7 @@ measured from the primary hand's socket - the hilt behind the hand is
 counterweight, not reach:
 
 ```
-reachCm(f, w, mode, engagement = modeDefault) =
+reachCm(f, w, engagement) =
     armReachCm(f) + w.grip1Cm + w.bladeCm
   + (1 - engagement) * profilingBonusCm(f)
 ```
@@ -356,7 +358,13 @@ frees) are stature-proportional; with the section 1 example values,
 longsword two-handed 97.5 + 7.5 + 95 = 200 and rapier one-handed
 97.5 + 5 + 112 + 25.5 = 240 reproduce the shipped reaches exactly
 (`armReachCm = statureCm * 39/70`, `profilingBonusCm = statureCm *
-51/350`). The blade lengths carry the weapons' real difference - a
+51/350`). Those two fractions are the CURRENT solution, not fixed
+constants: the workbook solves them together with `grip1Cm` and the
+blade lengths, so when milestone zero moves the rapier's socket off
+its gate margin the fractions move with it and 200 / 240 still come
+out exactly. "No free constants to absorb" means the test cannot be
+satisfied by tuning something invisible - not that the inputs are
+frozen. The blade lengths carry the weapons' real difference - a
 rapier IS the longer blade - so the profiling bonus stays near the
 25 cm a shoulder turn can plausibly buy, rather than the 42.5 cm
 an earlier equal-blade draft forced it to absorb.
@@ -379,7 +387,7 @@ with its resolution:
 | site | resolution |
 |---|---|
 | `measure.ts` (`zoneFor(gap, weapon)`, called from `draw.ts` and `ai.ts`) | takes `(gap, fighter)`; the pure function stays pure, its input widens. |
-| `contact.ts` `extension`, `engine.ts` strike resolution, `ai.ts` (3 sites), `draw.ts` reach guides and `openingPromptText`'s in-range test | all have the fighter in scope already: `reachCm(f, f.weapon, f.handlingMode)`. |
+| `contact.ts` `extension`, `engine.ts` strike resolution, `ai.ts` (3 sites), `draw.ts` reach guides and `openingPromptText`'s in-range test | all have the fighter in scope already: `reachCm(f, f.weapon, f.engagement)`. |
 | `select.ts` and `draw.ts` weapon-card text ("effective reach N cm") | no fighter exists yet on the select screen: show the **baseline body in the weapon's conventional mode**, labelled as such, so the number the player compares is the one they will fence with. |
 
 Five test files read `WEAPONS.*.reach` directly (`weapons`, `engine`,
@@ -416,7 +424,8 @@ sustain capacity - the quantity becomes load-bearing when
 A per-fighter accumulator, ticked by the engine:
 
 ```
-demand  = staticHoldTorqueNm(f, w, current posture) / shoulderTorqueSustainNm(f)
+demand  = staticHoldTorqueNm(f, w, current posture)
+        / holdCapacityNm(f, f.engagement)      // section 3: two arms share
 strain' = demand > REST_FRACTION                    // strain in [0, 1]
     ? min(1, strain + (demand - REST_FRACTION) * STRAIN_RATE * dt)
     : max(0, strain - STRAIN_DECAY * dt)            // dt in MILLISECONDS,

@@ -141,7 +141,10 @@ The extended column has three height stops (`middle` becomes reachable
 reserves); the withdrawn column keeps two. stanceUp/stanceDown move
 between the current column's stops; toggling extension at `middle`
 retracts to the slot map's authored target (Vom Tag by default - the
-gather to the shoulder - and the map lives in positions.json, not code).
+gather to the shoulder - and the map lives in positions.json, not
+code). Its side comes from the fighter's latched guard side, the same
+latch today's `f.guardSide` keeps, so retracting from a centre row
+never has to invent one.
 Ochs, Pflug and Vom Tag take sideShift; longpoint and Alber ignore it.
 
 No new ActionIds. The `guard` button's meaning sharpens from "parry
@@ -202,11 +205,12 @@ every coverage rule. Per guard realization row, on top of the core:
 ```
 
 Two notes on the core's fields, since guards are where they bite:
-`secondaryHandCm` is `"onSocket"` for an ordinary two-handed grip (the
-target derives from the weapon's grip2 socket, so it adapts per
-weapon) and an explicit point whenever the off-hand is `"free"` - a
-free hand is somewhere, and the engine must be able to measure its
-travel. `poseRef` is **presentation only**: the engine never inspects
+`secondaryHandCm` is `"onSocket"` on two-handed rows (the target
+derives from the weapon's grip2 socket, so it adapts per weapon) and
+an explicit point on one-handed rows, where the hand is off the hilt
+and its position still has to be measurable - `grip-switching` reads
+exactly this difference. `offHand` is inert data for a future dagger
+or buckler and never decides this. `poseRef` is **presentation only**: the engine never inspects
 it, so every quantity a derivation needs exists as a number in the row
 itself.
 
@@ -243,85 +247,66 @@ One shared function reads the realization's **derived** blade geometry
 (section 3) with the equipped weapon:
 
 ```
-seg = derivedBlade(pose, weapon)     // section 3: crossguard -> point,
+seg = derivedBlade(row, weapon)      // section 3: crossguard -> point,
                                      // each with heightCm and advanceCm
-covered(pose, weapon) =
-  pose.sideVariant == "centre" ? none :
+covered(row, weapon) =              // row: an authored realization
+  row.sideVariant == "centre" ? none :
   seg.point.advanceCm >= EXTENDED_MIN
-    ? { heights: bands(seg), side: sideOf(pose.sideVariant) }
+    ? { heights: bands(seg), side: sideOf(row.sideVariant) }
     : none
 ```
 
-**Coverage reads a POSE, not a position row, and it is continuous.**
-Every `BladePose` carries the `sideVariant` its geometry belongs to
-(section 5), so coverage is defined at every instant - standing,
-mid-transition, mid-handling-switch - from the blade's live geometry.
-That single choice is what makes two other rules true instead of
-contradictory:
+**Coverage is defined at every instant, and a transition never blanks
+it.** Coverage is computed from an authored ROW's geometry - which
+keeps `sideOf` a simple variant lookup with a defined answer - and a
+fighter in motion is always covered by one of the two rows their
+transition runs between:
 
-- **A guard shift keeps covering the old line until the blade
-  actually leaves it.** Today's `ParryTrack` has exactly this
-  behaviour and tests pin it ("old side covered until arrival", "the
-  OLD line's clock keeps counting"); a completion-gated coverage
-  would have deleted it and turned every guard change into a total
-  opening nobody priced.
-- **A handling switch does not blank the defence.** Taking the
-  off-hand off a hilt does not move the point out of line, so an
-  extended guard keeps covering through the switch, exactly as
-  `grip-switching` promises - no scripted vulnerability.
+- **The source row's covered lines persist for the whole transition**,
+  clocks still running. A blade sweeping away from a line still stands
+  in it well enough to deflect until the fighter is committed
+  elsewhere.
+- **The destination row's covered lines begin at completion**, with
+  fresh clocks.
+- **A line covered by BOTH endpoints is continuous** - no gap, no
+  reset, its clock never interrupted.
 
-**The side comes from the geometry too.** An interpolated pose belongs
-to no authored row, so a discrete `sideVariant` cannot answer for it:
-`sideOf` reads which side of the body centreline the blade segment
-actually lies on. A guard rotating from one side to the other
-therefore stops covering the old side and starts covering the new one
-when the steel CROSSES, which is a derived instant, not a phase label.
-`pose.sideVariant` remains as provenance for the renderer and for
-`exitSide`; coverage never consults it.
+Three rules that were fighting each other now all hold:
 
-**Formedness is continuity, and each covered line has its own clock.**
-Because `bands(seg)` is a SET, a travelling blade transiently spans
-two bands, so one scalar cannot express what is settled:
+- *A guard shift keeps covering the old line until arrival* - today's
+  behaviour exactly, and the two pinned tests ("old side covered until
+  arrival", "the OLD line's clock keeps counting") keep passing
+  unchanged.
+- *The answer deadlines do not move.* The destination covers at
+  completion, as today, so the tuned side-redirect economics survive -
+  including the one documented failure, the rapier disengage that must
+  stay too fast to chase.
+- *A handling switch never blanks the defence.* Its two endpoints are
+  the same family and side variant in different modes, so they cover
+  the SAME line: the third rule applies, coverage is continuous, and
+  `grip-switching`'s "no scripted vulnerability" is structural rather
+  than promised.
+
+**Each covered line carries its own clock**, because `bands(seg)` is a
+SET and a transition can have two rows covering different lines at
+once:
 
 ```
-coveredSince: Map<Line, ms>    // on the BladeTrack
+coveredSince: Map<LineKey, ms>      // on the BladeTrack itself, in
+                                    // EVERY variant - a fighter met
+                                    // mid-shift or mid-bind has the
+                                    // same clocks a settled one does
+LineKey = `${height}:${side}`       // a string: Line is a structural
+                                    // object, so a Map keyed by the
+                                    // object itself would never hit
 ```
 
-An entry appears when the geometry begins covering that line and is
-DELETED when it stops - so a shift holds the old line's clock right up
-to the moment the steel leaves it, and the newly covered line starts
-from zero rather than inheriting the old one's age.
-`parryMeetsAttack` reads the entry for the attack's own line, and
-`firmness()` at bind entry reads the same one; a freshly crossed line
-can never present itself as long-braced, which is exactly what the old
-`settledMs = remainder` reset on shift completion existed to prevent.
-The overshoot-at-the-deadline semantics are unchanged.
-
-**Coverage is the band the BLADE spans, not the point's band.** A
-Pflug holds its hilt at the hip with the point up at the chest: the
-steel physically stands across the low line, which is exactly why the
-guard closes it, and reading only the point would say it covers the
-middle and leave the low line permanently unparryable - with Alber
-and longpoint centre, and Ochs high, no realization could cover low
-at all. `bands(seg)` is the set of `Height` bands the segment from
-crossguard to point passes through, and `parryMeetsAttack` matches
-when the attack's height is IN that set (`covered.heights.has(...)`).
-
-Two validation tests keep the roster honest, and both are about
-authoring, not code: **every `Height` is covered by at least one
-realization x side**, and **no realization covers all three** - a
-guard that closes every line is a wall, not a guard.
-
-`sideOf` reads the side variant alone. It takes no facing: sides are
-body-relative, and `contact.ts`'s existing rule is label-equal with no
-mirroring ("a symmetric engagement folds my inside and their inside
-onto the same crossing"), so introducing a facing term would invert
-one fighter and break every parry-matching test this spec promises to
-carry over.
-
-The centre branch is explicit, not an accident of attack availability:
-a centre variant claims no categorical line, so `sideOf` never runs on
-an input it has no answer for.
+An entry appears when a line starts being covered and is DELETED when
+it stops, so a line freshly covered at a transition's completion
+starts from zero rather than inheriting the age of the line the
+fighter was previously holding - which is what today's
+`settledMs = remainder` reset exists to prevent. `parryMeetsAttack`
+and `firmness()` both read the entry for the line actually contacted.
 
 Extended guards (Ochs, Langort/Terza, Pflug) cover their band;
 withdrawn guards (Vom Tag, Alber) cover nothing - they are
@@ -347,12 +332,9 @@ and lines scale together, the two validation tests below hold at every
 body rather than only the baseline, and `physical-foundations`'
 promise that attribute variation needs "only inputs" survives. Mixing
 absolute poses with proportional edges would have made which bands a
-Pflug spans depend on the fighter's height in a way nobody authored. `sideOf` maps the row's side variant
-to the engine's `Side` union body-relatively: the variant on the
-sword-arm side is `outside`, the other `inside` - which is why a cut
-(declared `outside`) is answered by the right-side guards and a thrust
-(declared `inside`) by the left, for a right-handed fighter, with no
-facing term anywhere.
+Pflug spans depend on the fighter's height in a way nobody authored. So a cut (declared `outside`) is
+answered by the sword-arm-side guards and a thrust (declared
+`inside`) by the other, for a right-handed fighter.
 
 **The centre longpoint covers nothing, by encoding:** the formula's
 centre branch is the guard's identity made explicit. Historically the
@@ -379,26 +361,42 @@ Blade-segment contact is a named future extension: if it ever comes,
 it replaces the internals of `parryMeetsAttack`/`bladesCross` in that
 one module, and this paragraph is its door.
 
-**Three consumers of the deleted parry object need new meanings, and
+**Five consumers of the deleted parry object need new meanings, and
 here they are.** A guard is now a position the fighter occupies, not a
 raised action that can be spent:
 
 - `engine.ts`'s `dropGuard(defender)` on a parried attack disappears.
   A deflection does not delete a posture; it displaces it. The
-  defender's blade is pushed off line by the impact - a derived
-  transition away from the covering geometry, its size read from
-  `displacementResistanceN` against the attack's force
-  (`physical-foundations` 4.1), so a strong two-handed guard barely
-  moves and a strained one-handed guard is thrown wide.
-- `parryRecoveryMs` is DELETED from the profile alongside the other
-  five, and the recovery it used to charge is that displacement's own
-  transition back - derived, not authored.
+  defender's blade is pushed off line by the impact - an ordinary
+  derived transition away from the covering geometry, whose
+  DESTINATION is the displaced pose:
+
+  ```
+  impactN     = attacker's bindAuthority * ANCHOR_FORCE   // the force
+                                                          // arriving
+  displaceRad = DISPLACE_CAL * impactN
+              / displacementResistanceN(def, w, engagement)
+  ```
+
+  so a strong two-handed guard is barely moved and a strained
+  one-handed guard is thrown wide. The recovery is that transition
+  run backwards, priced by `transitionMs` like any other - which is
+  why `parryRecoveryMs` has nothing left to do.
+- `parryRecoveryMs` is DELETED from the profile alongside the others.
 - `fighter.ts`'s refusal to parry while recovering disappears with it:
   there is no parry to refuse. What limits a defender is where the
   blade physically is and how long the derived travel takes.
+- `engine.ts` charges `parryRecoveryMs` at bind resolution and at a
+  neutral break, on the side whose contact was a guard. Both become
+  the same derived transition from the frozen pose (section 4's exit
+  table) - and note the behaviour change this makes explicit: today
+  only the guard-side pays, whereas a derived travel prices BOTH
+  fighters by how far each actually has to come back. That is the
+  intent, and the tempo economics are re-proven with it (section 9).
 
 `contact.parryMeetsAttack` is rewritten to read
-`(pose, coveredSince)` instead of the parry object. Two parts of its
+`(track, line)` - the track carries both the covered lines and their
+clocks - instead of the parry object. Two parts of its
 contract change and the change is deliberate, so the carry-over of its
 tests is not blanket: the height comparison becomes membership in the
 covered band (`covered.heights.has(line.height)`), and coverage comes
@@ -412,14 +410,14 @@ test that asserted a mid-shift blackout would not, and none does.
 ## 5. Transitions, derived
 
 ```
-transitionMs(from, to, weapon, fighter, mode) =
+transitionMs(from, to, weapon, fighter) =    // reads f.engagement
   max( profileMs(handTravelM, HAND_ACCEL / s, handSpeedMps / s),
        profileMs(bladeArcRad, alpha / s,      omegaCap / s) )
   + SETTLE_MS
 
 s        = strainFactor(fighter)          // >= 1; BOTH terms of BOTH
                                           // profiles, never just one
-alpha    = controlTorquePeakNm / inertiaGripKgM2                 // rad/s^2
+alpha    = controlTorquePeak(f, w, f.engagement) / inertiaGripKgM2   // rad/s^2
 omegaCap = OMEGA_CAL * handSpeedMps                              // rad/s
 
 // SI in, SECONDS out - so every caller converts explicitly:
@@ -445,7 +443,11 @@ and `OMEGA_CAL` are calibration constants of the section 9 tuning;
 `strainFactor` is `physical-foundations`' strain effect (1.0 at zero
 strain).
 
-Hand travel comes from the two realizations' `primaryHandCm`; the
+Hand travel is the two realizations' `primaryHandCm` difference
+resolved at THIS fighter's stature (the rows are stature fractions
+written in centimetres at the 175 cm baseline, section 3), so a taller
+fighter's longer travels take proportionally longer rather than being
+computed from the baseline table; the
 blade arc from their `weaponAngleDeg` and derived point positions;
 angular acceleration from `physical-foundations` (peak control torque
 against rotational inertia about the grip, scaled by strain). Heavy
@@ -460,7 +462,15 @@ join this same derivation rather than being a free visual.
 
 This derivation **replaces** the authored `heightChangeMs`,
 `sideChangeMs`, `guardShiftMs`, `firmUpMs` and `parryRecoveryMs`,
-which are deleted from the profile. The old semantics map onto special cases of the one
+which are deleted from the profile. Their readers are named, like the
+reach table in `physical-foundations`, because a missed one is a
+silent divergence: `fighter.ts`'s `guardFormationMs` (the shared
+derivation the engine and AI must never drift apart on), three sites
+in `ai.ts`, four in `ui/help.ts` (whose panel cites the durations),
+two in `render/draw.ts`, and the pinning tests in `line-feints` and
+`parry-rise`. Each moves to `transitionMs` between the two rows it
+was approximating; the help panel's callbacks read the derivation, so
+its cited numbers stay true by construction. The old semantics map onto special cases of the one
 function: firm-up is a transition of near-zero arc (extending in
 place), a height change is the Ochs<->Pflug arc, a side change the
 R<->L arc. Interrupting a transition re-derives from the blade's
@@ -475,11 +485,9 @@ SINGLE source of blade truth in every state the fighter can occupy:
 
 ```
 type BladePose = {            // a geometry snapshot, never an id:
-  primaryHandCm, weaponAngleDeg,   // the interpolable core
-  secondaryHandCm, torsoProfileDeg,
-  sideVariant,                // which side this geometry belongs to,
-                              // so coverage (section 4) is defined at
-                              // every instant, not only at rest
+  primaryHandCm, torsoProfileDeg,  // the body, always present
+  weaponAngleDeg?,            // absent for an unarmed pose - there is
+  secondaryHandCm?,           //   no blade to angle and no hilt to hold
   render: RenderSource        // how to reconstruct the FULL body
 }
 
@@ -499,15 +507,20 @@ type RenderSource = {
   targetHeight, handlingMode, movement
 }
 
-type BladeTrack =
-  | { kind: "settled";      at: PositionId, pose: BladePose,
-                            coveredSince: Map<Line, ms> }
-  | { kind: "transitioning"; fromPose: BladePose, toId: PositionId,
-                             elapsedMs, durationMs }
+type BladeTrack = { coveredSince: Map<LineKey, ms> } & (   // ALWAYS present
+  | { kind: "settled";       at: PositionId, pose: BladePose }
+  | { kind: "transitioning"; fromId: PositionId | null,  // null: from
+                             fromPose: BladePose,        //   mid-motion
+                             toId: PositionId, elapsedMs, durationMs }
   | { kind: "attacking";     attack: ActiveAttack }   // the attack owns it
   | { kind: "frozen";        pose: BladePose, why: "bind" | "exposed"
                                   | "disarming" | "disarmed" }
+)
 ```
+
+`fromId` is the source ROW whose coverage persists through the
+transition (section 4); it is null only when a transition starts from
+mid-motion, in which case nothing but the destination will cover.
 
 **The source of a transition is a POSE, not an id.** Interrupting a
 transition continues from the blade's actual interpolated geometry,
@@ -868,9 +881,8 @@ The body follows a fixed schedule, not a second action track:
   so `u == 1` and `plantMs == plannedMovementEndMs` exactly.
 
   **This is COMBAT data, not animation data** - `PLANT_SETTLE_MS` is a
-  weapon-profile constant (the fighter's own footwork, derived like
-  the rest from step numbers during calibration), the engine owns the
-  formula, and a unit test pins both ends: `u = 1` (movement finished
+  FIGHTER constant, since recovering a stride is the body's business
+  and not the sword's, the engine owns the formula, and a unit test pins both ends: `u = 1` (movement finished
   on schedule, `movementStoppedAtMs` null) gives
   `plantMs == plannedMovementEndMs`, so an
   uninterrupted step sounds exactly as it does today; `u = 0`

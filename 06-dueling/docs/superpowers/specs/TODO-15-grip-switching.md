@@ -68,12 +68,14 @@ the weapon's grip socket when `"onSocket"`), `primaryHandCm`,
 `guard-positions` for exactly this reason:
 
 ```
-switchMs(f, w, family) =                    // from -> to realization
+switchMs(f, w, family) =         // from -> to realization, at f's stature
   max( profileMs(|d secondaryHandCm| / 100, HAND_ACCEL / s,  handSpeedMps / s),
        profileMs(|d primaryHandCm|   / 100, HAND_ACCEL / s,  handSpeedMps / s),
        profileMs(rad(|d weaponAngleDeg|),   alpha / s,       omegaCap / s),
        profileMs(rad(|d torsoProfileDeg|),  TORSO_ACCEL / s, torsoOmegaCap / s) )
-  + SETTLE_MS                               // s = strainFactor(f)
+  + SETTLE_MS      // s = strainFactor(f); alpha reads f.engagement, which
+                   // is itself sweeping across this interval - evaluate it
+                   // at the midpoint, the one value the whole travel shares
 ```
 
 Strain scales BOTH terms of ALL FOUR profiles - a strained fighter's
@@ -195,12 +197,15 @@ None of these are new rules; they are `physical-foundations` and
 extension (section 5) pins each:
 
 - One-handed longsword in Terza (the longpoint family's one-handed
-  realization): the profiling bonus adds derived reach the opponent's
+  realization): strain accrues faster than two-handed, because hold
+  capacity scales with engagement (`physical-foundations` 5) - the
+  shoulder carries the same cantilever with one arm instead of two.
+  The profiling bonus adds derived reach the opponent's
   two-handed measure reads did not price, and the thrust preparation is
   near-direct - a real ambush at long measure. The exact reach number
   is calibration, pinned by the matrix, promised nowhere.
-- The same posture held: strain accrues (wrist-only sustain torque
-  against a cantilevered 1.5 kg blade), slowing every later transition.
+- The same posture held: strain accrues against a single arm's
+  sustainable shoulder torque, slowing every later transition.
 - Large cuts one-handed: the gather and the arc pay wrist-only torque
   against full inertia - visibly slow, honestly bad.
 - Any bind entered one-handed against two hands: authority and
