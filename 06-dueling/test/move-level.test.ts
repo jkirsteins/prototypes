@@ -14,8 +14,8 @@ describe("the movement level", () => {
     for (let c = 0; c < COLS; c++) expect(isSolid(tileAt(level, c, 10))).toBe(true);
   });
 
-  test("the left wall is climbable from row 2 to row 9", () => {
-    for (let r = 2; r <= 9; r++) expect(tileAt(level, 0, r)).toBe("climb");
+  test("the left wall is solid from row 2 to row 9", () => {
+    for (let r = 2; r <= 9; r++) expect(tileAt(level, 0, r)).toBe("solid");
     expect(tileAt(level, 0, 1)).toBe("empty"); // lip above: ledge-grabbable
   });
 

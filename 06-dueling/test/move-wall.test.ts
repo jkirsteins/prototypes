@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createLevel, TILE } from "../src/movement/level";
 import {
-  AIRSPIN_V, GRAVITY, JUMP_V, LEDGE_MS, MOVE_TICK, SPIN_MS,
+  AIRSPIN_V, GRAVITY, JUMP_V, MOVE_TICK, SPIN_MS,
   WALLSLIDE_CAP, createMover, tickMove,
 } from "../src/movement/engine";
 import type { MoveEvent, MoveInput } from "../src/movement/engine";
@@ -44,7 +44,7 @@ describe("air spin (double jump)", () => {
 });
 
 describe("wall slide and wall jump", () => {
-  /** Airborne against the left wall (col 0 is climbable solid). */
+  /** Airborne against the left wall (col 0 is solid). */
   function onWall(): ReturnType<typeof createMover> {
     const m = createMover(level);
     m.x = 1.5 * TILE;
@@ -89,34 +89,19 @@ describe("wall slide and wall jump", () => {
     expect(evs.filter((e) => e.kind === "touchdown")).toHaveLength(1);
     expect(["idle", "run"]).toContain(m.state.kind); // grounded, not stuck in a wall state
   });
+
+  test("grab changes nothing at a wall: falling against it slides regardless", () => {
+    const m = createMover(level);
+    m.x = 1.5 * TILE;
+    run(m, input({ left: true, grab: true }, { jump: true }), 1);
+    for (let i = 0; i < 300 && !["wallSlide", "wallLand"].includes(m.state.kind); i++) {
+      run(m, input({ left: true, grab: true }), 1);
+    }
+    expect(["wallSlide", "wallLand"]).toContain(m.state.kind);
+  });
 });
 
-describe("side climb and the ledge", () => {
-  test("grab against the climbable wall climbs up with up held", () => {
-    const m = createMover(level);
-    m.x = 1.4 * TILE; // standing just off the wall at col 0
-    const evs = run(m, input({ left: true, grab: true, up: true }), 5);
-    expect(m.state.kind).toBe("sideClimb");
-    expect(evs.some((e) => e.kind === "grab")).toBe(true);
-    const y0 = m.y;
-    run(m, input({ left: true, grab: true, up: true }), 60);
-    expect(m.y).toBeLessThan(y0); // climbed upward
-  });
-
-  test("climbing past the wall top ledge-grabs and pulls up on top", () => {
-    const m = createMover(level);
-    m.x = 1.4 * TILE;
-    run(m, input({ left: true, grab: true, up: true }), 1);
-    for (let i = 0; i < 2000 && m.state.kind !== "ledgeGrab"; i++) {
-      run(m, input({ left: true, grab: true, up: true }), 1);
-    }
-    expect(m.state.kind).toBe("ledgeGrab");
-    run(m, input(), Math.ceil(LEDGE_MS / MOVE_TICK) + 1);
-    expect(m.state.kind).toBe("idle");
-    expect(m.y).toBe(2 * TILE); // standing on the wall top (col 0, row 2)
-    expect(m.x).toBeLessThan(TILE); // centered over col 0
-  });
-
+describe("the ledge", () => {
   test("a jump toward a platform lip within reach ledge-grabs", () => {
     const m = createMover(level);
     // Platform A: cols 3-4 at row 8, top at y = 8*TILE, 2 tiles above floor.
@@ -143,14 +128,5 @@ describe("side climb and the ledge", () => {
     void grabbed;
     for (let i = 0; i < 300 && m.state.kind !== "idle"; i++) run(m, input(), 1);
     expect(m.y).toBeLessThanOrEqual(8 * TILE);
-  });
-
-  test("releasing grab mid-climb falls", () => {
-    const m = createMover(level);
-    m.x = 1.4 * TILE;
-    run(m, input({ left: true, grab: true, up: true }), 30);
-    expect(m.state.kind).toBe("sideClimb");
-    run(m, input({ left: true }), 2);
-    expect(["fall", "wallSlide", "wallLand"]).toContain(m.state.kind);
   });
 });

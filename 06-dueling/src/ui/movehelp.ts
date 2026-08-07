@@ -25,7 +25,6 @@ export const MOVE_HELP: Record<MoveState["kind"], MoveHelpEntry> = {
   land:       { label: "land",        what: "The touchdown absorbs the impact briefly.", player: "Hard landings without a direction held lock longer - roll instead." },
   wallLand:   { label: "wall land",   what: "A fast fall caught against a wall.", player: "Settles into the wall slide; {jump} leaps away." },
   wallSlide:  { label: "wall slide",  what: "Sliding down a wall at capped speed.", player: "Hold toward the wall to stay; {jump} wall-jumps away." },
-  sideClimb:  { label: "side climb",  what: "Climbing the wall face while {grab} is held.", player: "{climbUp}/{climbDown} move; the top lip pulls you up." },
   ladderClimb:{ label: "ladder",      what: "On the ladder, gravity off.", player: "{climbUp}/{climbDown} climb; a side step or {jump} leaves it." },
   ledgeGrab:  { label: "ledge",       what: "Hanging on a lip, pulling up on top.", player: "Committed: it ends standing on the platform." },
   push:       { label: "push",        what: "Shoving the block at walk speed.", player: "Walk into it; a wall behind the block stops it." },

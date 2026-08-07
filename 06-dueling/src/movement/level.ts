@@ -1,33 +1,33 @@
 /**
  * The movement-test level: one fixed screen, 20x11 tiles of 96 cm
  * (16 sprite px at SCALE 3 = 48 canvas px). The layout exercises every
- * verb: climbable wall (col 0), stepped platforms, a dash-only gap
- * (cols 8-13 at row 6), a one-tile tunnel (roof row 8, cols 10-12), a
- * ladder (col 17) to a high platform, and a pushable block parked
- * against the right wall so it must be PULLED out first.
+ * verb: the left wall for wall slide and wall jumps, stepped platforms,
+ * a dash-only gap (cols 8-13 at row 6), a one-tile tunnel (roof row 8,
+ * cols 10-12), a ladder (col 17) to a high platform, and a pushable
+ * block parked against the right wall so it must be PULLED out first.
  */
 export const TILE = 96;
 export const COLS = 20;
 export const ROWS = 11;
 
-export type TileKind = "empty" | "solid" | "climb" | "ladder";
+export type TileKind = "empty" | "solid" | "ladder";
 
-// # solid, C climbable solid, H ladder (non-solid), . empty
+// # solid, H ladder (non-solid), . empty
 const MAP = [
   "....................",
   "....................",
-  "C...................",
-  "C................H##",
-  "C................H..",
-  "C................H..",
-  "C....###......##.H..",
-  "C................H..",
-  "C..##.....###....H..",
-  "C..##............H..",
+  "#...................",
+  "#................H##",
+  "#................H..",
+  "#................H..",
+  "#....###......##.H..",
+  "#................H..",
+  "#..##.....###....H..",
+  "#..##............H..",
   "####################",
 ];
 
-const KIND: Record<string, TileKind> = { ".": "empty", "#": "solid", C: "climb", H: "ladder" };
+const KIND: Record<string, TileKind> = { ".": "empty", "#": "solid", H: "ladder" };
 
 export interface Level {
   grid: TileKind[][]; // [row][col]
@@ -51,7 +51,7 @@ export function tileAt(level: Level, col: number, row: number): TileKind {
 }
 
 export function isSolid(kind: TileKind): boolean {
-  return kind === "solid" || kind === "climb";
+  return kind === "solid";
 }
 
 /** Topmost ladder row in a column, or null when the column has no ladder. */

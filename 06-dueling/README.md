@@ -37,12 +37,12 @@ A single-screen parkour yard for the pack's non-combat animations. Pick
 - K: jump; K again mid-air: air-spin double jump
 - J: dash (dash-jump carries the momentum - the wide gap needs it)
 - S: crouch (hold); pressed at full run: slide - the tunnel needs one or the other
-- L (hold): grab - climb the marked wall (W/S), grip the block to pull it
-- W / S: climb a ladder or the wall face
+- L (hold): grab - grip the block to pull it
+- W / S: climb the ladder
 - R: reset, Esc: back to the scene selector, backtick: collision overlay
 - Space, `.`, `[`/`]`, M: pause, step, speed, mute - as in the duel
 
-The yard: a climbable wall (wall-slide, wall-jump, side-climb, ledge) on
+The yard: a wall (wall-slide, wall-jump, ledge grab at its top lip) on
 the left, stepped platforms with a dash-only gap, a crouch tunnel, a
 ladder to a high perch (drop off it to see the hard-landing roll), and a
 pushable block parked in a pocket it can only be PULLED out of.

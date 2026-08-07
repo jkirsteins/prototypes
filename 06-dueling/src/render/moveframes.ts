@@ -21,8 +21,9 @@ function span(sheet: SheetName, t: number, total: number, first: number, last: n
   return Math.min(idx, SHEETS[sheet].frames - 1);
 }
 
-/** Climb cycles advance with DISTANCE climbed, not time: hands move when
- *  the body does, and a paused climb holds its frame. 40 cm per frame. */
+/** The ladder's climb cycle advances with DISTANCE climbed, not time:
+ *  hands move when the body does, and a paused climb holds its frame.
+ *  40 cm per frame. */
 function climbFrame(sheet: SheetName, y: number): number {
   const n = SHEETS[sheet].frames;
   return ((Math.floor(y / 40) % n) + n) % n;
@@ -53,7 +54,6 @@ export function pickMoveFrame(m: Mover): FramePick {
     // left mirrors them regardless of facing.
     case "wallLand": return { sheet: "wallLand", frame: span("wallLand", s.t, WALLLAND_MS, 0, 5), flip: s.wall === -1 };
     case "wallSlide": return { sheet: "wallSlide", frame: 1 + (Math.floor(m.time / 150) % 2), flip: s.wall === -1 };
-    case "sideClimb": return { sheet: "sideClimb", frame: climbFrame("sideClimb", m.y), flip: s.wall === -1 };
     case "ladderClimb": return { sheet: "climbBack", frame: climbFrame("climbBack", m.y), flip: false };
     case "ledgeGrab": return { sheet: "ledgeClimb", frame: span("ledgeClimb", s.t, LEDGE_MS, 0, 4), flip };
   }

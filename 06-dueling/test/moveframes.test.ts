@@ -15,7 +15,7 @@ const STATES: MoveState[] = [
   { kind: "jump" }, { kind: "airSpin", t: 100 }, { kind: "fall" },
   { kind: "land", t: 100, hard: true },
   { kind: "wallLand", t: 100, wall: -1 }, { kind: "wallSlide", wall: -1 },
-  { kind: "sideClimb", wall: -1 }, { kind: "ladderClimb" },
+  { kind: "ladderClimb" },
   { kind: "ledgeGrab", t: 200, targetX: 0, targetY: 0 },
   { kind: "push", dir: 1 }, { kind: "pull", dir: -1 }, { kind: "pushIdle" },
 ];
@@ -45,7 +45,7 @@ describe("pickMoveFrame is total and in bounds", () => {
 
   test("climb cycles advance with position, not time", () => {
     const m = createMover(level);
-    m.state = { kind: "sideClimb", wall: -1 };
+    m.state = { kind: "ladderClimb" };
     m.y = 800;
     const a = pickMoveFrame(m).frame;
     m.y = 760; // moved up one stride step

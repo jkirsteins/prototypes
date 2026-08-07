@@ -56,7 +56,6 @@ export type MoveState =
   | { kind: "land"; t: number; hard: boolean }
   | { kind: "wallLand"; t: number; wall: -1 | 1 }
   | { kind: "wallSlide"; wall: -1 | 1 }
-  | { kind: "sideClimb"; wall: -1 | 1 }
   | { kind: "ladderClimb" }
   | { kind: "ledgeGrab"; t: number; targetX: number; targetY: number }
   | { kind: "push"; dir: -1 | 1 }
@@ -184,13 +183,6 @@ function touchingWall(m: Mover, level: Level, dir: -1 | 1, h: number): boolean {
   return boxHits(m, level, m.x + dir * 2, m.y, BODY_W, h, true);
 }
 
-/** The tile beside mid-body in that direction is a climbable wall. */
-function climbableBeside(m: Mover, level: Level, dir: -1 | 1, h: number): boolean {
-  const x = m.x + dir * (BODY_W / 2 + 4);
-  const y = m.y - h / 2;
-  return tileAt(level, Math.floor(x / TILE), Math.floor(y / TILE)) === "climb";
-}
-
 /** A grabbable lip: a solid tile beside the head with empty above it,
  *  its top edge within the grab window around head height. Returns the
  *  stand-on-top target, or null. */
@@ -280,13 +272,6 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         ev.push({ kind: "grab" });
         return;
       }
-      if (held.grab && climbableBeside(m, level, dir, BODY_H)) {
-        m.vx = 0; m.vy = 0; m.spun = false;
-        m.facing = dir;
-        m.state = { kind: "sideClimb", wall: dir };
-        ev.push({ kind: "grab" });
-        return;
-      }
       if (m.vy > 0) {
         const hardCatch = m.vy >= WALLLAND_VY;
         m.vx = 0;
@@ -328,14 +313,6 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       }
       if (held.down) {
         m.state = { kind: "crouchIdle" };
-        break;
-      }
-      if (held.grab && wish !== 0
-          && touchingWall(m, level, wish, BODY_H) && climbableBeside(m, level, wish, BODY_H)) {
-        m.vx = 0; m.vy = 0;
-        m.facing = wish;
-        m.state = { kind: "sideClimb", wall: wish };
-        ev.push({ kind: "grab" });
         break;
       }
       const ladderCol = overLadder(m, level, BODY_H);
@@ -470,46 +447,8 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         ev.push({ kind: "liftoff" });
         break;
       }
-      if (held.grab && climbableBeside(m, level, s.wall, BODY_H)) {
-        m.vy = 0;
-        m.state = { kind: "sideClimb", wall: s.wall };
-        ev.push({ kind: "grab" });
-        break;
-      }
       // Steering away, or the wall ran out: back to a fall.
       if (wish !== s.wall || !touchingWall(m, level, s.wall, BODY_H)) m.state = { kind: "fall" };
-      break;
-    }
-    case "sideClimb": {
-      m.vx = 0;
-      m.vy = 0;
-      if (held.down && onGround(m, level, BODY_H)) {
-        m.state = { kind: "idle" };
-        ev.push({ kind: "touchdown" }); // climbed down to the floor: the feet plant
-        break;
-      }
-      if (!held.grab || !climbableBeside(m, level, s.wall, BODY_H)) {
-        m.state = { kind: "fall" };
-        break;
-      }
-      if (input.pressed.jump) {
-        m.vx = -s.wall * WALLJUMP_VX;
-        m.vy = -JUMP_V * 0.9;
-        m.facing = -s.wall as -1 | 1;
-        m.state = { kind: "jump" };
-        ev.push({ kind: "liftoff" });
-        break;
-      }
-      const climb = (held.up ? -1 : 0) + (held.down ? 1 : 0);
-      m.vy = climb * CLIMB_SPEED;
-      if (climb === -1) {
-        const lip = ledgeProbe(m, level, s.wall, BODY_H);
-        if (lip !== null) {
-          m.vy = 0;
-          m.state = { kind: "ledgeGrab", t: 0, targetX: lip.x, targetY: lip.y };
-          ev.push({ kind: "grab" });
-        }
-      }
       break;
     }
     case "ledgeGrab": {
@@ -593,10 +532,10 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     }
   }
 
-  // Integrate. Gravity applies in every non-climbing state; sideClimb and
+  // Integrate. Gravity applies in every non-climbing state; ladderClimb and
   // ledgeGrab hold position entirely and skip it, and a wall contact caps
   // fall speed far below free fall.
-  const clinging = m.state.kind === "sideClimb" || m.state.kind === "ledgeGrab" || m.state.kind === "ladderClimb";
+  const clinging = m.state.kind === "ladderClimb" || m.state.kind === "ledgeGrab";
   const onWallNow = m.state.kind === "wallSlide" || m.state.kind === "wallLand";
   const airborne = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin" || onWallNow;
   const h = heightOf(m.state);

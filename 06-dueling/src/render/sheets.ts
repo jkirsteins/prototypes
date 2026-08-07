@@ -3,7 +3,7 @@ export type SheetName =
   | "roll" | "hurt" | "death" | "idle"
   // movement-test sheets (the pack's unarmed base character)
   | "walk" | "run" | "dash" | "slide" | "jump" | "land" | "airSpin"
-  | "wallSlide" | "wallLand" | "sideClimb" | "climbBack" | "ledgeClimb"
+  | "wallSlide" | "wallLand" | "climbBack" | "ledgeClimb"
   | "crouchIdle" | "crouchWalk" | "push" | "pull" | "pushIdle";
 
 export interface SheetMeta {
@@ -59,7 +59,6 @@ export const SHEETS: Record<SheetName, SheetMeta> = {
   airSpin:    { file: "air-spin.png",    frameW: 48, frameH: 48, frames: 6,  feetY: 40, originX: 24 },
   wallSlide:  { file: "wall-slide.png",  frameW: 48, frameH: 48, frames: 3,  feetY: 44, originX: 24 },
   wallLand:   { file: "wall-land.png",   frameW: 48, frameH: 48, frames: 6,  feetY: 42, originX: 24 },
-  sideClimb:  { file: "side-climb.png",  frameW: 48, frameH: 48, frames: 4,  feetY: 41, originX: 24 },
   climbBack:  { file: "climb-back.png",  frameW: 48, frameH: 48, frames: 4,  feetY: 42, originX: 24 },
   ledgeClimb: { file: "ledge-climb.png", frameW: 48, frameH: 48, frames: 5,  feetY: 42, originX: 24 },
   crouchIdle: { file: "crouch-idle.png", frameW: 48, frameH: 48, frames: 10, feetY: 40, originX: 24 },

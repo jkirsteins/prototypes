@@ -45,13 +45,6 @@ export function drawMoveFrame(v: MoveView, m: Mover, level: Level, overlay: bool
         const solid = (c: number, r2: number): boolean => isSolid(tileAt(level, c, r2));
         const [sx, sy] = atlasCell(solid(col - 1, row), solid(col + 1, row), solid(col, row - 1), solid(col, row + 1));
         ctx.drawImage(v.tiles, sx, sy, 16, 16, x, y, 48, 48);
-        if (k === "climb") {
-          // Climbable walls read differently: a cool tint over the stone.
-          ctx.globalAlpha = 0.18;
-          ctx.fillStyle = "#4aa3df";
-          ctx.fillRect(x, y, 48, 48);
-          ctx.globalAlpha = 1;
-        }
       } else if (k === "ladder") {
         // No ladder tile in the atlas: minimal flat-colour rails and rungs.
         ctx.fillStyle = "#6b5a3a";

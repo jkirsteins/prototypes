@@ -1,6 +1,14 @@
 # Movement test scene + scene selector
 
-Date: 2026-08-07. Status: approved design, pre-implementation.
+Date: 2026-08-07. Status: implemented, with one post-playtest amendment.
+
+Amendment (playtest ruling): there is no side climb. Crawling up a wall
+face read as wrong on sight; the state, its sheet, the climbable tile
+kind and the grab-to-climb input are removed. Walls are for wall slide,
+wall land and wall jump; upward routes are the jump, the double jump,
+the ledge grab at a lip, and the ladder. Grab (L / RB) exists for the
+block only. Sections below describing side climb are superseded by this
+note.
 
 ## 1. What and why
 
