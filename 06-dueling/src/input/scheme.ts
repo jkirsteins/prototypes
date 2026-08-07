@@ -21,7 +21,10 @@ export type ActionId =
   | "selLeft" | "selRight" | "selToggle" | "selConfirm"
   | "selPickFirst" | "selPickSecond"
   // keyboard-only debug verbs (labels exist for the legend; no pad binding)
-  | "aiMode" | "overlay" | "stepTick" | "speed" | "mute";
+  | "aiMode" | "overlay" | "stepTick" | "speed" | "mute"
+  // movement-scene verbs (the parkour test bed)
+  | "moveLeft" | "moveRight" | "jump" | "dash" | "crouch" | "grab"
+  | "climbUp" | "climbDown" | "walkMod" | "resetScene";
 
 export type Scheme = "keyboard" | "pad";
 
@@ -39,6 +42,9 @@ export const KEYBOARD_LABELS: Labels = {
   selLeft: "A/Left", selRight: "D/Right", selToggle: "W/S",
   selConfirm: "Enter", selPickFirst: "1", selPickSecond: "2",
   aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
+  moveLeft: "A", moveRight: "D", jump: "K", dash: "J", crouch: "S",
+  grab: "L", climbUp: "W", climbDown: "S", walkMod: "Shift",
+  resetScene: "R",
 };
 
 /** For actions with no pad binding (the debug verbs, the select direct
@@ -54,6 +60,9 @@ export const PAD_LABELS: Record<PadKind, Labels> = {
     selLeft: "Dpad/Stick", selRight: "Dpad/Stick", selToggle: "Dpad/Stick",
     selConfirm: "A / Start", selPickFirst: "1", selPickSecond: "2",
     aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
+    moveLeft: "Stick/Dpad", moveRight: "Stick/Dpad", jump: "A", dash: "X",
+    crouch: "Stick dn", grab: "RB", climbUp: "Stick up", climbDown: "Stick dn",
+    walkMod: "Stick soft", resetScene: "Y",
   },
   // PS face buttons render as their glyphs to keep the legend narrow.
   ps: {
@@ -64,6 +73,9 @@ export const PAD_LABELS: Record<PadKind, Labels> = {
     selLeft: "Dpad/Stick", selRight: "Dpad/Stick", selToggle: "Dpad/Stick",
     selConfirm: "\u2715 / Options", selPickFirst: "1", selPickSecond: "2",
     aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
+    moveLeft: "Stick/Dpad", moveRight: "Stick/Dpad", jump: "\u2715", dash: "\u25a1",
+    crouch: "Stick dn", grab: "R1", climbUp: "Stick up", climbDown: "Stick dn",
+    walkMod: "Stick soft", resetScene: "\u25b3",
   },
 };
 
@@ -106,6 +118,9 @@ export const PAD_BINDINGS: Partial<Record<ActionId, PadControl[]>> = {
     { kind: "axis", index: 1, sign: -1 }, { kind: "axis", index: 1, sign: 1 },
   ],
   selConfirm: [{ kind: "button", index: 0 }, { kind: "button", index: 9 }],
+  jump: [{ kind: "button", index: 0 }],
+  dash: [{ kind: "button", index: 2 }],
+  resetScene: [{ kind: "button", index: 3 }],
 };
 
 /** `/playstation|dualshock|dualsense|054c/i` gives "ps"; everything else
@@ -190,9 +205,12 @@ export function resolveLabels(text: string, labels: Labels): string {
 export interface UiSnapshot {
   helpOpen: boolean;
   selectOpen: boolean;
-  duelLive: boolean;
+  /** The active scene's simulation is live (running, not over). */
+  simLive: boolean;
   paused: boolean;
   decided: boolean;
+  /** Which scene owns the duel/move verb tables. */
+  scene: "duel" | "move";
 }
 
 const controlEq = (a: PadControl, b: PadControl): boolean =>
@@ -213,6 +231,7 @@ const DUEL_VERBS: ActionId[] = [
   "feint", "stanceUp", "stanceDown", "sideShift", "disarm",
 ];
 const SELECT_VERBS: ActionId[] = ["selLeft", "selRight", "selToggle", "selConfirm"];
+const MOVE_VERBS: ActionId[] = ["jump", "dash", "resetScene"];
 
 /**
  * One physical edge resolves to at most ONE action, because the
@@ -227,24 +246,24 @@ export function resolvePadEdge(ui: UiSnapshot, edge: PadControl): ActionId | nul
     if (ui.helpOpen) return "help";
     if (ui.selectOpen) return "selConfirm";
     if (ui.decided) return "rematch"; // decided outranks paused
-    if (ui.duelLive) return "pause"; // a toggle: paused-live resumes
+    if (ui.simLive) return "pause"; // a toggle: paused-live resumes
     return null;
   }
   if (isBtn(8)) {
     if (ui.helpOpen) return "help";
     if (ui.selectOpen) return null;
     if (ui.paused || ui.decided) return "reselect";
-    if (ui.duelLive) return "help";
+    if (ui.simLive) return "help";
     return null;
   }
   if (isBtn(1)) {
     if (ui.helpOpen) return "help";
     if (ui.selectOpen) return null;
-    if (ui.duelLive || ui.decided) return "feint";
+    if (ui.scene === "duel" && (ui.simLive || ui.decided)) return "feint";
     return null;
   }
   if (ui.helpOpen) return null;
   if (ui.selectOpen) return boundAction(edge, SELECT_VERBS);
-  if (ui.duelLive || ui.decided) return boundAction(edge, DUEL_VERBS);
+  if (ui.simLive || ui.decided) return boundAction(edge, ui.scene === "move" ? MOVE_VERBS : DUEL_VERBS);
   return null;
 }

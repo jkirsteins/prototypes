@@ -41,6 +41,8 @@ export interface PadSnapshot {
   stale: Record<string, true>;
   /** Movement-axis engagement (hysteresis state) per direction. */
   moveEngaged: { pos: boolean; neg: boolean };
+  /** Vertical-axis engagement (axis 1; pos = down on the W3C layout). */
+  vertEngaged: { pos: boolean; neg: boolean };
   /** False until the first valid poll after creation or a discard: that
    *  poll only SEEDS the snapshot and returns an empty frame - a button
    *  held across a blur must not diff against "unpressed" and read as a
@@ -49,7 +51,11 @@ export interface PadSnapshot {
 }
 
 export function createPadSnapshot(): PadSnapshot {
-  return { pads: {}, activePadIndex: null, stale: {}, moveEngaged: { pos: false, neg: false }, seeded: false };
+  return {
+    pads: {}, activePadIndex: null, stale: {},
+    moveEngaged: { pos: false, neg: false }, vertEngaged: { pos: false, neg: false },
+    seeded: false,
+  };
 }
 
 /** Blur, select-screen entry: discard rather than zero - the next poll
@@ -57,6 +63,7 @@ export function createPadSnapshot(): PadSnapshot {
 export function discardPadSnapshot(s: PadSnapshot): void {
   s.pads = {};
   s.moveEngaged = { pos: false, neg: false };
+  s.vertEngaged = { pos: false, neg: false };
   s.seeded = false;
   // stale survives the discard and is re-derived at the seed poll anyway;
   // clearing it here would erase nothing the seed does not re-mark.
@@ -73,7 +80,10 @@ export interface PadFrame {
   released: PadControl[];
   /** Post-combine level per held action: every control bound to the
    *  action ORed together, stale controls contributing nothing. */
-  held: { advance: boolean; retreat: boolean; guard: boolean };
+  held: { advance: boolean; retreat: boolean; guard: boolean; up: boolean; down: boolean };
+  /** The active pad's |axes[0]| when engaged (0 otherwise): the walk/run
+   *  threshold is the consumer's business. */
+  moveMag: number;
   /** True when the active pad showed ACTIVITY as the scheme rules define
    *  it - edges and meaningful axis motion, never held levels. */
   activity: boolean;
@@ -86,7 +96,8 @@ const EMPTY_FRAME = (idx: number | null, id: string | null): PadFrame => ({
   activePadId: id,
   pressed: [],
   released: [],
-  held: { advance: false, retreat: false, guard: false },
+  held: { advance: false, retreat: false, guard: false, up: false, down: false },
+  moveMag: 0,
   activity: false,
   padGone: false,
 });
@@ -141,6 +152,7 @@ export function readPads(
     activePadIndex: prev.activePadIndex,
     stale: { ...prev.stale },
     moveEngaged: { ...prev.moveEngaged },
+    vertEngaged: { ...prev.vertEngaged },
     seeded: true,
   };
   const present: Record<number, PadRaw> = {};
@@ -203,6 +215,7 @@ export function readPads(
   if (next.activePadIndex !== null && present[next.activePadIndex] === undefined) {
     next.activePadIndex = null;
     next.moveEngaged = { pos: false, neg: false };
+    next.vertEngaged = { pos: false, neg: false };
     padGone = true;
   }
 
@@ -285,6 +298,16 @@ export function readPads(
   frame.held.advance = next.moveEngaged.pos || btnHeld(15);
   frame.held.retreat = next.moveEngaged.neg || btnHeld(14);
   frame.held.guard = btnHeld(5);
+  for (const sign of [1, -1] as const) {
+    const v = (cur.axes[1] ?? 0) * sign;
+    const k = sign > 0 ? "pos" : "neg";
+    const engaged = next.vertEngaged[k];
+    next.vertEngaged[k] = engaged ? v >= MOVE_OFF : v >= MOVE_ON;
+    if (next.stale[`a1${sign > 0 ? "+" : "-"}`] === true) next.vertEngaged[k] = false;
+  }
+  frame.held.up = next.vertEngaged.neg || btnHeld(12);
+  frame.held.down = next.vertEngaged.pos || btnHeld(13);
+  frame.moveMag = next.moveEngaged.pos || next.moveEngaged.neg ? Math.min(1, Math.abs(cur.axes[0] ?? 0)) : 0;
 
   return { frame, next };
 }
@@ -292,6 +315,6 @@ export function readPads(
 /** The controls whose LEVEL matters (movement and guard): the ownership
  *  gate stales exactly these when they engage under it. */
 function isHoldControl(c: PadControl): boolean {
-  if (c.kind === "axis") return c.index === 0;
-  return c.index === 5 || c.index === 14 || c.index === 15;
+  if (c.kind === "axis") return c.index === 0 || c.index === 1;
+  return c.index === 5 || c.index === 12 || c.index === 13 || c.index === 14 || c.index === 15;
 }

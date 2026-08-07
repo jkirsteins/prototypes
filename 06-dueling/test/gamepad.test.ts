@@ -166,6 +166,6 @@ describe("multi-pad election and handoff", () => {
     const r = readPads(s, [null, pad(1)], false);
     expect(r.frame.padGone).toBe(true);
     expect(r.frame.activePadIndex).toBe(null);
-    expect(r.frame.held).toEqual({ advance: false, retreat: false, guard: false });
+    expect(r.frame.held).toEqual({ advance: false, retreat: false, guard: false, up: false, down: false });
   });
 });

@@ -131,9 +131,10 @@ function uiSnapshot(): UiSnapshot {
   return {
     helpOpen: state.helpOpen,
     selectOpen: isSelectOpen(),
-    duelLive: state.duel !== null && !state.duel.over,
+    simLive: state.duel !== null && !state.duel.over,
     paused: state.paused,
     decided: state.duel?.over === true,
+    scene: "duel",
   };
 }
 

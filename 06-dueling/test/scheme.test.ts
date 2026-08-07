@@ -17,7 +17,8 @@ afterEach(() => resetSchemeForTest());
  */
 
 const ui = (over: Partial<UiSnapshot> = {}): UiSnapshot => ({
-  helpOpen: false, selectOpen: false, duelLive: true, paused: false, decided: false,
+  helpOpen: false, selectOpen: false, simLive: true, paused: false, decided: false,
+  scene: "duel",
   ...over,
 });
 
@@ -72,9 +73,9 @@ describe("the contextual resolver (§7.2)", () => {
   test("Start resolves to exactly one action in every state", () => {
     const start = { kind: "button", index: 9 } as const;
     expect(resolvePadEdge(ui({ helpOpen: true }), start)).toBe("help");
-    expect(resolvePadEdge(ui({ selectOpen: true, duelLive: false }), start)).toBe("selConfirm");
-    expect(resolvePadEdge(ui({ decided: true, duelLive: false }), start)).toBe("rematch");
-    expect(resolvePadEdge(ui({ decided: true, paused: true, duelLive: false }), start)).toBe("rematch"); // decided outranks paused
+    expect(resolvePadEdge(ui({ selectOpen: true, simLive: false }), start)).toBe("selConfirm");
+    expect(resolvePadEdge(ui({ decided: true, simLive: false }), start)).toBe("rematch");
+    expect(resolvePadEdge(ui({ decided: true, paused: true, simLive: false }), start)).toBe("rematch"); // decided outranks paused
     expect(resolvePadEdge(ui(), start)).toBe("pause");
     expect(resolvePadEdge(ui({ paused: true }), start)).toBe("pause"); // the toggle resumes
   });
@@ -82,9 +83,9 @@ describe("the contextual resolver (§7.2)", () => {
   test("Back: help open closes; select null; paused or decided reselects; live opens help", () => {
     const back = { kind: "button", index: 8 } as const;
     expect(resolvePadEdge(ui({ helpOpen: true }), back)).toBe("help");
-    expect(resolvePadEdge(ui({ selectOpen: true, duelLive: false }), back)).toBe(null);
+    expect(resolvePadEdge(ui({ selectOpen: true, simLive: false }), back)).toBe(null);
     expect(resolvePadEdge(ui({ paused: true }), back)).toBe("reselect");
-    expect(resolvePadEdge(ui({ decided: true, duelLive: false }), back)).toBe("reselect");
+    expect(resolvePadEdge(ui({ decided: true, simLive: false }), back)).toBe("reselect");
     expect(resolvePadEdge(ui(), back)).toBe("help");
   });
 
@@ -98,7 +99,7 @@ describe("the contextual resolver (§7.2)", () => {
 
   test("button 0 confirms on the select screen and thrusts in a duel; the top face voids", () => {
     const a = { kind: "button", index: 0 } as const;
-    expect(resolvePadEdge(ui({ selectOpen: true, duelLive: false }), a)).toBe("selConfirm");
+    expect(resolvePadEdge(ui({ selectOpen: true, simLive: false }), a)).toBe("selConfirm");
     expect(resolvePadEdge(ui(), a)).toBe("thrust"); // the kill and the yield on the easiest reach
     expect(resolvePadEdge(ui(), { kind: "button", index: 3 })).toBe("void");
   });
@@ -107,7 +108,7 @@ describe("the contextual resolver (§7.2)", () => {
     const rt = { kind: "button", index: 7 } as const;
     expect(resolvePadEdge(ui(), rt)).toBe("disarm");
     expect(resolvePadEdge(ui({ helpOpen: true }), rt)).toBe(null);
-    expect(resolvePadEdge(ui({ selectOpen: true, duelLive: false }), rt)).toBe(null);
+    expect(resolvePadEdge(ui({ selectOpen: true, simLive: false }), rt)).toBe(null);
     // One edge -> one action is structural: the resolver is a pure
     // function of (ui, edge), and the poller emits one edge per press
     // (pinned in gamepad.test.ts); outside a bind advantage the routed
@@ -135,6 +136,26 @@ describe("the contextual resolver (§7.2)", () => {
       }
       void action;
     }
+  });
+});
+
+describe("the move scene's resolver context", () => {
+  const move = (over: Partial<UiSnapshot> = {}): UiSnapshot => ({
+    helpOpen: false, selectOpen: false, simLive: true, paused: false,
+    decided: false, scene: "move", ...over,
+  });
+
+  test("A jumps, X dashes, Y resets - and duel verbs do not leak in", () => {
+    expect(resolvePadEdge(move(), { kind: "button", index: 0 })).toBe("jump");
+    expect(resolvePadEdge(move(), { kind: "button", index: 2 })).toBe("dash");
+    expect(resolvePadEdge(move(), { kind: "button", index: 3 })).toBe("resetScene");
+    expect(resolvePadEdge(move(), { kind: "button", index: 7 })).toBe(null); // disarm is duel-only
+  });
+
+  test("B does nothing in the move scene; Start pauses; Back opens help", () => {
+    expect(resolvePadEdge(move(), { kind: "button", index: 1 })).toBe(null);
+    expect(resolvePadEdge(move(), { kind: "button", index: 9 })).toBe("pause");
+    expect(resolvePadEdge(move(), { kind: "button", index: 8 })).toBe("help");
   });
 });
 
