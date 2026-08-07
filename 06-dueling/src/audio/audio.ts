@@ -1,5 +1,6 @@
 import type { DuelEvent } from "../combat/engine";
-import { EVENT_GAINS, EVENT_RATES, EVENT_SOUNDS, FOOTSTEPS, SOUNDS, WINDUP_SOUND } from "./manifest";
+import type { MoveEvent } from "../movement/engine";
+import { EVENT_GAINS, EVENT_RATES, EVENT_SOUNDS, FOOTSTEPS, MOVE_EVENT_RATES, MOVE_EVENT_SOUNDS, SOUNDS, WINDUP_SOUND } from "./manifest";
 import type { SoundName } from "./manifest";
 
 /**
@@ -16,6 +17,8 @@ export interface AudioEngine {
   unlock(): void;
   /** Once per rAF frame with every event of that frame's ticks. */
   frame(events: DuelEvent[]): void;
+  /** Once per rAF frame with the movement scene's events. */
+  moveFrame(events: MoveEvent[]): void;
   /** A presentation-layer cue (bullet time in/out): played directly by the
    *  layer that owns the transition, outside the DuelEvent mapping. */
   cue(name: "bulletIn" | "bulletOut"): void;
@@ -128,6 +131,19 @@ export function createAudioEngine(): AudioEngine {
     }
   };
 
+  const moveFrame = (events: MoveEvent[]): void => {
+    if (ctx === null) return;
+    const seen = new Set<MoveEvent["kind"]>();
+    for (const e of events) {
+      if (seen.has(e.kind)) continue;
+      seen.add(e.kind);
+      const pool = MOVE_EVENT_SOUNDS[e.kind];
+      if (pool === undefined) continue;
+      footstepAt = (footstepAt + 1) % pool.length;
+      play(pool[footstepAt], (MOVE_EVENT_RATES[e.kind] ?? 1) * (1 + (Math.random() - 0.5) * 0.1));
+    }
+  };
+
   const cue = (name: "bulletIn" | "bulletOut"): void => {
     play(name, 1);
   };
@@ -138,5 +154,5 @@ export function createAudioEngine(): AudioEngine {
     return muted;
   };
 
-  return { unlock, frame, cue, toggleMute };
+  return { unlock, frame, moveFrame, cue, toggleMute };
 }

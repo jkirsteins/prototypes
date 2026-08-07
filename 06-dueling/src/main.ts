@@ -1,8 +1,9 @@
 import { TICK } from "./combat/fighter";
 import { createAudioEngine } from "./audio/audio";
 import { HELP_BUTTON } from "./render/draw";
-import { loadImages } from "./render/loader";
+import { loadImages, loadTileAtlas } from "./render/loader";
 import { renderHelpHtml } from "./ui/help";
+import { renderMoveHelpHtml } from "./ui/movehelp";
 import { handleSelectAction, isSelectOpen, showSelect } from "./ui/select";
 import { handleScenesAction, isScenesOpen, showScenes } from "./ui/scenes";
 import { createPadSnapshot, discardPadSnapshot, readPads } from "./input/gamepad";
@@ -11,6 +12,7 @@ import {
   onControlsChange, resolvePadEdge,
 } from "./input/scheme";
 import { createDuelScene } from "./scenes/duel";
+import { createMoveScene } from "./scenes/move";
 import type { ActionId, UiSnapshot } from "./input/scheme";
 import type { AiMode } from "./combat/ai";
 import type { WeaponId } from "./combat/types";
@@ -64,15 +66,21 @@ const state = {
 const helpEl = document.getElementById("help") as HTMLElement;
 const helpPanel = helpEl.querySelector(".panel") as HTMLElement;
 
+// Which panel body to render is the active SCENE's call, not a static
+// pick: the move scene states its own rules, the duel its own.
+function helpHtml(): string {
+  return active?.id === "move" ? renderMoveHelpHtml(activeLabels()) : renderHelpHtml(activeLabels());
+}
+
 function setHelp(open: boolean): void {
   state.helpOpen = open;
   helpEl.hidden = !open;
   // Rendered on open (and re-rendered on a scheme change while open), so
   // the panel always speaks the active device's language.
-  if (open) helpPanel.innerHTML = renderHelpHtml(activeLabels());
+  if (open) helpPanel.innerHTML = helpHtml();
 }
 onControlsChange(() => {
-  if (state.helpOpen) helpPanel.innerHTML = renderHelpHtml(activeLabels());
+  if (state.helpOpen) helpPanel.innerHTML = helpHtml();
 });
 // A reference you cannot read without dying is useless: clicking outside
 // the panel closes it, clicks inside stay inside (text selection etc).
@@ -112,10 +120,11 @@ function clearHeldSource(source: Source): void {
 let padSnap = createPadSnapshot();
 
 let active: Scene | null = null;
-// Created once images are loaded (createDuelScene bakes them into its
-// deps); referenced by startDuel/openSelect below, both of which are only
-// ever invoked after that happens.
+// Created once images are loaded (createDuelScene/createMoveScene bake
+// them into their deps); referenced by startDuel/startMove/openSelect
+// below, all of which are only ever invoked after that happens.
 let duelScene: (Scene & { setWeapons(p: WeaponId, e: WeaponId): void; start(): void }) | null = null;
+let moveScene: Scene | null = null;
 
 function uiSnapshot(): UiSnapshot {
   const snap = active?.snapshot() ?? { live: false, decided: false };
@@ -170,11 +179,9 @@ function startDuel(): void {
   active = duelScene;
 }
 
-/** The movement test scene itself lands in Task 11; until then "Movement
- *  test" just re-opens the scene selector so the picker is fully wired
- *  and testable ahead of the scene existing. */
 function startMove(): void {
-  openScenes();
+  moveScene?.reset();
+  active = moveScene;
 }
 
 function openScenes(): void {
@@ -284,7 +291,7 @@ window.addEventListener("blur", () => {
   discardPadSnapshot(padSnap);
 });
 
-loadImages().then((images) => {
+Promise.all([loadImages(), loadTileAtlas()]).then(([images, tiles]) => {
   const initialAiMode = (["0", "1", "2", "3", "4"].includes(params.get("mode") ?? "")
     ? Number(params.get("mode"))
     : 0) as AiMode;
@@ -293,6 +300,7 @@ loadImages().then((images) => {
     ? Number(params.get("seed"))
     : undefined;
   duelScene = createDuelScene({ ctx, images, audio, seedPin, initialAiMode });
+  moveScene = createMoveScene({ ctx, images, tiles, audio });
   if (bootStraightIn) startDuel();
   else if (sceneParam === "move") startMove();
   else if (sceneParam === "duel") openSelect();

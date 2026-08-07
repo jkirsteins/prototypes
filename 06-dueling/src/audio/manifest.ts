@@ -1,4 +1,5 @@
 import type { DuelEvent } from "../combat/engine";
+import type { MoveEvent } from "../movement/engine";
 
 export type SoundName =
   | "footstep1" | "footstep2" | "footstep3" | "footstep4"
@@ -102,3 +103,18 @@ export const EVENT_GAINS: Partial<Record<DuelEvent["kind"], number>> = {
  * and is choked early if the windup dies (mezzo tempo interception).
  */
 export const WINDUP_SOUND: SoundName = "windupRise";
+
+/**
+ * Movement-scene cues. Two sounds by design (the spec's audio section):
+ * footsteps on footfall and a lower-pitched step on touchdown. liftoff,
+ * grab and shove are real simulation events that stay silent for now -
+ * mapping them is a tuning decision, not a wiring one.
+ */
+export const MOVE_EVENT_SOUNDS: Partial<Record<MoveEvent["kind"], SoundName[]>> = {
+  footfall: FOOTSTEPS,
+  touchdown: FOOTSTEPS,
+};
+
+export const MOVE_EVENT_RATES: Partial<Record<MoveEvent["kind"], number>> = {
+  touchdown: 0.75,
+};
