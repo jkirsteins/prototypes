@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { applyIntent, TICK } from "../src/combat/fighter";
-import { ARENA, MIN_GAP, createDuel, gapOf, parryMeetsAttack, tickDuel } from "../src/combat/engine";
+import { applyIntent, createFighter, tickFighter, TICK } from "../src/combat/fighter";
+import { ARENA, MIN_GAP, assembleDuel, createDuel, gapOf, inRise, parryMeetsAttack, standaloneFighterEvents, tickDuel } from "../src/combat/engine";
 import { WEAPONS, parryableMs } from "../src/combat/weapons";
 import type { Duel, DuelEvent } from "../src/combat/engine";
 import type { AttackKind, Intent, WeaponId } from "../src/combat/types";
@@ -459,5 +459,49 @@ describe("positions", () => {
       expect(d.f[1].x).toBeGreaterThanOrEqual(ARENA.left);
       expect(d.f[1].x).toBeLessThanOrEqual(ARENA.right);
     }
+  });
+});
+
+describe("arena seams", () => {
+  test("assembleDuel preserves fighters, player at index 0", () => {
+    const p = createFighter(700, 1, WEAPONS.longsword);
+    const e = createFighter(1100, -1, WEAPONS.rapier);
+    p.x = 800;
+    const d = assembleDuel(p, e);
+    expect(d.f[0]).toBe(p);
+    expect(d.f[1]).toBe(e);
+    expect(d.f[0].x).toBe(800);
+    expect(d.over).toBe(false);
+    expect(d.bind).toBeNull();
+    expect(d.log).toEqual([]);
+  });
+
+  test("standaloneFighterEvents matches the duel's mapping for an attack", () => {
+    // Standalone: tick one fighter through an accepted cut and collect.
+    // wasRising is read BEFORE the intent lands, like the engine's tick.
+    const f = createFighter(700, 1, WEAPONS.longsword);
+    const got: string[] = [];
+    let rising = inRise(f);
+    applyIntent(f, "cut");
+    for (let i = 0; i < 90; i++) {
+      const evs = tickFighter(f, TICK);
+      for (const ev of standaloneFighterEvents(f, 1, i * TICK, evs, rising)) got.push(ev.kind);
+      rising = inRise(f);
+    }
+    // The same attack inside a real duel, out of the opponent's reach.
+    const d = createDuel(WEAPONS.longsword, WEAPONS.longsword);
+    d.f[1].x = d.f[0].x + 900; // far out of both reaches: pure presentation
+    const want: string[] = [];
+    const collect = (evs: DuelEvent[]): void => {
+      for (const ev of evs) {
+        if (ev.side === 0 && (ev.kind === "step" || ev.kind === "swing" || ev.kind === "windup")) {
+          want.push(ev.kind);
+        }
+      }
+    };
+    collect(tickDuel(d, "cut", null));
+    for (let i = 0; i < 89; i++) collect(tickDuel(d, null, null));
+    expect(got.length).toBeGreaterThan(0);
+    expect(got).toEqual(want);
   });
 });

@@ -79,6 +79,40 @@ export function createDuel(wa: WeaponProfile, wb: WeaponProfile): Duel {
   };
 }
 
+/**
+ * A Duel over two ALREADY-LIVING fighters: the arena scene's engagement.
+ * The player must be index 0 - the AI (aiDecide) and the HUD both read
+ * side 1 as the machine's. States and positions carry over untouched.
+ */
+export function assembleDuel(player: Fighter, enemy: Fighter): Duel {
+  return {
+    f: [player, enemy], time: 0, over: false, winner: null,
+    outcome: null, bind: null, disarm: null, log: [],
+  };
+}
+
+/**
+ * The presentation mapping tickDuel performs inline (footfall -> step,
+ * strikeBegin -> swing, the rise edge -> windup), for a fighter ticking
+ * OUTSIDE a duel - the arena's sentinel. Kept in agreement with the
+ * inline sites by test (engine.test.ts "arena seams"), not by refactor:
+ * tickDuel's event order is golden-replay-pinned and must not churn.
+ * wasRising is the caller's inRise read from BEFORE the tick's intent.
+ */
+export function standaloneFighterEvents(
+  f: Fighter, side: 0 | 1, time: number, evs: FighterEvent[], wasRising: boolean,
+): DuelEvent[] {
+  const out: DuelEvent[] = [];
+  for (const e of evs) {
+    if (e.type === "footfall") out.push({ time, side, kind: "step", text: "" });
+    else if (e.type === "strikeBegin") out.push({ time, side, kind: "swing", text: "" });
+  }
+  if (!wasRising && inRise(f) && f.state.kind === "attack") {
+    out.push({ time, side, kind: "windup", text: "", ms: f.weapon.attacks[f.state.attack].windup });
+  }
+  return out;
+}
+
 export function gapOf(d: Duel): number {
   return Math.abs(d.f[0].x - d.f[1].x);
 }
@@ -541,7 +575,7 @@ function clampPositions(d: Duel): void {
 }
 
 /** The blade is visibly rising: past the telegraph, before the strike. */
-function inRise(f: Fighter): boolean {
+export function inRise(f: Fighter): boolean {
   return (
     f.state.kind === "attack" &&
     f.state.phase === "windup" &&
