@@ -818,16 +818,23 @@ describe("dash", () => {
     expect(m.state.kind).toBe("idle");
   });
 
-  test("dash-jump keeps dash momentum: it clears the 6-tile gap a run-jump cannot", () => {
+  test("dash-jump keeps dash momentum: it clears the 6-tile gap a run-jump cannot clear outright", () => {
     // From platform B (cols 5-7, row 6) toward C (cols 14-15): the gap is
-    // cols 8-13. A run-jump from B's edge falls short; dash then jump
-    // carries DASH_SPEED across.
+    // cols 8-13. A run-jump from B's edge does not clear the gap outright -
+    // it reaches C's lip only because the ledge grab (Task 5) catches the
+    // near miss and pulls it up, slower and never a clean landing; dash
+    // then jump carries DASH_SPEED across with room to spare.
     const runJump = createMover(level);
     runJump.x = 6.5 * TILE; runJump.y = 6 * TILE;
     run(runJump, input({ right: true }), 12); // run up to the edge
     run(runJump, input({ right: true }, { jump: true }), 1);
-    for (let i = 0; i < 300 && runJump.y < 10 * TILE; i++) run(runJump, input({ right: true }), 1);
-    expect(runJump.y).toBe(10 * TILE); // fell into the gap to the floor
+    let grabbedLedge = false;
+    for (let i = 0; i < 300 && runJump.state.kind !== "idle"; i++) {
+      run(runJump, input({ right: true }), 1);
+      if (runJump.state.kind === "ledgeGrab") grabbedLedge = true;
+    }
+    expect(grabbedLedge).toBe(true); // saved by the ledge, not a clean jump
+    expect(runJump.y).toBe(6 * TILE); // pulled up onto C's lip
 
     const dashJump = createMover(level);
     dashJump.x = 6.5 * TILE; dashJump.y = 6 * TILE;
@@ -893,8 +900,10 @@ describe("roll on hard landing", () => {
     const drop = (dir: boolean): ReturnType<typeof createMover> => {
       const m = createMover(level);
       // Open column: nothing below but the floor; drifting right stays
-      // clear of every platform (the ladder at col 17 is not solid).
-      m.x = 16.5 * TILE; m.y = 3 * TILE; m.state = { kind: "fall" };
+      // clear of every platform (the ladder at col 17 is not solid). The
+      // start sits BELOW the row-3 ledge so the wall/ledge checks cannot
+      // catch a graze against it before the fall develops.
+      m.x = 16.5 * TILE; m.y = 5.5 * TILE; m.state = { kind: "fall" };
       const inp = dir ? input({ right: true }) : input();
       for (let i = 0; i < 400 && m.state.kind === "fall"; i++) run(m, inp, 1);
       return m;
@@ -1178,7 +1187,9 @@ describe("side climb and the ledge", () => {
   test("a jump toward a platform lip within reach ledge-grabs", () => {
     const m = createMover(level);
     // Platform A: cols 3-4 at row 8, top at y = 8*TILE, 2 tiles above floor.
-    m.x = 5.9 * TILE; // right of A, jump left onto its lip
+    // Starts clear of the row-6 block (cols 5-7): an approach from under it
+    // head-bumps, and the arc misses the grab window. 7.4-7.88 tiles grab.
+    m.x = 7.5 * TILE; // right of A, jump left onto its lip
     run(m, input({ left: true }, { jump: true }), 1);
     let grabbed = false;
     for (let i = 0; i < 300; i++) {
