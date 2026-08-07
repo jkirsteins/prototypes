@@ -1,4 +1,5 @@
 import { KEYBOARD_LABELS, resolveLabels } from "../input/scheme";
+import { AIR_STEER_MS } from "../movement/engine";
 import type { Labels } from "../input/scheme";
 import type { MoveState } from "../movement/engine";
 
@@ -19,8 +20,7 @@ export const MOVE_HELP: Record<MoveState["kind"], MoveHelpEntry> = {
   roll:       { label: "roll",        what: "A hard landing converted into travel.", player: "Automatic: hold a direction while landing from high up." },
   crouchIdle: { label: "crouch",      what: "Compact stance, one tile tall.", player: "Release {crouch} to stand - refused without headroom." },
   crouchWalk: { label: "crouch-walk", what: "Crouched travel, slow.", player: "The tunnel under the mid platform needs it." },
-  jump:       { label: "jump",        what: "Rising; steering is live in the air.", player: "{jump} again mid-air spins for extra height, once per airtime." },
-  airSpin:    { label: "air spin",    what: "The double jump's flourish and second rise.", player: "One per airtime; it resets on any landing or grab." },
+  jump:       { label: "jump",        what: "Rising; the launch direction is set in the first instant.", player: `Steering locks ${AIR_STEER_MS} ms after leaving support.` },
   fall:       { label: "fall",        what: "Descending at up to terminal speed.", player: "Steer into a wall to wall-slide; height decides the landing." },
   land:       { label: "land",        what: "The touchdown absorbs the impact briefly.", player: "Hard landings without a direction held lock longer - roll instead." },
   wallLand:   { label: "wall land",   what: "A fast fall caught against a wall.", player: "Settles into the wall slide; {jump} leaps away." },
@@ -42,7 +42,7 @@ export function moveKeyGroups(labels: Labels): Array<Array<[string, string]>> {
   return [
     [
       [pair(labels.moveLeft, labels.moveRight), "move"], [labels.walkMod, "walk"],
-      [labels.jump, "jump/spin"], [labels.dash, "dash"],
+      [labels.jump, "jump"], [labels.dash, "dash"],
       [labels.crouch, "crouch"], [labels.grab, "grab"],
       [pair(labels.climbUp, labels.climbDown), "climb"],
     ],

@@ -12,7 +12,7 @@ const STATES: MoveState[] = [
   { kind: "idle" }, { kind: "walk" }, { kind: "run" },
   { kind: "dash", t: 90 }, { kind: "slide", t: 200 }, { kind: "roll", t: 100 },
   { kind: "crouchIdle" }, { kind: "crouchWalk" },
-  { kind: "jump" }, { kind: "airSpin", t: 100 }, { kind: "fall" },
+  { kind: "jump" }, { kind: "fall" },
   { kind: "land", t: 100, hard: true },
   { kind: "wallLand", t: 100, wall: -1 }, { kind: "wallSlide", wall: -1 },
   { kind: "ladderClimb" },

@@ -1,4 +1,4 @@
-import { DASH_MS, LAND_MS, LEDGE_MS, LEDGE_RISE, ROLL_MS, SLIDE_MS, SPIN_MS, WALLLAND_MS } from "../movement/engine";
+import { DASH_MS, LAND_MS, LEDGE_MS, LEDGE_RISE, ROLL_MS, SLIDE_MS, WALLLAND_MS } from "../movement/engine";
 import { SHEETS } from "./sheets";
 import type { Mover } from "../movement/engine";
 import type { FramePick } from "./frames";
@@ -49,7 +49,6 @@ export function pickMoveFrame(m: Mover): FramePick {
     // 3 apex, 4 falling, 5 touch. Rising shows 2, slowing 3.
     case "jump": return { sheet: "jump", frame: m.vy < -400 ? 2 : 3, flip };
     case "fall": return { sheet: "jump", frame: 4, flip };
-    case "airSpin": return { sheet: "airSpin", frame: span("airSpin", s.t, SPIN_MS, 0, 5), flip };
     // Wall sheets face a wall on the character's right; a wall on the
     // left mirrors them regardless of facing.
     case "wallLand": return { sheet: "wallLand", frame: span("wallLand", s.t, WALLLAND_MS, 0, 5), flip: s.wall === -1 };

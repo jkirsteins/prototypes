@@ -17,7 +17,6 @@ export const CROUCH_SPEED = 250;
 export const CLIMB_SPEED = 250;
 export const GRAVITY = 3600;
 export const JUMP_V = 1230;
-export const AIRSPIN_V = 1100;
 export const FALL_CAP = 1600;
 export const WALLSLIDE_CAP = 350;
 export const WALLJUMP_VX = 800;
@@ -38,7 +37,10 @@ export const LEDGE_RISE = 0.65;
 /** Where the rise stops: feet this far below the lip put the chest at
  *  it - the up-and-over covers the rest. */
 export const LEDGE_CHEST = 80;
-export const SPIN_MS = 360;
+/** How long after leaving a support (any liftoff, a walk-off, a release)
+ *  held direction still sets horizontal velocity. Long enough to shape
+ *  the launch vector, short enough that the arc is then committed. */
+export const AIR_STEER_MS = 120;
 /** Touchdown speeds: below SOFT no land state, at/above HARD the landing
  *  is hard (rolls when a direction is held). HARD sits above the worst
  *  jump-in-place impact (JUMP_V plus one tick of gravity, ~1290) and
@@ -62,7 +64,6 @@ export type MoveState =
   | { kind: "roll"; t: number }
   | { kind: "crouchIdle" } | { kind: "crouchWalk" }
   | { kind: "jump" }
-  | { kind: "airSpin"; t: number }
   | { kind: "fall" }
   | { kind: "land"; t: number; hard: boolean }
   | { kind: "wallLand"; t: number; wall: -1 | 1 }
@@ -89,8 +90,9 @@ export interface Mover {
   vx: number; vy: number; // cm/s
   facing: 1 | -1;
   state: MoveState;
-  /** Double jump spent since the last ground/wall/ladder contact. */
-  spun: boolean;
+  /** Ms since the body last left a support; 0 while supported. Steering
+   *  in the air works only while this is within AIR_STEER_MS. */
+  airMs: number;
   /** Cooldown after letting go of a ledge, so the release does not
    *  re-catch the same lip on the very next tick. */
   regrabMs: number;
@@ -116,7 +118,7 @@ export function createMover(level: Level): Mover {
     // and the left step - a standing body is taller than one tile, so a
     // spawn under any row-8 tile would start wedged.
     x: 8.5 * TILE, y: 10 * TILE, vx: 0, vy: 0, facing: 1,
-    state: { kind: "idle" }, spun: false, regrabMs: 0, airFromJump: false,
+    state: { kind: "idle" }, airMs: 0, regrabMs: 0, airFromJump: false,
     jumpBufferMs: 0, dashBufferMs: 0, strideMs: 0, prevDown: false,
     blockMoving: false, time: 0, block: { x: level.blockStartX },
   };
@@ -303,6 +305,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   m.prevDown = held.down;
 
   const steer = (): void => {
+    if (m.airMs > AIR_STEER_MS) return; // committed: the arc is ballistic
     if (wish !== 0) {
       m.facing = wish;
       if (Math.sign(m.vx) !== wish || Math.abs(m.vx) < RUN_SPEED) m.vx = wish * RUN_SPEED;
@@ -317,7 +320,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     // The hanging body itself must fit at the hang point.
     const hangY = lip.lipY + BODY_H + HANG_HEAD_BELOW_LIP;
     if (boxHits(m, level, lip.hangX, hangY, BODY_W, BODY_H, true)) return false;
-    m.vx = 0; m.vy = 0; m.spun = false;
+    m.vx = 0; m.vy = 0;
     m.facing = side;
     m.x = lip.hangX;
     m.y = hangY;
@@ -335,7 +338,6 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.vx = 0;
         m.vy = 0;
         m.state = { kind: "ladderClimb" };
-        m.spun = false;
         ev.push({ kind: "grab" });
         return;
       }
@@ -362,7 +364,6 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         // cap. This also keeps the catch tick from crossing the floor.
         m.vy = 0;
         m.facing = dir;
-        m.spun = false;
         m.state = hardCatch
           ? { kind: "wallLand", t: 0, wall: dir }
           : { kind: "wallSlide", wall: dir };
@@ -378,7 +379,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     m.jumpBufferMs = 0;
     m.vy = -JUMP_V;
     m.state = { kind: "jump" };
-    m.spun = false;
+    m.airMs = 0;
     ev.push({ kind: "liftoff" });
     m.airFromJump = true;
   };
@@ -414,7 +415,6 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.x = ladderCol * TILE + TILE / 2;
         m.vx = 0; m.vy = 0;
         m.state = { kind: "ladderClimb" };
-        m.spun = false;
         ev.push({ kind: "grab" });
         break;
       }
@@ -433,37 +433,12 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     }
     case "jump": {
       steer();
-      if (input.pressed.jump && !m.spun) {
-        m.jumpBufferMs = 0; // this press is the spin, nothing else
-        m.vy = -AIRSPIN_V;
-        m.spun = true;
-        m.state = { kind: "airSpin", t: 0 };
-        ev.push({ kind: "liftoff" });
-        m.airFromJump = true;
-        break;
-      }
       airChecks();
       if (m.state.kind === "jump" && m.vy >= 0) m.state = { kind: "fall" };
       break;
     }
-    case "airSpin": {
-      steer();
-      s.t += MOVE_TICK;
-      airChecks();
-      if (m.state.kind === "airSpin" && s.t >= SPIN_MS) m.state = { kind: "fall" };
-      break;
-    }
     case "fall": {
       steer();
-      if (input.pressed.jump && !m.spun) {
-        m.jumpBufferMs = 0; // this press is the spin, nothing else
-        m.vy = -AIRSPIN_V;
-        m.spun = true;
-        m.state = { kind: "airSpin", t: 0 };
-        ev.push({ kind: "liftoff" });
-        m.airFromJump = true;
-        break;
-      }
       airChecks();
       break;
     }
@@ -500,7 +475,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         // Dash momentum carries into the air: the dash-jump.
         m.vy = -JUMP_V;
         m.state = { kind: "jump" };
-        m.spun = false;
+        m.airMs = 0;
         ev.push({ kind: "liftoff" });
         m.airFromJump = true;
       } else if (s.t >= DASH_MS) {
@@ -563,6 +538,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.vy = -JUMP_V * 0.9;
         m.facing = -s.wall as -1 | 1;
         m.state = { kind: "jump" };
+        m.airMs = 0;
         ev.push({ kind: "liftoff" });
         m.airFromJump = true;
         break;
@@ -574,6 +550,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       // not a leap, so empty hands do not reach for lips on the way down.
       if (wish !== s.wall || !touchingWall(m, level, s.wall, BODY_H)) {
         m.state = { kind: "fall" };
+        m.airMs = 0; // leaving a support rearms the steer window
         m.airFromJump = false;
       }
       break;
@@ -590,6 +567,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.vy = -JUMP_V * 0.9;
         m.facing = -s.wall as -1 | 1;
         m.state = { kind: "jump" };
+        m.airMs = 0;
         ev.push({ kind: "liftoff" });
         m.airFromJump = true;
         break;
@@ -604,6 +582,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       }
       if (held.down || wish === -s.wall) {
         m.state = { kind: "fall" };
+        m.airMs = 0;
         m.regrabMs = 250; // letting go must not re-catch the same lip
         m.airFromJump = false;
       }
@@ -648,6 +627,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
           m.state = { kind: "fall" };
           m.airFromJump = false;
         }
+        m.airMs = 0;
         break;
       }
       const climb = (held.up ? -1 : 0) + (held.down ? 1 : 0);
@@ -664,6 +644,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         // gravity would otherwise add before the feet cross onto it.
         m.facing = wish;
         m.state = { kind: "fall" };
+        m.airMs = 0;
         m.airFromJump = false;
         m.vx = wish * WALK_SPEED;
         m.vy = -300;
@@ -712,7 +693,11 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   // fall speed far below free fall.
   const clinging = m.state.kind === "ladderClimb" || m.state.kind === "ledgeGrab" || m.state.kind === "ledgeHang";
   const onWallNow = m.state.kind === "wallSlide" || m.state.kind === "wallLand";
-  const airborne = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin" || onWallNow;
+  const airborne = m.state.kind === "jump" || m.state.kind === "fall" || onWallNow;
+  // The steer window's clock: runs through free air, holds on a wall
+  // (leaving one resets it explicitly), rearms on any other support.
+  if (m.state.kind === "jump" || m.state.kind === "fall") m.airMs += MOVE_TICK;
+  else if (!airborne) m.airMs = 0;
   const h = heightOf(m.state);
   if (!clinging && (airborne || !onGround(m, level, h))) {
     // Terminal speed: the wall's friction caps it far below free fall.
@@ -727,10 +712,9 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   if (vHit === 1) {
     const impact = m.vy;
     m.vy = 0;
-    m.spun = false;
     // Wall states own their own floor plant (above), so a corner catch
     // cannot double-count: only a free fall lands here.
-    const freeAir = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin";
+    const freeAir = m.state.kind === "jump" || m.state.kind === "fall";
     if (freeAir && !onGround(m, level, h)) {
       // The collision box clipped a lip's corner but the body's center
       // is over air: balance says this is no landing. Slip sideways off
@@ -765,6 +749,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     // the moment there is headroom.
     if (heightOf(m.state) === BODY_H || headroom(m, level)) {
       m.state = { kind: "fall" };
+      m.airMs = 0; // the walk-off's own steer window
       m.airFromJump = false;
     }
   }

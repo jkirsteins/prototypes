@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createLevel, TILE } from "../src/movement/level";
 import {
-  AIRSPIN_V, GRAVITY, JUMP_V, MOVE_TICK, RUN_SPEED, SPIN_MS,
+  MOVE_TICK, RUN_SPEED,
   WALLSLIDE_CAP, createMover, tickMove,
 } from "../src/movement/engine";
 import type { MoveEvent, MoveInput, MoveState } from "../src/movement/engine";
@@ -20,26 +20,18 @@ function run(m: ReturnType<typeof createMover>, inp: MoveInput, n: number): Move
   return out;
 }
 
-describe("air spin (double jump)", () => {
-  test("a second jump press mid-air spins once, and only once", () => {
+describe("no double jump", () => {
+  test("jump presses mid-air never produce a second rise", () => {
     const m = createMover(level);
     run(m, input({}, { jump: true }), 1);
     run(m, input(), 10);
+    const vyBefore = m.vy;
     run(m, input({}, { jump: true }), 1);
-    expect(m.state.kind).toBe("airSpin");
-    // The press tick already integrates one tick of gravity.
-    expect(m.vy).toBeLessThan(-AIRSPIN_V + 100);
+    expect(m.state.kind).toBe("jump"); // still the same rise
+    expect(m.vy).toBeGreaterThan(vyBefore - 1); // gravity only, no new impulse
     run(m, input(), 5);
-    run(m, input({}, { jump: true }), 1); // third press: nothing
-    expect(m.state.kind).toBe("airSpin");
-    run(m, input(), Math.ceil(SPIN_MS / MOVE_TICK));
-    expect(["fall", "jump"]).toContain(m.state.kind);
-  });
-
-  test("jump plus spin clears 3 tiles", () => {
-    const apex1 = JUMP_V * JUMP_V / (2 * GRAVITY);
-    const apex2 = AIRSPIN_V * AIRSPIN_V / (2 * GRAVITY);
-    expect(apex1 + apex2).toBeGreaterThan(3 * TILE);
+    run(m, input({}, { jump: true }), 1);
+    expect(["jump", "fall"]).toContain(m.state.kind);
   });
 });
 

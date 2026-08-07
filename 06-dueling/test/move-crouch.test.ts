@@ -50,7 +50,7 @@ describe("dash", () => {
     const dashJump = createMover(level);
     dashJump.x = 6.5 * TILE; dashJump.y = 6 * TILE;
     run(dashJump, input({ right: true }, { dash: true }), 1);
-    run(dashJump, input({ right: true }, { jump: true }), 1); // one press: two would double-jump once airSpin exists
+    run(dashJump, input({ right: true }, { jump: true }), 1); // the dash-jump: one press, momentum carried
     let peakY = dashJump.y;
     for (let i = 0; i < 300 && !(dashJump.vy === 0 && dashJump.y <= 6 * TILE + 1); i++) {
       run(dashJump, input({ right: true }), 1);

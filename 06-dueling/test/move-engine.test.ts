@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createLevel, TILE } from "../src/movement/level";
 import {
-  GRAVITY, JUMP_V, LAND_MS, MOVE_TICK,
+  AIR_STEER_MS, GRAVITY, JUMP_V, LAND_MS, MOVE_TICK,
   RUN_SPEED, WALK_SPEED, createMover, tickMove,
 } from "../src/movement/engine";
 import type { MoveEvent, MoveInput } from "../src/movement/engine";
@@ -116,6 +116,42 @@ describe("movement engine core", () => {
     for (let i = 0; i < 300 && m.state.kind === "fall"; i++) landed = run(m, input(), 1);
     expect(m.state).toMatchObject({ kind: "land", hard: true });
     expect(landed.some((e) => e.kind === "touchdown")).toBe(true);
+  });
+});
+
+describe("air rules: no double jump, steer window", () => {
+  test("a second jump press mid-air does not rise again", () => {
+    const m = createMover(level);
+    run(m, input({}, { jump: true }), 1);
+    run(m, input(), 10);
+    const vyBefore = m.vy;
+    run(m, input({}, { jump: true }), 1);
+    // No fresh upward impulse: gravity only between the two reads.
+    expect(m.vy).toBeGreaterThan(vyBefore - 1);
+    expect(m.state.kind).toBe("jump");
+  });
+
+  test("steering inside AIR_STEER_MS sets vx; after it, vx is locked", () => {
+    const early = createMover(level);
+    run(early, input({}, { jump: true }), 1);
+    run(early, input({ right: true }), 3); // ~50 ms: inside the window
+    expect(early.vx).toBe(RUN_SPEED);
+
+    const late = createMover(level);
+    run(late, input({}, { jump: true }), 1);
+    run(late, input(), Math.ceil(AIR_STEER_MS / MOVE_TICK) + 2); // window lapsed
+    run(late, input({ right: true }), 3);
+    expect(late.vx).toBe(0);
+  });
+
+  test("a walk-off opens its own steer window", () => {
+    const m = createMover(level);
+    m.x = 15.5 * TILE; m.y = 6 * TILE; // on platform C (cols 14-15, top row 6)
+    run(m, input({ right: true }), 6); // run off its right edge into open air
+    expect(m.state.kind).toBe("fall");
+    // Just off the edge: reverse steering still bites briefly.
+    run(m, input({ left: true }), 3);
+    expect(m.vx).toBe(-RUN_SPEED);
   });
 });
 
