@@ -68,12 +68,13 @@ export function drawMoveFrame(v: MoveView, m: Mover, level: Level, overlay: bool
   const meta = SHEETS[pick.sheet];
   const img = v.images[pick.sheet];
   const feetScreenY = GRID_Y + m.y * PX_PER_CM;
+  const feetY = meta.feetYPerFrame?.[pick.frame] ?? meta.feetY;
   ctx.save();
   ctx.translate(m.x * PX_PER_CM, 0);
   if (pick.flip) ctx.scale(-1, 1);
   ctx.drawImage(
     img, pick.frame * meta.frameW, 0, meta.frameW, meta.frameH,
-    -meta.originX * SCALE, feetScreenY - meta.feetY * SCALE, meta.frameW * SCALE, meta.frameH * SCALE,
+    -meta.originX * SCALE, feetScreenY - feetY * SCALE, meta.frameW * SCALE, meta.frameH * SCALE,
   );
   ctx.restore();
 

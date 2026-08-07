@@ -22,6 +22,10 @@ describe("sheet metadata matches the real PNG files", () => {
       expect(width).toBe(meta.frameW * meta.frames);
       expect(meta.feetY).toBeLessThanOrEqual(meta.frameH);
       expect(meta.originX).toBeLessThanOrEqual(meta.frameW);
+      if (meta.feetYPerFrame) {
+        expect(meta.feetYPerFrame).toHaveLength(meta.frames);
+        for (const fy of meta.feetYPerFrame) expect(fy).toBeLessThanOrEqual(meta.frameH);
+      }
     });
   }
 });

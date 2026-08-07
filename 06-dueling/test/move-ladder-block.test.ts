@@ -53,6 +53,22 @@ describe("the ladder", () => {
   });
 });
 
+describe("the ladder", () => {
+  test("holding up mid-fall grabs a ladder being passed", () => {
+    const m = createMover(level);
+    m.x = 17.5 * TILE; // over the ladder column
+    run(m, input({}, { jump: true }), 1);
+    for (let i = 0; i < 60 && m.vy <= 0; i++) run(m, input(), 1); // ride to the descent
+    let grabbed = false;
+    for (let i = 0; i < 60 && !grabbed; i++) {
+      run(m, input({ up: true }), 1);
+      grabbed = m.state.kind === "ladderClimb";
+    }
+    expect(grabbed).toBe(true);
+    expect(m.x).toBe(17.5 * TILE); // snapped to the ladder center
+  });
+});
+
 describe("the pushable block", () => {
   test("the block cannot be pushed out of its pocket, only pulled", () => {
     const m = createMover(level);

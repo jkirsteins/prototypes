@@ -319,6 +319,20 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     return true;
   };
   const airChecks = (): void => {
+    // A ladder can be caught mid-air: holding a climb direction while
+    // passing one is the intent to take hold of it.
+    if (held.up || held.down) {
+      const ladderCol = overLadder(m, level, BODY_H);
+      if (ladderCol !== null) {
+        m.x = ladderCol * TILE + TILE / 2;
+        m.vx = 0;
+        m.vy = 0;
+        m.state = { kind: "ladderClimb" };
+        m.spun = false;
+        ev.push({ kind: "grab" });
+        return;
+      }
+    }
     // Order: the ledge catch beats the wall slide beats plain fall.
     // Catching happens only on the way DOWN and only from a LEAP: a jump
     // that clears the lip is a jump, a walk-off is a fall with idle

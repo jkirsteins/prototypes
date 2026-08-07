@@ -13,6 +13,10 @@ export interface SheetMeta {
   frames: number;
   /** y of the feet inside a frame, sheet pixels. Anchors the character to the floor. */
   feetY: number;
+  /** Per-frame feet rows for sheets whose poses end on different rows -
+   *  without this, short-content frames float above the surface. Falls
+   *  back to feetY when absent or unset for a frame. */
+  feetYPerFrame?: number[];
   /** x of the body center inside a frame when facing right. */
   originX: number;
 }
@@ -60,7 +64,9 @@ export const SHEETS: Record<SheetName, SheetMeta> = {
   wallSlide:  { file: "wall-slide.png",  frameW: 48, frameH: 48, frames: 3,  feetY: 44, originX: 24 },
   wallLand:   { file: "wall-land.png",   frameW: 48, frameH: 48, frames: 6,  feetY: 42, originX: 24 },
   climbBack:  { file: "climb-back.png",  frameW: 48, frameH: 48, frames: 4,  feetY: 42, originX: 24 },
-  ledgeClimb: { file: "ledge-climb.png", frameW: 48, frameH: 48, frames: 5,  feetY: 42, originX: 24 },
+  // Measured per-frame content bottoms + 1: the pull-up poses end on
+  // rows 41,41,39,41,37, so a single anchor floats frames 2 and 4.
+  ledgeClimb: { file: "ledge-climb.png", frameW: 48, frameH: 48, frames: 5,  feetY: 42, feetYPerFrame: [42, 42, 40, 42, 38], originX: 24 },
   crouchIdle: { file: "crouch-idle.png", frameW: 48, frameH: 48, frames: 10, feetY: 40, originX: 24 },
   crouchWalk: { file: "crouch-walk.png", frameW: 48, frameH: 48, frames: 10, feetY: 40, originX: 24 },
   push:       { file: "push.png",        frameW: 48, frameH: 48, frames: 10, feetY: 38, originX: 24 },
