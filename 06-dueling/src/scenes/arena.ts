@@ -66,9 +66,10 @@ const SHEATHED_HOLD: Scene["holdKeys"] = {
 };
 const ARMED_HOLD: Scene["holdKeys"] = { a: "retreat", d: "advance", l: "guard" };
 
-/** The enemy's post: the platform's center. It waits there, and walks
- *  back there whenever no duel holds it elsewhere. */
-export const SENTINEL_POST = (ARENA_PLATFORM.left + ARENA_PLATFORM.right) / 2;
+/** The enemy's post: the FAR side of the platform from the player's
+ *  approach, standing clear of its own edge margin. It waits there, and
+ *  walks back there whenever no duel holds it elsewhere. */
+export const SENTINEL_POST = ARENA_PLATFORM.right - 2 * EDGE_MARGIN;
 
 /**
  * Policy, not physics: refuse footwork whose travel would end within

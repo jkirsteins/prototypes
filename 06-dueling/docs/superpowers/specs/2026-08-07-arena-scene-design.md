@@ -103,8 +103,9 @@ player during the climb and the draw, so the enemy is now honorable.)
 The enemy fights ONLY through a duel. An unarmed body is never attacked:
 
 - While no duel is live - the player sheathed, drawing, or off the
-  platform - the sentinel walks back to its post (the platform center)
-  with fencing steps and waits there, facing the player.
+  platform - the sentinel walks back to its post with fencing steps and
+  waits there, facing the player. The post is the FAR side of the
+  platform from the player's approach, clear of its own edge margin.
 - Its policy is decisions only; every physical consequence goes through
   the fighter machine, and its FighterEvents (footfall, windup, swing)
   pass through the same fighter-event-to-DuelEvent translation the duel
