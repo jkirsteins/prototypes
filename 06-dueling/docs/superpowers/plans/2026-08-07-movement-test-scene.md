@@ -2665,6 +2665,8 @@ function render(): void {
 
 handled as `case "selBack": { const cb = sel.onBack; hideSelect(); cb(); return; }` (add `onBack` to `SelectState`; `handleSelectAction`'s union gains `"selBack"`).
 
+Pad parity (two schemes, one action table - a back capability must not be keyboard-only): `selBack` joins the shared `ActionId` union beside the other select verbs, with labels keyboard `"Esc"`, xbox `"Back"`, ps `"Share"`. `resolvePadEdge`'s Back-button branch returns `"selBack"` instead of `null` while `ui.selectOpen` - the sword select goes back to the scene selector; main routes `selBack` to `handleSelectAction` only when the SWORD select is open (the scene selector is the root and ignores it). Tests: `test/scheme.test.ts` pins Back -> `selBack` on the select screen, and a `handleSelectAction("selBack")` -> onBack-callback assertion covers the one body both devices share.
+
 main.ts boot and navigation:
 
 ```ts
