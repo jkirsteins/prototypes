@@ -42,6 +42,37 @@ export function createLevel(): Level {
   };
 }
 
+/**
+ * The arena: a flat yard with one raised platform. Three tiles tall is
+ * load-bearing - a jump's apex (~210 cm) cannot clear 288 cm, so the
+ * only way up is the hands: jump, catch the lip, pull up.
+ */
+const ARENA_MAP = [
+  "....................",
+  "....................",
+  "....................",
+  "....................",
+  "....................",
+  "....................",
+  "....................",
+  "......########......",
+  "......########......",
+  "......########......",
+  "####################",
+];
+
+/** Platform faces and top edge, cm. `right` is the RIGHT FACE (col 14's
+ *  left edge); a body between the faces stands on the platform. */
+export const ARENA_PLATFORM = { left: 6 * TILE, right: 14 * TILE, topY: 7 * TILE };
+
+export function createArenaLevel(): Level {
+  return {
+    grid: ARENA_MAP.map((row) => [...row].map((ch) => KIND[ch])),
+    // Parked off-world: the engine's block collision can never engage.
+    blockStartX: -500,
+  };
+}
+
 /** Sides and below read solid (arena walls and ground), above reads empty
  *  (open sky), so collision needs no special edge cases. */
 export function tileAt(level: Level, col: number, row: number): TileKind {

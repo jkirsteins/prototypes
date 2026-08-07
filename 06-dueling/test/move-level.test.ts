@@ -1,5 +1,25 @@
 import { describe, expect, test } from "vitest";
-import { COLS, ROWS, TILE, createLevel, isSolid, ladderTopRow, tileAt } from "../src/movement/level";
+import {
+  ARENA_PLATFORM, COLS, ROWS, TILE, createArenaLevel, createLevel,
+  isSolid, ladderTopRow, tileAt,
+} from "../src/movement/level";
+
+describe("arena level", () => {
+  test("flat floor, one centered 8x3 platform, no ladder, block off-world", () => {
+    const l = createArenaLevel();
+    for (let c = 0; c < COLS; c++) expect(tileAt(l, c, 10)).toBe("solid");
+    for (let c = 6; c <= 13; c++) {
+      for (let r = 7; r <= 9; r++) expect(tileAt(l, c, r)).toBe("solid");
+    }
+    expect(tileAt(l, 5, 7)).toBe("empty");
+    expect(tileAt(l, 14, 9)).toBe("empty");
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) expect(tileAt(l, c, r)).not.toBe("ladder");
+    }
+    expect(l.blockStartX).toBeLessThan(0);
+    expect(ARENA_PLATFORM).toEqual({ left: 6 * TILE, right: 14 * TILE, topY: 7 * TILE });
+  });
+});
 
 describe("the movement level", () => {
   const level = createLevel();
