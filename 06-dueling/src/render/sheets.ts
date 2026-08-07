@@ -49,7 +49,12 @@ export const SHEETS: Record<SheetName, SheetMeta> = {
   run:        { file: "run.png",         frameW: 48, frameH: 48, frames: 8,  feetY: 40, originX: 24 },
   dash:       { file: "dash.png",        frameW: 48, frameH: 48, frames: 9,  feetY: 40, originX: 24 },
   slide:      { file: "slide.png",       frameW: 48, frameH: 48, frames: 8,  feetY: 40, originX: 24 },
-  jump:       { file: "jump.png",        frameW: 48, frameH: 48, frames: 6,  feetY: 44, originX: 24 },
+  // jump: only frames 2-4 are ever drawn (0-1 crouch prep and 5 touch are
+  // dead code per moveframes.ts), and all three measure max-y 38 - the
+  // Chrome pass caught the character floating ~8cm above the ground line
+  // because feetY had been measured off the two unused frames (max-y 43)
+  // instead of the ones actually rendered.
+  jump:       { file: "jump.png",        frameW: 48, frameH: 48, frames: 6,  feetY: 39, originX: 24 },
   land:       { file: "land.png",        frameW: 48, frameH: 48, frames: 9,  feetY: 40, originX: 24 },
   airSpin:    { file: "air-spin.png",    frameW: 48, frameH: 48, frames: 6,  feetY: 40, originX: 24 },
   wallSlide:  { file: "wall-slide.png",  frameW: 48, frameH: 48, frames: 3,  feetY: 44, originX: 24 },
