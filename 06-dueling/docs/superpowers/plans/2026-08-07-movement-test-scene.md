@@ -356,6 +356,7 @@ describe("movement engine core", () => {
 
   test("held right runs right at RUN_SPEED; walk modifier walks", () => {
     const m = createMover(level);
+    m.x = 15 * TILE; // open floor: the default spawn reaches the tunnel in ~10 ticks
     run(m, input({ right: true }), 30);
     expect(m.state.kind).toBe("run");
     expect(m.vx).toBe(RUN_SPEED);
@@ -449,8 +450,8 @@ describe("presentation events follow the simulation, not the input", () => {
 
   test("footfalls tick with strides while the feet move, and stop when they stop", () => {
     const m = createMover(level);
-    m.x = 13 * TILE; // the open right-side floor
-    const evs = run(m, input({ right: true }), 60); // ~0.87 s of motion, then the wall
+    m.x = 13.5 * TILE; // open right-side floor, body fully clear of the tunnel column
+    const evs = run(m, input({ right: true }), 60); // ~0.85 s of motion, then the wall
     const falls = evs.filter((e) => e.kind === "footfall").length;
     expect(falls).toBeGreaterThanOrEqual(2);
     expect(falls).toBeLessThanOrEqual(4);
