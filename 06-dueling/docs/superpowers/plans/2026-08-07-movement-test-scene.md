@@ -447,12 +447,17 @@ describe("presentation events follow the simulation, not the input", () => {
     expect(m.y).toBe(10 * TILE);
   });
 
-  test("footfalls tick with strides while running, stop when standing", () => {
+  test("footfalls tick with strides while the feet move, and stop when they stop", () => {
     const m = createMover(level);
-    const evs = run(m, input({ right: true }), 120);
+    m.x = 13 * TILE; // the open right-side floor
+    const evs = run(m, input({ right: true }), 60); // ~0.87 s of motion, then the wall
     const falls = evs.filter((e) => e.kind === "footfall").length;
-    expect(falls).toBeGreaterThanOrEqual(6);
-    expect(falls).toBeLessThanOrEqual(9); // 2 s / STRIDE_RUN_MS = 7.7
+    expect(falls).toBeGreaterThanOrEqual(2);
+    expect(falls).toBeLessThanOrEqual(4);
+    // Still held against the wall: the feet no longer move, so no
+    // footfall may sound - commanded speed is not motion.
+    const pinned = run(m, input({ right: true }), 120);
+    expect(pinned.filter((e) => e.kind === "footfall")).toHaveLength(0);
     const still = run(m, input(), 60);
     expect(still.filter((e) => e.kind === "footfall")).toHaveLength(0);
   });
@@ -714,7 +719,10 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   if (airborne || !onGround(m, level, h)) {
     m.vy = Math.min(m.vy + GRAVITY * dt, FALL_CAP);
   }
-  moveX(m, level, m.vx * dt, h);
+  const hHit = moveX(m, level, m.vx * dt, h);
+  // A wall stops the feet: commanded speed is not motion, and every
+  // consumer of vx (the stride clock above all) must see the truth.
+  if (hHit !== 0) m.vx = 0;
   const vHit = moveY(m, level, m.vy * dt, h);
   if (vHit === -1) m.vy = 0;
   if (vHit === 1) {
