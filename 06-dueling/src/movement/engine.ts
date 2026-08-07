@@ -243,7 +243,10 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   if (airborne || !onGround(m, level, h)) {
     m.vy = Math.min(m.vy + GRAVITY * dt, FALL_CAP);
   }
-  moveX(m, level, m.vx * dt, h);
+  const hHit = moveX(m, level, m.vx * dt, h);
+  // A wall stops the feet: commanded speed is not motion, and every
+  // consumer of vx (the stride clock above all) must see the truth.
+  if (hHit !== 0) m.vx = 0;
   const vHit = moveY(m, level, m.vy * dt, h);
   if (vHit === -1) m.vy = 0;
   if (vHit === 1) {

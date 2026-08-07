@@ -43,6 +43,7 @@ describe("movement engine core", () => {
 
   test("held right runs right at RUN_SPEED; walk modifier walks", () => {
     const m = createMover(level);
+    m.x = 13.5 * TILE; // ~500 cm of clear runway: past the tunnel, short of the block
     run(m, input({ right: true }), 30);
     expect(m.state.kind).toBe("run");
     expect(m.vx).toBe(RUN_SPEED);
@@ -134,12 +135,17 @@ describe("presentation events follow the simulation, not the input", () => {
     expect(m.y).toBe(10 * TILE);
   });
 
-  test("footfalls tick with strides while running, stop when standing", () => {
+  test("footfalls tick with strides while the feet move, and stop when they stop", () => {
     const m = createMover(level);
-    const evs = run(m, input({ right: true }), 120);
+    m.x = 13.5 * TILE; // open right-side floor, body fully clear of the tunnel column
+    const evs = run(m, input({ right: true }), 60); // ~0.85 s of motion, then the wall
     const falls = evs.filter((e) => e.kind === "footfall").length;
-    expect(falls).toBeGreaterThanOrEqual(6);
-    expect(falls).toBeLessThanOrEqual(9); // 2 s / STRIDE_RUN_MS = 7.7
+    expect(falls).toBeGreaterThanOrEqual(2);
+    expect(falls).toBeLessThanOrEqual(4);
+    // Still held against the wall: the feet no longer move, so no
+    // footfall may sound - commanded speed is not motion.
+    const pinned = run(m, input({ right: true }), 120);
+    expect(pinned.filter((e) => e.kind === "footfall")).toHaveLength(0);
     const still = run(m, input(), 60);
     expect(still.filter((e) => e.kind === "footfall")).toHaveLength(0);
   });
