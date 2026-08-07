@@ -11,8 +11,10 @@ import {
   activeLabels, noteGamepadInput, noteKeyboardInput, notePadGone,
   onControlsChange, resolvePadEdge,
 } from "./input/scheme";
+import { createArenaScene } from "./scenes/arena";
 import { createDuelScene } from "./scenes/duel";
 import { createMoveScene } from "./scenes/move";
+import { renderArenaHelpHtml } from "./ui/arenahelp";
 import type { ActionId, UiSnapshot } from "./input/scheme";
 import type { AiMode } from "./combat/ai";
 import type { WeaponId } from "./combat/types";
@@ -69,7 +71,9 @@ const helpPanel = helpEl.querySelector(".panel") as HTMLElement;
 // Which panel body to render is the active SCENE's call, not a static
 // pick: the move scene states its own rules, the duel its own.
 function helpHtml(): string {
-  return active?.id === "move" ? renderMoveHelpHtml(activeLabels()) : renderHelpHtml(activeLabels());
+  if (active?.id === "move") return renderMoveHelpHtml(activeLabels());
+  if (active?.id === "arena") return renderArenaHelpHtml(activeLabels());
+  return renderHelpHtml(activeLabels());
 }
 
 function setHelp(open: boolean): void {
@@ -125,6 +129,7 @@ let active: Scene | null = null;
 // below, all of which are only ever invoked after that happens.
 let duelScene: (Scene & { setWeapons(p: WeaponId, e: WeaponId): void; start(): void }) | null = null;
 let moveScene: Scene | null = null;
+let arenaScene: Scene | null = null;
 
 function uiSnapshot(): UiSnapshot {
   const snap = active?.snapshot() ?? { live: false, decided: false };
@@ -135,7 +140,7 @@ function uiSnapshot(): UiSnapshot {
     paused: state.paused,
     decided: snap.decided,
     scene: active?.id ?? "duel",
-    armed: false,
+    armed: snap.armed ?? false,
   };
 }
 
@@ -159,9 +164,10 @@ function applyPadAction(a: ActionId): void {
       setHelp(!state.helpOpen);
       break;
     case "selLeft": case "selRight": case "selToggle": case "selConfirm":
-    case "selPickFirst": case "selPickSecond":
+    case "selPickFirst": case "selPickSecond": case "selPickThird":
       if (isScenesOpen()) handleScenesAction(a);
-      else handleSelectAction(a);
+      // The sword select has no third column; the pick is scenes-only.
+      else if (a !== "selPickThird") handleSelectAction(a);
       break;
     case "selBack":
       // The scene selector is the root screen - it has nothing to go
@@ -185,6 +191,11 @@ function startMove(): void {
   active = moveScene;
 }
 
+function startArena(): void {
+  arenaScene?.reset();
+  active = arenaScene;
+}
+
 function openScenes(): void {
   // Same discard/clear as openSelect below: no hold may survive a
   // navigation, on either device.
@@ -192,7 +203,11 @@ function openScenes(): void {
   clearHeldSource("keyboard");
   clearHeldSource("pad");
   active = null;
-  showScenes((s) => { if (s === "duel") openSelect(); else startMove(); });
+  showScenes((s) => {
+    if (s === "duel") openSelect();
+    else if (s === "move") startMove();
+    else startArena();
+  });
 }
 
 function openSelect(): void {
@@ -214,7 +229,7 @@ function openSelect(): void {
 
 function goBack(): void {
   if (active?.id === "duel") { active = null; openSelect(); }
-  else if (active?.id === "move") { active = null; openScenes(); }
+  else if (active !== null) { active = null; openScenes(); }
 }
 
 const audio = createAudioEngine();
@@ -302,7 +317,12 @@ Promise.all([loadImages(), loadTileAtlas()]).then(([images, tiles]) => {
     : undefined;
   duelScene = createDuelScene({ ctx, images, audio, seedPin, initialAiMode });
   moveScene = createMoveScene({ ctx, images, tiles, audio });
-  if (bootStraightIn) startDuel();
+  arenaScene = createArenaScene({
+    ctx, images, tiles, audio, seedPin, initialAiMode,
+    pWeapon: state.pWeapon, eWeapon: state.eWeapon,
+  });
+  if (sceneParam === "arena") startArena();
+  else if (bootStraightIn) startDuel();
   else if (sceneParam === "move") startMove();
   else if (sceneParam === "duel") openSelect();
   else openScenes();

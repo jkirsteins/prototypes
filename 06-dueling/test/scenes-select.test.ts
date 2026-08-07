@@ -8,6 +8,7 @@ beforeEach(() => {
       <div class="cols">
         <div class="col" data-scene="duel"></div>
         <div class="col" data-scene="move"></div>
+        <div class="col" data-scene="arena"></div>
       </div>
       <p class="hint"></p>
     </div>`;
@@ -24,7 +25,7 @@ describe("the scene selector", () => {
     expect(isScenesOpen()).toBe(false);
   });
 
-  test("direct picks: 1 duels, 2 moves", () => {
+  test("direct picks: 1 duels, 2 moves, 3 arenas", () => {
     let picked = "";
     showScenes((s) => { picked = s; });
     handleScenesAction("selPickSecond");
@@ -32,6 +33,29 @@ describe("the scene selector", () => {
     expect(picked).toBe("move");
     showScenes((s) => { picked = s; });
     handleScenesAction("selPickFirst");
+    handleScenesAction("selConfirm");
+    expect(picked).toBe("duel");
+    showScenes((s) => { picked = s; });
+    handleScenesAction("selPickThird");
+    handleScenesAction("selConfirm");
+    expect(picked).toBe("arena");
+  });
+
+  test("left and right cycle through all three, wrapping both ways", () => {
+    let picked = "";
+    showScenes((s) => { picked = s; });
+    handleScenesAction("selRight");
+    handleScenesAction("selRight");
+    handleScenesAction("selConfirm");
+    expect(picked).toBe("arena");
+    showScenes((s) => { picked = s; });
+    handleScenesAction("selLeft"); // wraps backward from duel
+    handleScenesAction("selConfirm");
+    expect(picked).toBe("arena");
+    showScenes((s) => { picked = s; });
+    handleScenesAction("selRight");
+    handleScenesAction("selRight");
+    handleScenesAction("selRight"); // wraps forward to duel
     handleScenesAction("selConfirm");
     expect(picked).toBe("duel");
   });

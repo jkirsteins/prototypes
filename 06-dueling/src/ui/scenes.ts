@@ -13,18 +13,26 @@ export function isScenesOpen(): boolean {
   return st !== null;
 }
 
+/** The columns in screen order; left/right cycle through it, wrapping. */
+const ORDER: SceneId[] = ["duel", "move", "arena"];
+
+function cycle(from: SceneId, dir: 1 | -1): SceneId {
+  const at = ORDER.indexOf(from);
+  return ORDER[(at + dir + ORDER.length) % ORDER.length];
+}
+
 /** One body for both devices: the key handler and the pad path call this,
  *  so the two cannot drift (gamepad-support §6). */
 export function handleScenesAction(
-  a: "selLeft" | "selRight" | "selToggle" | "selConfirm" | "selPickFirst" | "selPickSecond",
+  a: "selLeft" | "selRight" | "selToggle" | "selConfirm" | "selPickFirst" | "selPickSecond" | "selPickThird",
 ): void {
   if (!st) return;
   switch (a) {
-    case "selLeft": st.active = "duel"; break;
-    case "selRight": st.active = "move"; break;
-    case "selToggle": st.active = st.active === "duel" ? "move" : "duel"; break;
+    case "selLeft": st.active = cycle(st.active, -1); break;
+    case "selRight": case "selToggle": st.active = cycle(st.active, 1); break;
     case "selPickFirst": st.active = "duel"; break;
     case "selPickSecond": st.active = "move"; break;
+    case "selPickThird": st.active = "arena"; break;
     case "selConfirm": {
       const { active, onPick } = st;
       hideScenes();
@@ -65,6 +73,7 @@ function onKey(e: KeyboardEvent): void {
     : k === "w" || k === "s" || k === "arrowup" || k === "arrowdown" ? "selToggle"
     : k === "1" ? "selPickFirst"
     : k === "2" ? "selPickSecond"
+    : k === "3" ? "selPickThird"
     : k === "enter" ? "selConfirm"
     : null;
   if (action === null) return;
@@ -77,11 +86,11 @@ function render(): void {
   const hint = document.querySelector("#scenes .hint");
   if (hint) {
     hint.textContent = resolveLabels(
-      "{selLeft} or {selRight} switch - {selPickFirst}/{selPickSecond} direct pick - {selConfirm} to start",
+      "{selLeft} or {selRight} switch - {selPickFirst}/{selPickSecond}/{selPickThird} direct pick - {selConfirm} to start",
       activeLabels(),
     );
   }
-  for (const id of ["duel", "move"] as const) {
+  for (const id of ORDER) {
     const col = document.querySelector(`#scenes .col[data-scene="${id}"]`);
     if (col) col.classList.toggle("active", st.active === id);
   }
