@@ -181,6 +181,35 @@ function headroom(m: Mover, level: Level): boolean {
   return !boxHits(m, level, m.x, m.y, BODY_W, BODY_H);
 }
 
+/** Wall contact probe: the body pressed 2 cm toward dir hits something. */
+function touchingWall(m: Mover, level: Level, dir: -1 | 1, h: number): boolean {
+  return boxHits(m, level, m.x + dir * 2, m.y, BODY_W, h, true);
+}
+
+/** The tile beside mid-body in that direction is a climbable wall. */
+function climbableBeside(m: Mover, level: Level, dir: -1 | 1, h: number): boolean {
+  const x = m.x + dir * (BODY_W / 2 + 4);
+  const y = m.y - h / 2;
+  return tileAt(level, Math.floor(x / TILE), Math.floor(y / TILE)) === "climb";
+}
+
+/** A grabbable lip: a solid tile beside the head with empty above it,
+ *  its top edge within the grab window around head height. Returns the
+ *  stand-on-top target, or null. */
+function ledgeProbe(m: Mover, level: Level, dir: -1 | 1, h: number): { x: number; y: number } | null {
+  const col = Math.floor((m.x + dir * (BODY_W / 2 + 6)) / TILE);
+  const headY = m.y - h;
+  const row = Math.floor((headY + 30) / TILE);
+  if (!isSolid(tileAt(level, col, row))) return null;
+  if (isSolid(tileAt(level, col, row - 1))) return null;
+  const lipY = row * TILE;
+  if (Math.abs(lipY - headY) > 60) return null;
+  // Stand target must have headroom for a standing body.
+  const tx = col * TILE + TILE / 2;
+  if (boxHits(m, level, tx, lipY, BODY_W, BODY_H, true)) return null;
+  return { x: tx, y: lipY };
+}
+
 // --- tick ------------------------------------------------------------------
 
 export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] {
@@ -191,6 +220,45 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   const wish = ((held.right ? 1 : 0) - (held.left ? 1 : 0)) as -1 | 0 | 1;
   const downEdge = held.down && !m.prevDown;
   m.prevDown = held.down;
+
+  const steer = (): void => {
+    if (wish !== 0) {
+      m.facing = wish;
+      if (Math.sign(m.vx) !== wish || Math.abs(m.vx) < RUN_SPEED) m.vx = wish * RUN_SPEED;
+    } else {
+      m.vx = Math.abs(m.vx) > RUN_SPEED ? m.vx : 0;
+    }
+  };
+  const airChecks = (): void => {
+    // Order: grab beats slide beats plain fall.
+    const dir = wish as -1 | 0 | 1;
+    if (dir !== 0 && touchingWall(m, level, dir, BODY_H)) {
+      const lip = ledgeProbe(m, level, dir, BODY_H);
+      if (lip !== null) {
+        m.vx = 0; m.vy = 0; m.spun = false;
+        m.facing = dir;
+        m.state = { kind: "ledgeGrab", t: 0, targetX: lip.x, targetY: lip.y };
+        ev.push({ kind: "grab" });
+        return;
+      }
+      if (held.grab && climbableBeside(m, level, dir, BODY_H)) {
+        m.vx = 0; m.vy = 0; m.spun = false;
+        m.facing = dir;
+        m.state = { kind: "sideClimb", wall: dir };
+        ev.push({ kind: "grab" });
+        return;
+      }
+      if (m.vy > 0) {
+        m.vx = 0;
+        m.facing = dir;
+        m.spun = false;
+        m.state = m.vy >= WALLLAND_VY
+          ? { kind: "wallLand", t: 0, wall: dir }
+          : { kind: "wallSlide", wall: dir };
+        ev.push({ kind: "touchdown" });
+      }
+    }
+  };
 
   const s = m.state;
   switch (s.kind) {
@@ -217,6 +285,14 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.state = { kind: "crouchIdle" };
         break;
       }
+      if (held.grab && wish !== 0
+          && touchingWall(m, level, wish, BODY_H) && climbableBeside(m, level, wish, BODY_H)) {
+        m.vx = 0; m.vy = 0;
+        m.facing = wish;
+        m.state = { kind: "sideClimb", wall: wish };
+        ev.push({ kind: "grab" });
+        break;
+      }
       if (wish !== 0) m.facing = wish;
       m.vx = wish * (held.walk ? WALK_SPEED : RUN_SPEED);
       m.state =
@@ -225,23 +301,35 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       break;
     }
     case "jump": {
-      if (wish !== 0) {
-        m.facing = wish;
-        // Steering never brakes carried momentum in the same direction.
-        if (Math.sign(m.vx) !== wish || Math.abs(m.vx) < RUN_SPEED) m.vx = wish * RUN_SPEED;
-      } else {
-        m.vx = Math.abs(m.vx) > RUN_SPEED ? m.vx : 0;
+      steer();
+      if (input.pressed.jump && !m.spun) {
+        m.vy = -AIRSPIN_V;
+        m.spun = true;
+        m.state = { kind: "airSpin", t: 0 };
+        ev.push({ kind: "liftoff" });
+        break;
       }
-      if (m.vy >= 0) m.state = { kind: "fall" };
+      airChecks();
+      if (m.state.kind === "jump" && m.vy >= 0) m.state = { kind: "fall" };
+      break;
+    }
+    case "airSpin": {
+      steer();
+      s.t += MOVE_TICK;
+      airChecks();
+      if (m.state.kind === "airSpin" && s.t >= SPIN_MS) m.state = { kind: "fall" };
       break;
     }
     case "fall": {
-      if (wish !== 0) {
-        m.facing = wish;
-        if (Math.sign(m.vx) !== wish || Math.abs(m.vx) < RUN_SPEED) m.vx = wish * RUN_SPEED;
-      } else {
-        m.vx = Math.abs(m.vx) > RUN_SPEED ? m.vx : 0;
+      steer();
+      if (input.pressed.jump && !m.spun) {
+        m.vy = -AIRSPIN_V;
+        m.spun = true;
+        m.state = { kind: "airSpin", t: 0 };
+        ev.push({ kind: "liftoff" });
+        break;
       }
+      airChecks();
       break;
     }
     case "land": {
@@ -292,20 +380,89 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       m.state = wish === 0 ? { kind: "crouchIdle" } : { kind: "crouchWalk" };
       break;
     }
+    case "wallLand": {
+      s.t += MOVE_TICK;
+      m.vx = 0;
+      // The wall's friction cap is applied by the integration step.
+      if (s.t >= WALLLAND_MS) m.state = { kind: "wallSlide", wall: s.wall };
+      break;
+    }
+    case "wallSlide": {
+      m.vx = 0;
+      if (input.pressed.jump) {
+        // The wall jump: away and up, facing flipped.
+        m.vx = -s.wall * WALLJUMP_VX;
+        m.vy = -JUMP_V * 0.9;
+        m.facing = -s.wall as -1 | 1;
+        m.state = { kind: "jump" };
+        ev.push({ kind: "liftoff" });
+        break;
+      }
+      if (held.grab && climbableBeside(m, level, s.wall, BODY_H)) {
+        m.vy = 0;
+        m.state = { kind: "sideClimb", wall: s.wall };
+        ev.push({ kind: "grab" });
+        break;
+      }
+      // Steering away, or the wall ran out: back to a fall.
+      if (wish !== s.wall || !touchingWall(m, level, s.wall, BODY_H)) m.state = { kind: "fall" };
+      break;
+    }
+    case "sideClimb": {
+      m.vx = 0;
+      m.vy = 0;
+      if (!held.grab || !climbableBeside(m, level, s.wall, BODY_H)) {
+        m.state = { kind: "fall" };
+        break;
+      }
+      if (input.pressed.jump) {
+        m.vx = -s.wall * WALLJUMP_VX;
+        m.vy = -JUMP_V * 0.9;
+        m.facing = -s.wall as -1 | 1;
+        m.state = { kind: "jump" };
+        ev.push({ kind: "liftoff" });
+        break;
+      }
+      const climb = (held.up ? -1 : 0) + (held.down ? 1 : 0);
+      m.vy = climb * CLIMB_SPEED;
+      if (climb === -1) {
+        const lip = ledgeProbe(m, level, s.wall, BODY_H);
+        if (lip !== null) {
+          m.vy = 0;
+          m.state = { kind: "ledgeGrab", t: 0, targetX: lip.x, targetY: lip.y };
+          ev.push({ kind: "grab" });
+        }
+      }
+      break;
+    }
+    case "ledgeGrab": {
+      m.vx = 0;
+      m.vy = 0;
+      s.t += MOVE_TICK;
+      if (s.t >= LEDGE_MS) {
+        m.x = s.targetX;
+        m.y = s.targetY;
+        m.state = { kind: "idle" };
+      }
+      break;
+    }
     // Arms below are filled by later tasks; the states are unreachable
     // until their triggers exist.
-    case "airSpin": case "wallLand": case "wallSlide": case "sideClimb":
-    case "ladderClimb": case "ledgeGrab": case "push": case "pull": case "pushIdle":
+    case "ladderClimb": case "push": case "pull": case "pushIdle":
       m.state = { kind: "idle" };
       break;
   }
 
-  // Integrate. Gravity applies in every non-climbing state; climbing arms
-  // (later tasks) skip this via their own early return once implemented.
-  const airborne = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin";
+  // Integrate. Gravity applies in every non-climbing state; sideClimb and
+  // ledgeGrab hold position entirely and skip it, and a wall contact caps
+  // fall speed far below free fall.
+  const clinging = m.state.kind === "sideClimb" || m.state.kind === "ledgeGrab";
+  const onWallNow = m.state.kind === "wallSlide" || m.state.kind === "wallLand";
+  const airborne = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin" || onWallNow;
   const h = heightOf(m.state);
-  if (airborne || !onGround(m, level, h)) {
-    m.vy = Math.min(m.vy + GRAVITY * dt, FALL_CAP);
+  if (!clinging && (airborne || !onGround(m, level, h))) {
+    // Terminal speed: the wall's friction caps it far below free fall.
+    m.vy = Math.min(m.vy + GRAVITY * dt, onWallNow ? WALLSLIDE_CAP : FALL_CAP);
   }
   const hHit = moveX(m, level, m.vx * dt, h);
   // A wall stops the feet: commanded speed is not motion, and every

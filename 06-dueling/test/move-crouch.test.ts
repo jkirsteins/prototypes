@@ -28,16 +28,23 @@ describe("dash", () => {
     expect(m.state.kind).toBe("idle");
   });
 
-  test("dash-jump keeps dash momentum: it clears the 6-tile gap a run-jump cannot", () => {
+  test("dash-jump keeps dash momentum: it clears the 6-tile gap a run-jump cannot clear outright", () => {
     // From platform B (cols 5-7, row 6) toward C (cols 14-15): the gap is
-    // cols 8-13. A run-jump from B's edge falls short; dash then jump
-    // carries DASH_SPEED across.
+    // cols 8-13. A run-jump from B's edge does not clear the gap outright -
+    // it reaches C's lip only because the ledge grab (Task 5) catches the
+    // near miss and pulls it up, slower and never a clean landing; dash
+    // then jump carries DASH_SPEED across with room to spare.
     const runJump = createMover(level);
     runJump.x = 6.5 * TILE; runJump.y = 6 * TILE;
     run(runJump, input({ right: true }), 12); // run up to the edge
     run(runJump, input({ right: true }, { jump: true }), 1);
-    for (let i = 0; i < 300 && runJump.y < 10 * TILE; i++) run(runJump, input({ right: true }), 1);
-    expect(runJump.y).toBe(10 * TILE); // fell into the gap to the floor
+    let grabbedLedge = false;
+    for (let i = 0; i < 300 && runJump.state.kind !== "idle"; i++) {
+      run(runJump, input({ right: true }), 1);
+      if (runJump.state.kind === "ledgeGrab") grabbedLedge = true;
+    }
+    expect(grabbedLedge).toBe(true); // saved by the ledge, not a clean jump
+    expect(runJump.y).toBe(6 * TILE); // pulled up onto C's lip
 
     const dashJump = createMover(level);
     dashJump.x = 6.5 * TILE; dashJump.y = 6 * TILE;
@@ -108,8 +115,14 @@ describe("roll on hard landing", () => {
     const drop = (dir: boolean): ReturnType<typeof createMover> => {
       const m = createMover(level);
       // Open column: nothing below but the floor; drifting right stays
-      // clear of every platform (the ladder at col 17 is not solid).
-      m.x = 16.5 * TILE; m.y = 3 * TILE; m.state = { kind: "fall" };
+      // clear of every platform (the ladder at col 17 is not solid). A
+      // drop from 3 tiles grazes the solid ledge the ladder climbs to
+      // (row 3, cols 18-19) - the body's own height reaches into that row
+      // while still well above it, and the wall/ledge checks (Task 5)
+      // catch that touch before the fall ever gets going. Starting lower,
+      // under that ledge, keeps the same "clear column, high drop" intent
+      // while giving up none of the fall height a hard landing needs.
+      m.x = 16.5 * TILE; m.y = 5.5 * TILE; m.state = { kind: "fall" };
       const inp = dir ? input({ right: true }) : input();
       for (let i = 0; i < 400 && m.state.kind === "fall"; i++) run(m, inp, 1);
       return m;
