@@ -2823,13 +2823,15 @@ export const MOVE_HELP: Record<MoveState["kind"], MoveHelpEntry> = {
   pushIdle:   { label: "grip",        what: "Braced against the block, not moving.", player: "Hold {grab}; add a direction to push or pull." },
 };
 
+// pair() collapses two directions that share one pad label ("Stick/Dpad")
+// so the pad legend stays inside the width bound - reuse help.ts's helper.
 export function moveKeyGroups(labels: Labels): Array<Array<[string, string]>> {
   return [
     [
-      [`${labels.moveLeft}/${labels.moveRight}`, "move"], [`${labels.walkMod} hold`, "walk"],
+      [pair(labels.moveLeft, labels.moveRight), "move"], [labels.walkMod, "walk"],
       [labels.jump, "jump/spin"], [labels.dash, "dash"],
-      [`${labels.crouch} hold`, "crouch"], [`${labels.grab} hold`, "grab"],
-      [`${labels.climbUp}/${labels.climbDown}`, "climb"],
+      [labels.crouch, "crouch"], [labels.grab, "grab"],
+      [pair(labels.climbUp, labels.climbDown), "climb"],
     ],
     [
       [labels.resetScene, "reset"], [labels.reselect, "scenes"],
