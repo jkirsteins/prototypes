@@ -4,7 +4,9 @@ import {
   drawFighter, drawParryTrack, drawTrackRow,
 } from "./draw";
 import { ARENA_PLATFORM } from "../movement/level";
+import { BODY_W, heightOf } from "../movement/engine";
 import { DRAW_MS } from "../scenes/arena";
+import { arenaControlsLines } from "../ui/arenahelp";
 import { resolveLabels } from "../input/scheme";
 import type { ArenaWorld, PlayerRep } from "../scenes/arena";
 import type { Labels } from "../input/scheme";
@@ -50,6 +52,21 @@ export function drawArenaFrame(v: ArenaView, w: ArenaWorld, overlay: boolean, ti
       const pf = floorPx(w.player.floorY);
       drawBodyTrack(fv, w.player.f, w.duel?.disarm ?? null, pf);
       drawParryTrack(fv, w.player.f, w.duel?.bind ?? null, 0, pf);
+    } else {
+      const m = w.player.m;
+      const h = heightOf(m.state);
+      ctx.strokeStyle = "#57a55a";
+      ctx.strokeRect(
+        (m.x - BODY_W / 2) * PX_PER_CM, GRID_Y + (m.y - h) * PX_PER_CM,
+        BODY_W * PX_PER_CM, h * PX_PER_CM,
+      );
+      ctx.fillStyle = "#cfd3da";
+      ctx.font = "12px ui-monospace, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(
+        `${m.state.kind}  x ${m.x.toFixed(0)} y ${m.y.toFixed(0)}  vx ${m.vx.toFixed(0)} vy ${m.vy.toFixed(0)}`,
+        12, 24,
+      );
     }
   }
   if (w.duel !== null) {
@@ -58,6 +75,13 @@ export function drawArenaFrame(v: ArenaView, w: ArenaWorld, overlay: boolean, ti
   }
   if (w.deadBy !== null) drawStruckDownBanner(v);
 
+  const [line1, line2] = arenaControlsLines(v.labels);
+  ctx.fillStyle = "#8a8f98";
+  ctx.font = "11px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(line1, 480, 522);
+  ctx.fillText(line2, 480, 536);
+  ctx.textAlign = "left";
   drawTimeAndHelp(v, time);
 }
 
