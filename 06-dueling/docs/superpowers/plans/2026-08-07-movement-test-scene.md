@@ -1567,10 +1567,11 @@ describe("the pushable block", () => {
 
   test("push moves the block at walk speed and the player with it", () => {
     const m = createMover(level);
-    // Open floor under platform B - clear of the tunnel roof, which
-    // would otherwise sit at standing-head height beside the block.
-    m.block.x = 6 * TILE;
-    m.x = 6 * TILE + BLOCK_W / 2 + BODY_W / 2 + 4; // touching its right face
+    // Open floor under platform B - clear of the tunnel roof (which sits
+    // at standing-head height) AND far enough from the left step's pillar
+    // that a full second of pushing has room to travel.
+    m.block.x = 8.5 * TILE;
+    m.x = 8.5 * TILE + BLOCK_W / 2 + BODY_W / 2 + 4; // touching its right face
     run(m, input({ left: true }), 2);
     expect(m.state.kind).toBe("push");
     const bx0 = m.block.x;
