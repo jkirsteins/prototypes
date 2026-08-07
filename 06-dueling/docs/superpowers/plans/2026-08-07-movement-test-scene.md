@@ -356,7 +356,7 @@ describe("movement engine core", () => {
 
   test("held right runs right at RUN_SPEED; walk modifier walks", () => {
     const m = createMover(level);
-    m.x = 15 * TILE; // open floor: the default spawn reaches the tunnel in ~10 ticks
+    m.x = 13.5 * TILE; // ~500 cm of clear runway: past the tunnel, short of the block
     run(m, input({ right: true }), 30);
     expect(m.state.kind).toBe("run");
     expect(m.vx).toBe(RUN_SPEED);
