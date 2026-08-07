@@ -289,6 +289,19 @@ describe("input buffering: presses are intent, not single-tick edges", () => {
 });
 
 describe("the ledge", () => {
+  test("jumping under the middle of a platform never hangs from its underside", () => {
+    const m = createMover(level);
+    m.x = 6.5 * TILE; // under platform B's middle column
+    const seen = new Set<string>();
+    run(m, input({}, { jump: true }), 1);
+    for (let i = 0; i < 200; i++) {
+      run(m, input(), 1);
+      seen.add(m.state.kind);
+    }
+    expect(seen.has("ledgeHang")).toBe(false); // interior columns have no face
+    expect(m.y).toBe(10 * TILE); // bonked the underside and came back down
+  });
+
   test("a jump toward a platform lip within reach ledge-grabs", () => {
     const m = createMover(level);
     // Platform A: cols 3-4 at row 8, top at y = 8*TILE, 2 tiles above floor.

@@ -223,6 +223,10 @@ function ledgeProbe(
   for (let row = rowLo; row <= rowHi; row++) {
     if (!isSolid(tileAt(level, col, row))) continue;
     if (isSolid(tileAt(level, col, row - 1))) continue;
+    // The face must be exposed: an interior column of a wide platform
+    // has a solid neighbor on the approach side at the lip row - there
+    // is no face there to hang on, only underside.
+    if (isSolid(tileAt(level, col - dir, row))) continue;
     const lipY = row * TILE;
     const d = lipY - headY;
     if (d > 60 || d < -HANG_REACH) continue;
@@ -303,10 +307,13 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   const tryHang = (side: -1 | 1): boolean => {
     const lip = ledgeProbe(m, level, side, BODY_H);
     if (lip === null) return false;
+    // The hanging body itself must fit at the hang point.
+    const hangY = lip.lipY + BODY_H + HANG_HEAD_BELOW_LIP;
+    if (boxHits(m, level, lip.hangX, hangY, BODY_W, BODY_H, true)) return false;
     m.vx = 0; m.vy = 0; m.spun = false;
     m.facing = side;
     m.x = lip.hangX;
-    m.y = lip.lipY + BODY_H + HANG_HEAD_BELOW_LIP;
+    m.y = hangY;
     m.state = { kind: "ledgeHang", wall: side, standX: lip.standX, lipY: lip.lipY };
     ev.push({ kind: "grab" });
     return true;
