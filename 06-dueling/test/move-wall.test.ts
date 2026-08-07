@@ -78,6 +78,17 @@ describe("wall slide and wall jump", () => {
     run(m, input({ right: true }), 3);
     expect(["fall", "jump"]).toContain(m.state.kind);
   });
+
+  test("a wall catch beside the floor is one plant, never a double touchdown", () => {
+    const m = createMover(level);
+    m.x = 126; // flush against the left wall face
+    m.y = 954; // centimeters above the floor: the catch and the plant nearly coincide
+    m.vy = 300;
+    m.state = { kind: "fall" };
+    const evs = run(m, input({ left: true }), 30);
+    expect(evs.filter((e) => e.kind === "touchdown")).toHaveLength(1);
+    expect(["idle", "run"]).toContain(m.state.kind); // grounded, not stuck in a wall state
+  });
 });
 
 describe("side climb and the ledge", () => {

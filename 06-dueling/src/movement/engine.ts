@@ -249,13 +249,19 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         return;
       }
       if (m.vy > 0) {
+        const hardCatch = m.vy >= WALLLAND_VY;
         m.vx = 0;
+        // The catch arrests the fall; speed re-accrues under the wall
+        // cap. This also keeps the catch tick from crossing the floor.
+        m.vy = 0;
         m.facing = dir;
         m.spun = false;
-        m.state = m.vy >= WALLLAND_VY
+        m.state = hardCatch
           ? { kind: "wallLand", t: 0, wall: dir }
           : { kind: "wallSlide", wall: dir };
-        ev.push({ kind: "touchdown" });
+        // Only the hard catch is a contact moment with impact; drifting
+        // onto the wall mid-fall stays silent until the feet plant.
+        if (hardCatch) ev.push({ kind: "touchdown" });
       }
     }
   };
@@ -381,6 +387,12 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       break;
     }
     case "wallLand": {
+      if (onGround(m, level, BODY_H)) {
+        m.vy = 0;
+        m.state = { kind: "idle" };
+        ev.push({ kind: "touchdown" }); // the feet plant
+        break;
+      }
       s.t += MOVE_TICK;
       m.vx = 0;
       // The wall's friction cap is applied by the integration step.
@@ -388,6 +400,12 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       break;
     }
     case "wallSlide": {
+      if (onGround(m, level, BODY_H)) {
+        m.vy = 0;
+        m.state = { kind: "idle" };
+        ev.push({ kind: "touchdown" }); // the feet plant
+        break;
+      }
       m.vx = 0;
       if (input.pressed.jump) {
         // The wall jump: away and up, facing flipped.
@@ -411,6 +429,11 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     case "sideClimb": {
       m.vx = 0;
       m.vy = 0;
+      if (held.down && onGround(m, level, BODY_H)) {
+        m.state = { kind: "idle" };
+        ev.push({ kind: "touchdown" }); // climbed down to the floor: the feet plant
+        break;
+      }
       if (!held.grab || !climbableBeside(m, level, s.wall, BODY_H)) {
         m.state = { kind: "fall" };
         break;
@@ -474,7 +497,10 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     const impact = m.vy;
     m.vy = 0;
     m.spun = false;
-    if (airborne) {
+    // Wall states own their own floor plant (above), so a corner catch
+    // cannot double-count: only a free fall lands here.
+    const freeAir = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin";
+    if (freeAir) {
       ev.push({ kind: "touchdown" });
       if (impact >= LAND_HARD) {
         if (wish !== 0) {
