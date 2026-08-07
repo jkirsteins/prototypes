@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createLevel, TILE } from "../src/movement/level";
 import {
-  AIRSPIN_V, GRAVITY, JUMP_V, MOVE_TICK, SPIN_MS,
+  AIRSPIN_V, GRAVITY, JUMP_V, MOVE_TICK, RUN_SPEED, SPIN_MS,
   WALLSLIDE_CAP, createMover, tickMove,
 } from "../src/movement/engine";
 import type { MoveEvent, MoveInput, MoveState } from "../src/movement/engine";
@@ -235,6 +235,56 @@ describe("wall slide and wall jump", () => {
       run(m, input({ left: true, grab: true }), 1);
     }
     expect(["wallSlide", "wallLand"]).toContain(m.state.kind);
+  });
+});
+
+describe("input buffering: presses are intent, not single-tick edges", () => {
+  test("a jump pressed just before touchdown fires on landing", () => {
+    const m = createMover(level);
+    run(m, input({}, { jump: true }), 1); // up
+    run(m, input({}, { jump: true }), 1); // double jump: spin spent
+    // ride the fall until just above the floor, then press jump again
+    for (let i = 0; i < 300 && !(m.state.kind === "fall" && m.y > 10 * TILE - 30); i++) run(m, input(), 1);
+    const evs = run(m, input({}, { jump: true }), 1); // one press, a few ticks early
+    evs.push(...run(m, input(), 5));
+    expect(evs.filter((e) => e.kind === "liftoff").length).toBeGreaterThanOrEqual(1);
+    expect(m.state.kind).toBe("jump"); // airborne again: the press survived the landing
+    expect(m.vy).toBeLessThan(0);
+  });
+
+  test("steering interrupts a soft landing instead of dying for LAND_MS", () => {
+    const m = createMover(level);
+    run(m, input({}, { jump: true }), 1);
+    for (let i = 0; i < 300 && m.state.kind !== "land"; i++) run(m, input(), 1);
+    expect(m.state).toMatchObject({ kind: "land", hard: false });
+    run(m, input({ right: true }), 2);
+    expect(m.state.kind).toBe("run"); // moving at once, no dead window
+    expect(m.vx).toBe(RUN_SPEED);
+  });
+
+  test("a spin press does not double-fire as a landing jump", () => {
+    const m = createMover(level);
+    m.x = 3.5 * TILE; m.y = 8 * TILE; // on the step: a short drop
+    run(m, input({}, { jump: true }), 1);
+    for (let i = 0; i < 60 && m.state.kind !== "fall"; i++) run(m, input(), 1);
+    run(m, input({}, { jump: true }), 1); // the spin, close to the ground
+    for (let i = 0; i < 300 && !["land", "idle"].includes(m.state.kind); i++) run(m, input(), 1);
+    // the same press must not ALSO jump off the ground after landing
+    const after = run(m, input(), 10);
+    expect(after.filter((e) => e.kind === "liftoff")).toHaveLength(0);
+    expect(["land", "idle"]).toContain(m.state.kind);
+  });
+
+  test("a hard landing stays committed: the buffer expires before it ends", () => {
+    const m = createMover(level);
+    m.x = 16.5 * TILE; m.y = 3 * TILE;
+    m.state = { kind: "fall" } as MoveState;
+    for (let i = 0; i < 400 && m.state.kind === "fall"; i++) run(m, input(), 1);
+    expect(m.state).toMatchObject({ kind: "land", hard: true });
+    run(m, input({}, { jump: true }), 1); // pressed into the lock
+    const evs = run(m, input(), Math.ceil(220 / MOVE_TICK) + 2);
+    expect(evs.filter((e) => e.kind === "liftoff")).toHaveLength(0);
+    expect(m.state.kind).toBe("idle");
   });
 });
 

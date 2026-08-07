@@ -41,6 +41,10 @@ export const LAND_SOFT = 700;
 export const LAND_HARD = 1350;
 export const STRIDE_RUN_MS = 260;
 export const STRIDE_WALK_MS = 420;
+/** How long a jump or dash press stays live waiting for a state that can
+ *  consume it. A press is intent, not a single-tick edge: landing two
+ *  ticks after pressing jump must still jump. */
+export const INPUT_BUFFER_MS = 130;
 export const BLOCK_W = 96;
 export const BLOCK_H = 96;
 
@@ -87,6 +91,10 @@ export interface Mover {
    *  Only leaping hands reach for a lip unprompted - running or sliding
    *  off an edge must not auto-catch its own lip on the way down. */
   airFromJump: boolean;
+  /** Pressed intents waiting for a state that can act on them; every
+   *  consumer zeroes the buffer so one press never acts twice. */
+  jumpBufferMs: number;
+  dashBufferMs: number;
   strideMs: number;
   prevDown: boolean;
   blockMoving: boolean;
@@ -101,7 +109,8 @@ export function createMover(level: Level): Mover {
     // and the left step - a standing body is taller than one tile, so a
     // spawn under any row-8 tile would start wedged.
     x: 8.5 * TILE, y: 10 * TILE, vx: 0, vy: 0, facing: 1,
-    state: { kind: "idle" }, spun: false, regrabMs: 0, airFromJump: false, strideMs: 0, prevDown: false,
+    state: { kind: "idle" }, spun: false, regrabMs: 0, airFromJump: false,
+    jumpBufferMs: 0, dashBufferMs: 0, strideMs: 0, prevDown: false,
     blockMoving: false, time: 0, block: { x: level.blockStartX },
   };
 }
@@ -274,6 +283,8 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   const ev: MoveEvent[] = [];
   m.time += MOVE_TICK;
   m.regrabMs = Math.max(0, m.regrabMs - MOVE_TICK);
+  m.jumpBufferMs = input.pressed.jump ? INPUT_BUFFER_MS : Math.max(0, m.jumpBufferMs - MOVE_TICK);
+  m.dashBufferMs = input.pressed.dash ? INPUT_BUFFER_MS : Math.max(0, m.dashBufferMs - MOVE_TICK);
   const dt = MOVE_TICK / 1000;
   const held = input.held;
   const wish = ((held.right ? 1 : 0) - (held.left ? 1 : 0)) as -1 | 0 | 1;
@@ -334,21 +345,31 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     }
   };
 
+  /** The ground jump, shared by every state a buffered press can reach. */
+  const groundJump = (): void => {
+    m.jumpBufferMs = 0;
+    m.vy = -JUMP_V;
+    m.state = { kind: "jump" };
+    m.spun = false;
+    ev.push({ kind: "liftoff" });
+    m.airFromJump = true;
+  };
+  const groundDash = (): void => {
+    m.dashBufferMs = 0;
+    if (wish !== 0) m.facing = wish;
+    m.vx = DASH_SPEED * m.facing;
+    m.state = { kind: "dash", t: 0 };
+  };
+
   const s = m.state;
   switch (s.kind) {
     case "idle": case "walk": case "run": {
-      if (input.pressed.jump) {
-        m.vy = -JUMP_V;
-        m.state = { kind: "jump" };
-        m.spun = false;
-        ev.push({ kind: "liftoff" });
-        m.airFromJump = true;
+      if (m.jumpBufferMs > 0) {
+        groundJump();
         break;
       }
-      if (input.pressed.dash) {
-        if (wish !== 0) m.facing = wish;
-        m.vx = DASH_SPEED * m.facing;
-        m.state = { kind: "dash", t: 0 };
+      if (m.dashBufferMs > 0) {
+        groundDash();
         break;
       }
       if (downEdge && m.state.kind === "run" && Math.abs(m.vx) >= RUN_SPEED) {
@@ -385,6 +406,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     case "jump": {
       steer();
       if (input.pressed.jump && !m.spun) {
+        m.jumpBufferMs = 0; // this press is the spin, nothing else
         m.vy = -AIRSPIN_V;
         m.spun = true;
         m.state = { kind: "airSpin", t: 0 };
@@ -406,6 +428,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     case "fall": {
       steer();
       if (input.pressed.jump && !m.spun) {
+        m.jumpBufferMs = 0; // this press is the spin, nothing else
         m.vy = -AIRSPIN_V;
         m.spun = true;
         m.state = { kind: "airSpin", t: 0 };
@@ -417,7 +440,25 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       break;
     }
     case "land": {
-      // Committed: the body absorbs the impact; movement resumes after.
+      // A soft landing is presentation, not commitment: any intent - a
+      // buffered jump, a dash, plain steering - interrupts it at once.
+      // Only the HARD landing locks the body while it absorbs the hit.
+      if (!s.hard) {
+        if (m.jumpBufferMs > 0) {
+          groundJump();
+          break;
+        }
+        if (m.dashBufferMs > 0) {
+          groundDash();
+          break;
+        }
+        if (wish !== 0) {
+          m.facing = wish;
+          m.vx = wish * (held.walk ? WALK_SPEED : RUN_SPEED);
+          m.state = held.walk ? { kind: "walk" } : { kind: "run" };
+          break;
+        }
+      }
       m.vx = 0;
       s.t += MOVE_TICK;
       if (s.t >= LAND_MS) m.state = { kind: "idle" };
@@ -426,7 +467,8 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     case "dash": {
       s.t += MOVE_TICK;
       m.vx = DASH_SPEED * m.facing;
-      if (input.pressed.jump) {
+      if (input.pressed.jump || m.jumpBufferMs > 0) {
+        m.jumpBufferMs = 0;
         // Dash momentum carries into the air: the dash-jump.
         m.vy = -JUMP_V;
         m.state = { kind: "jump" };
@@ -487,6 +529,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       }
       m.vx = 0;
       if (input.pressed.jump) {
+        m.jumpBufferMs = 0;
         // The wall jump: away and up, facing flipped.
         m.vx = -s.wall * WALLJUMP_VX;
         m.vy = -JUMP_V * 0.9;
@@ -513,6 +556,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       m.vx = 0;
       m.vy = 0;
       if (input.pressed.jump) {
+        m.jumpBufferMs = 0;
         m.vx = -s.wall * WALLJUMP_VX;
         m.vy = -JUMP_V * 0.9;
         m.facing = -s.wall as -1 | 1;
@@ -563,6 +607,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       const top = ladderTopRow(level, col);
       if (top === null || input.pressed.jump) {
         if (input.pressed.jump) {
+          m.jumpBufferMs = 0;
           m.vy = -JUMP_V * 0.8;
           m.state = { kind: "jump" };
           ev.push({ kind: "liftoff" });
