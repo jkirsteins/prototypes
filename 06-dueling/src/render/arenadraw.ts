@@ -5,9 +5,8 @@ import {
 } from "./draw";
 import { ARENA_PLATFORM } from "../movement/level";
 import { BODY_W, heightOf } from "../movement/engine";
-import { DRAW_MS } from "../scenes/arena";
+import { DRAW_MS } from "../scenes/arenarules";
 import { arenaControlsLines } from "../ui/arenahelp";
-import { resolveLabels } from "../input/scheme";
 import type { ArenaWorld, PlayerRep } from "../scenes/arena";
 import type { Labels } from "../input/scheme";
 import type { MoveView } from "./movedraw";
@@ -73,7 +72,6 @@ export function drawArenaFrame(v: ArenaView, w: ArenaWorld, overlay: boolean, ti
     drawBindBar(fv, w.duel);
     if (w.duel.over) drawBanner(fv, w.duel);
   }
-  if (w.deadBy !== null) drawStruckDownBanner(v);
 
   const [line1, line2] = arenaControlsLines(v.labels);
   ctx.fillStyle = "#8a8f98";
@@ -107,20 +105,6 @@ function drawPlayer(fv: View, mv: MoveView, w: ArenaWorld): void {
       "sheathing", "#e6c229", p.t / DRAW_MS, floor,
     );
   }
-}
-
-/** The sentinel's kill of an unarmed body: the duel banner's shape,
- *  without a Duel to read from. */
-function drawStruckDownBanner(v: ArenaView): void {
-  const { ctx } = v;
-  ctx.fillStyle = "#e8eaed";
-  ctx.font = "28px ui-monospace, monospace";
-  ctx.textAlign = "center";
-  ctx.fillText("STRUCK DOWN UNARMED", 480, 232);
-  ctx.font = "15px ui-monospace, monospace";
-  ctx.fillStyle = "#b9bec7";
-  ctx.fillText(resolveLabels("{rematch} to try again, {reselect} for scenes", v.labels), 480, 258);
-  ctx.textAlign = "left";
 }
 
 function drawTimeAndHelp(v: ArenaView, time: TimeControl): void {

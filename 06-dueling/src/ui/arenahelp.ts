@@ -1,5 +1,5 @@
 import { KEYBOARD_LABELS, resolveLabels } from "../input/scheme";
-import { DRAW_MS } from "../scenes/arena";
+import { DRAW_MS } from "../scenes/arenarules";
 import type { Labels } from "../input/scheme";
 
 /**
@@ -16,7 +16,7 @@ interface ArenaHelpEntry {
 export const ARENA_HELP: Record<"sheathed" | "armed" | "edge", ArenaHelpEntry> = {
   sheathed: {
     label: "sheathed",
-    what: "Parkour rules apply, and the enemy on the platform will strike any body in its reach.",
+    what: "Parkour rules apply; the enemy waits at its post and never attacks an unarmed body.",
     player: `{jump} jumps, {dash} dashes, {grab} grabs; {drawSheathe} draws the sword (${DRAW_MS} ms, shown as a bar) - only while standing.`,
   },
   armed: {
@@ -26,8 +26,8 @@ export const ARENA_HELP: Record<"sheathed" | "armed" | "edge", ArenaHelpEntry> =
   },
   edge: {
     label: "the edge",
-    what: "The enemy never follows you off the platform; its feet refuse the lip.",
-    player: "Backing past the lip is a fall, and falling sheathes - the ledge is your exit, not a safe zone.",
+    what: "The enemy never follows you off the platform; sheathe or leave and it walks back to its post.",
+    player: "Backing past the lip is a fall, and falling sheathes - the ledge is your exit.",
   },
 };
 

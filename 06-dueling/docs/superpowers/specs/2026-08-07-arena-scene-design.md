@@ -61,8 +61,8 @@ jump -> catch ledge -> hang -> pull up.
   upright movement states (idle, walk, run) or, when armed, from the
   fighter's ready state outside a bind. It takes a few hundred ms
   (DRAW_MS, a named constant) and renders the duel's action-track
-  progress bar. The player is attackable throughout; interrupting it is
-  the enemy's strike landing, i.e. death.
+  progress bar. Sheathing during a live duel is legal and dangerous:
+  the duel keeps running and the committed body defends nothing.
 - **Falling sheathes instantly.** Walking off an edge, backing off the
   platform mid-duel, any transition to airborne while armed converts the
   Fighter back to a Mover in fall state with the sword away. No progress
@@ -82,36 +82,37 @@ jump -> catch ledge -> hang -> pull up.
   states. Engine seam: a small exported helper that builds a Duel from
   two existing Fighters, because `createDuel` hardcodes spawn positions.
 - **The enemy never falls** purely by AI policy, never physics: a wrapper
-  around its decision layer vetoes any advance/retreat whose travel would
-  end within EDGE_MARGIN (about 60 cm) of a lip. This is the permitted
-  kind of asymmetry (policy, not physics).
+  around its decision layer vetoes any advance/retreat/void whose travel
+  would end within EDGE_MARGIN (about 60 cm) of a lip. This is the
+  permitted kind of asymmetry (policy, not physics). One force its own
+  steps cannot refuse is the duel's MIN_GAP separation shove, so the
+  scene adds a brace rule: when the pair's separation would carry the
+  enemy into the margin, the whole pair shifts back with the gap intact -
+  the enemy chooses to hold its ground, and the engine stays symmetric.
 - **The player may back off the edge.** If any duel motion carries the
   player's feet past the platform span, the scene dissolves the duel,
   converts the player to a falling Mover (auto-sheathed), and the enemy
   Fighter persists and recovers on its own clock. Re-engagement follows
   the same rule as engagement.
-- EDGE_MARGIN is tuned so a player hanging on the lip is still within
-  the enemy's strike reach: the ledge is not a safe zone.
+## 5. The sentinel at rest
 
-## 5. The unarmed threat
+(Revised 2026-08-07 after the first playtest: the original design let
+the enemy strike any unarmed body in reach; in play that killed the
+player during the climb and the draw, so the enemy is now honorable.)
 
-While the player is sheathed and within reach, the enemy attacks with
-its real weapon timeline. The scene resolves these strikes itself:
+The enemy fights ONLY through a duel. An unarmed body is never attacked:
 
-- At strike end: if the horizontal gap is within the weapon's reach and
-  the player's body box vertically overlaps the platform-surface band
-  (which includes a body hanging at the lip), the strike kills. Single
-  hit lethality, death banner, R restarts the scene.
-- Pre-duel enemy policy is a small bespoke sentinel: hold near platform
-  center when the player is elsewhere; approach with fencing steps when
-  the player is on the platform; strike when in reach, with reaction
-  delays. Decisions only; every physical consequence goes through the
-  fighter machine.
-- The enemy's FighterEvents (windup, swing, strike resolution) pass
-  through the same fighter-event-to-DuelEvent translation the duel
+- While no duel is live - the player sheathed, drawing, or off the
+  platform - the sentinel walks back to its post (the platform center)
+  with fencing steps and waits there, facing the player.
+- Its policy is decisions only; every physical consequence goes through
+  the fighter machine, and its FighterEvents (footfall, windup, swing)
+  pass through the same fighter-event-to-DuelEvent translation the duel
   engine uses, extracted into a shared helper so the mapping cannot
-  drift. Cues fire on the simulation tick the thing physically happens.
-  No clash or bind can occur against an unarmed body.
+  drift.
+- The arena's enemy defaults to AI mode 2 (the duelist) rather than the
+  duel scene's mode 0 dummy, so once the player draws on the platform it
+  actually comes at them; ?mode= and the 0-4 keys still override.
 
 ## 6. Input
 

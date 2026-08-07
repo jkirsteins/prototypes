@@ -318,7 +318,10 @@ Promise.all([loadImages(), loadTileAtlas()]).then(([images, tiles]) => {
   duelScene = createDuelScene({ ctx, images, audio, seedPin, initialAiMode });
   moveScene = createMoveScene({ ctx, images, tiles, audio });
   arenaScene = createArenaScene({
-    ctx, images, tiles, audio, seedPin, initialAiMode,
+    ctx, images, tiles, audio, seedPin,
+    // The arena's enemy is an encounter, not a training dummy: it
+    // defaults to the duelist unless ?mode says otherwise.
+    initialAiMode: params.get("mode") !== null ? initialAiMode : 2,
     pWeapon: state.pWeapon, eWeapon: state.eWeapon,
   });
   if (sceneParam === "arena") startArena();

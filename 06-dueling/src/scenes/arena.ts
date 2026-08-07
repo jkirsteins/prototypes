@@ -2,7 +2,7 @@ import { aiDecide, createAiState } from "../combat/ai";
 import { assembleDuel, inRise, standaloneFighterEvents, tickDuel } from "../combat/engine";
 import { TICK, applyIntent, createFighter, tickFighter } from "../combat/fighter";
 import { WEAPONS } from "../combat/weapons";
-import { createMover, heightOf, tickMove } from "../movement/engine";
+import { createMover, tickMove } from "../movement/engine";
 import { ARENA_PLATFORM, TILE, createArenaLevel } from "../movement/level";
 import { advanceBulletTime, bulletTimePhase, bulletTimeScale, createBulletTime } from "../ui/bullettime";
 import { drawArenaFrame } from "../render/arenadraw";
@@ -19,16 +19,10 @@ import type { SheetName } from "../render/sheets";
 import type { TimeControl } from "../render/draw";
 import type { HeldAction, HeldLevels, Scene } from "./scene";
 
-/** Drawing or sheathing the sword: a committed action with the duel's
- *  action-track bar. Falling sheathes instantly and shows no bar. */
-export const DRAW_MS = 350;
-/** How close to a lip the enemy's own policy lets its feet come (cm).
- *  Tuned so a player hanging on the lip is still within strike reach. */
-export const EDGE_MARGIN = 60;
-/** The platform-surface band an unarmed body must overlap for the
- *  enemy's strike to land: standing bodies and lip-hangers are in it,
- *  a body on the floor below is not. */
-export const STRIKE_BAND = { lo: ARENA_PLATFORM.topY - 60, hi: ARENA_PLATFORM.topY + 20 };
+// The rule constants live in arenarules.ts (a leaf module - see its
+// comment); re-exported here so consumers keep one import site.
+export { DRAW_MS, EDGE_MARGIN } from "./arenarules";
+import { DRAW_MS, EDGE_MARGIN } from "./arenarules";
 
 /**
  * The player's representation. A Mover while sheathed, a Fighter while
@@ -47,9 +41,6 @@ export interface ArenaWorld {
   player: PlayerRep;
   enemy: Fighter;
   duel: Duel | null;
-  /** 1 when the sentinel struck the unarmed player down; duel deaths
-   *  live on the duel itself. */
-  deadBy: 0 | 1 | null;
   time: number;
   aiMode: AiMode;
   seed: number;
@@ -75,9 +66,9 @@ const SHEATHED_HOLD: Scene["holdKeys"] = {
 };
 const ARMED_HOLD: Scene["holdKeys"] = { a: "retreat", d: "advance", l: "guard" };
 
-/** The enemy's post when nobody is on the platform: its center. */
-const SENTINEL_POST = (ARENA_PLATFORM.left + ARENA_PLATFORM.right) / 2;
-const SENTINEL_COOLDOWN = 1400;
+/** The enemy's post: the platform's center. It waits there, and walks
+ *  back there whenever no duel holds it elsewhere. */
+export const SENTINEL_POST = (ARENA_PLATFORM.left + ARENA_PLATFORM.right) / 2;
 
 /**
  * Policy, not physics: refuse footwork whose travel would end within
@@ -100,9 +91,7 @@ export function createArenaScene(deps: ArenaSceneDeps): ArenaScene {
   let player: PlayerRep = { kind: "mover", m: createMover(level) };
   let enemy: Fighter = createFighter(SENTINEL_POST, -1, WEAPONS[deps.eWeapon]);
   let duel: Duel | null = null;
-  let deadBy: 0 | 1 | null = null;
   let ai: AiState = createAiState();
-  let sentinel = { cooldownMs: 0 };
   let bullet = createBulletTime();
   let simTime = 0;
   let pendingIntent: Intent | null = null;
@@ -122,9 +111,7 @@ export function createArenaScene(deps: ArenaSceneDeps): ArenaScene {
     player = { kind: "mover", m };
     enemy = createFighter(SENTINEL_POST, -1, WEAPONS[deps.eWeapon]);
     duel = null;
-    deadBy = null;
     ai = createAiState(activeSeed);
-    sentinel = { cooldownMs: 0 };
     bullet = createBulletTime();
     simTime = 0;
     pendingIntent = null;
@@ -153,30 +140,16 @@ export function createArenaScene(deps: ArenaSceneDeps): ArenaScene {
   const playerX = (): number =>
     player.kind === "mover" || player.kind === "drawing" ? player.m.x : player.f.x;
 
-  /** The unarmed body's box (cm), or null when the duel owns the player. */
-  const playerBox = (): { x: number; top: number; bottom: number } | null => {
-    if (player.kind === "mover" || player.kind === "drawing") {
-      const m = player.m;
-      return { x: m.x, top: m.y - heightOf(m.state), bottom: m.y };
-    }
-    return null;
-  };
-
-  const inStrikeBand = (b: { top: number; bottom: number }): boolean =>
-    b.top < STRIKE_BAND.hi && b.bottom > STRIKE_BAND.lo;
-
-  /** Pre-duel decisions only; every physical consequence goes through
-   *  the fighter machine. */
-  const sentinelDecide = (px: number, threatened: boolean): Intent | null => {
+  /**
+   * The sentinel at rest: it fights ONLY through a duel - an unarmed
+   * body is never attacked - and whenever no duel holds it elsewhere it
+   * walks back to its post and waits. Decisions only; every physical
+   * consequence goes through the fighter machine.
+   */
+  const sentinelDecide = (): Intent | null => {
     if (enemy.state.kind !== "ready" || enemy.stepRecoveryMs > 0) return null;
-    const gap = Math.abs(px - enemy.x);
-    if (threatened && gap <= enemy.weapon.reach * 0.95 && sentinel.cooldownMs <= 0) {
-      sentinel.cooldownMs = SENTINEL_COOLDOWN;
-      return "thrust";
-    }
-    const target = threatened ? px : SENTINEL_POST;
-    const d = target - enemy.x;
-    if (Math.abs(d) > enemy.weapon.reach * 0.8) {
+    const d = SENTINEL_POST - enemy.x;
+    if (Math.abs(d) > enemy.weapon.stepDistance / 2) {
       const step = enemy.facing === Math.sign(d) ? "advance" : "retreat";
       return edgeSafe(enemy, step);
     }
@@ -205,7 +178,7 @@ export function createArenaScene(deps: ArenaSceneDeps): ArenaScene {
     id: "arena",
     holdKeys: SHEATHED_HOLD,
     world(): ArenaWorld {
-      return { level, player, enemy, duel, deadBy, time: simTime, aiMode, seed: activeSeed };
+      return { level, player, enemy, duel, time: simTime, aiMode, seed: activeSeed };
     },
     reset: start,
     heldEdge(action: HeldAction, value: boolean) {
@@ -219,7 +192,7 @@ export function createArenaScene(deps: ArenaSceneDeps): ArenaScene {
     },
     press(e: KeyboardEvent): boolean {
       const k = e.key.toLowerCase();
-      if (deadBy !== null || duel?.over === true) return false;
+      if (duel?.over === true) return false;
       if (armed()) {
         switch (k) {
           case "e": pendingSheathe = true; return true;
@@ -280,9 +253,8 @@ export function createArenaScene(deps: ArenaSceneDeps): ArenaScene {
       else if (a === "dash") pendingDash = true;
     },
     tickOnce(held: HeldLevels, moveMag: number) {
-      if (deadBy !== null || duel?.over === true) return; // the banner owns the scene; R restarts
+      if (duel?.over === true) return; // the banner owns the scene; R restarts
       simTime += TICK;
-      sentinel.cooldownMs = Math.max(0, sentinel.cooldownMs - TICK);
       const enemyWasRising = inRise(enemy);
 
       if (duel !== null) {
@@ -324,29 +296,13 @@ export function createArenaScene(deps: ArenaSceneDeps): ArenaScene {
         return;
       }
 
-      // --- unengaged: the sentinel ticks standalone ----------------------
+      // --- unengaged: the sentinel walks back to its post and waits ------
       const px = playerX();
-      const box = playerBox();
-      const threatened = box !== null && inStrikeBand(box);
       if (enemy.state.kind === "ready") enemy.facing = px >= enemy.x ? 1 : -1;
-      const it = sentinelDecide(px, threatened);
+      const it = sentinelDecide();
       if (it !== null) applyIntent(enemy, it);
       const evs = tickFighter(enemy, TICK);
       frameDuelEvents.push(...standaloneFighterEvents(enemy, 1, simTime, evs, enemyWasRising));
-      if (evs.some((ev) => ev.type === "strikeEnd")) {
-        // The scene resolves a strike against an unarmed body: reach and
-        // the surface band, on the resolution tick - single-hit lethality.
-        const b = playerBox();
-        const lands = b !== null && Math.abs(enemy.x - b.x) <= enemy.weapon.reach && inStrikeBand(b);
-        if (lands) {
-          deadBy = 1;
-          frameDuelEvents.push({ time: simTime, side: 1, kind: "hit", text: "" });
-          frameDuelEvents.push({ time: simTime, side: 1, kind: "kill", text: "" });
-        } else {
-          frameDuelEvents.push({ time: simTime, side: 1, kind: "whiff", text: "" });
-        }
-      }
-      if (deadBy !== null) return;
 
       // --- the player's own representation -------------------------------
       if (player.kind === "mover") {
@@ -438,8 +394,8 @@ export function createArenaScene(deps: ArenaSceneDeps): ArenaScene {
     },
     snapshot() {
       return {
-        live: deadBy === null && duel?.over !== true,
-        decided: deadBy !== null || duel?.over === true,
+        live: duel?.over !== true,
+        decided: duel?.over === true,
         armed: armed(),
       };
     },

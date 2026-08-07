@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { ARENA_PLATFORM, TILE } from "../src/movement/level";
-import { DRAW_MS, EDGE_MARGIN, createArenaScene } from "../src/scenes/arena";
+import { DRAW_MS, EDGE_MARGIN, SENTINEL_POST, createArenaScene } from "../src/scenes/arena";
 import { TICK } from "../src/combat/fighter";
 import type { ArenaScene } from "../src/scenes/arena";
 import type { HeldLevels, Scene } from "../src/scenes/scene";
@@ -109,29 +109,33 @@ describe("the arena scene", () => {
     }
   });
 
-  test("an unarmed player in reach on the platform is struck dead", () => {
+  test("an unarmed player beside the enemy is never attacked; it holds its post", () => {
     const s = scene();
     const w = s.world();
     if (w.player.kind !== "mover") throw new Error("setup");
     w.player.m.x = w.enemy.x - 150;
     w.player.m.y = ARENA_PLATFORM.topY;
     w.player.m.state = { kind: "idle" };
-    let decided = false;
-    for (let i = 0; i < 4000 && !decided; i++) {
+    for (let i = 0; i < 4000; i++) {
       s.tickOnce(HELD0, 0);
-      decided = s.snapshot().decided;
+      expect(s.world().enemy.state.kind).not.toBe("attack");
     }
-    expect(decided).toBe(true);
-    expect(s.world().duel).toBeNull();
+    expect(s.snapshot().decided).toBe(false);
+    expect(Math.abs(s.world().enemy.x - SENTINEL_POST)).toBeLessThan(60);
   });
 
-  test("a sheathed player on the floor below is out of the strike band and safe", () => {
-    const s = scene();
+  test("after a disengage the enemy walks back to its post", () => {
+    const s = engaged();
     const w = s.world();
-    if (w.player.kind !== "mover") throw new Error("setup");
-    w.player.m.x = w.enemy.x; // directly underneath
-    tick(s, 4000);
-    expect(s.snapshot().decided).toBe(false);
+    if (w.player.kind !== "fighter") throw new Error("setup");
+    // Displace the enemy from its post, then bail off the lip and watch
+    // the walk home.
+    w.enemy.x = SENTINEL_POST - 200;
+    w.player.f.x = ARENA_PLATFORM.left - 1;
+    tick(s, 1);
+    expect(s.world().duel).toBeNull();
+    tick(s, 1200);
+    expect(Math.abs(s.world().enemy.x - SENTINEL_POST)).toBeLessThan(60);
   });
 
   test("reset rebuilds the yard: player sheathed on the floor, enemy back at its post", () => {
@@ -140,7 +144,7 @@ describe("the arena scene", () => {
     const w = s.world();
     expect(w.player.kind).toBe("mover");
     expect(w.duel).toBeNull();
-    expect(w.deadBy).toBeNull();
     expect(w.enemy.state.kind).toBe("ready");
+    expect(w.enemy.x).toBe(SENTINEL_POST);
   });
 });
