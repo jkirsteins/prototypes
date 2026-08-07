@@ -26,6 +26,7 @@ export function createMoveScene(deps: MoveSceneDeps): Scene {
   let pendingJump = false;
   let pendingDash = false;
   let frameEvents: MoveEvent[] = [];
+  const reset = (): void => { mover = createMover(level); };
 
   return {
     id: "move",
@@ -42,7 +43,7 @@ export function createMoveScene(deps: MoveSceneDeps): Scene {
     padAction(a: ActionId) {
       if (a === "jump") pendingJump = true;
       else if (a === "dash") pendingDash = true;
-      else if (a === "resetScene") mover = createMover(level);
+      else if (a === "resetScene") reset();
     },
     tickOnce(held: HeldLevels, moveMag: number) {
       const padWalks = moveMag > 0 && moveMag < RUN_MAG;
@@ -67,6 +68,6 @@ export function createMoveScene(deps: MoveSceneDeps): Scene {
       drawMoveFrame({ ctx: deps.ctx, images: deps.images, tiles: deps.tiles, labels }, mover, level, overlay, time);
     },
     snapshot() { return { live: true, decided: false }; },
-    reset() { mover = createMover(level); },
+    reset,
   };
 }

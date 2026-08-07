@@ -30,7 +30,7 @@ export function createDuelScene(deps: DuelSceneDeps): Scene & { setWeapons(p: We
   let ai = createAiState();
   let activeSeed = 0;
   let pending: Intent | null = null;
-  const bullet = createBulletTime();
+  let bullet = createBulletTime();
   let frameEvents: DuelEvent[] = [];
 
   const start = (): void => {
@@ -40,6 +40,10 @@ export function createDuelScene(deps: DuelSceneDeps): Scene & { setWeapons(p: We
     duel = createDuel(WEAPONS[pWeapon], WEAPONS[eWeapon]);
     ai = createAiState(activeSeed);
     pending = null;
+    // A fresh duel starts on a fresh clock - the abandoned fight's easing
+    // may not leak in. createBulletTime()'s level/depth/wasActive all
+    // start at their off state, so this reassignment alone sounds no cue.
+    bullet = createBulletTime();
   };
 
   return {

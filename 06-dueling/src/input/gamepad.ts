@@ -284,8 +284,9 @@ export function readPads(
     });
   }
 
-  // Held levels, hysteresis on the movement axis, stale contributing
-  // nothing. Buttons: d-pad 14/15 and the guard bumper 5.
+  // Held levels, hysteresis on the movement axis (0) and the vertical
+  // axis (1), stale contributing nothing. Buttons: d-pad 14/15 for
+  // advance/retreat, d-pad 12/13 for up/down, and the guard bumper 5.
   const live = (c: PadControl): boolean => next.stale[keyOf(c)] !== true;
   const btnHeld = (i: number): boolean => cur.buttons[i] === true && live({ kind: "button", index: i });
   for (const sign of [1, -1] as const) {
@@ -312,8 +313,10 @@ export function readPads(
   return { frame, next };
 }
 
-/** The controls whose LEVEL matters (movement and guard): the ownership
- *  gate stales exactly these when they engage under it. */
+/** The controls whose LEVEL matters (movement - both axis 0 and the
+ *  vertical axis 1, plus their d-pad equivalents 12/13/14/15 - and
+ *  guard): the ownership gate stales exactly these when they engage
+ *  under it. */
 function isHoldControl(c: PadControl): boolean {
   if (c.kind === "axis") return c.index === 0 || c.index === 1;
   return c.index === 5 || c.index === 12 || c.index === 13 || c.index === 14 || c.index === 15;

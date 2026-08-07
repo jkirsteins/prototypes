@@ -108,6 +108,29 @@ describe("crouch, slide and the tunnel", () => {
     // still under or past the tunnel, never stood into the roof
     expect(["crouchWalk", "crouchIdle", "slide", "run", "idle"]).toContain(m.state.kind);
   });
+
+  test("sliding off the tunnel roof's edge falls, then touches down on the floor below", () => {
+    const m = createMover(level);
+    m.x = 10.5 * TILE; m.y = 8 * TILE; // atop the tunnel roof (cols 10-12, row 8)
+    run(m, input({ right: true }), 3); // reach full run speed
+    run(m, input({ right: true, down: true }), 1); // down edge -> slide
+    expect(m.state.kind).toBe("slide");
+    // Keep sliding off the roof's right edge; once airborne, release the
+    // stick so the fall drops straight down clear of the row-6 platform
+    // at cols 14-15 - a beat past the tunnel's own gap - rather than
+    // drifting into its underside.
+    let sawFall = false;
+    let touchdown = false;
+    for (let i = 0; i < 200 && m.y < 10 * TILE; i++) {
+      const inp = sawFall ? input() : input({ right: true, down: true });
+      const events = tickMove(m, level, inp);
+      if (m.state.kind === "fall") sawFall = true;
+      if (events.some((e) => e.kind === "touchdown")) touchdown = true;
+    }
+    expect(sawFall).toBe(true); // ran out from under itself off the ledge
+    expect(touchdown).toBe(true); // landed, not slid silently to a stop mid-air
+    expect(m.y).toBe(10 * TILE);
+  });
 });
 
 describe("roll on hard landing", () => {

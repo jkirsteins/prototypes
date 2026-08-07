@@ -118,6 +118,10 @@ export const PAD_BINDINGS: Partial<Record<ActionId, PadControl[]>> = {
     { kind: "axis", index: 1, sign: -1 }, { kind: "axis", index: 1, sign: 1 },
   ],
   selConfirm: [{ kind: "button", index: 0 }, { kind: "button", index: 9 }],
+  // moveLeft/moveRight/crouch/grab/climbUp/climbDown/walkMod have no entry
+  // here on purpose: they ride the held-level path in src/input/gamepad.ts
+  // (the advance/retreat/up/down/guard levels and the analog moveMag), not
+  // this table's edge resolver, so they need no PadControl binding.
   jump: [{ kind: "button", index: 0 }],
   dash: [{ kind: "button", index: 2 }],
   resetScene: [{ kind: "button", index: 3 }],

@@ -107,6 +107,33 @@ describe("deadzone and hysteresis", () => {
     expect(DEADZONE).toBeLessThan(MOVE_OFF);
     expect(MOVE_OFF).toBeLessThan(MOVE_ON);
   });
+
+  test("the vertical axis has the same hysteresis as the movement axis: engages at MOVE_ON, releases below MOVE_OFF", () => {
+    const s = withActive();
+    let r = readPads(s, [pad(0, { axes: [0, 0.45, 0, 0] })], false);
+    expect(r.frame.held.down).toBe(false);
+    r = readPads(r.next, [pad(0, { axes: [0, 0.5, 0, 0] })], false);
+    expect(r.frame.held.down).toBe(true);
+    r = readPads(r.next, [pad(0, { axes: [0, 0.4, 0, 0] })], false);
+    expect(r.frame.held.down).toBe(true); // hysteresis: still on
+    r = readPads(r.next, [pad(0, { axes: [0, 0.34, 0, 0] })], false);
+    expect(r.frame.held.down).toBe(false);
+    // Negative crosses the same thresholds for up.
+    r = readPads(r.next, [pad(0, { axes: [0, -0.5, 0, 0] })], false);
+    expect(r.frame.held.up).toBe(true);
+    r = readPads(r.next, [pad(0, { axes: [0, -0.34, 0, 0] })], false);
+    expect(r.frame.held.up).toBe(false);
+  });
+
+  test("d-pad 12/13 hold up/down directly, like 14/15 hold advance/retreat", () => {
+    const s = withActive();
+    let r = readPads(s, [pad(0, { buttons: [12] })], false);
+    expect(r.frame.held.up).toBe(true);
+    expect(r.frame.held.down).toBe(false);
+    r = readPads(r.next, [pad(0, { buttons: [13] })], false);
+    expect(r.frame.held.down).toBe(true);
+    expect(r.frame.held.up).toBe(false);
+  });
 });
 
 describe("the ownership gate", () => {
@@ -122,6 +149,20 @@ describe("the ownership gate", () => {
     const r3 = readPads(r2.next, [pad(0, { axes: [0.1, 0, 0, 0] })], false);
     const r4 = readPads(r3.next, [pad(0, { axes: [0.9, 0, 0, 0] })], false);
     expect(r4.frame.held.advance).toBe(true);
+  });
+
+  test("a vertical hold engaged under the gate contributes no level until released - the edge still reports", () => {
+    const s = withActive();
+    const r = readPads(s, [pad(0, { axes: [0, 0.9, 0, 0] })], true); // gate on (select screen)
+    expect(r.frame.pressed).toContainEqual({ kind: "axis", index: 1, sign: 1 }); // navigation still works
+    expect(r.frame.held.down).toBe(false); // but no movement hold
+    // Gate lifts, stick still held: STILL stale until it comes home.
+    const r2 = readPads(r.next, [pad(0, { axes: [0, 0.9, 0, 0] })], false);
+    expect(r2.frame.held.down).toBe(false);
+    // Returns inside the deadzone, engages afresh: acts normally.
+    const r3 = readPads(r2.next, [pad(0, { axes: [0, 0.1, 0, 0] })], false);
+    const r4 = readPads(r3.next, [pad(0, { axes: [0, 0.9, 0, 0] })], false);
+    expect(r4.frame.held.down).toBe(true);
   });
 
   test("a hold from BEFORE the gate keeps its level and its release still falls through", () => {

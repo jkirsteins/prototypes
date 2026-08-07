@@ -67,11 +67,6 @@ export interface MoveInput {
   pressed: { jump: boolean; dash: boolean };
 }
 
-export const NO_INPUT: MoveInput = {
-  held: { left: false, right: false, up: false, down: false, grab: false, walk: false },
-  pressed: { jump: false, dash: false },
-};
-
 /** Physical transitions, for audio and tests. Input is never an event. */
 export interface MoveEvent {
   kind: "footfall" | "liftoff" | "touchdown" | "grab" | "shove";
@@ -572,8 +567,11 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       }
     }
   }
-  // Walked off an edge: grounded states become a fall.
-  const groundedKind = ["idle", "walk", "run", "crouchIdle", "crouchWalk", "dash", "push", "pull", "pushIdle"].includes(m.state.kind);
+  // Walked off an edge: grounded states become a fall - including a slide
+  // or roll that runs out from under itself, so the drop gets its own
+  // posture and touchdown instead of sliding on in mid-air and landing
+  // silently.
+  const groundedKind = ["idle", "walk", "run", "crouchIdle", "crouchWalk", "dash", "slide", "roll", "push", "pull", "pushIdle"].includes(m.state.kind);
   if (groundedKind && !onGround(m, level, h)) m.state = { kind: "fall" };
 
   // Footfalls: strides while actually moving on the ground.

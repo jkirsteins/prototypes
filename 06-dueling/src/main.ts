@@ -315,7 +315,9 @@ Promise.all([loadImages(), loadTileAtlas()]).then(([images, tiles]) => {
     const wallDt = Math.min(now - last, 250);
     // The pad poll, before the accumulator drains, so pad intents enter
     // ticks with the same latency as key events (gamepad-support §7.2).
-    const gate = state.helpOpen || isSelectOpen();
+    // A stick used to navigate an overlay must not become a live movement
+    // hold the instant the overlay closes onto a scene.
+    const gate = state.helpOpen || isSelectOpen() || isScenesOpen();
     const pads = typeof navigator !== "undefined" && navigator.getGamepads ? navigator.getGamepads() : [];
     const pf = readPads(padSnap, pads, gate);
     padSnap = pf.next;
