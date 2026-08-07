@@ -38,13 +38,14 @@ describe("dash", () => {
     runJump.x = 6.5 * TILE; runJump.y = 6 * TILE;
     run(runJump, input({ right: true }), 12); // run up to the edge
     run(runJump, input({ right: true }, { jump: true }), 1);
-    let grabbedLedge = false;
-    for (let i = 0; i < 300 && runJump.state.kind !== "idle"; i++) {
+    for (let i = 0; i < 300 && runJump.state.kind !== "ledgeHang"; i++) {
       run(runJump, input({ right: true }), 1);
-      if (runJump.state.kind === "ledgeGrab") grabbedLedge = true;
     }
-    expect(grabbedLedge).toBe(true); // saved by the ledge, not a clean jump
-    expect(runJump.y).toBe(6 * TILE); // pulled up onto C's lip
+    expect(runJump.state.kind).toBe("ledgeHang"); // saved by the hands, not a clean jump
+    for (let i = 0; i < 120 && runJump.state.kind !== "idle"; i++) {
+      run(runJump, input({ up: true }), 1);
+    }
+    expect(runJump.y).toBe(6 * TILE); // climbed on from the hang
 
     const dashJump = createMover(level);
     dashJump.x = 6.5 * TILE; dashJump.y = 6 * TILE;

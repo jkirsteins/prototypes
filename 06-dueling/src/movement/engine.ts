@@ -57,6 +57,7 @@ export type MoveState =
   | { kind: "wallLand"; t: number; wall: -1 | 1 }
   | { kind: "wallSlide"; wall: -1 | 1 }
   | { kind: "ladderClimb" }
+  | { kind: "ledgeHang"; wall: -1 | 1; standX: number; lipY: number }
   | { kind: "ledgeGrab"; t: number; startX: number; startY: number; targetX: number; targetY: number }
   | { kind: "push"; dir: -1 | 1 }
   | { kind: "pull"; dir: -1 | 1 }
@@ -79,6 +80,13 @@ export interface Mover {
   state: MoveState;
   /** Double jump spent since the last ground/wall/ladder contact. */
   spun: boolean;
+  /** Cooldown after letting go of a ledge, so the release does not
+   *  re-catch the same lip on the very next tick. */
+  regrabMs: number;
+  /** The current airtime began with a leap (any liftoff), not a walk-off.
+   *  Only leaping hands reach for a lip unprompted - running or sliding
+   *  off an edge must not auto-catch its own lip on the way down. */
+  airFromJump: boolean;
   strideMs: number;
   prevDown: boolean;
   blockMoving: boolean;
@@ -93,7 +101,7 @@ export function createMover(level: Level): Mover {
     // and the left step - a standing body is taller than one tile, so a
     // spawn under any row-8 tile would start wedged.
     x: 8.5 * TILE, y: 10 * TILE, vx: 0, vy: 0, facing: 1,
-    state: { kind: "idle" }, spun: false, strideMs: 0, prevDown: false,
+    state: { kind: "idle" }, spun: false, regrabMs: 0, airFromJump: false, strideMs: 0, prevDown: false,
     blockMoving: false, time: 0, block: { x: level.blockStartX },
   };
 }
@@ -181,7 +189,13 @@ function touchingWall(m: Mover, level: Level, dir: -1 | 1, h: number): boolean {
 /** A grabbable lip: a solid tile beside the head with empty above it,
  *  its top edge within the grab window around head height. Returns the
  *  stand-on-top target, or null. */
-function ledgeProbe(m: Mover, level: Level, dir: -1 | 1, h: number): { x: number; y: number } | null {
+/** Hands-at-the-lip hang: the head sits just under the lip so the raised
+ *  hand of the hang pose overlaps it. */
+export const HANG_HEAD_BELOW_LIP = 6;
+
+function ledgeProbe(
+  m: Mover, level: Level, dir: -1 | 1, h: number,
+): { standX: number; lipY: number; hangX: number } | null {
   const col = Math.floor((m.x + dir * (BODY_W / 2 + 6)) / TILE);
   const headY = m.y - h;
   const row = Math.floor((headY + 30) / TILE);
@@ -190,9 +204,11 @@ function ledgeProbe(m: Mover, level: Level, dir: -1 | 1, h: number): { x: number
   const lipY = row * TILE;
   if (Math.abs(lipY - headY) > 60) return null;
   // Stand target must have headroom for a standing body.
-  const tx = col * TILE + TILE / 2;
-  if (boxHits(m, level, tx, lipY, BODY_W, BODY_H, true)) return null;
-  return { x: tx, y: lipY };
+  const standX = col * TILE + TILE / 2;
+  if (boxHits(m, level, standX, lipY, BODY_W, BODY_H, true)) return null;
+  // The hang point: body flush against the lip's face.
+  const faceX = dir === 1 ? col * TILE : (col + 1) * TILE;
+  return { standX, lipY, hangX: faceX - dir * (BODY_W / 2 + 4) };
 }
 
 /** The body center overlaps a ladder tile. */
@@ -241,6 +257,7 @@ function blockBeside(m: Mover): -1 | 0 | 1 {
 export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] {
   const ev: MoveEvent[] = [];
   m.time += MOVE_TICK;
+  m.regrabMs = Math.max(0, m.regrabMs - MOVE_TICK);
   const dt = MOVE_TICK / 1000;
   const held = input.held;
   const wish = ((held.right ? 1 : 0) - (held.left ? 1 : 0)) as -1 | 0 | 1;
@@ -256,17 +273,29 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     }
   };
   const airChecks = (): void => {
-    // Order: grab beats slide beats plain fall.
+    // Order: the ledge catch beats the wall slide beats plain fall.
+    // Catching happens only on the way DOWN: a jump that clears the lip
+    // is a jump, not a grab. With no direction held the hands still
+    // reach - facing first, then the blind side - so a plain jump beside
+    // an edge ends hanging from it.
+    if (m.vy >= 0 && m.regrabMs <= 0) {
+      const tries: Array<-1 | 1> =
+        wish !== 0 ? [wish] : m.airFromJump ? [m.facing, -m.facing as -1 | 1] : [];
+      for (const side of tries) {
+        const lip = ledgeProbe(m, level, side, BODY_H);
+        if (lip !== null) {
+          m.vx = 0; m.vy = 0; m.spun = false;
+          m.facing = side;
+          m.x = lip.hangX;
+          m.y = lip.lipY + BODY_H + HANG_HEAD_BELOW_LIP;
+          m.state = { kind: "ledgeHang", wall: side, standX: lip.standX, lipY: lip.lipY };
+          ev.push({ kind: "grab" });
+          return;
+        }
+      }
+    }
     const dir = wish as -1 | 0 | 1;
     if (dir !== 0 && touchingWall(m, level, dir, BODY_H)) {
-      const lip = ledgeProbe(m, level, dir, BODY_H);
-      if (lip !== null) {
-        m.vx = 0; m.vy = 0; m.spun = false;
-        m.facing = dir;
-        m.state = { kind: "ledgeGrab", t: 0, startX: m.x, startY: m.y, targetX: lip.x, targetY: lip.y };
-        ev.push({ kind: "grab" });
-        return;
-      }
       if (m.vy > 0) {
         const hardCatch = m.vy >= WALLLAND_VY;
         m.vx = 0;
@@ -293,6 +322,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.state = { kind: "jump" };
         m.spun = false;
         ev.push({ kind: "liftoff" });
+        m.airFromJump = true;
         break;
       }
       if (input.pressed.dash) {
@@ -339,6 +369,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.spun = true;
         m.state = { kind: "airSpin", t: 0 };
         ev.push({ kind: "liftoff" });
+        m.airFromJump = true;
         break;
       }
       airChecks();
@@ -359,6 +390,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.spun = true;
         m.state = { kind: "airSpin", t: 0 };
         ev.push({ kind: "liftoff" });
+        m.airFromJump = true;
         break;
       }
       airChecks();
@@ -380,6 +412,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.state = { kind: "jump" };
         m.spun = false;
         ev.push({ kind: "liftoff" });
+        m.airFromJump = true;
       } else if (s.t >= DASH_MS) {
         m.state = wish === 0 ? { kind: "idle" } : { kind: "run" };
       }
@@ -440,10 +473,44 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.facing = -s.wall as -1 | 1;
         m.state = { kind: "jump" };
         ev.push({ kind: "liftoff" });
+        m.airFromJump = true;
         break;
       }
-      // Steering away, or the wall ran out: back to a fall.
-      if (wish !== s.wall || !touchingWall(m, level, s.wall, BODY_H)) m.state = { kind: "fall" };
+      // Steering away, or the wall ran out: back to a fall - a release,
+      // not a leap, so empty hands do not reach for lips on the way down.
+      if (wish !== s.wall || !touchingWall(m, level, s.wall, BODY_H)) {
+        m.state = { kind: "fall" };
+        m.airFromJump = false;
+      }
+      break;
+    }
+    case "ledgeHang": {
+      // Hanging by the hands, holding station until told otherwise:
+      // up climbs on, down or steering away lets go, jump leaps away.
+      m.vx = 0;
+      m.vy = 0;
+      if (input.pressed.jump) {
+        m.vx = -s.wall * WALLJUMP_VX;
+        m.vy = -JUMP_V * 0.9;
+        m.facing = -s.wall as -1 | 1;
+        m.state = { kind: "jump" };
+        ev.push({ kind: "liftoff" });
+        m.airFromJump = true;
+        break;
+      }
+      if (held.up) {
+        m.state = {
+          kind: "ledgeGrab", t: 0,
+          startX: m.x, startY: m.y,
+          targetX: s.standX, targetY: s.lipY,
+        };
+        break;
+      }
+      if (held.down || wish === -s.wall) {
+        m.state = { kind: "fall" };
+        m.regrabMs = 250; // letting go must not re-catch the same lip
+        m.airFromJump = false;
+      }
       break;
     }
     case "ledgeGrab": {
@@ -476,8 +543,10 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
           m.vy = -JUMP_V * 0.8;
           m.state = { kind: "jump" };
           ev.push({ kind: "liftoff" });
+          m.airFromJump = true;
         } else {
           m.state = { kind: "fall" };
+          m.airFromJump = false;
         }
         break;
       }
@@ -495,6 +564,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         // gravity would otherwise add before the feet cross onto it.
         m.facing = wish;
         m.state = { kind: "fall" };
+        m.airFromJump = false;
         m.vx = wish * WALK_SPEED;
         m.vy = -300;
         break;
@@ -540,7 +610,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   // Integrate. Gravity applies in every non-climbing state; ladderClimb and
   // ledgeGrab hold position entirely and skip it, and a wall contact caps
   // fall speed far below free fall.
-  const clinging = m.state.kind === "ladderClimb" || m.state.kind === "ledgeGrab";
+  const clinging = m.state.kind === "ladderClimb" || m.state.kind === "ledgeGrab" || m.state.kind === "ledgeHang";
   const onWallNow = m.state.kind === "wallSlide" || m.state.kind === "wallLand";
   const airborne = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin" || onWallNow;
   const h = heightOf(m.state);
@@ -582,7 +652,10 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   // posture and touchdown instead of sliding on in mid-air and landing
   // silently.
   const groundedKind = ["idle", "walk", "run", "crouchIdle", "crouchWalk", "dash", "slide", "roll", "push", "pull", "pushIdle"].includes(m.state.kind);
-  if (groundedKind && !onGround(m, level, h)) m.state = { kind: "fall" };
+  if (groundedKind && !onGround(m, level, h)) {
+    m.state = { kind: "fall" };
+    m.airFromJump = false;
+  }
 
   // Footfalls: strides while actually moving on the ground.
   const striding = ["walk", "run", "crouchWalk", "push", "pull"].includes(m.state.kind);

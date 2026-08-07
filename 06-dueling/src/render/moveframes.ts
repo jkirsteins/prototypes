@@ -55,6 +55,9 @@ export function pickMoveFrame(m: Mover): FramePick {
     case "wallLand": return { sheet: "wallLand", frame: span("wallLand", s.t, WALLLAND_MS, 0, 5), flip: s.wall === -1 };
     case "wallSlide": return { sheet: "wallSlide", frame: 1 + (Math.floor(m.time / 150) % 2), flip: s.wall === -1 };
     case "ladderClimb": return { sheet: "climbBack", frame: climbFrame("climbBack", m.y), flip: false };
-    case "ledgeGrab": return { sheet: "ledgeClimb", frame: span("ledgeClimb", s.t, LEDGE_MS, 0, 4), flip };
+    // The hang sways between the sheet's two hanging poses; the pull-up
+    // starts from the second so the loop hands off without a repeat.
+    case "ledgeHang": return { sheet: "ledgeClimb", frame: Math.floor(m.time / 320) % 2, flip };
+    case "ledgeGrab": return { sheet: "ledgeClimb", frame: span("ledgeClimb", s.t, LEDGE_MS, 1, 4), flip };
   }
 }

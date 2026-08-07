@@ -79,6 +79,57 @@ describe("wall slide and wall jump", () => {
     expect(["fall", "jump"]).toContain(m.state.kind);
   });
 
+  /** A plain jump beside the step's right face, nothing else held. */
+  function hangAtStep(): ReturnType<typeof createMover> {
+    const m = createMover(level);
+    m.x = 5 * TILE + 34; // beside the step's right face (cols 3-4, top row 8)
+    m.facing = -1;
+    run(m, input({}, { jump: true }), 1);
+    for (let i = 0; i < 200 && m.state.kind !== "ledgeHang"; i++) run(m, input(), 1);
+    return m;
+  }
+
+  test("a plain jump beside an edge catches the lip on the way down and stays hanging", () => {
+    const m = hangAtStep();
+    expect(m.state.kind).toBe("ledgeHang");
+    const y0 = m.y;
+    run(m, input(), 180); // nothing pressed: the hang holds station
+    expect(m.state.kind).toBe("ledgeHang");
+    expect(m.y).toBe(y0);
+  });
+
+  test("up climbs on from the hang", () => {
+    const m = hangAtStep();
+    run(m, input({ up: true }), 1);
+    expect(m.state.kind).toBe("ledgeGrab");
+    for (let i = 0; i < 60 && m.state.kind !== "idle"; i++) run(m, input({ up: true }), 1);
+    expect(m.state.kind).toBe("idle");
+    expect(m.x).toBe(4 * TILE + TILE / 2);
+    expect(m.y).toBe(8 * TILE);
+  });
+
+  test("down lets go without re-catching; the drop ends on the floor", () => {
+    const m = hangAtStep();
+    run(m, input({ down: true }), 1);
+    expect(m.state.kind).toBe("fall");
+    for (let i = 0; i < 120 && !["idle", "land", "run"].includes(m.state.kind); i++) run(m, input(), 1);
+    expect(m.y).toBe(10 * TILE);
+  });
+
+  test("steering away from the wall lets go of the hang", () => {
+    const m = hangAtStep();
+    run(m, input({ right: true }), 1); // the lip is on the left
+    expect(m.state.kind).toBe("fall");
+  });
+
+  test("jump leaps away from the hang, facing flipped", () => {
+    const m = hangAtStep();
+    run(m, input({}, { jump: true }), 1);
+    expect(m.state.kind).toBe("jump");
+    expect(m.vx).toBeGreaterThan(0); // away from the left-side lip
+    expect(m.facing).toBe(1);
+  });
+
   test("the ledge pull-up travels - no frozen hang, no snap to the top", () => {
     const m = createMover(level);
     // Hanging at platform A's right lip (col 4, top y = 8 * TILE).
@@ -142,17 +193,20 @@ describe("the ledge", () => {
     // with 7.5.
     m.x = 7.5 * TILE; // right of A, jump left onto its lip
     run(m, input({ left: true }, { jump: true }), 1);
-    let grabbed = false;
+    let hung = false;
     for (let i = 0; i < 300; i++) {
       run(m, input({ left: true }), 1);
-      if (m.state.kind === "ledgeGrab") { grabbed = true; break; }
+      if (m.state.kind === "ledgeHang") { hung = true; break; }
       if (m.state.kind === "land" || m.state.kind === "idle") break;
     }
-    // Either it grabbed the lip, or it cleared 2 tiles and simply landed
-    // on top - both put the player on the platform; grabbing is only for
-    // the case where the apex fell short.
-    void grabbed;
-    for (let i = 0; i < 300 && m.state.kind !== "idle"; i++) run(m, input(), 1);
+    // Either the hands caught the lip (climb on from the hang), or the
+    // jump cleared 2 tiles and simply landed on top - both end on the
+    // platform; the hang is for the case where the apex fell short.
+    if (hung) {
+      for (let i = 0; i < 120 && m.state.kind !== "idle"; i++) run(m, input({ up: true }), 1);
+    } else {
+      for (let i = 0; i < 300 && m.state.kind !== "idle"; i++) run(m, input(), 1);
+    }
     expect(m.y).toBeLessThanOrEqual(8 * TILE);
   });
 });
