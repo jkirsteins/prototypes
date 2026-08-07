@@ -1,7 +1,5 @@
-import { TILE, isSolid, tileAt } from "./level";
+import { TILE, isSolid, ladderTopRow, tileAt } from "./level";
 import type { Level } from "./level";
-// (ladderTopRow joins this import with the ladder task - importing it
-// before its first use trips the lint gate.)
 
 export const MOVE_TICK = 1000 / 60;
 
@@ -210,6 +208,36 @@ function ledgeProbe(m: Mover, level: Level, dir: -1 | 1, h: number): { x: number
   return { x: tx, y: lipY };
 }
 
+/** The body center overlaps a ladder tile. */
+function overLadder(m: Mover, level: Level, h: number): number | null {
+  const col = Math.floor(m.x / TILE);
+  const midRow = Math.floor((m.y - h / 2) / TILE);
+  const feetRow = Math.floor((m.y - EPS) / TILE);
+  if (tileAt(level, col, midRow) === "ladder" || tileAt(level, col, feetRow) === "ladder") return col;
+  return null;
+}
+
+/** Where the block can rest: on the floor, not inside solid tiles. */
+function blockFits(level: Level, x: number): boolean {
+  const floorTop = 10 * TILE;
+  for (const px of [x - BLOCK_W / 2 + EPS, x, x + BLOCK_W / 2 - EPS]) {
+    for (const py of [floorTop - BLOCK_H + EPS, floorTop - EPS]) {
+      if (solidCellAt(level, px, py)) return false;
+    }
+  }
+  return true;
+}
+
+/** Which side of the player the block is beside (touching range), 0 none. */
+function blockBeside(m: Mover): -1 | 0 | 1 {
+  const gap = m.block.x - m.x;
+  const touch = BLOCK_W / 2 + BODY_W / 2 + 8;
+  if (m.y !== 10 * TILE) return 0; // both on the floor only
+  if (gap > 0 && gap <= touch) return 1;
+  if (gap < 0 && -gap <= touch) return -1;
+  return 0;
+}
+
 // --- tick ------------------------------------------------------------------
 
 export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] {
@@ -298,6 +326,21 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.state = { kind: "sideClimb", wall: wish };
         ev.push({ kind: "grab" });
         break;
+      }
+      const ladderCol = overLadder(m, level, BODY_H);
+      if (ladderCol !== null && (held.up || (held.down && !onGround(m, level, BODY_H)))) {
+        m.x = ladderCol * TILE + TILE / 2;
+        m.vx = 0; m.vy = 0;
+        m.state = { kind: "ladderClimb" };
+        m.spun = false;
+        ev.push({ kind: "grab" });
+        break;
+      }
+      const beside = blockBeside(m);
+      if (beside !== 0) {
+        if (held.grab && wish === -beside) { m.state = { kind: "pull", dir: wish as -1 | 1 }; break; }
+        if (held.grab && wish === 0) { m.state = { kind: "pushIdle" }; m.vx = 0; break; }
+        if (!held.grab && wish === beside) { m.state = { kind: "push", dir: wish as -1 | 1 }; break; }
       }
       if (wish !== 0) m.facing = wish;
       m.vx = wish * (held.walk ? WALK_SPEED : RUN_SPEED);
@@ -469,17 +512,80 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       }
       break;
     }
-    // Arms below are filled by later tasks; the states are unreachable
-    // until their triggers exist.
-    case "ladderClimb": case "push": case "pull": case "pushIdle":
-      m.state = { kind: "idle" };
+    case "ladderClimb": {
+      m.vx = 0;
+      const col = Math.floor(m.x / TILE);
+      const top = ladderTopRow(level, col);
+      if (top === null || input.pressed.jump) {
+        if (input.pressed.jump) {
+          m.vy = -JUMP_V * 0.8;
+          m.state = { kind: "jump" };
+          ev.push({ kind: "liftoff" });
+        } else {
+          m.state = { kind: "fall" };
+        }
+        break;
+      }
+      const climb = (held.up ? -1 : 0) + (held.down ? 1 : 0);
+      m.vy = climb * CLIMB_SPEED;
+      // Top clamp: feet never rise above the top rung's top edge.
+      const topY = top * TILE;
+      if (m.y + m.vy * dt < topY) {
+        m.y = topY;
+        m.vy = 0;
+      }
+      if (wish !== 0) {
+        // Stepping off sideways: a small assisted hop so a platform whose
+        // top matches the clamp height is reachable despite the drift
+        // gravity would otherwise add before the feet cross onto it.
+        m.facing = wish;
+        m.state = { kind: "fall" };
+        m.vx = wish * WALK_SPEED;
+        m.vy = -300;
+        break;
+      }
+      if (climb === 1 && onGround(m, level, BODY_H)) {
+        m.state = { kind: "idle" };
+        m.vy = 0;
+        ev.push({ kind: "touchdown" }); // climbed down to the floor: the feet plant
+      }
       break;
+    }
+    case "push": case "pull": {
+      const beside = blockBeside(m);
+      const wantDir = s.kind === "push" ? beside : -beside;
+      if (beside === 0 || wish !== wantDir || (s.kind === "pull" && !held.grab)) {
+        m.state = { kind: "idle" };
+        m.vx = 0;
+        m.blockMoving = false;
+        break;
+      }
+      m.facing = s.kind === "push" ? beside : (beside === 1 ? -1 : 1) as -1 | 1;
+      const step = wish * WALK_SPEED * dt;
+      if (blockFits(level, m.block.x + step)) {
+        if (!m.blockMoving) ev.push({ kind: "shove" });
+        m.blockMoving = true;
+        m.block.x += step;
+        m.vx = wish * WALK_SPEED;
+      } else {
+        m.blockMoving = false;
+        m.vx = 0;
+      }
+      break;
+    }
+    case "pushIdle": {
+      m.vx = 0;
+      m.blockMoving = false;
+      if (!held.grab || blockBeside(m) === 0) { m.state = { kind: "idle" }; break; }
+      if (wish !== 0) { m.state = { kind: "idle" }; break; }
+      break;
+    }
   }
 
   // Integrate. Gravity applies in every non-climbing state; sideClimb and
   // ledgeGrab hold position entirely and skip it, and a wall contact caps
   // fall speed far below free fall.
-  const clinging = m.state.kind === "sideClimb" || m.state.kind === "ledgeGrab";
+  const clinging = m.state.kind === "sideClimb" || m.state.kind === "ledgeGrab" || m.state.kind === "ladderClimb";
   const onWallNow = m.state.kind === "wallSlide" || m.state.kind === "wallLand";
   const airborne = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin" || onWallNow;
   const h = heightOf(m.state);
@@ -517,11 +623,11 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     }
   }
   // Walked off an edge: grounded states become a fall.
-  const groundedKind = ["idle", "walk", "run", "crouchIdle", "crouchWalk", "dash"].includes(m.state.kind);
+  const groundedKind = ["idle", "walk", "run", "crouchIdle", "crouchWalk", "dash", "push", "pull", "pushIdle"].includes(m.state.kind);
   if (groundedKind && !onGround(m, level, h)) m.state = { kind: "fall" };
 
   // Footfalls: strides while actually moving on the ground.
-  const striding = m.state.kind === "walk" || m.state.kind === "run" || m.state.kind === "crouchWalk";
+  const striding = ["walk", "run", "crouchWalk", "push", "pull"].includes(m.state.kind);
   if (striding && m.vx !== 0) {
     m.strideMs += MOVE_TICK;
     const stride = m.state.kind === "run" ? STRIDE_RUN_MS : STRIDE_WALK_MS;
