@@ -321,7 +321,7 @@ import type { MoveEvent, MoveInput } from "../src/movement/engine";
 
 const level = createLevel();
 
-export function input(over: Partial<MoveInput["held"]> = {}, pressed: Partial<MoveInput["pressed"]> = {}): MoveInput {
+function input(over: Partial<MoveInput["held"]> = {}, pressed: Partial<MoveInput["pressed"]> = {}): MoveInput {
   return {
     held: { left: false, right: false, up: false, down: false, grab: false, walk: false, ...over },
     pressed: { jump: false, dash: false, ...pressed },
@@ -469,8 +469,10 @@ Expected: FAIL (module not found).
 The FULL state union and Mover shape are written now; the switch arms for dash/slide/crouch/roll (Task 4), wall verbs (Task 5) and ladder/block (Task 6) are added later - those states are simply never entered until their triggers exist.
 
 ```ts
-import { TILE, isSolid, ladderTopRow, tileAt } from "./level";
+import { TILE, isSolid, tileAt } from "./level";
 import type { Level } from "./level";
+// (ladderTopRow joins this import with the ladder task - importing it
+// before its first use trips the lint gate.)
 
 export const MOVE_TICK = 1000 / 60;
 
@@ -646,9 +648,8 @@ function onGround(m: Mover, level: Level, h: number): boolean {
   return boxHits(m, level, m.x, m.y + 2, BODY_W, h);
 }
 
-function headroom(m: Mover, level: Level): boolean {
-  return !boxHits(m, level, m.x, m.y, BODY_W, BODY_H);
-}
+// (headroom() arrives with the crouch task, its first caller - defining
+// it early trips the lint gate's unused-symbol rule.)
 
 // --- tick ------------------------------------------------------------------
 
@@ -907,6 +908,14 @@ Run: `npm test -- move-crouch`
 Expected: FAIL (dash arm resets to idle, crouch states never entered).
 
 - [ ] **Step 3: Implement in `src/movement/engine.ts`**
+
+First add the helper this task's arms need, below `onGround` (replacing the placeholder comment there):
+
+```ts
+function headroom(m: Mover, level: Level): boolean {
+  return !boxHits(m, level, m.x, m.y, BODY_W, BODY_H);
+}
+```
 
 In the `idle/walk/run` arm, after the jump trigger and before the locomotion lines, add the dash, slide and crouch triggers:
 
@@ -1540,7 +1549,13 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement in `src/movement/engine.ts`**
 
-Helpers:
+Extend the level import with this task's first user of `ladderTopRow`:
+
+```ts
+import { TILE, isSolid, ladderTopRow, tileAt } from "./level";
+```
+
+(and drop the placeholder comment beneath it). Helpers:
 
 ```ts
 /** The body center overlaps a ladder tile. */
