@@ -37,6 +37,11 @@ describe("the movement level", () => {
     for (const [c, r] of [[3, 8], [4, 8], [5, 6], [6, 6], [7, 6], [14, 6], [15, 6], [18, 3], [19, 3]]) {
       expect(isSolid(tileAt(level, c, r))).toBe(true);
     }
+    // the left step is solid down to the floor; a floating platform there
+    // would leave a second accidental crawl-gap under it.
+    for (const [c, r] of [[3, 9], [4, 9]]) {
+      expect(isSolid(tileAt(level, c, r))).toBe(true);
+    }
     // the dash gap: cols 8-13 at row 6 are open
     for (let c = 8; c <= 13; c++) expect(isSolid(tileAt(level, c, 6))).toBe(false);
   });
