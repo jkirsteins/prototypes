@@ -12,12 +12,7 @@ piste. The renderer converts at 0.5 canvas px per cm; durations stay in ms.
 
 From the repo root: `npm run dev`, then open `http://127.0.0.1:4173/prototypes/06/`. Running this prototype's own `npm run dev` from this directory is fine for a quick look (`http://127.0.0.1:5173/prototypes/06/`), but verify through the root server before calling work done.
 
-Boot straight into a matchup with URL params: `/prototypes/06/?p=rapier&e=longsword&mode=1`. Params: `p` and `e` (longsword | rapier), `mode` (0 passive, 1 parry-only,
-2 attack-in-place, 3 duelist), `overlay=0` to start with the debug overlay
-off, `seed=<n>` to pin the duelist's jitter, `paused=1` to boot frozen at
-tick 0, `speed=0.25|0.5|1|2|4` to set the timescale. Each duel otherwise
-draws a fresh seed, shown bottom-left with the overlay on, so a fight worth
-repeating can be replayed exactly with `?seed=`.
+The boot screen is a scene selector: "Dueling test" leads to sword select then duel; "Movement test" leads to the parkour yard. Open with `?scene=move` for movement, `?scene=duel` to show the sword selector first. URL params `?p=` and `?e=` skip the selector and boot straight into a duel (backwards-compat): `/prototypes/06/?p=rapier&e=longsword&mode=1`. Duel params: `p` and `e` (longsword | rapier), `mode` (0 passive, 1 parry-only, 2 attack-in-place, 3 duelist), `overlay=0` to start with the debug overlay off, `seed=<n>` to pin the duelist's jitter, `paused=1` to boot frozen at tick 0, `speed=0.25|0.5|1|2|4` to set the timescale. Each duel otherwise draws a fresh seed, shown bottom-left with the overlay on, so a fight worth repeating can be replayed exactly with `?seed=`.
 
 ## Controls
 
@@ -32,6 +27,28 @@ repeating can be replayed exactly with `?seed=`.
   (0.25x to 4x). Actions pressed while paused queue and fire on the next
   stepped tick.
 - M: mute audio. Sound starts on the first keypress (browser gesture rule).
+
+## Movement test scene
+
+A single-screen parkour yard for the pack's non-combat animations. Pick
+"Movement test" at the boot screen or open `?scene=move`.
+
+- A / D: run (hold Shift to walk; a soft pad stick walks)
+- K: jump; K again mid-air: air-spin double jump
+- J: dash (dash-jump carries the momentum - the wide gap needs it)
+- S: crouch (hold); pressed at full run: slide - the tunnel needs one or the other
+- L (hold): grab - climb the marked wall (W/S), grip the block to pull it
+- W / S: climb a ladder or the wall face
+- R: reset, Esc: back to the scene selector, backtick: collision overlay
+- Space, `.`, `[`/`]`, M: pause, step, speed, mute - as in the duel
+
+The yard: a climbable wall (wall-slide, wall-jump, side-climb, ledge) on
+the left, stepped platforms with a dash-only gap, a crouch tunnel, a
+ladder to a high perch (drop off it to see the hard-landing roll), and a
+pushable block parked in a pocket it can only be PULLED out of.
+
+Audio: footsteps on footfalls and a landing thud on touchdowns - simulation
+events only, nothing else.
 
 ## HEMA feature matrix
 
@@ -63,6 +80,7 @@ What the source design doc covers vs what this prototype implements.
 | Audio tempo cues | implemented (windup rise cut off by the beat-stillness, footfalls, one outcome sound per attack: whiff whoosh, clash at blade arrival, or hit - all tied to simulation instants, never keypresses. CC0 assets, see public/audio/manifest.md. M mutes; Safari plays silent) |
 | Wall behavior | implemented (fighters cannot overlap or be pushed past arena bounds) |
 | Nachreisen vs a parry-ready attacker | partial (the counter beats whiff recovery only when no approach step is needed; step-inclusive tuning is a follow-up) |
+| Duel scene | lives behind "Dueling test" on the boot screen, unchanged from prior revisions |
 
 ## Verifying HEMA behavior solo
 
