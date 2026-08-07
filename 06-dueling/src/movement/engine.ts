@@ -177,8 +177,9 @@ function onGround(m: Mover, level: Level, h: number): boolean {
   return boxHits(m, level, m.x, m.y + 2, BODY_W, h);
 }
 
-// (headroom() arrives with the crouch task, its first caller - defining
-// it early trips the lint gate's unused-symbol rule.)
+function headroom(m: Mover, level: Level): boolean {
+  return !boxHits(m, level, m.x, m.y, BODY_W, BODY_H);
+}
 
 // --- tick ------------------------------------------------------------------
 
@@ -190,7 +191,6 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   const wish = ((held.right ? 1 : 0) - (held.left ? 1 : 0)) as -1 | 0 | 1;
   const downEdge = held.down && !m.prevDown;
   m.prevDown = held.down;
-  void downEdge; // consumed by the slide trigger (crouch task)
 
   const s = m.state;
   switch (s.kind) {
@@ -202,6 +202,21 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         ev.push({ kind: "liftoff" });
         break;
       }
+      if (input.pressed.dash) {
+        if (wish !== 0) m.facing = wish;
+        m.vx = DASH_SPEED * m.facing;
+        m.state = { kind: "dash", t: 0 };
+        break;
+      }
+      if (downEdge && m.state.kind === "run" && Math.abs(m.vx) >= RUN_SPEED) {
+        m.vx = SLIDE_V0 * m.facing;
+        m.state = { kind: "slide", t: 0 };
+        break;
+      }
+      if (held.down) {
+        m.state = { kind: "crouchIdle" };
+        break;
+      }
       if (wish !== 0) m.facing = wish;
       m.vx = wish * (held.walk ? WALK_SPEED : RUN_SPEED);
       m.state =
@@ -210,14 +225,23 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       break;
     }
     case "jump": {
-      m.vx = wish * RUN_SPEED;
-      if (wish !== 0) m.facing = wish;
+      if (wish !== 0) {
+        m.facing = wish;
+        // Steering never brakes carried momentum in the same direction.
+        if (Math.sign(m.vx) !== wish || Math.abs(m.vx) < RUN_SPEED) m.vx = wish * RUN_SPEED;
+      } else {
+        m.vx = Math.abs(m.vx) > RUN_SPEED ? m.vx : 0;
+      }
       if (m.vy >= 0) m.state = { kind: "fall" };
       break;
     }
     case "fall": {
-      m.vx = wish * RUN_SPEED;
-      if (wish !== 0) m.facing = wish;
+      if (wish !== 0) {
+        m.facing = wish;
+        if (Math.sign(m.vx) !== wish || Math.abs(m.vx) < RUN_SPEED) m.vx = wish * RUN_SPEED;
+      } else {
+        m.vx = Math.abs(m.vx) > RUN_SPEED ? m.vx : 0;
+      }
       break;
     }
     case "land": {
@@ -227,9 +251,49 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       if (s.t >= LAND_MS) m.state = { kind: "idle" };
       break;
     }
+    case "dash": {
+      s.t += MOVE_TICK;
+      m.vx = DASH_SPEED * m.facing;
+      if (input.pressed.jump) {
+        // Dash momentum carries into the air: the dash-jump.
+        m.vy = -JUMP_V;
+        m.state = { kind: "jump" };
+        m.spun = false;
+        ev.push({ kind: "liftoff" });
+      } else if (s.t >= DASH_MS) {
+        m.state = wish === 0 ? { kind: "idle" } : { kind: "run" };
+      }
+      break;
+    }
+    case "slide": {
+      s.t += MOVE_TICK;
+      m.vx = SLIDE_V0 * m.facing * Math.max(0, 1 - s.t / SLIDE_MS);
+      if (s.t >= SLIDE_MS) {
+        m.state = headroom(m, level)
+          ? (held.down ? { kind: "crouchIdle" } : { kind: "idle" })
+          : { kind: "crouchIdle" };
+      }
+      break;
+    }
+    case "roll": {
+      s.t += MOVE_TICK;
+      m.vx = ROLL_SPEED * m.facing * Math.max(0.4, 1 - s.t / ROLL_MS);
+      if (s.t >= ROLL_MS) m.state = wish === 0 ? { kind: "idle" } : { kind: "run" };
+      break;
+    }
+    case "crouchIdle": case "crouchWalk": {
+      if (!held.down && headroom(m, level)) {
+        m.state = { kind: "idle" };
+        m.vx = 0;
+        break;
+      }
+      if (wish !== 0) m.facing = wish;
+      m.vx = wish * CROUCH_SPEED;
+      m.state = wish === 0 ? { kind: "crouchIdle" } : { kind: "crouchWalk" };
+      break;
+    }
     // Arms below are filled by later tasks; the states are unreachable
     // until their triggers exist.
-    case "dash": case "slide": case "roll": case "crouchIdle": case "crouchWalk":
     case "airSpin": case "wallLand": case "wallSlide": case "sideClimb":
     case "ladderClimb": case "ledgeGrab": case "push": case "pull": case "pushIdle":
       m.state = { kind: "idle" };
@@ -256,7 +320,12 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     if (airborne) {
       ev.push({ kind: "touchdown" });
       if (impact >= LAND_HARD) {
-        m.state = { kind: "land", t: 0, hard: true }; // roll trigger: crouch task
+        if (wish !== 0) {
+          m.facing = wish;
+          m.state = { kind: "roll", t: 0 };
+        } else {
+          m.state = { kind: "land", t: 0, hard: true };
+        }
       } else if (impact >= LAND_SOFT) {
         m.state = { kind: "land", t: 0, hard: false };
       } else {
@@ -265,11 +334,11 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     }
   }
   // Walked off an edge: grounded states become a fall.
-  const groundedKind = m.state.kind === "idle" || m.state.kind === "walk" || m.state.kind === "run";
+  const groundedKind = ["idle", "walk", "run", "crouchIdle", "crouchWalk", "dash"].includes(m.state.kind);
   if (groundedKind && !onGround(m, level, h)) m.state = { kind: "fall" };
 
   // Footfalls: strides while actually moving on the ground.
-  const striding = m.state.kind === "walk" || m.state.kind === "run";
+  const striding = m.state.kind === "walk" || m.state.kind === "run" || m.state.kind === "crouchWalk";
   if (striding && m.vx !== 0) {
     m.strideMs += MOVE_TICK;
     const stride = m.state.kind === "run" ? STRIDE_RUN_MS : STRIDE_WALK_MS;
