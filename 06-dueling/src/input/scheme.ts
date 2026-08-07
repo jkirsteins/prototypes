@@ -19,12 +19,14 @@ export type ActionId =
   | "pause" | "rematch" | "reselect" | "help"
   // select-screen verbs (the direct picks are keyboard-only, like debug)
   | "selLeft" | "selRight" | "selToggle" | "selConfirm"
-  | "selPickFirst" | "selPickSecond" | "selBack"
+  | "selPickFirst" | "selPickSecond" | "selPickThird" | "selBack"
   // keyboard-only debug verbs (labels exist for the legend; no pad binding)
   | "aiMode" | "overlay" | "stepTick" | "speed" | "mute"
-  // movement-scene verbs (the parkour test bed)
+  // movement-scene verbs (the parkour test bed and the arena's sheathed mode)
   | "moveLeft" | "moveRight" | "jump" | "dash" | "crouch" | "grab"
-  | "climbUp" | "climbDown" | "walkMod" | "resetScene";
+  | "climbUp" | "climbDown" | "walkMod" | "resetScene"
+  // the arena's mode toggle: draw when sheathed, sheathe when armed
+  | "drawSheathe";
 
 export type Scheme = "keyboard" | "pad";
 
@@ -40,11 +42,11 @@ export const KEYBOARD_LABELS: Labels = {
   sideShift: "Lt/Rt/Caps", disarm: "I",
   pause: "space", rematch: "R", reselect: "Esc", help: "?",
   selLeft: "A/Left", selRight: "D/Right", selToggle: "W/S",
-  selConfirm: "Enter", selPickFirst: "1", selPickSecond: "2", selBack: "Esc",
+  selConfirm: "Enter", selPickFirst: "1", selPickSecond: "2", selPickThird: "3", selBack: "Esc",
   aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
   moveLeft: "A", moveRight: "D", jump: "K", dash: "J", crouch: "S",
   grab: "L", climbUp: "W", climbDown: "S", walkMod: "Shift",
-  resetScene: "R",
+  resetScene: "R", drawSheathe: "E",
 };
 
 /** For actions with no pad binding (the debug verbs, the select direct
@@ -58,11 +60,11 @@ export const PAD_LABELS: Record<PadKind, Labels> = {
     stanceDown: "D-dn", sideShift: "LB", disarm: "RT",
     pause: "Start", rematch: "Start", reselect: "Back", help: "Back",
     selLeft: "Dpad/Stick", selRight: "Dpad/Stick", selToggle: "Dpad/Stick",
-    selConfirm: "A / Start", selPickFirst: "1", selPickSecond: "2", selBack: "Back",
+    selConfirm: "A / Start", selPickFirst: "1", selPickSecond: "2", selPickThird: "3", selBack: "Back",
     aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
     moveLeft: "Stick/Dpad", moveRight: "Stick/Dpad", jump: "A", dash: "X",
     crouch: "Stick dn", grab: "RB", climbUp: "Stick up", climbDown: "Stick dn",
-    walkMod: "Stick soft", resetScene: "Y",
+    walkMod: "Stick soft", resetScene: "Y", drawSheathe: "LT",
   },
   // PS face buttons render as their glyphs to keep the legend narrow.
   ps: {
@@ -71,11 +73,11 @@ export const PAD_LABELS: Record<PadKind, Labels> = {
     stanceDown: "D-dn", sideShift: "L1", disarm: "R2",
     pause: "Options", rematch: "Options", reselect: "Share", help: "Share",
     selLeft: "Dpad/Stick", selRight: "Dpad/Stick", selToggle: "Dpad/Stick",
-    selConfirm: "\u2715 / Options", selPickFirst: "1", selPickSecond: "2", selBack: "Share",
+    selConfirm: "\u2715 / Options", selPickFirst: "1", selPickSecond: "2", selPickThird: "3", selBack: "Share",
     aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
     moveLeft: "Stick/Dpad", moveRight: "Stick/Dpad", jump: "\u2715", dash: "\u25a1",
     crouch: "Stick dn", grab: "R1", climbUp: "Stick up", climbDown: "Stick dn",
-    walkMod: "Stick soft", resetScene: "\u25b3",
+    walkMod: "Stick soft", resetScene: "\u25b3", drawSheathe: "L2",
   },
 };
 
@@ -125,6 +127,9 @@ export const PAD_BINDINGS: Partial<Record<ActionId, PadControl[]>> = {
   jump: [{ kind: "button", index: 0 }],
   dash: [{ kind: "button", index: 2 }],
   resetScene: [{ kind: "button", index: 3 }],
+  // The left trigger: unused by every other verb, so the mode toggle
+  // cannot collide with either mode's own table.
+  drawSheathe: [{ kind: "button", index: 6 }],
 };
 
 /** `/playstation|dualshock|dualsense|054c/i` gives "ps"; everything else
@@ -214,7 +219,10 @@ export interface UiSnapshot {
   paused: boolean;
   decided: boolean;
   /** Which scene owns the duel/move verb tables. */
-  scene: "duel" | "move";
+  scene: "duel" | "move" | "arena";
+  /** Arena only: the weapon is out, so the duel verbs own the pad.
+   *  False everywhere else. */
+  armed: boolean;
 }
 
 const controlEq = (a: PadControl, b: PadControl): boolean =>
@@ -236,6 +244,8 @@ const DUEL_VERBS: ActionId[] = [
 ];
 const SELECT_VERBS: ActionId[] = ["selLeft", "selRight", "selToggle", "selConfirm"];
 const MOVE_VERBS: ActionId[] = ["jump", "dash", "resetScene"];
+const ARENA_SHEATHED_VERBS: ActionId[] = [...MOVE_VERBS, "drawSheathe"];
+const ARENA_ARMED_VERBS: ActionId[] = [...DUEL_VERBS, "drawSheathe"];
 
 /**
  * One physical edge resolves to at most ONE action, because the
@@ -263,11 +273,18 @@ export function resolvePadEdge(ui: UiSnapshot, edge: PadControl): ActionId | nul
   if (isBtn(1)) {
     if (ui.helpOpen) return "help";
     if (ui.selectOpen) return null;
-    if (ui.scene === "duel" && (ui.simLive || ui.decided)) return "feint";
+    const fencing = ui.scene === "duel" || (ui.scene === "arena" && ui.armed);
+    if (fencing && (ui.simLive || ui.decided)) return "feint";
     return null;
   }
   if (ui.helpOpen) return null;
   if (ui.selectOpen) return boundAction(edge, SELECT_VERBS);
-  if (ui.simLive || ui.decided) return boundAction(edge, ui.scene === "move" ? MOVE_VERBS : DUEL_VERBS);
+  if (ui.simLive || ui.decided) {
+    const verbs =
+      ui.scene === "move" ? MOVE_VERBS
+      : ui.scene === "arena" ? (ui.armed ? ARENA_ARMED_VERBS : ARENA_SHEATHED_VERBS)
+      : DUEL_VERBS;
+    return boundAction(edge, verbs);
+  }
   return null;
 }

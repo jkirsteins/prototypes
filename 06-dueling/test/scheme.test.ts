@@ -18,7 +18,7 @@ afterEach(() => resetSchemeForTest());
 
 const ui = (over: Partial<UiSnapshot> = {}): UiSnapshot => ({
   helpOpen: false, selectOpen: false, simLive: true, paused: false, decided: false,
-  scene: "duel",
+  scene: "duel", armed: false,
   ...over,
 });
 
@@ -144,7 +144,7 @@ describe("the contextual resolver (§7.2)", () => {
 describe("the move scene's resolver context", () => {
   const move = (over: Partial<UiSnapshot> = {}): UiSnapshot => ({
     helpOpen: false, selectOpen: false, simLive: true, paused: false,
-    decided: false, scene: "move", ...over,
+    decided: false, scene: "move", armed: false, ...over,
   });
 
   test("A jumps, X dashes, Y resets - and duel verbs do not leak in", () => {
@@ -158,6 +158,36 @@ describe("the move scene's resolver context", () => {
     expect(resolvePadEdge(move(), { kind: "button", index: 1 })).toBe(null);
     expect(resolvePadEdge(move(), { kind: "button", index: 9 })).toBe("pause");
     expect(resolvePadEdge(move(), { kind: "button", index: 8 })).toBe("help");
+  });
+});
+
+describe("arena pad resolution is modal on the weapon", () => {
+  const arena = (armed: boolean): UiSnapshot => ({
+    helpOpen: false, selectOpen: false, simLive: true,
+    paused: false, decided: false, scene: "arena", armed,
+  });
+  const btn = (index: number): { kind: "button"; index: number } => ({ kind: "button", index });
+
+  test("button 0 is jump sheathed, thrust armed", () => {
+    expect(resolvePadEdge(arena(false), btn(0))).toBe("jump");
+    expect(resolvePadEdge(arena(true), btn(0))).toBe("thrust");
+  });
+
+  test("button 6 is drawSheathe in both modes", () => {
+    expect(resolvePadEdge(arena(false), btn(6))).toBe("drawSheathe");
+    expect(resolvePadEdge(arena(true), btn(6))).toBe("drawSheathe");
+  });
+
+  test("B is feint only while armed", () => {
+    expect(resolvePadEdge(arena(true), btn(1))).toBe("feint");
+    expect(resolvePadEdge(arena(false), btn(1))).toBeNull();
+  });
+
+  test("the labels exist in every scheme", () => {
+    expect(KEYBOARD_LABELS.drawSheathe).toBe("E");
+    expect(PAD_LABELS.xbox.drawSheathe).toBe("LT");
+    expect(PAD_LABELS.ps.drawSheathe).toBe("L2");
+    expect(KEYBOARD_LABELS.selPickThird).toBe("3");
   });
 });
 

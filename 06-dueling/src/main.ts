@@ -135,6 +135,7 @@ function uiSnapshot(): UiSnapshot {
     paused: state.paused,
     decided: snap.decided,
     scene: active?.id ?? "duel",
+    armed: false,
   };
 }
 

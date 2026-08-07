@@ -1,7 +1,7 @@
 import type { ActionId, Labels } from "../input/scheme";
 import type { TimeControl } from "../render/draw";
 
-export type SceneId = "duel" | "move";
+export type SceneId = "duel" | "move" | "arena";
 
 /** Held levels main.ts merges across keyboard and pad. Scenes read the
  *  subset they care about; unknown levels are simply false. */
