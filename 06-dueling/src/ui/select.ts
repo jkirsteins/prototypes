@@ -9,6 +9,7 @@ interface SelectState {
   e: WeaponId;
   activeCol: "p" | "e";
   onStart: (p: WeaponId, e: WeaponId) => void;
+  onBack: () => void;
 }
 
 let sel: SelectState | null = null;
@@ -21,7 +22,7 @@ export function isSelectOpen(): boolean {
 /** One body for both devices: the key handler and the pad path call this,
  *  so the two cannot drift (gamepad-support §6). */
 export function handleSelectAction(
-  a: "selLeft" | "selRight" | "selToggle" | "selConfirm" | "selPickFirst" | "selPickSecond",
+  a: "selLeft" | "selRight" | "selToggle" | "selConfirm" | "selPickFirst" | "selPickSecond" | "selBack",
 ): void {
   if (!sel) return;
   switch (a) {
@@ -36,6 +37,12 @@ export function handleSelectAction(
       onStart(p, ew);
       return;
     }
+    case "selBack": {
+      const cb = sel.onBack;
+      hideSelect();
+      cb();
+      return;
+    }
   }
   render();
 }
@@ -45,8 +52,12 @@ onControlsChange(() => {
   if (sel !== null) render();
 });
 
-export function showSelect(current: { p: WeaponId; e: WeaponId }, onStart: SelectState["onStart"]): void {
-  sel = { p: current.p, e: current.e, activeCol: "p", onStart };
+export function showSelect(
+  current: { p: WeaponId; e: WeaponId },
+  onStart: SelectState["onStart"],
+  onBack: SelectState["onBack"],
+): void {
+  sel = { p: current.p, e: current.e, activeCol: "p", onStart, onBack };
   render();
   const el = document.getElementById("select");
   if (el) el.hidden = false;
@@ -71,6 +82,7 @@ function onKey(e: KeyboardEvent): void {
     : k === "1" ? "selPickFirst"
     : k === "2" ? "selPickSecond"
     : k === "enter" ? "selConfirm"
+    : k === "escape" ? "selBack"
     : null;
   if (action === null) return;
   e.preventDefault();

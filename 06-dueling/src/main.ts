@@ -4,6 +4,7 @@ import { HELP_BUTTON } from "./render/draw";
 import { loadImages } from "./render/loader";
 import { renderHelpHtml } from "./ui/help";
 import { handleSelectAction, isSelectOpen, showSelect } from "./ui/select";
+import { handleScenesAction, isScenesOpen, showScenes } from "./ui/scenes";
 import { createPadSnapshot, discardPadSnapshot, readPads } from "./input/gamepad";
 import {
   activeLabels, noteGamepadInput, noteKeyboardInput, notePadGone,
@@ -27,6 +28,7 @@ const pick = (key: string, fallback: WeaponId): WeaponId => {
 // Browser-check convention: a p or e param means the URL is asking for a
 // specific matchup, so boot straight into the duel instead of the picker.
 const bootStraightIn = params.has("p") || params.has("e");
+const sceneParam = params.get("scene"); // "duel" | "move" | null
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 
@@ -119,7 +121,7 @@ function uiSnapshot(): UiSnapshot {
   const snap = active?.snapshot() ?? { live: false, decided: false };
   return {
     helpOpen: state.helpOpen,
-    selectOpen: isSelectOpen(),
+    selectOpen: isSelectOpen() || isScenesOpen(),
     simLive: snap.live,
     paused: state.paused,
     decided: snap.decided,
@@ -148,7 +150,8 @@ function applyPadAction(a: ActionId): void {
       break;
     case "selLeft": case "selRight": case "selToggle": case "selConfirm":
     case "selPickFirst": case "selPickSecond":
-      handleSelectAction(a);
+      if (isScenesOpen()) handleScenesAction(a);
+      else handleSelectAction(a);
       break;
     default:
       active?.padAction(a);
@@ -162,6 +165,23 @@ function startDuel(): void {
   active = duelScene;
 }
 
+/** The movement test scene itself lands in Task 11; until then "Movement
+ *  test" just re-opens the scene selector so the picker is fully wired
+ *  and testable ahead of the scene existing. */
+function startMove(): void {
+  openScenes();
+}
+
+function openScenes(): void {
+  // Same discard/clear as openSelect below: no hold may survive a
+  // navigation, on either device.
+  discardPadSnapshot(padSnap);
+  clearHeldSource("keyboard");
+  clearHeldSource("pad");
+  active = null;
+  showScenes((s) => { if (s === "duel") openSelect(); else startMove(); });
+}
+
 function openSelect(): void {
   // Entering selection ends a fight rather than pausing one: no hold may
   // survive into the next duel, on either device - the pad snapshot is
@@ -171,17 +191,17 @@ function openSelect(): void {
   discardPadSnapshot(padSnap);
   clearHeldSource("keyboard");
   clearHeldSource("pad");
+  active = null;
   showSelect({ p: state.pWeapon, e: state.eWeapon }, (p, e) => {
     state.pWeapon = p;
     state.eWeapon = e;
     startDuel();
-  });
+  }, () => openScenes());
 }
 
-/** Scene selector arrives in Task 10; for now the only scene is the duel,
- *  so leaving it always goes back to the sword-select screen. */
 function goBack(): void {
   if (active?.id === "duel") { active = null; openSelect(); }
+  else if (active?.id === "move") { active = null; openScenes(); }
 }
 
 const audio = createAudioEngine();
@@ -206,8 +226,9 @@ document.addEventListener("keydown", (e) => {
     setHelp(true);
     return;
   }
-  // The select screen owns the keyboard while no scene is active; it adds
-  // and removes its own listener via showSelect/hideSelect.
+  // An overlay (the scene selector or the sword select) owns the keyboard
+  // while no scene is active; each adds and removes its own listener via
+  // its own show/hide.
   if (active === null) return;
   const k = e.key.toLowerCase();
   const hold = active.holdKeys[k];
@@ -268,7 +289,9 @@ loadImages().then((images) => {
     : undefined;
   duelScene = createDuelScene({ ctx, images, audio, seedPin, initialAiMode });
   if (bootStraightIn) startDuel();
-  else openSelect();
+  else if (sceneParam === "move") startMove();
+  else if (sceneParam === "duel") openSelect();
+  else openScenes();
   let last = performance.now();
   let acc = 0;
   const frame = (now: number): void => {

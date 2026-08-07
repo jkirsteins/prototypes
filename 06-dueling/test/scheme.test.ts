@@ -165,7 +165,7 @@ describe("select actions: one body for both devices (§6)", () => {
     let started: [string, string] | null = null;
     showSelect({ p: "longsword", e: "rapier" }, (p, e) => {
       started = [p, e];
-    });
+    }, () => undefined);
     expect(isSelectOpen()).toBe(true);
     handleSelectAction("selRight");
     handleSelectAction("selToggle"); // e: rapier -> longsword
@@ -179,7 +179,7 @@ describe("select actions: one body for both devices (§6)", () => {
 
   test("the hint is written in the active scheme's labels", () => {
     document.body.innerHTML = `<div id="select"><div class="col" data-col="p"></div><div class="col" data-col="e"></div><p class="hint"></p></div>`;
-    showSelect({ p: "longsword", e: "rapier" }, () => undefined);
+    showSelect({ p: "longsword", e: "rapier" }, () => undefined, () => undefined);
     const hint = document.querySelector("#select .hint");
     expect(hint?.textContent).toContain("Enter to duel");
     noteGamepadInput("Xbox Wireless Controller");
