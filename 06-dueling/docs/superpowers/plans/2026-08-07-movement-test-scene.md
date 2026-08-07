@@ -878,7 +878,7 @@ describe("crouch, slide and the tunnel", () => {
 
   test("pressing down at speed slides; the slide fits the tunnel", () => {
     const m = createMover(level);
-    m.x = 7.5 * TILE;
+    m.x = 5.5 * TILE; // runway: a start nearer the tunnel is pinned (vx 0) before the press
     run(m, input({ right: true }), 30); // at full run
     run(m, input({ right: true, down: true }), 1); // down edge -> slide
     expect(m.state.kind).toBe("slide");
