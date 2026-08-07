@@ -153,6 +153,11 @@ function applyPadAction(a: ActionId): void {
       if (isScenesOpen()) handleScenesAction(a);
       else handleSelectAction(a);
       break;
+    case "selBack":
+      // The scene selector is the root screen - it has nothing to go
+      // back to, so Back is ignored there and only unwinds the sword pick.
+      if (!isScenesOpen()) handleSelectAction(a);
+      break;
     default:
       active?.padAction(a);
       break;

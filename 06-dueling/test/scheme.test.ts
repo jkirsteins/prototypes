@@ -80,10 +80,12 @@ describe("the contextual resolver (§7.2)", () => {
     expect(resolvePadEdge(ui({ paused: true }), start)).toBe("pause"); // the toggle resumes
   });
 
-  test("Back: help open closes; select null; paused or decided reselects; live opens help", () => {
+  test("Back: help open closes; select backs out; paused or decided reselects; live opens help", () => {
     const back = { kind: "button", index: 8 } as const;
     expect(resolvePadEdge(ui({ helpOpen: true }), back)).toBe("help");
-    expect(resolvePadEdge(ui({ selectOpen: true, simLive: false }), back)).toBe(null);
+    expect(resolvePadEdge(ui({ selectOpen: true, simLive: false }), back)).toBe("selBack");
+    // help wins over select when somehow both are open at once
+    expect(resolvePadEdge(ui({ helpOpen: true, selectOpen: true, simLive: false }), back)).toBe("help");
     expect(resolvePadEdge(ui({ paused: true }), back)).toBe("reselect");
     expect(resolvePadEdge(ui({ decided: true, simLive: false }), back)).toBe("reselect");
     expect(resolvePadEdge(ui(), back)).toBe("help");
@@ -184,6 +186,16 @@ describe("select actions: one body for both devices (§6)", () => {
     expect(hint?.textContent).toContain("Enter to duel");
     noteGamepadInput("Xbox Wireless Controller");
     expect(hint?.textContent).toContain("A / Start to duel");
+    hideSelect();
+  });
+
+  test("selBack fires onBack and closes the select screen, same as Esc", () => {
+    document.body.innerHTML = `<div id="select"><div class="col" data-col="p"></div><div class="col" data-col="e"></div><p class="hint"></p></div>`;
+    let backed = 0;
+    showSelect({ p: "longsword", e: "rapier" }, () => undefined, () => { backed++; });
+    handleSelectAction("selBack");
+    expect(backed).toBe(1);
+    expect(isSelectOpen()).toBe(false);
     hideSelect();
   });
 });

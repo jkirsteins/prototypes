@@ -19,7 +19,7 @@ export type ActionId =
   | "pause" | "rematch" | "reselect" | "help"
   // select-screen verbs (the direct picks are keyboard-only, like debug)
   | "selLeft" | "selRight" | "selToggle" | "selConfirm"
-  | "selPickFirst" | "selPickSecond"
+  | "selPickFirst" | "selPickSecond" | "selBack"
   // keyboard-only debug verbs (labels exist for the legend; no pad binding)
   | "aiMode" | "overlay" | "stepTick" | "speed" | "mute"
   // movement-scene verbs (the parkour test bed)
@@ -40,7 +40,7 @@ export const KEYBOARD_LABELS: Labels = {
   sideShift: "Lt/Rt/Caps", disarm: "I",
   pause: "space", rematch: "R", reselect: "Esc", help: "?",
   selLeft: "A/Left", selRight: "D/Right", selToggle: "W/S",
-  selConfirm: "Enter", selPickFirst: "1", selPickSecond: "2",
+  selConfirm: "Enter", selPickFirst: "1", selPickSecond: "2", selBack: "Esc",
   aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
   moveLeft: "A", moveRight: "D", jump: "K", dash: "J", crouch: "S",
   grab: "L", climbUp: "W", climbDown: "S", walkMod: "Shift",
@@ -58,7 +58,7 @@ export const PAD_LABELS: Record<PadKind, Labels> = {
     stanceDown: "D-dn", sideShift: "LB", disarm: "RT",
     pause: "Start", rematch: "Start", reselect: "Back", help: "Back",
     selLeft: "Dpad/Stick", selRight: "Dpad/Stick", selToggle: "Dpad/Stick",
-    selConfirm: "A / Start", selPickFirst: "1", selPickSecond: "2",
+    selConfirm: "A / Start", selPickFirst: "1", selPickSecond: "2", selBack: "Back",
     aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
     moveLeft: "Stick/Dpad", moveRight: "Stick/Dpad", jump: "A", dash: "X",
     crouch: "Stick dn", grab: "RB", climbUp: "Stick up", climbDown: "Stick dn",
@@ -71,7 +71,7 @@ export const PAD_LABELS: Record<PadKind, Labels> = {
     stanceDown: "D-dn", sideShift: "L1", disarm: "R2",
     pause: "Options", rematch: "Options", reselect: "Share", help: "Share",
     selLeft: "Dpad/Stick", selRight: "Dpad/Stick", selToggle: "Dpad/Stick",
-    selConfirm: "\u2715 / Options", selPickFirst: "1", selPickSecond: "2",
+    selConfirm: "\u2715 / Options", selPickFirst: "1", selPickSecond: "2", selBack: "Share",
     aiMode: "0-4", overlay: "`", stepTick: ".", speed: "[/]", mute: "M",
     moveLeft: "Stick/Dpad", moveRight: "Stick/Dpad", jump: "\u2715", dash: "\u25a1",
     crouch: "Stick dn", grab: "R1", climbUp: "Stick up", climbDown: "Stick dn",
@@ -251,7 +251,7 @@ export function resolvePadEdge(ui: UiSnapshot, edge: PadControl): ActionId | nul
   }
   if (isBtn(8)) {
     if (ui.helpOpen) return "help";
-    if (ui.selectOpen) return null;
+    if (ui.selectOpen) return "selBack";
     if (ui.paused || ui.decided) return "reselect";
     if (ui.simLive) return "help";
     return null;
