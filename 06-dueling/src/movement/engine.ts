@@ -192,23 +192,34 @@ function touchingWall(m: Mover, level: Level, dir: -1 | 1, h: number): boolean {
 /** Hands-at-the-lip hang: the head sits just under the lip so the raised
  *  hand of the hang pose overlaps it. */
 export const HANG_HEAD_BELOW_LIP = 6;
+/** How far above the head the hands can reach for a lip: an arm's
+ *  length. Below the head the slack stays small - a lip at chest height
+ *  is a step-up, not a hang. */
+export const HANG_REACH = 120;
 
 function ledgeProbe(
   m: Mover, level: Level, dir: -1 | 1, h: number,
 ): { standX: number; lipY: number; hangX: number } | null {
   const col = Math.floor((m.x + dir * (BODY_W / 2 + 6)) / TILE);
   const headY = m.y - h;
-  const row = Math.floor((headY + 30) / TILE);
-  if (!isSolid(tileAt(level, col, row))) return null;
-  if (isSolid(tileAt(level, col, row - 1))) return null;
-  const lipY = row * TILE;
-  if (Math.abs(lipY - headY) > 60) return null;
-  // Stand target must have headroom for a standing body.
-  const standX = col * TILE + TILE / 2;
-  if (boxHits(m, level, standX, lipY, BODY_W, BODY_H, true)) return null;
-  // The hang point: body flush against the lip's face.
-  const faceX = dir === 1 ? col * TILE : (col + 1) * TILE;
-  return { standX, lipY, hangX: faceX - dir * (BODY_W / 2 + 4) };
+  // Scan every row the hands can reach, top down: the highest lip in
+  // range wins, and rows inside a solid mass fail the empty-above check.
+  const rowLo = Math.floor((headY - HANG_REACH) / TILE);
+  const rowHi = Math.floor((headY + 60) / TILE);
+  for (let row = rowLo; row <= rowHi; row++) {
+    if (!isSolid(tileAt(level, col, row))) continue;
+    if (isSolid(tileAt(level, col, row - 1))) continue;
+    const lipY = row * TILE;
+    const d = lipY - headY;
+    if (d > 60 || d < -HANG_REACH) continue;
+    // Stand target must have headroom for a standing body.
+    const standX = col * TILE + TILE / 2;
+    if (boxHits(m, level, standX, lipY, BODY_W, BODY_H, true)) continue;
+    // The hang point: body flush against the lip's face.
+    const faceX = dir === 1 ? col * TILE : (col + 1) * TILE;
+    return { standX, lipY, hangX: faceX - dir * (BODY_W / 2 + 4) };
+  }
+  return null;
 }
 
 /** The body center overlaps a ladder tile. */
@@ -274,13 +285,14 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   };
   const airChecks = (): void => {
     // Order: the ledge catch beats the wall slide beats plain fall.
-    // Catching happens only on the way DOWN: a jump that clears the lip
-    // is a jump, not a grab. With no direction held the hands still
-    // reach - facing first, then the blind side - so a plain jump beside
-    // an edge ends hanging from it.
-    if (m.vy >= 0 && m.regrabMs <= 0) {
-      const tries: Array<-1 | 1> =
-        wish !== 0 ? [wish] : m.airFromJump ? [m.facing, -m.facing as -1 | 1] : [];
+    // Catching happens only on the way DOWN and only from a LEAP: a jump
+    // that clears the lip is a jump, a walk-off is a fall with idle
+    // hands, and a held crouch refuses the grab outright. With no
+    // direction held the hands still reach on the FACING side - never
+    // behind the back - so a plain jump beside an edge ends hanging
+    // from the lip being faced.
+    if (m.vy >= 0 && m.regrabMs <= 0 && m.airFromJump && !held.down) {
+      const tries: Array<-1 | 1> = wish !== 0 ? [wish] : [m.facing];
       for (const side of tries) {
         const lip = ledgeProbe(m, level, side, BODY_H);
         if (lip !== null) {
@@ -653,8 +665,14 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   // silently.
   const groundedKind = ["idle", "walk", "run", "crouchIdle", "crouchWalk", "dash", "slide", "roll", "push", "pull", "pushIdle"].includes(m.state.kind);
   if (groundedKind && !onGround(m, level, h)) {
-    m.state = { kind: "fall" };
-    m.airFromJump = false;
+    // Off the edge. A crouched body under a low ceiling keeps its crouch
+    // while it drops clear - standing up into the ceiling would wedge
+    // the body inside it; the conversion re-runs every tick and fires
+    // the moment there is headroom.
+    if (heightOf(m.state) === BODY_H || headroom(m, level)) {
+      m.state = { kind: "fall" };
+      m.airFromJump = false;
+    }
   }
 
   // Footfalls: strides while actually moving on the ground.

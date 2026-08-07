@@ -122,6 +122,34 @@ describe("wall slide and wall jump", () => {
     expect(m.state.kind).toBe("fall");
   });
 
+  test("crouch-walking off an edge falls - idle hands, no grab of anything nearby", () => {
+    const m = createMover(level);
+    // The step's top right corner, crouched, walking right off the edge:
+    // platform B's left lip sits one tile up-right and used to get
+    // hand-grabbed mid-fall, teleporting the walker onto B's face.
+    m.x = 463; m.y = 8 * TILE; m.state = { kind: "crouchIdle" };
+    const seen = new Set<string>();
+    for (let i = 0; i < 180; i++) {
+      tickMove(m, level, input({ down: true, right: true }));
+      seen.add(m.state.kind);
+    }
+    expect(seen.has("ledgeHang")).toBe(false);
+    expect(seen.has("ledgeGrab")).toBe(false);
+    expect(m.y).toBe(10 * TILE); // ended on the floor below the edge
+  });
+
+  test("a jump at a wall with the lip within arm's reach hangs instead of sliding", () => {
+    const m = createMover(level);
+    // Falling beside platform B's left face with the lip ~104 cm above
+    // the head: inside HANG_REACH, so the hands catch; the old
+    // head-height-only window slid down the face instead.
+    m.x = 446; m.y = 850; m.vy = 0;
+    m.state = { kind: "fall" };
+    m.airFromJump = true;
+    run(m, input({ right: true }), 3);
+    expect(m.state.kind).toBe("ledgeHang");
+  });
+
   test("jump leaps away from the hang, facing flipped", () => {
     const m = hangAtStep();
     run(m, input({}, { jump: true }), 1);
