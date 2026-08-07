@@ -31,6 +31,10 @@ export const LAND_MS = 220;
 export const WALLLAND_VY = 900;
 export const WALLLAND_MS = 200;
 export const LEDGE_MS = 400;
+/** The pull-up's rise owns this share of LEDGE_MS; the step-over the
+ *  rest. The frame picker splits its poses on the same boundary so the
+ *  knee never lands on thin air. */
+export const LEDGE_RISE = 0.65;
 export const SPIN_MS = 360;
 /** Touchdown speeds: below SOFT no land state, at/above HARD the landing
  *  is hard (rolls when a direction is held). HARD sits above the worst
@@ -61,7 +65,7 @@ export type MoveState =
   | { kind: "wallLand"; t: number; wall: -1 | 1 }
   | { kind: "wallSlide"; wall: -1 | 1 }
   | { kind: "ladderClimb" }
-  | { kind: "ledgeHang"; wall: -1 | 1; standX: number; lipY: number }
+  | { kind: "ledgeHang"; t: number; wall: -1 | 1; standX: number; lipY: number }
   | { kind: "ledgeGrab"; t: number; startX: number; startY: number; targetX: number; targetY: number }
   | { kind: "push"; dir: -1 | 1 }
   | { kind: "pull"; dir: -1 | 1 }
@@ -314,7 +318,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     m.facing = side;
     m.x = lip.hangX;
     m.y = hangY;
-    m.state = { kind: "ledgeHang", wall: side, standX: lip.standX, lipY: lip.lipY };
+    m.state = { kind: "ledgeHang", t: 0, wall: side, standX: lip.standX, lipY: lip.lipY };
     ev.push({ kind: "grab" });
     return true;
   };
@@ -576,6 +580,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       // up climbs on, down or steering away lets go, jump leaps away.
       m.vx = 0;
       m.vy = 0;
+      s.t += MOVE_TICK; // the catch's swing settles off this clock
       if (input.pressed.jump) {
         m.jumpBufferMs = 0;
         m.vx = -s.wall * WALLJUMP_VX;
@@ -611,13 +616,12 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       m.vy = 0;
       s.t += MOVE_TICK;
       const p = Math.min(1, s.t / LEDGE_MS);
-      const rise = 0.65; // the pull-up owns most of the time; the step-over the rest
-      if (p < rise) {
+      if (p < LEDGE_RISE) {
         m.x = s.startX;
-        m.y = s.startY + (s.targetY - s.startY) * (p / rise);
+        m.y = s.startY + (s.targetY - s.startY) * (p / LEDGE_RISE);
       } else {
         m.y = s.targetY;
-        m.x = s.startX + (s.targetX - s.startX) * ((p - rise) / (1 - rise));
+        m.x = s.startX + (s.targetX - s.startX) * ((p - LEDGE_RISE) / (1 - LEDGE_RISE));
       }
       if (p >= 1) m.state = { kind: "idle" };
       break;

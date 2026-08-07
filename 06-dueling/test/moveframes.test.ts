@@ -16,7 +16,7 @@ const STATES: MoveState[] = [
   { kind: "land", t: 100, hard: true },
   { kind: "wallLand", t: 100, wall: -1 }, { kind: "wallSlide", wall: -1 },
   { kind: "ladderClimb" },
-  { kind: "ledgeHang", wall: -1, standX: 0, lipY: 0 },
+  { kind: "ledgeHang", t: 0, wall: -1, standX: 0, lipY: 0 },
   { kind: "ledgeGrab", t: 200, startX: 0, startY: 100, targetX: 50, targetY: 0 },
   { kind: "push", dir: 1 }, { kind: "pull", dir: -1 }, { kind: "pushIdle" },
 ];
@@ -42,6 +42,20 @@ describe("pickMoveFrame is total and in bounds", () => {
     m.facing = 1;
     m.state = { kind: "wallSlide", wall: -1 };
     expect(pickMoveFrame(m).flip).toBe(true); // wall on the left mirrors the sheet
+  });
+
+  test("the hang swings on the catch, then settles still", () => {
+    const frameAt = (t: number): number => {
+      const m = createMover(level);
+      m.state = { kind: "ledgeHang", t, wall: -1, standX: 0, lipY: 0 };
+      return pickMoveFrame(m).frame;
+    };
+    expect(frameAt(0)).toBe(0);
+    expect(frameAt(300)).toBe(1); // the swing
+    expect(frameAt(600)).toBe(0);
+    expect(frameAt(900)).toBe(1);
+    expect(frameAt(1500)).toBe(0); // settled: still from here on
+    expect(frameAt(60000)).toBe(0);
   });
 
   test("climb cycles advance with position, not time", () => {

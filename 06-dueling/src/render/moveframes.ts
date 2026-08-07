@@ -1,4 +1,4 @@
-import { DASH_MS, LAND_MS, LEDGE_MS, ROLL_MS, SLIDE_MS, SPIN_MS, WALLLAND_MS } from "../movement/engine";
+import { DASH_MS, LAND_MS, LEDGE_MS, LEDGE_RISE, ROLL_MS, SLIDE_MS, SPIN_MS, WALLLAND_MS } from "../movement/engine";
 import { SHEETS } from "./sheets";
 import type { Mover } from "../movement/engine";
 import type { FramePick } from "./frames";
@@ -55,9 +55,17 @@ export function pickMoveFrame(m: Mover): FramePick {
     case "wallLand": return { sheet: "wallLand", frame: span("wallLand", s.t, WALLLAND_MS, 0, 5), flip: s.wall === -1 };
     case "wallSlide": return { sheet: "wallSlide", frame: 1 + (Math.floor(m.time / 150) % 2), flip: s.wall === -1 };
     case "ladderClimb": return { sheet: "climbBack", frame: climbFrame("climbBack", m.y), flip: false };
-    // The hang sways between the sheet's two hanging poses; the pull-up
-    // starts from the second so the loop hands off without a repeat.
-    case "ledgeHang": return { sheet: "ledgeClimb", frame: Math.floor(m.time / 320) % 2, flip };
-    case "ledgeGrab": return { sheet: "ledgeClimb", frame: span("ledgeClimb", s.t, LEDGE_MS, 1, 4), flip };
+    // The catch swings the legs between the two hanging poses twice -
+    // momentum from the grab - then the body settles still on the reach
+    // pose. Nobody flails forever on a ledge.
+    case "ledgeHang": return { sheet: "ledgeClimb", frame: s.t < 1120 ? Math.floor(s.t / 280) % 2 : 0, flip };
+    case "ledgeGrab": {
+      // Poses follow the path's phases: pulling poses through the rise,
+      // the knee and the crouch only once the body is over the lip -
+      // a knee planted mid-rise stands on thin air.
+      const p = Math.min(1, s.t / LEDGE_MS);
+      const frame = p < LEDGE_RISE / 2 ? 1 : p < LEDGE_RISE ? 2 : p < (1 + LEDGE_RISE) / 2 ? 3 : 4;
+      return { sheet: "ledgeClimb", frame, flip };
+    }
   }
 }
