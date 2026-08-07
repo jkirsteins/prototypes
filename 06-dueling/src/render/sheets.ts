@@ -1,6 +1,10 @@
 export type SheetName =
   | "swordIdle" | "swordRun" | "swordAttack" | "swordStab"
-  | "roll" | "hurt" | "death" | "idle";
+  | "roll" | "hurt" | "death" | "idle"
+  // movement-test sheets (the pack's unarmed base character)
+  | "walk" | "run" | "dash" | "slide" | "jump" | "land" | "airSpin"
+  | "wallSlide" | "wallLand" | "sideClimb" | "climbBack" | "ledgeClimb"
+  | "crouchIdle" | "crouchWalk" | "push" | "pull" | "pushIdle";
 
 export interface SheetMeta {
   file: string;
@@ -35,4 +39,27 @@ export const SHEETS: Record<SheetName, SheetMeta> = {
   // pack's uniform 48px-sheet ground line and centering, which every
   // measured sibling above landed on (40 / 24).
   idle:        { file: "idle.png",         frameW: 48, frameH: 48, frames: 10, feetY: 40, originX: 24 },
+
+  // Movement-test sheets. feetY is the measured per-frame alpha ground
+  // row + 1 where the sheet touches ground uniformly; airborne sheets
+  // (jump, airSpin, wallSlide) anchor on their ground-contact frames or
+  // the pack's uniform line. originX 24 = frame center; the bodies are
+  // centered within +-2px on every measured sheet.
+  walk:       { file: "walk.png",        frameW: 48, frameH: 48, frames: 8,  feetY: 40, originX: 24 },
+  run:        { file: "run.png",         frameW: 48, frameH: 48, frames: 8,  feetY: 40, originX: 24 },
+  dash:       { file: "dash.png",        frameW: 48, frameH: 48, frames: 9,  feetY: 40, originX: 24 },
+  slide:      { file: "slide.png",       frameW: 48, frameH: 48, frames: 8,  feetY: 40, originX: 24 },
+  jump:       { file: "jump.png",        frameW: 48, frameH: 48, frames: 6,  feetY: 44, originX: 24 },
+  land:       { file: "land.png",        frameW: 48, frameH: 48, frames: 9,  feetY: 40, originX: 24 },
+  airSpin:    { file: "air-spin.png",    frameW: 48, frameH: 48, frames: 6,  feetY: 40, originX: 24 },
+  wallSlide:  { file: "wall-slide.png",  frameW: 48, frameH: 48, frames: 3,  feetY: 44, originX: 24 },
+  wallLand:   { file: "wall-land.png",   frameW: 48, frameH: 48, frames: 6,  feetY: 42, originX: 24 },
+  sideClimb:  { file: "side-climb.png",  frameW: 48, frameH: 48, frames: 4,  feetY: 41, originX: 24 },
+  climbBack:  { file: "climb-back.png",  frameW: 48, frameH: 48, frames: 4,  feetY: 42, originX: 24 },
+  ledgeClimb: { file: "ledge-climb.png", frameW: 48, frameH: 48, frames: 5,  feetY: 42, originX: 24 },
+  crouchIdle: { file: "crouch-idle.png", frameW: 48, frameH: 48, frames: 10, feetY: 40, originX: 24 },
+  crouchWalk: { file: "crouch-walk.png", frameW: 48, frameH: 48, frames: 10, feetY: 40, originX: 24 },
+  push:       { file: "push.png",        frameW: 48, frameH: 48, frames: 10, feetY: 38, originX: 24 },
+  pull:       { file: "pull.png",        frameW: 48, frameH: 48, frames: 6,  feetY: 40, originX: 24 },
+  pushIdle:   { file: "push-idle.png",   frameW: 48, frameH: 48, frames: 8,  feetY: 38, originX: 24 },
 };
