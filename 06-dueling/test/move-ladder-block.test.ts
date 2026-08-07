@@ -104,4 +104,14 @@ describe("the pushable block", () => {
     for (let i = 0; i < 300 && !["idle", "land", "run"].includes(m.state.kind); i++) run(m, input(), 1);
     expect(m.y).toBe(10 * TILE - 96); // feet on the block top
   });
+
+  test("a pull toward a low ceiling stops the block at the pinned player, never inside", () => {
+    const m = createMover(level);
+    m.x = 15 * TILE; // pulling left pins the standing body against the tunnel roof
+    m.block.x = 15 * TILE + BLOCK_W / 2 + BODY_W / 2 + 4;
+    run(m, input({ left: true, grab: true }), 120);
+    // The block fits under the roof the body cannot pass; it must stop
+    // beside the pinned body, never be dragged through it.
+    expect(m.block.x - m.x).toBeGreaterThanOrEqual(BLOCK_W / 2 + BODY_W / 2 - 1);
+  });
 });

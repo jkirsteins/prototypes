@@ -217,15 +217,26 @@ function overLadder(m: Mover, level: Level, h: number): number | null {
   return null;
 }
 
-/** Where the block can rest: on the floor, not inside solid tiles. */
-function blockFits(level: Level, x: number): boolean {
+/** Where the block can rest: on the floor, not inside solid tiles, and
+ *  not dragged through the player. The pair advances in lockstep during
+ *  a pull - the player is projected by the same delta the block is
+ *  asking to move, ignoring the block itself since it moves with it -
+ *  so a player pinned by real geometry (a low ceiling, a wall) pins the
+ *  block in turn, instead of the block being dragged through the body
+ *  and soft-locking it inside. A static distance threshold cannot make
+ *  this call: contact rests at exactly BLOCK_W/2+BODY_W/2, one WALK_SPEED
+ *  tick closes far more than a one-unit epsilon can absorb, so a
+ *  threshold trips on every ordinary pull step, not only a pinned one. */
+function blockFits(m: Mover, level: Level, x: number): boolean {
   const floorTop = 10 * TILE;
   for (const px of [x - BLOCK_W / 2 + EPS, x, x + BLOCK_W / 2 - EPS]) {
     for (const py of [floorTop - BLOCK_H + EPS, floorTop - EPS]) {
       if (solidCellAt(level, px, py)) return false;
     }
   }
-  return true;
+  const h = heightOf(m.state);
+  const delta = x - m.block.x;
+  return !boxHits(m, level, m.x + delta, m.y, BODY_W, h, true);
 }
 
 /** Which side of the player the block is beside (touching range), 0 none. */
@@ -560,9 +571,9 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.blockMoving = false;
         break;
       }
-      m.facing = s.kind === "push" ? beside : (beside === 1 ? -1 : 1) as -1 | 1;
+      m.facing = s.kind === "push" ? beside : beside === 1 ? -1 : 1;
       const step = wish * WALK_SPEED * dt;
-      if (blockFits(level, m.block.x + step)) {
+      if (blockFits(m, level, m.block.x + step)) {
         if (!m.blockMoving) ev.push({ kind: "shove" });
         m.blockMoving = true;
         m.block.x += step;
