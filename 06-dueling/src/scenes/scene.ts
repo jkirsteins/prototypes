@@ -33,7 +33,7 @@ export interface Scene {
   /** Flush this frame's simulation events to audio. Once per rAF. */
   audioFrame(): void;
   draw(overlay: boolean, labels: Labels, time: TimeControl): void;
-  snapshot(): { live: boolean; decided: boolean };
+  snapshot(): { live: boolean; decided: boolean; armed?: boolean };
   /** R: restart the scene's current run. */
   reset(): void;
 }
