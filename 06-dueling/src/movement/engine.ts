@@ -57,7 +57,7 @@ export type MoveState =
   | { kind: "wallLand"; t: number; wall: -1 | 1 }
   | { kind: "wallSlide"; wall: -1 | 1 }
   | { kind: "ladderClimb" }
-  | { kind: "ledgeGrab"; t: number; targetX: number; targetY: number }
+  | { kind: "ledgeGrab"; t: number; startX: number; startY: number; targetX: number; targetY: number }
   | { kind: "push"; dir: -1 | 1 }
   | { kind: "pull"; dir: -1 | 1 }
   | { kind: "pushIdle" };
@@ -263,7 +263,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       if (lip !== null) {
         m.vx = 0; m.vy = 0; m.spun = false;
         m.facing = dir;
-        m.state = { kind: "ledgeGrab", t: 0, targetX: lip.x, targetY: lip.y };
+        m.state = { kind: "ledgeGrab", t: 0, startX: m.x, startY: m.y, targetX: lip.x, targetY: lip.y };
         ev.push({ kind: "grab" });
         return;
       }
@@ -447,14 +447,24 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       break;
     }
     case "ledgeGrab": {
+      // Committed and continuous: the body travels up the wall face to
+      // the lip, then over onto it, so the sheet's poses ride a real
+      // path instead of playing frozen at the hang point and snapping.
+      // Position is driven directly - the probe already verified the
+      // stand target is free, and the swept path hugs the verified lip.
       m.vx = 0;
       m.vy = 0;
       s.t += MOVE_TICK;
-      if (s.t >= LEDGE_MS) {
-        m.x = s.targetX;
+      const p = Math.min(1, s.t / LEDGE_MS);
+      const rise = 0.65; // the pull-up owns most of the time; the step-over the rest
+      if (p < rise) {
+        m.x = s.startX;
+        m.y = s.startY + (s.targetY - s.startY) * (p / rise);
+      } else {
         m.y = s.targetY;
-        m.state = { kind: "idle" };
+        m.x = s.startX + (s.targetX - s.startX) * ((p - rise) / (1 - rise));
       }
+      if (p >= 1) m.state = { kind: "idle" };
       break;
     }
     case "ladderClimb": {

@@ -16,7 +16,7 @@ const STATES: MoveState[] = [
   { kind: "land", t: 100, hard: true },
   { kind: "wallLand", t: 100, wall: -1 }, { kind: "wallSlide", wall: -1 },
   { kind: "ladderClimb" },
-  { kind: "ledgeGrab", t: 200, targetX: 0, targetY: 0 },
+  { kind: "ledgeGrab", t: 200, startX: 0, startY: 100, targetX: 50, targetY: 0 },
   { kind: "push", dir: 1 }, { kind: "pull", dir: -1 }, { kind: "pushIdle" },
 ];
 

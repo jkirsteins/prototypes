@@ -79,6 +79,32 @@ describe("wall slide and wall jump", () => {
     expect(["fall", "jump"]).toContain(m.state.kind);
   });
 
+  test("the ledge pull-up travels - no frozen hang, no snap to the top", () => {
+    const m = createMover(level);
+    // Hanging at platform A's right lip (col 4, top y = 8 * TILE).
+    m.x = 5 * TILE + 34;
+    m.y = 8 * TILE + 162;
+    m.facing = -1;
+    m.state = {
+      kind: "ledgeGrab", t: 0,
+      startX: m.x, startY: m.y,
+      targetX: 4 * TILE + TILE / 2, targetY: 8 * TILE,
+    };
+    let prevX = m.x;
+    let prevY = m.y;
+    for (let i = 0; i < 60 && m.state.kind === "ledgeGrab"; i++) {
+      run(m, input(), 1);
+      // Continuous: every tick is a small move, never a jump cut.
+      expect(Math.abs(m.x - prevX) + Math.abs(m.y - prevY)).toBeLessThan(45);
+      expect(m.y).toBeLessThanOrEqual(prevY); // the body never sags back down
+      prevX = m.x;
+      prevY = m.y;
+    }
+    expect(m.state.kind).toBe("idle");
+    expect(m.x).toBe(4 * TILE + TILE / 2);
+    expect(m.y).toBe(8 * TILE);
+  });
+
   test("a wall catch beside the floor is one plant, never a double touchdown", () => {
     const m = createMover(level);
     m.x = 126; // flush against the left wall face
