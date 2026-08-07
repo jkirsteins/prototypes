@@ -15,7 +15,8 @@ function scene(): ArenaScene {
     tiles: {} as never,
     audio: audioStub as never,
     seedPin: 7,
-    initialAiMode: 2,
+    initialAiMode: 4, // the shipping default: the measure-managing duelist
+
     pWeapon: "longsword",
     eWeapon: "rapier",
   });

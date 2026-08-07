@@ -71,10 +71,6 @@ export interface TimeControl {
 }
 
 export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: TimeControl): void {
-  if (v.labels !== activeViewLabels) {
-    activeViewLabels = v.labels;
-    CONTROLS_LINES = controlsLines(v.labels);
-  }
   const { ctx } = v;
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = "#1b1e24";
@@ -82,19 +78,37 @@ export function drawFrame(v: View, d: Duel, aiMode: AiMode, seed: number, time: 
   // floor
   ctx.fillStyle = "#2a2e36";
   ctx.fillRect(0, ARENA.floorY, 960, 540 - ARENA.floorY);
+  drawDuelPresentation(v, d, aiMode, seed, time);
+}
 
-  if (v.overlay) drawMeasureBands(v, d);
-  drawLineBar(v, d.f[0], 0);
-  drawLineBar(v, d.f[1], 1);
-  drawFighter(v, d.f[0], d.time, d.bind, 0);
-  drawFighter(v, d.f[1], d.time, d.bind, 1);
+/**
+ * The duel's ENTIRE presentation stack minus the backdrop: measure
+ * bands, line bars, fighters, tracks, log, seed, HUD cards, bind bar,
+ * opening prompt, time control, help button, banner. One function so a
+ * scene that hosts a duel on another floor (the arena's platform) shows
+ * the fight one to one with the duel scene - never a hand-picked
+ * subset that drifts.
+ */
+export function drawDuelPresentation(
+  v: View, d: Duel, aiMode: AiMode, seed: number, time: TimeControl,
+  floorY: number = ARENA.floorY,
+): void {
+  if (v.labels !== activeViewLabels) {
+    activeViewLabels = v.labels;
+    CONTROLS_LINES = controlsLines(v.labels);
+  }
+  if (v.overlay) drawMeasureBands(v, d, floorY);
+  drawLineBar(v, d.f[0], 0, floorY);
+  drawLineBar(v, d.f[1], 1, floorY);
+  drawFighter(v, d.f[0], d.time, d.bind, 0, floorY);
+  drawFighter(v, d.f[1], d.time, d.bind, 1, floorY);
   if (v.overlay) {
-    drawBodyTrack(v, d.f[0], d.disarm);
-    drawBodyTrack(v, d.f[1], d.disarm);
-    drawParryTrack(v, d.f[0], d.bind, 0);
-    drawParryTrack(v, d.f[1], d.bind, 1);
-    drawLineTrack(v, d.f[0], d.bind);
-    drawLineTrack(v, d.f[1], d.bind);
+    drawBodyTrack(v, d.f[0], d.disarm, floorY);
+    drawBodyTrack(v, d.f[1], d.disarm, floorY);
+    drawParryTrack(v, d.f[0], d.bind, 0, floorY);
+    drawParryTrack(v, d.f[1], d.bind, 1, floorY);
+    drawLineTrack(v, d.f[0], d.bind, floorY);
+    drawLineTrack(v, d.f[1], d.bind, floorY);
     drawLog(v, d);
     drawSeed(v, seed);
   }
@@ -439,11 +453,11 @@ export function zoneLabelStyle(zone: Zone, fighterIndex: number, tint: string): 
   return { color: fighterIndex === 0 ? "#57a55a" : "#d64541", bold: true };
 }
 
-function drawMeasureBands(v: View, d: Duel): void {
+function drawMeasureBands(v: View, d: Duel, floorY: number = ARENA.floorY): void {
   const { ctx } = v;
   const tints = ["#c9a227", "#4aa3df"]; // fighter 0 gold, fighter 1 blue
   d.f.forEach((f, i) => {
-    const y = ARENA.floorY + 14 + i * 12;
+    const y = floorY + 14 + i * 12;
     const dir = f.facing;
     const px = f.x * PX_PER_CM;
     ctx.globalAlpha = 0.45;
@@ -680,13 +694,13 @@ export function lineLabel(f: Fighter, bind: BindState | null = null): string {
   return `READY: ${H(f.height)} ${f.guardSide.toUpperCase()}`;
 }
 
-function drawLineTrack(v: View, f: Fighter, bind: BindState | null): void {
+function drawLineTrack(v: View, f: Fighter, bind: BindState | null, floorY: number = ARENA.floorY): void {
   const { ctx } = v;
   const active = f.state.kind === "attack" || f.state.kind === "bind" || f.parry !== null;
   ctx.font = "10px ui-monospace, monospace";
   ctx.textAlign = "center";
   ctx.fillStyle = active ? "#cfd3da" : "#5a6070";
-  ctx.fillText(lineLabel(f, bind), f.x * PX_PER_CM, ARENA.floorY + ROW3_LABEL_Y);
+  ctx.fillText(lineLabel(f, bind), f.x * PX_PER_CM, floorY + ROW3_LABEL_Y);
   ctx.textAlign = "left";
 }
 
@@ -713,11 +727,11 @@ export function lineBarFrac(f: Fighter): number {
   return from + (HEIGHT_BAND_FRAC[f.heightTo] - from) * p;
 }
 
-function drawLineBar(v: View, f: Fighter, i: 0 | 1): void {
+function drawLineBar(v: View, f: Fighter, i: 0 | 1, floorY: number = ARENA.floorY): void {
   const { ctx } = v;
   const tints = ["#c9a227", "#4aa3df"]; // the measure bands' fighter tints
   const x = f.x * PX_PER_CM - f.facing * LINE_BAR_OFFSET_PX;
-  const yMid = ARENA.floorY - lineBarFrac(f) * BODY_PX;
+  const yMid = floorY - lineBarFrac(f) * BODY_PX;
   const live =
     (f.state.kind === "attack" && f.state.phase !== "recovery") || guardEffective(f);
   ctx.globalAlpha = live ? 1 : 0.35;

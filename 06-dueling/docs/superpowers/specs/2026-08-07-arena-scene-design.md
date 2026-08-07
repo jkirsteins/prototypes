@@ -111,9 +111,10 @@ The enemy fights ONLY through a duel. An unarmed body is never attacked:
   pass through the same fighter-event-to-DuelEvent translation the duel
   engine uses, extracted into a shared helper so the mapping cannot
   drift.
-- The arena's enemy defaults to AI mode 2 (the duelist) rather than the
-  duel scene's mode 0 dummy, so once the player draws on the platform it
-  actually comes at them; ?mode= and the 0-4 keys still override.
+- The arena's enemy defaults to AI mode 4 - the duelist that manages
+  measure and advances on its own (mode 2 is a stationary drill
+  metronome) - so once the player draws on the platform it actually
+  comes at them; ?mode= and the 0-4 keys still override.
 
 ## 6. Input
 

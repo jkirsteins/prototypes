@@ -1,8 +1,5 @@
 import { GRID_Y, drawMover, drawTiles } from "./movedraw";
-import {
-  HELP_BUTTON, PX_PER_CM, drawBanner, drawBindBar, drawBodyTrack,
-  drawFighter, drawParryTrack, drawTrackRow,
-} from "./draw";
+import { HELP_BUTTON, PX_PER_CM, drawDuelPresentation, drawFighter, drawTrackRow } from "./draw";
 import { ARENA_PLATFORM } from "../movement/level";
 import { BODY_W, heightOf } from "../movement/engine";
 import { DRAW_MS } from "../scenes/arenarules";
@@ -40,37 +37,34 @@ export function drawArenaFrame(v: ArenaView, w: ArenaWorld, overlay: boolean, ti
   const fv: View = { ctx, images: v.images, overlay, labels: v.labels };
   drawTiles(mv, w.level);
 
+  if (w.duel !== null) {
+    // A live (or just-decided) duel renders EXACTLY the duel scene's
+    // stack - measure bands, line bars, tracks, log, HUD, bind bar,
+    // opening prompt, time control, banner - lifted to the platform.
+    drawDuelPresentation(fv, w.duel, w.aiMode, w.seed, time, floorPx(ARENA_PLATFORM.topY));
+    drawSheatheBar(fv, w);
+    return;
+  }
+
   const enemyFloor = floorPx(ARENA_PLATFORM.topY);
-  drawFighter(fv, w.enemy, w.time, w.duel?.bind ?? null, 1, enemyFloor);
+  drawFighter(fv, w.enemy, w.time, null, 1, enemyFloor);
   drawPlayer(fv, mv, w);
 
-  if (overlay) {
-    drawBodyTrack(fv, w.enemy, w.duel?.disarm ?? null, enemyFloor);
-    drawParryTrack(fv, w.enemy, w.duel?.bind ?? null, 1, enemyFloor);
-    if (w.player.kind === "fighter" || w.player.kind === "sheathing") {
-      const pf = floorPx(w.player.floorY);
-      drawBodyTrack(fv, w.player.f, w.duel?.disarm ?? null, pf);
-      drawParryTrack(fv, w.player.f, w.duel?.bind ?? null, 0, pf);
-    } else {
-      const m = w.player.m;
-      const h = heightOf(m.state);
-      ctx.strokeStyle = "#57a55a";
-      ctx.strokeRect(
-        (m.x - BODY_W / 2) * PX_PER_CM, GRID_Y + (m.y - h) * PX_PER_CM,
-        BODY_W * PX_PER_CM, h * PX_PER_CM,
-      );
-      ctx.fillStyle = "#cfd3da";
-      ctx.font = "12px ui-monospace, monospace";
-      ctx.textAlign = "left";
-      ctx.fillText(
-        `${m.state.kind}  x ${m.x.toFixed(0)} y ${m.y.toFixed(0)}  vx ${m.vx.toFixed(0)} vy ${m.vy.toFixed(0)}`,
-        12, 24,
-      );
-    }
-  }
-  if (w.duel !== null) {
-    drawBindBar(fv, w.duel);
-    if (w.duel.over) drawBanner(fv, w.duel);
+  if (overlay && (w.player.kind === "mover" || w.player.kind === "drawing")) {
+    const m = w.player.m;
+    const h = heightOf(m.state);
+    ctx.strokeStyle = "#57a55a";
+    ctx.strokeRect(
+      (m.x - BODY_W / 2) * PX_PER_CM, GRID_Y + (m.y - h) * PX_PER_CM,
+      BODY_W * PX_PER_CM, h * PX_PER_CM,
+    );
+    ctx.fillStyle = "#cfd3da";
+    ctx.font = "12px ui-monospace, monospace";
+    ctx.textAlign = "left";
+    ctx.fillText(
+      `${m.state.kind}  x ${m.x.toFixed(0)} y ${m.y.toFixed(0)}  vx ${m.vx.toFixed(0)} vy ${m.vy.toFixed(0)}`,
+      12, 24,
+    );
   }
 
   const [line1, line2] = arenaControlsLines(v.labels);
@@ -98,13 +92,22 @@ function drawPlayer(fv: View, mv: MoveView, w: ArenaWorld): void {
     return;
   }
   const floor = floorPx(p.floorY);
-  drawFighter(fv, p.f, w.time, w.duel?.bind ?? null, 0, floor);
+  drawFighter(fv, p.f, w.time, null, 0, floor);
   if (p.kind === "sheathing") {
     drawTrackRow(
       fv, p.f.x * PX_PER_CM, ROW1_LABEL_Y + 40, ROW1_BAR_Y + 40,
       "sheathing", "#e6c229", p.t / DRAW_MS, floor,
     );
   }
+}
+
+/** The mid-duel sheathe: the same action-track bar, on the committed body. */
+function drawSheatheBar(fv: View, w: ArenaWorld): void {
+  if (w.player.kind !== "sheathing") return;
+  drawTrackRow(
+    fv, w.player.f.x * PX_PER_CM, ROW1_LABEL_Y + 40, ROW1_BAR_Y + 40,
+    "sheathing", "#e6c229", w.player.t / DRAW_MS, floorPx(w.player.floorY),
+  );
 }
 
 function drawTimeAndHelp(v: ArenaView, time: TimeControl): void {
