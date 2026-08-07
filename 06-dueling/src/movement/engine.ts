@@ -35,6 +35,9 @@ export const LEDGE_MS = 400;
  *  rest. The frame picker splits its poses on the same boundary so the
  *  knee never lands on thin air. */
 export const LEDGE_RISE = 0.65;
+/** Where the rise stops: feet this far below the lip put the chest at
+ *  it - the up-and-over covers the rest. */
+export const LEDGE_CHEST = 80;
 export const SPIN_MS = 360;
 /** Touchdown speeds: below SOFT no land state, at/above HARD the landing
  *  is hard (rolls when a direction is held). HARD sits above the worst
@@ -607,21 +610,25 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       break;
     }
     case "ledgeGrab": {
-      // Committed and continuous: the body travels up the wall face to
-      // the lip, then over onto it, so the sheet's poses ride a real
-      // path instead of playing frozen at the hang point and snapping.
+      // Committed and continuous: the pull raises the body along the
+      // face only until the CHEST reaches the lip - feet still below it,
+      // hugging the wall - then the body goes up-and-over the corner
+      // diagonally onto the stand point. Rising feet-to-lip first would
+      // leave the whole body hovering beside the corner in mid-air.
       // Position is driven directly - the probe already verified the
       // stand target is free, and the swept path hugs the verified lip.
       m.vx = 0;
       m.vy = 0;
       s.t += MOVE_TICK;
       const p = Math.min(1, s.t / LEDGE_MS);
+      const chestY = s.targetY + LEDGE_CHEST; // feet here = chest at the lip
       if (p < LEDGE_RISE) {
         m.x = s.startX;
-        m.y = s.startY + (s.targetY - s.startY) * (p / LEDGE_RISE);
+        m.y = s.startY + (chestY - s.startY) * (p / LEDGE_RISE);
       } else {
-        m.y = s.targetY;
-        m.x = s.startX + (s.targetX - s.startX) * ((p - LEDGE_RISE) / (1 - LEDGE_RISE));
+        const q = (p - LEDGE_RISE) / (1 - LEDGE_RISE);
+        m.x = s.startX + (s.targetX - s.startX) * q;
+        m.y = chestY + (s.targetY - chestY) * q;
       }
       if (p >= 1) m.state = { kind: "idle" };
       break;
