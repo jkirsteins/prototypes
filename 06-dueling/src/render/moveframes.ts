@@ -56,9 +56,11 @@ export function pickMoveFrame(m: Mover): FramePick {
     case "wallSlide": return { sheet: "wallSlide", frame: 1 + (Math.floor(m.time / 150) % 2), flip: s.wall === -1 };
     case "ladderClimb": return { sheet: "climbBack", frame: climbFrame("climbBack", m.y), flip: false };
     // The catch swings the legs between the two hanging poses twice -
-    // momentum from the grab - then the body settles still on the reach
-    // pose. Nobody flails forever on a ledge.
-    case "ledgeHang": return { sheet: "ledgeClimb", frame: s.t < 1120 ? Math.floor(s.t / 280) % 2 : 0, flip };
+    // momentum from the grab - then the body settles still on frame 1,
+    // the compact pose that hugs the wall (frame 0 is the kicked-out
+    // swing). The last sway segment is already 1, so the hold is
+    // seamless, and the pull-up starts from the same frame.
+    case "ledgeHang": return { sheet: "ledgeClimb", frame: s.t < 1120 ? Math.floor(s.t / 280) % 2 : 1, flip };
     case "ledgeGrab": {
       // Poses follow the path's phases: pulling poses through the rise,
       // the knee and the crouch only once the body is over the lip -

@@ -54,8 +54,8 @@ describe("pickMoveFrame is total and in bounds", () => {
     expect(frameAt(300)).toBe(1); // the swing
     expect(frameAt(600)).toBe(0);
     expect(frameAt(900)).toBe(1);
-    expect(frameAt(1500)).toBe(0); // settled: still from here on
-    expect(frameAt(60000)).toBe(0);
+    expect(frameAt(1500)).toBe(1); // settled: still, on the wall-hugging pose
+    expect(frameAt(60000)).toBe(1);
   });
 
   test("climb cycles advance with position, not time", () => {
