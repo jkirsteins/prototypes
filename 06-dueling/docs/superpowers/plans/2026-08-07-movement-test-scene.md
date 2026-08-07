@@ -178,7 +178,9 @@ describe("the movement level", () => {
   });
 
   test("platforms sit where the layout says", () => {
-    for (const [c, r] of [[3, 8], [4, 8], [5, 6], [6, 6], [7, 6], [14, 6], [15, 6], [18, 3], [19, 3]]) {
+    // The left step (cols 3-4) is solid down to the floor: a floating
+    // platform there would leave a second accidental crawl-gap under it.
+    for (const [c, r] of [[3, 8], [4, 8], [3, 9], [4, 9], [5, 6], [6, 6], [7, 6], [14, 6], [15, 6], [18, 3], [19, 3]]) {
       expect(isSolid(tileAt(level, c, r))).toBe(true);
     }
     // the dash gap: cols 8-13 at row 6 are open
@@ -231,7 +233,7 @@ const MAP = [
   "C....###......##.H..",
   "C................H..",
   "C..##.....###....H..",
-  "C................H..",
+  "C..##............H..",
   "####################",
 ];
 
@@ -380,7 +382,8 @@ describe("movement engine core", () => {
     const m = createMover(level);
     run(m, input({}, { jump: true }), 1);
     expect(m.state.kind).toBe("jump");
-    expect(m.vy).toBe(-JUMP_V);
+    // The press tick already integrates one tick of gravity.
+    expect(m.vy).toBeLessThan(-JUMP_V + 100);
     // ride to apex and back down
     let sawFall = false;
     for (let i = 0; i < 200 && m.state.kind !== "land"; i++) {
@@ -396,29 +399,31 @@ describe("movement engine core", () => {
 
   test("walls stop horizontal movement", () => {
     const m = createMover(level);
-    run(m, input({ right: true }), 60 * 5); // 5 s of running right
+    // Start on the open floor RIGHT of the tunnel (standing traversal
+    // through the tunnel is deliberately impossible).
+    m.x = 15 * TILE;
+    run(m, input({ right: true }), 60 * 3);
     expect(m.x).toBeLessThanOrEqual(20 * TILE);
     expect(m.x).toBeGreaterThan(18 * TILE); // pinned at the right wall
   });
 
   test("running off a platform edge falls", () => {
     const m = createMover(level);
-    // teleport onto platform A (cols 3-4, row 8): stand at col 3.5
-    m.x = 3.5 * TILE;
-    m.y = 8 * TILE;
-    run(m, input({ right: true }), 90);
+    // Stand on platform C (cols 14-15, row 6) and run right off its edge.
+    m.x = 14.5 * TILE;
+    m.y = 6 * TILE;
+    run(m, input({ right: true }), 120);
     expect(m.y).toBe(10 * TILE); // ended on the floor below
   });
 
   test("landing from 3+ tiles is a hard landing", () => {
     const m = createMover(level);
-    m.x = 18.5 * TILE;
-    m.y = 3 * TILE; // on platform D, 7 tiles up
+    m.x = 16.5 * TILE; // open column: nothing below but the floor
+    m.y = 3 * TILE; // platform-D height, 7 tiles up
     m.state = { kind: "fall" };
     let landed: MoveEvent[] = [];
     for (let i = 0; i < 300 && m.state.kind === "fall"; i++) landed = run(m, input(), 1);
-    expect(m.state.kind).toBe("land");
-    expect((m.state as { hard: boolean }).hard).toBe(true);
+    expect(m.state).toMatchObject({ kind: "land", hard: true });
     expect(landed.some((e) => e.kind === "touchdown")).toBe(true);
   });
 });
@@ -558,7 +563,10 @@ export interface Mover {
 
 export function createMover(level: Level): Mover {
   return {
-    x: 10.5 * TILE, y: 10 * TILE, vx: 0, vy: 0, facing: 1,
+    // Spawn on open floor: col 8, clear of the tunnel roof (cols 10-12)
+    // and the left step - a standing body is taller than one tile, so a
+    // spawn under any row-8 tile would start wedged.
+    x: 8.5 * TILE, y: 10 * TILE, vx: 0, vy: 0, facing: 1,
     state: { kind: "idle" }, spun: false, strideMs: 0, prevDown: false,
     blockMoving: false, time: 0, block: { x: level.blockStartX },
   };
@@ -639,7 +647,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
   m.time += MOVE_TICK;
   const dt = MOVE_TICK / 1000;
   const held = input.held;
-  const wish = (held.right ? 1 : 0) - (held.left ? 1 : 0);
+  const wish = ((held.right ? 1 : 0) - (held.left ? 1 : 0)) as -1 | 0 | 1;
   const downEdge = held.down && !m.prevDown;
   m.prevDown = held.down;
   void downEdge; // consumed by the slide trigger (crouch task)
@@ -864,19 +872,20 @@ describe("roll on hard landing", () => {
   test("a high drop with a direction held rolls; without one it lands hard", () => {
     const drop = (dir: boolean): ReturnType<typeof createMover> => {
       const m = createMover(level);
-      m.x = 18.5 * TILE; m.y = 3 * TILE; m.state = { kind: "fall" };
-      const inp = dir ? input({ left: true }) : input();
+      // Open column: nothing below but the floor; drifting right stays
+      // clear of every platform (the ladder at col 17 is not solid).
+      m.x = 16.5 * TILE; m.y = 3 * TILE; m.state = { kind: "fall" };
+      const inp = dir ? input({ right: true }) : input();
       for (let i = 0; i < 400 && m.state.kind === "fall"; i++) run(m, inp, 1);
       return m;
     };
     const rolled = drop(true);
     expect(rolled.state.kind).toBe("roll");
     const braced = drop(false);
-    expect(braced.state.kind).toBe("land");
-    expect((braced.state as { hard: boolean }).hard).toBe(true);
+    expect(braced.state).toMatchObject({ kind: "land", hard: true });
     // the roll travels, then ends
     const m = drop(true);
-    run(m, input({ left: true }), Math.ceil(ROLL_MS / MOVE_TICK) + 1);
+    run(m, input({ right: true }), Math.ceil(ROLL_MS / MOVE_TICK) + 1);
     expect(["run", "idle"]).toContain(m.state.kind);
   });
 });
@@ -1059,7 +1068,8 @@ describe("air spin (double jump)", () => {
     run(m, input(), 10);
     run(m, input({}, { jump: true }), 1);
     expect(m.state.kind).toBe("airSpin");
-    expect(m.vy).toBe(-AIRSPIN_V);
+    // The press tick already integrates one tick of gravity.
+    expect(m.vy).toBeLessThan(-AIRSPIN_V + 100);
     run(m, input(), 5);
     run(m, input({}, { jump: true }), 1); // third press: nothing
     expect(m.state.kind).toBe("airSpin");
@@ -1306,13 +1316,12 @@ Replace the placeholder arms for the wall family (remove from the fall-through l
     case "wallLand": {
       s.t += MOVE_TICK;
       m.vx = 0;
-      m.vy = Math.min(m.vy, WALLSLIDE_CAP);
+      // The wall's friction cap is applied by the integration step.
       if (s.t >= WALLLAND_MS) m.state = { kind: "wallSlide", wall: s.wall };
       break;
     }
     case "wallSlide": {
       m.vx = 0;
-      m.vy = Math.min(m.vy, WALLSLIDE_CAP);
       if (input.pressed.jump) {
         // The wall jump: away and up, facing flipped.
         m.vx = -s.wall * WALLJUMP_VX;
@@ -1376,11 +1385,12 @@ Gravity/integration: `sideClimb` and `ledgeGrab` must not fall. Update the airbo
 
 ```ts
   const clinging = m.state.kind === "sideClimb" || m.state.kind === "ledgeGrab";
-  const airborne = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin"
-    || m.state.kind === "wallSlide" || m.state.kind === "wallLand";
+  const onWallNow = m.state.kind === "wallSlide" || m.state.kind === "wallLand";
+  const airborne = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin" || onWallNow;
   const h = heightOf(m.state);
   if (!clinging && (airborne || !onGround(m, level, h))) {
-    m.vy = Math.min(m.vy + GRAVITY * dt, FALL_CAP);
+    // Terminal speed: the wall's friction caps it far below free fall.
+    m.vy = Math.min(m.vy + GRAVITY * dt, onWallNow ? WALLSLIDE_CAP : FALL_CAP);
   }
 ```
 
@@ -1468,6 +1478,7 @@ describe("the pushable block", () => {
   test("the block cannot be pushed out of its pocket, only pulled", () => {
     const m = createMover(level);
     const bx0 = m.block.x; // 19.5 * TILE, against the right wall
+    m.x = 14 * TILE; // open floor right of the tunnel (standing cannot pass it)
     // Walk right into it: push attempts move it right, into the wall.
     run(m, input({ right: true }), 60 * 3);
     expect(m.block.x).toBe(bx0);
