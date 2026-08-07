@@ -244,7 +244,7 @@ export function bindHeadline(bind: BindState): string {
  */
 const BIND_BAR = { cx: 480, y: 168, halfW: 170, h: 8 };
 
-function drawBindBar(v: View, d: Duel): void {
+export function drawBindBar(v: View, d: Duel): void {
   const bind = d.bind;
   if (bind === null) return;
   const { ctx } = v;
@@ -406,7 +406,7 @@ export function bindStrainOffset(timeMs: number, side: 0 | 1, net = 0): number {
   return (side === 0 ? a : -a) + net * 2;
 }
 
-function drawFighter(v: View, f: Fighter, time: number, bind: BindState | null, side: 0 | 1): void {
+export function drawFighter(v: View, f: Fighter, time: number, bind: BindState | null, side: 0 | 1, floorY: number = ARENA.floorY): void {
   const { ctx } = v;
   const bound = f.state.kind === "bind" && bind !== null;
   const pick = bound && bind !== null
@@ -415,7 +415,7 @@ function drawFighter(v: View, f: Fighter, time: number, bind: BindState | null, 
   const meta = SHEETS[pick.sheet];
   const img = v.images[pick.sheet];
   const sx = pick.frame * meta.frameW;
-  const dy = ARENA.floorY - meta.feetY * SCALE;
+  const dy = floorY - meta.feetY * SCALE;
   // The strain's shove direction follows the presser's facing in the
   // world, the same mapping the bar's marker uses.
   const enemyFacing = side === 1 ? f.facing : (-f.facing as 1 | -1);
@@ -473,19 +473,20 @@ const ROW1_BAR_Y = -178;
 const ROW2_LABEL_Y = -165;
 const ROW2_BAR_Y = -159;
 
-function drawTrackRow(
+export function drawTrackRow(
   v: View, cx: number, labelY: number, barY: number,
   label: string, color: string, frac: number | null,
+  floorY: number = ARENA.floorY,
 ): void {
   const { ctx } = v;
   ctx.font = "11px ui-monospace, monospace";
   ctx.textAlign = "center";
   ctx.fillStyle = color;
-  ctx.fillText(label, cx, ARENA.floorY + labelY);
+  ctx.fillText(label, cx, floorY + labelY);
   ctx.textAlign = "left";
   if (frac === null) return;
   const x = cx - TRACK_BAR_W / 2;
-  const y = ARENA.floorY + barY;
+  const y = floorY + barY;
   ctx.fillStyle = "#2c313a";
   ctx.fillRect(x, y, TRACK_BAR_W, TRACK_BAR_H);
   ctx.fillStyle = color;
@@ -493,7 +494,7 @@ function drawTrackRow(
 }
 
 /** Row 1: current state or attack phase, with progress through it. */
-function drawBodyTrack(v: View, f: Fighter, disarm: DisarmState | null = null): void {
+export function drawBodyTrack(v: View, f: Fighter, disarm: DisarmState | null = null, floorY: number = ARENA.floorY): void {
   const { ctx } = v;
   const s = f.state;
   const cx = f.x * PX_PER_CM;
@@ -505,14 +506,14 @@ function drawBodyTrack(v: View, f: Fighter, disarm: DisarmState | null = null): 
     // sword. Its fill SPEED is the grip made visible - a soft opponent
     // strips fast, a braced one slowly (duration fixed from the saved
     // grip at the attempt's start).
-    drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, disarm.t / disarm.durationMs);
+    drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, disarm.t / disarm.durationMs, floorY);
     return;
   }
 
   if (s.kind === "bind") {
     // A label with no bar: the bind has no fixed duration to fill toward.
     // The contest itself renders on the shared control bar.
-    drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, null);
+    drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, null, floorY);
     return;
   }
 
@@ -522,14 +523,14 @@ function drawBodyTrack(v: View, f: Fighter, disarm: DisarmState | null = null): 
     ctx.font = "11px ui-monospace, monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = color;
-    ctx.fillText(label, cx, ARENA.floorY + ROW1_LABEL_Y);
+    ctx.fillText(label, cx, floorY + ROW1_LABEL_Y);
     ctx.textAlign = "left";
-    drawCommitCue(v, f, cx);
+    drawCommitCue(v, f, cx, floorY);
     const tl = s.timeline;
     const strike = tl.strikeEnd - tl.strikeStart;
     const meetable = (tl.parryableUntil - tl.strikeStart) / strike;
     const x = cx - TRACK_BAR_W / 2;
-    const y = ARENA.floorY + ROW1_BAR_Y;
+    const y = floorY + ROW1_BAR_Y;
     ctx.fillStyle = "#e6c229"; // meetable
     ctx.fillRect(x, y, TRACK_BAR_W * meetable, TRACK_BAR_H);
     ctx.fillStyle = "#6b2f2c"; // delivered: too late to parry
@@ -539,15 +540,15 @@ function drawBodyTrack(v: View, f: Fighter, disarm: DisarmState | null = null): 
     return;
   }
 
-  drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, bodyFraction(f));
-  drawCommitCue(v, f, cx);
+  drawTrackRow(v, cx, ROW1_LABEL_Y, ROW1_BAR_Y, label, color, bodyFraction(f), floorY);
+  drawCommitCue(v, f, cx, floorY);
 
   // Presentation marks inside the windup: where the rise starts (end of an
   // AI telegraph) and where the stillness begins.
   if (s.kind === "attack" && s.phase === "windup") {
     const tl = s.timeline;
     const x = cx - TRACK_BAR_W / 2;
-    const y = ARENA.floorY + ROW1_BAR_Y;
+    const y = floorY + ROW1_BAR_Y;
     ctx.fillStyle = "#1b1e24";
     for (const mark of [tl.riseStart, tl.riseEnd]) {
       if (mark > 0 && mark < tl.strikeStart) {
@@ -562,11 +563,11 @@ function drawBodyTrack(v: View, f: Fighter, disarm: DisarmState | null = null): 
  * the single source of truth, never stored. Underlines the label once the
  * attack can no longer be abandoned.
  */
-function drawCommitCue(v: View, f: Fighter, cx: number): void {
+function drawCommitCue(v: View, f: Fighter, cx: number, floorY: number = ARENA.floorY): void {
   const s = f.state;
   if (s.kind !== "attack" || s.phase === "windup") return;
   v.ctx.fillStyle = PHASE_COLORS[s.phase];
-  v.ctx.fillRect(cx - 14, ARENA.floorY + ROW1_LABEL_Y + 3, 28, 1);
+  v.ctx.fillRect(cx - 14, floorY + ROW1_LABEL_Y + 3, 28, 1);
 }
 
 /** Progress through the current body action, or null for no bar. */
@@ -610,12 +611,12 @@ function bodyFraction(f: Fighter): number | null {
 /** Row 2: the parry track - rise then window while up, recovery while spent.
  *  During a bind it mirrors that fighter's live action track, the same
  *  status the shared bar shows, so the read works at either glance. */
-function drawParryTrack(v: View, f: Fighter, bind: BindState | null, side: 0 | 1): void {
+export function drawParryTrack(v: View, f: Fighter, bind: BindState | null, side: 0 | 1, floorY: number = ARENA.floorY): void {
   if (f.state.kind === "bind" && bind !== null) {
     const cx = f.x * PX_PER_CM;
     const s = bindSideStatus(bind, side);
     const color = s.label === "YIELD NOW" ? "#e6c229" : "#c9822f";
-    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, s.label.toLowerCase(), color, s.recovery);
+    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, s.label.toLowerCase(), color, s.recovery, floorY);
     return;
   }
   const cx = f.x * PX_PER_CM;
@@ -626,16 +627,16 @@ function drawParryTrack(v: View, f: Fighter, bind: BindState | null, side: 0 | 1
     // deadline the guard no longer has.
     const p = f.parry;
     if (p.phase === "held") {
-      drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "guard held", "#9b8cff", null);
+      drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "guard held", "#9b8cff", null, floorY);
     } else {
       const label = p.phase === "rising" ? "guard rising" : "guard shifting";
       drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, label, p.phase === "rising" ? "#6f66a8" : "#9b8cff",
-        p.phaseMs / p.phaseDurationMs);
+        p.phaseMs / p.phaseDurationMs, floorY);
     }
   } else if (cooling) {
-    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "recovering", "#6b6675", 1 - f.parryRecoveryMs / f.weapon.parryRecoveryMs);
+    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "recovering", "#6b6675", 1 - f.parryRecoveryMs / f.weapon.parryRecoveryMs, floorY);
   } else {
-    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "parry ready", "#5a6070", null);
+    drawTrackRow(v, cx, ROW2_LABEL_Y, ROW2_BAR_Y, "parry ready", "#5a6070", null, floorY);
   }
 }
 
@@ -780,7 +781,7 @@ function drawHud(v: View, d: Duel, aiMode: AiMode): void {
 }
 
 /** End-of-duel banner: who killed whom, or a mutual-strike draw. */
-function drawBanner(v: View, d: Duel): void {
+export function drawBanner(v: View, d: Duel): void {
   const { ctx } = v;
   const winner = d.winner;
   // Two lines so no outcome can overflow the canvas: the verdict big,

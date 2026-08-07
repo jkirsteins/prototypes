@@ -12,7 +12,7 @@ import type { TimeControl } from "./draw";
 
 /** Canvas y of the grid's top edge: 11 rows of 48 px = 528, letterboxed
  *  into the 540 canvas with the spare 12 px above. */
-const GRID_Y = 12;
+export const GRID_Y = 12;
 
 export interface MoveView {
   ctx: CanvasRenderingContext2D;
@@ -29,13 +29,9 @@ function atlasCell(l: boolean, r: boolean, t: boolean, b: boolean): [number, num
   return [sx * 16, sy * 16];
 }
 
-export function drawMoveFrame(v: MoveView, m: Mover, level: Level, overlay: boolean, time: TimeControl): void {
+/** The level's tiles alone: shared by the move scene and the arena. */
+export function drawTiles(v: MoveView, level: Level): void {
   const { ctx } = v;
-  ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#1b1e24";
-  ctx.fillRect(0, 0, 960, 540);
-
-  // Tiles.
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
       const k = tileAt(level, col, row);
@@ -55,15 +51,11 @@ export function drawMoveFrame(v: MoveView, m: Mover, level: Level, overlay: bool
       }
     }
   }
+}
 
-  // The block: one bright atlas cell plus an outline so it reads as a prop.
-  const bx = m.block.x * PX_PER_CM - (BLOCK_W * PX_PER_CM) / 2;
-  const by = GRID_Y + (10 * TILE - BLOCK_H) * PX_PER_CM;
-  ctx.drawImage(v.tiles, 16, 16, 16, 16, bx, by, 48, 48);
-  ctx.strokeStyle = "#0e1013";
-  ctx.strokeRect(bx + 0.5, by + 0.5, 47, 47);
-
-  // The player.
+/** The mover's sprite alone: shared by the move scene and the arena. */
+export function drawMover(v: MoveView, m: Mover): void {
+  const { ctx } = v;
   const pick = pickMoveFrame(m);
   const meta = SHEETS[pick.sheet];
   const img = v.images[pick.sheet];
@@ -77,6 +69,24 @@ export function drawMoveFrame(v: MoveView, m: Mover, level: Level, overlay: bool
     -meta.originX * SCALE, feetScreenY - feetY * SCALE, meta.frameW * SCALE, meta.frameH * SCALE,
   );
   ctx.restore();
+}
+
+export function drawMoveFrame(v: MoveView, m: Mover, level: Level, overlay: boolean, time: TimeControl): void {
+  const { ctx } = v;
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#1b1e24";
+  ctx.fillRect(0, 0, 960, 540);
+
+  drawTiles(v, level);
+
+  // The block: one bright atlas cell plus an outline so it reads as a prop.
+  const bx = m.block.x * PX_PER_CM - (BLOCK_W * PX_PER_CM) / 2;
+  const by = GRID_Y + (10 * TILE - BLOCK_H) * PX_PER_CM;
+  ctx.drawImage(v.tiles, 16, 16, 16, 16, bx, by, 48, 48);
+  ctx.strokeStyle = "#0e1013";
+  ctx.strokeRect(bx + 0.5, by + 0.5, 47, 47);
+
+  drawMover(v, m);
 
   // Overlay: state, velocities, the collision box.
   if (overlay) {
