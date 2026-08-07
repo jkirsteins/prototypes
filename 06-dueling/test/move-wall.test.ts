@@ -4,7 +4,7 @@ import {
   AIRSPIN_V, GRAVITY, JUMP_V, MOVE_TICK, SPIN_MS,
   WALLSLIDE_CAP, createMover, tickMove,
 } from "../src/movement/engine";
-import type { MoveEvent, MoveInput } from "../src/movement/engine";
+import type { MoveEvent, MoveInput, MoveState } from "../src/movement/engine";
 
 const level = createLevel();
 
@@ -148,6 +148,38 @@ describe("wall slide and wall jump", () => {
     m.airFromJump = true;
     run(m, input({ right: true }), 3);
     expect(m.state.kind).toBe("ledgeHang");
+  });
+
+  test("standing is balance: a center past the edge tips off, a center on it stands", () => {
+    const over = createMover(level);
+    over.x = 14 * TILE - 2; // center 2 cm past platform C's left edge
+    over.y = 6 * TILE;
+    run(over, input(), 120);
+    expect(over.y).toBe(10 * TILE); // tipped, slipped off the corner, fell
+
+    const on = createMover(level);
+    on.x = 14 * TILE + 2;
+    on.y = 6 * TILE;
+    run(on, input(), 60);
+    expect(on.state.kind).toBe("idle");
+    expect(on.y).toBe(6 * TILE);
+  });
+
+  test("a wall slide with the stick held into the wall catches the lip at its window", () => {
+    const m = createMover(level);
+    // Crouch-walk off the step's right edge (standing walks are pinned
+    // by B overhead), then hold back INTO the face: the slide starts
+    // above the catch window and must hang on arrival at it.
+    m.x = 440; m.y = 8 * TILE;
+    m.state = { kind: "crouchIdle" } as MoveState;
+    for (let i = 0; i < 30 && m.vy <= 0; i++) run(m, input({ right: true, down: true }), 1);
+    expect(m.vy).toBeGreaterThan(0); // off the edge
+    let caught = false;
+    for (let i = 0; i < 120 && !caught; i++) {
+      run(m, input({ left: true }), 1);
+      caught = m.state.kind === "ledgeHang";
+    }
+    expect(caught).toBe(true); // the hold is the intent: hands catch, then wait
   });
 
   test("jump leaps away from the hang, facing flipped", () => {

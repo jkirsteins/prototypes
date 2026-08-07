@@ -173,8 +173,13 @@ function moveY(m: Mover, level: Level, dy: number, h: number): -1 | 0 | 1 {
   return dir === 1 ? 1 : -1;
 }
 
-function onGround(m: Mover, level: Level, h: number): boolean {
-  return boxHits(m, level, m.x, m.y + 2, BODY_W, h);
+/** Support under the feet: standing is balance, not collision. The
+ *  ground must hold the body's CENTER - a body more than half over the
+ *  edge tips off it; heels alone are not standing. The probe is a thin
+ *  strip just under the feet, so a head touching a ceiling can never
+ *  read as ground. */
+function onGround(m: Mover, level: Level, _h: number): boolean {
+  return boxHits(m, level, m.x, m.y + 2, 2, 4);
 }
 
 function headroom(m: Mover, level: Level): boolean {
@@ -283,6 +288,18 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
       m.vx = Math.abs(m.vx) > RUN_SPEED ? m.vx : 0;
     }
   };
+  /** Catch the lip on that side if it is within the hands' window. */
+  const tryHang = (side: -1 | 1): boolean => {
+    const lip = ledgeProbe(m, level, side, BODY_H);
+    if (lip === null) return false;
+    m.vx = 0; m.vy = 0; m.spun = false;
+    m.facing = side;
+    m.x = lip.hangX;
+    m.y = lip.lipY + BODY_H + HANG_HEAD_BELOW_LIP;
+    m.state = { kind: "ledgeHang", wall: side, standX: lip.standX, lipY: lip.lipY };
+    ev.push({ kind: "grab" });
+    return true;
+  };
   const airChecks = (): void => {
     // Order: the ledge catch beats the wall slide beats plain fall.
     // Catching happens only on the way DOWN and only from a LEAP: a jump
@@ -294,16 +311,7 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     if (m.vy >= 0 && m.regrabMs <= 0 && m.airFromJump && !held.down) {
       const tries: Array<-1 | 1> = wish !== 0 ? [wish] : [m.facing];
       for (const side of tries) {
-        const lip = ledgeProbe(m, level, side, BODY_H);
-        if (lip !== null) {
-          m.vx = 0; m.vy = 0; m.spun = false;
-          m.facing = side;
-          m.x = lip.hangX;
-          m.y = lip.lipY + BODY_H + HANG_HEAD_BELOW_LIP;
-          m.state = { kind: "ledgeHang", wall: side, standX: lip.standX, lipY: lip.lipY };
-          ev.push({ kind: "grab" });
-          return;
-        }
+        if (tryHang(side)) return;
       }
     }
     const dir = wish as -1 | 0 | 1;
@@ -488,6 +496,9 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
         m.airFromJump = true;
         break;
       }
+      // Sliding into a lip's window with the stick held at the wall:
+      // the hands catch it and wait for input - the hold IS the intent.
+      if (!held.down && m.regrabMs <= 0 && tryHang(s.wall)) break;
       // Steering away, or the wall ran out: back to a fall - a release,
       // not a leap, so empty hands do not reach for lips on the way down.
       if (wish !== s.wall || !touchingWall(m, level, s.wall, BODY_H)) {
@@ -643,7 +654,13 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     // Wall states own their own floor plant (above), so a corner catch
     // cannot double-count: only a free fall lands here.
     const freeAir = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin";
-    if (freeAir) {
+    if (freeAir && !onGround(m, level, h)) {
+      // The collision box clipped a lip's corner but the body's center
+      // is over air: balance says this is no landing. Slip sideways off
+      // the corner and keep falling - no plant, no sound.
+      const heelOnLeft = boxHits(m, level, m.x - BODY_W / 2 + 1, m.y + 2, 2, 4);
+      moveX(m, level, (heelOnLeft ? 1 : -1) * 8, h);
+    } else if (freeAir) {
       ev.push({ kind: "touchdown" });
       if (impact >= LAND_HARD) {
         if (wish !== 0) {
