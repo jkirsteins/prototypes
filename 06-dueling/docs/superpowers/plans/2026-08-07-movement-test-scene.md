@@ -730,7 +730,10 @@ export function tickMove(m: Mover, level: Level, input: MoveInput): MoveEvent[] 
     const impact = m.vy;
     m.vy = 0;
     m.spun = false;
-    if (airborne) {
+    // Only a free-air arrival classifies here; wall states own their own
+    // floor plant in their arms, so a corner catch cannot double-count.
+    const freeAir = m.state.kind === "jump" || m.state.kind === "fall" || m.state.kind === "airSpin";
+    if (freeAir) {
       ev.push({ kind: "touchdown" });
       if (impact >= LAND_HARD) {
         m.state = { kind: "land", t: 0, hard: true }; // roll trigger: crouch task
@@ -1156,6 +1159,17 @@ describe("wall slide and wall jump", () => {
     run(m, input({ right: true }), 3);
     expect(["fall", "jump"]).toContain(m.state.kind);
   });
+
+  test("a wall catch beside the floor is one plant, never a double touchdown", () => {
+    const m = createMover(level);
+    m.x = 126; // flush against the left wall face
+    m.y = 954; // centimeters above the floor: the catch and the plant nearly coincide
+    m.vy = 300;
+    m.state = { kind: "fall" };
+    const evs = run(m, input({ left: true }), 30);
+    expect(evs.filter((e) => e.kind === "touchdown")).toHaveLength(1);
+    expect(["idle", "run"]).toContain(m.state.kind); // grounded, not stuck in a wall state
+  });
 });
 
 describe("side climb and the ledge", () => {
@@ -1287,13 +1301,19 @@ Replace the `jump`/`fall` arms' shared air logic with a helper and wall handling
         return;
       }
       if (m.vy > 0) {
+        const hardCatch = m.vy >= WALLLAND_VY;
         m.vx = 0;
+        // The catch arrests the fall; speed re-accrues under the wall
+        // cap. This also keeps the catch tick from crossing the floor.
+        m.vy = 0;
         m.facing = dir;
         m.spun = false;
-        m.state = m.vy >= WALLLAND_VY
+        m.state = hardCatch
           ? { kind: "wallLand", t: 0, wall: dir }
           : { kind: "wallSlide", wall: dir };
-        ev.push({ kind: "touchdown" });
+        // Only the hard catch is a contact moment with impact; drifting
+        // onto the wall mid-fall stays silent until the feet plant.
+        if (hardCatch) ev.push({ kind: "touchdown" });
       }
     }
   };
@@ -1353,6 +1373,12 @@ Replace the placeholder arms for the wall family (remove from the fall-through l
 
 ```ts
     case "wallLand": {
+      if (onGround(m, level, BODY_H)) {
+        m.vy = 0;
+        m.state = { kind: "idle" };
+        ev.push({ kind: "touchdown" }); // the feet plant
+        break;
+      }
       s.t += MOVE_TICK;
       m.vx = 0;
       // The wall's friction cap is applied by the integration step.
@@ -1360,6 +1386,12 @@ Replace the placeholder arms for the wall family (remove from the fall-through l
       break;
     }
     case "wallSlide": {
+      if (onGround(m, level, BODY_H)) {
+        m.vy = 0;
+        m.state = { kind: "idle" };
+        ev.push({ kind: "touchdown" }); // the feet plant
+        break;
+      }
       m.vx = 0;
       if (input.pressed.jump) {
         // The wall jump: away and up, facing flipped.
@@ -1383,6 +1415,11 @@ Replace the placeholder arms for the wall family (remove from the fall-through l
     case "sideClimb": {
       m.vx = 0;
       m.vy = 0;
+      if (held.down && onGround(m, level, BODY_H)) {
+        m.state = { kind: "idle" };
+        ev.push({ kind: "touchdown" }); // climbed down to the floor: the feet plant
+        break;
+      }
       if (!held.grab || !climbableBeside(m, level, s.wall, BODY_H)) {
         m.state = { kind: "fall" };
         break;
@@ -1667,6 +1704,7 @@ Replace the remaining placeholder arms (the fall-through list is now empty and m
       if (climb === 1 && onGround(m, level, BODY_H)) {
         m.state = { kind: "idle" };
         m.vy = 0;
+        ev.push({ kind: "touchdown" }); // climbed down to the floor: the feet plant
       }
       break;
     }
