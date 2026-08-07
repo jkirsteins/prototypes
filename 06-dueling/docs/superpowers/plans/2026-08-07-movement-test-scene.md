@@ -1597,6 +1597,16 @@ describe("the pushable block", () => {
     for (let i = 0; i < 300 && !["idle", "land", "run"].includes(m.state.kind); i++) run(m, input(), 1);
     expect(m.y).toBe(10 * TILE - 96); // feet on the block top
   });
+
+  test("a pull toward a low ceiling stops the block at the pinned player, never inside", () => {
+    const m = createMover(level);
+    m.x = 15 * TILE; // pulling left pins the standing body against the tunnel roof
+    m.block.x = 15 * TILE + BLOCK_W / 2 + BODY_W / 2 + 4;
+    run(m, input({ left: true, grab: true }), 120);
+    // The block fits under the roof the body cannot pass; it must stop
+    // beside the pinned body, never be dragged through it.
+    expect(m.block.x - m.x).toBeGreaterThanOrEqual(BLOCK_W / 2 + BODY_W / 2 - 1);
+  });
 });
 ```
 
@@ -1625,15 +1635,21 @@ function overLadder(m: Mover, level: Level, h: number): number | null {
   return null;
 }
 
-/** Where the block can rest: on the floor, not inside solid tiles. */
-function blockFits(level: Level, x: number): boolean {
+/** Where the block can rest: on the floor, not inside solid tiles, and
+ *  not inside the player - the pair moves in lockstep during a pull, and
+ *  a pinned player must pin the block, or a pull toward a low ceiling
+ *  drags the block THROUGH the body and soft-locks it inside. */
+function blockFits(m: Mover, level: Level, x: number): boolean {
   const floorTop = 10 * TILE;
   for (const px of [x - BLOCK_W / 2 + EPS, x, x + BLOCK_W / 2 - EPS]) {
     for (const py of [floorTop - BLOCK_H + EPS, floorTop - EPS]) {
       if (solidCellAt(level, px, py)) return false;
     }
   }
-  return true;
+  const h = heightOf(m.state);
+  const overlapX = Math.abs(x - m.x) < BLOCK_W / 2 + BODY_W / 2 - 1;
+  const overlapY = m.y > floorTop - BLOCK_H && m.y - h < floorTop;
+  return !(overlapX && overlapY);
 }
 
 /** Which side of the player the block is beside (touching range), 0 none. */
@@ -1718,9 +1734,9 @@ Replace the remaining placeholder arms (the fall-through list is now empty and m
         m.blockMoving = false;
         break;
       }
-      m.facing = s.kind === "push" ? beside : (beside === 1 ? -1 : 1) as -1 | 1;
+      m.facing = s.kind === "push" ? beside : beside === 1 ? -1 : 1;
       const step = wish * WALK_SPEED * dt;
-      if (blockFits(level, m.block.x + step)) {
+      if (blockFits(m, level, m.block.x + step)) {
         if (!m.blockMoving) ev.push({ kind: "shove" });
         m.blockMoving = true;
         m.block.x += step;
