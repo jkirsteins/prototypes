@@ -83,14 +83,18 @@ export function xpForEvent(e: GameEvent): number {
  *  Derived from the log rather than accumulated into a counter, because the log
  *  is already the complete append-only history of the run and a derivation
  *  cannot be forgotten at a new call site. See the 2026-07-31 design doc. */
-export function runXp(log: GameEvent[]): number {
-  return log.reduce((sum, e) => sum + (e.playerId === 1 ? xpForEvent(e) : 0), 0);
+export function runXp(log: GameEvent[], localPlayerId = 1): number {
+  return log.reduce(
+    (sum, e) => sum + (e.playerId === localPlayerId ? xpForEvent(e) : 0), 0,
+  );
 }
 
 /** Turnips the human grew this run - the hidden milestone counter's input. */
-export function runTurnips(log: GameEvent[]): number {
+export function runTurnips(log: GameEvent[], localPlayerId = 1): number {
   return log.filter(
-    (e) => e.type === "play" && e.playerId === 1 && e.cardId === "grow-crops",
+    (e) =>
+      e.type === "play" && e.playerId === localPlayerId &&
+      e.cardId === "grow-crops",
   ).length;
 }
 

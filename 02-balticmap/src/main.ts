@@ -8,7 +8,7 @@ import {
 import { attachInteraction } from "./interaction";
 import {
   newGame, startGame, chooseDeck, chooseRules, pickFaction, playCard,
-  discardCard, advance, isHumanTurn, surrender, viewOf, endTurn,
+  discardCard, advance, surrender, viewOf, endTurn,
   type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
@@ -203,6 +203,19 @@ let pinnedRegion: Region | null = null;
 // human's card is still flying or the AI is still resolving behind it.
 let resolving = false;
 
+/** The seat this screen plays. 0 for solo and host; the guest learns its
+ *  seat from the start snapshot. Presentation only - the engine's humanSeat
+ *  stays the host's seat 0. */
+let localSeat = 0;
+
+function localHuman() {
+  return game.players[localSeat];
+}
+
+function isLocalTurn(): boolean {
+  return game.phase === "playing" && game.current === localSeat;
+}
+
 function inPlay(): boolean {
   return (
     game.phase === "playing" ||
@@ -212,7 +225,7 @@ function inPlay(): boolean {
 }
 
 function humanPlayableSet() {
-  const human = game.players[0];
+  const human = localHuman();
   return playableSet(viewOf(game), human.factionId, human.hand, {
     discards: allowsDiscards(game.rules),
   });
@@ -221,7 +234,7 @@ function humanPlayableSet() {
 /** Why the human cannot play this card this turn, or null when they can. The
  *  gate on the click and the line on the hover come from this one call. */
 function humanBlockReason(cardId: string) {
-  const human = game.players[0];
+  const human = localHuman();
   if (!human) return null;
   return handBlockReason(viewOf(game), human.factionId, human.hand, cardId, {
     discards: allowsDiscards(game.rules),
@@ -230,7 +243,7 @@ function humanBlockReason(cardId: string) {
 
 function discardMode(): boolean {
   return (
-    isHumanTurn(game) &&
+    isLocalTurn() &&
     !game.playedThisTurn &&
     humanPlayableSet().mode === "discard"
   );
@@ -269,7 +282,7 @@ function effectiveFaction(f: string): string {
 }
 
 function applyOwnership(): void {
-  const human = game.players[0];
+  const human = localHuman();
   const humanOverlord = human ? game.overlords.get(human.factionId) : undefined;
   // `fullRealmOf`, the same count the scoreboard and the win condition apply. A
   // land a vassal annexed already sits inside the realm outline and wears the
@@ -366,7 +379,7 @@ const SEAT_GLYPH_D =
  *  land's hover or click. */
 function renderSeatMarkers(): void {
   seatGroup.replaceChildren();
-  const human = game.players[0];
+  const human = localHuman();
   if (!inPlay() || !human) return;
   const v = viewOf(game);
   for (const owner of Object.keys(game.seats)) {
@@ -466,7 +479,7 @@ function renderRealmHalo(
  *  human is vassal to is not the human's root, so it still gets one. */
 function renderRealmUnions(): void {
   realmUnionGroup.replaceChildren();
-  const human = game.players[0];
+  const human = localHuman();
   // while a card is armed the targeting cues own the map, the same reason
   // applyRealmHover drops the hover halo
   const live = inPlay() && armed === null;
@@ -551,7 +564,7 @@ function syncRealmEdges(): void {
 /** `restiveVassalOf` bound to the live game - the badge and the hover both ask
  *  it, and neither should have to assemble the arguments. */
 function unrestOf(factionId: string): boolean {
-  const human = game.players[0];
+  const human = localHuman();
   if (!human || !inPlay()) return false;
   return restiveVassalOf(
     factionId, human.factionId, game.overlords, viewOf(game).liveRevolts,
@@ -582,7 +595,7 @@ function appendCountdown(
  *  greyed out - which reads as a live option rather than an excluded one. */
 function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
-  const human = game.players[0];
+  const human = localHuman();
   if (!inPlay() || !human) return;
   // The full realm, like applyOwnership: a grand-vassal sits inside the human
   // realm's outline, and a badge floating on a land the outline claims reads
@@ -697,7 +710,7 @@ function renderThreatBadges(): void {
  *  both Found a settlement and Population boom turn on how many a land holds
  *  and how many it still has room for, and nothing else states either. */
 function hoverLines(region: Region): TooltipLine[] {
-  const human = game.players[0];
+  const human = localHuman();
   // The land's OWN faction, never the politically resolved one: an absorbed
   // land keeps its name here and the line below says who took it.
   const lines: TooltipLine[] = [
@@ -760,7 +773,7 @@ function hoverLines(region: Region): TooltipLine[] {
 }
 
 function armedTargets(): string[] {
-  const human = game.players[0];
+  const human = localHuman();
   if (armed === null || !human) return [];
   return validTargetsFor(viewOf(game), human.factionId, human.hand[armed]);
 }
@@ -856,7 +869,7 @@ function applyRealmHover(region: Region | null): void {
  *  inside it, so only the realm's outer edge survives. */
 function renderRealmHoverHalo(members: Set<string>): void {
   realmHoverGroup.replaceChildren();
-  const human = game.players[0];
+  const human = localHuman();
   realmHoverGroup.classList.toggle(
     "own", human !== undefined && members.has(human.factionId),
   );
@@ -919,7 +932,12 @@ function refresh(): void {
 function bankRunProgress(): void {
   if (runBanked || game.players.length === 0) return;
   runBanked = true;
-  meta = bankRun(meta, runXp(game.log), runTurnips(game.log));
+  const me = localHuman();
+  meta = bankRun(
+    meta,
+    runXp(game.log, me?.id ?? 1),
+    runTurnips(game.log, me?.id ?? 1),
+  );
   saveMeta(storage, meta);
 }
 
@@ -938,11 +956,11 @@ function afterHumanAction(): void {
   game = advance(game, rng);
   if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
   refresh();
-  if (game.phase !== "playing" || isHumanTurn(game)) return;
+  if (game.phase !== "playing" || isLocalTurn()) return;
   resolving = true;
   hud.afterPlayAnimation(() => {
     let iterations = 0;
-    while (game.phase === "playing" && !isHumanTurn(game)) {
+    while (game.phase === "playing" && !isLocalTurn()) {
       if (++iterations > 1000) {
         console.error("AI chain stalled - breaking");
         break;
@@ -1004,14 +1022,14 @@ const hud = createHud(
       refresh();
     },
     onPlayCard(index) {
-      if (!isHumanTurn(game) || game.playedThisTurn || resolving) return;
+      if (!isLocalTurn() || game.playedThisTurn || resolving) return;
       if (discardMode()) {
         disarm();
         game = discardCard(game, index);
         afterHumanAction();
         return;
       }
-      const human = game.players[0];
+      const human = localHuman();
       const card = CARDS[human.hand[index]];
       if (card?.targeted) {
         if (armed === index) {
@@ -1032,7 +1050,7 @@ const hud = createHud(
       afterHumanPlay();
     },
     onEndTurn() {
-      if (!isHumanTurn(game) || game.playedThisTurn || resolving) return;
+      if (!isLocalTurn() || game.playedThisTurn || resolving) return;
       if (game.rules.turn !== "unlimited") return;
       disarm();
       game = endTurn(game);
@@ -1049,7 +1067,7 @@ const hud = createHud(
       return reason === null ? null : cardBlockLine(reason);
     },
     targetExplanations(cardId) {
-      const human = game.players[0];
+      const human = localHuman();
       if (!human || !CARDS[cardId]?.targeted) return [];
       const view = viewOf(game);
       return explainTargetEligibility(
@@ -1076,7 +1094,7 @@ const hud = createHud(
       return cardRiskLine(cardId);
     },
     cardModifiers(cardId) {
-      const human = game.players[0];
+      const human = localHuman();
       return human ? cardModifierLines(game, human.factionId, cardId) : [];
     },
     isDiscardMode() {
