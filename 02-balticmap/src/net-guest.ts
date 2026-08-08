@@ -10,7 +10,16 @@ export interface GuestDeps {
   name: string;
   onHostHello(name: string): void;
   onLobby(info: { rules: RuleSelections; takenFactionId: string | null }): void;
-  onState(g: GameState, guestFactionId: string): void;
+  /** A new state from the host. `source` says which message carried it,
+   *  because the screen has to render them differently: an `update` is one
+   *  step the guest can watch land, while a `start` or a `snapshot` is a
+   *  whole game arriving at once - flying every card of a rejoined game's
+   *  log, and raising a round summary over it, is not a replay anybody
+   *  asked for. */
+  onState(
+    g: GameState, guestFactionId: string,
+    source: "start" | "snapshot" | "update",
+  ): void;
   onReject(reason: string): void;
   onRefused(reason: string): void;
   onClosed(): void;
@@ -46,12 +55,12 @@ export function createGuestSession(wire: Wire, deps: GuestDeps): GuestSession {
       case "snapshot":
         guestFactionId = msg.guestFactionId;
         game = deserializeGame(msg.state);
-        deps.onState(game, guestFactionId);
+        deps.onState(game, guestFactionId, msg.type);
         return;
       case "update":
         if (guestFactionId === null) return; // update before start: drop
         game = applyUpdate(game, msg);
-        deps.onState(game, guestFactionId);
+        deps.onState(game, guestFactionId, "update");
         return;
       case "reject":
         deps.onReject(msg.reason);

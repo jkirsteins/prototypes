@@ -1009,7 +1009,12 @@ function viewState(): GameState {
   return game;
 }
 
-function refresh(): void {
+/** `opts` is handed straight to `hud.update`, so `{ animate: false }` paints
+ *  a state as already-settled: no card flies and no round summary rises.
+ *  Wanted for a state this screen did not play into - the boot path's first
+ *  paint, and a guest's start or rejoin snapshot, which arrives as a whole
+ *  game at once and would otherwise replay every card in its log. */
+function refresh(opts?: { animate?: boolean }): void {
   applyOwnership();
   applyTargeting();
   revealFoundedSettlements();
@@ -1020,7 +1025,7 @@ function refresh(): void {
   // status bar and the log filter both read the pin. Free when nothing moved -
   // setPinned early-returns on an unchanged id.
   hud.setPinned(pinnedFactionId());
-  hud.update(viewState());
+  hud.update(viewState(), opts);
   // The menu carries the panel; so does a network game that has lost its
   // session, or one whose lobby is still being filled in - the status line
   // is the only place either of those speaks.
@@ -1444,9 +1449,19 @@ const deckScreen = createDeckScreen(app, {
  *  instead of a lobby. */
 function attachHostWire(wire: Wire): void {
   if (net.role !== "host") return;
+  // The broker accepts any number of connections, and a half-dead WebRTC
+  // wire declares itself dead on a 15s silence - which can land well after
+  // its replacement is live. So the one being replaced is dropped here, and
+  // every callback below checks that it is still the session in force. A
+  // stale onClosed nulling the LIVE session froze this screen while the
+  // guest played on, and each pushUpdate then quietly went nowhere.
+  const stale = net.session;
+  net.session = null;
+  stale?.close();
+  let session: HostSession | null = null;
   const startedFaction =
     net.guestSeat !== null ? game.players[net.guestSeat].factionId : null;
-  net.session = createHostSession(
+  session = createHostSession(
     wire,
     {
       getGame: () => game,
@@ -1458,6 +1473,7 @@ function attachHostWire(wire: Wire): void {
       rules: () => rulesPrefs,
       hostFactionId: () => (net.role === "host" ? net.hostPick : null),
       onGuestHello(name) {
+        if (net.role !== "host" || net.session !== session) return;
         netPanel.setStatus(`${name} is connected.`);
         netPanel.hideReconnect();
         // A drop froze this screen (see onClosed); the rejoin thaws it back
@@ -1469,9 +1485,11 @@ function attachHostWire(wire: Wire): void {
         updateWaitingStatus();
       },
       onGuestPick() {
+        if (net.role !== "host" || net.session !== session) return;
         tryDeal();
       },
       onGuestAction() {
+        if (net.role !== "host" || net.session !== session) return;
         // The guest's play is already committed and pushed; this runs the
         // world on past it. `advance` no-ops while an unlimited turn is
         // still open, so a guest playing twice is not cut short here.
@@ -1479,7 +1497,9 @@ function attachHostWire(wire: Wire): void {
         resumeChain();
       },
       onClosed() {
-        if (net.role !== "host") return;
+        // Not `net.role !== "host"` alone: a wire that died after its
+        // replacement was live would otherwise null the session in force.
+        if (net.role !== "host" || net.session !== session) return;
         net.session = null;
         // Nothing may act while the two sides cannot agree on what happened.
         resolving = game.phase === "playing";
@@ -1492,6 +1512,7 @@ function attachHostWire(wire: Wire): void {
     },
     startedFaction !== null ? { guestFactionId: startedFaction } : undefined,
   );
+  net.session = session;
   netPanel.setStatus("Connected.");
 }
 
@@ -1533,6 +1554,7 @@ function guestPickFaction(fid: string): void {
 
 function attachGuestWire(wire: Wire, hostId: string): void {
   const prev = net.role === "guest" ? net : null;
+  const stale = prev?.session ?? null;
   // The role is taken BEFORE the session exists, because createGuestSession
   // says hello on the spot and the host's answer can land in these callbacks
   // before this function has finished running.
@@ -1541,20 +1563,35 @@ function attachGuestWire(wire: Wire, hostId: string): void {
     deckCards: prev?.deckCards ?? null, faction: prev?.faction ?? null,
   };
   app.classList.add("net-guest");
-  const session = createGuestSession(wire, {
+  // The wire being replaced is dropped, and every callback below checks it
+  // is still the session in force - the same stale-wire rule attachHostWire
+  // states at length.
+  stale?.close();
+  let session: GuestSession | null = null;
+  session = createGuestSession(wire, {
     name: netPanel.name(),
     onHostHello(name) {
+      if (net.role !== "guest" || net.session !== session) return;
       netPanel.setStatus(`Connected to ${name}. Pick your deck and land.`);
       netPanel.hideReconnect();
-      // The guest walks the same local screens a solo player does to reach
-      // the map click; its local sim is a staging area the start snapshot
-      // replaces wholesale.
-      if (game.phase === "main-menu") {
+      // The reconnect thaws the freeze onClosed put on this screen. A game
+      // already dealt has its snapshot on the way in the same breath as this
+      // hello, so it stays locked the one moment longer that onState needs;
+      // a lobby has no state coming at all, and leaving THAT locked stranded
+      // the guest on the faction pick with every map click swallowed and no
+      // menu at that phase to escape by.
+      resolving = netStarted() && game.phase === "playing";
+      // The staging screens are for a guest that arrived before the deal.
+      // A rejoin mid-game must not walk them: the snapshot is the game, and
+      // starting a local one here put the deck picker over the top of it.
+      if (!netStarted() && game.phase === "main-menu") {
         game = startGame(game);
         deckScreen.update(deckScreenView(true));
       }
+      refresh();
     },
     onLobby(info) {
+      if (net.role !== "guest" || net.session !== session) return;
       // The host's rules are the game's rules - there is one engine and it
       // is theirs. The deck screen redraws so the picker shows them.
       rulesPrefs = info.rules;
@@ -1563,16 +1600,24 @@ function attachGuestWire(wire: Wire, hostId: string): void {
         netPanel.setStatus("Host has picked their land.");
       }
     },
-    onState(g, fid) {
+    onState(g, fid, source) {
+      if (net.role !== "guest" || net.session !== session) return;
       game = g;
-      if (net.role === "guest") net.faction = fid;
+      net.faction = fid;
       localSeat = Math.max(0, seatOfFaction(g, fid));
       resolving = false;
       netPanel.setVisible(false);
-      refresh();
+      // A whole game arriving at once - the deal, or a rejoin - is not a
+      // state this screen played into, so it is painted already-settled:
+      // an animating render flew every card in the log and dropped a round
+      // summary over a game that had been running for twenty turns.
+      // The local staging screens go with it; the snapshot IS the game.
+      deckScreen.update(deckScreenView(false));
+      refresh(source === "update" ? undefined : { animate: false });
       updateWaitingStatus();
     },
     onReject(reason) {
+      if (net.role !== "guest" || net.session !== session) return;
       // A refused move leaves the state exactly where it was, so the only
       // thing to undo is this screen's lock.
       console.error("host rejected the action:", reason);
@@ -1580,10 +1625,12 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       refresh();
     },
     onRefused(reason) {
+      if (net.role !== "guest" || net.session !== session) return;
       netPanel.setStatus(reason);
     },
     onClosed() {
-      if (net.role !== "guest") return;
+      // Not `net.role !== "guest"` alone - see attachHostWire's onClosed.
+      if (net.role !== "guest" || net.session !== session) return;
       net.session = null;
       resolving = true; // nothing can act until the host is back
       hud.setWaiting(null);
