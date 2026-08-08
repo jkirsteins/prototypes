@@ -132,8 +132,9 @@ function parseRel(raw: string): RelOverride[] {
 function parseRules(raw: string): RuleSelections {
   const picks: Record<string, unknown> = {};
   for (const clause of raw.split(";")) {
-    const [axis, option] = clause.split(":");
-    if (axis === undefined || option === undefined) continue;
+    const parts = clause.split(":").filter((s) => s.trim().length > 0);
+    if (parts.length !== 2) continue;
+    const [axis, option] = parts;
     picks[axis.trim()] = option.trim();
   }
   return mergeRules(picks);

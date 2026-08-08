@@ -40,6 +40,9 @@ export const RULE_AXES: RuleAxis[] = [
         text: "Play or discard one card each turn; draw one at turn start.",
       },
       {
+        // The "4" restates HAND_REFILL (OPENING_HAND + 1) in src/game.ts,
+        // which cannot be imported here without a cycle (game.ts imports
+        // rules.ts) - change both together.
         id: "unlimited",
         name: "Unlimited plays",
         text: "Play any number of cards each turn; your hand refills to 4 at turn start. No discards - a dead hand waits for the board to change.",

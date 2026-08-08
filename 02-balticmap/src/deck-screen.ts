@@ -134,9 +134,8 @@ export function createDeckScreen(
         // option.id is a validated member of axis.options, so it is a legal
         // value for this axis - but RuleSelections types each axis as a
         // literal union, which a computed property assignment cannot narrow.
-        cb.onRulesChange?.(
-          { ...currentRules, [axis.id]: option.id } as RuleSelections,
-        );
+        currentRules = { ...currentRules, [axis.id]: option.id } as RuleSelections;
+        cb.onRulesChange?.(currentRules);
       });
       const optionName = document.createElement("span");
       optionName.className = "ds-rules-option-name";

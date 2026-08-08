@@ -459,9 +459,11 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     const actor = p.factionId;
     // Three of the metrics need the alternatives the policy had at decision
     // time, which the log does not record, so the action is inspected before it
-    // is applied. `aiTakeTurn` is exactly `chooseAction` followed by one of
-    // discardCard/playCard, so rng consumption is unchanged - the
-    // identical-seeds test is the guard on that.
+    // is applied. The equivalence "`aiTakeTurn` is exactly `chooseAction`
+    // followed by one of discardCard/playCard, so rng consumption is
+    // unchanged" holds only for the standard-rules arm of `aiTakeTurn`, and
+    // sim always runs DEFAULT_RULES, so it applies here - the identical-seeds
+    // test is the guard on that.
     const action = chooseAction(state);
     if (action.type === "play") {
       const cardId = p.hand[action.cardIndex];

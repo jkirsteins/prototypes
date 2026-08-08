@@ -312,6 +312,11 @@ describe("rules=", () => {
     expect(parseBootParams("?rules=turn:unlimited;bogus:x")?.rules)
       .toEqual({ turn: "unlimited" });
     expect(parseBootParams("?rules=turn:gone")?.rules).toEqual(DEFAULT_RULES);
+    // Strict two-part clauses: a third segment makes the whole pair
+    // malformed, so it drops and the axis falls back rather than parsing
+    // "turn:unlimited:junk" as "turn:unlimited".
+    expect(parseBootParams("?rules=turn:unlimited:junk")?.rules)
+      .toEqual(DEFAULT_RULES);
   });
 
   it("is null when absent, so a bare URL is untouched", () => {

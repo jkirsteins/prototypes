@@ -4,6 +4,7 @@ import {
   saveRulesPrefs, summarizeRules,
 } from "../src/rules";
 import { memoryStorage } from "../src/meta";
+import { HAND_REFILL } from "../src/game";
 
 describe("RULE_AXES", () => {
   it("every axis's default is one of its options, and ids are unique", () => {
@@ -15,6 +16,15 @@ describe("RULE_AXES", () => {
       expect(ids).toContain(axis.defaultOption);
       expect(DEFAULT_RULES[axis.id]).toBe(axis.defaultOption);
     }
+  });
+});
+
+describe("unlimited option text", () => {
+  it("states the same refill count as HAND_REFILL in src/game.ts", () => {
+    const unlimited = RULE_AXES
+      .find((a) => a.id === "turn")!
+      .options.find((o) => o.id === "unlimited")!;
+    expect(unlimited.text).toContain(String(HAND_REFILL));
   });
 });
 
