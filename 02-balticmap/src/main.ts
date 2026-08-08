@@ -1421,6 +1421,10 @@ function deckScreenView(visible: boolean) {
     reveal: packReveal,
     savedPicks: meta.lastPicks,
     rules: rulesPrefs,
+    // A guest plays the host's rules - `onLobby` overwrites `rulesPrefs` with
+    // them, and the start snapshot carries them inside the state regardless.
+    // So the picker shows them and refuses to pretend otherwise.
+    rulesLocked: net.role === "guest",
   };
 }
 
@@ -1448,8 +1452,15 @@ const deckScreen = createDeckScreen(app, {
     deckScreen.update(deckScreenView(true));
   },
   onRulesChange(next) {
+    // A guest's radios are disabled, so this is unreachable there - but the
+    // rules are the host's and a stray call must not pretend otherwise.
+    if (net.role === "guest") return;
     rulesPrefs = next;
     saveRulesPrefs(storage, rulesPrefs);
+    // The lobby carries the rules, so a host that changes its mind after the
+    // guest arrived has to say so - otherwise the guest's picker goes on
+    // showing the rules it was told about when it connected.
+    if (net.role === "host") net.session?.sendLobby();
     deckScreen.update(deckScreenView(true));
   },
   onStart(selectedIds) {
