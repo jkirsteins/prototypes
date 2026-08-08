@@ -166,7 +166,6 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
   "harvest-might": [
     { turn: 1, playerId: 1, type: "harvest-might", targetFactionId: RIVAL, amount: 1 },
     { turn: 1, playerId: 2, type: "harvest-might", targetFactionId: H, amount: 1 },
-    { turn: 1, playerId: 1, type: "harvest-might", amount: 1, affected: [RIVAL] },
   ],
   "harvest-wealth": [
     { turn: 1, playerId: 1, type: "harvest-wealth", wealth: 5 },

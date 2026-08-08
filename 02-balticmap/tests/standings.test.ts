@@ -76,26 +76,16 @@ describe("leadMovesOf", () => {
     ]);
   });
 
-  it("the human's vs-all harvest boon resolves through its frozen affected list", () => {
-    // Unlike the human's own Fortify, which the walk cannot reconstruct: the
-    // event carries who was alive, the pactAgainst trick.
+  it("a might-reset deficit rides the same arm - the amount is the whole move", () => {
+    // The reset boon logs one single-target event per trailing rival, each
+    // carrying its own deficit, so a 3-point catch-up is just a bigger raid
+    // to this walk.
     const e: GameEvent = {
       turn: 1, playerId: 1, type: "harvest-might",
-      amount: 1, affected: [RIVAL, THIRD],
+      targetFactionId: THIRD, amount: 3,
     };
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: 1 },
-      { kind: "add", factionId: THIRD, delta: 1 },
-    ]);
-  });
-
-  it("a rival's vs-all harvest boon that includes the human flips the sign", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 2, type: "harvest-might",
-      amount: 1, affected: [H, THIRD],
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: -1 },
+      { kind: "add", factionId: THIRD, delta: 3 },
     ]);
   });
 

@@ -22,7 +22,9 @@ import {
   subjugationRequirement, validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
-import type { HarvestChoice } from "../src/harvest";
+import {
+  harvestSwapPool, rollHarvest, type HarvestChoice,
+} from "../src/harvest";
 import { runTurnips, runXp } from "../src/xp";
 import pools from "../src/data/ruler-names.json";
 
@@ -2574,7 +2576,7 @@ describe("the turnip harvest's boons", () => {
   const boon = (g: GameState, harvest: HarvestChoice): GameState =>
     playCard(g, 0, rng(), undefined, { harvest });
 
-  it("swap-common trades the deck's turnip first and shuffles a common in", () => {
+  it("swap-common trades the deck's turnip first for a rare or epic", () => {
     const g = harvestHand({ deck: ["grow-crops"], discard: ["grow-crops"] });
     const out = boon(g, { effect: "swap-common" });
     const human = out.players[0];
@@ -2584,10 +2586,17 @@ describe("the turnip harvest's boons", () => {
     expect(human.deck).toHaveLength(1);
     const gained = human.deck[0];
     expect(ACQUIRABLE_CARDS).toContain(gained);
-    expect(CARDS[gained].rarity).toBe("common");
+    expect(CARDS[gained].rarity).not.toBe("common");
     const traded = out.log.find((e) => e.type === "harvest-traded");
     expect(traded?.cardId).toBe(gained);
     expect(traded?.consequence).toBe(true);
+  });
+
+  it("the blind-swap pool is every acquirable above common", () => {
+    const pool = harvestSwapPool();
+    expect(pool.length).toBeGreaterThan(0);
+    expect(pool.every((id) => ACQUIRABLE_CARDS.includes(id))).toBe(true);
+    expect(pool.every((id) => CARDS[id].rarity !== "common")).toBe(true);
   });
 
   it("falls back discard then hand, and the gain always joins the deck", () => {
@@ -2608,10 +2617,17 @@ describe("the turnip harvest's boons", () => {
     expect(h2.deck).toHaveLength(1);
   });
 
-  it("swap-known draws from the pool the choice carries", () => {
+  it("swap-known shuffles in exactly the card the choice names", () => {
     const g = harvestHand({ deck: ["grow-crops"] });
-    const out = boon(g, { effect: "swap-known", pool: ["alliance"] });
+    const out = boon(g, { effect: "swap-known", cardId: "alliance" });
     expect(out.players[0].deck).toEqual(["alliance"]);
+  });
+
+  it("swap-known refuses a card id the game does not know", () => {
+    const g = harvestHand({ deck: ["grow-crops"] });
+    const out = boon(g, { effect: "swap-known", cardId: "no-such-card" });
+    expect(out.players[0].deck).toEqual(["grow-crops"]);
+    expect(out.log.some((e) => e.type === "harvest-traded")).toBe(false);
   });
 
   it("a swap with no turnip anywhere is a quiet no-op, never a crash", () => {
@@ -2621,33 +2637,35 @@ describe("the turnip harvest's boons", () => {
     expect(out.log.some((e) => e.type === "harvest-traded")).toBe(false);
   });
 
-  it("might-chosen bumps the picked rival by one and records amount", () => {
-    const out = boon(harvestHand(), { effect: "might-chosen", targetId: "alpha" });
-    expect(getRel(out.relations, "beta", "alpha")).toBe(1);
-    const e = out.log.find((ev) => ev.type === "harvest-might");
-    expect(e?.targetFactionId).toBe("alpha");
-    expect(e?.amount).toBe(1);
-    expect(e?.consequence).toBe(true);
+  it("might-reset levels every negative lead to 0, one event per rival", () => {
+    let g = harvestHand();
+    let rel = mightLead(g.relations, "alpha", "beta", 2);
+    rel = mightLead(rel, "gamma", "beta", 1);
+    g = withRel(g, rel);
+    const out = boon(g, { effect: "might-reset" });
+    expect(leadOf(out.relations, "beta", "alpha")).toBe(0);
+    expect(leadOf(out.relations, "beta", "gamma")).toBe(0);
+    // the rival not ahead is untouched
+    expect(getRel(out.relations, "beta", "delta")).toBe(0);
+    const events = out.log.filter((e) => e.type === "harvest-might");
+    expect(events.map((e) => [e.targetFactionId, e.amount])).toEqual([
+      ["alpha", 2], ["gamma", 1],
+    ]);
+    expect(events.every((e) => e.consequence)).toBe(true);
   });
 
-  it("might-random bumps exactly one living rival", () => {
-    const out = boon(harvestHand(), { effect: "might-random" });
-    const bumped = ["alpha", "gamma", "delta"].filter(
-      (f) => getRel(out.relations, "beta", f) === 1,
-    );
-    expect(bumped).toHaveLength(1);
-    expect(out.log.find((e) => e.type === "harvest-might")?.targetFactionId)
-      .toBe(bumped[0]);
-  });
-
-  it("might-all bumps every living rival and freezes the list on the event", () => {
-    const out = boon(harvestHand(), { effect: "might-all" });
-    for (const f of ["alpha", "gamma", "delta"]) {
-      expect(getRel(out.relations, "beta", f)).toBe(1);
-    }
-    const e = out.log.find((ev) => ev.type === "harvest-might");
-    expect(e?.amount).toBe(1);
-    expect(e?.affected).toEqual(["alpha", "gamma", "delta"]);
+  it("a lead held only through a live pact is not the boon's to erase", () => {
+    let g = harvestHand();
+    g = {
+      ...g,
+      alliances: {
+        [allianceKey("alpha", "gamma")]:
+          { expiry: g.turn + 5, against: ["beta"] },
+      },
+    };
+    const out = boon(g, { effect: "might-reset" });
+    expect(out.log.some((e) => e.type === "harvest-might")).toBe(false);
+    expect(getRel(out.relations, "beta", "alpha")).toBe(0);
   });
 
   it("wealth-1 pays one coin; wealth-income pays five turns of the tick", () => {
@@ -2679,15 +2697,6 @@ describe("the turnip harvest's boons", () => {
     expect(out.overlords.has("alpha")).toBe(false);
   });
 
-  it("the incorporation boon absorbs a vassal below the card's realm gate", () => {
-    let g = harvestHand();
-    // beta's realm is 2 lands, below the card-level gate of 4, so the CARD
-    // would be greyed out here - the boon is a windfall and absorbs anyway.
-    g = { ...g, overlords: new Map([["alpha", "beta"]]) };
-    const out = boon(g, { effect: "incorporate", targetId: "alpha" });
-    expect(out.incorporated.alpha).toBe("beta");
-  });
-
   it("empower marks a deck card and logs the pick", () => {
     const g = harvestHand({ deck: ["raid"] });
     const out = boon(g, { effect: "empower", cardId: "raid" });
@@ -2714,6 +2723,30 @@ describe("the turnip harvest's boons", () => {
     const fresh = a.log.slice(g.log.length);
     expect(fresh[0]?.type).toBe("play");
     expect(fresh.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("the roll is four draws flat: same seed, same slots, same named card", () => {
+    const g = harvestHand({ deck: ["grow-crops"] });
+    const a = rollHarvest(viewOf(g), g.players[0], seededRng(11));
+    const b = rollHarvest(viewOf(g), g.players[0], seededRng(11));
+    expect(a).toEqual(b);
+    expect(a.effects).toHaveLength(3);
+    expect(ACQUIRABLE_CARDS).toContain(a.swapCardId);
+
+    // The constant-draw pattern: the named card is drawn whether or not
+    // swap-known rolled, and eligibility never bends the count - a bare
+    // hand and a stocked one consume the same four draws.
+    const draws = (state: GameState): number => {
+      const inner = seededRng(3);
+      let n = 0;
+      rollHarvest(viewOf(state), state.players[0], () => {
+        n += 1;
+        return inner();
+      });
+      return n;
+    };
+    expect(draws(harvestHand())).toBe(4);
+    expect(draws(harvestHand({ deck: ["grow-crops", "raid"] }))).toBe(4);
   });
 });
 

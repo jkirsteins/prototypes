@@ -48,50 +48,55 @@ harvests in the balance arms.
 
 ### Playing the harvest
 
-Playing it rolls THREE options from a ten-boon pool, weighted (10 each;
+Playing it rolls THREE options from a seven-boon pool, weighted (10 each;
 the subjugation boon 2 - it hands over a whole vassalage), without
-replacement, exactly three rng draws (the constant-draw pattern from
-src/packs.ts). The player keeps one. An ineligible boon still occupies its
-slot, greyed with the reason - the roll teaches the pool exists - and if the
-whole roll comes up dead the last slot becomes the always-eligible 1-wealth
-boon, so the card is never dead in hand (and is on `cardBlockReason`'s
-always-legal list for the same reason).
+replacement, then draws the named card the swap-known boon offers - exactly
+four rng draws, whatever comes up (the constant-draw pattern from
+src/packs.ts; the card is drawn even when swap-known missed the roll). The
+player keeps one. An ineligible boon still occupies its slot, greyed with
+the reason - the roll teaches the pool exists - and if the whole roll comes
+up dead the last slot becomes the always-eligible 1-wealth boon, so the card
+is never dead in hand (and is on `cardBlockReason`'s always-legal list for
+the same reason).
 
 The pool (src/harvest.ts):
 
 | id | effect | eligibility |
 |---|---|---|
-| swap-common | trade one Grow turnips (deck, then discard, then hand) for a random common from ACQUIRABLE_CARDS, shuffled into the deck | a turnip exists |
-| swap-known | same, from the player's own collection | a turnip and a non-empty pool |
-| might-random | +1 Might over a random living rival | a rival lives |
-| might-chosen | +1 Might over a rival picked on the map | a rival lives |
-| might-all | +1 Might over every living rival | a rival lives |
+| swap-common | trade one Grow turnips (deck, then discard, then hand) for a random rare or epic from ACQUIRABLE_CARDS, shuffled into the deck | a turnip exists |
+| swap-known | same, for the ONE card the roll named - any acquirable rarity, shown by name in the slot, so the player knows the prize before choosing | a turnip exists |
+| might-reset | for every living rival holding a raw Might lead over the actor, the actor's counter rises by the deficit, so each such lead levels to 0 | a rival is ahead |
 | wealth-1 | +1 wealth | always |
 | wealth-income | +5 x `wealthIncomeFor` (five turns of the tick) | always |
-| subjugate | take a neighbour as vassal, `insufficient-lead` waived - truce, respite, liege, reach, already-vassal still refuse; lands roll-free | such a target exists |
-| incorporate | absorb a direct vassal, roll-free | a vassal exists |
+| subjugate | take a neighbour as vassal, `insufficient-lead` waived - truce, respite, liege, reach, already-vassal still refuse | such a target exists |
 | empower | mark a card from deck+discard; its next play resolves twice | an eligible card exists |
 
+The two swaps split the trade decision: the named card is certain but may be
+common; the blind draw is at least rare. The reset boon levels the STORE
+only, the `levelMight` precedent - a lead bought by a live pact is not the
+boon's to erase.
+
 All boons are run-only; nothing banks to the collection. The swap gains go
-into the DECK - a future draw, never a free play. The known-collection pool
-rides on the choice object because game.ts has no access to meta; main.ts is
-the only place meta touches the feature.
+into the DECK - a future draw, never a free play. The named card rides on
+the choice object (`cardId`): the pick already happened at roll time, so
+resolution spends exactly what the roll named and draws nothing.
 
 ### The choice flow (main.ts)
 
 Clicking the harvest opens the modal pre-play, the targeting-flow shape:
 nothing commits until the boon and its sub-pick are settled, then one
-`playCard(..., { harvest: choice })`. Chosen-target boons reuse the armed
-targeting cues with the boon's own frozen target set; the empower boon opens
-a card picker. Escape steps back (target/picker to modal, modal to closed -
-card kept, turn unspent). The rolled effect ids are cached until any play
-commits, so cancelling cannot fish for a better roll; eligibility is
-re-derived on every open.
+`playCard(..., { harvest: choice })`. The subjugation boon reuses the armed
+targeting cues with its own frozen target set; the empower boon opens a card
+picker. Escape steps back (target/picker to modal, modal to closed - card
+kept, turn unspent). The whole roll - effect ids AND the named card - is
+cached until any play commits, so cancelling cannot fish for a better roll
+or a better trade; eligibility is re-derived on every open.
 
 Choiceless callers - the sim's naive human, a `turns=` fast-forward, an AI
-seat - auto-resolve via `autoHarvestChoice`: same three draws, first live
-boon in rolled order, sub-picks settled without further draws
-(chosen degrades to random, targets and cards take the first eligible).
+seat - auto-resolve via `autoHarvestChoice`: same four draws, first live
+boon in rolled order, sub-picks settled without further draws (the target
+and the empowered card take the first eligible, the swap-known boon the card
+the roll already named).
 `POLICY_COVERAGE["turnip-harvest"]` is step 9e: cash it on any legal turn,
 above turnips, below the ruler's level.
 
@@ -114,12 +119,13 @@ empowered Fortify logs `- doubled, empowered (+4 Might against all)`.
 Five new `GameEventType`s, each through every exhaustive gate
 (NOTICE_RULES, XP_TABLE, nestsUnderItsPlay, eventSegments, naming samples):
 `harvest-earned` (modal, critical), `harvest-traded`, `harvest-might`,
-`harvest-wealth`, `empowered` (all silent - the player picked them). The
-vs-all boon freezes its fan-out list on `GameEvent.affected` - the
-`pactAgainst` trick - so `leadMovesOf` resolves a HUMAN-authored fan-out
-exactly, which Fortify's own cannot. The subjugation and incorporation boons
-emit the existing `subjugated`/`incorporated`/`released` events. Plays that
-resolved twice carry `empowered: true`.
+`harvest-wealth`, `empowered` (all silent - the player picked them).
+`harvest-might` is always one pair (`targetFactionId` + `amount`): the
+might-reset boon fans out as one event PER trailing rival, each carrying its
+own deficit, so `leadMovesOf` resolves a HUMAN-authored fan-out through the
+ordinary single-target arm - no frozen `affected` list needed. The
+subjugation boon emits the existing `subjugated`/`released` events. Plays
+that resolved twice carry `empowered: true`.
 
 ## Measured
 
@@ -144,3 +150,32 @@ two harvests. Wrong would look like: a modal with zero live options, the bar
 disagreeing with its count, a boon subjugation whiffing or landing through a
 truce, the harvest notice quoting numbers the log does not, or a glowing card
 resolving once.
+
+## Amendment: the 2026-08-09 rebalance
+
+The ten-boon pool above shrank to seven, and the sections were rewritten to
+match. What changed and why:
+
+- `swap-known` no longer trades against the player's collection; it offers
+  ONE card pre-rolled from all of ACQUIRABLE_CARDS and names it in the slot.
+  A trade whose prize is a surprise from your own collection was neither
+  exciting nor informative; a named prize is a real decision against the
+  blind swap.
+- `swap-common` now draws from the rares and epics. A guaranteed common was
+  strictly worse than the named trade in practice; excluding commons gives
+  the blind draw a floor to weigh against the certainty of the named one.
+- `might-random`, `might-chosen` and `might-all` (+1 flavours) were all too
+  small to matter and are gone. In their place, `might-reset` erases the
+  actor's raw Might deficit against every rival ahead of them - a catch-up
+  boon in a catch-up engine, worth more the further behind you are, worth
+  nothing when you lead.
+- `incorporate` was removed: with the card itself no-fail since the failure
+  rolls came out of Subjugate and Incorporate, the boon was a duplicate
+  windfall.
+- The roll is now four constant draws (three slots + the named card), the
+  named card is cached with the roll (anti-fishing covers the trade), and
+  `GameEvent.affected` is gone - the reset boon logs one single-target
+  `harvest-might` per trailing rival, each with its own deficit as `amount`.
+
+Measured: `npm test` 1165 pass; the seeded baseline re-captured byte-identical
+(the fixed-deck humanSeat-null arms never reach a harvest play).

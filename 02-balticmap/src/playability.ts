@@ -1114,7 +1114,7 @@ export function cardBlockReason(
   // Listed here explicitly because the tail of this function answers
   // `unavailable` for untargeted cards. Turnip harvest is here because its
   // roll always offers at least one live boon - the wealth boon is
-  // unconditional (see rollHarvestOptions in src/harvest.ts) - so the card
+  // unconditional (see rollHarvest in src/harvest.ts) - so the card
   // is never dead in hand.
   if (
     cardId === "grow-crops" || cardId === "fortify" ||

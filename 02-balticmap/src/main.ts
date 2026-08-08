@@ -28,9 +28,8 @@ import {
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
 import {
-  empowerableCards, harvestChosenMightTargets, harvestEligibility,
-  harvestIncorporateTargets, harvestSubjugateTargets, rollHarvestOptions,
-  type HarvestChoice, type HarvestEffectId,
+  empowerableCards, harvestEligibility, harvestSubjugateTargets, rollHarvest,
+  type HarvestChoice, type HarvestEffectId, type HarvestRoll,
 } from "./harvest";
 import { createHud, LOG_PREFS_KEY } from "./hud";
 import { createDeckScreen } from "./deck-screen";
@@ -194,23 +193,19 @@ if (boot !== null) {
   }
 }
 let armed: number | null = null; // hand index of the armed targeted card
-/** The Turnip harvest flow's rolled effect ids, cached from the first click
- *  on the card until any play commits. Cancelling the modal keeps it, so
- *  closing and reopening cannot fish for a better roll; eligibility (and so
- *  what is greyed out) is re-derived on every open. */
-let harvestRoll: HarvestEffectId[] | null = null;
+/** The Turnip harvest flow's roll - the three effect ids AND the named card
+ *  the swap-known boon offers - cached from the first click on the card until
+ *  any play commits. Cancelling the modal keeps it, so closing and reopening
+ *  cannot fish for a better roll or a better trade; eligibility (and so what
+ *  is greyed out) is re-derived on every open. */
+let harvestRoll: HarvestRoll | null = null;
 /** Non-null while the harvest flow owns the input: the three-boon modal is
  *  up, the map is choosing a boon's target, or the empower picker is up.
  *  `index` is the harvest card's hand index, held so every step can commit
  *  the same play. */
 let pendingHarvest:
   | { step: "modal"; index: number }
-  | {
-      step: "target";
-      index: number;
-      effect: "might-chosen" | "subjugate" | "incorporate";
-      targets: string[];
-    }
+  | { step: "target"; index: number; effect: "subjugate"; targets: string[] }
   | { step: "card"; index: number }
   | null = null;
 let hoveredRegion: Region | null = null; // region under the cursor, for hover re-apply on refresh
@@ -915,24 +910,16 @@ function disarm(): void {
 
 // --- the Turnip harvest flow: roll, pick, sub-pick, commit -----------------
 
-/** The acquirable cards the player actually owns - what the swap-known boon
- *  trades for. The one place meta touches the harvest; game.ts only ever
- *  sees the pool riding on the choice. */
-function knownPool(): string[] {
-  return meta.knownCards.filter((id) => ACQUIRABLE_CARDS.includes(id));
-}
-
 /** Opens (or re-opens) the three-boon modal for the harvest at `index`.
  *  Rolls once per cached roll - see `harvestRoll` - and re-derives
  *  eligibility every time, so a boon that has since died greys out rather
  *  than resolving on stale facts. */
 function openHarvestModal(index: number): void {
   const human = game.players[0];
-  const pool = knownPool();
-  harvestRoll ??= rollHarvestOptions(viewOf(game), human, rng, pool)
-    .map((o) => o.effect);
-  const eligibility = harvestEligibility(viewOf(game), human, pool);
-  const options = harvestRoll.map((id) => eligibility[id]);
+  harvestRoll ??= rollHarvest(viewOf(game), human, rng);
+  const eligibility =
+    harvestEligibility(viewOf(game), human, harvestRoll.swapCardId);
+  const options = harvestRoll.effects.map((id) => eligibility[id]);
   // The roll guaranteed a live slot at roll time and no play has happened
   // since (any commit clears the cache), so this swap is belt-and-braces
   // against an eligibility rule that moves between the two calls.
@@ -956,15 +943,8 @@ function openHarvestModal(index: number): void {
 function pickHarvestBoon(index: number, effect: HarvestEffectId): void {
   const human = game.players[0];
   switch (effect) {
-    case "might-chosen":
-    case "subjugate":
-    case "incorporate": {
-      const targets =
-        effect === "might-chosen"
-          ? harvestChosenMightTargets(viewOf(game), human.factionId)
-          : effect === "subjugate"
-            ? harvestSubjugateTargets(viewOf(game), human.factionId)
-            : harvestIncorporateTargets(viewOf(game), human.factionId);
+    case "subjugate": {
+      const targets = harvestSubjugateTargets(viewOf(game), human.factionId);
       pendingHarvest = { step: "target", index, effect, targets };
       hud.hideHarvestUi();
       // The armed-card cues, reused: armedTargets reads the frozen set above
@@ -987,16 +967,17 @@ function pickHarvestBoon(index: number, effect: HarvestEffectId): void {
       return;
     }
     case "swap-known":
-      commitHarvest(index, { effect: "swap-known", pool: knownPool() });
+      // The cache is non-null here: this runs from the modal's onPick, and
+      // the modal cannot open without the roll.
+      commitHarvest(
+        index, { effect: "swap-known", cardId: harvestRoll!.swapCardId },
+      );
       return;
     case "swap-common":
       commitHarvest(index, { effect: "swap-common" });
       return;
-    case "might-random":
-      commitHarvest(index, { effect: "might-random" });
-      return;
-    case "might-all":
-      commitHarvest(index, { effect: "might-all" });
+    case "might-reset":
+      commitHarvest(index, { effect: "might-reset" });
       return;
     case "wealth-1":
       commitHarvest(index, { effect: "wealth-1" });
@@ -1438,13 +1419,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
         ? undefined
         : politicalFactionForPolygon(raw, game.incorporated);
       if (faction !== undefined && ph.targets.includes(faction)) {
-        const choice: HarvestChoice =
-          ph.effect === "might-chosen"
-            ? { effect: "might-chosen", targetId: faction }
-            : ph.effect === "subjugate"
-              ? { effect: "subjugate", targetId: faction }
-              : { effect: "incorporate", targetId: faction };
-        commitHarvest(ph.index, choice);
+        commitHarvest(ph.index, { effect: ph.effect, targetId: faction });
       } else {
         hud.setArmed(null);
         openHarvestModal(ph.index);

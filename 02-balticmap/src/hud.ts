@@ -424,13 +424,11 @@ export function eventSegments(
         t(" a "), card("grow-crops"), t(" for "), card(e.cardId ?? ""),
       ], "past");
     case "harvest-might":
-      // The vs-all boon names no list - the impactText suffix carries the
-      // count, the same division of labour every Might line uses.
-      return e.affected !== undefined
-        ? clause(actor, "gain", [t(" Might over every living faction")], "past")
-        : clause(actor, "gain", [
-            t(" Might over "), faction(e.targetFactionId ?? ""),
-          ], "past");
+      // One pair per event - the might-reset boon logs one line per rival it
+      // caught up with, and the impactText suffix carries each line's number.
+      return clause(actor, "gain", [
+        t(" Might over "), faction(e.targetFactionId ?? ""),
+      ], "past");
     case "harvest-wealth":
       // The coins are inline, like the garrison line's own number: no counter
       // moved, so no walk suffix will restate it.

@@ -6,7 +6,7 @@ import {
 
 import {
   allianceKey, bumpMight, bumpMightAllBy, bumpMightBy,
-  fullRealmOf, getRel, incorporatedRealmOf, levelMight, resetMight,
+  fullRealmOf, getRel, incorporatedRealmOf, leadOf, levelMight, resetMight,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
@@ -17,8 +17,8 @@ import {
   type RulesView,
 } from "./playability";
 import {
-  autoHarvestChoice, empowerableCards, harvestCommonPool,
-  harvestIncorporateTargets, harvestSubjugateTargets, type HarvestChoice,
+  autoHarvestChoice, empowerableCards, harvestSubjugateTargets,
+  harvestSwapPool, type HarvestChoice,
 } from "./harvest";
 import { initialRulers, prowessByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
 import { allowsDiscards, copiesAllowed, DEFAULT_RULES, type RuleSelections } from "./rules";
@@ -91,13 +91,6 @@ export interface GameEvent {
    *  because readings stack: two of them quadruple, and "doubled" could not
    *  tell that from one. Absent when no reading was spent. */
   readings?: number;
-  /** harvest-might: the factions the vs-all boon bumped, frozen at
-   *  resolution. Carried for the same reason `pactAgainst` is - a fan-out the
-   *  human authored cannot be reconstructed from the event alone (who was
-   *  alive at that instant is state the walk is not given), and this list is
-   *  what lets `leadMovesOf` resolve it exactly. Absent on the single-target
-   *  Might boons, which carry `targetFactionId` instead. */
-  affected?: string[];
   /** play: this card was empowered (the harvest boon) and its effect resolved
    *  twice. The log suffix; `amount`, where the branch records one, already
    *  carries the doubled total. */
@@ -812,10 +805,10 @@ export function playCard(
     }
   };
 
-  // The landing halves of Subjugate and Incorporate, shared verbatim with the
-  // harvest boons: each boon waives one legality rule (Subjugate's lead bar,
-  // Incorporate's card-level realm gate) but lands the same way, so a boon
-  // that lands and a card that lands cannot drift apart in what landing means.
+  // The landing halves of Subjugate and Incorporate. Subjugate's is shared
+  // verbatim with the harvest boon that hands it out: the boon waives one
+  // legality rule (the lead bar) but lands the same way, so a boon that
+  // lands and a card that lands cannot drift apart in what landing means.
   const landSubjugation = (target: string): void => {
     const formerLord = overlords.get(target);
     // The target's own vassals come along: taking a lord takes its pyramid,
@@ -1072,28 +1065,25 @@ export function playCard(
       const living = state.factionIds.filter(
         (f) => f !== p.factionId && !(f in incorporated),
       );
-      const pushMight = (target: string): void => {
-        relations = bumpMightBy(relations, p.factionId, target, 1);
-        events.push({
-          turn: state.turn, playerId: p.id, type: "harvest-might",
-          targetFactionId: target, amount: 1,
-        });
-      };
       switch (choice.effect) {
         case "swap-common":
         case "swap-known": {
-          const pool =
-            choice.effect === "swap-common" ? harvestCommonPool() : choice.pool;
           const self = players[state.current];
           const held =
             self.deck.includes("grow-crops") ||
             self.discard.includes("grow-crops") ||
             self.hand.includes("grow-crops");
           // Both guards are defensive: the boon is only offered live while a
-          // turnip and a pool exist. Guarded anyway so a stale pick cannot
-          // burn an rng draw on nothing.
-          if (pool.length > 0 && held) {
-            const gained = pool[Math.floor(rng() * pool.length)];
+          // turnip exists, and the named card came off the roll. Guarded
+          // anyway so a stale pick cannot burn an rng draw on nothing.
+          if (held && (choice.effect === "swap-common" || choice.cardId in CARDS)) {
+            // The named-card trade draws nothing here: `rollHarvest` already
+            // drew the card, and this spends exactly what the roll named.
+            const gained =
+              choice.effect === "swap-common"
+                ? harvestSwapPool()[
+                    Math.floor(rng() * harvestSwapPool().length)]
+                : choice.cardId;
             const removeOne = (arr: string[]): string[] | null => {
               const i = arr.indexOf("grow-crops");
               return i === -1 ? null : arr.filter((_, j) => j !== i);
@@ -1129,22 +1119,20 @@ export function playCard(
           }
           break;
         }
-        case "might-random": {
-          if (living.length > 0) {
-            pushMight(living[Math.floor(rng() * living.length)]);
-          }
-          break;
-        }
-        case "might-chosen": {
-          if (living.includes(choice.targetId)) pushMight(choice.targetId);
-          break;
-        }
-        case "might-all": {
-          if (living.length > 0) {
-            relations = bumpMightAllBy(relations, p.factionId, living, 1);
+        case "might-reset": {
+          // Levels the STORE only, the `levelMight` precedent: a lead bought
+          // by a live pact is not the boon's to erase. Reads the threaded
+          // `relations` - an earlier effect of this same play may already
+          // have moved it. One event per trailing rival, each with its own
+          // deficit as `amount`, so the standings walk resolves this
+          // human-authored fan-out through the ordinary single-target arm.
+          for (const rival of living) {
+            const lead = leadOf(relations, p.factionId, rival);
+            if (lead >= 0) continue;
+            relations = bumpMightBy(relations, p.factionId, rival, -lead);
             events.push({
               turn: state.turn, playerId: p.id, type: "harvest-might",
-              amount: 1, affected: living,
+              targetFactionId: rival, amount: -lead,
             });
           }
           break;
@@ -1173,15 +1161,6 @@ export function playCard(
               .includes(choice.targetId)
           ) {
             landSubjugation(choice.targetId);
-          }
-          break;
-        }
-        case "incorporate": {
-          if (
-            harvestIncorporateTargets(viewOf(state), p.factionId)
-              .includes(choice.targetId)
-          ) {
-            landIncorporation(choice.targetId);
           }
           break;
         }

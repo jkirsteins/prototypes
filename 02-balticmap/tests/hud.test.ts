@@ -2626,7 +2626,11 @@ describe("the turnip bar chip and the harvest modals", () => {
         {
           effect: "swap-common", eligible: false,
           reason: [t("no "), card("grow-crops"), t(" left to trade")],
-          label: [t("Trade a "), card("grow-crops"), t(" for a random common card")],
+          label: [t("Trade a "), card("grow-crops"), t(" for a random rare or epic card")],
+        },
+        {
+          effect: "swap-known", eligible: true, reason: null,
+          label: [t("Trade a "), card("grow-crops"), t(" for "), card("alliance")],
         },
       ],
       { onPick, onCancel: vi.fn() },
@@ -2634,12 +2638,16 @@ describe("the turnip bar chip and the harvest modals", () => {
     expect(q(container, ".harvest-overlay").classList.contains("hidden"))
       .toBe(false);
     const options = [...container.querySelectorAll(".harvest-option")];
-    expect(options).toHaveLength(2);
+    expect(options).toHaveLength(3);
     // the card name is a hoverable segment node, never baked text
     expect(options[1].querySelector(".rt-card")?.textContent)
       .toBe("Grow turnips");
     expect((options[1] as HTMLButtonElement).disabled).toBe(true);
     expect(options[1].textContent).toContain("no Grow turnips left to trade");
+    // the named-card trade points at BOTH cards - the price and the prize
+    const named = [...options[2].querySelectorAll(".rt-card")]
+      .map((n) => n.textContent);
+    expect(named).toEqual(["Grow turnips", "Alliance"]);
     (options[0] as HTMLButtonElement).click();
     expect(onPick).toHaveBeenCalledWith("wealth-1");
   });
