@@ -1737,3 +1737,53 @@ svg.map.dragging {
 .ds-rules-done {
   margin-top: 16px;
 }
+
+/* "Play with a friend" panel - a dark box, so it states its own
+   colour; see the dark-box rule in AGENTS.md. */
+.net-panel {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 30;
+  background: #1b1710;
+  color: #e8ddc8;
+  border: 1px solid #4a4032;
+  border-radius: 6px;
+  padding: 10px 12px;
+  max-width: 320px;
+  font-size: 13px;
+}
+.net-panel.hidden { display: none; }
+.net-panel .net-title { font-weight: 600; margin-bottom: 6px; }
+.net-panel .net-row { display: flex; gap: 6px; margin: 4px 0; align-items: center; }
+.net-panel input {
+  flex: 1;
+  min-width: 0;
+  background: #2a241a;
+  color: #e8ddc8;
+  border: 1px solid #4a4032;
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+.net-panel button {
+  background: #3a3226;
+  color: #e8ddc8;
+  border: 1px solid #5a4f3d;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.net-panel .net-copy-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+}
+.net-panel .net-copy-row code {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.net-panel .net-status { margin-top: 6px; min-height: 1em; opacity: 0.9; }
+.net-panel .hidden { display: none; }
