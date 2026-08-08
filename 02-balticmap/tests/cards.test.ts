@@ -342,6 +342,9 @@ describe("every card is reachable by a player", () => {
   const INJECTED_BY: Record<string, string> = {
     ...Object.fromEntries(TRIBUTE_CARDS.map((id) => [id, "subjugate"])),
     "revolt": "seeds-of-revolt",
+    // The turnip bar: enough human grow-crops plays shuffle one into the
+    // deck (playCard's harvest-earned block), announced by a critical notice.
+    "turnip-harvest": "grow-crops",
   };
 
   it("makes every non-deck-buildable card reachable by something that injects it", () => {

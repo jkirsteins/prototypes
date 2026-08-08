@@ -27,6 +27,11 @@ import {
   targetOddsLines, subjugationBreakdown,
 } from "./target-explanations";
 import { ACQUIRABLE_CARDS, CARDS } from "./cards";
+import {
+  empowerableCards, harvestChosenMightTargets, harvestEligibility,
+  harvestIncorporateTargets, harvestSubjugateTargets, rollHarvestOptions,
+  type HarvestChoice, type HarvestEffectId,
+} from "./harvest";
 import { createHud, LOG_PREFS_KEY } from "./hud";
 import { createDeckScreen } from "./deck-screen";
 import {
@@ -189,6 +194,25 @@ if (boot !== null) {
   }
 }
 let armed: number | null = null; // hand index of the armed targeted card
+/** The Turnip harvest flow's rolled effect ids, cached from the first click
+ *  on the card until any play commits. Cancelling the modal keeps it, so
+ *  closing and reopening cannot fish for a better roll; eligibility (and so
+ *  what is greyed out) is re-derived on every open. */
+let harvestRoll: HarvestEffectId[] | null = null;
+/** Non-null while the harvest flow owns the input: the three-boon modal is
+ *  up, the map is choosing a boon's target, or the empower picker is up.
+ *  `index` is the harvest card's hand index, held so every step can commit
+ *  the same play. */
+let pendingHarvest:
+  | { step: "modal"; index: number }
+  | {
+      step: "target";
+      index: number;
+      effect: "might-chosen" | "subjugate" | "incorporate";
+      targets: string[];
+    }
+  | { step: "card"; index: number }
+  | null = null;
 let hoveredRegion: Region | null = null; // region under the cursor, for hover re-apply on refresh
 /** The land clicked to hold its faction's highlight, or null. A pin outranks
  *  the cursor: it exists so the activity log can be read, and reaching the log
@@ -759,20 +783,33 @@ function hoverLines(region: Region): TooltipLine[] {
   return lines;
 }
 
+/** True while a click on the map means "aim here": an armed targeted card,
+ *  or a harvest boon choosing its target. Every surface that yields the map
+ *  to targeting cues - the halo, the log dimming, the valid/invalid classes -
+ *  asks this one predicate, so the two flows cannot diverge. */
+function targetingLive(): boolean {
+  return armed !== null || pendingHarvest?.step === "target";
+}
+
 function armedTargets(): string[] {
   const human = game.players[0];
-  if (armed === null || !human) return [];
+  if (!human) return [];
+  // The harvest boon's target set is the flow's own (frozen when the boon was
+  // picked), not a card's validTargetsFor - the card itself is untargeted.
+  if (pendingHarvest?.step === "target") return pendingHarvest.targets;
+  if (armed === null) return [];
   return validTargetsFor(viewOf(game), human.factionId, human.hand[armed]);
 }
 
 function applyTargeting(): void {
   const targets = new Set(armedTargets());
+  const live = targetingLive();
   for (const [id, el] of regionPaths) {
     const f = factionByRegion.get(id)!;
     const political = politicalFactionForPolygon(f, game.incorporated);
-    const valid = armed !== null && targets.has(political);
+    const valid = live && targets.has(political);
     el.classList.toggle("target-valid", valid);
-    el.classList.toggle("target-invalid", armed !== null && !valid);
+    el.classList.toggle("target-invalid", live && !valid);
   }
   // Targeting cues win the map while armed - applyHighlight suppresses itself
   // then. Disarming lands here too, and brings the pin, or the live hover, back.
@@ -810,10 +847,10 @@ function applyHighlight(region: Region | null, factionId: string | null): void {
     factionId = pinnedFactionId();
   }
   applyRealmHover(region);
-  // The same suppression applyRealmHover applies to the map: while a card is
-  // armed the targeting cues own the screen, and a log dimmed to some faction
+  // The same suppression applyRealmHover applies to the map: while targeting
+  // is live the cues own the screen, and a log dimmed to some faction
   // the player is only passing over would be reading as part of that.
-  hud.highlightFaction(inPlay() && armed === null ? factionId : null);
+  hud.highlightFaction(inPlay() && !targetingLive() ? factionId : null);
 }
 
 /** Every polygon belonging to the hovered region's realm root (owner if
@@ -821,20 +858,20 @@ function applyHighlight(region: Region | null, factionId: string | null): void {
  *  incorporated holdings that `realmOf` alone would miss. No-op (all
  *  classes cleared) when there is no hover or the phase is not in play. */
 function applyRealmHover(region: Region | null): void {
-  // while a card is armed, targeting owns the map: a realm halo here would
+  // while targeting is live, it owns the map: a realm halo here would
   // outrank the valid/invalid cues and make blocked targets look clickable
   const members =
-    region && inPlay() && armed === null
+    region && inPlay() && !targetingLive()
       ? fullRealmOf(
           realmRootOf(region.faction, game.overlords, game.incorporated),
           game.overlords, game.incorporated,
         )
       : new Set<string>();
   // The polygon of the faction that holds the hovered land - who took it -
-  // marked on its own, not its whole realm. Suppressed while a card is armed,
-  // for the same reason the realm halo is.
+  // marked on its own, not its whole realm. Suppressed while targeting is
+  // live, for the same reason the realm halo is.
   const holder =
-    region && inPlay() && armed === null
+    region && inPlay() && !targetingLive()
       ? holderOf(region.faction, game.overlords, game.incorporated)
       : null;
   for (const [id, el] of regionPaths) {
@@ -874,6 +911,112 @@ function disarm(): void {
   armed = null;
   applyTargeting();
   hud.setArmed(null);
+}
+
+// --- the Turnip harvest flow: roll, pick, sub-pick, commit -----------------
+
+/** The acquirable cards the player actually owns - what the swap-known boon
+ *  trades for. The one place meta touches the harvest; game.ts only ever
+ *  sees the pool riding on the choice. */
+function knownPool(): string[] {
+  return meta.knownCards.filter((id) => ACQUIRABLE_CARDS.includes(id));
+}
+
+/** Opens (or re-opens) the three-boon modal for the harvest at `index`.
+ *  Rolls once per cached roll - see `harvestRoll` - and re-derives
+ *  eligibility every time, so a boon that has since died greys out rather
+ *  than resolving on stale facts. */
+function openHarvestModal(index: number): void {
+  const human = game.players[0];
+  const pool = knownPool();
+  harvestRoll ??= rollHarvestOptions(viewOf(game), human, rng, pool)
+    .map((o) => o.effect);
+  const eligibility = harvestEligibility(viewOf(game), human, pool);
+  const options = harvestRoll.map((id) => eligibility[id]);
+  // The roll guaranteed a live slot at roll time and no play has happened
+  // since (any commit clears the cache), so this swap is belt-and-braces
+  // against an eligibility rule that moves between the two calls.
+  if (!options.some((o) => o.eligible)) {
+    options[2] = eligibility["wealth-1"];
+  }
+  pendingHarvest = { step: "modal", index };
+  hud.showHarvestChoice(options, {
+    onPick(effect) {
+      pickHarvestBoon(index, effect);
+    },
+    onCancel() {
+      pendingHarvest = null;
+      hud.hideHarvestUi();
+    },
+  });
+}
+
+/** A boon was picked off the modal: simple boons commit at once, the rest
+ *  step into their sub-pick - the map for a target, the picker for a card. */
+function pickHarvestBoon(index: number, effect: HarvestEffectId): void {
+  const human = game.players[0];
+  switch (effect) {
+    case "might-chosen":
+    case "subjugate":
+    case "incorporate": {
+      const targets =
+        effect === "might-chosen"
+          ? harvestChosenMightTargets(viewOf(game), human.factionId)
+          : effect === "subjugate"
+            ? harvestSubjugateTargets(viewOf(game), human.factionId)
+            : harvestIncorporateTargets(viewOf(game), human.factionId);
+      pendingHarvest = { step: "target", index, effect, targets };
+      hud.hideHarvestUi();
+      // The armed-card cues, reused: armedTargets reads the frozen set above
+      // while the harvest owns targeting, and the status line says what is
+      // being aimed.
+      applyTargeting();
+      hud.setArmed(index, CARDS["turnip-harvest"].name);
+      return;
+    }
+    case "empower": {
+      pendingHarvest = { step: "card", index };
+      hud.showCardPicker(empowerableCards(human), {
+        onPick(cardId) {
+          commitHarvest(index, { effect: "empower", cardId });
+        },
+        onCancel() {
+          openHarvestModal(index);
+        },
+      });
+      return;
+    }
+    case "swap-known":
+      commitHarvest(index, { effect: "swap-known", pool: knownPool() });
+      return;
+    case "swap-common":
+      commitHarvest(index, { effect: "swap-common" });
+      return;
+    case "might-random":
+      commitHarvest(index, { effect: "might-random" });
+      return;
+    case "might-all":
+      commitHarvest(index, { effect: "might-all" });
+      return;
+    case "wealth-1":
+      commitHarvest(index, { effect: "wealth-1" });
+      return;
+    case "wealth-income":
+      commitHarvest(index, { effect: "wealth-income" });
+      return;
+  }
+}
+
+/** The one exit of the flow that plays the card. Every step funnels here, so
+ *  the teardown - overlay, cues, cache - cannot be forgotten by one of them. */
+function commitHarvest(index: number, choice: HarvestChoice): void {
+  hud.hideHarvestUi();
+  hud.setArmed(null);
+  pendingHarvest = null;
+  harvestRoll = null;
+  applyTargeting();
+  game = playCard(game, index, rng, undefined, { harvest: choice });
+  afterHumanPlay();
 }
 
 /** Draws the dot for every settlement founded so far, from state, on every
@@ -935,6 +1078,10 @@ function bankRunProgress(): void {
  *  the player was looking at while it flew. Revealing the AI round early
  *  would make that "before" a lie. */
 function afterHumanAction(): void {
+  // Any committed action invalidates the cached harvest roll: the play it
+  // priced is no longer the next play. Cancelling a modal never comes here,
+  // so the anti-fishing cache survives exactly the closes it should.
+  harvestRoll = null;
   game = advance(game, rng);
   if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
   refresh();
@@ -960,6 +1107,7 @@ function afterHumanAction(): void {
  *  than to the AI chain. A standard turn - or a play that ended the run -
  *  falls through to afterHumanAction as before. */
 function afterHumanPlay(): void {
+  harvestRoll = null; // see afterHumanAction; unlimited turns return early
   if (game.rules.turn === "unlimited" && game.phase === "playing") {
     resolving = true;
     refresh();
@@ -987,6 +1135,10 @@ const hud = createHud(
         SITE_CAPS,
       ));
       clearFoundedSettlements();
+      // The harvest flow must not outlive its run: the overlay itself hides
+      // on the phase change, this is the state behind it.
+      pendingHarvest = null;
+      harvestRoll = null;
       disarm();
       // A pin must not outlive the run it was set in: the fresh game re-colours
       // every polygon, and the held highlight would describe the last one.
@@ -997,14 +1149,21 @@ const hud = createHud(
       refresh();
     },
     onSurrender() {
-      if (game.phase !== "playing" || resolving) return;
+      if (game.phase !== "playing" || resolving || pendingHarvest !== null) {
+        return;
+      }
       disarm();
       game = surrender(game);
       bankRunProgress();
       refresh();
     },
     onPlayCard(index) {
-      if (!isHumanTurn(game) || game.playedThisTurn || resolving) return;
+      if (
+        !isHumanTurn(game) || game.playedThisTurn || resolving ||
+        pendingHarvest !== null
+      ) {
+        return;
+      }
       if (discardMode()) {
         disarm();
         game = discardCard(game, index);
@@ -1012,6 +1171,13 @@ const hud = createHud(
         return;
       }
       const human = game.players[0];
+      if (human.hand[index] === "turnip-harvest") {
+        // The harvest's pre-play choice, the targeting flow's shape: nothing
+        // is committed until a boon (and its sub-pick) is settled.
+        disarm();
+        openHarvestModal(index);
+        return;
+      }
       const card = CARDS[human.hand[index]];
       if (card?.targeted) {
         if (armed === index) {
@@ -1032,7 +1198,12 @@ const hud = createHud(
       afterHumanPlay();
     },
     onEndTurn() {
-      if (!isHumanTurn(game) || game.playedThisTurn || resolving) return;
+      if (
+        !isHumanTurn(game) || game.playedThisTurn || resolving ||
+        pendingHarvest !== null
+      ) {
+        return;
+      }
       if (game.rules.turn !== "unlimited") return;
       disarm();
       game = endTurn(game);
@@ -1077,7 +1248,14 @@ const hud = createHud(
     },
     cardModifiers(cardId) {
       const human = game.players[0];
-      return human ? cardModifierLines(game, human.factionId, cardId) : [];
+      const lines = human
+        ? cardModifierLines(game, human.factionId, cardId)
+        : [];
+      // First, above the standing modifiers: the mark is the one thing the
+      // glow on the card is asking about.
+      return game.empoweredCardId === cardId
+        ? ["Empowered - its next play resolves twice.", ...lines]
+        : lines;
     },
     isDiscardMode() {
       return game.players.length > 0 && discardMode();
@@ -1200,6 +1378,19 @@ if (boot !== null) {
 
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  // The harvest flow outranks everything: while it holds input, Escape steps
+  // BACK - from a target pick to the modal - rather than falling through to
+  // the disarm/unpin below. The modal and picker steps are handled by the
+  // hud's own Escape handler (their overlay is up), so only the map step
+  // acts here; the early return still keeps this Escape from also unpinning.
+  if (pendingHarvest !== null) {
+    if (pendingHarvest.step === "target") {
+      hud.setArmed(null);
+      openHarvestModal(pendingHarvest.index);
+      applyTargeting();
+    }
+    return;
+  }
   // An armed card goes first, so one Escape never both disarms and unpins.
   if (armed !== null) disarm();
   else if (pinnedRegion !== null) interaction.deselect();
@@ -1228,6 +1419,30 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       if (regionId === null) return true;
       game = pickFaction(game, regionById.get(regionId)!.faction, rng);
       refresh();
+      return true;
+    }
+    // Above the armed branch: while a harvest boon is aiming, the click is
+    // its answer. A valid land commits the play; anything else steps back to
+    // the modal, the armed-card disarm made recoverable.
+    if (game.phase === "playing" && pendingHarvest?.step === "target") {
+      const ph = pendingHarvest;
+      const raw = regionId !== null ? factionByRegion.get(regionId) : undefined;
+      const faction = raw === undefined
+        ? undefined
+        : politicalFactionForPolygon(raw, game.incorporated);
+      if (faction !== undefined && ph.targets.includes(faction)) {
+        const choice: HarvestChoice =
+          ph.effect === "might-chosen"
+            ? { effect: "might-chosen", targetId: faction }
+            : ph.effect === "subjugate"
+              ? { effect: "subjugate", targetId: faction }
+              : { effect: "incorporate", targetId: faction };
+        commitHarvest(ph.index, choice);
+      } else {
+        hud.setArmed(null);
+        openHarvestModal(ph.index);
+        applyTargeting();
+      }
       return true;
     }
     if (game.phase === "playing" && armed !== null) {

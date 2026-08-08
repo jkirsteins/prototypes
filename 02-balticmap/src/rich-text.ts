@@ -62,8 +62,11 @@ const VERBS = {
   concede: { third: "concedes", past: "conceded" },
   discard: { third: "discards", past: "discarded" },
   draw: { third: "draws", past: "drew" },
+  earn: { third: "earns", past: "earned" },
+  empower: { third: "empowers", past: "empowered" },
   fail: { third: "fails", past: "failed" },
   found: { third: "founds", past: "founded" },
+  gain: { third: "gains", past: "gained" },
   incorporate: { third: "incorporates", past: "incorporated" },
   lose: { third: "loses", past: "lost" },
   move: { third: "moves", past: "moved" },
@@ -78,6 +81,7 @@ const VERBS = {
   sow: { third: "sows", past: "sowed" },
   stand: { third: "stands", past: "stood" },
   submit: { third: "submits", past: "submitted" },
+  trade: { third: "trades", past: "traded" },
   unify: { third: "unifies", past: "unified" },
 } as const;
 

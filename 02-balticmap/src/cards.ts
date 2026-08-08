@@ -148,6 +148,12 @@ export const CARDS: Record<string, CardDef> = {
   "take-hostage": { id: "take-hostage", name: "Take hostage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Take a hostage from a vassal of yours whose deck holds a Revolt: the Revolt cannot be played until they pay tribute twice and the hostage goes home." },
   "mighty-ruler": { id: "mighty-ruler", name: "Mighty ruler", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Your ruler grows in prowess. Every 4 levels lower the Might lead you need to subjugate anyone by 1, never below 1. A successor starts unproven." },
   "seat-of-power": { id: "seat-of-power", name: "Seat of power", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", wealthCost: 1, text: "Costs 1 wealth. Move your ruler's seat to a land you hold outright. Others need +2 more Might lead to subjugate you, and your raids on the seat's neighbours gain +1 Might. Only one seat stands at a time." },
+  // Injection-only, like Revolt: its discovery route is the turnip bar.
+  // `playCard` shuffles one into the human's deck when their Grow turnips
+  // plays cross a threshold (the `harvest-earned` event and its notice), so
+  // the player watches it arrive and then holds it. Never deck-buildable,
+  // never in a pack, human-only - no AI seat ever earns one.
+  "turnip-harvest": { id: "turnip-harvest", name: "Turnip harvest", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: false, rarity: "common", text: "The quiet seasons pay off: three boons are rolled and you keep one - a turnip traded for a real card, Might, wealth, or greater things." },
 };
 
 /** Guard card -> the card it turns aside, once, for whoever posted it.

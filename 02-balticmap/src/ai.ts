@@ -47,6 +47,9 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "distrustful-neighbour": "8c: post the guard whose card is aimed at this position",
   "population-boom": "8d: raise the population when it would unlock a settlement",
   "mighty-ruler": "9d: level the ruler on a spare turn",
+  "turnip-harvest":
+    "9e: cash the harvest on any legal turn (auto-resolves in playCard; the " +
+    "injection is human-seat-only, so only the sim's human seat holds it)",
   "grow-crops": "10: grow crops",
 };
 
@@ -566,6 +569,14 @@ export function chooseAction(state: GameState): AiAction {
   // exists to stop.
   const mighty = idxOf("mighty-ruler");
   if (mighty !== undefined) return { type: "play", cardIndex: mighty };
+
+  // 9e: cash the harvest. A free boon strictly beats a turnip, and the pick
+  // itself needs no policy: a choiceless playCard auto-resolves through
+  // autoHarvestChoice. Only the human seat can ever hold one (the injection
+  // is seat-gated), so this branch exists for the sim's policy-driven human
+  // seat - and to keep the card out of the step-11 fallthrough.
+  const harvest = idxOf("turnip-harvest");
+  if (harvest !== undefined) return { type: "play", cardIndex: harvest };
 
   // 10: grow crops
   const grow = idxOf("grow-crops");

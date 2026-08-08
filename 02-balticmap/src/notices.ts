@@ -835,6 +835,43 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // lead on their threat badge.
     reason: "continuous standing gain; log, scoreboard and badge all carry it",
   },
+  "harvest-earned": {
+    kind: "modal",
+    // Human-only by construction - playCard's injection is gated on the human
+    // seat - so the actor check is documentation more than a filter.
+    appliesToHuman: (e) => e.playerId === 1,
+    // Critical on the HOLDS ground: a card just entered the player's deck,
+    // the same reasoning that makes the tribute injection interrupt. It is
+    // also what keeps the heading honest - an actor-arm modal that is not
+    // critical would fall to the "Opponents' turns" heading on the player's
+    // own turn, which is exactly what that heading must never say.
+    critical: (e) => (e.playerId === 1 ? "A harvest is ready" : null),
+    lines: (events, changes) =>
+      events.map((_e, i) => ({
+        text: [
+          t("Your turnip patch pays off - a "), card("turnip-harvest"),
+          t(" is shuffled into your deck"),
+        ],
+        changes: changesFor(i, changes),
+        tone: "good" as const,
+      })),
+  },
+  "harvest-traded": {
+    kind: "silent",
+    reason: "the player picked it in the harvest modal; the log carries it",
+  },
+  "harvest-might": {
+    kind: "silent",
+    reason: "the player picked it in the harvest modal; the log carries it",
+  },
+  "harvest-wealth": {
+    kind: "silent",
+    reason: "the player picked it in the harvest modal; the log carries it",
+  },
+  empowered: {
+    kind: "silent",
+    reason: "the player picked it in the harvest modal; the hand glow shows it",
+  },
   victory: { kind: "silent", reason: "postmortem overlay covers it" },
   defeat: { kind: "silent", reason: "postmortem overlay covers it" },
   surrendered: { kind: "silent", reason: "postmortem overlay covers it" },
