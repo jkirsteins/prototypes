@@ -241,8 +241,20 @@ describe("a whole game over the pipe", () => {
       // Guest's turn: the guest decides FROM ITS OWN REPLICA, exactly
       // as the real client will.
       const rg = guest.game();
-      expect(rg).toEqual(h.game());
       if (rg === null) throw new Error("no replica");
+      // Standings from the guest's own seat, before the full-state
+      // equality: the guest's signed lead is read from ITS replica and
+      // must be the exact negation of the other side's lead read from
+      // the HOST's independently maintained state - the same
+      // positive-means-you-lead convention every badge renders.
+      const guestLead = leadOf(rg.relations, "gamma", "beta");
+      // "+ 0" folds a tied lead's -0 (unary minus on 0) back to 0: the
+      // two are the same lead, and toBe's Object.is would otherwise
+      // fail a round with no lead on either side.
+      expect(guestLead).toBe(-leadOf(h.game().relations, "beta", "gamma") + 0);
+      expect(formatLead("M", guestLead, null))
+        .toBe(formatLead("M", leadOf(h.game().relations, "gamma", "beta"), null));
+      expect(rg).toEqual(h.game());
       const a = chooseAction(rg);
       const hand = rg.players[guestSeat].hand;
       guest.sendAction(a.type === "play"
@@ -257,16 +269,7 @@ describe("a whole game over the pipe", () => {
 
     // Replicas agree to the end...
     expect(guest.game()).toEqual(h.game());
-    // ...and the guest's standings are ITS signed lead, not the host's:
     const g = guest.game();
-    if (g !== null && g.phase === "playing") {
-      const other = "beta";
-      const guestLead = leadOf(g.relations, "gamma", other);
-      expect(formatLead("M", guestLead, null))
-        .toBe(formatLead("M", leadOf(h.game().relations, "gamma", other), null));
-      // The host's own view of the same pair may differ in sign; the
-      // guest never renders that one.
-    }
     // The guest's phase view maps the host-centric ending, if one came.
     if (g !== null && g.phase !== "playing") {
       expect(["victory", "defeat"]).toContain(guestPhaseView(g, "gamma"));
