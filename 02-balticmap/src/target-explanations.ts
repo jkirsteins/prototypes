@@ -1,6 +1,6 @@
 import {
   HOSTAGE_RETURN_TRIBUTES,
-  INCORPORATE_RAMP, PACT_MIGHT_BONUS, POACH_CHANCE, SEAT_BAR_BONUS,
+  PACT_MIGHT_BONUS, SEAT_BAR_BONUS,
   SEAT_RAID_BONUS, SETTLEMENT_BASE_CAP,
   boomsHeld, failureRiskOf, freeSitesIn, gripPartsOn, holdsGuard, leadsIn,
   omenMultiplier, omensHeld, pactBoostExpiriesOn, poachSurchargeOn, raidGainFor,
@@ -162,8 +162,6 @@ export function explainTargetEligibility(
   });
 }
 
-const pct = (n: number): string => `${Math.round(n * 100)}%`;
-
 /** The one sentence that has to survive every rewording below, because it is
  *  the part that costs a turn rather than a card. Written once so the three
  *  risks cannot drift into three ways of saying it. */
@@ -200,24 +198,7 @@ export const GUARD_POSTED: Readonly<Record<string, string>> = {
  *  the map hover's armed-card block - so the odds cannot be phrased one way
  *  before aiming and another while aiming. */
 export function riskLines(risk: FailureRisk): string[] {
-  if (risk.kind === "hidden") {
-    return [GUARD_RISK[risk.because], SPENT_ANYWAY];
-  }
-  if (risk.because === "poach") {
-    return [
-      `${pct(risk.chance)} chance to succeed - they already have an overlord.`,
-      SPENT_ANYWAY,
-    ];
-  }
-  if (risk.chance >= 1) {
-    // The one risk line that is not a warning. The clock this card has been
-    // waiting on has run out, and saying so is the payoff for the wait.
-    return [`Certain: held ${count(risk.held, "turn")}, ${INCORPORATE_RAMP} needed.`];
-  }
-  return [
-    `${pct(risk.chance)} chance to succeed - held ${risk.held} of the ${INCORPORATE_RAMP} turns needed.`,
-    SPENT_ANYWAY,
-  ];
+  return [GUARD_RISK[risk.because], SPENT_ANYWAY];
 }
 
 /** Risk lines for one candidate target, or none where that aim cannot fail.
@@ -238,21 +219,14 @@ export function targetOddsLines(
 /** What a fallible card says about itself, before any target is chosen. Null
  *  for a card the rules can never refuse.
  *
- *  Target-independent on purpose, and that is the whole job: a Subjugate is a
- *  coin flip on one candidate and a certainty on the next, so a player reading
- *  only the per-target line learns the rule exists exactly once, on whichever
- *  candidate they happened to look at. This is where the rule itself is stated.
+ *  Target-independent on purpose, and that is the whole job: the rule itself
+ *  is stated here exactly once, rather than rediscovered per candidate on
+ *  whichever target the player happened to look at.
  *
  *  A record rather than a switch so the omission is visible: a new fallible
  *  card that `failureRiskOf` answers for and this does not is a hole a test
  *  can see, which a missing `if` would not be. */
 const CARD_RISK: Record<string, string> = {
-  "subjugate":
-    `Can fail: prising a faction off its overlord is a ${pct(POACH_CHANCE)} roll. ` +
-    "Taking a faction that has no overlord is certain.",
-  "incorporate":
-    "Can fail: the odds rise with every turn you have held the vassal, and " +
-    `reach certainty at ${INCORPORATE_RAMP}.`,
   "assassinate-ruler":
     "Can fail: a posted bodyguard turns the blade aside, and nothing tells " +
     "you in advance which rivals have one.",
@@ -361,8 +335,6 @@ function availableImpacts(
     ];
   }
   if (cardId === "subjugate" || cardId === "incorporate") {
-    const rows = riskRows(view, actorFactionId, cardId, targetFactionId);
-    if (rows.length > 0) return rows;
     return [prose(
       cardId === "subjugate"
         ? "Becomes your vassal."
@@ -740,6 +712,14 @@ export function cardBlockLine(reason: CardBlockReason): string {
       return (
         `Needs a Might lead of ${formatLead("", reason.required)} over your ` +
         `overlord; you stand at ${formatLead("", reason.lead)}.`
+      );
+    case "realm-too-small":
+      // Both numbers, because together they are the decision: `held` is the
+      // scoreboard count, so the player can see the gap close as they take
+      // vassals, and the gate opening is news they can anticipate.
+      return (
+        `Your realm holds ${reason.held} of the ` +
+        `${count(reason.required, "land")} needed.`
       );
     case "no-target":
       return "Nothing in reach is a legal target.";

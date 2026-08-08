@@ -112,7 +112,10 @@ export function harvestSubjugateTargets(
 }
 
 /** Who the incorporation boon may absorb: the card's own target set - your
- *  direct vassals - with its chance roll waived at resolution, not here. */
+ *  direct vassals. The card-level realm gate (`realm-too-small`) deliberately
+ *  does not apply: `validTargetsFor` never consults card-level legality, and a
+ *  boon is a windfall - the same bend the subjugation boon above makes by
+ *  admitting `insufficient-lead` targets. */
 export function harvestIncorporateTargets(
   view: RulesView, actor: string,
 ): string[] {

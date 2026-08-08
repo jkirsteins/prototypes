@@ -13,7 +13,7 @@ import { DEFAULT_RULES } from "../src/rules";
 import { allianceKey, bumpMight, leadOf } from "../src/relations";
 import { rulerOf } from "../src/rulers";
 import {
-  INCORPORATE_RAMP, PASSIVE_PER_LANDS, loyaltyKey,
+  PASSIVE_PER_LANDS,
 } from "../src/playability";
 import type { TargetExplanation } from "../src/target-explanations";
 import { memoryStorage, type MetaStorage } from "../src/meta";
@@ -932,17 +932,17 @@ describe("afterPlayAnimation", () => {
     vi.useRealTimers();
   });
 
-  /** A play whose card flew and whose roll then missed. Appended to the batch
-   *  rather than rolled for real: the point under test is the ORDER of the
-   *  modal against the flight, and driving the rules to a genuine miss would
-   *  make the test about deck construction instead. */
+  /** A play whose card flew and which a guard then turned aside. Appended to
+   *  the batch rather than driven for real: the point under test is the ORDER
+   *  of the modal against the flight, and driving the rules to a genuine
+   *  prevented play would make the test about deck construction instead. */
   function withOwnFizzle(g: GameState): GameState {
     return {
       ...g,
       log: [...g.log, {
-        turn: g.turn, playerId: 1, type: "subjugate-failed",
-        targetFactionId: "gamma", overlordFactionId: "beta",
-        formerOverlordFactionId: "alpha",
+        turn: g.turn, playerId: 1, type: "play",
+        cardId: "assassinate-ruler", targetFactionId: "gamma",
+        prevented: true,
       }],
     };
   }
@@ -969,7 +969,7 @@ describe("afterPlayAnimation", () => {
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
     vi.advanceTimersByTime(20 + 350 + 700 + 350);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("Your subjugation failed");
+    expect(q(container, ".notice-title").textContent).toBe("A bodyguard stopped you");
     vi.useRealTimers();
   });
 
@@ -1210,21 +1210,28 @@ describe("hud v2", () => {
 
   it("defeat shows the post-mortem with cause, build-up, seen cards, and log", () => {
     const { container, cb, hud } = setup();
-    // A 3-faction roster makes gamma's realm (itself + vassal beta) reach
-    // victory size the instant overlords is seeded below, before either card
-    // plays - a 4th faction keeps that build-up step from ending the game
-    // early. gamma still lands at players[2], same as with 3 factions.
+    // An 8-faction roster keeps the win line (55% = 5 lands) above gamma's
+    // 4-land realm below, so neither the build-up raid nor the seeding ends
+    // the game by unification before the incorporation under test. The realm
+    // hangs alpha and delta under beta - the target - so the digest sheds
+    // them again; gamma still lands at players[2], same as with 3 factions.
     let g = pickFaction(
-      chooseDeck(startGame(newGame([...FACTIONS, "delta"])), buildDeck()),
+      chooseDeck(
+        startGame(newGame([...FACTIONS, "delta", "e1", "e2", "e3", "e4"])),
+        buildDeck(),
+      ),
       "beta", seededRng(1),
     );
-    g = { ...g, current: 2, overlords: new Map([["beta", "gamma"]]) };
+    g = {
+      ...g,
+      current: 2,
+      overlords: new Map([
+        ["beta", "gamma"], ["alpha", "beta"], ["delta", "beta"],
+      ]),
+    };
     g = withHand(g, 2, ["raid"]);
     g = playCard(g, 0, seededRng(1), "beta"); // gamma raids you (seen)
     g = { ...g, playedThisTurn: false };
-    // Held long enough that Incorporate is certain: this test is about the
-    // post-mortem, not about the loyalty roll.
-    g = { ...g, loyalty: { [loyaltyKey("beta", "gamma")]: INCORPORATE_RAMP } };
     g = withHand(g, 2, ["incorporate"]);
     g = playCard(g, 0, seededRng(1), "beta");
     expect(g.phase).toBe("defeat");
@@ -1347,16 +1354,20 @@ describe("End turn button", () => {
 });
 
 describe("learning loop hud", () => {
-  function playing() {
-    return pickFaction(
-      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()),
+  function defeated() {
+    // A 4th faction and a pyramid under beta open gamma's realm gate (4
+    // lands) without tripping the win line: the digest sheds the pyramid.
+    let g = pickFaction(
+      chooseDeck(startGame(newGame([...FACTIONS, "delta"])), buildDeck()),
       "beta", seededRng(1),
     );
-  }
-
-  function defeated() {
-    let g = playing();
-    g = { ...g, current: 2, overlords: new Map([["beta", "gamma"]]) };
+    g = {
+      ...g,
+      current: 2,
+      overlords: new Map([
+        ["beta", "gamma"], ["alpha", "beta"], ["delta", "beta"],
+      ]),
+    };
     g = withHand(g, 2, ["incorporate"]);
     g = playCard(g, 0, seededRng(1), "beta");
     return g;

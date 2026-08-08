@@ -88,8 +88,6 @@ console.log("\nwaste");
 console.log(`  untested guards        ${n1(stats.meanUntestedGuards)} per world`);
 console.log(`  unused omen boosts     ${n1(stats.meanUnusedBoosts)} per world`);
 console.log(`  settlements walked off ${pct(stats.settlementsWalkedOffShare)}`);
-console.log(`  poach attempts failed  ${pct(stats.poachFailShare)}`);
-console.log(`  incorporations failed  ${pct(stats.incorporateFailShare)}`);
 console.log(
   `  revolts sown ${stats.revoltsSownTotal}, of which played ${stats.revoltsPlayedTotal}`,
 );

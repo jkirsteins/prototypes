@@ -3,7 +3,7 @@ import { ESCAPE_RESPITE_TURNS } from "./playability";
 import { TRIBUTE_CARDS } from "./cards";
 import { count, plural } from "./plural";
 import {
-  card, faction, joinSegments, optionalPhrase, t, theFaction, type Segment,
+  card, faction, joinSegments, t, theFaction, type Segment,
 } from "./rich-text";
 import { walkStandings, type StandingChange, type WalkCtx } from "./standings";
 import { untilTurn } from "./timed";
@@ -84,12 +84,12 @@ export type NoticeRule =
        *    the number `realmShrunkFootnote` prints. Losing one silently means
        *    playing on against a bar that has moved.
        *  - What the player SPENT. The other two are things done TO them; this
-       *    is the one they did themselves, and it is here because a roll that
-       *    missed moves NOTHING on the map. A landed Subjugate and a missed one
-       *    leave the board in states a muted player cannot tell apart, while
-       *    the card and the turn are gone either way. It is the narrowest of
-       *    the three: only when the human is the actor, and only when their
-       *    play bought nothing at all.
+       *    is the one they did themselves, and it is here because a play a
+       *    guard turned aside moves NOTHING on the map. A landed play and a
+       *    turned-aside one leave the board in states a muted player cannot
+       *    tell apart, while the card and the turn are gone either way. It is
+       *    the narrowest of the three: only when the human is the actor, and
+       *    only when their play bought nothing at all.
        *
        *  It returns the TITLE rather than a boolean so a rule cannot be marked
        *  critical without saying what happened: a modal that pierced a mute
@@ -152,14 +152,13 @@ export type HumanRole = "self" | "lord";
 function humanRoleIn(e: GameEvent, ctx: NoticeCtx): HumanRole | null {
   if (e.playerId === 1) return null;
   if (e.targetFactionId === ctx.humanFactionId) return "self";
-  // `subjugate-failed` names the incumbent lord in `formerOverlordFactionId`,
-  // the same field `subjugated` uses, so both must read it there. Without this
-  // a failed poach of the human's vassal fell through to the "self" role and
-  // would be described with the wording meant for an attempt on the human.
-  const lostTo =
-    e.type === "subjugated" || e.type === "subjugate-failed"
-      ? e.formerOverlordFactionId
-      : e.overlordFactionId;
+  // `subjugated` names the incumbent lord in `formerOverlordFactionId`, so it
+  // must be read there. Without this a poach of the human's vassal fell
+  // through to the "self" role and would be described with the wording meant
+  // for an attempt on the human.
+  const lostTo = e.type === "subjugated"
+    ? e.formerOverlordFactionId
+    : e.overlordFactionId;
   return lostTo === ctx.humanFactionId ? "lord" : null;
 }
 
@@ -173,9 +172,9 @@ function humanRoleIn(e: GameEvent, ctx: NoticeCtx): HumanRole | null {
  *  Revolt and the vassals their own conquest scattered - three regressions,
  *  none of them anywhere near the line that caused them.
  *
- *  Only the three fizzle rules ask for `actor`, and the type is what keeps it
- *  that way: the line builders that must never see one still take `HumanRole`,
- *  so handing them this stops compiling. */
+ *  Only the fizzle rule - a play a guard turned aside - asks for `actor`, and
+ *  the type is what keeps it that way: the line builders that must never see
+ *  one still take `HumanRole`, so handing them this stops compiling. */
 export type NoticeRole = HumanRole | "actor";
 
 function noticeRoleOf(e: GameEvent, ctx: NoticeCtx): NoticeRole {
@@ -460,57 +459,6 @@ function pactLapsedLines(
   }));
 }
 
-function subjugateFailedLines(events: GameEvent[], _ctx: NoticeCtx, role: NoticeRole): SummaryLine[] {
-  if (role === "actor") {
-    return events.map((e) => ({
-      text: [
-        t("Your attempt on "), faction(e.targetFactionId ?? ""), t(" failed"),
-        ...optionalPhrase(" - they still owe fealty to ", e.formerOverlordFactionId),
-      ],
-      changes: [],
-      tone: "bad",
-    }));
-  }
-  if (role === "lord") {
-    return events.map((e) => ({
-      text: [
-        faction(e.overlordFactionId ?? ""), t(" failed to take "),
-        faction(e.targetFactionId ?? ""), t(" from you"),
-      ],
-      changes: [],
-      tone: "good",
-    }));
-  }
-  return events.map((e) => ({
-    text: [
-      faction(e.overlordFactionId ?? e.targetFactionId ?? ""), t(" failed to take you"),
-      ...optionalPhrase(" from ", e.formerOverlordFactionId),
-    ],
-    changes: [],
-    tone: "good",
-  }));
-}
-
-function incorporateFailedLines(events: GameEvent[], role: NoticeRole): SummaryLine[] {
-  if (role === "actor") {
-    return events.map((e) => ({
-      text: [
-        t("Your attempt to absorb "), faction(e.targetFactionId ?? ""),
-        t(" failed - they are still only your vassal"),
-      ],
-      changes: [],
-      tone: "bad",
-    }));
-  }
-  return events.map((e) => ({
-    text: [
-      faction(e.overlordFactionId ?? ""), t(" failed to absorb your realm permanently"),
-    ],
-    changes: [],
-    tone: "good",
-  }));
-}
-
 // -- the registry ---------------------------------------------------------
 
 export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
@@ -676,8 +624,8 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     kind: "modal",
     // Your own vassal sowing is the warning that starts the race: a Revolt is
     // now in their deck and will surface in a few turns. It is the only way to
-    // learn this - you cannot see their hand - and it is what turns the
-    // Incorporate odds into a decision rather than a readout.
+    // learn this - you cannot see their hand - and it is what makes
+    // incorporating them before it surfaces a race rather than a formality.
     //
     // Only fires for the human's OWN vassal. The human's own sowing needs no
     // notice, and a rival's is genuinely unobservable - see the log filter in
@@ -741,68 +689,6 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       t(" would lock it again; incorporating them before it surfaces ends "),
       t("the threat for good."),
     ]],
-  },
-  "subjugate-failed": {
-    kind: "modal",
-    // A rival trying and failing is exactly the kind of near-miss the player
-    // must see: nothing on the map changed, so without a notice the attempt
-    // leaves no trace at all. Three ways it can touch the human - they kept a
-    // vassal somebody reached for, they were themselves the prize, or their own
-    // poach missed - and the role split picks the wording.
-    //
-    // That same argument is why the actor arm exists. It does not get weaker
-    // when the card spent was yours; it gets stronger, because you also lost
-    // the turn.
-    appliesToHuman: (e, ctx) =>
-      noticeRoleOf(e, ctx) === "actor" ||
-      e.formerOverlordFactionId === ctx.humanFactionId ||
-      e.targetFactionId === ctx.humanFactionId,
-    critical: (e, ctx) =>
-      noticeRoleOf(e, ctx) === "actor" ? "Your subjugation failed" : null,
-    lines: (events, _changes, ctx) =>
-      subjugateFailedLines(events, ctx, noticeRoleOf(events[0], ctx)),
-    footnotes: (events, ctx) => {
-      const role = noticeRoleOf(events[0], ctx);
-      if (role === "actor") {
-        return [[
-          t("Your card is spent, but the lead that justified it is untouched - "),
-          t("the next copy you draw can try again."),
-        ]];
-      }
-      return role === "self"
-        ? [[t("Their card is spent. You are still your overlord's vassal, not theirs.")]]
-        : [];
-    },
-  },
-  "incorporate-failed": {
-    kind: "modal",
-    // Two roles. As TARGET: your overlord tried to annex you and the roll
-    // missed - one failed roll from the run ending, and nothing on the map
-    // records it. As ACTOR: your own roll on your own vassal missed.
-    //
-    // The second was silent, argued as "the hand and activity log already show
-    // the card was spent, and a modal on your own failed gamble is a nag".
-    // That mistook a spent turn for a non-event. The hand shows the card is
-    // gone and never says why, and a vassal you failed to absorb looks
-    // identical to one you never reached for.
-    appliesToHuman: (e, ctx) =>
-      // The actor arm needs no target check: an Incorporate is aimed at the
-      // actor's own vassal by rule, so "the human acted" already places them.
-      noticeRoleOf(e, ctx) === "actor" || e.targetFactionId === ctx.humanFactionId,
-    critical: (e, ctx) =>
-      noticeRoleOf(e, ctx) === "actor" ? "Your annexation failed" : null,
-    lines: (events, _changes, ctx) =>
-      incorporateFailedLines(events, noticeRoleOf(events[0], ctx)),
-    footnotes: (events, ctx) =>
-      noticeRoleOf(events[0], ctx) === "actor"
-        ? [[
-            t("Your card is spent. The vassalage survives and its loyalty clock "),
-            t("keeps running, so your next attempt has better odds."),
-          ]]
-        : [[
-            t("Their card is spent. The longer you stay their vassal, the better their "),
-            t("next attempt's odds - breaking free resets that clock."),
-          ]],
   },
   "pact-lapsed": {
     kind: "modal",

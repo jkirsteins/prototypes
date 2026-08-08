@@ -26,7 +26,7 @@ import {
 } from "./xp";
 import { standingChangeText, standingsFor } from "./view";
 import {
-  card, cardName, cardTextSegments, faction, factionIds, optionalPhrase, possessive,
+  card, cardName, cardTextSegments, faction, factionIds, possessive,
   renderSegments, t, theFaction, verb,
   type RichTextHooks, type Segment, type Speaker, type Verb,
 } from "./rich-text";
@@ -383,18 +383,6 @@ export function eventSegments(
         t("The hostage of "), faction(e.targetFactionId ?? ""),
         t(" returns home from "), faction(e.overlordFactionId ?? ""),
       ];
-    case "subjugate-failed":
-      // `formerOverlordFactionId` is set only when the target had a lord, so
-      // the "from X" phrase is optional - see `optionalPhrase` for what went
-      // wrong when three call sites each decided that for themselves.
-      return clause(actor, "fail", [
-        t(" to prise "), faction(e.targetFactionId ?? ""),
-        ...optionalPhrase(" from ", e.formerOverlordFactionId),
-      ]);
-    case "incorporate-failed":
-      return clause(named(e.targetFactionId), "resist", [
-        t(" incorporation into "), faction(e.overlordFactionId ?? ""),
-      ]);
     case "pact-lapsed":
       // Both allies named, neither as the subject: the seat whose clock tick
       // noticed the expiry did not do this, so a line reading "X ends the pact"

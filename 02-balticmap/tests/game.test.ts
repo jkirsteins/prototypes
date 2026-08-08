@@ -15,10 +15,10 @@ import {
   allianceKey, bumpMight, getRel, leadOf, type Relations,
 } from "../src/relations";
 import {
-  ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES, INCORPORATE_RAMP,
+  ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES,
   PACT_MIGHT_BONUS, PASSIVE_PER_LANDS, PROWESS_PER_REDUCTION, cardBlockReason,
   leadsIn,
-  loyaltyKey, playableSet, raidYield, subjugationGripOn,
+  playableSet, raidYield, subjugationGripOn,
   subjugationRequirement, validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
@@ -130,14 +130,12 @@ const NON_BASICS = [
   "take-hostage", "mighty-ruler", "seat-of-power",
 ];
 
-/** A vassalage held long enough that Incorporate is certain, so a test about
- *  what incorporation DOES is not silently also a test of the loyalty roll. */
-function digested(g: GameState, land: string, lord: string): GameState {
-  return {
-    ...g,
-    loyalty: { ...g.loyalty, [loyaltyKey(land, lord)]: INCORPORATE_RAMP },
-  };
-}
+// Incorporate fixtures below open the realm gate by hanging the spare
+// factions under the TARGET rather than beside it: the four-faction world's
+// gate (4 lands) sits above its victory size (3), so extra lands that stayed
+// in the lord's realm after the digest would flip every phase assertion to
+// victory. A pyramid under the target is freed by the digest, so the realm
+// falls back out of the win line and each test stays about what it names.
 
 function pickAt(seed: number): GameState {
   return pickFaction(
@@ -525,8 +523,12 @@ describe("card effects", () => {
 
   it("incorporate is permanent and ends the game when the human falls", () => {
     let g = playingState(LINE_ADJ);
-    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
-    g = digested(g, "gamma", "beta");
+    g = {
+      ...g,
+      overlords: new Map([
+        ["gamma", "beta"], ["alpha", "gamma"], ["delta", "gamma"],
+      ]),
+    };
     g = withHand(g, 0, ["incorporate"]);
     const after = playCard(g, 0, rng(), "gamma");
     expect(after.incorporated).toEqual({ gamma: "beta" });
@@ -535,8 +537,13 @@ describe("card effects", () => {
 
     // now the human is someone's vassal and gets incorporated
     let g2 = playingState(LINE_ADJ);
-    g2 = { ...g2, current: 2, overlords: new Map([["beta", "gamma"]]) };
-    g2 = digested(g2, "beta", "gamma");
+    g2 = {
+      ...g2,
+      current: 2,
+      overlords: new Map([
+        ["beta", "gamma"], ["alpha", "beta"], ["delta", "beta"],
+      ]),
+    };
     g2 = withHand(g2, 2, ["incorporate"]);
     const dead = playCard(g2, 0, rng(), "beta");
     expect(dead.phase).toBe("defeat");
@@ -549,10 +556,9 @@ describe("card effects", () => {
     let g = playingState(LINE_ADJ);
     g = {
       ...g,
-      overlords: new Map([["gamma", "beta"]]),
+      overlords: new Map([["gamma", "beta"], ["alpha", "gamma"]]),
       incorporated: { delta: "gamma" },
     };
-    g = digested(g, "gamma", "beta");
     g = withHand(g, 0, ["incorporate"]);
     const after = playCard(g, 0, rng(), "gamma");
     expect(after.incorporated).toEqual({ delta: "beta", gamma: "beta" });
@@ -704,10 +710,13 @@ describe("post-escape respite", () => {
 
   it("vassals freed by their lord's incorporation get the respite", () => {
     let g = playingState(LINE_ADJ);
+    // alpha under delta keeps the freed count at one: delta goes free with
+    // its own vassal in tow, and alpha itself escaped nothing.
     g = {
       ...g,
-      overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]),
-      loyalty: { [loyaltyKey("gamma", "beta")]: INCORPORATE_RAMP },
+      overlords: new Map([
+        ["gamma", "beta"], ["delta", "gamma"], ["alpha", "delta"],
+      ]),
     };
     g = withHand(g, 0, ["incorporate"]);
     const after = playCard(g, 0, rng(), "gamma");
@@ -947,11 +956,14 @@ describe("event enrichment", () => {
   it("incorporating a mid-lord frees its vassals, stamping the fallen lord", () => {
     let g = playingState(LINE_ADJ);
     // human beta holds gamma, and gamma holds delta; digesting gamma frees
-    // delta - the trade the card now offers a pyramid-builder.
+    // delta - the trade the card now offers a pyramid-builder. alpha rides
+    // under delta so only one `released` fires and the find below stays
+    // unambiguous.
     g = {
       ...g,
-      overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]),
-      loyalty: { [loyaltyKey("gamma", "beta")]: INCORPORATE_RAMP },
+      overlords: new Map([
+        ["gamma", "beta"], ["delta", "gamma"], ["alpha", "delta"],
+      ]),
     };
     g = withHand(g, 0, ["incorporate"]);
     const after = playCard(g, 0, rng(), "gamma");
@@ -1631,7 +1643,7 @@ describe("any faction can win", () => {
     g = {
       ...g,
       incorporated: { alpha: "beta" },
-      overlords: new Map([["gamma", "beta"]]),
+      overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]),
     };
     g = withHand(g, 0, ["incorporate"]);
     g = playCard(g, 0, seededRng(1), "gamma");
@@ -1645,8 +1657,13 @@ describe("any faction can win", () => {
     // ordinarily how the human loses, per the mirror case below - must not
     // end the run: it is just one more faction's business.
     let g: GameState = { ...playingState(LINE_ADJ), humanSeat: null };
-    g = { ...g, current: 2, overlords: new Map([["beta", "gamma"]]) };
-    g = digested(g, "beta", "gamma");
+    g = {
+      ...g,
+      current: 2,
+      overlords: new Map([
+        ["beta", "gamma"], ["alpha", "beta"], ["delta", "beta"],
+      ]),
+    };
     g = withHand(g, 2, ["incorporate"]);
     const after = playCard(g, 0, seededRng(1), "beta");
     expect(after.incorporated).toEqual({ beta: "gamma" });
@@ -1656,8 +1673,13 @@ describe("any faction can win", () => {
     // Mirror: the identical incorporation of beta, with the default
     // humanSeat (0), does end the run in defeat.
     let g2 = playingState(LINE_ADJ);
-    g2 = { ...g2, current: 2, overlords: new Map([["beta", "gamma"]]) };
-    g2 = digested(g2, "beta", "gamma");
+    g2 = {
+      ...g2,
+      current: 2,
+      overlords: new Map([
+        ["beta", "gamma"], ["alpha", "beta"], ["delta", "beta"],
+      ]),
+    };
     g2 = withHand(g2, 2, ["incorporate"]);
     const dead = playCard(g2, 0, seededRng(1), "beta");
     expect(dead.phase).toBe("defeat");
@@ -1891,60 +1913,50 @@ describe("seeds of revolt and the two rolls", () => {
     expect(freed.overlords.has("beta")).toBe(false);
   });
 
-  it("a failed Incorporate spends the card and leaves the vassalage standing", () => {
+  it("an Incorporate at the gate always lands, whatever the rng says", () => {
+    let g = playingState(LINE_ADJ);
+    g = {
+      ...g,
+      overlords: new Map([
+        ["gamma", "beta"], ["alpha", "gamma"], ["delta", "gamma"],
+      ]),
+    };
+    g = withHand(g, 0, ["incorporate"]);
+    const after = playCard(g, 0, fixed(0.99), "gamma");
+    expect(after.incorporated).toEqual({ gamma: "beta" });
+    expect(after.players[0].discard).toContain("incorporate");
+    expect(after.playedThisTurn).toBe(true);
+  });
+
+  it("an Incorporate below the realm gate is refused outright", () => {
+    // Refused, not spent: the card stays in hand and the state is untouched,
+    // the same shape as every other illegal play.
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["incorporate"]);
-    // loyalty 0 -> 0% chance, so any roll misses.
-    const after = playCard(g, 0, fixed(0.99), "gamma");
-    expect(after.incorporated).toEqual({});
-    expect(after.overlords.get("gamma")).toBe("beta");
-    expect(after.players[0].discard).toContain("incorporate");
-    expect(after.playedThisTurn).toBe(true);
-    expect(after.log.at(-1)).toMatchObject({
-      type: "incorporate-failed", targetFactionId: "gamma",
-    });
+    expect(playCard(g, 0, rng(), "gamma")).toBe(g);
   });
 
-  it("a failed poach spends the card and leaves the vassal with its lord", () => {
+  it("a poach past the bar always lands, whatever the rng says", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["gamma", "delta"]]) };
     g = withRel(g, mightLead({}, "beta", "gamma", 6)); // clear of bar + surcharge
     g = withHand(g, 0, ["subjugate"]);
     const after = playCard(g, 0, fixed(0.99), "gamma");
-    expect(after.overlords.get("gamma")).toBe("delta");
+    expect(after.overlords.get("gamma")).toBe("beta");
     expect(after.players[0].discard).toContain("subjugate");
-    expect(after.log.at(-1)).toMatchObject({
-      type: "subjugate-failed",
+    expect(after.log.find((e) => e.type === "subjugated")).toMatchObject({
       targetFactionId: "gamma",
       formerOverlordFactionId: "delta",
     });
   });
 
-  it("taking a free faction never rolls, whatever the rng says", () => {
+  it("taking a free faction lands too, whatever the rng says", () => {
     let g = playingState(LINE_ADJ);
     g = withRel(g, mightLead({}, "beta", "gamma", 2));
     g = withHand(g, 0, ["subjugate"]);
     const after = playCard(g, 0, fixed(0.99), "gamma");
     expect(after.overlords.get("gamma")).toBe("beta");
-  });
-
-  it("loyalty rises under its lord and decays for everyone else", () => {
-    let g = playingState(LINE_ADJ);
-    g = {
-      ...g,
-      overlords: new Map([["beta", "gamma"]]),
-      loyalty: { [loyaltyKey("beta", "delta")]: 2 },
-      current: 0,
-    };
-    // beginTurn ticks the clock for the faction about to act.
-    const ticked = beginTurn(g, rng());
-    expect(ticked.loyalty[loyaltyKey("beta", "gamma")]).toBe(1);
-    expect(ticked.loyalty[loyaltyKey("beta", "delta")]).toBe(1);
-    // and again: the ex-lord's investment reaches zero and is dropped
-    const twice = beginTurn({ ...ticked, current: 0 }, rng());
-    expect(twice.loyalty[loyaltyKey("beta", "gamma")]).toBe(2);
-    expect(twice.loyalty).not.toHaveProperty(loyaltyKey("beta", "delta"));
   });
 });
 
@@ -2397,7 +2409,7 @@ describe("take hostage", () => {
     g = { ...g, current: 2, playedThisTurn: false };
     g = { ...g, relations: mightLead(g.relations, "gamma", "alpha", 6) };
     g = withHand(g, 2, ["subjugate"]);
-    g = playCard(g, 0, () => 0, "alpha"); // 0 < POACH_CHANCE: the poach lands
+    g = playCard(g, 0, () => 0, "alpha"); // past the bar, the poach lands
     expect(g.overlords.get("alpha")).toBe("gamma");
     expect(g.hostages).toEqual({});
     expect(g.log.some((e) => e.type === "hostage-returned")).toBe(false);
@@ -2642,14 +2654,13 @@ describe("the turnip harvest's boons", () => {
     expect(five.log.find((e) => e.type === "harvest-wealth")?.wealth).toBe(5);
   });
 
-  it("the subjugation boon lands roll-free with no lead and injects tribute", () => {
+  it("the subjugation boon lands with no lead and injects tribute", () => {
     const out = boon(harvestHand(), { effect: "subjugate", targetId: "alpha" });
     expect(out.overlords.get("alpha")).toBe("beta");
     const alpha = out.players.find((p) => p.factionId === "alpha")!;
     expect(alpha.deck.some(isTributeCard)).toBe(true);
     const e = out.log.find((ev) => ev.type === "subjugated");
     expect(e?.consequence).toBe(true);
-    expect(out.log.some((e2) => e2.type === "subjugate-failed")).toBe(false);
   });
 
   it("the boon still honours every non-lead refusal - a respite blocks it", () => {
@@ -2659,13 +2670,13 @@ describe("the turnip harvest's boons", () => {
     expect(out.overlords.has("alpha")).toBe(false);
   });
 
-  it("the incorporation boon absorbs a fresh vassal the card's roll would refuse", () => {
+  it("the incorporation boon absorbs a vassal below the card's realm gate", () => {
     let g = harvestHand();
-    // loyalty 0: incorporationChance is 0, so the CARD could never land here
+    // beta's realm is 2 lands, below the card-level gate of 4, so the CARD
+    // would be greyed out here - the boon is a windfall and absorbs anyway.
     g = { ...g, overlords: new Map([["alpha", "beta"]]) };
     const out = boon(g, { effect: "incorporate", targetId: "alpha" });
     expect(out.incorporated.alpha).toBe("beta");
-    expect(out.log.some((e) => e.type === "incorporate-failed")).toBe(false);
   });
 
   it("empower marks a deck card and logs the pick", () => {
