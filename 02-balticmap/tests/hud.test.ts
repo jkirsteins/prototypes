@@ -17,6 +17,7 @@ import {
 import type { TargetExplanation } from "../src/target-explanations";
 import { memoryStorage, type MetaStorage } from "../src/meta";
 import { ROUND_SUMMARY_TITLE } from "../src/notices";
+import { runXp } from "../src/xp";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -2586,5 +2587,54 @@ describe("localPlayerId", () => {
     // secret play the local player's own, so it renders by its real name.
     const logText = q(container, ".activity-log").textContent!;
     expect(logText).toContain(CARDS[secretId].name);
+  });
+
+  // The postmortem's XP is what `bankRunProgress` banks, and that banks the
+  // LOCAL seat's earnings. A defaulted player 1 here quoted the host's total
+  // on the guest's own end screen - two screens disagreeing about the same
+  // run, with only the guest's one wrong.
+  it("scores the postmortem's XP for the local seat, not seat 0", () => {
+    // Two raids by player 1, one by player 2, so the totals cannot coincide.
+    const raid = (playerId: number): GameEvent => ({
+      turn: 1, playerId, type: "play", cardId: "raid",
+      targetFactionId: "gamma", amount: 1,
+    });
+    const ended = (g: GameState): GameState =>
+      ({ ...g, phase: "defeat" as const });
+    const log = [raid(1), raid(1), raid(2)];
+
+    const mine = setup({ localPlayerId: () => 2 });
+    mine.hud.update(ended(withEvents(playing(), log)));
+    const guestXp = q(mine.container, ".pm-xp").textContent!;
+
+    const hosts = setup();
+    hosts.hud.update(ended(withEvents(playing(), log)));
+    const hostXp = q(hosts.container, ".pm-xp").textContent!;
+
+    expect(guestXp).toBe(`+${runXp(log, 2)} XP earned`);
+    expect(hostXp).toBe(`+${runXp(log, 1)} XP earned`);
+    // The whole point: one raid against two cannot score the same.
+    expect(guestXp).not.toBe(hostXp);
+  });
+
+  // Only the host seat can surrender, so on a guest's screen this run ended
+  // by somebody else's choice. "You conceded" over a game the player was
+  // still playing is a lie about what they just did.
+  it("says who conceded, rather than blaming the reader", () => {
+    const conceded: GameEvent[] = [
+      { turn: 3, playerId: 1, type: "surrendered" },
+    ];
+    const ended = (g: GameState): GameState =>
+      ({ ...g, phase: "defeat" as const });
+
+    const theirs = setup({ localPlayerId: () => 2 });
+    theirs.hud.update(ended(withEvents(playing(), conceded)));
+    expect(q(theirs.container, ".pm-cause").textContent).toContain(
+      "Your opponent conceded",
+    );
+
+    const ours = setup();
+    ours.hud.update(ended(withEvents(playing(), conceded)));
+    expect(q(ours.container, ".pm-cause").textContent).toContain("You conceded");
   });
 });

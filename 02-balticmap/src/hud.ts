@@ -1725,13 +1725,27 @@ export function createHud(
     } else if (state.log.some((e) => e.type === "surrendered")) {
       // Conceding has no killer and no buildup to explain. Say what happened
       // and how far off the pace they were, and leave it at that.
+      //
+      // Whose concession it was decides the sentence. Only the host seat can
+      // surrender (the engine's endings pivot on it), so on a guest's screen
+      // this run ended by somebody else's choice - and "You conceded" over a
+      // game the player was still playing is simply a lie. The other party is
+      // named by role, not by faction: the surrendering seat's faction is on
+      // the map either way, and a name here would be inert text the naming
+      // rule exists to prevent.
+      const mine = state.log.some(
+        (e) => e.type === "surrendered" && e.playerId === localPlayerId(),
+      );
       const size = fullRealmOf(
         human.factionId, state.overlords, state.incorporated,
       ).size;
       pmTitle.textContent = "Surrendered";
       setCause([
-        t(`You conceded with ${size} of the ` +
-          `${victoryRealmSize(state.factionIds.length)} lands needed`),
+        t(mine
+          ? `You conceded with ${size} of the ` +
+            `${victoryRealmSize(state.factionIds.length)} lands needed`
+          : `Your opponent conceded, ending the game. You held ${size} of ` +
+            `the ${victoryRealmSize(state.factionIds.length)} lands needed`),
       ]);
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();
@@ -1767,8 +1781,11 @@ export function createHud(
       }
     }
     // XP is derived from the log, never a counter carried on state - see
-    // src/xp.ts. The number here is the same one that gets banked.
-    const earned = runXp(state.log);
+    // src/xp.ts. The number here is the same one that gets banked, which is
+    // why it takes the local seat: `bankRunProgress` banks
+    // `runXp(log, localHuman().id)`, and a defaulted 1 here quoted the HOST's
+    // earnings on the guest's own end screen.
+    const earned = runXp(state.log, localPlayerId());
     pmXp.textContent = `+${earned} XP earned`;
     renderXpBar(earned);
     pmLog.replaceChildren(

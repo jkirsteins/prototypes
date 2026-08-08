@@ -1613,14 +1613,23 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // summary over a game that had been running for twenty turns.
       // The local staging screens go with it; the snapshot IS the game.
       deckScreen.update(deckScreenView(false));
+      // The hello could not know a snapshot was coming, so it left the lobby
+      // line up. Correct it now: the panel is hidden here, but a later drop
+      // shows it again and it must not be advertising the deck screen.
+      netPanel.setStatus(`Playing with ${net.session?.hostName() ?? "the host"}.`);
       refresh(source === "update" ? undefined : { animate: false });
       updateWaitingStatus();
     },
     onReject(reason) {
       if (net.role !== "guest" || net.session !== session) return;
       // A refused move leaves the state exactly where it was, so the only
-      // thing to undo is this screen's lock.
+      // thing to undo is this screen's lock. The reason goes on the panel
+      // as well as the console: a refused LOBBY pick (the land the host has
+      // already taken) otherwise left "Waiting for the host to start the
+      // game..." standing over a pick that was never going to be honoured,
+      // and the panel is on screen for exactly that phase.
       console.error("host rejected the action:", reason);
+      netPanel.setStatus(`That did not go through: ${reason}.`);
       resolving = false;
       refresh();
     },
@@ -1754,7 +1763,11 @@ const interaction = attachInteraction(svg, regionPaths, data, {
         // A host cannot deal on the click: the other seat has not been
         // chosen yet. The pick is held, announced to the lobby, and the deal
         // happens in tryDeal whenever the second of the two picks lands.
-        if (picked === net.session?.guestPick()?.factionId) return true;
+        if (picked === net.session?.guestPick()?.factionId) {
+          // Swallowing the click in silence read as the map being broken.
+          netPanel.setStatus("Your friend has taken that land - pick another.");
+          return true;
+        }
         net.hostPick = picked;
         net.session?.sendLobby();
         tryDeal();
