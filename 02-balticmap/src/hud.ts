@@ -121,11 +121,13 @@ export interface Hud {
    *  says so, and says how to clear it, since a held highlight with nothing
    *  explaining it reads as the game being stuck. */
   setPinned(factionId: string | null): void;
-  /** Renders "Waiting for <faction> (<name>)..." in the status bar
-   *  while a remote seat holds the turn; null clears it. The faction
-   *  is a segment (it lights the map like any faction name); the
-   *  player name is plain text. */
-  setWaiting(factionId: string | null, playerName?: string): void;
+  /** Renders "Waiting for <faction>..." in the status bar while a remote
+   *  seat holds the turn; null clears it. The faction is a segment, which
+   *  is also where the player's name comes from: `renderSegments` appends
+   *  "(Bela)" beside every faction it draws that a human is playing, so
+   *  this takes no name of its own. Passing one is how the line came to
+   *  read "Waiting for Curonians (Bela) (Bela)...". */
+  setWaiting(factionId: string | null): void;
 }
 
 const FAN_ANGLE_DEG = 5;
@@ -1026,12 +1028,12 @@ export function createHud(
    *  pin and a plain hover drive alike, while this is only ever set by a click
    *  and is what the bar has to announce. */
   let pinnedFaction: string | null = null;
-  /** The faction (and optionally the player behind it) a remote seat is
-   *  holding the turn on, for the status bar - see Hud.setWaiting. Null when
-   *  nothing is waiting, which is every solo game: nobody outside Task 10's
-   *  network wiring ever calls setWaiting at all. */
+  /** The faction a remote seat is holding the turn on, for the status bar -
+   *  see Hud.setWaiting. Just the faction: who is behind it is the segment
+   *  renderer's business, not this line's. Null when nothing is waiting,
+   *  which is every solo game: nobody outside the network wiring ever calls
+   *  setWaiting at all. */
   let waitingFaction: string | null = null;
-  let waitingPlayerName: string | undefined;
 
   /** Sets one entry's dimming from `highlightedFaction`. An entry is lit when
    *  it names that faction - `data-factions`, written in renderLog. */
@@ -1586,10 +1588,9 @@ export function createHud(
       if (waitingFaction !== null) {
         statusText.replaceChildren(
           renderSegments(
-            [
-              t("Waiting for "), faction(waitingFaction),
-              t(waitingPlayerName !== undefined ? ` (${waitingPlayerName})...` : "..."),
-            ],
+            // No name appended here: the faction segment brings its player's
+            // name with it, like every other faction the HUD draws.
+            [t("Waiting for "), faction(waitingFaction), t("...")],
             richTextHooks,
           ),
         );
@@ -1892,9 +1893,8 @@ export function createHud(
       // the map answers it rather than pinning. setArmed(null) renders again.
       if (lastState !== null && armedIndex === null) renderStatus(lastState);
     },
-    setWaiting(factionId, playerName) {
+    setWaiting(factionId) {
       waitingFaction = factionId;
-      waitingPlayerName = playerName;
       if (lastState !== null) renderStatus(lastState);
     },
     highlightFaction(factionId) {

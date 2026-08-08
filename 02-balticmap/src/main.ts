@@ -1140,10 +1140,9 @@ function updateWaitingStatus(): void {
   const remote =
     game.phase === "playing" && controllerOf(game.current) === "remote";
   if (remote && net.role === "host") {
-    hud.setWaiting(
-      game.players[game.current].factionId,
-      net.session?.guestName() ?? undefined,
-    );
+    // The faction alone: the name beside it comes from `playerNameOf`, the
+    // same hook that names it in the log and the scoreboard.
+    hud.setWaiting(game.players[game.current].factionId);
     return;
   }
   hud.setWaiting(null);
