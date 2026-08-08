@@ -17,7 +17,9 @@ navigation and the same URL gives the same run every time:
 
 - `seed=N` - seeds the rng.
 - `deck=a,b,c` - deck-screen picks, padded to ten with Grow turnips. Omit for
-  the standard deck.
+  the standard deck. A card named twice is capped by the `copies` rule: one
+  copy by default, two under `rules=copies:double` - `rules=` is stamped
+  before the deck, so one URL carries both.
 - `screen=deck` - stops on the deck screen instead of picking for you. The one
   stop that must be asked for: `chooseDeck` runs whether or not `deck=` was
   named, so nothing else leaves the phase at `deck-building`.

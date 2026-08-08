@@ -6,6 +6,7 @@ import {
 } from "../src/game";
 import { bumpMight, type Relations } from "../src/relations";
 import { CARDS, buildDeck, type Rng } from "../src/cards";
+import { DEFAULT_RULES } from "../src/rules";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -889,6 +890,7 @@ describe("9e: cash the harvest", () => {
 
 function unlimitedAiPlaying(): GameState {
   const g = chooseRules(startGame(newGame(["alpha", "beta", "gamma", "delta"])), {
+    ...DEFAULT_RULES,
     turn: "unlimited",
   });
   return pickFaction(chooseDeck(g, buildDeck()), "beta", seededRng(1));

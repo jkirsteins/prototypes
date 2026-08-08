@@ -1,6 +1,7 @@
 import {
   buildDeck, buildAiDeck, shuffle, guardAgainst, isGuardCard, isTributeCard,
-  CARDS, DECK_SIZE, FAN_OUT_CARDS, TRIBUTE_CARDS, type Rng,
+  AI_DECK_GUARANTEED, CARDS, DECK_SIZE, FAN_OUT_CARDS, TRIBUTE_CARDS,
+  type Rng,
 } from "./cards";
 
 import {
@@ -20,7 +21,7 @@ import {
   harvestIncorporateTargets, harvestSubjugateTargets, type HarvestChoice,
 } from "./harvest";
 import { initialRulers, prowessByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
-import { allowsDiscards, DEFAULT_RULES, type RuleSelections } from "./rules";
+import { allowsDiscards, copiesAllowed, DEFAULT_RULES, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
 import { harvestMultiplier, harvestsEarned, runTurnips } from "./xp";
 
@@ -356,7 +357,8 @@ export function pickFaction(
   state: GameState,
   factionId: string,
   rng: Rng,
-  aiDeckFor: (rng: Rng, factionId: string) => string[] = (r) => buildAiDeck(r),
+  aiDeckFor: (rng: Rng, factionId: string) => string[] = (r) =>
+    buildAiDeck(r, AI_DECK_GUARANTEED, copiesAllowed(state.rules)),
 ): GameState {
   if (state.phase !== "pick-faction") return state;
   if (!state.factionIds.includes(factionId)) return state;

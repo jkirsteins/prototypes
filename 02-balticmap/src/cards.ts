@@ -312,20 +312,31 @@ export const AI_DECK_GUARANTEED = ["subjugate", "raid"];
  *  Guaranteed ids are listed first so the DECK_SIZE cap can never drop one.
  *  Every non-basic is still rolled for, guaranteed or not, so a given seed
  *  consumes the same rng values whatever the guarantee list is and simulation
- *  arms stay comparable. Pass [] for the unarmed deck. */
+ *  arms stay comparable. Pass [] for the unarmed deck.
+ *
+ *  `maxCopies` is the copies rule's cap (`copiesAllowed`). The second copy is
+ *  derived from the SAME draw as inclusion - `r < 0.5` includes the card,
+ *  `r < 0.25` also doubles it - never from an extra draw: one rng draw per
+ *  non-basic is a frozen contract (tests/rng-isolation.test.ts), and an extra
+ *  draw would silently move every committed AI-deck band. Doubles trail the
+ *  singles so the DECK_SIZE cap drops second copies before whole cards. With
+ *  maxCopies 1 the output is byte-identical to the pre-rule builder. */
 export function buildAiDeck(
   rng: Rng,
   guaranteed: string[] = AI_DECK_GUARANTEED,
+  maxCopies = 1,
 ): string[] {
   const nonBasics = Object.values(CARDS)
     .filter((c) => c.deckBuildable && c.maxPerDeck !== null)
     .map((c) => c.id);
-  const rolled = nonBasics.filter(() => rng() < 0.5);
+  const draws = new Map(nonBasics.map((id) => [id, rng()]));
+  const rolled = nonBasics.filter((id) => (draws.get(id) ?? 1) < 0.5);
   const forced = nonBasics.filter((id) => guaranteed.includes(id));
-  const included = [
-    ...forced,
-    ...rolled.filter((id) => !forced.includes(id)),
-  ].slice(0, DECK_SIZE);
+  const singles = [...forced, ...rolled.filter((id) => !forced.includes(id))];
+  const doubles = maxCopies >= 2
+    ? singles.filter((id) => (draws.get(id) ?? 1) < 0.25)
+    : [];
+  const included = [...singles, ...doubles].slice(0, DECK_SIZE);
   return [
     ...included,
     ...Array.from({ length: DECK_SIZE - included.length }, () => "grow-crops"),

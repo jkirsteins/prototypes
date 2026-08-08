@@ -654,6 +654,24 @@ svg.map.dragging {
   outline-offset: -2px;
 }
 
+/* The copy count under a multi-copy rule ("x1"/"x2"). A real child rather
+   than ::after, which the rarity ribbon already owns. Absolute so the tile's
+   text flow and the measured grid numbers are untouched; colour stated
+   because the tile is a light box on a dark screen. */
+.ds-card-count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.2rem;
+  background: #7cb06a;
+  color: #1b1710;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+}
+
+.ds-card-count.hidden { display: none; }
+
 /* deck full: the leftovers read as "swap one out", not as dead buttons */
 .ds-card.deck-full {
   opacity: 0.3;

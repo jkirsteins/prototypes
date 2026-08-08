@@ -9,6 +9,7 @@ import {
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
 import { CARDS, buildDeck, type Rng } from "../src/cards";
+import { DEFAULT_RULES } from "../src/rules";
 import { allianceKey, bumpMight, leadOf } from "../src/relations";
 import { rulerOf } from "../src/rulers";
 import {
@@ -1304,7 +1305,9 @@ describe("End turn button", () => {
   }
 
   function unlimitedHudPlaying(): GameState {
-    const g = chooseRules(startGame(newGame(FACTIONS)), { turn: "unlimited" });
+    const g = chooseRules(startGame(newGame(FACTIONS)), {
+      ...DEFAULT_RULES, turn: "unlimited",
+    });
     return pickFaction(chooseDeck(g, buildDeck()), "alpha", seededRng(1));
   }
 
@@ -2588,7 +2591,9 @@ describe("the turnip bar chip and the harvest modals", () => {
     const { container, hud } = setup();
     const g = pickFaction(
       chooseDeck(
-        chooseRules(startGame(newGame(FACTIONS)), { turn: "unlimited" }),
+        chooseRules(startGame(newGame(FACTIONS)), {
+          ...DEFAULT_RULES, turn: "unlimited",
+        }),
         buildDeck(),
       ),
       "beta", seededRng(1),

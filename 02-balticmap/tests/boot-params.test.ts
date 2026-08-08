@@ -170,6 +170,16 @@ describe("applyBootParams", () => {
     expect(g.humanDeck).toContain("raid");
   });
 
+  it("caps a duplicate deck pick by the copies rule", () => {
+    // The rules are stamped before the deck, so the same URL grammar carries
+    // both: one Raid by default, two under rules=copies:double.
+    const single = boot("?deck=raid,raid,subjugate");
+    expect(single.humanDeck.filter((id) => id === "raid")).toHaveLength(1);
+    const double = boot("?deck=raid,raid,subjugate&rules=copies:double");
+    expect(double.humanDeck.filter((id) => id === "raid")).toHaveLength(2);
+    expect(double.humanDeck).toHaveLength(DECK_SIZE);
+  });
+
   it("stops at the deck screen when ?screen=deck", () => {
     // The only stop that has to be asked for. chooseDeck runs whether or not
     // ?deck= was named and buildPlayerDeck always returns a legal deck, so
@@ -315,9 +325,11 @@ describe("applyBootParams", () => {
 describe("rules=", () => {
   it("parses axis:option pairs and drops unknown ones", () => {
     expect(parseBootParams("?rules=turn:unlimited")?.rules)
-      .toEqual({ turn: "unlimited" });
+      .toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
     expect(parseBootParams("?rules=turn:unlimited;bogus:x")?.rules)
-      .toEqual({ turn: "unlimited" });
+      .toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
+    expect(parseBootParams("?rules=turn:unlimited;copies:double")?.rules)
+      .toEqual({ turn: "unlimited", copies: "double" });
     expect(parseBootParams("?rules=turn:gone")?.rules).toEqual(DEFAULT_RULES);
     // Strict two-part clauses: a third segment makes the whole pair
     // malformed, so it drops and the axis falls back rather than parsing

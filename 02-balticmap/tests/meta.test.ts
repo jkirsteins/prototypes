@@ -119,18 +119,31 @@ describe("storage round-trip", () => {
     const junk: unknown[] = [
       "raid", // not an array at all
       ["gone-card", "pay-military-tribute"], // unknown and injection-only ids
-      ["raid", "raid", "fortify"], // duplicates
-      Array.from({ length: DECK_SIZE + 5 }, () => "raid"), // over the cap
+      Array.from({ length: DECK_SIZE + 5 }, () => "raid"), // over every cap
     ];
     for (const lastPicks of junk) {
       s.setItem(META_STORAGE_KEY, JSON.stringify({ ...rec({ xp: 40 }), lastPicks }));
       const loaded = loadMeta(s);
       expect(loaded.xp).toBe(40);
       expect(loaded.lastPicks.length).toBeLessThanOrEqual(DECK_SIZE);
-      expect(loaded.lastPicks).toEqual([...new Set(loaded.lastPicks)]);
+      // At most 2 copies each - the most any copies rule allows.
+      for (const id of new Set(loaded.lastPicks)) {
+        expect(loaded.lastPicks.filter((p) => p === id).length)
+          .toBeLessThanOrEqual(2);
+      }
       expect(loaded.lastPicks).not.toContain("gone-card");
       expect(loaded.lastPicks).not.toContain("pay-military-tribute");
     }
+  });
+
+  it("keeps a two-copy loadout but drops the third copy", () => {
+    // Storage does not know the copies rule, so it holds the absolute
+    // maximum (2); the deck screen clamps to the actual cap on render.
+    const s = memoryStorage();
+    s.setItem(META_STORAGE_KEY, JSON.stringify({
+      ...rec({}), lastPicks: ["raid", "raid", "raid", "fortify"],
+    }));
+    expect(loadMeta(s).lastPicks).toEqual(["raid", "raid", "fortify"]);
   });
 
   it("resetMeta wipes storage and returns the initial record", () => {
@@ -246,6 +259,17 @@ describe("buildPlayerDeck", () => {
     expect(deck.filter((id) => id === "raid")).toHaveLength(1);
     expect(deck).not.toContain("alliance");
     expect(deck.filter((id) => id === "grow-crops")).toHaveLength(DECK_SIZE - 1);
+  });
+
+  it("keeps a second copy when the copies cap allows it", () => {
+    const deck = buildPlayerDeck(
+      ["grow-crops", "raid", "subjugate"],
+      ["raid", "raid", "raid", "subjugate"],
+      2,
+    );
+    expect(deck).toHaveLength(DECK_SIZE);
+    expect(deck.filter((id) => id === "raid")).toHaveLength(2);
+    expect(deck.filter((id) => id === "subjugate")).toHaveLength(1);
   });
 
   it("lets a first-run player deck the escape from vassalage", () => {
