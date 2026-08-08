@@ -10,6 +10,7 @@ import {
   type NetMessage,
 } from "../src/net-protocol";
 import { createHostSession, type HostDeps } from "../src/net-host";
+import { createGuestSession, type GuestDeps } from "../src/net-guest";
 
 const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
@@ -149,5 +150,44 @@ describe("host session", () => {
       expect(snap.guestFactionId).toBe("beta");
       expect(snap.state.log.length).toBe(h.game().log.length);
     }
+  });
+});
+
+describe("guest session", () => {
+  it("sends hello on creation, surfaces the lobby, and replicates start + updates", () => {
+    const rng = seededRng(4);
+    const h = makeHost(rng);
+    const states: GameState[] = [];
+    let lobby: { rules: unknown; takenFactionId: string | null } | null = null;
+    const deps: GuestDeps = {
+      name: "Gusta",
+      onHostHello: () => {},
+      onLobby: (info) => { lobby = info; },
+      onState: (g) => states.push(g),
+      onReject: () => {},
+      onRefused: () => {},
+      onClosed: () => {},
+    };
+    const guest = createGuestSession(h.guestWire, deps);
+    expect(h.session.guestName()).toBe("Gusta"); // hello crossed on creation
+    expect(lobby).not.toBeNull();
+
+    guest.sendPick(buildDeck(), "delta");
+    const pick = h.picks[0];
+    h.setGame(pickFaction(h.game(), "alpha", rng,
+      (r, fid) => (fid === pick.factionId ? pick.deck : buildDeck())));
+    h.session.markStarted(pick.factionId);
+    expect(guest.guestFactionId()).toBe("delta");
+    expect(states.length).toBe(1);
+    expect(states[0]).toEqual(h.game());
+
+    // Host moves on; guest's replica follows and stays deep-equal.
+    let g = h.game();
+    for (let i = 0; i < 5 && g.phase === "playing"; i++) {
+      g = advance(aiTakeTurn(g, rng), rng);
+    }
+    h.setGame(g);
+    h.session.pushUpdate();
+    expect(guest.game()).toEqual(h.game());
   });
 });
