@@ -41,6 +41,8 @@ function setup(opts?: {
   onHighlightFaction?: (factionId: string | null) => void;
   lifetimeXp?: () => number;
   packsWaiting?: () => number;
+  localPlayerId?: () => number;
+  playerNameOf?: (factionId: string) => string | null;
   placeNameFactionIds?: Set<string>;
   /** LogPrefs storage. Defaults to a fresh, isolated memoryStorage() per
    *  call - pass the SAME instance to two setup() calls to test that
@@ -68,6 +70,8 @@ function setup(opts?: {
       : {}),
     ...(opts?.lifetimeXp ? { lifetimeXp: opts.lifetimeXp } : {}),
     ...(opts?.packsWaiting ? { packsWaiting: opts.packsWaiting } : {}),
+    ...(opts?.localPlayerId ? { localPlayerId: opts.localPlayerId } : {}),
+    ...(opts?.playerNameOf ? { playerNameOf: opts.playerNameOf } : {}),
   };
   // Delta is here for the tests that need a fourth faction; FACTIONS itself
   // stays three, so nothing else renders it.
@@ -2536,5 +2540,51 @@ describe("secret cards in the activity log", () => {
     hud.update({ ...g, log: [...g.log, guard(2)] });
     expect(texts(container).some((t) => /a secret card/.test(t))).toBe(true);
     expect(texts(container).some((t) => /played Bodyguard/.test(t))).toBe(false);
+  });
+});
+
+describe("localPlayerId", () => {
+  // Picking alpha as the seat-picker's faction leaves alpha at id 1, so beta
+  // lands at id 2 (seat 1) - the guest-perspective case the callback exists
+  // for, where the local player is not the array's first player.
+  const FOUR = ["alpha", "beta", "gamma", "delta"];
+
+  function playing(): GameState {
+    return pickFaction(
+      chooseDeck(startGame(newGame(FOUR)), buildDeck()), "alpha", seededRng(1),
+    );
+  }
+
+  // bodyguard is one of the two cards in the secret set CARDS/GUARDS pin as
+  // an identity in tests/cards.test.ts ("keeps the secret cards and the
+  // guards the same set") - not a guess.
+  const secretId = "bodyguard";
+
+  const withEvents = (g: GameState, events: GameEvent[]): GameState =>
+    ({ ...g, log: [...g.log, ...events] });
+
+  const yourPlay: GameEvent = {
+    turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "gamma",
+  };
+  const rivalSecretPlay: GameEvent = {
+    turn: 1, playerId: 1, type: "play", cardId: secretId,
+  };
+
+  it("a hud for player 2 says You for player 2 and hides player 1's secret plays", () => {
+    const { container, hud } = setup({ localPlayerId: () => 2 });
+    hud.update(withEvents(playing(), [yourPlay, rivalSecretPlay]));
+    const logText = q(container, ".activity-log").textContent!;
+    expect(logText).toContain("You"); // player 2's own play
+    expect(logText).toContain("a secret card"); // player 1's play hidden
+    expect(logText).not.toContain(CARDS[secretId].name);
+  });
+
+  it("defaults to player 1 when the callback is absent", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [yourPlay, rivalSecretPlay]));
+    // Same state, but with no localPlayerId the default (1) makes player 1's
+    // secret play the local player's own, so it renders by its real name.
+    const logText = q(container, ".activity-log").textContent!;
+    expect(logText).toContain(CARDS[secretId].name);
   });
 });
