@@ -6,6 +6,7 @@ import {
   buildDeck, buildAiDeck, guardAgainst, isGuardCard, rarityForImpact, shuffle,
   type Rng,
 } from "../src/cards";
+import { cardTextSegments, plainText, t, type NameLookup } from "../src/rich-text";
 import impactData from "../src/data/card-impact.json";
 
 const NON_BASICS = [
@@ -37,7 +38,9 @@ describe("cards", () => {
       maxPerDeck: number | null, deckBuildable: boolean, forced: boolean,
       text: string, wealthCost?: number,
     ) => {
-      const { rarity: _tier, ...rest } = CARDS[id];
+      // textSegments is not restated either: it is `text` in another shape,
+      // and the equivalence test below pins the pair to each other.
+      const { rarity: _tier, textSegments: _segs, ...rest } = CARDS[id];
       expect(rest).toEqual({
         id, name, targeted, secret, maxPerDeck, deckBuildable, forced, text,
         ...(wealthCost !== undefined ? { wealthCost } : {}),
@@ -63,7 +66,8 @@ describe("cards", () => {
     );
     expectProps(
       "incorporate", "Incorporate", true, false, 1, true, false,
-      "Permanently absorb one of your vassals into your realm.",
+      "Permanently absorb one of your vassals into your realm. Needs a realm " +
+        "of 4 lands - the same size at which vassals revolt freely.",
     );
     expectProps(
       "pay-military-tribute", "Pay tribute", false, false, null, false, true,
@@ -136,6 +140,25 @@ describe("cards", () => {
         "the seat's neighbours gain +1 Might. Only one seat stands at a time.",
       1,
     );
+  });
+
+  it("keeps textSegments and text saying the same thing", () => {
+    // textSegments exists so a card the text names is a hoverable node; text
+    // is the same sentence flat. Pinning the two equal is what makes a rename
+    // of the referenced card fail here until the flat text follows it.
+    const names: NameLookup = { factionName: (id) => id, isPlaceName: () => false };
+    for (const c of Object.values(CARDS)) {
+      if (c.textSegments !== undefined) {
+        expect(plainText(c.textSegments, names), c.id).toBe(c.text);
+      }
+    }
+  });
+
+  it("does not pass vacuously - references are segments, plain text one run", () => {
+    const revolts = cardTextSegments("seeds-of-revolt")
+      .filter((s) => s.kind === "card" && s.cardId === "revolt");
+    expect(revolts).toHaveLength(2);
+    expect(cardTextSegments("raid")).toEqual([t(CARDS.raid.text)]);
   });
 
   it("keeps the secret cards and the guards the same set", () => {
@@ -332,6 +355,66 @@ describe("buildAiDeck", () => {
     expect(new Set(deck).size).toBe(DECK_SIZE);
     // The tail of CARDS is what falls off the end.
     expect(deck).not.toContain("eloping-heirs");
+  });
+
+  it("under the double cap, the same seed includes the same card set with the same draws", () => {
+    // The copies cap must never change rng consumption or which cards make
+    // the deck - the second copy is derived from the SAME draw as inclusion
+    // (r < 0.25 doubles), so committed AI-deck bands hold under default rules.
+    for (let seed = 1; seed <= 20; seed++) {
+      let singleDraws = 0;
+      let doubleDraws = 0;
+      const countedRng = (inner: () => number, tick: () => void) => () => {
+        tick();
+        return inner();
+      };
+      const single = buildAiDeck(
+        countedRng(seededRng(seed), () => { singleDraws++; }),
+      );
+      const double = buildAiDeck(
+        countedRng(seededRng(seed), () => { doubleDraws++; }), undefined, 2,
+      );
+      expect(doubleDraws).toBe(singleDraws);
+      expect(double).toHaveLength(DECK_SIZE);
+      const realCards = double.filter((id) => id !== "grow-crops");
+      // No new cards: doubles only repeat cards the single-cap deck rolled
+      // in, so the double deck's card set is a subset of the single deck's.
+      const singleSet = new Set(single.filter((c) => c !== "grow-crops"));
+      for (const id of new Set(realCards)) {
+        expect(singleSet.has(id), `${id} only in the double deck`).toBe(true);
+      }
+      // Never more than two copies of anything real.
+      for (const id of new Set(realCards)) {
+        expect(realCards.filter((c) => c === id).length)
+          .toBeLessThanOrEqual(2);
+      }
+    }
+  });
+
+  it("doubles exactly the cards whose single draw was below 0.25", () => {
+    // Six non-basics roll below 0.5 in a fixed sequence; the two below 0.25
+    // are the two that appear twice, and the doubles trail the singles so
+    // the DECK_SIZE cap sheds second copies before whole cards.
+    const seq = [0.3, 0.2, 0.1, 0.4, ...Array.from({ length: 20 }, () => 0.9)];
+    let i = 0;
+    const rng = () => seq[Math.min(i++, seq.length - 1)];
+    const deck = buildAiDeck(rng, [], 2);
+    const real = deck.filter((id) => id !== "grow-crops");
+    const counts = new Map<string, number>();
+    for (const id of real) counts.set(id, (counts.get(id) ?? 0) + 1);
+    expect([...counts.values()].sort().join(",")).toBe("1,1,2,2");
+    // Trailing doubles: the last two real entries are the repeats.
+    expect(real.slice(4)).toEqual(
+      real.slice(0, 4).filter((id) => (counts.get(id) ?? 0) === 2),
+    );
+  });
+
+  it("the double cap changes nothing when every draw is above 0.25", () => {
+    const mk = () => {
+      const r = seededRng(9);
+      return () => 0.25 + r() * 0.7;
+    };
+    expect(buildAiDeck(mk(), undefined, 2)).toEqual(buildAiDeck(mk()));
   });
 });
 

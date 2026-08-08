@@ -57,15 +57,18 @@ Choke points, each a read of one axis:
   one card (existing `draw` event). If deck plus discard hold fewer cards
   than the shortfall, the player gets what exists.
 - `playCard`. Standard stamps `playedThisTurn: true` as today. Unlimited
-  leaves it false. The doc comment on `playedThisTurn` changes to mean "turn
+  leaves it false, unless the play emptied the hand: with nothing left to
+  play or hold, the last card closes the turn itself, sparing the End turn
+  click. The doc comment on `playedThisTurn` changes to mean "turn
   complete"; `advance` is untouched.
 - New `endTurn(state)`. Legal only in unlimited mode, in the `playing` phase,
   on the current player's turn. Sets `playedThisTurn: true` and nothing else:
   no event and no log line, because the log already shows every play.
 - Discards. `discardCard` and the forced-discard path are never offered in
-  unlimited mode. End turn is the only way out of a turn, including with a
-  fully dead hand. This stagnation is accepted on purpose: it is the purest
-  form of the rule.
+  unlimited mode. End turn is the only way out of a turn that still holds
+  cards, including a fully dead hand. This stagnation is accepted on
+  purpose: it is the purest form of the rule. An emptied hand is the one
+  exception, closed by `playCard` as above.
 
 The refill target 4 matches the hand a standard-rules player decides with
 (opening hand of 3 plus the turn-start draw).
@@ -159,3 +162,38 @@ so checking a mode in the browser is one URL.
   the no-params-parses-to-null property.
 - The naming-convention test picks up any new player-facing prose
   automatically.
+
+## The second axis: Deck copies
+
+The `copies` axis picks how many copies of one card a deck may hold:
+`single` (the default, at most one) or `double` (up to two). It exercises
+the "adding a future axis" path above: `RuleSelections` and `RULE_AXES`
+grew an entry, the picker and `rules=` needed no work, and the choke points
+all read one derived predicate, `copiesAllowed(rules)`.
+
+Three places enforced "one copy each", and all three now read the cap:
+
+- The deck screen's click handler cycles a tile's count (none -> x1 -> x2 ->
+  none, wrapping when the cap or the deck size blocks the increment) and
+  shows a count pill only under a multi-copy rule. Render-time pruning
+  clamps counts to the current cap, so flipping back to `single`
+  mid-screen visibly sheds second copies.
+- `buildPlayerDeck` caps copies per id instead of deduping, with the cap an
+  argument - its callers (`main.ts` on start, `applyBootParams` for
+  `deck=`) pass `copiesAllowed` of the rules already stamped.
+- `loadMeta` caps stored `lastPicks` at two copies - the most any rule
+  allows - rather than the current rule's cap, which storage cannot know.
+  The screen's render clamp applies the actual cap.
+
+Enemy decks double up too, under one hard constraint: `buildAiDeck`
+consumes exactly one rng draw per non-basic (a frozen contract - the
+rng-isolation test and every committed AI-deck band depend on it), so the
+second copy is derived from the SAME draw as inclusion: `r < 0.5` includes
+the card, `r < 0.25` also doubles it. Doubles trail the singles so the
+DECK_SIZE cap sheds second copies before whole cards. Under `single` the
+output is byte-identical to the pre-axis builder, which is what keeps the
+seeded-games baseline and the sim untouched.
+
+The engine needed nothing: piles are plain arrays, hand removal is
+index-based, and the Grow turnips filler has always put duplicates in every
+deck.

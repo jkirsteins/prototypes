@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { POLICY_COVERAGE, chooseAction, aiTakeTurn } from "../src/ai";
-import { INCORPORATE_RAMP, loyaltyKey } from "../src/playability";
 import {
   newGame, startGame, chooseDeck, pickFaction, chooseRules, type GameState,
 } from "../src/game";
 import { bumpMight, type Relations } from "../src/relations";
 import { CARDS, buildDeck, type Rng } from "../src/cards";
+import { DEFAULT_RULES } from "../src/rules";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -26,14 +26,6 @@ function base(): GameState {
     chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
   );
   return { ...g, current: 1, wealth: { alpha: 2 } };
-}
-
-/** Hold every named land long enough that Incorporate is certain, so a test
- *  about WHICH vassal the policy picks is not also a test of the loyalty roll. */
-function digestedAll(g: GameState, lands: string[], lord: string): GameState {
-  const loyalty = { ...g.loyalty };
-  for (const land of lands) loyalty[loyaltyKey(land, lord)] = INCORPORATE_RAMP;
-  return { ...g, loyalty };
 }
 
 function withHand(g: GameState, hand: string[]): GameState {
@@ -102,10 +94,10 @@ describe("chooseAction priorities", () => {
 
   it("3: incorporates the vassal that brings the most land", () => {
     let g = base();
-    // alpha holds gamma and delta; delta has annexed a land, so it is worth more
+    // alpha holds gamma and delta; delta has annexed a land, so it is worth
+    // more - and that annexation is also what lifts alpha's realm to the gate.
     g = { ...g, overlords: new Map([["gamma", "alpha"], ["delta", "alpha"]]) };
     g = { ...g, incorporated: { beta: "delta" } };
-    g = digestedAll(g, ["gamma", "delta"], "alpha");
     g = withHand(g, ["incorporate"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "delta",
@@ -114,8 +106,9 @@ describe("chooseAction priorities", () => {
 
   it("3: breaks a realm-size tie by faction order", () => {
     let g = base();
+    // beta annexed into alpha reaches the gate without favouring either vassal.
     g = { ...g, overlords: new Map([["gamma", "alpha"], ["delta", "alpha"]]) };
-    g = digestedAll(g, ["gamma", "delta"], "alpha");
+    g = { ...g, incorporated: { beta: "alpha" } };
     g = withHand(g, ["incorporate"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "gamma",
@@ -667,13 +660,14 @@ describe("vassal seats use the conquest cards", () => {
 
   it("incorporate refuses a digest whose freed subtree outweighs the land kept", () => {
     // alpha's vassal gamma holds delta: digesting gamma keeps 1 land and
-    // frees a 1-land subtree - net nothing, so hold the card.
+    // frees a 1-land subtree - net nothing, so hold the card. The annexed
+    // beta is only there to hold the realm gate open.
     let g = base();
     g = {
       ...g,
       overlords: new Map([["gamma", "alpha"], ["delta", "gamma"]]),
+      incorporated: { beta: "alpha" },
     };
-    g = digestedAll(g, ["gamma"], "alpha");
     g = withHand(g, ["incorporate", "grow-crops"]);
     expect(chooseAction(g)).toMatchObject({ type: "play", cardIndex: 1 });
   });
@@ -710,44 +704,27 @@ describe("subjugation-stability policy branches", () => {
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
-  it("3: waits rather than gambling the only Incorporate on long odds", () => {
+  it("3: the realm gate keeps the card held below 4 lands", () => {
+    // alpha's realm is 2: playableSet never admits the Incorporate, so step 3
+    // cannot fire and the turn grows a turnip instead.
     let g = base();
     g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
-    // loyalty 1 of 5 -> 20%, below MIN_ODDS: the policy must not play it.
-    g = { ...g, loyalty: { [loyaltyKey("gamma", "alpha")]: 1 } };
     g = withHand(g, ["incorporate", "grow-crops"]);
-    expect(chooseAction(g)).not.toMatchObject({ cardIndex: 0 });
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
-  it("3: prefers the smaller vassal when the bigger one is a long shot", () => {
-    // delta is worth 2 land at 20%; gamma is worth 1 at 100%. Land alone would
-    // pick delta and usually burn the card for nothing.
-    let g = base();
-    g = { ...g, overlords: new Map([["gamma", "alpha"], ["delta", "alpha"]]) };
-    g = { ...g, incorporated: { beta: "delta" } };
-    g = {
-      ...g,
-      loyalty: {
-        [loyaltyKey("gamma", "alpha")]: INCORPORATE_RAMP,
-        [loyaltyKey("delta", "alpha")]: 1,
-      },
-    };
-    g = withHand(g, ["incorporate"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "gamma",
-    });
-  });
-
-  it("4: takes the certain target over a bigger lead on a coin-flip poach", () => {
+  it("4: takes the biggest lead, poach or not", () => {
+    // A poach past its bar is as certain as a free take now, so the lead is
+    // the whole ranking and delta's 9 beats gamma's 2.
     let g = base();
     g = { ...g, overlords: new Map([["delta", "beta"]]) };
     let rel: Relations = {};
-    rel = lead(rel, "alpha", "gamma", 2);   // free: exactly at the bar, certain
-    rel = lead(rel, "alpha", "delta", 9);   // poach: far clear, but 50%
+    rel = lead(rel, "alpha", "gamma", 2);   // free: exactly at the bar
+    rel = lead(rel, "alpha", "delta", 9);   // poach: far clear of bar + surcharge
     g = { ...g, relations: rel };
     g = withHand(g, ["subjugate"]);
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "gamma",
+      type: "play", cardIndex: 0, targetId: "delta",
     });
   });
 });
@@ -889,6 +866,7 @@ describe("9e: cash the harvest", () => {
 
 function unlimitedAiPlaying(): GameState {
   const g = chooseRules(startGame(newGame(["alpha", "beta", "gamma", "delta"])), {
+    ...DEFAULT_RULES,
     turn: "unlimited",
   });
   return pickFaction(chooseDeck(g, buildDeck()), "beta", seededRng(1));

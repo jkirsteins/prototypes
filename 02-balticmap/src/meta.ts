@@ -67,6 +67,18 @@ const isCount = (n: unknown): n is number =>
 
 const dedupe = (ids: string[]): string[] => [...new Set(ids)];
 
+/** Keeps the first `max` occurrences of each id, preserving order. The
+ *  duplicate-tolerant counterpart to `dedupe`, for lists where the copies
+ *  rule allows repeats. */
+const capCopies = (ids: string[], max: number): string[] => {
+  const seen = new Map<string, number>();
+  return ids.filter((id) => {
+    const n = seen.get(id) ?? 0;
+    seen.set(id, n + 1);
+    return n < max;
+  });
+};
+
 /** Records written before the XP refactor have no counters and fail this
  *  validation, so they reset to a fresh start. That is deliberate: a seen-pool
  *  has no meaning under the new system, and silently resetting is what corrupt
@@ -106,9 +118,12 @@ export function loadMeta(storage: MetaStorage): MetaRecord {
       // record. A missing or nonsense loadout means "nothing preselected",
       // never a wiped collection. Not filtered against knownCards - the deck
       // screen prunes to what is known on every render, and buildPlayerDeck
-      // filters again before the deck is dealt.
+      // filters again before the deck is dealt. Capped at 2 copies each - the
+      // most any copies rule allows - not deduped: storage does not know the
+      // current rule, so it keeps the absolute maximum and the deck screen
+      // clamps to the actual cap on render.
       lastPicks: Array.isArray(rec.lastPicks)
-        ? dedupe(rec.lastPicks.filter(isTrackable)).slice(0, DECK_SIZE)
+        ? capCopies(rec.lastPicks.filter(isTrackable), 2).slice(0, DECK_SIZE)
         : [],
     };
   } catch {
@@ -190,13 +205,15 @@ export function collectedCount(meta: MetaRecord): number {
   return ACQUIRABLE_CARDS.filter((id) => meta.knownCards.includes(id)).length;
 }
 
-/** The human deck: selected known non-basics (max 1 each) plus Grow potatoes
- *  filler to exactly DECK_SIZE. Invalid selections are dropped, not thrown. */
+/** The human deck: selected known non-basics (at most `maxCopies` each, the
+ *  copies rule's cap) plus Grow potatoes filler to exactly DECK_SIZE. Invalid
+ *  selections are dropped, not thrown. */
 export function buildPlayerDeck(
   knownCards: string[],
   selectedIds: string[],
+  maxCopies = 1,
 ): string[] {
-  const picks = dedupe(selectedIds)
+  const picks = capCopies(selectedIds, maxCopies)
     .filter(
       (id) =>
         isTrackable(id) &&

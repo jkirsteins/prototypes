@@ -86,7 +86,6 @@ describe("world scenarios", () => {
         meanSettlementsFounded: null, settlementsOnHeldLandsShare: null,
         settlementsFoundedTotal: 0, settlementsWalkedOffShare: null,
         revoltsSownTotal: 0, revoltsPlayedTotal: 0,
-        poachFailShare: 0, incorporateFailShare: 0,
         medianVassalTenure: null, meanVassalTenure: null,
       },
     );

@@ -27,7 +27,7 @@ function makeHost(rng: Rng) {
     setGame: (g) => { game = g; },
     rng,
     name: "Hosta",
-    rules: () => ({ turn: "standard" }),
+    rules: () => ({ turn: "standard", copies: "single" }),
     hostFactionId: () => "alpha",
     onGuestHello: () => {},
     onGuestPick: (p) => picks.push(p),

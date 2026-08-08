@@ -26,6 +26,7 @@ export interface RuleAxis {
  *  checked by tsc, and a future axis extends this type. */
 export interface RuleSelections {
   turn: "standard" | "unlimited";
+  copies: "single" | "double";
 }
 
 export const RULE_AXES: RuleAxis[] = [
@@ -49,11 +50,28 @@ export const RULE_AXES: RuleAxis[] = [
       },
     ],
   },
+  {
+    id: "copies",
+    name: "Deck copies",
+    defaultOption: "single",
+    options: [
+      {
+        id: "single",
+        name: "1 of each card",
+        text: "A deck holds at most one copy of each card.",
+      },
+      {
+        id: "double",
+        name: "Up to 2 of each card",
+        text: "A deck holds up to two copies of each card - enemy decks may double up too.",
+      },
+    ],
+  },
 ];
 
 /** A literal rather than a derivation, so the conformance test in
  *  tests/rules.test.ts can catch the two drifting apart. */
-export const DEFAULT_RULES: RuleSelections = { turn: "standard" };
+export const DEFAULT_RULES: RuleSelections = { turn: "standard", copies: "single" };
 
 /** Whether this rule set's turns include discarding at all. The unlimited
  *  turn structure removes discards entirely: a hand with nothing playable
@@ -61,6 +79,15 @@ export const DEFAULT_RULES: RuleSelections = { turn: "standard" };
  *  by `playableSet`, so "no discards" is decided once, not per call site. */
 export function allowsDiscards(rules: RuleSelections): boolean {
   return rules.turn !== "unlimited";
+}
+
+/** How many copies of one card a deck may hold under this rule set. The cap
+ *  applies to deck-buildable non-basics only - Grow turnips filler is outside
+ *  it (`maxPerDeck: null`). Consumed by every enforcement point rather than
+ *  each reading `rules.copies` itself: the deck screen's click cycle,
+ *  `buildPlayerDeck`, and `buildAiDeck` via `pickFaction`'s default deck. */
+export function copiesAllowed(rules: RuleSelections): number {
+  return rules.copies === "double" ? 2 : 1;
 }
 
 /** Folds unknown-checked picks over the defaults: an axis or option that does

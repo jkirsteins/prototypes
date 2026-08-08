@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  DEFAULT_RULES, RULE_AXES, RULES_PREFS_KEY, loadRulesPrefs, mergeRules,
-  saveRulesPrefs, summarizeRules,
+  DEFAULT_RULES, RULE_AXES, RULES_PREFS_KEY, copiesAllowed, loadRulesPrefs,
+  mergeRules, saveRulesPrefs, summarizeRules,
 } from "../src/rules";
 import { memoryStorage } from "../src/meta";
 import { HAND_REFILL } from "../src/game";
@@ -31,16 +31,29 @@ describe("unlimited option text", () => {
 describe("mergeRules", () => {
   it("keeps a known pick and drops an unknown axis or option", () => {
     expect(mergeRules({ turn: "unlimited", bogus: "x" }))
-      .toEqual({ turn: "unlimited" });
+      .toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
     expect(mergeRules({ turn: "gone" })).toEqual(DEFAULT_RULES);
+  });
+  it("merges picks on different axes independently", () => {
+    expect(mergeRules({ copies: "double" }))
+      .toEqual({ ...DEFAULT_RULES, copies: "double" });
+    expect(mergeRules({ turn: "unlimited", copies: "double" }))
+      .toEqual({ turn: "unlimited", copies: "double" });
+  });
+});
+
+describe("copiesAllowed", () => {
+  it("is 1 by default and 2 under the double rule", () => {
+    expect(copiesAllowed(DEFAULT_RULES)).toBe(1);
+    expect(copiesAllowed({ ...DEFAULT_RULES, copies: "double" })).toBe(2);
   });
 });
 
 describe("rules prefs", () => {
   it("round-trips through storage", () => {
     const s = memoryStorage();
-    saveRulesPrefs(s, { turn: "unlimited" });
-    expect(loadRulesPrefs(s)).toEqual({ turn: "unlimited" });
+    saveRulesPrefs(s, { ...DEFAULT_RULES, turn: "unlimited" });
+    expect(loadRulesPrefs(s)).toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
   });
   it("absent, corrupt or stale storage yields defaults", () => {
     const s = memoryStorage();
@@ -54,7 +67,9 @@ describe("rules prefs", () => {
 
 describe("summarizeRules", () => {
   it("names the picked option per axis", () => {
-    expect(summarizeRules(DEFAULT_RULES)).toBe("One card per turn");
-    expect(summarizeRules({ turn: "unlimited" })).toBe("Unlimited plays");
+    expect(summarizeRules(DEFAULT_RULES))
+      .toBe("One card per turn, 1 of each card");
+    expect(summarizeRules({ turn: "unlimited", copies: "double" }))
+      .toBe("Unlimited plays, Up to 2 of each card");
   });
 });

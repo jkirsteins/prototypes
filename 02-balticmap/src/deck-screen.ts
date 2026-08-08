@@ -1,9 +1,12 @@
 import { ACQUIRABLE_CARDS, CARDS, DECK_SIZE } from "./cards";
 import { runAnimation } from "./animate";
 import { count } from "./plural";
-import { cardName } from "./rich-text";
+import { cardName, cardTextSegments, renderSegments, type RichTextHooks } from "./rich-text";
 import { applyRarityBand } from "./rarity-band";
-import { DEFAULT_RULES, RULE_AXES, summarizeRules, type RuleSelections } from "./rules";
+import {
+  copiesAllowed, DEFAULT_RULES, RULE_AXES, summarizeRules,
+  type RuleSelections,
+} from "./rules";
 import type { TooltipLine } from "./panel";
 
 export interface PackReveal {
@@ -57,6 +60,17 @@ export function createDeckScreen(
   const root = document.createElement("div");
   root.className = "deck-screen hidden";
 
+  /** Rules text renders through `renderSegments`, so a card the text names
+   *  (Seeds of revolt's Revolt) is a hoverable node here like everywhere
+   *  else. Card rules text names no factions by design; a faction segment
+   *  here would render its raw id, which the browser pass shows immediately. */
+  const rtHooks: RichTextHooks = {
+    factionName: (id) => id,
+    isPlaceName: () => false,
+    showTip: (lines, x, y) => cb.onShowTip?.(lines, x, y),
+    hideTip: () => cb.onHideTip?.(),
+  };
+
   const title = document.createElement("h1");
   title.className = "menu-title";
   title.textContent = "Prepare your deck";
@@ -85,10 +99,9 @@ export function createDeckScreen(
   packInner.append(packCount, packSealed, packHint, packCards, packContinue);
   packOverlay.appendChild(packInner);
 
+  // Text set in update(): the copy cap is a rule pick, not a constant.
   const deckLabel = document.createElement("p");
   deckLabel.className = "ds-label";
-  deckLabel.textContent =
-    `Choose the cards you take (up to ${DECK_SIZE}, 1 copy each):`;
   const deckRow = document.createElement("div");
   deckRow.className = "ds-deck";
   const counter = document.createElement("p");
@@ -171,12 +184,25 @@ export function createDeckScreen(
   );
   container.appendChild(root);
 
-  /** Toggle state survives update() calls; pruned to known cards each render.
-   *  The only thing ever selected for the player is the loadout they last
-   *  confirmed themselves - the game still picks nothing on their behalf. */
-  let selected = new Set<string>();
+  /** Pick state survives update() calls; pruned to known cards and clamped to
+   *  the copies rule's cap each render. Counts rather than a Set: the double
+   *  rule lets one card be picked twice. The only thing ever selected for the
+   *  player is the loadout they last confirmed themselves - the game still
+   *  picks nothing on their behalf. */
+  let selected = new Map<string, number>();
 
-  start.addEventListener("click", () => cb.onStart([...selected]));
+  const countsOf = (ids: string[]): Map<string, number> => {
+    const out = new Map<string, number>();
+    for (const id of ids) out.set(id, (out.get(id) ?? 0) + 1);
+    return out;
+  };
+  const totalPicked = (): number =>
+    [...selected.values()].reduce((a, b) => a + b, 0);
+  /** The confirmed loadout as a flat list, repeats included, in tile order. */
+  const expandPicks = (): string[] =>
+    [...selected].flatMap(([id, n]) => Array.from({ length: n }, () => id));
+
+  start.addEventListener("click", () => cb.onStart(expandPicks()));
 
   /** The reveal currently on screen, so `update()` re-rendering for an
    *  unrelated reason does not replay the burst. Compared by identity: the
@@ -209,7 +235,7 @@ export function createDeckScreen(
 
       if (view.savedPicks !== seededPicks) {
         seededPicks = view.savedPicks;
-        selected = new Set(view.savedPicks);
+        selected = countsOf(view.savedPicks);
       }
 
       currentRules = view.rules;
@@ -225,8 +251,19 @@ export function createDeckScreen(
         r.input.disabled = locked;
       }
 
+      // Clamping to the cap here is what prunes second copies the moment the
+      // copies rule flips back to single mid-screen - the pick a stricter rule
+      // no longer allows goes the way of a pick for a card no longer known.
+      const cap = copiesAllowed(view.rules);
       const known = nonBasics(view.knownCards);
-      selected = new Set(known.filter((id) => selected.has(id)));
+      selected = new Map(
+        known
+          .filter((id) => selected.has(id))
+          .map((id) => [id, Math.min(selected.get(id) ?? 0, cap)]),
+      );
+      deckLabel.textContent =
+        `Choose the cards you take (up to ${DECK_SIZE}, ` +
+        `${cap === 1 ? "1 copy" : `up to ${cap} copies`} each):`;
 
       const opening = view.pendingPacks > 0 || view.reveal !== null;
       packOverlay.classList.toggle("hidden", !opening);
@@ -246,6 +283,10 @@ export function createDeckScreen(
       if (opening) cb.onHideTip?.();
 
       if (view.reveal === null) {
+        // The third route that takes tiles away: Continue can be pressed from
+        // the keyboard with the cursor resting on a card reference, and a span
+        // replaced out from under the cursor never fires mouseleave.
+        if (animatedReveal !== null) cb.onHideTip?.();
         packCards.replaceChildren();
         animatedReveal = null;
       } else if (view.reveal !== animatedReveal) {
@@ -260,7 +301,7 @@ export function createDeckScreen(
             name.textContent = cardName(r.id);
             const text = document.createElement("span");
             text.className = "ds-card-text";
-            text.textContent = CARDS[r.id]?.text ?? "";
+            text.appendChild(renderSegments(cardTextSegments(r.id), rtHooks));
             const tag = document.createElement("span");
             if (r.isNew) {
               tag.className = "ds-pack-new";
@@ -302,8 +343,12 @@ export function createDeckScreen(
         name.textContent = cardName(id);
         const text = document.createElement("span");
         text.className = "ds-card-text";
-        text.textContent = CARDS[id]?.text ?? "";
-        card.append(name, text);
+        text.appendChild(renderSegments(cardTextSegments(id), rtHooks));
+        // The copy count, shown only under a rule allowing more than one:
+        // under the default rule the outline alone says "in", as ever.
+        const countPill = document.createElement("span");
+        countPill.className = "ds-card-count hidden";
+        card.append(name, countPill, text);
         // The tile states the card in full, so the tip is the exception and not
         // the reading surface: it opens only when the text actually spills past
         // the fixed tile height, which nothing in the pool does today. The
@@ -316,6 +361,9 @@ export function createDeckScreen(
         // coordinates and would need a second placement path in createTooltip,
         // for no gain while the tile face already says everything the tip does.
         card.addEventListener("mousemove", (e) => {
+          // A hovered card reference has its own tip; this same mousemove
+          // bubbles here and would overwrite it with the tile's.
+          if ((e.target as Element).closest(".rt-card") !== null) return;
           if (card.scrollHeight <= card.clientHeight) return;
           cb.onShowTip?.(
             [{ text: cardName(id) }, { text: CARDS[id]?.text ?? "" }],
@@ -323,25 +371,32 @@ export function createDeckScreen(
           );
         });
         card.addEventListener("mouseleave", () => cb.onHideTip?.());
+        // A click cycles the count: one more copy, wrapping to none when the
+        // copies cap or the deck size blocks the increment. With a cap of 1
+        // this is exactly the old toggle, dead click at deck cap included.
         card.addEventListener("click", () => {
-          if (selected.has(id)) selected.delete(id);
-          else if (selected.size < DECK_SIZE) selected.add(id);
+          const next = (selected.get(id) ?? 0) + 1;
+          if (next > cap || totalPicked() >= DECK_SIZE) selected.delete(id);
+          else selected.set(id, next);
           renderPicks();
         });
-        return { id, card };
+        return { id, card, countPill };
       });
 
       /** Repaints every toggle: the cap has to read as "swap one out", not
        *  as a dead click. */
       function renderPicks(): void {
-        const atCap = selected.size >= DECK_SIZE;
-        for (const { id, card } of cards) {
-          const taken = selected.has(id);
-          card.classList.toggle("selected", taken);
-          card.classList.toggle("deck-full", atCap && !taken);
+        const total = totalPicked();
+        const atCap = total >= DECK_SIZE;
+        for (const { id, card, countPill } of cards) {
+          const copies = selected.get(id) ?? 0;
+          card.classList.toggle("selected", copies > 0);
+          card.classList.toggle("deck-full", atCap && copies === 0);
+          countPill.textContent = `x${copies}`;
+          countPill.classList.toggle("hidden", cap < 2 || copies === 0);
         }
-        filler.textContent = `${cardName("grow-crops")} x${DECK_SIZE - selected.size}`;
-        renderCounter(selected.size);
+        filler.textContent = `${cardName("grow-crops")} x${DECK_SIZE - total}`;
+        renderCounter(total);
       }
 
       deckRow.replaceChildren(...cards.map((c) => c.card), filler);

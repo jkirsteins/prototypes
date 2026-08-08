@@ -2,8 +2,8 @@ import { CARDS, DOUBLABLE_CARDS, isTributeCard, type Rng } from "./cards";
 import { fullRealmOf, realmOf } from "./relations";
 import {
   holdsGuard, leadsIn, omenMultiplier, playableSet, raidGainFor,
-  seatOf, subjugationRequirement, subjugationChance,
-  incorporationChance, targetEligibilityFor, threatsTo, validTargetsFor,
+  seatOf, subjugationRequirement,
+  targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView, type Threat,
 } from "./playability";
 import { discardCard, endTurn, playCard, viewOf, type GameState } from "./game";
@@ -235,19 +235,13 @@ export function chooseAction(state: GameState): AiAction {
   if (incorporate !== undefined) {
     const targets = validTargetsFor(v, p.factionId, "incorporate");
     if (targets.length > 0) {
-      // Kept land discounted by the odds of actually getting it: a failed
-      // roll burns the only Incorporate in the deck, so a four-land vassal at
-      // 20% is worth less than a one-land vassal at 100%. Holding the card
-      // costs nothing and the loyalty clock only rises, so below MIN_ODDS the
-      // policy waits rather than gambling the card away.
-      const MIN_ODDS = 0.5;
+      // The realm gate is legality's business, not this branch's: `idxOf`
+      // only offers a playable card, so every target here can be digested.
       let best: string | null = null;
       // Starts at 0, so a digest that nets nothing or less is never picked -
       // the policy holds the card instead.
       let bestScore = 0;
       for (const t of targets) {
-        const odds = incorporationChance(state, p.factionId, t);
-        if (odds < MIN_ODDS) continue;
         const vassalsOfT = state.factionIds.filter(
           (f) => state.overlords.get(f) === t,
         );
@@ -261,7 +255,7 @@ export function chooseAction(state: GameState): AiAction {
             sum + fullRealmOf(f, state.overlords, state.incorporated).size,
           0,
         );
-        const score = odds * kept - freed;
+        const score = kept - freed;
         if (score > bestScore) {
           best = t;
           bestScore = score;
@@ -278,19 +272,15 @@ export function chooseAction(state: GameState): AiAction {
   if (subjugate !== undefined) {
     const targets = validTargetsFor(v, p.factionId, "subjugate");
     if (targets.length > 0) {
-      // Odds first, then lead. Taking a free faction always lands; prising one
-      // off a rival is a coin flip that burns the only Subjugate in the deck.
-      // A bigger lead never compensates for halving the chance, so the two are
-      // ranked in order rather than multiplied together.
+      // The biggest lead, free faction or poach alike: any legal target has
+      // already cleared its bar (the poach surcharge included), so the lead
+      // is the whole ranking.
       let best = targets[0];
-      let bestOdds = -1;
       let bestLead = -Infinity;
       for (const t of targets) {
-        const odds = subjugationChance(v, t);
         const m = leadsIn(v, p.factionId, t);
-        if (odds > bestOdds || (odds === bestOdds && m > bestLead)) {
+        if (m > bestLead) {
           best = t;
-          bestOdds = odds;
           bestLead = m;
         }
       }

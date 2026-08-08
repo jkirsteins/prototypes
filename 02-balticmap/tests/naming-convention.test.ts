@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { eventSegments } from "../src/hud";
 import { buildRoundSummary, type NoticeCtx } from "../src/notices";
-import { plainText, type NameLookup, type Segment } from "../src/rich-text";
+import { cardTextSegments, plainText, type NameLookup, type Segment } from "../src/rich-text";
 import type { GameEvent, GameEventType, GameState } from "../src/game";
 import { CARDS } from "../src/cards";
 import rawData from "../src/data/map.json";
@@ -153,31 +153,6 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "hostage-returned", targetFactionId: H, overlordFactionId: RIVAL },
     { turn: 1, playerId: 2, type: "hostage-returned", targetFactionId: RIVAL, overlordFactionId: H },
   ],
-  "subjugate-failed": [
-    {
-      turn: 1, playerId: 2, type: "subjugate-failed",
-      targetFactionId: H, overlordFactionId: RIVAL, formerOverlordFactionId: H,
-    },
-    {
-      turn: 1, playerId: 1, type: "subjugate-failed",
-      targetFactionId: RIVAL, overlordFactionId: H, formerOverlordFactionId: RIVAL,
-    },
-    // No former overlord, from both sides. Unreachable while only a poach can
-    // miss, but neither sentence may lean on that: both build a "from X"
-    // clause around a field that is only sometimes set.
-    {
-      turn: 1, playerId: 1, type: "subjugate-failed",
-      targetFactionId: RIVAL, overlordFactionId: H,
-    },
-    {
-      turn: 1, playerId: 2, type: "subjugate-failed",
-      targetFactionId: H, overlordFactionId: RIVAL,
-    },
-  ],
-  "incorporate-failed": [
-    { turn: 1, playerId: 2, type: "incorporate-failed", targetFactionId: H, overlordFactionId: RIVAL },
-    { turn: 1, playerId: 1, type: "incorporate-failed", targetFactionId: RIVAL, overlordFactionId: H },
-  ],
   // The harvest events are human-only in play (the injection is seat-gated),
   // but each line still gets both sides so the sentences never lean on that.
   "harvest-earned": [
@@ -241,6 +216,11 @@ function collectSegmentLists(): Segment[][] {
     for (const line of summary.lines) out.push(line.text);
     for (const footnote of summary.footnotes) out.push(footnote);
   }
+  // Rules text is prose too: a card the text names must be a segment, or the
+  // deck screen and the empower picker render it inert. A card without
+  // textSegments sweeps as one plain run, so a future cross-reference left as
+  // text fails here.
+  for (const id of Object.keys(CARDS)) out.push(cardTextSegments(id));
   return out;
 }
 

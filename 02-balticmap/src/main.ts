@@ -50,8 +50,8 @@ import {
   applyBootMeta, applyBootParams, parseBootParams,
 } from "./boot-params";
 import {
-  allowsDiscards, RULES_PREFS_KEY, loadRulesPrefs, saveRulesPrefs,
-  type RuleSelections,
+  allowsDiscards, copiesAllowed, RULES_PREFS_KEY, loadRulesPrefs,
+  saveRulesPrefs, type RuleSelections,
 } from "./rules";
 import { seededRng } from "./rng";
 import { untilTurn } from "./timed";
@@ -1326,11 +1326,15 @@ function updateWaitingStatus(): void {
 
 /** After a completed human PLAY. An unlimited turn stays open: wait out the
  *  flight with input locked, then hand the turn back to the player rather
- *  than to the AI chain. A standard turn - or a play that ended the run -
- *  falls through to afterHumanAction as before. */
+ *  than to the AI chain. A standard turn, a play that ended the run, or a
+ *  play that emptied the hand (playCard closes the turn itself then) falls
+ *  through to afterHumanAction as before. */
 function afterHumanPlay(): void {
   harvestRoll = null; // see afterHumanAction; unlimited turns return early
-  if (game.rules.turn === "unlimited" && game.phase === "playing") {
+  if (
+    game.rules.turn === "unlimited" && game.phase === "playing" &&
+    !game.playedThisTurn
+  ) {
     resolving = true;
     // Nothing else will push this play: the turn stays open, so there is no
     // advance behind it and no AI chain to settle. Without this the guest
@@ -1703,7 +1707,10 @@ const deckScreen = createDeckScreen(app, {
       return;
     }
     game = chooseRules(game, rulesPrefs);
-    game = chooseDeck(game, buildPlayerDeck(meta.knownCards, selectedIds));
+    game = chooseDeck(
+      game,
+      buildPlayerDeck(meta.knownCards, selectedIds, copiesAllowed(rulesPrefs)),
+    );
     deckScreen.update(deckScreenView(false));
     refresh();
   },

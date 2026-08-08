@@ -1,21 +1,14 @@
 import { CARDS } from "./cards";
+import { t, faction } from "./segments";
 import { withArticle } from "./view";
+import type { Segment } from "./segments";
 import type { TooltipLine } from "./panel";
 
-/** A run of player-facing prose. Card and faction names are nodes, never
- *  text - see the naming rule in AGENTS.md. */
-export type Segment =
-  | { kind: "text"; text: string }
-  | { kind: "card"; cardId: string }
-  | { kind: "faction"; factionId: string; article?: true };
-
-export const t = (text: string): Segment => ({ kind: "text", text });
-export const card = (cardId: string): Segment => ({ kind: "card", cardId });
-export const faction = (factionId: string): Segment => ({ kind: "faction", factionId });
-/** "the Selonians", but "Lietuva" for the one faction named for a land.
- *  Mid-sentence only - write lines so a faction never opens a sentence. */
-export const theFaction = (factionId: string): Segment =>
-  ({ kind: "faction", factionId, article: true });
+// The segment type and constructors live in segments.ts (a leaf module, so
+// cards.ts can author them too); re-exported here so every prose surface keeps
+// one import for the whole vocabulary.
+export { t, card, faction, theFaction } from "./segments";
+export type { Segment } from "./segments";
 
 /** "A", "A and B", "A, B and C" - the one place a run of names becomes a
  *  sentence. Was written three times in notices.ts, twice byte-identically,
@@ -124,6 +117,15 @@ export const optionalPhrase = (
 /** The single card-name resolver. Was written twice (hud.ts, deck-screen.ts). */
 export const cardName = (id: string | undefined): string =>
   (id !== undefined ? CARDS[id]?.name : undefined) ?? id ?? "";
+
+/** A card's rules text as segments: the authored cross-references where the
+ *  text names another card (`CardDef.textSegments`), or the whole text as one
+ *  plain run. Surfaces that show rules text render this, so a mentioned card
+ *  is a hoverable node like everywhere else. */
+export const cardTextSegments = (id: string): Segment[] => {
+  const def = CARDS[id];
+  return def?.textSegments ?? [t(def?.text ?? "")];
+};
 
 export interface NameLookup {
   factionName(id: string): string;

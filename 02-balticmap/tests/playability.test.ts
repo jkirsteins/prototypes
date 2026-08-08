@@ -1,15 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { pact, settledOnce, siteCaps } from "./helpers";
 import {
-  INCORPORATE_RAMP, PASSIVE_PER_LANDS, POACH_CHANCE, PROWESS_PER_REDUCTION,
+  PASSIVE_PER_LANDS, PROWESS_PER_REDUCTION,
   REVOLT_BASE_THRESHOLD, SEAT_BAR_BONUS, SEAT_RAID_BONUS,
   SUBJUGATE_THRESHOLD, annexedLandsOf, borderStrength, cardBlockReason,
   gripPartsOn, handBlockReason,
-  incorporationChance, passiveFortifyFor, prowessReductionFor, raidGainFor,
+  incorporateRealmGate, passiveFortifyFor, prowessReductionFor, raidGainFor,
   raidYield,
-  isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
+  isCardPlayable, overlordGrip, playableSet, poachSurchargeOn,
   reachOf, respiteExpiry, revoltRequirement, seatOf, sharedNeighboursOf,
-  subjugationChance, subjugationGripOn, subjugationRaceFor,
+  subjugationGripOn, subjugationRaceFor,
   subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
   wealthIncomeFor,
   type RulesView,
@@ -37,7 +37,6 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     guards: {},
     omens: {},
     diplomacyBoost: [],
-    loyalty: {},
     liveRevolts: [],
     hostages: {},
     wealth: {},
@@ -131,12 +130,14 @@ describe("vassal actors", () => {
   });
 
   it("a vassal may Incorporate its own vassal", () => {
-    // gamma -> beta -> alpha: beta is a mid-lord digesting gamma
+    // gamma -> beta -> alpha: beta is a mid-lord digesting gamma. Target
+    // legality is per-target; the realm gate is card-level and beta's realm
+    // of 2 sits below it, so the card itself still greys out here.
     const v = view({
       overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
-      loyalty: { [loyaltyKey("gamma", "beta")]: INCORPORATE_RAMP },
     });
     expect(validTargetsFor(v, "beta", "incorporate")).toEqual(["gamma"]);
+    expect(isCardPlayable(v, "beta", "incorporate")).toBe(false);
   });
 
   it("no faction in the actor's own overlord chain is subjugable (liege)", () => {
@@ -173,7 +174,6 @@ describe("vassal actors", () => {
       relations: mightLead("alpha", "gamma", 20),
     });
     expect(validTargetsFor(v, "alpha", "subjugate")).toContain("gamma");
-    expect(subjugationChance(v, "gamma")).toBe(POACH_CHANCE);
   });
 
   it("a vassal with the lead now appears among threats", () => {
@@ -645,7 +645,6 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       respites: {},
       adjacency: { me: ["deadland"], deadland: ["me", "owner"], owner: ["deadland"] },
       factionIds: ["me", "deadland", "owner"],
-      loyalty: {},
       liveRevolts: [],
       hostages: {},
       wealth: {},
@@ -673,7 +672,6 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       respites: {},
       adjacency: { me: ["target"], target: ["me"], land: ["me"] },
       factionIds: ["me", "target", "land"],
-      loyalty: {},
       liveRevolts: [],
       hostages: {},
       wealth: {},
@@ -1283,23 +1281,61 @@ describe("poach surcharge", () => {
   });
 });
 
-describe("the two rolls", () => {
-  it("makes taking a free faction certain and poaching a coin flip", () => {
-    expect(subjugationChance(view(), "beta")).toBe(1);
-    const v = view({ overlords: new Map([["gamma", "delta"]]) });
-    expect(subjugationChance(v, "gamma")).toBe(POACH_CHANCE);
+describe("the incorporate realm gate", () => {
+  it("blocks the card below the threshold, with both numbers in the reason", () => {
+    // beta holds one vassal: realm of 2, below the gate of 4.
+    const v = view({ overlords: new Map([["gamma", "beta"]]) });
+    expect(cardBlockReason(v, "beta", "incorporate")).toEqual({
+      code: "realm-too-small",
+      required: REVOLT_BASE_THRESHOLD,
+      held: 2,
+    });
+    expect(isCardPlayable(v, "beta", "incorporate")).toBe(false);
   });
 
-  it("ramps the Incorporate odds linearly to certainty, then clamps", () => {
-    const at = (turns: number): number =>
-      incorporationChance(
-        view({ loyalty: { [loyaltyKey("gamma", "beta")]: turns } }),
-        "beta", "gamma",
-      );
-    expect(at(0)).toBe(0);
-    expect(at(INCORPORATE_RAMP)).toBe(1);
-    expect(at(INCORPORATE_RAMP * 3)).toBe(1); // clamped, never above 1
-    expect(at(1)).toBeCloseTo(1 / INCORPORATE_RAMP);
+  it("opens at exactly the threshold, counting chains and annexations", () => {
+    // beta's full realm: itself, gamma (vassal), delta (grand-vassal under
+    // gamma) and alpha annexed into gamma - fullRealmOf semantics, the
+    // scoreboard count.
+    const v = view({
+      overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]),
+      incorporated: { alpha: "gamma" },
+    });
+    expect(incorporateRealmGate(v, "beta")).toEqual({
+      required: REVOLT_BASE_THRESHOLD,
+      held: 4,
+    });
+    expect(cardBlockReason(v, "beta", "incorporate")).toBeNull();
+    expect(isCardPlayable(v, "beta", "incorporate")).toBe(true);
+  });
+
+  it("shares Revolt's constant, so the two gates open at the same size", () => {
+    // The moment a lord's realm makes its vassals' Revolt requirement zero is
+    // the moment the lord may start digesting them. One number, one story.
+    expect(incorporateRealmGate(view(), "alpha").required).toBe(
+      REVOLT_BASE_THRESHOLD,
+    );
+  });
+
+  it("outranks no-target below the gate, and yields to it above", () => {
+    // Below the gate with no vassal at all: the realm answer, since no target
+    // could change it. At the gate with no vassal: the target answer.
+    expect(cardBlockReason(view(), "alpha", "incorporate")).toEqual({
+      code: "realm-too-small",
+      required: REVOLT_BASE_THRESHOLD,
+      held: 1,
+    });
+    const atGate = view({
+      overlords: new Map([
+        ["beta", "alpha"], ["gamma", "alpha"], ["delta", "alpha"],
+      ]),
+    });
+    expect(cardBlockReason(atGate, "alpha", "incorporate")).toBeNull();
+    const annexedOnly = view({
+      incorporated: { beta: "alpha", gamma: "alpha", delta: "alpha" },
+    });
+    expect(cardBlockReason(annexedOnly, "alpha", "incorporate"))
+      .toEqual({ code: "no-target" });
   });
 });
 
