@@ -176,6 +176,33 @@ const { storage, storageIsPersistent } = ((): {
     return { storage: memoryStorage(), storageIsPersistent: false };
   }
 })();
+/** Where the net panel keeps the player's display name - session storage,
+ *  deliberately NOT the profile storage above.
+ *
+ *  A name is who is at THIS screen, not progress: it belongs beside the seat,
+ *  not beside the XP and the unlocked cards. And localStorage is shared by
+ *  every tab on the origin, so two tabs of one browser - how this is tested,
+ *  and how two people at one machine would play - each read back the name the
+ *  other typed. That is not a hypothetical: it made both seats of a live
+ *  two-tab run read "Bela".
+ *
+ *  Session storage rather than nothing at all, because it survives a reload of
+ *  the same tab: a guest that refreshes mid-game rejoins under the name the
+ *  host has been labelling that seat with all along, instead of silently
+ *  becoming somebody else in the log and the scoreboard.
+ *
+ *  A booted page gets memory storage, like everything else it touches. */
+const netStorage: MetaStorage = ((): MetaStorage => {
+  if (boot !== null) return memoryStorage();
+  try {
+    const probe = "balticmap-net-probe";
+    window.sessionStorage.setItem(probe, "1");
+    window.sessionStorage.removeItem(probe);
+    return window.sessionStorage;
+  } catch {
+    return memoryStorage();
+  }
+})();
 let meta: MetaRecord = boot === null ? loadMeta(storage) : applyBootMeta(boot);
 /** The rule picks the next game starts with. Loaded once and kept in sync
  *  with storage on every change; a booted page's memory storage was seeded
@@ -1740,7 +1767,7 @@ const netPanel = createNetPanel(
       startJoin(hostId);
     },
   },
-  storage,
+  netStorage,
   "Player",
 );
 netPanel.setVisible(game.phase === "main-menu");
