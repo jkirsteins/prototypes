@@ -57,8 +57,8 @@ export function xpForEvent(e: GameEvent): number {
   const base = XP_TABLE[e.type];
   if (base === 0) return 0;
   // assassinate-ruler is a special case of the scaling above, not the base
-  // value: src/game.ts (~line 460) writes `amount: preStatusLead`, the
-  // actor's Status lead captured BEFORE assassinate() resets it to zero.
+  // value: src/game.ts writes `amount: preMightLead`, the actor's visible
+  // Might lead captured BEFORE assassinate() levels it away.
   // That amount is a deficit being erased, not a gain being made - the
   // bigger-is-better scaling every other tracked event uses would pay most
   // for assassinating from a lead (throwing the lead away) and least for

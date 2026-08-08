@@ -401,9 +401,9 @@ describe("buildRoundSummary: single-event scenarios", () => {
     }
   });
 
-  it("assassinate-ruler against the human resets the Status lead to 0", () => {
-    leadsTable = { jersika: { might: -2, status: 0 } };
-    // amount is the ACTOR's (jersika's) own Status lead over the human before
+  it("assassinate-ruler against the human resets the Might lead to 0", () => {
+    leadsTable = { jersika: { might: 0, status: 0 } };
+    // amount is the ACTOR's (jersika's) own Might lead over the human before
     // the reset - here jersika led by 2, so the human's own lead was -2.
     const s = oneSummary(
       ev({
@@ -412,9 +412,11 @@ describe("buildRoundSummary: single-event scenarios", () => {
     )!;
     expect(lineText(s)).toBe("Assassinate ruler - by Jersikans");
     expect(s.lines[0].changes).toEqual([
-      { factionId: "jersika", track: "status", before: -2, after: 0 },
+      { factionId: "jersika", track: "might", before: -2, after: 0 },
     ]);
-    expect(footnoteTexts(s)).toEqual(["the Jersikans can subjugate you at a lead of 2."]);
+    // The levelling is exactly what removed the danger: a lead of 0 can
+    // subjugate nobody, so the danger footnote must NOT fire off the old lead.
+    expect(footnoteTexts(s)).toEqual([]);
   });
 
   it("a prevented assassinate-ruler against the human names the actor and moves nothing", () => {

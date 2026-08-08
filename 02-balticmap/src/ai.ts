@@ -83,7 +83,7 @@ interface GuardCase {
 
 const GUARD_CASES: GuardCase[] = [
   {
-    // A Status lead that cannot be cashed this turn is exactly the position
+    // A Might lead that cannot be cashed this turn is exactly the position
     // step 5's assassination hunts, so the guard answers a threat this policy
     // would itself make. A lead you can cash now needs no guard, which is what
     // the Subjugate check at the call site encodes.
@@ -93,7 +93,7 @@ const GUARD_CASES: GuardCase[] = [
         if (e.state === "irrelevant") return false;
         const required = subjugationRequirement(v, self, e.factionId);
         if (required === null) return false;
-        return leadsIn(v, self, e.factionId).status >= required.status;
+        return leadsIn(v, self, e.factionId).might >= required.might;
       }),
   },
   {
@@ -316,21 +316,21 @@ export function chooseAction(state: GameState): AiAction {
     if (assassinate !== undefined) {
       const legal = validTargetsFor(v, p.factionId, "assassinate-ruler");
       const order = (id: string): number => state.factionIds.indexOf(id);
-      // Levelling Status helps only against a Status threat. Because such a
-      // threat leads this faction on Status by definition, the card can never
+      // Levelling Might helps only against a Might threat. Because such a
+      // threat leads this faction on Might by definition, the card can never
       // destroy the actor's own lead here, so no separate guard is needed.
       // A guarded ruler is skipped: trading the card for the guard leaves the
       // threat standing, and the turn is worth more spent building.
       const pick = threats
         .filter(
           (t) =>
-            t.statusShortfall <= 1 &&
+            t.mightShortfall <= 1 &&
             legal.includes(t.factionId) &&
             !holdsGuard(v, t.factionId, "bodyguard"),
         )
         .sort(
           (a, b) =>
-            a.statusShortfall - b.statusShortfall ||
+            a.mightShortfall - b.mightShortfall ||
             order(a.factionId) - order(b.factionId),
         )[0];
       if (pick !== undefined) {

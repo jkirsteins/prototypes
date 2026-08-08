@@ -112,8 +112,8 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
         if (e.amount === undefined || e.prevented) return [];
         const T = e.targetFactionId;
         if (T === undefined) return [];
-        if (A === H) return [{ kind: "set", factionId: T, track: "status", from: e.amount }];
-        if (T === H) return [{ kind: "set", factionId: A, track: "status", from: -e.amount }];
+        if (A === H) return [{ kind: "set", factionId: T, track: "might", from: e.amount }];
+        if (T === H) return [{ kind: "set", factionId: A, track: "might", from: -e.amount }];
         return [];
       }
       return [];

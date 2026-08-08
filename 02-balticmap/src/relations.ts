@@ -207,17 +207,19 @@ export function incorporatedRealmOf(
   return members;
 }
 
-/** Raises BOTH directions' status counters to the max of the two, so the
- *  status lead becomes 0 (relation counters only grow; Assassinate ruler). */
-export function levelStatus(rel: Relations, a: string, b: string): Relations {
+/** Raises BOTH directions' might counters to the max of the two, so the raw
+ *  might lead becomes 0 (relation counters only grow; Assassinate ruler).
+ *  Levels the STORE only: a pact term lives on the alliance, not here, so a
+ *  visible lead bought by a live pact survives the levelling. */
+export function levelMight(rel: Relations, a: string, b: string): Relations {
   const ab = getRel(rel, a, b);
   const ba = getRel(rel, b, a);
-  const max = Math.max(ab.status, ba.status);
-  if (ab.status === max && ba.status === max) return rel;
+  const max = Math.max(ab.might, ba.might);
+  if (ab.might === max && ba.might === max) return rel;
   return {
     ...rel,
-    [relKey(a, b)]: { ...ab, status: max },
-    [relKey(b, a)]: { ...ba, status: max },
+    [relKey(a, b)]: { ...ab, might: max },
+    [relKey(b, a)]: { ...ba, might: max },
   };
 }
 

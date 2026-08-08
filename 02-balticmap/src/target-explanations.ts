@@ -14,7 +14,7 @@ import {
   type TargetEligibility,
 } from "./playability";
 import { CARDS, DOUBLABLE_CARDS, isGuardCard } from "./cards";
-import type { Alliances } from "./relations";
+import { leadsOf, type Alliances } from "./relations";
 import { count } from "./plural";
 import { formatLead } from "./view";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
@@ -361,12 +361,17 @@ function availableImpacts(
     )];
   }
   if (cardId === "assassinate-ruler") {
-    // The card levels the Status lead rather than adding to it, so the "after"
-    // is 0 whichever side was ahead. The risk rows below say a guard could
-    // nullify it, in the same words on every target - which is how the warning
-    // stays honest without becoming a detector for who is holding one.
+    // The card levels the raw Might lead rather than adding to it, so the
+    // "after" is whatever a live pact still buys - the visible lead minus the
+    // store's - and 0 with no pact in play, whichever side was ahead. The risk
+    // rows below say a guard could nullify it, in the same words on every
+    // target - which is how the warning stays honest without becoming a
+    // detector for who is holding one.
+    const raw = leadsOf(view.relations, actorFactionId, targetFactionId).might;
     return [
-      standingMove(view, actorFactionId, targetFactionId, "status", () => 0, 1),
+      standingMove(
+        view, actorFactionId, targetFactionId, "might", (b) => b - raw, 1,
+      ),
       ...riskRows(view, actorFactionId, cardId, targetFactionId),
     ];
   }

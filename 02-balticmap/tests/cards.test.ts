@@ -90,7 +90,7 @@ describe("cards", () => {
     );
     expectProps(
       "assassinate-ruler", "Assassinate ruler", true, false, 1, true, false,
-      "Even the score: the Status lead between you and one faction in reach resets to none.",
+      "Even the score: the Might lead between you and one faction in reach resets to none.",
     );
     expectProps(
       "alliance", "Alliance", true, false, 1, true, false,

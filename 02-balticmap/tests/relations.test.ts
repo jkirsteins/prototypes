@@ -3,7 +3,7 @@ import { pact, } from "./helpers";
 import {
   getRel, bumpStatus, bumpMight, leadsOf, bumpMightAll, realmOf, realmRootOf,
   fullRealmOf, overlordChainOf, incorporatedRealmOf,
-  levelStatus, allianceKey, allianceActive, bumpMightBy, bumpStatusBy, bumpMightAllBy,
+  levelMight, allianceKey, allianceActive, bumpMightBy, bumpStatusBy, bumpMightAllBy,
   type Relations,
 } from "../src/relations";
 
@@ -134,24 +134,24 @@ describe("bumpMightAll", () => {
   });
 });
 
-describe("levelStatus", () => {
-  it("raises both directions' status to the max of the two; might untouched", () => {
+describe("levelMight", () => {
+  it("raises both directions' might to the max of the two; status untouched", () => {
     let rel: Relations = {};
-    rel = bumpStatus(rel, "alpha", "beta");
-    rel = bumpStatus(rel, "alpha", "beta");
-    rel = bumpStatus(rel, "alpha", "beta"); // alpha leads beta by 3 status
-    rel = bumpMight(rel, "beta", "alpha");
-    const out = levelStatus(rel, "alpha", "beta");
-    expect(getRel(out, "alpha", "beta").status).toBe(3);
-    expect(getRel(out, "beta", "alpha").status).toBe(3);
-    expect(leadsOf(out, "alpha", "beta").status).toBe(0);
-    expect(getRel(out, "beta", "alpha").might).toBe(1); // untouched
+    rel = bumpMight(rel, "alpha", "beta");
+    rel = bumpMight(rel, "alpha", "beta");
+    rel = bumpMight(rel, "alpha", "beta"); // alpha leads beta by 3 might
+    rel = bumpStatus(rel, "beta", "alpha");
+    const out = levelMight(rel, "alpha", "beta");
+    expect(getRel(out, "alpha", "beta").might).toBe(3);
+    expect(getRel(out, "beta", "alpha").might).toBe(3);
+    expect(leadsOf(out, "alpha", "beta").might).toBe(0);
+    expect(getRel(out, "beta", "alpha").status).toBe(1); // untouched
     expect(rel).not.toBe(out); // immutable
   });
 
   it("is a no-op (same reference) when already even", () => {
     const rel: Relations = {};
-    expect(levelStatus(rel, "alpha", "beta")).toBe(rel);
+    expect(levelMight(rel, "alpha", "beta")).toBe(rel);
   });
 });
 

@@ -203,9 +203,10 @@ export function pactBoostExpiriesOn(
  *  map badge and the legality check disagreed about, which is the same class of
  *  bug as `realmOf` versus `fullRealmOf`.
  *
- *  `leadsOf` stays the raw read of the store and keeps exactly one caller that
- *  wants it: the pre-assassination Status capture in src/game.ts, which reads a
- *  track no pact touches, from a `relations` value mid-play. */
+ *  `leadsOf` stays the raw read of the store, for the few callers that want
+ *  the store itself rather than what the rules see: the boot-param override
+ *  diff, the AI's tribute-track read, and the pact residue the Assassinate
+ *  ruler tooltip subtracts (levelling zeroes the store, never a live pact). */
 export function leadsIn(
   view: { relations: Relations; alliances: Alliances; turn: number },
   a: string,

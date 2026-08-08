@@ -825,21 +825,21 @@ describe("event enrichment", () => {
 });
 
 describe("diplomacy cards", () => {
-  it("assassinate-ruler levels the status lead to 0 both ways; might is untouched", () => {
+  it("assassinate-ruler levels the might lead to 0 both ways; status is untouched", () => {
     let g = playingState(LINE_ADJ);
     let rel: Relations = {};
-    rel = bumpStatus(rel, "beta", "alpha");
-    rel = bumpStatus(rel, "beta", "alpha");
-    rel = bumpStatus(rel, "beta", "alpha"); // beta leads alpha by 3 status
-    rel = bumpMight(rel, "alpha", "beta"); // might should be untouched
+    rel = bumpMight(rel, "beta", "alpha");
+    rel = bumpMight(rel, "beta", "alpha");
+    rel = bumpMight(rel, "beta", "alpha"); // beta leads alpha by 3 might
+    rel = bumpStatus(rel, "alpha", "beta"); // status should be untouched
     g = withRel(g, rel);
     g = withHand(g, 0, ["assassinate-ruler"]);
     const after = playCard(g, 0, rng(), "alpha");
-    expect(getRel(after.relations, "beta", "alpha").status).toBe(3);
-    expect(getRel(after.relations, "alpha", "beta").status).toBe(3);
-    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
-    expect(getRel(after.relations, "alpha", "beta").might).toBe(1); // untouched
-    expect(getRel(after.relations, "beta", "alpha").might).toBe(0); // untouched
+    expect(getRel(after.relations, "beta", "alpha").might).toBe(3);
+    expect(getRel(after.relations, "alpha", "beta").might).toBe(3);
+    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(0);
+    expect(getRel(after.relations, "alpha", "beta").status).toBe(1); // untouched
+    expect(getRel(after.relations, "beta", "alpha").status).toBe(0); // untouched
     expect(after.log.at(-1)).toMatchObject({
       type: "play", cardId: "assassinate-ruler", targetFactionId: "alpha",
     });
@@ -969,32 +969,32 @@ describe("bodyguard", () => {
   it("a second assassinate-ruler after the guard is consumed succeeds normally", () => {
     let g: GameState = { ...playingState(LINE_ADJ), guards: { bodyguard: ["alpha"] } };
     let rel: Relations = {};
-    rel = bumpStatus(rel, "beta", "alpha");
-    rel = bumpStatus(rel, "beta", "alpha");
+    rel = bumpMight(rel, "beta", "alpha");
+    rel = bumpMight(rel, "beta", "alpha");
     g = withRel(g, rel);
     g = withHand(g, 0, ["assassinate-ruler"]);
     let after = playCard(g, 0, rng(), "alpha"); // 1st: nullified
-    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(2);
+    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(2);
     expect(after.log.at(-1)?.prevented).toBe(true);
 
     after = { ...after, playedThisTurn: false };
     after = withHand(after, 0, ["assassinate-ruler"]);
     after = playCard(after, 0, rng(), "alpha"); // 2nd: guard already spent, succeeds
-    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
+    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(0);
     expect(after.log.at(-1)).toMatchObject({
       type: "play", cardId: "assassinate-ruler", targetFactionId: "alpha",
     });
     expect(after.log.at(-1)?.prevented).toBeUndefined();
   });
 
-  it("assassinate-ruler against an unguarded target still levels status as before", () => {
+  it("assassinate-ruler against an unguarded target still levels might as before", () => {
     let g: GameState = { ...playingState(LINE_ADJ), guards: {} };
     let rel: Relations = {};
-    rel = bumpStatus(rel, "beta", "alpha");
+    rel = bumpMight(rel, "beta", "alpha");
     g = withRel(g, rel);
     g = withHand(g, 0, ["assassinate-ruler"]);
     const after = playCard(g, 0, rng(), "alpha");
-    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
+    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(0);
     expect(after.guards).toEqual({});
     expect(after.log.at(-1)?.prevented).toBeUndefined();
   });
@@ -2028,15 +2028,32 @@ describe("event amount/track", () => {
     expect(after.log.at(-1)?.targetFactionId).toBeUndefined();
   });
 
-  it("a landed assassination records the actor's Status lead from before the reset", () => {
+  it("a landed assassination records the actor's Might lead from before the reset", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["assassinate-ruler"]);
-    g = withRel(g, bumpStatus(bumpStatus(g.relations, "beta", "alpha"), "beta", "alpha"));
+    g = withRel(g, bumpMight(bumpMight(g.relations, "beta", "alpha"), "beta", "alpha"));
     const after = playCard(g, 0, rng(), "alpha");
     expect(after.log.at(-1)).toMatchObject({
-      type: "play", cardId: "assassinate-ruler", amount: 2, track: "status",
+      type: "play", cardId: "assassinate-ruler", amount: 2, track: "might",
     });
     // and the level actually happened - the "before" is not just echoing 0
-    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
+    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(0);
+  });
+
+  it("a landed assassination records the VISIBLE lead - pact terms in - and levels only the store", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["assassinate-ruler"]);
+    // beta's pact with gamma counts alpha among its targets, so beta's visible
+    // Might lead is the store's 2 plus the pact's 1. The amount must be the 3
+    // the player was shown, and the pact term must survive the levelling.
+    g = {
+      ...g,
+      alliances: { [allianceKey("beta", "gamma")]: pact(g.turn + 5, ["alpha"]) },
+    };
+    g = withRel(g, bumpMight(bumpMight(g.relations, "beta", "alpha"), "beta", "alpha"));
+    const after = playCard(g, 0, rng(), "alpha");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "assassinate-ruler", amount: 3, track: "might",
+    });
+    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(0); // store levelled
   });
 
   it("a prevented assassination records no amount - nothing moved", () => {

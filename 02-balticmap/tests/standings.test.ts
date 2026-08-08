@@ -80,12 +80,12 @@ describe("leadMovesOf", () => {
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
   });
 
-  it("a landed assassination by the human levels the target's status to 0", () => {
+  it("a landed assassination by the human levels the target's might to 0", () => {
     const e = playEvent({
       playerId: 1, cardId: "assassinate-ruler", targetFactionId: RIVAL, amount: 2,
     });
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "set", factionId: RIVAL, track: "status", from: 2 },
+      { kind: "set", factionId: RIVAL, track: "might", from: 2 },
     ]);
   });
 
@@ -94,7 +94,7 @@ describe("leadMovesOf", () => {
       playerId: 2, cardId: "assassinate-ruler", targetFactionId: H, amount: 2,
     });
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "set", factionId: RIVAL, track: "status", from: -2 },
+      { kind: "set", factionId: RIVAL, track: "might", from: -2 },
     ]);
   });
 

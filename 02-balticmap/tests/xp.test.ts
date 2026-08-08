@@ -39,16 +39,16 @@ describe("xpForEvent", () => {
   });
 
   it("pays assassinate-ruler for the deficit it erased, not the lead it threw away", () => {
-    // src/game.ts writes `amount: preStatusLead`, the actor's Status lead
-    // BEFORE the card resets it to zero - a deficit being erased, not a gain.
-    // Assassinating from 6 behind erases that deficit: base 1 + 6.
+    // src/game.ts writes `amount: preMightLead`, the actor's visible Might
+    // lead BEFORE the card levels it away - a deficit being erased, not a
+    // gain. Assassinating from 6 behind erases that deficit: base 1 + 6.
     expect(
-      xpForEvent(ev({ type: "play", cardId: "assassinate-ruler", track: "status", amount: -6 })),
+      xpForEvent(ev({ type: "play", cardId: "assassinate-ruler", track: "might", amount: -6 })),
     ).toBe(7);
     // Assassinating from a 6-point lead throws the lead away for nothing:
     // no bonus, just the base play XP.
     expect(
-      xpForEvent(ev({ type: "play", cardId: "assassinate-ruler", track: "status", amount: 6 })),
+      xpForEvent(ev({ type: "play", cardId: "assassinate-ruler", track: "might", amount: 6 })),
     ).toBe(1);
   });
 });

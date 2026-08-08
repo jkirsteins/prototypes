@@ -456,10 +456,10 @@ describe("targetImpactLines", () => {
 
   it("shows an Assassinate as the levelling it is, never as a gain", () => {
     const view = v({
-      relations: bumpStatus(bumpStatus({}, "alpha", "beta"), "alpha", "beta"),
+      relations: bumpMight(bumpMight({}, "alpha", "beta"), "alpha", "beta"),
     });
     expect(shown(targetImpactLines(view, "alpha", "assassinate-ruler", "beta"))[1])
-      .toBe("-2 Status (+2 -> 0)");
+      .toBe("-2 Might (+2 -> 0)");
   });
 
   /** The block warns that a guard could turn the blade aside, so it now says
@@ -475,7 +475,7 @@ describe("targetImpactLines", () => {
       targetImpactLines(v(), "alpha", "assassinate-ruler", "beta"),
     );
     expect(guarded).toEqual(unguarded);
-    expect(guarded[1]).toBe("0 Status (0 -> 0)");
+    expect(guarded[1]).toBe("0 Might (0 -> 0)");
     expect(guarded).toContain(
       "-- A posted bodyguard would turn this aside, and you cannot tell in advance.",
     );

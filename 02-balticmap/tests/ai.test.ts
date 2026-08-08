@@ -198,27 +198,27 @@ describe("chooseAction priorities", () => {
     });
   });
 
-  it("5: assassinates the ruler closest to taking it on Status", () => {
+  it("5: assassinates the ruler closest to taking it on Might", () => {
     let g = base();
-    g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 7) };
+    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
     g = withHand(g, ["grow-crops", "assassinate-ruler"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "gamma",
     });
   });
 
-  it("5: sorts assassination candidates by statusShortfall, not by threats' shortfall order", () => {
-    // delta out-mights alpha by 3 (mightShortfall -1) but is only 1 short on
-    // Status (statusShortfall 1): its overall shortfall (-1) sorts it first in
-    // `threats`. gamma leads only on Status, exactly to the bar
-    // (statusShortfall 0, shortfall 0), so it sorts second in `threats`. A
+  it("5: sorts assassination candidates by mightShortfall, not by threats' shortfall order", () => {
+    // delta out-statuses alpha by 9 (statusShortfall -1) but is only 1 short
+    // on Might (mightShortfall 1): its overall shortfall (-1) sorts it first
+    // in `threats`. gamma leads only on Might, exactly to the bar
+    // (mightShortfall 0, shortfall 0), so it sorts second in `threats`. A
     // policy that reused threats' order (e.g. threats.find(...)) instead of
-    // re-sorting by statusShortfall would wrongly assassinate delta, whose
-    // Might lead the card cannot touch, instead of gamma.
+    // re-sorting by mightShortfall would wrongly assassinate delta, whose
+    // Status lead the card cannot touch, instead of gamma.
     let g = base();
-    let rel = lead(g.relations, "delta", "alpha", 3);
-    rel = statusLead(rel, "delta", "alpha", 7);
-    rel = statusLead(rel, "gamma", "alpha", 8);
+    let rel = statusLead(g.relations, "delta", "alpha", 9);
+    rel = lead(rel, "delta", "alpha", 1);
+    rel = lead(rel, "gamma", "alpha", 2);
     g = { ...g, relations: rel };
     g = withHand(g, ["grow-crops", "assassinate-ruler"]);
     expect(chooseAction(g)).toEqual({
@@ -226,16 +226,16 @@ describe("chooseAction priorities", () => {
     });
   });
 
-  it("5: ignores a Might-only threat, which levelling Status cannot help", () => {
+  it("5: ignores a Status-only threat, which levelling Might cannot help", () => {
     let g = base();
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 2) };
+    g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 8) };
     g = withHand(g, ["assassinate-ruler", "raid"]);
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
   });
 
   it("5: does not fire when every qualifying ruler is guarded", () => {
     let g = base();
-    g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 7) };
+    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
     g = { ...g, guards: { bodyguard: ["gamma"] } };
     g = withHand(g, ["assassinate-ruler", "raid"]);
     // spending the card to strip a guard leaves the threat standing
@@ -291,23 +291,23 @@ describe("chooseAction priorities", () => {
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "gamma" });
   });
 
-  it("8: posts a guard on a Status lead it cannot cash this turn", () => {
+  it("8: posts a guard on a Might lead it cannot cash this turn", () => {
     let g = base();
-    g = { ...g, relations: statusLead(g.relations, "alpha", "beta", 8) };
+    g = { ...g, relations: lead(g.relations, "alpha", "beta", 2) };
     g = withHand(g, ["bodyguard", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 
   it("8: does not post a guard when Subjugate is playable this turn", () => {
     let g = base();
-    g = { ...g, relations: statusLead(g.relations, "alpha", "beta", 8) };
+    g = { ...g, relations: lead(g.relations, "alpha", "beta", 2) };
     g = withHand(g, ["bodyguard", "subjugate"]);
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "beta" });
   });
 
-  it("8: does not post a guard with no subjugation-grade Status lead", () => {
+  it("8: does not post a guard with no subjugation-grade Might lead", () => {
     let g = base();
-    g = { ...g, relations: statusLead(g.relations, "alpha", "beta", 7) };
+    g = { ...g, relations: lead(g.relations, "alpha", "beta", 1) };
     g = withHand(g, ["bodyguard", "grow-crops"]);
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
   });

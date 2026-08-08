@@ -6,12 +6,12 @@ import {
 export type { TributeTrack };
 import {
   allianceKey, bumpAllBy, bumpMight, bumpMightAllBy, bumpMightBy, bumpStatus,
-  bumpStatusBy, fullRealmOf, incorporatedRealmOf, leadsOf, levelStatus,
+  bumpStatusBy, fullRealmOf, incorporatedRealmOf, levelMight,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
   loyaltyKey, ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES,
-  incorporationChance, PACT_MIGHT_BONUS, sharedNeighboursOf,
+  incorporationChance, leadsIn, PACT_MIGHT_BONUS, sharedNeighboursOf,
   subjugationChance, type Guards, type Omens, omenMultiplier, passiveFortifyFor,
   playableSet, raidGainFor, validTargetsFor, wealthIncomeFor,
   type RulesView,
@@ -43,8 +43,9 @@ export interface GameEvent {
    *  relation, so src/standings.ts can reconstruct a before -> after standing
    *  without re-deriving the rules from state that has already moved on.
    *  Assassinate ruler is the exception: it levels rather than adds, and
-   *  `amount` records the actor's Status LEAD over the target immediately
-   *  before the levelling, so the "before" survives the reset that erased it.
+   *  `amount` records the actor's visible Might LEAD over the target (pact
+   *  terms included, via `leadsIn`) immediately before the levelling, so the
+   *  "before" survives the reset that erased it.
    *  See the rule in AGENTS.md: a ninth site that forgets this drifts the
    *  round summary silently, which is why tests/standings.test.ts replays a
    *  full game and checks the walk against the real relations. */
@@ -561,7 +562,7 @@ function updateFaction(
   return players.map((p) => (p.factionId === factionId ? fn(p) : p));
 }
 
-/** Levelling Status and seating a successor are one step, so no future edit
+/** Levelling Might and seating a successor are one step, so no future edit
  *  can apply the assassination's effect while forgetting the succession. */
 function assassinate(
   state: GameState,
@@ -572,7 +573,7 @@ function assassinate(
 ): { relations: Relations; rulers: Rulers; killed: string; successor: string } {
   const succession = replaceRuler(rulers, state.ethnicities, targetId, state.turn);
   return {
-    relations: levelStatus(relations, actorFactionId, targetId),
+    relations: levelMight(relations, actorFactionId, targetId),
     ...succession,
   };
 }
@@ -740,7 +741,12 @@ export function playCard(
   } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
     // Captured before assassinate() levels it away: the "before" of a
     // standings line has to come from somewhere once the reset erases it.
-    const preStatusLead = leadsOf(relations, p.factionId, targetId).status;
+    // Through `leadsIn`, not raw `leadsOf`: pacts buy Might, the levelling
+    // only zeroes the store, so the visible after-lead is the live pact terms
+    // and the standings walk's "after" must start from the visible before.
+    const preMightLead = leadsIn(
+      { relations, alliances, turn: state.turn }, p.factionId, targetId,
+    ).might;
     const out = assassinate(state, rulers, relations, p.factionId, targetId);
     relations = out.relations;
     rulers = out.rulers;
@@ -748,8 +754,8 @@ export function playCard(
       ...events[0],
       targetRuler: out.killed,
       successorRuler: out.successor,
-      amount: preStatusLead,
-      track: "status",
+      amount: preMightLead,
+      track: "might",
     };
   } else if (cardId === "found-settlement" && targetId !== undefined) {
     // The settlement belongs to the land, not to whoever founded it: a vassal's

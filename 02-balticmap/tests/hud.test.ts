@@ -1550,7 +1550,7 @@ describe("notice modal", () => {
       targetFactionId: "beta", targetRuler: "Kaupo", successorRuler: "Dabrelis", amount: 1,
     }]));
     expect(lineTexts(container)).toEqual([
-      "Assassinate ruler took Kaupo; Dabrelis now leads you - by Alpha (Status -1 -> 0)",
+      "Assassinate ruler took Kaupo; Dabrelis now leads you - by Alpha (Might -1 -> 0)",
     ]);
     const span = q(container, ".notice-line .rt-faction");
     expect(span.textContent).toBe("Alpha");
@@ -1809,7 +1809,7 @@ describe("log lines name rulers", () => {
     const successor = rulerOf(g.rulers, "alpha").name;
     hud.update(g);
     expect(texts(container)).toContain(
-      `You played Assassinate ruler on Alpha - ${killed} killed, ${successor} succeeds (Status 0 -> 0)`,
+      `You played Assassinate ruler on Alpha - ${killed} killed, ${successor} succeeds (Might 0 -> 0)`,
     );
   });
 
