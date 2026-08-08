@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { pact, siteCaps } from "./helpers";
 import {
-  newGame, startGame, chooseDeck, pickFaction, beginTurn, playCard, discardCard,
-  advance, surrender, viewOf,
+  newGame, startGame, chooseDeck, chooseRules, pickFaction, beginTurn, playCard,
+  discardCard, advance, surrender, viewOf,
   OPENING_HAND, victoryRealmSize, type GameState,
 } from "../src/game";
+import { DEFAULT_RULES } from "../src/rules";
 import {
   DECK_SIZE, buildDeck, isTributeCard, CARDS, TRIBUTE_CARDS, type Rng,
 } from "../src/cards";
@@ -775,6 +776,20 @@ describe("deck building", () => {
     for (const id of aiCards) {
       expect(["grow-crops", ...NON_BASICS]).toContain(id);
     }
+  });
+});
+
+describe("chooseRules", () => {
+  it("defaults every game to DEFAULT_RULES", () => {
+    expect(newGame(FACTIONS).rules).toEqual(DEFAULT_RULES);
+  });
+
+  it("stamps picks during deck-building and refuses them after", () => {
+    const g = startGame(newGame(FACTIONS));
+    const picked = chooseRules(g, { turn: "unlimited" });
+    expect(picked.rules.turn).toBe("unlimited");
+    const playing = playingState();
+    expect(chooseRules(playing, { turn: "unlimited" })).toBe(playing);
   });
 });
 

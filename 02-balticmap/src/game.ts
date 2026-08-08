@@ -16,6 +16,7 @@ import {
   type RulesView,
 } from "./playability";
 import { initialRulers, prowessByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
+import { DEFAULT_RULES, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
 
 export type GameEventType =
@@ -102,6 +103,9 @@ export interface GameState {
   players: PlayerState[]; // index 0 = human
   current: number;
   playedThisTurn: boolean;
+  /** One pick per rule axis, stamped before the game starts and immutable for
+   *  the run. `chooseRules` is the only writer. See src/rules.ts. */
+  rules: RuleSelections;
   factionIds: string[];
   relations: Relations;
   overlords: Overlords; // STORED vassal -> overlord map
@@ -225,6 +229,7 @@ export function newGame(
     players: [],
     current: 0,
     playedThisTurn: false,
+    rules: { ...DEFAULT_RULES },
     factionIds,
     relations: {},
     overlords: new Map(),
@@ -265,6 +270,17 @@ export function chooseDeck(state: GameState, deckCards: string[]): GameState {
   if (state.phase !== "deck-building") return state;
   if (deckCards.length !== DECK_SIZE) return state;
   return { ...state, phase: "pick-faction", humanDeck: [...deckCards] };
+}
+
+/** Locks in the rule picks. Legal only while deck-building, like the deck
+ *  itself: everything after `pickFaction` - the AI chain, the log, the
+ *  animations - may branch on an axis, so a mid-run swap could contradict
+ *  what the player has already seen happen. */
+export function chooseRules(
+  state: GameState, rules: RuleSelections,
+): GameState {
+  if (state.phase !== "deck-building") return state;
+  return { ...state, rules: { ...rules } };
 }
 
 function makePlayer(
