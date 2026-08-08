@@ -69,6 +69,7 @@ export function hostPeer(cb: {
   const peer = new Peer();
   peer.on("open", (id) => cb.onOpen(id));
   peer.on("connection", (conn) => {
+    conn.on("error", (err) => cb.onError(String(err)));
     conn.on("open", () => cb.onWire(wrap(conn)));
   });
   peer.on("error", (err) => cb.onError(String(err)));
