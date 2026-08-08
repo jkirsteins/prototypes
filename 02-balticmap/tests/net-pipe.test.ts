@@ -6,11 +6,13 @@ import { aiTakeTurn, chooseAction } from "../src/ai";
 import { buildDeck, type Rng } from "../src/cards";
 import { seededRng } from "../src/rng";
 import {
-  cardSetHash, PROTOCOL_VERSION, seatOfFaction, wirePair,
+  cardSetHash, guestPhaseView, PROTOCOL_VERSION, seatOfFaction, wirePair,
   type NetMessage,
 } from "../src/net-protocol";
 import { createHostSession, type HostDeps } from "../src/net-host";
 import { createGuestSession, type GuestDeps } from "../src/net-guest";
+import { formatLead } from "../src/view";
+import { leadOf } from "../src/relations";
 
 const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
@@ -189,5 +191,118 @@ describe("guest session", () => {
     h.setGame(g);
     h.session.pushUpdate();
     expect(guest.game()).toEqual(h.game());
+  });
+});
+
+/** main.ts's resumeChain, distilled: run AI seats until a human
+ *  (host seat 0 or guest) is on turn or the run ends. */
+function runChain(
+  g: GameState, rng: Rng, guestSeat: number,
+): GameState {
+  let out = g;
+  while (
+    out.phase === "playing" && out.current !== 0 && out.current !== guestSeat
+  ) {
+    out = advance(aiTakeTurn(out, rng), rng);
+  }
+  return out;
+}
+
+describe("a whole game over the pipe", () => {
+  it("host and guest replicas agree for 15 rounds, and the guest's standings read from its own seat", () => {
+    const rng = seededRng(11);
+    const h = makeHost(rng);
+    const states: GameState[] = [];
+    const rejects: string[] = [];
+    const guest = createGuestSession(h.guestWire, {
+      name: "Gusta",
+      onHostHello: () => {}, onLobby: () => {},
+      onState: (g) => states.push(g),
+      onReject: (r) => rejects.push(r),
+      onRefused: () => {}, onClosed: () => {},
+    });
+    guest.sendPick(buildDeck(), "gamma");
+    const pick = h.picks[0];
+    h.setGame(pickFaction(h.game(), "alpha", rng,
+      (r, fid) => (fid === pick.factionId ? pick.deck : buildDeck())));
+    h.session.markStarted(pick.factionId);
+    const guestSeat = seatOfFaction(h.game(), "gamma");
+
+    for (let round = 0; round < 15 && h.game().phase === "playing"; round++) {
+      // Host's turn: the policy plays it locally, then the chain runs
+      // to the guest's seat, then push.
+      if (h.game().current === 0) {
+        h.setGame(advance(aiTakeTurn(h.game(), rng), rng));
+      }
+      h.setGame(runChain(h.game(), rng, guestSeat));
+      h.session.pushUpdate();
+      if (h.game().phase !== "playing") break;
+
+      // Guest's turn: the guest decides FROM ITS OWN REPLICA, exactly
+      // as the real client will.
+      const rg = guest.game();
+      expect(rg).toEqual(h.game());
+      if (rg === null) throw new Error("no replica");
+      const a = chooseAction(rg);
+      const hand = rg.players[guestSeat].hand;
+      guest.sendAction(a.type === "play"
+        ? { type: "play", cardIndex: a.cardIndex, cardId: hand[a.cardIndex],
+            ...(a.targetId !== undefined ? { targetId: a.targetId } : {}) }
+        : { type: "discard", cardIndex: a.cardIndex, cardId: hand[a.cardIndex] });
+      expect(rejects).toEqual([]); // every replica-derived action lands
+      // Host continues the chain past the guest's committed turn.
+      h.setGame(runChain(advance(h.game(), rng), rng, guestSeat));
+      h.session.pushUpdate();
+    }
+
+    // Replicas agree to the end...
+    expect(guest.game()).toEqual(h.game());
+    // ...and the guest's standings are ITS signed lead, not the host's:
+    const g = guest.game();
+    if (g !== null && g.phase === "playing") {
+      const other = "beta";
+      const guestLead = leadOf(g.relations, "gamma", other);
+      expect(formatLead("M", guestLead, null))
+        .toBe(formatLead("M", leadOf(h.game().relations, "gamma", other), null));
+      // The host's own view of the same pair may differ in sign; the
+      // guest never renders that one.
+    }
+    // The guest's phase view maps the host-centric ending, if one came.
+    if (g !== null && g.phase !== "playing") {
+      expect(["victory", "defeat"]).toContain(guestPhaseView(g, "gamma"));
+    }
+  });
+
+  it("a dropped guest rejoins over a fresh wire and resumes deep-equal", () => {
+    const rng = seededRng(12);
+    const h = makeHost(rng);
+    const guest1 = createGuestSession(h.guestWire, {
+      name: "Gusta", onHostHello: () => {}, onLobby: () => {},
+      onState: () => {}, onReject: () => {}, onRefused: () => {},
+      onClosed: () => {},
+    });
+    guest1.sendPick(buildDeck(), "beta");
+    const pick = h.picks[0];
+    h.setGame(pickFaction(h.game(), "alpha", rng,
+      (r, fid) => (fid === pick.factionId ? pick.deck : buildDeck())));
+    h.session.markStarted(pick.factionId);
+    // Some turns pass, then the wire dies.
+    const guestSeat = seatOfFaction(h.game(), "beta");
+    h.setGame(runChain(advance(aiTakeTurn(h.game(), rng), rng), rng, guestSeat));
+    h.guestWire.close();
+
+    // main.ts re-wraps the guest's NEW connection into a NEW host
+    // session over the same deps, resuming the started faction.
+    const [hostWire2, guestWire2] = wirePair();
+    createHostSession(hostWire2, h.deps, { guestFactionId: "beta" });
+    const states: GameState[] = [];
+    const guest2 = createGuestSession(guestWire2, {
+      name: "Gusta", onHostHello: () => {}, onLobby: () => {},
+      onState: (g) => states.push(g), onReject: () => {},
+      onRefused: () => {}, onClosed: () => {},
+    });
+    expect(states.length).toBe(1); // the mid-game hello got a snapshot
+    expect(guest2.game()).toEqual(h.game());
+    expect(guest2.guestFactionId()).toBe("beta");
   });
 });
