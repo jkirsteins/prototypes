@@ -56,6 +56,19 @@ imperative DOM in the existing start-screen style, no new machinery:
   failed attempt leaves the field editable to retry.
 - Opening a `?join=<peer-id>` URL is the same path with the field
   prefilled and the connection started automatically.
+- Both sides enter a display name in the panel (persisted as a
+  localStorage pref, defaulting to "Host" / "Guest"). Names cross in
+  the `hello` message.
+
+### Knowing who the other human is
+
+While playing, the other human's faction must be unmistakable. Three
+surfaces carry the player's name beside the faction: the scoreboard
+row for a human-controlled faction appends the name, the map hover on
+that faction's land carries a "Played by <name>" line, and the
+waiting status names both ("Waiting for <faction> (<name>)"). Player
+names are plain text, never segments - the rich-text rule covers card
+and faction names only.
 
 `join` is not a boot param. `applyBootParams` must keep returning
 `null` for a URL naming only `join`, so the guest's page keeps real
@@ -153,6 +166,25 @@ holds the turn, under the same input lock.
 The guest's round summary covers events since their last turn - the
 existing rule, unchanged, it just spans the host's turn and the AI
 seats between the guest's turns.
+
+## Host-seat engine privileges
+
+Three engine rules pivot on `humanSeat`, which in a multiplayer game
+is the host's seat. The design accepts them as prototype
+simplifications rather than generalizing the engine:
+
+- The turnip bar's Turnip harvest injection (and with it the empower
+  boon) is earned only by the host in-run. A guest's Grow crops plays
+  still bank turnips into their own meta profile.
+- The endings block is host-centric. The guest client maps the phase
+  for presentation: the host's `victory` renders as the guest's
+  defeat, and a `unified` ending whose unifier is the guest's own
+  faction renders as the guest's victory. The "You"/actor voice in
+  the log and postmortem is already correct via the localSeat
+  refactor.
+- The `stranded` ending is checked for the host seat only; a guest
+  vassal with no escape gets no automatic ending. The Surrender
+  button is hidden on the guest, whose exit is closing the tab.
 
 ## Disconnects and rejoin
 
