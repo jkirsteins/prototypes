@@ -37,8 +37,9 @@ navigation and the same URL gives the same run every time:
   `pendingPacks` in `src/meta.ts` and `NEW_CARD_GUARANTEES` in `src/packs.ts`.
   Boot params carry no games counter, so a booted page owes packs through XP
   alone.
-- `rel=faction:might=3,status=-2;other:might=1` - standings as **your signed
-  lead**, the `formatLead` convention the HUD already uses.
+- `rel=faction:might=3;other:might=-1` - standings as **your signed lead**,
+  the `formatLead` convention the HUD already uses. A pre-removal URL naming
+  `status=` still boots; the unknown-track rule drops that pair.
 - `popups=off` - sets the existing "Show popups" log pref.
 
 The deck screen therefore reads as three URLs rather than a hand-edited
@@ -110,7 +111,7 @@ plain-text segment contains a card name from `CARDS` or a faction name from
 
 Do not add a second modal, and do not restore the three-paragraph notice format.
 One `Continue`. One line per notice-worthy event: what card, who did it, and the
-standing it moved, as `(Status +1 -> 0)`. Rules consequences that are not tied to
+standing it moved, as `(Might +1 -> 0)`. Rules consequences that are not tied to
 one event - the Pay tribute injection, the shrunk-realm subjugation bar - go in
 the footer block under the list, deduplicated, not appended to a line.
 
@@ -290,8 +291,8 @@ animation itself the source of truth.
 The repo `AGENTS.md` card rule applies: a `POLICY_COVERAGE` branch, a discovery
 route, then play it. Also add a `NOTICE_RULES` entry for any new `GameEventType`
 - the exhaustive `Record` will refuse to compile until you decide modal or
-silent and write down why - and record `amount`/`track` on any event that moves
-a relation counter, or the before/after standings silently drift.
+silent and write down why - and record `amount` on any event that moves the
+Might counter, or the before/after standings silently drift.
 
 A card marked `secret: true` needs two more things checked, because neither is
 a type error. It must **move no relation counter** - `impactText` prints the
