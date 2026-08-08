@@ -551,6 +551,13 @@ describe("isCardPlayable", () => {
     expect(isCardPlayable(view(), "beta", "subjugate")).toBe(false);
     expect(isCardPlayable(view(), "beta", "incorporate")).toBe(false);
   });
+
+  it("the turnip harvest is never dead in hand - its roll always offers a live boon", () => {
+    expect(cardBlockReason(view(), "beta", "turnip-harvest")).toBeNull();
+    // even as a vassal: the wealth boon is unconditional
+    const sub = view({ overlords: new Map([["beta", "alpha"]]) });
+    expect(cardBlockReason(sub, "beta", "turnip-harvest")).toBeNull();
+  });
 });
 
 describe("playableSet", () => {

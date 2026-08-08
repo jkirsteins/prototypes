@@ -1223,6 +1223,131 @@ svg.map.dragging {
   background: #e6d6b4;
 }
 
+/* --- Turnip harvest ------------------------------------------------------ */
+
+/* The turnip bar chip: the treasury chip's shape, green for agrarian. The
+   count and the mini track render the same harvestProgress call. */
+.status-turnips {
+  border-left: 1px solid #d0d0d0;
+  padding-left: 12px;
+  color: #4e6b2f;
+  font-weight: 600;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* This rule sits later in the file than the global .hidden, so the display
+   above would win the tie without this - the same reasoning .notice-overlay
+   spells out beside that rule. */
+.status-turnips.hidden {
+  display: none;
+}
+
+.turnip-track {
+  display: inline-block;
+  width: 54px;
+  height: 7px;
+  border: 1px solid rgba(94, 124, 47, 0.5);
+  border-radius: 4px;
+  background: rgba(94, 124, 47, 0.1);
+  overflow: hidden;
+}
+
+.turnip-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #5e7c2f, #9dc35a);
+}
+
+/* The harvest choice and the empower picker share the notice chrome - same
+   overlay band (above .flying-card, like .notice-overlay), same light card -
+   so a modal over the hand is one look, not two. */
+.harvest-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(30, 24, 16, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.harvest-overlay.hidden {
+  display: none;
+}
+
+.harvest-card {
+  width: min(520px, calc(100% - 48px));
+  max-height: calc(100% - 64px);
+  display: flex;
+  flex-direction: column;
+  background: #fdf9f1;
+  border: 1px solid #c9b896;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  padding: 22px 24px;
+  text-align: center;
+  color: #3f3428;
+}
+
+/* The options are the scroll region and the Cancel button stays outside it -
+   the deck screen's lesson: what the player acts on must never clip away. */
+.harvest-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.harvest-option {
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid #a89468;
+  border-radius: 6px;
+  background: #f7efdd;
+  color: #3f3428;
+  cursor: pointer;
+}
+
+.harvest-option:hover:not(:disabled) {
+  background: #efe3c8;
+}
+
+.harvest-option-label {
+  font-weight: 600;
+}
+
+.harvest-option-text {
+  font-size: 12px;
+  color: #6b5d49;
+  margin-top: 2px;
+}
+
+.harvest-option.harvest-blocked {
+  cursor: default;
+  opacity: 0.55;
+  background: #f1ece0;
+}
+
+.harvest-reason {
+  font-size: 12px;
+  font-style: italic;
+  color: #8a6d4f;
+  margin-top: 2px;
+}
+
+/* The empower mark: the card glows until the play that spends it. */
+.card.card-empowered {
+  box-shadow: 0 0 12px 3px rgba(157, 195, 90, 0.85);
+}
+
 .log-entry.log-you {
   border-left: 3px solid #a8542f;
   background: #f7ecdc;

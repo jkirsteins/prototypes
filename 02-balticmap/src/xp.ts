@@ -1,4 +1,5 @@
 import type { GameEvent, GameEventType } from "./game";
+import type { RuleSelections } from "./rules";
 
 /** What each event type is worth to the human who caused it.
  *
@@ -29,6 +30,18 @@ export const XP_TABLE: Record<GameEventType, number> = {
   // was not a choice, and when the human is the lord it is not their event.
   "hostage-returned": 0,
   victory: 15,
+  // The bar crossing a threshold: a milestone the turnip plays built, worth
+  // about what sowing a Seeds of revolt is.
+  "harvest-earned": 2,
+  // The boon events pay through their base alone. A turnip traded for a real
+  // card and an empowerment are positional gains, like a release; the Might
+  // and wealth boons pay nothing beyond the harvest's own `play` - the player
+  // picked them off a menu, and scaling a menu pick would pay the same choice
+  // twice.
+  "harvest-traded": 1,
+  "harvest-might": 0,
+  "harvest-wealth": 0,
+  empowered: 1,
   draw: 0,
   reshuffle: 0,
   discard: 0,
@@ -127,6 +140,49 @@ export function levelForXp(xp: number): number {
   let level = 0;
   while (xpThresholdForLevel(level + 1) <= xp) level++;
   return level;
+}
+
+/** The turnip bar: every harvest costs more turnip plays than the last, so
+ *  the catch-up boon front-loads into the early game and then thins out on
+ *  its own - which the swap boons accelerate, since each one removes a
+ *  turnip from the deck that would have fed the next threshold. */
+export const HARVEST_BASE = 4;
+export const HARVEST_STEP = 2;
+
+/** Unlimited turns play several cards a round, so a turnip is roughly a third
+ *  as scarce and the bar prices it accordingly. Applied to every cost, not
+ *  the first: the multiplier is about the rules, not the run's age. */
+export function harvestMultiplier(rules: RuleSelections): number {
+  return rules.turn === "unlimited" ? 3 : 1;
+}
+
+/** Cumulative turnip plays that pay for the (0-indexed) nth harvest: costs
+ *  of 4, 6, 8, ... turnips summed, times the rules multiplier - 4, 10, 18,
+ *  28, ... under standard turns. */
+export function harvestThreshold(index: number, mult: number): number {
+  // sum of HARVEST_BASE + HARVEST_STEP*k for k in 0..index, closed form.
+  const n = index + 1;
+  return mult * (HARVEST_BASE * n + (HARVEST_STEP * index * n) / 2);
+}
+
+/** Harvests fully paid for by `turnips` grown. */
+export function harvestsEarned(turnips: number, mult: number): number {
+  let count = 0;
+  while (harvestThreshold(count, mult) <= turnips) count++;
+  return count;
+}
+
+/** Where the turnip count sits inside its current band, `LevelWindow`-style:
+ *  `into` out of `span`, and `into === span` never happens because crossing
+ *  the line starts the next band. The HUD bar and its count read this one
+ *  call, so they cannot disagree. */
+export function harvestProgress(
+  turnips: number,
+  mult: number,
+): { into: number; span: number } {
+  const earned = harvestsEarned(turnips, mult);
+  const base = earned === 0 ? 0 : harvestThreshold(earned - 1, mult);
+  return { into: turnips - base, span: harvestThreshold(earned, mult) - base };
 }
 
 /** The turnip-farming easter egg. Deliberately undocumented in the UI: no

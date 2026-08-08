@@ -178,6 +178,29 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 2, type: "incorporate-failed", targetFactionId: H, overlordFactionId: RIVAL },
     { turn: 1, playerId: 1, type: "incorporate-failed", targetFactionId: RIVAL, overlordFactionId: H },
   ],
+  // The harvest events are human-only in play (the injection is seat-gated),
+  // but each line still gets both sides so the sentences never lean on that.
+  "harvest-earned": [
+    { turn: 1, playerId: 1, type: "harvest-earned", cardId: "turnip-harvest" },
+    { turn: 1, playerId: 2, type: "harvest-earned", cardId: "turnip-harvest" },
+  ],
+  "harvest-traded": [
+    { turn: 1, playerId: 1, type: "harvest-traded", cardId: "raid" },
+    { turn: 1, playerId: 2, type: "harvest-traded", cardId: "raid" },
+  ],
+  "harvest-might": [
+    { turn: 1, playerId: 1, type: "harvest-might", targetFactionId: RIVAL, amount: 1 },
+    { turn: 1, playerId: 2, type: "harvest-might", targetFactionId: H, amount: 1 },
+    { turn: 1, playerId: 1, type: "harvest-might", amount: 1, affected: [RIVAL] },
+  ],
+  "harvest-wealth": [
+    { turn: 1, playerId: 1, type: "harvest-wealth", wealth: 5 },
+    { turn: 1, playerId: 2, type: "harvest-wealth", wealth: 1 },
+  ],
+  empowered: [
+    { turn: 1, playerId: 1, type: "empowered", cardId: "raid" },
+    { turn: 1, playerId: 2, type: "empowered", cardId: "raid" },
+  ],
   victory: [{ turn: 1, playerId: 1, type: "victory" }],
   defeat: [{ turn: 1, playerId: 1, type: "defeat", targetFactionId: H, overlordFactionId: RIVAL }],
   unified: [{ turn: 1, playerId: 1, type: "unified", overlordFactionId: RIVAL }],

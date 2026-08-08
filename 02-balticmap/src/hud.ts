@@ -20,7 +20,10 @@ import {
 } from "./target-explanations";
 import type { TooltipLine } from "./panel";
 import { memoryStorage, type MetaStorage } from "./meta";
-import { levelWindow, runXp } from "./xp";
+import type { HarvestEffectId, HarvestOption } from "./harvest";
+import {
+  harvestMultiplier, harvestProgress, levelWindow, runTurnips, runXp,
+} from "./xp";
 import { standingChangeText, standingsFor } from "./view";
 import {
   card, cardName, faction, factionIds, optionalPhrase, possessive, renderSegments,
@@ -128,6 +131,22 @@ export interface Hud {
    *  this takes no name of its own. Passing one is how the line came to
    *  read "Waiting for Curonians (Bela) (Bela)...". */
   setWaiting(factionId: string | null): void;
+  /** The Turnip harvest choice modal: three rolled boons, pick one. Dumb
+   *  render - the roll, its caching and what a pick means live in main.ts.
+   *  `onCancel` fires on the Cancel button and Escape; the modal stays up
+   *  until `hideHarvestUi` or another show call replaces it. */
+  showHarvestChoice(
+    options: HarvestOption[],
+    hooks: { onPick(effect: HarvestEffectId): void; onCancel(): void },
+  ): void;
+  /** The empower boon's sub-pick: one button per card id. Same contract as
+   *  showHarvestChoice. */
+  showCardPicker(
+    cardIds: string[],
+    hooks: { onPick(cardId: string): void; onCancel(): void },
+  ): void;
+  /** Closes whichever harvest overlay is up. Safe when none is. */
+  hideHarvestUi(): void;
 }
 
 const FAN_ANGLE_DEG = 5;
@@ -307,12 +326,17 @@ export function eventSegments(
       // because assassinate-ruler (the only card rulerSuffix fires for) is not
       // in DOUBLABLE_CARDS (src/cards.ts). If it were ever added there, a
       // multiplied assassination would silently lose its "- doubled" marker
-      // on this line.
+      // on this line. A prevented play resolved nothing, so it can carry
+      // neither of the other marks; readings and the empower mark can
+      // co-occur (an empowered Raid with omens held) and both are said.
+      const marks = e.prevented
+        ? ["prevented"]
+        : [
+            ...(e.readings ? [multipliedWord(2 ** e.readings)] : []),
+            ...(e.empowered ? ["empowered"] : []),
+          ];
       const suffix =
-        rulerSuffix(e) ??
-        (e.prevented
-          ? " - prevented"
-          : e.readings ? ` - ${multipliedWord(2 ** e.readings)}` : "");
+        rulerSuffix(e) ?? (marks.length > 0 ? ` - ${marks.join(", ")}` : "");
       // "on you", not "on Beta": the target is a name to look up everywhere
       // else, but the human already knows which faction they are.
       const targetedYou = !you && e.targetFactionId !== undefined
@@ -423,6 +447,32 @@ export function eventSegments(
         t(` garrisons stand watch (+${e.amount} Might against ${scope})`),
       ];
     }
+    case "harvest-earned":
+      // The bar crossing. "a" reads oddly against a plural-looking name, but
+      // the card is one card, and the article is what says a COPY arrived.
+      return clause(actor, "earn", [t(" a "), card("turnip-harvest")], "past");
+    case "harvest-traded":
+      return clause(actor, "trade", [
+        t(" a "), card("grow-crops"), t(" for "), card(e.cardId ?? ""),
+      ], "past");
+    case "harvest-might":
+      // The vs-all boon names no list - the impactText suffix carries the
+      // count, the same division of labour every Might line uses.
+      return e.affected !== undefined
+        ? clause(actor, "gain", [t(" Might over every living faction")], "past")
+        : clause(actor, "gain", [
+            t(" Might over "), faction(e.targetFactionId ?? ""),
+          ], "past");
+    case "harvest-wealth":
+      // The coins are inline, like the garrison line's own number: no counter
+      // moved, so no walk suffix will restate it.
+      return clause(actor, "gain", [
+        t(` ${e.wealth ?? 0} wealth from the harvest`),
+      ], "past");
+    case "empowered":
+      return clause(actor, "empower", [
+        t(" "), card(e.cardId ?? ""), t(" - its next play resolves twice"),
+      ], "past");
     case "surrendered":
       return clause(actor, "concede", [t(" the Baltic")], "past");
     case "victory":
@@ -788,7 +838,37 @@ export function createHud(
   // breakdown and the "can subjugate you at a lead of N" lines.
   const prowessChip = document.createElement("span");
   prowessChip.className = "status-prowess hidden";
-  status.append(statusText, wealthChip, prowessChip);
+  // The turnip bar: how far the player's Grow turnips plays have filled
+  // toward the next Turnip harvest. Count and fill both read
+  // `harvestProgress`, one call, so they cannot disagree; hidden entirely for
+  // a run that holds no turnips, where the mechanic does not exist.
+  const turnipChip = document.createElement("span");
+  turnipChip.className = "status-turnips hidden";
+  const turnipCount = document.createElement("span");
+  turnipCount.className = "turnip-count";
+  const turnipTrack = document.createElement("span");
+  turnipTrack.className = "turnip-track";
+  const turnipFill = document.createElement("span");
+  turnipFill.className = "turnip-fill";
+  turnipTrack.appendChild(turnipFill);
+  turnipChip.append(turnipCount, turnipTrack);
+  turnipChip.addEventListener("mousemove", (e) => {
+    cb.onShowTip?.(
+      [
+        { text: "Turnip bar" },
+        {
+          text:
+            "Every Grow turnips you play fills this bar. Filling it " +
+            "shuffles a Turnip harvest into your deck - play that card to " +
+            "pick one of three boons. Each harvest costs more turnips than " +
+            "the last.",
+        },
+      ],
+      e.clientX, e.clientY,
+    );
+  });
+  turnipChip.addEventListener("mouseleave", () => cb.onHideTip?.());
+  status.append(statusText, wealthChip, prowessChip, turnipChip);
 
   function makePile(kind: string, label: string) {
     const root = document.createElement("div");
@@ -891,6 +971,99 @@ export function createHud(
   noticeContinue.addEventListener("click", () => dismissSummary());
   noticeCard.append(noticeTitle, noticeLines, noticeFootnotes, noticeContinue);
   noticeOverlay.appendChild(noticeCard);
+
+  // The harvest overlays: the three-boon choice and the empower card picker,
+  // one overlay element restyled per step. Same chrome and z-band as the
+  // notice overlay so a modal above the hand is one look, not two.
+  const harvestOverlay = document.createElement("div");
+  harvestOverlay.className = "harvest-overlay hidden";
+  const harvestBox = document.createElement("div");
+  harvestBox.className = "harvest-card";
+  const harvestTitle = document.createElement("h2");
+  harvestTitle.className = "notice-title";
+  const harvestOptions = document.createElement("div");
+  harvestOptions.className = "harvest-options";
+  const harvestCancel = document.createElement("button");
+  harvestCancel.className = "notice-continue harvest-cancel";
+  harvestCancel.textContent = "Cancel";
+  harvestBox.append(harvestTitle, harvestOptions, harvestCancel);
+  harvestOverlay.appendChild(harvestBox);
+  let harvestOnCancel: (() => void) | null = null;
+  harvestCancel.addEventListener("click", () => harvestOnCancel?.());
+
+  function hideHarvestUi(): void {
+    harvestOverlay.classList.add("hidden");
+    harvestOnCancel = null;
+    // Same hygiene as dismissSummary: a close with the cursor on a name must
+    // not strand its tip or its map halo.
+    cb.onHideTip?.();
+    cb.onHighlightFaction?.(null);
+  }
+
+  function showHarvestChoice(
+    options: HarvestOption[],
+    hooks: { onPick(effect: HarvestEffectId): void; onCancel(): void },
+  ): void {
+    harvestTitle.textContent = "Turnip harvest - keep one boon";
+    harvestOnCancel = hooks.onCancel;
+    harvestOptions.replaceChildren(
+      ...options.map((option) => {
+        const btn = document.createElement("button");
+        btn.className = "harvest-option";
+        btn.classList.toggle("harvest-blocked", !option.eligible);
+        btn.disabled = !option.eligible;
+        const label = document.createElement("div");
+        label.className = "harvest-option-label";
+        label.appendChild(renderSegments(option.label, richTextHooks));
+        btn.appendChild(label);
+        if (option.reason !== null) {
+          const reason = document.createElement("div");
+          reason.className = "harvest-reason";
+          reason.appendChild(renderSegments(option.reason, richTextHooks));
+          btn.appendChild(reason);
+        }
+        if (option.eligible) {
+          btn.addEventListener("click", () => hooks.onPick(option.effect));
+        }
+        return btn;
+      }),
+    );
+    harvestOverlay.classList.remove("hidden");
+  }
+
+  function showCardPicker(
+    cardIds: string[],
+    hooks: { onPick(cardId: string): void; onCancel(): void },
+  ): void {
+    harvestTitle.textContent = "Empower a card - its next play resolves twice";
+    harvestOnCancel = hooks.onCancel;
+    harvestOptions.replaceChildren(
+      ...cardIds.map((cardId) => {
+        const btn = document.createElement("button");
+        btn.className = "harvest-option";
+        const label = document.createElement("div");
+        label.className = "harvest-option-label";
+        label.appendChild(renderSegments([card(cardId)], richTextHooks));
+        btn.appendChild(label);
+        // The rules text under the name, like a picker tile: the choice is
+        // about what the card does, and a hover-only answer defeats a list.
+        const text = document.createElement("div");
+        text.className = "harvest-option-text";
+        text.textContent = CARDS[cardId]?.text ?? "";
+        btn.appendChild(text);
+        btn.addEventListener("click", () => hooks.onPick(cardId));
+        return btn;
+      }),
+    );
+    harvestOverlay.classList.remove("hidden");
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (harvestOverlay.classList.contains("hidden")) return;
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    harvestOnCancel?.();
+  });
 
   /** Shows the round's summary and hides it again on Continue/Escape/Enter -
    *  there is no queue: one AI round is one modal (see AGENTS.md). */
@@ -1004,7 +1177,7 @@ export function createHud(
 
   container.append(
     menu, postmortem, status, scoreboard, surrenderBtn, endTurnBtn, deckPile.root,
-    discardPile.root, hand, logPanel, noticeOverlay,
+    discardPile.root, hand, logPanel, noticeOverlay, harvestOverlay,
   );
 
   let pendingPlayRect: DOMRect | null = null;
@@ -1358,6 +1531,8 @@ export function createHud(
       const card = document.createElement("button");
       card.className = "card";
       applyRarityBand(card, cardId);
+      // The empower mark: the glow holds until the play that spends it.
+      card.classList.toggle("card-empowered", state.empoweredCardId === cardId);
       const name = document.createElement("span");
       name.className = "card-name";
       name.textContent = CARDS[cardId]?.name ?? cardId;
@@ -1576,8 +1751,30 @@ export function createHud(
           `Prowess ${prowess}` +
           (cut > 0 ? ` (-${cut} to subjugation bars)` : "");
       }
+      // Lowercase "turnips": the common noun, per the naming rule - the card
+      // is named in the hover explanation, where it can be read in full.
+      // The LOCAL seat's bar, not seat 0's. Only the host can earn a harvest
+      // (the injection is host-seat-gated), but anybody can play the card, so
+      // a guest's chip has to count the guest's own turnips.
+      const human = humanPlayer(state);
+      const grown = runTurnips(state.log, localPlayerId());
+      const holdsTurnip =
+        human !== undefined && (
+          human.deck.includes("grow-crops") ||
+          human.hand.includes("grow-crops") ||
+          human.discard.includes("grow-crops"));
+      const showTurnips = grown > 0 || holdsTurnip;
+      turnipChip.classList.toggle("hidden", !showTurnips);
+      if (showTurnips) {
+        const { into, span } = harvestProgress(
+          grown, harvestMultiplier(state.rules),
+        );
+        turnipCount.textContent = `Turnips ${into}/${span}`;
+        turnipFill.style.width = `${Math.round((into / span) * 100)}%`;
+      }
     } else {
       prowessChip.classList.add("hidden");
+      turnipChip.classList.add("hidden");
     }
     if (state.phase === "pick-faction") {
       statusText.textContent = "Choose your faction";
@@ -1842,6 +2039,9 @@ export function createHud(
       endTurnBtn.disabled =
         !isLocalTurn(state) || state.playedThisTurn ||
         (cb.isResolving?.() ?? false);
+      // A run ending or a new game must not leave a harvest choice hanging
+      // over the wrong screen - the hideSummary reasoning, same shape.
+      if (state.phase !== "playing") hideHarvestUi();
 
       renderStatus(state);
 
@@ -1910,5 +2110,8 @@ export function createHud(
         }
       }
     },
+    showHarvestChoice,
+    showCardPicker,
+    hideHarvestUi,
   };
 }

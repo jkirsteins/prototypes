@@ -171,6 +171,29 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
       if (e.overlordFactionId === H) return [];
       return [{ kind: "add", factionId: A, delta: -e.amount }];
     }
+    case "harvest-might": {
+      // The Might boons. The vs-all boon carries `affected` - the frozen
+      // fan-out list, the `pactAgainst` trick - so both directions resolve
+      // exactly; the single-target boons are one pair, like a raid. The
+      // non-actor arms are defensive: only the human ever plays a harvest.
+      if (e.amount === undefined) return [];
+      if (e.affected !== undefined) {
+        if (A === H) {
+          return e.affected.map((f): LeadMove => (
+            { kind: "add", factionId: f, delta: e.amount! }
+          ));
+        }
+        if (e.affected.includes(H)) {
+          return [{ kind: "add", factionId: A, delta: -e.amount }];
+        }
+        return [];
+      }
+      const T = e.targetFactionId;
+      if (T === undefined) return [];
+      if (A === H) return [{ kind: "add", factionId: T, delta: e.amount }];
+      if (T === H) return [{ kind: "add", factionId: A, delta: -e.amount }];
+      return [];
+    }
     case "pact-lapsed":
       // The seal, run backwards. `playerId` here is only whose clock tick
       // noticed the expiry, so the allies come off the two id fields instead.

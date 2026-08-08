@@ -108,11 +108,11 @@
     "humanFaction": "lower-daugava-livs",
     "outcome": "defeat",
     "firstSubjugatedTurn": 5,
-    "firstOverlord": "selonians",
+    "firstOverlord": "jersikans",
     "subjugatedCount": 1,
     "releasedCount": 0,
     "defeatTurn": 5,
-    "conqueror": "selonians",
+    "conqueror": "jersikans",
     "turns": 5,
     "finalRealmSize": 1
   },

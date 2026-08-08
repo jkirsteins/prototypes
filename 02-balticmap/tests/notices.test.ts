@@ -100,6 +100,44 @@ describe("a founded settlement", () => {
   });
 });
 
+describe("the turnip harvest", () => {
+  it("a harvest earned is a modal for the human, and critical", () => {
+    const rule = NOTICE_RULES["harvest-earned"];
+    expect(rule.kind).toBe("modal");
+    const e = ev({
+      type: "harvest-earned", playerId: 1, cardId: "turnip-harvest",
+    });
+    if (rule.kind !== "modal") return;
+    expect(rule.appliesToHuman(e, ctx)).toBe(true);
+    expect(rule.critical?.(e, ctx)).toBe("A harvest is ready");
+    const s = oneSummary(e);
+    expect(s).not.toBeNull();
+    expect(lineText(s)).toContain("Turnip harvest");
+    expect(lineText(s)).toContain("shuffled into your deck");
+  });
+
+  it("pierces a muted popup - the critical path keeps it", () => {
+    const s = buildRoundSummary(
+      [ev({ type: "harvest-earned", playerId: 1, cardId: "turnip-harvest" })],
+      ctx,
+      { criticalOnly: true },
+    );
+    expect(s).not.toBeNull();
+    expect(s!.title).toBe("A harvest is ready");
+  });
+
+  it("the boons the player picked themselves stay silent", () => {
+    for (const type of [
+      "harvest-traded", "harvest-might", "harvest-wealth", "empowered",
+    ] as const) {
+      expect(NOTICE_RULES[type].kind, type).toBe("silent");
+    }
+    expect(
+      oneSummary(ev({ type: "harvest-wealth", playerId: 1, wealth: 5 })),
+    ).toBeNull();
+  });
+});
+
 describe("the ruler's seat", () => {
   it("a move stays silent, on the same grounds as a settlement", () => {
     expect(NOTICE_RULES["seat-moved"].kind).toBe("silent");

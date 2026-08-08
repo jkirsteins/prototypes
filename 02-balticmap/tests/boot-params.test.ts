@@ -281,6 +281,13 @@ describe("applyBootParams", () => {
       expect(boot("?faction=beta&hand=nope,alsonope").players[0].hand)
         .toEqual(dealt);
     });
+
+    it("accepts injection-only ids - the browser route to a Turnip harvest", () => {
+      // Same route hand=revolt uses: any id in CARDS boots, deck-buildable or
+      // not, so a harvest check is one navigation.
+      expect(boot("?faction=beta&hand=turnip-harvest").players[0].hand)
+        .toEqual(["turnip-harvest"]);
+    });
   });
 
   describe("?rel", () => {
