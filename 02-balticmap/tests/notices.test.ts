@@ -120,7 +120,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
     )!;
     expect(lineText(s)).toBe("Subjugate by Jersikans - you owe fealty to them");
     expect(footnoteTexts(s)).toEqual([
-      "Pay military tribute was shuffled into your deck. While it is in hand it must be played first.",
+      "Pay tribute was shuffled into your deck. While it is in hand it must be played first.",
     ]);
   });
 
@@ -151,7 +151,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
       "The fall of your overlord to Latgalians released you from vassalage, and none may subjugate you until turn 5",
     );
     expect(footnoteTexts(s)).toEqual([
-      "Pay military tribute was removed from your deck, hand and discard.",
+      "Pay tribute was removed from your deck, hand and discard.",
     ]);
   });
 
@@ -534,7 +534,7 @@ describe("buildRoundSummary: batch grouping", () => {
     expect(lineText(s, 0)).toBe("Subjugate by Jersikans - you owe fealty to them");
     expect(lineText(s, 1)).toBe("Subjugate by Latgalians - your allegiance shifts from Jersikans to them");
     expect(footnoteTexts(s)).toEqual([
-      "Pay military tribute was shuffled into your deck. While it is in hand it must be played first.",
+      "Pay tribute was shuffled into your deck. While it is in hand it must be played first.",
     ]);
   });
 
@@ -552,7 +552,7 @@ describe("buildRoundSummary: batch grouping", () => {
       "The fall of your overlord to Curonians released you from vassalage, and none may subjugate you until turn 4",
     );
     expect(footnoteTexts(s)).toEqual([
-      "Pay military tribute was removed from your deck, hand and discard.",
+      "Pay tribute was removed from your deck, hand and discard.",
     ]);
   });
 

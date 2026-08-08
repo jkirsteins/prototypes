@@ -65,7 +65,7 @@ describe("cards", () => {
       "Permanently absorb one of your vassals into your realm.",
     );
     expectProps(
-      "pay-military-tribute", "Pay military tribute", false, false, null, false, true,
+      "pay-military-tribute", "Pay tribute", false, false, null, false, true,
       "Forced: while a vassal, pay 1 wealth per land of your realm to your " +
         "overlord; what your treasury cannot cover, grant as Might instead.",
     );

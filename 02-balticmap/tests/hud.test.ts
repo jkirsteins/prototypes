@@ -1461,7 +1461,7 @@ describe("notice modal", () => {
     const overlay = q(container, ".notice-overlay");
     expect(overlay.classList.contains("hidden")).toBe(false);
     expect(lineTexts(container)).toEqual(["Subjugate by Alpha - you owe fealty to them"]);
-    expect(footnoteTexts(container)[0]).toContain("Pay military tribute was shuffled into your deck");
+    expect(footnoteTexts(container)[0]).toContain("Pay tribute was shuffled into your deck");
   });
 
   it("dismisses on Continue and stays dismissed on re-render", () => {
@@ -1721,7 +1721,7 @@ describe("notice details and hand tips", () => {
     hud.update(g);
     expect(q(container, ".notice-line").textContent).toContain("you owe fealty to them");
     expect(q(container, ".notice-footnote").textContent).toContain(
-      "Pay military tribute was shuffled into your deck",
+      "Pay tribute was shuffled into your deck",
     );
     expect(q(container, ".notice-footnotes").classList.contains("hidden")).toBe(false);
   });

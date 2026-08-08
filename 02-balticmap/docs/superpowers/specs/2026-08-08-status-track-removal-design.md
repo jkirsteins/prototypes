@@ -49,12 +49,15 @@ its lord.
 `rel=talavians:might=3,status=-2` boots with the might pair applied and the
 status pair swallowed. Pinned by a regression test.
 
-**Tribute is one card.** `TRIBUTE_CARDS` is a one-entry readonly list, kept
-as the single place the set is written down (injection, strip, legality,
-doubling, footnotes all read it). The plural footnote copy collapsed to
-"Pay military tribute was shuffled into your deck." via the existing
-`plural()` helpers. "Pay military tribute" keeps its name: the qualifier is
-vestigial with one tribute, but renaming is churn with no mechanical gain.
+**Tribute is one card, named "Pay tribute".** `TRIBUTE_CARDS` is a
+one-entry readonly list, kept as the single place the set is written down
+(injection, strip, legality, doubling, footnotes all read it). The plural
+footnote copy collapsed to "Pay tribute was shuffled into your deck." via
+the existing `plural()` helpers. The "military" qualifier was dropped with
+the second tribute: the id `pay-military-tribute` stays, since stored decks
+and the impact table key on it and a display rename buys nothing there. The
+lowercase common noun "pay tribute" in other cards' texts stays legal under
+the naming convention (the capitalized form is the card).
 
 **DEFAULT_DECK's freed slot went to Take hostage** - the vassal-defence verb
 the default deck lacked, already covered by AI step 5b. The balance run shows
