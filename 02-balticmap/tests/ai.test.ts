@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { POLICY_COVERAGE, chooseAction } from "../src/ai";
+import { POLICY_COVERAGE, chooseAction, aiTakeTurn } from "../src/ai";
 import { INCORPORATE_RAMP, loyaltyKey } from "../src/playability";
 import {
-  newGame, startGame, chooseDeck, pickFaction, type GameState,
+  newGame, startGame, chooseDeck, pickFaction, chooseRules, type GameState,
 } from "../src/game";
 import { bumpMight, type Relations } from "../src/relations";
 import { CARDS, buildDeck, type Rng } from "../src/cards";
@@ -772,5 +772,43 @@ describe("9c: level the ruler on a spare turn", () => {
     const action = chooseAction(g);
     expect(action.type).toBe("play");
     if (action.type === "play") expect(action.cardIndex).toBe(1);
+  });
+});
+
+function unlimitedAiPlaying(): GameState {
+  const g = chooseRules(startGame(newGame(["alpha", "beta", "gamma", "delta"])), {
+    turn: "unlimited",
+  });
+  return pickFaction(chooseDeck(g, buildDeck()), "beta", seededRng(1));
+}
+
+describe("aiTakeTurn under unlimited rules", () => {
+  it("plays multiple cards, then ends the turn without discarding", () => {
+    let g = unlimitedAiPlaying();
+    g = {
+      ...g,
+      players: g.players.map((pl, i) =>
+        i === 0 ? { ...pl, hand: ["grow-crops", "grow-crops", "revolt"] } : pl,
+      ),
+    };
+    const before = g.log.length;
+    const after = aiTakeTurn(g, seededRng(1));
+    expect(after.playedThisTurn).toBe(true);
+    const fresh = after.log.slice(before);
+    expect(fresh.filter((e) => e.type === "play")).toHaveLength(2);
+    expect(fresh.some((e) => e.type === "discard")).toBe(false);
+  });
+
+  it("a dead hand ends the turn with no discard and the hand intact", () => {
+    let g = unlimitedAiPlaying();
+    g = {
+      ...g,
+      players: g.players.map((pl, i) =>
+        i === 0 ? { ...pl, hand: ["revolt"] } : pl,
+      ),
+    };
+    const after = aiTakeTurn(g, seededRng(1));
+    expect(after.playedThisTurn).toBe(true);
+    expect(after.players[0].hand).toEqual(["revolt"]);
   });
 });

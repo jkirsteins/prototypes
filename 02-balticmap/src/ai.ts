@@ -6,7 +6,7 @@ import {
   incorporationChance, targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView, type Threat,
 } from "./playability";
-import { discardCard, playCard, viewOf, type GameState } from "./game";
+import { discardCard, endTurn, playCard, viewOf, type GameState } from "./game";
 
 export type AiAction =
   | { type: "play"; cardIndex: number; targetId?: string }
@@ -513,7 +513,29 @@ export function chooseAction(state: GameState): AiAction {
   return { type: "play", cardIndex: i0 };
 }
 
+/** Ceiling on plays per unlimited AI turn. The refill happens only at turn
+ *  start, so the hand itself bounds the loop; the cap is belt-and-braces
+ *  against a future card that adds cards to the hand mid-turn. */
+const MAX_AI_PLAYS = 16;
+
+/** One WHOLE turn for the current seat, in either mode - every caller wraps
+ *  this in `advance`, so a partial turn here would stall the game. Under
+ *  unlimited rules that means the same one-card policy consulted again on
+ *  each updated state until it finds nothing playable: no new branches, so
+ *  POLICY_COVERAGE is untouched, and no discards, so a `discard` verdict is
+ *  the stop signal rather than an action. */
 export function aiTakeTurn(state: GameState, rng: Rng): GameState {
+  if (state.rules.turn === "unlimited") {
+    let g = state;
+    for (let plays = 0; g.phase === "playing" && plays < MAX_AI_PLAYS; plays++) {
+      const a = chooseAction(g);
+      if (a.type === "discard") break;
+      const next = playCard(g, a.cardIndex, rng, a.targetId);
+      if (next === g) break; // a refused play must not spin
+      g = next;
+    }
+    return endTurn(g);
+  }
   const a = chooseAction(state);
   return a.type === "discard"
     ? discardCard(state, a.cardIndex)
