@@ -23,6 +23,11 @@ export interface DeckScreenView {
   savedPicks: string[]; // the last confirmed loadout, to select on arrival
   /** The rule picks to display - the owner's saved preference. */
   rules: RuleSelections;
+  /** True when the picks are somebody else's to make: a network guest plays
+   *  the HOST's rules, because there is one engine and it is the host's. The
+   *  radios go read-only and the summary says whose they are, rather than
+   *  offering a choice that the start snapshot would silently overwrite. */
+  rulesLocked?: boolean;
 }
 
 export interface DeckScreenCallbacks {
@@ -234,9 +239,16 @@ export function createDeckScreen(
       }
 
       currentRules = view.rules;
-      rulesSummary.textContent = summarizeRules(view.rules);
+      const locked = view.rulesLocked === true;
+      rulesSummary.textContent = locked
+        ? `${summarizeRules(view.rules)} (set by the host)`
+        : summarizeRules(view.rules);
       for (const r of radios) {
         r.input.checked = view.rules[r.axisId] === r.optionId;
+        // Read-only rather than hidden: a guest still needs to know which
+        // rules it is about to play under, and the modal is where they are
+        // written out in full.
+        r.input.disabled = locked;
       }
 
       // Clamping to the cap here is what prunes second copies the moment the

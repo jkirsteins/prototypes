@@ -18,6 +18,7 @@ import {
 import type { TargetExplanation } from "../src/target-explanations";
 import { memoryStorage, type MetaStorage } from "../src/meta";
 import { ROUND_SUMMARY_TITLE } from "../src/notices";
+import { runXp } from "../src/xp";
 import { card, t } from "../src/rich-text";
 
 function seededRng(seed: number): Rng {
@@ -43,6 +44,8 @@ function setup(opts?: {
   onHighlightFaction?: (factionId: string | null) => void;
   lifetimeXp?: () => number;
   packsWaiting?: () => number;
+  localPlayerId?: () => number;
+  playerNameOf?: (factionId: string) => string | null;
   placeNameFactionIds?: Set<string>;
   /** LogPrefs storage. Defaults to a fresh, isolated memoryStorage() per
    *  call - pass the SAME instance to two setup() calls to test that
@@ -70,6 +73,8 @@ function setup(opts?: {
       : {}),
     ...(opts?.lifetimeXp ? { lifetimeXp: opts.lifetimeXp } : {}),
     ...(opts?.packsWaiting ? { packsWaiting: opts.packsWaiting } : {}),
+    ...(opts?.localPlayerId ? { localPlayerId: opts.localPlayerId } : {}),
+    ...(opts?.playerNameOf ? { playerNameOf: opts.playerNameOf } : {}),
   };
   // Delta is here for the tests that need a fourth faction; FACTIONS itself
   // stays three, so nothing else renders it.
@@ -2551,6 +2556,123 @@ describe("secret cards in the activity log", () => {
     hud.update({ ...g, log: [...g.log, guard(2)] });
     expect(texts(container).some((t) => /a secret card/.test(t))).toBe(true);
     expect(texts(container).some((t) => /played Bodyguard/.test(t))).toBe(false);
+  });
+});
+
+describe("localPlayerId", () => {
+  // Picking alpha as the seat-picker's faction leaves alpha at id 1, so beta
+  // lands at id 2 (seat 1) - the guest-perspective case the callback exists
+  // for, where the local player is not the array's first player.
+  const FOUR = ["alpha", "beta", "gamma", "delta"];
+
+  function playing(): GameState {
+    return pickFaction(
+      chooseDeck(startGame(newGame(FOUR)), buildDeck()), "alpha", seededRng(1),
+    );
+  }
+
+  // bodyguard is one of the two cards in the secret set CARDS/GUARDS pin as
+  // an identity in tests/cards.test.ts ("keeps the secret cards and the
+  // guards the same set") - not a guess.
+  const secretId = "bodyguard";
+
+  const withEvents = (g: GameState, events: GameEvent[]): GameState =>
+    ({ ...g, log: [...g.log, ...events] });
+
+  const yourPlay: GameEvent = {
+    turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "gamma",
+  };
+  const rivalSecretPlay: GameEvent = {
+    turn: 1, playerId: 1, type: "play", cardId: secretId,
+  };
+
+  it("a hud for player 2 says You for player 2 and hides player 1's secret plays", () => {
+    const { container, hud } = setup({ localPlayerId: () => 2 });
+    hud.update(withEvents(playing(), [yourPlay, rivalSecretPlay]));
+    const logText = q(container, ".activity-log").textContent!;
+    expect(logText).toContain("You"); // player 2's own play
+    expect(logText).toContain("a secret card"); // player 1's play hidden
+    expect(logText).not.toContain(CARDS[secretId].name);
+  });
+
+  it("defaults to player 1 when the callback is absent", () => {
+    const { container, hud } = setup();
+    hud.update(withEvents(playing(), [yourPlay, rivalSecretPlay]));
+    // Same state, but with no localPlayerId the default (1) makes player 1's
+    // secret play the local player's own, so it renders by its real name.
+    const logText = q(container, ".activity-log").textContent!;
+    expect(logText).toContain(CARDS[secretId].name);
+  });
+
+  // The postmortem's XP is what `bankRunProgress` banks, and that banks the
+  // LOCAL seat's earnings. A defaulted player 1 here quoted the host's total
+  // on the guest's own end screen - two screens disagreeing about the same
+  // run, with only the guest's one wrong.
+  it("scores the postmortem's XP for the local seat, not seat 0", () => {
+    // Two raids by player 1, one by player 2, so the totals cannot coincide.
+    const raid = (playerId: number): GameEvent => ({
+      turn: 1, playerId, type: "play", cardId: "raid",
+      targetFactionId: "gamma", amount: 1,
+    });
+    const ended = (g: GameState): GameState =>
+      ({ ...g, phase: "defeat" as const });
+    const log = [raid(1), raid(1), raid(2)];
+
+    const mine = setup({ localPlayerId: () => 2 });
+    mine.hud.update(ended(withEvents(playing(), log)));
+    const guestXp = q(mine.container, ".pm-xp").textContent!;
+
+    const hosts = setup();
+    hosts.hud.update(ended(withEvents(playing(), log)));
+    const hostXp = q(hosts.container, ".pm-xp").textContent!;
+
+    expect(guestXp).toBe(`+${runXp(log, 2)} XP earned`);
+    expect(hostXp).toBe(`+${runXp(log, 1)} XP earned`);
+    // The whole point: one raid against two cannot score the same.
+    expect(guestXp).not.toBe(hostXp);
+  });
+
+  // Every faction name the HUD renders is a segment, and the segment renderer
+  // is where the controlling player's name is appended - so the log, the round
+  // summary, the postmortem and the scoreboard all carry it from one wiring.
+  // The log is checked here because it is the surface the requirement named:
+  // "Raid played against you by Osilians (Bela)".
+  it("names the human behind a faction wherever the faction is named", () => {
+    const state = withEvents(playing(), [yourPlay]); // player 2 (beta) raids gamma
+    const named = setup({ playerNameOf: (id) => (id === "gamma" ? "Bela" : null) });
+    named.hud.update(state);
+    const withName = q(named.container, ".activity-log").textContent!;
+    expect(withName).toContain("Gamma (Bela)");
+    // Only the faction the callback answers for gets one. Beta is named on the
+    // very same line as the raider, and stays bare.
+    expect(withName).toContain("Beta");
+    expect(withName).not.toContain("Beta (");
+
+    // The same state with no callback is the solo game, unchanged.
+    const plain = setup();
+    plain.hud.update(state);
+    expect(q(plain.container, ".activity-log").textContent!).not.toContain("(Bela)");
+  });
+
+  // Only the host seat can surrender, so on a guest's screen this run ended
+  // by somebody else's choice. "You conceded" over a game the player was
+  // still playing is a lie about what they just did.
+  it("says who conceded, rather than blaming the reader", () => {
+    const conceded: GameEvent[] = [
+      { turn: 3, playerId: 1, type: "surrendered" },
+    ];
+    const ended = (g: GameState): GameState =>
+      ({ ...g, phase: "defeat" as const });
+
+    const theirs = setup({ localPlayerId: () => 2 });
+    theirs.hud.update(ended(withEvents(playing(), conceded)));
+    expect(q(theirs.container, ".pm-cause").textContent).toContain(
+      "Your opponent conceded",
+    );
+
+    const ours = setup();
+    ours.hud.update(ended(withEvents(playing(), conceded)));
+    expect(q(ours.container, ".pm-cause").textContent).toContain("You conceded");
   });
 });
 

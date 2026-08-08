@@ -1686,6 +1686,14 @@ svg.map.dragging {
   border-color: #7a2f2f;
 }
 
+/* Ending the run is a host-seat privilege - the engine's endings pivot on
+   that seat - so the guest is not offered it. `onSurrender` refuses the
+   guest too; this only stops a button nothing behind it would honour from
+   being on screen at all. */
+.net-guest .surrender-btn {
+  display: none;
+}
+
 /* Bottom-right, clear of the hand fan and the discard pile - re-check the
    corner in a browser whenever either moves. */
 .end-turn-btn {
@@ -1879,4 +1887,68 @@ svg.map.dragging {
 
 .ds-rules-done {
   margin-top: 16px;
+}
+
+/* "Play with a friend" panel - a dark box, so it states its own
+   colour; see the dark-box rule in AGENTS.md. */
+.net-panel {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 30;
+  background: #1b1710;
+  color: #e8ddc8;
+  border: 1px solid #4a4032;
+  border-radius: 6px;
+  padding: 10px 12px;
+  max-width: 320px;
+  font-size: 13px;
+}
+.net-panel.hidden { display: none; }
+.net-panel .net-title { font-weight: 600; margin-bottom: 6px; }
+.net-panel .net-row { display: flex; gap: 6px; margin: 4px 0; align-items: center; }
+.net-panel input {
+  flex: 1;
+  min-width: 0;
+  background: #2a241a;
+  color: #e8ddc8;
+  border: 1px solid #4a4032;
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+.net-panel button {
+  background: #3a3226;
+  color: #e8ddc8;
+  border: 1px solid #5a4f3d;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.net-panel .net-copy-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+}
+.net-panel .net-copy-row code {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.net-panel .net-status { margin-top: 6px; min-height: 1em; opacity: 0.9; }
+.net-panel .hidden { display: none; }
+
+/* A live connection is not a lobby. The name field, "Host a game" and the
+   Join row are the controls for MAKING a connection and have nothing to say
+   while one is running, so a connected panel is its status line, its invite
+   block (.net-copy-row, not .net-row - deliberately untouched here) and
+   Reconnect. A drop clears the class and brings them all back.
+
+   Compound selectors, so specificity (0,3,0) settles this against both
+   `.net-panel .net-row`'s display and the `.hidden` rule above rather than
+   source order - the convention the two rules above already rely on. */
+.net-panel.net-connected .net-row,
+.net-panel.net-connected .net-host {
+  display: none;
 }

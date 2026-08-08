@@ -126,6 +126,10 @@ describe("parseBootParams", () => {
     expect(params("?popups=on").popups).toBe(true);
   });
 
+  it("a URL naming only join is not a boot param - the player's page stays untouched", () => {
+    expect(parseBootParams("?join=abc123")).toBeNull();
+  });
+
   it("parses relation clauses, both signs", () => {
     expect(params("?rel=alpha:might=3;gamma:might=-1").rel).toEqual([
       { factionId: "alpha", might: 3 },

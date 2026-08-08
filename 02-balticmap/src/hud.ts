@@ -1,7 +1,7 @@
 import { CARDS, FAN_OUT_CARDS, guardAgainst } from "./cards";
 import { applyRarityBand } from "./rarity-band";
 import {
-  isHumanTurn, victoryRealmSize, viewOf, type GameEvent, type GameState,
+  victoryRealmSize, viewOf, type GameEvent, type GameState,
 } from "./game";
 import { flyCard, runAnimation, type Flight } from "./animate";
 import { fullRealmOf, incorporatedRealmOf } from "./relations";
@@ -78,6 +78,17 @@ export interface HudCallbacks {
    *  the scoreboard). Absent where there is no map. */
   onShowTip?(lines: TooltipLine[], clientX: number, clientY: number): void;
   onHideTip?(): void;
+  /** The player id of the seat this screen belongs to. Absent means 1
+   *  (seat 0), which is every solo game and the host. The guest's
+   *  screen passes its own seat's player id so "You", the secrecy
+   *  rules, the log filters and the standings all pivot on the right
+   *  seat. A callback, not a constant: the guest learns its seat from
+   *  the start snapshot, after createHud has run. */
+  localPlayerId?(): number;
+  /** The display name of the human behind this faction, or null. Drawn
+   *  beside the faction in the scoreboard. Plain text, not a segment -
+   *  the rich-text rule covers card and faction names only. */
+  playerNameOf?(factionId: string): string | null;
 }
 
 export interface Hud {
@@ -113,6 +124,13 @@ export interface Hud {
    *  says so, and says how to clear it, since a held highlight with nothing
    *  explaining it reads as the game being stuck. */
   setPinned(factionId: string | null): void;
+  /** Renders "Waiting for <faction>..." in the status bar while a remote
+   *  seat holds the turn; null clears it. The faction is a segment, which
+   *  is also where the player's name comes from: `renderSegments` appends
+   *  "(Bela)" beside every faction it draws that a human is playing, so
+   *  this takes no name of its own. Passing one is how the line came to
+   *  read "Waiting for Curonians (Bela) (Bela)...". */
+  setWaiting(factionId: string | null): void;
   /** The Turnip harvest choice modal: three rolled boons, pick one. Dumb
    *  render - the roll, its caching and what a pick means live in main.ts.
    *  `onCancel` fires on the Cancel button and Escape; the modal stays up
@@ -211,8 +229,8 @@ function pileLayers(count: number): number {
  *  safe to resolve from state; the ruler's name is not, so it comes off the
  *  event, where it was stamped when the event happened. Ruler names stay
  *  plain text - there is no hover target for a person. */
-function actorOf(e: GameEvent, state: GameState): Speaker {
-  if (e.playerId === 1) return { segments: [t("You")], person: "second" };
+function actorOf(e: GameEvent, state: GameState, localPlayerId: number): Speaker {
+  if (e.playerId === localPlayerId) return { segments: [t("You")], person: "second" };
   const factionId = state.players.find((pl) => pl.id === e.playerId)?.factionId;
   const segments =
     factionId === undefined
@@ -261,9 +279,9 @@ function rulerSuffix(e: GameEvent): string | null {
  *  pass ended up flashing "You played Bodyguard" as a reveal: the reveal walk
  *  counted the player's own guard as a secret, so spending it rewrote and
  *  flashed a line the player had never been shown a hidden version of. */
-function hidesItsCard(e: GameEvent): boolean {
+function hidesItsCard(e: GameEvent, localPlayerId: number): boolean {
   return (
-    e.type === "play" && e.playerId !== 1 &&
+    e.type === "play" && e.playerId !== localPlayerId &&
     e.cardId !== undefined && CARDS[e.cardId]?.secret === true
   );
 }
@@ -280,10 +298,12 @@ export function eventSegments(
   e: GameEvent,
   state: GameState,
   reveal = false,
+  localPlayerId = 1,
 ): Segment[] {
-  const you = e.playerId === 1;
-  const actor = actorOf(e, state);
-  const humanFactionId = state.players.find((pl) => pl.id === 1)?.factionId;
+  const you = e.playerId === localPlayerId;
+  const actor = actorOf(e, state, localPlayerId);
+  const humanFactionId =
+    state.players.find((pl) => pl.id === localPlayerId)?.factionId;
   switch (e.type) {
     case "draw":
       // Content differs, not agreement: you see WHICH card you drew and they
@@ -299,7 +319,7 @@ export function eventSegments(
       // CLAUDE.md: that rule makes a NAME a node the player can point at, and
       // there is no name here to point at. Nothing in "a secret card" can fall
       // behind a rename in src/cards.ts.
-      if (!reveal && hidesItsCard(e)) {
+      if (!reveal && hidesItsCard(e, localPlayerId)) {
         return clause(actor, "play", [t(" a secret card")], "past");
       }
       // rulerSuffix takes precedence over the readings marker: safe only
@@ -483,7 +503,7 @@ export function eventSegments(
  *  Derived from the log rather than stored on GameState, and living beside
  *  `isObservable` for the same reason: what the player has seen is a fact about
  *  the player, not about the board. The rules do not change. */
-export function revealedSecrets(state: GameState): Set<number> {
+export function revealedSecrets(state: GameState, localPlayerId = 1): Set<number> {
   const out = new Set<number>();
   /** `${factionId}|${cardId}` -> the log indices of that faction's hidden plays
    *  of that card still unrevealed, oldest first. An array rather than a single
@@ -497,7 +517,7 @@ export function revealedSecrets(state: GameState): Set<number> {
     // `hidesItsCard`, not "is a secret card": only a play the log actually hid
     // has anything to reveal. Your own guard is on screen by name from the
     // moment you post it, and spending it must not rewrite or flash that line.
-    if (hidesItsCard(e)) {
+    if (hidesItsCard(e, localPlayerId)) {
       const factionId = state.players.find((pl) => pl.id === e.playerId)?.factionId;
       if (factionId === undefined || e.cardId === undefined) return;
       const k = key(factionId, e.cardId);
@@ -602,6 +622,25 @@ export function createHud(
   placeNameFactionIds: Set<string> = new Set(),
   logStorage: MetaStorage = memoryStorage(),
 ): Hud {
+  // The one read for "who is the local player" - see HudCallbacks.localPlayerId.
+  // Absent means seat 0 (player id 1), every solo game and the host.
+  const localPlayerId = (): number => cb.localPlayerId?.() ?? 1;
+  /** The local player's own PlayerState - the seat-0 lookup every one of
+   *  these call sites used to do directly. Undefined only when the state
+   *  has no players yet. */
+  const humanPlayer = (state: GameState) =>
+    state.players.find((pl) => pl.id === localPlayerId());
+  /** Whether the seat on turn is the one this screen plays. The engine's
+   *  own `isHumanTurn` answers "is it seat 0", which is the host's seat -
+   *  true, and the wrong answer, on every screen but the host's. The hand,
+   *  the End turn button and the status line all pivot on this, so a guest
+   *  asking the engine's question could not play on its own turn and could
+   *  click on the host's. Identical to `state.current === 0` wherever
+   *  `localPlayerId` is left at its default. */
+  const isLocalTurn = (state: GameState): boolean =>
+    state.phase === "playing" &&
+    state.players[state.current]?.id === localPlayerId();
+
   const factionName = (id: string | undefined): string =>
     (id !== undefined ? factionNames.get(id) : undefined) ?? id ?? "";
 
@@ -611,6 +650,10 @@ export function createHud(
     showTip: cb.onShowTip,
     hideTip: cb.onHideTip,
     highlightFaction: cb.onHighlightFaction,
+    // Every faction name the HUD renders carries who is playing it, from this
+    // one wiring - see RichTextHooks.playerNameOf. Absent outside a network
+    // game, so nothing but a multiplayer run renders any differently.
+    playerNameOf: (id) => cb.playerNameOf?.(id) ?? null,
   };
 
   /** Whether the player could actually know this happened.
@@ -633,9 +676,9 @@ export function createHud(
     // but garrison lines from both surviving blocs and the events that actually
     // matter scroll away. The player's own is kept, because that is where they
     // learn the rule exists; a rival's shows up in the Might lead on the badge.
-    if (e.type === "garrisoned") return e.playerId === 1;
+    if (e.type === "garrisoned") return e.playerId === localPlayerId();
     if (e.type !== "seeded") return true;
-    return e.playerId === 1 || e.overlordFactionId === humanFactionId;
+    return e.playerId === localPlayerId() || e.overlordFactionId === humanFactionId;
   }
 
   /** What you played or discarded, and the events your own play caused. Never
@@ -647,14 +690,14 @@ export function createHud(
    *  seat whose clock tick noticed it (see sweepLapsedPacts in game.ts) - and
    *  they are exactly the noise the filters exist to remove. */
   function isYourDoing(e: GameEvent): boolean {
-    return e.playerId === 1 && e.type !== "garrisoned" &&
+    return e.playerId === localPlayerId() && e.type !== "garrisoned" &&
       e.type !== "reshuffle" && e.type !== "pact-lapsed";
   }
 
   function involvesHuman(e: GameEvent, humanFactionId: string | undefined): boolean {
     if (humanFactionId === undefined) return false;
     return (
-      e.playerId === 1 ||
+      e.playerId === localPlayerId() ||
       e.targetFactionId === humanFactionId ||
       e.overlordFactionId === humanFactionId
     );
@@ -1063,7 +1106,7 @@ export function createHud(
   /** Shared with the "Targeting me" log filter (isNoticeWorthy) so the two
    *  surfaces cannot disagree about which events matter to the human. */
   function buildNoticeCtx(state: GameState): NoticeCtx | null {
-    const human = state.players[0];
+    const human = humanPlayer(state);
     if (!human) return null;
     return {
       humanFactionId: human.factionId,
@@ -1093,13 +1136,14 @@ export function createHud(
     if (ctx === null) return;
     const summary = buildRoundSummary(fresh, ctx, {
       criticalOnly: !logPrefs.showPopups,
-    });
+    }, localPlayerId());
     if (summary === null) return;
-    // A live flight means one thing only: the human's own played card is on
-    // screen. `animateEvents` skips every event with `playerId !== 1` and the
-    // draw is deliberately untracked, so this is the honest test for "the turn
-    // this summary describes is not over yet" - read off the animation rather
-    // than from a predicate that re-guesses which events animate.
+    // A live flight means one thing only: the local player's own played card
+    // is on screen. `animateEvents` skips every event with
+    // `playerId !== localPlayerId()` and the draw is deliberately untracked,
+    // so this is the honest test for "the turn this summary describes is not
+    // over yet" - read off the animation rather than from a predicate that
+    // re-guesses which events animate.
     if (liveFlights.size > 0) {
       pendingSummary = summary;
       return;
@@ -1143,6 +1187,12 @@ export function createHud(
    *  pin and a plain hover drive alike, while this is only ever set by a click
    *  and is what the bar has to announce. */
   let pinnedFaction: string | null = null;
+  /** The faction a remote seat is holding the turn on, for the status bar -
+   *  see Hud.setWaiting. Just the faction: who is behind it is the segment
+   *  renderer's business, not this line's. Null when nothing is waiting,
+   *  which is every solo game: nobody outside the network wiring ever calls
+   *  setWaiting at all. */
+  let waitingFaction: string | null = null;
 
   /** Sets one entry's dimming from `highlightedFaction`. An entry is lit when
    *  it names that faction - `data-factions`, written in renderLog. */
@@ -1294,7 +1344,7 @@ export function createHud(
   ): string[] {
     const named = factionIds(segs);
     if (
-      e.playerId === 1 && e.type !== "pact-lapsed" &&
+      e.playerId === localPlayerId() && e.type !== "pact-lapsed" &&
       humanFactionId !== undefined && !named.includes(humanFactionId)
     ) {
       named.push(humanFactionId);
@@ -1312,11 +1362,11 @@ export function createHud(
    *  wrong, where rebuilding it from a walk that no longer exists could be. */
   function revealEntry(entry: HTMLElement, e: GameEvent, state: GameState): void {
     const suffix = entry.querySelector(".log-change");
-    const segs = eventSegments(e, state, true);
+    const segs = eventSegments(e, state, true, localPlayerId());
     entry.replaceChildren(renderSegments(segs, richTextHooks));
     if (suffix !== null) entry.appendChild(suffix);
     entry.dataset.factions =
-      namedFactions(segs, e, state.players[0]?.factionId).join(" ");
+      namedFactions(segs, e, humanPlayer(state)?.factionId).join(" ");
     applyLogHighlight(entry);
     // A line that rewrites itself several screens up is silent otherwise. The
     // flash is one CSS animation and nothing waits on it - see the "never
@@ -1335,12 +1385,12 @@ export function createHud(
     }
     const base = renderedEvents;
     const fresh = state.log.slice(base);
-    const humanFactionId = state.players[0]?.factionId;
+    const humanFactionId = humanPlayer(state)?.factionId;
     const noticeCtx = buildNoticeCtx(state);
     // Over the WHOLE log, not just `fresh`: the play a reveal makes public is
     // by definition an older one, and the event that reveals it is the fresh
     // one. Cheap - one pass over an append-only array, once per render.
-    const revealed = revealedSecrets(state);
+    const revealed = revealedSecrets(state, localPlayerId());
     // Index-parallel to `fresh`, INCLUDING the events isObservable drops: the
     // walk runs backwards from the leads as they stand now, so a hidden event
     // that moved a counter (a rival's garrison, a draw's reshuffle) has to be
@@ -1373,7 +1423,7 @@ export function createHud(
       // nothing to flash at a player who has not seen the hidden version.
       const isRevealed = revealed.has(logIndex);
       if (isRevealed) shownRevealed.add(logIndex);
-      const segs = eventSegments(e, state, isRevealed);
+      const segs = eventSegments(e, state, isRevealed, localPlayerId());
       entry.replaceChildren(renderSegments(segs, richTextHooks));
       entry.dataset.factions = namedFactions(segs, e, humanFactionId).join(" ");
       applyLogHighlight(entry);
@@ -1388,7 +1438,8 @@ export function createHud(
       // Tagged at render time, not re-evaluated on toggle: the "Targeting me"
       // filter just shows/hides by these classes, retroactively and instantly.
       entry.classList.toggle(
-        "notice-worthy", noticeCtx !== null && isNoticeWorthy(e, noticeCtx),
+        "notice-worthy",
+        noticeCtx !== null && isNoticeWorthy(e, noticeCtx, localPlayerId()),
       );
       entry.classList.toggle("log-mine", isYourDoing(e));
       if (e.consequence !== true) {
@@ -1455,11 +1506,11 @@ export function createHud(
 
   function renderHand(state: GameState): void {
     hand.replaceChildren();
-    const human = state.players[0];
+    const human = humanPlayer(state);
     if (!human) return;
     const n = human.hand.length;
     const canPlay =
-      isHumanTurn(state) && !state.playedThisTurn &&
+      isLocalTurn(state) && !state.playedThisTurn &&
       !(cb.isResolving?.() ?? false);
     const canPlayCardCb = cb.canPlayCard ?? (() => true);
     human.hand.forEach((cardId, i) => {
@@ -1657,7 +1708,7 @@ export function createHud(
   /** Human-only: AI actions surface as log entries, nothing moves on screen. */
   function animateEvents(fresh: GameEvent[]): void {
     for (const e of fresh) {
-      if (e.playerId !== 1) continue;
+      if (e.playerId !== localPlayerId()) continue;
       if (e.type === "draw") animateDraw();
       else if (e.type === "play") animatePlay(e.cardId ?? "");
       else if (e.type === "reshuffle") pulseDeck();
@@ -1670,7 +1721,7 @@ export function createHud(
   let armedIndex: number | null = null;
 
   function renderStatus(state: GameState): void {
-    const humanFaction = state.players[0]?.factionId;
+    const humanFaction = humanPlayer(state)?.factionId;
     const showWealth = state.phase === "playing" && humanFaction !== undefined;
     wealthChip.classList.toggle("hidden", !showWealth);
     if (showWealth) {
@@ -1688,12 +1739,16 @@ export function createHud(
       }
       // Lowercase "turnips": the common noun, per the naming rule - the card
       // is named in the hover explanation, where it can be read in full.
-      const human = state.players[0];
-      const grown = runTurnips(state.log);
+      // The LOCAL seat's bar, not seat 0's. Only the host can earn a harvest
+      // (the injection is host-seat-gated), but anybody can play the card, so
+      // a guest's chip has to count the guest's own turnips.
+      const human = humanPlayer(state);
+      const grown = runTurnips(state.log, localPlayerId());
       const holdsTurnip =
-        human.deck.includes("grow-crops") ||
-        human.hand.includes("grow-crops") ||
-        human.discard.includes("grow-crops");
+        human !== undefined && (
+          human.deck.includes("grow-crops") ||
+          human.hand.includes("grow-crops") ||
+          human.discard.includes("grow-crops"));
       const showTurnips = grown > 0 || holdsTurnip;
       turnipChip.classList.toggle("hidden", !showTurnips);
       if (showTurnips) {
@@ -1710,17 +1765,29 @@ export function createHud(
     if (state.phase === "pick-faction") {
       statusText.textContent = "Choose your faction";
     } else if (state.phase === "playing") {
-      // The pin outranks the turn prompt: while it is up, the one thing the
-      // player needs from this bar is what is pinned and how to let go of it.
-      // A segment, not a string - the name lights its realm here too.
-      if (pinnedFaction !== null) {
+      // A remote seat holding the turn outranks everything else here: while
+      // it is up, nothing the player does locally (a pin, a target) changes
+      // that they are waiting, and the bar has to say so plainly.
+      if (waitingFaction !== null) {
+        statusText.replaceChildren(
+          renderSegments(
+            // No name appended here: the faction segment brings its player's
+            // name with it, like every other faction the HUD draws.
+            [t("Waiting for "), faction(waitingFaction), t("...")],
+            richTextHooks,
+          ),
+        );
+      } else if (pinnedFaction !== null) {
+        // The pin outranks the turn prompt: while it is up, the one thing the
+        // player needs from this bar is what is pinned and how to let go of it.
+        // A segment, not a string - the name lights its realm here too.
         statusText.replaceChildren(
           renderSegments(
             [t("Pinned: "), faction(pinnedFaction), t(" - Esc to clear")],
             richTextHooks,
           ),
         );
-      } else if (isHumanTurn(state)) {
+      } else if (isLocalTurn(state)) {
         if (state.rules.turn === "unlimited") {
           statusText.textContent =
             `Turn ${state.turn} - play cards, then end your turn`;
@@ -1736,7 +1803,7 @@ export function createHud(
   }
 
   function renderScoreboard(state: GameState): void {
-    const human = state.players[0];
+    const human = humanPlayer(state);
     const rows = standingsFor({
       factionIds: state.factionIds,
       humanFactionId: human?.factionId,
@@ -1757,7 +1824,13 @@ export function createHud(
         const who = document.createElement("span");
         who.className = "sb-who";
         if (r.isHuman) who.textContent = "You";
-        else who.replaceChildren(renderSegments([faction(r.factionId)], richTextHooks));
+        else {
+          // The "(Bela)" beside the name comes from `renderSegments` itself
+          // now - every faction name in the HUD carries it, not just this row
+          // - so there is deliberately nothing to append here. A second append
+          // would read "Curonians (Bela) (Bela)".
+          who.replaceChildren(renderSegments([faction(r.factionId)], richTextHooks));
+        }
         const lands = document.createElement("span");
         lands.className = "sb-lands";
         lands.textContent = `${r.lands}/${r.needed} lands`;
@@ -1791,7 +1864,7 @@ export function createHud(
    *  Shared by the endings that have a faction to blame - an incorporation and
    *  a vassalage with no way out. */
   function renderEnderComparison(state: GameState, ender: string): void {
-    const human = state.players[0];
+    const human = humanPlayer(state)!;
     const l = leadsIn(state, ender, human.factionId);
     pmDeltas.textContent =
       `Might: ${l > 0 ? `they led by ${l}` : l < 0 ? `you led by ${-l}` : "even"}`;
@@ -1820,7 +1893,7 @@ export function createHud(
   }
 
   function renderPostmortem(state: GameState): void {
-    const human = state.players[0];
+    const human = humanPlayer(state)!;
     const won = state.phase === "victory";
     pmTitle.textContent = won ? "Victory" : "Game over";
     if (won) {
@@ -1835,13 +1908,27 @@ export function createHud(
     } else if (state.log.some((e) => e.type === "surrendered")) {
       // Conceding has no killer and no buildup to explain. Say what happened
       // and how far off the pace they were, and leave it at that.
+      //
+      // Whose concession it was decides the sentence. Only the host seat can
+      // surrender (the engine's endings pivot on it), so on a guest's screen
+      // this run ended by somebody else's choice - and "You conceded" over a
+      // game the player was still playing is simply a lie. The other party is
+      // named by role, not by faction: the surrendering seat's faction is on
+      // the map either way, and a name here would be inert text the naming
+      // rule exists to prevent.
+      const mine = state.log.some(
+        (e) => e.type === "surrendered" && e.playerId === localPlayerId(),
+      );
       const size = fullRealmOf(
         human.factionId, state.overlords, state.incorporated,
       ).size;
       pmTitle.textContent = "Surrendered";
       setCause([
-        t(`You conceded with ${size} of the ` +
-          `${victoryRealmSize(state.factionIds.length)} lands needed`),
+        t(mine
+          ? `You conceded with ${size} of the ` +
+            `${victoryRealmSize(state.factionIds.length)} lands needed`
+          : `Your opponent conceded, ending the game. You held ${size} of ` +
+            `the ${victoryRealmSize(state.factionIds.length)} lands needed`),
       ]);
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();
@@ -1877,8 +1964,11 @@ export function createHud(
       }
     }
     // XP is derived from the log, never a counter carried on state - see
-    // src/xp.ts. The number here is the same one that gets banked.
-    const earned = runXp(state.log);
+    // src/xp.ts. The number here is the same one that gets banked, which is
+    // why it takes the local seat: `bankRunProgress` banks
+    // `runXp(log, localHuman().id)`, and a defaulted 1 here quoted the HOST's
+    // earnings on the guest's own end screen.
+    const earned = runXp(state.log, localPlayerId());
     pmXp.textContent = `+${earned} XP earned`;
     renderXpBar(earned);
     pmLog.replaceChildren(
@@ -1887,7 +1977,9 @@ export function createHud(
         d.className = "log-entry";
         // Reveal: the run is over, so there is no secret left to keep. A player
         // reading back a finished game is owed what everyone was holding.
-        d.replaceChildren(renderSegments(eventSegments(e, state, true), richTextHooks));
+        d.replaceChildren(
+          renderSegments(eventSegments(e, state, true, localPlayerId()), richTextHooks),
+        );
         d.classList.toggle("log-you", involvesHuman(e, human?.factionId));
         // Same nesting as the activity log. No cause to tag here: the
         // postmortem has no filter to hide one.
@@ -1931,7 +2023,7 @@ export function createHud(
           cb.onEndTurn === undefined,
       );
       endTurnBtn.disabled =
-        !isHumanTurn(state) || state.playedThisTurn ||
+        !isLocalTurn(state) || state.playedThisTurn ||
         (cb.isResolving?.() ?? false);
       // A run ending or a new game must not leave a harvest choice hanging
       // over the wrong screen - the hideSummary reasoning, same shape.
@@ -1940,7 +2032,7 @@ export function createHud(
       renderStatus(state);
 
       if (state.phase === "playing") {
-        const human = state.players[0];
+        const human = humanPlayer(state)!;
         renderPile(deckPile, human.deck.length);
         renderPile(discardPile, human.discard.length);
         renderHand(state);
@@ -1986,6 +2078,10 @@ export function createHud(
       // An armed card owns the bar - it is asking for a target, and a click on
       // the map answers it rather than pinning. setArmed(null) renders again.
       if (lastState !== null && armedIndex === null) renderStatus(lastState);
+    },
+    setWaiting(factionId) {
+      waitingFaction = factionId;
+      if (lastState !== null) renderStatus(lastState);
     },
     highlightFaction(factionId) {
       // The hover that drives this fires on mousemove, so it arrives once per

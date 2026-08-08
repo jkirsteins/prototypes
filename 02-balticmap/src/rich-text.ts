@@ -141,6 +141,15 @@ export interface RichTextHooks extends NameLookup {
   /** Lights this faction's realm up on the map, exactly as hovering its land
    *  does; null clears. Optional for the same reason as showTip/hideTip. */
   highlightFaction?(id: string | null): void;
+  /** The display name of the human playing this faction, or null when nobody
+   *  is - every AI seat, and every faction in a solo game. Absent entirely
+   *  outside a network game, which is why every existing surface renders
+   *  exactly as it did.
+   *
+   *  Rendered as plain text beside the name, never as part of it: a player's
+   *  name is neither a card nor a faction, the only two things the naming
+   *  rule covers, and the faction stays the hoverable node it always was. */
+  playerNameOf?(factionId: string): string | null;
 }
 
 function factionText(seg: { factionId: string; article?: true }, names: NameLookup): string {
@@ -214,6 +223,18 @@ export function renderSegments(segs: Segment[], hooks: RichTextHooks): DocumentF
       });
     }
     frag.appendChild(span);
+    // "Curonians (Bela)" - who is behind that faction, wherever its name is
+    // rendered. Here, at the one place a faction segment becomes a node, so
+    // the round summary, the activity log, the postmortem, the scoreboard and
+    // any inline prose all get it from one decision rather than each
+    // remembering to ask. Outside the span, so the hoverable name is still
+    // exactly the faction's own.
+    if (seg.kind === "faction") {
+      const playerName = hooks.playerNameOf?.(seg.factionId);
+      if (playerName !== null && playerName !== undefined && playerName !== "") {
+        frag.appendChild(document.createTextNode(` (${playerName})`));
+      }
+    }
   }
   return frag;
 }
