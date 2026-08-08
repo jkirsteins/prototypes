@@ -5,7 +5,7 @@ import {
 
 import {
   allianceKey, bumpMight, bumpMightAllBy, bumpMightBy,
-  fullRealmOf, incorporatedRealmOf, levelMight,
+  fullRealmOf, getRel, incorporatedRealmOf, levelMight, resetMight,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
@@ -34,6 +34,11 @@ export interface GameEvent {
   type: GameEventType;
   cardId?: string; // draw, play, discard, reclaimed (which card freed them)
   targetFactionId?: string;
+  /** Usually the lord an event happened under. On the fan-out events (a
+   *  Fortify `play`, `garrisoned`) it is the actor's DIRECT overlord the
+   *  fan-out SKIPPED - frozen on the event because the standings walk runs
+   *  after the batch, when the overlord may already have changed (the same
+   *  reason `pactAgainst` is frozen). Absent when the actor was free. */
   overlordFactionId?: string;
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
   /** How far this event moved the Might counter, from the ACTOR's side (the
@@ -42,10 +47,13 @@ export interface GameEvent {
    *  without re-deriving the rules from state that has already moved on.
    *  Absent where the event moved no counter (the poach penalty is +1 by
    *  rule and carried by no field).
-   *  Assassinate ruler is the exception: it levels rather than adds, and
-   *  `amount` records the actor's visible Might LEAD over the target (pact
-   *  terms included, via `leadsIn`) immediately before the levelling, so the
-   *  "before" survives the reset that erased it.
+   *  Two exceptions move the store without adding. Assassinate ruler levels,
+   *  and `amount` records the actor's visible Might LEAD over the target
+   *  (pact terms included, via `leadsIn`) immediately before the levelling,
+   *  so the "before" survives the reset that erased it. `subjugated` clears
+   *  the new vassal's counter against its new lord (`resetMight`), and
+   *  `amount` is the cleared value - which is exactly how far the actor's
+   *  lead over the vassal rose - beside the un-carried +1 poach penalty.
    *  See the rule in AGENTS.md: a ninth site that forgets this drifts the
    *  round summary silently, which is why tests/standings.test.ts replays a
    *  full game and checks the walk against the real relations. */
@@ -544,13 +552,19 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   let relations = state.relations;
   const passive = passiveFortifyFor(viewOf(state), p.factionId);
   if (passive > 0) {
+    // The DIRECT overlord is skipped, exactly as the Fortify fan-out skips
+    // it: the revolt gate reads the vassal's lead over its lord, and a tick
+    // that reached the lord would open the gate by itself, a turn at a time.
+    // The skipped lord rides on the event for the standings walk.
+    const lord = state.overlords.get(p.factionId);
     const living = state.factionIds.filter(
-      (f) => f !== p.factionId && !(f in state.incorporated),
+      (f) => f !== p.factionId && f !== lord && !(f in state.incorporated),
     );
     relations = bumpMightAllBy(relations, p.factionId, living, passive);
     events.push({
       turn: state.turn, playerId: p.id, type: "garrisoned",
       targetFactionId: p.factionId, amount: passive,
+      ...(lord !== undefined ? { overlordFactionId: lord } : {}),
     });
   }
   // Settlement income, beside the garrison tick for the same reason it lives
@@ -627,7 +641,12 @@ const stripTribute = (p: PlayerState): PlayerState => ({
  *
  *  Being freed by a third party toppling your lord is a real escape, but it is
  *  not one this player can reach for, and while they wait every turn is a
- *  forced tribute or a forced discard. The run is over; say so. */
+ *  forced tribute or a forced discard. The run is over; say so.
+ *
+ *  A held Revolt behind a closed lead gate (`revoltRequirement`) is NOT
+ *  stranded: the requirement falls with every land the lord's realm takes,
+ *  so the card is an escape the board is still moving toward, where a missing
+ *  card is one nothing the player does can conjure. */
 export function isStranded(
   player: PlayerState,
   overlords: Overlords,
@@ -811,12 +830,20 @@ export function playCard(
     events[0] = { ...events[0], amount: gain };
   } else if (FAN_OUT_CARDS.has(cardId)) {
     // One branch keyed on the fan-out SHAPE, not the card - see FAN_OUT_CARDS
-    // in src/cards.ts.
+    // in src/cards.ts. The actor's DIRECT overlord is skipped: the revolt
+    // gate reads the vassal's lead over its lord, and a fan-out that reached
+    // the lord would let every vassal grind its way out. The skipped lord is
+    // frozen on the event for the standings walk, which runs after the batch,
+    // when the overlord may already have changed.
+    const lord = overlords.get(p.factionId);
     const living = state.factionIds.filter(
-      (f) => f !== p.factionId && !(f in incorporated),
+      (f) => f !== p.factionId && f !== lord && !(f in incorporated),
     );
     relations = bumpMightAllBy(relations, p.factionId, living, mult);
-    events[0] = { ...events[0], amount: mult };
+    events[0] = {
+      ...events[0], amount: mult,
+      ...(lord !== undefined ? { overlordFactionId: lord } : {}),
+    };
   } else if (cardId === "favourable-omens") {
     omens = { ...omens, [p.factionId]: (omens[p.factionId] ?? 0) + 1 };
   } else if (cardId === "population-boom") {
@@ -939,15 +966,23 @@ export function playCard(
         deck: shuffle([...clean.deck, ...TRIBUTE_CARDS], rng),
       };
     });
+    // Whatever the new vassal had built against this lord is forfeit: the
+    // revolt gate reads that direction, and a vassalage must open with the
+    // gate at the lord's realm size alone. One direction only - the lord's
+    // own counter (the grip `poachSurchargeOn` prices) survives. The cleared
+    // value rides on the event, or the standings walk could not replay it.
+    const resetAmount = getRel(relations, targetId, p.factionId);
+    relations = resetMight(relations, targetId, p.factionId);
     if (formerLord !== undefined) {
       // vassal-loss penalty (section 8): the poached vassal gains +1 Might
-      // over the former lord (relation counters only grow).
+      // over the former lord.
       relations = bumpMight(relations, targetId, formerLord);
     }
     events.push({
       turn: state.turn, playerId: p.id, type: "subjugated",
       targetFactionId: targetId, overlordFactionId: p.factionId,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
+      ...(resetAmount > 0 ? { amount: resetAmount } : {}),
     });
   } else if (
     cardId === "incorporate" && targetId !== undefined &&
@@ -999,8 +1034,8 @@ export function playCard(
     respites = { ...respites, [p.factionId]: state.turn + ESCAPE_RESPITE_TURNS };
     players = updateFaction(players, p.factionId, stripVassalCards);
     // vassal-loss penalty (section 8): the revolting vassal gains +1 Might
-    // over the former lord (relation counters only grow). Held readings
-    // multiply this parting blow like any other Might gain.
+    // over the former lord. Held readings multiply this parting blow like any
+    // other Might gain.
     relations = bumpMightBy(relations, p.factionId, former, mult);
     events.push({
       turn: state.turn, playerId: p.id, type: "reclaimed", cardId,

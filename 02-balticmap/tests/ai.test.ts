@@ -66,6 +66,8 @@ describe("chooseAction priorities", () => {
   it("2: revolts out of vassalage rather than building", () => {
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
+    // The gate is met: lead 2 against gamma's two-land realm.
+    g = { ...g, relations: lead(g.relations, "alpha", "gamma", 2) };
     g = withHand(g, ["raid", "revolt"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
@@ -74,6 +76,16 @@ describe("chooseAction priorities", () => {
     let g = base();
     g = withHand(g, ["revolt", "grow-crops"]);
     // Revolt is unplayable while free, so the potato is the play
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("2: waits below the gate - legality keeps the revolt out of reach", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
+    // Lead 1 against a required 2: playableSet never admits the Revolt, so
+    // step 2 cannot fire and the turn builds instead.
+    g = { ...g, relations: lead(g.relations, "alpha", "gamma", 1) };
+    g = withHand(g, ["revolt", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
@@ -191,6 +203,22 @@ describe("chooseAction priorities", () => {
     g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
     g = withHand(g, ["fortify", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("a lead held only by the direct lord is no reason to Fortify", () => {
+    // The fan-out skips the lord (playCard), so a Fortify "against" it would
+    // be a play-because-held - the turn grows crops instead.
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
+    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 3) };
+    g = withHand(g, ["fortify", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+    // The same lead held by anyone else still triggers the defensive step.
+    let h = base();
+    h = { ...h, overlords: new Map([["alpha", "gamma"]]) };
+    h = { ...h, relations: lead(h.relations, "delta", "alpha", 3) };
+    h = withHand(h, ["fortify", "grow-crops"]);
+    expect(chooseAction(h)).toEqual({ type: "play", cardIndex: 0 });
   });
 
   it("7: otherwise build toward the closest target, raid over marriage, faction order", () => {
@@ -676,6 +704,8 @@ describe("subjugation-stability policy branches", () => {
     // escaping now beats preparing to escape.
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "beta"]]) };
+    // The gate is met, so the escape is the legal pick to prefer.
+    g = { ...g, relations: lead(g.relations, "alpha", "beta", 2) };
     g = withHand(g, ["seeds-of-revolt", "revolt"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });

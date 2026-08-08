@@ -2,13 +2,13 @@ import { describe, it, expect } from "vitest";
 import { pact, settledOnce, siteCaps } from "./helpers";
 import {
   INCORPORATE_RAMP, PASSIVE_PER_LANDS, POACH_CHANCE, PROWESS_PER_REDUCTION,
-  SEAT_BAR_BONUS, SEAT_RAID_BONUS,
+  REVOLT_BASE_THRESHOLD, SEAT_BAR_BONUS, SEAT_RAID_BONUS,
   SUBJUGATE_THRESHOLD, annexedLandsOf, borderStrength, cardBlockReason,
   gripPartsOn, handBlockReason,
   incorporationChance, passiveFortifyFor, prowessReductionFor, raidGainFor,
   raidYield,
   isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
-  reachOf, respiteExpiry, seatOf, sharedNeighboursOf,
+  reachOf, respiteExpiry, revoltRequirement, seatOf, sharedNeighboursOf,
   subjugationChance, subjugationGripOn, subjugationRaceFor,
   subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
   wealthIncomeFor,
@@ -1368,6 +1368,9 @@ describe("take hostage", () => {
   const restive = (hostages: Record<string, number> = {}): RulesView =>
     view({
       overlords: new Map([["beta", "alpha"]]),
+      // The revolt gate is met (lead 2 against a two-land realm), so these
+      // tests exercise the hostage lock alone.
+      relations: mightLead("beta", "alpha", 2),
       liveRevolts: ["beta"],
       hostages,
     });
@@ -1405,6 +1408,91 @@ describe("take hostage", () => {
     // must still answer for a free faction, and it answers needs-overlord.
     expect(cardBlockReason(view({ hostages: { beta: 1 } }), "beta", "revolt"))
       .toEqual({ code: "needs-overlord" });
+  });
+});
+
+describe("revolt lead gate", () => {
+  const vassal = (partial: Partial<RulesView> = {}): RulesView =>
+    view({ overlords: new Map([["beta", "alpha"]]), ...partial });
+
+  it("requires a lead of REVOLT_BASE_THRESHOLD minus the lord's full realm", () => {
+    // alpha's realm is alpha + beta: required 2, and beta stands at 0.
+    expect(revoltRequirement(vassal(), "beta")).toBe(REVOLT_BASE_THRESHOLD - 2);
+    expect(cardBlockReason(vassal(), "beta", "revolt")).toEqual({
+      code: "revolt-lead", required: 2, lead: 0,
+    });
+    // Free factions have no requirement - and no revolt at all.
+    expect(revoltRequirement(view(), "beta")).toBeNull();
+  });
+
+  it("meeting the requirement exactly opens the gate", () => {
+    const at = vassal({ relations: mightLead("beta", "alpha", 2) });
+    expect(cardBlockReason(at, "beta", "revolt")).toBeNull();
+    const below = vassal({ relations: mightLead("beta", "alpha", 1) });
+    expect(cardBlockReason(below, "beta", "revolt")).toEqual({
+      code: "revolt-lead", required: 2, lead: 1,
+    });
+  });
+
+  it("counts the lord's whole pyramid and annexations, to any depth", () => {
+    // alpha holds beta, beta holds gamma, alpha annexed delta: realm 4.
+    const v = vassal({
+      overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+      incorporated: { delta: "alpha" },
+    });
+    expect(revoltRequirement(v, "beta")).toBe(0);
+    expect(cardBlockReason(v, "beta", "revolt")).toBeNull();
+    // The grand-vassal answers to beta, whose own realm is only beta + gamma.
+    expect(revoltRequirement(v, "gamma")).toBe(2);
+  });
+
+  it("past four lands the requirement is negative: a deficit still clears it", () => {
+    const v = vassal({
+      incorporated: { b: "alpha", c: "alpha", d: "alpha" }, // realm 5
+      relations: mightLead("alpha", "beta", 1), // beta stands at -1
+    });
+    expect(revoltRequirement(v, "beta")).toBe(-1);
+    expect(cardBlockReason(v, "beta", "revolt")).toBeNull();
+    const gripped = vassal({
+      incorporated: { b: "alpha", c: "alpha", d: "alpha" },
+      relations: mightLead("alpha", "beta", 2), // beta stands at -2
+    });
+    expect(cardBlockReason(gripped, "beta", "revolt")).toEqual({
+      code: "revolt-lead", required: -1, lead: -2,
+    });
+  });
+
+  it("a live pact naming the lord feeds the gate, with no store bump", () => {
+    const v = vassal({
+      alliances: { [allianceKey("beta", "gamma")]: pact(9, ["alpha"]) },
+    });
+    expect(cardBlockReason(v, "beta", "revolt")).toEqual({
+      code: "revolt-lead", required: 2, lead: 1, // the pact's +1, store empty
+    });
+    const enough = vassal({
+      relations: mightLead("beta", "alpha", 1),
+      alliances: { [allianceKey("beta", "gamma")]: pact(9, ["alpha"]) },
+    });
+    expect(cardBlockReason(enough, "beta", "revolt")).toBeNull();
+  });
+
+  it("the lord's standing seat is no extra term on the gate", () => {
+    // The seat guards the ruler against subjugation (SEAT_BAR_BONUS in
+    // gripPartsOn), not its hold over vassals - a deliberate non-interaction.
+    const seated = vassal({
+      seats: { alpha: "alpha" },
+      relations: mightLead("beta", "alpha", 2),
+    });
+    expect(seatOf(seated, "alpha")).toBe("alpha");
+    expect(revoltRequirement(seated, "beta")).toBe(2);
+    expect(cardBlockReason(seated, "beta", "revolt")).toBeNull();
+  });
+
+  it("a hostage outranks the gate", () => {
+    const v = vassal({ hostages: { beta: 2 } });
+    expect(cardBlockReason(v, "beta", "revolt")).toEqual({
+      code: "hostage-held", remaining: 2,
+    });
   });
 });
 

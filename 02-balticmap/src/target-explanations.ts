@@ -731,6 +731,16 @@ export function cardBlockLine(reason: CardBlockReason): string {
         "Your overlord holds a hostage: " +
         `${count(reason.remaining, "tribute payment")} will bring them home.`
       );
+    case "revolt-lead":
+      // Both numbers, because together they are the decision: the requirement
+      // falls as the overlord's realm grows and the lead moves with the
+      // pair's counters, and which of the two to wait on is the choice. Both
+      // signed by `formatLead` - the requirement can be negative under an
+      // overstretched lord, and a bare "-1" would read as a typo.
+      return (
+        `Needs a Might lead of ${formatLead("", reason.required)} over your ` +
+        `overlord; you stand at ${formatLead("", reason.lead)}.`
+      );
     case "no-target":
       return "Nothing in reach is a legal target.";
     case "vassal-no-seat":

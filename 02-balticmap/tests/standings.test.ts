@@ -188,6 +188,55 @@ describe("leadMovesOf", () => {
     );
   });
 
+  it("a subjugation's reset costs the human vassal what it had built", () => {
+    const e: GameEvent = {
+      turn: 1, playerId: 2, type: "subjugated",
+      targetFactionId: H, overlordFactionId: RIVAL, amount: 3,
+    };
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
+      { kind: "add", factionId: RIVAL, delta: -3 },
+    ]);
+  });
+
+  it("a subjugation's reset raises the human lord's lead over the new vassal", () => {
+    const e: GameEvent = {
+      turn: 1, playerId: 1, type: "subjugated",
+      targetFactionId: RIVAL, overlordFactionId: H, amount: 2,
+    };
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
+      { kind: "add", factionId: RIVAL, delta: 2 },
+    ]);
+  });
+
+  it("a poach of the human carries both the reset and the +1 over the ex-lord", () => {
+    const e: GameEvent = {
+      turn: 1, playerId: 2, type: "subjugated",
+      targetFactionId: H, overlordFactionId: RIVAL,
+      formerOverlordFactionId: THIRD, amount: 2,
+    };
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual(
+      expect.arrayContaining([
+        { kind: "add", factionId: RIVAL, delta: -2 },
+        { kind: "add", factionId: THIRD, delta: 1 },
+      ]),
+    );
+  });
+
+  it("a rival's fortify that skipped its human overlord moves nothing", () => {
+    const e = playEvent({
+      playerId: 2, cardId: "fortify", amount: 1, overlordFactionId: H,
+    });
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
+  });
+
+  it("a rival's garrison that skipped its human overlord moves nothing", () => {
+    const e: GameEvent = {
+      turn: 1, playerId: 2, type: "garrisoned", targetFactionId: RIVAL,
+      amount: 2, overlordFactionId: H,
+    };
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
+  });
+
   it("a rival's garrison adds to the actor's might track, sign-flipped", () => {
     const e: GameEvent = {
       turn: 1, playerId: 2, type: "garrisoned", targetFactionId: RIVAL, amount: 2,
@@ -265,6 +314,21 @@ describe("walkStandings", () => {
     expect(changes[1]).toEqual([
       { factionId: RIVAL, before: -2, after: -1 },
     ]);
+  });
+
+  it("the human's own trailing garrison skips the human's own lord", () => {
+    const events: GameEvent[] = [
+      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2 }),
+      { turn: 1, playerId: 1, type: "garrisoned", targetFactionId: H,
+        amount: 1, overlordFactionId: RIVAL },
+    ];
+    // RIVAL is the one faction this batch mentions, and the human's tick
+    // skipped it - so the garrison moves nothing at all.
+    const changes = walkStandings(events, walkCtx({ [RIVAL]: -2 }));
+    expect(changes[0]).toEqual([
+      { factionId: RIVAL, before: 0, after: -2 },
+    ]);
+    expect(changes[1]).toEqual([]);
   });
 
   it("a faction with no event in the batch is untouched", () => {

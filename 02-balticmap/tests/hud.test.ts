@@ -1704,6 +1704,8 @@ describe("log nesting", () => {
     let g = playing();
     const rebel = g.players[seat].factionId;
     g = { ...g, current: seat, overlords: new Map([[rebel, lord]]) };
+    // The rebel meets the revolt gate (lead 2 against a two-land realm).
+    g = { ...g, relations: bumpMight(bumpMight(g.relations, rebel, lord), rebel, lord) };
     g = withHand(g, seat, ["revolt"]);
     return playCard(g, 0, seededRng(1));
   }
@@ -1801,7 +1803,8 @@ describe("notice details and hand tips", () => {
     const card = q(container, ".hand .card");
     expect(card.querySelector(".card-name")!.textContent).toBe("Fortify");
     expect(card.querySelector(".card-tip")!.textContent).toBe(
-      "Gain +1 Might over every other living faction at once.",
+      "Gain +1 Might over every other living faction at once - except your " +
+        "overlord, while you have one.",
     );
   });
 

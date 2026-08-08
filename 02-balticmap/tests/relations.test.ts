@@ -3,7 +3,7 @@ import { pact, } from "./helpers";
 import {
   getRel, bumpMight, leadOf, bumpMightAll, realmOf, realmRootOf,
   fullRealmOf, overlordChainOf, incorporatedRealmOf,
-  levelMight, allianceKey, allianceActive, bumpMightBy, bumpMightAllBy,
+  levelMight, resetMight, allianceKey, allianceActive, bumpMightBy, bumpMightAllBy,
   type Relations,
 } from "../src/relations";
 
@@ -150,6 +150,31 @@ describe("levelMight", () => {
   it("is a no-op (same reference) when already even", () => {
     const rel: Relations = {};
     expect(levelMight(rel, "alpha", "beta")).toBe(rel);
+  });
+});
+
+describe("resetMight", () => {
+  it("clears one direction only, leaving the opposite counter (the grip)", () => {
+    let rel: Relations = {};
+    rel = bumpMightBy(rel, "alpha", "beta", 3);
+    rel = bumpMightBy(rel, "beta", "alpha", 2);
+    const out = resetMight(rel, "alpha", "beta");
+    expect(getRel(out, "alpha", "beta")).toBe(0);
+    expect(getRel(out, "beta", "alpha")).toBe(2);
+    expect(rel).not.toBe(out); // immutable
+    expect(getRel(rel, "alpha", "beta")).toBe(3);
+  });
+
+  it("deletes the key rather than writing a zero", () => {
+    // A zero entry would make two equal boards compare unequal in the
+    // simulation's reproducibility check - same rule as `bumpMightBy`.
+    const rel = bumpMightBy({}, "alpha", "beta", 2);
+    expect(resetMight(rel, "alpha", "beta")).toEqual({});
+  });
+
+  it("is a no-op (same reference) when the counter was never written", () => {
+    const rel = bumpMightBy({}, "beta", "alpha", 1);
+    expect(resetMight(rel, "alpha", "beta")).toBe(rel);
   });
 });
 

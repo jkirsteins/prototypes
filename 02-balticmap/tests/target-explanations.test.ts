@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { pact, settledOnce, } from "./helpers";
 import {
-  GUARD_POSTED, GUARD_RISK, cardModifierLines, cardRiskLine,
+  GUARD_POSTED, GUARD_RISK, cardBlockLine, cardModifierLines, cardRiskLine,
   explainTargetEligibility, pactBoostLines, respiteLines, settlementBlock,
   subjugationBreakdown, targetImpactLines, targetOddsLines,
 } from "../src/target-explanations";
@@ -866,5 +866,21 @@ describe("settlementBlock", () => {
     // only authored for two. `sat-settlement` is where the allowance is said.
     const view = v({ siteCaps: { alpha: 1 }, booms: { alpha: 3 } });
     expect(settlementBlock(view, "alpha")[1].amount).toBe("1/2");
+  });
+});
+
+describe("cardBlockLine", () => {
+  it("quotes the revolt gate's requirement and the current lead, signed", () => {
+    expect(cardBlockLine({ code: "revolt-lead", required: 2, lead: 0 })).toBe(
+      "Needs a Might lead of +2 over your overlord; you stand at 0.",
+    );
+    expect(cardBlockLine({ code: "revolt-lead", required: 2, lead: -1 })).toBe(
+      "Needs a Might lead of +2 over your overlord; you stand at -1.",
+    );
+    // A negative requirement is real - a five-land lord - and must read as a
+    // signed number, not a typo.
+    expect(cardBlockLine({ code: "revolt-lead", required: -1, lead: -2 })).toBe(
+      "Needs a Might lead of -1 over your overlord; you stand at -2.",
+    );
   });
 });

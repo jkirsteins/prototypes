@@ -102,6 +102,10 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
       }
       if (FAN_OUT_CARDS.has(e.cardId ?? "")) {
         if (e.amount === undefined || A === H) return [];
+        // The fan-out skipped the actor's direct overlord (frozen on the
+        // event, since the walk runs after the batch): a human lord's lead
+        // over its fortifying vassal did not move.
+        if (e.overlordFactionId === H) return [];
         return [{ kind: "add", factionId: A, delta: -e.amount }];
       }
       if (e.cardId === "alliance") return pactMoves(e, A, e.targetFactionId, H);
@@ -129,14 +133,25 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
       return [];
     }
     case "subjugated": {
-      // The poach penalty is a constant +1 Might (game.ts), not carried on
-      // the event - see the comment above `GameEvent.amount`.
       const T = e.targetFactionId;
+      const L = e.overlordFactionId; // the new lord
       const F = e.formerOverlordFactionId;
-      if (T === undefined || F === undefined) return [];
-      if (T === H) return [{ kind: "add", factionId: F, delta: 1 }];
-      if (F === H) return [{ kind: "add", factionId: T, delta: -1 }];
-      return [];
+      if (T === undefined) return [];
+      const moves: LeadMove[] = [];
+      // The reset: the vassal's counter against its new lord was cleared, and
+      // `amount` is the cleared value - a pure store move, so the raw delta is
+      // exactly the lead delta (pact terms are untouched by the reset).
+      if (e.amount !== undefined && L !== undefined) {
+        if (T === H) moves.push({ kind: "add", factionId: L, delta: -e.amount });
+        if (L === H) moves.push({ kind: "add", factionId: T, delta: e.amount });
+      }
+      // The poach penalty stays a constant +1 Might (game.ts), not carried on
+      // the event - see the comment above `GameEvent.amount`.
+      if (F !== undefined) {
+        if (T === H) moves.push({ kind: "add", factionId: F, delta: 1 });
+        if (F === H) moves.push({ kind: "add", factionId: T, delta: -1 });
+      }
+      return moves;
     }
     case "reclaimed": {
       if (e.amount === undefined) return [];
@@ -151,6 +166,9 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
       // self === H is handled by walkStandings, not here - see the doc
       // comment above this function.
       if (e.amount === undefined || A === H) return [];
+      // The tick skipped the actor's direct overlord, same as the Fortify
+      // fan-out above.
+      if (e.overlordFactionId === H) return [];
       return [{ kind: "add", factionId: A, delta: -e.amount }];
     }
     case "pact-lapsed":
@@ -200,9 +218,13 @@ export function walkStandings(
 
   const movesPerEvent: LeadMove[][] = events.map((e) => {
     if (e.type === "garrisoned" && e.amount !== undefined && ctx.factionOf(e.playerId) === H) {
-      return [...mentioned].map((factionId): LeadMove => (
-        { kind: "add", factionId, delta: e.amount! }
-      ));
+      return [...mentioned]
+        // The human's own tick skipped the human's own direct lord - the one
+        // faction this batch may mention that the fan-out did not touch.
+        .filter((factionId) => factionId !== e.overlordFactionId)
+        .map((factionId): LeadMove => (
+          { kind: "add", factionId, delta: e.amount! }
+        ));
     }
     return leadMovesOf(e, ctx);
   });

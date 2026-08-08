@@ -26,7 +26,7 @@ export type AiAction =
  *  card rule in AGENTS.md. */
 export const POLICY_COVERAGE: Record<string, string> = {
   "pay-military-tribute": "1: forced tribute",
-  "revolt": "2: revolt out of vassalage",
+  "revolt": "2: revolt the moment the lead gate opens",
   "seeds-of-revolt": "2a: sow a revolt while a vassal",
   "incorporate": "3: incorporate the best permanent gain net of freed vassals",
   "subjugate": "4: subjugate the biggest lead (vassal seats included)",
@@ -208,10 +208,11 @@ export function chooseAction(state: GameState): AiAction {
   // 2: revolt out of vassalage. A vassal CAN Subjugate and Incorporate now,
   // and revolt still outranks both deliberately: only free factions win, and
   // every forced tribute drains the treasury or feeds the lord. Freedom first.
-  // Revolt carries no lead condition, and its parting +1/+1 cuts the lord's
-  // lead, delaying re-subjugation. Playable exactly while subjugated, so
-  // idxOf is the whole guard. A forced tribute still outranks it through
-  // playableSet.
+  // Revolt is gated on a lead over the lord (`revoltRequirement` - the gate
+  // opens as the lord's realm grows), and legality owns that gate: idxOf only
+  // returns indexes `playableSet` admitted, so the moment the gate opens this
+  // step fires with no second reading of the rule here to drift. A forced
+  // tribute still outranks it through playableSet.
   const revolt = idxOf("revolt");
   if (revolt !== undefined) return { type: "play", cardIndex: revolt };
 
@@ -397,10 +398,14 @@ export function chooseAction(state: GameState): AiAction {
     const i = idxOf("fortify");
     if (i !== undefined) {
       // Vassal rivals count: a vassal with the lead can Subjugate, so it is
-      // exactly as much of a threat as a free one.
+      // exactly as much of a threat as a free one. The actor's own DIRECT
+      // lord does not: the fan-out skips it (see playCard), so a Fortify
+      // "against" the lord would be the play-because-held failure
+      // POLICY_COVERAGE exists to stop.
       const threatened = state.factionIds.some(
         (f) =>
           f !== p.factionId &&
+          f !== lord &&
           !(f in state.incorporated) &&
           leadsIn(v, f, p.factionId) >= 1,
       );

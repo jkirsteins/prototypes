@@ -54,7 +54,8 @@ describe("cards", () => {
     );
     expectProps(
       "fortify", "Fortify", false, false, 1, true, false,
-      "Gain +1 Might over every other living faction at once.",
+      "Gain +1 Might over every other living faction at once - except your " +
+        "overlord, while you have one.",
     );
     expectProps(
       "subjugate", "Subjugate", true, false, 1, true, false,
@@ -77,7 +78,10 @@ describe("cards", () => {
     // in the deck, so it must never be deck-buildable.
     expectProps(
       "revolt", "Revolt", false, false, 1, false, false,
-      "Cast off your overlord, no lead required. They lose 1 Might against you, and none may subjugate you for 2 turns. Leaves your deck for good.",
+      "Cast off your overlord. Needs a Might lead over them of 4 minus their " +
+        "realm's lands - a sprawling realm is easier to escape. They lose 1 " +
+        "Might against you, and none may subjugate you for 2 turns. Leaves " +
+        "your deck for good.",
     );
     expectProps(
       "assassinate-ruler", "Assassinate ruler", true, false, 1, true, false,

@@ -391,9 +391,16 @@ export function eventSegments(
       // is not `possessive` either: "Your garrisons" against "Nadruvians's
       // garrisons".
       const whose: Segment[] = you ? [t("Your")] : [...actor.segments, t("'s")];
+      // A vassal's tick skipped its lord (the revolt gate reads that pair),
+      // and a line claiming "all" would contradict the badge that did not
+      // move. The skipped lord is on the event; the person axis follows the
+      // possessive already chosen above.
+      const scope = e.overlordFactionId === undefined
+        ? "all"
+        : you ? "all but your overlord" : "all but their overlord";
       return [
         ...whose,
-        t(` garrisons stand watch (+${e.amount} Might against all)`),
+        t(` garrisons stand watch (+${e.amount} Might against ${scope})`),
       ];
     }
     case "surrendered":
@@ -506,11 +513,16 @@ export function impactText(
   }
 
   /** A fan-out card: every living faction, so the count is the whole map and
-   *  the amount comes off the event rather than from any one pair. */
+   *  the amount comes off the event rather than from any one pair. A vassal's
+   *  fan-out skipped its lord (`overlordFactionId` on the event), and saying
+   *  so is what keeps this suffix agreeing with the lord's unmoved badge.
+   *  "The overlord", person-free, because this suffix decorates lines whose
+   *  actor is you on your own play and a rival on theirs. */
   const fanOut = (): { text: string; tone: "good" } | null => {
     if (e.amount === undefined) return null;
+    const scope = e.overlordFactionId === undefined ? "all" : "all but the overlord";
     return {
-      text: `+${e.amount} Might against all`,
+      text: `+${e.amount} Might against ${scope}`,
       tone: "good",
     };
   };

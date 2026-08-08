@@ -1,8 +1,10 @@
 import { timedActive } from "./timed";
 
 /** Pairwise Might store keyed "actorFactionId|targetFactionId".
- *  A missing key means 0. Values only grow; subjugation is stored on
- *  GameState, never derived. */
+ *  A missing key means 0. Values only grow, with two named exceptions -
+ *  `levelMight` (Assassinate ruler raises both sides to the max) and
+ *  `resetMight` (subjugation clears the new vassal's direction). Subjugation
+ *  itself is stored on GameState, never derived. */
 export type Relations = Record<string, number>;
 
 /** vassal faction id -> overlord faction id (stored on GameState) */
@@ -162,10 +164,23 @@ export function incorporatedRealmOf(
   return members;
 }
 
+/** Clears ONE direction's might counter: the key is deleted, because a
+ *  missing key already means 0 and a zero must not be materialised (the same
+ *  convention `bumpMightBy` keeps). The opposite direction is untouched - a
+ *  subjugation resets what the new vassal had built against its lord while
+ *  the lord's grip on it survives. */
+export function resetMight(rel: Relations, actor: string, target: string): Relations {
+  const key = relKey(actor, target);
+  if (!(key in rel)) return rel;
+  const { [key]: _, ...out } = rel;
+  return out;
+}
+
 /** Raises BOTH directions' might counters to the max of the two, so the raw
- *  might lead becomes 0 (relation counters only grow; Assassinate ruler).
- *  Levels the STORE only: a pact term lives on the alliance, not here, so a
- *  visible lead bought by a live pact survives the levelling. */
+ *  might lead becomes 0 (Assassinate ruler; with `resetMight`, one of the two
+ *  ways the store moves other than growing). Levels the STORE only: a pact
+ *  term lives on the alliance, not here, so a visible lead bought by a live
+ *  pact survives the levelling. */
 export function levelMight(rel: Relations, a: string, b: string): Relations {
   const ab = getRel(rel, a, b);
   const ba = getRel(rel, b, a);

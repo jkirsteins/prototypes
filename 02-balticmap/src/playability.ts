@@ -10,6 +10,13 @@ import { activeExpiry, timedActive } from "./timed";
 
 export const SUBJUGATE_THRESHOLD = 2;
 
+/** Base of the Might lead a vassal needs over its DIRECT overlord to play
+ *  Revolt: `REVOLT_BASE_THRESHOLD - fullRealmOf(lord).size`, so every land
+ *  the lord's realm swallows brings every vassal in it one closer to legal
+ *  revolt, and past four lands the gate stands open even at a deficit. See
+ *  `revoltRequirement`. */
+export const REVOLT_BASE_THRESHOLD = 4;
+
 /** Settlements a land supports with no Population boom spent on it - the one
  *  standing there since the map was drawn, plus one. So Found a settlement
  *  raises a land to its second and stops, and every settlement past that is a
@@ -708,6 +715,32 @@ export function subjugationRequirement(
   );
 }
 
+/** The Might lead a vassal needs over its DIRECT overlord to play Revolt, or
+ *  null for a free faction. `REVOLT_BASE_THRESHOLD` less the lord's FULL realm
+ *  size - the scoreboard number, which counts the revolting vassal itself -
+ *  so an overstretched lord is easy to walk out on: at four lands the
+ *  requirement is 0 and past that it goes negative, a gate a vassal clears
+ *  even while behind. The lead compared against it is `leadsIn`, the live
+ *  rules read, so anything that moves the pair - the tribute-shortfall bump,
+ *  a pact naming the lord, future cards - moves the gate with it. The lord's
+ *  standing seat is deliberately no term here: `SEAT_BAR_BONUS` guards the
+ *  ruler against subjugation, not its hold over vassals.
+ *
+ *  Same shape as `subjugationRequirement` and for the same reason: legality,
+ *  the block-reason prose and the tests all ask this one function, so the
+ *  greyed card and the line explaining it cannot quote different numbers. */
+export function revoltRequirement(
+  view: RulesView,
+  vassalFactionId: string,
+): number | null {
+  const lord = view.overlords.get(vassalFactionId);
+  if (lord === undefined) return null;
+  return (
+    REVOLT_BASE_THRESHOLD -
+    fullRealmOf(lord, view.overlords, view.incorporated).size
+  );
+}
+
 export interface Threat {
   factionId: string;
   /** Might lead this faction still needs against its bar. <= 0 means it can
@@ -1070,6 +1103,11 @@ export type CardBlockReason =
    *  payments remain, because the count is the decision: a player told only
    *  "locked" cannot see that paying down the debt is what unlocks it. */
   | { code: "hostage-held"; remaining: number }
+  /** Revolt below the gate. Carries both numbers because together they are
+   *  the decision: `required` falls as the lord's realm grows and `lead`
+   *  moves with the pair's counters, and which of the two to wait on is
+   *  exactly what the player needs to see. */
+  | { code: "revolt-lead"; required: number; lead: number }
   | { code: "no-target" }
   /** Seat of power while the actor has an overlord. A vassal's seat is inert
    *  (`seatOf`) and the sweep would report it lost next turn, so the card is
@@ -1133,12 +1171,17 @@ export function cardBlockReason(
   if (cardId === "revolt") {
     // A hostage in the overlord's camp locks the Revolt without removing it:
     // the card stays in the piles (so `liveRevolts` and `isStranded` still see
-    // it) and unlocks when the tribute debt is paid down.
+    // it) and unlocks when the tribute debt is paid down. The hostage outranks
+    // the lead gate for the subjugate-precedence reason: a gate nothing the
+    // actor plays can lift comes before a lead they could be building.
+    const free = vassalOnly();
+    if (free !== null || overlord === undefined) return free;
     const held = view.hostages[factionId];
-    return (
-      vassalOnly() ??
-      (held !== undefined ? { code: "hostage-held", remaining: held } : null)
-    );
+    if (held !== undefined) return { code: "hostage-held", remaining: held };
+    const required = revoltRequirement(view, factionId);
+    if (required === null) return null;
+    const lead = leadsIn(view, factionId, overlord);
+    return lead >= required ? null : { code: "revolt-lead", required, lead };
   }
   if (cardId === "seeds-of-revolt") {
     // Only a vassal may sow, and only one Revolt may be live at a time. Letting

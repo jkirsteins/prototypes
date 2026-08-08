@@ -477,6 +477,8 @@ describe("card effects", () => {
     let g = playingState(LINE_ADJ);
     g = asVassal(g, "alpha"); // human beta -> alpha
     g = { ...g, overlords: new Map([...g.overlords, ["gamma", "beta"]]) };
+    // alpha's realm is its three-deep pyramid: required 1.
+    g = withRel(g, mightLead(g.relations, "beta", "alpha", 1));
     g = withHand(g, 0, ["revolt"]);
     const after = playCard(g, 0, rng());
     expect(after.overlords.has("beta")).toBe(false);
@@ -556,19 +558,45 @@ describe("card effects", () => {
     expect(playCard(g, 0, rng())).toBe(g);
   });
 
-  it("revolt is playable as a vassal even under an overwhelming overlord lead", () => {
+  it("revolt is blocked below the lead gate and opens exactly at it", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["beta", "gamma"]]) };
-    g = withRel(g, mightLead(g.relations, "gamma", "beta", 10));
+    g = withHand(g, 0, ["revolt"]);
+    // gamma's realm is gamma + beta: required 2, and beta stands at 0.
+    expect(playCard(g, 0, rng())).toBe(g);
+    const below = withRel(g, mightLead(g.relations, "beta", "gamma", 1));
+    expect(playCard(below, 0, rng())).toBe(below);
+    const at = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
+    const after = playCard(at, 0, rng());
+    expect(after).not.toBe(at);
+    expect(after.overlords.has("beta")).toBe(false);
+  });
+
+  it("an overstretched lord is escapable even at a Might deficit", () => {
+    // Ten factions keep gamma's five lands under the victory majority (6),
+    // so the revolt is judged on the gate alone.
+    const many = [
+      ...FACTIONS, ...Array.from({ length: 6 }, (_, i) => `f${i}`),
+    ];
+    let g = pickFaction(
+      chooseDeck(startGame(newGame(many)), buildDeck()), "beta", seededRng(1),
+    );
+    g = {
+      ...g,
+      overlords: new Map([["beta", "gamma"]]),
+      // gamma's realm: itself, beta and three annexations - required is -1.
+      incorporated: { f0: "gamma", f1: "gamma", f2: "gamma" },
+    };
+    g = withRel(g, mightLead(g.relations, "gamma", "beta", 1)); // beta at -1
     g = withHand(g, 0, ["revolt"]);
     const after = playCard(g, 0, rng());
-    expect(after).not.toBe(g);
     expect(after.overlords.has("beta")).toBe(false);
   });
 
   it("revolt strips tribute, frees the vassal, applies the vassal-loss penalty, and emits reclaimed", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["beta", "gamma"]]) };
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2)); // the gate
     let p0 = g.players[0];
     p0 = {
       ...p0,
@@ -583,7 +611,8 @@ describe("card effects", () => {
     expect(
       [...freed.deck, ...freed.hand, ...freed.discard].filter(isTributeCard),
     ).toHaveLength(0);
-    expect(leadOf(after.relations, "beta", "gamma")).toBe(1);
+    // The gate's 2 plus the +1 parting blow.
+    expect(leadOf(after.relations, "beta", "gamma")).toBe(3);
     expect(after.log.at(-1)).toMatchObject({
       type: "reclaimed", targetFactionId: "beta", overlordFactionId: "gamma",
     });
@@ -646,11 +675,13 @@ describe("post-escape respite", () => {
   it("revolt grants a respite the former lord cannot subjugate through", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["beta", "gamma"]]) };
-    g = withRel(g, mightLead(g.relations, "gamma", "beta", 9));
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2)); // the gate
     g = withHand(g, 0, ["revolt"]);
-    const after = playCard(g, 0, rng());
-    expect(after.respites.beta).toBe(g.turn + ESCAPE_RESPITE_TURNS);
-    // gamma still holds a lead far past the bar; only the respite blocks it
+    const freed = playCard(g, 0, rng());
+    expect(freed.respites.beta).toBe(g.turn + ESCAPE_RESPITE_TURNS);
+    // Hand gamma a lead far past the bar afterwards (a legal revolt and an
+    // overwhelming lord lead can no longer coexist): only the respite blocks.
+    const after = withRel(freed, mightLead({}, "gamma", "beta", 9));
     expect(validTargetsFor(viewOf(after), "gamma", "subjugate")).not.toContain("beta");
     expect(validTargetsFor(viewOf({ ...after, respites: {} }), "gamma", "subjugate"))
       .toContain("beta");
@@ -709,6 +740,7 @@ describe("post-escape respite", () => {
 
     let h = playingState(LINE_ADJ);
     h = { ...h, overlords: new Map([["beta", "gamma"]]), respites: { beta: h.turn } };
+    h = withRel(h, mightLead(h.relations, "beta", "gamma", 2)); // the gate
     h = withHand(h, 0, ["revolt"]);
     expect(playCard(h, 0, rng()).respites.beta).toBe(h.turn + ESCAPE_RESPITE_TURNS);
   });
@@ -1483,9 +1515,11 @@ describe("favourable omens", () => {
   it("doubles the parting blow from Revolt", () => {
     let g = armed(playingState(LINE_ADJ));
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = withRel(g, mightLead(g.relations, "beta", "alpha", 2)); // the gate
     g = withHand(g, 0, ["revolt"]);
     g = playCard(g, 0, seededRng(1));
-    expect(leadOf(g.relations, "beta", "alpha")).toBe(2);
+    // The gate's 2 plus the parting blow doubled to 2.
+    expect(leadOf(g.relations, "beta", "alpha")).toBe(4);
   });
 
   it("doubles the tribute a vassal pays, which is the cost of hoarding it", () => {
@@ -1759,6 +1793,7 @@ describe("event stamping", () => {
     // card branch has to remember it.
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["beta", "gamma"]]) };
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2)); // the gate
     g = withHand(g, 0, ["revolt"]);
     const after = playCard(g, 0, rng());
     const back = [...after.log].reverse();
@@ -1842,6 +1877,7 @@ describe("seeds of revolt and the two rolls", () => {
     expect(g.players[0].deck).toContain("revolt");
 
     g = { ...g, playedThisTurn: false };
+    g = withRel(g, mightLead(g.relations, "beta", "gamma", 2)); // the gate
     g = withHand(g, 0, ["revolt"]);
     const freed = playCard(g, 0, rng());
     const me = freed.players[0];
@@ -2055,6 +2091,20 @@ describe("passive garrison fortify", () => {
     expect(leadOf(next.relations, "beta", "gamma")).toBe(1);
   });
 
+  it("skips the direct overlord, stamping who was skipped on the event", () => {
+    // The same rule as the Fortify fan-out: the revolt gate reads this pair,
+    // and a tick that reached the lord would open the gate a turn at a time.
+    const g = asVassal(playingState(LINE_ADJ), "gamma");
+    const next = beginTurn(
+      { ...g, incorporated: annexed("beta", PASSIVE_PER_LANDS), current: 0 },
+      rng(),
+    );
+    expect(leadOf(next.relations, "beta", "gamma")).toBe(0);
+    expect(leadOf(next.relations, "beta", "alpha")).toBe(1);
+    const e = next.log.filter((x) => x.type === "garrisoned")[0];
+    expect(e).toMatchObject({ amount: 1, overlordFactionId: "gamma" });
+  });
+
   it("is not doubled by a held Favourable omens reading", () => {
     const g = playingState(LINE_ADJ);
     const next = beginTurn(
@@ -2172,6 +2222,7 @@ describe("event amount", () => {
   it("revolt records mult on the reclaimed event", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = withRel(g, mightLead(g.relations, "beta", "alpha", 2)); // the gate
     g = { ...g, omens: { beta: 1 } };
     g = withHand(g, 0, ["revolt"]);
     const after = playCard(g, 0, rng());
@@ -2188,13 +2239,83 @@ describe("event amount", () => {
     });
   });
 
-  it("a successful subjugation carries no amount - the +1/+1 poach penalty is a constant", () => {
+  it("subjugation records the reset of the vassal's counter as its amount", () => {
+    let g = playingState(LINE_ADJ);
+    g = withRel(g, mightLead(
+      mightLead(g.relations, "beta", "gamma", 3), "gamma", "beta", 1,
+    ));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after.log.at(-1)).toMatchObject({ type: "subjugated", amount: 1 });
+  });
+
+  it("a subjugation with nothing to reset carries no amount - the +1/+1 poach penalty is a constant", () => {
     let g = playingState(LINE_ADJ);
     g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
     g = withHand(g, 0, ["subjugate"]);
     const after = playCard(g, 0, rng(), "gamma");
     expect(after.log.at(-1)).toMatchObject({ type: "subjugated" });
     expect(after.log.at(-1)?.amount).toBeUndefined();
+  });
+});
+
+// The revolt gate reads the vassal's lead over its DIRECT overlord, so the
+// game protects that pair: subjugation clears the vassal's side of it, and
+// no vassal-side fan-out reaches the lord. tests/playability.test.ts owns the
+// gate's math; these pin the state changes feeding it.
+describe("the vassal-overlord pair", () => {
+  it("subjugation zeroes the new vassal's counter only - the grip survives", () => {
+    let g = playingState(LINE_ADJ);
+    g = withRel(g, mightLead(
+      mightLead(g.relations, "beta", "gamma", 3), "gamma", "beta", 1,
+    ));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after.overlords.get("gamma")).toBe("beta");
+    expect(getRel(after.relations, "gamma", "beta")).toBe(0); // reset
+    expect(getRel(after.relations, "beta", "gamma")).toBe(3); // the grip
+  });
+
+  it("a poached vassal still gains its +1 against the former lord", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
+    g = withRel(g, mightLead(
+      mightLead(g.relations, "beta", "gamma", 9), "gamma", "beta", 2,
+    ));
+    g = withHand(g, 0, ["subjugate"]);
+    const after = playCard(g, 0, () => 0, "gamma"); // the poach roll lands
+    expect(after.overlords.get("gamma")).toBe("beta");
+    expect(getRel(after.relations, "gamma", "beta")).toBe(0); // reset
+    expect(getRel(after.relations, "gamma", "alpha")).toBe(1); // the penalty
+    expect(after.log.at(-1)).toMatchObject({
+      type: "subjugated", formerOverlordFactionId: "alpha", amount: 2,
+    });
+  });
+
+  it("a vassal's Fortify skips its direct overlord but reaches a grand-lord", () => {
+    // Six factions keep delta's three-land pyramid under the victory
+    // majority (4), so the play resolves instead of unifying the map.
+    const many = [...FACTIONS, "epsilon", "zeta"];
+    let g = pickFaction(
+      chooseDeck(startGame(newGame(many)), buildDeck()), "beta", seededRng(1),
+    );
+    g = asVassal(g, "gamma");
+    g = { ...g, overlords: new Map([...g.overlords, ["gamma", "delta"]]) };
+    g = withHand(g, 0, ["fortify"]);
+    const after = playCard(g, 0, rng());
+    expect(getRel(after.relations, "beta", "gamma")).toBe(0); // the lord
+    expect(getRel(after.relations, "beta", "delta")).toBe(1); // the grand-lord
+    expect(getRel(after.relations, "beta", "alpha")).toBe(1);
+    expect(after.log.at(-1)).toMatchObject({
+      type: "play", cardId: "fortify", overlordFactionId: "gamma",
+    });
+  });
+
+  it("a free faction's Fortify carries no skipped-overlord stamp", () => {
+    const g = withHand(playingState(LINE_ADJ), 0, ["fortify"]);
+    const after = playCard(g, 0, rng());
+    expect(after.log.at(-1)?.overlordFactionId).toBeUndefined();
+    expect(getRel(after.relations, "beta", "gamma")).toBe(1);
   });
 });
 
@@ -2253,7 +2374,11 @@ describe("take hostage", () => {
       type: "hostage-returned", targetFactionId: "alpha",
       overlordFactionId: "beta", consequence: true,
     });
-    expect(cardBlockReason(viewOf(g), "alpha", "revolt")).toBeNull();
+    // The hostage lock is lifted; what remains is only the ordinary lead
+    // gate (the shortfall bumps above put alpha behind it).
+    expect(cardBlockReason(viewOf(g), "alpha", "revolt")).toMatchObject({
+      code: "revolt-lead",
+    });
   });
 
   it("cannot take a second hostage while one is held", () => {
