@@ -843,6 +843,20 @@ describe("9c: level the ruler on a spare turn", () => {
   });
 });
 
+describe("9e: cash the harvest", () => {
+  it("outranks turnips - a free boon beats a card defined as no effect", () => {
+    let g = base();
+    g = withHand(g, ["grow-crops", "turnip-harvest"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("yields to the ruler's level, like everything below 9d", () => {
+    let g = base();
+    g = withHand(g, ["turnip-harvest", "mighty-ruler"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+});
+
 function unlimitedAiPlaying(): GameState {
   const g = chooseRules(startGame(newGame(["alpha", "beta", "gamma", "delta"])), {
     turn: "unlimited",

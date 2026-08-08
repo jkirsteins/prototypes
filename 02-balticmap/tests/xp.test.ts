@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  TURNIP_MILESTONES_BASE, XP_TABLE, levelForXp, runTurnips, runXp,
+  TURNIP_MILESTONES_BASE, XP_TABLE, harvestMultiplier, harvestProgress,
+  harvestThreshold, harvestsEarned, levelForXp, runTurnips, runXp,
   levelWindow, turnipMilestone, turnipPacksEarned, xpForEvent,
   xpThresholdForLevel,
 } from "../src/xp";
@@ -146,6 +147,45 @@ describe("levelWindow", () => {
       expect(w.into + w.toNext, `xp ${xp}`).toBe(w.span);
       expect(w.into).toBeGreaterThanOrEqual(0);
       expect(w.into).toBeLessThan(w.span);
+    }
+  });
+});
+
+describe("the turnip bar's escalating thresholds", () => {
+  it("prices harvest n at 4 + 2n turnips, summed", () => {
+    expect(harvestThreshold(0, 1)).toBe(4);
+    expect(harvestThreshold(1, 1)).toBe(10);
+    expect(harvestThreshold(2, 1)).toBe(18);
+    expect(harvestThreshold(3, 1)).toBe(28);
+  });
+
+  it("multiplies every cost under unlimited turns, not just the first", () => {
+    expect(harvestMultiplier({ turn: "standard" })).toBe(1);
+    expect(harvestMultiplier({ turn: "unlimited" })).toBe(3);
+    expect(harvestThreshold(0, 3)).toBe(12);
+    expect(harvestThreshold(1, 3)).toBe(30);
+  });
+
+  it("counts harvests fully paid for", () => {
+    expect(harvestsEarned(0, 1)).toBe(0);
+    expect(harvestsEarned(3, 1)).toBe(0);
+    expect(harvestsEarned(4, 1)).toBe(1);
+    expect(harvestsEarned(9, 1)).toBe(1);
+    expect(harvestsEarned(10, 1)).toBe(2);
+    expect(harvestsEarned(11, 3)).toBe(0);
+    expect(harvestsEarned(12, 3)).toBe(1);
+  });
+
+  it("windows the count so the bar and the label cannot disagree", () => {
+    expect(harvestProgress(0, 1)).toEqual({ into: 0, span: 4 });
+    expect(harvestProgress(3, 1)).toEqual({ into: 3, span: 4 });
+    expect(harvestProgress(4, 1)).toEqual({ into: 0, span: 6 });
+    expect(harvestProgress(5, 1)).toEqual({ into: 1, span: 6 });
+    // into never reaches span: crossing the line opens the next band.
+    for (const n of [0, 1, 4, 9, 10, 17, 18, 40]) {
+      const { into, span } = harvestProgress(n, 1);
+      expect(into, `turnips ${n}`).toBeGreaterThanOrEqual(0);
+      expect(into, `turnips ${n}`).toBeLessThan(span);
     }
   });
 });

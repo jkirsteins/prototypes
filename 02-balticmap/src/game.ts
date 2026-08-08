@@ -15,9 +15,14 @@ import {
   playableSet, raidGainFor, seatOf, validTargetsFor, wealthIncomeFor,
   type RulesView,
 } from "./playability";
+import {
+  autoHarvestChoice, empowerableCards, harvestCommonPool,
+  harvestIncorporateTargets, harvestSubjugateTargets, type HarvestChoice,
+} from "./harvest";
 import { initialRulers, prowessByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
 import { allowsDiscards, DEFAULT_RULES, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
+import { harvestMultiplier, harvestsEarned, runTurnips } from "./xp";
 
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
@@ -26,6 +31,8 @@ export type GameEventType =
   | "seat-moved" | "seat-lost"
   | "hostage-taken" | "hostage-returned"
   | "subjugate-failed" | "incorporate-failed"
+  | "harvest-earned" | "harvest-traded" | "harvest-might" | "harvest-wealth"
+  | "empowered"
   | "victory" | "defeat" | "unified" | "surrendered" | "stranded";
 
 export interface GameEvent {
@@ -76,6 +83,17 @@ export interface GameEvent {
    *  because readings stack: two of them quadruple, and "doubled" could not
    *  tell that from one. Absent when no reading was spent. */
   readings?: number;
+  /** harvest-might: the factions the vs-all boon bumped, frozen at
+   *  resolution. Carried for the same reason `pactAgainst` is - a fan-out the
+   *  human authored cannot be reconstructed from the event alone (who was
+   *  alive at that instant is state the walk is not given), and this list is
+   *  what lets `leadMovesOf` resolve it exactly. Absent on the single-target
+   *  Might boons, which carry `targetFactionId` instead. */
+  affected?: string[];
+  /** play: this card was empowered (the harvest boon) and its effect resolved
+   *  twice. The log suffix; `amount`, where the branch records one, already
+   *  carries the doubled total. */
+  empowered?: boolean;
   /** This event was caused by the play it was logged with - the log indents it
    *  under that play's line. Set by `appendEvents` off the shape of the batch,
    *  never by a card branch; see the comment there. */
@@ -166,6 +184,11 @@ export interface GameState {
    *  the vanished map marker. Permanent until moved or lost - deliberately
    *  not on the src/timed.ts clock. */
   seats: Record<string, string>;
+  /** The card the harvest's empower boon marked, or null. Its next play by
+   *  the human resolves twice (see `playCard`), which consumes the mark.
+   *  Human-only by construction: only the empower boon writes it, and only
+   *  the human seat ever earns a harvest. */
+  empoweredCardId: string | null;
   /** One ruler per faction id, total. Read through `rulerOf`, written only
    *  by `replaceRuler`. */
   rulers: Rulers;
@@ -265,6 +288,7 @@ export function newGame(
     wealth: {},
     respites: {},
     seats: {},
+    empoweredCardId: null,
     ethnicities,
     rulers: initialRulers(factionIds, ethnicities),
     humanSeat: 0,
@@ -381,6 +405,13 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     // paid the debt off.
     case "hostage-taken":
     case "hostage-returned":
+    // The bar crossing follows the turnip play that crossed it; the boons and
+    // the empower mark follow the harvest play the player picked them on.
+    case "harvest-earned":
+    case "harvest-traded":
+    case "harvest-might":
+    case "harvest-wealth":
+    case "empowered":
       return true;
   }
 }
@@ -667,6 +698,10 @@ export function playCard(
   cardIndex: number,
   rng: Rng,
   targetId?: string,
+  /** `harvest` is the resolved Turnip harvest pick. The app rolls the modal
+   *  pre-play and hands the pick in; a caller that passes nothing (the sim,
+   *  a fast-forward, an AI seat) gets `autoHarvestChoice`. */
+  opts?: { harvest?: HarvestChoice },
 ): GameState {
   if (state.phase !== "playing") return state;
   if (state.playedThisTurn) return state;
@@ -697,6 +732,7 @@ export function playCard(
   let rulers = state.rulers;
   let wealth = state.wealth;
   let seats = state.seats;
+  let empoweredCardId = state.empoweredCardId;
   // A tribute owes 1 per land of the payer's own realm - the exact set its
   // income sums over, so you pay 1 per land you earn from - and the treasury
   // covers what it can before any counter moves. Computed here, before the
@@ -784,155 +820,18 @@ export function playCard(
     }
   };
 
-  // One prevented branch for every guard, read off `GUARDS` rather than written
-  // per card. A guard is consumed by the aim, not by the effect: the card is
-  // spent, the turn is gone, and the target's guard is gone too. Card-specific
-  // stamps that survive a prevention (Assassinate ruler's `targetRuler`) sit in
-  // their own branch below, guarded by `prevented`.
-  const guardId = targetId === undefined ? undefined : guardAgainst(cardId);
-  if (
-    guardId !== undefined && targetId !== undefined &&
-    (guards[guardId] ?? []).includes(targetId)
-  ) {
-    guards = {
-      ...guards,
-      [guardId]: guards[guardId].filter((f) => f !== targetId),
-    };
-    prevented = true;
-    if (cardId === "assassinate-ruler") {
-      events[0] = { ...events[0], targetRuler: rulerOf(rulers, targetId).name };
-    }
-  } else if (cardId === "raid" && targetId !== undefined) {
-    // Through `raidGainFor` rather than `raidYield * mult`: the card tip and
-    // the map preview quote the same call, so the promise and the resolution
-    // cannot drift apart.
-    const { gain } = raidGainFor(viewOf(state), p.factionId, targetId);
-    relations = bumpMightBy(relations, p.factionId, targetId, gain);
-    events[0] = { ...events[0], amount: gain };
-  } else if (FAN_OUT_CARDS.has(cardId)) {
-    // One branch keyed on the fan-out SHAPE, not the card - see FAN_OUT_CARDS
-    // in src/cards.ts.
-    const living = state.factionIds.filter(
-      (f) => f !== p.factionId && !(f in incorporated),
-    );
-    relations = bumpMightAllBy(relations, p.factionId, living, mult);
-    events[0] = { ...events[0], amount: mult };
-  } else if (cardId === "favourable-omens") {
-    omens = { ...omens, [p.factionId]: (omens[p.factionId] ?? 0) + 1 };
-  } else if (cardId === "population-boom") {
-    booms = { ...booms, [p.factionId]: (booms[p.factionId] ?? 0) + 1 };
-  } else if (cardId === "mighty-ruler") {
-    // The ACTING faction's CURRENT ruler. The level dies with him: replaceRuler
-    // seats the successor at prowess 0. No `amount` on the event - no Might
-    // counter moved, so the log line carries no standings suffix.
-    const ruler = rulerOf(rulers, p.factionId);
-    rulers = {
-      ...rulers,
-      [p.factionId]: { ...ruler, prowess: ruler.prowess + 1 },
-    };
-  } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
-    // Captured before assassinate() levels it away: the "before" of a
-    // standings line has to come from somewhere once the reset erases it.
-    // Through `leadsIn`, not raw `leadsOf`: pacts buy Might, the levelling
-    // only zeroes the store, so the visible after-lead is the live pact terms
-    // and the standings walk's "after" must start from the visible before.
-    const preMightLead = leadsIn(
-      { relations, alliances, turn: state.turn }, p.factionId, targetId,
-    );
-    const out = assassinate(state, rulers, relations, p.factionId, targetId);
-    relations = out.relations;
-    rulers = out.rulers;
-    events[0] = {
-      ...events[0],
-      targetRuler: out.killed,
-      successorRuler: out.successor,
-      amount: preMightLead,
-    };
-  } else if (cardId === "found-settlement" && targetId !== undefined) {
-    // The settlement belongs to the land, not to whoever founded it: a vassal's
-    // land settled by its overlord keeps the settlement when the vassal leaves,
-    // and takes the grip with it. That is the risk the card offers.
-    settlements = {
-      ...settlements,
-      [targetId]: (settlements[targetId] ?? 0) + 1,
-    };
-    // Every founding spends a boom, floored at none - including one that only
-    // reached the second settlement a land supports unaided. That is the price
-    // of the allowance being an "up to" rather than a step: a boom saved for a
-    // big land is a boom not spent on a small one.
-    const held = booms[p.factionId] ?? 0;
-    if (held > 0) booms = { ...booms, [p.factionId]: held - 1 };
-    events.push({
-      turn: state.turn, playerId: p.id, type: "settled",
-      targetFactionId: targetId,
-    });
-  } else if (cardId === "seat-of-power" && targetId !== undefined) {
-    // One entry per owner is the whole "only one seat" rule: a Record cannot
-    // hold two, so a replay overwrites - the move - and nothing else needs to
-    // check. The bar and raid effects live on `seatOf` reads, not here.
-    seats = { ...seats, [p.factionId]: targetId };
-    events.push({
-      turn: state.turn, playerId: p.id, type: "seat-moved",
-      targetFactionId: targetId,
-    });
-  } else if (isGuardCard(cardId)) {
-    // Posting any of the three guards. Legality already refuses a second copy
-    // while one is unspent (`already-held`), so this cannot stack.
-    const holders = guards[cardId] ?? [];
-    if (!holders.includes(p.factionId)) {
-      guards = { ...guards, [cardId]: [...holders, p.factionId] };
-    }
-  } else if (cardId === "alliance" && targetId !== undefined) {
-    const boosted = diplomacyBoost.includes(p.factionId);
-    // Frozen here and never recomputed - see `Pact` in src/relations.ts for why
-    // a live set would silently drift the standings walk.
-    const against = sharedNeighboursOf(viewOf(state), p.factionId, targetId);
-    // Re-sealing on a live ally extends the pact rather than restarting it:
-    // the new 5 (or 10) turns stack on whatever the old pact still had. A
-    // lapsed pact not yet swept by lapsePacts earns no credit - Math.max
-    // floors the base at the current turn.
-    const prior = alliances[allianceKey(p.factionId, targetId)];
-    const base = Math.max(prior?.expiry ?? state.turn, state.turn);
-    alliances = {
-      ...alliances,
-      [allianceKey(p.factionId, targetId)]: {
-        expiry: base + (boosted ? 10 : 5),
-        against,
-      },
-    };
-    if (boosted) diplomacyBoost = diplomacyBoost.filter((f) => f !== p.factionId);
-    // The pact's Might bonus is not a bump: it is a term `leadsIn` adds while
-    // the pact is live and drops when it lapses. It still MOVES leads, so it is
-    // recorded like one - `amount` for the size, `pactAgainst` for
-    // the pairs, which is what lets the walk resolve both sides of the fan-out.
-    events[0] = {
-      ...events[0], amount: PACT_MIGHT_BONUS,
-      pactAgainst: against,
-    };
-  } else if (cardId === "extended-diplomacy") {
-    if (!diplomacyBoost.includes(p.factionId)) {
-      diplomacyBoost = [...diplomacyBoost, p.factionId];
-    }
-  } else if (
-    cardId === "subjugate" && targetId !== undefined &&
-    rng() >= subjugationChance(viewOf(state), targetId)
-  ) {
-    // A poach that missed. The card is spent and the turn is gone, but the
-    // lead that justified it is untouched, so the next copy drawn can try
-    // again. Taking a free faction never reaches this branch.
-    events.push({
-      turn: state.turn, playerId: p.id, type: "subjugate-failed",
-      targetFactionId: targetId, overlordFactionId: p.factionId,
-      formerOverlordFactionId: state.overlords.get(targetId),
-    });
-  } else if (cardId === "subjugate" && targetId !== undefined) {
-    const formerLord = overlords.get(targetId);
+  // The landing halves of Subjugate and Incorporate, shared verbatim with the
+  // harvest boons that hand them out roll-free: the chance stays in each
+  // card's own branch, so a boon that lands and a card that lands cannot
+  // drift apart in what landing means.
+  const landSubjugation = (target: string): void => {
+    const formerLord = overlords.get(target);
     // The target's own vassals come along: taking a lord takes its pyramid,
     // which is why the bar in src/playability.ts prices the full realm. Its
     // hostages of them survive too - those vassalages are untouched.
-    dropHostageOf(targetId); // the poached vassal's debt was to its former lord
-    overlords.set(targetId, p.factionId);
-    players = updateFaction(players, targetId, (pl) => {
+    dropHostageOf(target); // the poached vassal's debt was to its former lord
+    overlords.set(target, p.factionId);
+    players = updateFaction(players, target, (pl) => {
       const clean = stripVassalCards(pl);
       return {
         ...clean,
@@ -942,133 +841,469 @@ export function playCard(
     if (formerLord !== undefined) {
       // vassal-loss penalty (section 8): the poached vassal gains +1 Might
       // over the former lord (relation counters only grow).
-      relations = bumpMight(relations, targetId, formerLord);
+      relations = bumpMight(relations, target, formerLord);
     }
     events.push({
       turn: state.turn, playerId: p.id, type: "subjugated",
-      targetFactionId: targetId, overlordFactionId: p.factionId,
+      targetFactionId: target, overlordFactionId: p.factionId,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
-  } else if (
-    cardId === "incorporate" && targetId !== undefined &&
-    rng() >= incorporationChance(state, p.factionId, targetId)
-  ) {
-    // The vassal is not digested yet. The card is spent and the turn is gone;
-    // the vassalage survives and its loyalty clock keeps running, so the next
-    // attempt is likelier. Spending the card is what makes a low roll a real
-    // decision rather than a delay.
-    events.push({
-      turn: state.turn, playerId: p.id, type: "incorporate-failed",
-      targetFactionId: targetId, overlordFactionId: p.factionId,
-    });
-  } else if (cardId === "incorporate" && targetId !== undefined) {
-    overlords.delete(targetId);
-    dropHostageOf(targetId); // an absorbed people has no camp to return to
+  };
+
+  const landIncorporation = (target: string): void => {
+    overlords.delete(target);
+    dropHostageOf(target); // an absorbed people has no camp to return to
     // A real rule, not defense: digesting a mid-lord frees its vassals.
     // Fealty was to the lord that just vanished, and re-parenting them would
     // make Incorporate strictly better than the pyramid it consumes. The
     // trade is deliberate - the freed subtree leaves your full realm in
     // exchange for one permanent land - and the AI prices it (src/ai.ts).
-    freeVassalsOf(targetId);
-    incorporated = { ...incorporated, [targetId]: p.factionId };
+    freeVassalsOf(target);
+    incorporated = { ...incorporated, [target]: p.factionId };
     for (const [land, owner] of Object.entries(incorporated)) {
-      if (owner === targetId) incorporated = { ...incorporated, [land]: p.factionId };
+      if (owner === target) incorporated = { ...incorporated, [land]: p.factionId };
     }
-    players = updateFaction(players, targetId, stripVassalCards);
+    players = updateFaction(players, target, stripVassalCards);
     events.push({
       turn: state.turn, playerId: p.id, type: "incorporated",
-      targetFactionId: targetId, overlordFactionId: p.factionId,
+      targetFactionId: target, overlordFactionId: p.factionId,
     });
-  } else if (cardId === "seeds-of-revolt") {
-    // Shuffle a live Revolt into the vassal's remaining deck. The wait for it
-    // to surface is the whole point: the delay comes out of the deck rather
-    // than out of a constant, and it differs every vassalage.
-    players = updateFaction(players, p.factionId, (pl) => ({
-      ...pl, deck: shuffle([...pl.deck, "revolt"], rng),
-    }));
-    events.push({
-      turn: state.turn, playerId: p.id, type: "seeded", cardId,
-      targetFactionId: p.factionId,
-      overlordFactionId: state.overlords.get(p.factionId),
-    });
-  } else if (cardId === "revolt") {
-    const former = overlords.get(p.factionId);
-    if (former === undefined) return state;
-    overlords.delete(p.factionId);
-    dropHostageOf(p.factionId); // defensive: legality refuses Revolt while one is held
-    respites = { ...respites, [p.factionId]: state.turn + ESCAPE_RESPITE_TURNS };
-    players = updateFaction(players, p.factionId, stripVassalCards);
-    // vassal-loss penalty (section 8): the revolting vassal gains +1 Might
-    // over the former lord (relation counters only grow). Held readings
-    // multiply this parting blow like any other Might gain.
-    relations = bumpMightBy(relations, p.factionId, former, mult);
-    events.push({
-      turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
-      targetFactionId: p.factionId, overlordFactionId: former, amount: mult,
-      ...(readings > 0 ? { readings } : {}),
-    });
-  } else if (cardId === "take-hostage" && targetId !== undefined) {
-    // Legality already guarantees the target is this actor's vassal with a
-    // live Revolt and no hostage held, so the branch only records the debt.
-    // The Revolt itself is untouched: locking is `cardBlockReason`'s reading
-    // of this entry, so the card stays in the piles and `isStranded` still
-    // counts it as an escape.
-    hostages = { ...hostages, [targetId]: HOSTAGE_RETURN_TRIBUTES };
-    events.push({
-      turn: state.turn, playerId: p.id, type: "hostage-taken",
-      targetFactionId: targetId, overlordFactionId: p.factionId,
-    });
-  } else if (isTributeCard(cardId)) {
-    const lord = overlords.get(p.factionId);
-    if (lord === undefined) return state;
-    // Wealth first: the coins move vassal -> direct lord and no counter with
-    // them. Only the DIRECT lord - the per-pair fan-out below exists because
-    // relation counters are per-pair, and a treasury is one pot; a chain's
-    // root is still fed, because each link's own tribute plays pay from the
-    // treasury these coins landed in. (The per-hop cascade this replaced is
-    // recorded, reversed, in the 2026-08-02 vassal-chains design.)
-    if (tributeCoins > 0) {
-      wealth = {
-        ...wealth,
-        [p.factionId]: (wealth[p.factionId] ?? 0) - tributeCoins,
-        [lord]: (wealth[lord] ?? 0) + tributeCoins,
+  };
+
+  // One prevented branch for every guard, read off `GUARDS` rather than written
+  // per card. A guard is consumed by the aim, not by the effect: the card is
+  // spent, the turn is gone, and the target's guard is gone too. Card-specific
+  // stamps that survive a prevention (Assassinate ruler's `targetRuler`) sit in
+  // their own branch below, guarded by `prevented`.
+  //
+  // The whole effect chain lives in a closure so the empower boon can run it
+  // twice. "refuse" is the two dead-play exits (a Revolt with no overlord, a
+  // tribute with no lord) that must hand the caller back an unchanged state.
+  const guardId = targetId === undefined ? undefined : guardAgainst(cardId);
+  const resolveEffect = (): "ok" | "refuse" => {
+    if (
+      guardId !== undefined && targetId !== undefined &&
+      (guards[guardId] ?? []).includes(targetId)
+    ) {
+      guards = {
+        ...guards,
+        [guardId]: guards[guardId].filter((f) => f !== targetId),
       };
-    }
-    // What the treasury could not cover lands as the Might bump, multiplied by
-    // the readings the shortfall cashed - see the spend above. The lord's
-    // incorporated lands gain alongside it, as every bump toward a dead land's
-    // owner always has.
-    const shortfallAmount = tributeShortfall * mult;
-    if (shortfallAmount > 0) {
-      const beneficiaries = [
-        lord,
-        ...state.factionIds.filter((f) => incorporated[f] === lord),
-      ];
-      for (const b of beneficiaries) {
-        relations = bumpMightBy(relations, b, p.factionId, shortfallAmount);
+      prevented = true;
+      if (cardId === "assassinate-ruler") {
+        events[0] = { ...events[0], targetRuler: rulerOf(rulers, targetId).name };
       }
-    }
-    events.push({
-      turn: state.turn, playerId: p.id, type: "tribute",
-      targetFactionId: p.factionId, overlordFactionId: lord,
-      ...(tributeCoins > 0 ? { wealth: tributeCoins } : {}),
-      ...(shortfallAmount > 0 ? { amount: shortfallAmount } : {}),
-    });
-    // Each payment works off one unit of the hostage debt, whatever the omens
-    // multiplied the tribute itself to - the card promises "pay tribute
-    // twice", counted in plays. At zero the hostage goes home and the Revolt
-    // block lifts with the entry.
-    const owed = hostages[p.factionId];
-    if (owed !== undefined) {
-      if (owed <= 1) {
-        dropHostageOf(p.factionId);
+    } else if (cardId === "raid" && targetId !== undefined) {
+      // Through `raidGainFor` rather than `raidYield * mult`: the card tip and
+      // the map preview quote the same call, so the promise and the resolution
+      // cannot drift apart.
+      const { gain } = raidGainFor(viewOf(state), p.factionId, targetId);
+      relations = bumpMightBy(relations, p.factionId, targetId, gain);
+      // Accumulated, not assigned: an empowered play resolves twice and the
+      // event's one `amount` must carry the sum, or the standings walk loses
+      // the second swing.
+      events[0] = { ...events[0], amount: (events[0].amount ?? 0) + gain };
+    } else if (FAN_OUT_CARDS.has(cardId)) {
+      // One branch keyed on the fan-out SHAPE, not the card - see FAN_OUT_CARDS
+      // in src/cards.ts.
+      const living = state.factionIds.filter(
+        (f) => f !== p.factionId && !(f in incorporated),
+      );
+      relations = bumpMightAllBy(relations, p.factionId, living, mult);
+      events[0] = { ...events[0], amount: (events[0].amount ?? 0) + mult };
+    } else if (cardId === "favourable-omens") {
+      omens = { ...omens, [p.factionId]: (omens[p.factionId] ?? 0) + 1 };
+    } else if (cardId === "population-boom") {
+      booms = { ...booms, [p.factionId]: (booms[p.factionId] ?? 0) + 1 };
+    } else if (cardId === "mighty-ruler") {
+      // The ACTING faction's CURRENT ruler. The level dies with him: replaceRuler
+      // seats the successor at prowess 0. No `amount` on the event - no Might
+      // counter moved, so the log line carries no standings suffix.
+      const ruler = rulerOf(rulers, p.factionId);
+      rulers = {
+        ...rulers,
+        [p.factionId]: { ...ruler, prowess: ruler.prowess + 1 },
+      };
+    } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
+      // Captured before assassinate() levels it away: the "before" of a
+      // standings line has to come from somewhere once the reset erases it.
+      // Through `leadsIn`, not raw `leadsOf`: pacts buy Might, the levelling
+      // only zeroes the store, so the visible after-lead is the live pact terms
+      // and the standings walk's "after" must start from the visible before.
+      const preMightLead = leadsIn(
+        { relations, alliances, turn: state.turn }, p.factionId, targetId,
+      );
+      const out = assassinate(state, rulers, relations, p.factionId, targetId);
+      relations = out.relations;
+      rulers = out.rulers;
+      events[0] = {
+        ...events[0],
+        targetRuler: out.killed,
+        successorRuler: out.successor,
+        // First-stamp only: an empowered second swing reads an already-levelled
+        // store, and its near-zero lead would overwrite the "before" the walk
+        // needs. The rulers named are the LAST swing's - the final story.
+        ...(events[0].amount === undefined ? { amount: preMightLead } : {}),
+      };
+    } else if (cardId === "found-settlement" && targetId !== undefined) {
+      // The settlement belongs to the land, not to whoever founded it: a vassal's
+      // land settled by its overlord keeps the settlement when the vassal leaves,
+      // and takes the grip with it. That is the risk the card offers.
+      settlements = {
+        ...settlements,
+        [targetId]: (settlements[targetId] ?? 0) + 1,
+      };
+      // Every founding spends a boom, floored at none - including one that only
+      // reached the second settlement a land supports unaided. That is the price
+      // of the allowance being an "up to" rather than a step: a boom saved for a
+      // big land is a boom not spent on a small one.
+      const held = booms[p.factionId] ?? 0;
+      if (held > 0) booms = { ...booms, [p.factionId]: held - 1 };
+      events.push({
+        turn: state.turn, playerId: p.id, type: "settled",
+        targetFactionId: targetId,
+      });
+    } else if (cardId === "seat-of-power" && targetId !== undefined) {
+      // One entry per owner is the whole "only one seat" rule: a Record cannot
+      // hold two, so a replay overwrites - the move - and nothing else needs to
+      // check. The bar and raid effects live on `seatOf` reads, not here.
+      seats = { ...seats, [p.factionId]: targetId };
+      events.push({
+        turn: state.turn, playerId: p.id, type: "seat-moved",
+        targetFactionId: targetId,
+      });
+    } else if (isGuardCard(cardId)) {
+      // Posting any of the three guards. Legality already refuses a second copy
+      // while one is unspent (`already-held`), so this cannot stack.
+      const holders = guards[cardId] ?? [];
+      if (!holders.includes(p.factionId)) {
+        guards = { ...guards, [cardId]: [...holders, p.factionId] };
+      }
+    } else if (cardId === "alliance" && targetId !== undefined) {
+      const boosted = diplomacyBoost.includes(p.factionId);
+      // Frozen here and never recomputed - see `Pact` in src/relations.ts for why
+      // a live set would silently drift the standings walk.
+      const against = sharedNeighboursOf(viewOf(state), p.factionId, targetId);
+      // Re-sealing on a live ally extends the pact rather than restarting it:
+      // the new 5 (or 10) turns stack on whatever the old pact still had. A
+      // lapsed pact not yet swept by lapsePacts earns no credit - Math.max
+      // floors the base at the current turn.
+      const prior = alliances[allianceKey(p.factionId, targetId)];
+      const base = Math.max(prior?.expiry ?? state.turn, state.turn);
+      alliances = {
+        ...alliances,
+        [allianceKey(p.factionId, targetId)]: {
+          expiry: base + (boosted ? 10 : 5),
+          against,
+        },
+      };
+      if (boosted) diplomacyBoost = diplomacyBoost.filter((f) => f !== p.factionId);
+      // The pact's Might bonus is not a bump: it is a term `leadsIn` adds while
+      // the pact is live and drops when it lapses. It still MOVES leads, so it is
+      // recorded like one - `amount` for the size, `pactAgainst` for
+      // the pairs, which is what lets the walk resolve both sides of the fan-out.
+      events[0] = {
+        ...events[0], amount: PACT_MIGHT_BONUS,
+        pactAgainst: against,
+      };
+    } else if (cardId === "extended-diplomacy") {
+      if (!diplomacyBoost.includes(p.factionId)) {
+        diplomacyBoost = [...diplomacyBoost, p.factionId];
+      }
+    } else if (
+      cardId === "subjugate" && targetId !== undefined &&
+      rng() >= subjugationChance(viewOf(state), targetId)
+    ) {
+      // A poach that missed. The card is spent and the turn is gone, but the
+      // lead that justified it is untouched, so the next copy drawn can try
+      // again. Taking a free faction never reaches this branch.
+      events.push({
+        turn: state.turn, playerId: p.id, type: "subjugate-failed",
+        targetFactionId: targetId, overlordFactionId: p.factionId,
+        formerOverlordFactionId: state.overlords.get(targetId),
+      });
+    } else if (cardId === "subjugate" && targetId !== undefined) {
+      landSubjugation(targetId);
+    } else if (
+      cardId === "incorporate" && targetId !== undefined &&
+      rng() >= incorporationChance(state, p.factionId, targetId)
+    ) {
+      // The vassal is not digested yet. The card is spent and the turn is gone;
+      // the vassalage survives and its loyalty clock keeps running, so the next
+      // attempt is likelier. Spending the card is what makes a low roll a real
+      // decision rather than a delay.
+      events.push({
+        turn: state.turn, playerId: p.id, type: "incorporate-failed",
+        targetFactionId: targetId, overlordFactionId: p.factionId,
+      });
+    } else if (cardId === "incorporate" && targetId !== undefined) {
+      landIncorporation(targetId);
+    } else if (cardId === "seeds-of-revolt") {
+      // Shuffle a live Revolt into the vassal's remaining deck. The wait for it
+      // to surface is the whole point: the delay comes out of the deck rather
+      // than out of a constant, and it differs every vassalage.
+      players = updateFaction(players, p.factionId, (pl) => ({
+        ...pl, deck: shuffle([...pl.deck, "revolt"], rng),
+      }));
+      events.push({
+        turn: state.turn, playerId: p.id, type: "seeded", cardId,
+        targetFactionId: p.factionId,
+        overlordFactionId: state.overlords.get(p.factionId),
+      });
+    } else if (cardId === "revolt") {
+      const former = overlords.get(p.factionId);
+      if (former === undefined) return "refuse";
+      overlords.delete(p.factionId);
+      dropHostageOf(p.factionId); // defensive: legality refuses Revolt while one is held
+      respites = { ...respites, [p.factionId]: state.turn + ESCAPE_RESPITE_TURNS };
+      players = updateFaction(players, p.factionId, stripVassalCards);
+      // vassal-loss penalty (section 8): the revolting vassal gains +1 Might
+      // over the former lord (relation counters only grow). Held readings
+      // multiply this parting blow like any other Might gain.
+      relations = bumpMightBy(relations, p.factionId, former, mult);
+      events.push({
+        turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
+        targetFactionId: p.factionId, overlordFactionId: former, amount: mult,
+        ...(readings > 0 ? { readings } : {}),
+      });
+    } else if (cardId === "take-hostage" && targetId !== undefined) {
+      // Legality already guarantees the target is this actor's vassal with a
+      // live Revolt and no hostage held, so the branch only records the debt.
+      // The Revolt itself is untouched: locking is `cardBlockReason`'s reading
+      // of this entry, so the card stays in the piles and `isStranded` still
+      // counts it as an escape.
+      hostages = { ...hostages, [targetId]: HOSTAGE_RETURN_TRIBUTES };
+      events.push({
+        turn: state.turn, playerId: p.id, type: "hostage-taken",
+        targetFactionId: targetId, overlordFactionId: p.factionId,
+      });
+    } else if (cardId === "turnip-harvest") {
+      // Choiceless callers - the sim's naive human, a `turns=` fast-forward,
+      // an AI seat that somehow held one - auto-resolve with the same roll the
+      // modal would have shown. The app rolls pre-play in main.ts and hands
+      // the pick in through `opts`.
+      const choice = opts?.harvest ?? autoHarvestChoice(viewOf(state), p, rng);
+      const living = state.factionIds.filter(
+        (f) => f !== p.factionId && !(f in incorporated),
+      );
+      const pushMight = (target: string): void => {
+        relations = bumpMightBy(relations, p.factionId, target, 1);
         events.push({
-          turn: state.turn, playerId: p.id, type: "hostage-returned",
-          targetFactionId: p.factionId, overlordFactionId: lord,
+          turn: state.turn, playerId: p.id, type: "harvest-might",
+          targetFactionId: target, amount: 1,
         });
-      } else {
-        hostages = { ...hostages, [p.factionId]: owed - 1 };
+      };
+      switch (choice.effect) {
+        case "swap-common":
+        case "swap-known": {
+          const pool =
+            choice.effect === "swap-common" ? harvestCommonPool() : choice.pool;
+          const self = players[state.current];
+          const held =
+            self.deck.includes("grow-crops") ||
+            self.discard.includes("grow-crops") ||
+            self.hand.includes("grow-crops");
+          // Both guards are defensive: the boon is only offered live while a
+          // turnip and a pool exist. Guarded anyway so a stale pick cannot
+          // burn an rng draw on nothing.
+          if (pool.length > 0 && held) {
+            const gained = pool[Math.floor(rng() * pool.length)];
+            const removeOne = (arr: string[]): string[] | null => {
+              const i = arr.indexOf("grow-crops");
+              return i === -1 ? null : arr.filter((_, j) => j !== i);
+            };
+            // One turnip leaves - deck first, then discard, then hand - and
+            // the gained card is shuffled into the DECK wherever the turnip
+            // came from: the trade is a future draw, never a free play.
+            players = updateFaction(players, p.factionId, (pl) => {
+              const fromDeck = removeOne(pl.deck);
+              if (fromDeck !== null) {
+                return { ...pl, deck: shuffle([...fromDeck, gained], rng) };
+              }
+              const fromDiscard = removeOne(pl.discard);
+              if (fromDiscard !== null) {
+                return {
+                  ...pl, discard: fromDiscard,
+                  deck: shuffle([...pl.deck, gained], rng),
+                };
+              }
+              const fromHand = removeOne(pl.hand);
+              if (fromHand !== null) {
+                return {
+                  ...pl, hand: fromHand,
+                  deck: shuffle([...pl.deck, gained], rng),
+                };
+              }
+              return pl;
+            });
+            events.push({
+              turn: state.turn, playerId: p.id, type: "harvest-traded",
+              cardId: gained,
+            });
+          }
+          break;
+        }
+        case "might-random": {
+          if (living.length > 0) {
+            pushMight(living[Math.floor(rng() * living.length)]);
+          }
+          break;
+        }
+        case "might-chosen": {
+          if (living.includes(choice.targetId)) pushMight(choice.targetId);
+          break;
+        }
+        case "might-all": {
+          if (living.length > 0) {
+            relations = bumpMightAllBy(relations, p.factionId, living, 1);
+            events.push({
+              turn: state.turn, playerId: p.id, type: "harvest-might",
+              amount: 1, affected: living,
+            });
+          }
+          break;
+        }
+        case "wealth-1":
+        case "wealth-income": {
+          const coins =
+            choice.effect === "wealth-1"
+              ? 1
+              : 5 * wealthIncomeFor(viewOf(state), p.factionId);
+          wealth = {
+            ...wealth,
+            [p.factionId]: (wealth[p.factionId] ?? 0) + coins,
+          };
+          events.push({
+            turn: state.turn, playerId: p.id, type: "harvest-wealth",
+            wealth: coins,
+          });
+          break;
+        }
+        case "subjugate": {
+          // The boon lands roll-free - a boon that whiffed would read as a
+          // bug - but only on a target the boon's own rule allows.
+          if (
+            harvestSubjugateTargets(viewOf(state), p.factionId)
+              .includes(choice.targetId)
+          ) {
+            landSubjugation(choice.targetId);
+          }
+          break;
+        }
+        case "incorporate": {
+          if (
+            harvestIncorporateTargets(viewOf(state), p.factionId)
+              .includes(choice.targetId)
+          ) {
+            landIncorporation(choice.targetId);
+          }
+          break;
+        }
+        case "empower": {
+          if (empowerableCards(players[state.current]).includes(choice.cardId)) {
+            empoweredCardId = choice.cardId;
+            events.push({
+              turn: state.turn, playerId: p.id, type: "empowered",
+              cardId: choice.cardId,
+            });
+          }
+          break;
+        }
       }
+    } else if (isTributeCard(cardId)) {
+      const lord = overlords.get(p.factionId);
+      if (lord === undefined) return "refuse";
+      // Wealth first: the coins move vassal -> direct lord and no counter with
+      // them. Only the DIRECT lord - the per-pair fan-out below exists because
+      // relation counters are per-pair, and a treasury is one pot; a chain's
+      // root is still fed, because each link's own tribute plays pay from the
+      // treasury these coins landed in. (The per-hop cascade this replaced is
+      // recorded, reversed, in the 2026-08-02 vassal-chains design.)
+      if (tributeCoins > 0) {
+        wealth = {
+          ...wealth,
+          [p.factionId]: (wealth[p.factionId] ?? 0) - tributeCoins,
+          [lord]: (wealth[lord] ?? 0) + tributeCoins,
+        };
+      }
+      // What the treasury could not cover lands as the Might bump, multiplied by
+      // the readings the shortfall cashed - see the spend above. The lord's
+      // incorporated lands gain alongside it, as every bump toward a dead land's
+      // owner always has.
+      const shortfallAmount = tributeShortfall * mult;
+      if (shortfallAmount > 0) {
+        const beneficiaries = [
+          lord,
+          ...state.factionIds.filter((f) => incorporated[f] === lord),
+        ];
+        for (const b of beneficiaries) {
+          relations = bumpMightBy(relations, b, p.factionId, shortfallAmount);
+        }
+      }
+      events.push({
+        turn: state.turn, playerId: p.id, type: "tribute",
+        targetFactionId: p.factionId, overlordFactionId: lord,
+        ...(tributeCoins > 0 ? { wealth: tributeCoins } : {}),
+        ...(shortfallAmount > 0 ? { amount: shortfallAmount } : {}),
+      });
+      // Each payment works off one unit of the hostage debt, whatever the omens
+      // multiplied the tribute itself to - the card promises "pay tribute
+      // twice", counted in plays. At zero the hostage goes home and the Revolt
+      // block lifts with the entry.
+      const owed = hostages[p.factionId];
+      if (owed !== undefined) {
+        if (owed <= 1) {
+          dropHostageOf(p.factionId);
+          events.push({
+            turn: state.turn, playerId: p.id, type: "hostage-returned",
+            targetFactionId: p.factionId, overlordFactionId: lord,
+          });
+        } else {
+          hostages = { ...hostages, [p.factionId]: owed - 1 };
+        }
+      }
+    }
+    return "ok";
+  };
+
+  // The empower mark is checked against the state BEFORE this play, and only
+  // for the human: only the human ever earns a harvest, so only the human's
+  // state ever carries a mark, and the seat check keeps a sim's symmetric
+  // world honest about that.
+  const empowered =
+    state.humanSeat !== null && state.current === state.humanSeat &&
+    state.empoweredCardId === cardId;
+  if (resolveEffect() === "refuse") return state;
+  if (empowered && !prevented) {
+    // The second resolution. Its own dead-play refusals (a Revolt whose lord
+    // is already gone) just stop the second swing - the first already
+    // committed. A play a guard turned aside keeps the mark: nothing
+    // resolved, so nothing was doubled and nothing is spent.
+    resolveEffect();
+    events[0] = { ...events[0], empowered: true };
+    empoweredCardId = null;
+  }
+
+  // The turnip bar. A human turnip play that crosses a threshold shuffles a
+  // Turnip harvest into the deck - the seeds-of-revolt injection shape. The
+  // count is log-derived (`runTurnips`, this play is the +1), the thresholds
+  // escalate (`harvestThreshold`), and the gate is the human SEAT, not player
+  // id 1: `runWorld`'s symmetric simulations carry `humanSeat: null` and must
+  // stay a world where no seat is privileged.
+  if (
+    cardId === "grow-crops" &&
+    state.humanSeat !== null && state.current === state.humanSeat
+  ) {
+    const m = harvestMultiplier(state.rules);
+    const grown = runTurnips(state.log);
+    if (harvestsEarned(grown + 1, m) > harvestsEarned(grown, m)) {
+      players = updateFaction(players, p.factionId, (pl) => ({
+        ...pl, deck: shuffle([...pl.deck, "turnip-harvest"], rng),
+      }));
+      events.push({
+        turn: state.turn, playerId: p.id, type: "harvest-earned",
+        cardId: "turnip-harvest",
+      });
     }
   }
 
@@ -1142,7 +1377,7 @@ export function playCard(
   return {
     ...state, phase, players, relations, overlords, incorporated,
     alliances, diplomacyBoost, guards, omens, settlements, booms, hostages,
-    wealth, respites, rulers, seats,
+    wealth, respites, rulers, seats, empoweredCardId,
     log: appendEvents(state, events),
     playedThisTurn: state.rules.turn !== "unlimited",
   };

@@ -3,22 +3,26 @@ import { pact, siteCaps } from "./helpers";
 import {
   newGame, startGame, chooseDeck, chooseRules, pickFaction, beginTurn, playCard,
   discardCard, endTurn, advance, surrender, viewOf,
-  OPENING_HAND, HAND_REFILL, victoryRealmSize, type GameState,
+  OPENING_HAND, HAND_REFILL, victoryRealmSize,
+  type GameEvent, type GameState,
 } from "../src/game";
 import { DEFAULT_RULES } from "../src/rules";
 import {
-  DECK_SIZE, buildDeck, isTributeCard, CARDS, TRIBUTE_CARDS, type Rng,
+  ACQUIRABLE_CARDS, DECK_SIZE, buildDeck, isTributeCard, CARDS, TRIBUTE_CARDS,
+  type Rng,
 } from "../src/cards";
 import {
   allianceKey, bumpMight, getRel, leadOf, type Relations,
 } from "../src/relations";
 import {
   ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES, INCORPORATE_RAMP,
-  PASSIVE_PER_LANDS, PROWESS_PER_REDUCTION, cardBlockReason, leadsIn,
+  PACT_MIGHT_BONUS, PASSIVE_PER_LANDS, PROWESS_PER_REDUCTION, cardBlockReason,
+  leadsIn,
   loyaltyKey, playableSet, raidYield, subjugationGripOn,
   subjugationRequirement, validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
+import type { HarvestChoice } from "../src/harvest";
 import { runTurnips, runXp } from "../src/xp";
 import pools from "../src/data/ruler-names.json";
 
@@ -2325,5 +2329,298 @@ describe("Mighty ruler", () => {
     expect(rulerOf(after.rulers, "gamma").prowess).toBe(0);
     expect(subjugationRequirement(viewOf(after), "gamma", "beta"))
       .toBe(subjugationGripOn(viewOf(after), "beta"));
+  });
+});
+
+describe("the turnip bar's injection", () => {
+  /** Pretends the human already played n turnips: the count is log-derived,
+   *  so seeding the log is the whole fixture. */
+  function grown(g: GameState, n: number): GameState {
+    const plays = Array.from({ length: n }, (): GameEvent => ({
+      turn: 1, playerId: 1, type: "play", cardId: "grow-crops",
+    }));
+    return { ...g, log: [...g.log, ...plays] };
+  }
+
+  it("shuffles a harvest into the deck on the 4th human turnip play", () => {
+    let g = grown(playingState(), 3);
+    g = withHand(g, 0, ["grow-crops"]);
+    const out = playCard(g, 0, rng());
+    expect(out.players[0].deck).toContain("turnip-harvest");
+    const e = out.log[out.log.length - 1];
+    expect(e.type).toBe("harvest-earned");
+    expect(e.cardId).toBe("turnip-harvest");
+    expect(e.consequence).toBe(true);
+  });
+
+  it("not on the 3rd", () => {
+    let g = grown(playingState(), 2);
+    g = withHand(g, 0, ["grow-crops"]);
+    const out = playCard(g, 0, rng());
+    expect(out.players[0].deck).not.toContain("turnip-harvest");
+    expect(out.log.some((e) => e.type === "harvest-earned")).toBe(false);
+  });
+
+  it("escalates: the second harvest lands on the 10th turnip, not the 8th", () => {
+    let g8 = grown(playingState(), 8);
+    g8 = withHand(g8, 0, ["grow-crops"]);
+    expect(
+      playCard(g8, 0, rng()).log.some((e) => e.type === "harvest-earned"),
+    ).toBe(false);
+    let g9 = grown(playingState(), 9);
+    g9 = withHand(g9, 0, ["grow-crops"]);
+    expect(
+      playCard(g9, 0, rng()).log.some((e) => e.type === "harvest-earned"),
+    ).toBe(true);
+  });
+
+  it("triples every threshold under unlimited turns", () => {
+    let g = grown(unlimitedPlaying(), 10);
+    g = withHand(g, 0, ["grow-crops"]);
+    expect(
+      playCard(g, 0, rng()).log.some((e) => e.type === "harvest-earned"),
+    ).toBe(false);
+    let g2 = grown(unlimitedPlaying(), 11);
+    g2 = withHand(g2, 0, ["grow-crops"]);
+    expect(
+      playCard(g2, 0, rng()).log.some((e) => e.type === "harvest-earned"),
+    ).toBe(true);
+  });
+
+  it("an AI seat's turnip play never injects", () => {
+    let g = grown(playingState(), 3);
+    g = { ...g, current: 1 };
+    g = withHand(g, 1, ["grow-crops"]);
+    const out = playCard(g, 0, rng());
+    expect(out.players[1].deck).not.toContain("turnip-harvest");
+    expect(out.log.some((e) => e.type === "harvest-earned")).toBe(false);
+  });
+
+  it("a world with no human seat never injects", () => {
+    let g = grown(playingState(), 3);
+    g = { ...g, humanSeat: null };
+    g = withHand(g, 0, ["grow-crops"]);
+    const out = playCard(g, 0, rng());
+    expect(out.players[0].deck).not.toContain("turnip-harvest");
+  });
+});
+
+describe("the turnip harvest's boons", () => {
+  /** The human holding just the harvest, with the named piles. */
+  function harvestHand(piles?: {
+    deck?: string[]; discard?: string[]; hand?: string[];
+  }): GameState {
+    const g = playingState();
+    const p = {
+      ...g.players[0],
+      hand: piles?.hand ?? ["turnip-harvest"],
+      deck: piles?.deck ?? [],
+      discard: piles?.discard ?? [],
+    };
+    return {
+      ...g,
+      players: g.players.map((pl, i) => (i === 0 ? p : pl)),
+    };
+  }
+
+  const boon = (g: GameState, harvest: HarvestChoice): GameState =>
+    playCard(g, 0, rng(), undefined, { harvest });
+
+  it("swap-common trades the deck's turnip first and shuffles a common in", () => {
+    const g = harvestHand({ deck: ["grow-crops"], discard: ["grow-crops"] });
+    const out = boon(g, { effect: "swap-common" });
+    const human = out.players[0];
+    expect(human.deck).not.toContain("grow-crops");
+    // the discard's copy stayed, beside the played harvest
+    expect(human.discard.filter((c) => c === "grow-crops")).toHaveLength(1);
+    expect(human.deck).toHaveLength(1);
+    const gained = human.deck[0];
+    expect(ACQUIRABLE_CARDS).toContain(gained);
+    expect(CARDS[gained].rarity).toBe("common");
+    const traded = out.log.find((e) => e.type === "harvest-traded");
+    expect(traded?.cardId).toBe(gained);
+    expect(traded?.consequence).toBe(true);
+  });
+
+  it("falls back discard then hand, and the gain always joins the deck", () => {
+    const viaDiscard = boon(
+      harvestHand({ deck: ["raid"], discard: ["grow-crops"] }),
+      { effect: "swap-common" },
+    );
+    const h1 = viaDiscard.players[0];
+    expect(h1.discard.filter((c) => c === "grow-crops")).toHaveLength(0);
+    expect(h1.deck).toHaveLength(2);
+
+    const viaHand = boon(
+      harvestHand({ hand: ["turnip-harvest", "grow-crops"] }),
+      { effect: "swap-common" },
+    );
+    const h2 = viaHand.players[0];
+    expect(h2.hand).toHaveLength(0);
+    expect(h2.deck).toHaveLength(1);
+  });
+
+  it("swap-known draws from the pool the choice carries", () => {
+    const g = harvestHand({ deck: ["grow-crops"] });
+    const out = boon(g, { effect: "swap-known", pool: ["alliance"] });
+    expect(out.players[0].deck).toEqual(["alliance"]);
+  });
+
+  it("a swap with no turnip anywhere is a quiet no-op, never a crash", () => {
+    const g = harvestHand({ deck: ["raid"] });
+    const out = boon(g, { effect: "swap-common" });
+    expect(out.players[0].deck).toEqual(["raid"]);
+    expect(out.log.some((e) => e.type === "harvest-traded")).toBe(false);
+  });
+
+  it("might-chosen bumps the picked rival by one and records amount", () => {
+    const out = boon(harvestHand(), { effect: "might-chosen", targetId: "alpha" });
+    expect(getRel(out.relations, "beta", "alpha")).toBe(1);
+    const e = out.log.find((ev) => ev.type === "harvest-might");
+    expect(e?.targetFactionId).toBe("alpha");
+    expect(e?.amount).toBe(1);
+    expect(e?.consequence).toBe(true);
+  });
+
+  it("might-random bumps exactly one living rival", () => {
+    const out = boon(harvestHand(), { effect: "might-random" });
+    const bumped = ["alpha", "gamma", "delta"].filter(
+      (f) => getRel(out.relations, "beta", f) === 1,
+    );
+    expect(bumped).toHaveLength(1);
+    expect(out.log.find((e) => e.type === "harvest-might")?.targetFactionId)
+      .toBe(bumped[0]);
+  });
+
+  it("might-all bumps every living rival and freezes the list on the event", () => {
+    const out = boon(harvestHand(), { effect: "might-all" });
+    for (const f of ["alpha", "gamma", "delta"]) {
+      expect(getRel(out.relations, "beta", f)).toBe(1);
+    }
+    const e = out.log.find((ev) => ev.type === "harvest-might");
+    expect(e?.amount).toBe(1);
+    expect(e?.affected).toEqual(["alpha", "gamma", "delta"]);
+  });
+
+  it("wealth-1 pays one coin; wealth-income pays five turns of the tick", () => {
+    // Deltas against the fixture, whose own beginTurn already banked income.
+    const g = harvestHand();
+    const held = g.wealth.beta ?? 0;
+    const one = boon(g, { effect: "wealth-1" });
+    expect(one.wealth.beta).toBe(held + 1);
+    expect(one.log.find((e) => e.type === "harvest-wealth")?.wealth).toBe(1);
+    // income is 1 + founded settlements = 1 in this fixture
+    const five = boon(g, { effect: "wealth-income" });
+    expect(five.wealth.beta).toBe(held + 5);
+    expect(five.log.find((e) => e.type === "harvest-wealth")?.wealth).toBe(5);
+  });
+
+  it("the subjugation boon lands roll-free with no lead and injects tribute", () => {
+    const out = boon(harvestHand(), { effect: "subjugate", targetId: "alpha" });
+    expect(out.overlords.get("alpha")).toBe("beta");
+    const alpha = out.players.find((p) => p.factionId === "alpha")!;
+    expect(alpha.deck.some(isTributeCard)).toBe(true);
+    const e = out.log.find((ev) => ev.type === "subjugated");
+    expect(e?.consequence).toBe(true);
+    expect(out.log.some((e2) => e2.type === "subjugate-failed")).toBe(false);
+  });
+
+  it("the boon still honours every non-lead refusal - a respite blocks it", () => {
+    let g = harvestHand();
+    g = { ...g, respites: { alpha: g.turn + 2 } };
+    const out = boon(g, { effect: "subjugate", targetId: "alpha" });
+    expect(out.overlords.has("alpha")).toBe(false);
+  });
+
+  it("the incorporation boon absorbs a fresh vassal the card's roll would refuse", () => {
+    let g = harvestHand();
+    // loyalty 0: incorporationChance is 0, so the CARD could never land here
+    g = { ...g, overlords: new Map([["alpha", "beta"]]) };
+    const out = boon(g, { effect: "incorporate", targetId: "alpha" });
+    expect(out.incorporated.alpha).toBe("beta");
+    expect(out.log.some((e) => e.type === "incorporate-failed")).toBe(false);
+  });
+
+  it("empower marks a deck card and logs the pick", () => {
+    const g = harvestHand({ deck: ["raid"] });
+    const out = boon(g, { effect: "empower", cardId: "raid" });
+    expect(out.empoweredCardId).toBe("raid");
+    const e = out.log.find((ev) => ev.type === "empowered");
+    expect(e?.cardId).toBe("raid");
+    expect(e?.consequence).toBe(true);
+  });
+
+  it("empower refuses a card that is not in the deck or discard", () => {
+    const g = harvestHand({ deck: [] });
+    const out = boon(g, { effect: "empower", cardId: "raid" });
+    expect(out.empoweredCardId).toBeNull();
+    expect(out.log.some((e) => e.type === "empowered")).toBe(false);
+  });
+
+  it("a choiceless play auto-resolves, deterministically", () => {
+    const g = harvestHand({ deck: ["grow-crops"] });
+    const a = playCard(g, 0, rng());
+    const b = playCard(g, 0, rng());
+    expect(a.log).toEqual(b.log);
+    // the play landed and brought a boon with it
+    expect(a.playedThisTurn).toBe(true);
+    const fresh = a.log.slice(g.log.length);
+    expect(fresh[0]?.type).toBe("play");
+    expect(fresh.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("the empower mark's consumption", () => {
+  it("an empowered raid resolves twice: doubled amount, mark cleared", () => {
+    let g = playingState();
+    g = withHand(g, 0, ["raid"]);
+    const plain = playCard(g, 0, rng(), "alpha");
+    const gain = plain.log.find((e) => e.type === "play")!.amount!;
+    const marked = { ...g, empoweredCardId: "raid" };
+    const out = playCard(marked, 0, rng(), "alpha");
+    const e = out.log.find((ev) => ev.type === "play")!;
+    expect(e.amount).toBe(2 * gain);
+    expect(e.empowered).toBe(true);
+    expect(out.empoweredCardId).toBeNull();
+    expect(getRel(out.relations, "beta", "alpha")).toBe(2 * gain);
+  });
+
+  it("an empowered alliance seals one pact for twice the term, bonus once", () => {
+    let g = playingState();
+    g = withHand(g, 0, ["alliance"]);
+    g = { ...g, empoweredCardId: "alliance" };
+    const out = playCard(g, 0, rng(), "alpha");
+    const e = out.log.find((ev) => ev.type === "play")!;
+    expect(e.amount).toBe(PACT_MIGHT_BONUS);
+    expect(out.alliances[allianceKey("beta", "alpha")].expiry).toBe(g.turn + 10);
+  });
+
+  it("an empowered revolt frees on the first swing; the second quietly stops", () => {
+    let g = asVassal(playingState(), "alpha");
+    g = withHand(g, 0, ["revolt"]);
+    g = { ...g, empoweredCardId: "revolt" };
+    const out = playCard(g, 0, rng());
+    expect(out.overlords.has("beta")).toBe(false);
+    expect(out.log.filter((e) => e.type === "reclaimed")).toHaveLength(1);
+    expect(out.empoweredCardId).toBeNull();
+  });
+
+  it("the mark survives every play that is not its card", () => {
+    let g = playingState();
+    g = withHand(g, 0, ["fortify"]);
+    g = { ...g, empoweredCardId: "raid" };
+    const out = playCard(g, 0, rng());
+    expect(out.empoweredCardId).toBe("raid");
+    expect(out.log.find((e) => e.type === "play")?.empowered).toBeUndefined();
+  });
+
+  it("never fires for an AI seat, even on a matching card", () => {
+    let g = playingState();
+    g = { ...g, current: 1, empoweredCardId: "grow-crops" };
+    g = withHand(g, 1, ["grow-crops"]);
+    const out = playCard(g, 0, rng());
+    expect(out.log.find((e) => e.type === "play")?.empowered).toBeUndefined();
+    // the mark is the human's and an AI play must not consume it
+    expect(out.empoweredCardId).toBe("grow-crops");
   });
 });

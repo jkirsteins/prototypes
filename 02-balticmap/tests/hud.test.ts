@@ -17,6 +17,7 @@ import {
 import type { TargetExplanation } from "../src/target-explanations";
 import { memoryStorage, type MetaStorage } from "../src/meta";
 import { ROUND_SUMMARY_TITLE } from "../src/notices";
+import { card, t } from "../src/rich-text";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -2533,5 +2534,159 @@ describe("secret cards in the activity log", () => {
     hud.update({ ...g, log: [...g.log, guard(2)] });
     expect(texts(container).some((t) => /a secret card/.test(t))).toBe(true);
     expect(texts(container).some((t) => /played Bodyguard/.test(t))).toBe(false);
+  });
+});
+
+describe("the turnip bar chip and the harvest modals", () => {
+  function playing(): GameState {
+    return pickFaction(
+      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta",
+      seededRng(1),
+    );
+  }
+
+  const grownLog = (g: GameState, n: number): GameState => ({
+    ...g,
+    log: [
+      ...g.log,
+      ...Array.from({ length: n }, (): GameEvent => ({
+        turn: 1, playerId: 1, type: "play", cardId: "grow-crops",
+      })),
+    ],
+  });
+
+  it("hides the chip for a run that holds no turnips and grew none", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    expect(q(container, ".status-turnips").classList.contains("hidden"))
+      .toBe(true);
+  });
+
+  it("fills count and bar from the same log-derived window", () => {
+    const { container, hud } = setup();
+    hud.update(grownLog(playing(), 2));
+    const chip = q(container, ".status-turnips");
+    expect(chip.classList.contains("hidden")).toBe(false);
+    expect(q(container, ".turnip-count").textContent).toBe("Turnips 2/4");
+    expect(q(container, ".turnip-fill").style.width).toBe("50%");
+  });
+
+  it("shows the chip the moment a turnip is merely held", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    const p = { ...g.players[0], deck: [...g.players[0].deck, "grow-crops"] };
+    hud.update({ ...g, players: [p, ...g.players.slice(1)] });
+    expect(q(container, ".status-turnips").classList.contains("hidden"))
+      .toBe(false);
+    expect(q(container, ".turnip-count").textContent).toBe("Turnips 0/4");
+  });
+
+  it("prices the band x3 under unlimited turns", () => {
+    const { container, hud } = setup();
+    const g = pickFaction(
+      chooseDeck(
+        chooseRules(startGame(newGame(FACTIONS)), { turn: "unlimited" }),
+        buildDeck(),
+      ),
+      "beta", seededRng(1),
+    );
+    hud.update(grownLog(g, 2));
+    expect(q(container, ".turnip-count").textContent).toBe("Turnips 2/12");
+  });
+
+  it("renders boon labels as segments and greys a blocked slot with its reason", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onPick = vi.fn();
+    hud.showHarvestChoice(
+      [
+        {
+          effect: "wealth-1", eligible: true, reason: null,
+          label: [t("Gain 1 wealth")],
+        },
+        {
+          effect: "swap-common", eligible: false,
+          reason: [t("no "), card("grow-crops"), t(" left to trade")],
+          label: [t("Trade a "), card("grow-crops"), t(" for a random common card")],
+        },
+      ],
+      { onPick, onCancel: vi.fn() },
+    );
+    expect(q(container, ".harvest-overlay").classList.contains("hidden"))
+      .toBe(false);
+    const options = [...container.querySelectorAll(".harvest-option")];
+    expect(options).toHaveLength(2);
+    // the card name is a hoverable segment node, never baked text
+    expect(options[1].querySelector(".rt-card")?.textContent)
+      .toBe("Grow turnips");
+    expect((options[1] as HTMLButtonElement).disabled).toBe(true);
+    expect(options[1].textContent).toContain("no Grow turnips left to trade");
+    (options[0] as HTMLButtonElement).click();
+    expect(onPick).toHaveBeenCalledWith("wealth-1");
+  });
+
+  it("Escape cancels whichever harvest overlay is up", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onCancel = vi.fn();
+    hud.showHarvestChoice(
+      [{
+        effect: "wealth-1", eligible: true, reason: null,
+        label: [t("Gain 1 wealth")],
+      }],
+      { onPick: vi.fn(), onCancel },
+    );
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(onCancel).toHaveBeenCalledOnce();
+    hud.hideHarvestUi();
+    expect(q(container, ".harvest-overlay").classList.contains("hidden"))
+      .toBe(true);
+  });
+
+  it("the card picker lists cards as segments and answers with the id", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onPick = vi.fn();
+    hud.showCardPicker(["raid"], { onPick, onCancel: vi.fn() });
+    const option = q(container, ".harvest-option");
+    expect(option.querySelector(".rt-card")?.textContent).toBe("Raid");
+    // the rules text is under the name, so the choice reads without a hover
+    expect(option.textContent).toContain(CARDS.raid.text);
+    option.click();
+    expect(onPick).toHaveBeenCalledWith("raid");
+  });
+
+  it("a phase change tears the overlay down", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    hud.showCardPicker(["raid"], { onPick: vi.fn(), onCancel: vi.fn() });
+    hud.update(newGame(FACTIONS));
+    expect(q(container, ".harvest-overlay").classList.contains("hidden"))
+      .toBe(true);
+  });
+
+  it("glows exactly the empowered card in hand", () => {
+    const { container, hud } = setup();
+    let g = withHand(playing(), 0, ["raid", "fortify"]);
+    g = { ...g, empoweredCardId: "raid" };
+    hud.update(g);
+    const cards = [...container.querySelectorAll(".hand .card")];
+    expect(cards[0].classList.contains("card-empowered")).toBe(true);
+    expect(cards[1].classList.contains("card-empowered")).toBe(false);
+  });
+
+  it("suffixes an empowered play on its log line", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      log: [...g.log, {
+        turn: 1, playerId: 1, type: "play", cardId: "raid",
+        targetFactionId: "alpha", amount: 4, empowered: true,
+      }],
+    });
+    const lines = [...container.querySelectorAll(".log-entry")]
+      .map((el) => el.textContent ?? "");
+    expect(lines.some((line) => line.includes("- empowered"))).toBe(true);
   });
 });

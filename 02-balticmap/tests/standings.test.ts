@@ -66,6 +66,46 @@ describe("leadMovesOf", () => {
     ]);
   });
 
+  it("a harvest Might boon by the human adds to the target's track", () => {
+    const e: GameEvent = {
+      turn: 1, playerId: 1, type: "harvest-might",
+      targetFactionId: RIVAL, amount: 1,
+    };
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
+      { kind: "add", factionId: RIVAL, delta: 1 },
+    ]);
+  });
+
+  it("the human's vs-all harvest boon resolves through its frozen affected list", () => {
+    // Unlike the human's own Fortify, which the walk cannot reconstruct: the
+    // event carries who was alive, the pactAgainst trick.
+    const e: GameEvent = {
+      turn: 1, playerId: 1, type: "harvest-might",
+      amount: 1, affected: [RIVAL, THIRD],
+    };
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
+      { kind: "add", factionId: RIVAL, delta: 1 },
+      { kind: "add", factionId: THIRD, delta: 1 },
+    ]);
+  });
+
+  it("a rival's vs-all harvest boon that includes the human flips the sign", () => {
+    const e: GameEvent = {
+      turn: 1, playerId: 2, type: "harvest-might",
+      amount: 1, affected: [H, THIRD],
+    };
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
+      { kind: "add", factionId: RIVAL, delta: -1 },
+    ]);
+  });
+
+  it("a harvest wealth boon moves no lead", () => {
+    const e: GameEvent = {
+      turn: 1, playerId: 1, type: "harvest-wealth", wealth: 5,
+    };
+    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
+  });
+
   it("a human-authored fortify returns no move - it never reaches this walk in production", () => {
     const e = playEvent({ playerId: 1, cardId: "fortify", amount: 1 });
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
