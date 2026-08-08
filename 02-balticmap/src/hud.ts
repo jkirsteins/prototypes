@@ -961,13 +961,14 @@ export function createHud(
     if (ctx === null) return;
     const summary = buildRoundSummary(fresh, ctx, {
       criticalOnly: !logPrefs.showPopups,
-    });
+    }, localPlayerId());
     if (summary === null) return;
-    // A live flight means one thing only: the human's own played card is on
-    // screen. `animateEvents` skips every event with `playerId !== 1` and the
-    // draw is deliberately untracked, so this is the honest test for "the turn
-    // this summary describes is not over yet" - read off the animation rather
-    // than from a predicate that re-guesses which events animate.
+    // A live flight means one thing only: the local player's own played card
+    // is on screen. `animateEvents` skips every event with
+    // `playerId !== localPlayerId()` and the draw is deliberately untracked,
+    // so this is the honest test for "the turn this summary describes is not
+    // over yet" - read off the animation rather than from a predicate that
+    // re-guesses which events animate.
     if (liveFlights.size > 0) {
       pendingSummary = summary;
       return;
@@ -1262,7 +1263,8 @@ export function createHud(
       // Tagged at render time, not re-evaluated on toggle: the "Targeting me"
       // filter just shows/hides by these classes, retroactively and instantly.
       entry.classList.toggle(
-        "notice-worthy", noticeCtx !== null && isNoticeWorthy(e, noticeCtx),
+        "notice-worthy",
+        noticeCtx !== null && isNoticeWorthy(e, noticeCtx, localPlayerId()),
       );
       entry.classList.toggle("log-mine", isYourDoing(e));
       if (e.consequence !== true) {
