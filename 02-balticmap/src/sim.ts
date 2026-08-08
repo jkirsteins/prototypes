@@ -390,15 +390,6 @@ export interface WorldSummary {
    *  reached, which would make the card a dead turn rather than a plan. */
   revoltsSown: number;
   revoltsPlayed: number;
-  /** Poach attempts and how many the 50% roll turned away. A share far from
-   *  half means the roll is not being reached the way the rules intend. */
-  poachAttempts: number;
-  poachesFailed: number;
-  /** Incorporate plays and how many the loyalty roll turned away. A share near
-   *  1 means the ramp is too slow and the card is a wasted turn; near 0 means
-   *  the gate never bites and vassalage is a waypoint again. */
-  incorporateAttempts: number;
-  incorporationsFailed: number;
   /** Turns each vassalage lasted, so the whole point of the change - that
    *  subjugation is a state rather than a one-round waypoint - is a number. */
   vassalTenures: number[];
@@ -522,15 +513,6 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     .reverse()
     .find((e) => e.type === "incorporated");
   const plays = state.log.filter((e) => e.type === "play");
-  // A poach attempt is any Subjugate aimed at a faction that already had a
-  // lord, whether the roll then landed or not - counted from the log rather
-  // than re-derived, so the number cannot drift from what actually happened.
-  const poachAttempts =
-    state.log.filter(
-      (e) =>
-        (e.type === "subjugated" && e.formerOverlordFactionId !== undefined) ||
-        e.type === "subjugate-failed",
-    ).length;
   // How long each vassalage lasted, in turns. A vassalage still standing at
   // the end counts from its start to the final turn.
   const vassalTenures: number[] = [];
@@ -599,11 +581,6 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     alliancesOnOwnTargets,
     revoltsSown: state.log.filter((e) => e.type === "seeded").length,
     revoltsPlayed: plays.filter((e) => e.cardId === "revolt").length,
-    poachAttempts,
-    poachesFailed: state.log.filter((e) => e.type === "subjugate-failed").length,
-    incorporateAttempts: playsByCard.incorporate ?? 0,
-    incorporationsFailed:
-      state.log.filter((e) => e.type === "incorporate-failed").length,
     vassalTenures,
     settlementsFounded: settledEvents.length,
     settlementsOnHeldLands,
@@ -721,10 +698,6 @@ export interface WorldStats {
   /** Seeds of revolt: sown, and how many reached an actual Revolt. */
   revoltsSownTotal: number;
   revoltsPlayedTotal: number;
-  /** Share of poach attempts the 50% roll turned away. */
-  poachFailShare: number;
-  /** Share of Incorporate plays the loyalty roll turned away. */
-  incorporateFailShare: number;
   /** The headline of this whole change: how long a vassalage lasts. */
   medianVassalTenure: number | null;
   meanVassalTenure: number | null;
@@ -779,14 +752,6 @@ export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
     settlementsFoundedTotal: founded,
     revoltsSownTotal: sum((g) => g.revoltsSown),
     revoltsPlayedTotal: sum((g) => g.revoltsPlayed),
-    poachFailShare:
-      sum((g) => g.poachAttempts) === 0
-        ? 0
-        : sum((g) => g.poachesFailed) / sum((g) => g.poachAttempts),
-    incorporateFailShare:
-      sum((g) => g.incorporateAttempts) === 0
-        ? 0
-        : sum((g) => g.incorporationsFailed) / sum((g) => g.incorporateAttempts),
     medianVassalTenure: median(games.flatMap((g) => g.vassalTenures)),
     meanVassalTenure: mean(games.flatMap((g) => g.vassalTenures)),
     settlementsOnHeldLandsShare:

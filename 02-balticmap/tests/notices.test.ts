@@ -13,7 +13,6 @@ const ALL_TYPES: GameEventType[] = [
   "subjugated", "released", "incorporated", "reclaimed", "tribute",
   "settled", "seeded", "garrisoned", "pact-lapsed",
   "seat-moved", "seat-lost",
-  "subjugate-failed", "incorporate-failed",
   "victory", "defeat", "unified", "surrendered",
 ];
 
@@ -730,118 +729,7 @@ describe("seeds of revolt", () => {
   });
 });
 
-describe("a failed poach", () => {
-  it("tells you your vassal held, since nothing on the map changed", () => {
-    const s = oneSummary(ev({
-      type: "subjugate-failed", playerId: 3,
-      targetFactionId: "jersika",
-      overlordFactionId: "latgale", formerOverlordFactionId: "livs",
-    }))!;
-    expect(lineText(s)).toBe("Latgalians failed to take Jersikans from you");
-  });
-
-  it("stays quiet about failed poaches between other factions", () => {
-    expect(oneSummary(ev({
-      type: "subjugate-failed", playerId: 3,
-      targetFactionId: "jersika",
-      overlordFactionId: "latgale", formerOverlordFactionId: "curonia",
-    }))).toBeNull();
-  });
-});
-
-describe("failed attempts against the player", () => {
-  it("tells the player a rival tried to prise them away and missed", () => {
-    // The human is curonia's vassal; jersika (player 2) reached for them.
-    const e: GameEvent = {
-      turn: 9, playerId: 2, type: "subjugate-failed",
-      targetFactionId: "livs",
-      overlordFactionId: "jersika",
-      formerOverlordFactionId: "curonia",
-    };
-    const s = buildRoundSummary([e], ctx)!;
-    expect(lineText(s)).toBe("Jersikans failed to take you from Curonians");
-    expect(footnoteTexts(s)[0]).toContain("card is spent");
-  });
-
-  it("keeps the vassal-held wording when the human is the lord who held on", () => {
-    const e: GameEvent = {
-      turn: 9, playerId: 2, type: "subjugate-failed",
-      targetFactionId: "latgale",
-      overlordFactionId: "jersika",
-      formerOverlordFactionId: "livs",
-    };
-    const s = buildRoundSummary([e], ctx)!;
-    expect(lineText(s)).toBe("Jersikans failed to take Latgalians from you");
-  });
-
-  it("tells the player their overlord failed to annex them", () => {
-    const e: GameEvent = {
-      turn: 12, playerId: 3, type: "incorporate-failed",
-      targetFactionId: "livs",
-      overlordFactionId: "latgale",
-    };
-    const s = buildRoundSummary([e], ctx)!;
-    expect(lineText(s)).toBe("Latgalians failed to absorb your realm permanently");
-    // The actionable part: staying a vassal improves their next roll.
-    expect(footnoteTexts(s)[0]).toContain("longer you stay their vassal");
-  });
-
-  /** This asserted silence, on the grounds that a modal about your own failed
-   *  gamble is a nag. It mistook a spent turn for a non-event: the hand shows
-   *  the card is gone and never says why, and a vassal you failed to absorb
-   *  looks exactly like one you never reached for. */
-  it("interrupts on the human's own failed roll, muted or not", () => {
-    const own: GameEvent = {
-      turn: 12, playerId: 1, type: "incorporate-failed",
-      targetFactionId: "latgale", overlordFactionId: "livs",
-    };
-    const s = buildRoundSummary([own], ctx)!;
-    expect(lineText(s)).toBe(
-      "Your attempt to absorb Latgalians failed - they are still only your vassal",
-    );
-    expect(footnoteTexts(s)[0]).toContain("loyalty clock");
-    // Pierces the mute: the map records nothing either way, so a muted player
-    // has no other way to tell the miss from a hit.
-    expect(buildRoundSummary([own], ctx, { criticalOnly: true })!.title)
-      .toBe("Your annexation failed");
-  });
-
-  it("interrupts on the human's own failed poach, naming who kept them", () => {
-    const own: GameEvent = {
-      turn: 12, playerId: 1, type: "subjugate-failed",
-      targetFactionId: "curonia", overlordFactionId: "livs",
-      formerOverlordFactionId: "jersika",
-    };
-    const s = buildRoundSummary([own], ctx, { criticalOnly: true })!;
-    expect(s.title).toBe("Your subjugation failed");
-    expect(lineText(s)).toBe(
-      "Your attempt on Curonians failed - they still owe fealty to Jersikans",
-    );
-    expect(footnoteTexts(s)[0]).toContain("can try again");
-  });
-
-  /** The grouping key carries the role, so your own miss and a rival's miss
-   *  against you are two entries. Merging them would describe one with the
-   *  other's wording - and the two wordings say opposite things about who lost
-   *  a turn. */
-  it("keeps your own failed poach apart from a rival's against you", () => {
-    const s = buildRoundSummary([
-      {
-        turn: 12, playerId: 1, type: "subjugate-failed",
-        targetFactionId: "curonia", overlordFactionId: "livs",
-        formerOverlordFactionId: "jersika",
-      },
-      {
-        turn: 12, playerId: 3, type: "subjugate-failed",
-        targetFactionId: "livs", overlordFactionId: "jersika",
-        formerOverlordFactionId: "latgale",
-      },
-    ], ctx)!;
-    expect(s.lines).toHaveLength(2);
-    expect(lineText(s, 0)).toContain("Your attempt on Curonians");
-    expect(lineText(s, 1)).toContain("failed to take you from");
-  });
-
+describe("plays that bought nothing", () => {
   /** The regression guard on wrapping `humanRoleIn` rather than widening it.
    *  Three rules use it as their entire `appliesToHuman`, and an `actor` role
    *  leaking into them would pop a modal on the player's own conquest. */
@@ -853,14 +741,6 @@ describe("failed attempts against the player", () => {
     ]) {
       expect(buildRoundSummary([{ turn: 12, playerId: 1, ...own }], ctx)).toBeNull();
     }
-  });
-
-  it("says nothing about a failure between two rivals", () => {
-    const between: GameEvent = {
-      turn: 12, playerId: 2, type: "incorporate-failed",
-      targetFactionId: "curonia", overlordFactionId: "jersika",
-    };
-    expect(buildRoundSummary([between], ctx)).toBeNull();
   });
 
   it("never interrupts for a garrison gain - it fires every turn", () => {
@@ -1013,26 +893,24 @@ describe("critical events pierce a muted popup", () => {
    *  The heading follows what the batch IS, not whether popups are muted. */
   it("never heads your own wasted turn as the opponents' round", () => {
     const own: GameEvent = {
-      turn: 12, playerId: 1, type: "subjugate-failed",
-      targetFactionId: "curonia", overlordFactionId: "livs",
-      formerOverlordFactionId: "jersika",
+      turn: 12, playerId: 1, type: "play",
+      cardId: "assassinate-ruler", targetFactionId: "curonia", prevented: true,
     };
-    expect(buildRoundSummary([own], ctx)!.title).toBe("Your subjugation failed");
+    expect(buildRoundSummary([own], ctx)!.title).toBe("A bodyguard stopped you");
     // But a batch that also carries a rival's doing is a round summary again,
     // and keeps the round heading unless the mute has narrowed it.
     const mixed = [own, ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" })];
     expect(buildRoundSummary(mixed, ctx)!.title).toBe(ROUND_SUMMARY_TITLE);
   });
 
-  /** What you ARE outranks what you failed to gain. A round where your poach
-   *  missed AND somebody took you is headed by the taking: the wasted turn is
-   *  the only one of the two that left the position unchanged. */
+  /** What you ARE outranks what you failed to gain. A round where your blade
+   *  was turned AND somebody took you is headed by the taking: the wasted turn
+   *  is the only one of the two that left the position unchanged. */
   it("heads a round with the subjugation, not your own wasted turn", () => {
     const s = buildRoundSummary([
       {
-        turn: 12, playerId: 1, type: "subjugate-failed",
-        targetFactionId: "curonia", overlordFactionId: "livs",
-        formerOverlordFactionId: "jersika",
+        turn: 12, playerId: 1, type: "play",
+        cardId: "assassinate-ruler", targetFactionId: "curonia", prevented: true,
       },
       ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
     ], ctx, { criticalOnly: true })!;
@@ -1052,7 +930,6 @@ describe("critical events pierce a muted popup", () => {
     expect(critical).toEqual([
       "play", "subjugated", "released", "reclaimed",
       "seat-lost",
-      "subjugate-failed", "incorporate-failed",
     ]);
   });
 
@@ -1170,8 +1047,8 @@ describe("critical events pierce a muted popup", () => {
     const events: GameEvent[] = [
       ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 2 }),
       ev({
-        type: "subjugate-failed", playerId: 3, targetFactionId: "curonia",
-        overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+        type: "seeded", playerId: 3, targetFactionId: "latgale",
+        overlordFactionId: "livs",
       }),
     ];
     expect(buildRoundSummary(events, ctx)).not.toBeNull();

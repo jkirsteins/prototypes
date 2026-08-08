@@ -10,7 +10,7 @@ import { bumpMight, type Relations } from "../src/relations";
 import { standingChangeText } from "../src/view";
 import type { TooltipLine } from "../src/panel";
 import {
-  INCORPORATE_RAMP, failureRiskOf, loyaltyKey,
+  failureRiskOf,
   type RulesView, type TargetEligibility,
 } from "../src/playability";
 
@@ -206,7 +206,7 @@ describe("targetOddsLines", () => {
     relations: {}, overlords: new Map(), incorporated: {},
     adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
-    diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
+    diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     prowess: {}, seats: {},
     ...partial,
@@ -214,8 +214,12 @@ describe("targetOddsLines", () => {
 
   it("says nothing for a card that cannot fail", () => {
     expect(targetOddsLines(v(), "alpha", "raid", "beta")).toEqual([]);
-    // a free faction is a certain take, so Subjugate stays silent too
-    expect(targetOddsLines(v(), "alpha", "subjugate", "beta")).toEqual([]);
+    // Subjugate and Incorporate no longer roll, so both stay silent - a poach
+    // and a fresh vassal alike.
+    const poach = v({ overlords: new Map([["gamma", "beta"]]) });
+    expect(targetOddsLines(poach, "alpha", "subjugate", "gamma")).toEqual([]);
+    const vassal = v({ overlords: new Map([["gamma", "alpha"]]) });
+    expect(targetOddsLines(vassal, "alpha", "incorporate", "gamma")).toEqual([]);
   });
 
   /** Not a roll, and it still has to be said. A guard is the one way a play can
@@ -232,46 +236,14 @@ describe("targetOddsLines", () => {
       .toEqual(warning);
   });
 
-  it("warns before a coin-flip poach, and that the card is spent either way", () => {
-    const view = v({ overlords: new Map([["gamma", "beta"]]) });
-    expect(targetOddsLines(view, "alpha", "subjugate", "gamma")).toEqual([
-      "50% chance to succeed - they already have an overlord.",
-      "A failed attempt still spends the card.",
-    ]);
-  });
+});
 
-  it("quotes the Incorporate odds and the turns behind them", () => {
-    const view = v({
-      overlords: new Map([["gamma", "alpha"]]),
-      loyalty: { [loyaltyKey("gamma", "alpha")]: 1 },
-    });
-    expect(targetOddsLines(view, "alpha", "incorporate", "gamma")).toEqual([
-      `20% chance to succeed - held 1 of the ${INCORPORATE_RAMP} turns needed.`,
-      "A failed attempt still spends the card.",
-    ]);
-  });
-
-  it("still states the odds once they are certain, rather than going quiet", () => {
-    // Silence would be ambiguous: the player cannot tell "certain" from
-    // "this card does not roll" if a sure thing prints nothing.
-    const view = v({
-      overlords: new Map([["gamma", "alpha"]]),
-      loyalty: { [loyaltyKey("gamma", "alpha")]: INCORPORATE_RAMP },
-    });
-    expect(targetOddsLines(view, "alpha", "incorporate", "gamma")).toEqual([
-      `Certain: held ${INCORPORATE_RAMP} turns, ${INCORPORATE_RAMP} needed.`,
-    ]);
-  });
-
-  it("counts a single turn held as one turn", () => {
-    const view = v({
-      overlords: new Map([["gamma", "alpha"]]),
-      loyalty: { [loyaltyKey("gamma", "alpha")]: 1 },
-    });
-    // Reaches the "Certain" branch only at INCORPORATE_RAMP, so pin the plural
-    // where the number is actually printed as a noun phrase.
-    expect(targetOddsLines({ ...view, loyalty: {} }, "alpha", "incorporate", "gamma")[0])
-      .toBe(`0% chance to succeed - held 0 of the ${INCORPORATE_RAMP} turns needed.`);
+describe("the realm gate block line", () => {
+  it("quotes both numbers, the scoreboard count against the threshold", () => {
+    expect(cardBlockLine({ code: "realm-too-small", required: 4, held: 2 }))
+      .toBe("Your realm holds 2 of the 4 lands needed.");
+    expect(cardBlockLine({ code: "realm-too-small", required: 4, held: 1 }))
+      .toBe("Your realm holds 1 of the 4 lands needed.");
   });
 });
 
@@ -281,9 +253,6 @@ describe("cardRiskLine", () => {
    *  a player reading only the candidate lines meets the rule once, by
    *  accident, on whichever land they happened to hover. */
   it("names the failure mode of every card that has one", () => {
-    expect(cardRiskLine("subjugate")).toContain("Can fail");
-    expect(cardRiskLine("subjugate")).toContain("50%");
-    expect(cardRiskLine("incorporate")).toContain("Can fail");
     expect(cardRiskLine("assassinate-ruler")).toContain("bodyguard");
   });
 
@@ -345,7 +314,13 @@ describe("cardRiskLine", () => {
   });
 
   it("stays silent for a card the rules can never refuse", () => {
-    for (const id of ["raid", "grow-crops", "fortify", "a-feast", "population-boom"]) {
+    // Subjugate and Incorporate are in this list now: their gates grey the
+    // card out in advance, and a play that starts can no longer come back
+    // with nothing.
+    for (const id of [
+      "raid", "grow-crops", "fortify", "a-feast", "population-boom",
+      "subjugate", "incorporate",
+    ]) {
       expect(cardRiskLine(id)).toBeNull();
     }
   });
@@ -359,7 +334,7 @@ describe("cardRiskLine", () => {
       relations: {}, overlords: new Map([["gamma", "beta"]]), incorporated: {},
       adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
       factionIds: ids, alliances: {}, turn: 1, guards: {}, omens: {},
-      diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
+      diplomacyBoost: [], liveRevolts: [], hostages: {},
       respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
       prowess: {}, seats: {},
     };
@@ -380,7 +355,7 @@ describe("targetImpactLines", () => {
       alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"], delta: [],
     },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
-    diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
+    diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     prowess: {}, seats: {},
     ...partial,
@@ -483,11 +458,13 @@ describe("targetImpactLines", () => {
     const lead = bumpMight(bumpMight({}, "alpha", "beta"), "alpha", "beta");
     expect(shown(targetImpactLines(v({ relations: lead }), "alpha", "subjugate", "beta")))
       .toEqual(["If Subjugate played here:", "-- Becomes your vassal."]);
+    // A poach reads the same: no odds row, since the roll is gone and the
+    // surcharge already gated legality.
     const poach = v({
       relations: lead, overlords: new Map([["beta", "gamma"]]),
     });
     expect(shown(targetImpactLines(poach, "alpha", "subjugate", "beta"))[1])
-      .toBe("-- 50% chance to succeed - they already have an overlord.");
+      .toBe("-- Becomes your vassal.");
   });
 
   it("counts the turns an Alliance would run, boost included", () => {
@@ -580,7 +557,7 @@ describe("subjugationBreakdown", () => {
       delta: ["gamma"],
     },
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
-    diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
+    diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     prowess: {}, seats: {},
     ...partial,
@@ -749,7 +726,7 @@ describe("pactBoostLines", () => {
   const v = (partial: Partial<RulesView> = {}): RulesView => ({
     relations: {}, overlords: new Map(), incorporated: {}, adjacency: {},
     factionIds: ["alpha", "beta", "gamma", "delta"], alliances: {}, turn: 1,
-    guards: {}, omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
+    guards: {}, omens: {}, diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     prowess: {}, seats: {},
     ...partial,
@@ -794,7 +771,7 @@ describe("respiteLines", () => {
     relations: {}, overlords: new Map(), incorporated: {},
     adjacency: { alpha: ["beta"], beta: ["alpha"] },
     factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
-    omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
+    omens: {}, diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     prowess: {}, seats: {},
     ...partial,
@@ -831,7 +808,7 @@ describe("settlementBlock", () => {
   const v = (partial: Partial<RulesView> = {}): RulesView => ({
     relations: {}, overlords: new Map(), incorporated: {}, adjacency: {},
     factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
-    omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
+    omens: {}, diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
     prowess: {}, seats: {},
     ...partial,

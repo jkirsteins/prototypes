@@ -9,9 +9,9 @@ import {
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
-  loyaltyKey, ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES,
-  incorporationChance, leadsIn, PACT_MIGHT_BONUS, sharedNeighboursOf,
-  subjugationChance, type Guards, type Omens, omenMultiplier, passiveFortifyFor,
+  ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES,
+  leadsIn, PACT_MIGHT_BONUS, sharedNeighboursOf,
+  type Guards, type Omens, omenMultiplier, passiveFortifyFor,
   playableSet, raidGainFor, seatOf, validTargetsFor, wealthIncomeFor,
   type RulesView,
 } from "./playability";
@@ -30,7 +30,6 @@ export type GameEventType =
   | "settled" | "seeded" | "garrisoned" | "pact-lapsed"
   | "seat-moved" | "seat-lost"
   | "hostage-taken" | "hostage-returned"
-  | "subjugate-failed" | "incorporate-failed"
   | "harvest-earned" | "harvest-traded" | "harvest-might" | "harvest-wealth"
   | "empowered"
   | "victory" | "defeat" | "unified" | "surrendered" | "stranded";
@@ -142,9 +141,6 @@ export interface GameState {
   incorporated: Incorporated;
   adjacency: Record<string, string[]>;
   alliances: Alliances; // sorted-pair key -> the pact between that pair
-  /** `${land}|${lord}` -> consecutive turns that lord has held that land.
-   *  Ticked in `beginTurn`, read by the Incorporate odds. */
-  loyalty: Record<string, number>;
   diplomacyBoost: string[]; // faction ids holding an unused Extended diplomacy
   guards: Guards; // guard card id -> faction ids holding it unspent
   omens: Omens; // faction id -> unspent Favourable omens readings held
@@ -246,7 +242,6 @@ export function viewOf(state: GameState): RulesView {
     siteCaps: state.siteCaps,
     settlements: state.settlements,
     booms: state.booms,
-    loyalty: state.loyalty,
     hostages: state.hostages,
     wealth: state.wealth,
     respites: state.respites,
@@ -283,7 +278,6 @@ export function newGame(
     overlords: new Map(),
     incorporated: {},
     alliances: {},
-    loyalty: {},
     diplomacyBoost: [],
     guards: {},
     omens: {},
@@ -406,8 +400,6 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     case "settled":
     case "seeded":
     case "garrisoned":
-    case "subjugate-failed":
-    case "incorporate-failed":
     case "seat-moved":
     // The taking follows its play; the return follows the tribute play that
     // paid the debt off.
@@ -455,27 +447,6 @@ function appendEvents(state: GameState, events: GameEvent[]): GameEvent[] {
 function actorRulerName(state: GameState, playerId: number): string {
   const factionId = state.players.find((pl) => pl.id === playerId)?.factionId;
   return factionId === undefined ? "" : rulerOf(state.rulers, factionId).name;
-}
-
-/** Current player draws 1 (reshuffle rule); resets the play flag. */
-/** One tick of the loyalty clock for the faction about to act. The pair it is
- *  currently held by rises; every other pair for that land decays toward 0, so
- *  an ex-lord's investment fades and a poacher starts from near nothing rather
- *  than inheriting the grip its rival built. Keys that reach 0 are deleted so
- *  the record stays the size of the vassalages actually in play. */
-function tickLoyalty(state: GameState, land: string): Record<string, number> {
-  const lord = state.overlords.get(land);
-  const held = lord === undefined ? null : loyaltyKey(land, lord);
-  const out: Record<string, number> = {};
-  for (const [key, turns] of Object.entries(state.loyalty)) {
-    if (!key.startsWith(`${land}|`) || key === held) {
-      out[key] = turns;
-    } else if (turns > 1) {
-      out[key] = turns - 1;
-    }
-  }
-  if (held !== null) out[held] = (state.loyalty[held] ?? 0) + 1;
-  return out;
 }
 
 /** Pacts the clock has run out on, removed from the record and reported.
@@ -532,6 +503,7 @@ function sweepLapsedSeats(
   };
 }
 
+/** Current player draws 1 (reshuffle rule); resets the play flag. */
 export function beginTurn(state: GameState, rng: Rng): GameState {
   if (state.players.length === 0) return state;
   const p = state.players[state.current];
@@ -614,7 +586,6 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(state.respites, state.turn, (e) => e).kept,
-    loyalty: tickLoyalty(state, p.factionId),
     log: appendEvents(state, events), playedThisTurn: false,
   };
 }
@@ -840,9 +811,9 @@ export function playCard(
   };
 
   // The landing halves of Subjugate and Incorporate, shared verbatim with the
-  // harvest boons that hand them out roll-free: the chance stays in each
-  // card's own branch, so a boon that lands and a card that lands cannot
-  // drift apart in what landing means.
+  // harvest boons: each boon waives one legality rule (Subjugate's lead bar,
+  // Incorporate's card-level realm gate) but lands the same way, so a boon
+  // that lands and a card that lands cannot drift apart in what landing means.
   const landSubjugation = (target: string): void => {
     const formerLord = overlords.get(target);
     // The target's own vassals come along: taking a lord takes its pyramid,
@@ -1047,32 +1018,8 @@ export function playCard(
       if (!diplomacyBoost.includes(p.factionId)) {
         diplomacyBoost = [...diplomacyBoost, p.factionId];
       }
-    } else if (
-      cardId === "subjugate" && targetId !== undefined &&
-      rng() >= subjugationChance(viewOf(state), targetId)
-    ) {
-      // A poach that missed. The card is spent and the turn is gone, but the
-      // lead that justified it is untouched, so the next copy drawn can try
-      // again. Taking a free faction never reaches this branch.
-      events.push({
-        turn: state.turn, playerId: p.id, type: "subjugate-failed",
-        targetFactionId: targetId, overlordFactionId: p.factionId,
-        formerOverlordFactionId: state.overlords.get(targetId),
-      });
     } else if (cardId === "subjugate" && targetId !== undefined) {
       landSubjugation(targetId);
-    } else if (
-      cardId === "incorporate" && targetId !== undefined &&
-      rng() >= incorporationChance(state, p.factionId, targetId)
-    ) {
-      // The vassal is not digested yet. The card is spent and the turn is gone;
-      // the vassalage survives and its loyalty clock keeps running, so the next
-      // attempt is likelier. Spending the card is what makes a low roll a real
-      // decision rather than a delay.
-      events.push({
-        turn: state.turn, playerId: p.id, type: "incorporate-failed",
-        targetFactionId: targetId, overlordFactionId: p.factionId,
-      });
     } else if (cardId === "incorporate" && targetId !== undefined) {
       landIncorporation(targetId);
     } else if (cardId === "seeds-of-revolt") {

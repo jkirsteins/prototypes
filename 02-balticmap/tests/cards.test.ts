@@ -63,7 +63,8 @@ describe("cards", () => {
     );
     expectProps(
       "incorporate", "Incorporate", true, false, 1, true, false,
-      "Permanently absorb one of your vassals into your realm.",
+      "Permanently absorb one of your vassals into your realm. Needs a realm " +
+        "of 4 lands - the same size at which vassals revolt freely.",
     );
     expectProps(
       "pay-military-tribute", "Pay tribute", false, false, null, false, true,

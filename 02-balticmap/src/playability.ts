@@ -73,9 +73,6 @@ export interface RulesView {
   /** Faction id -> unspent Population booms, each one allowing a settlement
    *  past what a land supports unaided. Absent = 0. */
   booms: Record<string, number>;
-  /** `${land}|${lord}` -> consecutive turns that lord has held that land as a
-   *  vassal. Drives the Incorporate odds. Absent key means 0. */
-  loyalty: Record<string, number>;
   /** Factions holding a live Revolt card somewhere in deck, hand or discard.
    *  Seeds of revolt refuses to sow a second one, so the rules need to know;
    *  modelled as a faction-id list like `bodyguards` and `omens` rather than
@@ -112,17 +109,6 @@ export interface RulesView {
   seats: Record<string, string>;
 }
 
-/** Turns of unbroken vassalage after which Incorporate is certain. Below it the
- *  card rolls `loyalty / INCORPORATE_RAMP`, so a fresh conquest is a gamble and
- *  a long-held one is a formality. Measured at 5: at 15 and 30 the map stopped
- *  consolidating entirely and vassals just circulated between poachers. */
-export const INCORPORATE_RAMP = 5;
-
-/** Chance a Subjugate aimed at somebody else's vassal lands. Taking a free
- *  faction is never a gamble - the roll exists to defend an existing vassalage,
- *  not to tax expansion. */
-export const POACH_CHANCE = 0.5;
-
 /** Tribute payments a vassal must make before a hostage taken from it goes
  *  home and its Revolt is playable again. Two, so the lock is real - roughly
  *  the wait for the tribute cards to cycle round - without deleting the
@@ -135,32 +121,6 @@ export const HOSTAGE_RETURN_TRIBUTES = 2;
  *  moves, without parking the faction outside the game the way a long truce
  *  would. Being poached is not an escape and grants nothing. */
 export const ESCAPE_RESPITE_TURNS = 2;
-
-/** `${land}|${lord}` key for the loyalty clock. */
-export const loyaltyKey = (land: string, lord: string): string =>
-  `${land}|${lord}`;
-
-export function loyaltyOf(
-  view: { loyalty: Record<string, number> },
-  land: string,
-  lord: string,
-): number {
-  return view.loyalty[loyaltyKey(land, lord)] ?? 0;
-}
-
-/** The odds an Incorporate of `land` by `lord` succeeds, in [0, 1]. */
-export function incorporationChance(
-  view: { loyalty: Record<string, number> },
-  lord: string,
-  land: string,
-): number {
-  return Math.min(1, loyaltyOf(view, land, lord) / INCORPORATE_RAMP);
-}
-
-/** The odds a Subjugate of `target` lands: certain unless it is a poach. */
-export function subjugationChance(view: RulesView, target: string): number {
-  return view.overlords.has(target) ? POACH_CHANCE : 1;
-}
 
 /** Whether `factionId` is holding `guardCardId` unspent. */
 export function holdsGuard(
@@ -229,58 +189,35 @@ export function leadsIn(
     pactBonusOn(view, a, b) - pactBonusOn(view, b, a);
 }
 
-/** Why a play can come back with nothing. Two shapes, because a player can be
- *  told two different things about it. A roll has a number and the number is
- *  the decision. A guard has none: it is a card the target may or may not be
- *  holding, and saying which would hand over what they bought.
+/** Why a play can come back with nothing. One shape today - a guard the target
+ *  may or may not be holding - kept as a discriminated union so a future risk
+ *  with a different payload slots in without touching the callers.
  *
- *  `held` rides along on the loyalty roll because the odds alone do not say
- *  what to do about them - a player told "60%" and not "held 3 of the 5 turns
- *  needed" cannot see that waiting fixes it. */
-export type FailureRisk =
-  | { kind: "roll"; chance: number; because: "poach" | "loyalty"; held: number }
-  /** `because` is the GUARD CARD's id, so the wording can name what turns this
-   *  particular card aside. It never says whether the target actually holds
-   *  one. */
-  | { kind: "hidden"; because: string };
+ *  `because` is the GUARD CARD's id, so the wording can name what turns this
+ *  particular card aside. It never says whether the target actually holds
+ *  one. */
+export type FailureRisk = { kind: "hidden"; because: string };
 
 /** How this play could come back with nothing, or null when it cannot.
  *
  *  The single place that question is answered. Every surface that warns about a
  *  fallible card reads it from here, so a card cannot become fallible - or stop
- *  being so - in the rules without every tooltip following. Before this, the
- *  odds existed only as prose inside the tooltip that printed them, which is
- *  why Assassinate ruler's guard was never mentioned anywhere at all.
+ *  being so - in the rules without every tooltip following.
  *
  *  A miss is not the only way a play can disappoint, and the ones left out are
  *  left out deliberately: Grow turnips does nothing by design and says so in
  *  its own text, and an Alliance re-sealed on a faction you could have taken is
  *  a bad choice rather than a failure. This answers "can the rules refuse
  *  this after I commit to it", nothing wider. */
+// The view and the pair stay in the signature although only the card decides
+// today: this is the one place "can the rules refuse this" is answered, and a
+// future risk that reads the board slots in without touching every caller.
 export function failureRiskOf(
-  view: RulesView,
-  actorFactionId: string,
+  _view: RulesView,
+  _actorFactionId: string,
   cardId: string,
-  targetFactionId: string,
+  _targetFactionId: string,
 ): FailureRisk | null {
-  if (cardId === "subjugate") {
-    const chance = subjugationChance(view, targetFactionId);
-    return chance >= 1
-      ? null
-      : { kind: "roll", chance, because: "poach", held: 0 };
-  }
-  if (cardId === "incorporate") {
-    // Returned at 100% too, unlike the poach above. A certain poach is not a
-    // risk and saying so would be noise on every free target; a certain
-    // annexation is the end of a clock the player has been watching, and "held
-    // 5 of the 5 turns needed" is the payoff for waiting.
-    return {
-      kind: "roll",
-      chance: incorporationChance(view, actorFactionId, targetFactionId),
-      because: "loyalty",
-      held: loyaltyOf(view, targetFactionId, actorFactionId),
-    };
-  }
   const guard = guardAgainst(cardId);
   if (guard !== undefined) {
     // Unconditional, and it must stay that way: `view.guards` is right there,
@@ -741,6 +678,27 @@ export function revoltRequirement(
   );
 }
 
+/** Lands the actor's FULL realm must hold before Incorporate is legal.
+ *  `required` is `REVOLT_BASE_THRESHOLD`, deliberately the constant Revolt's
+ *  gate is built on: the realm size at which vassals can walk out even at a
+ *  deficit is the size at which their lord may start locking them in. One
+ *  shared number, so the two pressures arrive together and the player learns
+ *  one threshold, not two. `held` is `fullRealmOf` - the scoreboard count, per
+ *  the realm rule - so the gate line and the score cannot disagree.
+ *
+ *  Same shape as `revoltRequirement` and for the same reason: legality, the
+ *  block-reason payload and the prose all ask this one function, so the greyed
+ *  card and the line explaining it cannot quote different numbers. */
+export function incorporateRealmGate(
+  view: RulesView,
+  actorFactionId: string,
+): { required: number; held: number } {
+  return {
+    required: REVOLT_BASE_THRESHOLD,
+    held: fullRealmOf(actorFactionId, view.overlords, view.incorporated).size,
+  };
+}
+
 export interface Threat {
   factionId: string;
   /** Might lead this faction still needs against its bar. <= 0 means it can
@@ -1108,6 +1066,11 @@ export type CardBlockReason =
    *  moves with the pair's counters, and which of the two to wait on is
    *  exactly what the player needs to see. */
   | { code: "revolt-lead"; required: number; lead: number }
+  /** Incorporate below the realm gate. Carries both numbers because together
+   *  they are the decision: `held` is the scoreboard count the player can
+   *  check against the map, and the gap to `required` says how much more
+   *  realm to gather before digestion opens. */
+  | { code: "realm-too-small"; required: number; held: number }
   | { code: "no-target" }
   /** Seat of power while the actor has an overlord. A vassal's seat is inert
    *  (`seatOf`) and the sweep would report it lost next turn, so the card is
@@ -1198,6 +1161,13 @@ export function cardBlockReason(
   }
   if (cardId === "seat-of-power" && overlord !== undefined) {
     return { code: "vassal-no-seat" };
+  }
+  if (cardId === "incorporate") {
+    // The gate outranks `no-target` below: a too-small realm is a fact about
+    // the actor that no target can change, so it is the answer even when the
+    // actor also happens to hold no vassal.
+    const gate = incorporateRealmGate(view, factionId);
+    if (gate.held < gate.required) return { code: "realm-too-small", ...gate };
   }
   if (card.targeted) {
     return validTargetsFor(view, factionId, cardId).length > 0
