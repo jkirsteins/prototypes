@@ -6,6 +6,7 @@ import {
   buildDeck, buildAiDeck, guardAgainst, isGuardCard, rarityForImpact, shuffle,
   type Rng,
 } from "../src/cards";
+import { cardTextSegments, plainText, t, type NameLookup } from "../src/rich-text";
 import impactData from "../src/data/card-impact.json";
 
 const NON_BASICS = [
@@ -37,7 +38,9 @@ describe("cards", () => {
       maxPerDeck: number | null, deckBuildable: boolean, forced: boolean,
       text: string, wealthCost?: number,
     ) => {
-      const { rarity: _tier, ...rest } = CARDS[id];
+      // textSegments is not restated either: it is `text` in another shape,
+      // and the equivalence test below pins the pair to each other.
+      const { rarity: _tier, textSegments: _segs, ...rest } = CARDS[id];
       expect(rest).toEqual({
         id, name, targeted, secret, maxPerDeck, deckBuildable, forced, text,
         ...(wealthCost !== undefined ? { wealthCost } : {}),
@@ -136,6 +139,25 @@ describe("cards", () => {
         "the seat's neighbours gain +1 Might. Only one seat stands at a time.",
       1,
     );
+  });
+
+  it("keeps textSegments and text saying the same thing", () => {
+    // textSegments exists so a card the text names is a hoverable node; text
+    // is the same sentence flat. Pinning the two equal is what makes a rename
+    // of the referenced card fail here until the flat text follows it.
+    const names: NameLookup = { factionName: (id) => id, isPlaceName: () => false };
+    for (const c of Object.values(CARDS)) {
+      if (c.textSegments !== undefined) {
+        expect(plainText(c.textSegments, names), c.id).toBe(c.text);
+      }
+    }
+  });
+
+  it("does not pass vacuously - references are segments, plain text one run", () => {
+    const revolts = cardTextSegments("seeds-of-revolt")
+      .filter((s) => s.kind === "card" && s.cardId === "revolt");
+    expect(revolts).toHaveLength(2);
+    expect(cardTextSegments("raid")).toEqual([t(CARDS.raid.text)]);
   });
 
   it("keeps the secret cards and the guards the same set", () => {
