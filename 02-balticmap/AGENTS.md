@@ -40,6 +40,10 @@ navigation and the same URL gives the same run every time:
 - `rel=faction:might=3;other:might=-1` - standings as **your signed lead**,
   the `formatLead` convention the HUD already uses. A pre-removal URL naming
   `status=` still boots; the unknown-track rule drops that pair.
+- `rules=turn:unlimited` - rule picks, `axis:option` pairs separated by `;`.
+  An unknown axis or option is dropped by the `rel=` unknown-track rule; an
+  omitted axis keeps its default. The pick also seeds the booted page's rules
+  preference, so a booted deck screen shows it.
 - `popups=off` - sets the existing "Show popups" log pref.
 
 The deck screen therefore reads as three URLs rather than a hand-edited

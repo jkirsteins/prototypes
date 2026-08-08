@@ -36,6 +36,7 @@ import {
 import {
   applyBootMeta, applyBootParams, parseBootParams,
 } from "./boot-params";
+import { RULES_PREFS_KEY } from "./rules";
 import { seededRng } from "./rng";
 import { untilTurn } from "./timed";
 import { runTurnips, runXp } from "./xp";
@@ -143,6 +144,9 @@ const { storage, storageIsPersistent } = ((): {
     const mem = memoryStorage();
     if (boot.popups !== null) {
       mem.setItem(LOG_PREFS_KEY, JSON.stringify({ showPopups: boot.popups }));
+    }
+    if (boot.rules !== null) {
+      mem.setItem(RULES_PREFS_KEY, JSON.stringify(boot.rules));
     }
     return { storage: mem, storageIsPersistent: true };
   }

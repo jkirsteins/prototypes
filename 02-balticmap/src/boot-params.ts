@@ -1,10 +1,12 @@
 import { buildDeck, CARDS, DECK_SIZE, type Rng } from "./cards";
 import {
-  advance, chooseDeck, isHumanTurn, pickFaction, startGame, type GameState,
+  advance, chooseDeck, chooseRules, isHumanTurn, pickFaction, startGame,
+  type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { buildPlayerDeck, initialMeta, type MetaRecord } from "./meta";
 import { bumpMightBy, leadOf, type Relations } from "./relations";
+import { mergeRules, type RuleSelections } from "./rules";
 
 /** Query params that boot the game straight into a chosen state, so a browser
  *  pass is one navigation instead of a menu click, ten card clicks, a land
@@ -56,6 +58,11 @@ export interface BootParams {
   /** False mutes the AI round summary, via the log pref the player can toggle
    *  themselves. Null leaves the pref alone. */
   popups: boolean | null;
+  /** Rule picks for the booted game, or null to leave the defaults. Unknown
+   *  axes and options are dropped by `mergeRules`, the same rule that drops
+   *  an unknown `rel=` track, so a URL from before an axis existed - or
+   *  after one is removed - still boots. */
+  rules: RuleSelections | null;
 }
 
 const isDeckBuildable = (id: string): boolean =>
@@ -119,9 +126,22 @@ function parseRel(raw: string): RelOverride[] {
   return out;
 }
 
+/** `rules=turn:unlimited;other:pick` - axis:option pairs, `;`-separated, the
+ *  `rel=` clause convention. Unparseable or unknown pairs are dropped, never
+ *  thrown, for the same reason parseRel drops them. */
+function parseRules(raw: string): RuleSelections {
+  const picks: Record<string, unknown> = {};
+  for (const clause of raw.split(";")) {
+    const [axis, option] = clause.split(":");
+    if (axis === undefined || option === undefined) continue;
+    picks[axis.trim()] = option.trim();
+  }
+  return mergeRules(picks);
+}
+
 const BOOT_KEYS = [
   "seed", "deck", "screen", "faction", "hand", "rel", "turns", "known", "xp",
-  "wealth", "popups",
+  "wealth", "popups", "rules",
 ];
 
 /** Null when the URL names no boot param at all, which is the ordinary case:
@@ -135,6 +155,7 @@ export function parseBootParams(search: string): BootParams | null {
   const known = q.get("known");
   const rel = q.get("rel");
   const popups = q.get("popups");
+  const rules = q.get("rules");
   const turns = intOr(q.get("turns"), 0) ?? 0;
   const xp = intOr(q.get("xp"), null);
   const wealth = intOr(q.get("wealth"), null);
@@ -160,6 +181,7 @@ export function parseBootParams(search: string): BootParams | null {
     wealth: wealth === null ? null : Math.max(0, Math.min(MAX_BOOT_XP, wealth)),
     popups:
       popups === null ? null : !["off", "false", "0"].includes(popups.trim()),
+    rules: rules === null ? null : parseRules(rules),
   };
 }
 
@@ -229,6 +251,7 @@ export function applyBootParams(
   state: GameState, params: BootParams, rng: Rng,
 ): GameState {
   let g = startGame(state);
+  if (params.rules !== null) g = chooseRules(g, params.rules);
   // Withholding the click, not inventing a screen: the phase startGame leaves
   // behind is the one the player sees before they choose, and "Choose your
   // lands" runs the same chooseDeck from there, so a booted picker continues

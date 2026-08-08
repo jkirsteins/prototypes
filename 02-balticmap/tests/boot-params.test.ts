@@ -10,6 +10,7 @@ import { buildPlayerDeck, pendingPacks } from "../src/meta";
 import { CARDS, DECK_SIZE, STARTING_KNOWN_CARDS } from "../src/cards";
 import { leadOf } from "../src/relations";
 import { seededRng } from "../src/rng";
+import { DEFAULT_RULES } from "../src/rules";
 
 const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
@@ -58,7 +59,7 @@ describe("parseBootParams", () => {
   it("defaults everything the URL does not name", () => {
     expect(params("?seed=7")).toEqual({
       seed: 7, deck: null, screen: null, faction: null, hand: null, rel: [],
-      turns: 0, known: null, xp: null, wealth: null, popups: null,
+      turns: 0, known: null, xp: null, wealth: null, popups: null, rules: null,
     });
   });
 
@@ -301,6 +302,39 @@ describe("applyBootParams", () => {
       const g = boot("?faction=beta&rel=atlantis:might=3;beta:might=9");
       expect(g.relations).toEqual({});
     });
+  });
+});
+
+describe("rules=", () => {
+  it("parses axis:option pairs and drops unknown ones", () => {
+    expect(parseBootParams("?rules=turn:unlimited")?.rules)
+      .toEqual({ turn: "unlimited" });
+    expect(parseBootParams("?rules=turn:unlimited;bogus:x")?.rules)
+      .toEqual({ turn: "unlimited" });
+    expect(parseBootParams("?rules=turn:gone")?.rules).toEqual(DEFAULT_RULES);
+  });
+
+  it("is null when absent, so a bare URL is untouched", () => {
+    expect(parseBootParams("?seed=1")?.rules).toBeNull();
+    expect(parseBootParams("")).toBeNull();
+  });
+
+  it("stamps the picks into the booted state", () => {
+    const params = parseBootParams("?rules=turn:unlimited&faction=beta&seed=1");
+    const g = applyBootParams(
+      newGame(["alpha", "beta", "gamma"]), params!, seededRng(1),
+    );
+    expect(g.rules.turn).toBe("unlimited");
+    expect(g.phase).toBe("playing");
+  });
+
+  it("reaches a booted deck screen too", () => {
+    const params = parseBootParams("?rules=turn:unlimited&screen=deck");
+    const g = applyBootParams(
+      newGame(["alpha", "beta", "gamma"]), params!, seededRng(1),
+    );
+    expect(g.phase).toBe("deck-building");
+    expect(g.rules.turn).toBe("unlimited");
   });
 });
 
