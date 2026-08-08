@@ -7,6 +7,12 @@ import type { NetMessage, Wire } from "./net-protocol";
 const PING_EVERY_MS = 5000;
 const DEAD_AFTER_MS = 15000;
 
+/** How long a join may sit before it is called a failure. A broker that is
+ *  down, or a host id that belongs to a tab which has since closed, produces
+ *  no error of its own - the connection simply never opens - so without this
+ *  the guest reads "Connecting..." for ever. */
+const CONNECT_TIMEOUT_MS = 20000;
+
 function wrap(conn: DataConnection): Wire {
   const msgFns: ((m: NetMessage) => void)[] = [];
   const closeFns: (() => void)[] = [];
@@ -81,11 +87,30 @@ export function joinPeer(hostId: string, cb: {
   onError(reason: string): void;
 }): { close(): void } {
   const peer = new Peer();
+  let opened = false;
+  const timeout = setTimeout(() => {
+    if (opened) return;
+    // Destroyed before the callback, not after: a connection that opens late
+    // would otherwise hand a wire to a caller that has already been told this
+    // attempt failed and may have started another - two live wires, one of
+    // them a zombie nobody can close.
+    peer.destroy();
+    cb.onError("timed out");
+  }, CONNECT_TIMEOUT_MS);
   peer.on("open", () => {
     const conn = peer.connect(hostId, { reliable: true });
-    conn.on("open", () => cb.onWire(wrap(conn)));
+    conn.on("open", () => {
+      opened = true;
+      clearTimeout(timeout);
+      cb.onWire(wrap(conn));
+    });
     conn.on("error", (err) => cb.onError(String(err)));
   });
   peer.on("error", (err) => cb.onError(String(err)));
-  return { close: () => peer.destroy() };
+  return {
+    close: () => {
+      clearTimeout(timeout);
+      peer.destroy();
+    },
+  };
 }
