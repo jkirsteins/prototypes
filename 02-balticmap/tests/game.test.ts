@@ -3,7 +3,7 @@ import { pact, siteCaps } from "./helpers";
 import {
   newGame, startGame, chooseDeck, chooseRules, pickFaction, beginTurn, playCard,
   discardCard, advance, surrender, viewOf,
-  OPENING_HAND, victoryRealmSize, type GameState,
+  OPENING_HAND, HAND_REFILL, victoryRealmSize, type GameState,
 } from "../src/game";
 import { DEFAULT_RULES } from "../src/rules";
 import {
@@ -46,6 +46,14 @@ function playingState(adj?: Record<string, string[]>): GameState {
     "beta",
     seededRng(1),
   );
+}
+
+/** A playing state under unlimited turn rules, human seat current. */
+function unlimitedPlaying(adj?: Record<string, string[]>): GameState {
+  const g = chooseRules(startGame(newGame(FACTIONS, adj)), {
+    turn: "unlimited",
+  });
+  return pickFaction(chooseDeck(g, buildDeck()), "beta", seededRng(1));
 }
 
 function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
@@ -179,6 +187,57 @@ describe("beginTurn", () => {
     expect(after.players[0].hand).toHaveLength(1);
     expect(after.players[0].deck).toHaveLength(2);
     expect(after.log.at(-2)?.type).toBe("reshuffle");
+  });
+});
+
+describe("beginTurn under unlimited rules", () => {
+  it("refills the hand to HAND_REFILL, reshuffling a dry deck mid-refill", () => {
+    let g = unlimitedPlaying();
+    // Strand the player on an empty hand and a one-card deck; the rest of
+    // their cards sit in the discard, so the refill must reshuffle mid-loop.
+    g = {
+      ...g,
+      players: g.players.map((pl, i) =>
+        i === 0
+          ? {
+              ...pl,
+              hand: [],
+              deck: pl.deck.slice(0, 1),
+              discard: [...pl.deck.slice(1), ...pl.hand],
+            }
+          : pl,
+      ),
+    };
+    const before = g.log.length;
+    const after = beginTurn(g, seededRng(2));
+    expect(after.players[0].hand).toHaveLength(HAND_REFILL);
+    const fresh = after.log.slice(before);
+    expect(fresh.filter((e) => e.type === "draw")).toHaveLength(HAND_REFILL);
+    expect(fresh.some((e) => e.type === "reshuffle")).toBe(true);
+  });
+
+  it("draws what exists when deck and discard cannot fill the hand", () => {
+    let g = unlimitedPlaying();
+    g = {
+      ...g,
+      players: g.players.map((pl, i) =>
+        i === 0 ? { ...pl, hand: [], deck: ["raid"], discard: ["fortify"] } : pl,
+      ),
+    };
+    const after = beginTurn(g, seededRng(2));
+    expect(after.players[0].hand).toHaveLength(2);
+  });
+
+  it("draws nothing when the hand is already full", () => {
+    const g = unlimitedPlaying();
+    // pickFaction's beginTurn already refilled to HAND_REFILL.
+    expect(g.players[0].hand).toHaveLength(HAND_REFILL);
+    const before = g.log.length;
+    // Force the human's turn to begin again without a play, as advance never
+    // would: what matters is only that a full hand draws nothing.
+    const again = beginTurn(g, seededRng(3));
+    expect(again.players[0].hand).toHaveLength(HAND_REFILL);
+    expect(again.log.slice(before).some((e) => e.type === "draw")).toBe(false);
   });
 });
 

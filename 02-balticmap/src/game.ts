@@ -171,6 +171,11 @@ export interface GameState {
 
 export const OPENING_HAND = 3;
 
+/** The hand the unlimited turn structure refills to at turn start: the hand a
+ *  standard-rules player decides with, i.e. the opening hand plus the one
+ *  turn-start draw. */
+export const HAND_REFILL = OPENING_HAND + 1;
+
 /** Further settlements a land gets in a world nobody handed a map to. Three, so
  *  a defaulted test world can exercise the base allowance AND a boom past it -
  *  a cap of 1 would have made every Population boom test unreachable without
@@ -457,7 +462,26 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     events.push({ turn: state.turn, playerId: p.id, type: "reshuffle" });
   }
   let hand = p.hand;
-  if (deck.length > 0) {
+  if (state.rules.turn === "unlimited") {
+    // Refill rather than draw one. Each draw logs the same `draw` event the
+    // single-draw path logs, and a deck that runs dry mid-refill reshuffles
+    // exactly as it does between turns, so the log needs no new vocabulary.
+    while (
+      hand.length < HAND_REFILL &&
+      (deck.length > 0 || discard.length > 0)
+    ) {
+      if (deck.length === 0) {
+        deck = shuffle(discard, rng);
+        discard = [];
+        events.push({ turn: state.turn, playerId: p.id, type: "reshuffle" });
+      }
+      events.push({
+        turn: state.turn, playerId: p.id, type: "draw", cardId: deck[0],
+      });
+      hand = [...hand, deck[0]];
+      deck = deck.slice(1);
+    }
+  } else if (deck.length > 0) {
     events.push({ turn: state.turn, playerId: p.id, type: "draw", cardId: deck[0] });
     hand = [...hand, deck[0]];
     deck = deck.slice(1);
