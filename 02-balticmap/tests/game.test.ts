@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { pact, siteCaps } from "./helpers";
 import {
   newGame, startGame, chooseDeck, chooseRules, pickFaction, beginTurn, playCard,
-  discardCard, advance, surrender, viewOf,
+  discardCard, endTurn, advance, surrender, viewOf,
   OPENING_HAND, HAND_REFILL, victoryRealmSize, type GameState,
 } from "../src/game";
 import { DEFAULT_RULES } from "../src/rules";
@@ -238,6 +238,39 @@ describe("beginTurn under unlimited rules", () => {
     const again = beginTurn(g, seededRng(3));
     expect(again.players[0].hand).toHaveLength(HAND_REFILL);
     expect(again.log.slice(before).some((e) => e.type === "draw")).toBe(false);
+  });
+});
+
+describe("unlimited turn flow", () => {
+  it("keeps the turn open across plays and closes it on endTurn", () => {
+    let g = unlimitedPlaying();
+    g = withHand(g, 0, ["grow-crops", "grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(g.playedThisTurn).toBe(false);
+    g = playCard(g, 0, seededRng(1));
+    expect(g.playedThisTurn).toBe(false);
+    expect(advance(g, seededRng(3))).toBe(g); // the turn is not over
+    g = endTurn(g);
+    expect(g.playedThisTurn).toBe(true);
+    expect(advance(g, seededRng(3)).current).not.toBe(0);
+  });
+
+  it("endTurn is a no-op under standard rules and on a closed turn", () => {
+    const standard = playingState();
+    expect(endTurn(standard)).toBe(standard);
+    let g = unlimitedPlaying();
+    g = endTurn(g);
+    expect(endTurn(g)).toBe(g);
+  });
+
+  it("never discards in unlimited mode, even with nothing playable", () => {
+    let g = unlimitedPlaying();
+    g = withHand(g, 0, ["revolt"]); // unplayable while free: dead hand
+    expect(discardCard(g, 0)).toBe(g);
+    // the way out is endTurn, with the dead card still held
+    const done = endTurn(g);
+    expect(done.playedThisTurn).toBe(true);
+    expect(done.players[0].hand).toEqual(["revolt"]);
   });
 });
 

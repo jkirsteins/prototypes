@@ -102,6 +102,9 @@ export interface GameState {
   turn: number; // 1-based
   players: PlayerState[]; // index 0 = human
   current: number;
+  /** True once this turn is complete: a standard turn's one play or discard,
+   *  or an unlimited turn's explicit endTurn. `advance` refuses to move on
+   *  until it is set. */
   playedThisTurn: boolean;
   /** One pick per rule axis, stamped before the game starts and immutable for
    *  the run. `chooseRules` is the only writer. See src/rules.ts. */
@@ -1086,7 +1089,8 @@ export function playCard(
     ...state, phase, players, relations, overlords, incorporated,
     alliances, diplomacyBoost, guards, omens, settlements, booms, hostages,
     wealth, respites, rulers,
-    log: appendEvents(state, events), playedThisTurn: true,
+    log: appendEvents(state, events),
+    playedThisTurn: state.rules.turn !== "unlimited",
   };
 }
 
@@ -1094,6 +1098,9 @@ export function playCard(
 export function discardCard(state: GameState, cardIndex: number): GameState {
   if (state.phase !== "playing") return state;
   if (state.playedThisTurn) return state;
+  // No discards of any kind under the unlimited turn structure: a dead hand
+  // waits for the board to change, and the turn ends by endTurn alone.
+  if (state.rules.turn === "unlimited") return state;
   const p = state.players[state.current];
   const set = playableSet(viewOf(state), p.factionId, p.hand);
   if (set.mode !== "discard" || !set.cardIndexes.includes(cardIndex)) return state;
@@ -1115,6 +1122,17 @@ export function discardCard(state: GameState, cardIndex: number): GameState {
     ]),
     playedThisTurn: true,
   };
+}
+
+/** Closes an unlimited-rules turn. The only writer of `playedThisTurn` that
+ *  moves nothing else: no event and no log line, because the log already
+ *  carries every play the turn made. Standard turns close through playCard
+ *  and discardCard instead, so this refuses them. */
+export function endTurn(state: GameState): GameState {
+  if (state.phase !== "playing") return state;
+  if (state.rules.turn !== "unlimited") return state;
+  if (state.playedThisTurn) return state;
+  return { ...state, playedThisTurn: true };
 }
 
 /** Moves to the next living player after a completed turn. An incorporated
