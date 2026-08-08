@@ -7,8 +7,9 @@ import {
 } from "./panel";
 import { attachInteraction } from "./interaction";
 import {
-  newGame, startGame, chooseDeck, pickFaction, playCard, discardCard, advance,
-  isHumanTurn, surrender, viewOf, endTurn, type GameState,
+  newGame, startGame, chooseDeck, chooseRules, pickFaction, playCard,
+  discardCard, advance, isHumanTurn, surrender, viewOf, endTurn,
+  type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import {
@@ -36,7 +37,9 @@ import {
 import {
   applyBootMeta, applyBootParams, parseBootParams,
 } from "./boot-params";
-import { RULES_PREFS_KEY } from "./rules";
+import {
+  RULES_PREFS_KEY, loadRulesPrefs, saveRulesPrefs, type RuleSelections,
+} from "./rules";
 import { seededRng } from "./rng";
 import { untilTurn } from "./timed";
 import { runTurnips, runXp } from "./xp";
@@ -160,6 +163,10 @@ const { storage, storageIsPersistent } = ((): {
   }
 })();
 let meta: MetaRecord = boot === null ? loadMeta(storage) : applyBootMeta(boot);
+/** The rule picks the next game starts with. Loaded once and kept in sync
+ *  with storage on every change; a booted page's memory storage was seeded
+ *  from `rules=` above, so this needs no boot special case. */
+let rulesPrefs: RuleSelections = loadRulesPrefs(storage);
 let runBanked = false;
 /** The pack currently revealed on the deck screen, or null when none is open.
  *  A fresh array per pack: the deck screen compares identity to decide whether
@@ -1064,6 +1071,7 @@ function deckScreenView(visible: boolean) {
     pendingPacks: pendingPacks(meta),
     reveal: packReveal,
     savedPicks: meta.lastPicks,
+    rules: rulesPrefs,
   };
 }
 
@@ -1090,6 +1098,11 @@ const deckScreen = createDeckScreen(app, {
     packReveal = null;
     deckScreen.update(deckScreenView(true));
   },
+  onRulesChange(next) {
+    rulesPrefs = next;
+    saveRulesPrefs(storage, rulesPrefs);
+    deckScreen.update(deckScreenView(true));
+  },
   onStart(selectedIds) {
     // A pack still waiting is the screen's own business - it hides the deck
     // builder - but guard anyway so a stray call cannot skip the reveal.
@@ -1100,6 +1113,7 @@ const deckScreen = createDeckScreen(app, {
     // is shown - with the very picks it just reported, which is a no-op.
     meta = { ...meta, lastPicks: [...selectedIds] };
     saveMeta(storage, meta);
+    game = chooseRules(game, rulesPrefs);
     game = chooseDeck(game, buildPlayerDeck(meta.knownCards, selectedIds));
     deckScreen.update(deckScreenView(false));
     refresh();

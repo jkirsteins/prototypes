@@ -3,13 +3,14 @@ import { describe, it, expect, vi } from "vitest";
 import { createDeckScreen, type DeckScreenCallbacks } from "../src/deck-screen";
 import { applyRarityBand } from "../src/rarity-band";
 import { ACQUIRABLE_CARDS, CARDS, RARITY_TIERS } from "../src/cards";
+import { DEFAULT_RULES } from "../src/rules";
 
 function setup() {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const cb: DeckScreenCallbacks = {
     onStart: vi.fn(), onOpenPack: vi.fn(), onDismissReveal: vi.fn(),
-    onShowTip: vi.fn(), onHideTip: vi.fn(),
+    onShowTip: vi.fn(), onHideTip: vi.fn(), onRulesChange: vi.fn(),
   };
   const screen = createDeckScreen(container, cb);
   return { container, cb, screen };
@@ -20,7 +21,7 @@ const START = ["grow-crops", "raid", "subjugate", "fortify"];
 
 const view = (over: Record<string, unknown> = {}) => ({
   visible: true, knownCards: START, collected: 0, pendingPacks: 0,
-  reveal: null, savedPicks: [], ...over,
+  reveal: null, savedPicks: [], rules: DEFAULT_RULES, ...over,
 }) as Parameters<ReturnType<typeof createDeckScreen>["update"]>[0];
 
 describe("createDeckScreen", () => {
@@ -257,5 +258,54 @@ describe("rarity band", () => {
       expect(tile.classList.contains("rarity-labelled")).toBe(true);
       expect((tile as HTMLElement).dataset.rarity).toBeTruthy();
     }
+  });
+});
+
+describe("rules picker", () => {
+  it("summarizes the current picks and keeps the options out of the screen", () => {
+    const { container, screen } = setup();
+    screen.update(view());
+    expect(q(container, ".ds-rules-summary").textContent).toBe(
+      "One card per turn",
+    );
+    expect(
+      q(container, ".ds-rules-overlay").classList.contains("hidden"),
+    ).toBe(true);
+  });
+
+  it("opens the modal from the button and closes it on Done", () => {
+    const { container, screen } = setup();
+    screen.update(view());
+    q(container, ".ds-rules-btn").click();
+    expect(
+      q(container, ".ds-rules-overlay").classList.contains("hidden"),
+    ).toBe(false);
+    q(container, ".ds-rules-done").click();
+    expect(
+      q(container, ".ds-rules-overlay").classList.contains("hidden"),
+    ).toBe(true);
+  });
+
+  it("reports a radio pick and reflects the updated view", () => {
+    const { container, cb, screen } = setup();
+    screen.update(view());
+    q(container, ".ds-rules-btn").click();
+    const radio = container.querySelector(
+      'input[name="ds-rules-turn"][value="unlimited"]',
+    ) as HTMLInputElement;
+    radio.click();
+    expect(cb.onRulesChange).toHaveBeenCalledWith({ turn: "unlimited" });
+    screen.update(view({ rules: { turn: "unlimited" } }));
+    expect(q(container, ".ds-rules-summary").textContent).toBe(
+      "Unlimited plays",
+    );
+    expect(radio.checked).toBe(true);
+  });
+
+  it("keeps the rules row outside the scrolling grid", () => {
+    const { container, screen } = setup();
+    screen.update(view());
+    expect(q(container, ".ds-deck").contains(q(container, ".ds-rules-row")))
+      .toBe(false);
   });
 });

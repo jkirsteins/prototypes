@@ -1647,3 +1647,72 @@ svg.map.dragging {
 }
 
 .ds-pack-continue.hidden { display: none; }
+
+.ds-rules-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.ds-rules-btn {
+  font-size: 13px;
+  padding: 5px 14px;
+  border: 1px solid #c9b896;
+  border-radius: 5px;
+  background: #fff;
+  color: #6b6152;
+  cursor: pointer;
+}
+
+.ds-rules-summary {
+  color: #cbbfa4;
+  font-size: 13px;
+}
+
+.ds-rules-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 8, 4, 0.75);
+  z-index: 30;
+}
+
+.ds-rules-overlay.hidden { display: none; }
+
+.ds-rules-inner {
+  background: #1b1710;
+  color: #e8dfc8;
+  border: 1px solid #c9b896;
+  border-radius: 8px;
+  padding: 20px 24px;
+  max-width: 440px;
+}
+
+.ds-rules-axis-name {
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.ds-rules-option {
+  display: block;
+  margin: 8px 0;
+  cursor: pointer;
+}
+
+.ds-rules-option-name {
+  margin-left: 6px;
+}
+
+.ds-rules-option-text {
+  display: block;
+  font-size: 12px;
+  color: #cbbfa4;
+  margin-left: 24px;
+}
+
+.ds-rules-done {
+  margin-top: 16px;
+}
