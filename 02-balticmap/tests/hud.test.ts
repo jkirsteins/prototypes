@@ -4,6 +4,7 @@ import { pact, } from "./helpers";
 import { createHud, type Hud, type HudCallbacks } from "../src/hud";
 import {
   newGame, startGame, chooseDeck, pickFaction, advance, playCard, beginTurn,
+  chooseRules,
   type GameState, type GameEvent,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
@@ -33,6 +34,8 @@ function setup(opts?: {
   cardModifiers?: (cardId: string) => string[];
   cardBlocked?: (cardId: string) => string | null;
   isDiscardMode?: () => boolean;
+  onEndTurn?: () => void;
+  isResolving?: () => boolean;
   onResetProgress?: () => void;
   onSurrender?: () => void;
   onHighlightFaction?: (factionId: string | null) => void;
@@ -56,6 +59,8 @@ function setup(opts?: {
     ...(opts?.cardModifiers ? { cardModifiers: opts.cardModifiers } : {}),
     ...(opts?.cardBlocked ? { cardBlocked: opts.cardBlocked } : {}),
     ...(opts?.isDiscardMode ? { isDiscardMode: opts.isDiscardMode } : {}),
+    ...(opts?.onEndTurn ? { onEndTurn: opts.onEndTurn } : {}),
+    ...(opts?.isResolving ? { isResolving: opts.isResolving } : {}),
     ...(opts?.onResetProgress ? { onResetProgress: opts.onResetProgress } : {}),
     ...(opts?.onSurrender ? { onSurrender: opts.onSurrender } : {}),
     ...(opts?.onHighlightFaction
@@ -1283,6 +1288,51 @@ describe("hud v2", () => {
     expect(q(container, ".pm-cause").textContent).toBe(
       "You rule the Baltic - 11 of 20 lands",
     );
+  });
+});
+
+describe("End turn button", () => {
+  function standardPlayingState(): GameState {
+    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+  }
+
+  function unlimitedHudPlaying(): GameState {
+    const g = chooseRules(startGame(newGame(FACTIONS)), { turn: "unlimited" });
+    return pickFaction(chooseDeck(g, buildDeck()), "alpha", seededRng(1));
+  }
+
+  it("is hidden under standard rules", () => {
+    const { container, hud } = setup({ onEndTurn: vi.fn() });
+    hud.update(standardPlayingState(), { animate: false });
+    const btn = container.querySelector(".end-turn-btn") as HTMLButtonElement;
+    expect(btn.classList.contains("hidden")).toBe(true);
+  });
+
+  it("shows, enables and fires on the human's unlimited turn", () => {
+    const onEndTurn = vi.fn();
+    const { container, hud } = setup({ onEndTurn });
+    hud.update(unlimitedHudPlaying(), { animate: false });
+    const btn = container.querySelector(".end-turn-btn") as HTMLButtonElement;
+    expect(btn.classList.contains("hidden")).toBe(false);
+    expect(btn.disabled).toBe(false);
+    btn.click();
+    expect(onEndTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it("is disabled while a play is resolving and once the turn is closed", () => {
+    const { container, hud } = setup({
+      onEndTurn: vi.fn(), isResolving: () => true,
+    });
+    hud.update(unlimitedHudPlaying(), { animate: false });
+    const btn = container.querySelector(".end-turn-btn") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it("keeps the hand inert while a play is resolving", () => {
+    const { container, hud } = setup({ isResolving: () => true });
+    hud.update(unlimitedHudPlaying(), { animate: false });
+    const card = container.querySelector(".card") as HTMLButtonElement;
+    expect(card.disabled).toBe(true);
   });
 });
 

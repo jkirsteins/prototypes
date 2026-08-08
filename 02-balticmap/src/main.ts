@@ -8,7 +8,7 @@ import {
 import { attachInteraction } from "./interaction";
 import {
   newGame, startGame, chooseDeck, pickFaction, playCard, discardCard, advance,
-  isHumanTurn, surrender, viewOf, type GameState,
+  isHumanTurn, surrender, viewOf, endTurn, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import {
@@ -218,6 +218,7 @@ function humanBlockReason(cardId: string) {
 
 function discardMode(): boolean {
   return (
+    game.rules.turn !== "unlimited" &&
     isHumanTurn(game) &&
     !game.playedThisTurn &&
     humanPlayableSet().mode === "discard"
@@ -882,6 +883,23 @@ function afterHumanAction(): void {
   });
 }
 
+/** After a completed human PLAY. An unlimited turn stays open: wait out the
+ *  flight with input locked, then hand the turn back to the player rather
+ *  than to the AI chain. A standard turn - or a play that ended the run -
+ *  falls through to afterHumanAction as before. */
+function afterHumanPlay(): void {
+  if (game.rules.turn === "unlimited" && game.phase === "playing") {
+    resolving = true;
+    refresh();
+    hud.afterPlayAnimation(() => {
+      resolving = false;
+      refresh();
+    });
+    return;
+  }
+  afterHumanAction();
+}
+
 const hud = createHud(
   app,
   {
@@ -939,7 +957,17 @@ const hud = createHud(
       }
       disarm();
       game = playCard(game, index, rng);
+      afterHumanPlay();
+    },
+    onEndTurn() {
+      if (!isHumanTurn(game) || game.playedThisTurn || resolving) return;
+      if (game.rules.turn !== "unlimited") return;
+      disarm();
+      game = endTurn(game);
       afterHumanAction();
+    },
+    isResolving() {
+      return resolving;
     },
     canPlayCard(cardId) {
       return humanBlockReason(cardId) === null;
@@ -1133,7 +1161,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       disarm();
       if (valid) {
         game = playCard(game, idx, rng, faction);
-        afterHumanAction();
+        afterHumanPlay();
       }
       return true;
     }

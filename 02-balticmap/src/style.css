@@ -1522,6 +1522,31 @@ svg.map.dragging {
   border-color: #7a2f2f;
 }
 
+/* Bottom-right, clear of the hand fan and the discard pile - re-check the
+   corner in a browser whenever either moves. */
+.end-turn-btn {
+  position: absolute;
+  right: 16px;
+  bottom: 170px;
+  font-size: 14px;
+  padding: 8px 18px;
+  border: 1px solid #c9b896;
+  border-radius: 5px;
+  background: #fff;
+  color: #6b6152;
+  cursor: pointer;
+  z-index: 6;
+}
+
+.end-turn-btn.hidden {
+  display: none;
+}
+
+.end-turn-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Pack-opening overlay. Same overlay treatment as .notice-overlay, but scoped
    to the deck screen, which is a separate phase with its own root. */
 .ds-pack-overlay {

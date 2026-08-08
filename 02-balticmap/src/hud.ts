@@ -48,6 +48,13 @@ export interface HudCallbacks {
    *  card is greyed out, so it is the first thing the player came to read. */
   cardBlocked?(cardId: string): string | null;
   isDiscardMode?(): boolean;
+  /** Close an unlimited-rules turn. Absent where no such turn exists
+   *  (standard rules, tests): the button then never renders. */
+  onEndTurn?(): void;
+  /** True while a committed action is still resolving - a card in flight or
+   *  the AI chain behind it. The unlimited hand stays open between plays, so
+   *  `playedThisTurn` alone no longer covers the flight window. */
+  isResolving?(): boolean;
   /** Renders the main-menu Reset progress control when provided. */
   onResetProgress?(): void;
   /** Lifetime XP after this run was banked, for the postmortem progress bar.
@@ -693,6 +700,13 @@ export function createHud(
     cb.onSurrender?.();
   });
 
+  // Closes an unlimited-rules turn. No confirm step, unlike Surrender: ending
+  // a turn is routine and reversible next turn, not terminal.
+  const endTurnBtn = document.createElement("button");
+  endTurnBtn.className = "end-turn-btn hidden";
+  endTurnBtn.textContent = "End turn";
+  endTurnBtn.addEventListener("click", () => cb.onEndTurn?.());
+
   const status = document.createElement("div");
   status.className = "status-bar hidden";
   const statusText = document.createElement("span");
@@ -923,7 +937,7 @@ export function createHud(
   });
 
   container.append(
-    menu, postmortem, status, scoreboard, surrenderBtn, deckPile.root,
+    menu, postmortem, status, scoreboard, surrenderBtn, endTurnBtn, deckPile.root,
     discardPile.root, hand, logPanel, noticeOverlay,
   );
 
@@ -1263,7 +1277,9 @@ export function createHud(
     const human = state.players[0];
     if (!human) return;
     const n = human.hand.length;
-    const canPlay = isHumanTurn(state) && !state.playedThisTurn;
+    const canPlay =
+      isHumanTurn(state) && !state.playedThisTurn &&
+      !(cb.isResolving?.() ?? false);
     const canPlayCardCb = cb.canPlayCard ?? (() => true);
     human.hand.forEach((cardId, i) => {
       const card = document.createElement("button");
@@ -1504,9 +1520,14 @@ export function createHud(
           ),
         );
       } else if (isHumanTurn(state)) {
-        statusText.textContent = (cb.isDiscardMode?.() ?? false)
-          ? "No playable card - discard one"
-          : `Turn ${state.turn} - play a card`;
+        if (state.rules.turn === "unlimited") {
+          statusText.textContent =
+            `Turn ${state.turn} - play cards, then end your turn`;
+        } else {
+          statusText.textContent = (cb.isDiscardMode?.() ?? false)
+            ? "No playable card - discard one"
+            : `Turn ${state.turn} - play a card`;
+        }
       } else {
         statusText.textContent = "Waiting on other players...";
       }
@@ -1703,6 +1724,14 @@ export function createHud(
         state.phase !== "playing" || cb.onSurrender === undefined,
       );
       if (state.phase !== "playing") disarmSurrender();
+      endTurnBtn.classList.toggle(
+        "hidden",
+        state.phase !== "playing" || state.rules.turn !== "unlimited" ||
+          cb.onEndTurn === undefined,
+      );
+      endTurnBtn.disabled =
+        !isHumanTurn(state) || state.playedThisTurn ||
+        (cb.isResolving?.() ?? false);
 
       renderStatus(state);
 
