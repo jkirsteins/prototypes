@@ -245,15 +245,24 @@ describe("beginTurn under unlimited rules", () => {
 });
 
 describe("unlimited turn flow", () => {
-  it("keeps the turn open across plays and closes it on endTurn", () => {
+  it("keeps the turn open while cards remain and closes it on endTurn", () => {
     let g = unlimitedPlaying();
-    g = withHand(g, 0, ["grow-crops", "grow-crops"]);
+    g = withHand(g, 0, ["grow-crops", "grow-crops", "grow-crops"]);
     g = playCard(g, 0, seededRng(1));
     expect(g.playedThisTurn).toBe(false);
     g = playCard(g, 0, seededRng(1));
     expect(g.playedThisTurn).toBe(false);
     expect(advance(g, seededRng(3))).toBe(g); // the turn is not over
     g = endTurn(g);
+    expect(g.playedThisTurn).toBe(true);
+    expect(advance(g, seededRng(3)).current).not.toBe(0);
+  });
+
+  it("closes the turn by itself when the last card is played", () => {
+    let g = unlimitedPlaying();
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(g.players[0].hand).toHaveLength(0);
     expect(g.playedThisTurn).toBe(true);
     expect(advance(g, seededRng(3)).current).not.toBe(0);
   });
