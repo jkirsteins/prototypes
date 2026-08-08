@@ -1416,7 +1416,12 @@ export function playCard(
     alliances, diplomacyBoost, guards, omens, settlements, booms, hostages,
     wealth, respites, rulers, seats, empoweredCardId,
     log: appendEvents(state, events),
-    playedThisTurn: state.rules.turn !== "unlimited",
+    // An unlimited turn stays open while cards remain; an emptied hand has
+    // nothing left to play or hold for, so the last play closes the turn
+    // without an End turn click. A dead hand (unplayable cards) still waits.
+    playedThisTurn:
+      state.rules.turn !== "unlimited" ||
+      players[state.current].hand.length === 0,
   };
 }
 

@@ -1104,11 +1104,15 @@ function afterHumanAction(): void {
 
 /** After a completed human PLAY. An unlimited turn stays open: wait out the
  *  flight with input locked, then hand the turn back to the player rather
- *  than to the AI chain. A standard turn - or a play that ended the run -
- *  falls through to afterHumanAction as before. */
+ *  than to the AI chain. A standard turn, a play that ended the run, or a
+ *  play that emptied the hand (playCard closes the turn itself then) falls
+ *  through to afterHumanAction as before. */
 function afterHumanPlay(): void {
   harvestRoll = null; // see afterHumanAction; unlimited turns return early
-  if (game.rules.turn === "unlimited" && game.phase === "playing") {
+  if (
+    game.rules.turn === "unlimited" && game.phase === "playing" &&
+    !game.playedThisTurn
+  ) {
     resolving = true;
     refresh();
     hud.afterPlayAnimation(() => {

@@ -57,15 +57,18 @@ Choke points, each a read of one axis:
   one card (existing `draw` event). If deck plus discard hold fewer cards
   than the shortfall, the player gets what exists.
 - `playCard`. Standard stamps `playedThisTurn: true` as today. Unlimited
-  leaves it false. The doc comment on `playedThisTurn` changes to mean "turn
+  leaves it false, unless the play emptied the hand: with nothing left to
+  play or hold, the last card closes the turn itself, sparing the End turn
+  click. The doc comment on `playedThisTurn` changes to mean "turn
   complete"; `advance` is untouched.
 - New `endTurn(state)`. Legal only in unlimited mode, in the `playing` phase,
   on the current player's turn. Sets `playedThisTurn: true` and nothing else:
   no event and no log line, because the log already shows every play.
 - Discards. `discardCard` and the forced-discard path are never offered in
-  unlimited mode. End turn is the only way out of a turn, including with a
-  fully dead hand. This stagnation is accepted on purpose: it is the purest
-  form of the rule.
+  unlimited mode. End turn is the only way out of a turn that still holds
+  cards, including a fully dead hand. This stagnation is accepted on
+  purpose: it is the purest form of the rule. An emptied hand is the one
+  exception, closed by `playCard` as above.
 
 The refill target 4 matches the hand a standard-rules player decides with
 (opening hand of 3 plus the turn-start draw).
