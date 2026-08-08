@@ -6,6 +6,7 @@ import {
   xpThresholdForLevel,
 } from "../src/xp";
 import type { GameEvent } from "../src/game";
+import { DEFAULT_RULES } from "../src/rules";
 
 const ev = (e: Partial<GameEvent> & { type: GameEvent["type"] }): GameEvent => ({
   turn: 1, playerId: 1, ...e,
@@ -160,8 +161,8 @@ describe("the turnip bar's escalating thresholds", () => {
   });
 
   it("multiplies every cost under unlimited turns, not just the first", () => {
-    expect(harvestMultiplier({ turn: "standard" })).toBe(1);
-    expect(harvestMultiplier({ turn: "unlimited" })).toBe(3);
+    expect(harvestMultiplier(DEFAULT_RULES)).toBe(1);
+    expect(harvestMultiplier({ ...DEFAULT_RULES, turn: "unlimited" })).toBe(3);
     expect(harvestThreshold(0, 3)).toBe(12);
     expect(harvestThreshold(1, 3)).toBe(30);
   });

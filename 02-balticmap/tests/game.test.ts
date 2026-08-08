@@ -55,6 +55,7 @@ function playingState(adj?: Record<string, string[]>): GameState {
 /** A playing state under unlimited turn rules, human seat current. */
 function unlimitedPlaying(adj?: Record<string, string[]>): GameState {
   const g = chooseRules(startGame(newGame(FACTIONS, adj)), {
+    ...DEFAULT_RULES,
     turn: "unlimited",
   });
   return pickFaction(chooseDeck(g, buildDeck()), "beta", seededRng(1));
@@ -914,10 +915,11 @@ describe("chooseRules", () => {
 
   it("stamps picks during deck-building and refuses them after", () => {
     const g = startGame(newGame(FACTIONS));
-    const picked = chooseRules(g, { turn: "unlimited" });
+    const picked = chooseRules(g, { ...DEFAULT_RULES, turn: "unlimited" });
     expect(picked.rules.turn).toBe("unlimited");
     const playing = playingState();
-    expect(chooseRules(playing, { turn: "unlimited" })).toBe(playing);
+    expect(chooseRules(playing, { ...DEFAULT_RULES, turn: "unlimited" }))
+      .toBe(playing);
   });
 });
 

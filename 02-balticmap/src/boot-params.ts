@@ -6,7 +6,7 @@ import {
 import { aiTakeTurn } from "./ai";
 import { buildPlayerDeck, initialMeta, type MetaRecord } from "./meta";
 import { bumpMightBy, leadOf, type Relations } from "./relations";
-import { mergeRules, type RuleSelections } from "./rules";
+import { copiesAllowed, mergeRules, type RuleSelections } from "./rules";
 
 /** Query params that boot the game straight into a chosen state, so a browser
  *  pass is one navigation instead of a menu click, ten card clicks, a land
@@ -258,11 +258,14 @@ export function applyBootParams(
   // lands" runs the same chooseDeck from there, so a booted picker continues
   // into a run rather than dead-ending.
   if (params.screen === "deck") return g;
+  // The rules are already stamped above, so a `deck=` naming a card twice is
+  // capped by the booted `copies` pick: one copy by default, two under
+  // `rules=copies:double` - the same clamp the deck screen applies.
   g = chooseDeck(
     g,
     params.deck === null
       ? buildDeck()
-      : buildPlayerDeck(BOOT_KNOWN_CARDS, params.deck),
+      : buildPlayerDeck(BOOT_KNOWN_CARDS, params.deck, copiesAllowed(g.rules)),
   );
   if (params.faction === null) return g;
   g = pickFaction(g, params.faction, rng);

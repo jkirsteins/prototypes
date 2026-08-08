@@ -43,8 +43,8 @@ import {
   applyBootMeta, applyBootParams, parseBootParams,
 } from "./boot-params";
 import {
-  allowsDiscards, RULES_PREFS_KEY, loadRulesPrefs, saveRulesPrefs,
-  type RuleSelections,
+  allowsDiscards, copiesAllowed, RULES_PREFS_KEY, loadRulesPrefs,
+  saveRulesPrefs, type RuleSelections,
 } from "./rules";
 import { seededRng } from "./rng";
 import { untilTurn } from "./timed";
@@ -1357,7 +1357,10 @@ const deckScreen = createDeckScreen(app, {
     meta = { ...meta, lastPicks: [...selectedIds] };
     saveMeta(storage, meta);
     game = chooseRules(game, rulesPrefs);
-    game = chooseDeck(game, buildPlayerDeck(meta.knownCards, selectedIds));
+    game = chooseDeck(
+      game,
+      buildPlayerDeck(meta.knownCards, selectedIds, copiesAllowed(rulesPrefs)),
+    );
     deckScreen.update(deckScreenView(false));
     refresh();
   },

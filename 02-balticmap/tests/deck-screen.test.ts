@@ -206,6 +206,75 @@ describe("createDeckScreen", () => {
       "3 picked + 7 Grow turnips = 10",
     );
   });
+
+  it("shows no copy counts and states the 1-copy cap under default rules", () => {
+    const { container, screen } = setup();
+    screen.update(view({ savedPicks: ["raid"] }));
+    expect(q(container, ".ds-label").textContent).toBe(
+      "Choose the cards you take (up to 10, 1 copy each):",
+    );
+    for (const pill of container.querySelectorAll(".ds-card-count")) {
+      expect(pill.classList.contains("hidden")).toBe(true);
+    }
+  });
+});
+
+describe("the double-copies rule", () => {
+  const DOUBLE = { ...DEFAULT_RULES, copies: "double" as const };
+  const tileOf = (container: HTMLElement, name: string) =>
+    [...container.querySelectorAll<HTMLElement>(".ds-deck .ds-card")]
+      .find((c) => c.querySelector(".ds-card-name")?.textContent === name)!;
+
+  it("cycles a tile none -> x1 -> x2 -> none and counts total copies", () => {
+    const { container, cb, screen } = setup();
+    screen.update(view({ rules: DOUBLE }));
+    expect(q(container, ".ds-label").textContent).toBe(
+      "Choose the cards you take (up to 10, up to 2 copies each):",
+    );
+    const raid = tileOf(container, "Raid");
+    raid.click();
+    expect(raid.querySelector(".ds-card-count")?.textContent).toBe("x1");
+    raid.click();
+    expect(raid.querySelector(".ds-card-count")?.textContent).toBe("x2");
+    expect(raid.querySelector(".ds-card-count")?.classList.contains("hidden"))
+      .toBe(false);
+    expect(q(container, ".ds-counter").textContent).toBe(
+      "2 picked + 8 Grow turnips = 10",
+    );
+    q(container, ".ds-start").click();
+    expect(cb.onStart).toHaveBeenCalledWith(["raid", "raid"]);
+    raid.click();
+    expect(raid.classList.contains("selected")).toBe(false);
+    expect(raid.querySelector(".ds-card-count")?.classList.contains("hidden"))
+      .toBe(true);
+    expect(q(container, ".ds-counter").textContent).toBe(
+      "0 picked + 10 Grow turnips = 10",
+    );
+  });
+
+  it("arrives with a saved two-copy loadout picked", () => {
+    const { container, cb, screen } = setup();
+    screen.update(view({ rules: DOUBLE, savedPicks: ["raid", "raid", "fortify"] }));
+    expect(tileOf(container, "Raid").querySelector(".ds-card-count")?.textContent)
+      .toBe("x2");
+    expect(q(container, ".ds-counter").textContent).toBe(
+      "3 picked + 7 Grow turnips = 10",
+    );
+    q(container, ".ds-start").click();
+    expect(cb.onStart).toHaveBeenCalledWith(["raid", "raid", "fortify"]);
+  });
+
+  it("prunes second copies when the rule flips back to single", () => {
+    const { container, cb, screen } = setup();
+    const saved = ["raid", "raid", "fortify"];
+    screen.update(view({ rules: DOUBLE, savedPicks: saved }));
+    screen.update(view({ rules: DEFAULT_RULES, savedPicks: saved }));
+    expect(q(container, ".ds-counter").textContent).toBe(
+      "2 picked + 8 Grow turnips = 10",
+    );
+    q(container, ".ds-start").click();
+    expect(cb.onStart).toHaveBeenCalledWith(["raid", "fortify"]);
+  });
 });
 
 describe("rarity band", () => {
@@ -266,7 +335,7 @@ describe("rules picker", () => {
     const { container, screen } = setup();
     screen.update(view());
     expect(q(container, ".ds-rules-summary").textContent).toBe(
-      "One card per turn",
+      "One card per turn, 1 of each card",
     );
     expect(
       q(container, ".ds-rules-overlay").classList.contains("hidden"),
@@ -294,10 +363,12 @@ describe("rules picker", () => {
       'input[name="ds-rules-turn"][value="unlimited"]',
     ) as HTMLInputElement;
     radio.click();
-    expect(cb.onRulesChange).toHaveBeenCalledWith({ turn: "unlimited" });
-    screen.update(view({ rules: { turn: "unlimited" } }));
+    expect(cb.onRulesChange).toHaveBeenCalledWith({
+      ...DEFAULT_RULES, turn: "unlimited",
+    });
+    screen.update(view({ rules: { ...DEFAULT_RULES, turn: "unlimited" } }));
     expect(q(container, ".ds-rules-summary").textContent).toBe(
-      "Unlimited plays",
+      "Unlimited plays, 1 of each card",
     );
     expect(radio.checked).toBe(true);
   });
