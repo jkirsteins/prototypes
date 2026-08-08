@@ -220,7 +220,9 @@ function humanPlayableSet() {
 function humanBlockReason(cardId: string) {
   const human = game.players[0];
   if (!human) return null;
-  return handBlockReason(viewOf(game), human.factionId, human.hand, cardId);
+  return handBlockReason(viewOf(game), human.factionId, human.hand, cardId, {
+    discards: game.rules.turn !== "unlimited",
+  });
 }
 
 function discardMode(): boolean {

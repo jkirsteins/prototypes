@@ -3,7 +3,7 @@ import { pact, settledOnce, siteCaps } from "./helpers";
 import {
   INCORPORATE_RAMP, PASSIVE_PER_LANDS, POACH_CHANCE, PROWESS_PER_REDUCTION,
   SUBJUGATE_THRESHOLD, annexedLandsOf, borderStrength, cardBlockReason,
-  gripPartsOn,
+  gripPartsOn, handBlockReason,
   incorporationChance, passiveFortifyFor, prowessReductionFor, raidYield,
   isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
   reachOf, respiteExpiry, sharedNeighboursOf,
@@ -569,6 +569,28 @@ describe("playableSet", () => {
   it("a stale tribute in a free hand is not forced and not playable", () => {
     const set = playableSet(view(), "beta", ["pay-military-tribute"]);
     expect(set).toEqual({ mode: "discard", cardIndexes: [0] });
+  });
+});
+
+describe("handBlockReason", () => {
+  it("a dead hand blocks nothing by default: discards are on the table", () => {
+    expect(handBlockReason(view(), "beta", ["revolt"], "revolt")).toBeNull();
+  });
+
+  it("with discards off, a dead hand quotes the card's own reason instead", () => {
+    const reason = handBlockReason(view(), "beta", ["revolt"], "revolt", {
+      discards: false,
+    });
+    expect(reason).toEqual(cardBlockReason(view(), "beta", "revolt"));
+    expect(reason).not.toBeNull();
+  });
+
+  it("with discards off, a playable card is still unblocked", () => {
+    const hand = ["subjugate", "grow-crops", "raid"];
+    const reason = handBlockReason(view(), "beta", hand, "grow-crops", {
+      discards: false,
+    });
+    expect(reason).toBeNull();
   });
 });
 
