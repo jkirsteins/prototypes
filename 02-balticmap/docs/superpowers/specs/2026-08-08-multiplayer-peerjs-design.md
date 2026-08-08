@@ -40,6 +40,23 @@ obtains a peer id from the broker and the UI shows a copyable link,
 `?join=<peer-id>`, in the spirit of the existing boot-param URLs. The
 guest opens the link and connects.
 
+### Join UI
+
+The start screen gains a rudimentary "Play with a friend" panel,
+imperative DOM in the existing start-screen style, no new machinery:
+
+- Host side: a Host button. On click it asks the broker for a peer
+  id, then shows the join link and the bare peer id, each with a copy
+  button, and a "Waiting for a friend" status line that switches to
+  the lobby when the guest connects.
+- Guest side: a text field plus a Join button. The field accepts
+  either a bare peer id or a pasted full link; a pasted URL has its
+  `join` value extracted. Connection progress and failures (bad id,
+  broker down, timed out) are shown plainly in the panel, and a
+  failed attempt leaves the field editable to retry.
+- Opening a `?join=<peer-id>` URL is the same path with the field
+  prefilled and the connection started automatically.
+
 `join` is not a boot param. `applyBootParams` must keep returning
 `null` for a URL naming only `join`, so the guest's page keeps real
 localStorage and banks progress normally. A URL mixing `join` with
