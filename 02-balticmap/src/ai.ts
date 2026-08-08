@@ -1,8 +1,5 @@
-import {
-  CARDS, DOUBLABLE_CARDS, isTributeCard, TRIBUTE_CARDS,
-  type Rng, type TributeTrack,
-} from "./cards";
-import { fullRealmOf, leadsOf, realmOf } from "./relations";
+import { CARDS, DOUBLABLE_CARDS, isTributeCard, type Rng } from "./cards";
+import { fullRealmOf, realmOf } from "./relations";
 import {
   holdsGuard, leadsIn, omenMultiplier, playableSet, raidGainFor, subjugationGripOn,
   subjugationRequirement, poachSurchargeOn, subjugationChance,
@@ -14,11 +11,6 @@ import { discardCard, playCard, viewOf, type GameState } from "./game";
 export type AiAction =
   | { type: "play"; cardIndex: number; targetId?: string }
   | { type: "discard"; cardIndex: number };
-
-const TRACKS = [
-  { cardId: "raid", field: "might" as const },
-  { cardId: "shrewd-marriage", field: "status" as const },
-];
 
 /** Which branch of `chooseAction` decides each card. Keyed on every id in
  *  CARDS, not only the deck-buildable ones: tribute is injection-only yet
@@ -33,8 +25,7 @@ const TRACKS = [
  *  order while 2 or more targets were legal 82% and 64% of the time. See the
  *  card rule in AGENTS.md. */
 export const POLICY_COVERAGE: Record<string, string> = {
-  "pay-military-tribute": "1: forced tribute, weaker track first",
-  "pay-status-tribute": "1: forced tribute, weaker track first",
+  "pay-military-tribute": "1: forced tribute",
   "revolt": "2: revolt out of vassalage",
   "seeds-of-revolt": "2a: sow a revolt while a vassal",
   "incorporate": "3: incorporate the best permanent gain net of freed vassals",
@@ -43,29 +34,17 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "assassinate-ruler": "5: emergency assassination",
   "take-hostage": "5b: lock a restive vassal's Revolt, biggest realm first",
   "raid": "6: finishing play, else 9: build toward the closest subjugation",
-  "shrewd-marriage": "6: finishing play, else 9: build toward the closest subjugation",
-  "fortify": "7: defensive fan-out, Might track",
-  "a-feast": "7: defensive fan-out, Status track",
+  "fortify": "7: defensive fan-out",
   "found-settlement":
     "7b: settle against a nearing threat, else 9b: settle a spare turn",
   "favourable-omens":
     "8: read the omens before building, stacking on a held reading",
   "extended-diplomacy": "8b: extend the next pact",
   "bodyguard": "8c: post the guard whose card is aimed at this position",
-  "eloping-heirs": "8c: post the guard whose card is aimed at this position",
   "distrustful-neighbour": "8c: post the guard whose card is aimed at this position",
   "population-boom": "8d: raise the population when it would unlock a settlement",
   "grow-crops": "10: grow crops",
 };
-
-/** The fan-out cards, each with the track it moves and the bar that track
- *  answers to. Ordered, and step 7 walks it in order when both are in hand and
- *  both tracks are threatened - Might first, because Might is the fast track
- *  and so the one a rival is likelier to be closing on. */
-const FAN_OUTS = [
-  { cardId: "fortify", field: "might" as const },
-  { cardId: "a-feast", field: "status" as const },
-];
 
 /** Which guard answers which position, as the question the policy can actually
  *  ask about each: "is anybody in a position where the card this guard turns
@@ -93,17 +72,8 @@ const GUARD_CASES: GuardCase[] = [
         if (e.state === "irrelevant") return false;
         const required = subjugationRequirement(v, self, e.factionId);
         if (required === null) return false;
-        return leadsIn(v, self, e.factionId).might >= required.might;
+        return leadsIn(v, self, e.factionId) >= required;
       }),
-  },
-  {
-    // Shrewd marriage feeds a rival's Status lead by 1 a play, and no
-    // settlement can raise the Status bar against it. So the position worth
-    // guarding is a rival two plays or fewer from clearing it on Status - the
-    // same near-miss window step 5 defends and step 7b settles against.
-    cardId: "eloping-heirs",
-    worth: (_v, _self, threats) =>
-      threats.some((t) => t.statusShortfall <= 2),
   },
   {
     // A pact freezes hostile cards in BOTH directions, so being courted by a
@@ -116,13 +86,10 @@ const GUARD_CASES: GuardCase[] = [
         if (e.state === "irrelevant") return false;
         const required = subjugationRequirement(v, self, e.factionId);
         if (required === null) return false;
-        const lead = leadsIn(v, self, e.factionId);
-        // Within two plays on either track, counting a flat +1 a play. Raid's
-        // convexity would make this optimistic rather than pessimistic, and a
-        // guard posted a turn early costs nothing but the turn.
-        return (
-          required.might - lead.might <= 2 || required.status - lead.status <= 2
-        );
+        // Within two plays, counting a flat +1 a play. Raid's convexity
+        // would make this optimistic rather than pessimistic, and a guard
+        // posted a turn early costs nothing but the turn.
+        return required - leadsIn(v, self, e.factionId) <= 2;
       }),
   },
 ];
@@ -179,18 +146,11 @@ export function chooseAction(state: GameState): AiAction {
   const idxOf = (id: string): number | undefined =>
     set.cardIndexes.find((i) => p.hand[i] === id);
 
-  // 1: forced tribute, feeding the overlord's weaker track. The track is the
-  // card now, so this is a choice between the two tribute cards rather than a
-  // choice made while playing one - and when only one of them is in hand there
-  // is nothing to choose, which is the common case.
+  // 1: forced tribute. Forced cards leave no real choice; play the demand.
   const lord = state.overlords.get(p.factionId);
   if (lord !== undefined) {
-    const l = leadsOf(state.relations, lord, p.factionId);
-    const weaker: TributeTrack = l.status < l.might ? "status" : "might";
-    const tributes = set.cardIndexes.filter((i) => isTributeCard(p.hand[i]));
-    const preferred =
-      tributes.find((i) => TRIBUTE_CARDS[p.hand[i]] === weaker) ?? tributes[0];
-    if (preferred !== undefined) return { type: "play", cardIndex: preferred };
+    const tribute = set.cardIndexes.find((i) => isTributeCard(p.hand[i]));
+    if (tribute !== undefined) return { type: "play", cardIndex: tribute };
   }
 
   // 2: revolt out of vassalage. A vassal CAN Subjugate and Incorporate now,
@@ -271,8 +231,7 @@ export function chooseAction(state: GameState): AiAction {
       let bestLead = -Infinity;
       for (const t of targets) {
         const odds = subjugationChance(v, t);
-        const l = leadsIn(v, p.factionId, t);
-        const m = Math.max(l.status, l.might);
+        const m = leadsIn(v, p.factionId, t);
         if (odds > bestOdds || (odds === bestOdds && m > bestLead)) {
           best = t;
           bestOdds = odds;
@@ -294,17 +253,15 @@ export function chooseAction(state: GameState): AiAction {
     const alliance = idxOf("alliance");
     if (alliance !== undefined) {
       const courtable = validTargetsFor(v, p.factionId, "alliance");
-      const myTargets = validTargetsFor(v, p.factionId, "subjugate");
-      // A pact blocks hostile targeted cards in BOTH directions, so allying
-      // with your own best target freezes your own conquest for five turns.
-      // The own-vassal check below is load-bearing now: vassals can
-      // Subjugate, so your own vassal with a lead appears in threatsTo, and
-      // sealing a pact with it would freeze your own Incorporate for
-      // nothing.
+      // The own-vassal check is load-bearing: vassals can Subjugate, so your
+      // own vassal with a lead appears in threatsTo, and sealing a pact with
+      // it would freeze your own Incorporate for nothing. (No own-best-target
+      // exclusion any more: a threat within one play leads this faction, so
+      // on one shared Might counter it can never simultaneously be a legal
+      // Subjugate target.)
       const pick = threats.find(
         (t) =>
           courtable.includes(t.factionId) &&
-          !myTargets.includes(t.factionId) &&
           state.overlords.get(t.factionId) !== p.factionId,
       );
       if (pick !== undefined) {
@@ -324,14 +281,13 @@ export function chooseAction(state: GameState): AiAction {
       const pick = threats
         .filter(
           (t) =>
-            t.mightShortfall <= 1 &&
+            t.shortfall <= 1 &&
             legal.includes(t.factionId) &&
             !holdsGuard(v, t.factionId, "bodyguard"),
         )
         .sort(
           (a, b) =>
-            a.mightShortfall - b.mightShortfall ||
-            order(a.factionId) - order(b.factionId),
+            a.shortfall - b.shortfall || order(a.factionId) - order(b.factionId),
         )[0];
       if (pick !== undefined) {
         return { type: "play", cardIndex: assassinate, targetId: pick.factionId };
@@ -364,39 +320,36 @@ export function chooseAction(state: GameState): AiAction {
   }
 
   // 6: one play away from the threshold
-  for (const { cardId, field } of TRACKS) {
-    const i = idxOf(cardId);
-    if (i === undefined) continue;
-    for (const t of validTargetsFor(v, p.factionId, cardId)) {
-      if (state.overlords.get(t) === p.factionId) continue;
-      // Each track answers to its own bar, so a settled target is nearer on
-      // Status than on Might and the policy must not measure both against one
-      // number.
-      const needed = subjugationGripOn(v, t)[field] + poachSurchargeOn(v, t);
-      if (
-        leadsIn(v, p.factionId, t)[field] +
-          gainOf(state, p.factionId, cardId, t) >= needed
-      ) {
-        return { type: "play", cardIndex: i, targetId: t };
+  {
+    const i = idxOf("raid");
+    if (i !== undefined) {
+      for (const t of validTargetsFor(v, p.factionId, "raid")) {
+        if (state.overlords.get(t) === p.factionId) continue;
+        const needed = subjugationGripOn(v, t) + poachSurchargeOn(v, t);
+        if (
+          leadsIn(v, p.factionId, t) +
+            gainOf(state, p.factionId, "raid", t) >= needed
+        ) {
+          return { type: "play", cardIndex: i, targetId: t };
+        }
       }
     }
   }
 
-  // 7: defensive fan-out. Fortify answers a rival leading on Might, A feast one
-  // leading on Status; the two are the same play on different tracks, so they
-  // are one step reading FAN_OUTS rather than two branches that would drift.
-  for (const { cardId, field } of FAN_OUTS) {
-    const i = idxOf(cardId);
-    if (i === undefined) continue;
-    // Vassal rivals count: a vassal with the lead can Subjugate, so it is
-    // exactly as much of a threat as a free one.
-    const threatened = state.factionIds.some(
-      (f) =>
-        f !== p.factionId &&
-        !(f in state.incorporated) &&
-        leadsIn(v, f, p.factionId)[field] >= 1,
-    );
-    if (threatened) return { type: "play", cardIndex: i };
+  // 7: defensive fan-out - Fortify against a rival holding a lead.
+  {
+    const i = idxOf("fortify");
+    if (i !== undefined) {
+      // Vassal rivals count: a vassal with the lead can Subjugate, so it is
+      // exactly as much of a threat as a free one.
+      const threatened = state.factionIds.some(
+        (f) =>
+          f !== p.factionId &&
+          !(f in state.incorporated) &&
+          leadsIn(v, f, p.factionId) >= 1,
+      );
+      if (threatened) return { type: "play", cardIndex: i };
+    }
   }
 
   // 7b: settle a land while a threat is closing. A settlement adds 1 to the
@@ -487,21 +440,20 @@ export function chooseAction(state: GameState): AiAction {
   // rather than points - a 6-point gap closed 3 at a time is nearer than a
   // 4-point gap closed 1 at a time.
   let build: { cardIndex: number; targetId: string; plays: number; order: number } | null = null;
-  for (const { cardId, field } of TRACKS) {
-    const i = idxOf(cardId);
-    if (i === undefined) continue;
-    for (const t of validTargetsFor(v, p.factionId, cardId)) {
+  const buildRaid = idxOf("raid");
+  if (buildRaid !== undefined) {
+    for (const t of validTargetsFor(v, p.factionId, "raid")) {
       if (state.overlords.get(t) === p.factionId) continue;
-      const needed = subjugationGripOn(v, t)[field] + poachSurchargeOn(v, t);
-      const deficit = needed - leadsIn(v, p.factionId, t)[field];
-      const plays = Math.ceil(deficit / gainOf(state, p.factionId, cardId, t));
+      const needed = subjugationGripOn(v, t) + poachSurchargeOn(v, t);
+      const deficit = needed - leadsIn(v, p.factionId, t);
+      const plays = Math.ceil(deficit / gainOf(state, p.factionId, "raid", t));
       const order = state.factionIds.indexOf(t);
       if (
         build === null ||
         plays < build.plays ||
         (plays === build.plays && order < build.order)
       ) {
-        build = { cardIndex: i, targetId: t, plays, order };
+        build = { cardIndex: buildRaid, targetId: t, plays, order };
       }
     }
   }

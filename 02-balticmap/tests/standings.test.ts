@@ -20,7 +20,7 @@ function ctx(humanFactionId: string, playerFactions: Record<number, string>): Wa
   return {
     humanFactionId,
     factionOf: (playerId) => playerFactions[playerId],
-    leads: () => ({ might: 0, status: 0 }),
+    leads: () => 0,
   };
 }
 
@@ -36,47 +36,38 @@ function playEvent(overrides: Partial<GameEvent>): GameEvent {
 describe("leadMovesOf", () => {
   it("raid by the human adds to the target's track", () => {
     const e = playEvent({
-      playerId: 1, cardId: "raid", targetFactionId: RIVAL, amount: 3, track: "might",
+      playerId: 1, cardId: "raid", targetFactionId: RIVAL, amount: 3,
     });
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, track: "might", delta: 3 },
+      { kind: "add", factionId: RIVAL, delta: 3 },
     ]);
   });
 
   it("raid against the human adds to the actor's track, sign-flipped", () => {
     const e = playEvent({
-      playerId: 2, cardId: "raid", targetFactionId: H, amount: 3, track: "might",
+      playerId: 2, cardId: "raid", targetFactionId: H, amount: 3,
     });
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, track: "might", delta: -3 },
+      { kind: "add", factionId: RIVAL, delta: -3 },
     ]);
   });
 
   it("raid between two non-human factions moves nothing for the human", () => {
     const e = playEvent({
-      playerId: 2, cardId: "raid", targetFactionId: THIRD, amount: 3, track: "might",
+      playerId: 2, cardId: "raid", targetFactionId: THIRD, amount: 3,
     });
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
   });
 
-  it("shrewd marriage behaves like raid, on the status track", () => {
-    const e = playEvent({
-      playerId: 2, cardId: "shrewd-marriage", targetFactionId: H, amount: 1, track: "status",
-    });
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, track: "status", delta: -1 },
-    ]);
-  });
-
   it("a third party's fortify still resolves - it is one pair, the actor against the human", () => {
-    const e = playEvent({ playerId: 2, cardId: "fortify", amount: 1, track: "might" });
+    const e = playEvent({ playerId: 2, cardId: "fortify", amount: 1 });
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, track: "might", delta: -1 },
+      { kind: "add", factionId: RIVAL, delta: -1 },
     ]);
   });
 
   it("a human-authored fortify returns no move - it never reaches this walk in production", () => {
-    const e = playEvent({ playerId: 1, cardId: "fortify", amount: 1, track: "might" });
+    const e = playEvent({ playerId: 1, cardId: "fortify", amount: 1 });
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
   });
 
@@ -85,7 +76,7 @@ describe("leadMovesOf", () => {
       playerId: 1, cardId: "assassinate-ruler", targetFactionId: RIVAL, amount: 2,
     });
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "set", factionId: RIVAL, track: "might", from: 2 },
+      { kind: "set", factionId: RIVAL, from: 2 },
     ]);
   });
 
@@ -94,7 +85,7 @@ describe("leadMovesOf", () => {
       playerId: 2, cardId: "assassinate-ruler", targetFactionId: H, amount: 2,
     });
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "set", factionId: RIVAL, track: "might", from: -2 },
+      { kind: "set", factionId: RIVAL, from: -2 },
     ]);
   });
 
@@ -108,20 +99,20 @@ describe("leadMovesOf", () => {
   it("tribute paid by the human adds to the lord's track", () => {
     const e: GameEvent = {
       turn: 1, playerId: 1, type: "tribute",
-      targetFactionId: H, overlordFactionId: RIVAL, amount: 1, track: "might",
+      targetFactionId: H, overlordFactionId: RIVAL, amount: 1,
     };
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, track: "might", delta: -1 },
+      { kind: "add", factionId: RIVAL, delta: -1 },
     ]);
   });
 
-  it("tribute paid to the human adds to the payer's track", () => {
+  it("tribute paid to the human adds to the payer's lead", () => {
     const e: GameEvent = {
       turn: 1, playerId: 1, type: "tribute",
-      targetFactionId: RIVAL, overlordFactionId: H, amount: 1, track: "status",
+      targetFactionId: RIVAL, overlordFactionId: H, amount: 1,
     };
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, track: "status", delta: 1 },
+      { kind: "add", factionId: RIVAL, delta: 1 },
     ]);
   });
 
@@ -139,53 +130,50 @@ describe("leadMovesOf", () => {
     const e: GameEvent = {
       turn: 1, playerId: 1, type: "tribute",
       targetFactionId: H, overlordFactionId: RIVAL,
-      wealth: 2, amount: 1, track: "might",
+      wealth: 2, amount: 1,
     };
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, track: "might", delta: -1 },
+      { kind: "add", factionId: RIVAL, delta: -1 },
     ]);
   });
 
-  it("a poach that takes the human's vassal grants +1/+1 over the poacher", () => {
+  it("a poach that takes the human's vassal grants +1 Might over the poacher", () => {
     const e: GameEvent = {
       turn: 1, playerId: 2, type: "subjugated",
       targetFactionId: THIRD, overlordFactionId: RIVAL, formerOverlordFactionId: H,
     };
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual(
       expect.arrayContaining([
-        { kind: "add", factionId: THIRD, track: "might", delta: -1 },
-        { kind: "add", factionId: THIRD, track: "status", delta: -1 },
+        { kind: "add", factionId: THIRD, delta: -1 },
       ]),
     );
   });
 
-  it("a poach that takes the human from a rival grants +1/+1 over the ex-lord", () => {
+  it("a poach that takes the human from a rival grants +1 Might over the ex-lord", () => {
     const e: GameEvent = {
       turn: 1, playerId: 2, type: "subjugated",
       targetFactionId: H, overlordFactionId: RIVAL, formerOverlordFactionId: THIRD,
     };
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual(
       expect.arrayContaining([
-        { kind: "add", factionId: THIRD, track: "might", delta: 1 },
-        { kind: "add", factionId: THIRD, track: "status", delta: 1 },
+        { kind: "add", factionId: THIRD, delta: 1 },
       ]),
     );
   });
 
-  it("a rival casting off the human as overlord costs the human -mult/-mult against them", () => {
+  it("a rival casting off the human as overlord costs the human -mult against them", () => {
     const e: GameEvent = {
       turn: 1, playerId: 2, type: "reclaimed", cardId: "revolt",
       targetFactionId: RIVAL, overlordFactionId: H, amount: 1,
     };
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual(
       expect.arrayContaining([
-        { kind: "add", factionId: RIVAL, track: "might", delta: -1 },
-        { kind: "add", factionId: RIVAL, track: "status", delta: -1 },
+        { kind: "add", factionId: RIVAL, delta: -1 },
       ]),
     );
   });
 
-  it("the human casting off a rival overlord grants the human +mult/+mult over them", () => {
+  it("the human casting off a rival overlord grants the human +mult over them", () => {
     const e: GameEvent = {
       turn: 1, playerId: 1, type: "reclaimed", cardId: "revolt",
       targetFactionId: H, overlordFactionId: RIVAL, amount: 2,
@@ -195,8 +183,7 @@ describe("leadMovesOf", () => {
     // lead over RIVAL rises.
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual(
       expect.arrayContaining([
-        { kind: "add", factionId: RIVAL, track: "might", delta: 2 },
-        { kind: "add", factionId: RIVAL, track: "status", delta: 2 },
+        { kind: "add", factionId: RIVAL, delta: 2 },
       ]),
     );
   });
@@ -206,7 +193,7 @@ describe("leadMovesOf", () => {
       turn: 1, playerId: 2, type: "garrisoned", targetFactionId: RIVAL, amount: 2,
     };
     expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, track: "might", delta: -2 },
+      { kind: "add", factionId: RIVAL, delta: -2 },
     ]);
   });
 
@@ -224,68 +211,67 @@ describe("leadMovesOf", () => {
 });
 
 describe("walkStandings", () => {
-  function walkCtx(leads: Record<string, { might: number; status: number }>): WalkCtx {
+  function walkCtx(leads: Record<string, number>): WalkCtx {
     return {
       humanFactionId: H,
       factionOf: (playerId) => (PLAYERS as Record<number, string>)[playerId],
-      leads: (f) => leads[f] ?? { might: 0, status: 0 },
+      leads: (f) => leads[f] ?? 0,
     };
   }
 
   it("chains two events against the same pair in one round", () => {
     const events: GameEvent[] = [
-      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2, track: "might" }),
+      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2 }),
       playEvent({
-        turn: 2, playerId: 2, cardId: "shrewd-marriage", targetFactionId: H,
-        amount: 1, track: "status",
+        turn: 2, playerId: 2, cardId: "raid", targetFactionId: H, amount: 1,
       }),
     ];
-    // post-batch: rival leads Might by 2, Status by 1 (both purely from this batch)
-    const changes = walkStandings(events, walkCtx({ [RIVAL]: { might: -2, status: -1 } }));
+    // post-batch: rival leads Might by 3, purely from this batch
+    const changes = walkStandings(events, walkCtx({ [RIVAL]: -3 }));
     expect(changes[0]).toEqual([
-      { factionId: RIVAL, track: "might", before: 0, after: -2 },
+      { factionId: RIVAL, before: 0, after: -2 },
     ]);
     expect(changes[1]).toEqual([
-      { factionId: RIVAL, track: "status", before: 0, after: -1 },
+      { factionId: RIVAL, before: -2, after: -3 },
     ]);
   });
 
   it("a silent fortify shifts the before of a later raid from the same actor", () => {
     const events: GameEvent[] = [
-      playEvent({ playerId: 2, cardId: "fortify", amount: 1, track: "might" }),
+      playEvent({ playerId: 2, cardId: "fortify", amount: 1 }),
       playEvent({
-        turn: 2, playerId: 2, cardId: "raid", targetFactionId: H, amount: 3, track: "might",
+        turn: 2, playerId: 2, cardId: "raid", targetFactionId: H, amount: 3,
       }),
     ];
     // post-batch might lead vs rival: -1 (fortify) + -3 (raid) = -4
-    const changes = walkStandings(events, walkCtx({ [RIVAL]: { might: -4, status: 0 } }));
+    const changes = walkStandings(events, walkCtx({ [RIVAL]: -4 }));
     // the raid line (the only notice-worthy one) must read from -1, not 0 -
     // the fortify already moved the "before" even though it produces no line
     expect(changes[1]).toEqual([
-      { factionId: RIVAL, track: "might", before: -1, after: -4 },
+      { factionId: RIVAL, before: -1, after: -4 },
     ]);
   });
 
   it("the human's own trailing garrison fans out to every faction this batch already mentions", () => {
     const events: GameEvent[] = [
-      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2, track: "might" }),
+      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2 }),
       { turn: 1, playerId: 1, type: "garrisoned", targetFactionId: H, amount: 1 },
     ];
     // post-batch: -2 (raid) + 1 (garrison) = -1
-    const changes = walkStandings(events, walkCtx({ [RIVAL]: { might: -1, status: 0 } }));
+    const changes = walkStandings(events, walkCtx({ [RIVAL]: -1 }));
     expect(changes[0]).toEqual([
-      { factionId: RIVAL, track: "might", before: 0, after: -2 },
+      { factionId: RIVAL, before: 0, after: -2 },
     ]);
     expect(changes[1]).toEqual([
-      { factionId: RIVAL, track: "might", before: -2, after: -1 },
+      { factionId: RIVAL, before: -2, after: -1 },
     ]);
   });
 
   it("a faction with no event in the batch is untouched", () => {
     const events: GameEvent[] = [
-      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2, track: "might" }),
+      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2 }),
     ];
-    const changes = walkStandings(events, walkCtx({ [RIVAL]: { might: -2, status: 0 } }));
+    const changes = walkStandings(events, walkCtx({ [RIVAL]: -2 }));
     expect(changes).toHaveLength(1);
     expect(changes[0]).toHaveLength(1);
   });
@@ -333,17 +319,15 @@ describe("walkStandings matches real relations across seeded games", () => {
         const firstBefore = new Map<string, number>();
         for (const perEvent of changes) {
           for (const c of perEvent) {
-            const key = `${c.factionId}:${c.track}`;
-            if (!firstBefore.has(key)) firstBefore.set(key, c.before);
+            if (!firstBefore.has(c.factionId)) firstBefore.set(c.factionId, c.before);
           }
         }
-        for (const [key, before] of firstBefore) {
-          const [factionId, track] = key.split(":") as [string, "might" | "status"];
+        for (const [factionId, before] of firstBefore) {
           const groundTruth =
-            leadsIn(preBatchState, humanFactionId, factionId)[track];
+            leadsIn(preBatchState, humanFactionId, factionId);
           // `|| 0` normalizes -0 to 0: a lead of zero from either direction is
           // the same standing, and Object.is (what .toBe uses) disagrees.
-          expect(before || 0, `seed ${seed}, turn ${state.turn}, ${key}`)
+          expect(before || 0, `seed ${seed}, turn ${state.turn}, ${factionId}`)
             .toBe(groundTruth || 0);
         }
       };

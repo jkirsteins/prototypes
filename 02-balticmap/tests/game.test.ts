@@ -9,7 +9,7 @@ import {
   DECK_SIZE, buildDeck, isTributeCard, CARDS, TRIBUTE_CARDS, type Rng,
 } from "../src/cards";
 import {
-  allianceKey, bumpMight, bumpStatus, getRel, leadsOf, type Relations,
+  allianceKey, bumpMight, getRel, leadOf, type Relations,
 } from "../src/relations";
 import {
   ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES, INCORPORATE_RAMP,
@@ -107,11 +107,11 @@ describe("setup", () => {
 });
 
 const NON_BASICS = [
-  "raid", "shrewd-marriage", "fortify", "subjugate",
+  "raid", "fortify", "subjugate",
   "incorporate", "seeds-of-revolt",
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens", "found-settlement",
-  "population-boom", "a-feast", "distrustful-neighbour", "eloping-heirs",
+  "population-boom", "distrustful-neighbour",
   "take-hostage",
 ];
 
@@ -198,18 +198,18 @@ describe("playCard validation", () => {
     expect(discardCard(g2, 0)).toBe(g2);
   });
 
-  it("a tribute card carries its own track - playing it is the whole decision", () => {
-    // Wealth zeroed so the payment falls to the track this test is about.
+  it("a tribute pays the lord - playing it is the whole decision", () => {
+    // Wealth zeroed so the payment falls to the Might counter.
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["beta", "gamma"]]), wealth: {} };
-    // free faction: no lord to pay, so neither tribute card resolves
+    // free faction: no lord to pay, so the tribute card does not resolve
     const free = withHand(playingState(LINE_ADJ), 0, ["pay-military-tribute"]);
     expect(playCard(free, 0, rng())).toBe(free);
-    for (const [cardId, track] of Object.entries(TRIBUTE_CARDS)) {
+    for (const cardId of TRIBUTE_CARDS) {
       const after = playCard(withHand(g, 0, [cardId]), 0, rng());
       // find, not at(-1): a vassal with no escape is stranded on the same play
       expect(after.log.find((e) => e.type === "tribute"))
-        .toMatchObject({ type: "tribute", track });
+        .toMatchObject({ type: "tribute", amount: 1 });
     }
   });
 });
@@ -223,24 +223,22 @@ describe("card effects", () => {
     };
     g = withHand(g, 0, ["raid"]);
     const after = playCard(g, 0, rng(), "gamma");
-    expect(leadsOf(after.relations, "beta", "gamma").might).toBe(1);
-    expect(leadsOf(after.relations, "beta", "delta").might).toBe(0);
+    expect(leadOf(after.relations, "beta", "gamma")).toBe(1);
+    expect(leadOf(after.relations, "beta", "delta")).toBe(0);
   });
 
-  it("raid and marriage bump one pair; fortify bumps everyone living", () => {
-    let g = withHand(playingState(LINE_ADJ), 0, ["raid", "shrewd-marriage", "fortify"]);
+  it("raid bumps one pair; fortify bumps everyone living", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["raid", "fortify", "fortify"]);
     const afterRaid = playCard(g, 0, rng(), "alpha");
-    expect(getRel(afterRaid.relations, "beta", "alpha").might).toBe(1);
-    const afterMarriage = playCard(g, 1, rng(), "gamma");
-    expect(getRel(afterMarriage.relations, "beta", "gamma").status).toBe(1);
+    expect(getRel(afterRaid.relations, "beta", "alpha")).toBe(1);
     g = { ...g, incorporated: { delta: "gamma" } };
     const afterFortify = playCard(g, 2, rng());
-    expect(getRel(afterFortify.relations, "beta", "alpha").might).toBe(1);
-    expect(getRel(afterFortify.relations, "beta", "gamma").might).toBe(1);
-    expect(getRel(afterFortify.relations, "beta", "delta").might).toBe(0); // incorporated
+    expect(getRel(afterFortify.relations, "beta", "alpha")).toBe(1);
+    expect(getRel(afterFortify.relations, "beta", "gamma")).toBe(1);
+    expect(getRel(afterFortify.relations, "beta", "delta")).toBe(0); // incorporated
   });
 
-  it("subjugate stores the overlord, injects 2 tribute cards, logs", () => {
+  it("subjugate stores the overlord, injects the tribute card, logs", () => {
     let g = playingState(LINE_ADJ);
     g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
     g = withHand(g, 0, ["subjugate"]);
@@ -249,7 +247,7 @@ describe("card effects", () => {
     const gammaPlayer = after.players.find((p) => p.factionId === "gamma")!;
     const tributes = [...gammaPlayer.deck, ...gammaPlayer.hand, ...gammaPlayer.discard]
       .filter(isTributeCard);
-    expect(tributes).toHaveLength(2);
+    expect(tributes).toHaveLength(1);
     expect(after.log.at(-1)).toMatchObject({
       type: "subjugated", targetFactionId: "gamma", overlordFactionId: "beta",
     });
@@ -261,7 +259,7 @@ describe("card effects", () => {
     // gamma holds delta; beta out-leads and takes gamma - and delta with it
     g = { ...g, overlords: new Map([["delta", "gamma"]]) };
     let deltaP = g.players.find((p) => p.factionId === "delta")!;
-    deltaP = { ...deltaP, deck: [...deltaP.deck, ...Object.keys(TRIBUTE_CARDS)] };
+    deltaP = { ...deltaP, deck: [...deltaP.deck, ...TRIBUTE_CARDS] };
     g = { ...g, players: g.players.map((p) => (p.factionId === "delta" ? deltaP : p)) };
     // gamma's realm (self + vassal delta) is size 2, so the scaled subjugate
     // threshold here is 4, not the flat 2.
@@ -274,7 +272,7 @@ describe("card effects", () => {
     expect(
       [...stillVassal.deck, ...stillVassal.hand, ...stillVassal.discard]
         .filter(isTributeCard),
-    ).toHaveLength(2); // delta keeps paying gamma
+    ).toHaveLength(1); // delta keeps paying gamma
     expect(after.log.some((e) => e.type === "released")).toBe(false);
   });
 
@@ -324,7 +322,7 @@ describe("card effects", () => {
 
   it("tribute reaches the direct lord only - the cascade is gone", () => {
     // human beta -> alpha -> gamma, and gamma has annexed delta. A broke
-    // vassal pays the whole tribute on the track, and the chain above the
+    // vassal pays the whole tribute in Might, and the chain above the
     // direct lord sees none of it - each link feeds its own lord with its own
     // tribute plays. (The per-hop cascade this replaced is recorded, reversed,
     // in the 2026-08-02 vassal-chains design.)
@@ -338,16 +336,16 @@ describe("card effects", () => {
     g = withHand(g, 0, ["pay-military-tribute"]);
     const after = playCard(g, 0, rng());
     // the direct lord gains over the payer
-    expect(getRel(after.relations, "alpha", "beta").might).toBe(1);
+    expect(getRel(after.relations, "alpha", "beta")).toBe(1);
     // nothing moves anywhere above the direct link
-    expect(getRel(after.relations, "gamma", "alpha").might).toBe(0);
-    expect(getRel(after.relations, "gamma", "beta").might).toBe(0);
-    expect(getRel(after.relations, "delta", "alpha").might).toBe(0);
+    expect(getRel(after.relations, "gamma", "alpha")).toBe(0);
+    expect(getRel(after.relations, "gamma", "beta")).toBe(0);
+    expect(getRel(after.relations, "delta", "alpha")).toBe(0);
     const tributes = after.log.filter((e) => e.type === "tribute");
     expect(tributes).toHaveLength(1);
     expect(tributes[0]).toMatchObject({
       targetFactionId: "beta", overlordFactionId: "alpha",
-      track: "might", amount: 1, consequence: true,
+      amount: 1, consequence: true,
     });
     expect(tributes[0].wealth).toBeUndefined();
   });
@@ -360,10 +358,10 @@ describe("card effects", () => {
       omens: { beta: 1 },
       wealth: {},
     };
-    g = withHand(g, 0, ["pay-status-tribute"]);
+    g = withHand(g, 0, ["pay-military-tribute"]);
     const after = playCard(g, 0, rng());
-    expect(getRel(after.relations, "alpha", "beta").status).toBe(2);
-    expect(getRel(after.relations, "gamma", "alpha").status).toBe(0);
+    expect(getRel(after.relations, "alpha", "beta")).toBe(2);
+    expect(getRel(after.relations, "gamma", "alpha")).toBe(0);
     expect(after.omens.beta).toBeUndefined();
   });
 
@@ -391,15 +389,13 @@ describe("card effects", () => {
     expect(after.overlords.get("gamma")).toBe("beta"); // still beta's
   });
 
-  it("poaching bumps the vassal's lead over the former lord by +1 Might and +1 Status", () => {
+  it("poaching bumps the vassal's lead over the former lord by +1 Might", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
     g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
     g = withHand(g, 0, ["subjugate"]);
     const after = playCard(g, 0, rng(), "gamma");
-    const l = leadsOf(after.relations, "gamma", "alpha");
-    expect(l.might).toBe(1);
-    expect(l.status).toBe(1);
+    expect(leadOf(after.relations, "gamma", "alpha")).toBe(1);
   });
 
   it("does not apply the vassal-loss penalty on a first subjugation (no former lord)", () => {
@@ -407,14 +403,14 @@ describe("card effects", () => {
     g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
     g = withHand(g, 0, ["subjugate"]);
     const after = playCard(g, 0, rng(), "gamma");
-    expect(leadsOf(after.relations, "gamma", "alpha")).toEqual({ might: 0, status: 0 });
+    expect(leadOf(after.relations, "gamma", "alpha")).toBe(0);
   });
 
   it("poaching replaces tribute copies instead of stacking them", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
     let gammaP = g.players.find((p) => p.factionId === "gamma")!;
-    gammaP = { ...gammaP, deck: [...gammaP.deck, ...Object.keys(TRIBUTE_CARDS)] };
+    gammaP = { ...gammaP, deck: [...gammaP.deck, ...TRIBUTE_CARDS] };
     g = { ...g, players: g.players.map((p) => (p.factionId === "gamma" ? gammaP : p)) };
     g = withRel(g, mightLead(g.relations, "beta", "gamma", 2));
     g = withHand(g, 0, ["subjugate"]);
@@ -423,7 +419,7 @@ describe("card effects", () => {
     expect(
       [...poached.deck, ...poached.hand, ...poached.discard]
         .filter(isTributeCard),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
   it("incorporate is permanent and ends the game when the human falls", () => {
@@ -483,7 +479,7 @@ describe("card effects", () => {
     p0 = {
       ...p0,
       deck: [...p0.deck, "pay-military-tribute"],
-      discard: ["pay-status-tribute"],
+      discard: ["pay-military-tribute"],
       hand: ["revolt"],
     };
     g = { ...g, players: [p0, ...g.players.slice(1)] };
@@ -493,15 +489,13 @@ describe("card effects", () => {
     expect(
       [...freed.deck, ...freed.hand, ...freed.discard].filter(isTributeCard),
     ).toHaveLength(0);
-    const l = leadsOf(after.relations, "beta", "gamma");
-    expect(l.might).toBe(1);
-    expect(l.status).toBe(1);
+    expect(leadOf(after.relations, "beta", "gamma")).toBe(1);
     expect(after.log.at(-1)).toMatchObject({
       type: "reclaimed", targetFactionId: "beta", overlordFactionId: "gamma",
     });
   });
 
-  it("tribute feeds the overlord and its incorporated lands on the chosen track", () => {
+  it("tribute feeds the overlord and its incorporated lands", () => {
     // A 4-faction roster makes gamma's realm here (itself + vassal beta +
     // incorporated delta) exactly the victory size, which would end the game
     // on this unrelated play. Widen the roster so 3 stays under threshold.
@@ -512,14 +506,13 @@ describe("card effects", () => {
       seededRng(1),
     );
     g = asVassal({ ...g, incorporated: { delta: "gamma" }, wealth: {} }, "gamma");
-    g = withHand(g, 0, ["pay-status-tribute"]);
+    g = withHand(g, 0, ["pay-military-tribute"]);
     const after = playCard(g, 0, rng());
-    expect(getRel(after.relations, "gamma", "beta").status).toBe(1);
-    expect(getRel(after.relations, "delta", "beta").status).toBe(1);
-    expect(getRel(after.relations, "alpha", "beta").status).toBe(0);
+    expect(getRel(after.relations, "gamma", "beta")).toBe(1);
+    expect(getRel(after.relations, "delta", "beta")).toBe(1);
+    expect(getRel(after.relations, "alpha", "beta")).toBe(0);
     expect(after.log.at(-1)).toMatchObject({
       type: "tribute", targetFactionId: "beta", overlordFactionId: "gamma",
-      track: "status",
     });
   });
 
@@ -630,11 +623,11 @@ describe("post-escape respite", () => {
 describe("found a settlement", () => {
   it("records the land, logs it, and raises the bar against the realm", () => {
     const g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
-    expect(subjugationGripOn(viewOf(g), "beta")).toEqual({ might: 2, status: 8 });
+    expect(subjugationGripOn(viewOf(g), "beta")).toBe(2);
     const after = playCard(g, 0, rng(), "beta");
     expect(after.settlements).toEqual({ beta: 1 });
     // The settlement is garrisoned ground: it raises Might and leaves Status.
-    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 3, status: 8 });
+    expect(subjugationGripOn(viewOf(after), "beta")).toBe(3);
     expect(after.log.filter((e) => e.type === "settled")).toEqual([
       expect.objectContaining({ type: "settled", targetFactionId: "beta", playerId: 1 }),
     ]);
@@ -654,21 +647,21 @@ describe("found a settlement", () => {
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     let after = playCard(g, 0, rng(), "gamma");
     // 2 lands, +1 Might for the settlement
-    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 5, status: 16 });
+    expect(subjugationGripOn(viewOf(after), "beta")).toBe(5);
     after = { ...after, overlords: new Map() };
-    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 2, status: 8 });
+    expect(subjugationGripOn(viewOf(after), "beta")).toBe(2);
     expect(subjugationGripOn(viewOf(after), "gamma")) // it keeps it
-      .toEqual({ might: 3, status: 8 });
+      .toBe(3);
     expect(after.settlements).toEqual({ gamma: 1 });
   });
 
   it("does not double a settlement with a Favourable omens reading", () => {
-    // Nothing about it is a Might or Status gain, so a held reading stays held.
+    // Nothing about it is a Might gain, so a held reading stays held.
     let g = withHand(playingState(LINE_ADJ), 0, ["found-settlement"]);
     g = { ...g, omens: { beta: 1 } };
     const after = playCard(g, 0, rng(), "beta");
     expect(after.omens).toEqual({ beta: 1 });
-    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 3, status: 8 });
+    expect(subjugationGripOn(viewOf(after), "beta")).toBe(3);
   });
 });
 
@@ -825,21 +818,18 @@ describe("event enrichment", () => {
 });
 
 describe("diplomacy cards", () => {
-  it("assassinate-ruler levels the might lead to 0 both ways; status is untouched", () => {
+  it("assassinate-ruler levels the might lead to 0 both ways", () => {
     let g = playingState(LINE_ADJ);
     let rel: Relations = {};
     rel = bumpMight(rel, "beta", "alpha");
     rel = bumpMight(rel, "beta", "alpha");
     rel = bumpMight(rel, "beta", "alpha"); // beta leads alpha by 3 might
-    rel = bumpStatus(rel, "alpha", "beta"); // status should be untouched
     g = withRel(g, rel);
     g = withHand(g, 0, ["assassinate-ruler"]);
     const after = playCard(g, 0, rng(), "alpha");
-    expect(getRel(after.relations, "beta", "alpha").might).toBe(3);
-    expect(getRel(after.relations, "alpha", "beta").might).toBe(3);
-    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(0);
-    expect(getRel(after.relations, "alpha", "beta").status).toBe(1); // untouched
-    expect(getRel(after.relations, "beta", "alpha").status).toBe(0); // untouched
+    expect(getRel(after.relations, "beta", "alpha")).toBe(3);
+    expect(getRel(after.relations, "alpha", "beta")).toBe(3);
+    expect(leadOf(after.relations, "beta", "alpha")).toBe(0);
     expect(after.log.at(-1)).toMatchObject({
       type: "play", cardId: "assassinate-ruler", targetFactionId: "alpha",
     });
@@ -905,7 +895,7 @@ describe("raid gain", () => {
     let g = playingState(LINE_ADJ);
     g = withHand(g, 0, ["raid"]);
     g = playCard(g, 0, seededRng(1), "alpha");
-    expect(getRel(g.relations, "beta", "alpha").might).toBe(1);
+    expect(getRel(g.relations, "beta", "alpha")).toBe(1);
   });
 
   it("is convex in border width: two bordering lands are worth 3, not 2", () => {
@@ -923,8 +913,8 @@ describe("raid gain", () => {
     g = playCard(g, 0, seededRng(1), "alpha");
     // raidYield(2) = 1 + 2. A wide border has to beat the sum of narrow ones,
     // or realm size buys no accumulation rate and a peer endgame never breaks.
-    expect(getRel(g.relations, "beta", "alpha").might).toBe(raidYield(2));
-    expect(getRel(g.relations, "beta", "alpha").might).toBe(3);
+    expect(getRel(g.relations, "beta", "alpha")).toBe(raidYield(2));
+    expect(getRel(g.relations, "beta", "alpha")).toBe(3);
   });
 
   it("states the escalating yield in its rules text", () => {
@@ -951,15 +941,15 @@ describe("bodyguard", () => {
   it("assassinate-ruler against a guarded target is nullified: guard consumed, relations untouched, event stamped prevented", () => {
     let g: GameState = { ...playingState(LINE_ADJ), guards: { bodyguard: ["alpha"] } };
     let rel: Relations = {};
-    rel = bumpStatus(rel, "beta", "alpha");
-    rel = bumpStatus(rel, "beta", "alpha"); // beta leads alpha by 2 status
+    rel = bumpMight(rel, "beta", "alpha");
+    rel = bumpMight(rel, "beta", "alpha"); // beta leads alpha by 2 might
     g = withRel(g, rel);
     g = withHand(g, 0, ["assassinate-ruler"]);
     const after = playCard(g, 0, rng(), "alpha");
     expect(after.guards.bodyguard).not.toContain("alpha");
-    expect(getRel(after.relations, "beta", "alpha").status).toBe(2); // untouched
-    expect(getRel(after.relations, "alpha", "beta").status).toBe(0); // untouched
-    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(2); // lead survives
+    expect(getRel(after.relations, "beta", "alpha")).toBe(2); // untouched
+    expect(getRel(after.relations, "alpha", "beta")).toBe(0); // untouched
+    expect(leadOf(after.relations, "beta", "alpha")).toBe(2); // lead survives
     expect(after.log.at(-1)).toMatchObject({
       type: "play", cardId: "assassinate-ruler", targetFactionId: "alpha",
       prevented: true,
@@ -974,13 +964,13 @@ describe("bodyguard", () => {
     g = withRel(g, rel);
     g = withHand(g, 0, ["assassinate-ruler"]);
     let after = playCard(g, 0, rng(), "alpha"); // 1st: nullified
-    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(2);
+    expect(leadOf(after.relations, "beta", "alpha")).toBe(2);
     expect(after.log.at(-1)?.prevented).toBe(true);
 
     after = { ...after, playedThisTurn: false };
     after = withHand(after, 0, ["assassinate-ruler"]);
     after = playCard(after, 0, rng(), "alpha"); // 2nd: guard already spent, succeeds
-    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(0);
+    expect(leadOf(after.relations, "beta", "alpha")).toBe(0);
     expect(after.log.at(-1)).toMatchObject({
       type: "play", cardId: "assassinate-ruler", targetFactionId: "alpha",
     });
@@ -994,7 +984,7 @@ describe("bodyguard", () => {
     g = withRel(g, rel);
     g = withHand(g, 0, ["assassinate-ruler"]);
     const after = playCard(g, 0, rng(), "alpha");
-    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(0);
+    expect(leadOf(after.relations, "beta", "alpha")).toBe(0);
     expect(after.guards).toEqual({});
     expect(after.log.at(-1)?.prevented).toBeUndefined();
   });
@@ -1049,9 +1039,9 @@ describe("population boom and settlement growth", () => {
   it("stacks each settlement onto the Might bar and leaves Status alone", () => {
     let g = roomy(withHand(playingState(LINE_ADJ), 0, ["found-settlement"]));
     g = { ...g, settlements: { beta: 2 }, booms: { beta: 5 } };
-    expect(subjugationGripOn(viewOf(g), "beta")).toEqual({ might: 4, status: 8 });
+    expect(subjugationGripOn(viewOf(g), "beta")).toBe(4);
     const after = playCard(g, 0, rng(), "beta");
-    expect(subjugationGripOn(viewOf(after), "beta")).toEqual({ might: 5, status: 8 });
+    expect(subjugationGripOn(viewOf(after), "beta")).toBe(5);
   });
 
   it("refuses a land the map has no dot left for, whatever the allowance", () => {
@@ -1061,46 +1051,12 @@ describe("population boom and settlement growth", () => {
   });
 
   it("does not double a boom with a Favourable omens reading", () => {
-    // Nothing about it is a Might or Status gain, so a held reading stays held.
+    // Nothing about it is a Might gain, so a held reading stays held.
     let g = withHand(playingState(LINE_ADJ), 0, ["population-boom"]);
     g = { ...g, omens: { beta: 1 } };
     const after = playCard(g, 0, rng());
     expect(after.omens).toEqual({ beta: 1 });
     expect(after.booms).toEqual({ beta: 1 });
-  });
-});
-
-describe("a feast", () => {
-  it("gains +1 Status over every other living faction at once", () => {
-    let g = withHand(playingState(LINE_ADJ), 0, ["a-feast"]);
-    g = { ...g, incorporated: { delta: "alpha" }, wealth: { beta: 2 } };
-    const after = playCard(g, 0, rng());
-    for (const f of ["alpha", "gamma"]) {
-      expect(leadsOf(after.relations, "beta", f)).toEqual({ status: 1, might: 0 });
-    }
-    // An incorporated land is not a living faction and gains nothing.
-    expect(getRel(after.relations, "beta", "delta").status).toBe(0);
-    expect(after.log.at(-1)).toMatchObject({
-      type: "play", cardId: "a-feast", amount: 1, track: "status",
-    });
-    // The feast is paid for as it is thrown.
-    expect(after.wealth.beta).toBe(0);
-  });
-
-  it("is unplayable until the treasury covers its cost", () => {
-    let g = withHand(playingState(LINE_ADJ), 0, ["a-feast"]);
-    g = { ...g, wealth: { beta: 1 } };
-    expect(cardBlockReason(viewOf(g), "beta", "a-feast"))
-      .toEqual({ code: "cannot-afford", cost: 2, held: 1 });
-    expect(playCard(g, 0, rng())).toBe(g);
-  });
-
-  it("is doubled by a held reading, like Fortify", () => {
-    let g = withHand(playingState(LINE_ADJ), 0, ["a-feast"]);
-    g = { ...g, omens: { beta: 1 }, wealth: { beta: 2 } };
-    const after = playCard(g, 0, rng());
-    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(2);
-    expect(after.omens).toEqual({});
   });
 });
 
@@ -1130,10 +1086,9 @@ describe("wealth", () => {
     const after = playCard(g, 0, rng());
     expect(after.wealth.beta).toBe(1);
     expect(after.wealth.gamma).toBe(1);
-    expect(getRel(after.relations, "gamma", "beta").might).toBe(0);
+    expect(getRel(after.relations, "gamma", "beta")).toBe(0);
     const e = after.log.at(-1);
     expect(e).toMatchObject({ type: "tribute", wealth: 1 });
-    expect(e?.track).toBeUndefined();
     expect(e?.amount).toBeUndefined();
   });
 
@@ -1147,7 +1102,7 @@ describe("wealth", () => {
     expect(after.log.at(-1)?.readings).toBeUndefined();
   });
 
-  it("owes 1 per land of its realm and pays the shortfall on the track", () => {
+  it("owes 1 per land of its realm and pays the shortfall in Might", () => {
     // beta's realm: itself + two incorporated lands -> owes 3, holds 2. The
     // roster is widened so the lord's full realm stays under the win size.
     const factions = [...FACTIONS, "epsilon", "zeta", "eta", "theta"];
@@ -1164,10 +1119,10 @@ describe("wealth", () => {
     expect(after.wealth.beta).toBe(0);
     expect(after.wealth.gamma).toBe(2);
     // shortfall of 1, doubled by the reading the shortfall cashed
-    expect(getRel(after.relations, "gamma", "beta").might).toBe(2);
+    expect(getRel(after.relations, "gamma", "beta")).toBe(2);
     expect(after.omens.beta).toBeUndefined();
     expect(after.log.at(-1)).toMatchObject({
-      type: "tribute", wealth: 2, track: "might", amount: 2,
+      type: "tribute", wealth: 2, amount: 2,
     });
   });
 
@@ -1204,46 +1159,34 @@ describe("guards", () => {
     });
     // A prevented pact buys no Might either, so the play carries no amount.
     expect(after.log.at(-1)?.amount).toBeUndefined();
-    expect(leadsOf(after.relations, "beta", "gamma").might).toBe(0);
-  });
-
-  it("turns aside the Shrewd marriage eloping heirs were posted against", () => {
-    let g: GameState = {
-      ...playingState(LINE_ADJ),
-      guards: { "eloping-heirs": ["alpha"] },
-    };
-    g = withHand(g, 0, ["shrewd-marriage"]);
-    const after = playCard(g, 0, rng(), "alpha");
-    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(0);
-    expect(after.guards["eloping-heirs"]).toEqual([]);
-    expect(after.log.at(-1)).toMatchObject({ prevented: true });
-    expect(after.log.at(-1)?.amount).toBeUndefined();
+    expect(leadOf(after.relations, "beta", "gamma")).toBe(0);
   });
 
   it("keeps each guard to its own card", () => {
-    // A faction holding only a Bodyguard does not turn aside a marriage.
+    // A faction holding only wary neighbours does not turn aside an
+    // assassination.
     let g: GameState = {
-      ...playingState(LINE_ADJ), guards: { bodyguard: ["alpha"] },
+      ...playingState(LINE_ADJ), guards: { "distrustful-neighbour": ["alpha"] },
     };
-    g = withHand(g, 0, ["shrewd-marriage"]);
+    g = withRel(g, mightLead(g.relations, "beta", "alpha", 1));
+    g = withHand(g, 0, ["assassinate-ruler"]);
     const after = playCard(g, 0, rng(), "alpha");
-    expect(leadsOf(after.relations, "beta", "alpha").status).toBe(1);
-    expect(after.guards.bodyguard).toEqual(["alpha"]); // untouched
+    expect(leadOf(after.relations, "beta", "alpha")).toBe(0); // it landed
+    expect(after.guards["distrustful-neighbour"]).toEqual(["alpha"]); // untouched
   });
 
-  it("lets one faction hold all three at once, each spent by its own card", () => {
+  it("lets one faction hold both at once, each spent by its own card", () => {
     let g: GameState = { ...playingState(LINE_ADJ), guards: {} };
-    for (const id of ["bodyguard", "distrustful-neighbour", "eloping-heirs"]) {
+    for (const id of ["bodyguard", "distrustful-neighbour"]) {
       g = withHand({ ...g, playedThisTurn: false }, 0, [id]);
       g = playCard(g, 0, rng());
     }
     expect(g.guards).toEqual({
       "bodyguard": ["beta"],
       "distrustful-neighbour": ["beta"],
-      "eloping-heirs": ["beta"],
     });
     // and each refuses a second copy while unspent
-    for (const id of ["bodyguard", "distrustful-neighbour", "eloping-heirs"]) {
+    for (const id of ["bodyguard", "distrustful-neighbour"]) {
       const again = withHand({ ...g, playedThisTurn: false }, 0, [id]);
       expect(playCard(again, 0, rng()).playedThisTurn).toBe(false);
     }
@@ -1276,11 +1219,11 @@ describe("the pact's Might bonus", () => {
     expect(p.expiry).toBe(g.turn + 5);
     // Both allies gain, and the store itself is untouched - the bonus is a term
     // in `leadsIn`, not a bump.
-    expect(leadsIn(after, "beta", "gamma").might).toBe(1);
-    expect(leadsIn(after, "alpha", "gamma").might).toBe(1);
-    expect(leadsOf(after.relations, "beta", "gamma").might).toBe(0);
+    expect(leadsIn(after, "beta", "gamma")).toBe(1);
+    expect(leadsIn(after, "alpha", "gamma")).toBe(1);
+    expect(leadOf(after.relations, "beta", "gamma")).toBe(0);
     expect(after.log.at(-1)).toMatchObject({
-      type: "play", cardId: "alliance", amount: 1, track: "might",
+      type: "play", cardId: "alliance", amount: 1,
       pactAgainst: ["gamma"],
     });
   });
@@ -1292,16 +1235,16 @@ describe("the pact's Might bonus", () => {
     const after = playCard(g, 0, rng(), "gamma");
     expect(after.alliances[allianceKey("beta", "gamma")].against).toEqual([]);
     g = after;
-    expect(leadsIn(g, "beta", "delta").might).toBe(0);
+    expect(leadsIn(g, "beta", "delta")).toBe(0);
   });
 
   it("takes the bonus back when the pact lapses, and says so once", () => {
     let g = playCard(shared(), 0, rng(), "alpha");
-    expect(leadsIn(g, "beta", "gamma").might).toBe(1);
+    expect(leadsIn(g, "beta", "gamma")).toBe(1);
     // Run the clock past the expiry. `beginTurn` is what sweeps.
     g = beginTurn({ ...g, turn: g.alliances[allianceKey("beta", "alpha")].expiry }, rng());
     expect(g.alliances).toEqual({});
-    expect(leadsIn(g, "beta", "gamma").might).toBe(0);
+    expect(leadsIn(g, "beta", "gamma")).toBe(0);
     const lapses = g.log.filter((e) => e.type === "pact-lapsed");
     expect(lapses).toHaveLength(1);
     // The two allies come off the sorted pair key, so which id lands in which
@@ -1309,7 +1252,7 @@ describe("the pact's Might bonus", () => {
     // positionally: the notice picks out whichever is not the human.
     expect(lapses[0]).toMatchObject({
       targetFactionId: "alpha", overlordFactionId: "beta",
-      track: "might", amount: 1, pactAgainst: ["gamma"],
+      amount: 1, pactAgainst: ["gamma"],
     });
     // Swept, so the next seat's turn does not report it again.
     expect(beginTurn(g, rng()).log.filter((e) => e.type === "pact-lapsed"))
@@ -1321,7 +1264,7 @@ describe("the pact's Might bonus", () => {
     const expiry = g.alliances[allianceKey("beta", "alpha")].expiry;
     for (let turn = g.turn; turn < expiry; turn++) {
       g = beginTurn({ ...g, turn }, rng());
-      expect(leadsIn(g, "beta", "gamma").might).toBe(1);
+      expect(leadsIn(g, "beta", "gamma")).toBe(1);
     }
   });
 });
@@ -1346,24 +1289,17 @@ describe("favourable omens", () => {
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["raid"]);
     g = playCard(g, 0, seededRng(1), "alpha");
-    expect(getRel(g.relations, "beta", "alpha").might).toBe(raidYield(2) * 2); // raidYield(2) = 3, doubled
+    expect(getRel(g.relations, "beta", "alpha")).toBe(raidYield(2) * 2); // raidYield(2) = 3, doubled
     expect(g.omens.beta).toBeUndefined();
     expect(g.log.at(-1)).toMatchObject({ type: "play", cardId: "raid", readings: 1 });
-  });
-
-  it("doubles Shrewd marriage", () => {
-    let g = withHand(armed(playingState(LINE_ADJ)), 0, ["shrewd-marriage"]);
-    g = playCard(g, 0, seededRng(1), "alpha");
-    expect(getRel(g.relations, "beta", "alpha").status).toBe(2);
-    expect(g.omens).toEqual({});
   });
 
   it("doubles Fortify against every living faction", () => {
     let g = withHand(armed(playingState(LINE_ADJ)), 0, ["fortify"]);
     g = playCard(g, 0, seededRng(1));
-    expect(getRel(g.relations, "beta", "alpha").might).toBe(2);
-    expect(getRel(g.relations, "beta", "gamma").might).toBe(2);
-    expect(getRel(g.relations, "beta", "delta").might).toBe(2);
+    expect(getRel(g.relations, "beta", "alpha")).toBe(2);
+    expect(getRel(g.relations, "beta", "gamma")).toBe(2);
+    expect(getRel(g.relations, "beta", "delta")).toBe(2);
   });
 
   it("doubles the parting blow from Revolt", () => {
@@ -1371,7 +1307,7 @@ describe("favourable omens", () => {
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
     g = withHand(g, 0, ["revolt"]);
     g = playCard(g, 0, seededRng(1));
-    expect(leadsOf(g.relations, "beta", "alpha")).toEqual({ might: 2, status: 2 });
+    expect(leadOf(g.relations, "beta", "alpha")).toBe(2);
   });
 
   it("doubles the tribute a vassal pays, which is the cost of hoarding it", () => {
@@ -1379,7 +1315,7 @@ describe("favourable omens", () => {
     g = { ...g, overlords: new Map([["beta", "alpha"]]), wealth: {} };
     g = withHand(g, 0, ["pay-military-tribute"]);
     g = playCard(g, 0, seededRng(1));
-    expect(getRel(g.relations, "alpha", "beta").might).toBe(2);
+    expect(getRel(g.relations, "alpha", "beta")).toBe(2);
     expect(g.omens).toEqual({});
   });
 
@@ -1411,7 +1347,7 @@ describe("favourable omens", () => {
     g = withHand(g, 0, ["raid"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     // The multiplier applies after the convex yield, not to the border count.
-    expect(getRel(g.relations, "beta", "alpha").might).toBe(raidYield(2) * 4);
+    expect(getRel(g.relations, "beta", "alpha")).toBe(raidYield(2) * 4);
     expect(g.omens.beta).toBeUndefined();
     expect(g.log.at(-1)).toMatchObject({ type: "play", cardId: "raid", readings: 2 });
   });
@@ -1423,7 +1359,7 @@ describe("favourable omens", () => {
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
     g = withHand(g, 0, ["pay-military-tribute"]);
     g = playCard(g, 0, seededRng(1));
-    expect(getRel(g.relations, "alpha", "beta").might).toBe(4);
+    expect(getRel(g.relations, "alpha", "beta")).toBe(4);
     expect(g.omens).toEqual({});
   });
 });
@@ -1902,12 +1838,12 @@ describe("passive garrison fortify", () => {
 
   it("grants nothing below the threshold", () => {
     const g = playingState(LINE_ADJ);
-    const before = leadsOf(g.relations, "beta", "gamma").might;
+    const before = leadOf(g.relations, "beta", "gamma");
     const next = beginTurn(
       { ...g, incorporated: annexed("beta", PASSIVE_PER_LANDS - 1), current: 0 },
       rng(),
     );
-    expect(leadsOf(next.relations, "beta", "gamma").might).toBe(before);
+    expect(leadOf(next.relations, "beta", "gamma")).toBe(before);
     expect(next.log.some((e) => e.type === "garrisoned")).toBe(false);
   });
 
@@ -1918,7 +1854,7 @@ describe("passive garrison fortify", () => {
       rng(),
     );
     for (const other of ["alpha", "gamma", "delta"]) {
-      expect(leadsOf(next.relations, "beta", other).might).toBe(1);
+      expect(leadOf(next.relations, "beta", other)).toBe(1);
     }
     const events = next.log.filter((e) => e.type === "garrisoned");
     expect(events).toHaveLength(1);
@@ -1937,8 +1873,8 @@ describe("passive garrison fortify", () => {
       rng(),
     );
     // delta is inside beta's realm now; nothing is accrued against it.
-    expect(leadsOf(next.relations, "beta", "delta").might).toBe(0);
-    expect(leadsOf(next.relations, "beta", "gamma").might).toBe(1);
+    expect(leadOf(next.relations, "beta", "delta")).toBe(0);
+    expect(leadOf(next.relations, "beta", "gamma")).toBe(1);
   });
 
   it("is not doubled by a held Favourable omens reading", () => {
@@ -1952,7 +1888,7 @@ describe("passive garrison fortify", () => {
       },
       rng(),
     );
-    expect(leadsOf(next.relations, "beta", "gamma").might).toBe(1);
+    expect(leadOf(next.relations, "beta", "gamma")).toBe(1);
     // The reading is untouched, still there for a Raid.
     expect(next.omens.beta).toBe(1);
   });
@@ -1999,31 +1935,22 @@ describe("surrender", () => {
 // src/standings.ts can reconstruct a before -> after without re-deriving the
 // rules from state that has already moved on. See the doc comment on
 // GameEvent.amount and the rule in AGENTS.md.
-describe("event amount/track", () => {
-  it("raid records the doubled yield and the might track", () => {
+describe("event amount", () => {
+  it("raid records the doubled yield", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["raid"]);
     g = { ...g, omens: { beta: 1 } }; // doubled
     const after = playCard(g, 0, rng(), "alpha");
     const gain = raidYield(1); // one-land border on LINE_ADJ
     expect(after.log.at(-1)).toMatchObject({
-      type: "play", cardId: "raid", amount: gain * 2, track: "might",
+      type: "play", cardId: "raid", amount: gain * 2,
     });
   });
 
-  it("shrewd marriage records mult and the status track", () => {
-    let g = withHand(playingState(LINE_ADJ), 0, ["shrewd-marriage"]);
-    g = { ...g, omens: { beta: 1 } };
-    const after = playCard(g, 0, rng(), "alpha");
-    expect(after.log.at(-1)).toMatchObject({
-      type: "play", cardId: "shrewd-marriage", amount: 2, track: "status",
-    });
-  });
-
-  it("fortify records mult and the might track, with no target", () => {
+  it("fortify records mult, with no target", () => {
     const g = withHand(playingState(LINE_ADJ), 0, ["fortify"]);
     const after = playCard(g, 0, rng());
     expect(after.log.at(-1)).toMatchObject({
-      type: "play", cardId: "fortify", amount: 1, track: "might",
+      type: "play", cardId: "fortify", amount: 1,
     });
     expect(after.log.at(-1)?.targetFactionId).toBeUndefined();
   });
@@ -2033,10 +1960,10 @@ describe("event amount/track", () => {
     g = withRel(g, bumpMight(bumpMight(g.relations, "beta", "alpha"), "beta", "alpha"));
     const after = playCard(g, 0, rng(), "alpha");
     expect(after.log.at(-1)).toMatchObject({
-      type: "play", cardId: "assassinate-ruler", amount: 2, track: "might",
+      type: "play", cardId: "assassinate-ruler", amount: 2,
     });
     // and the level actually happened - the "before" is not just echoing 0
-    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(0);
+    expect(leadOf(after.relations, "beta", "alpha")).toBe(0);
   });
 
   it("a landed assassination records the VISIBLE lead - pact terms in - and levels only the store", () => {
@@ -2051,9 +1978,9 @@ describe("event amount/track", () => {
     g = withRel(g, bumpMight(bumpMight(g.relations, "beta", "alpha"), "beta", "alpha"));
     const after = playCard(g, 0, rng(), "alpha");
     expect(after.log.at(-1)).toMatchObject({
-      type: "play", cardId: "assassinate-ruler", amount: 3, track: "might",
+      type: "play", cardId: "assassinate-ruler", amount: 3,
     });
-    expect(leadsOf(after.relations, "beta", "alpha").might).toBe(0); // store levelled
+    expect(leadOf(after.relations, "beta", "alpha")).toBe(0); // store levelled
   });
 
   it("a prevented assassination records no amount - nothing moved", () => {
@@ -2064,23 +1991,22 @@ describe("event amount/track", () => {
     expect(after.log.at(-1)?.amount).toBeUndefined();
   });
 
-  it("revolt records mult on the reclaimed event, both tracks by 1 rule", () => {
+  it("revolt records mult on the reclaimed event", () => {
     let g = playingState(LINE_ADJ);
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
     g = { ...g, omens: { beta: 1 } };
     g = withHand(g, 0, ["revolt"]);
     const after = playCard(g, 0, rng());
     expect(after.log.at(-1)).toMatchObject({ type: "reclaimed", amount: 2 });
-    expect(after.log.at(-1)?.track).toBeUndefined();
   });
 
-  it("tribute records mult alongside the track it already carried", () => {
+  it("tribute records mult on its shortfall amount", () => {
     let g = asVassal(playingState(LINE_ADJ), "alpha");
     g = { ...g, omens: { beta: 1 }, wealth: {} };
     g = withHand(g, 0, ["pay-military-tribute"]);
     const after = playCard(g, 0, rng());
     expect(after.log.at(-1)).toMatchObject({
-      type: "tribute", track: "might", amount: 2,
+      type: "tribute", amount: 2,
     });
   });
 
@@ -2142,7 +2068,7 @@ describe("take hostage", () => {
     expect(g.hostages).toEqual({ alpha: 1 });
     expect(g.log.some((e) => e.type === "hostage-returned")).toBe(false);
     // Second tribute: the entry goes and the return is that play's consequence.
-    g = withHand({ ...g, playedThisTurn: false }, 1, ["pay-status-tribute"]);
+    g = withHand({ ...g, playedThisTurn: false }, 1, ["pay-military-tribute"]);
     g = playCard(g, 0, rng());
     expect(g.hostages).toEqual({});
     expect(g.log.at(-1)).toMatchObject({

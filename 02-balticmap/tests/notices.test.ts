@@ -32,11 +32,10 @@ const FACTION_BY_PLAYER: Record<number, string> = {
   1: "livs", 2: "jersika", 3: "latgale", 4: "curonia",
 };
 
-let leadsTable: Record<string, { might: number; status: number }> = {};
+let leadsTable: Record<string, number> = {};
 let grip = 2;
 // The Might bar when a settlement has raised it above the Status one. Null
 // keeps the two equal, which is every case that predates the split.
-let mightGrip: number | null = null;
 let allianceExpiryTable: Record<string, number | undefined> = {};
 // Rival-specific subjugation bar. Defaults to `grip` for any rival not
 // listed here, matching what the real `subjugationRequirement` returns for
@@ -47,15 +46,10 @@ let subjugationBarTable: Record<string, number | null> = {};
 const ctx: NoticeCtx = {
   humanFactionId: "livs",
   factionOf: (playerId) => FACTION_BY_PLAYER[playerId],
-  leads: (other) => leadsTable[other] ?? { might: 0, status: 0 },
-  // The bars diverge only where a settlement has been founded, so these
-  // helpers take one number and mirror it onto both tracks. The tests that
-  // care about the split set `mightGrip` instead.
-  subjugationGrip: () => ({ might: mightGrip ?? grip, status: grip }),
-  subjugationBarAgainstYou: (other) => {
-    const bar = other in subjugationBarTable ? subjugationBarTable[other] : grip;
-    return bar === null ? null : { might: mightGrip ?? bar, status: bar };
-  },
+  leads: (other) => leadsTable[other] ?? 0,
+  subjugationGrip: () => grip,
+  subjugationBarAgainstYou: (other) =>
+    other in subjugationBarTable ? subjugationBarTable[other] : grip,
   allianceExpiry: (other) => allianceExpiryTable[other],
 };
 
@@ -109,7 +103,6 @@ describe("buildRoundSummary: single-event scenarios", () => {
   beforeEach(() => {
     leadsTable = {};
     grip = 2;
-    mightGrip = null;
     allianceExpiryTable = {};
     subjugationBarTable = {};
   });
@@ -127,7 +120,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
     )!;
     expect(lineText(s)).toBe("Subjugate by Jersikans - you owe fealty to them");
     expect(footnoteTexts(s)).toEqual([
-      "Pay military tribute and Pay status tribute were shuffled into your deck. While any of them is in hand it must be played first.",
+      "Pay military tribute was shuffled into your deck. While it is in hand it must be played first.",
     ]);
   });
 
@@ -158,7 +151,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
       "The fall of your overlord to Latgalians released you from vassalage, and none may subjugate you until turn 5",
     );
     expect(footnoteTexts(s)).toEqual([
-      "Pay military tribute and Pay status tribute were removed from your deck, hand and discard.",
+      "Pay military tribute was removed from your deck, hand and discard.",
     ]);
   });
 
@@ -194,8 +187,8 @@ describe("buildRoundSummary: single-event scenarios", () => {
 
   it("a doubled revolt reports the doubled swing in its changes", () => {
     // The rebel (curonia) gains against its former lord (the human), doubled -
-    // the human's own lead over curonia drops by 2 on both tracks.
-    leadsTable = { curonia: { might: -2, status: -2 } }; // post-batch: now trailing
+    // the human's own lead over curonia drops by 2.
+    leadsTable = { curonia: -2 }; // post-batch: now trailing
     const s = oneSummary(
       ev({
         type: "reclaimed", playerId: 4, cardId: "revolt", readings: 1,
@@ -203,8 +196,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
       }),
     )!;
     expect(s.lines[0].changes).toEqual([
-      { factionId: "curonia", track: "might", before: 0, after: -2 },
-      { factionId: "curonia", track: "status", before: 0, after: -2 },
+      { factionId: "curonia", before: 0, after: -2 },
     ]);
   });
 
@@ -279,7 +271,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
       ev({ type: "discard", playerId: 1, cardId: "raid" }),
       ev({ type: "incorporated", targetFactionId: "livs", overlordFactionId: "jersika" }),
       ev({ type: "reclaimed", playerId: 1, cardId: "revolt", targetFactionId: "livs", overlordFactionId: "jersika" }),
-      ev({ type: "tribute", playerId: 1, targetFactionId: "livs", overlordFactionId: "jersika", track: "might" }),
+      ev({ type: "tribute", playerId: 1, targetFactionId: "livs", overlordFactionId: "jersika" }),
       ev({ type: "victory", playerId: 1 }),
       ev({ type: "defeat", targetFactionId: "livs", overlordFactionId: "jersika" }),
     ];
@@ -313,8 +305,8 @@ describe("buildRoundSummary: single-event scenarios", () => {
 
   it("poach: allegiance shift, and changes read against the former lord", () => {
     leadsTable = {
-      jersika: { might: -2, status: 0 },
-      latgale: { might: 0, status: -1 },
+      jersika: -2,
+      latgale: 0,
     };
     const s = oneSummary(
       ev({
@@ -324,8 +316,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
     )!;
     expect(lineText(s)).toBe("Subjugate by Jersikans - your allegiance shifts from Latgalians to them");
     expect(s.lines[0].changes).toEqual([
-      { factionId: "latgale", track: "might", before: -1, after: 0 },
-      { factionId: "latgale", track: "status", before: -2, after: -1 },
+      { factionId: "latgale", before: -1, after: 0 },
     ]);
   });
 
@@ -339,52 +330,40 @@ describe("buildRoundSummary: single-event scenarios", () => {
   });
 
   it("raid against the human names the card and the actor, and reports the Might swing", () => {
-    leadsTable = { jersika: { might: -2, status: 0 } };
+    leadsTable = { jersika: -2 };
     const s = oneSummary(
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 2 }),
     )!;
     expect(lineText(s)).toBe("Raid played against you by Jersikans");
     expect(s.lines[0].changes).toEqual([
-      { factionId: "jersika", track: "might", before: 0, after: -2 },
+      { factionId: "jersika", before: 0, after: -2 },
     ]);
     expect(footnoteTexts(s)).toEqual(["the Jersikans can subjugate you at a lead of 2."]);
   });
 
-  it("marriage against the human reports the Status swing, no threat footnote below threshold", () => {
-    leadsTable = { jersika: { might: 0, status: -1 } };
-    const s = oneSummary(
-      ev({ type: "play", cardId: "shrewd-marriage", targetFactionId: "livs", amount: 1, track: "status" }),
-    )!;
-    expect(lineText(s)).toBe("Shrewd marriage played against you by Jersikans");
-    expect(s.lines[0].changes).toEqual([
-      { factionId: "jersika", track: "status", before: 0, after: -1 },
-    ]);
-    expect(footnoteTexts(s)).toEqual([]);
-  });
-
   it("scaled grip: no threat footnote when the lead is below a bumped-up threshold", () => {
     grip = 4;
-    leadsTable = { jersika: { might: -2, status: 0 } };
+    leadsTable = { jersika: -2 };
     const s = oneSummary(
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 2 }),
     )!;
     expect(footnoteTexts(s)).toEqual([]);
   });
 
   it("scaled grip: threat footnote text reflects the bumped-up threshold", () => {
     grip = 4;
-    leadsTable = { jersika: { might: -4, status: 0 } };
+    leadsTable = { jersika: -4 };
     const s = oneSummary(
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 4, track: "might" }),
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 4 }),
     )!;
     expect(footnoteTexts(s)).toEqual(["the Jersikans can subjugate you at a lead of 4."]);
   });
 
   it("omits the threat footnote when this rival could never subjugate the human (already their overlord)", () => {
-    leadsTable = { jersika: { might: -5, status: 0 } };
+    leadsTable = { jersika: -5 };
     subjugationBarTable = { jersika: null };
     const s = oneSummary(
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 5, track: "might" }),
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 5 }),
     )!;
     expect(footnoteTexts(s)).toEqual([]);
   });
@@ -402,7 +381,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
   });
 
   it("assassinate-ruler against the human resets the Might lead to 0", () => {
-    leadsTable = { jersika: { might: 0, status: 0 } };
+    leadsTable = { jersika: 0 };
     // amount is the ACTOR's (jersika's) own Might lead over the human before
     // the reset - here jersika led by 2, so the human's own lead was -2.
     const s = oneSummary(
@@ -412,7 +391,7 @@ describe("buildRoundSummary: single-event scenarios", () => {
     )!;
     expect(lineText(s)).toBe("Assassinate ruler - by Jersikans");
     expect(s.lines[0].changes).toEqual([
-      { factionId: "jersika", track: "might", before: -2, after: 0 },
+      { factionId: "jersika", before: -2, after: 0 },
     ]);
     // The levelling is exactly what removed the danger: a lead of 0 can
     // subjugate nobody, so the danger footnote must NOT fire off the old lead.
@@ -460,21 +439,20 @@ describe("buildRoundSummary: batch grouping", () => {
   beforeEach(() => {
     leadsTable = {};
     grip = 2;
-    mightGrip = null;
     allianceExpiryTable = {};
     subjugationBarTable = {};
   });
 
   it("lists 3 raids by different actors as 3 lines in one summary, not 3 modals", () => {
     leadsTable = {
-      jersika: { might: -2, status: 0 }, // qualifies: max(2, 0) >= grip(2)
-      latgale: { might: 0, status: -1 }, // below grip
-      curonia: { might: 1, status: 1 }, // human leads both
+      jersika: -2, // qualifies: max(2, 0) >= grip(2)
+      latgale: 0, // below grip
+      curonia: 1, // human leads both
     };
     const events: GameEvent[] = [
-      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
-      ev({ turn: 2, playerId: 3, type: "play", cardId: "raid", targetFactionId: "livs", amount: 1, track: "might" }),
-      ev({ turn: 3, playerId: 4, type: "play", cardId: "raid", targetFactionId: "livs", amount: 1, track: "might" }),
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2 }),
+      ev({ turn: 2, playerId: 3, type: "play", cardId: "raid", targetFactionId: "livs", amount: 1 }),
+      ev({ turn: 3, playerId: 4, type: "play", cardId: "raid", targetFactionId: "livs", amount: 1 }),
     ];
     const s = buildRoundSummary(events, ctx)!;
     expect(s.lines).toHaveLength(3);
@@ -488,16 +466,16 @@ describe("buildRoundSummary: batch grouping", () => {
     expect(footnoteTexts(s)).toEqual(["the Jersikans can subjugate you at a lead of 2."]);
   });
 
-  it("puts a raid and a marriage in one summary, in log order", () => {
-    leadsTable = { jersika: { might: -2, status: 0 }, latgale: { might: 0, status: -1 } };
+  it("puts two rivals' raids in one summary, in log order", () => {
+    leadsTable = { jersika: -2, latgale: 0 };
     const events: GameEvent[] = [
-      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
-      ev({ turn: 2, playerId: 3, type: "play", cardId: "shrewd-marriage", targetFactionId: "livs", amount: 1, track: "status" }),
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2 }),
+      ev({ turn: 2, playerId: 3, type: "play", cardId: "raid", targetFactionId: "livs", amount: 1 }),
     ];
     const s = buildRoundSummary(events, ctx)!;
     expect(s.lines).toHaveLength(2);
     expect(lineText(s, 0)).toBe("Raid played against you by Jersikans");
-    expect(lineText(s, 1)).toBe("Shrewd marriage played against you by Latgalians");
+    expect(lineText(s, 1)).toBe("Raid played against you by Latgalians");
   });
 
   it("lists 2 assassinate-ruler plays by different actors as 2 lines", () => {
@@ -556,7 +534,7 @@ describe("buildRoundSummary: batch grouping", () => {
     expect(lineText(s, 0)).toBe("Subjugate by Jersikans - you owe fealty to them");
     expect(lineText(s, 1)).toBe("Subjugate by Latgalians - your allegiance shifts from Jersikans to them");
     expect(footnoteTexts(s)).toEqual([
-      "Pay military tribute and Pay status tribute were shuffled into your deck. While any of them is in hand it must be played first.",
+      "Pay military tribute was shuffled into your deck. While it is in hand it must be played first.",
     ]);
   });
 
@@ -574,7 +552,7 @@ describe("buildRoundSummary: batch grouping", () => {
       "The fall of your overlord to Curonians released you from vassalage, and none may subjugate you until turn 4",
     );
     expect(footnoteTexts(s)).toEqual([
-      "Pay military tribute and Pay status tribute were removed from your deck, hand and discard.",
+      "Pay military tribute was removed from your deck, hand and discard.",
     ]);
   });
 
@@ -582,7 +560,7 @@ describe("buildRoundSummary: batch grouping", () => {
     const events: GameEvent[] = [
       ev({ type: "draw", playerId: 1, cardId: "raid" }),
       ev({ type: "reshuffle", playerId: 1 }),
-      ev({ type: "tribute", playerId: 1, targetFactionId: "livs", overlordFactionId: "jersika", track: "might" }),
+      ev({ type: "tribute", playerId: 1, targetFactionId: "livs", overlordFactionId: "jersika" }),
     ];
     expect(buildRoundSummary(events, ctx)).toBeNull();
   });
@@ -591,30 +569,30 @@ describe("buildRoundSummary: batch grouping", () => {
     // jersika Fortifies (+1 Might over everyone, including the human - silent,
     // no line of its own), then Raids the human for 2 more in the same round.
     // The Raid line's "before" must already reflect the Fortify.
-    leadsTable = { jersika: { might: -3, status: 0 } }; // post-batch: -1 (fortify) + -2 (raid)
+    leadsTable = { jersika: -3 }; // post-batch: -1 (fortify) + -2 (raid)
     const events: GameEvent[] = [
-      ev({ turn: 1, playerId: 2, type: "play", cardId: "fortify", amount: 1, track: "might" }),
-      ev({ turn: 2, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "fortify", amount: 1 }),
+      ev({ turn: 2, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2 }),
     ];
     const s = buildRoundSummary(events, ctx)!;
     expect(s.lines).toHaveLength(1); // Fortify itself never produces a line
     expect(s.lines[0].changes).toEqual([
-      { factionId: "jersika", track: "might", before: -1, after: -3 },
+      { factionId: "jersika", before: -1, after: -3 },
     ]);
   });
 
   it("the human's own trailing garrison does not corrupt the raid line above it", () => {
     // A rival raids the human for 2 Might, then the human's own beginTurn
     // garrison (the last event of every AI batch) adds 1 Might back.
-    leadsTable = { jersika: { might: -1, status: 0 } }; // -2 (raid) + 1 (garrison)
+    leadsTable = { jersika: -1 }; // -2 (raid) + 1 (garrison)
     const events: GameEvent[] = [
-      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2, track: "might" }),
+      ev({ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "livs", amount: 2 }),
       { turn: 1, playerId: 1, type: "garrisoned", targetFactionId: "livs", amount: 1 },
     ];
     const s = buildRoundSummary(events, ctx)!;
     expect(s.lines).toHaveLength(1); // the human's own garrison is silent
     expect(s.lines[0].changes).toEqual([
-      { factionId: "jersika", track: "might", before: 0, after: -2 },
+      { factionId: "jersika", before: 0, after: -2 },
     ]);
   });
 });
@@ -828,7 +806,6 @@ describe("critical events pierce a muted popup", () => {
   beforeEach(() => {
     leadsTable = {};
     grip = 2;
-    mightGrip = null;
     subjugationBarTable = {};
     allianceExpiryTable = {};
   });
@@ -1029,7 +1006,6 @@ describe("critical events pierce a muted popup", () => {
       { cardId: "assassinate-ruler", targetFactionId: "livs" }, // landed
       { cardId: "raid", targetFactionId: "livs" },
       { cardId: "alliance", targetFactionId: "livs" },
-      { cardId: "shrewd-marriage", targetFactionId: "livs" },
     ]) {
       expect(rule.appliesToHuman({ turn: 4, playerId: 1, type: "play", ...e }, ctx))
         .toBe(false);
@@ -1082,7 +1058,7 @@ describe("critical events pierce a muted popup", () => {
 
   it("criticalOnly keeps the subjugation and drops everything else", () => {
     const events: GameEvent[] = [
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs", track: "might", amount: 2 }),
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 2 }),
       ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
     ];
     const full = buildRoundSummary(events, ctx);
@@ -1120,7 +1096,7 @@ describe("critical events pierce a muted popup", () => {
    *  and neither costs the player their standing or a vassal, so the mute holds. */
   it("stays silent when a muted round holds nothing critical", () => {
     const events: GameEvent[] = [
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs", track: "might", amount: 2 }),
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 2 }),
       ev({
         type: "subjugate-failed", playerId: 3, targetFactionId: "curonia",
         overlordFactionId: "latgale", formerOverlordFactionId: "livs",
@@ -1132,7 +1108,7 @@ describe("critical events pierce a muted popup", () => {
 
   it("criticalOnly keeps a vassal's revolt, with the realm-shrunk warning", () => {
     const events: GameEvent[] = [
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs", track: "might", amount: 2 }),
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 2 }),
       ev({
         type: "reclaimed", playerId: 3, cardId: "revolt",
         targetFactionId: "latgale", overlordFactionId: "livs",
@@ -1169,7 +1145,7 @@ describe("critical events pierce a muted popup", () => {
    *  before -> after numbers count only the events that survived. */
   it("reports the same standing numbers muted as unmuted", () => {
     const events: GameEvent[] = [
-      ev({ type: "play", cardId: "raid", targetFactionId: "livs", track: "might", amount: 3 }),
+      ev({ type: "play", cardId: "raid", targetFactionId: "livs", amount: 3 }),
       ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
     ];
     const full = buildRoundSummary(events, ctx);

@@ -4,7 +4,7 @@ import { INCORPORATE_RAMP, loyaltyKey } from "../src/playability";
 import {
   newGame, startGame, chooseDeck, pickFaction, type GameState,
 } from "../src/game";
-import { bumpMight, bumpStatus, type Relations } from "../src/relations";
+import { bumpMight, type Relations } from "../src/relations";
 import { CARDS, buildDeck, type Rng } from "../src/cards";
 
 function seededRng(seed: number): Rng {
@@ -47,33 +47,15 @@ function lead(rel: Relations, actor: string, target: string, n: number): Relatio
   return out;
 }
 
-function statusLead(rel: Relations, actor: string, target: string, n: number): Relations {
-  let out = rel;
-  for (let i = 0; i < n; i++) out = bumpStatus(out, actor, target);
-  return out;
-}
-
 describe("chooseAction priorities", () => {
-  it("1: tribute first, feeding the overlord's weaker track", () => {
+  it("1: plays the forced tribute before anything else", () => {
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    // gamma leads alpha by 2 might, 0 status -> weaker track is status, so of
-    // the two tribute cards in hand it plays the one that pays Status
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 2) };
-    g = withHand(g, ["pay-military-tribute", "pay-status-tribute"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+    g = withHand(g, ["pay-military-tribute", "raid"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 
-  it("1: tribute track tie goes to might", () => {
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = withHand(g, ["pay-status-tribute", "pay-military-tribute"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
-  });
-
-  it("1: plays the tribute it has when the weaker track's card is elsewhere", () => {
-    // The common case: one tribute card in hand and nothing to choose. The
-    // weaker track here is status and the card that pays it is not in hand.
+  it("1: finds the tribute wherever it sits in hand", () => {
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
     g = { ...g, relations: lead(g.relations, "gamma", "alpha", 2) };
@@ -159,43 +141,11 @@ describe("chooseAction priorities", () => {
     });
   });
 
-  it("5: does not ally with a faction it could subjugate itself", () => {
-    let g = base();
-    // beta threatens alpha AND alpha can already take beta: a pact would freeze
-    // alpha's own conquest for five turns, so step 5 must decline entirely.
-    // The hand carries a potato so the decline is visible: if the step fired it
-    // would seal with beta, the only threat within one play.
-    //
-    // The two leads MUST sit on different tracks. leadsOf is a difference, so
-    // bumping both directions on Might would cancel to a lead of zero and nobody
-    // would threaten anyone. Subjugation needs the bar on either track, so beta
-    // threatens on Might while alpha holds its own claim on Status.
-    g = { ...g, relations: statusLead(lead(g.relations, "beta", "alpha", 2), "alpha", "beta", 8) };
-    g = withHand(g, ["alliance", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
-  });
-
   it("5: does not fire when nobody is close to subjugating it", () => {
     let g = base();
     g = withHand(g, ["alliance", "raid"]);
     // no threat within one play, so the build step takes the turn
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-
-  it("5: skips an excluded threat and allies with the next one", () => {
-    let g = base();
-    // gamma is the worst threat (shortfall 0) but alpha can subjugate gamma, so
-    // it is excluded. delta is a lesser threat (shortfall 1) and is eligible.
-    // The two leads sit on different tracks on purpose: leadsOf is a difference,
-    // so same-track bumps in both directions would cancel to zero.
-    let rel = lead(g.relations, "gamma", "alpha", 2);      // gamma -> alpha, might
-    rel = statusLead(rel, "alpha", "gamma", 8);            // alpha -> gamma, status
-    rel = lead(rel, "delta", "alpha", 1);                  // delta -> alpha, might
-    g = { ...g, relations: rel };
-    g = withHand(g, ["grow-crops", "alliance"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "delta",
-    });
   });
 
   it("5: assassinates the ruler closest to taking it on Might", () => {
@@ -207,30 +157,17 @@ describe("chooseAction priorities", () => {
     });
   });
 
-  it("5: sorts assassination candidates by mightShortfall, not by threats' shortfall order", () => {
-    // delta out-statuses alpha by 9 (statusShortfall -1) but is only 1 short
-    // on Might (mightShortfall 1): its overall shortfall (-1) sorts it first
-    // in `threats`. gamma leads only on Might, exactly to the bar
-    // (mightShortfall 0, shortfall 0), so it sorts second in `threats`. A
-    // policy that reused threats' order (e.g. threats.find(...)) instead of
-    // re-sorting by mightShortfall would wrongly assassinate delta, whose
-    // Status lead the card cannot touch, instead of gamma.
+  it("5: assassinates the closest threat when two qualify", () => {
+    // delta is 1 short (shortfall 1), gamma is at the bar (shortfall 0):
+    // the pick is the nearer danger, ties broken by faction order.
     let g = base();
-    let rel = statusLead(g.relations, "delta", "alpha", 9);
-    rel = lead(rel, "delta", "alpha", 1);
+    let rel = lead(g.relations, "delta", "alpha", 1);
     rel = lead(rel, "gamma", "alpha", 2);
     g = { ...g, relations: rel };
     g = withHand(g, ["grow-crops", "assassinate-ruler"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "gamma",
     });
-  });
-
-  it("5: ignores a Status-only threat, which levelling Might cannot help", () => {
-    let g = base();
-    g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 8) };
-    g = withHand(g, ["assassinate-ruler", "raid"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
   });
 
   it("5: does not fire when every qualifying ruler is guarded", () => {
@@ -244,7 +181,7 @@ describe("chooseAction priorities", () => {
 
   it("5: prefers the alliance when both are in hand", () => {
     let g = base();
-    g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 7) };
+    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
     g = withHand(g, ["assassinate-ruler", "alliance"]);
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "gamma" });
   });
@@ -312,42 +249,6 @@ describe("chooseAction priorities", () => {
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
   });
 
-  it("7: answers a Status threat with A feast and a Might threat with Fortify", () => {
-    // The two fan-out cards are one step reading its own track. A rival leading
-    // on Status only must not be answered with Might, and the reverse.
-    let onStatus = base();
-    onStatus = { ...onStatus, relations: statusLead(onStatus.relations, "gamma", "alpha", 1) };
-    onStatus = withHand(onStatus, ["fortify", "a-feast"]);
-    expect(chooseAction(onStatus)).toEqual({ type: "play", cardIndex: 1 });
-
-    let onMight = base();
-    onMight = { ...onMight, relations: lead(onMight.relations, "gamma", "alpha", 1) };
-    onMight = withHand(onMight, ["a-feast", "fortify"]);
-    expect(chooseAction(onMight)).toEqual({ type: "play", cardIndex: 1 });
-  });
-
-  it("7: leaves A feast alone when nobody leads on Status", () => {
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
-    g = withHand(g, ["a-feast", "grow-crops"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-
-  it("8c: posts eloping heirs against a nearing Status threat", () => {
-    let g = base();
-    // gamma needs a Status lead of 8 to take alpha and has 7: one play away,
-    // which also keeps it inside step 5's shortfall filter that the guard
-    // table reads its threats from.
-    g = { ...g, relations: statusLead(g.relations, "gamma", "alpha", 7) };
-    g = withHand(g, ["eloping-heirs", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-  });
-
-  it("8c: leaves eloping heirs alone with no Status threat in sight", () => {
-    const g = withHand(base(), ["eloping-heirs", "grow-crops"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-
   it("8c: posts a distrustful neighbour when a conquest is nearly in reach", () => {
     // alpha needs 2 over beta and has 1: a pact sealed with beta now would
     // freeze that conquest for five turns.
@@ -359,13 +260,12 @@ describe("chooseAction priorities", () => {
 
   it("8c: leaves a distrustful neighbour alone with nothing worth taking", () => {
     // Every bar is 2 at a minimum, so "more than two plays away" needs the
-    // actor BEHIND on BOTH tracks: either track within two is enough to make a
-    // pact worth refusing, so a Might-only deficit leaves Status at 2 and the
-    // branch still fires. Each rival leads alpha by 1 on each track.
+    // actor BEHIND: each rival leading alpha by 1 puts every bar three plays
+    // out, and the guard stays in hand.
     let g = base();
     let rel = g.relations;
     for (const f of ["beta", "gamma", "delta"]) {
-      rel = statusLead(lead(rel, f, "alpha", 1), f, "alpha", 1);
+      rel = lead(rel, f, "alpha", 1);
     }
     g = { ...g, relations: rel };
     g = withHand(g, ["distrustful-neighbour", "grow-crops"]);
@@ -431,12 +331,12 @@ describe("chooseAction priorities", () => {
   });
 
   it("8 (supplementary): the guard threshold is the Subjugate bar itself, not merely 'some lead'", () => {
-    // alpha leads beta by 1 Status, one short of the bar of
+    // alpha leads beta by 1 Might, one short of the bar of
     // SUBJUGATE_THRESHOLD * 1 = 2. A guard that fired on any positive lead
     // (dropping the ">= required" comparison) would wrongly post the guard
     // at cardIndex 0; the correct answer builds with Raid instead.
     let g = base();
-    g = { ...g, relations: statusLead(g.relations, "alpha", "beta", 1) };
+    g = { ...g, relations: lead(g.relations, "alpha", "beta", 1) };
     g = withHand(g, ["bodyguard", "raid"]);
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "beta" });
   });
@@ -480,17 +380,12 @@ describe("chooseAction with scaling gains", () => {
   it("5: finishes a bar that only a multi-point Raid can reach", () => {
     // Full adjacency. alpha holds delta, so alpha's realm touches beta twice
     // -> Raid on beta is worth 2, and beta's bar is 2 x 1 land = 2.
-    // alpha also sits one Status short of gamma's bar of 2.
     // Old policy: Raid needs lead === bar - 1, which fails at lead 0, so it
-    // falls to Shrewd marriage on gamma. New policy: 0 + 2 >= 2, so Raid on
-    // beta finishes now. The two differ, which is what makes this a test.
+    // falls through to building. New policy: 0 + 2 >= 2, so Raid on beta
+    // finishes now. The two differ, which is what makes this a test.
     let g = base();
-    g = {
-      ...g,
-      overlords: new Map([["delta", "alpha"]]),
-      relations: statusLead({}, "alpha", "gamma", 1),
-    };
-    g = withHand(g, ["shrewd-marriage", "raid"]);
+    g = { ...g, overlords: new Map([["delta", "alpha"]]) };
+    g = withHand(g, ["grow-crops", "raid"]);
     expect(chooseAction(g)).toMatchObject({
       type: "play", targetId: "beta",
     });

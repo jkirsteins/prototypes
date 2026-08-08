@@ -8,7 +8,7 @@ import {
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
 import { CARDS, buildDeck, type Rng } from "../src/cards";
-import { allianceKey, bumpMight, leadsOf } from "../src/relations";
+import { allianceKey, bumpMight, leadOf } from "../src/relations";
 import { rulerOf } from "../src/rulers";
 import {
   INCORPORATE_RAMP, PASSIVE_PER_LANDS, loyaltyKey,
@@ -335,7 +335,7 @@ describe("activity log", () => {
     expect(texts).toContain("You played Raid on Alpha (Might 0 -> +1)");
     // The number the log quotes is the number on the map, not a second
     // reckoning of its own.
-    expect(leadsOf(g.relations, "beta", "alpha").might).toBe(1);
+    expect(leadOf(g.relations, "beta", "alpha")).toBe(1);
   });
 
   it("colours a gain and a loss differently", () => {
@@ -347,7 +347,7 @@ describe("activity log", () => {
       ...g,
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
       ],
     };
     hud.update(g);
@@ -366,19 +366,6 @@ describe("activity log", () => {
       (el) => el.textContent,
     );
     expect(texts).toContain("You played Fortify (+1 Might against all)");
-  });
-
-  it("states A feast on its own track, still as a fan-out", () => {
-    const { container, hud } = setup();
-    let g = playing();
-    g = { ...g, wealth: { ...g.wealth, [g.players[0].factionId]: 2 } };
-    g = withHand(g, 0, ["a-feast"]);
-    g = playCard(g, 0, seededRng(1));
-    hud.update(g);
-    const texts = [...container.querySelectorAll(".log-entry")].map(
-      (el) => el.textContent,
-    );
-    expect(texts).toContain("You played A feast (+1 Status against all)");
   });
 
   it("counts a pact's neighbours rather than calling them all", () => {
@@ -479,8 +466,8 @@ describe("activity log filters", () => {
       ...g,
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "gamma", amount: 1, track: "might" },
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "gamma", amount: 1 },
       ],
     };
     hud.update(g);
@@ -536,8 +523,8 @@ describe("activity log filters", () => {
       ...g,
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "gamma", amount: 1, track: "might" },
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "gamma", amount: 1 },
       ],
     };
     hud.update(g);
@@ -554,7 +541,7 @@ describe("activity log filters", () => {
       ...playing(),
       log: [
         ...playing().log,
-        { turn: 1, playerId: 2, type: "play" as const, cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" as const },
+        { turn: 1, playerId: 2, type: "play" as const, cardId: "raid", targetFactionId: "beta", amount: 1 as const },
       ],
     };
     hud.update(g);
@@ -588,7 +575,7 @@ describe("activity log filters", () => {
       ...g,
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
       ],
     };
     hud.update(g);
@@ -610,7 +597,7 @@ describe("activity log filters", () => {
       overlords: new Map([["beta", "alpha"]]),
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
         { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
       ],
     };
@@ -698,7 +685,7 @@ describe("activity log filters", () => {
       ...g,
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1, track: "might" },
+        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
         {
           turn: 1, playerId: 3, type: "reclaimed", cardId: "revolt",
           targetFactionId: "gamma", overlordFactionId: "beta",
@@ -1452,7 +1439,7 @@ describe("notice modal", () => {
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe(ROUND_SUMMARY_TITLE);
     expect(lineTexts(container)).toEqual([
-      "Subjugate by Alpha took your vassal Gamma (Might +1 -> 0, Status +1 -> 0)",
+      "Subjugate by Alpha took your vassal Gamma (Might +1 -> 0)",
     ]);
     expect(footnoteTexts(container)[0]).toContain("Your realm is smaller");
   });
@@ -1464,7 +1451,7 @@ describe("notice modal", () => {
       targetFactionId: "gamma", overlordFactionId: "beta", amount: 1,
     }]));
     expect(lineTexts(container)).toEqual([
-      "Revolt by Gamma cast off your overlordship, and they cannot be subjugated again until turn 3 (Might +1 -> 0, Status +1 -> 0)",
+      "Revolt by Gamma cast off your overlordship, and they cannot be subjugated again until turn 3 (Might +1 -> 0)",
     ]);
   });
 
@@ -1474,7 +1461,7 @@ describe("notice modal", () => {
     const overlay = q(container, ".notice-overlay");
     expect(overlay.classList.contains("hidden")).toBe(false);
     expect(lineTexts(container)).toEqual(["Subjugate by Alpha - you owe fealty to them"]);
-    expect(footnoteTexts(container)[0]).toContain("Pay military tribute and Pay status tribute were shuffled into your deck");
+    expect(footnoteTexts(container)[0]).toContain("Pay military tribute was shuffled into your deck");
   });
 
   it("dismisses on Continue and stays dismissed on re-render", () => {
@@ -1503,11 +1490,11 @@ describe("notice modal", () => {
     const { container, hud } = setup();
     const raidByAlpha: GameEvent = {
       turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta",
-      amount: 1, track: "might",
+      amount: 1,
     };
     const raidByGamma: GameEvent = {
       turn: 1, playerId: 3, type: "play", cardId: "raid", targetFactionId: "beta",
-      amount: 1, track: "might",
+      amount: 1,
     };
     hud.update(withEvents(playing(), [raidByAlpha, raidByGamma]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
@@ -1734,7 +1721,7 @@ describe("notice details and hand tips", () => {
     hud.update(g);
     expect(q(container, ".notice-line").textContent).toContain("you owe fealty to them");
     expect(q(container, ".notice-footnote").textContent).toContain(
-      "Pay military tribute and Pay status tribute were shuffled into your deck",
+      "Pay military tribute was shuffled into your deck",
     );
     expect(q(container, ".notice-footnotes").classList.contains("hidden")).toBe(false);
   });
@@ -2255,7 +2242,7 @@ describe("realm filter while pinned", () => {
     hud.update(withEvents(g, [
       // playerId 1: the human's turn beginning is what noticed the lapse.
       { turn: 1, playerId: 1, type: "pact-lapsed", targetFactionId: "alpha",
-        overlordFactionId: "delta", track: "might", amount: 1, pactAgainst: [] },
+        overlordFactionId: "delta", amount: 1, pactAgainst: [] },
     ]));
     hud.setPinned("gamma");
     const entry = entries(container).find((el) =>
@@ -2334,7 +2321,7 @@ describe("secret cards in the activity log", () => {
       ...g,
       log: [...g.log, {
         turn: 1, playerId: 2, type: "play", cardId: "raid",
-        targetFactionId: "gamma", amount: 1, track: "might",
+        targetFactionId: "gamma", amount: 1,
       }],
     });
     expect(texts(container).some((t) => /played Raid on Gamma/.test(t))).toBe(true);
@@ -2379,7 +2366,7 @@ describe("secret cards in the activity log", () => {
       log: [...g.log, guard(2), {
         turn: 2, playerId: 1, type: "play", cardId: "assassinate-ruler",
         targetFactionId: "alpha", targetRuler: "Someruler",
-        successorRuler: "Somesuccessor", amount: 0, track: "status",
+        successorRuler: "Somesuccessor", amount: 0,
       }],
     });
     expect(texts(container).some((t) => /a secret card/.test(t))).toBe(true);
@@ -2393,17 +2380,18 @@ describe("secret cards in the activity log", () => {
     // are still holding.
     const { container, hud } = setup();
     const g = playing();
-    const heirs: GameEvent =
-      { turn: 1, playerId: 2, type: "play", cardId: "eloping-heirs" };
-    // alpha posts a Bodyguard, then Eloping heirs. The human's marriage is the
-    // card turned aside, so the Eloping heirs is what became public.
-    const marriage: GameEvent = {
-      turn: 3, playerId: 1, type: "play", cardId: "shrewd-marriage",
+    const wary: GameEvent =
+      { turn: 1, playerId: 2, type: "play", cardId: "distrustful-neighbour" };
+    // alpha posts a Bodyguard, then a Distrustful neighbour. The human's
+    // alliance is the card turned aside, so the Distrustful neighbour is what
+    // became public.
+    const pactTry: GameEvent = {
+      turn: 3, playerId: 1, type: "play", cardId: "alliance",
       targetFactionId: "alpha", prevented: true,
     };
-    hud.update({ ...g, log: [...g.log, guard(2), heirs, marriage] });
+    hud.update({ ...g, log: [...g.log, guard(2), wary, pactTry] });
     const all = texts(container);
-    expect(all.filter((t) => /played Eloping heirs/.test(t))).toHaveLength(1);
+    expect(all.filter((t) => /played Distrustful neighbour/.test(t))).toHaveLength(1);
     expect(all.filter((t) => /played Bodyguard/.test(t))).toHaveLength(0);
     expect(all.filter((t) => /a secret card/.test(t))).toHaveLength(1);
   });

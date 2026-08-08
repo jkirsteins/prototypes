@@ -362,10 +362,8 @@ function applyThreat(
   ) {
     const theirs = leadsIn(game, faction, humanFaction);
     const yours = leadsIn(game, humanFaction, faction);
-    const theirBest = Math.max(theirs.status, theirs.might);
-    const yourBest = Math.max(yours.status, yours.might);
-    threat = Math.min(3, Math.max(0, theirBest));
-    advantage = theirBest <= 0 && yourBest >= 1;
+    threat = Math.min(3, Math.max(0, theirs));
+    advantage = theirs <= 0 && yours >= 1;
   }
   el.classList.toggle("threat-1", threat === 1);
   el.classList.toggle("threat-2", threat === 2);
@@ -585,22 +583,17 @@ function renderThreatBadges(): void {
     // dashes. Any land you DO have a race with keeps its numbers.
     if (!race.quiet) {
       const mightTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-      mightTspan.classList.add(leadClass(race.might.lead));
+      mightTspan.classList.add(leadClass(race.lead));
       // A live pact of yours is a term inside this figure, so the value wears
       // amber over its sign colour - the badge-level echo of the hover's amber
       // note, and the same gate, so the mark never appears where the hover
-      // would not explain it. Only Might: no pact touches Status.
+      // would not explain it.
       if (pactBoostExpiriesOn(game, human.factionId, factionId).length > 0) {
         mightTspan.classList.add("lead-boosted");
       }
       if (restive) mightTspan.setAttribute("dx", "9");
-      mightTspan.textContent = formatLead("M", race.might.lead, race.might.bar);
+      mightTspan.textContent = formatLead("M", race.lead, race.bar);
       text.appendChild(mightTspan);
-      const statusTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-      statusTspan.classList.add(leadClass(race.status.lead));
-      statusTspan.setAttribute("dx", "9");
-      statusTspan.textContent = formatLead("S", race.status.lead, race.status.bar);
-      text.appendChild(statusTspan);
     }
     if (race.allied) {
       const expiry = allianceExpiry(game, human.factionId, factionId) ?? game.turn;

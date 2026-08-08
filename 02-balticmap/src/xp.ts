@@ -40,19 +40,18 @@ export const XP_TABLE: Record<GameEventType, number> = {
   stranded: 0,
 };
 
-/** Base value plus how far the event moved a relation counter. A four-point
+/** Base value plus how far the event moved the Might counter. A four-point
  *  Raid is worth more than a one-point one, so reaching for a good play beats
- *  spamming a cheap one. Events with no `track` carry no `amount` worth
- *  scoring (see the GameEvent.amount contract in src/game.ts).
+ *  spamming a cheap one.
  *
  *  This scaling is a second, unenforced decision sitting next to the
  *  `XP_TABLE` base value: the exhaustive `Record<GameEventType, number>`
  *  forces someone to pick a base for every new event type, but nothing forces
  *  a matching decision about whether `amount` is safe to scale by, or which
- *  direction counts as "more". A type that happens to set `track` gets
- *  amount-scaled silently; one that sets `amount` without `track` is
- *  silently worth only its base. `assassinate-ruler` below is the first
- *  event that actually collided with that gap. */
+ *  direction counts as "more". A play that records `amount` gets scaled
+ *  silently; a non-play event's `amount` is silently ignored.
+ *  `assassinate-ruler` below is the first event that actually collided with
+ *  that gap. */
 export function xpForEvent(e: GameEvent): number {
   const base = XP_TABLE[e.type];
   if (base === 0) return 0;
@@ -67,7 +66,12 @@ export function xpForEvent(e: GameEvent): number {
   if (e.type === "play" && e.cardId === "assassinate-ruler") {
     return base + Math.max(0, -(e.amount ?? 0));
   }
-  const scaled = e.track !== undefined ? Math.max(0, e.amount ?? 0) : 0;
+  // Only plays scale: the surviving amount-carrying non-play events either
+  // have base 0 (tribute, garrisoned, pact-lapsed - the gate above already
+  // dropped them) or deliberately pay base alone (reclaimed - the escape is
+  // the reward, not the parting blow's size). This reproduces the old
+  // track-gated payouts exactly; tests/xp.test.ts pins it.
+  const scaled = e.type === "play" ? Math.max(0, e.amount ?? 0) : 0;
   return base + scaled;
 }
 

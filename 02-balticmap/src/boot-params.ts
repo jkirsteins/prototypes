@@ -4,7 +4,7 @@ import {
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { buildPlayerDeck, initialMeta, type MetaRecord } from "./meta";
-import { bumpMightBy, bumpStatusBy, leadsOf, type Relations } from "./relations";
+import { bumpMightBy, leadOf, type Relations } from "./relations";
 
 /** Query params that boot the game straight into a chosen state, so a browser
  *  pass is one navigation instead of a menu click, ten card clicks, a land
@@ -18,9 +18,8 @@ import { bumpMightBy, bumpStatusBy, leadsOf, type Relations } from "./relations"
  *  behind describing a world that no longer exists. */
 export interface RelOverride {
   factionId: string;
-  /** The human's signed lead on that track, positive = you lead. */
-  status: number | null;
-  might: number | null;
+  /** The human's signed Might lead, positive = you lead. */
+  might: number;
 }
 
 export interface BootParams {
@@ -50,7 +49,7 @@ export interface BootParams {
   /** The human faction's treasury, own faction only - rivals' treasuries are
    *  hidden, so there is nothing a URL could sanely say about them. Null
    *  leaves the boot-time income untouched. The two checks it exists for:
-   *  `?hand=a-feast&wealth=1` (greyed out with a readable reason) and a
+   *  `?hand=found-settlement&wealth=0` (greyed out with a readable reason) and a
    *  vassalage at `wealth=0` (the tribute line quotes a standing change where
    *  a solvent vassal's quotes coins). */
   wealth: number | null;
@@ -95,27 +94,27 @@ function intOr(raw: string | null, fallback: number | null): number | null {
   return Number.isFinite(n) ? n : fallback;
 }
 
-/** `rel=selonians:might=3,status=-2;curonians:might=1` - one clause per
- *  faction, the tracks within a clause comma-separated. Anything unparseable is
- *  dropped rather than thrown: a boot param must never be able to blank the
- *  page, and this runs before the HUD exists to report an error on. */
+/** `rel=selonians:might=3;curonians:might=1` - one clause per faction, the
+ *  pairs within a clause comma-separated. Anything unparseable is dropped
+ *  rather than thrown: a boot param must never be able to blank the page, and
+ *  this runs before the HUD exists to report an error on. An unknown track
+ *  name is dropped by the same rule, so a pre-removal URL naming `status=`
+ *  still boots - the clause just loses that pair. */
 function parseRel(raw: string): RelOverride[] {
   const out: RelOverride[] = [];
   for (const clause of raw.split(";")) {
     const [factionId, ...rest] = clause.split(":");
     if (factionId === undefined || factionId.trim().length === 0) continue;
     if (rest.length === 0) continue;
-    let status: number | null = null;
     let might: number | null = null;
     for (const pair of rest.join(":").split(",")) {
       const [track, value] = pair.split("=");
       const n = intOr(value ?? null, null);
       if (n === null) continue;
-      if (track?.trim() === "status") status = n;
       if (track?.trim() === "might") might = n;
     }
-    if (status === null && might === null) continue;
-    out.push({ factionId: factionId.trim(), status, might });
+    if (might === null) continue;
+    out.push({ factionId: factionId.trim(), might });
   }
   return out;
 }
@@ -205,17 +204,9 @@ function withRel(state: GameState, overrides: RelOverride[]): GameState {
   for (const o of overrides) {
     if (o.factionId === me) continue;
     if (!state.factionIds.includes(o.factionId)) continue;
-    const now = leadsOf(rel, me, o.factionId);
-    if (o.might !== null) {
-      const d = o.might - now.might;
-      if (d > 0) rel = bumpMightBy(rel, me, o.factionId, d);
-      else if (d < 0) rel = bumpMightBy(rel, o.factionId, me, -d);
-    }
-    if (o.status !== null) {
-      const d = o.status - now.status;
-      if (d > 0) rel = bumpStatusBy(rel, me, o.factionId, d);
-      else if (d < 0) rel = bumpStatusBy(rel, o.factionId, me, -d);
-    }
+    const d = o.might - leadOf(rel, me, o.factionId);
+    if (d > 0) rel = bumpMightBy(rel, me, o.factionId, d);
+    else if (d < 0) rel = bumpMightBy(rel, o.factionId, me, -d);
   }
   return { ...state, relations: rel };
 }

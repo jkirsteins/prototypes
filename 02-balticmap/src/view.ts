@@ -1,5 +1,4 @@
 import { realmRootOf, type Incorporated, type Overlords } from "./relations";
-import type { TrackBars } from "./playability";
 
 export interface View {
   x: number;
@@ -233,9 +232,8 @@ export function formatLead(
  *  lead over the other side, direction included - the same convention as the
  *  map badges and the scoreboard. ASCII "->", never a unicode arrow: nothing
  *  in this codebase uses one. */
-export function standingChangeText(c: { track: "might" | "status"; before: number; after: number }): string {
-  const label = c.track === "might" ? "Might" : "Status";
-  return `${label} ${formatLead("", c.before)} -> ${formatLead("", c.after)}`;
+export function standingChangeText(c: { before: number; after: number }): string {
+  return `Might ${formatLead("", c.before)} -> ${formatLead("", c.after)}`;
 }
 
 /** The sign colour of a standing value: positive is yours to press, negative is
@@ -245,15 +243,6 @@ export function standingChangeText(c: { track: "might" | "status"; before: numbe
  *  the tone looks like against its own background. */
 export function leadClass(n: number): string {
   return n > 0 ? "lead-good" : n < 0 ? "lead-bad" : "lead-even";
-}
-
-/** How to say a pair of per-track bars in one clause. Collapses to a single
- *  number while nothing is built, which is the common case and the shorter
- *  read: the bars only diverge once a settlement raises the Might one. */
-export function barPhrase(bars: TrackBars): string {
-  return bars.might === bars.status
-    ? `${bars.might}`
-    : `${bars.might} in Might or ${bars.status} in Status`;
 }
 
 /** Smallest view that covers the whole map, centered, with the viewport's aspect. */

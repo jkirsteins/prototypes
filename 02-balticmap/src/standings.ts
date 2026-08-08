@@ -1,12 +1,11 @@
 import { FAN_OUT_CARDS } from "./cards";
-import type { GameEvent, TributeTrack } from "./game";
+import type { GameEvent } from "./game";
 
-/** The human's lead over `factionId` on one track, immediately before and
- *  after one event. Always the human's SIGNED lead: positive = you lead.
- *  Same convention as the map badges, the scoreboard and `formatLead`. */
+/** The human's Might lead over `factionId`, immediately before and after one
+ *  event. Always the human's SIGNED lead: positive = you lead. Same
+ *  convention as the map badges, the scoreboard and `formatLead`. */
 export interface StandingChange {
   factionId: string;
-  track: TributeTrack;
   before: number;
   after: number;
 }
@@ -14,8 +13,8 @@ export interface StandingChange {
 /** How one event moved the human's lead over one faction. `set` is
  *  Assassinate ruler, the one card that levels instead of adding. */
 type LeadMove =
-  | { kind: "add"; factionId: string; track: TributeTrack; delta: number }
-  | { kind: "set"; factionId: string; track: TributeTrack; from: number };
+  | { kind: "add"; factionId: string; delta: number }
+  | { kind: "set"; factionId: string; from: number };
 
 export interface WalkCtx {
   humanFactionId: string;
@@ -23,7 +22,7 @@ export interface WalkCtx {
   /** The human's lead over this faction NOW, i.e. after every event handed to
    *  `walkStandings` has already applied. The walk runs backwards from here -
    *  it is the only truth available, since notices are built after the fact. */
-  leads(factionId: string): { might: number; status: number };
+  leads(factionId: string): number;
 }
 
 /** A pact's Might bonus arriving (`sign` 1, the Alliance that sealed it) or
@@ -51,26 +50,24 @@ function pactMoves(
   const delta = sign * e.amount;
   if (against.includes(humanFactionId)) {
     return [allyA, allyB].map((ally) => (
-      { kind: "add", factionId: ally, track: "might", delta: -delta }
+      { kind: "add", factionId: ally, delta: -delta }
     ));
   }
   if (allyA === humanFactionId || allyB === humanFactionId) {
-    return against.map((f) => (
-      { kind: "add", factionId: f, track: "might", delta }
-    ));
+    return against.map((f) => ({ kind: "add", factionId: f, delta }));
   }
   return [];
 }
 
 /** Every way the human's lead over somebody moves, translated into the human's
- *  view. That is the bump sites in game.ts (raid, shrewd marriage, the two
- *  fan-out cards, assassinate, the subjugate/revolt poach penalty, tribute and
- *  the passive garrison) PLUS the one term that is not a bump at all: the Might
- *  a live pact adds through `leadsIn`, which arrives with the Alliance and
- *  leaves with the `pact-lapsed`. See the doc comment on `GameEvent.amount` and
- *  the rule in AGENTS.md. `tests/standings.test.ts` replays real seeded games
- *  and checks this against the actual leads, so a site that forgets to record
- *  its amount fails there rather than drifting silently in the round summary.
+ *  view. That is the bump sites in game.ts (raid, the fan-out, assassinate,
+ *  the subjugate/revolt poach penalty, tribute and the passive garrison) PLUS
+ *  the one term that is not a bump at all: the Might a live pact adds through
+ *  `leadsIn`, which arrives with the Alliance and leaves with the
+ *  `pact-lapsed`. See the doc comment on `GameEvent.amount` and the rule in
+ *  AGENTS.md. `tests/standings.test.ts` replays real seeded games and checks
+ *  this against the actual leads, so a site that forgets to record its amount
+ *  fails there rather than drifting silently in the round summary.
  *
  *  A fan-out card's "every other living faction" cannot be reconstructed from
  *  one event alone (which faction was already incorporated, at that instant, is
@@ -95,25 +92,25 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
 
   switch (e.type) {
     case "play": {
-      if (e.cardId === "raid" || e.cardId === "shrewd-marriage") {
-        if (e.amount === undefined || e.track === undefined) return [];
+      if (e.cardId === "raid") {
+        if (e.amount === undefined) return [];
         const T = e.targetFactionId;
         if (T === undefined) return [];
-        if (A === H) return [{ kind: "add", factionId: T, track: e.track, delta: e.amount }];
-        if (T === H) return [{ kind: "add", factionId: A, track: e.track, delta: -e.amount }];
+        if (A === H) return [{ kind: "add", factionId: T, delta: e.amount }];
+        if (T === H) return [{ kind: "add", factionId: A, delta: -e.amount }];
         return [];
       }
       if (FAN_OUT_CARDS.has(e.cardId ?? "")) {
-        if (e.amount === undefined || e.track === undefined || A === H) return [];
-        return [{ kind: "add", factionId: A, track: e.track, delta: -e.amount }];
+        if (e.amount === undefined || A === H) return [];
+        return [{ kind: "add", factionId: A, delta: -e.amount }];
       }
       if (e.cardId === "alliance") return pactMoves(e, A, e.targetFactionId, H);
       if (e.cardId === "assassinate-ruler") {
         if (e.amount === undefined || e.prevented) return [];
         const T = e.targetFactionId;
         if (T === undefined) return [];
-        if (A === H) return [{ kind: "set", factionId: T, track: "might", from: e.amount }];
-        if (T === H) return [{ kind: "set", factionId: A, track: "might", from: -e.amount }];
+        if (A === H) return [{ kind: "set", factionId: T, from: e.amount }];
+        if (T === H) return [{ kind: "set", factionId: A, from: -e.amount }];
         return [];
       }
       return [];
@@ -123,32 +120,22 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
     // fully in wealth carries no `track`/`amount` - the coins moved no
     // counter - and the guard below drops it, which is exactly right.
     case "tribute": {
-      if (e.amount === undefined || e.track === undefined) return [];
+      if (e.amount === undefined) return [];
       const payer = e.targetFactionId;
       const lord = e.overlordFactionId;
       if (payer === undefined || lord === undefined) return [];
-      if (payer === H) return [{ kind: "add", factionId: lord, track: e.track, delta: -e.amount }];
-      if (lord === H) return [{ kind: "add", factionId: payer, track: e.track, delta: e.amount }];
+      if (payer === H) return [{ kind: "add", factionId: lord, delta: -e.amount }];
+      if (lord === H) return [{ kind: "add", factionId: payer, delta: e.amount }];
       return [];
     }
     case "subjugated": {
-      // The poach penalty is a constant +1/+1 (game.ts), not carried on the
-      // event - see the comment above `GameEvent.amount`.
+      // The poach penalty is a constant +1 Might (game.ts), not carried on
+      // the event - see the comment above `GameEvent.amount`.
       const T = e.targetFactionId;
       const F = e.formerOverlordFactionId;
       if (T === undefined || F === undefined) return [];
-      if (T === H) {
-        return [
-          { kind: "add", factionId: F, track: "might", delta: 1 },
-          { kind: "add", factionId: F, track: "status", delta: 1 },
-        ];
-      }
-      if (F === H) {
-        return [
-          { kind: "add", factionId: T, track: "might", delta: -1 },
-          { kind: "add", factionId: T, track: "status", delta: -1 },
-        ];
-      }
+      if (T === H) return [{ kind: "add", factionId: F, delta: 1 }];
+      if (F === H) return [{ kind: "add", factionId: T, delta: -1 }];
       return [];
     }
     case "reclaimed": {
@@ -156,25 +143,15 @@ export function leadMovesOf(e: GameEvent, ctx: WalkCtx): LeadMove[] {
       const T = e.targetFactionId; // the rebel
       const L = e.overlordFactionId; // the ex-lord
       if (T === undefined || L === undefined) return [];
-      if (T === H) {
-        return [
-          { kind: "add", factionId: L, track: "might", delta: e.amount },
-          { kind: "add", factionId: L, track: "status", delta: e.amount },
-        ];
-      }
-      if (L === H) {
-        return [
-          { kind: "add", factionId: T, track: "might", delta: -e.amount },
-          { kind: "add", factionId: T, track: "status", delta: -e.amount },
-        ];
-      }
+      if (T === H) return [{ kind: "add", factionId: L, delta: e.amount }];
+      if (L === H) return [{ kind: "add", factionId: T, delta: -e.amount }];
       return [];
     }
     case "garrisoned": {
       // self === H is handled by walkStandings, not here - see the doc
       // comment above this function.
       if (e.amount === undefined || A === H) return [];
-      return [{ kind: "add", factionId: A, track: "might", delta: -e.amount }];
+      return [{ kind: "add", factionId: A, delta: -e.amount }];
     }
     case "pact-lapsed":
       // The seal, run backwards. `playerId` here is only whose clock tick
@@ -224,7 +201,7 @@ export function walkStandings(
   const movesPerEvent: LeadMove[][] = events.map((e) => {
     if (e.type === "garrisoned" && e.amount !== undefined && ctx.factionOf(e.playerId) === H) {
       return [...mentioned].map((factionId): LeadMove => (
-        { kind: "add", factionId, track: "might", delta: e.amount! }
+        { kind: "add", factionId, delta: e.amount! }
       ));
     }
     return leadMovesOf(e, ctx);
@@ -233,18 +210,17 @@ export function walkStandings(
   const tracked = new Set<string>();
   for (const moves of movesPerEvent) for (const m of moves) tracked.add(m.factionId);
 
-  const current: Record<string, { might: number; status: number }> = {};
+  const current: Record<string, number> = {};
   for (const factionId of tracked) current[factionId] = ctx.leads(factionId);
 
   const out: StandingChange[][] = new Array(events.length);
   for (let i = events.length - 1; i >= 0; i--) {
     const lines: StandingChange[] = [];
     for (const move of movesPerEvent[i]) {
-      const cur = current[move.factionId];
-      const after = cur[move.track];
+      const after = current[move.factionId];
       const before = move.kind === "set" ? move.from : after - move.delta;
-      lines.push({ factionId: move.factionId, track: move.track, before, after });
-      current[move.factionId] = { ...cur, [move.track]: before };
+      lines.push({ factionId: move.factionId, before, after });
+      current[move.factionId] = before;
     }
     out[i] = lines;
   }

@@ -1,12 +1,11 @@
 import {
   buildDeck, buildAiDeck, shuffle, guardAgainst, isGuardCard, isTributeCard,
-  CARDS, DECK_SIZE, FAN_OUT_CARDS, TRIBUTE_CARDS, type Rng, type TributeTrack,
+  CARDS, DECK_SIZE, FAN_OUT_CARDS, TRIBUTE_CARDS, type Rng,
 } from "./cards";
 
-export type { TributeTrack };
 import {
-  allianceKey, bumpAllBy, bumpMight, bumpMightAllBy, bumpMightBy, bumpStatus,
-  bumpStatusBy, fullRealmOf, incorporatedRealmOf, levelMight,
+  allianceKey, bumpMight, bumpMightAllBy, bumpMightBy,
+  fullRealmOf, incorporatedRealmOf, levelMight,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import {
@@ -35,13 +34,12 @@ export interface GameEvent {
   targetFactionId?: string;
   overlordFactionId?: string;
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
-  /** Which track `amount` moved. Absent where the event moves both tracks (a
-   *  poach or revolt penalty is +1/+1 by rule) or moves nothing. */
-  track?: "status" | "might";
-  /** How far this event moved a relation counter, from the ACTOR's side (the
+  /** How far this event moved the Might counter, from the ACTOR's side (the
    *  playerId this event belongs to) - written at every site that bumps a
    *  relation, so src/standings.ts can reconstruct a before -> after standing
    *  without re-deriving the rules from state that has already moved on.
+   *  Absent where the event moved no counter (the poach penalty is +1 by
+   *  rule and carried by no field).
    *  Assassinate ruler is the exception: it levels rather than adds, and
    *  `amount` records the actor's visible Might LEAD over the target (pact
    *  terms included, via `leadsIn`) immediately before the levelling, so the
@@ -51,11 +49,11 @@ export interface GameEvent {
    *  full game and checks the walk against the real relations. */
   amount?: number;
   /** tribute: the coins this payment moved from the vassal to its lord.
-   *  Deliberately not `amount` - that means "moved a relation counter", which
+   *  Deliberately not `amount` - that means "moved the Might counter", which
    *  the coins never do - so a fully-covered payment carries `wealth` alone,
-   *  and a part-covered one carries `wealth` beside the `track`/`amount` of
-   *  its uncovered remainder. The log suffix renders it; the standings walk
-   *  reads only `track`/`amount` and so never sees it. */
+   *  and a part-covered one carries `wealth` beside the `amount` of its
+   *  uncovered remainder. The log suffix renders it; the standings walk
+   *  reads only `amount` and so never sees it. */
   wealth?: number;
   /** play: the card was turned aside by the target's guard (see `GUARDS` in
    *  src/cards.ts) and did nothing. Also what `revealedSecrets` reads to decide
@@ -424,7 +422,7 @@ function sweepLapsedPacts(
     return {
       turn: state.turn, playerId, type: "pact-lapsed",
       targetFactionId: a, overlordFactionId: b,
-      track: "might", amount: 1, pactAgainst: pact.against,
+      amount: 1, pactAgainst: pact.against,
     };
   });
   return { alliances: kept, events };
@@ -614,8 +612,8 @@ export function playCard(
   // income sums over, so you pay 1 per land you earn from - and the treasury
   // covers what it can before any counter moves. Computed here, before the
   // readings are spent, because a fully-covered payment is flat coin and must
-  // leave the omens stack held; only an uncovered remainder is a track bump,
-  // and only a track bump cashes readings.
+  // leave the omens stack held; only an uncovered remainder is a Might bump,
+  // and only a Might bump cashes readings.
   const tributeOwed = isTributeCard(cardId)
     ? incorporatedRealmOf(p.factionId, state.incorporated).size
     : 0;
@@ -721,19 +719,15 @@ export function playCard(
     // cannot drift apart.
     const { gain } = raidGainFor(viewOf(state), p.factionId, targetId);
     relations = bumpMightBy(relations, p.factionId, targetId, gain);
-    events[0] = { ...events[0], amount: gain, track: "might" };
-  } else if (cardId === "shrewd-marriage" && targetId !== undefined) {
-    relations = bumpStatusBy(relations, p.factionId, targetId, mult);
-    events[0] = { ...events[0], amount: mult, track: "status" };
+    events[0] = { ...events[0], amount: gain };
   } else if (FAN_OUT_CARDS.has(cardId)) {
-    // Fortify on Might, A feast on Status - one branch, because the two differ
-    // in nothing but the track. See FAN_OUT_CARDS in src/cards.ts.
-    const track: TributeTrack = cardId === "a-feast" ? "status" : "might";
+    // One branch keyed on the fan-out SHAPE, not the card - see FAN_OUT_CARDS
+    // in src/cards.ts.
     const living = state.factionIds.filter(
       (f) => f !== p.factionId && !(f in incorporated),
     );
-    relations = bumpAllBy(relations, p.factionId, living, track, mult);
-    events[0] = { ...events[0], amount: mult, track };
+    relations = bumpMightAllBy(relations, p.factionId, living, mult);
+    events[0] = { ...events[0], amount: mult };
   } else if (cardId === "favourable-omens") {
     omens = { ...omens, [p.factionId]: (omens[p.factionId] ?? 0) + 1 };
   } else if (cardId === "population-boom") {
@@ -746,7 +740,7 @@ export function playCard(
     // and the standings walk's "after" must start from the visible before.
     const preMightLead = leadsIn(
       { relations, alliances, turn: state.turn }, p.factionId, targetId,
-    ).might;
+    );
     const out = assassinate(state, rulers, relations, p.factionId, targetId);
     relations = out.relations;
     rulers = out.rulers;
@@ -755,7 +749,6 @@ export function playCard(
       targetRuler: out.killed,
       successorRuler: out.successor,
       amount: preMightLead,
-      track: "might",
     };
   } else if (cardId === "found-settlement" && targetId !== undefined) {
     // The settlement belongs to the land, not to whoever founded it: a vassal's
@@ -803,10 +796,10 @@ export function playCard(
     if (boosted) diplomacyBoost = diplomacyBoost.filter((f) => f !== p.factionId);
     // The pact's Might bonus is not a bump: it is a term `leadsIn` adds while
     // the pact is live and drops when it lapses. It still MOVES leads, so it is
-    // recorded like one - `amount` and `track` for the size, `pactAgainst` for
+    // recorded like one - `amount` for the size, `pactAgainst` for
     // the pairs, which is what lets the walk resolve both sides of the fan-out.
     events[0] = {
-      ...events[0], amount: PACT_MIGHT_BONUS, track: "might",
+      ...events[0], amount: PACT_MIGHT_BONUS,
       pactAgainst: against,
     };
   } else if (cardId === "extended-diplomacy") {
@@ -836,13 +829,13 @@ export function playCard(
       const clean = stripVassalCards(pl);
       return {
         ...clean,
-        deck: shuffle([...clean.deck, ...Object.keys(TRIBUTE_CARDS)], rng),
+        deck: shuffle([...clean.deck, ...TRIBUTE_CARDS], rng),
       };
     });
     if (formerLord !== undefined) {
-      // vassal-loss penalty (section 8): the poached vassal gains +1/+1
+      // vassal-loss penalty (section 8): the poached vassal gains +1 Might
       // over the former lord (relation counters only grow).
-      relations = bumpStatus(bumpMight(relations, targetId, formerLord), targetId, formerLord);
+      relations = bumpMight(relations, targetId, formerLord);
     }
     events.push({
       turn: state.turn, playerId: p.id, type: "subjugated",
@@ -898,12 +891,10 @@ export function playCard(
     dropHostageOf(p.factionId); // defensive: legality refuses Revolt while one is held
     respites = { ...respites, [p.factionId]: state.turn + ESCAPE_RESPITE_TURNS };
     players = updateFaction(players, p.factionId, stripVassalCards);
-    // vassal-loss penalty (section 8): the revolting vassal gains +1/+1
+    // vassal-loss penalty (section 8): the revolting vassal gains +1 Might
     // over the former lord (relation counters only grow). Held readings
-    // multiply this parting blow like any other Might/Status gain.
-    relations = bumpStatusBy(
-      bumpMightBy(relations, p.factionId, former, mult), p.factionId, former, mult,
-    );
+    // multiply this parting blow like any other Might gain.
+    relations = bumpMightBy(relations, p.factionId, former, mult);
     events.push({
       turn: state.turn, playerId: p.id, type: "reclaimed", cardId,
       targetFactionId: p.factionId, overlordFactionId: former, amount: mult,
@@ -923,8 +914,6 @@ export function playCard(
   } else if (isTributeCard(cardId)) {
     const lord = overlords.get(p.factionId);
     if (lord === undefined) return state;
-    // Which track this card pays is the card's own business - see TRIBUTE_CARDS.
-    const tributeTrack = TRIBUTE_CARDS[cardId];
     // Wealth first: the coins move vassal -> direct lord and no counter with
     // them. Only the DIRECT lord - the per-pair fan-out below exists because
     // relation counters are per-pair, and a treasury is one pot; a chain's
@@ -938,28 +927,25 @@ export function playCard(
         [lord]: (wealth[lord] ?? 0) + tributeCoins,
       };
     }
-    // What the treasury could not cover lands as the track bump, multiplied by
+    // What the treasury could not cover lands as the Might bump, multiplied by
     // the readings the shortfall cashed - see the spend above. The lord's
     // incorporated lands gain alongside it, as every bump toward a dead land's
     // owner always has.
     const shortfallAmount = tributeShortfall * mult;
     if (shortfallAmount > 0) {
-      const bump = tributeTrack === "might" ? bumpMightBy : bumpStatusBy;
       const beneficiaries = [
         lord,
         ...state.factionIds.filter((f) => incorporated[f] === lord),
       ];
       for (const b of beneficiaries) {
-        relations = bump(relations, b, p.factionId, shortfallAmount);
+        relations = bumpMightBy(relations, b, p.factionId, shortfallAmount);
       }
     }
     events.push({
       turn: state.turn, playerId: p.id, type: "tribute",
       targetFactionId: p.factionId, overlordFactionId: lord,
       ...(tributeCoins > 0 ? { wealth: tributeCoins } : {}),
-      ...(shortfallAmount > 0
-        ? { track: tributeTrack, amount: shortfallAmount }
-        : {}),
+      ...(shortfallAmount > 0 ? { amount: shortfallAmount } : {}),
     });
     // Each payment works off one unit of the hostage debt, whatever the omens
     // multiplied the tribute itself to - the card promises "pay tribute

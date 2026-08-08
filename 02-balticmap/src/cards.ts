@@ -32,13 +32,12 @@ export const RARITY_TIERS = [
   // table - Found a settlement rose to epic; Eloping heirs and Favourable
   // omens fell to common.
   //
-  // 0.139 is the midpoint of the 0.146 gap between A feast (0.212) and Take
-  // hostage (0.066), the runner-up separation. (The widest, above Found a
-  // settlement, would leave epic holding Incorporate alone.) Epic is
-  // measured, and holds Incorporate, Found a settlement and A feast.
-  //
-  // 0.013 is the midpoint of the gap between Bodyguard (0.023) and Alliance
-  // (0.004). Past the top of the table a card's measured contribution to
+  // Both cuts were re-read after the Status track's removal (2026-08-08)
+  // moved every coefficient, and both still land in gaps: 0.139 sits inside
+  // the 0.121 gap between Favourable omens (0.195) and Found a settlement
+  // (0.074), so epic holds Incorporate and Favourable omens. 0.013 sits
+  // inside the gap between Bodyguard (0.071) and Extended diplomacy
+  // (-0.005). Past the top of the table a card's measured contribution to
   // final realm size is small and noise-dominated, so the rare/common line
   // is a design decision about what feels worth finding rather than a
   // measurement. Treat it as something to playtest.
@@ -120,35 +119,31 @@ export interface CardDef {
 export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "No effect - a quiet season. Fills out the deck." },
   "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain Might over one faction in reach: +1 for your first land on their border, +2 for the second, +3 for the third, and so on." },
-  "shrewd-marriage": { id: "shrewd-marriage", name: "Shrewd marriage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Status over one faction in reach; your overlord is always courtable." },
   "fortify": { id: "fortify", name: "Fortify", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Gain +1 Might over every other living faction at once." },
-  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Needs a Might lead of 2 or a Status lead of 8 per land of their realm. Vassals pay tribute." },
+  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Needs a Might lead of 2 per land of their realm. Vassals pay tribute." },
   "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Permanently absorb one of your vassals into your realm." },
   // Injection-only, like Revolt: a Subjugate shuffles one of each into the
   // vassal's deck (see playCard) and a release strips them out again. They are
   // never deck-buildable and never in a pack.
   "pay-military-tribute": { id: "pay-military-tribute", name: "Pay military tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, pay 1 wealth per land of your realm to your overlord; what your treasury cannot cover, grant as Might instead." },
-  "pay-status-tribute": { id: "pay-status-tribute", name: "Pay status tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, pay 1 wealth per land of your realm to your overlord; what your treasury cannot cover, grant as Status instead." },
   "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
-  "revolt": { id: "revolt", name: "Revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you, and none may subjugate you for 2 turns. Leaves your deck for good." },
+  "revolt": { id: "revolt", name: "Revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord, no lead required. They lose 1 Might against you, and none may subjugate you for 2 turns. Leaves your deck for good." },
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Even the score: the Might lead between you and one faction in reach resets to none." },
   "alliance": { id: "alliance", name: "Alliance", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns, and +1 Might for both of you against every faction bordering both realms. Sealed again with an ally, the pact runs 5 turns longer." },
-  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Patient envoys: your next Alliance lasts twice as long." },
+  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Patient envoys: your next Alliance lasts twice as long." },
   // Secret. The rules already treat a posted guard as hidden - `failureRiskOf`
   // in src/playability.ts refuses to read the guard lists so the Assassinate
   // ruler tooltip cannot become a detector - and a log line naming the card was
   // that detector by another route.
   "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card." },
-  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "The signs are read: your next Might or Status gain counts double." },
-  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", wealthCost: 1, text: "Costs 1 wealth. Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
+  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "The signs are read: your next Might gain counts double." },
+  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", wealthCost: 1, text: "Costs 1 wealth. Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
   // Appended, never inserted: `buildAiDeck` rolls one rng draw per entry here
   // in declaration order, so where a card sits decides which draw it answers
   // to. See the warning on DEFAULT_DECK.
   "population-boom": { id: "population-boom", name: "Population boom", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your people multiply: one more settlement than your lands would otherwise support. Stacks, and waits in hand until a settlement is founded." },
-  "a-feast": { id: "a-feast", name: "A feast", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", wealthCost: 2, text: "Costs 2 wealth. Gain +1 Status over every other living faction at once." },
   "distrustful-neighbour": { id: "distrustful-neighbour", name: "Distrustful neighbour", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your neighbours grow wary: the next Alliance sealed with you fails. No stacking. Others see only that you played a secret card." },
-  "eloping-heirs": { id: "eloping-heirs", name: "Eloping heirs", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your heirs slip away in the night: the next Shrewd marriage against you fails. No stacking. Others see only that you played a secret card." },
-  "take-hostage": { id: "take-hostage", name: "Take hostage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Take a hostage from a vassal of yours whose deck holds a Revolt: the Revolt cannot be played until they pay tribute twice and the hostage goes home." },
+  "take-hostage": { id: "take-hostage", name: "Take hostage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Take a hostage from a vassal of yours whose deck holds a Revolt: the Revolt cannot be played until they pay tribute twice and the hostage goes home." },
 };
 
 /** Guard card -> the card it turns aside, once, for whoever posted it.
@@ -172,7 +167,6 @@ export const CARDS: Record<string, CardDef> = {
 export const GUARDS: Readonly<Record<string, string>> = {
   "bodyguard": "assassinate-ruler",
   "distrustful-neighbour": "alliance",
-  "eloping-heirs": "shrewd-marriage",
 };
 
 export const isGuardCard = (cardId: string): boolean => cardId in GUARDS;
@@ -187,40 +181,29 @@ const GUARD_BY_TARGET: Readonly<Record<string, string>> = Object.fromEntries(
 export const guardAgainst = (cardId: string): string | undefined =>
   GUARD_BY_TARGET[cardId];
 
-/** Cards that move a track against EVERY living faction at once rather than
+/** Cards that move Might against EVERY living faction at once rather than
  *  against one target. They share a shape three places care about: `playCard`
  *  fans the bump out, `leadMovesOf` in src/standings.ts can only resolve the
  *  third-party half of one, and `impactText` in src/hud.ts prints
  *  "+N Might against all" instead of a single pair's before -> after.
  *
- *  A set rather than three `cardId === "fortify" || cardId === "a-feast"`
- *  chains, which is how the doubling rule drifted before DOUBLABLE_CARDS
- *  existed. The track each one moves is the card's own business and lives in
- *  `playCard`; this only says the fan-out shape applies. */
-export const FAN_OUT_CARDS: ReadonlySet<string> = new Set(["fortify", "a-feast"]);
+ *  A one-member set today, kept as a set because the SHAPE is what the three
+ *  call sites key on - a second fan-out card is one entry here, not three new
+ *  `cardId === ...` chains, which is how the doubling rule drifted before
+ *  DOUBLABLE_CARDS existed. */
+export const FAN_OUT_CARDS: ReadonlySet<string> = new Set(["fortify"]);
 
-/** Which track a relation counter moves on. Lives here because the tribute
- *  cards below are what fix it per card; `game.ts` re-exports it. */
-export type TributeTrack = "status" | "might";
-
-/** The tribute a vassalage injects, and the track each card pays on.
+/** The tribute cards a vassalage injects.
  *
- *  One card per track rather than one card with a choice. The choice was a
- *  second click that asked the player to optimize their own tax, and a
- *  vassal's real position is that they pay what is demanded of them - which of
- *  the two comes up is the draw's business, not theirs.
- *
- *  This map is the only place the set is written down. Everything that used to
- *  name "pay-tribute" - the strip on release, the injection on subjugation,
- *  the resolution in `playCard`, the vassal-only legality, the doubling set,
- *  the footnotes - reads it instead, so a third tribute would be one entry. */
-export const TRIBUTE_CARDS: Readonly<Record<string, TributeTrack>> = {
-  "pay-military-tribute": "might",
-  "pay-status-tribute": "status",
-};
+ *  This list is the only place the set is written down. Everything that used
+ *  to name "pay-tribute" - the strip on release, the injection on
+ *  subjugation, the resolution in `playCard`, the vassal-only legality, the
+ *  doubling set, the footnotes - reads it instead, so a second tribute would
+ *  be one entry. */
+export const TRIBUTE_CARDS: readonly string[] = ["pay-military-tribute"];
 
 export const isTributeCard = (cardId: string): boolean =>
-  cardId in TRIBUTE_CARDS;
+  TRIBUTE_CARDS.includes(cardId);
 
 /** Cards a Favourable omens reading doubles. Everything else resolves as
  *  normal and leaves the reading in reserve, so a reading is never spent on a
@@ -228,8 +211,7 @@ export const isTributeCard = (cardId: string): boolean =>
  *  held while subjugated doubles what you pay, which is what stops the card
  *  from being free to sit on. */
 export const DOUBLABLE_CARDS: ReadonlySet<string> = new Set([
-  "raid", "shrewd-marriage", "fortify", "a-feast", "revolt",
-  ...Object.keys(TRIBUTE_CARDS),
+  "raid", "fortify", "revolt", ...TRIBUTE_CARDS,
 ]);
 
 /** Cards the player knows from their very first game. Everything else in the
@@ -289,7 +271,7 @@ export type Rng = () => number;
  *  one deck-buildable non-basic for another keeps `buildAiDeck`'s rng draw
  *  count identical, so committed AI-deck bands do not move. */
 export const DEFAULT_DECK: string[] = [
-  "raid", "shrewd-marriage", "fortify", "subjugate", "incorporate",
+  "raid", "take-hostage", "fortify", "subjugate", "incorporate",
   "found-settlement", "seeds-of-revolt", "assassinate-ruler", "alliance",
   "favourable-omens",
 ];

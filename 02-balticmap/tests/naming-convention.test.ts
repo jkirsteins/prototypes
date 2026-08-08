@@ -106,11 +106,11 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
   tribute: [
     {
       turn: 1, playerId: 1, type: "tribute",
-      targetFactionId: H, overlordFactionId: RIVAL, track: "might", amount: 1,
+      targetFactionId: H, overlordFactionId: RIVAL, amount: 1,
     },
     {
       turn: 1, playerId: 2, type: "tribute",
-      targetFactionId: RIVAL, overlordFactionId: H, track: "status", amount: 1,
+      targetFactionId: RIVAL, overlordFactionId: H, amount: 1,
     },
   ],
   settled: [
@@ -130,11 +130,11 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     // notice picks the human's ally out of whichever slot they are not in.
     {
       turn: 1, playerId: 1, type: "pact-lapsed", targetFactionId: H,
-      overlordFactionId: RIVAL, track: "might", amount: 1, pactAgainst: [],
+      overlordFactionId: RIVAL, amount: 1, pactAgainst: [],
     },
     {
       turn: 1, playerId: 2, type: "pact-lapsed", targetFactionId: RIVAL,
-      overlordFactionId: H, track: "might", amount: 1, pactAgainst: [],
+      overlordFactionId: H, amount: 1, pactAgainst: [],
     },
   ],
   "hostage-taken": [
@@ -194,9 +194,9 @@ const ALL_SAMPLE_EVENTS: GameEvent[] = (Object.keys(SAMPLES) as GameEventType[])
 const ctx: NoticeCtx = {
   humanFactionId: H,
   factionOf: (playerId) => (playerId === 1 ? H : playerId === 2 ? RIVAL : undefined),
-  leads: () => ({ might: 0, status: 0 }),
-  subjugationGrip: () => ({ might: 2, status: 2 }),
-  subjugationBarAgainstYou: () => ({ might: 2, status: 2 }),
+  leads: () => 0,
+  subjugationGrip: () => 2,
+  subjugationBarAgainstYou: () => 2,
   allianceExpiry: () => 10,
 };
 
@@ -339,7 +339,7 @@ describe("naming convention: no card or faction name as raw text", () => {
     expect(segs.some((s) => s.kind === "faction" && s.factionId === RIVAL)).toBe(true);
 
     const summary = buildRoundSummary(
-      [{ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: H, amount: 1, track: "might" }],
+      [{ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: H, amount: 1 }],
       ctx,
     )!;
     expect(summary.lines[0].text.some((s) => s.kind === "card" && s.cardId === "raid")).toBe(true);

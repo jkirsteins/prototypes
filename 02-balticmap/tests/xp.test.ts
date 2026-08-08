@@ -27,12 +27,12 @@ describe("xpForEvent", () => {
 
   it("scales with how far a tracked event moved the counter", () => {
     // A 4-point Raid is worth more than a 1-point one: base 1 + amount.
-    expect(xpForEvent(ev({ type: "play", cardId: "raid", track: "might", amount: 4 }))).toBe(5);
-    expect(xpForEvent(ev({ type: "play", cardId: "raid", track: "might", amount: 1 }))).toBe(2);
+    expect(xpForEvent(ev({ type: "play", cardId: "raid", amount: 4 }))).toBe(5);
+    expect(xpForEvent(ev({ type: "play", cardId: "raid", amount: 1 }))).toBe(2);
   });
 
   it("pays nothing for forced or automatic events", () => {
-    expect(xpForEvent(ev({ type: "tribute", track: "might", amount: 1 }))).toBe(0);
+    expect(xpForEvent(ev({ type: "tribute", amount: 1 }))).toBe(0);
     expect(xpForEvent(ev({ type: "garrisoned" }))).toBe(0);
     expect(xpForEvent(ev({ type: "draw", cardId: "raid" }))).toBe(0);
     expect(xpForEvent(ev({ type: "discard", cardId: "raid" }))).toBe(0);
@@ -43,12 +43,12 @@ describe("xpForEvent", () => {
     // lead BEFORE the card levels it away - a deficit being erased, not a
     // gain. Assassinating from 6 behind erases that deficit: base 1 + 6.
     expect(
-      xpForEvent(ev({ type: "play", cardId: "assassinate-ruler", track: "might", amount: -6 })),
+      xpForEvent(ev({ type: "play", cardId: "assassinate-ruler", amount: -6 })),
     ).toBe(7);
     // Assassinating from a 6-point lead throws the lead away for nothing:
     // no bonus, just the base play XP.
     expect(
-      xpForEvent(ev({ type: "play", cardId: "assassinate-ruler", track: "might", amount: 6 })),
+      xpForEvent(ev({ type: "play", cardId: "assassinate-ruler", amount: 6 })),
     ).toBe(1);
   });
 });
@@ -57,7 +57,7 @@ describe("runXp / runTurnips", () => {
   it("counts only the human's events", () => {
     const log: GameEvent[] = [
       ev({ type: "play", cardId: "grow-crops" }),
-      ev({ type: "play", cardId: "raid", playerId: 2, track: "might", amount: 9 }),
+      ev({ type: "play", cardId: "raid", playerId: 2, amount: 9 }),
       ev({ type: "subjugated" }),
     ];
     expect(runXp(log)).toBe(1 + 4);

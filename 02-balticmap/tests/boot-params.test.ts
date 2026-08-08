@@ -8,7 +8,7 @@ import {
 } from "../src/game";
 import { buildPlayerDeck, pendingPacks } from "../src/meta";
 import { CARDS, DECK_SIZE, STARTING_KNOWN_CARDS } from "../src/cards";
-import { leadsOf } from "../src/relations";
+import { leadOf } from "../src/relations";
 import { seededRng } from "../src/rng";
 
 const FACTIONS = ["alpha", "beta", "gamma", "delta"];
@@ -125,10 +125,18 @@ describe("parseBootParams", () => {
     expect(params("?popups=on").popups).toBe(true);
   });
 
-  it("parses relation clauses, both tracks and both signs", () => {
+  it("parses relation clauses, both signs", () => {
+    expect(params("?rel=alpha:might=3;gamma:might=-1").rel).toEqual([
+      { factionId: "alpha", might: 3 },
+      { factionId: "gamma", might: -1 },
+    ]);
+  });
+
+  it("drops a pre-removal status= pair but keeps the clause's might", () => {
+    // Old URLs named a second track; the unknown-track rule swallows it so
+    // the page still boots.
     expect(params("?rel=alpha:might=3,status=-2;gamma:status=1").rel).toEqual([
-      { factionId: "alpha", status: -2, might: 3 },
-      { factionId: "gamma", status: 1, might: null },
+      { factionId: "alpha", might: 3 },
     ]);
   });
 
@@ -272,19 +280,21 @@ describe("applyBootParams", () => {
 
   describe("?rel", () => {
     const lead = (g: GameState, other: string) =>
-      leadsOf(g.relations, g.players[0].factionId, other);
+      leadOf(g.relations, g.players[0].factionId, other);
 
-    it("sets the human's signed lead on both tracks and both signs", () => {
-      const g = boot("?faction=beta&rel=alpha:might=3,status=-2");
-      expect(lead(g, "alpha")).toEqual({ might: 3, status: -2 });
+    it("sets the human's signed lead, both signs", () => {
+      const g = boot("?faction=beta&rel=alpha:might=3");
+      expect(lead(g, "alpha")).toBe(3);
+      const behind = boot("?faction=beta&rel=alpha:might=-2");
+      expect(lead(behind, "alpha")).toBe(-2);
     });
 
     it("reaches the asked-for lead over relations a fast-forward already moved", () => {
       // Counters only grow, so this has to bump whichever direction is short
       // rather than assign - and after four rounds both directions are dirty.
-      const g = boot("?faction=beta&turns=4&rel=alpha:might=2,status=0");
+      const g = boot("?faction=beta&turns=4&rel=alpha:might=2");
       if (g.phase !== "playing") throw new Error("run ended during the boot");
-      expect(lead(g, "alpha")).toEqual({ might: 2, status: 0 });
+      expect(lead(g, "alpha")).toBe(2);
     });
 
     it("ignores a faction that is not on the map, and the human themselves", () => {

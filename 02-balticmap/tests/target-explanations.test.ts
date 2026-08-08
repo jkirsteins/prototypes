@@ -6,7 +6,7 @@ import {
   subjugationBreakdown, targetImpactLines, targetOddsLines,
 } from "../src/target-explanations";
 import { CARDS, GUARDS } from "../src/cards";
-import { bumpMight, bumpStatus, type Relations } from "../src/relations";
+import { bumpMight, type Relations } from "../src/relations";
 import { standingChangeText } from "../src/view";
 import type { TooltipLine } from "../src/panel";
 import {
@@ -41,9 +41,8 @@ describe("explainTargetEligibility", () => {
         { code: "alliance", expiresTurn: 12 },
         {
           code: "insufficient-lead",
-          required: { might: 4, status: 16 },
-          mightLead: 1,
-          statusLead: 0,
+          required: 4,
+          lead: 1,
           realmSize: 2,
           settlements: 0,
           poachSurcharge: 0,
@@ -56,8 +55,8 @@ describe("explainTargetEligibility", () => {
       lines: [
         "Gamma",
         "Blocked by Alliance until turn 12.",
-        "Need a Might lead of 4 or a Status lead of 16 because their realm has 2 lands.",
-        "Current leads: Might 1, Status 0.",
+        "Need a Might lead of 4 because their realm has 2 lands.",
+        "Current lead: Might 1.",
       ],
     }]);
   });
@@ -68,17 +67,16 @@ describe("explainTargetEligibility", () => {
       factionId: "alpha",
       reasons: [{
         code: "insufficient-lead",
-        required: { might: 2, status: 2 },
-        mightLead: 0,
-        statusLead: 1,
+        required: 2,
+        lead: 0,
         realmSize: 1,
         settlements: 0,
         poachSurcharge: 0,
       }],
     }], nameOf, noRisk)[0]?.lines).toEqual([
       "Alpha",
-      "Need a Might or Status lead of 2 because their realm has 1 land.",
-      "Current leads: Might 0, Status 1.",
+      "Need a Might lead of 2 because their realm has 1 land.",
+      "Current lead: Might 0.",
     ]);
   });
 
@@ -287,10 +285,9 @@ describe("cardRiskLine", () => {
   });
 
   it("warns about the guard on every card one can turn aside", () => {
-    // Three cards are guarded now, and each names its own guard in ordinary
-    // English rather than the card - the naming rule in AGENTS.md.
+    // Each guarded card names its own guard in ordinary English rather than
+    // the card - the naming rule in AGENTS.md.
     expect(cardRiskLine("alliance")).toContain("wary");
-    expect(cardRiskLine("shrewd-marriage")).toContain("slipped away");
     for (const guarded of Object.values(GUARDS)) {
       expect(cardRiskLine(guarded), `${guarded} has no risk line`)
         .toContain("Can fail");
@@ -433,7 +430,7 @@ describe("targetImpactLines", () => {
     // same arrow, same signing - so the hover, the activity log and the round
     // summary cannot quote one change three ways. Only the brackets are the
     // hover's own, and they are there because the row opens with a figure.
-    const shared = standingChangeText({ track: "might", before: -2, after: -1 });
+    const shared = standingChangeText({ before: -2, after: -1 });
     expect(shared).toBe("Might -2 -> -1");
     expect(row.text).toBe(`Might (${shared.slice("Might ".length)})`);
   });
@@ -442,16 +439,12 @@ describe("targetImpactLines", () => {
     const view = v({ omens: { alpha: 1 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
       .toBe("+2 Might (0 -> +2, doubled)");
-    expect(shown(targetImpactLines(view, "alpha", "shrewd-marriage", "beta"))[1])
-      .toBe("+2 Status (0 -> +2, doubled)");
   });
 
   it("quotes a stack at its real multiple before it is aimed", () => {
     const view = v({ omens: { alpha: 2 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
       .toBe("+4 Might (0 -> +4, quadrupled)");
-    expect(shown(targetImpactLines(view, "alpha", "shrewd-marriage", "beta"))[1])
-      .toBe("+4 Status (0 -> +4, quadrupled)");
   });
 
   it("shows an Assassinate as the levelling it is, never as a gain", () => {
@@ -519,7 +512,7 @@ describe("targetImpactLines", () => {
   it("names the shortfall when the lead is the only thing missing", () => {
     const view = v({ incorporated: { gamma: "beta" } });
     expect(targetImpactLines(view, "alpha", "subjugate", "beta")[0].text).toBe(
-      "Need a Might lead of 4 or a Status lead of 16 because their realm has 2 lands.",
+      "Need a Might lead of 4 because their realm has 2 lands.",
     );
   });
 
@@ -570,30 +563,25 @@ describe("subjugationBreakdown", () => {
     ...partial,
   });
 
-  /** relations where actor leads target by n on a track */
-  const lead = (
-    track: "might" | "status", actor: string, target: string, n: number,
-  ): Relations => {
+  /** relations where actor leads target by n */
+  const lead = (actor: string, target: string, n: number): Relations => {
     let rel: Relations = {};
-    const bump = track === "might" ? bumpMight : bumpStatus;
-    for (let i = 0; i < n; i++) rel = bump(rel, actor, target);
+    for (let i = 0; i < n; i++) rel = bumpMight(rel, actor, target);
     return rel;
   };
 
-  it("gives each track its own block, headed with the badge's own figure", () => {
-    const view = v({ relations: lead("might", "alpha", "beta", 1) });
+  it("heads the block with the badge's own figure", () => {
+    const view = v({ relations: lead("alpha", "beta", 1) });
     expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([
       { text: "Might +1/2. Opponent's thresholds:", tone: "good", blockStart: true },
       { amount: "2", text: "from realm size (1 land)" },
-      { text: "Status 0/8. Opponent's thresholds:", tone: "good", blockStart: true },
-      { amount: "8", text: "from realm size (1 land)" },
     ]);
   });
 
   it("itemises realm size, settlements and overlord support", () => {
     // beta holds gamma (2 lands), gamma is settled, and beta is delta's vassal
     // with a hold of 2, so the surcharge is ceil(2/2) = 1.
-    let relations = lead("might", "alpha", "beta", 2);
+    let relations = lead("alpha", "beta", 2);
     relations = bumpMight(relations, "delta", "beta");
     relations = bumpMight(relations, "delta", "beta");
     const view = v({
@@ -606,50 +594,38 @@ describe("subjugationBreakdown", () => {
       { amount: "4", text: "from realm size (2 lands)" },
       { amount: "+1", text: "from 1 settlement" },
       { amount: "+1", text: "from their overlord's support" },
-      { text: "Status 0/17. Opponent's thresholds:", tone: "good", blockStart: true },
-      { amount: "16", text: "from realm size (2 lands)" },
-      { amount: "+1", text: "from their overlord's support" },
     ]);
   });
 
-  it("makes each column add up to the heading above it", () => {
-    // The reason every track gets its own block: one shared column summed to
-    // neither bar, and a "(Might only)" note was all that carried the split.
+  it("makes the column add up to the heading above it", () => {
     const view = v({
       overlords: new Map([["gamma", "beta"]]),
       settlements: settledOnce(["gamma"]),
-      relations: lead("might", "alpha", "beta", 1),
+      relations: lead("alpha", "beta", 1),
     });
     const lines = subjugationBreakdown(view, "alpha", "beta");
     const sum = (from: number, to: number): number =>
       lines.slice(from, to).reduce((n, l) => n + Number(l.amount), 0);
     expect(lines[0].text).toBe("Might +1/5. Opponent's thresholds:");
     expect(sum(1, 3)).toBe(5);
-    expect(lines[3].text).toBe("Status 0/16. Opponent's thresholds:");
-    expect(sum(4, 5)).toBe(16);
   });
 
-  it("itemises your own realm, and warns, on a track they are the ones racing", () => {
-    // alpha leads Might over beta; beta leads Status over alpha. Each block
-    // counts the realm of whoever would be taken on that track.
-    let relations = lead("might", "alpha", "beta", 2);
-    relations = bumpStatus(relations, "beta", "alpha");
+  it("itemises your own realm, and warns, when they are the ones racing", () => {
+    // beta leads Might over alpha, so the block counts the human's realm.
     const view = v({
       overlords: new Map([["gamma", "beta"], ["delta", "alpha"]]),
-      relations,
+      relations: lead("beta", "alpha", 1),
     });
     expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([
-      { text: "Might +2/4. Opponent's thresholds:", tone: "good", blockStart: true },
+      { text: "Might -1/4. Your thresholds:", tone: "bad", blockStart: true },
       { amount: "4", text: "from realm size (2 lands)" },
-      { text: "Status -1/16. Your thresholds:", tone: "bad", blockStart: true },
-      { amount: "16", text: "from realm size (2 lands)" },
     ]);
   });
 
   // The possessive is the whole point of this case: the surcharge belongs to
   // the human's own overlord, on a tooltip titled with a rival's name.
   it("prices your own overlord's hold into the threshold they race", () => {
-    let relations = lead("might", "beta", "alpha", 2);
+    let relations = lead("beta", "alpha", 2);
     relations = bumpMight(relations, "gamma", "alpha");
     relations = bumpMight(relations, "gamma", "alpha");
     relations = bumpMight(relations, "gamma", "alpha");
@@ -661,21 +637,15 @@ describe("subjugationBreakdown", () => {
       { text: "Might -2/6. Your thresholds:", tone: "bad", blockStart: true },
       { amount: "4", text: "from realm size (2 lands)" },
       { amount: "+2", text: "from your overlord's support" },
-      // the human is a vassal, and a vassal can subjugate now: the dead-even
-      // status track races the opponent's bar rather than showing nothing.
-      { text: "Status 0/8. Opponent's thresholds:", tone: "good", blockStart: true },
-      { amount: "8", text: "from realm size (1 land)" },
     ]);
   });
 
-  it("drops a track whose leading side could never subjugate the other", () => {
-    // beta is alpha's grand-liege (alpha -> gamma -> beta). Status sits at a
-    // dead-even 0, which goes to the human - whose bar against their own
-    // liege is null, so no denominator and no block. Might, where beta
-    // leads, still shows: a lord may poach its own grand-vassal.
+  it("still shows a grand-liege's race - a lord may poach its own grand-vassal", () => {
+    // beta is alpha's grand-liege (alpha -> gamma -> beta). Might, where beta
+    // leads, shows the human's own bar.
     const view = v({
       overlords: new Map([["alpha", "gamma"], ["gamma", "beta"]]),
-      relations: lead("might", "beta", "alpha", 1),
+      relations: lead("beta", "alpha", 1),
     });
     expect(subjugationBreakdown(view, "alpha", "beta").map((l) => l.text))
       .toEqual(["Might -1/2. Your thresholds:", "from realm size (1 land)"]);
@@ -684,7 +654,7 @@ describe("subjugationBreakdown", () => {
   it("says nothing about a faction inside your own realm", () => {
     const view = v({
       overlords: new Map([["beta", "alpha"]]),
-      relations: lead("might", "alpha", "beta", 2),
+      relations: lead("alpha", "beta", 2),
     });
     expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([]);
   });
@@ -693,25 +663,22 @@ describe("subjugationBreakdown", () => {
     expect(subjugationBreakdown(v(), "alpha", "beta")).toEqual([]);
   });
 
-  it("still explains the thresholds under a pact, which only suspends them", () => {
+  it("still explains the threshold under a pact, which only suspends it", () => {
     const view = v({ alliances: { "alpha|beta": pact(6) } });
     expect(subjugationBreakdown(view, "alpha", "beta").map((l) => l.text)).toEqual([
       "Might 0/2. Opponent's thresholds:",
       "from realm size (1 land)",
-      "Status 0/8. Opponent's thresholds:",
-      "from realm size (1 land)",
     ]);
   });
 
-  it("counts settlements in the plural, and never on the Status track", () => {
+  it("counts settlements in the plural", () => {
     const view = v({
       overlords: new Map([["gamma", "beta"]]),
       settlements: settledOnce(["beta", "gamma"]),
-      relations: lead("might", "alpha", "beta", 1),
+      relations: lead("alpha", "beta", 1),
     });
     const lines = subjugationBreakdown(view, "alpha", "beta");
     expect(lines).toContainEqual({ amount: "+2", text: "from 2 settlements" });
-    // Exactly one settlement row across both blocks: Status gets none.
     expect(lines.filter((l) => l.text.includes("settlement"))).toHaveLength(1);
   });
 });

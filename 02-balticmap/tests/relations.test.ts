@@ -1,24 +1,24 @@
 import { describe, it, expect } from "vitest";
 import { pact, } from "./helpers";
 import {
-  getRel, bumpStatus, bumpMight, leadsOf, bumpMightAll, realmOf, realmRootOf,
+  getRel, bumpMight, leadOf, bumpMightAll, realmOf, realmRootOf,
   fullRealmOf, overlordChainOf, incorporatedRealmOf,
-  levelMight, allianceKey, allianceActive, bumpMightBy, bumpStatusBy, bumpMightAllBy,
+  levelMight, allianceKey, allianceActive, bumpMightBy, bumpMightAllBy,
   type Relations,
 } from "../src/relations";
 
 describe("relation storage", () => {
-  it("defaults missing pairs to 0/0", () => {
-    expect(getRel({}, "alpha", "beta")).toEqual({ status: 0, might: 0 });
+  it("defaults missing pairs to 0", () => {
+    expect(getRel({}, "alpha", "beta")).toBe(0);
   });
 
   it("bumps are directional and do not mutate the input", () => {
     const rel: Relations = {};
     const r1 = bumpMight(rel, "alpha", "beta");
-    const r2 = bumpStatus(r1, "alpha", "beta");
+    const r2 = bumpMight(r1, "alpha", "beta");
     expect(rel).toEqual({});
-    expect(getRel(r2, "alpha", "beta")).toEqual({ status: 1, might: 1 });
-    expect(getRel(r2, "beta", "alpha")).toEqual({ status: 0, might: 0 });
+    expect(getRel(r2, "alpha", "beta")).toBe(2);
+    expect(getRel(r2, "beta", "alpha")).toBe(0);
   });
 });
 
@@ -105,15 +105,15 @@ describe("incorporatedRealmOf", () => {
   });
 });
 
-describe("leadsOf", () => {
-  it("returns per-track margins, negative when behind", () => {
+describe("leadOf", () => {
+  it("returns the might margin, negative when behind", () => {
     let rel: Relations = {};
     rel = bumpMight(rel, "alpha", "beta");
     rel = bumpMight(rel, "alpha", "beta");
-    rel = bumpStatus(rel, "beta", "alpha");
-    expect(leadsOf(rel, "alpha", "beta")).toEqual({ status: -1, might: 2 });
-    expect(leadsOf(rel, "beta", "alpha")).toEqual({ status: 1, might: -2 });
-    expect(leadsOf({}, "alpha", "beta")).toEqual({ status: 0, might: 0 });
+    rel = bumpMight(rel, "beta", "alpha");
+    expect(leadOf(rel, "alpha", "beta")).toBe(1);
+    expect(leadOf(rel, "beta", "alpha")).toBe(-1);
+    expect(leadOf({}, "alpha", "beta")).toBe(0);
   });
 });
 
@@ -122,10 +122,10 @@ describe("bumpMightAll", () => {
     const rel: Relations = {};
     const out = bumpMightAll(rel, "alpha", ["beta", "gamma"]);
     expect(rel).toEqual({});
-    expect(getRel(out, "alpha", "beta").might).toBe(1);
-    expect(getRel(out, "alpha", "gamma").might).toBe(1);
-    expect(getRel(out, "alpha", "delta").might).toBe(0);
-    expect(getRel(out, "beta", "alpha").might).toBe(0);
+    expect(getRel(out, "alpha", "beta")).toBe(1);
+    expect(getRel(out, "alpha", "gamma")).toBe(1);
+    expect(getRel(out, "alpha", "delta")).toBe(0);
+    expect(getRel(out, "beta", "alpha")).toBe(0);
   });
 
   it("with an empty list returns the same reference", () => {
@@ -135,17 +135,15 @@ describe("bumpMightAll", () => {
 });
 
 describe("levelMight", () => {
-  it("raises both directions' might to the max of the two; status untouched", () => {
+  it("raises both directions' might to the max of the two", () => {
     let rel: Relations = {};
     rel = bumpMight(rel, "alpha", "beta");
     rel = bumpMight(rel, "alpha", "beta");
     rel = bumpMight(rel, "alpha", "beta"); // alpha leads beta by 3 might
-    rel = bumpStatus(rel, "beta", "alpha");
     const out = levelMight(rel, "alpha", "beta");
-    expect(getRel(out, "alpha", "beta").might).toBe(3);
-    expect(getRel(out, "beta", "alpha").might).toBe(3);
-    expect(leadsOf(out, "alpha", "beta").might).toBe(0);
-    expect(getRel(out, "beta", "alpha").status).toBe(1); // untouched
+    expect(getRel(out, "alpha", "beta")).toBe(3);
+    expect(getRel(out, "beta", "alpha")).toBe(3);
+    expect(leadOf(out, "alpha", "beta")).toBe(0);
     expect(rel).not.toBe(out); // immutable
   });
 
@@ -173,36 +171,29 @@ describe("alliance helpers", () => {
 describe("amount-taking bumps", () => {
   it("adds the given amount in one step", () => {
     const rel = bumpMightBy({}, "alpha", "beta", 3);
-    expect(getRel(rel, "alpha", "beta").might).toBe(3);
-    expect(getRel(rel, "alpha", "beta").status).toBe(0);
+    expect(getRel(rel, "alpha", "beta")).toBe(3);
   });
 
   it("accumulates onto an existing counter", () => {
     const rel = bumpMightBy(bumpMight({}, "alpha", "beta"), "alpha", "beta", 2);
-    expect(getRel(rel, "alpha", "beta").might).toBe(3);
-  });
-
-  it("bumps status the same way, leaving might alone", () => {
-    const rel = bumpStatusBy({}, "alpha", "beta", 4);
-    expect(getRel(rel, "alpha", "beta")).toEqual({ status: 4, might: 0 });
+    expect(getRel(rel, "alpha", "beta")).toBe(3);
   });
 
   it("is a no-op for zero, rather than writing an empty entry", () => {
     // A zero amount must not materialise a key: `getRel` treats a missing key
-    // as 0/0, and a spurious entry would make two equal boards compare unequal
+    // as 0, and a spurious entry would make two equal boards compare unequal
     // in the simulation's reproducibility check.
     expect(bumpMightBy({}, "alpha", "beta", 0)).toEqual({});
   });
 
   it("bumps every other faction by the amount", () => {
     const rel = bumpMightAllBy({}, "alpha", ["beta", "gamma"], 2);
-    expect(getRel(rel, "alpha", "beta").might).toBe(2);
-    expect(getRel(rel, "alpha", "gamma").might).toBe(2);
+    expect(getRel(rel, "alpha", "beta")).toBe(2);
+    expect(getRel(rel, "alpha", "gamma")).toBe(2);
   });
 
   it("keeps the +1 helpers behaving exactly as before", () => {
     expect(bumpMight({}, "alpha", "beta")).toEqual(bumpMightBy({}, "alpha", "beta", 1));
-    expect(bumpStatus({}, "alpha", "beta")).toEqual(bumpStatusBy({}, "alpha", "beta", 1));
     expect(bumpMightAll({}, "alpha", ["beta"])).toEqual(
       bumpMightAllBy({}, "alpha", ["beta"], 1),
     );

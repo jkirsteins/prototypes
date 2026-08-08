@@ -1,14 +1,9 @@
 import { timedActive } from "./timed";
 
-export interface Relation {
-  status: number;
-  might: number;
-}
-
-/** Pairwise relation store keyed "actorFactionId|targetFactionId".
- *  A missing key means { status: 0, might: 0 }. Values only grow;
- *  subjugation is stored on GameState, never derived. */
-export type Relations = Record<string, Relation>;
+/** Pairwise Might store keyed "actorFactionId|targetFactionId".
+ *  A missing key means 0. Values only grow; subjugation is stored on
+ *  GameState, never derived. */
+export type Relations = Record<string, number>;
 
 /** vassal faction id -> overlord faction id (stored on GameState) */
 export type Overlords = Map<string, string>;
@@ -20,78 +15,38 @@ export function relKey(actor: string, target: string): string {
   return `${actor}|${target}`;
 }
 
-export function getRel(rel: Relations, actor: string, target: string): Relation {
-  return rel[relKey(actor, target)] ?? { status: 0, might: 0 };
-}
-
-function bumpBy(
-  rel: Relations,
-  actor: string,
-  target: string,
-  field: "status" | "might",
-  amount: number,
-): Relations {
-  // A zero amount must not materialise a key; a missing key already means 0.
-  if (amount <= 0) return rel;
-  const cur = getRel(rel, actor, target);
-  return {
-    ...rel,
-    [relKey(actor, target)]: { ...cur, [field]: cur[field] + amount },
-  };
-}
-
-export function bumpStatusBy(
-  rel: Relations, actor: string, target: string, amount: number,
-): Relations {
-  return bumpBy(rel, actor, target, "status", amount);
+export function getRel(rel: Relations, actor: string, target: string): number {
+  return rel[relKey(actor, target)] ?? 0;
 }
 
 export function bumpMightBy(
   rel: Relations, actor: string, target: string, amount: number,
 ): Relations {
-  return bumpBy(rel, actor, target, "might", amount);
-}
-
-export function bumpStatus(rel: Relations, actor: string, target: string): Relations {
-  return bumpStatusBy(rel, actor, target, 1);
+  // A zero amount must not materialise a key; a missing key already means 0.
+  if (amount <= 0) return rel;
+  return {
+    ...rel,
+    [relKey(actor, target)]: getRel(rel, actor, target) + amount,
+  };
 }
 
 export function bumpMight(rel: Relations, actor: string, target: string): Relations {
   return bumpMightBy(rel, actor, target, 1);
 }
 
-/** Per-track margins of A over B; positive = A is ahead on that track. */
-export function leadsOf(
-  rel: Relations,
-  a: string,
-  b: string,
-): { status: number; might: number } {
-  const ab = getRel(rel, a, b);
-  const ba = getRel(rel, b, a);
-  return { status: ab.status - ba.status, might: ab.might - ba.might };
-}
-
-/** +amount on one track from actor toward every id in others - the Fortify
- *  effect on Might, the A feast effect on Status. One function taking the
- *  track, because the two cards differ in nothing else and a second copy is a
- *  second place for the fan-out to drift. */
-export function bumpAllBy(
-  rel: Relations,
-  actor: string,
-  others: string[],
-  track: "status" | "might",
-  amount: number,
-): Relations {
-  let out = rel;
-  for (const target of others) out = bumpBy(out, actor, target, track, amount);
-  return out;
+/** A's raw Might margin over B; positive = A is ahead. The store alone -
+ *  what the rules see adds pact terms, and that is `leadIn`. */
+export function leadOf(rel: Relations, a: string, b: string): number {
+  return getRel(rel, a, b) - getRel(rel, b, a);
 }
 
 /** +amount might from actor toward every id in others (the Fortify effect). */
 export function bumpMightAllBy(
   rel: Relations, actor: string, others: string[], amount: number,
 ): Relations {
-  return bumpAllBy(rel, actor, others, "might", amount);
+  let out = rel;
+  for (const target of others) out = bumpMightBy(out, actor, target, amount);
+  return out;
 }
 
 export function bumpMightAll(
@@ -214,12 +169,12 @@ export function incorporatedRealmOf(
 export function levelMight(rel: Relations, a: string, b: string): Relations {
   const ab = getRel(rel, a, b);
   const ba = getRel(rel, b, a);
-  const max = Math.max(ab.might, ba.might);
-  if (ab.might === max && ba.might === max) return rel;
+  const max = Math.max(ab, ba);
+  if (ab === max && ba === max) return rel;
   return {
     ...rel,
-    [relKey(a, b)]: { ...ab, might: max },
-    [relKey(b, a)]: { ...ba, might: max },
+    [relKey(a, b)]: max,
+    [relKey(b, a)]: max,
   };
 }
 

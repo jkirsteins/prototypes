@@ -1,5 +1,5 @@
 import type { GameEvent, GameEventType } from "./game";
-import { ESCAPE_RESPITE_TURNS, type TrackBars } from "./playability";
+import { ESCAPE_RESPITE_TURNS } from "./playability";
 import { TRIBUTE_CARDS } from "./cards";
 import { count, plural } from "./plural";
 import {
@@ -7,7 +7,6 @@ import {
 } from "./rich-text";
 import { walkStandings, type StandingChange, type WalkCtx } from "./standings";
 import { untilTurn } from "./timed";
-import { barPhrase } from "./view";
 
 /** One notice-worthy event, rendered as one line: the card, who did it, and
  *  the standing it moved. See the rule in AGENTS.md - no second modal, no
@@ -37,18 +36,18 @@ export interface RoundSummary {
 export interface NoticeCtx {
   humanFactionId: string;
   factionOf(playerId: number): string | undefined;
-  /** The human's leads over otherFactionId; positive = you lead. */
-  leads(otherFactionId: string): { might: number; status: number };
-  /** The lead an enemy needs over the human to subjugate them, per track
-   *  (scaled by the human realm's size, and by its settlements on the Might
-   *  track). No particular rival in mind - used only where the human's own
-   *  realm shrinking is the point, not who threatens them. */
-  subjugationGrip(): TrackBars;
-  /** The lead this rival needs to subjugate the human on each track, or null
-   *  when the rules forbid it outright - they already hold the human, or they
-   *  are somebody's vassal themselves. The map's danger marker uses the same
-   *  numbers, so the two surfaces cannot disagree. */
-  subjugationBarAgainstYou(otherFactionId: string): TrackBars | null;
+  /** The human's Might lead over otherFactionId; positive = you lead. */
+  leads(otherFactionId: string): number;
+  /** The lead an enemy needs over the human to subjugate them (scaled by the
+   *  human realm's size and its settlements). No particular rival in mind -
+   *  used only where the human's own realm shrinking is the point, not who
+   *  threatens them. */
+  subjugationGrip(): number;
+  /** The lead this rival needs to subjugate the human, or null when the rules
+   *  forbid it outright - they already hold the human, or they are somebody's
+   *  vassal themselves. The map's danger marker uses the same numbers, so the
+   *  two surfaces cannot disagree. */
+  subjugationBarAgainstYou(otherFactionId: string): number | null;
   /** Expiry turn of an active alliance between the human and otherFactionId;
    *  undefined when no pact is active. */
   allianceExpiry(otherFactionId: string): number | undefined;
@@ -190,34 +189,31 @@ function noticeRoleOf(e: GameEvent, ctx: NoticeCtx): NoticeRole {
  *  bar rivals need to subjugate the human in turn. */
 function realmShrunkFootnote(ctx: NoticeCtx): Segment[] {
   return [
-    t(`Your realm is smaller: a lead of ${barPhrase(ctx.subjugationGrip())} over `),
+    t(`Your realm is smaller: a lead of ${ctx.subjugationGrip()} over `),
     t("you is now enough to subjugate you."),
   ];
 }
 
-/** Either of their leads over the human meets that track's bar for THIS rival
- *  specifically - false when the bars are null (they could never subjugate the
- *  human this way round) as well as when both leads fall short. Per track
- *  rather than best-lead-against-one-bar: the Status bar is the lower one on a
- *  settled realm, so a single number would understate the danger. */
+/** Their lead over the human meets the bar for THIS rival specifically -
+ *  false when the bar is null (they could never subjugate the human this way
+ *  round) as well as when the lead falls short. */
 function subjugationRisk(ctx: NoticeCtx, otherId: string): boolean {
-  const bars = ctx.subjugationBarAgainstYou(otherId);
-  if (bars === null) return false;
-  const l = ctx.leads(otherId);
-  return -l.might >= bars.might || -l.status >= bars.status;
+  const bar = ctx.subjugationBarAgainstYou(otherId);
+  if (bar === null) return false;
+  return -ctx.leads(otherId) >= bar;
 }
 
 /** The tribute cards named in a row - "A and B", "A, B and C" - as segments,
  *  so each stays a card the player can point at. Built from TRIBUTE_CARDS
  *  rather than written out, so the footnotes cannot fall behind the set. */
 const tributeCardList = (): Segment[] =>
-  joinSegments(Object.keys(TRIBUTE_CARDS).map((id) => [card(id)]));
+  joinSegments(TRIBUTE_CARDS.map((id) => [card(id)]));
 
 /** How many cards the two footnotes below are talking about. They used to read
  *  "were ... While either is in hand", which is only English while
  *  TRIBUTE_CARDS holds exactly two - the same assumption `tributeCardList`
  *  was built to avoid. */
-const tributeCount = (): number => Object.keys(TRIBUTE_CARDS).length;
+const tributeCount = (): number => TRIBUTE_CARDS.length;
 
 const PAY_TRIBUTE_FOOTNOTE = (): Segment[] => {
   const n = tributeCount();
@@ -257,7 +253,7 @@ function changesFor(i: number, changes: StandingChange[][]): StandingChange[] {
   return changes[i] ?? [];
 }
 
-function raidOrMarriageLines(
+function raidLines(
   events: GameEvent[],
   changes: StandingChange[][],
   ctx: NoticeCtx,
@@ -271,7 +267,7 @@ function raidOrMarriageLines(
   }));
 }
 
-function raidOrMarriageFootnotes(events: GameEvent[], ctx: NoticeCtx): Segment[][] {
+function raidFootnotes(events: GameEvent[], ctx: NoticeCtx): Segment[][] {
   const seen = new Set<string>();
   const out: Segment[][] = [];
   for (const e of events) {
@@ -287,7 +283,7 @@ function raidOrMarriageFootnotes(events: GameEvent[], ctx: NoticeCtx): Segment[]
     const bars = ctx.subjugationBarAgainstYou(id);
     if (bars === null) continue;
     out.push([
-      theFaction(id), t(` can subjugate you at a lead of ${barPhrase(bars)}.`),
+      theFaction(id), t(` can subjugate you at a lead of ${bars}.`),
     ]);
   }
   return out;
@@ -525,7 +521,6 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       e.playerId === 1
         ? e.cardId === "assassinate-ruler" && e.prevented === true
         : (e.cardId === "raid" ||
-            e.cardId === "shrewd-marriage" ||
             e.cardId === "assassinate-ruler" ||
             e.cardId === "alliance") &&
           e.targetFactionId === ctx.humanFactionId,
@@ -546,13 +541,13 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
         return assassinateLines(events, changes, ctx, noticeRoleOf(events[0], ctx));
       }
       if (cardId === "alliance") return allianceLines(events, changes, ctx);
-      return raidOrMarriageLines(events, changes, ctx);
+      return raidLines(events, changes, ctx);
     },
-    // Raid, Shrewd marriage and Assassinate ruler are all hostile plays that
-    // move (or tried to move) a lead against the human, so all three carry
-    // the same danger cue: is this actor now able to subjugate the human?
-    // That question is about the actor's CURRENT standing, not this play's
-    // own effect, so a prevented Assassinate ruler still asks it.
+    // Raid and Assassinate ruler are both hostile plays that move (or tried
+    // to move) a lead against the human, so both carry the same danger cue:
+    // is this actor now able to subjugate the human? That question is about
+    // the actor's CURRENT standing, not this play's own effect, so a
+    // prevented Assassinate ruler still asks it.
     footnotes: (events, ctx) => {
       // Except when the human IS the actor, where the cue has no answer. The
       // actor arm carries its own: what the turn actually bought. The guard
@@ -565,8 +560,8 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
         ]];
       }
       const cardId = events[0].cardId;
-      if (cardId === "raid" || cardId === "shrewd-marriage" || cardId === "assassinate-ruler") {
-        return raidOrMarriageFootnotes(events, ctx);
+      if (cardId === "raid" || cardId === "assassinate-ruler") {
+        return raidFootnotes(events, ctx);
       }
       return [];
     },

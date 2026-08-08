@@ -9,11 +9,11 @@ import {
 import impactData from "../src/data/card-impact.json";
 
 const NON_BASICS = [
-  "raid", "shrewd-marriage", "fortify", "subjugate",
+  "raid", "fortify", "subjugate",
   "incorporate", "seeds-of-revolt",
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens", "found-settlement",
-  "population-boom", "a-feast", "distrustful-neighbour", "eloping-heirs",
+  "population-boom", "distrustful-neighbour",
   "take-hostage",
 ];
 
@@ -53,16 +53,12 @@ describe("cards", () => {
         "border, +2 for the second, +3 for the third, and so on.",
     );
     expectProps(
-      "shrewd-marriage", "Shrewd marriage", true, false, 1, true, false,
-      "Gain +1 Status over one faction in reach; your overlord is always courtable.",
-    );
-    expectProps(
       "fortify", "Fortify", false, false, 1, true, false,
       "Gain +1 Might over every other living faction at once.",
     );
     expectProps(
       "subjugate", "Subjugate", true, false, 1, true, false,
-      "Turn a faction in reach into your vassal. Needs a Might lead of 2 or a Status lead of 8 per land of their realm. Vassals pay tribute.",
+      "Turn a faction in reach into your vassal. Needs a Might lead of 2 per land of their realm. Vassals pay tribute.",
     );
     expectProps(
       "incorporate", "Incorporate", true, false, 1, true, false,
@@ -74,11 +70,6 @@ describe("cards", () => {
         "overlord; what your treasury cannot cover, grant as Might instead.",
     );
     expectProps(
-      "pay-status-tribute", "Pay status tribute", false, false, null, false, true,
-      "Forced: while a vassal, pay 1 wealth per land of your realm to your " +
-        "overlord; what your treasury cannot cover, grant as Status instead.",
-    );
-    expectProps(
       "seeds-of-revolt", "Seeds of revolt", false, false, 1, true, false,
       "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time.",
     );
@@ -86,7 +77,7 @@ describe("cards", () => {
     // in the deck, so it must never be deck-buildable.
     expectProps(
       "revolt", "Revolt", false, false, 1, false, false,
-      "Cast off your overlord, no lead required. They lose 1 Might and 1 Status against you, and none may subjugate you for 2 turns. Leaves your deck for good.",
+      "Cast off your overlord, no lead required. They lose 1 Might against you, and none may subjugate you for 2 turns. Leaves your deck for good.",
     );
     expectProps(
       "assassinate-ruler", "Assassinate ruler", true, false, 1, true, false,
@@ -117,12 +108,7 @@ describe("cards", () => {
         "otherwise support. Stacks, and waits in hand until a settlement is " +
         "founded.",
     );
-    expectProps(
-      "a-feast", "A feast", false, false, 1, true, false,
-      "Costs 2 wealth. Gain +1 Status over every other living faction at once.",
-      2,
-    );
-    // The three secret cards: others see only that a card was played.
+    // The two secret cards: others see only that a card was played.
     expectProps(
       "bodyguard", "Bodyguard", false, true, 1, true, false,
       "Post a bodyguard: the next Assassinate ruler against you fails. " +
@@ -132,11 +118,6 @@ describe("cards", () => {
       "distrustful-neighbour", "Distrustful neighbour", false, true, 1, true, false,
       "Your neighbours grow wary: the next Alliance sealed with you fails. " +
         "No stacking. Others see only that you played a secret card.",
-    );
-    expectProps(
-      "eloping-heirs", "Eloping heirs", false, true, 1, true, false,
-      "Your heirs slip away in the night: the next Shrewd marriage against " +
-        "you fails. No stacking. Others see only that you played a secret card.",
     );
     expectProps(
       "take-hostage", "Take hostage", true, false, 1, true, false,
@@ -174,7 +155,7 @@ describe("cards", () => {
         .filter((c) => c.wealthCost !== undefined)
         .map((c) => [c.id, c.wealthCost]),
     );
-    expect(costed).toEqual({ "a-feast": 2, "found-settlement": 1 });
+    expect(costed).toEqual({ "found-settlement": 1 });
     // A forced card with a cost would jam the forced set against an empty
     // treasury; nothing forces the two apart today except this line.
     for (const id of Object.keys(costed)) {
@@ -214,7 +195,7 @@ describe("cards", () => {
     expect(deck).toContain("favourable-omens");
     expect(deck).not.toContain("extended-diplomacy");
     expect(deck).not.toContain("bodyguard");
-    for (const id of Object.keys(TRIBUTE_CARDS)) expect(deck).not.toContain(id);
+    for (const id of TRIBUTE_CARDS) expect(deck).not.toContain(id);
     // Found a settlement holds the slot Reclaim independence retired and
     // grow-crops briefly filled, so the default deck now carries no filler at
     // all: every one of its ten cards does something.
@@ -348,7 +329,7 @@ describe("every card is reachable by a player", () => {
   // game. Deck-buildable cards are found via the learning loop; the only
   // exemption is injection-only cards, which must name what injects them.
   const INJECTED_BY: Record<string, string> = {
-    ...Object.fromEntries(Object.keys(TRIBUTE_CARDS).map((id) => [id, "subjugate"])),
+    ...Object.fromEntries(TRIBUTE_CARDS.map((id) => [id, "subjugate"])),
     "revolt": "seeds-of-revolt",
   };
 
@@ -401,10 +382,10 @@ describe("rarity and the acquirable pool", () => {
 
   it("acquires exactly the deck-buildable non-basics you do not start with", () => {
     expect(ACQUIRABLE_CARDS).toEqual([
-      "shrewd-marriage", "incorporate",
+      "incorporate",
       "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
       "favourable-omens", "found-settlement",
-      "population-boom", "a-feast", "distrustful-neighbour", "eloping-heirs",
+      "population-boom", "distrustful-neighbour",
       "take-hostage",
     ]);
     // the escape is a starting card now, not a pack drop
@@ -413,7 +394,7 @@ describe("rarity and the acquirable pool", () => {
     // injection-only and must never appear in a pack.
     expect(ACQUIRABLE_CARDS).not.toContain("grow-crops");
     expect(ACQUIRABLE_CARDS).not.toContain("revolt");
-    for (const id of Object.keys(TRIBUTE_CARDS)) {
+    for (const id of TRIBUTE_CARDS) {
       expect(ACQUIRABLE_CARDS).not.toContain(id);
     }
   });

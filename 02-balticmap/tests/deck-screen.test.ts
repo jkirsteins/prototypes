@@ -82,7 +82,7 @@ describe("createDeckScreen", () => {
   it("reports collection progress against the pack pool", () => {
     const { container, screen } = setup();
     screen.update(view({ collected: 3 }));
-    expect(q(container, ".ds-undiscovered").textContent).toBe("3 of 13 collected");
+    expect(q(container, ".ds-undiscovered").textContent).toBe("3 of 10 collected");
   });
 
   it("gates the deck builder behind a sealed pack and opens it on click", () => {

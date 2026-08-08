@@ -2,19 +2,13 @@ import {
   CARDS, DOUBLABLE_CARDS, guardAgainst, isGuardCard, isTributeCard,
 } from "./cards";
 import {
-  allianceActive, fullRealmOf, incorporatedRealmOf, leadsOf, overlordChainOf,
+  allianceActive, fullRealmOf, incorporatedRealmOf, leadOf, overlordChainOf,
   pactBetween,
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import { activeExpiry, timedActive } from "./timed";
 
 export const SUBJUGATE_THRESHOLD = 2;
-
-/** Per-land Status bar, four times the Might rate. Status leads climb from
- *  plays alone and the map offers nothing to build against them - a settlement
- *  hardens the Might bar only - so the bar's height is the one brake on a
- *  Status siege: it is meant to be the long way in, not the cheap one. */
-export const SUBJUGATE_STATUS_THRESHOLD = SUBJUGATE_THRESHOLD * 4;
 
 /** Settlements a land supports with no Population boom spent on it - the one
  *  standing there since the map was drawn, plus one. So Found a settlement
@@ -195,28 +189,25 @@ export function pactBoostExpiriesOn(
   return expiries;
 }
 
-/** A's leads over B as the RULES see them: the relation store, plus the Might
- *  either side's live pacts buy them over the other.
+/** A's Might lead over B as the RULES see it: the relation store, plus the
+ *  Might either side's live pacts buy them over the other.
  *
- *  This, not `leadsOf`, is what every rule, policy step and readout asks. A
+ *  This, not `leadOf`, is what every rule, policy step and readout asks. A
  *  pact bonus that some surfaces counted and others did not would be a lead the
  *  map badge and the legality check disagreed about, which is the same class of
  *  bug as `realmOf` versus `fullRealmOf`.
  *
- *  `leadsOf` stays the raw read of the store, for the few callers that want
+ *  `leadOf` stays the raw read of the store, for the few callers that want
  *  the store itself rather than what the rules see: the boot-param override
- *  diff, the AI's tribute-track read, and the pact residue the Assassinate
- *  ruler tooltip subtracts (levelling zeroes the store, never a live pact). */
+ *  diff and the pact residue the Assassinate ruler tooltip subtracts
+ *  (levelling zeroes the store, never a live pact). */
 export function leadsIn(
   view: { relations: Relations; alliances: Alliances; turn: number },
   a: string,
   b: string,
-): { status: number; might: number } {
-  const raw = leadsOf(view.relations, a, b);
-  return {
-    status: raw.status,
-    might: raw.might + pactBonusOn(view, a, b) - pactBonusOn(view, b, a),
-  };
+): number {
+  return leadOf(view.relations, a, b) +
+    pactBonusOn(view, a, b) - pactBonusOn(view, b, a);
 }
 
 /** Why a play can come back with nothing. Two shapes, because a player can be
@@ -352,13 +343,12 @@ export function wealthIncomeFor(
   return sum;
 }
 
-/** The incumbent overlord's hold on a vassal: the larger of their two leads
- *  over it, 0 when it is nobody's vassal. */
+/** The incumbent overlord's hold on a vassal: its lead over it, floored at 0,
+ *  0 when it is nobody's vassal. */
 export function overlordGrip(view: RulesView, targetFactionId: string): number {
   const lord = view.overlords.get(targetFactionId);
   if (lord === undefined) return 0;
-  const l = leadsIn(view, lord, targetFactionId);
-  return Math.max(0, l.status, l.might);
+  return Math.max(0, leadsIn(view, lord, targetFactionId));
 }
 
 /** What a poacher pays on top of the base grip: half the incumbent's hold,
@@ -547,25 +537,12 @@ export function passiveFortifyFor(view: RulesView, factionId: string): number {
   return Math.floor(annexedLandsOf(view, factionId) / PASSIVE_PER_LANDS);
 }
 
-/** The lead a Subjugate needs, one bar per track. The two are separate because
- *  they price different defences. Might is contested ground - `raidYield` cuts
- *  both ways and a settlement is garrisoned ground that walls off the Might
- *  route alone - so it keeps the short per-land rate plus whatever the
- *  defender built. Status has no counter-building: it climbs from plays alone,
- *  and fan-outs like A feast raise it against every rival at once, so its
- *  per-land rate is four times Might's (`SUBJUGATE_STATUS_THRESHOLD`). A
- *  settled realm still reads as soft to a patient Status siege - the siege is
- *  just a long campaign now, not a shortcut past the walls. */
-export interface TrackBars {
-  might: number;
-  status: number;
-}
-
 /** What a faction's grip is made of: the lands of its realm, the settlements
- *  founded in them, and the bar each track demands. */
-export interface GripParts extends TrackBars {
+ *  founded in them, and the Might bar they demand together. */
+export interface GripParts {
   lands: number;
   settlements: number;
+  might: number;
 }
 
 /** The lands and settlements behind a faction's grip. Returned as parts rather
@@ -590,14 +567,12 @@ export function gripPartsOn(view: RulesView, factionId: string): GripParts {
   return {
     lands, settlements,
     might: SUBJUGATE_THRESHOLD * lands + settlements,
-    status: SUBJUGATE_STATUS_THRESHOLD * lands,
   };
 }
 
-/** The lead anyone needs against this faction, per track: on Might, two per
- *  land of its realm - counting its vassals and the lands it has incorporated
- *  - plus one per settlement founded in any of those lands; on Status, eight
- *  per land and nothing for settlements.
+/** The Might lead anyone needs against this faction: two per land of its
+ *  realm - counting its vassals and the lands it has incorporated - plus one
+ *  per settlement founded in any of those lands.
  *
  *  Bare arithmetic with no eligibility guards, because two callers need it
  *  that way: `subjugationRequirement` applies the guards itself, and the
@@ -606,66 +581,42 @@ export function gripPartsOn(view: RulesView, factionId: string): GripParts {
 export function subjugationGripOn(
   view: RulesView,
   factionId: string,
-): TrackBars {
-  const { might, status } = gripPartsOn(view, factionId);
-  return { might, status };
+): number {
+  return gripPartsOn(view, factionId).might;
 }
 
-/** True once either track's lead has reached its own bar. Subjugate has always
- *  needed one track cleared, not both; with per-track bars the comparison can
- *  no longer be `max(lead) >= bar`, so it lives here once rather than being
- *  spelled out at each of its call sites. */
-export function clearsBars(
-  lead: { status: number; might: number },
-  bars: TrackBars,
-): boolean {
-  return lead.might >= bars.might || lead.status >= bars.status;
-}
-
-/** The poach surcharge lands on both bars. It prices the incumbent lord's hold
- *  on a vassal, which is a fact about the lord rather than about a track. */
-function withSurcharge(bars: TrackBars, surcharge: number): TrackBars {
-  return { might: bars.might + surcharge, status: bars.status + surcharge };
-}
-
-
-/** The lead the actor needs on each track to Subjugate the target: two per
- *  land of the target's realm on Might (eight on Status), counting its vassals
- *  and the lands it has incorporated, plus one per settlement on the Might
- *  track, plus the poach surcharge on both when the target already has a lord. Null when Subjugate
- *  could never apply to that pair at all - self, an incorporated land, the
- *  actor's own direct vassal, or the actor's own liege (any ancestor in its
- *  overlord chain) - so callers can leave the bars off rather than quote
- *  meaningless numbers. A vassal actor gets real bars against everyone else:
- *  vassals can Subjugate, which is also why they now show up in `threatsTo`
- *  and on the map badges.
+/** The Might lead the actor needs to Subjugate the target: two per land of
+ *  the target's realm, counting its vassals and the lands it has
+ *  incorporated, plus one per settlement, plus the poach surcharge when the
+ *  target already has a lord. Null when Subjugate could never apply to that
+ *  pair at all - self, an incorporated land, the actor's own direct vassal,
+ *  or the actor's own liege (any ancestor in its overlord chain) - so callers
+ *  can leave the bar off rather than quote a meaningless number. A vassal
+ *  actor gets a real bar against everyone else: vassals can Subjugate, which
+ *  is also why they now show up in `threatsTo` and on the map badges.
  *
  *  Same rule as the `insufficient-lead` block reason, kept here so the map
- *  and the tooltip can show the bars without re-deriving them. */
+ *  and the tooltip can show the bar without re-deriving it. */
 export function subjugationRequirement(
   view: RulesView,
   actorFactionId: string,
   targetFactionId: string,
-): TrackBars | null {
+): number | null {
   if (targetFactionId === actorFactionId) return null;
   if (targetFactionId in view.incorporated) return null;
   if (view.overlords.get(targetFactionId) === actorFactionId) return null;
   if (overlordChainOf(actorFactionId, view.overlords).includes(targetFactionId)) {
     return null;
   }
-  return withSurcharge(
-    subjugationGripOn(view, targetFactionId),
-    poachSurchargeOn(view, targetFactionId),
-  );
+  return subjugationGripOn(view, targetFactionId) +
+    poachSurchargeOn(view, targetFactionId);
 }
 
 export interface Threat {
   factionId: string;
-  /** Lead this faction still needs on its nearest track, each track measured
-   *  against its own bar. <= 0 means it can act now. */
+  /** Might lead this faction still needs against its bar. <= 0 means it can
+   *  act now. */
   shortfall: number;
-  statusShortfall: number;
-  mightShortfall: number;
 }
 
 /** Every faction that could Subjugate `factionId` if only its lead were high
@@ -697,14 +648,9 @@ export function threatsTo(view: RulesView, factionId: string): Threat[] {
     ) {
       continue;
     }
-    const lead = leadsIn(view, other, factionId);
-    const statusShortfall = required.status - lead.status;
-    const mightShortfall = required.might - lead.might;
     out.push({
       factionId: other,
-      shortfall: Math.min(statusShortfall, mightShortfall),
-      statusShortfall,
-      mightShortfall,
+      shortfall: required - leadsIn(view, other, factionId),
     });
   }
   const order = (id: string): number => view.factionIds.indexOf(id);
@@ -714,50 +660,40 @@ export function threatsTo(view: RulesView, factionId: string): Threat[] {
   );
 }
 
-/** One track of one rival's subjugation race, as the map badge quotes it. */
-export interface TrackRace {
-  /** The human's signed lead on this track, positive means the human leads -
-   *  the same convention as `formatLead`, the scoreboard and the round
-   *  summary. */
-  lead: number;
-  /** The bar that lead is racing. The bars are asymmetric, each counting the
-   *  realm of the side being taken, so a track showing both against the
-   *  player's bar quotes the wrong number the moment the rival is the one
-   *  leading. The sign of the lead already says who is running, so it also
-   *  says whose bar applies. Null where the leading side could never subjugate
-   *  the other, and the track shows no denominator. */
-  bar: number | null;
-  /** Whose realm `bar` counts: the side that would be TAKEN. Anything
-   *  itemising a bar has to itemise this realm, which is not always the
-   *  faction under the cursor. A dead-even track (lead 0) goes to the human,
-   *  which is what the badge has always shown. */
-  takenFactionId: string;
-}
-
-/** Both tracks of one rival's subjugation race against the human.
+/** One rival's subjugation race against the human, as the map badge quotes it.
  *
  *  One computation, because the map badge and the hover breakdown must quote
  *  the same numbers by construction rather than by two copies of the same
- *  direction-picking dance. The tracks resolve independently on purpose: a
- *  settlement raises the Might bar and leaves Status where it was, and the two
- *  leads can point in opposite directions, so Might and Status can be racing
- *  toward different realms' bars on one badge. */
+ *  direction-picking dance. */
 export interface SubjugationRace {
-  might: TrackRace;
-  status: TrackRace;
+  /** The human's signed Might lead, positive means the human leads - the same
+   *  convention as `formatLead`, the scoreboard and the round summary. */
+  lead: number;
+  /** The bar that lead is racing. The bars are asymmetric, each counting the
+   *  realm of the side being taken, so showing both against the player's bar
+   *  quotes the wrong number the moment the rival is the one leading. The
+   *  sign of the lead already says who is running, so it also says whose bar
+   *  applies. Null where the leading side could never subjugate the other,
+   *  and the badge shows no denominator. */
+  bar: number | null;
+  /** Whose realm `bar` counts: the side that would be TAKEN. Anything
+   *  itemising a bar has to itemise this realm, which is not always the
+   *  faction under the cursor. A dead-even race (lead 0) goes to the human,
+   *  which is what the badge has always shown. */
+  takenFactionId: string;
   /** A pact is running. Neither side may aim a hostile card at the other while
-   *  it lasts, so the bars are what will apply once it lapses. */
+   *  it lasts, so the bar is what will apply once it lapses. */
   allied: boolean;
   /** Nothing stands between these two: no lead either way, no pact binding
-   *  them, and no live pact term of either side's inside the leads. The last
+   *  them, and no live pact term of either side's inside the lead. The last
    *  matters because a pact bonus can buy a raided lead back to exactly 0 -
    *  a 0 that falls back when the pact lapses, which a truly quiet pair has
    *  no equivalent of. The map draws no badge and the hover offers no
-   *  breakdown - both read this rather than testing the leads themselves. */
+   *  breakdown - both read this rather than testing the lead themselves. */
   quiet: boolean;
-  /** Either of THEIR tracks has already cleared its bar: they can take the
-   *  human now. Guarded by the same rule that decides legality, so a faction
-   *  that could never subjugate the human is never marked. */
+  /** THEIR lead has already cleared its bar: they can take the human now.
+   *  Guarded by the same rule that decides legality, so a faction that could
+   *  never subjugate the human is never marked. */
   danger: boolean;
 }
 
@@ -769,24 +705,18 @@ export function subjugationRaceFor(
   const lead = leadsIn(view, humanFactionId, rivalFactionId);
   const yours = subjugationRequirement(view, humanFactionId, rivalFactionId);
   const theirs = subjugationRequirement(view, rivalFactionId, humanFactionId);
-  const track = (t: "might" | "status"): TrackRace =>
-    lead[t] < 0
-      ? { lead: lead[t], bar: theirs?.[t] ?? null, takenFactionId: humanFactionId }
-      : { lead: lead[t], bar: yours?.[t] ?? null, takenFactionId: rivalFactionId };
   const allied = allianceActive(view, humanFactionId, rivalFactionId);
   return {
-    might: track("might"),
-    status: track("status"),
+    ...(lead < 0
+      ? { lead, bar: theirs, takenFactionId: humanFactionId }
+      : { lead, bar: yours, takenFactionId: rivalFactionId }),
     allied,
-    quiet: lead.might === 0 && lead.status === 0 && !allied &&
+    quiet: lead === 0 && !allied &&
       pactBonusOn(view, humanFactionId, rivalFactionId) === 0 &&
       pactBonusOn(view, rivalFactionId, humanFactionId) === 0,
     // Their lead over the human is the human's lead negated, measured against
-    // their bar. `clearsBars` rather than a hand-written pair of comparisons:
-    // one track clearing is enough, and that rule lives in one place.
-    danger:
-      theirs !== null &&
-      clearsBars({ might: -lead.might, status: -lead.status }, theirs),
+    // their bar.
+    danger: theirs !== null && -lead >= theirs,
   };
 }
 
@@ -800,17 +730,15 @@ export type TargetBlockReason =
   | { code: "respite"; expiresTurn: number }
   | {
       code: "insufficient-lead";
-      /** The bar on each track. They differ by the settlement count. */
-      required: TrackBars;
-      mightLead: number;
-      statusLead: number;
+      /** The Might bar the lead is short of. */
+      required: number;
+      lead: number;
       realmSize: number;
-      /** Settlements founded in that realm, each adding 1 to the Might bar. */
+      /** Settlements founded in that realm, each adding 1 to the bar. */
       settlements: number;
-      /** Extra lead demanded on both tracks because the target already has an
-       *  overlord; 0 when it is free. Part of `required`, broken out so the
-       *  tooltip can say why the bars are higher than the realm alone
-       *  explains. */
+      /** Extra lead demanded because the target already has an overlord; 0
+       *  when it is free. Part of `required`, broken out so the tooltip can
+       *  say why the bar is higher than the realm alone explains. */
       poachSurcharge: number;
     }
   | { code: "already-vassal" }
@@ -894,8 +822,7 @@ export function targetEligibilityFor(
 
   return view.factionIds.map((factionId): TargetEligibility => {
     const specialOverlord =
-      (cardId === "shrewd-marriage" || cardId === "alliance") &&
-      factionId === actorOverlord;
+      cardId === "alliance" && factionId === actorOverlord;
     // Incorporate and Take hostage are aimed at your own vassals, who are part
     // of your realm rather than merely bordering it - reach is the wrong
     // question for both, so every faction is relevant and the vassal check
@@ -956,14 +883,13 @@ export function targetEligibilityFor(
       }
       const grip = gripPartsOn(view, factionId);
       const surcharge = poachSurchargeOn(view, factionId);
-      const required = withSurcharge(grip, surcharge);
+      const required = grip.might + surcharge;
       const lead = leadsIn(view, actorFactionId, factionId);
-      if (!clearsBars(lead, required)) {
+      if (lead < required) {
         reasons.push({
           code: "insufficient-lead",
           required,
-          mightLead: lead.might,
-          statusLead: lead.status,
+          lead,
           realmSize: grip.lands,
           settlements: grip.settlements,
           poachSurcharge: surcharge,
@@ -1060,7 +986,7 @@ export function cardBlockReason(
   // because the tail of this function answers `unavailable` for untargeted
   // cards.
   if (
-    cardId === "grow-crops" || cardId === "fortify" || cardId === "a-feast" ||
+    cardId === "grow-crops" || cardId === "fortify" ||
     cardId === "favourable-omens" || cardId === "population-boom"
   ) {
     return null;

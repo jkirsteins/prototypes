@@ -488,15 +488,12 @@ export function impactText(
     };
   }
 
-  const trackLabel = (track: "status" | "might"): string =>
-    track === "might" ? "Might" : "Status";
-
   /** A fan-out card: every living faction, so the count is the whole map and
    *  the amount comes off the event rather than from any one pair. */
   const fanOut = (): { text: string; tone: "good" } | null => {
-    if (e.amount === undefined || e.track === undefined) return null;
+    if (e.amount === undefined) return null;
     return {
-      text: `+${e.amount} ${trackLabel(e.track)} against all`,
+      text: `+${e.amount} Might against all`,
       tone: "good",
     };
   };
@@ -510,7 +507,7 @@ export function impactText(
     if (delta === 0) return null;
     return {
       text:
-        `${delta > 0 ? "+" : ""}${delta} ${trackLabel(changes[0].track)} ` +
+        `${delta > 0 ? "+" : ""}${delta} Might ` +
         `against ${count(changes.length, "faction")}`,
       tone: delta > 0 ? "good" : "bad",
     };
@@ -519,8 +516,8 @@ export function impactText(
   const factions = new Set(changes.map((c) => c.factionId));
   const isFanOut =
     e.type === "play" && e.cardId !== undefined && FAN_OUT_CARDS.has(e.cardId);
-  // Your own Fortify or A feast: one card, +1 against every living faction, so
-  // there is no single pair to quote. `leadMovesOf` deliberately returns
+  // Your own Fortify: one card, +1 against every living faction, so there is
+  // no single pair to quote. `leadMovesOf` deliberately returns
   // nothing for it (see the doc comment in standings.ts), so the amount comes
   // off the event, exactly as the garrison line's does.
   if (factions.size === 0) return isFanOut ? fanOut() : null;
@@ -1557,9 +1554,8 @@ export function createHud(
   function renderEnderComparison(state: GameState, ender: string): void {
     const human = state.players[0];
     const l = leadsIn(state, ender, human.factionId);
-    const line = (label: string, n: number) =>
-      `${label}: ${n > 0 ? `they led by ${n}` : n < 0 ? `you led by ${-n}` : "even"}`;
-    pmDeltas.textContent = `${line("Might", l.might)} / ${line("Status", l.status)}`;
+    pmDeltas.textContent =
+      `Might: ${l > 0 ? `they led by ${l}` : l < 0 ? `you led by ${-l}` : "even"}`;
     const enderPlayer = state.players.find((p) => p.factionId === ender);
     const plays = state.log
       .filter(

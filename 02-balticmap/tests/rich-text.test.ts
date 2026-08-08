@@ -62,9 +62,9 @@ describe("factionIds", () => {
 describe("plainText", () => {
   it("renders a mix of text, card and faction segments", () => {
     const segs = [
-      card("shrewd-marriage"), t(" played against you by "), faction("selonians"), t("."),
+      card("take-hostage"), t(" played against you by "), faction("selonians"), t("."),
     ];
-    expect(plainText(segs, NAMES)).toBe("Shrewd marriage played against you by Selonians.");
+    expect(plainText(segs, NAMES)).toBe("Take hostage played against you by Selonians.");
   });
 
   it("adds an article mid-sentence except for a place-name faction", () => {

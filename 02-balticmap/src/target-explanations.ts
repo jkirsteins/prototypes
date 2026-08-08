@@ -14,7 +14,7 @@ import {
   type TargetEligibility,
 } from "./playability";
 import { CARDS, DOUBLABLE_CARDS, isGuardCard } from "./cards";
-import { leadsOf, type Alliances } from "./relations";
+import { leadOf, type Alliances } from "./relations";
 import { count } from "./plural";
 import { formatLead } from "./view";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
@@ -76,16 +76,9 @@ function explainReason(reason: TargetBlockReason): string[] {
         reason.poachSurcharge === 0
           ? ""
           : `, plus ${reason.poachSurcharge} to prise them off their overlord`;
-      // Naming the tracks separately is the whole point once they diverge: the
-      // shorter bar is the route to take, and a player told only the taller one
-      // would read a settled realm as further out of reach than it is.
-      const need =
-        reason.required.might === reason.required.status
-          ? `Need a Might or Status lead of ${reason.required.might}`
-          : `Need a Might lead of ${reason.required.might} or a Status lead of ${reason.required.status}`;
       return [
-        `${need} because their realm has ${lands}${settled}${poached}.`,
-        `Current leads: Might ${reason.mightLead}, Status ${reason.statusLead}.`,
+        `Need a Might lead of ${reason.required} because their realm has ${lands}${settled}${poached}.`,
+        `Current lead: Might ${reason.lead}.`,
       ];
     }
     case "already-vassal":
@@ -185,14 +178,11 @@ export const GUARD_RISK: Readonly<Record<string, string>> = {
     "A posted bodyguard would turn this aside, and you cannot tell in advance.",
   "distrustful-neighbour":
     "Wary neighbours would refuse the pact, and you cannot tell in advance.",
-  "eloping-heirs":
-    "Their heirs may already have slipped away, and you cannot tell in advance.",
 };
 
 export const GUARD_POSTED: Readonly<Record<string, string>> = {
   "bodyguard": "A bodyguard is already posted.",
   "distrustful-neighbour": "Your neighbours are already wary.",
-  "eloping-heirs": "Your heirs have already slipped away.",
 };
 
 /** How a card can come back with nothing, in words. Renders `FailureRisk` and
@@ -262,9 +252,6 @@ const CARD_RISK: Record<string, string> = {
   "alliance":
     "Can fail: neighbours wary enough refuse the pact outright, and nothing " +
     "tells you in advance which rivals are.",
-  "shrewd-marriage":
-    "Can fail: heirs who have slipped away cannot be married off, and " +
-    "nothing tells you in advance whose have.",
 };
 
 export const cardRiskLine = (cardId: string): string | null =>
@@ -312,20 +299,18 @@ function standingMove(
   view: RulesView,
   actorFactionId: string,
   targetFactionId: string,
-  track: "might" | "status",
   next: (before: number) => number,
   multiplier: number,
 ): Impact {
-  const before = leadsIn(view, actorFactionId, targetFactionId)[track];
+  const before = leadsIn(view, actorFactionId, targetFactionId);
   const after = next(before);
-  const label = track === "might" ? "Might" : "Status";
   return {
     amount: formatLead("", after - before),
     spans: [
       // Bracketed, because the row already opens with the change in its own
       // column: "+1 Might -1 -> 0" reads as three loose numbers, and the
       // parentheses say which two are the before and after.
-      { text: `${label} (` },
+      { text: "Might (" },
       { text: formatLead("", before), lead: before },
       { text: " -> " },
       { text: formatLead("", after), lead: after },
@@ -350,14 +335,7 @@ function availableImpacts(
   if (cardId === "raid") {
     const { gain } = raidGainFor(view, actorFactionId, targetFactionId);
     return [standingMove(
-      view, actorFactionId, targetFactionId, "might", (b) => b + gain,
-      multiplier,
-    )];
-  }
-  if (cardId === "shrewd-marriage") {
-    return [standingMove(
-      view, actorFactionId, targetFactionId, "status",
-      (b) => b + multiplier, multiplier,
+      view, actorFactionId, targetFactionId, (b) => b + gain, multiplier,
     )];
   }
   if (cardId === "assassinate-ruler") {
@@ -367,10 +345,10 @@ function availableImpacts(
     // rows below say a guard could nullify it, in the same words on every
     // target - which is how the warning stays honest without becoming a
     // detector for who is holding one.
-    const raw = leadsOf(view.relations, actorFactionId, targetFactionId).might;
+    const raw = leadOf(view.relations, actorFactionId, targetFactionId);
     return [
       standingMove(
-        view, actorFactionId, targetFactionId, "might", (b) => b - raw, 1,
+        view, actorFactionId, targetFactionId, (b) => b - raw, 1,
       ),
       ...riskRows(view, actorFactionId, cardId, targetFactionId),
     ];
@@ -495,24 +473,14 @@ export function targetImpactLines(
   ];
 }
 
-type Track = "might" | "status";
-
-const TRACK_LABEL: Record<Track, string> = { might: "Might", status: "Status" };
-
-/** One track's block: the badge's own figure for that track, then a row per
- *  piece of the threshold behind it.
- *
- *  Every track gets its own block and its own rows even when the two tracks are
- *  racing the same realm and most of the rows repeat. The alternative was one
- *  block serving both bars with a "(Might only)" note on the settlement row,
- *  and there the column added up to neither number. Here each column sums to
- *  the figure in its own heading, which is the only version a player can check.
+/** The badge's figure, then a row per piece of the threshold behind it. The
+ *  column sums to the figure in its heading, which is the only version a
+ *  player can check.
  *
  *  `mine` says the threshold being itemised is built from the human's own
  *  realm, which is the direction where they are the one being taken. */
 function trackBlock(
   view: RulesView,
-  track: Track,
   lead: number,
   bar: number,
   takenFactionId: string,
@@ -520,20 +488,17 @@ function trackBlock(
 ): TooltipLine[] {
   const parts = gripPartsOn(view, takenFactionId);
   const surcharge = poachSurchargeOn(view, takenFactionId);
-  // Each base is recovered from the parts rather than recomputed - Might's is
-  // its bar minus the settlements stacked on it, Status's IS its bar - so the
-  // column never repeats the per-land multiplication and cannot drift from the
-  // heading above it.
-  const base = track === "might" ? parts.might - parts.settlements : parts.status;
+  // The base is recovered from the parts rather than recomputed - the bar
+  // minus the settlements stacked on it - so the column never repeats the
+  // per-land multiplication and cannot drift from the heading above it.
+  const base = parts.might - parts.settlements;
   const rows: TooltipLine[] = [
     {
       amount: `${base}`,
       text: `from realm size (${count(parts.lands, "land")})`,
     },
   ];
-  // Settlements raise the Might threshold alone, so the Status block must not
-  // list them: there they contribute nothing and the column would not add up.
-  if (parts.settlements > 0 && track === "might") {
+  if (parts.settlements > 0) {
     rows.push({
       amount: `+${parts.settlements}`,
       text: `from ${count(parts.settlements, "settlement")}`,
@@ -558,7 +523,7 @@ function trackBlock(
     {
       // The same formatter the badge uses, so the heading is literally the
       // figure the player is pointing at.
-      text: `${formatLead(`${TRACK_LABEL[track]} `, lead, bar)}. ${mine ? "Your" : "Opponent's"} thresholds:`,
+      text: `${formatLead("Might ", lead, bar)}. ${mine ? "Your" : "Opponent's"} thresholds:`,
       tone: mine ? "bad" : "good",
       blockStart: true,
     },
@@ -566,13 +531,13 @@ function trackBlock(
   ];
 }
 
-/** Where the numbers on a rival's map badge come from: one block per track,
- *  itemising the threshold that track is racing.
+/** Where the number on a rival's map badge comes from: one block itemising
+ *  the threshold the race is running at.
  *
- *  Gated on the same `quiet` flag the badge is, so a block appears exactly
- *  where a denominator is on screen to be explained. A track whose leading side
+ *  Gated on the same `quiet` flag the badge is, so the block appears exactly
+ *  where a denominator is on screen to be explained. A race whose leading side
  *  could never subjugate the other carries no denominator and gets no block:
- *  this explains the thresholds that are showing and never the absence of one,
+ *  this explains the threshold that is showing and never the absence of one,
  *  which is a different question and belongs to the card tip's block reasons.
  *
  *  Takes no faction-name lookup, which is how it satisfies the naming rule
@@ -587,19 +552,11 @@ export function subjugationBreakdown(
   rivalFactionId: string,
 ): TooltipLine[] {
   const race = subjugationRaceFor(view, humanFactionId, rivalFactionId);
-  if (race.quiet) return [];
-  const lines: TooltipLine[] = [];
-  for (const track of ["might", "status"] as Track[]) {
-    const { lead, bar, takenFactionId } = race[track];
-    if (bar === null) continue;
-    lines.push(
-      ...trackBlock(
-        view, track, lead, bar, takenFactionId,
-        takenFactionId === humanFactionId,
-      ),
-    );
-  }
-  return lines;
+  if (race.quiet || race.bar === null) return [];
+  return trackBlock(
+    view, race.lead, race.bar, race.takenFactionId,
+    race.takenFactionId === humanFactionId,
+  );
 }
 
 /** The amber note under a boosted rival's hover: part of the lead on their
