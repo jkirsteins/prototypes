@@ -1,3 +1,5 @@
+import { t, card, type Segment } from "./segments";
+
 /** One pack draw tier: how much of a slot it takes, what impact a card needs
  *  to reach it, and the colour of the band a card of that tier wears.
  *
@@ -116,6 +118,14 @@ export interface CardDef {
   wealthCost?: number;
   /** One-line rules text shown to the player. */
   text: string;
+  /** `text`, with every card the text names as a `card()` segment, so the
+   *  reference is hoverable wherever rules text is rendered. Authored only on
+   *  cards that name another card; everything else reads as one plain run via
+   *  `cardTextSegments` in src/rich-text.ts. `plainText(textSegments)` must
+   *  equal `text` - tests/cards.test.ts pins the pair, so a rename of the
+   *  referenced card fails until `text` follows, and the naming-convention
+   *  sweep fails any card text that names a card without authoring this. */
+  textSegments?: Segment[];
 }
 
 export const CARDS: Record<string, CardDef> = {
@@ -128,24 +138,30 @@ export const CARDS: Record<string, CardDef> = {
   // vassal's deck (see playCard) and a release strips them out again. They are
   // never deck-buildable and never in a pack.
   "pay-military-tribute": { id: "pay-military-tribute", name: "Pay tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, pay 1 wealth per land of your realm to your overlord; what your treasury cannot cover, grant as Might instead." },
-  "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
+  "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time.",
+    textSegments: [t("While a vassal: shuffle a "), card("revolt"), t(" into your deck. Only one "), card("revolt"), t(" at a time.")] },
   "revolt": { id: "revolt", name: "Revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord. Needs a Might lead over them of 4 minus their realm's lands - a sprawling realm is easier to escape. They lose 1 Might against you, and none may subjugate you for 2 turns. Leaves your deck for good." },
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Even the score: the Might lead between you and one faction in reach resets to none." },
   "alliance": { id: "alliance", name: "Alliance", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns, and +1 Might for both of you against every faction bordering both realms. Sealed again with an ally, the pact runs 5 turns longer." },
-  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Patient envoys: your next Alliance lasts twice as long." },
+  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Patient envoys: your next Alliance lasts twice as long.",
+    textSegments: [t("Patient envoys: your next "), card("alliance"), t(" lasts twice as long.")] },
   // Secret. The rules already treat a posted guard as hidden - `failureRiskOf`
   // in src/playability.ts refuses to read the guard lists so the Assassinate
   // ruler tooltip cannot become a detector - and a log line naming the card was
   // that detector by another route.
-  "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card." },
+  "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card.",
+    textSegments: [t("Post a bodyguard: the next "), card("assassinate-ruler"), t(" against you fails. No stacking. Others see only that you played a secret card.")] },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "The signs are read: your next Might gain counts double." },
-  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", wealthCost: 1, text: "Costs 1 wealth. Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
+  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", wealthCost: 1, text: "Costs 1 wealth. Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom.",
+    textSegments: [t("Costs 1 wealth. Raise another settlement in one land of your realm, up to what your people support - two, and one more for each "), card("population-boom"), t(" you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom.")] },
   // Appended, never inserted: `buildAiDeck` rolls one rng draw per entry here
   // in declaration order, so where a card sits decides which draw it answers
   // to. See the warning on DEFAULT_DECK.
   "population-boom": { id: "population-boom", name: "Population boom", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Your people multiply: one more settlement than your lands would otherwise support. Stacks, and waits in hand until a settlement is founded." },
-  "distrustful-neighbour": { id: "distrustful-neighbour", name: "Distrustful neighbour", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your neighbours grow wary: the next Alliance sealed with you fails. No stacking. Others see only that you played a secret card." },
-  "take-hostage": { id: "take-hostage", name: "Take hostage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Take a hostage from a vassal of yours whose deck holds a Revolt: the Revolt cannot be played until they pay tribute twice and the hostage goes home." },
+  "distrustful-neighbour": { id: "distrustful-neighbour", name: "Distrustful neighbour", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your neighbours grow wary: the next Alliance sealed with you fails. No stacking. Others see only that you played a secret card.",
+    textSegments: [t("Your neighbours grow wary: the next "), card("alliance"), t(" sealed with you fails. No stacking. Others see only that you played a secret card.")] },
+  "take-hostage": { id: "take-hostage", name: "Take hostage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Take a hostage from a vassal of yours whose deck holds a Revolt: the Revolt cannot be played until they pay tribute twice and the hostage goes home.",
+    textSegments: [t("Take a hostage from a vassal of yours whose deck holds a "), card("revolt"), t(": the "), card("revolt"), t(" cannot be played until they pay tribute twice and the hostage goes home.")] },
   "mighty-ruler": { id: "mighty-ruler", name: "Mighty ruler", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Your ruler grows in prowess. Every 4 levels lower the Might lead you need to subjugate anyone by 1, never below 1. A successor starts unproven." },
   "seat-of-power": { id: "seat-of-power", name: "Seat of power", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", wealthCost: 1, text: "Costs 1 wealth. Move your ruler's seat to a land you hold outright. Others need +2 more Might lead to subjugate you, and your raids on the seat's neighbours gain +1 Might. Only one seat stands at a time." },
   // Injection-only, like Revolt: its discovery route is the turnip bar.

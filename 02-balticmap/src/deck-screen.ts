@@ -1,7 +1,7 @@
 import { ACQUIRABLE_CARDS, CARDS, DECK_SIZE } from "./cards";
 import { runAnimation } from "./animate";
 import { count } from "./plural";
-import { cardName } from "./rich-text";
+import { cardName, cardTextSegments, renderSegments, type RichTextHooks } from "./rich-text";
 import { applyRarityBand } from "./rarity-band";
 import { DEFAULT_RULES, RULE_AXES, summarizeRules, type RuleSelections } from "./rules";
 import type { TooltipLine } from "./panel";
@@ -51,6 +51,17 @@ export function createDeckScreen(
 ): DeckScreen {
   const root = document.createElement("div");
   root.className = "deck-screen hidden";
+
+  /** Rules text renders through `renderSegments`, so a card the text names
+   *  (Seeds of revolt's Revolt) is a hoverable node here like everywhere
+   *  else. Card rules text names no factions by design; a faction segment
+   *  here would render its raw id, which the browser pass shows immediately. */
+  const rtHooks: RichTextHooks = {
+    factionName: (id) => id,
+    isPlaceName: () => false,
+    showTip: (lines, x, y) => cb.onShowTip?.(lines, x, y),
+    hideTip: () => cb.onHideTip?.(),
+  };
 
   const title = document.createElement("h1");
   title.className = "menu-title";
@@ -234,6 +245,10 @@ export function createDeckScreen(
       if (opening) cb.onHideTip?.();
 
       if (view.reveal === null) {
+        // The third route that takes tiles away: Continue can be pressed from
+        // the keyboard with the cursor resting on a card reference, and a span
+        // replaced out from under the cursor never fires mouseleave.
+        if (animatedReveal !== null) cb.onHideTip?.();
         packCards.replaceChildren();
         animatedReveal = null;
       } else if (view.reveal !== animatedReveal) {
@@ -248,7 +263,7 @@ export function createDeckScreen(
             name.textContent = cardName(r.id);
             const text = document.createElement("span");
             text.className = "ds-card-text";
-            text.textContent = CARDS[r.id]?.text ?? "";
+            text.appendChild(renderSegments(cardTextSegments(r.id), rtHooks));
             const tag = document.createElement("span");
             if (r.isNew) {
               tag.className = "ds-pack-new";
@@ -290,7 +305,7 @@ export function createDeckScreen(
         name.textContent = cardName(id);
         const text = document.createElement("span");
         text.className = "ds-card-text";
-        text.textContent = CARDS[id]?.text ?? "";
+        text.appendChild(renderSegments(cardTextSegments(id), rtHooks));
         card.append(name, text);
         // The tile states the card in full, so the tip is the exception and not
         // the reading surface: it opens only when the text actually spills past
@@ -304,6 +319,9 @@ export function createDeckScreen(
         // coordinates and would need a second placement path in createTooltip,
         // for no gain while the tile face already says everything the tip does.
         card.addEventListener("mousemove", (e) => {
+          // A hovered card reference has its own tip; this same mousemove
+          // bubbles here and would overwrite it with the tile's.
+          if ((e.target as Element).closest(".rt-card") !== null) return;
           if (card.scrollHeight <= card.clientHeight) return;
           cb.onShowTip?.(
             [{ text: cardName(id) }, { text: CARDS[id]?.text ?? "" }],

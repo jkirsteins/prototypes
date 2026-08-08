@@ -26,8 +26,8 @@ import {
 } from "./xp";
 import { standingChangeText, standingsFor } from "./view";
 import {
-  card, cardName, faction, factionIds, optionalPhrase, possessive, renderSegments,
-  t, theFaction, verb,
+  card, cardName, cardTextSegments, faction, factionIds, optionalPhrase, possessive,
+  renderSegments, t, theFaction, verb,
   type RichTextHooks, type Segment, type Speaker, type Verb,
 } from "./rich-text";
 
@@ -1006,7 +1006,7 @@ export function createHud(
         // about what the card does, and a hover-only answer defeats a list.
         const text = document.createElement("div");
         text.className = "harvest-option-text";
-        text.textContent = CARDS[cardId]?.text ?? "";
+        text.appendChild(renderSegments(cardTextSegments(cardId), richTextHooks));
         btn.appendChild(text);
         btn.addEventListener("click", () => hooks.onPick(cardId));
         return btn;

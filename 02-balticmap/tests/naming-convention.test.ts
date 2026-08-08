@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { eventSegments } from "../src/hud";
 import { buildRoundSummary, type NoticeCtx } from "../src/notices";
-import { plainText, type NameLookup, type Segment } from "../src/rich-text";
+import { cardTextSegments, plainText, type NameLookup, type Segment } from "../src/rich-text";
 import type { GameEvent, GameEventType, GameState } from "../src/game";
 import { CARDS } from "../src/cards";
 import rawData from "../src/data/map.json";
@@ -241,6 +241,11 @@ function collectSegmentLists(): Segment[][] {
     for (const line of summary.lines) out.push(line.text);
     for (const footnote of summary.footnotes) out.push(footnote);
   }
+  // Rules text is prose too: a card the text names must be a segment, or the
+  // deck screen and the empower picker render it inert. A card without
+  // textSegments sweeps as one plain run, so a future cross-reference left as
+  // text fails here.
+  for (const id of Object.keys(CARDS)) out.push(cardTextSegments(id));
   return out;
 }
 
