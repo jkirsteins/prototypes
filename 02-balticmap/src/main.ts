@@ -26,9 +26,16 @@ import {
   multipliedWord, pactBoostLines, respiteLines, settlementBlock, targetImpactLines,
   targetOddsLines, subjugationBreakdown,
 } from "./target-explanations";
-import { ACQUIRABLE_CARDS, CARDS } from "./cards";
+import { ACQUIRABLE_CARDS, buildAiDeck, CARDS } from "./cards";
 import { createHud, LOG_PREFS_KEY } from "./hud";
 import { createDeckScreen } from "./deck-screen";
+import { createHostSession, type HostSession } from "./net-host";
+import { createGuestSession, type GuestSession } from "./net-guest";
+import { hostPeer, joinPeer } from "./net";
+import { createNetPanel } from "./net-ui";
+import {
+  guestPhaseView, seatOfFaction, type NetAction, type Wire,
+} from "./net-protocol";
 import {
   applyPack, bankRun, buildPlayerDeck, collectedCount, loadMeta,
   memoryStorage, pendingPacks, resetMeta, saveMeta,
@@ -130,6 +137,12 @@ const factionEthnicities: Record<string, string> = Object.fromEntries(
  *  reading it takes the testing path. See src/boot-params.ts. */
 const boot = parseBootParams(window.location.search);
 
+/** The host id an invite link carries, or null. Read here beside `boot`
+ *  because the two are mutually exclusive: a join link must not also boot a
+ *  rigged state, or the guest's staging screens would disagree with the
+ *  snapshot the host is about to send. */
+const joinId = new URLSearchParams(window.location.search).get("join");
+
 const rng = boot?.seed != null ? seededRng(boot.seed) : Math.random;
 const { storage, storageIsPersistent } = ((): {
   storage: MetaStorage;
@@ -207,6 +220,80 @@ let resolving = false;
  *  seat from the start snapshot. Presentation only - the engine's humanSeat
  *  stays the host's seat 0. */
 let localSeat = 0;
+
+/** Which of the three lives this page is leading. `solo` is the shipped
+ *  single-player game and every branch below reading `net` must leave it
+ *  exactly as it was. The two network roles hold their session, which is
+ *  null between a drop and a rejoin - the one state in which nothing may
+ *  act, since the two sides can no longer agree on what happened. */
+type NetState =
+  | { role: "solo" }
+  | {
+      role: "host";
+      session: HostSession | null;
+      /** The host's own faction, held rather than dealt: in a net game the
+       *  map click cannot deal, because the guest has not picked yet. */
+      hostPick: string | null;
+      /** The guest's seat index, set at deal time. Null until then. */
+      guestSeat: number | null;
+      peerId: string | null;
+    }
+  | {
+      role: "guest";
+      session: GuestSession | null;
+      hostId: string;
+      /** The deck the guest confirmed, until the host deals with it. */
+      deckCards: string[] | null;
+      /** The guest's faction, set by the start snapshot. */
+      faction: string | null;
+    };
+
+let net: NetState = { role: "solo" };
+/** The PeerJS peer behind the current role, kept so abandoning a net game
+ *  can hand the broker id back rather than leaving it registered. */
+let netPeer: { close(): void } | null = null;
+
+/** Who decides this seat's turn. The AI chain runs on `ai` seats only, and
+ *  `remote` is the one answer that locks this screen without ending the
+ *  round: the other human is thinking. */
+function controllerOf(seat: number): "local" | "remote" | "ai" {
+  if (seat === localSeat) return "local";
+  if (net.role === "host" && seat === net.guestSeat) return "remote";
+  return "ai";
+}
+
+/** True once the network game has been dealt - the host knows the guest's
+ *  seat, the guest knows its faction. Until then the lobby is still
+ *  talking, and the panel's status line is the only place it can. */
+function netStarted(): boolean {
+  if (net.role === "host") return net.guestSeat !== null;
+  if (net.role === "guest") return net.faction !== null;
+  return false;
+}
+
+/** The display name of the OTHER human behind this faction, or null when
+ *  nobody is - every AI seat, and every seat in a solo game. Written once
+ *  and read by both surfaces that show it, the scoreboard row (through the
+ *  hud callback) and the map hover, so the two cannot disagree.
+ *
+ *  Plain text, deliberately: a player's name is neither a card name nor a
+ *  faction name, so there is nothing here for the rich-text rule to point
+ *  at. The faction beside it stays a segment wherever it is drawn. */
+function playerNameOfFaction(factionId: string): string | null {
+  if (net.role === "host" && net.guestSeat !== null) {
+    return game.players[net.guestSeat]?.factionId === factionId
+      ? (net.session?.guestName() ?? "Guest")
+      : null;
+  }
+  if (net.role === "guest") {
+    // The host is seat 0 in every dealt game - pickFaction seats the
+    // picking player first and the guest's seat is one of the others.
+    return game.players[0]?.factionId === factionId
+      ? (net.session?.hostName() ?? "Host")
+      : null;
+  }
+  return null;
+}
 
 function localHuman() {
   return game.players[localSeat];
@@ -716,6 +803,11 @@ function hoverLines(region: Region): TooltipLine[] {
   const lines: TooltipLine[] = [
     { text: `${region.name} (${factionById.get(region.faction)!.name})` },
   ];
+  // Straight under the land's name, because "who is playing this" outranks
+  // everything the rules have to say about it. A player name is plain text
+  // and names no card or faction, so this line stays inside the naming rule.
+  const otherHuman = playerNameOfFaction(region.faction);
+  if (otherHuman !== null) lines.push({ text: `Played by ${otherHuman}` });
   if (!inPlay() || !human) return lines;
   const held = allegianceOf(region.faction, human.factionId);
   if (held !== null) lines.push({ text: held });
@@ -905,6 +997,18 @@ function revealFoundedSettlements(): void {
   }
 }
 
+/** The state to RENDER, which is the state to play only in a solo or host
+ *  game. The engine's endings pivot on the host's seat, so a guest whose
+ *  host has won holds a state that says "victory" and means the opposite -
+ *  `guestPhaseView` maps it. Nothing but the hud reads this: the map draws
+ *  the same board either way, and every rules question still asks `game`. */
+function viewState(): GameState {
+  if (net.role === "guest" && net.faction !== null) {
+    return { ...game, phase: guestPhaseView(game, net.faction) };
+  }
+  return game;
+}
+
 function refresh(): void {
   applyOwnership();
   applyTargeting();
@@ -916,7 +1020,14 @@ function refresh(): void {
   // status bar and the log filter both read the pin. Free when nothing moved -
   // setPinned early-returns on an unchanged id.
   hud.setPinned(pinnedFactionId());
-  hud.update(game);
+  hud.update(viewState());
+  // The menu carries the panel; so does a network game that has lost its
+  // session, or one whose lobby is still being filled in - the status line
+  // is the only place either of those speaks.
+  netPanel.setVisible(
+    game.phase === "main-menu" ||
+      (net.role !== "solo" && (net.session === null || !netStarted())),
+  );
   applyHighlight(hoveredRegion, hoveredRegion?.faction ?? null);
   // The tip outlives the state it describes: it stays up while a card is
   // played and the AI answers behind it, and every number on it - the leads,
@@ -952,25 +1063,58 @@ function bankRunProgress(): void {
  *  just changed, and the "before" of every summary line is then the number
  *  the player was looking at while it flew. Revealing the AI round early
  *  would make that "before" a lie. */
+/** Runs AI seats back to back until a human-controlled seat - this screen's
+ *  or the remote one's - is on turn or the run ends, then settles the
+ *  screen. The host also pushes the settled state to the guest and says who
+ *  it is waiting for; a remote seat holding the turn keeps input locked
+ *  here, because the round has not finished, it has moved elsewhere. */
+function resumeChain(): void {
+  let iterations = 0;
+  while (game.phase === "playing" && controllerOf(game.current) === "ai") {
+    if (++iterations > 1000) {
+      console.error("AI chain stalled - breaking");
+      break;
+    }
+    game = advance(aiTakeTurn(game, rng), rng);
+  }
+  if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
+  if (net.role === "host") net.session?.pushUpdate();
+  resolving =
+    game.phase === "playing" && controllerOf(game.current) === "remote";
+  refresh();
+  updateWaitingStatus();
+}
+
 function afterHumanAction(): void {
   game = advance(game, rng);
   if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
+  if (net.role === "host") net.session?.pushUpdate();
   refresh();
-  if (game.phase !== "playing" || isLocalTurn()) return;
+  if (game.phase !== "playing" || controllerOf(game.current) === "local") {
+    updateWaitingStatus();
+    return;
+  }
   resolving = true;
   hud.afterPlayAnimation(() => {
-    let iterations = 0;
-    while (game.phase === "playing" && !isLocalTurn()) {
-      if (++iterations > 1000) {
-        console.error("AI chain stalled - breaking");
-        break;
-      }
-      game = advance(aiTakeTurn(game, rng), rng);
-    }
-    if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
-    resolving = false;
-    refresh();
+    resumeChain();
   });
+}
+
+/** The status bar's "waiting for the other human" line. Only the host draws
+ *  one: it is the seat it knows a name for. Everything between a guest's own
+ *  turns is the host's whole world moving - several seats, several plays -
+ *  and the activity log already says what each of them did. */
+function updateWaitingStatus(): void {
+  const remote =
+    game.phase === "playing" && controllerOf(game.current) === "remote";
+  if (remote && net.role === "host") {
+    hud.setWaiting(
+      game.players[game.current].factionId,
+      net.session?.guestName() ?? undefined,
+    );
+    return;
+  }
+  hud.setWaiting(null);
 }
 
 /** After a completed human PLAY. An unlimited turn stays open: wait out the
@@ -980,6 +1124,10 @@ function afterHumanAction(): void {
 function afterHumanPlay(): void {
   if (game.rules.turn === "unlimited" && game.phase === "playing") {
     resolving = true;
+    // Nothing else will push this play: the turn stays open, so there is no
+    // advance behind it and no AI chain to settle. Without this the guest
+    // would not see the host's card until the whole turn finally ended.
+    if (net.role === "host") net.session?.pushUpdate();
     refresh();
     hud.afterPlayAnimation(() => {
       resolving = false;
@@ -995,6 +1143,26 @@ const hud = createHud(
   {
     onNewGame() {
       bankRunProgress();
+      // A DEALT network game cannot be restarted for one seat, so New game
+      // abandons it outright: say so on the wire and hand the broker id back
+      // rather than leave a half-live session behind. A game still in the
+      // lobby is the opposite case - "Host a game" and then New game to reach
+      // the deck screen is the ordinary way in, and tearing the session down
+      // there would make hosting impossible.
+      if (net.role !== "solo" && netStarted()) {
+        net.session?.close();
+        netPeer?.close();
+        netPeer = null;
+        net = { role: "solo" };
+        localSeat = 0;
+        app.classList.remove("net-guest");
+        hud.setWaiting(null);
+      } else if (net.role === "host") {
+        // The fresh game holds no pick, so the lobby must stop reporting one
+        // or the guest's map keeps a land marked as taken.
+        net.hostPick = null;
+        net.session?.sendLobby();
+      }
       // Belt-and-braces: onNewGame is unreachable mid-resolution in practice
       // (the menu is hidden while playing, and the postmortem appears only
       // once the run has ended), but a stray call must not leave a stale
@@ -1015,14 +1183,54 @@ const hud = createHud(
       refresh();
     },
     onSurrender() {
+      // Ending the run is a host-seat privilege: the engine's endings pivot
+      // on that seat, and a guest surrendering would have to end the host's
+      // game too. The button is hidden from the guest as well (`.net-guest`
+      // in style.css); this is the gate that does not depend on CSS.
+      if (net.role === "guest") return;
       if (game.phase !== "playing" || resolving) return;
       disarm();
       game = surrender(game);
       bankRunProgress();
+      // The run is over for both of them, and this is the only push that
+      // will ever carry that - nothing advances behind a surrender.
+      if (net.role === "host") net.session?.pushUpdate();
       refresh();
     },
     onPlayCard(index) {
       if (!isLocalTurn() || game.playedThisTurn || resolving) return;
+      if (net.role === "guest") {
+        if (discardMode()) {
+          disarm();
+          sendGuestAction({
+            type: "discard", cardIndex: index,
+            cardId: localHuman().hand[index],
+          });
+          return;
+        }
+        const guestCard = CARDS[localHuman().hand[index]];
+        if (guestCard?.targeted) {
+          // Arming stays local - it is a question about this screen's map,
+          // and only the answer, the commit, has to cross the wire.
+          if (armed === index) {
+            disarm();
+            return;
+          }
+          armed = index;
+          if (armedTargets().length === 0) {
+            disarm();
+            return;
+          }
+          applyTargeting();
+          hud.setArmed(index, guestCard.name);
+          return;
+        }
+        disarm();
+        sendGuestAction({
+          type: "play", cardIndex: index, cardId: localHuman().hand[index],
+        });
+        return;
+      }
       if (discardMode()) {
         disarm();
         game = discardCard(game, index);
@@ -1053,6 +1261,10 @@ const hud = createHud(
       if (!isLocalTurn() || game.playedThisTurn || resolving) return;
       if (game.rules.turn !== "unlimited") return;
       disarm();
+      if (net.role === "guest") {
+        sendGuestAction({ type: "end-turn" });
+        return;
+      }
       game = endTurn(game);
       afterHumanAction();
     },
@@ -1112,6 +1324,15 @@ const hud = createHud(
       // region: the lookup above can miss, and a name with no polygon must
       // still dim the log to the lines that name it.
       applyHighlight(region, factionId);
+    },
+    // The seat this screen plays, as a player id. Seat 0 in a solo or host
+    // game; the guest learns its own seat from the start snapshot, which is
+    // why this is a callback rather than a constant handed to createHud.
+    localPlayerId() {
+      return game.players[localSeat]?.id ?? 1;
+    },
+    playerNameOf(factionId) {
+      return playerNameOfFaction(factionId);
     },
     // Read after bankRunProgress() has folded this run in - the postmortem
     // only ever renders on an ended run, and every route that ends one banks
@@ -1196,12 +1417,249 @@ const deckScreen = createDeckScreen(app, {
     // is shown - with the very picks it just reported, which is a no-op.
     meta = { ...meta, lastPicks: [...selectedIds] };
     saveMeta(storage, meta);
+    if (net.role === "guest") {
+      // The deck the host will deal this seat from, held until the map click
+      // names the land it belongs to. The local transitions below it are a
+      // staging area only - they carry the guest to the faction-pick screen,
+      // and the host's start snapshot replaces every one of them.
+      net.deckCards = buildPlayerDeck(meta.knownCards, selectedIds);
+      game = chooseRules(game, rulesPrefs);
+      game = chooseDeck(game, net.deckCards);
+      deckScreen.update(deckScreenView(false));
+      netPanel.setStatus("Pick your land on the map.");
+      refresh();
+      return;
+    }
     game = chooseRules(game, rulesPrefs);
     game = chooseDeck(game, buildPlayerDeck(meta.knownCards, selectedIds));
     deckScreen.update(deckScreenView(false));
     refresh();
   },
 });
+
+/** Creates the host's session on a fresh wire. Called for the first
+ *  connection and for every rejoin after a drop, and the two differ by one
+ *  thing: once the game has been dealt this seat's faction is known, so the
+ *  session resumes with it and answers the next hello with a snapshot
+ *  instead of a lobby. */
+function attachHostWire(wire: Wire): void {
+  if (net.role !== "host") return;
+  const startedFaction =
+    net.guestSeat !== null ? game.players[net.guestSeat].factionId : null;
+  net.session = createHostSession(
+    wire,
+    {
+      getGame: () => game,
+      setGame: (g) => {
+        game = g;
+      },
+      rng,
+      name: netPanel.name(),
+      rules: () => rulesPrefs,
+      hostFactionId: () => (net.role === "host" ? net.hostPick : null),
+      onGuestHello(name) {
+        netPanel.setStatus(`${name} is connected.`);
+        netPanel.hideReconnect();
+        // A drop froze this screen (see onClosed); the rejoin thaws it back
+        // to whatever the turn order actually says, which is the same rule
+        // resumeChain settles on.
+        resolving =
+          game.phase === "playing" && controllerOf(game.current) === "remote";
+        refresh();
+        updateWaitingStatus();
+      },
+      onGuestPick() {
+        tryDeal();
+      },
+      onGuestAction() {
+        // The guest's play is already committed and pushed; this runs the
+        // world on past it. `advance` no-ops while an unlimited turn is
+        // still open, so a guest playing twice is not cut short here.
+        game = advance(game, rng);
+        resumeChain();
+      },
+      onClosed() {
+        if (net.role !== "host") return;
+        net.session = null;
+        // Nothing may act while the two sides cannot agree on what happened.
+        resolving = game.phase === "playing";
+        hud.setWaiting(null);
+        netPanel.setVisible(true);
+        netPanel.setStatus(
+          "Your friend disconnected. The game is paused until they rejoin with the same link.",
+        );
+      },
+    },
+    startedFaction !== null ? { guestFactionId: startedFaction } : undefined,
+  );
+  netPanel.setStatus("Connected.");
+}
+
+/** Deals once both humans have picked. The guest's deck rides in through
+ *  pickFaction's `aiDeckFor` override: its seat is built from the deck the
+ *  guest chose out of its own collection, and every other seat from the
+ *  ordinary AI deck. */
+function tryDeal(): void {
+  if (net.role !== "host" || net.session === null) return;
+  const pick = net.session.guestPick();
+  if (net.hostPick === null || pick === null) return;
+  if (game.phase !== "pick-faction") return;
+  game = pickFaction(game, net.hostPick, rng, (r, fid) =>
+    fid === pick.factionId ? pick.deck : buildAiDeck(r),
+  );
+  net.guestSeat = seatOfFaction(game, pick.factionId);
+  net.session.markStarted(pick.factionId);
+  netPanel.setVisible(false);
+  refresh();
+  updateWaitingStatus();
+}
+
+/** The guest's move goes to the host, which is the only place a card is
+ *  ever really played. The screen locks until the host answers with the
+ *  state that followed - or refuses it, which unlocks without moving. */
+function sendGuestAction(a: NetAction): void {
+  if (net.role !== "guest" || net.session === null) return;
+  resolving = true;
+  refresh();
+  net.session.sendAction(a);
+}
+
+function guestPickFaction(fid: string): void {
+  if (net.role !== "guest" || net.session === null) return;
+  if (net.deckCards === null) return;
+  net.session.sendPick(net.deckCards, fid);
+  netPanel.setStatus("Waiting for the host to start the game...");
+}
+
+function attachGuestWire(wire: Wire, hostId: string): void {
+  const prev = net.role === "guest" ? net : null;
+  // The role is taken BEFORE the session exists, because createGuestSession
+  // says hello on the spot and the host's answer can land in these callbacks
+  // before this function has finished running.
+  net = {
+    role: "guest", session: null, hostId,
+    deckCards: prev?.deckCards ?? null, faction: prev?.faction ?? null,
+  };
+  app.classList.add("net-guest");
+  const session = createGuestSession(wire, {
+    name: netPanel.name(),
+    onHostHello(name) {
+      netPanel.setStatus(`Connected to ${name}. Pick your deck and land.`);
+      netPanel.hideReconnect();
+      // The guest walks the same local screens a solo player does to reach
+      // the map click; its local sim is a staging area the start snapshot
+      // replaces wholesale.
+      if (game.phase === "main-menu") {
+        game = startGame(game);
+        deckScreen.update(deckScreenView(true));
+      }
+    },
+    onLobby(info) {
+      // The host's rules are the game's rules - there is one engine and it
+      // is theirs. The deck screen redraws so the picker shows them.
+      rulesPrefs = info.rules;
+      deckScreen.update(deckScreenView(game.phase === "deck-building"));
+      if (info.takenFactionId !== null) {
+        netPanel.setStatus("Host has picked their land.");
+      }
+    },
+    onState(g, fid) {
+      game = g;
+      if (net.role === "guest") net.faction = fid;
+      localSeat = Math.max(0, seatOfFaction(g, fid));
+      resolving = false;
+      netPanel.setVisible(false);
+      refresh();
+      updateWaitingStatus();
+    },
+    onReject(reason) {
+      // A refused move leaves the state exactly where it was, so the only
+      // thing to undo is this screen's lock.
+      console.error("host rejected the action:", reason);
+      resolving = false;
+      refresh();
+    },
+    onRefused(reason) {
+      netPanel.setStatus(reason);
+    },
+    onClosed() {
+      if (net.role !== "guest") return;
+      net.session = null;
+      resolving = true; // nothing can act until the host is back
+      hud.setWaiting(null);
+      netPanel.setVisible(true);
+      netPanel.setStatus("Connection lost.");
+      netPanel.showReconnect(() => startJoin(hostId));
+    },
+  });
+  if (net.role === "guest") net.session = session;
+}
+
+function startJoin(hostId: string): void {
+  if (boot !== null) {
+    netPanel.setStatus("Join links cannot carry test boot params.");
+    return;
+  }
+  netPanel.setStatus("Connecting...");
+  netPeer?.close();
+  netPeer = joinPeer(hostId, {
+    onWire(wire) {
+      attachGuestWire(wire, hostId);
+    },
+    onError(reason) {
+      netPanel.setStatus(`Could not connect: ${reason}`);
+      netPanel.showReconnect(() => startJoin(hostId));
+    },
+  });
+}
+
+const netPanel = createNetPanel(
+  app,
+  {
+    onHost() {
+      if (net.role !== "solo") return;
+      netPanel.setStatus("Getting an id from the broker...");
+      netPeer = hostPeer({
+        onOpen(id) {
+          net = {
+            role: "host", session: null, hostPick: null, guestSeat: null,
+            peerId: id,
+          };
+          netPanel.showInvite(
+            `${window.location.origin}${window.location.pathname}?join=${id}`,
+            id,
+          );
+          netPanel.setStatus("Waiting for a friend to join...");
+        },
+        onWire(wire) {
+          attachHostWire(wire);
+        },
+        onError(reason) {
+          netPanel.setStatus(`Connection error: ${reason}`);
+        },
+      });
+    },
+    onJoin(hostId) {
+      startJoin(hostId);
+    },
+  },
+  storage,
+  "Player",
+);
+netPanel.setVisible(game.phase === "main-menu");
+
+// An invite link opens straight into the join, so the second player never
+// has to find the panel. A booted URL is refused rather than half-honoured:
+// the two would deal different games (see `joinId` above).
+if (joinId !== null) {
+  if (boot !== null) {
+    netPanel.setVisible(true);
+    netPanel.setStatus("Join links cannot carry test boot params.");
+  } else {
+    netPanel.setVisible(true);
+    startJoin(joinId);
+  }
+}
 
 // A run booted straight into an ending never passed through the code paths
 // that bank it, and the postmortem's XP bar would animate up from zero.
@@ -1244,7 +1702,22 @@ const interaction = attachInteraction(svg, regionPaths, data, {
     if (resolving) return true; // swallow: no selection while the round resolves
     if (game.phase === "pick-faction") {
       if (regionId === null) return true;
-      game = pickFaction(game, regionById.get(regionId)!.faction, rng);
+      const picked = regionById.get(regionId)!.faction;
+      if (net.role === "host") {
+        // A host cannot deal on the click: the other seat has not been
+        // chosen yet. The pick is held, announced to the lobby, and the deal
+        // happens in tryDeal whenever the second of the two picks lands.
+        if (picked === net.session?.guestPick()?.factionId) return true;
+        net.hostPick = picked;
+        net.session?.sendLobby();
+        tryDeal();
+        return true;
+      }
+      if (net.role === "guest") {
+        guestPickFaction(picked);
+        return true;
+      }
+      game = pickFaction(game, picked, rng);
       refresh();
       return true;
     }
@@ -1257,8 +1730,15 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       const valid = faction !== undefined && armedTargets().includes(faction);
       disarm();
       if (valid) {
-        game = playCard(game, idx, rng, faction);
-        afterHumanPlay();
+        if (net.role === "guest") {
+          sendGuestAction({
+            type: "play", cardIndex: idx,
+            cardId: localHuman().hand[idx], targetId: faction,
+          });
+        } else {
+          game = playCard(game, idx, rng, faction);
+          afterHumanPlay();
+        }
       }
       return true;
     }

@@ -1543,6 +1543,14 @@ svg.map.dragging {
   border-color: #7a2f2f;
 }
 
+/* Ending the run is a host-seat privilege - the engine's endings pivot on
+   that seat - so the guest is not offered it. `onSurrender` refuses the
+   guest too; this only stops a button nothing behind it would honour from
+   being on screen at all. */
+.net-guest .surrender-btn {
+  display: none;
+}
+
 /* Bottom-right, clear of the hand fan and the discard pile - re-check the
    corner in a browser whenever either moves. */
 .end-turn-btn {

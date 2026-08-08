@@ -1,7 +1,7 @@
 import { CARDS, FAN_OUT_CARDS, guardAgainst } from "./cards";
 import { applyRarityBand } from "./rarity-band";
 import {
-  isHumanTurn, victoryRealmSize, viewOf, type GameEvent, type GameState,
+  victoryRealmSize, viewOf, type GameEvent, type GameState,
 } from "./game";
 import { flyCard, runAnimation, type Flight } from "./animate";
 import { fullRealmOf, incorporatedRealmOf } from "./relations";
@@ -592,6 +592,16 @@ export function createHud(
    *  has no players yet. */
   const humanPlayer = (state: GameState) =>
     state.players.find((pl) => pl.id === localPlayerId());
+  /** Whether the seat on turn is the one this screen plays. The engine's
+   *  own `isHumanTurn` answers "is it seat 0", which is the host's seat -
+   *  true, and the wrong answer, on every screen but the host's. The hand,
+   *  the End turn button and the status line all pivot on this, so a guest
+   *  asking the engine's question could not play on its own turn and could
+   *  click on the host's. Identical to `state.current === 0` wherever
+   *  `localPlayerId` is left at its default. */
+  const isLocalTurn = (state: GameState): boolean =>
+    state.phase === "playing" &&
+    state.players[state.current]?.id === localPlayerId();
 
   const factionName = (id: string | undefined): string =>
     (id !== undefined ? factionNames.get(id) : undefined) ?? id ?? "";
@@ -1335,7 +1345,7 @@ export function createHud(
     if (!human) return;
     const n = human.hand.length;
     const canPlay =
-      isHumanTurn(state) && !state.playedThisTurn &&
+      isLocalTurn(state) && !state.playedThisTurn &&
       !(cb.isResolving?.() ?? false);
     const canPlayCardCb = cb.canPlayCard ?? (() => true);
     human.hand.forEach((cardId, i) => {
@@ -1589,7 +1599,7 @@ export function createHud(
             richTextHooks,
           ),
         );
-      } else if (isHumanTurn(state)) {
+      } else if (isLocalTurn(state)) {
         if (state.rules.turn === "unlimited") {
           statusText.textContent =
             `Turn ${state.turn} - play cards, then end your turn`;
@@ -1813,7 +1823,7 @@ export function createHud(
           cb.onEndTurn === undefined,
       );
       endTurnBtn.disabled =
-        !isHumanTurn(state) || state.playedThisTurn ||
+        !isLocalTurn(state) || state.playedThisTurn ||
         (cb.isResolving?.() ?? false);
 
       renderStatus(state);
