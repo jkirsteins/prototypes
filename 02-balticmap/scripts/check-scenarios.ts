@@ -17,7 +17,7 @@ for (const scenario of SCENARIOS) {
   const secs = Number(process.hrtime.bigint() - started) / 1e9;
   console.log(
     `\n${result.ok ? "PASS" : "FAIL"}  ${scenario.id}` +
-      `  (${scenario.games} games, ${scenario.humanPolicy}/${scenario.humanDeck}` +
+      `  (${scenario.games} games, ${scenario.humanPolicy}/${scenario.humanBuild}` +
       ` vs ${scenario.arm}, ${secs.toFixed(1)}s)`,
   );
   console.log(`      ${scenario.description}`);

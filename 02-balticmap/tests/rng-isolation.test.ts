@@ -1,36 +1,63 @@
 import { describe, it, expect } from "vitest";
-import { runGame } from "../src/sim";
-import baseline from "./fixtures/seeded-games-baseline.json";
-import { BASELINE_FACTION, BASELINE_SEEDS, BASELINE_TURN_CAP } from "./baseline-config";
+import {
+  advance, chooseBuild, newGame, pickFaction, startGame, type GameState,
+} from "../src/game";
+import { aiTakeTurn } from "../src/ai";
+import {
+  SIM_ADJACENCY, SIM_DEFENSE_MAX, SIM_ETHNICITIES, SIM_FACTION_IDS,
+  SIM_SITE_CAPS, naiveHumanTurn, seededRng,
+} from "../src/sim";
+import { BASELINE_FACTION } from "./baseline-config";
 
-describe("seeded games", () => {
-  // Ruler naming must be a pure function of faction and turn, never a draw
-  // from the rng that shuffles decks. If a name ever costs an rng value,
-  // every seeded game diverges from here and this test says so.
-  //
-  // A deliberate change to the CARDS set is the other, legitimate way this
-  // fixture can go stale: buildAiDeck() draws one rng() value per
-  // deck-buildable non-basic in CARDS's declaration order, so adding or
-  // removing a card shifts every later rng draw for every seeded game and
-  // requires re-freezing the fixture with `npm run capture:baseline`. To
-  // tell that apart from a real bug (an accidental rng draw reaching the
-  // rules), run one of the fixed-deck world arms (e.g. conquest-scaled or
-  // conquest-omens via `npm run simulate:world`) before and after the change:
-  // those arms build their decks explicitly and never call buildAiDeck. If
-  // their output also moved, the code is wrong - fix it, do not re-freeze. If
-  // their output is byte-identical, only deck building moved and re-freezing
-  // this fixture is correct.
-  //
-  // A change to the AI policy is a third way this goes stale, and the most
-  // common one: different card choices mean different games. That is a
-  // behaviour change, so re-freeze - but apply the same fixed-deck-arm check
-  // first, because those arms run the policy too and will move with it. What
-  // must NOT move under a pure policy change is buildAiDeck's output for a
-  // given seed, since the policy consumes no rng of its own.
-  it("are unchanged by anything that does not touch the rules", () => {
-    const games = BASELINE_SEEDS.map((seed) =>
-      runGame({ seed, humanFaction: BASELINE_FACTION, turnCap: BASELINE_TURN_CAP }),
-    );
-    expect(games).toEqual(baseline);
+/** A short seeded run on the shipped map. Everything that consumes the one
+ *  rng stream - the strategy roll per AI seat, every shuffle, every
+ *  auto-resolved harvest - runs through here. */
+function playTo(seed: number, turnCap: number): GameState {
+  const rng = seededRng(seed);
+  let state = pickFaction(
+    chooseBuild(
+      startGame(newGame(
+        SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS,
+        SIM_DEFENSE_MAX,
+      )),
+      "warpath",
+    ),
+    BASELINE_FACTION,
+    rng,
+  );
+  while (state.phase === "playing" && state.turn <= turnCap) {
+    const next =
+      state.current === 0 ? naiveHumanTurn(state, rng) : aiTakeTurn(state, rng);
+    if (!next.playedThisTurn) throw new Error(`stuck turn ${state.turn}`);
+    state = next.phase === "playing" ? advance(next, rng) : next;
+  }
+  return state;
+}
+
+describe("rng isolation", () => {
+  // The draw contract of the new world: `pickFaction` rolls ONE strategy
+  // draw per AI seat, in seat order, before that seat's deck shuffle; ruler
+  // naming is a pure hash and must never cost a draw; a harvest offer always
+  // rolls exactly three. If any of those drifts, the two runs below diverge
+  // and this test says so - the successor of the frozen-fixture baseline,
+  // which measured a different game.
+  it("the same seed replays the identical game, log for log", () => {
+    for (const seed of [1, 7]) {
+      const a = playTo(seed, 40);
+      const b = playTo(seed, 40);
+      expect(b.log, `seed ${seed}`).toEqual(a.log);
+      expect(b.defense, `seed ${seed}`).toEqual(a.defense);
+      expect(b.disease, `seed ${seed}`).toEqual(a.disease);
+      expect(b.overlords, `seed ${seed}`).toEqual(a.overlords);
+      expect(b.rulers, `seed ${seed}`).toEqual(a.rulers);
+      expect(
+        b.players.map((p) => ({ deck: p.deck, hand: p.hand, discard: p.discard })),
+        `seed ${seed}`,
+      ).toEqual(
+        a.players.map((p) => ({ deck: p.deck, hand: p.hand, discard: p.discard })),
+      );
+      // Sanity: the run actually played out rather than ending on turn 1.
+      expect(a.log.filter((e) => e.type === "play").length).toBeGreaterThan(10);
+    }
   });
 });

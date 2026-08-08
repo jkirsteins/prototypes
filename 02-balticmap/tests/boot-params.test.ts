@@ -1,14 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
-  applyBootMeta, applyBootParams, BOOT_KNOWN_CARDS, parseBootParams,
-  type BootParams,
+  applyBootParams, parseBootParams, type BootParams,
 } from "../src/boot-params";
 import {
-  chooseDeck, newGame, isHumanTurn, OPENING_HAND, type GameState,
+  newGame, isHumanTurn, OPENING_HAND, TURNIP_HARVEST_THRESHOLD,
+  type GameState,
 } from "../src/game";
-import { buildPlayerDeck, pendingPacks } from "../src/meta";
-import { CARDS, DECK_SIZE, STARTING_KNOWN_CARDS } from "../src/cards";
-import { leadOf } from "../src/relations";
+import { defenseOf } from "../src/defense";
+import { rulerOf } from "../src/rulers";
 import { seededRng } from "../src/rng";
 import { DEFAULT_RULES } from "../src/rules";
 
@@ -43,24 +42,69 @@ describe("parseBootParams", () => {
     expect(parseBootParams("?utm_source=x&fbclid=y")).toBeNull();
   });
 
+  it("no longer recognises the retired meta params as boot keys", () => {
+    // deck=, known=, xp= and rel= died with the meta progression and the
+    // Might bar. A pre-flip URL naming only them is an ordinary URL now.
+    expect(parseBootParams("?deck=raid")).toBeNull();
+    expect(parseBootParams("?known=raid")).toBeNull();
+    expect(parseBootParams("?xp=25")).toBeNull();
+    expect(parseBootParams("?rel=alpha:might=3")).toBeNull();
+  });
+
   it("recognises each param on its own", () => {
     expect(parseBootParams("?seed=7")).not.toBeNull();
-    expect(parseBootParams("?deck=raid")).not.toBeNull();
+    expect(parseBootParams("?build=pestilence")).not.toBeNull();
     expect(parseBootParams("?screen=deck")).not.toBeNull();
     expect(parseBootParams("?faction=beta")).not.toBeNull();
     expect(parseBootParams("?hand=raid")).not.toBeNull();
-    expect(parseBootParams("?rel=alpha:might=1")).not.toBeNull();
     expect(parseBootParams("?turns=3")).not.toBeNull();
-    expect(parseBootParams("?known=alliance")).not.toBeNull();
-    expect(parseBootParams("?xp=25")).not.toBeNull();
+    expect(parseBootParams("?defense=alpha:100")).not.toBeNull();
+    expect(parseBootParams("?disease=alpha:beta:2")).not.toBeNull();
+    expect(parseBootParams("?leadership=alpha:100")).not.toBeNull();
+    expect(parseBootParams("?turnips=3")).not.toBeNull();
+    expect(parseBootParams("?wealth=2")).not.toBeNull();
     expect(parseBootParams("?popups=off")).not.toBeNull();
   });
 
   it("defaults everything the URL does not name", () => {
     expect(params("?seed=7")).toEqual({
-      seed: 7, deck: null, screen: null, faction: null, hand: null, rel: [],
-      turns: 0, known: null, xp: null, wealth: null, popups: null, rules: null,
+      seed: 7, build: null, screen: null, faction: null, hand: null, turns: 0,
+      defense: {}, disease: {}, leadership: {}, turnips: null, wealth: null,
+      popups: null, rules: null,
     });
+  });
+
+  it("reads build as one of the two builds, and drops anything else", () => {
+    expect(params("?build=warpath").build).toBe("warpath");
+    expect(params("?build=pestilence").build).toBe("pestilence");
+    // Dropped rather than thrown, like every parser here: a typo lands in the
+    // warpath default, which beats a page that will not build.
+    expect(params("?build=turnip-maxxing").build).toBeNull();
+    expect(params("?build=").build).toBeNull();
+  });
+
+  it("reads screen as the one stop it knows, and drops anything else", () => {
+    expect(params("?screen=deck").screen).toBe("deck");
+    expect(params("?screen=deckk").screen).toBeNull();
+    expect(params("?screen=").screen).toBeNull();
+  });
+
+  it("splits and trims the hand list", () => {
+    expect(params("?hand=raid, subjugate ,hillfort").hand)
+      .toEqual(["raid", "subjugate", "hillfort"]);
+    expect(params("?hand=").hand).toEqual([]);
+  });
+
+  it("caps the hand so a long list cannot overrun the hand row", () => {
+    const long = Array.from({ length: 40 }, () => "raid").join(",");
+    // HAND_LIMIT in src/boot-params.ts.
+    expect(params(`?hand=${long}`).hand).toHaveLength(10);
+  });
+
+  it("clamps turns to a sane range", () => {
+    expect(params("?turns=-5").turns).toBe(0);
+    expect(params("?turns=99999").turns).toBe(200);
+    expect(params("?turns=banana").turns).toBe(0);
   });
 
   it("parses and clamps wealth", () => {
@@ -69,54 +113,47 @@ describe("parseBootParams", () => {
     expect(params("?wealth=junk").wealth).toBeNull();
   });
 
-  it("wealth= sets the human treasury as it stands after the fast-forward", () => {
-    const g = boot("?faction=beta&turns=2&wealth=5");
-    expect(g.wealth.beta).toBe(5);
-    // absent, the treasury is whatever the run banked - never zeroed
-    const banked = boot("?faction=beta&turns=2");
-    expect(banked.wealth.beta).toBeGreaterThan(0);
+  it("clamps turnips UNDER the threshold, a state the game can actually hold", () => {
+    // The crossing play resets the counter and injects, so a counter at or
+    // past the threshold is a state no real game ever holds.
+    expect(params("?turnips=3").turnips).toBe(3);
+    expect(params("?turnips=9").turnips).toBe(TURNIP_HARVEST_THRESHOLD - 1);
+    expect(params(`?turnips=${TURNIP_HARVEST_THRESHOLD}`).turnips)
+      .toBe(TURNIP_HARVEST_THRESHOLD - 1);
+    expect(params("?turnips=-2").turnips).toBe(0);
+    expect(params("?turnips=junk").turnips).toBeNull();
   });
 
-  it("splits and trims id lists", () => {
-    expect(params("?deck=raid, subjugate ,fortify").deck)
-      .toEqual(["raid", "subjugate", "fortify"]);
-    expect(params("?deck=").deck).toEqual([]);
-    expect(params("?known=alliance, bodyguard ").known)
-      .toEqual(["alliance", "bodyguard"]);
-    // An absence and an empty list are different answers: null means "every
-    // card", [] means "only what everyone starts with".
-    expect(params("?known=").known).toEqual([]);
-    expect(params("?seed=1").known).toBeNull();
+  it("parses defense clauses and drops the unparseable ones", () => {
+    expect(params("?defense=alpha:100;beta:0").defense)
+      .toEqual({ alpha: 100, beta: 0 });
+    // A boot param runs before the HUD exists, so there is nothing to report
+    // an error on: anything nonsensical has to be silently ignored.
+    expect(params("?defense=alpha").defense).toEqual({});
+    expect(params("?defense=:100").defense).toEqual({});
+    expect(params("?defense=alpha:junk").defense).toEqual({});
+    expect(params("?defense=;;;").defense).toEqual({});
+    // Negative values clamp to 0 at parse time, the store's own floor.
+    expect(params("?defense=alpha:-50").defense).toEqual({ alpha: 0 });
   });
 
-  it("reads screen as the one stop it knows, and drops anything else", () => {
-    expect(params("?screen=deck").screen).toBe("deck");
-    // Dropped rather than thrown, like an unparseable rel clause: a typo lands
-    // in the ordinary run, which beats a page that will not build.
-    expect(params("?screen=deckk").screen).toBeNull();
-    expect(params("?screen=").screen).toBeNull();
+  it("parses disease as polygon:owner:count, dropping empty stacks", () => {
+    expect(params("?disease=alpha:beta:2;gamma:delta:1").disease)
+      .toEqual({ alpha: { beta: 2 }, gamma: { delta: 1 } });
+    // Two owners on one polygon - stacks are owned, and the grammar carries it.
+    expect(params("?disease=alpha:beta:2;alpha:gamma:1").disease)
+      .toEqual({ alpha: { beta: 2, gamma: 1 } });
+    // A zero or negative count is an absent owner, per the store convention.
+    expect(params("?disease=alpha:beta:0").disease).toEqual({});
+    expect(params("?disease=alpha:beta").disease).toEqual({});
+    expect(params("?disease=alpha").disease).toEqual({});
   });
 
-  it("clamps xp, so a URL cannot spin levelForXp the way a bad record could", () => {
-    expect(params("?xp=25").xp).toBe(25);
-    expect(params("?xp=0").xp).toBe(0);
-    expect(params("?xp=-5").xp).toBe(0);
-    // The freeze src/meta.ts records: 1e30 sent levelForXp counting for ~2.8e14
-    // iterations. Spelled in digits, not exponent notation - parseInt stops at
-    // the "e", so "1e30" would clamp to 1 and prove nothing.
-    expect(params(`?xp=${"9".repeat(30)}`).xp).toBeLessThanOrEqual(1e9);
-    expect(params("?xp=nonsense").xp).toBeNull();
-  });
-
-  it("caps the hand so a long list cannot overrun the hand row", () => {
-    const long = Array.from({ length: 40 }, () => "raid").join(",");
-    expect(params(`?hand=${long}`).hand).toHaveLength(DECK_SIZE);
-  });
-
-  it("clamps turns to a sane range", () => {
-    expect(params("?turns=-5").turns).toBe(0);
-    expect(params("?turns=99999").turns).toBe(200);
-    expect(params("?turns=banana").turns).toBe(0);
+  it("parses leadership clauses", () => {
+    expect(params("?leadership=alpha:100;beta:50").leadership)
+      .toEqual({ alpha: 100, beta: 50 });
+    expect(params("?leadership=alpha").leadership).toEqual({});
+    expect(params("?leadership=alpha:junk").leadership).toEqual({});
   });
 
   it("reads popups as the log pref, on or off", () => {
@@ -129,80 +166,28 @@ describe("parseBootParams", () => {
   it("a URL naming only join is not a boot param - the player's page stays untouched", () => {
     expect(parseBootParams("?join=abc123")).toBeNull();
   });
-
-  it("parses relation clauses, both signs", () => {
-    expect(params("?rel=alpha:might=3;gamma:might=-1").rel).toEqual([
-      { factionId: "alpha", might: 3 },
-      { factionId: "gamma", might: -1 },
-    ]);
-  });
-
-  it("drops a pre-removal status= pair but keeps the clause's might", () => {
-    // Old URLs named a second track; the unknown-track rule swallows it so
-    // the page still boots.
-    expect(params("?rel=alpha:might=3,status=-2;gamma:status=1").rel).toEqual([
-      { factionId: "alpha", might: 3 },
-    ]);
-  });
-
-  it("drops unparseable relation clauses rather than throwing", () => {
-    // A boot param runs before the HUD exists, so there is nothing to report an
-    // error on: anything nonsensical has to be silently ignored.
-    expect(params("?rel=alpha").rel).toEqual([]);
-    expect(params("?rel=:might=1").rel).toEqual([]);
-    expect(params("?rel=alpha:vibes=9").rel).toEqual([]);
-    expect(params("?rel=alpha:might=nope").rel).toEqual([]);
-    expect(params("?rel=;;;").rel).toEqual([]);
-  });
-});
-
-describe("BOOT_KNOWN_CARDS", () => {
-  it("is every deck-buildable card, so ?deck= means the same thing anywhere", () => {
-    const buildable = Object.values(CARDS).filter((c) => c.deckBuildable);
-    expect(BOOT_KNOWN_CARDS).toHaveLength(buildable.length);
-    expect(BOOT_KNOWN_CARDS).toContain("raid");
-    // Revolt is reached by playing Seeds of revolt, never built.
-    expect(BOOT_KNOWN_CARDS).not.toContain("revolt");
-  });
 });
 
 describe("applyBootParams", () => {
   it("stops at the faction prompt when no faction is named", () => {
-    const g = boot("?deck=raid,subjugate");
+    const g = boot("?build=pestilence");
     expect(g.phase).toBe("pick-faction");
-    expect(g.humanDeck).toHaveLength(DECK_SIZE);
-    expect(g.humanDeck).toContain("raid");
+    expect(g.humanStrategy).toBe("pestilence");
   });
 
-  it("caps a duplicate deck pick by the copies rule", () => {
-    // The rules are stamped before the deck, so the same URL grammar carries
-    // both: one Raid by default, two under rules=copies:double.
-    const single = boot("?deck=raid,raid,subjugate");
-    expect(single.humanDeck.filter((id) => id === "raid")).toHaveLength(1);
-    const double = boot("?deck=raid,raid,subjugate&rules=copies:double");
-    expect(double.humanDeck.filter((id) => id === "raid")).toHaveLength(2);
-    expect(double.humanDeck).toHaveLength(DECK_SIZE);
+  it("defaults the build to warpath", () => {
+    expect(boot("?faction=beta").humanStrategy).toBe("warpath");
   });
 
-  it("stops at the deck screen when ?screen=deck", () => {
-    // The only stop that has to be asked for. chooseDeck runs whether or not
-    // ?deck= was named and buildPlayerDeck always returns a legal deck, so
-    // without this the phase could never be left at deck-building.
-    const g = boot("?screen=deck&deck=raid,subjugate");
+  it("stops at the build screen when ?screen=deck", () => {
+    // The only stop that has to be asked for. chooseBuild runs whether or not
+    // ?build= was named, so without this the phase could never be left at
+    // deck-building.
+    const g = boot("?screen=deck&build=pestilence");
     expect(g.phase).toBe("deck-building");
-    // newGame seeds a default humanDeck, so "chooseDeck was withheld" is that
-    // the deck is still that default rather than the one ?deck= asked for.
-    expect(g.humanDeck).toEqual(fresh().humanDeck);
-  });
-
-  it("lets the booted deck screen continue into a run", () => {
-    // Withholding the click, not a dead end: the phase it stops in is the one
-    // "Choose your lands" runs chooseDeck from.
-    const g = chooseDeck(boot("?screen=deck"), buildPlayerDeck(
-      BOOT_KNOWN_CARDS, ["raid", "subjugate"],
-    ));
-    expect(g.phase).toBe("pick-faction");
-    expect(g.humanDeck).toHaveLength(DECK_SIZE);
+    // Withheld, not applied early: the build is chosen by the click this URL
+    // is withholding, so the state still carries the newGame default.
+    expect(g.humanStrategy).toBe("warpath");
   });
 
   it("ignores the params past the stop, rather than half-applying them", () => {
@@ -211,18 +196,11 @@ describe("applyBootParams", () => {
     expect(g.players).toEqual([]);
   });
 
-  it("takes the standard deck when ?deck= is absent", () => {
-    // Not the ten-turnip filler `buildPlayerDeck([])` would give: a boot with no
-    // opinion about the deck should deal a hand worth testing with.
-    const g = boot("?faction=beta");
-    expect(g.humanDeck).toHaveLength(DECK_SIZE);
-    expect(new Set(g.humanDeck).size).toBeGreaterThan(1);
-  });
-
   it("boots into a playable run on the human's turn", () => {
-    const g = boot("?faction=beta&deck=raid,subjugate,fortify");
+    const g = boot("?faction=beta&build=pestilence");
     expect(g.phase).toBe("playing");
     expect(g.players[0].factionId).toBe("beta");
+    expect(g.players[0].strategy).toBe("pestilence");
     expect(g.current).toBe(0);
     expect(g.playedThisTurn).toBe(false);
     // pickFaction ends in beginTurn, which draws: the opening hand plus one.
@@ -233,14 +211,6 @@ describe("applyBootParams", () => {
     const g = boot("?faction=atlantis");
     expect(g.phase).toBe("pick-faction");
     expect(g.players).toEqual([]);
-  });
-
-  it("still reaches a legal deck when ?deck= names cards that do not exist", () => {
-    // chooseDeck no-ops on anything but exactly DECK_SIZE cards, so a typo here
-    // used to be a page stuck on a hidden deck screen.
-    const g = boot("?faction=beta&deck=raid,notacard,alsonot");
-    expect(g.phase).toBe("playing");
-    expect(g.humanDeck).toHaveLength(DECK_SIZE);
   });
 
   describe("?turns", () => {
@@ -268,7 +238,8 @@ describe("applyBootParams", () => {
       const b = boot("?seed=42&faction=beta&turns=5", 42);
       expect(a.log).toEqual(b.log);
       expect(a.players).toEqual(b.players);
-      expect(a.relations).toEqual(b.relations);
+      expect(a.defense).toEqual(b.defense);
+      expect(a.disease).toEqual(b.disease);
     });
   });
 
@@ -276,9 +247,9 @@ describe("applyBootParams", () => {
     it("replaces the hand, and does so after the fast-forward", () => {
       // Staged after the rounds are played, or the policy plays the very cards
       // that were put there for the player to play.
-      const g = boot("?faction=beta&turns=4&hand=alliance,raid");
+      const g = boot("?faction=beta&turns=4&hand=subjugate,raid");
       if (g.phase !== "playing") throw new Error("run ended during the boot");
-      expect(g.players[0].hand).toEqual(["alliance", "raid"]);
+      expect(g.players[0].hand).toEqual(["subjugate", "raid"]);
     });
 
     it("ignores card ids that do not exist", () => {
@@ -293,35 +264,88 @@ describe("applyBootParams", () => {
     });
 
     it("accepts injection-only ids - the browser route to a Turnip harvest", () => {
-      // Same route hand=revolt uses: any id in CARDS boots, deck-buildable or
-      // not, so a harvest check is one navigation.
+      // Any id in CARDS boots, deck-buildable or not, so a harvest check is
+      // one navigation.
       expect(boot("?faction=beta&hand=turnip-harvest").players[0].hand)
         .toEqual(["turnip-harvest"]);
     });
   });
 
-  describe("?rel", () => {
-    const lead = (g: GameState, other: string) =>
-      leadOf(g.relations, g.players[0].factionId, other);
+  describe("?wealth", () => {
+    it("sets the human treasury as it stands after the fast-forward", () => {
+      const g = boot("?faction=beta&turns=2&wealth=5");
+      expect(g.wealth.beta).toBe(5);
+      // absent, the treasury is whatever the run banked - never zeroed
+      const banked = boot("?faction=beta&turns=2");
+      expect(banked.wealth.beta).toBeGreaterThan(0);
+    });
+  });
 
-    it("sets the human's signed lead, both signs", () => {
-      const g = boot("?faction=beta&rel=alpha:might=3");
-      expect(lead(g, "alpha")).toBe(3);
-      const behind = boot("?faction=beta&rel=alpha:might=-2");
-      expect(lead(behind, "alpha")).toBe(-2);
+  describe("?defense", () => {
+    const dv = (g: GameState) => ({ defense: g.defense, defenseMax: g.defenseMax });
+
+    it("writes the store, clamped into [0, max]", () => {
+      const g = boot("?faction=beta&defense=alpha:100;gamma:0");
+      expect(g.defense.alpha).toBe(100);
+      expect(g.defense.gamma).toBe(0);
+      expect(defenseOf(dv(g), "alpha")).toBe(100);
     });
 
-    it("reaches the asked-for lead over relations a fast-forward already moved", () => {
-      // Counters only grow, so this has to bump whichever direction is short
-      // rather than assign - and after four rounds both directions are dirty.
-      const g = boot("?faction=beta&turns=4&rel=alpha:might=2");
-      if (g.phase !== "playing") throw new Error("run ended during the boot");
-      expect(lead(g, "alpha")).toBe(2);
+    it("deletes the key at or above max - absent means pristine", () => {
+      // The store's own convention: a key present at max would be a no-op
+      // entry every walk and every badge has to special-case.
+      const g = boot("?faction=beta&defense=alpha:999");
+      expect("alpha" in g.defense).toBe(false);
+      expect(defenseOf(dv(g), "alpha")).toBe(600);
     });
 
-    it("ignores a faction that is not on the map, and the human themselves", () => {
-      const g = boot("?faction=beta&rel=atlantis:might=3;beta:might=9");
-      expect(g.relations).toEqual({});
+    it("deletes a key the fast-forward had damaged, not only fresh ones", () => {
+      const ran = boot("?seed=5&faction=beta&turns=4", 5);
+      const damaged = Object.keys(ran.defense)[0];
+      // Four rounds of 5-Raid starting decks always draw blood somewhere; if
+      // this ever fails, raise turns= rather than weakening the test.
+      expect(damaged).toBeDefined();
+      const g = boot(`?seed=5&faction=beta&turns=4&defense=${damaged}:999`, 5);
+      expect(damaged in g.defense).toBe(false);
+    });
+
+    it("drops a polygon that is not on the map", () => {
+      const g = boot("?faction=beta&defense=atlantis:100");
+      expect(g.defense).toEqual({});
+    });
+  });
+
+  describe("?disease", () => {
+    it("writes owned stacks onto the store", () => {
+      const g = boot("?faction=beta&disease=alpha:gamma:2;alpha:delta:1");
+      expect(g.disease.alpha).toEqual({ gamma: 2, delta: 1 });
+    });
+
+    it("drops unknown polygons and unknown owners", () => {
+      const g = boot("?faction=beta&disease=atlantis:alpha:2;alpha:atlantis:2");
+      expect(g.disease).toEqual({});
+    });
+  });
+
+  describe("?leadership", () => {
+    it("sets the named ruler's leadership", () => {
+      const g = boot("?faction=beta&leadership=beta:100;gamma:50");
+      expect(rulerOf(g.rulers, "beta").leadership).toBe(100);
+      expect(rulerOf(g.rulers, "gamma").leadership).toBe(50);
+    });
+
+    it("drops a faction that is not on the map", () => {
+      const g = boot("?faction=beta&leadership=atlantis:100");
+      for (const id of FACTIONS) {
+        expect(rulerOf(g.rulers, id).leadership).toBe(0);
+      }
+    });
+  });
+
+  describe("?turnips", () => {
+    it("sets the human's counter", () => {
+      const g = boot("?faction=beta&turnips=4");
+      expect(g.turnips.beta).toBe(4);
     });
   });
 });
@@ -332,8 +356,9 @@ describe("rules=", () => {
       .toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
     expect(parseBootParams("?rules=turn:unlimited;bogus:x")?.rules)
       .toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
+    // The retired copies axis: a pre-flip URL still boots, the pair dropped.
     expect(parseBootParams("?rules=turn:unlimited;copies:double")?.rules)
-      .toEqual({ turn: "unlimited", copies: "double" });
+      .toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
     expect(parseBootParams("?rules=turn:gone")?.rules).toEqual(DEFAULT_RULES);
     // Strict two-part clauses: a third segment makes the whole pair
     // malformed, so it drops and the axis falls back rather than parsing
@@ -348,60 +373,14 @@ describe("rules=", () => {
   });
 
   it("stamps the picks into the booted state", () => {
-    const params = parseBootParams("?rules=turn:unlimited&faction=beta&seed=1");
-    const g = applyBootParams(
-      newGame(["alpha", "beta", "gamma"]), params!, seededRng(1),
-    );
+    const g = boot("?rules=turn:unlimited&faction=beta&seed=1");
     expect(g.rules.turn).toBe("unlimited");
     expect(g.phase).toBe("playing");
   });
 
-  it("reaches a booted deck screen too", () => {
-    const params = parseBootParams("?rules=turn:unlimited&screen=deck");
-    const g = applyBootParams(
-      newGame(["alpha", "beta", "gamma"]), params!, seededRng(1),
-    );
+  it("reaches a booted build screen too", () => {
+    const g = boot("?rules=turn:unlimited&screen=deck");
     expect(g.phase).toBe("deck-building");
     expect(g.rules.turn).toBe("unlimited");
-  });
-});
-
-describe("applyBootMeta", () => {
-  const metaOf = (search: string) => applyBootMeta(params(search));
-
-  it("knows every deck-buildable card when ?known= is absent", () => {
-    expect(metaOf("?screen=deck").knownCards).toEqual(BOOT_KNOWN_CARDS);
-  });
-
-  it("adds ?known= to what every player starts with, rather than replacing it", () => {
-    // The union loadMeta applies to a stored record. A booted collection has to
-    // be one a real player could hold, or the deck screen is being asked to
-    // render a state the game cannot produce.
-    const known = metaOf("?known=alliance").knownCards;
-    expect(known).toEqual(expect.arrayContaining(
-      [...STARTING_KNOWN_CARDS, "alliance"],
-    ));
-    expect(known).not.toContain("incorporate");
-  });
-
-  it("gives the starting collection for an empty ?known=", () => {
-    expect(new Set(metaOf("?known=").knownCards))
-      .toEqual(new Set(["grow-crops", ...STARTING_KNOWN_CARDS]));
-  });
-
-  it("drops ids that are not deck-buildable", () => {
-    const known = metaOf("?known=revolt,notacard,alliance").knownCards;
-    expect(known).toContain("alliance");
-    expect(known).not.toContain("revolt");
-    expect(known).not.toContain("notacard");
-    // Deduped: a starting card named again must not appear twice.
-    expect(new Set(known).size).toBe(known.length);
-  });
-
-  it("owes packs through the xp derivation, not a granted count", () => {
-    expect(pendingPacks(metaOf("?screen=deck"))).toBe(0);
-    // xpThresholdForLevel(1) is 20, so one level is one pack.
-    expect(pendingPacks(metaOf("?xp=20"))).toBe(1);
-    expect(pendingPacks(metaOf("?xp=40"))).toBe(2);
   });
 });

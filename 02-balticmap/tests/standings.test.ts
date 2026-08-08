@@ -1,455 +1,253 @@
 import { describe, it, expect } from "vitest";
-import { leadMovesOf, walkStandings, type WalkCtx } from "../src/standings";
-import type { GameEvent } from "../src/game";
+import { scoreMovesOf, walkStandings, type WalkCtx } from "../src/standings";
+import type { GameEvent, GameState } from "../src/game";
 import {
-  pickFaction, chooseDeck, startGame, newGame, advance, isHumanTurn,
-  type GameState,
+  advance, chooseBuild, isHumanTurn, newGame, pickFaction, startGame,
 } from "../src/game";
+import { defenseOf, diseaseOn } from "../src/defense";
 import { aiTakeTurn } from "../src/ai";
-import { leadsIn } from "../src/playability";
 import {
-  SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS, seededRng,
-  potatoDeck,
-  naiveHumanTurn, DECK_ARMS,
+  SIM_ADJACENCY, SIM_DEFENSE_MAX, SIM_ETHNICITIES, SIM_FACTION_IDS,
+  SIM_SITE_CAPS, naiveHumanTurn, seededRng,
 } from "../src/sim";
-import { BASELINE_SEEDS, BASELINE_FACTION, BASELINE_TURN_CAP } from "./baseline-config";
+import { BASELINE_FACTION } from "./baseline-config";
 
-// A minimal ctx: leadMovesOf never reads `leads`, only `humanFactionId` and
-// `factionOf`, so these unit tests can stub it out.
-function ctx(humanFactionId: string, playerFactions: Record<number, string>): WalkCtx {
+const A = "selonians"; // playerId 2
+const X = "selija"; // a polygon
+const PLAYERS: Record<number, string> = { 1: "livs", 2: A, 3: "curonia" };
+
+function ctx(over: Partial<WalkCtx> = {}): WalkCtx {
   return {
-    humanFactionId,
-    factionOf: (playerId) => playerFactions[playerId],
-    leads: () => 0,
+    factionOf: (playerId) => PLAYERS[playerId],
+    defense: () => 600,
+    diseaseOf: () => 0,
+    ...over,
   };
 }
 
-const H = "livs"; // playerId 1
-const RIVAL = "selonians"; // playerId 2
-const THIRD = "curonia"; // playerId 3
-const PLAYERS = { 1: H, 2: RIVAL, 3: THIRD };
-
-function playEvent(overrides: Partial<GameEvent>): GameEvent {
-  return { turn: 1, playerId: 2, type: "play", ...overrides };
+function event(overrides: Partial<GameEvent>): GameEvent {
+  return { turn: 1, playerId: 2, type: "damaged", ...overrides };
 }
 
-describe("leadMovesOf", () => {
-  it("raid by the human adds to the target's track", () => {
-    const e = playEvent({
-      playerId: 1, cardId: "raid", targetFactionId: RIVAL, amount: 3,
-    });
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: 3 },
+describe("scoreMovesOf", () => {
+  it("damaged moves the polygon's defense down by amount", () => {
+    const e = event({ cardId: "raid", targetFactionId: X, amount: 150 });
+    expect(scoreMovesOf(e, ctx())).toEqual([
+      { track: "defense", polygon: X, delta: -150 },
     ]);
   });
 
-  it("raid against the human adds to the actor's track, sign-flipped", () => {
-    const e = playEvent({
-      playerId: 2, cardId: "raid", targetFactionId: H, amount: 3,
-    });
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: -3 },
+  it("plagued is the same track - the log distinguishes the vector, not the score", () => {
+    const e = event({ type: "plagued", cardId: "plague", targetFactionId: X, amount: 200 });
+    expect(scoreMovesOf(e, ctx())).toEqual([
+      { track: "defense", polygon: X, delta: -200 },
     ]);
   });
 
-  it("raid between two non-human factions moves nothing for the human", () => {
-    const e = playEvent({
-      playerId: 2, cardId: "raid", targetFactionId: THIRD, amount: 3,
-    });
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
+  it("a zero-amount damaged or plagued moves nothing", () => {
+    // Plague logs amount 0 where the stacks burned on a broken polygon - the
+    // line still renders, but there is no before -> after to reconstruct.
+    for (const type of ["damaged", "plagued"] as const) {
+      const e = event({ type, targetFactionId: X, amount: 0 });
+      expect(scoreMovesOf(e, ctx())).toEqual([]);
+    }
   });
 
-  it("a third party's fortify still resolves - it is one pair, the actor against the human", () => {
-    const e = playEvent({ playerId: 2, cardId: "fortify", amount: 1 });
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: -1 },
+  it("healed moves the defense up", () => {
+    const e = event({ type: "healed", cardId: "hillfort", targetFactionId: X, amount: 150 });
+    expect(scoreMovesOf(e, ctx())).toEqual([
+      { track: "defense", polygon: X, delta: 150 },
     ]);
   });
 
-  it("a harvest Might boon by the human adds to the target's track", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 1, type: "harvest-might",
-      targetFactionId: RIVAL, amount: 1,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: 1 },
+  it("disease-spread moves the ACTOR's stacks on the polygon", () => {
+    const e = event({ type: "disease-spread", targetFactionId: X, amount: 1 });
+    expect(scoreMovesOf(e, ctx())).toEqual([
+      { track: "disease", polygon: X, owner: A, delta: 1 },
     ]);
   });
 
-  it("a might-reset deficit rides the same arm - the amount is the whole move", () => {
-    // The reset boon logs one single-target event per trailing rival, each
-    // carrying its own deficit, so a 3-point catch-up is just a bigger raid
-    // to this walk.
-    const e: GameEvent = {
-      turn: 1, playerId: 1, type: "harvest-might",
-      targetFactionId: THIRD, amount: 3,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: THIRD, delta: 3 },
+  it("winds-shifted carries the stacks the actor GAINED there", () => {
+    const e = event({ type: "winds-shifted", targetFactionId: X, amount: 3 });
+    expect(scoreMovesOf(e, ctx())).toEqual([
+      { track: "disease", polygon: X, owner: A, delta: 3 },
     ]);
   });
 
-  it("a harvest wealth boon moves no lead", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 1, type: "harvest-wealth", wealth: 5,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
+  it("a disease event by an unknown seat resolves to nothing", () => {
+    const e = event({ type: "disease-spread", playerId: 99, targetFactionId: X, amount: 1 });
+    expect(scoreMovesOf(e, ctx())).toEqual([]);
   });
 
-  it("a human-authored fortify returns no move - it never reaches this walk in production", () => {
-    const e = playEvent({ playerId: 1, cardId: "fortify", amount: 1 });
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
+  it("an event missing its amount or target moves nothing", () => {
+    expect(scoreMovesOf(event({ targetFactionId: X }), ctx())).toEqual([]);
+    expect(scoreMovesOf(event({ amount: 100 }), ctx())).toEqual([]);
   });
 
-  it("a landed assassination by the human levels the target's might to 0", () => {
-    const e = playEvent({
-      playerId: 1, cardId: "assassinate-ruler", targetFactionId: RIVAL, amount: 2,
-    });
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "set", factionId: RIVAL, from: 2 },
-    ]);
-  });
-
-  it("a landed assassination against the human levels it from the human's own perspective", () => {
-    const e = playEvent({
-      playerId: 2, cardId: "assassinate-ruler", targetFactionId: H, amount: 2,
-    });
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "set", factionId: RIVAL, from: -2 },
-    ]);
-  });
-
-  it("a prevented assassination moves nothing - it carries no amount", () => {
-    const e = playEvent({
-      playerId: 2, cardId: "assassinate-ruler", targetFactionId: H, prevented: true,
-    });
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
-  });
-
-  it("tribute paid by the human adds to the lord's track", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 1, type: "tribute",
-      targetFactionId: H, overlordFactionId: RIVAL, amount: 1,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: -1 },
-    ]);
-  });
-
-  it("tribute paid to the human adds to the payer's lead", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 1, type: "tribute",
-      targetFactionId: RIVAL, overlordFactionId: H, amount: 1,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: 1 },
-    ]);
-  });
-
-  it("a tribute paid fully in wealth moves no lead", () => {
-    // The coins moved no counter, so the event carries no track/amount and
-    // the walk has nothing to say about it.
-    const e: GameEvent = {
-      turn: 1, playerId: 1, type: "tribute",
-      targetFactionId: H, overlordFactionId: RIVAL, wealth: 1,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
-  });
-
-  it("a part-covered tribute moves only its shortfall", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 1, type: "tribute",
-      targetFactionId: H, overlordFactionId: RIVAL,
-      wealth: 2, amount: 1,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: -1 },
-    ]);
-  });
-
-  it("a poach that takes the human's vassal grants +1 Might over the poacher", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 2, type: "subjugated",
-      targetFactionId: THIRD, overlordFactionId: RIVAL, formerOverlordFactionId: H,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual(
-      expect.arrayContaining([
-        { kind: "add", factionId: THIRD, delta: -1 },
-      ]),
-    );
-  });
-
-  it("a poach that takes the human from a rival grants +1 Might over the ex-lord", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 2, type: "subjugated",
-      targetFactionId: H, overlordFactionId: RIVAL, formerOverlordFactionId: THIRD,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual(
-      expect.arrayContaining([
-        { kind: "add", factionId: THIRD, delta: 1 },
-      ]),
-    );
-  });
-
-  it("a rival casting off the human as overlord costs the human -mult against them", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 2, type: "reclaimed", cardId: "revolt",
-      targetFactionId: RIVAL, overlordFactionId: H, amount: 1,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual(
-      expect.arrayContaining([
-        { kind: "add", factionId: RIVAL, delta: -1 },
-      ]),
-    );
-  });
-
-  it("the human casting off a rival overlord grants the human +mult over them", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 1, type: "reclaimed", cardId: "revolt",
-      targetFactionId: H, overlordFactionId: RIVAL, amount: 2,
-    };
-    // game.ts's revolt effect is bumpMightBy(relations, rebel, exLord, mult) -
-    // the rebel (the human, here) gains over the ex-lord, so the human's OWN
-    // lead over RIVAL rises.
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual(
-      expect.arrayContaining([
-        { kind: "add", factionId: RIVAL, delta: 2 },
-      ]),
-    );
-  });
-
-  it("a subjugation's reset costs the human vassal what it had built", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 2, type: "subjugated",
-      targetFactionId: H, overlordFactionId: RIVAL, amount: 3,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: -3 },
-    ]);
-  });
-
-  it("a subjugation's reset raises the human lord's lead over the new vassal", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 1, type: "subjugated",
-      targetFactionId: RIVAL, overlordFactionId: H, amount: 2,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: 2 },
-    ]);
-  });
-
-  it("a poach of the human carries both the reset and the +1 over the ex-lord", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 2, type: "subjugated",
-      targetFactionId: H, overlordFactionId: RIVAL,
-      formerOverlordFactionId: THIRD, amount: 2,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual(
-      expect.arrayContaining([
-        { kind: "add", factionId: RIVAL, delta: -2 },
-        { kind: "add", factionId: THIRD, delta: 1 },
-      ]),
-    );
-  });
-
-  it("a rival's fortify that skipped its human overlord moves nothing", () => {
-    const e = playEvent({
-      playerId: 2, cardId: "fortify", amount: 1, overlordFactionId: H,
-    });
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
-  });
-
-  it("a rival's garrison that skipped its human overlord moves nothing", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 2, type: "garrisoned", targetFactionId: RIVAL,
-      amount: 2, overlordFactionId: H,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
-  });
-
-  it("a rival's garrison adds to the actor's might track, sign-flipped", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 2, type: "garrisoned", targetFactionId: RIVAL, amount: 2,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([
-      { kind: "add", factionId: RIVAL, delta: -2 },
-    ]);
-  });
-
-  it("the human's own garrison returns no move here - walkStandings fans it out", () => {
-    const e: GameEvent = {
-      turn: 1, playerId: 1, type: "garrisoned", targetFactionId: H, amount: 2,
-    };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
-  });
-
-  it("an event type that never moves a relation returns no move", () => {
-    const e: GameEvent = { turn: 1, playerId: 1, type: "settled", targetFactionId: H };
-    expect(leadMovesOf(e, ctx(H, PLAYERS))).toEqual([]);
+  it("event types that move no walked score return no move", () => {
+    for (const type of ["play", "tribute", "settled", "subjugated"] as const) {
+      const e = event({ type, targetFactionId: X, amount: 1 });
+      expect(scoreMovesOf(e, ctx()), type).toEqual([]);
+    }
   });
 });
 
 describe("walkStandings", () => {
-  function walkCtx(leads: Record<string, number>): WalkCtx {
-    return {
-      humanFactionId: H,
-      factionOf: (playerId) => (PLAYERS as Record<number, string>)[playerId],
-      leads: (f) => leads[f] ?? 0,
-    };
-  }
-
-  it("chains two events against the same pair in one round", () => {
+  it("chains two hits on one polygon backwards from the post-batch score", () => {
     const events: GameEvent[] = [
-      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2 }),
-      playEvent({
-        turn: 2, playerId: 2, cardId: "raid", targetFactionId: H, amount: 1,
-      }),
+      event({ cardId: "raid", targetFactionId: X, amount: 100 }),
+      event({ cardId: "raid", targetFactionId: X, amount: 50 }),
     ];
-    // post-batch: rival leads Might by 3, purely from this batch
-    const changes = walkStandings(events, walkCtx({ [RIVAL]: -3 }));
+    const changes = walkStandings(events, ctx({ defense: () => 450 }));
     expect(changes[0]).toEqual([
-      { factionId: RIVAL, before: 0, after: -2 },
+      { polygon: X, track: "defense", before: 600, after: 500 },
     ]);
     expect(changes[1]).toEqual([
-      { factionId: RIVAL, before: -2, after: -3 },
+      { polygon: X, track: "defense", before: 500, after: 450 },
     ]);
   });
 
-  it("a silent fortify shifts the before of a later raid from the same actor", () => {
+  it("a silent heal shifts the before of a later hit on the same polygon", () => {
+    // A rival's heal is never a notice line, but the damaged line after it
+    // must read from the healed score, not the pre-batch one.
     const events: GameEvent[] = [
-      playEvent({ playerId: 2, cardId: "fortify", amount: 1 }),
-      playEvent({
-        turn: 2, playerId: 2, cardId: "raid", targetFactionId: H, amount: 3,
-      }),
+      event({ playerId: 3, type: "healed", targetFactionId: X, amount: 100 }),
+      event({ cardId: "raid", targetFactionId: X, amount: 150 }),
     ];
-    // post-batch might lead vs rival: -1 (fortify) + -3 (raid) = -4
-    const changes = walkStandings(events, walkCtx({ [RIVAL]: -4 }));
-    // the raid line (the only notice-worthy one) must read from -1, not 0 -
-    // the fortify already moved the "before" even though it produces no line
-    expect(changes[1]).toEqual([
-      { factionId: RIVAL, before: -1, after: -4 },
-    ]);
-  });
-
-  it("the human's own trailing garrison fans out to every faction this batch already mentions", () => {
-    const events: GameEvent[] = [
-      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2 }),
-      { turn: 1, playerId: 1, type: "garrisoned", targetFactionId: H, amount: 1 },
-    ];
-    // post-batch: -2 (raid) + 1 (garrison) = -1
-    const changes = walkStandings(events, walkCtx({ [RIVAL]: -1 }));
+    const changes = walkStandings(events, ctx({ defense: () => 450 }));
     expect(changes[0]).toEqual([
-      { factionId: RIVAL, before: 0, after: -2 },
+      { polygon: X, track: "defense", before: 500, after: 600 },
     ]);
     expect(changes[1]).toEqual([
-      { factionId: RIVAL, before: -2, after: -1 },
+      { polygon: X, track: "defense", before: 600, after: 450 },
     ]);
   });
 
-  it("the human's own trailing garrison skips the human's own lord", () => {
+  it("defense and disease walk as independent keys on one polygon", () => {
     const events: GameEvent[] = [
-      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2 }),
-      { turn: 1, playerId: 1, type: "garrisoned", targetFactionId: H,
-        amount: 1, overlordFactionId: RIVAL },
+      event({ type: "disease-spread", targetFactionId: X, amount: 1 }),
+      event({ type: "plagued", targetFactionId: X, amount: 100 }),
     ];
-    // RIVAL is the one faction this batch mentions, and the human's tick
-    // skipped it - so the garrison moves nothing at all.
-    const changes = walkStandings(events, walkCtx({ [RIVAL]: -2 }));
+    const changes = walkStandings(
+      events,
+      ctx({ defense: () => 500, diseaseOf: (_p, owner) => (owner === A ? 1 : 0) }),
+    );
     expect(changes[0]).toEqual([
-      { factionId: RIVAL, before: 0, after: -2 },
+      { polygon: X, track: "disease", owner: A, before: 0, after: 1 },
     ]);
-    expect(changes[1]).toEqual([]);
+    expect(changes[1]).toEqual([
+      { polygon: X, track: "defense", before: 600, after: 500 },
+    ]);
   });
 
-  it("a faction with no event in the batch is untouched", () => {
+  it("two owners' stacks on one polygon are separate keys", () => {
     const events: GameEvent[] = [
-      playEvent({ playerId: 2, cardId: "raid", targetFactionId: H, amount: 2 }),
+      event({ type: "disease-spread", playerId: 2, targetFactionId: X, amount: 1 }),
+      event({ type: "disease-spread", playerId: 3, targetFactionId: X, amount: 1 }),
     ];
-    const changes = walkStandings(events, walkCtx({ [RIVAL]: -2 }));
-    expect(changes).toHaveLength(1);
-    expect(changes[0]).toHaveLength(1);
+    const changes = walkStandings(events, ctx({ diseaseOf: () => 1 }));
+    expect(changes[0]).toEqual([
+      { polygon: X, track: "disease", owner: A, before: 0, after: 1 },
+    ]);
+    expect(changes[1]).toEqual([
+      { polygon: X, track: "disease", owner: "curonia", before: 0, after: 1 },
+    ]);
+  });
+
+  it("walks every event, indexed in parallel, with empty slots for the quiet ones", () => {
+    const events: GameEvent[] = [
+      event({ type: "play", cardId: "raid", targetFactionId: X }),
+      event({ cardId: "raid", targetFactionId: X, amount: 100 }),
+    ];
+    const changes = walkStandings(events, ctx({ defense: () => 500 }));
+    expect(changes).toHaveLength(2);
+    expect(changes[0]).toEqual([]);
+    expect(changes[1]).toHaveLength(1);
   });
 });
 
-// The structural guard: leadMovesOf/walkStandings is a hand-written mirror of
-// the eight relation-bump sites in game.ts. A ninth site added later without
-// recording its amount would silently drift every round summary. Rather than
-// trust the unit tests above to have covered every real shape, replay actual
-// seeded games and check the walk against the real relations for every
-// AI-round batch - exactly the granularity buildRoundSummary uses in
-// production (see notices.ts): the fresh events between one human turn
-// finishing and the next one starting.
-describe("walkStandings matches real relations across seeded games", () => {
-  it("holds for every AI-round batch, across the baseline seeds", () => {
-    for (const seed of BASELINE_SEEDS) {
-      const rng = seededRng(seed);
-      let state: GameState = pickFaction(
-        chooseDeck(
-          startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS)),
-          potatoDeck(),
-        ),
-        BASELINE_FACTION,
-        rng,
-        DECK_ARMS.shipped,
-      );
-      const humanFactionId = state.players[0].factionId;
-      let cursor = state.log.length;
-      let preBatchState = state;
+// The structural guard: scoreMovesOf is a hand-written mirror of the sites in
+// game.ts that record `amount`. A new site added without recording its actual
+// movement would silently drift every round summary. Rather than trust the
+// unit tests above to cover every real shape, replay a seeded game and check
+// the walk against the real defense and disease stores for every AI-round
+// batch - the granularity buildRoundSummary uses in production.
+describe("walkStandings matches the real stores across a seeded game", () => {
+  it("holds for every AI-round batch", () => {
+    const rng = seededRng(1);
+    let state: GameState = pickFaction(
+      chooseBuild(
+        startGame(newGame(
+          SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS,
+          SIM_DEFENSE_MAX,
+        )),
+        "warpath",
+      ),
+      BASELINE_FACTION,
+      rng,
+    );
+    const defenseNow = (s: GameState, polygon: string): number =>
+      defenseOf({ defense: s.defense, defenseMax: s.defenseMax }, polygon);
+    let cursor = state.log.length;
+    let preBatch = state;
+    let batchesChecked = 0;
+    let keysChecked = 0;
 
-      const verifyBatch = (): void => {
-        const batch = state.log.slice(cursor);
-        if (batch.length === 0) return;
-        const ctxForBatch: WalkCtx = {
-          humanFactionId,
-          factionOf: (playerId) => state.players.find((pl) => pl.id === playerId)?.factionId,
-          // `leadsIn`, not `leadsOf`: a lead now includes the Might a live
-          // pact adds, and the walk has to reconcile against the same
-          // definition the HUD quotes. Reconciling against the raw store
-          // instead would pass while every pact in the game drifted the
-          // summary by 1.
-          leads: (f) => leadsIn(state, humanFactionId, f),
-        };
-        const changes = walkStandings(batch, ctxForBatch);
-        const firstBefore = new Map<string, number>();
-        for (const perEvent of changes) {
-          for (const c of perEvent) {
-            if (!firstBefore.has(c.factionId)) firstBefore.set(c.factionId, c.before);
-          }
-        }
-        for (const [factionId, before] of firstBefore) {
-          const groundTruth =
-            leadsIn(preBatchState, humanFactionId, factionId);
-          // `|| 0` normalizes -0 to 0: a lead of zero from either direction is
-          // the same standing, and Object.is (what .toBe uses) disagrees.
-          expect(before || 0, `seed ${seed}, turn ${state.turn}, ${factionId}`)
-            .toBe(groundTruth || 0);
-        }
+    const verifyBatch = (): void => {
+      const batch = state.log.slice(cursor);
+      if (batch.length === 0) return;
+      const walkCtx: WalkCtx = {
+        factionOf: (playerId) =>
+          state.players.find((pl) => pl.id === playerId)?.factionId,
+        defense: (polygon) => defenseNow(state, polygon),
+        diseaseOf: (polygon, owner) => diseaseOn(state.disease, polygon, owner),
       };
-
-      while (state.phase === "playing" && state.turn <= BASELINE_TURN_CAP) {
-        const actor = state.players[state.current].factionId;
-        const isHuman = state.current === 0;
-        const next = isHuman ? naiveHumanTurn(state, rng) : aiTakeTurn(state, rng);
-        if (!next.playedThisTurn) {
-          throw new Error(
-            `stuck turn: seed ${seed}, turn ${state.turn}, actor ${actor}`,
-          );
-        }
-        state = next.phase === "playing" ? advance(next, rng) : next;
-
-        if (isHuman) {
-          // The human's own action is revealed on its own, separately from
-          // the AI round that follows - see afterHumanAction in main.ts.
-          cursor = state.log.length;
-          preBatchState = state;
-          continue;
-        }
-        if (state.phase !== "playing" || isHumanTurn(state)) {
-          verifyBatch();
-          cursor = state.log.length;
-          preBatchState = state;
+      const changes = walkStandings(batch, walkCtx);
+      // The first `before` per key must equal the PRE-batch store: that is
+      // the assertion with teeth, since every recorded amount in between has
+      // to sum to the store's actual movement.
+      const firstBefore = new Map<string, { before: number; owner?: string; polygon: string; track: string }>();
+      for (const perEvent of changes) {
+        for (const c of perEvent) {
+          const key = c.track === "defense"
+            ? `defense|${c.polygon}`
+            : `disease|${c.polygon}|${c.owner}`;
+          if (!firstBefore.has(key)) firstBefore.set(key, c);
         }
       }
+      batchesChecked++;
+      for (const [key, c] of firstBefore) {
+        keysChecked++;
+        const truth = c.track === "defense"
+          ? defenseNow(preBatch, c.polygon)
+          : diseaseOn(preBatch.disease, c.polygon, c.owner ?? "");
+        expect(c.before, `${key}, turn ${state.turn}`).toBe(truth);
+      }
+    };
+
+    while (state.phase === "playing" && state.turn <= 120) {
+      const isHuman = state.current === 0;
+      const next = isHuman ? naiveHumanTurn(state, rng) : aiTakeTurn(state, rng);
+      if (!next.playedThisTurn) {
+        throw new Error(`stuck turn ${state.turn}`);
+      }
+      state = next.phase === "playing" ? advance(next, rng) : next;
+      if (isHuman) {
+        // The human's own action is revealed on its own, separately from the
+        // AI round that follows - see afterHumanAction in main.ts.
+        cursor = state.log.length;
+        preBatch = state;
+        continue;
+      }
+      if (state.phase !== "playing" || isHumanTurn(state)) {
+        verifyBatch();
+        cursor = state.log.length;
+        preBatch = state;
+      }
     }
+    // Not vacuous: the game ran, and the walk reconciled real movement.
+    expect(state.turn).toBeGreaterThan(1);
+    expect(batchesChecked).toBeGreaterThan(0);
+    expect(keysChecked).toBeGreaterThan(0);
   });
 });

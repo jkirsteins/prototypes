@@ -6,10 +6,9 @@ import raw from "../src/data/map.json";
 import pools from "../src/data/ruler-names.json";
 import type { MapData } from "../src/types";
 import {
-  newGame, startGame, chooseDeck, pickFaction, advance, type GameState,
+  newGame, startGame, chooseBuild, pickFaction, advance, type GameState,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
-import { buildDeck } from "../src/cards";
 import { SIM_FACTION_IDS, SIM_ADJACENCY, seededRng } from "../src/sim";
 
 const data = raw as MapData;
@@ -119,15 +118,16 @@ describe("replaceRuler", () => {
     expect(rulerOf(rulers, "beta").leadership).toBe(0);
   });
 
-  it("seats the successor at prowess 0, never inheriting", () => {
+  it("seats the successor at leadership 0, never inheriting", () => {
     const before = initialRulers(["alpha", "beta"], ethnicities);
     const hardened = {
       ...before,
-      alpha: { ...rulerOf(before, "alpha"), leadership: 5 },
+      alpha: { ...rulerOf(before, "alpha"), leadership: 150 },
     };
     const out = replaceRuler(hardened, ethnicities, "alpha", 12);
     // The WHOLE literal, so a future `...predecessor` spread in replaceRuler
-    // fails here instead of quietly carrying prowess across a succession.
+    // fails here instead of quietly carrying a war-council stack across a
+    // succession - the reset is what makes assassination worth a card.
     expect(rulerOf(out.rulers, "alpha")).toEqual({
       name: out.successor,
       since: 12,
@@ -160,13 +160,13 @@ describe("rulerNameFor", () => {
 
 describe("ruler invariant over a full game", () => {
   // runGame (src/sim.ts) returns a GameSummary, not the state, so drive a
-  // game by hand the same way the AI-balance scratch tooling does: seat every
-  // faction with an AI deck and step turns with aiTakeTurn/advance directly.
+  // game by hand: seat every faction and step turns with aiTakeTurn/advance
+  // directly.
   it("resolves every faction through rulerOf, with no since ahead of the current turn", () => {
     const TURN_CAP = 120;
     const rng = seededRng(1);
     let state: GameState = pickFaction(
-      chooseDeck(startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY)), buildDeck()),
+      chooseBuild(startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY)), "warpath"),
       SIM_FACTION_IDS[0],
       rng,
     );

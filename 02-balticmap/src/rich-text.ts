@@ -61,6 +61,7 @@ const VERBS = {
   found: { third: "founds", past: "founded" },
   gain: { third: "gains", past: "gained" },
   incorporate: { third: "incorporates", past: "incorporated" },
+  keep: { third: "keeps", past: "kept" },
   lose: { third: "loses", past: "lost" },
   move: { third: "moves", past: "moved" },
   pass: { third: "passes", past: "passed" },

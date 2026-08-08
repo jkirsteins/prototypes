@@ -1,11 +1,7 @@
 import {
-  HOSTAGE_RETURN_TRIBUTES,
-  PACT_MIGHT_BONUS, SEAT_BAR_BONUS,
-  SEAT_RAID_BONUS, SETTLEMENT_BASE_CAP,
-  boomsHeld, failureRiskOf, freeSitesIn, gripPartsOn, holdsGuard, leadsIn,
-  omenMultiplier, omensHeld, pactBoostExpiriesOn, poachSurchargeOn, raidGainFor,
-  respiteExpiry,
-  sharedNeighboursOf, settlementsIn, subjugationRaceFor, targetEligibilityFor,
+  attackDamageFor, attackMultiplier, failureRiskOf, freeSitesIn, holdsGuard,
+  miasmaHeld, omensHeld, outbreakPolygons, plagueDamageOn, plagueMultiplier,
+  respiteExpiry, settlementsIn, subjugationGateOn, targetEligibilityFor,
   type CardBlockReason,
   type FailureRisk,
   type Guards,
@@ -14,25 +10,18 @@ import {
   type TargetBlockReason,
   type TargetEligibility,
 } from "./playability";
-import { CARDS, DOUBLABLE_CARDS, isGuardCard } from "./cards";
-import { leadOf, type Alliances } from "./relations";
+import {
+  defenseMaxOf, defenseOf, HILLFORT_HEAL, INDEPENDENCE_GATE,
+} from "./defense";
+import { ATTACK_CARDS, CARDS, isGuardCard } from "./cards";
 import { count } from "./plural";
-import { formatLead } from "./view";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
 import { untilTurn } from "./timed";
 
-/** How much a Favourable omens stack multiplies by, in words. One table, two
+/** How much a reserve stack multiplies by, in words. One table, two
  *  grammatical forms: the adjective for a promise ("counts double") and the
- *  participle for a resolution ("- doubled").
- *
- *  Here rather than at each surface because four of them say it - the card tip,
- *  the map preview, the activity log and the round summary - and the repo rule
- *  is that one change is never phrased more than one way. English runs out at
- *  two readings, so a three-deep stack falls back to the plain multiple; that
- *  is honest rather than reaching for "octupled".
- *
- *  A multiplier of 1 has no word: callers must not ask, since "counts single"
- *  is not a thing anyone says. */
+ *  participle for a resolution ("- doubled"). English runs out at two
+ *  readings, so a three-deep stack falls back to the plain multiple. */
 const MULTIPLE_WORDS: Readonly<Record<number, readonly [string, string]>> = {
   2: ["double", "doubled"],
   4: ["quadruple", "quadrupled"],
@@ -50,71 +39,45 @@ export interface TargetExplanation {
   factionId: string;
   lines: string[];
   /** How this target could come back with nothing, for the amber band. Kept
-   *  apart from `lines` rather than appended to it because the two are not the
-   *  same kind of statement and must not look alike: `lines` say what the card
-   *  would do, and this says it might do none of it. Empty for a target that
-   *  cannot fail. */
+   *  apart from `lines` because the two are not the same kind of statement:
+   *  `lines` say what the card would do, and this says it might do none of
+   *  it. Empty for a target that cannot fail. */
   risk: string[];
   available: boolean;
 }
 
 function explainReason(reason: TargetBlockReason): string[] {
   switch (reason.code) {
-    case "alliance":
-      return [`Blocked by Alliance ${untilTurn(reason.expiresTurn)}.`];
+    case "gate-closed":
+      // Both numbers, because together they are the decision: how much more
+      // damage before the gate opens.
+      return [
+        `Their home defenses stand at ${reason.defense}; subjugation opens ` +
+          `at ${reason.required} or less.`,
+      ];
     case "respite":
       return [
         `Escaped vassalage recently; cannot be subjugated ${untilTurn(reason.expiresTurn)}.`,
       ];
-    case "insufficient-lead": {
-      const lands = count(reason.realmSize, "land");
-      const settled =
-        reason.settlements === 0 ? "" : ` and ${count(reason.settlements, "settlement")}`;
-      // The surcharge is named separately or the bar looks wrong: a one-land
-      // vassal demanding a lead of 5 makes no sense until you are told that 2
-      // of it is the price of prising it off its current lord.
-      const poached =
-        reason.poachSurcharge === 0
-          ? ""
-          : `, plus ${reason.poachSurcharge} to prise them off their overlord`;
-      const proven =
-        reason.prowessReduction === 0
-          ? ""
-          : `, less ${reason.prowessReduction} for your ruler's prowess`;
-      return [
-        `Need a Might lead of ${reason.required} because their realm has ${lands}${settled}${poached}${proven}.`,
-        `Current lead: Might ${reason.lead}.`,
-      ];
-    }
+    case "at-full-defense":
+      return ["Defenses already stand at full strength."];
     case "already-vassal":
       return ["Already your vassal."];
     case "liege":
       return ["You owe them fealty, directly or through your lords."];
-    case "overlord-prohibited":
-      return ["You cannot target your overlord."];
     case "incorporated":
       return ["Already incorporated."];
     case "self":
       return ["You cannot target yourself."];
     case "not-your-vassal":
       return ["Not your vassal."];
-    case "no-revolt":
-      return ["No revolt is sown in their deck, so there is nothing to lock."];
-    case "hostage-already-held":
-      return ["You already hold a hostage of theirs."];
     case "needs-population":
-      // The one block a card in hand can lift, so it says which: without the
-      // second sentence the player reads "not enough people" as a fact about
-      // the land rather than as a fact about what they are holding.
       return [
         `${count(reason.have, "settlement")} here already, and your people ` +
           `support ${reason.allowance}.`,
-        "A Population boom raises that by one.",
       ];
     case "no-free-site":
       return ["No room for another settlement."];
-    case "already-seat":
-      return ["The ruler's seat already stands here."];
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -126,14 +89,10 @@ export function explainTargetEligibility(
   entries: TargetEligibility[],
   factionName: (id: string) => string,
   /** How each available target can come back with nothing - `targetOddsLines`,
-   *  at every call site that has a view to ask with.
-   *
-   *  Required rather than defaulted, unlike `annotate` below. A missing
-   *  annotation costs a candidate its "+3 Might" line, which is a smaller tip;
-   *  a missing risk tells the player a coin flip is a certainty. A new call
-   *  site has to answer this one. */
+   *  at every call site that has a view to ask with. Required rather than
+   *  defaulted: a missing risk tells the player a fallible play is certain. */
   risk: (factionId: string) => string[],
-  /** Extra lines appended to available targets, e.g. what a Raid there gains.
+  /** Extra lines appended to available targets, e.g. what a Raid there deals.
    *  Blocked targets get none: the block reason is the useful answer. */
   annotate: (factionId: string) => string[] = () => [],
 ): TargetExplanation[] {
@@ -147,9 +106,8 @@ export function explainTargetEligibility(
         available: true,
       }];
     }
-    // A blocked target gets no risk band. The rules already refuse this aim, so
-    // the odds of a play that cannot happen are not a warning, they are noise
-    // sitting on top of the answer.
+    // A blocked target gets no risk band. The rules already refuse this aim,
+    // so the odds of a play that cannot happen are noise on top of the answer.
     return [{
       factionId: entry.factionId,
       lines: [
@@ -163,49 +121,30 @@ export function explainTargetEligibility(
 }
 
 /** The one sentence that has to survive every rewording below, because it is
- *  the part that costs a turn rather than a card. Written once so the three
- *  risks cannot drift into three ways of saying it. */
+ *  the part that costs a turn rather than a card. */
 const SPENT_ANYWAY = "A failed attempt still spends the card.";
 
-/** Per guard, the two things a player can be told about it: the warning before
- *  aiming a card it turns aside, and the line in hand saying you are already
- *  holding one. Keyed on the guard card id, and `tests/target-explanations.test.ts`
- *  checks both records cover every entry in `GUARDS` - a fourth guard that
- *  reached the rules and not these tables would warn about the wrong card, or
- *  about nothing.
- *
- *  Lowercase common nouns throughout ("a posted bodyguard", "wary neighbours"):
- *  the capitalized names are the cards, and this is plain text with no way to
- *  make it a segment the player could point at. See the naming rule in
- *  AGENTS.md. */
+/** Per guard, the two things a player can be told about it: the warning
+ *  before aiming a card it turns aside, and the line in hand saying you are
+ *  already holding one. `tests/target-explanations.test.ts` checks both
+ *  records cover every entry in `GUARDS`. */
 export const GUARD_RISK: Readonly<Record<string, string>> = {
   "bodyguard":
     "A posted bodyguard would turn this aside, and you cannot tell in advance.",
-  "distrustful-neighbour":
-    "Wary neighbours would refuse the pact, and you cannot tell in advance.",
 };
 
 export const GUARD_POSTED: Readonly<Record<string, string>> = {
   "bodyguard": "A bodyguard is already posted.",
-  "distrustful-neighbour": "Your neighbours are already wary.",
 };
 
-/** How a card can come back with nothing, in words. Renders `FailureRisk` and
- *  decides nothing: whether a card is fallible at all is `failureRiskOf`'s
- *  question, answered once in the rules.
- *
- *  Both surfaces that warn a player call this - the card tip's amber band and
- *  the map hover's armed-card block - so the odds cannot be phrased one way
- *  before aiming and another while aiming. */
+/** How a card can come back with nothing, in words. Renders `FailureRisk`
+ *  and decides nothing: whether a card is fallible at all is
+ *  `failureRiskOf`'s question, answered once in the rules. */
 export function riskLines(risk: FailureRisk): string[] {
   return [GUARD_RISK[risk.because], SPENT_ANYWAY];
 }
 
-/** Risk lines for one candidate target, or none where that aim cannot fail.
- *
- *  Lives here beside the block reasons because it answers the same question
- *  ("what happens if I aim here") and so that one test covers both halves of
- *  what a target tooltip says. */
+/** Risk lines for one candidate target, or none where that aim cannot fail. */
 export function targetOddsLines(
   view: RulesView,
   actorFactionId: string,
@@ -217,30 +156,20 @@ export function targetOddsLines(
 }
 
 /** What a fallible card says about itself, before any target is chosen. Null
- *  for a card the rules can never refuse.
- *
- *  Target-independent on purpose, and that is the whole job: the rule itself
- *  is stated here exactly once, rather than rediscovered per candidate on
- *  whichever target the player happened to look at.
- *
- *  A record rather than a switch so the omission is visible: a new fallible
- *  card that `failureRiskOf` answers for and this does not is a hole a test
- *  can see, which a missing `if` would not be. */
+ *  for a card the rules can never refuse. A record rather than a switch so
+ *  the omission is visible to a test. */
 const CARD_RISK: Record<string, string> = {
   "assassinate-ruler":
     "Can fail: a posted bodyguard turns the blade aside, and nothing tells " +
     "you in advance which rivals have one.",
-  "alliance":
-    "Can fail: neighbours wary enough refuse the pact outright, and nothing " +
-    "tells you in advance which rivals are.",
 };
 
 export const cardRiskLine = (cardId: string): string | null =>
   CARD_RISK[cardId] ?? null;
 
-/** One effect of the armed card, as a row of its block: the change in the left
- *  column, and what changes on the right. `NO_FIGURE` where the effect is not a
- *  number, so the column still lines up rather than leaving a hole. */
+/** One effect of the armed card, as a row of its block: the change in the
+ *  left column, and what changes on the right. `NO_FIGURE` where the effect
+ *  is not a number, so the column still lines up. */
 interface Impact {
   amount: string;
   spans: TooltipSpan[];
@@ -250,12 +179,6 @@ const NO_FIGURE = "--";
 
 const prose = (text: string): Impact => ({ amount: NO_FIGURE, spans: [{ text }] });
 
-/** Every risk line as its own row of the armed-card block.
- *
- *  All of them, not the first. This used to take `odds[0]` and drop the rest,
- *  which meant "a failed attempt still spends the card" appeared in the card
- *  tip and vanished from the map - the one surface the player is looking at
- *  with the cursor already over the land they are about to commit to. */
 const riskRows = (
   view: RulesView,
   actorFactionId: string,
@@ -264,75 +187,54 @@ const riskRows = (
 ): Impact[] =>
   targetOddsLines(view, actorFactionId, cardId, targetFactionId).map(prose);
 
-/** What the armed card would do to one land's standing: the human's signed lead
- *  before and after, in `formatLead`'s convention - the same one the badges and
- *  the round summary use.
- *
- *  Both values are spans rather than text, because the sign of each is the
- *  point. A Raid that moves a lead from -2 to -1 is progress, but neither
- *  number is good news, and a line coloured green end to end said it was.
- *
- *  Building the pieces here means this no longer calls `standingChangeText`,
- *  which is what the activity log and the round summary say the same change
- *  with. The spans must still join to exactly that string, and a test asserts
- *  it - one change cannot end up phrased three ways across three surfaces. */
-function standingMove(
+/** What an attack would do to one polygon's defense: the before and after,
+ *  the same numbers the log suffix will quote. */
+function defenseMove(
   view: RulesView,
-  actorFactionId: string,
-  targetFactionId: string,
-  next: (before: number) => number,
+  polygon: string,
+  delta: number,
   multiplier: number,
 ): Impact {
-  const before = leadsIn(view, actorFactionId, targetFactionId);
-  const after = next(before);
+  const before = defenseOf(view, polygon);
+  const max = defenseMaxOf(view, polygon);
+  const after = Math.max(0, Math.min(max, before + delta));
+  const signed = delta > 0 ? `+${delta}` : `${delta}`;
   return {
-    amount: formatLead("", after - before),
+    amount: signed,
     spans: [
-      // Bracketed, because the row already opens with the change in its own
-      // column: "+1 Might -1 -> 0" reads as three loose numbers, and the
-      // parentheses say which two are the before and after.
-      { text: "Might (" },
-      { text: formatLead("", before), lead: before },
-      { text: " -> " },
-      { text: formatLead("", after), lead: after },
+      { text: `Defense (${before} -> ${after}` },
       { text: multiplier > 1 ? `, ${multipliedWord(multiplier)})` : ")" },
     ],
   };
 }
 
 /** What playing the armed card here would get you. Only ever called for a
- *  target the rules already allow, so every branch can quote a real number
- *  rather than hedging.
- *
- *  A list because a card may do more than one thing; every card does exactly
- *  one today, and the block around it is shaped to take more without moving. */
+ *  target the rules already allow, so every branch can quote a real number. */
 function availableImpacts(
   view: RulesView,
   actorFactionId: string,
   cardId: string,
   targetFactionId: string,
 ): Impact[] {
-  const multiplier = omenMultiplier(view, actorFactionId, cardId);
-  if (cardId === "raid") {
-    const { gain } = raidGainFor(view, actorFactionId, targetFactionId);
-    return [standingMove(
-      view, actorFactionId, targetFactionId, (b) => b + gain, multiplier,
-    )];
+  if (ATTACK_CARDS.has(cardId)) {
+    const { damage, multiplier } = attackDamageFor(view, actorFactionId, cardId);
+    return [defenseMove(view, targetFactionId, -damage, multiplier)];
   }
-  if (cardId === "assassinate-ruler") {
-    // The card levels the raw Might lead rather than adding to it, so the
-    // "after" is whatever a live pact still buys - the visible lead minus the
-    // store's - and 0 with no pact in play, whichever side was ahead. The risk
-    // rows below say a guard could nullify it, in the same words on every
-    // target - which is how the warning stays honest without becoming a
-    // detector for who is holding one.
-    const raw = leadOf(view.relations, actorFactionId, targetFactionId);
-    return [
-      standingMove(
-        view, actorFactionId, targetFactionId, (b) => b - raw, 1,
-      ),
-      ...riskRows(view, actorFactionId, cardId, targetFactionId),
-    ];
+  if (cardId === "hillfort") {
+    return [defenseMove(view, targetFactionId, HILLFORT_HEAL, 1)];
+  }
+  if (cardId === "spread-disease") {
+    const held = view.disease[targetFactionId]?.[actorFactionId] ?? 0;
+    return [{
+      amount: "+1",
+      spans: [{ text: `Disease (${held} -> ${held + 1})` }],
+    }];
+  }
+  if (cardId === "localized-outbreak") {
+    const splash = outbreakPolygons(view, actorFactionId, targetFactionId);
+    return [prose(
+      `+1 of your disease on each of its ${count(splash.length, "neighbour")}.`,
+    )];
   }
   if (cardId === "subjugate" || cardId === "incorporate") {
     return [prose(
@@ -341,83 +243,26 @@ function availableImpacts(
         : "Absorbed into your realm.",
     )];
   }
-  if (cardId === "alliance") {
-    const turns = view.diplomacyBoost.includes(actorFactionId) ? 10 : 5;
-    const shared = sharedNeighboursOf(view, actorFactionId, targetFactionId);
+  if (cardId === "assassinate-ruler") {
     return [
-      prose(`No hostile cards between you for ${turns} turns.`),
-      // The pact's frozen set, quoted before the player commits. Naming the
-      // count rather than the factions: the list can run to half a dozen and
-      // the map is already showing which lands border both realms.
-      shared.length > 0
-        ? {
-            amount: `+${PACT_MIGHT_BONUS} Might`,
-            spans: [{
-              text:
-                `for both of you against the ${count(shared.length, "faction")} ` +
-                "bordering both realms, until the pact lapses.",
-            }],
-          }
-        : prose("Your realms share no neighbour, so the pact buys no Might."),
+      prose("Their ruler dies; the successor starts with no leadership."),
       ...riskRows(view, actorFactionId, cardId, targetFactionId),
     ];
   }
   if (cardId === "found-settlement") {
-    return [
-      prose("+1 to the Might lead others need to subjugate you."),
-      ...(boomsHeld(view, actorFactionId) > 0
-        ? [prose("Spends one of your held Population booms.")]
-        : []),
-    ];
-  }
-  if (cardId === "seat-of-power") {
-    // Quotes the two constants the rules run on, so the promise cannot drift
-    // from `gripPartsOn` and `raidGainFor`.
-    return [
-      prose(
-        `+${SEAT_BAR_BONUS} to the Might lead others need to subjugate you.`,
-      ),
-      prose(
-        `+${SEAT_RAID_BONUS} Might on your raids against this land's neighbours.`,
-      ),
-    ];
-  }
-  if (cardId === "take-hostage") {
-    return [
-      prose("Their Revolt cannot be played while you hold the hostage."),
-      prose(
-        `Returned after ${count(HOSTAGE_RETURN_TRIBUTES, "tribute payment")}.`,
-      ),
-    ];
+    return [prose("+1 wealth a turn to whoever holds this land's realm.")];
   }
   return [prose("Available.")];
 }
 
-/** What the armed card would do to this land, or why it cannot be aimed there.
- *  Empty for a card that takes no target, or a faction the rules have never
- *  heard of.
- *
- *  A legal target gets a block: a heading naming the card, then a row per
- *  effect, matching the threshold blocks below it. A refusal is not a list of
- *  effects and stays the single red line it has always been - the heading would
- *  otherwise promise a preview it cannot give.
- *
- *  The heading names the card, which the flat version of this line deliberately
- *  did not. The reasoning against it still stands and is worth stating: a name
- *  in prose ought to be a segment the player can point at (see AGENTS.md) and
- *  `TooltipLine` is plain text, so this one is inert. It is here because a
- *  block of effects with no subject reads as though the numbers belong to the
- *  land rather than to the card in your hand. */
+/** What the armed card would do to this land, or why it cannot be aimed
+ *  there. Empty for a card that takes no target, or a faction the rules have
+ *  never heard of. */
 export function targetImpactLines(
   view: RulesView,
   actorFactionId: string,
   cardId: string,
   targetFactionId: string,
-  /** Drop the line when the only thing it would say is the lead shortfall.
-   *  The map hover sets this because `subjugationBreakdown` prints the same
-   *  shortfall itemised directly underneath, and the two together say it
-   *  twice. Every other block reason still comes through. */
-  omitInsufficientLead = false,
 ): TooltipLine[] {
   const card = CARDS[cardId];
   if (!card?.targeted) return [];
@@ -425,16 +270,10 @@ export function targetImpactLines(
     (e) => e.factionId === targetFactionId,
   );
   if (entry === undefined) return [];
-  // Your own land, before anything else. The rules reach it two different ways
-  // - "irrelevant" because a realm does not border itself, or a `self` block
-  // once an annexation puts your own id back in your reach - and both would
-  // otherwise print an answer ("Out of reach") that is nonsense for the land
-  // you are standing on. Never reached by Found a settlement, which is aimed
-  // at your own realm and comes back available.
-  // The inward cards are exempt: their own land is a real candidate, so a
-  // block there (the map has no dot left, the seat already stands here) is
-  // the reason to print, not "Your own land."
-  const inwardCard = cardId === "found-settlement" || cardId === "seat-of-power";
+  // Your own land, before anything else - unless the card is aimed inward,
+  // where its own land is a real candidate and the block there (no dot left,
+  // already at full defense) is the reason to print.
+  const inwardCard = cardId === "found-settlement" || cardId === "hillfort";
   if (
     entry.state !== "available" &&
     targetFactionId === actorFactionId &&
@@ -445,27 +284,20 @@ export function targetImpactLines(
   if (entry.state === "irrelevant") {
     return [{
       text:
-        cardId === "found-settlement"
+        cardId === "found-settlement" || cardId === "hillfort"
           ? "Not in your realm."
-          : cardId === "seat-of-power"
-            ? "Not a land you hold outright."
-            : "Out of reach.",
+          : "Out of reach.",
       tone: "bad",
     }];
   }
   if (entry.state === "blocked") {
-    // The first reason only. `targetEligibilityFor` pushes the structural
-    // blocks (self, incorporated, subjugated, already a vassal) before the
-    // lead shortfall, so the first is the one that has to be fixed first, and
-    // a hover has room for one line. The card tip still lists them all.
-    const first = entry.reasons[0];
-    if (omitInsufficientLead && first.code === "insufficient-lead") return [];
-    return [{ text: explainReason(first)[0], tone: "bad" }];
+    // The first reason only: `targetEligibilityFor` pushes the structural
+    // blocks before the gate, so the first is the one to fix first, and a
+    // hover has room for one line. The card tip still lists them all.
+    return [{ text: explainReason(entry.reasons[0])[0], tone: "bad" }];
   }
   // The whole block is amber, heading and rows alike, so the armed card's
-  // preview is one shape the eye can find. Red and green are already spoken
-  // for: on the threshold blocks below they mean which realm is being counted,
-  // and inside these rows they mean the sign of a standing value.
+  // preview is one shape the eye can find.
   return [
     { text: `If ${card.name} played here:`, tone: "info", blockStart: true },
     ...availableImpacts(view, actorFactionId, cardId, targetFactionId).map(
@@ -474,147 +306,66 @@ export function targetImpactLines(
   ];
 }
 
-/** The badge's figure, then a row per piece of the threshold behind it. The
- *  column sums to the figure in its heading, which is the only version a
- *  player can check.
- *
- *  `mine` says the threshold being itemised is built from the human's own
- *  realm, which is the direction where they are the one being taken. */
-function trackBlock(
+/** Where the numbers on a polygon's map badge come from: the defense over its
+ *  max, and the two gate lines the bands are drawn at. On the human's own
+ *  home the subjugation line is the one that bites; on a vassal's home the
+ *  independence line is. Takes no faction-name lookup, so it structurally
+ *  cannot violate the naming rule - the land is named on the lines above. */
+export function defenseBreakdown(
   view: RulesView,
-  lead: number,
-  bar: number,
-  takenFactionId: string,
-  mine: boolean,
+  polygon: string,
+  /** Whether the hovered land answers to an overlord, which decides whether
+   *  the independence line is worth printing. */
+  isVassalHome: boolean,
 ): TooltipLine[] {
-  const parts = gripPartsOn(view, takenFactionId);
-  const surcharge = poachSurchargeOn(view, takenFactionId);
-  // The base is recovered from the parts rather than recomputed - the bar
-  // minus the settlements and the seat stacked on it - so the column never
-  // repeats the per-land multiplication and cannot drift from the heading
-  // above it.
-  const base = parts.might - parts.settlements - parts.seat;
+  const gate = subjugationGateOn(view, polygon);
+  const max = defenseMaxOf(view, polygon);
   const rows: TooltipLine[] = [
     {
-      amount: `${base}`,
-      text: `from realm size (${count(parts.lands, "land")})`,
-    },
-  ];
-  if (parts.settlements > 0) {
-    rows.push({
-      amount: `+${parts.settlements}`,
-      text: `from ${count(parts.settlements, "settlement")}`,
-    });
-  }
-  if (parts.seat > 0) {
-    rows.push({
-      amount: `+${parts.seat}`,
-      text: "from the ruler's seat",
-    });
-  }
-  // Named separately or the threshold looks wrong: a one-land vassal demanding
-  // a lead of 5 makes no sense until you are told what 2 of it buys.
-  //
-  // The possessive is not decoration. This row's surcharge belongs to whoever
-  // is being taken, which on a "Your thresholds" block is the human - so a bare
-  // "overlord support" on a tooltip titled with a rival's name reads as that
-  // rival's overlord, and there may not be one.
-  if (surcharge > 0) {
-    rows.push({
-      amount: `+${surcharge}`,
-      text: mine
-        ? "from your overlord's support"
-        : "from their overlord's support",
-    });
-  }
-  // Recovered by subtraction like `base`, so the row is the EFFECTIVE
-  // discount - what prowess actually removed after the never-below-1 clamp -
-  // and the column cannot stop summing to the heading. The possessive is the
-  // surcharge's mirrored: prowess belongs to whoever is TAKING, so on a "Your
-  // thresholds" block the ruler named is the rival's.
-  const prowessCut = parts.might + surcharge - bar;
-  if (prowessCut > 0) {
-    rows.push({
-      amount: `-${prowessCut}`,
-      text: mine
-        ? "for their ruler's prowess"
-        : "for your ruler's prowess",
-    });
-  }
-  return [
-    {
-      // The same formatter the badge uses, so the heading is literally the
-      // figure the player is pointing at.
-      text: `${formatLead("Might ", lead, bar)}. ${mine ? "Your" : "Opponent's"} thresholds:`,
-      tone: mine ? "bad" : "good",
+      text: "Defenses",
       blockStart: true,
     },
-    ...rows,
+    {
+      amount: `${gate.defense}/${max}`,
+      text: gate.open ? "standing - the gate is OPEN" : "standing",
+      tone: gate.open ? "bad" : undefined,
+    },
+    {
+      amount: `${gate.required}`,
+      text: "or less opens subjugation",
+    },
   ];
+  if (isVassalHome) {
+    rows.push({
+      amount: `${Math.ceil(INDEPENDENCE_GATE * max)}`,
+      text: "or more regains independence at their turn",
+    });
+  }
+  return rows;
 }
 
-/** Where the number on a rival's map badge comes from: one block itemising
- *  the threshold the race is running at.
- *
- *  Gated on the same `quiet` flag the badge is, so the block appears exactly
- *  where a denominator is on screen to be explained. A race whose leading side
- *  could never subjugate the other carries no denominator and gets no block:
- *  this explains the threshold that is showing and never the absence of one,
- *  which is a different question and belongs to the card tip's block reasons.
- *
- *  Takes no faction-name lookup, which is how it satisfies the naming rule
- *  rather than by remembering to: it structurally cannot name anybody. A future
- *  change that wants a name here has to add a parameter and argue with this
- *  comment. `TooltipLine` is plain text and a name in prose has to be a segment
- *  the player can point at (see AGENTS.md); the land and its holder are already
- *  named on the lines above these blocks. */
-export function subjugationBreakdown(
+/** The disease stacks sitting on one polygon, one row per owner, in faction
+ *  order. Nothing else on screen states the counts; the pips only show
+ *  presence. Owner names come from the caller so this stays plain data. */
+export function diseaseBreakdown(
   view: RulesView,
-  humanFactionId: string,
-  rivalFactionId: string,
+  polygon: string,
+  factionName: (id: string) => string,
 ): TooltipLine[] {
-  const race = subjugationRaceFor(view, humanFactionId, rivalFactionId);
-  if (race.quiet || race.bar === null) return [];
-  return trackBlock(
-    view, race.lead, race.bar, race.takenFactionId,
-    race.takenFactionId === humanFactionId,
-  );
-}
-
-/** The amber note under a boosted rival's hover: part of the lead on their
- *  badge is a live pact's PACT_MIGHT_BONUS, and it lapses with the pact. One
- *  line per live pact naming them, each with its own expiry.
- *
- *  Without it the boost is only legible where it happens to change a sign: a
- *  shared neighbour at Might 0 wears a +1 the badge shows, while one who
- *  raided first reads 0 and the pact term inside it is invisible - which is
- *  exactly the position a player reported as a missing bonus.
- *
- *  Amber (`info`) like the armed card's preview, not green: the tone marks
- *  "temporary, from a card" rather than the sign of a standing. The ally
- *  themself is never on the frozen list, so their own hover keeps the green
- *  pact line and never gets this one. Like `subjugationBreakdown`, it takes no
- *  faction-name lookup and so structurally cannot violate the naming rule:
- *  "your alliance" is the common noun, lowercase, and the ally goes unnamed
- *  just as in the pact line itself. */
-export function pactBoostLines(
-  view: { alliances: Alliances; turn: number },
-  humanFactionId: string,
-  hoveredFactionId: string,
-): TooltipLine[] {
-  return pactBoostExpiriesOn(view, humanFactionId, hoveredFactionId)
-    .map((expiry) => ({
-      text: `Your alliance adds +${PACT_MIGHT_BONUS} Might against them ${untilTurn(expiry)}`,
-      tone: "info" as const,
+  const owners = view.disease[polygon];
+  if (owners === undefined) return [];
+  const rows = view.factionIds
+    .filter((f) => (owners[f] ?? 0) > 0)
+    .map((f) => ({
+      amount: `${owners[f]}`,
+      text: `disease held by ${factionName(f)}`,
     }));
+  if (rows.length === 0) return [];
+  return [{ text: "Disease", blockStart: true }, ...rows];
 }
 
-/** The respite note beside a hovered faction that escaped vassalage. Nameless
- *  prose like the pact note above, and for the same structural reason: no
- *  faction-name lookup, no naming-rule risk. Two voices, because the fact
- *  reads differently by side: on a rival it is amber - a window on the race
- *  that is closing - while on the human's own land it is the one surface that
- *  says the protection is theirs, since their realm draws no badge. */
+/** The respite note beside a hovered faction that escaped vassalage.
+ *  Nameless prose: no faction-name lookup, no naming-rule risk. */
 export function respiteLines(
   view: { respites: Record<string, number>; turn: number },
   humanFactionId: string,
@@ -635,35 +386,13 @@ export function respiteLines(
 }
 
 /** How many settlements stand on one land, over how many the map authors for
- *  it. The dots are drawn on the polygon and two cards turn on the number, and
- *  nothing else on screen states it.
- *
- *  Takes the land's OWN faction id, never the politically resolved one.
- *  `settlements` and `siteCaps` are keyed by the land's own faction, and a
- *  settlement stays with the land when the land is absorbed - resolving first
- *  would report the absorber's home count on every land it ever took.
- *
- *  The cap is `standing + freeSitesIn` rather than the map's `maxSettlements`,
- *  which is the same number by construction and reaches it through the rules.
- *  `settlementsIn` is the one place the unstored starting settlement is added
- *  back, so counting it here again is exactly the drift its doc comment warns
- *  about; and going through `freeSitesIn` means an authored cap that moves
- *  carries this line with it.
- *
- *  Says nothing about the allowance. `settlementAllowance` is scoped to the
- *  actor and not to the land, so it has no place in a block titled "on this
- *  land" - it is already spelled out where it bites, in the `sat-settlement`
- *  block reason above.
- *
- *  Names no card and no faction, so like `subjugationBreakdown` it satisfies
- *  the naming rule in AGENTS.md structurally rather than by remembering to. */
+ *  it. Takes the land's OWN faction id, never the politically resolved one:
+ *  a settlement stays with the land when the land is absorbed. */
 export function settlementBlock(
   view: RulesView,
   landFactionId: string,
 ): TooltipLine[] {
   const standing = settlementsIn(view, landFactionId);
-  // "on this land" is load-bearing: the breakdown below this block carries a
-  // realm-wide "from N settlements" row, and the two must not read as one.
   return [
     { text: "Settlements", blockStart: true },
     { amount: `${standing}/${standing + freeSitesIn(view, landFactionId)}`,
@@ -671,15 +400,9 @@ export function settlementBlock(
   ];
 }
 
-/** Why a card in hand is greyed out, in one line, for its hover tip.
- *
- *  One line per rule, not per card: `cardBlockReason` already reduced fourteen
- *  cards to six answers, and this is the only place those six are put into
- *  words. A fifteenth card that reuses an existing rule needs nothing here.
- *
- *  Names no card. The forced card is the one still lit up in the hand, which
- *  says which it is better than a name in a tip the player has to hover a
- *  different card to read. */
+/** Why a card in hand is greyed out, in one line, for its hover tip. One line
+ *  per rule, not per card: a new card that reuses an existing rule needs
+ *  nothing here. */
 export function cardBlockLine(reason: CardBlockReason): string {
   switch (reason.code) {
     case "forced-first":
@@ -688,45 +411,21 @@ export function cardBlockLine(reason: CardBlockReason): string {
       return "Only while you are somebody's vassal.";
     case "already-held":
       return "You are already holding an unspent one.";
-    case "revolt-live":
-      return "A revolt is already sown in your deck.";
     case "cannot-afford":
       // Both numbers, because together they are the decision: income arrives
-      // every turn, so "needs 2, you hold 1" says how long to wait. "Wealth"
-      // is a mass noun, so no `count`.
+      // every turn, so "needs 2, you hold 1" says how long to wait.
       return `Needs ${reason.cost} wealth; you hold ${reason.held}.`;
-    case "hostage-held":
-      // The count is the decision: what unlocks the card is paying the debt
-      // down, and how far along that is decides whether to keep feeding the
-      // lord or wait.
-      return (
-        "Your overlord holds a hostage: " +
-        `${count(reason.remaining, "tribute payment")} will bring them home.`
-      );
-    case "revolt-lead":
-      // Both numbers, because together they are the decision: the requirement
-      // falls as the overlord's realm grows and the lead moves with the
-      // pair's counters, and which of the two to wait on is the choice. Both
-      // signed by `formatLead` - the requirement can be negative under an
-      // overstretched lord, and a bare "-1" would read as a typo.
-      return (
-        `Needs a Might lead of ${formatLead("", reason.required)} over your ` +
-        `overlord; you stand at ${formatLead("", reason.lead)}.`
-      );
     case "realm-too-small":
-      // Both numbers, because together they are the decision: `held` is the
-      // scoreboard count, so the player can see the gap close as they take
-      // vassals, and the gate opening is news they can anticipate.
       return (
         `Your realm holds ${reason.held} of the ` +
         `${count(reason.required, "land")} needed.`
       );
+    case "no-disease":
+      return "No disease stacks stand anywhere for this to work on.";
+    case "at-full-defense":
+      return "Every land of your realm already stands at full defense.";
     case "no-target":
       return "Nothing in reach is a legal target.";
-    case "vassal-no-seat":
-      // Says why, not just no: the seat rule is that a vassal's seat is inert
-      // and swept, so playing the card now would buy nothing.
-      return "Only while you answer to nobody: a vassal's seat does not stand.";
     case "unavailable":
       return "Not playable now.";
     default: {
@@ -740,55 +439,70 @@ export function cardBlockLine(reason: CardBlockReason): string {
  *  structurally, so the caller passes the game straight in. */
 export interface ModifierView {
   omens: Omens;
-  diplomacyBoost: string[];
+  miasma: Readonly<Record<string, number>>;
   guards: Guards;
-  booms: Record<string, number>;
 }
 
 /** What is currently affecting this card for this faction, in words, for the
- *  hover tip. Two of these were invisible before: a player could hold an
- *  Extended diplomacy or a Bodyguard and have no way to see it. */
+ *  hover tip. */
 export function cardModifierLines(
   view: ModifierView,
   factionId: string,
   cardId: string,
 ): string[] {
   const lines: string[] = [];
-  const held = omensHeld(view, factionId);
-  if (held > 0) {
-    if (DOUBLABLE_CARDS.has(cardId)) {
-      const word = multipleWord(omenMultiplier(view, factionId, cardId));
-      lines.push(`Favourable omens: this card counts ${word}.`);
+  const readings = omensHeld(view, factionId);
+  if (readings > 0) {
+    if (ATTACK_CARDS.has(cardId)) {
+      const word = multipleWord(attackMultiplier(view, factionId, cardId));
+      lines.push(`Favourable omens: this attack counts ${word}.`);
     }
-    // The only route by which a player finds out readings stack. Nothing else
-    // says so: the card's own text describes one reading, and a second one is
-    // now legal rather than greyed out, so there is no block line to read
-    // either. It names the payoff rather than the state for that reason.
+    // The only route by which a player finds out readings stack: the card's
+    // own text describes one reading, and a second is legal rather than
+    // greyed out, so there is no block line to read either.
     if (cardId === "favourable-omens") {
       lines.push(
-        `${count(held, "reading")} already in hand: another makes the next ` +
-        `gain count ${multipleWord(2 ** (held + 1))}.`,
+        `${count(readings, "reading")} already in hand: another makes the ` +
+        `next attack count ${multipleWord(2 ** (readings + 1))}.`,
       );
     }
   }
-  if (cardId === "alliance" && view.diplomacyBoost.includes(factionId)) {
-    lines.push("Extended diplomacy: this Alliance lasts 10 turns.");
+  const foulAir = miasmaHeld(view, factionId);
+  if (foulAir > 0) {
+    if (cardId === "plague") {
+      const word = multipleWord(plagueMultiplier(view, factionId));
+      lines.push(`Miasma: each of your stacks counts ${word}.`);
+    }
+    if (cardId === "miasma") {
+      lines.push(
+        `${count(foulAir, "reading")} already gathered: another makes the ` +
+        `next plague count ${multipleWord(2 ** (foulAir + 1))}.`,
+      );
+    }
   }
-  // One line per guard, from GUARD_POSTED, so a fourth guard cannot be added to
-  // the rules and stay invisible in the hand.
+  // One line per guard, from GUARD_POSTED, so a second guard cannot be added
+  // to the rules and stay invisible in the hand.
   if (isGuardCard(cardId) && holdsGuard(view, factionId, cardId)) {
     lines.push(GUARD_POSTED[cardId]);
   }
-  const booms = boomsHeld(view, factionId);
-  if (booms > 0 && (cardId === "found-settlement" || cardId === "population-boom")) {
-    // The only route by which the player learns booms stack and what they buy -
-    // the same hole `favourable-omens` fills above. Stated as the allowance
-    // rather than as the count, because the allowance is the number the block
-    // line on a land will quote back at them.
-    lines.push(
-      `${count(booms, "population boom")} held: your people support ` +
-        `${SETTLEMENT_BASE_CAP + booms} settlements in a land.`,
-    );
-  }
   return lines;
+}
+
+/** What a Plague would deal right now, for its hover tip: the total across
+ *  every polygon holding the actor's stacks, and the biggest single hit. */
+export function plaguePreviewLines(
+  view: RulesView,
+  factionId: string,
+): string[] {
+  const polygons = view.factionIds.filter(
+    (p) => (view.disease[p]?.[factionId] ?? 0) > 0,
+  );
+  if (polygons.length === 0) return [];
+  const total = polygons.reduce(
+    (sum, p) => sum + Math.min(defenseOf(view, p), plagueDamageOn(view, factionId, p)),
+    0,
+  );
+  return [
+    `Would deal ${total} damage across ${count(polygons.length, "land")}.`,
+  ];
 }

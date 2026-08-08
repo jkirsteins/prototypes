@@ -1,12 +1,12 @@
 /** Headless balance run: how fast does a new player get subjugated, and does
- *  arming enemy decks with Subjugate and Raid change that?
+ *  the field's build assignment change that?
  *
- *  npm run simulate -- --games=500 --cap=150 --seed=1 --arms=shipped,unarmed,defensive
+ *  npm run simulate -- --games=500 --cap=150 --seed=1 --arms=mixed,all-warpath,all-pestilence
  */
 import { writeFileSync } from "node:fs";
 import {
-  aggregate, byFaction, pairedDelta, runBatch, DECK_ARMS,
-  type ArmStats, type GameSummary,
+  aggregate, byFaction, pairedDelta, runBatch, BUILD_ARMS,
+  type ArmStats, type BuildArm, type GameSummary,
 } from "../src/sim";
 
 function flag(name: string, fallback: string): string {
@@ -26,13 +26,14 @@ function num(name: string, fallback: number): number {
 const games = num("games", 500);
 const turnCap = num("cap", 150);
 const firstSeed = num("seed", 1);
-const arms = flag("arms", "shipped,unarmed,defensive").split(",");
+const arms = flag("arms", "mixed,all-warpath,all-pestilence")
+  .split(",") as BuildArm[];
 const jsonPath = flag("json", "");
 
 for (const arm of arms) {
-  if (!(arm in DECK_ARMS)) {
+  if (!BUILD_ARMS.includes(arm)) {
     throw new Error(
-      `unknown arm "${arm}"; known: ${Object.keys(DECK_ARMS).join(", ")}`,
+      `unknown arm "${arm}"; known: ${BUILD_ARMS.join(", ")}`,
     );
   }
 }
@@ -52,7 +53,7 @@ const stats: ArmStats[] = arms.map((arm) => aggregate(arm, results.get(arm)!));
 
 console.log(
   `\n${games} games per arm, ${turnCap}-turn cap, seeds ${firstSeed}..${firstSeed + games - 1}` +
-    `, human deck: 10x Grow potatoes\n`,
+    `, naive human on the starting deck\n`,
 );
 
 const cols = [

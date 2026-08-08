@@ -93,96 +93,61 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 2, type: "incorporated", targetFactionId: H, overlordFactionId: RIVAL },
     { turn: 1, playerId: 1, type: "incorporated", targetFactionId: RIVAL, overlordFactionId: H },
   ],
-  reclaimed: [
-    {
-      turn: 1, playerId: 1, type: "reclaimed", cardId: "revolt",
-      targetFactionId: H, overlordFactionId: RIVAL, amount: 1,
-    },
-    {
-      turn: 1, playerId: 2, type: "reclaimed", cardId: "revolt",
-      targetFactionId: RIVAL, overlordFactionId: H, amount: 1, readings: 1,
-    },
+  independence: [
+    // Fired from beginTurn with the FREED seat's own playerId - both sides.
+    { turn: 1, playerId: 1, type: "independence", targetFactionId: H, overlordFactionId: RIVAL },
+    { turn: 1, playerId: 2, type: "independence", targetFactionId: RIVAL, overlordFactionId: H },
   ],
   tribute: [
     {
       turn: 1, playerId: 1, type: "tribute",
-      targetFactionId: H, overlordFactionId: RIVAL, amount: 1,
+      targetFactionId: H, overlordFactionId: RIVAL, wealth: 1,
     },
     {
       turn: 1, playerId: 2, type: "tribute",
-      targetFactionId: RIVAL, overlordFactionId: H, amount: 1,
+      targetFactionId: RIVAL, overlordFactionId: H, wealth: 1,
     },
   ],
   settled: [
     { turn: 1, playerId: 1, type: "settled", targetFactionId: H },
     { turn: 1, playerId: 2, type: "settled", targetFactionId: RIVAL },
   ],
-  "seat-moved": [
-    { turn: 1, playerId: 1, type: "seat-moved", targetFactionId: H },
-    { turn: 1, playerId: 2, type: "seat-moved", targetFactionId: RIVAL },
+  damaged: [
+    { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: H, amount: 150 },
+    { turn: 1, playerId: 1, type: "damaged", cardId: "great-raid", targetFactionId: RIVAL, amount: 75 },
+    // No cardId: the "An attack" fallback line has to sweep too.
+    { turn: 1, playerId: 2, type: "damaged", targetFactionId: H, amount: 150 },
   ],
-  "seat-lost": [
-    { turn: 1, playerId: 1, type: "seat-lost", targetFactionId: H },
-    { turn: 1, playerId: 2, type: "seat-lost", targetFactionId: RIVAL },
+  healed: [
+    { turn: 1, playerId: 1, type: "healed", cardId: "hillfort", targetFactionId: H, amount: 150 },
+    { turn: 1, playerId: 2, type: "healed", cardId: "harvest-feast", targetFactionId: RIVAL, amount: 50 },
   ],
-  seeded: [
-    { turn: 1, playerId: 2, type: "seeded", targetFactionId: H, overlordFactionId: RIVAL },
-    { turn: 1, playerId: 1, type: "seeded", targetFactionId: RIVAL, overlordFactionId: H },
+  "disease-spread": [
+    { turn: 1, playerId: 2, type: "disease-spread", cardId: "spread-disease", targetFactionId: H, amount: 1 },
+    { turn: 1, playerId: 1, type: "disease-spread", cardId: "localized-outbreak", targetFactionId: RIVAL, amount: 1 },
   ],
-  garrisoned: [
-    { turn: 1, playerId: 1, type: "garrisoned", targetFactionId: H, amount: 1 },
-    { turn: 1, playerId: 2, type: "garrisoned", targetFactionId: RIVAL, amount: 1 },
+  plagued: [
+    { turn: 1, playerId: 2, type: "plagued", cardId: "plague", targetFactionId: H, amount: 200 },
+    { turn: 1, playerId: 1, type: "plagued", cardId: "plague", targetFactionId: RIVAL, amount: 100 },
   ],
-  "pact-lapsed": [
-    // Both orderings, because the two id fields are symmetric here and the
-    // notice picks the human's ally out of whichever slot they are not in.
-    {
-      turn: 1, playerId: 1, type: "pact-lapsed", targetFactionId: H,
-      overlordFactionId: RIVAL, amount: 1, pactAgainst: [],
-    },
-    {
-      turn: 1, playerId: 2, type: "pact-lapsed", targetFactionId: RIVAL,
-      overlordFactionId: H, amount: 1, pactAgainst: [],
-    },
+  "winds-shifted": [
+    { turn: 1, playerId: 2, type: "winds-shifted", cardId: "foul-winds", targetFactionId: H, amount: 2 },
+    { turn: 1, playerId: 1, type: "winds-shifted", cardId: "foul-winds", targetFactionId: RIVAL, amount: 1 },
   ],
-  "hostage-taken": [
-    { turn: 1, playerId: 2, type: "hostage-taken", targetFactionId: H, overlordFactionId: RIVAL },
-    { turn: 1, playerId: 1, type: "hostage-taken", targetFactionId: RIVAL, overlordFactionId: H },
-  ],
-  "hostage-returned": [
-    { turn: 1, playerId: 1, type: "hostage-returned", targetFactionId: H, overlordFactionId: RIVAL },
-    { turn: 1, playerId: 2, type: "hostage-returned", targetFactionId: RIVAL, overlordFactionId: H },
-  ],
-  // The harvest events are human-only in play (the injection is seat-gated),
-  // but each line still gets both sides so the sentences never lean on that.
+  // The harvest events fire per seat now, so each line gets both sides and
+  // the sentences never lean on who earned it.
   "harvest-earned": [
     { turn: 1, playerId: 1, type: "harvest-earned", cardId: "turnip-harvest" },
     { turn: 1, playerId: 2, type: "harvest-earned", cardId: "turnip-harvest" },
   ],
-  "harvest-traded": [
-    { turn: 1, playerId: 1, type: "harvest-traded", cardId: "raid" },
-    { turn: 1, playerId: 2, type: "harvest-traded", cardId: "raid" },
-  ],
-  "harvest-might": [
-    { turn: 1, playerId: 1, type: "harvest-might", targetFactionId: RIVAL, amount: 1 },
-    { turn: 1, playerId: 2, type: "harvest-might", targetFactionId: H, amount: 1 },
-  ],
-  "harvest-wealth": [
-    { turn: 1, playerId: 1, type: "harvest-wealth", wealth: 5 },
-    { turn: 1, playerId: 2, type: "harvest-wealth", wealth: 1 },
-  ],
-  empowered: [
-    { turn: 1, playerId: 1, type: "empowered", cardId: "raid" },
-    { turn: 1, playerId: 2, type: "empowered", cardId: "raid" },
+  "harvest-picked": [
+    { turn: 1, playerId: 1, type: "harvest-picked", cardId: "hillfort" },
+    { turn: 1, playerId: 2, type: "harvest-picked", cardId: "subjugate" },
   ],
   victory: [{ turn: 1, playerId: 1, type: "victory" }],
   defeat: [{ turn: 1, playerId: 1, type: "defeat", targetFactionId: H, overlordFactionId: RIVAL }],
   unified: [{ turn: 1, playerId: 1, type: "unified", overlordFactionId: RIVAL }],
   surrendered: [{ turn: 1, playerId: 1, type: "surrendered" }],
-  stranded: [
-    { turn: 1, playerId: 1, type: "stranded", targetFactionId: H, overlordFactionId: RIVAL },
-    { turn: 1, playerId: 2, type: "stranded", targetFactionId: H, overlordFactionId: RIVAL },
-  ],
 };
 
 /** Enough of a lookup to flatten segments back to a sentence. The verb sweep
@@ -199,10 +164,12 @@ const ALL_SAMPLE_EVENTS: GameEvent[] = (Object.keys(SAMPLES) as GameEventType[])
 const ctx: NoticeCtx = {
   humanFactionId: H,
   factionOf: (playerId) => (playerId === 1 ? H : playerId === 2 ? RIVAL : undefined),
-  leads: () => 0,
-  subjugationGrip: () => 2,
-  subjugationBarAgainstYou: () => 2,
-  allianceExpiry: () => 10,
+  defense: () => 300,
+  defenseMax: () => 600,
+  diseaseOf: () => 1,
+  inHumanRealm: (polygon) => polygon === H,
+  // Open, so the gate footnote's own prose is swept along with the lines.
+  homeGateOpen: () => true,
 };
 
 function collectSegmentLists(): Segment[][] {
@@ -348,8 +315,9 @@ describe("naming convention: no card or faction name as raw text", () => {
     expect(segs.some((s) => s.kind === "card" && s.cardId === "raid")).toBe(true);
     expect(segs.some((s) => s.kind === "faction" && s.factionId === RIVAL)).toBe(true);
 
+    // A play is silent now - the damage consequence carries the summary line.
     const summary = buildRoundSummary(
-      [{ turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: H, amount: 1 }],
+      [{ turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: H, amount: 150 }],
       ctx,
     )!;
     expect(summary.lines[0].text.some((s) => s.kind === "card" && s.cardId === "raid")).toBe(true);

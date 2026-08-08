@@ -1,31 +1,23 @@
 import { describe, it, expect } from "vitest";
 import { POLICY_COVERAGE, chooseAction, aiTakeTurn } from "../src/ai";
 import {
-  newGame, startGame, chooseDeck, pickFaction, chooseRules, type GameState,
+  chooseBuild, chooseRules, newGame, pickFaction, startGame,
+  type GameState,
 } from "../src/game";
-import { bumpMight, type Relations } from "../src/relations";
-import { CARDS, buildDeck, type Rng } from "../src/cards";
+import { CARDS, type Strategy } from "../src/cards";
 import { DEFAULT_RULES } from "../src/rules";
+import { seededRng } from "../src/rng";
 
-function seededRng(seed: number): Rng {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
-
-const FACTIONS = ["alpha", "beta", "gamma", "delta"];
+// Six factions on a complete graph (newGame's default adjacency): everything
+// is in everything's reach, so the tests are about the POLICY, not distance.
+// The human sits on zeta; the actor is alpha at index 1 throughout.
+const FACTIONS = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
 
 function base(): GameState {
-  // human is beta; make alpha (player 2, index 1) the actor. Alpha's seat has
-  // not begun a turn yet, so it has banked no income; a treasury covering the
-  // dearest costed card keeps these tests about the POLICY, not about
-  // affordability - which has its own tests in playability.test.ts.
   const g = pickFaction(
-    chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
+    chooseBuild(startGame(newGame(FACTIONS)), "warpath"), "zeta", seededRng(1),
   );
-  return { ...g, current: 1, wealth: { alpha: 2 } };
+  return { ...g, current: 1 };
 }
 
 function withHand(g: GameState, hand: string[]): GameState {
@@ -33,645 +25,22 @@ function withHand(g: GameState, hand: string[]): GameState {
   return { ...g, players: g.players.map((pl, i) => (i === 1 ? p : pl)) };
 }
 
-function lead(rel: Relations, actor: string, target: string, n: number): Relations {
-  let out = rel;
-  for (let i = 0; i < n; i++) out = bumpMight(out, actor, target);
-  return out;
+/** pickFaction rolls each AI seat's build, seeded; a test about one branch
+ *  stamps the branch it means to exercise. */
+function asStrategy(g: GameState, strategy: Strategy): GameState {
+  return {
+    ...g,
+    players: g.players.map((pl, i) => (i === 1 ? { ...pl, strategy } : pl)),
+  };
 }
 
-describe("chooseAction priorities", () => {
-  it("1: plays the forced tribute before anything else", () => {
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = withHand(g, ["pay-military-tribute", "raid"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-  });
-
-  it("1: finds the tribute wherever it sits in hand", () => {
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 2) };
-    g = withHand(g, ["raid", "pay-military-tribute"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
-  });
-
-  it("2: revolts out of vassalage rather than building", () => {
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    // The gate is met: lead 2 against gamma's two-land realm.
-    g = { ...g, relations: lead(g.relations, "alpha", "gamma", 2) };
-    g = withHand(g, ["raid", "revolt"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
-  });
-
-  it("2: does not revolt when not subjugated", () => {
-    let g = base();
-    g = withHand(g, ["revolt", "grow-crops"]);
-    // Revolt is unplayable while free, so the potato is the play
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
-  });
-
-  it("2: waits below the gate - legality keeps the revolt out of reach", () => {
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    // Lead 1 against a required 2: playableSet never admits the Revolt, so
-    // step 2 cannot fire and the turn builds instead.
-    g = { ...g, relations: lead(g.relations, "alpha", "gamma", 1) };
-    g = withHand(g, ["revolt", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
-  });
-
-  it("forced tribute monopolises the playable set, so revolt is unreachable", () => {
-    // Tribute is forced while a vassal, giving it exclusive occupancy of
-    // cardIndexes. This means idxOf("revolt") is undefined and step 2 never
-    // fires. The two cards cannot co-occur in playableSet, so their relative
-    // step order has no observable effect and no ordering test exists.
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = withHand(g, ["revolt", "pay-military-tribute"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
-  });
-
-  it("3: incorporates the vassal that brings the most land", () => {
-    let g = base();
-    // alpha holds gamma and delta; delta has annexed a land, so it is worth
-    // more - and that annexation is also what lifts alpha's realm to the gate.
-    g = { ...g, overlords: new Map([["gamma", "alpha"], ["delta", "alpha"]]) };
-    g = { ...g, incorporated: { beta: "delta" } };
-    g = withHand(g, ["incorporate"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "delta",
-    });
-  });
-
-  it("3: breaks a realm-size tie by faction order", () => {
-    let g = base();
-    // beta annexed into alpha reaches the gate without favouring either vassal.
-    g = { ...g, overlords: new Map([["gamma", "alpha"], ["delta", "alpha"]]) };
-    g = { ...g, incorporated: { beta: "alpha" } };
-    g = withHand(g, ["incorporate"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "gamma",
-    });
-  });
-
-  it("4: subjugate the biggest lead", () => {
-    let g = base();
-    let rel = lead(g.relations, "alpha", "beta", 2);
-    rel = lead(rel, "alpha", "gamma", 3);
-    g = { ...g, relations: rel };
-    g = withHand(g, ["raid", "subjugate"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "gamma",
-    });
-  });
-
-  it("5: finish a deficit-1 target before generic building", () => {
-    let g = base();
-    // alpha already leads gamma by 1 might; delta untouched
-    g = { ...g, relations: lead(g.relations, "alpha", "gamma", 1) };
-    g = withHand(g, ["raid"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "gamma",
-    });
-  });
-
-  it("5: allies with the faction that can subjugate it now", () => {
-    let g = base();
-    // gamma is 1 short of taking alpha; alliance freezes it for 5 turns
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
-    g = withHand(g, ["grow-crops", "alliance"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "gamma",
-    });
-  });
-
-  it("5: does not fire when nobody is close to subjugating it", () => {
-    let g = base();
-    g = withHand(g, ["alliance", "raid"]);
-    // no threat within one play, so the build step takes the turn
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-
-  it("5: assassinates the ruler closest to taking it on Might", () => {
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
-    g = withHand(g, ["grow-crops", "assassinate-ruler"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "gamma",
-    });
-  });
-
-  it("5: assassinates the closest threat when two qualify", () => {
-    // delta is 1 short (shortfall 1), gamma is at the bar (shortfall 0):
-    // the pick is the nearer danger, ties broken by faction order.
-    let g = base();
-    let rel = lead(g.relations, "delta", "alpha", 1);
-    rel = lead(rel, "gamma", "alpha", 2);
-    g = { ...g, relations: rel };
-    g = withHand(g, ["grow-crops", "assassinate-ruler"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "gamma",
-    });
-  });
-
-  it("5: does not fire when every qualifying ruler is guarded", () => {
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
-    g = { ...g, guards: { bodyguard: ["gamma"] } };
-    g = withHand(g, ["assassinate-ruler", "raid"]);
-    // spending the card to strip a guard leaves the threat standing
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-
-  it("5: prefers the alliance when both are in hand", () => {
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
-    g = withHand(g, ["assassinate-ruler", "alliance"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "gamma" });
-  });
-
-  it("6: fortify defensively when out-mighted", () => {
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
-    g = withHand(g, ["fortify", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-  });
-
-  it("a lead held only by the direct lord is no reason to Fortify", () => {
-    // The fan-out skips the lord (playCard), so a Fortify "against" it would
-    // be a play-because-held - the turn grows crops instead.
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 3) };
-    g = withHand(g, ["fortify", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
-    // The same lead held by anyone else still triggers the defensive step.
-    let h = base();
-    h = { ...h, overlords: new Map([["alpha", "gamma"]]) };
-    h = { ...h, relations: lead(h.relations, "delta", "alpha", 3) };
-    h = withHand(h, ["fortify", "grow-crops"]);
-    expect(chooseAction(h)).toEqual({ type: "play", cardIndex: 0 });
-  });
-
-  it("7: otherwise build toward the closest target, raid over marriage, faction order", () => {
-    let g = base();
-    g = withHand(g, ["shrewd-marriage", "raid"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "beta",
-    });
-  });
-
-  it("8: grow crops as filler", () => {
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    // subjugated: no raid on overlord; gamma is only... beta and delta remain raidable
-    g = withHand(g, ["grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-  });
-
-  it("8: extends diplomacy only with an Alliance in hand to extend", () => {
-    let g = base();
-    g = withHand(g, ["extended-diplomacy", "alliance"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-  });
-
-  it("8: does not extend diplomacy with no Alliance in hand", () => {
-    let g = base();
-    g = withHand(g, ["extended-diplomacy", "grow-crops"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-
-  it("8: an emergency alliance outranks extending the next one", () => {
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 1) };
-    g = withHand(g, ["extended-diplomacy", "alliance"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "gamma" });
-  });
-
-  it("8: posts a guard on a Might lead it cannot cash this turn", () => {
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "alpha", "beta", 2) };
-    g = withHand(g, ["bodyguard", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-  });
-
-  it("8: does not post a guard when Subjugate is playable this turn", () => {
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "alpha", "beta", 2) };
-    g = withHand(g, ["bodyguard", "subjugate"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "beta" });
-  });
-
-  it("8: does not post a guard with no subjugation-grade Might lead", () => {
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "alpha", "beta", 1) };
-    g = withHand(g, ["bodyguard", "grow-crops"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-
-  it("8c: posts a distrustful neighbour when a conquest is nearly in reach", () => {
-    // alpha needs 2 over beta and has 1: a pact sealed with beta now would
-    // freeze that conquest for five turns.
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "alpha", "beta", 1) };
-    g = withHand(g, ["distrustful-neighbour", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-  });
-
-  it("8c: leaves a distrustful neighbour alone with nothing worth taking", () => {
-    // Every bar is 2 at a minimum, so "more than two plays away" needs the
-    // actor BEHIND: each rival leading alpha by 1 puts every bar three plays
-    // out, and the guard stays in hand.
-    let g = base();
-    let rel = g.relations;
-    for (const f of ["beta", "gamma", "delta"]) {
-      rel = lead(rel, f, "alpha", 1);
-    }
-    g = { ...g, relations: rel };
-    g = withHand(g, ["distrustful-neighbour", "grow-crops"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-
-  it("8d: raises the population only when it would unlock a settlement", () => {
-    // Every land of the realm is at its allowance but has map room left, so a
-    // boom is the only thing that makes Found a settlement playable.
-    const roomy = (g: GameState): GameState =>
-      ({ ...g, siteCaps: { alpha: 4, beta: 4, gamma: 4, delta: 4 } });
-    let blocked = roomy(base());
-    blocked = { ...blocked, settlements: { alpha: 1 } };
-    blocked = withHand(blocked, ["population-boom", "found-settlement"]);
-    expect(chooseAction(blocked)).toEqual({ type: "play", cardIndex: 0 });
-
-    // A land it can settle right now: spend the turn settling, not booming -
-    // the boom would be consumed by that same settlement for nothing.
-    const open = withHand(roomy(base()), ["population-boom", "found-settlement"]);
-    expect(chooseAction(open)).toMatchObject({ cardIndex: 1 });
-
-    // No Found a settlement in hand: a boom now is a turn spent on nothing.
-    let noCard = roomy(base());
-    noCard = { ...noCard, settlements: { alpha: 1 } };
-    noCard = withHand(noCard, ["population-boom", "grow-crops"]);
-    expect(chooseAction(noCard)).toMatchObject({ cardIndex: 1 });
-
-    // Blocked by the MAP rather than the allowance: no boom can help. The
-    // turnip is in hand so a fallthrough onto the boom is distinguishable from
-    // the branch actually firing - without it the boom is the only legal card
-    // and step 11 would play it for reasons that are not 8d.
-    let mapped: GameState =
-      { ...base(), siteCaps: { alpha: 1 }, settlements: { alpha: 1 } };
-    mapped = withHand(mapped, ["population-boom", "found-settlement", "grow-crops"]);
-    expect(chooseAction(mapped)).toMatchObject({ cardIndex: 2 });
-  });
-
-  // Supplementary tests below: the brief's six "8:" tests above mostly pass
-  // even if the branch they target is deleted outright, because an existing,
-  // unconditional later step (grow-crops, or the lone build target) happens
-  // to land on the same card by coincidence. These tests are built so that
-  // deleting or weakening the relevant guard actually changes the answer.
-
-  it("8 (supplementary): extending diplomacy still wins over an available grow-crops fallback", () => {
-    // Unlike the brief's own "extends only with an Alliance in hand" test,
-    // grow-crops is also in hand here. If the extend branch were deleted,
-    // the unconditional grow-crops step (existing, later) would take the
-    // turn instead, at cardIndex 2, not 0 - so this fails without the branch.
-    let g = base();
-    g = withHand(g, ["extended-diplomacy", "alliance", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-  });
-
-  it("8 (supplementary): withholds diplomacy when Alliance is not in hand, even though Alliance has valid targets in the game state", () => {
-    // validTargetsFor("alliance") is nonempty here purely from game state
-    // (nobody is allied, all reachable) even though "alliance" is not in
-    // hand. A guard that dropped the hand.includes("alliance") check and
-    // relied on validTargetsFor alone would wrongly fire and return
-    // cardIndex 0; the build step's Raid is the correct fallback instead.
-    let g = base();
-    g = withHand(g, ["extended-diplomacy", "raid"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "beta" });
-  });
-
-  it("8 (supplementary): the guard threshold is the Subjugate bar itself, not merely 'some lead'", () => {
-    // alpha leads beta by 1 Might, one short of the bar of
-    // SUBJUGATE_THRESHOLD * 1 = 2. A guard that fired on any positive lead
-    // (dropping the ">= required" comparison) would wrongly post the guard
-    // at cardIndex 0; the correct answer builds with Raid instead.
-    let g = base();
-    g = { ...g, relations: lead(g.relations, "alpha", "beta", 1) };
-    g = withHand(g, ["bodyguard", "raid"]);
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "beta" });
-  });
-
-  it("9: discards leftmost when nothing is playable", () => {
-    let g = base();
-    g = withHand(g, ["subjugate", "incorporate"]);
-    expect(chooseAction(g)).toEqual({ type: "discard", cardIndex: 0 });
-  });
-
-  it("fortify is not wasted when unthreatened", () => {
-    let g = base();
-    g = withHand(g, ["fortify", "raid"]);
-    // no one leads alpha: prefer building with raid (priority 7 over 6's gate)
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "beta",
-    });
-  });
-
-  it("11: a card whose branch declines still falls through without crashing", () => {
-    let g = base();
-    g = withHand(g, ["alliance"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0, targetId: "beta" });
-
-    let g2 = base();
-    g2 = withHand(g2, ["assassinate-ruler"]);
-    expect(chooseAction(g2)).toEqual({ type: "play", cardIndex: 0, targetId: "beta" });
-
-    let g3 = base();
-    g3 = withHand(g3, ["extended-diplomacy"]);
-    expect(chooseAction(g3)).toEqual({ type: "play", cardIndex: 0 });
-  });
-});
-
-const chosen = (g: GameState): string => {
-  const a = chooseAction(g);
-  return a.type === "play" ? g.players[1].hand[a.cardIndex] : "(discard)";
-};
-
-describe("chooseAction with scaling gains", () => {
-  it("5: finishes a bar that only a multi-point Raid can reach", () => {
-    // Full adjacency. alpha holds delta, so alpha's realm touches beta twice
-    // -> Raid on beta is worth 2, and beta's bar is 2 x 1 land = 2.
-    // Old policy: Raid needs lead === bar - 1, which fails at lead 0, so it
-    // falls through to building. New policy: 0 + 2 >= 2, so Raid on beta
-    // finishes now. The two differ, which is what makes this a test.
-    let g = base();
-    g = { ...g, overlords: new Map([["delta", "alpha"]]) };
-    g = withHand(g, ["grow-crops", "raid"]);
-    expect(chooseAction(g)).toMatchObject({
-      type: "play", targetId: "beta",
-    });
-    expect(chosen(g)).toBe("raid");
-  });
-
-  it("6b: reads the omens before building", () => {
-    // No vassals, so Raid is worth 1 against a bar of 2: step 5 cannot fire
-    // and the policy would otherwise build. It reads the omens instead.
-    expect(chosen(withHand(base(), ["favourable-omens", "raid"]))).toBe(
-      "favourable-omens",
-    );
-  });
-
-  it("6b: does not read the omens with nothing to double", () => {
-    expect(chosen(withHand(base(), ["favourable-omens", "grow-crops"]))).toBe(
-      "grow-crops",
-    );
-  });
-
-  it("6b: never reads the omens while a vassal, which would double its tribute", () => {
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "delta"]]) };
-    expect(chosen(withHand(g, ["favourable-omens", "raid"]))).toBe("raid");
-  });
-
-  it("6b: reads a second time rather than leaving the redrawn copy dead", () => {
-    // Readings stack, so the branch must not check whether one is already
-    // held: a guard there would leave the card legal but unwanted and hand it
-    // to the last-resort fallthrough. Fortify rather than Raid, because a
-    // Raid doubled by the first reading already meets a bar of 2 - which the
-    // test below is about.
-    const g = { ...base(), omens: { alpha: 1 } };
-    expect(chosen(withHand(g, ["favourable-omens", "fortify"]))).toBe(
-      "favourable-omens",
-    );
-  });
-
-  it("6b: cashes a held reading on a subjugation rather than stacking on it", () => {
-    // Step 6 sits above the omens step, and gainOf scores through the reading:
-    // a doubled Raid meets alpha's bar of 2 where a plain one is worth 1, so
-    // the finishing play fires and a second reading never delays it.
-    const g = { ...base(), omens: { alpha: 1 } };
-    expect(chosen(withHand(g, ["favourable-omens", "raid"]))).toBe("raid");
-  });
-
-  it("6b: never delays a play that finishes a subjugation", () => {
-    // lead 1 + gain 1 meets beta's bar of 2, so step 5 fires first.
-    let g = base();
-    g = { ...g, relations: lead({}, "alpha", "beta", 1) };
-    expect(chosen(withHand(g, ["favourable-omens", "raid"]))).toBe("raid");
-  });
-
-  it("7: ranks by plays remaining, not by point deficit", () => {
-    // A six-land map built so the two rankings disagree:
-    //   beta  - bar 2, alpha trails by 1 -> deficit 3, Raid worth 1 -> 3 plays
-    //   gamma - bar 4 (gamma plus incorporated g1), lead 0 -> deficit 4,
-    //           Raid worth 3 (alpha, a1 and a2 all touch gamma) -> 2 plays
-    // Neither is finishable, so step 5 stays quiet and step 7 decides.
-    // The old ranking picks beta (3 < 4); the new one must pick gamma.
-    const IDS = ["alpha", "a1", "a2", "beta", "gamma", "g1"];
-    const ADJ = {
-      alpha: ["a1", "a2", "beta", "gamma"],
-      a1: ["alpha", "gamma"],
-      a2: ["alpha", "gamma"],
-      beta: ["alpha"],
-      gamma: ["alpha", "a1", "a2", "g1"],
-      g1: ["gamma"],
-    };
-    let g = pickFaction(
-      chooseDeck(startGame(newGame(IDS, ADJ)), buildDeck()),
-      "beta",
-      seededRng(1),
-    );
-    g = {
-      ...g,
-      current: g.players.findIndex((p) => p.factionId === "alpha"),
-      overlords: new Map([["a1", "alpha"], ["a2", "alpha"]]),
-      incorporated: { g1: "gamma" },
-      relations: lead({}, "beta", "alpha", 1), // beta leads alpha by 1
-    };
-    g = {
-      ...g,
-      players: g.players.map((pl) =>
-        pl.factionId === "alpha" ? { ...pl, hand: ["raid"] } : pl,
-      ),
-    };
-    expect(chooseAction(g)).toMatchObject({ type: "play", targetId: "gamma" });
-  });
-});
-
-describe("found a settlement (steps 7b and 9b)", () => {
-  // alpha is the actor throughout; beta is the human seat.
-  const threatened = (g: GameState, by: string, n: number): GameState => ({
-    ...g,
-    relations: lead({}, by, "alpha", n),
-  });
-
-  it("settles against a threat within two plays of taking it", () => {
-    // alpha's bar is 2 (one land); gamma leading by 1 is one play short.
-    const g = threatened(withHand(base(), ["found-settlement"]), "gamma", 1);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "alpha",
-    });
-  });
-
-  it("prefers its own land, then an annexed one, over a vassal's", () => {
-    const g = {
-      ...threatened(withHand(base(), ["found-settlement"]), "gamma", 1),
-      overlords: new Map([["delta", "alpha"]]),
-      incorporated: { beta: "alpha" },
-      settlements: { alpha: 1 }, // own land already at its allowance
-    };
-    // beta is annexed and permanent; delta is a vassal that can walk off.
-    expect(chooseAction(g)).toMatchObject({ targetId: "beta" });
-    expect(chooseAction({ ...g, settlements: { alpha: 1, beta: 1 } }))
-      .toMatchObject({ targetId: "delta" });
-  });
-
-  it("does not settle a land with no free site", () => {
-    const g = {
-      ...threatened(withHand(base(), ["found-settlement", "grow-crops"]), "gamma", 1),
-      siteCaps: {}, // no land in this world has a spare slot
-    };
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 }); // grows crops
-  });
-
-  it("does not settle a land the map has no dot left for", () => {
-    const g = {
-      ...threatened(withHand(base(), ["found-settlement", "grow-crops"]), "gamma", 1),
-      siteCaps: { alpha: 1 },
-      settlements: { alpha: 1 },
-    };
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-
-  it("spends an unthreatened turn settling rather than growing crops", () => {
-    // No leads anywhere, so no threat and nothing to build toward: step 9b.
-    const g = withHand(base(), ["grow-crops", "found-settlement"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "alpha",
-    });
-  });
-
-  it("takes a subjugation over a settlement", () => {
-    // alpha leads gamma by 2, gamma's realm is one land: Subjugate is live.
-    const g = {
-      ...withHand(base(), ["found-settlement", "subjugate"]),
-      relations: lead({}, "alpha", "gamma", 2),
-    };
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "gamma" });
-  });
-});
-
-describe("seat of power (steps 7c and 9c)", () => {
-  // alpha is the actor throughout; beta is the human seat.
-  const threatened = (g: GameState, by: string, n: number): GameState => ({
-    ...g,
-    relations: lead({}, by, "alpha", n),
-  });
-
-  it("places the seat against a threat within two plays of taking it", () => {
-    const g = threatened(withHand(base(), ["seat-of-power"]), "gamma", 1);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "alpha",
-    });
-  });
-
-  it("spends an unthreatened spare turn on the seat rather than turnips", () => {
-    const g = withHand(base(), ["grow-crops", "seat-of-power"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "alpha",
-    });
-  });
-
-  it("puts the seat where the most raidable neighbours touch it", () => {
-    // alpha's own land borders only its annexed delta; delta fronts both
-    // beta and gamma. The seat belongs on the border, not the heartland.
-    const g = {
-      ...withHand(base(), ["seat-of-power"]),
-      incorporated: { delta: "alpha" },
-      adjacency: {
-        alpha: ["delta"],
-        delta: ["alpha", "beta", "gamma"],
-        beta: ["delta", "gamma"],
-        gamma: ["delta", "beta"],
-      },
-    };
-    expect(chooseAction(g)).toMatchObject({ targetId: "delta" });
-  });
-
-  it("does not shuffle a standing seat to an equal land", () => {
-    // Complete graph: the annexed delta fronts the same rivals alpha does, so
-    // moving the seat buys nothing and the turn goes to turnips.
-    const g = {
-      ...withHand(base(), ["seat-of-power", "grow-crops"]),
-      seats: { alpha: "alpha" },
-      incorporated: { delta: "alpha" },
-    };
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-
-  it("moves a standing seat to a strictly better border", () => {
-    // The seat sits on the heartland (no raidable neighbour); delta fronts
-    // two rivals. Worth the coin.
-    const g = {
-      ...withHand(base(), ["seat-of-power", "grow-crops"]),
-      seats: { alpha: "alpha" },
-      incorporated: { delta: "alpha" },
-      adjacency: {
-        alpha: ["delta"],
-        delta: ["alpha", "beta", "gamma"],
-        beta: ["delta", "gamma"],
-        gamma: ["delta", "beta"],
-      },
-    };
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 0, targetId: "delta" });
-  });
-});
-
-describe("found a settlement, continued", () => {
-  it("raids toward a subjugation rather than settling, when one is near", () => {
-    // Step 9 outranks 9b: a lead that wins a vassal beats a bar that delays one.
-    const g = {
-      ...withHand(base(), ["found-settlement", "raid"]),
-      relations: lead({}, "alpha", "gamma", 1),
-    };
-    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
-  });
-});
-
-describe("vassal seats use the conquest cards", () => {
-  it("a vassal with the lead subjugates rather than growing crops", () => {
-    let g = base();
-    g = { ...g, overlords: new Map([["alpha", "delta"]]) };
-    g = { ...g, relations: lead(g.relations, "alpha", "gamma", 2) };
-    g = withHand(g, ["subjugate", "grow-crops"]);
-    expect(chooseAction(g)).toMatchObject({
-      type: "play", cardIndex: 0, targetId: "gamma",
-    });
-  });
-
-  it("fan-out defence counts vassal rivals as threats", () => {
-    // gamma is delta's vassal AND leads alpha on might: still a threat now
-    let g = base();
-    g = { ...g, overlords: new Map([["gamma", "delta"]]) };
-    g = { ...g, relations: lead(g.relations, "gamma", "alpha", 3) };
-    g = withHand(g, ["fortify", "grow-crops"]);
-    expect(chooseAction(g)).toMatchObject({ type: "play", cardIndex: 0 });
-  });
-
-  it("incorporate refuses a digest whose freed subtree outweighs the land kept", () => {
-    // alpha's vassal gamma holds delta: digesting gamma keeps 1 land and
-    // frees a 1-land subtree - net nothing, so hold the card. The annexed
-    // beta is only there to hold the realm gate open.
-    let g = base();
-    g = {
-      ...g,
-      overlords: new Map([["gamma", "alpha"], ["delta", "gamma"]]),
-      incorporated: { beta: "alpha" },
-    };
-    g = withHand(g, ["incorporate", "grow-crops"]);
-    expect(chooseAction(g)).toMatchObject({ type: "play", cardIndex: 1 });
-  });
-});
+function withLeadership(g: GameState, lead: Record<string, number>): GameState {
+  const rulers = { ...g.rulers };
+  for (const [f, n] of Object.entries(lead)) {
+    rulers[f] = { ...rulers[f], leadership: n };
+  }
+  return { ...g, rulers };
+}
 
 describe("POLICY_COVERAGE", () => {
   it("names a policy branch for every card in the game", () => {
@@ -685,191 +54,403 @@ describe("POLICY_COVERAGE", () => {
   });
 });
 
-describe("subjugation-stability policy branches", () => {
-  it("2a: sows a revolt while a vassal", () => {
+describe("the spine, steps 1..5", () => {
+  it("1: plays the forced tribute before anything else", () => {
     let g = base();
-    g = { ...g, overlords: new Map([["alpha", "beta"]]) };
-    g = withHand(g, ["grow-crops", "seeds-of-revolt"]);
+    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
+    g = withHand(g, ["raid", "pay-military-tribute"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
-  it("2: prefers a live Revolt over sowing another", () => {
-    // Sowing is illegal while one is live, but the ordering must also be right:
-    // escaping now beats preparing to escape.
+  it("2: subjugates through an open gate, above every voluntary play", () => {
     let g = base();
-    g = { ...g, overlords: new Map([["alpha", "beta"]]) };
-    // The gate is met, so the escape is the legal pick to prefer.
-    g = { ...g, relations: lead(g.relations, "alpha", "beta", 2) };
-    g = withHand(g, ["seeds-of-revolt", "revolt"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+    g = { ...g, defense: { beta: 150 } }; // exactly the 25% line of 600
+    g = withHand(g, ["raid", "subjugate"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "beta",
+    });
   });
 
-  it("3: the realm gate keeps the card held below 4 lands", () => {
-    // alpha's realm is 2: playableSet never admits the Incorporate, so step 3
-    // cannot fire and the turn grows a turnip instead.
+  it("2: among several open gates, takes the biggest full realm", () => {
+    // gamma holds delta, so taking gamma takes the pyramid: 2 lands beat
+    // beta's 1 even though beta sorts first.
     let g = base();
-    g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
+    g = { ...g, overlords: new Map([["delta", "gamma"]]) };
+    g = { ...g, defense: { beta: 100, gamma: 120 } };
+    g = withHand(g, ["subjugate"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "gamma",
+    });
+  });
+
+  it("2: honours the respite - and never raids an already-open gate instead", () => {
+    // beta's gate is open but its escape respite runs: Subjugate has no legal
+    // target, and the build raid must not batter the open gate further - the
+    // gateCandidates filter sends it at a CLOSED gate (gamma, by tie order).
+    let g = asStrategy(base(), "warpath");
+    g = { ...g, defense: { beta: 100 }, respites: { beta: 5 }, turn: 2 };
+    g = withHand(g, ["subjugate", "raid"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "gamma",
+    });
+  });
+
+  it("3: incorporates the vassal that nets the most permanent land", () => {
+    // beta is a plain vassal (net 1); gamma is a mid-lord whose digestion
+    // frees delta (net 0). The realm counts 4 with both pyramids, so the
+    // gate is open and the scoring is what decides.
+    let g = base();
+    g = {
+      ...g,
+      overlords: new Map([["beta", "alpha"], ["gamma", "alpha"], ["delta", "gamma"]]),
+    };
+    g = withHand(g, ["incorporate", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "beta",
+    });
+  });
+
+  it("3: refuses a digest whose freed subtree cancels the land kept", () => {
+    // Only vassal gamma is a mid-lord holding delta: kept 1, freed 1, net 0 -
+    // never picked, so the turn grows a turnip. The annexed epsilon only
+    // holds the realm gate open.
+    let g = base();
+    g = {
+      ...g,
+      overlords: new Map([["gamma", "alpha"], ["delta", "gamma"]]),
+      incorporated: { epsilon: "alpha" },
+    };
     g = withHand(g, ["incorporate", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
-  it("4: takes the biggest lead, poach or not", () => {
-    // A poach past its bar is as certain as a free take now, so the lead is
-    // the whole ranking and delta's 9 beats gamma's 2.
-    let g = base();
-    g = { ...g, overlords: new Map([["delta", "beta"]]) };
-    let rel: Relations = {};
-    rel = lead(rel, "alpha", "gamma", 2);   // free: exactly at the bar
-    rel = lead(rel, "alpha", "delta", 9);   // poach: far clear of bar + surcharge
-    g = { ...g, relations: rel };
-    g = withHand(g, ["subjugate"]);
+  it("4: assassinates the highest leadership in reach", () => {
+    let g = withLeadership(base(), { beta: 100, gamma: 50 });
+    g = withHand(g, ["grow-crops", "assassinate-ruler"]);
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "delta",
-    });
-  });
-});
-
-describe("convex Raid valuation", () => {
-  it("prefers the target it has the widest border against", () => {
-    // alpha (the actor) holds gamma as a vassal, so its realm is {alpha, gamma}.
-    // On this map both alpha and gamma touch beta, but only alpha touches delta:
-    // a Raid on beta is worth raidYield(2)=3, on delta raidYield(1)=1.
-    const ADJ = {
-      alpha: ["beta", "gamma", "delta"],
-      beta: ["alpha", "gamma"],
-      gamma: ["alpha", "beta"],
-      delta: ["alpha"],
-    };
-    let g = pickFaction(
-      chooseDeck(startGame(newGame(FACTIONS, ADJ)), buildDeck()),
-      "beta",
-      seededRng(1),
-    );
-    g = { ...g, current: 1, overlords: new Map([["gamma", "alpha"]]) };
-    g = withHand(g, ["raid"]);
-    const action = chooseAction(g);
-    expect(action).toMatchObject({ type: "play", cardIndex: 0 });
-    expect((action as { targetId: string }).targetId).toBe("beta");
-  });
-
-  it("scores a wide-border Raid above a flat +1 card", () => {
-    // Same wide border. Given both Raid and Shrewd marriage, the policy must
-    // take the Raid: scoring the raw border count instead of raidYield would
-    // still pick Raid here, so the guard that matters is the size of the gain
-    // it believes in - checked directly below.
-    const ADJ = {
-      alpha: ["beta", "gamma", "delta"],
-      beta: ["alpha", "gamma"],
-      gamma: ["alpha", "beta"],
-      delta: ["alpha"],
-    };
-    let g = pickFaction(
-      chooseDeck(startGame(newGame(FACTIONS, ADJ)), buildDeck()),
-      "beta",
-      seededRng(1),
-    );
-    g = { ...g, current: 1, overlords: new Map([["gamma", "alpha"]]) };
-    g = withHand(g, ["shrewd-marriage", "raid"]);
-    expect(chooseAction(g)).toMatchObject({ type: "play", cardIndex: 1 });
-  });
-
-  it("finishes with a Raid whose convex yield alone clears the bar", () => {
-    // delta's bar is SUBJUGATE_THRESHOLD * 1 = 2 and alpha leads by 0. A raid
-    // worth 1 cannot set up a finish, but a raid worth 3 can. Give alpha a wide
-    // border on delta and check the policy sees a finishing play.
-    const ADJ = {
-      alpha: ["delta", "gamma"],
-      beta: ["gamma"],
-      gamma: ["alpha", "beta", "delta"],
-      delta: ["alpha", "gamma"],
-    };
-    let g = pickFaction(
-      chooseDeck(startGame(newGame(FACTIONS, ADJ)), buildDeck()),
-      "beta",
-      seededRng(1),
-    );
-    g = { ...g, current: 1, overlords: new Map([["gamma", "alpha"]]) };
-    g = withHand(g, ["raid"]);
-    const action = chooseAction(g);
-    // Two of alpha's realm lands border delta, so the raid is worth 3 - past
-    // delta's bar of 2 in one play.
-    expect(action).toMatchObject({ type: "play", cardIndex: 0, targetId: "delta" });
-  });
-});
-
-describe("5b: take a hostage", () => {
-  /** Alpha's vassals, each with a live Revolt in its deck. */
-  function restive(g: GameState, vassals: string[]): GameState {
-    return {
-      ...g,
-      overlords: new Map([
-        ...g.overlords,
-        ...vassals.map((v): [string, string] => [v, "alpha"]),
-      ]),
-      players: g.players.map((pl) =>
-        vassals.includes(pl.factionId) ? { ...pl, deck: [...pl.deck, "revolt"] } : pl,
-      ),
-    };
-  }
-
-  it("locks the restive vassal with the most land at stake", () => {
-    let g = base();
-    g = restive(g, ["gamma", "delta"]);
-    // delta's realm is two lands (its own plus an annexation), gamma's one -
-    // a revolt by delta walks off with more, so delta is the pick.
-    g = { ...g, incorporated: { beta: "delta" } };
-    g = withHand(g, ["grow-crops", "take-hostage"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "delta",
+      type: "play", cardIndex: 1, targetId: "beta",
     });
   });
 
-  it("holds the card while no vassal is restive", () => {
-    let g = base();
-    // A vassal with no Revolt sown is no target, so the card is unplayable and
-    // the turn falls through to filler rather than wasting the lock.
-    g = { ...g, overlords: new Map([["gamma", "alpha"]]) };
-    g = withHand(g, ["grow-crops", "take-hostage"]);
+  it("4: skips a guarded ruler - the trade would leave the leadership standing", () => {
+    let g = withLeadership(base(), { beta: 100, gamma: 50 });
+    g = { ...g, guards: { bodyguard: ["beta"] } };
+    g = withHand(g, ["grow-crops", "assassinate-ruler"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "gamma",
+    });
+  });
+
+  it("4: holds the card below one council's worth of leadership", () => {
+    let g = withLeadership(base(), { beta: 49 });
+    g = withHand(g, ["grow-crops", "assassinate-ruler"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
+
+  it("5: a vassal heals its home toward the independence gate", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
+    g = { ...g, defense: { alpha: 300 } }; // one Hillfort short of 450
+    expect(chooseAction(withHand(g, ["hillfort", "grow-crops"]))).toEqual({
+      type: "play", cardIndex: 0, targetId: "alpha",
+    });
+    expect(chooseAction(withHand(g, ["harvest-feast", "grow-crops"]))).toEqual({
+      type: "play", cardIndex: 0,
+    });
+  });
+
+  it("5: stops healing once the home stands at the gate - beginTurn frees it", () => {
+    let g = base();
+    g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
+    g = { ...g, defense: { alpha: 450 } }; // ceil(0.75 * 600): gate open
+    g = withHand(g, ["hillfort", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("5: while free, repairs a realm polygon under half strength", () => {
+    let g = base();
+    g = { ...g, defense: { alpha: 250 } };
+    g = withHand(g, ["hillfort", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "alpha",
+    });
+  });
+
+  it("5: leaves a scratch above half strength for the harvest loop", () => {
+    let g = base();
+    g = { ...g, defense: { alpha: 350 } };
+    g = withHand(g, ["hillfort", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
 });
 
-describe("9c: level the ruler on a spare turn", () => {
-  it("outranks turnips when nothing moves the map", () => {
-    let g = base();
-    g = withHand(g, ["grow-crops", "mighty-ruler"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+describe("6W: warpath decisive moves", () => {
+  it("6W-1: raids its own vassal one heal from the independence gate", () => {
+    let g = asStrategy(base(), "warpath");
+    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = { ...g, defense: { beta: 320 } }; // 320 + 150 >= 450
+    g = withHand(g, ["raid", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "beta",
+    });
   });
 
-  it("never pre-empts building toward a subjugation", () => {
-    let g = base();
-    g = withHand(g, ["mighty-ruler", "raid"]);
-    const action = chooseAction(g);
-    expect(action.type).toBe("play");
-    if (action.type === "play") expect(action.cardIndex).toBe(1);
+  it("6W-2: finishes a gate one raid can open - above the council", () => {
+    let g = asStrategy(base(), "warpath");
+    g = { ...g, defense: { beta: 300 } }; // gap 150 <= raid damage 150
+    g = withHand(g, ["war-council", "raid"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "beta",
+    });
+  });
+
+  it("6W-3: fans a great raid when it would open two or more border gates", () => {
+    let g = asStrategy(base(), "warpath");
+    g = { ...g, defense: { beta: 200, gamma: 200 } }; // gaps 50 <= fan 75
+    g = withHand(g, ["great-raid", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+    // One gate is not worth the fan: the turn feeds the harvest loop instead.
+    const one = withHand(
+      { ...g, defense: { beta: 200 } }, ["great-raid", "grow-crops"],
+    );
+    expect(chooseAction(one)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("6W-4: reads the omens when only the doubled raid opens a gate", () => {
+    let g = asStrategy(base(), "warpath");
+    g = { ...g, defense: { beta: 400 } }; // gap 250: >150, <=300
+    g = withHand(g, ["favourable-omens", "raid"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("6W-4: never delays a finishing raid to stack a reading", () => {
+    let g = asStrategy(base(), "warpath");
+    g = { ...g, defense: { beta: 300 } };
+    g = withHand(g, ["favourable-omens", "raid"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "beta",
+    });
   });
 });
 
-describe("9e: cash the harvest", () => {
-  it("outranks turnips - a free boon beats a card defined as no effect", () => {
-    let g = base();
-    g = withHand(g, ["grow-crops", "turnip-harvest"]);
+describe("6P: pestilence decisive moves", () => {
+  it("6P-1: plagues its restive vassal's stacks before any outward play", () => {
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = { ...g, defense: { beta: 320 }, disease: { beta: { alpha: 1 } } };
+    g = withHand(g, ["plague", "spread-disease"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("6P-1: sickens the restive vassal when no stacks sit there yet", () => {
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
+    g = { ...g, defense: { beta: 320 } };
+    g = withHand(g, ["spread-disease", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "beta",
+    });
+  });
+
+  it("6P-2: cashes the plague when it opens a gate", () => {
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, defense: { beta: 250 }, disease: { beta: { alpha: 1 } } };
+    g = withHand(g, ["plague", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("6P-2: cashes when the total damage beats a raid, else waits", () => {
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, disease: { beta: { alpha: 2 } } }; // 200 > 150
+    g = withHand(g, ["plague", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+    const thin = { ...g, disease: { beta: { alpha: 1 } } }; // 100 <= 150
+    expect(chooseAction(withHand(thin, ["plague", "grow-crops"])))
+      .toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("6P-2: a rival's stacks feed nothing - ownership is per faction", () => {
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, disease: { beta: { gamma: 5 } } };
+    g = withHand(g, ["plague", "grow-crops"]);
+    // No own stacks anywhere: the card is not even legal (no-disease).
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
-  it("yields to the ruler's level, like everything below 9d", () => {
+  it("6P-3: claims the board with foul winds while rivals hold more stacks", () => {
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, disease: { beta: { gamma: 2 }, gamma: { alpha: 1 } } };
+    g = withHand(g, ["foul-winds", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+    const ahead = { ...g, disease: { beta: { alpha: 2 }, gamma: { delta: 1 } } };
+    expect(chooseAction(withHand(ahead, ["foul-winds", "grow-crops"])))
+      .toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("6P-4: reads the miasma when only the doubled plague opens a gate", () => {
+    let g = asStrategy(base(), "pestilence");
+    // gap 150: one stack cashes 100 (no), doubled 200 (yes).
+    g = { ...g, defense: { beta: 300 }, disease: { beta: { alpha: 1 } } };
+    g = withHand(g, ["miasma", "plague"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("6P-5: seeds the junction with the most non-own neighbours", () => {
+    // A little map with a real junction: beta touches two third parties,
+    // gamma only one, so the outbreak goes to beta.
+    const ADJ = {
+      alpha: ["beta", "gamma"],
+      beta: ["alpha", "delta", "epsilon"],
+      gamma: ["alpha", "zeta"],
+      delta: ["beta"],
+      epsilon: ["beta"],
+      zeta: ["gamma"],
+    };
+    let g = pickFaction(
+      chooseBuild(startGame(newGame(FACTIONS, ADJ)), "warpath"),
+      "zeta", seededRng(1),
+    );
+    g = asStrategy({ ...g, current: 1 }, "pestilence");
+    g = withHand(g, ["localized-outbreak", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "beta",
+    });
+    // On a line, no target splashes 2+ non-own neighbours: hold the card.
+    const LINE = {
+      alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta", "delta"],
+      delta: ["gamma", "epsilon"], epsilon: ["delta", "zeta"],
+      zeta: ["epsilon"],
+    };
+    let flat = pickFaction(
+      chooseBuild(startGame(newGame(FACTIONS, LINE)), "warpath"),
+      "zeta", seededRng(1),
+    );
+    flat = asStrategy({ ...flat, current: 1 }, "pestilence");
+    flat = withHand(flat, ["localized-outbreak", "grow-crops"]);
+    expect(chooseAction(flat)).toEqual({ type: "play", cardIndex: 1 });
+  });
+});
+
+describe("steps 7..10: guard, settle, harvest, turnips", () => {
+  it("7: posts the bodyguard while own leadership is the board's highest", () => {
+    let g = withLeadership(base(), { alpha: 50 });
+    g = withHand(g, ["bodyguard", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("7: a tie is not highest, and unproven is nothing to guard", () => {
+    let tied = withLeadership(base(), { alpha: 50, gamma: 50 });
+    tied = withHand(tied, ["bodyguard", "grow-crops"]);
+    expect(chooseAction(tied)).toEqual({ type: "play", cardIndex: 1 });
+    const unproven = withHand(base(), ["bodyguard", "grow-crops"]);
+    expect(chooseAction(unproven)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("8: settles a spare turn, preferring its own land", () => {
     let g = base();
-    g = withHand(g, ["turnip-harvest", "mighty-ruler"]);
+    g = { ...g, wealth: { alpha: 1 } };
+    g = withHand(g, ["found-settlement", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "alpha",
+    });
+  });
+
+  it("8: settles an annexed land before a vassal's, which can walk off", () => {
+    let g = base();
+    g = {
+      ...g,
+      wealth: { alpha: 1 },
+      overlords: new Map([["beta", "alpha"]]),
+      incorporated: { gamma: "alpha" },
+      settlements: { alpha: 1 },
+      siteCaps: Object.fromEntries(FACTIONS.map((f) => [f, 1])),
+    };
+    g = withHand(g, ["found-settlement", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "gamma",
+    });
+  });
+
+  it("9: cashes a held harvest above growing turnips", () => {
+    const g = withHand(base(), ["grow-crops", "turnip-harvest"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("10: grows turnips above the build raid - the loop must keep turning", () => {
+    // A quiet board: no gate within one raid, nothing restive. The old
+    // policy raided here every turn and starved the harvest loop to zero
+    // subjugations over 150 turns; the turnip now outranks the build move.
+    let g = asStrategy(base(), "warpath");
+    g = withHand(g, ["raid", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("10: grows turnips above the build spread, same reason", () => {
+    let g = asStrategy(base(), "pestilence");
+    g = withHand(g, ["spread-disease", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+});
+
+describe("step 11: build moves", () => {
+  it("11W-1: councils while no gate is within two attacks", () => {
+    let g = asStrategy(base(), "warpath");
+    g = withHand(g, ["war-council", "raid"]); // every gap is 450 > 300
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+  });
+
+  it("11W-2: raids the polygon nearest its gate once one is within reach", () => {
+    let g = asStrategy(base(), "warpath");
+    g = { ...g, defense: { gamma: 400 } }; // gap 250 <= 2 attacks
+    g = withHand(g, ["war-council", "raid"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "gamma",
+    });
+  });
+
+  it("11W-2: the build raid skips open gates - those want Subjugate", () => {
+    let g = asStrategy(base(), "warpath");
+    g = { ...g, defense: { beta: 100, gamma: 400 } };
+    g = withHand(g, ["raid"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "gamma",
+    });
+  });
+
+  it("11P: spreads disease on the polygon nearest its closed gate", () => {
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, defense: { beta: 400, gamma: 200 } };
+    g = withHand(g, ["spread-disease"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "gamma",
+    });
+  });
+});
+
+describe("fallthrough and dead hands", () => {
+  it("12: plays the first playable card with its first legal target", () => {
+    // A damaged-but-healthy home: step 5 refuses (above half), the branches
+    // hold nothing else, so the hillfort lands as the last resort.
+    let g = base();
+    g = { ...g, defense: { alpha: 500 } };
+    g = withHand(g, ["hillfort"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "alpha",
+    });
+  });
+
+  it("discards leftmost when nothing is playable", () => {
+    const g = withHand(base(), ["subjugate", "incorporate"]);
+    expect(chooseAction(g)).toEqual({ type: "discard", cardIndex: 0 });
   });
 });
 
 function unlimitedAiPlaying(): GameState {
-  const g = chooseRules(startGame(newGame(["alpha", "beta", "gamma", "delta"])), {
+  const g = chooseRules(startGame(newGame(FACTIONS)), {
     ...DEFAULT_RULES,
     turn: "unlimited",
   });
-  return pickFaction(chooseDeck(g, buildDeck()), "beta", seededRng(1));
+  return pickFaction(chooseBuild(g, "warpath"), "zeta", seededRng(1));
 }
 
 describe("aiTakeTurn under unlimited rules", () => {
@@ -878,7 +459,9 @@ describe("aiTakeTurn under unlimited rules", () => {
     g = {
       ...g,
       players: g.players.map((pl, i) =>
-        i === 0 ? { ...pl, hand: ["grow-crops", "grow-crops", "revolt"] } : pl,
+        i === 0
+          ? { ...pl, hand: ["grow-crops", "grow-crops", "pay-military-tribute"] }
+          : pl,
       ),
     };
     const before = g.log.length;
@@ -894,11 +477,11 @@ describe("aiTakeTurn under unlimited rules", () => {
     g = {
       ...g,
       players: g.players.map((pl, i) =>
-        i === 0 ? { ...pl, hand: ["revolt"] } : pl,
+        i === 0 ? { ...pl, hand: ["pay-military-tribute"] } : pl,
       ),
     };
     const after = aiTakeTurn(g, seededRng(1));
     expect(after.playedThisTurn).toBe(true);
-    expect(after.players[0].hand).toEqual(["revolt"]);
+    expect(after.players[0].hand).toEqual(["pay-military-tribute"]);
   });
 });

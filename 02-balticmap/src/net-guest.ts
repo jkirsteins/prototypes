@@ -1,4 +1,5 @@
 import type { GameState } from "./game";
+import type { Strategy } from "./cards";
 import type { RuleSelections } from "./rules";
 import { deserializeGame } from "./net-codec";
 import {
@@ -29,7 +30,7 @@ export interface GuestSession {
   hostName(): string | null;
   guestFactionId(): string | null;
   game(): GameState | null;
-  sendPick(deck: string[], factionId: string): void;
+  sendPick(build: Strategy, factionId: string): void;
   sendAction(a: NetAction): void;
   close(): void;
 }
@@ -82,8 +83,8 @@ export function createGuestSession(wire: Wire, deps: GuestDeps): GuestSession {
     hostName: () => hostName,
     guestFactionId: () => guestFactionId,
     game: () => game,
-    sendPick(deck, factionId) {
-      wire.send({ type: "lobby-guest", deck, factionId });
+    sendPick(build, factionId) {
+      wire.send({ type: "lobby-guest", build, factionId });
     },
     sendAction(a) {
       if (game === null || guestFactionId === null) return;

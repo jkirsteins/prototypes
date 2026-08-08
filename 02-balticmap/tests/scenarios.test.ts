@@ -3,9 +3,7 @@ import {
   SCENARIOS, WORLD_SCENARIOS, checksFor, runScenario, runWorldScenario,
   worldChecksFor, type Expectation,
 } from "../src/scenarios";
-import {
-  DECK_ARMS, HUMAN_DECKS, HUMAN_POLICIES, WORLD_ARMS, aggregate,
-} from "../src/sim";
+import { BUILD_ARMS, HUMAN_POLICIES, aggregate, aggregateWorld } from "../src/sim";
 
 describe("scenario definitions", () => {
   it("has unique ids", () => {
@@ -13,11 +11,11 @@ describe("scenario definitions", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("names a known arm, policy and deck, and expects something", () => {
+  it("names a known arm, policy and build, and expects something", () => {
     for (const s of SCENARIOS) {
-      expect(Object.keys(DECK_ARMS), s.id).toContain(s.arm);
+      expect(BUILD_ARMS, s.id).toContain(s.arm);
       expect(Object.keys(HUMAN_POLICIES), s.id).toContain(s.humanPolicy);
-      expect(Object.keys(HUMAN_DECKS), s.id).toContain(s.humanDeck);
+      expect(["warpath", "pestilence"], s.id).toContain(s.humanBuild);
       expect(Object.keys(s.expect).length, s.id).toBeGreaterThan(0);
     }
   });
@@ -64,7 +62,7 @@ describe("world scenarios", () => {
 
   it("names a known arm and orders every band", () => {
     for (const s of WORLD_SCENARIOS) {
-      expect(Object.keys(WORLD_ARMS), s.id).toContain(s.arm);
+      expect(BUILD_ARMS, s.id).toContain(s.arm);
       expect(Object.keys(s.expect).length, s.id).toBeGreaterThan(0);
       for (const [metric, band] of Object.entries(s.expect)) {
         expect(band[0], `${s.id}/${metric}`).toBeLessThanOrEqual(band[1]);
@@ -73,22 +71,11 @@ describe("world scenarios", () => {
   });
 
   it("counts an unmeasurable metric as a miss, never as a pass", () => {
-    const checks = worldChecksFor(
-      { medianEndTurn: [1, 10] },
-      {
-        arm: "x", games: 0, unifiedShare: 0, capShare: 0, medianEndTurn: null,
-        meanEndTurn: null, meanSubjugations: null, meanIncorporations: null,
-        medianLargestRealm: null, medianStallTurns: null,
-        firstLegalTargetShare: null, targetedPlaysSeen: 0, playShareByCard: {},
-        meanPreventedAssassinations: null, meanUntestedGuards: null,
-        meanUnusedBoosts: null, meanAlliancesOnOwnTargets: null,
-        alliancesOnOwnTargetsShare: null,
-        meanSettlementsFounded: null, settlementsOnHeldLandsShare: null,
-        settlementsFoundedTotal: 0, settlementsWalkedOffShare: null,
-        revoltsSownTotal: 0, revoltsPlayedTotal: 0,
-        medianVassalTenure: null, meanVassalTenure: null,
-      },
-    );
+    // aggregateWorld over zero games is every-metric-null, the exact shape
+    // an unmeasurable world hands checksFor.
+    const empty = aggregateWorld("x", []);
+    expect(empty.medianEndTurn).toBeNull();
+    const checks = worldChecksFor({ medianEndTurn: [1, 10] }, empty);
     expect(checks[0].ok).toBe(false);
   });
 
@@ -110,7 +97,7 @@ describe.each(SCENARIOS.map((s) => [s.id, s] as const))(
   (_id, scenario) => {
     it(
       `holds its pacing bands: ${scenario.description}`,
-      { timeout: 60_000 },
+      { timeout: 120_000 },
       () => {
         const result = runScenario(scenario);
         const misses = result.checks

@@ -1,13 +1,10 @@
 import rawData from "./data/map.json";
 import type { MapData } from "./types";
-import { factionAdjacencyOf, siteCapsOf } from "./adjacency";
+import { defenseMaxOf, factionAdjacencyOf, siteCapsOf } from "./adjacency";
+import { CARDS, GUARDS, guardAgainst, type Rng, type Strategy } from "./cards";
 import {
-  buildAiDeck, buildDeck, CARDS, DECK_SIZE, DEFAULT_DECK, GUARDS, guardAgainst,
-  type Rng,
-} from "./cards";
-import {
-  advance, chooseDeck, discardCard, newGame, pickFaction, playCard, startGame,
-  viewOf, type GameState,
+  advance, chooseBuild, discardCard, newGame, pickFaction, playCard,
+  startGame, viewOf, type GameState,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
 import { seededRng } from "./rng";
@@ -26,39 +23,36 @@ export const SIM_ETHNICITIES: Record<string, string> = Object.fromEntries(
  *  `newGame`'s default, so a simulated Zemaitija can be built up eight times
  *  and a simulated Saaremaa once, exactly as in the game. */
 export const SIM_SITE_CAPS: Record<string, number> = siteCapsOf(data);
-
-/** A deck of nothing but Grow potatoes - the new player's opening mistake. */
-export function potatoDeck(): string[] {
-  return Array.from({ length: DECK_SIZE }, () => "grow-crops");
-}
-
-/** The same mistake with one slot spent on insurance. Seeds of revolt is a
- *  starting known card, so this is a deck a first-run player can actually
- *  build, and the difference between this arm and `potatoes` is exactly what
- *  the one slot buys: the dead-end vassalage that ends a run outright never
- *  happens here. */
-export function potatoesPlusSeedsDeck(): string[] {
-  return ["seeds-of-revolt", ...potatoDeck().slice(1)];
-}
+/** The shipped map's defense ceilings - population / 50, 200..1800. Explicit
+ *  for the same reason as the site caps: a simulated Pilsotas must fall in
+ *  one doubled Raid while Eastern Aukstaitija shrugs it off. */
+export const SIM_DEFENSE_MAX: Record<string, number> = defenseMaxOf(data);
 
 /** Re-exported from `./rng`, where it now lives: tests and scripts reach for a
  *  seed through the harness, and the app must not import the harness. */
 export { seededRng };
 
-export type AiDeckFor = (rng: Rng, factionId: string) => string[];
+/** How a batch assigns builds. `mixed` keeps `pickFaction`'s own seeded roll;
+ *  the uniform arms stamp one strategy over every seat after the deal, which
+ *  moves no rng draw (the roll is consumed either way, the frozen-contract
+ *  rule). */
+export type BuildArm = "mixed" | "all-warpath" | "all-pestilence";
 
-/** Enemy deck variants. `shipped` is what the game builds today; the other two
- *  exist to attribute a difference to the guaranteed cards rather than to deck
- *  density, and to keep the pre-2026-07-29 world measurable. */
-export const DECK_ARMS: Record<string, AiDeckFor> = {
-  shipped: (rng) => buildAiDeck(rng),
-  unarmed: (rng) => buildAiDeck(rng, []),
-  defensive: (rng) => buildAiDeck(rng, ["alliance", "bodyguard"]),
-};
+export const BUILD_ARMS: readonly BuildArm[] = [
+  "mixed", "all-warpath", "all-pestilence",
+];
+
+function applyBuildArm(state: GameState, arm: BuildArm): GameState {
+  if (arm === "mixed") return state;
+  const strategy: Strategy = arm === "all-warpath" ? "warpath" : "pestilence";
+  return {
+    ...state,
+    players: state.players.map((p) => ({ ...p, strategy })),
+  };
+}
 
 /** The new player: no plan, just plays whatever the rules allow, first come.
- *  With a potato deck that is Grow potatoes, or forced tribute as a
- *  vassal. Returns the state after their single action. */
+ *  Returns the state after their single action. */
 export function naiveHumanTurn(state: GameState, rng: Rng): GameState {
   const p = state.players[state.current];
   const set = playableSet(viewOf(state), p.factionId, p.hand);
@@ -80,14 +74,6 @@ export const HUMAN_POLICIES: Record<string, HumanTurn> = {
   competent: aiTakeTurn,
 };
 
-/** Human deck variants. `potatoes` is the new player's opening mistake;
- *  `full` is the default build offered by the deck screen. */
-export const HUMAN_DECKS: Record<string, () => string[]> = {
-  potatoes: potatoDeck,
-  "potatoes-plus-seeds": potatoesPlusSeedsDeck,
-  full: buildDeck,
-};
-
 export type Outcome = "defeat" | "victory" | "cap";
 
 export interface GameSummary {
@@ -102,17 +88,16 @@ export interface GameSummary {
   subjugatedCount: number;
   /** How often the human was freed by their overlord being subjugated. */
   releasedCount: number;
+  /** How often the human freed itself through the independence gate. */
+  independenceCount: number;
   /** Turn the human was incorporated (game over); null if they survived. */
   defeatTurn: number | null;
   conqueror: string | null;
   /** Turns the game actually ran, capped by turnCap. */
   turns: number;
   /** Lands under the human when the game ended, by `fullRealmOf` - the
-   *  "how much of the map is theirs" question, per the two-realm-sizes rule in
-   *  CLAUDE.md. Zero once the human has been incorporated: `realmOf` always
-   *  includes its own root, so a conquered faction would otherwise score 1.
-   *  This is the continuous outcome the rarity regression fits against; the
-   *  other fields here are all counts or turn numbers. */
+   *  "how much of the map is theirs" question, per the two-realm-sizes rule
+   *  in CLAUDE.md. Zero once the human has been incorporated. */
   finalRealmSize: number;
 }
 
@@ -124,16 +109,13 @@ export function summarize(
   const mine = state.log.filter((e) => e.targetFactionId === humanFaction);
   const subjugations = mine.filter((e) => e.type === "subjugated");
   const releases = mine.filter((e) => e.type === "released");
+  const independences = mine.filter((e) => e.type === "independence");
   // A rival unifying the map logs "unified", not "defeat", because its target
   // is the map rather than the human's faction - but it still sets phase to
   // "defeat", and from the human's seat losing the map to someone else is a
-  // loss just the same. A vassalage with no way out logs "stranded" for the
-  // same reason: a different terminal event, the same lost run, and its
-  // overlord is the faction that ended it. Count all three so
-  // defeatTurn/conqueror line up with outcome instead of silently going null
-  // while outcome says "defeat".
+  // loss just the same.
   const defeat = state.log.find(
-    (e) => e.type === "defeat" || e.type === "unified" || e.type === "stranded",
+    (e) => e.type === "defeat" || e.type === "unified",
   );
   const outcome: Outcome =
     state.phase === "defeat" ? "defeat"
@@ -149,6 +131,7 @@ export function summarize(
     firstOverlord: subjugations[0]?.overlordFactionId ?? null,
     subjugatedCount: subjugations.length,
     releasedCount: releases.length,
+    independenceCount: independences.length,
     defeatTurn: defeat?.turn ?? null,
     conqueror: defeat?.overlordFactionId ?? null,
     turns: state.turn,
@@ -161,10 +144,17 @@ export function summarize(
 export interface RunOptions {
   seed: number;
   humanFaction: string;
-  aiDeckFor?: AiDeckFor;
   turnCap: number;
-  humanDeck?: string[];
+  humanBuild?: Strategy;
+  arm?: BuildArm;
   humanTurn?: HumanTurn;
+}
+
+function newSimGame(): GameState {
+  return newGame(
+    SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS,
+    SIM_DEFENSE_MAX,
+  );
 }
 
 /** Plays one complete headless game. Throws rather than spinning if a turn
@@ -173,14 +163,11 @@ export function runGame(opts: RunOptions): GameSummary {
   const { seed, humanFaction, turnCap } = opts;
   const rng = seededRng(seed);
   let state = pickFaction(
-    chooseDeck(
-      startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS)),
-      opts.humanDeck ?? potatoDeck(),
-    ),
+    chooseBuild(startGame(newSimGame()), opts.humanBuild ?? "warpath"),
     humanFaction,
     rng,
-    opts.aiDeckFor ?? DECK_ARMS.shipped,
   );
+  state = applyBuildArm(state, opts.arm ?? "mixed");
   const humanTurn = opts.humanTurn ?? naiveHumanTurn;
   while (state.phase === "playing" && state.turn <= turnCap) {
     const actor = state.players[state.current].factionId;
@@ -201,23 +188,22 @@ export interface BatchOptions {
   games: number;
   turnCap: number;
   firstSeed: number;
-  arm: string;
+  arm: BuildArm;
 }
 
 /** Runs `games` games for one arm. Game i always uses seed firstSeed+i and
  *  faction i mod 26, so arms line up game for game. */
 export function runBatch(opts: BatchOptions): GameSummary[] {
-  const aiDeckFor = DECK_ARMS[opts.arm];
-  if (aiDeckFor === undefined) {
+  if (!BUILD_ARMS.includes(opts.arm)) {
     throw new Error(
-      `unknown arm "${opts.arm}"; known: ${Object.keys(DECK_ARMS).join(", ")}`,
+      `unknown arm "${opts.arm}"; known: ${BUILD_ARMS.join(", ")}`,
     );
   }
   return Array.from({ length: opts.games }, (_, i) =>
     runGame({
       seed: opts.firstSeed + i,
       humanFaction: SIM_FACTION_IDS[i % SIM_FACTION_IDS.length],
-      aiDeckFor,
+      arm: opts.arm,
       turnCap: opts.turnCap,
     }),
   );
@@ -248,6 +234,7 @@ export interface ArmStats {
   medianDefeatTurn: number | null;
   meanSubjugations: number | null;
   meanReleases: number | null;
+  meanIndependences: number | null;
   capShare: number;
   victoryShare: number;
 }
@@ -271,6 +258,7 @@ export function aggregate(arm: string, games: GameSummary[]): ArmStats {
     medianDefeatTurn: median(defeats),
     meanSubjugations: mean(games.map((g) => g.subjugatedCount)),
     meanReleases: mean(games.map((g) => g.releasedCount)),
+    meanIndependences: mean(games.map((g) => g.independenceCount)),
     capShare: share(games.filter((g) => g.outcome === "cap").length),
     victoryShare: share(games.filter((g) => g.outcome === "victory").length),
   };
@@ -278,8 +266,7 @@ export function aggregate(arm: string, games: GameSummary[]): ArmStats {
 
 /** Mean per-seed difference in first-subjugation turn against a reference arm,
  *  over the games where both arms subjugated the human. Negative means this
- *  arm gets there sooner. `bothSubjugated` says how many games it covers, and
- *  the flip counts say how often one arm subjugated where the other never did. */
+ *  arm gets there sooner. */
 export interface PairedDelta {
   meanTurnDelta: number | null;
   bothSubjugated: number;
@@ -353,8 +340,8 @@ export function byFaction(games: GameSummary[]): FactionStat[] {
 
 export interface WorldOptions {
   seed: number;
-  /** The deck every one of the 26 seats plays. Must hold exactly DECK_SIZE. */
-  deck: string[];
+  /** The build assignment for all 26 seats. */
+  arm: BuildArm;
   turnCap: number;
 }
 
@@ -365,43 +352,36 @@ export interface WorldSummary {
   winner: string | null;
   subjugations: number;
   incorporations: number;
+  independences: number;
   /** The biggest realm any faction reached at any point. */
   largestRealm: number;
   /** Turns between the last incorporation and the end of the run. */
   turnsSinceLastIncorporation: number;
   /** Play counts per card id. Shows a card ignored, or played as filler. */
   playsByCard: Record<string, number>;
+  /** Harvest picks per card id - which cards the growing decks actually
+   *  reach for. The offer is the discovery route now, so a card never picked
+   *  is a card the game effectively does not have. */
+  harvestPicksByCard: Record<string, number>;
+  harvestsSkipped: number;
   /** Targeted plays made while 2 or more targets were legal, and how many of
    *  those took the first in faction order. A share near 1 is the arbitrary
-   *  targeting defect: it was 1.00 for Alliance and Assassinate ruler by
-   *  construction before either had a policy branch. */
+   *  targeting defect. */
   targetedPlays: number;
   firstLegalTargetPlays: number;
   /** Assassinate ruler spent into a Bodyguard. */
   preventedAssassinations: number;
   /** Guards posted that no assassination ever tested. */
   untestedGuards: number;
-  /** Extended diplomacy plays whose boost was never spent on an Alliance. */
-  unusedBoosts: number;
-  /** Pacts sealed with a faction the actor could have subjugated instead. */
-  alliancesOnOwnTargets: number;
-  /** Revolts sown. Zero across a batch means Seeds of revolt is ignored; sown
-   *  far above `revoltsPlayed` means the escape is being prepared and never
-   *  reached, which would make the card a dead turn rather than a plan. */
-  revoltsSown: number;
-  revoltsPlayed: number;
-  /** Turns each vassalage lasted, so the whole point of the change - that
-   *  subjugation is a state rather than a one-round waypoint - is a number. */
+  /** Total defense damage dealt (the actual movement, not raw card damage)
+   *  and total defense healed - the two sides of the new economy. */
+  damageDealt: number;
+  defenseHealed: number;
+  /** Turns each vassalage lasted, so "subjugation is a state rather than a
+   *  waypoint" stays a number under the new gates. */
   vassalTenures: number[];
   /** Settlements founded. Zero across a batch means the card is ignored. */
   settlementsFounded: number;
-  /** Of those, ones founded in a land the founder did not hold itself - a
-   *  vassal's land or one it had annexed. A share near 1 would mean the policy
-   *  prefers other people's land, which is the bias worth catching. */
-  settlementsOnHeldLands: number;
-  /** Settlements founded in a land that had left the founder's realm by the
-   *  end of the run: the turn was spent raising somebody else's bar. */
-  settlementsWalkedOff: number;
 }
 
 /** Read against the win threshold to tell a slow game from a stalemate, so it
@@ -411,50 +391,35 @@ const biggestRealm = (s: GameState): number =>
     ...s.factionIds.map((f) => fullRealmOf(f, s.overlords, s.incorporated).size),
   );
 
-/** One headless game with no privileged seat: all 26 lands hold the same deck
- *  and play the same policy, and the run ends when somebody unifies the Balts
- *  or the cap is reached.
- *
- *  The last three summary fields exist to tell a slow game from a stalemate.
- *  A capped run whose largest realm is 3 and which has not seen an
- *  incorporation in 60 turns is the failure this whole change is aimed at, and
- *  it should be a number rather than an undifferentiated "cap". */
+/** One headless game with no privileged seat: all 26 lands play the same
+ *  policy under the arm's build assignment, and the run ends when somebody
+ *  unifies the Balts or the cap is reached. */
 export function runWorld(opts: WorldOptions): WorldSummary {
-  // chooseDeck silently no-ops on a wrong-length deck, which would leave the
-  // human seat on the default build while every AI seat runs opts.deck - a
-  // world that looks symmetric but is not. Fail loudly instead.
-  if (opts.deck.length !== DECK_SIZE) {
-    throw new Error(
-      `runWorld: deck must hold exactly ${DECK_SIZE} cards, got ${opts.deck.length}`,
-    );
-  }
   const rng = seededRng(opts.seed);
   const seeded: GameState = {
-    ...newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS),
+    ...newSimGame(),
     humanSeat: null,
   };
-  let state = pickFaction(
-    chooseDeck(startGame(seeded), opts.deck),
-    SIM_FACTION_IDS[0],
-    rng,
-    () => opts.deck,
+  let state = applyBuildArm(
+    pickFaction(
+      chooseBuild(startGame(seeded), "warpath"),
+      SIM_FACTION_IDS[0],
+      rng,
+    ),
+    opts.arm,
   );
   let largestRealm = biggestRealm(state);
   const playsByCard: Record<string, number> = {};
   let targetedPlays = 0;
   let firstLegalTargetPlays = 0;
-  let boostedAlliances = 0;
-  let alliancesOnOwnTargets = 0;
   while (state.phase === "playing" && state.turn <= opts.turnCap) {
     const p = state.players[state.current];
     const actor = p.factionId;
-    // Three of the metrics need the alternatives the policy had at decision
-    // time, which the log does not record, so the action is inspected before it
-    // is applied. The equivalence "`aiTakeTurn` is exactly `chooseAction`
-    // followed by one of discardCard/playCard, so rng consumption is
-    // unchanged" holds only for the standard-rules arm of `aiTakeTurn`, and
-    // sim always runs DEFAULT_RULES, so it applies here - the identical-seeds
-    // test is the guard on that.
+    // The targeting metrics need the alternatives the policy had at decision
+    // time, which the log does not record, so the action is inspected before
+    // it is applied. The equivalence "`aiTakeTurn` is exactly `chooseAction`
+    // followed by one of discardCard/playCard" holds only for the
+    // standard-rules arm, and sim always runs DEFAULT_RULES.
     const action = chooseAction(state);
     if (action.type === "play") {
       const cardId = p.hand[action.cardIndex];
@@ -464,15 +429,6 @@ export function runWorld(opts: WorldOptions): WorldSummary {
         if (legal.length > 1) {
           targetedPlays++;
           if (action.targetId === legal[0]) firstLegalTargetPlays++;
-        }
-      }
-      if (cardId === "alliance") {
-        if (state.diplomacyBoost.includes(actor)) boostedAlliances++;
-        if (
-          action.targetId !== undefined &&
-          validTargetsFor(viewOf(state), actor, "subjugate").includes(action.targetId)
-        ) {
-          alliancesOnOwnTargets++;
         }
       }
     }
@@ -488,25 +444,6 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     }
     state = next.phase === "playing" ? advance(next, rng) : next;
     largestRealm = Math.max(largestRealm, biggestRealm(state));
-  }
-  // Settlements: founded where, and how many walked off with a vassal. The log
-  // carries the founder as a player id, so the faction is resolved through the
-  // seat rather than assumed to be the land itself.
-  const settledEvents = state.log.filter((e) => e.type === "settled");
-  const factionOfPlayer = new Map(state.players.map((pl) => [pl.id, pl.factionId]));
-  let settlementsOnHeldLands = 0;
-  let settlementsWalkedOff = 0;
-  for (const e of settledEvents) {
-    const founder = factionOfPlayer.get(e.playerId);
-    const land = e.targetFactionId;
-    if (founder === undefined || land === undefined) continue;
-    if (land !== founder) settlementsOnHeldLands++;
-    // Same reading of "the founder's realm" as the win condition: a land a
-    // vassal has since annexed has not walked off, it is still inside the
-    // founder's outline.
-    if (!fullRealmOf(founder, state.overlords, state.incorporated).has(land)) {
-      settlementsWalkedOff++;
-    }
   }
   const unified = state.log.find((e) => e.type === "unified");
   const lastIncorporation = [...state.log]
@@ -526,7 +463,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
       openVassalage.set(land, e.turn);
     } else if (
       e.type === "released" || e.type === "incorporated" ||
-      (e.type === "reclaimed" && e.cardId === "revolt")
+      e.type === "independence"
     ) {
       const start = openVassalage.get(land);
       if (start !== undefined) {
@@ -538,10 +475,9 @@ export function runWorld(opts: WorldOptions): WorldSummary {
   for (const start of openVassalage.values()) {
     vassalTenures.push(state.turn - start);
   }
-  // Every guard, not only Bodyguard: three cards share the mechanic now, and a
-  // counter that watched one of them would report the other two as never
-  // posted. `prevented` is stamped on the play the guard turned aside, so the
-  // cashed count is that play's card mapped back to its guard.
+  // Every guard, not only Bodyguard, in case the set grows again. `prevented`
+  // is stamped on the play the guard turned aside, so the cashed count is
+  // that play's card mapped back to its guard.
   const preventedByGuard = (guardCardId: string): number =>
     plays.filter(
       (e) =>
@@ -549,20 +485,28 @@ export function runWorld(opts: WorldOptions): WorldSummary {
         guardAgainst(e.cardId) === guardCardId,
     ).length;
   const preventedAssassinations = preventedByGuard("bodyguard");
-  // Both waste counters are "tokens posted, never cashed", so both floor at 0.
-  // A negative value would mean a token was spent twice, which is a bug worth
-  // failing loudly for rather than reporting as a tidy zero.
   const untestedGuards = Object.keys(GUARDS).reduce(
     (sum, id) => sum + (playsByCard[id] ?? 0) - preventedByGuard(id),
     0,
   );
-  const unusedBoosts = (playsByCard["extended-diplomacy"] ?? 0) - boostedAlliances;
-  if (untestedGuards < 0 || unusedBoosts < 0) {
+  if (untestedGuards < 0) {
     throw new Error(
-      `token cashed twice: seed ${opts.seed}, guards ${untestedGuards}, ` +
-        `boosts ${unusedBoosts}`,
+      `guard cashed twice: seed ${opts.seed}, guards ${untestedGuards}`,
     );
   }
+  const harvestPicksByCard: Record<string, number> = {};
+  for (const e of state.log) {
+    if (e.type !== "harvest-picked" || e.cardId === undefined) continue;
+    harvestPicksByCard[e.cardId] = (harvestPicksByCard[e.cardId] ?? 0) + 1;
+  }
+  const harvestPlays = playsByCard["turnip-harvest"] ?? 0;
+  const harvestPicks = Object.values(harvestPicksByCard)
+    .reduce((a, b) => a + b, 0);
+  const sumAmounts = (types: string[]): number =>
+    state.log.reduce(
+      (sum, e) => sum + (types.includes(e.type) ? (e.amount ?? 0) : 0),
+      0,
+    );
   return {
     seed: opts.seed,
     outcome: unified === undefined ? "cap" : "unified",
@@ -570,88 +514,40 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     winner: unified?.overlordFactionId ?? null,
     subjugations: state.log.filter((e) => e.type === "subjugated").length,
     incorporations: state.log.filter((e) => e.type === "incorporated").length,
+    independences: state.log.filter((e) => e.type === "independence").length,
     largestRealm,
     turnsSinceLastIncorporation: state.turn - (lastIncorporation?.turn ?? 0),
     playsByCard,
+    harvestPicksByCard,
+    harvestsSkipped: Math.max(0, harvestPlays - harvestPicks),
     targetedPlays,
     firstLegalTargetPlays,
     preventedAssassinations,
     untestedGuards,
-    unusedBoosts,
-    alliancesOnOwnTargets,
-    revoltsSown: state.log.filter((e) => e.type === "seeded").length,
-    revoltsPlayed: plays.filter((e) => e.cardId === "revolt").length,
+    damageDealt: sumAmounts(["damaged", "plagued"]),
+    defenseHealed: sumAmounts(["healed"]),
     vassalTenures,
-    settlementsFounded: settledEvents.length,
-    settlementsOnHeldLands,
-    settlementsWalkedOff,
+    settlementsFounded: state.log.filter((e) => e.type === "settled").length,
   };
 }
-
-/** Three lands worth of conquest and nothing else, so the measurement is about
- *  the subjugation loop rather than about Alliance or Bodyguard. */
-export const CONQUEST_DECK: string[] = [
-  "raid", "subjugate", "incorporate",
-  ...Array.from({ length: DECK_SIZE - 3 }, () => "grow-crops"),
-];
-
-export const CONQUEST_OMENS_DECK: string[] = [
-  "raid", "subjugate", "incorporate", "favourable-omens",
-  ...Array.from({ length: DECK_SIZE - 4 }, () => "grow-crops"),
-];
-
-/** Same three live cards as `conquest-scaled` plus a fourth card that never
- *  does anything in this arm - Bodyguard only matters against Assassinate
- *  ruler, which no deck in this deck holds. A control for Finding 2: if a
- *  fourth card by itself (whether or not it does anything) sped worlds up,
- *  this arm would move the same way `conquest-omens` does. It doesn't - see
- *  the design doc's Finding 2 control table. */
-export const CONQUEST_INERT_DECK: string[] = [
-  "raid", "subjugate", "incorporate", "bodyguard",
-  ...Array.from({ length: DECK_SIZE - 4 }, () => "grow-crops"),
-];
-
-/** `conquest-scaled` exists to attribute a result. Without it, a shorter game
- *  under `conquest-omens` cannot be told apart from "the deck simply holds one
- *  more non-potato card" - the same reasoning that put the `defensive` arm in
- *  the 2026-07-29 new-player spec. `conquest-inert` is a further control: it
- *  swaps that fourth card for one that is strategically inert in this deck,
- *  to show that card count alone (not what the card does) is not what moves
- *  the result. It intentionally has no committed scenario band - it exists
- *  for a reader to rerun, not to guard pacing.
- *
- *  `full-deck` exists because the conquest arms above isolate the
- *  subjugation loop (Raid/Subjugate/Incorporate plus filler) and, in doing
- *  so, overstate how fast a real game resolves: a full ten-card deck also
- *  carries Fortify, Alliance and Revolt, all of which can stall or reverse
- *  a conquest. It runs the same DEFAULT_DECK every human player is offered,
- *  so the committed evidence covers the deck shape a player actually plays,
- *  not only the narrow shape that isolates one loop. */
-export const WORLD_ARMS: Record<string, string[]> = {
-  "conquest-scaled": CONQUEST_DECK,
-  "conquest-omens": CONQUEST_OMENS_DECK,
-  "conquest-inert": CONQUEST_INERT_DECK,
-  "full-deck": DEFAULT_DECK,
-};
 
 export interface WorldBatchOptions {
   games: number;
   turnCap: number;
   firstSeed: number;
-  arm: string;
+  arm: BuildArm;
 }
 
 export function runWorldBatch(opts: WorldBatchOptions): WorldSummary[] {
-  const deck = WORLD_ARMS[opts.arm];
-  if (deck === undefined) {
+  if (!BUILD_ARMS.includes(opts.arm)) {
     throw new Error(
-      `unknown world arm "${opts.arm}"; known: ${Object.keys(WORLD_ARMS).join(", ")}`,
+      `unknown world arm "${opts.arm}"; known: ${BUILD_ARMS.join(", ")}`,
     );
   }
   return Array.from({ length: opts.games }, (_, i) =>
     runWorld({
       seed: opts.firstSeed + i,
-      deck,
+      arm: opts.arm,
       turnCap: opts.turnCap,
     }),
   );
@@ -667,43 +563,29 @@ export interface WorldStats {
   meanEndTurn: number | null;
   meanSubjugations: number | null;
   meanIncorporations: number | null;
+  meanIndependences: number | null;
   medianLargestRealm: number | null;
   /** Median turns of silence before a capped world gave up. Null when every
    *  world resolved. This is the stalemate number. */
   medianStallTurns: number | null;
-  /** Pooled share of targeted plays that took the first legal target while 2 or
-   *  more were legal. Pooled rather than a mean of per-game ratios, so a
-   *  40-turn game does not weigh the same as a 300-turn one. Null when no game
-   *  ever offered a real choice of target. */
+  /** Pooled share of targeted plays that took the first legal target while 2
+   *  or more were legal. Null when no game ever offered a real choice. */
   firstLegalTargetShare: number | null;
-  /** Pooled denominator behind firstLegalTargetShare: targeted plays made with
-   *  2 or more legal targets. A share is meaningless without it. */
   targetedPlaysSeen: number;
   /** Pooled share of all plays, per card id. */
   playShareByCard: Record<string, number>;
+  /** Pooled share of harvest picks, per card id - the growing deck's own
+   *  play-share table. */
+  harvestPickShareByCard: Record<string, number>;
+  harvestsSkippedTotal: number;
   meanPreventedAssassinations: number | null;
   meanUntestedGuards: number | null;
-  meanUnusedBoosts: number | null;
-  meanAlliancesOnOwnTargets: number | null;
-  /** The same defect as a share of the pacts actually sealed, which is what it
-   *  was always about. The per-world mean above conflates targeting quality
-   *  with game length - it tripled when Found a settlement lengthened worlds
-   *  while the share stayed under 1% - so the share is the one to assert on. */
-  alliancesOnOwnTargetsShare: number | null;
+  meanDamageDealt: number | null;
+  meanDefenseHealed: number | null;
   meanSettlementsFounded: number | null;
-  /** Share of founded settlements placed in a land the founder did not hold
-   *  itself. Pooled over the batch, so it needs the count below to read. */
-  settlementsOnHeldLandsShare: number | null;
-  settlementsFoundedTotal: number;
-  /** Seeds of revolt: sown, and how many reached an actual Revolt. */
-  revoltsSownTotal: number;
-  revoltsPlayedTotal: number;
-  /** The headline of this whole change: how long a vassalage lasts. */
+  /** The headline: how long a vassalage lasts under the two gates. */
   medianVassalTenure: number | null;
   meanVassalTenure: number | null;
-  /** Share of founded settlements that had left the founder's realm by the end
-   *  - the wasted-play counter for this card. */
-  settlementsWalkedOffShare: number | null;
 }
 
 export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
@@ -714,18 +596,21 @@ export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
     games.reduce((a, g) => a + pick(g), 0);
   const targeted = sum((g) => g.targetedPlays);
   const firstLegal = sum((g) => g.firstLegalTargetPlays);
-  const founded = sum((g) => g.settlementsFounded);
-  const alliancePlays = sum((g) => g.playsByCard.alliance ?? 0);
-  const playShareByCard: Record<string, number> = {};
-  for (const g of games) {
-    for (const [id, n] of Object.entries(g.playsByCard)) {
-      playShareByCard[id] = (playShareByCard[id] ?? 0) + n;
+  const pooledShare = (
+    pick: (g: WorldSummary) => Record<string, number>,
+  ): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const g of games) {
+      for (const [id, n] of Object.entries(pick(g))) {
+        out[id] = (out[id] ?? 0) + n;
+      }
     }
-  }
-  const totalPlays = Object.values(playShareByCard).reduce((a, b) => a + b, 0);
-  for (const id of Object.keys(playShareByCard)) {
-    playShareByCard[id] = totalPlays === 0 ? 0 : playShareByCard[id] / totalPlays;
-  }
+    const total = Object.values(out).reduce((a, b) => a + b, 0);
+    for (const id of Object.keys(out)) {
+      out[id] = total === 0 ? 0 : out[id] / total;
+    }
+    return out;
+  };
   return {
     arm,
     games: games.length,
@@ -735,32 +620,20 @@ export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
     meanEndTurn: mean(unified.map((g) => g.endTurn)),
     meanSubjugations: mean(games.map((g) => g.subjugations)),
     meanIncorporations: mean(games.map((g) => g.incorporations)),
+    meanIndependences: mean(games.map((g) => g.independences)),
     medianLargestRealm: median(games.map((g) => g.largestRealm)),
     medianStallTurns: median(capped.map((g) => g.turnsSinceLastIncorporation)),
     firstLegalTargetShare: targeted === 0 ? null : firstLegal / targeted,
     targetedPlaysSeen: targeted,
-    playShareByCard,
+    playShareByCard: pooledShare((g) => g.playsByCard),
+    harvestPickShareByCard: pooledShare((g) => g.harvestPicksByCard),
+    harvestsSkippedTotal: sum((g) => g.harvestsSkipped),
     meanPreventedAssassinations: mean(games.map((g) => g.preventedAssassinations)),
     meanUntestedGuards: mean(games.map((g) => g.untestedGuards)),
-    meanUnusedBoosts: mean(games.map((g) => g.unusedBoosts)),
-    meanAlliancesOnOwnTargets: mean(games.map((g) => g.alliancesOnOwnTargets)),
-    alliancesOnOwnTargetsShare:
-      alliancePlays === 0
-        ? null
-        : sum((g) => g.alliancesOnOwnTargets) / alliancePlays,
+    meanDamageDealt: mean(games.map((g) => g.damageDealt)),
+    meanDefenseHealed: mean(games.map((g) => g.defenseHealed)),
     meanSettlementsFounded: mean(games.map((g) => g.settlementsFounded)),
-    settlementsFoundedTotal: founded,
-    revoltsSownTotal: sum((g) => g.revoltsSown),
-    revoltsPlayedTotal: sum((g) => g.revoltsPlayed),
     medianVassalTenure: median(games.flatMap((g) => g.vassalTenures)),
     meanVassalTenure: mean(games.flatMap((g) => g.vassalTenures)),
-    settlementsOnHeldLandsShare:
-      founded === 0
-        ? null
-        : games.reduce((n, g) => n + g.settlementsOnHeldLands, 0) / founded,
-    settlementsWalkedOffShare:
-      founded === 0
-        ? null
-        : games.reduce((n, g) => n + g.settlementsWalkedOff, 0) / founded,
   };
 }

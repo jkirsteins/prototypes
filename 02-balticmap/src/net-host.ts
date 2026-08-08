@@ -1,5 +1,5 @@
 import type { GameState } from "./game";
-import type { Rng } from "./cards";
+import type { Rng, Strategy } from "./cards";
 import type { RuleSelections } from "./rules";
 import { serializeGame } from "./net-codec";
 import {
@@ -15,14 +15,14 @@ export interface HostDeps {
   rules(): RuleSelections;
   hostFactionId(): string | null;
   onGuestHello(name: string): void;
-  onGuestPick(pick: { deck: string[]; factionId: string }): void;
+  onGuestPick(pick: { build: Strategy; factionId: string }): void;
   onGuestAction(): void;
   onClosed(): void;
 }
 
 export interface HostSession {
   guestName(): string | null;
-  guestPick(): { deck: string[]; factionId: string } | null;
+  guestPick(): { build: Strategy; factionId: string } | null;
   guestFactionId(): string | null;
   markStarted(guestFactionId: string): void;
   pushUpdate(): void;
@@ -36,7 +36,7 @@ export function createHostSession(
   resume?: { guestFactionId: string },
 ): HostSession {
   let guestName: string | null = null;
-  let guestPick: { deck: string[]; factionId: string } | null = null;
+  let guestPick: { build: Strategy; factionId: string } | null = null;
   // rejoin - the game is already dealt and this is the guest's faction,
   // so the next hello gets a snapshot, not a lobby.
   let guestFactionId: string | null = resume?.guestFactionId ?? null;
@@ -89,7 +89,7 @@ export function createHostSession(
           wire.send({ type: "reject", reason: "faction already taken" });
           return;
         }
-        guestPick = { deck: msg.deck, factionId: msg.factionId };
+        guestPick = { build: msg.build, factionId: msg.factionId };
         deps.onGuestPick(guestPick);
         return;
       }

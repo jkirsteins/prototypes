@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
-  DECK_ARMS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_FACTION_IDS, WORLD_ARMS, aggregate,
-  aggregateWorld, byFaction, median, naiveHumanTurn, pairedDelta, potatoDeck,
-  runBatch, runGame, runWorld, runWorldBatch, seededRng, summarize,
-  type GameSummary,
+  BUILD_ARMS, HUMAN_POLICIES, SIM_ADJACENCY, SIM_DEFENSE_MAX, SIM_ETHNICITIES,
+  SIM_FACTION_IDS, aggregate, aggregateWorld, byFaction, mean, median,
+  naiveHumanTurn, pairedDelta, runBatch, runGame, runWorld, runWorldBatch,
+  seededRng, summarize, type BuildArm, type GameSummary, type WorldSummary,
 } from "../src/sim";
-import { DEFAULT_DECK, buildAiDeck, CARDS, DECK_SIZE } from "../src/cards";
+import { CARDS } from "../src/cards";
 import {
-  chooseDeck, newGame, pickFaction, startGame, type GameState,
+  chooseBuild, newGame, pickFaction, startGame, victoryRealmSize,
+  type GameState,
 } from "../src/game";
 import { factionAdjacencyOf } from "../src/adjacency";
 
@@ -40,72 +41,58 @@ describe("sim map", () => {
     } as never;
     expect(factionAdjacencyOf(data)).toEqual({ f1: ["f2"], f2: ["f1"] });
   });
+
+  it("derives every land's defense ceiling, 200 (Pilsotas) to 1800 (E. Aukstaitija)", () => {
+    const values = Object.values(SIM_DEFENSE_MAX);
+    expect(values).toHaveLength(26);
+    // population / 50 on the shipped map: a simulated Pilsotas must fall in
+    // one doubled Raid while Eastern Aukstaitija shrugs it off.
+    expect(Math.min(...values)).toBe(200);
+    expect(Math.max(...values)).toBe(1800);
+  });
 });
 
-describe("deck arms", () => {
-  it("gives the shipped arm the game's own deck builder", () => {
-    expect(DECK_ARMS.shipped(seededRng(7), "x")).toEqual(buildAiDeck(seededRng(7)));
+describe("build arms", () => {
+  it("names the mixed field and the two uniform builds", () => {
+    expect(BUILD_ARMS).toEqual(["mixed", "all-warpath", "all-pestilence"]);
   });
 
-  it("always arms the shipped deck with Subjugate and Raid", () => {
-    for (let seed = 1; seed <= 50; seed++) {
-      const deck = DECK_ARMS.shipped(seededRng(seed), "x");
-      expect(deck).toContain("subjugate");
-      expect(deck).toContain("raid");
-    }
-  });
-
-  it("leaves the unarmed arm free of guaranteed aggression", () => {
-    const armed = [1, 2, 3, 4, 5, 6, 7, 8].filter((seed) => {
-      const deck = DECK_ARMS.unarmed(seededRng(seed), "x");
-      return deck.includes("subjugate") && deck.includes("raid");
-    });
-    expect(armed.length).toBeLessThan(8);
-  });
-
-  it("keeps every arm at deck size and within maxPerDeck", () => {
-    for (const [arm, build] of Object.entries(DECK_ARMS)) {
-      for (let seed = 1; seed <= 20; seed++) {
-        const deck = build(seededRng(seed), "x");
-        expect(deck, arm).toHaveLength(DECK_SIZE);
-        const counts = new Map<string, number>();
-        for (const id of deck) counts.set(id, (counts.get(id) ?? 0) + 1);
-        for (const [id, n] of counts) {
-          const max = CARDS[id].maxPerDeck;
-          if (max !== null) expect(n, `${arm}/${id}`).toBeLessThanOrEqual(max);
-        }
-      }
-    }
-  });
-
-  it("consumes the same rng draws whatever is guaranteed, so arms pair up", () => {
-    const draws = (guaranteed: string[]): number => {
-      let n = 0;
-      const rng = seededRng(3);
-      buildAiDeck(() => {
-        n += 1;
-        return rng();
-      }, guaranteed);
-      return n;
-    };
-    expect(draws(["subjugate", "raid"])).toBe(draws([]));
+  it("rejects an unknown arm by name, in both batch runners", () => {
+    expect(() =>
+      runBatch({ games: 1, turnCap: 5, firstSeed: 1, arm: "nope" as BuildArm }),
+    ).toThrow(/unknown arm/);
+    expect(() =>
+      runWorldBatch({ games: 1, turnCap: 5, firstSeed: 1, arm: "nope" as BuildArm }),
+    ).toThrow(/unknown world arm/);
   });
 });
 
 describe("naive human policy", () => {
   const playing = (): GameState =>
     pickFaction(
-      chooseDeck(startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY)), potatoDeck()),
+      chooseBuild(
+        startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES)),
+        "warpath",
+      ),
       HUMAN,
       seededRng(1),
     );
 
-  it("plays potatoes when nothing is forced", () => {
+  it("plays the first playable card", () => {
     const g = naiveHumanTurn(withHand(playing(), ["grow-crops"]), seededRng(1));
     expect(g.log.at(-1)).toMatchObject({ type: "play", cardId: "grow-crops" });
   });
 
-  it("plays forced tribute ahead of potatoes", () => {
+  it("aims a targeted card at the first legal target - flailing, not stalling", () => {
+    const g = naiveHumanTurn(withHand(playing(), ["raid"]), seededRng(1));
+    const play = g.log.find((e) => e.type === "play");
+    expect(play).toMatchObject({ cardId: "raid" });
+    expect(play?.targetFactionId).toBeDefined();
+    // The raid landed: an untargeted or refused play would have no damage.
+    expect(g.log.some((e) => e.type === "damaged")).toBe(true);
+  });
+
+  it("plays forced tribute ahead of anything else", () => {
     const base = playing();
     const lord = SIM_FACTION_IDS[1];
     const vassal: GameState = {
@@ -116,24 +103,30 @@ describe("naive human policy", () => {
       withHand(vassal, ["grow-crops", "pay-military-tribute"]),
       seededRng(1),
     );
-    // A potato deck holds no Seeds of revolt, so this vassalage is also a dead
-    // end and the run ends on the same play. The tribute still happened, and
-    // that - not what follows it - is what this test is about.
-    expect(g.log.at(-2)).toMatchObject({ type: "tribute", overlordFactionId: lord });
-    expect(g.log.at(-1)).toMatchObject({ type: "stranded", overlordFactionId: lord });
+    expect(g.log.at(-1)).toMatchObject({
+      type: "tribute", overlordFactionId: lord,
+    });
+  });
+
+  it("is one of the named human policies, beside the competent one", () => {
+    expect(HUMAN_POLICIES.naive).toBe(naiveHumanTurn);
+    expect(Object.keys(HUMAN_POLICIES)).toEqual(["naive", "competent"]);
   });
 });
 
 describe("runGame", () => {
   it("reproduces an identical summary for an identical seed", () => {
-    const opts = { seed: 42, humanFaction: HUMAN, turnCap: 60 };
+    const opts = { seed: 42, humanFaction: HUMAN, turnCap: 40 };
     expect(runGame(opts)).toEqual(runGame(opts));
   });
 
   it("gives different arms different games", () => {
+    // The arm only changes strategies, and strategies only bite through the
+    // harvest pool - so this needs enough turns for harvests to start
+    // shaping decks, which by turn 60 they reliably have.
     const opts = { seed: 42, humanFaction: HUMAN, turnCap: 60 };
-    const a = runGame({ ...opts, aiDeckFor: DECK_ARMS.shipped });
-    const b = runGame({ ...opts, aiDeckFor: DECK_ARMS.unarmed });
+    const a = runGame({ ...opts, arm: "all-warpath" });
+    const b = runGame({ ...opts, arm: "all-pestilence" });
     expect(a).not.toEqual(b);
   });
 
@@ -155,15 +148,9 @@ describe("runGame", () => {
 
 describe("runBatch", () => {
   it("rotates the starting land and walks the seeds", () => {
-    const games = runBatch({ games: 3, turnCap: 5, firstSeed: 10, arm: "shipped" });
+    const games = runBatch({ games: 3, turnCap: 3, firstSeed: 10, arm: "mixed" });
     expect(games.map((g) => g.seed)).toEqual([10, 11, 12]);
     expect(games.map((g) => g.humanFaction)).toEqual(SIM_FACTION_IDS.slice(0, 3));
-  });
-
-  it("rejects an unknown arm", () => {
-    expect(() =>
-      runBatch({ games: 1, turnCap: 5, firstSeed: 1, arm: "nope" }),
-    ).toThrow(/unknown arm/);
   });
 });
 
@@ -222,12 +209,14 @@ describe("summarize", () => {
     });
   });
 
-  it("counts releases and leaves a survivor's turns null", () => {
+  it("counts releases and independences apart - freed BY a fall versus freed itself", () => {
     const s = summarize(
       state(
         [
           { turn: 4, playerId: 2, type: "subjugated", targetFactionId: HUMAN, overlordFactionId: "a" },
           { turn: 8, playerId: 3, type: "released", targetFactionId: HUMAN, overlordFactionId: "a" },
+          { turn: 10, playerId: 2, type: "subjugated", targetFactionId: HUMAN, overlordFactionId: "b" },
+          { turn: 14, playerId: 1, type: "independence", targetFactionId: HUMAN, overlordFactionId: "b" },
         ],
         "playing",
       ),
@@ -235,6 +224,7 @@ describe("summarize", () => {
       HUMAN,
     );
     expect(s.releasedCount).toBe(1);
+    expect(s.independenceCount).toBe(1);
     expect(s.defeatTurn).toBeNull();
     expect(s.outcome).toBe("cap");
   });
@@ -265,14 +255,17 @@ describe("summarize finalRealmSize", () => {
 describe("aggregation", () => {
   const game = (over: Partial<GameSummary>): GameSummary => ({
     seed: 1, humanFaction: HUMAN, outcome: "defeat", firstSubjugatedTurn: 10,
-    firstOverlord: "a", subjugatedCount: 1, releasedCount: 0, defeatTurn: 20,
-    conqueror: "a", turns: 20, finalRealmSize: 10, ...over,
+    firstOverlord: "a", subjugatedCount: 1, releasedCount: 0,
+    independenceCount: 0, defeatTurn: 20, conqueror: "a", turns: 20,
+    finalRealmSize: 10, ...over,
   });
 
   it("takes the median of an even and an odd run", () => {
     expect(median([3, 1, 2])).toBe(2);
     expect(median([4, 1, 2, 3])).toBe(2.5);
     expect(median([])).toBeNull();
+    expect(mean([2, 4])).toBe(3);
+    expect(mean([])).toBeNull();
   });
 
   it("counts the never-subjugated instead of dropping them", () => {
@@ -285,6 +278,15 @@ describe("aggregation", () => {
     expect(stats.subjugatedShare).toBeCloseTo(2 / 3);
     expect(stats.medianFirstSubjugation).toBe(15);
     expect(stats.capShare).toBeCloseTo(1 / 3);
+  });
+
+  it("means the escape counters, independence included", () => {
+    const stats = aggregate("x", [
+      game({ releasedCount: 1, independenceCount: 2 }),
+      game({ releasedCount: 0, independenceCount: 0 }),
+    ]);
+    expect(stats.meanReleases).toBe(0.5);
+    expect(stats.meanIndependences).toBe(1);
   });
 
   it("pairs on seed and land, and flags one-sided subjugations", () => {
@@ -315,29 +317,45 @@ describe("aggregation", () => {
 });
 
 describe("runWorld", () => {
-  const deck = [
-    "raid", "subjugate", "incorporate",
-    ...Array.from({ length: 7 }, () => "grow-crops"),
-  ];
-
   it("reproduces an identical summary for an identical seed", () => {
-    const opts = { seed: 7, deck, turnCap: 80 };
+    const opts = { seed: 7, arm: "mixed" as const, turnCap: 30 };
     expect(runWorld(opts)).toEqual(runWorld(opts));
   });
 
   it("reports a capped world rather than dropping it", () => {
-    const w = runWorld({ seed: 1, deck, turnCap: 1 });
+    const w = runWorld({ seed: 1, arm: "mixed", turnCap: 1 });
     expect(w.outcome).toBe("cap");
     expect(w.winner).toBeNull();
+    expect(w.turnsSinceLastIncorporation).toBeGreaterThanOrEqual(0);
+  });
+
+  it("measures the defense economy: damage dealt, harvest picks, tenures", () => {
+    const w = runWorld({ seed: 3, arm: "mixed", turnCap: 60 });
+    // 26 seats of five-Raid decks draw blood immediately.
+    expect(w.damageDealt).toBeGreaterThan(0);
+    expect(w.subjugations).toBeGreaterThan(0);
+    expect(w.playsByCard.raid).toBeGreaterThan(0);
+    // Harvests are the discovery route now - by turn 60 the growing decks
+    // have picked, and every pick names a real card.
+    expect(Object.keys(w.harvestPicksByCard).length).toBeGreaterThan(0);
+    for (const id of Object.keys(w.harvestPicksByCard)) {
+      expect(CARDS[id]).toBeDefined();
+    }
+    expect(w.harvestsSkipped).toBeGreaterThanOrEqual(0);
+    for (const tenure of w.vassalTenures) {
+      expect(tenure).toBeGreaterThanOrEqual(0);
+    }
+    expect(w.defenseHealed).toBeGreaterThanOrEqual(0);
+    expect(w.independences).toBeGreaterThanOrEqual(0);
   });
 
   it("names the winner when the world resolves", () => {
-    const w = runWorld({ seed: 3, deck, turnCap: 400 });
+    const w = runWorld({ seed: 3, arm: "mixed", turnCap: 300 });
     if (w.outcome === "unified") {
       expect(w.winner).not.toBeNull();
       expect(SIM_FACTION_IDS).toContain(w.winner);
       expect(w.largestRealm).toBeGreaterThanOrEqual(
-        Math.ceil(0.55 * SIM_FACTION_IDS.length),
+        victoryRealmSize(SIM_FACTION_IDS.length),
       );
     } else {
       // A capped world is a legitimate result and the point of measuring;
@@ -347,110 +365,52 @@ describe("runWorld", () => {
   });
 });
 
-describe("world arms", () => {
-  it("holds exactly DECK_SIZE cards in every arm", () => {
-    for (const deck of Object.values(WORLD_ARMS)) {
-      expect(deck).toHaveLength(DECK_SIZE);
-    }
-  });
-
-  it("differs from conquest-omens only by one card", () => {
-    expect(WORLD_ARMS["conquest-omens"]).toContain("favourable-omens");
-    expect(WORLD_ARMS["conquest-omens"].filter((c) => c !== "grow-crops"))
-      .toEqual([
-        ...WORLD_ARMS["conquest-scaled"].filter((c) => c !== "grow-crops"),
-        "favourable-omens",
-      ]);
-  });
-
-  it("full-deck plays the actual default deck, not a conquest-shaped one", () => {
-    // The conquest arms above isolate the subjugation loop; full-deck exists
-    // so the committed evidence also covers the deck shape a real player
-    // plays - it must track DEFAULT_DECK exactly, favourable-omens included.
-    expect(WORLD_ARMS["full-deck"]).toEqual(DEFAULT_DECK);
-    expect(WORLD_ARMS["full-deck"]).toContain("favourable-omens");
-  });
-
-  it("rejects an unknown arm by name", () => {
-    expect(() => runWorldBatch({ games: 1, turnCap: 5, firstSeed: 1, arm: "nope" }))
-      .toThrow(/unknown world arm/);
-  });
-
-  it("pairs arms seed for seed", () => {
-    const opts = { games: 3, turnCap: 30, firstSeed: 1 };
-    const a = runWorldBatch({ ...opts, arm: "conquest-scaled" });
-    const b = runWorldBatch({ ...opts, arm: "conquest-omens" });
-    expect(a.map((g) => g.seed)).toEqual(b.map((g) => g.seed));
+describe("aggregateWorld", () => {
+  const world = (over: Partial<WorldSummary>): WorldSummary => ({
+    seed: 1, outcome: "unified", endTurn: 10, winner: "a", subjugations: 3,
+    incorporations: 2, independences: 0, largestRealm: 15,
+    turnsSinceLastIncorporation: 0, playsByCard: {}, harvestPicksByCard: {},
+    harvestsSkipped: 0, targetedPlays: 0, firstLegalTargetPlays: 0,
+    preventedAssassinations: 0, untestedGuards: 0, damageDealt: 0,
+    defenseHealed: 0, vassalTenures: [], settlementsFounded: 0, ...over,
   });
 
   it("aggregates end turns over resolved worlds only", () => {
     const stats = aggregateWorld("x", [
-      { seed: 1, outcome: "unified", endTurn: 10, winner: "a", subjugations: 3,
-        incorporations: 2, largestRealm: 15, turnsSinceLastIncorporation: 0 , revoltsSown: 0, revoltsPlayed: 0, vassalTenures: [], playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0, settlementsFounded: 0, settlementsOnHeldLands: 0, settlementsWalkedOff: 0 },
-      { seed: 2, outcome: "cap", endTurn: 99, winner: null, subjugations: 1,
-        incorporations: 0, largestRealm: 3, turnsSinceLastIncorporation: 99 , revoltsSown: 0, revoltsPlayed: 0, vassalTenures: [], playsByCard: {}, targetedPlays: 0, firstLegalTargetPlays: 0, preventedAssassinations: 0, untestedGuards: 0, unusedBoosts: 0, alliancesOnOwnTargets: 0, settlementsFounded: 0, settlementsOnHeldLands: 0, settlementsWalkedOff: 0 },
+      world({ seed: 1, outcome: "unified", endTurn: 10 }),
+      world({
+        seed: 2, outcome: "cap", endTurn: 99, winner: null,
+        turnsSinceLastIncorporation: 99,
+      }),
     ]);
     expect(stats.unifiedShare).toBe(0.5);
     expect(stats.capShare).toBe(0.5);
     expect(stats.medianEndTurn).toBe(10); // the capped run contributes no end
-  });
-});
-
-describe("waste and bias metrics", () => {
-  const opts = { games: 6, turnCap: 120, firstSeed: 1, arm: "full-deck" };
-
-  it("founds settlements, mostly in the founder's own land, rarely wasted", () => {
-    const stats = aggregateWorld("full-deck", runWorldBatch(opts));
-    // Zero would mean the card is ignored; one per seat is the ceiling for a
-    // one-land realm, since a land holds one site.
-    expect(stats.settlementsFoundedTotal).toBeGreaterThan(0);
-    expect(stats.meanSettlementsFounded!).toBeLessThanOrEqual(SIM_FACTION_IDS.length);
-    // The policy ranks its own land first, a land it annexed second, a vassal's
-    // last, so most settlements sit on land the founder holds outright. A share
-    // near 1 here would mean the ranking had inverted.
-    expect(stats.settlementsOnHeldLandsShare!).toBeLessThan(0.4);
-    // Founded in a land that then left the realm: the wasted play. Vassals last
-    // in the ranking is what keeps this low.
-    expect(stats.settlementsWalkedOffShare!).toBeLessThan(0.3);
+    expect(stats.medianStallTurns).toBe(99);
   });
 
-  it("no longer takes the first legal target most of the time", () => {
-    const stats = aggregateWorld("full-deck", runWorldBatch(opts));
-    // Alliance and Assassinate ruler used to take validTargetsFor(...)[0]
-    // unconditionally, so this share was 1.00 by construction. Asserting
-    // "below 1" rather than a pinned count deliberately: a pinned count would
-    // have to be re-baselined on every future policy change, while this still
-    // fails outright if targeting reverts to first-legal-always.
-    expect(stats.targetedPlaysSeen).toBeGreaterThan(0);
-    expect(stats.firstLegalTargetShare).not.toBeNull();
-    expect(stats.firstLegalTargetShare!).toBeLessThan(1);
-  });
-
-  it("rarely seals a pact with a faction it could subjugate instead", () => {
-    const stats = aggregateWorld("full-deck", runWorldBatch(opts));
-    // Allying with your own best target freezes your own conquest for five
-    // turns. Step 5 refuses such a target outright, and step 11 now prefers a
-    // different one, which took this from 0.33 pacts per world to 0.17.
-    //
-    // It cannot reach 0, and the design spec was wrong to predict it would:
-    // when Alliance is the ONLY playable card and every legal target is also a
-    // faction this one could subjugate, step 11 has to play it anyway. That
-    // residue is forced by the rules, not a targeting defect, so this asserts a
-    // low rate rather than zero. The emergency path IS zero by construction and
-    // is covered by the step-5 exclusion tests in tests/ai.test.ts.
-    //
-    // Asserted as a share of the pacts sealed, not as a count per world: the
-    // count tracks how long worlds run as much as how well targets are picked,
-    // and it tripled when Found a settlement lengthened them (measured 0.038 to
-    // 0.65 per world) while the share went 0.03% to 0.28% - both negligible.
-    expect(stats.alliancesOnOwnTargetsShare).not.toBeNull();
-    expect(stats.alliancesOnOwnTargetsShare!).toBeLessThan(0.05);
-  });
-
-  it("counts every play against a card id", () => {
-    const stats = aggregateWorld("full-deck", runWorldBatch(opts));
-    const total = Object.values(stats.playShareByCard).reduce((a, b) => a + b, 0);
+  it("pools harvest picks into a play-share table of the growing deck", () => {
+    const stats = aggregateWorld("x", [
+      world({ harvestPicksByCard: { subjugate: 3, hillfort: 1 } }),
+      world({ harvestPicksByCard: { subjugate: 1, plague: 3 } }),
+    ]);
+    expect(stats.harvestPickShareByCard.subjugate).toBeCloseTo(0.5);
+    expect(stats.harvestPickShareByCard.hillfort).toBeCloseTo(0.125);
+    expect(stats.harvestPickShareByCard.plague).toBeCloseTo(0.375);
+    const total = Object.values(stats.harvestPickShareByCard)
+      .reduce((a, b) => a + b, 0);
     expect(total).toBeCloseTo(1, 10);
-    expect(stats.playShareByCard["reclaim-independence"]).toBeUndefined();
+  });
+
+  it("means the two sides of the defense economy and pools tenures", () => {
+    const stats = aggregateWorld("x", [
+      world({ damageDealt: 1000, defenseHealed: 100, vassalTenures: [2, 4] }),
+      world({ damageDealt: 3000, defenseHealed: 300, vassalTenures: [6] }),
+    ]);
+    expect(stats.meanDamageDealt).toBe(2000);
+    expect(stats.meanDefenseHealed).toBe(200);
+    expect(stats.medianVassalTenure).toBe(4);
+    expect(stats.meanVassalTenure).toBe(4);
+    expect(stats.meanIndependences).toBe(0);
   });
 });

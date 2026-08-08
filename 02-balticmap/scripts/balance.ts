@@ -5,11 +5,12 @@
  *  playtest went badly and you want to know why. It is not part of `npm test`.
  *
  *  npm run balance
- *  npm run balance -- --games=24 --cap=200 --arm=conquest-scaled
+ *  npm run balance -- --games=24 --cap=200 --arm=all-warpath
  */
-import { ACQUIRABLE_CARDS, CARDS, RARITY_TIERS } from "../src/cards";
-import { PACK_SIZE } from "../src/packs";
-import { aggregateWorld, runWorldBatch, WORLD_ARMS } from "../src/sim";
+import { CARDS } from "../src/cards";
+import {
+  aggregateWorld, BUILD_ARMS, runWorldBatch, type BuildArm,
+} from "../src/sim";
 
 function flag(name: string, fallback: string): string {
   const hit = process.argv.slice(2).find((a) => a.startsWith(`--${name}=`));
@@ -28,11 +29,11 @@ function num(name: string, fallback: number): number {
 const games = num("games", 12);
 const turnCap = num("cap", 150);
 const firstSeed = num("seed", 1);
-const arm = flag("arm", "full-deck");
+const arm = flag("arm", "mixed") as BuildArm;
 
-if (!(arm in WORLD_ARMS)) {
+if (!BUILD_ARMS.includes(arm)) {
   throw new Error(
-    `unknown world arm "${arm}"; known: ${Object.keys(WORLD_ARMS).join(", ")}`,
+    `unknown build arm "${arm}"; known: ${BUILD_ARMS.join(", ")}`,
   );
 }
 
@@ -45,7 +46,7 @@ const stats = aggregateWorld(arm, runWorldBatch({ games, turnCap, firstSeed, arm
 const ms = Number(process.hrtime.bigint() - started) / 1e6;
 
 console.log(
-  `${games} worlds on the ${arm} deck, ${turnCap}-turn cap, ` +
+  `${games} worlds on the ${arm} arm, ${turnCap}-turn cap, ` +
     `seeds ${firstSeed}..${firstSeed + games - 1}, ran in ${(ms / 1000).toFixed(1)}s\n`,
 );
 
@@ -56,6 +57,7 @@ console.log(`  median end turn    ${n1(stats.medianEndTurn)}`);
 // The stalemate number: turns of silence before a capped world gave up.
 console.log(`  median stall turns ${n1(stats.medianStallTurns)}`);
 console.log(`  median vassalage   ${n1(stats.medianVassalTenure)} turns`);
+console.log(`  independences      ${n1(stats.meanIndependences)} per world`);
 
 console.log("\nplay share by card");
 const played = Object.entries(stats.playShareByCard).sort((a, b) => b[1] - a[1]);
@@ -64,15 +66,24 @@ for (const [id, share] of played) {
   console.log(`  ${id.padEnd(width)}  ${pct(share).padStart(6)}`);
 }
 
-// A card in the arm's deck that never got played is the "ignored" case the
-// report exists to surface. Cards outside the deck are silent by construction,
-// so listing every unplayed id in CARDS would bury the real signal.
-const inDeck = new Set(WORLD_ARMS[arm]);
-const ignored = [...inDeck].filter((id) => !(id in stats.playShareByCard));
+// A deck-buildable card nobody ever kept from a harvest is the "ignored" case
+// the report exists to surface: the offer is the whole acquisition route now,
+// so an unpicked card is a card the game effectively does not have.
+console.log("\nharvest picks");
+const picked = Object.entries(stats.harvestPickShareByCard)
+  .sort((a, b) => b[1] - a[1]);
+for (const [id, share] of picked) {
+  console.log(`  ${id.padEnd(width)}  ${pct(share).padStart(6)}`);
+}
+console.log(`  skipped offers: ${stats.harvestsSkippedTotal}`);
+const neverPicked = Object.values(CARDS)
+  .filter((c) => c.deckBuildable && c.id !== "grow-crops")
+  .map((c) => c.id)
+  .filter((id) => !(id in stats.harvestPickShareByCard));
 console.log(
-  ignored.length === 0
-    ? "\nevery card in this deck was played at least once"
-    : `\nIGNORED - in the deck, never played: ${ignored.join(", ")}`,
+  neverPicked.length === 0
+    ? "every deck-buildable card was kept at least once"
+    : `NEVER PICKED: ${neverPicked.join(", ")}`,
 );
 
 console.log("\ntargeting");
@@ -80,52 +91,9 @@ console.log(
   `  first legal target  ${pct(stats.firstLegalTargetShare)}` +
     ` of ${stats.targetedPlaysSeen} plays with 2+ legal targets`,
 );
-console.log(
-  `  pacts on own target ${pct(stats.alliancesOnOwnTargetsShare)} of pacts sealed`,
-);
 
-console.log("\nwaste");
-console.log(`  untested guards        ${n1(stats.meanUntestedGuards)} per world`);
-console.log(`  unused omen boosts     ${n1(stats.meanUnusedBoosts)} per world`);
-console.log(`  settlements walked off ${pct(stats.settlementsWalkedOffShare)}`);
-console.log(
-  `  revolts sown ${stats.revoltsSownTotal}, of which played ${stats.revoltsPlayedTotal}`,
-);
-
-// Tier weight is fixed; a card's share of it falls as the tier fills, and an
-// empty tier hands its weight to the base tier via openPack's fallback. Print
-// what a player's odds actually are rather than what the weights say.
-console.log("\nrarity");
-const members = new Map(
-  RARITY_TIERS.map((t) => [
-    t.id,
-    ACQUIRABLE_CARDS.filter((id) => CARDS[id]?.rarity === t.id),
-  ]),
-);
-const baseId = RARITY_TIERS[0].id;
-const effective = new Map(RARITY_TIERS.map((t) => [t.id, t.weight]));
-for (const tier of RARITY_TIERS) {
-  if ((members.get(tier.id) ?? []).length === 0 && tier.id !== baseId) {
-    effective.set(tier.id, 0);
-    effective.set(baseId, (effective.get(baseId) ?? 0) + tier.weight);
-  }
-}
-const totalWeight = RARITY_TIERS.reduce((sum, t) => sum + t.weight, 0);
-const tierWidth = Math.max(...RARITY_TIERS.map((t) => t.id.length));
-for (const tier of RARITY_TIERS) {
-  const cards = members.get(tier.id) ?? [];
-  const slotShare = (effective.get(tier.id) ?? 0) / totalWeight;
-  const perCard = cards.length === 0 ? 0 : slotShare / cards.length;
-  const perPack = 1 - (1 - perCard) ** PACK_SIZE;
-  console.log(
-    `  ${tier.id.padEnd(tierWidth)}  ${String(cards.length).padStart(2)} cards` +
-      `  ${pct(slotShare).padStart(6)} of a slot` +
-      `  ${pct(perPack).padStart(6)} per pack per card`,
-  );
-  if (cards.length > 0 && perPack < 0.02) {
-    console.log(
-      `    WARNING - ${tier.id} holds ${cards.length} cards, so one of them ` +
-        "shows up less than once in 50 packs",
-    );
-  }
-}
+console.log("\neconomy");
+console.log(`  damage dealt    ${n1(stats.meanDamageDealt)} per world`);
+console.log(`  defense healed  ${n1(stats.meanDefenseHealed)} per world`);
+console.log(`  settlements     ${n1(stats.meanSettlementsFounded)} per world`);
+console.log(`  untested guards ${n1(stats.meanUntestedGuards)} per world`);

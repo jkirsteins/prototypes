@@ -1,25 +1,18 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import { pact, } from "./helpers";
 import { createHud, type Hud, type HudCallbacks } from "../src/hud";
 import {
-  newGame, startGame, chooseDeck, pickFaction, advance, playCard, beginTurn,
+  newGame, startGame, chooseBuild, pickFaction, advance, playCard, beginTurn,
   chooseRules,
   type GameState, type GameEvent,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
-import { CARDS, buildDeck, type Rng } from "../src/cards";
+import { CARDS, type Rng } from "../src/cards";
 import { DEFAULT_RULES } from "../src/rules";
-import { allianceKey, bumpMight, leadOf } from "../src/relations";
 import { rulerOf } from "../src/rulers";
-import {
-  PASSIVE_PER_LANDS,
-} from "../src/playability";
 import type { TargetExplanation } from "../src/target-explanations";
 import { memoryStorage, type MetaStorage } from "../src/meta";
 import { ROUND_SUMMARY_TITLE } from "../src/notices";
-import { runXp } from "../src/xp";
-import { card, t } from "../src/rich-text";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -42,8 +35,6 @@ function setup(opts?: {
   onResetProgress?: () => void;
   onSurrender?: () => void;
   onHighlightFaction?: (factionId: string | null) => void;
-  lifetimeXp?: () => number;
-  packsWaiting?: () => number;
   localPlayerId?: () => number;
   playerNameOf?: (factionId: string) => string | null;
   placeNameFactionIds?: Set<string>;
@@ -71,8 +62,6 @@ function setup(opts?: {
     ...(opts?.onHighlightFaction
       ? { onHighlightFaction: opts.onHighlightFaction }
       : {}),
-    ...(opts?.lifetimeXp ? { lifetimeXp: opts.lifetimeXp } : {}),
-    ...(opts?.packsWaiting ? { packsWaiting: opts.packsWaiting } : {}),
     ...(opts?.localPlayerId ? { localPlayerId: opts.localPlayerId } : {}),
     ...(opts?.playerNameOf ? { playerNameOf: opts.playerNameOf } : {}),
   };
@@ -91,10 +80,15 @@ function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
   return { ...g, players: g.players.map((pl, i) => (i === playerIdx ? p : pl)) };
 }
 
+/** The human is beta everywhere in this file. */
+function newPlaying(factionIds = FACTIONS): GameState {
+  return pickFaction(
+    chooseBuild(startGame(newGame(factionIds)), "warpath"), "beta", seededRng(1),
+  );
+}
+
 describe("createHud", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
+  const playing = () => newPlaying();
 
   it("shows only the menu at main-menu, and New game fires onNewGame", () => {
     const { container, cb, hud } = setup();
@@ -110,7 +104,7 @@ describe("createHud", () => {
 
   it("prompts for a faction during pick-faction", () => {
     const { container, hud } = setup();
-    hud.update(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()));
+    hud.update(chooseBuild(startGame(newGame(FACTIONS)), "warpath"));
     expect(q(container, ".menu-overlay").classList.contains("hidden")).toBe(true);
     expect(q(container, ".status-bar").classList.contains("hidden")).toBe(false);
     expect(q(container, ".status-text").textContent).toBe("Choose your faction");
@@ -118,10 +112,11 @@ describe("createHud", () => {
 
   it("renders the human turn: status, piles, fanned hand", () => {
     const { container, cb, hud } = setup();
-    const g = withHand(pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1)), 0, ["grow-crops"]);
+    const g = withHand(playing(), 0, ["grow-crops"]);
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
-    expect(q(container, ".pile-deck .pile-count").textContent).toBe("6");
+    // The 6-card starting deck: 3 dealt to hand, 1 drawn at turn start.
+    expect(q(container, ".pile-deck .pile-count").textContent).toBe("2");
     expect(q(container, ".pile-deck .pile-label").textContent).toBe("Deck");
     expect(q(container, ".pile-discard .pile-count").textContent).toBe("0");
     expect(q(container, ".pile-discard .pile-label").textContent).toBe("Discard");
@@ -136,10 +131,7 @@ describe("createHud", () => {
     const { container, hud } = setup();
     // opening hand deals 3 + a turn draw = 4; force a known 3-card hand to
     // exercise the fan formula independent of hand size.
-    const g = withHand(
-      pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1)), 0,
-      ["grow-crops", "grow-crops", "grow-crops"],
-    );
+    const g = withHand(playing(), 0, ["grow-crops", "grow-crops", "grow-crops"]);
     hud.update(g);
     const cards = [...container.querySelectorAll(".card")] as HTMLElement[];
     expect(cards).toHaveLength(3);
@@ -150,7 +142,7 @@ describe("createHud", () => {
 
   it("disables held cards during AI turns and shows the waiting label", () => {
     const { container, cb, hud } = setup();
-    let g = pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+    let g = playing();
     // advance hands control to player 2 (AI); force a known 1-card hand
     g = advance({ ...g, playedThisTurn: true }, seededRng(3));
     g = withHand(g, 0, ["grow-crops"]);
@@ -165,9 +157,7 @@ describe("createHud", () => {
 
   it("disables remaining cards after playing one this turn", () => {
     const { container, cb, hud } = setup();
-    let g = pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-    // run one full round so the human holds 2 cards on their next turn
-    for (let i = 0; i < FACTIONS.length; i++) g = advance({ ...g, playedThisTurn: true }, seededRng(4));
+    let g = playing();
     g = withHand(g, 0, ["grow-crops", "grow-crops"]);
     g = playCard(g, 0, seededRng(1)); // 1 card left, playedThisTurn = true
     hud.update(g);
@@ -175,6 +165,26 @@ describe("createHud", () => {
     expect(card.disabled).toBe(true);
     card.click();
     expect(cb.onPlayCard).not.toHaveBeenCalled();
+  });
+
+  it("shows the treasury and its income rate", () => {
+    const { container, hud } = setup();
+    hud.update(playing()); // beginTurn banked the first turn's income of 1
+    expect(q(container, ".status-wealth").textContent).toBe("Wealth 1 (+1/turn)");
+  });
+
+  it("shows the leadership chip only once a War council has bought a stack", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    hud.update(g);
+    expect(q(container, ".status-prowess").classList.contains("hidden")).toBe(true);
+    g = withHand(g, 0, ["war-council"]);
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g);
+    expect(q(container, ".status-prowess").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".status-prowess").textContent).toBe(
+      "Leadership 50 (added to every attack)",
+    );
   });
 
   it("names the faction that unified the Balts", () => {
@@ -231,12 +241,9 @@ describe("visual piles", () => {
     const { container, hud } = setup();
     // force a non-targeted card so playCard(g, 0) below succeeds regardless
     // of what the seeded shuffle happened to deal
-    const g = withHand(
-      pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1)), 0,
-      ["grow-crops"],
-    );
-    hud.update(g); // deck 6, discard 0
-    expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(2);
+    const g = withHand(newPlaying(), 0, ["grow-crops"]);
+    hud.update(g); // deck 2, discard 0
+    expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(1);
     expect(container.querySelectorAll(".pile-discard .card-back")).toHaveLength(0);
     expect(
       q(container, ".pile-discard .pile-stack").classList.contains("empty"),
@@ -253,9 +260,7 @@ describe("visual piles", () => {
 });
 
 describe("activity log", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
+  const playing = () => newPlaying();
 
   it("is hidden outside the playing phase and visible during it", () => {
     const { container, hud } = setup();
@@ -270,7 +275,7 @@ describe("activity log", () => {
     let g = playing();
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
-    g = advance({ ...g, playedThisTurn: true }, seededRng(2)); // player 2 draws - never logged
+    g = advance(g, seededRng(2)); // player 2 draws - never logged
     g = withHand(g, 1, ["grow-crops"]);
     g = aiTakeTurn(g, seededRng(1)); // player 2 plays
     hud.update(g);
@@ -335,110 +340,101 @@ describe("activity log", () => {
     expect(container.querySelectorAll(".log-entry")).toHaveLength(0);
   });
 
-  it("states what your play did, in the badges' own before -> after form", () => {
+  it("states what your raid did, on its consequence line, in the badges' form", () => {
     const { container, hud } = setup();
     let g = playing(); // you are beta; adjacency defaults to a complete graph
     g = withHand(g, 0, ["raid"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
-    const texts = [...container.querySelectorAll(".log-entry")].map(
-      (el) => el.textContent,
-    );
-    expect(texts).toContain("You played Raid on Alpha (Might 0 -> +1)");
+    const entries = [...container.querySelectorAll(".log-entry")] as HTMLElement[];
+    const texts = entries.map((el) => el.textContent);
+    // The play line carries no suffix - the damage rides on the consequence
+    // line, which is where the number belongs.
+    expect(texts).toContain("You played Raid on Alpha");
+    expect(texts).toContain("The defenses of Alpha are battered (Defense -150 -> 450)");
+    const damaged = entries.find((el) =>
+      el.textContent?.startsWith("The defenses of Alpha"))!;
+    expect(damaged.classList.contains("log-consequence")).toBe(true);
     // The number the log quotes is the number on the map, not a second
     // reckoning of its own.
-    expect(leadOf(g.relations, "beta", "alpha")).toBe(1);
+    expect(g.defense.alpha).toBe(450);
   });
 
-  it("colours a gain and a loss differently", () => {
+  it("colours a hit red and a heal green, by the polygon's own movement", () => {
     const { container, hud } = setup();
-    let g = playing();
-    g = withHand(g, 0, ["raid"]);
-    g = playCard(g, 0, seededRng(1), "alpha");
+    let g: GameState = { ...playing(), defense: { beta: 400 } };
+    g = withHand(g, 0, ["hillfort"]);
+    g = playCard(g, 0, seededRng(1), "beta");
     g = {
       ...g,
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
+        {
+          turn: 1, playerId: 2, type: "damaged", cardId: "raid",
+          targetFactionId: "gamma", amount: 150,
+        },
       ],
+      defense: { ...g.defense, gamma: 450 },
     };
     hud.update(g);
     const changes = [...container.querySelectorAll(".log-change")];
-    expect(changes[0].className).toBe("log-change lead-good"); // yours
-    expect(changes[1].className).toBe("log-change lead-bad"); // theirs, on you
+    expect(changes[0].className).toBe("log-change lead-good"); // your heal
+    expect(changes[0].textContent).toBe(" (Defense +150 -> 550)");
+    expect(changes[1].className).toBe("log-change lead-bad"); // the hit
+    expect(changes[1].textContent).toBe(" (Defense -150 -> 450)");
   });
 
-  it("states a Fortify as the fan-out it is, not a pair", () => {
+  it("suffixes a disease stack by owner count, red - pressure on the land", () => {
     const { container, hud } = setup();
     let g = playing();
-    g = withHand(g, 0, ["fortify"]);
-    g = playCard(g, 0, seededRng(1));
-    hud.update(g);
-    const texts = [...container.querySelectorAll(".log-entry")].map(
-      (el) => el.textContent,
-    );
-    expect(texts).toContain("You played Fortify (+1 Might against all)");
-  });
-
-  it("counts a pact's neighbours rather than calling them all", () => {
-    // A pact hits only the factions bordering BOTH realms. "against all" is the
-    // wording for a card that really does hit every living faction, and using
-    // it here overstates two neighbours by the width of the map.
-    const { container, hud } = setup();
-    // Four factions, not this suite's three: with only one shared neighbour
-    // the line is a single pair and the plural is never exercised.
-    const four = ["alpha", "beta", "gamma", "delta"];
-    let g = pickFaction(
-      chooseDeck(startGame(newGame(four, {
-        // alpha and beta both border gamma and delta, and nothing else is
-        // adjacent, so the pact's frozen set is exactly those two.
-        alpha: ["beta", "gamma", "delta"],
-        beta: ["alpha", "gamma", "delta"],
-        gamma: ["alpha", "beta"],
-        delta: ["alpha", "beta"],
-      })), buildDeck()),
-      "beta", seededRng(1),
-    );
-    g = withHand(g, 0, ["alliance"]);
+    g = withHand(g, 0, ["spread-disease"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
-    const texts = [...container.querySelectorAll(".log-entry")].map(
-      (el) => el.textContent,
-    );
-    expect(texts).toContain("You played Alliance on Alpha (+1 Might against 2 factions)");
+    const entry = [...container.querySelectorAll(".log-entry")].find((el) =>
+      el.textContent?.startsWith("Disease takes root in Alpha"))!;
+    expect(entry.querySelector(".log-change")!.textContent).toBe(" (Disease +1 -> 1)");
+    expect(entry.querySelector(".log-change")!.className).toBe("log-change lead-bad");
   });
 
-  it("leaves a card that moves no standing without a suffix", () => {
-    // Extended diplomacy, not Alliance: an Alliance moves Might now, against
-    // every faction bordering both realms, so it carries a suffix like any
-    // other gain.
+  it("quotes a War council's leadership off the event, on the play line", () => {
     const { container, hud } = setup();
     let g = playing();
-    g = withHand(g, 0, ["extended-diplomacy"]);
+    g = withHand(g, 0, ["war-council"]);
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g);
+    const entry = [...container.querySelectorAll(".log-entry")].find((el) =>
+      el.textContent?.startsWith("You played War council"))!;
+    expect(entry.textContent).toBe("You played War council (Leadership +50)");
+    expect(entry.querySelector(".log-change")!.className).toBe("log-change lead-good");
+  });
+
+  it("quotes a tribute's coins off the event, tone even", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      log: [...g.log, {
+        turn: 1, playerId: 1, type: "tribute",
+        targetFactionId: "beta", overlordFactionId: "alpha", wealth: 2,
+      }],
+    });
+    const entry = [...container.querySelectorAll(".log-entry")].find((el) =>
+      el.textContent?.includes("pays tribute"))!;
+    expect(entry.textContent).toBe("Beta pays tribute to Alpha (2 wealth)");
+    expect(entry.querySelector(".log-change")!.className).toBe("log-change lead-even");
+  });
+
+  it("leaves a card that moves no score without a suffix", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
     hud.update(g);
     const texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
     );
-    expect(texts).toContain("You played Extended diplomacy");
+    expect(texts).toContain("You played Grow turnips");
     expect(container.querySelectorAll(".log-change")).toHaveLength(0);
-  });
-
-  it("quotes the garrison tick's number once, from its own line", () => {
-    const { container, hud } = setup();
-    const annexed = Object.fromEntries(
-      Array.from({ length: PASSIVE_PER_LANDS }, (_, i) => [`annex-${i}`, "beta"]),
-    );
-    // The garrison fires as a turn BEGINS, for whoever is about to play.
-    const g = beginTurn({ ...playing(), incorporated: annexed }, seededRng(1));
-    hud.update(g);
-    const garrison = [...container.querySelectorAll(".log-entry")].find(
-      (el) => el.textContent?.startsWith("Your garrisons"),
-    )!;
-    expect(garrison.textContent).toBe(
-      "Your garrisons stand watch (+1 Might against all)",
-    );
-    expect(garrison.querySelector(".log-change")).toBeNull();
   });
 
   it("collapses to a tab and expands again", () => {
@@ -453,10 +449,51 @@ describe("activity log", () => {
   });
 });
 
+describe("log lines for the new event types", () => {
+  /** Raw events pushed onto a playing state, read back off the log panel.
+   *  The exact-sentence pins live here; the naming-convention sweep holds the
+   *  same lines to the segment rule. */
+  const textsFor = (events: GameEvent[]): string[] => {
+    const { container, hud } = setup();
+    const g = newPlaying();
+    hud.update({ ...g, log: [...g.log, ...events] });
+    return [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent ?? "",
+    );
+  };
+
+  it("renders one line per new event type, subject first", () => {
+    const texts = textsFor([
+      { turn: 1, playerId: 2, type: "healed", cardId: "hillfort", targetFactionId: "alpha", amount: 0 },
+      { turn: 1, playerId: 2, type: "plagued", cardId: "plague", targetFactionId: "gamma", amount: 0 },
+      { turn: 1, playerId: 2, type: "winds-shifted", cardId: "foul-winds", targetFactionId: "gamma", amount: 0 },
+      { turn: 1, playerId: 2, type: "independence", targetFactionId: "alpha", overlordFactionId: "gamma" },
+      { turn: 1, playerId: 2, type: "settled", targetFactionId: "alpha" },
+      { turn: 1, playerId: 2, type: "incorporated", targetFactionId: "alpha", overlordFactionId: "gamma" },
+    ]);
+    // startsWith: a line whose event moved a score carries the impact suffix.
+    const starts = (prefix: string) =>
+      texts.some((t) => t.startsWith(prefix));
+    expect(starts("The defenses of Alpha are restored")).toBe(true);
+    expect(starts("Plague ravages Gamma")).toBe(true);
+    expect(starts("The disease on Gamma changes hands")).toBe(true);
+    expect(texts).toContain("Alpha reclaims independence from Gamma");
+    expect(texts).toContain("Alpha founds a new settlement");
+    expect(texts).toContain("Alpha is incorporated into Gamma");
+  });
+
+  it("renders the harvest pair as your own doing, the card as a segment", () => {
+    const texts = textsFor([
+      { turn: 1, playerId: 1, type: "harvest-earned", cardId: "turnip-harvest" },
+      { turn: 1, playerId: 1, type: "harvest-picked", cardId: "hillfort" },
+    ]);
+    expect(texts).toContain("You earned a Turnip harvest");
+    expect(texts).toContain("You kept Hillfort from the harvest");
+  });
+});
+
 describe("activity log filters", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
+  const playing = () => newPlaying();
 
   const filterCheckbox = (c: HTMLElement): HTMLInputElement =>
     c.querySelectorAll(".activity-log-filter input")[0] as HTMLInputElement;
@@ -471,30 +508,29 @@ describe("activity log filters", () => {
     expect(q(container, ".activity-log").classList.contains("filter-targeting-me")).toBe(false);
   });
 
-  it("tags a notice-worthy entry, and leaves an AI-vs-AI entry untagged", () => {
+  it("tags a hit on your realm notice-worthy, and an AI-vs-AI hit not", () => {
     const { container, hud } = setup();
     let g = playing();
     g = {
       ...g,
+      defense: { beta: 450, gamma: 450 },
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "gamma", amount: 1 },
+        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
+        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "gamma", amount: 150 },
       ],
     };
     hud.update(g);
-    q(container, ".notice-continue").click(); // dismiss the round summary the raid raised
+    q(container, ".notice-continue").click(); // dismiss the round summary the hit raised
     const entries = [...container.querySelectorAll(".activity-log .log-entry")];
-    // Prefix, not equality: the line carries a standings suffix and this test
-    // is about the tag, not the number.
-    const raidOnYou = entries.find(
-      (el) => el.textContent?.startsWith("Alpha played Raid on you"),
+    const hitOnYou = entries.find(
+      (el) => el.textContent?.startsWith("The defenses of Beta"),
     )!;
-    const raidOnGamma = entries.find(
-      (el) => el.textContent?.startsWith("Alpha played Raid on Gamma"),
+    const hitOnGamma = entries.find(
+      (el) => el.textContent?.startsWith("The defenses of Gamma"),
     )!;
-    expect(raidOnYou.classList.contains("notice-worthy")).toBe(true);
-    expect(raidOnGamma.classList.contains("notice-worthy")).toBe(false);
+    expect(hitOnYou.classList.contains("notice-worthy")).toBe(true);
+    expect(hitOnGamma.classList.contains("notice-worthy")).toBe(false);
   });
 
   /** The filter is about what is being done TO you. It was never meant to
@@ -509,23 +545,39 @@ describe("activity log filters", () => {
     const mine = [...container.querySelectorAll(".activity-log .log-entry")].find(
       (el) => el.textContent?.startsWith("You played Raid on Alpha"),
     )!;
-    // Every modal rule requires playerId !== 1, so nothing you do is ever
-    // notice-worthy: .log-mine is the only thing keeping this on screen.
+    // Nothing you play is ever notice-worthy: .log-mine is the only thing
+    // keeping this on screen under the filter.
     expect(mine.classList.contains("notice-worthy")).toBe(false);
     expect(mine.classList.contains("log-mine")).toBe(true);
   });
 
-  it("leaves the automatic garrison tick out of your own doing", () => {
+  it("leaves the independence gate out of your own doing - the clock, not you", () => {
     const { container, hud } = setup();
-    const annexed = Object.fromEntries(
-      Array.from({ length: PASSIVE_PER_LANDS }, (_, i) => [`annex-${i}`, "beta"]),
-    );
-    const g = beginTurn({ ...playing(), incorporated: annexed }, seededRng(1));
-    hud.update(g);
-    const garrison = [...container.querySelectorAll(".log-entry")].find(
-      (el) => el.textContent?.startsWith("Your garrisons"),
+    const g = playing();
+    hud.update({
+      ...g,
+      log: [...g.log, {
+        turn: 1, playerId: 1, type: "independence",
+        targetFactionId: "beta", overlordFactionId: "alpha",
+      }],
+    });
+    const entry = [...container.querySelectorAll(".log-entry")].find(
+      (el) => el.textContent?.includes("reclaims independence"),
     )!;
-    expect(garrison.classList.contains("log-mine")).toBe(false);
+    expect(entry.classList.contains("log-mine")).toBe(false);
+  });
+
+  it("leaves the reshuffle out of your own doing", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      log: [...g.log, { turn: 1, playerId: 1, type: "reshuffle" }],
+    });
+    const entry = [...container.querySelectorAll(".log-entry")].find(
+      (el) => el.textContent?.includes("reshuffled"),
+    )!;
+    expect(entry.classList.contains("log-mine")).toBe(false);
   });
 
   it("checking Targeting me hides everything but notice-worthy entries, instantly", () => {
@@ -533,10 +585,10 @@ describe("activity log filters", () => {
     let g = playing();
     g = {
       ...g,
+      defense: { beta: 450 },
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "gamma", amount: 1 },
+        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
       ],
     };
     hud.update(g);
@@ -546,24 +598,26 @@ describe("activity log filters", () => {
   });
 
   /** Both surfaces walk the same batch through the same context (walkCtxOf),
-   *  so a raid cannot read one way in the modal and another in the log. */
+   *  so a hit cannot read one way in the modal and another in the log. */
   it("quotes the same numbers in the log as in the round summary", () => {
     const { container, hud } = setup();
+    const base = playing();
     const g = {
-      ...playing(),
+      ...base,
+      defense: { beta: 450 },
       log: [
-        ...playing().log,
-        { turn: 1, playerId: 2, type: "play" as const, cardId: "raid", targetFactionId: "beta", amount: 1 as const },
+        ...base.log,
+        { turn: 1, playerId: 2, type: "damaged" as const, cardId: "raid", targetFactionId: "beta", amount: 150 },
       ],
     };
     hud.update(g);
     const noticed = q(container, ".notice-change").textContent;
     q(container, ".notice-continue").click();
     const logged = [...container.querySelectorAll(".log-entry")]
-      .find((el) => el.textContent?.startsWith("Alpha played Raid on you"))!
+      .find((el) => el.textContent?.startsWith("The defenses of Beta"))!
       .querySelector(".log-change")!.textContent;
     expect(logged).toBe(noticed);
-    expect(logged).toBe(" (Might +1 -> 0)");
+    expect(logged).toBe(" (Defense -150 -> 450)");
   });
 
   it("persists both preferences across HUD instances sharing storage", () => {
@@ -585,15 +639,16 @@ describe("activity log filters", () => {
     let g = playing();
     g = {
       ...g,
+      defense: { beta: 450 },
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
+        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
       ],
     };
     hud.update(g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
     const texts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(texts).toContain("Alpha played Raid on you (Might +1 -> 0)");
+    expect(texts).toContain("The defenses of Beta are battered (Defense -150 -> 450)");
   });
 
   /** The mute narrows the interrupt, it does not switch it off. Being made
@@ -606,10 +661,11 @@ describe("activity log filters", () => {
     let g = playing();
     g = {
       ...g,
+      defense: { beta: 450 },
       overlords: new Map([["beta", "alpha"]]),
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
+        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
         { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
       ],
     };
@@ -617,16 +673,16 @@ describe("activity log filters", () => {
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe("You were subjugated");
     const lines = [...container.querySelectorAll(".notice-line")].map((el) => el.textContent);
-    // Only the subjugation rides through the mute; the Raid stays in the log.
+    // Only the subjugation rides through the mute; the hit stays in the log.
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/fealty/i);
     const logTexts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(logTexts).toContain("Alpha played Raid on you (Might +1 -> 0)");
+    expect(logTexts).toContain("The defenses of Beta are battered (Defense -150 -> 450)");
   });
 
   /** The other half of the mute's narrow gap: your agency survives a poach, but
-   *  your realm does not, and a smaller realm is a lower bar for whoever comes
-   *  for you next. It interrupts under its own title, not the alarming one. */
+   *  your realm does not. It interrupts under its own title, not the alarming
+   *  one. */
   it("still interrupts for a vassal poached from you with popups muted", () => {
     const { container, hud } = setup();
     popupsCheckbox(container).click(); // off
@@ -689,7 +745,10 @@ describe("activity log filters", () => {
     expect(q(container, ".notice-title").textContent).toBe("Your overlord fell");
   });
 
-  it("still interrupts for a vassal breaking free with popups muted", () => {
+  /** The independence gate fires from beginTurn with the freed seat's OWN
+   *  playerId - the human's freeing carries playerId 1 and must not be
+   *  swallowed as their own act: they played nothing. */
+  it("still interrupts for your own independence with popups muted", () => {
     const { container, hud } = setup();
     popupsCheckbox(container).click(); // off
     let g = playing();
@@ -697,29 +756,39 @@ describe("activity log filters", () => {
       ...g,
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta", amount: 1 },
         {
-          turn: 1, playerId: 3, type: "reclaimed", cardId: "revolt",
-          targetFactionId: "gamma", overlordFactionId: "beta",
+          turn: 1, playerId: 1, type: "independence",
+          targetFactionId: "beta", overlordFactionId: "alpha",
         },
       ],
     };
     hud.update(g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("A vassal was lost");
-    const lines = [...container.querySelectorAll(".notice-line")].map((el) => el.textContent);
-    // Only the revolt rides through the mute; the Raid stays in the log.
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(/cast off/i);
-    const logTexts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(logTexts).toContain("Alpha played Raid on you (Might +1 -> 0)");
+    expect(q(container, ".notice-title").textContent).toBe("You are free");
+  });
+
+  it("still interrupts when a hit leaves your home gate open, with popups muted", () => {
+    const { container, hud } = setup();
+    popupsCheckbox(container).click(); // off
+    let g = playing();
+    g = {
+      ...g,
+      defense: { beta: 100 }, // 100 <= floor(0.25 * 600): the gate stands open
+      log: [
+        ...g.log,
+        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
+      ],
+    };
+    hud.update(g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    expect(q(container, ".notice-title").textContent).toBe("Your defenses are broken");
+    const notes = [...container.querySelectorAll(".notice-footnote")].map((el) => el.textContent);
+    expect(notes.join(" ")).toMatch(/any rival in reach can subjugate you/);
   });
 });
 
 describe("card animations", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
+  const playing = () => newPlaying();
 
   it("flies a card back from the deck on your draw, exactly once", () => {
     vi.useFakeTimers();
@@ -847,7 +916,7 @@ describe("card animations", () => {
     g = playCard(g, 0, seededRng(1));
     hud.update(g); // consumes your draw + play events
     vi.runAllTimers();
-    g = advance({ ...g, playedThisTurn: true }, seededRng(2)); // AI draw event
+    g = advance(g, seededRng(2)); // AI draw event
     hud.update(g);
     expect(container.querySelectorAll(".flying-card")).toHaveLength(0);
 
@@ -868,9 +937,7 @@ describe("card animations", () => {
 });
 
 describe("afterPlayAnimation", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
+  const playing = () => newPlaying();
 
   it("waits for the played card to land before firing", () => {
     vi.useFakeTimers();
@@ -953,7 +1020,7 @@ describe("afterPlayAnimation", () => {
   }
 
   function playedWithFizzle() {
-    let g = pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+    let g = newPlaying();
     return (hud: Hud) => {
       hud.update(g);
       vi.runAllTimers(); // clear the opening draw's flight
@@ -1001,7 +1068,7 @@ describe("afterPlayAnimation", () => {
   it("does not hold the turn when the play raised nothing", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
-    let g = pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+    let g = newPlaying();
     hud.update(g);
     vi.runAllTimers();
     g = withHand(g, 0, ["grow-crops"]);
@@ -1034,17 +1101,14 @@ describe("afterPlayAnimation", () => {
   });
 });
 
-describe("subjugation HUD", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
+describe("targeted plays in the log and the hand tips", () => {
+  const playing = () => newPlaying();
 
-  it("renders targeted play and subjugation log texts with faction names", () => {
+  it("renders a subjugation's play and consequence with faction names", () => {
     const { container, hud } = setup();
-    // v2 subjugation is stored, not automatic on raid: build a might lead
-    // then play the explicit Subjugate card to trigger the event.
-    let g = playing();
-    g = { ...g, relations: bumpMight(bumpMight(g.relations, "beta", "alpha"), "beta", "alpha") };
+    // The gate is on the target's HOME defense now: open it, then play the
+    // explicit Subjugate card to raise the event.
+    let g: GameState = { ...playing(), defense: { alpha: 100 } };
     g = withHand(g, 0, ["subjugate"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
@@ -1058,8 +1122,7 @@ describe("subjugation HUD", () => {
   it("hovering a faction name in the log highlights that faction on the map", () => {
     const onHighlightFaction = vi.fn();
     const { container, hud } = setup({ onHighlightFaction });
-    let g = playing();
-    g = { ...g, relations: bumpMight(bumpMight(g.relations, "beta", "alpha"), "beta", "alpha") };
+    let g: GameState = { ...playing(), defense: { alpha: 100 } };
     g = withHand(g, 0, ["subjugate"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
@@ -1124,7 +1187,7 @@ describe("subjugation HUD", () => {
         risk: [],
         lines: [
           "Gamma",
-          "Blocked by Alliance until turn 12.",
+          "Their home defenses stand at 480; subjugation opens at 150 or less.",
         ],
       }],
     });
@@ -1135,7 +1198,7 @@ describe("subjugation HUD", () => {
     expect(card.getAttribute("aria-disabled")).toBe("true");
     expect(q(container, ".card-tip").textContent).toContain("Potential targets");
     expect(q(container, ".card-tip").textContent)
-      .toContain("Blocked by Alliance until turn 12.");
+      .toContain("subjugation opens at 150 or less");
 
     card.click();
     expect(cb.onPlayCard).not.toHaveBeenCalled();
@@ -1173,9 +1236,7 @@ describe("subjugation HUD", () => {
 });
 
 describe("hud v2", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
+  const playing = () => newPlaying();
 
   it("has no End Turn button", () => {
     const { container, hud } = setup();
@@ -1213,17 +1274,16 @@ describe("hud v2", () => {
     expect(cards[1].querySelector(".card-tip-blocked")).toBeNull();
   });
 
-  it("defeat shows the post-mortem with cause, build-up, seen cards, and log", () => {
+  it("defeat shows the post-mortem with cause, build-up and log", () => {
     const { container, cb, hud } = setup();
     // An 8-faction roster keeps the win line (55% = 5 lands) above gamma's
-    // 4-land realm below, so neither the build-up raid nor the seeding ends
-    // the game by unification before the incorporation under test. The realm
-    // hangs alpha and delta under beta - the target - so the digest sheds
-    // them again; gamma still lands at players[2], same as with 3 factions.
+    // 4-land realm below, so the incorporation under test does not double as
+    // a unification. The realm hangs alpha and delta under beta - the target
+    // - so gamma's full realm meets the Incorporate gate of 4.
     let g = pickFaction(
-      chooseDeck(
+      chooseBuild(
         startGame(newGame([...FACTIONS, "delta", "e1", "e2", "e3", "e4"])),
-        buildDeck(),
+        "warpath",
       ),
       "beta", seededRng(1),
     );
@@ -1248,54 +1308,18 @@ describe("hud v2", () => {
     expect(q(container, ".pm-buildup").textContent).toContain("Raid");
     expect(q(container, ".pm-log .log-entry").textContent?.length).toBeGreaterThan(0);
     expect(q(container, ".status-bar").classList.contains("hidden")).toBe(true);
+    // No XP or pack progress anywhere: the meta loop retired with the flip.
+    expect(container.querySelector(".pm-xp")).toBeNull();
+    expect(container.querySelector(".pm-xp-track")).toBeNull();
     (pm.querySelector(".menu-new-game") as HTMLElement).click();
     expect(cb.onNewGame).toHaveBeenCalledOnce();
-  });
-
-  it("a vassalage with no way out names the lord and the cards you lacked", () => {
-    const { container, hud } = setup();
-    let g = pickFaction(
-      chooseDeck(startGame(newGame([...FACTIONS, "delta"])), buildDeck()),
-      "beta", seededRng(1),
-    );
-    // buildDeck() carries the escape, so the dead end has to be built: empty
-    // every pile of it, then hand beta to gamma.
-    g = {
-      ...g,
-      overlords: new Map([["beta", "gamma"]]),
-      players: g.players.map((pl, i) =>
-        i === 0
-          ? {
-              ...pl,
-              deck: pl.deck.filter((c) => c !== "seeds-of-revolt"),
-              hand: pl.hand.filter((c) => c !== "seeds-of-revolt"),
-              discard: pl.discard.filter((c) => c !== "seeds-of-revolt"),
-            }
-          : pl,
-      ),
-    };
-    g = withHand(g, 0, ["pay-military-tribute"]);
-    g = playCard(g, 0, seededRng(1));
-    expect(g.phase).toBe("defeat");
-    hud.update(g);
-    expect(q(container, ".pm-title").textContent).toBe("Game over");
-    expect(q(container, ".pm-cause").textContent).toBe(
-      "Vassal of Gamma with no way out - no Seeds of revolt and no Revolt anywhere in your deck",
-    );
-    // the lord is a node to point at, not text - AGENTS.md
-    expect(q(container, ".pm-cause .rt-faction").textContent).toBe("Gamma");
-    expect(
-      [...container.querySelectorAll(".pm-cause .rt-card")].map((el) => el.textContent),
-    ).toEqual(["Seeds of revolt", "Revolt"]);
-    // and the standing against the lord still gets its comparison line
-    expect(q(container, ".pm-deltas").textContent).toContain("Might");
   });
 
   it("victory names the realm size", () => {
     const { container, hud } = setup();
     const many = Array.from({ length: 20 }, (_, i) => `f${i}`);
     let g = pickFaction(
-      chooseDeck(startGame(newGame(many)), buildDeck()), "f0", seededRng(1),
+      chooseBuild(startGame(newGame(many)), "warpath"), "f0", seededRng(1),
     );
     const inc: Record<string, string> = {};
     for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
@@ -1309,23 +1333,36 @@ describe("hud v2", () => {
       "You rule the Baltic - 11 of 20 lands",
     );
   });
+
+  it("omits the reset control without the callback, arms it with one", () => {
+    const bare = setup();
+    bare.hud.update(newGame(FACTIONS));
+    expect(bare.container.querySelector(".menu-reset")).toBeNull();
+
+    const onResetProgress = vi.fn();
+    const { container, hud } = setup({ onResetProgress });
+    hud.update(newGame(FACTIONS));
+    const reset = q(container, ".menu-reset");
+    expect(reset.textContent).toBe("Reset progress");
+    reset.click();
+    expect(onResetProgress).not.toHaveBeenCalled();
+    expect(reset.textContent).toBe("Really reset?");
+    reset.click();
+    expect(onResetProgress).toHaveBeenCalledOnce();
+  });
 });
 
 describe("End turn button", () => {
-  function standardPlayingState(): GameState {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
-
   function unlimitedHudPlaying(): GameState {
     const g = chooseRules(startGame(newGame(FACTIONS)), {
       ...DEFAULT_RULES, turn: "unlimited",
     });
-    return pickFaction(chooseDeck(g, buildDeck()), "alpha", seededRng(1));
+    return pickFaction(chooseBuild(g, "warpath"), "alpha", seededRng(1));
   }
 
   it("is hidden under standard rules", () => {
     const { container, hud } = setup({ onEndTurn: vi.fn() });
-    hud.update(standardPlayingState(), { animate: false });
+    hud.update(newPlaying(), { animate: false });
     const btn = container.querySelector(".end-turn-btn") as HTMLButtonElement;
     expect(btn.classList.contains("hidden")).toBe(true);
   });
@@ -1358,136 +1395,8 @@ describe("End turn button", () => {
   });
 });
 
-describe("learning loop hud", () => {
-  function defeated() {
-    // A 4th faction and a pyramid under beta open gamma's realm gate (4
-    // lands) without tripping the win line: the digest sheds the pyramid.
-    let g = pickFaction(
-      chooseDeck(startGame(newGame([...FACTIONS, "delta"])), buildDeck()),
-      "beta", seededRng(1),
-    );
-    g = {
-      ...g,
-      current: 2,
-      overlords: new Map([
-        ["beta", "gamma"], ["alpha", "beta"], ["delta", "beta"],
-      ]),
-    };
-    g = withHand(g, 2, ["incorporate"]);
-    g = playCard(g, 0, seededRng(1), "beta");
-    return g;
-  }
-
-  /** The complaint this bar exists for: a first run earned 17 XP, did not
-   *  level, earned no pack, and the flat line gave no sense of how close it
-   *  had come. */
-  it("shows how much XP is still owed toward the next pack", () => {
-    const { container, hud } = setup({ lifetimeXp: () => 17 });
-    hud.update(defeated());
-    expect(q(container, ".pm-xp-track").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".pm-xp-next").textContent).toBe("3 XP to your next pack");
-  });
-
-  /** The pity floor and the turnip milestones both grant packs without a
-   *  level crossing; "N XP to your next pack" beside one would deny a pack
-   *  the player plainly has. */
-  it("says a pack is waiting when one is owed without a level crossing", () => {
-    const { container, hud } = setup({ lifetimeXp: () => 17, packsWaiting: () => 1 });
-    hud.update(defeated());
-    expect(q(container, ".pm-xp-next").textContent).toBe("A pack is waiting");
-  });
-
-  it("announces the pack when the run crossed a level", () => {
-    // The run must actually earn something to cross: `defeated()` alone has
-    // the AI acting and the human idle, so its runXp is 0 and no lifetime
-    // total could ever put the start and end in different bands.
-    const { container, hud } = setup({ lifetimeXp: () => 20 });
-    const g = defeated();
-    hud.update({
-      ...g,
-      log: [...g.log, { turn: 1, playerId: 1, type: "play", cardId: "grow-crops" }],
-    });
-    // earned 1, so the run started at 19 - inside level 0 - and ended exactly
-    // on the level 1 threshold, where a fresh band reads 0 of 20.
-    expect(q(container, ".pm-xp").textContent).toBe("+1 XP earned");
-    expect(q(container, ".pm-xp-next").textContent).toBe(
-      "Level 1 reached - a pack is waiting",
-    );
-  });
-
-  /** Caught in a browser pass: a run that ended PAST the threshold rather
-   *  than exactly on it had won a pack, and the line read "49 XP to your next
-   *  pack" - a number about the pack after the one just earned. */
-  it("announces the pack when the run overshot the threshold", () => {
-    const { container, hud } = setup({ lifetimeXp: () => 21 });
-    const g = defeated();
-    hud.update({
-      ...g,
-      log: [
-        ...g.log,
-        { turn: 1, playerId: 1, type: "play", cardId: "grow-crops" },
-        { turn: 1, playerId: 1, type: "play", cardId: "grow-crops" },
-      ],
-    });
-    // earned 2, so the run ran 19 -> 21, crossing the level-1 threshold at 20
-    expect(q(container, ".pm-xp").textContent).toBe("+2 XP earned");
-    expect(q(container, ".pm-xp-next").textContent).toBe(
-      "Level 1 reached - a pack is waiting",
-    );
-  });
-
-  it("hides the bar entirely when there is no lifetime progress to report", () => {
-    const { container, hud } = setup();
-    hud.update(defeated());
-    expect(q(container, ".pm-xp-track").classList.contains("hidden")).toBe(true);
-    expect(q(container, ".pm-xp-next").classList.contains("hidden")).toBe(true);
-    // the plain earned line still shows
-    expect(q(container, ".pm-xp").textContent).toMatch(/^\+\d+ XP earned$/);
-  });
-
-  it("fills the bar to where the run left it, once the animation lands", () => {
-    vi.useFakeTimers();
-    const { container, hud } = setup({ lifetimeXp: () => 17 });
-    hud.update(defeated());
-    vi.runAllTimers();
-    // 17 of the 20-XP first band
-    expect(q(container, ".pm-xp-fill").style.width).toBe("85%");
-    vi.useRealTimers();
-  });
-
-  it("reports what the run earned and drops the old loot row", () => {
-    const { container, hud } = setup();
-    hud.update(defeated());
-    expect(q(container, ".pm-xp").textContent).toMatch(/^\+\d+ XP earned$/);
-    expect(container.querySelector(".pm-seen")).toBeNull();
-  });
-
-  it("reset progress arms on first click and fires on second", () => {
-    const onResetProgress = vi.fn();
-    const { container, hud } = setup({ onResetProgress });
-    hud.update(newGame(FACTIONS));
-    const reset = q(container, ".menu-reset");
-    expect(reset.textContent).toBe("Reset progress");
-    reset.click();
-    expect(onResetProgress).not.toHaveBeenCalled();
-    expect(reset.textContent).toBe("Really reset?");
-    expect(reset.classList.contains("confirm")).toBe(true);
-    reset.click();
-    expect(onResetProgress).toHaveBeenCalledOnce();
-    expect(reset.textContent).toBe("Reset progress");
-  });
-
-  it("omits the reset control without the callback", () => {
-    const { container, hud } = setup();
-    hud.update(newGame(FACTIONS));
-    expect(container.querySelector(".menu-reset")).toBeNull();
-  });
-});
-
 describe("notice modal", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
+  const playing = () => newPlaying();
 
   function withEvents(g: GameState, events: GameEvent[]): GameState {
     return { ...g, log: [...g.log, ...events] };
@@ -1515,20 +1424,24 @@ describe("notice modal", () => {
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe(ROUND_SUMMARY_TITLE);
     expect(lineTexts(container)).toEqual([
-      "Subjugate by Alpha took your vassal Gamma (Might +1 -> 0)",
+      "Subjugate by Alpha took your vassal Gamma",
     ]);
-    expect(footnoteTexts(container)[0]).toContain("Your realm is smaller");
+    // A poach carries no footnote of its own - the tribute injection is the
+    // vassal's problem now, not the old lord's.
+    expect(q(container, ".notice-footnotes").classList.contains("hidden")).toBe(true);
   });
 
-  it("shows a modal when a vassal of yours breaks free", () => {
+  it("shows a modal when a vassal of yours walks through the independence gate", () => {
     const { container, hud } = setup();
     hud.update(withEvents(playing(), [{
-      turn: 1, playerId: 3, type: "reclaimed", cardId: "revolt",
-      targetFactionId: "gamma", overlordFactionId: "beta", amount: 1,
+      turn: 1, playerId: 3, type: "independence",
+      targetFactionId: "gamma", overlordFactionId: "beta",
     }]));
     expect(lineTexts(container)).toEqual([
-      "Revolt by Gamma cast off your overlordship, and they cannot be subjugated again until turn 3 (Might +1 -> 0)",
+      "The defenses of Gamma recovered - they leave your service, and none " +
+        "may subjugate them until turn 3",
     ]);
+    expect(footnoteTexts(container).join(" ")).toMatch(/three quarters/);
   });
 
   it("shows a mandatory modal when an AI subjugates you", () => {
@@ -1562,42 +1475,33 @@ describe("notice modal", () => {
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
 
-  it("lists 2 raid events in one update as 2 lines in a single modal", () => {
+  it("lists 2 hits in one update as 2 lines in a single modal, chained backwards", () => {
     const { container, hud } = setup();
-    const raidByAlpha: GameEvent = {
-      turn: 1, playerId: 2, type: "play", cardId: "raid", targetFactionId: "beta",
-      amount: 1,
-    };
-    const raidByGamma: GameEvent = {
-      turn: 1, playerId: 3, type: "play", cardId: "raid", targetFactionId: "beta",
-      amount: 1,
-    };
-    hud.update(withEvents(playing(), [raidByAlpha, raidByGamma]));
+    const g = { ...playing(), defense: { beta: 300 } };
+    hud.update(withEvents(g, [
+      { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
+      { turn: 1, playerId: 3, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
+    ]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(lineTexts(container)).toEqual([
-      "Raid played against you by Alpha (Might +1 -> 0)",
-      "Raid played against you by Gamma (Might +1 -> 0)",
+      "Raid by Alpha battered your home defenses (Defense -150 -> 450)",
+      "Raid by Gamma battered your home defenses (Defense -150 -> 300)",
     ]);
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
 
-  it("shows the alliance until-turn clause inline on the line", () => {
+  it("shows a rival's stack landing on your home, with the plague footnote", () => {
     const { container, hud } = setup();
-    let g = playing();
-    g = {
-      ...g,
-      alliances: { [allianceKey("beta", "alpha")]: pact(8) },
-      log: [
-        ...g.log,
-        { turn: 1, playerId: 2, type: "play", cardId: "alliance", targetFactionId: "beta" },
-      ],
-    };
-    hud.update(g);
-    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    const g = { ...playing(), disease: { beta: { alpha: 1 } } };
+    hud.update(withEvents(g, [{
+      turn: 1, playerId: 2, type: "disease-spread", cardId: "spread-disease",
+      targetFactionId: "beta", amount: 1,
+    }]));
     expect(lineTexts(container)).toEqual([
-      "Alliance sealed with you by Alpha, until turn 8",
+      "Spread disease by Alpha set disease on your home (Disease +1 -> 1)",
     ]);
+    expect(footnoteTexts(container).join(" ")).toContain("100 damage each");
   });
 
   it("renders a place-name actor with no article, as a hoverable faction span that highlights the map", () => {
@@ -1610,10 +1514,10 @@ describe("notice modal", () => {
     });
     hud.update(withEvents(playing(), [{
       turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler",
-      targetFactionId: "beta", targetRuler: "Kaupo", successorRuler: "Dabrelis", amount: 1,
+      targetFactionId: "beta", targetRuler: "Kaupo", successorRuler: "Dabrelis",
     }]));
     expect(lineTexts(container)).toEqual([
-      "Assassinate ruler took Kaupo; Dabrelis now leads you - by Alpha (Might -1 -> 0)",
+      "Assassinate ruler took Kaupo; Dabrelis now leads you - by Alpha",
     ]);
     const span = q(container, ".notice-line .rt-faction");
     expect(span.textContent).toBe("Alpha");
@@ -1644,6 +1548,7 @@ describe("notice modal", () => {
     hud.update(withEvents(playing(), [
       { turn: 1, playerId: 1, type: "subjugated", targetFactionId: "alpha", overlordFactionId: "beta" },
       { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "gamma", overlordFactionId: "alpha" },
+      { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "gamma", amount: 150 },
     ]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
@@ -1669,404 +1574,12 @@ describe("notice modal", () => {
 });
 
 describe("log highlighting", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
-
-  it("marks entries involving the human faction with log-you", () => {
-    const { container, hud } = setup();
-    let g = playing(); // log: your opening draw (playerId 1)
-    g = {
-      ...g,
-      log: [
-        ...g.log,
-        { turn: 1, playerId: 2, type: "draw", cardId: "raid" },
-        { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
-        { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "gamma", overlordFactionId: "alpha" },
-        { turn: 1, playerId: 3, type: "reclaimed", targetFactionId: "gamma", overlordFactionId: "beta" },
-      ],
-    };
-    hud.update(g);
-    // dismiss the modal the subjugation raised; this test is about the log
-    q(container, ".notice-continue").click();
-    const entries = [...container.querySelectorAll(".activity-log .log-entry")];
-    const flags = entries.map((el) => el.classList.contains("log-you"));
-    // draws never reach the log; you subjugated, AI-vs-AI, AI reclaims from you
-    expect(flags).toEqual([true, false, true]);
-  });
-
-  it("marks postmortem log entries the same way", () => {
-    const { container, hud } = setup();
-    let g = playing();
-    g = {
-      ...g,
-      phase: "defeat",
-      log: [
-        ...g.log,
-        { turn: 2, playerId: 2, type: "defeat", targetFactionId: "beta", overlordFactionId: "alpha" },
-      ],
-    };
-    hud.update(g);
-    const entries = [...container.querySelectorAll(".pm-log .log-entry")];
-    expect(entries.length).toBeGreaterThan(0);
-    expect(entries[entries.length - 1].classList.contains("log-you")).toBe(true);
-  });
-});
-
-describe("log nesting", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
-
-  /** Built through playCard, not by hand: the point is that the link between a
-   *  play and what it caused survives the real path from the rules to the DOM. */
-  function revoltBy(seat: number, lord: string) {
-    let g = playing();
-    const rebel = g.players[seat].factionId;
-    g = { ...g, current: seat, overlords: new Map([[rebel, lord]]) };
-    // The rebel meets the revolt gate (lead 2 against a two-land realm).
-    g = { ...g, relations: bumpMight(bumpMight(g.relations, rebel, lord), rebel, lord) };
-    g = withHand(g, seat, ["revolt"]);
-    return playCard(g, 0, seededRng(1));
-  }
-
-  const entries = (c: HTMLElement): HTMLElement[] =>
-    [...c.querySelectorAll(".activity-log .log-entry")] as HTMLElement[];
-
-  it("indents what a play caused under the play, and not the play itself", () => {
-    const { container, hud } = setup();
-    hud.update(revoltBy(0, "gamma")); // you are gamma's vassal, and you revolt
-    const nested = entries(container).map((el) => el.classList.contains("log-consequence"));
-    expect(nested).toEqual([false, true]); // your play, then the land it freed
-    expect(entries(container)[1].textContent).toContain("reclaims independence");
-  });
-
-  it("keeps the play on screen when the filter shows only its consequence", () => {
-    // A rival's Revolt is not aimed at you; the vassalage it broke was. Without
-    // .notice-cause the filter would leave the consequence indented under
-    // nothing.
-    const { container, hud } = setup();
-    hud.update(revoltBy(1, "beta")); // alpha throws off your overlordship
-    const [play, consequence] = entries(container);
-    expect(play.classList.contains("notice-worthy")).toBe(false);
-    expect(consequence.classList.contains("notice-worthy")).toBe(true);
-    expect(play.classList.contains("notice-cause")).toBe(true);
-  });
-
-  it("leaves an AI-vs-AI play uncaused", () => {
-    const { container, hud } = setup();
-    hud.update(revoltBy(1, "gamma")); // alpha leaves gamma; nothing to do with you
-    const [play, consequence] = entries(container);
-    expect(consequence.classList.contains("log-consequence")).toBe(true);
-    expect(play.classList.contains("notice-cause")).toBe(false);
-  });
-
-  it("leaves an ending flush left in the postmortem log", () => {
-    const { container, hud } = setup();
-    let g = playing();
-    g = {
-      ...g,
-      phase: "defeat",
-      log: [
-        ...g.log,
-        { turn: 2, playerId: 2, type: "play", cardId: "incorporate", targetFactionId: "beta" },
-        {
-          turn: 2, playerId: 2, type: "incorporated",
-          targetFactionId: "beta", overlordFactionId: "alpha", consequence: true,
-        },
-        {
-          turn: 2, playerId: 2, type: "defeat",
-          targetFactionId: "beta", overlordFactionId: "alpha",
-        },
-      ],
-    };
-    hud.update(g);
-    const pm = [...container.querySelectorAll(".pm-log .log-entry")];
-    const nested = pm.slice(-3).map((el) => el.classList.contains("log-consequence"));
-    expect(nested).toEqual([false, true, false]);
-  });
-});
-
-describe("notice details and hand tips", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
-
-  it("renders the line for a subjugation notice, with its Pay Tribute footnote", () => {
-    const { container, hud } = setup();
-    let g = playing();
-    g = { ...g, log: [...g.log, { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" }] };
-    hud.update(g);
-    expect(q(container, ".notice-line").textContent).toContain("you owe fealty to them");
-    expect(q(container, ".notice-footnote").textContent).toContain(
-      "Pay tribute was shuffled into your deck",
-    );
-    expect(q(container, ".notice-footnotes").classList.contains("hidden")).toBe(false);
-  });
-
-  it("hides the footer when the round produced no consequences", () => {
-    // Your own subjugation losing you a vassal (role "lord") carries no
-    // footnote of its own - the Pay Tribute consequence belongs to the
-    // "subjugated" line for the same round, not this side-effect.
-    const { container, hud } = setup();
-    let g = playing();
-    g = { ...g, log: [...g.log, { turn: 1, playerId: 3, type: "released", targetFactionId: "gamma", overlordFactionId: "beta" }] };
-    hud.update(g);
-    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-footnotes").classList.contains("hidden")).toBe(true);
-  });
-
-  it("hand cards carry a name span and a rules tip", () => {
-    const { container, hud } = setup();
-    const g = withHand(playing(), 0, ["fortify"]);
-    hud.update(g);
-    const card = q(container, ".hand .card");
-    expect(card.querySelector(".card-name")!.textContent).toBe("Fortify");
-    expect(card.querySelector(".card-tip")!.textContent).toBe(
-      "Gain +1 Might over every other living faction at once - except your " +
-        "overlord, while you have one.",
-    );
-  });
-
-  it("shows an active modifier above the card description", () => {
-    const { container, hud } = setup({
-      cardModifiers: () => ["Favourable omens: this card counts double."],
-    });
-    hud.update(withHand(playing(), 0, ["raid"]));
-    const tip = q(container, ".card-tip");
-    expect(tip.firstElementChild!.className).toBe("card-tip-modifier");
-    expect(tip.textContent).toContain("Favourable omens: this card counts double.");
-    expect(tip.textContent).toContain("on their border"); // description still there
-  });
-});
-
-describe("log lines name rulers", () => {
-  function playing() {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
-
-  const texts = (container: HTMLElement) =>
-    [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-
-  it("names the ruler and their faction instead of a player number", () => {
-    const { container, hud } = setup();
-    let g = { ...playing(), current: 1 }; // alpha acts
-    g = withHand(g, 1, ["grow-crops"]);
-    const alpha = rulerOf(g.rulers, "alpha").name;
-    g = playCard(g, 0, seededRng(1));
-    hud.update(g);
-    expect(texts(container)).toContain(`${alpha} of the Alpha played Grow turnips`);
-    expect(texts(container).join(" ")).not.toContain("Player 2");
-  });
-
-  it("still addresses the human as You", () => {
-    const { container, hud } = setup();
-    let g = withHand(playing(), 0, ["grow-crops"]);
-    g = playCard(g, 0, seededRng(1));
-    hud.update(g);
-    expect(texts(container)).toContain("You played Grow turnips");
-  });
-
-  it("names the dead ruler and the successor", () => {
-    const { container, hud } = setup();
-    let g = withHand(playing(), 0, ["assassinate-ruler"]);
-    const killed = rulerOf(g.rulers, "alpha").name;
-    g = playCard(g, 0, seededRng(1), "alpha");
-    const successor = rulerOf(g.rulers, "alpha").name;
-    hud.update(g);
-    expect(texts(container)).toContain(
-      `You played Assassinate ruler on Alpha - ${killed} killed, ${successor} succeeds (Might 0 -> 0)`,
-    );
-  });
-
-  it("names the survivor when a bodyguard turns the blade", () => {
-    const { container, hud } = setup();
-    let g: GameState = { ...playing(), guards: { bodyguard: ["alpha"] } };
-    g = withHand(g, 0, ["assassinate-ruler"]);
-    const survivor = rulerOf(g.rulers, "alpha").name;
-    g = playCard(g, 0, seededRng(1), "alpha");
-    hud.update(g);
-    expect(texts(container)).toContain(
-      `You played Assassinate ruler on Alpha - prevented, ${survivor} survives`,
-    );
-  });
-});
-
-describe("private actions stay off the activity log", () => {
-  /** Push a raw event onto a playing state and render it. */
-  const withEvent = (e: GameEvent) => {
-    const { container, hud } = setup();
-    // beta is the human seat, as everywhere else in this file
-    const g = pickFaction(
-      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
-    );
-    hud.update({ ...g, log: [...g.log, e] });
-    return [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-  };
-
-  it("shows your own vassal sowing a revolt - the warning you act on", () => {
-    const texts = withEvent({
-      turn: 1, playerId: 2, type: "seeded",
-      targetFactionId: "alpha", overlordFactionId: "beta", // beta is the human
-    });
-    expect(texts.some((t) => /sows the seeds of revolt/.test(t ?? ""))).toBe(true);
-  });
-
-  it("hides a sowing between two other factions, which nobody can observe", () => {
-    // Sowing moves a card inside one faction's own deck. Without this filter
-    // the log would announce every faction's private preparations map-wide.
-    const texts = withEvent({
-      turn: 1, playerId: 3, type: "seeded",
-      targetFactionId: "gamma", overlordFactionId: "alpha",
-    });
-    expect(texts.some((t) => /sows the seeds of revolt/.test(t ?? ""))).toBe(false);
-  });
-});
-
-describe("scoreboard", () => {
-  function playing() {
-    return pickFaction(
-      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
-    );
-  }
-
-  it("is hidden outside play", () => {
-    const { container, hud } = setup();
-    hud.update(newGame(FACTIONS));
-    expect(q(container, ".scoreboard").classList.contains("hidden")).toBe(true);
-  });
-
-  it("names the frontrunner and the human's own standing", () => {
-    const { container, hud } = setup();
-    // alpha absorbs gamma: 2 lands of the 2 needed for a 3-faction map... so
-    // shrink the win target by using the real formula instead of guessing.
-    const g = { ...playing(), incorporated: { gamma: "alpha" } };
-    hud.update(g);
-    const rows = [...container.querySelectorAll(".sb-row")];
-    expect(rows).toHaveLength(2);
-    expect(rows[0].querySelector(".sb-who")!.textContent).toBe("Alpha");
-    expect(rows[0].querySelector(".sb-lands")!.textContent).toBe("2/2 lands");
-    expect(rows[0].querySelector(".sb-pct")!.textContent).toBe("100%");
-    // The human's own row is labelled "You", never by faction name.
-    expect(rows[1].querySelector(".sb-who")!.textContent).toBe("You");
-    expect(rows[1].classList.contains("sb-you")).toBe(true);
-  });
-
-  it("puts the human at the top when they lead, without a duplicate row", () => {
-    const { container, hud } = setup();
-    const g = { ...playing(), incorporated: { gamma: "beta" } };
-    hud.update(g);
-    const rows = [...container.querySelectorAll(".sb-row")];
-    // gamma is absorbed, so only alpha and beta are still contenders.
-    expect(rows).toHaveLength(2);
-    expect(rows[0].querySelector(".sb-who")!.textContent).toBe("You");
-    expect(rows.filter((r) => r.classList.contains("sb-you"))).toHaveLength(1);
-  });
-
-  it("counts a land your vassal annexed, which the map already draws as yours", () => {
-    // The reported bug, at the scale it was seen: you -> a vassal -> a land the
-    // vassal had annexed. That land carries your stripes, sits inside your realm
-    // outline and hovers as "itself your vassal", so a score that walked one
-    // level was quoting a smaller realm than the player could see.
-    // A fourth faction so the win target is 3 and the count is legible.
-    const { container, hud } = setup();
-    const g = pickFaction(
-      chooseDeck(startGame(newGame([...FACTIONS, "delta"])), buildDeck()),
-      "beta",
-      seededRng(1),
-    );
-    hud.update({
-      ...g,
-      overlords: new Map([["gamma", "beta"]]),
-      incorporated: { alpha: "gamma" },
-    });
-    const you = q(container, ".sb-row.sb-you");
-    // beta + gamma + alpha. One level out stops at 2.
-    expect(you.querySelector(".sb-lands")!.textContent).toBe("3/3 lands");
-  });
-
-  it("states the garrison rate on the human's row, the one place the rule is given", () => {
-    const { container, hud } = setup();
-    // Four annexed lands is exactly PASSIVE_PER_LANDS, so +1 per turn.
-    const annexed = Object.fromEntries(
-      Array.from({ length: PASSIVE_PER_LANDS }, (_, i) => [`annex-${i}`, "beta"]),
-    );
-    hud.update({ ...playing(), incorporated: annexed });
-    const you = q(container, ".sb-row.sb-you");
-    expect(you.querySelector(".sb-passive")!.textContent).toBe(
-      "garrisons +1 Might/turn",
-    );
-  });
-
-  it("omits the garrison line when there is nothing to report", () => {
-    const { container, hud } = setup();
-    hud.update(playing());
-    expect(q(container, ".sb-row.sb-you").querySelector(".sb-passive")).toBeNull();
-  });
-});
-
-describe("surrender", () => {
-  function playing() {
-    return pickFaction(
-      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
-    );
-  }
-
-  it("is absent when no surrender callback is wired", () => {
-    const { container, hud } = setup();
-    hud.update(playing());
-    expect(q(container, ".surrender-btn").classList.contains("hidden")).toBe(true);
-  });
-
-  it("needs a confirming second click, so a stray click cannot end the run", () => {
-    const onSurrender = vi.fn();
-    const { container, hud } = setup({ onSurrender });
-    hud.update(playing());
-    const btn = q(container, ".surrender-btn");
-    expect(btn.classList.contains("hidden")).toBe(false);
-    btn.click();
-    expect(onSurrender).not.toHaveBeenCalled();
-    expect(btn.textContent).toBe("Really surrender?");
-    btn.click();
-    expect(onSurrender).toHaveBeenCalledOnce();
-  });
-
-  it("disarms and hides once the run is over", () => {
-    const onSurrender = vi.fn();
-    const { container, hud } = setup({ onSurrender });
-    hud.update(playing());
-    const btn = q(container, ".surrender-btn");
-    btn.click();
-    expect(btn.classList.contains("confirm")).toBe(true);
-    hud.update({ ...playing(), phase: "defeat" });
-    expect(btn.classList.contains("hidden")).toBe(true);
-    expect(btn.textContent).toBe("Surrender");
-    expect(btn.classList.contains("confirm")).toBe(false);
-  });
-
-  it("postmortem names the concession instead of inventing a killer", () => {
-    const { container, hud } = setup();
-    const g = playing();
-    hud.update({
-      ...g,
-      phase: "defeat",
-      log: [...g.log, { turn: 4, playerId: 1, type: "surrendered" }],
-    });
-    expect(q(container, ".pm-title").textContent).toBe("Surrendered");
-    expect(q(container, ".pm-cause").textContent).toContain("You conceded");
-    expect(q(container, ".pm-deltas").textContent).toBe("");
-  });
-});
-
-describe("faction highlight in the activity log", () => {
   // Four factions so a line can name neither the human nor the faction under
   // test: with three, every pair that excludes the human is the same pair.
   const FOUR = ["alpha", "beta", "gamma", "delta"];
 
   /** The human is beta. */
-  function playing(): GameState {
-    return pickFaction(chooseDeck(startGame(newGame(FOUR)), buildDeck()), "beta", seededRng(1));
-  }
+  const playing = () => newPlaying(FOUR);
 
   const YOURS: GameEvent = {
     turn: 1, playerId: 1, type: "play", cardId: "raid", targetFactionId: "alpha",
@@ -2147,9 +1660,7 @@ describe("faction highlight in the activity log", () => {
 });
 
 describe("the pinned faction in the status bar", () => {
-  function playing(): GameState {
-    return pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
-  }
+  const playing = () => newPlaying();
 
   it("names the pinned faction and how to clear it, and restores the turn prompt", () => {
     const { container, hud } = setup();
@@ -2202,9 +1713,7 @@ describe("realm filter while pinned", () => {
   const FOUR = ["alpha", "beta", "gamma", "delta"];
 
   /** The human is beta. */
-  function playing(): GameState {
-    return pickFaction(chooseDeck(startGame(newGame(FOUR)), buildDeck()), "beta", seededRng(1));
-  }
+  const playing = () => newPlaying(FOUR);
 
   const seatOf = (g: GameState, factionId: string): number =>
     g.players.find((p) => p.factionId === factionId)!.id;
@@ -2315,17 +1824,17 @@ describe("realm filter while pinned", () => {
     expect(inRealm(container)[1]).toContain("Gamma submits to Alpha");
   });
 
-  it("a foreign pact lapse noticed on your clock tick is not yours, and hides", () => {
+  it("a foreign independence noticed by its own clock is not yours, and hides", () => {
     const { container, hud } = setup();
     const g = playing();
     hud.update(withEvents(g, [
-      // playerId 1: the human's turn beginning is what noticed the lapse.
-      { turn: 1, playerId: 1, type: "pact-lapsed", targetFactionId: "alpha",
-        overlordFactionId: "delta", amount: 1, pactAgainst: [] },
+      // The freed seat's own turn-start clock is what fired this.
+      { turn: 1, playerId: seatOf(g, "alpha"), type: "independence",
+        targetFactionId: "alpha", overlordFactionId: "delta" },
     ]));
     hud.setPinned("gamma");
     const entry = entries(container).find((el) =>
-      (el.textContent ?? "").includes("has run out"))!;
+      (el.textContent ?? "").includes("reclaims independence"))!;
     expect(entry.classList.contains("log-mine")).toBe(false);
     expect(entry.classList.contains("log-realm")).toBe(false);
     // Nor is it about your faction: pinning yourself must not surface it.
@@ -2348,17 +1857,13 @@ describe("realm filter while pinned", () => {
 
 /** The `secret` flag on CardDef, at the surface it exists for. The rules
  *  already treat a posted guard as hidden - `failureRiskOf` in
- *  src/playability.ts refuses to read `view.bodyguards` so the Assassinate
+ *  src/playability.ts refuses to read `view.guards` so the Assassinate
  *  ruler warning cannot become a detector - and the activity log naming the
  *  card was that detector by another route. */
 describe("secret cards in the activity log", () => {
-  function playing(): GameState {
-    // beta is the human seat, as everywhere else in this file; alpha is
-    // player 2 and gamma player 3.
-    return pickFaction(
-      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1),
-    );
-  }
+  // beta is the human seat, as everywhere else in this file; alpha is
+  // player 2 and gamma player 3.
+  const playing = () => newPlaying();
 
   const texts = (container: HTMLElement, sel = ".activity-log .log-entry") =>
     [...container.querySelectorAll(sel)].map((el) => el.textContent ?? "");
@@ -2400,16 +1905,16 @@ describe("secret cards in the activity log", () => {
       ...g,
       log: [...g.log, {
         turn: 1, playerId: 2, type: "play", cardId: "raid",
-        targetFactionId: "gamma", amount: 1,
+        targetFactionId: "gamma",
       }],
     });
     expect(texts(container).some((t) => /played Raid on Gamma/.test(t))).toBe(true);
   });
 
-  it("prints no standings suffix beside a secret line", () => {
+  it("prints no score suffix beside a secret line", () => {
     // The guard rail behind `CardDef.secret`: `impactText` renders the
-    // before -> after from the event's own amount/track and nothing here hides
-    // it, so a secret card that moved a track would be named in all but words.
+    // before -> after from the walk and nothing here hides it, so a secret
+    // card that moved a score would be named in all but words.
     const { container, hud } = setup();
     const g = playing();
     hud.update({ ...g, log: [...g.log, guard(2)] });
@@ -2445,34 +1950,11 @@ describe("secret cards in the activity log", () => {
       log: [...g.log, guard(2), {
         turn: 2, playerId: 1, type: "play", cardId: "assassinate-ruler",
         targetFactionId: "alpha", targetRuler: "Someruler",
-        successorRuler: "Somesuccessor", amount: 0,
+        successorRuler: "Somesuccessor",
       }],
     });
     expect(texts(container).some((t) => /a secret card/.test(t))).toBe(true);
     expect(texts(container).some((t) => /Bodyguard/.test(t))).toBe(false);
-  });
-
-  it("reveals the guard that matches the card, not merely the newest", () => {
-    // A queue keyed by faction alone is exact only while one guard exists. A
-    // rival holding two would have whichever they played LAST revealed -
-    // naming the wrong card on the wrong line, and giving away a guard they
-    // are still holding.
-    const { container, hud } = setup();
-    const g = playing();
-    const wary: GameEvent =
-      { turn: 1, playerId: 2, type: "play", cardId: "distrustful-neighbour" };
-    // alpha posts a Bodyguard, then a Distrustful neighbour. The human's
-    // alliance is the card turned aside, so the Distrustful neighbour is what
-    // became public.
-    const pactTry: GameEvent = {
-      turn: 3, playerId: 1, type: "play", cardId: "alliance",
-      targetFactionId: "alpha", prevented: true,
-    };
-    hud.update({ ...g, log: [...g.log, guard(2), wary, pactTry] });
-    const all = texts(container);
-    expect(all.filter((t) => /played Distrustful neighbour/.test(t))).toHaveLength(1);
-    expect(all.filter((t) => /played Bodyguard/.test(t))).toHaveLength(0);
-    expect(all.filter((t) => /a secret card/.test(t))).toHaveLength(1);
   });
 
   it("reveals only the guard that was spent, not the one still posted", () => {
@@ -2567,13 +2049,12 @@ describe("localPlayerId", () => {
 
   function playing(): GameState {
     return pickFaction(
-      chooseDeck(startGame(newGame(FOUR)), buildDeck()), "alpha", seededRng(1),
+      chooseBuild(startGame(newGame(FOUR)), "warpath"), "alpha", seededRng(1),
     );
   }
 
-  // bodyguard is one of the two cards in the secret set CARDS/GUARDS pin as
-  // an identity in tests/cards.test.ts ("keeps the secret cards and the
-  // guards the same set") - not a guess.
+  // bodyguard is the one card in the secret set CARDS/GUARDS pin as an
+  // identity in tests/cards.test.ts - not a guess.
   const secretId = "bodyguard";
 
   const withEvents = (g: GameState, events: GameEvent[]): GameState =>
@@ -2602,34 +2083,6 @@ describe("localPlayerId", () => {
     // secret play the local player's own, so it renders by its real name.
     const logText = q(container, ".activity-log").textContent!;
     expect(logText).toContain(CARDS[secretId].name);
-  });
-
-  // The postmortem's XP is what `bankRunProgress` banks, and that banks the
-  // LOCAL seat's earnings. A defaulted player 1 here quoted the host's total
-  // on the guest's own end screen - two screens disagreeing about the same
-  // run, with only the guest's one wrong.
-  it("scores the postmortem's XP for the local seat, not seat 0", () => {
-    // Two raids by player 1, one by player 2, so the totals cannot coincide.
-    const raid = (playerId: number): GameEvent => ({
-      turn: 1, playerId, type: "play", cardId: "raid",
-      targetFactionId: "gamma", amount: 1,
-    });
-    const ended = (g: GameState): GameState =>
-      ({ ...g, phase: "defeat" as const });
-    const log = [raid(1), raid(1), raid(2)];
-
-    const mine = setup({ localPlayerId: () => 2 });
-    mine.hud.update(ended(withEvents(playing(), log)));
-    const guestXp = q(mine.container, ".pm-xp").textContent!;
-
-    const hosts = setup();
-    hosts.hud.update(ended(withEvents(playing(), log)));
-    const hostXp = q(hosts.container, ".pm-xp").textContent!;
-
-    expect(guestXp).toBe(`+${runXp(log, 2)} XP earned`);
-    expect(hostXp).toBe(`+${runXp(log, 1)} XP earned`);
-    // The whole point: one raid against two cannot score the same.
-    expect(guestXp).not.toBe(hostXp);
   });
 
   // Every faction name the HUD renders is a segment, and the segment renderer
@@ -2676,166 +2129,219 @@ describe("localPlayerId", () => {
   });
 });
 
-describe("the turnip bar chip and the harvest modals", () => {
-  function playing(): GameState {
-    return pickFaction(
-      chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta",
-      seededRng(1),
-    );
-  }
-
-  const grownLog = (g: GameState, n: number): GameState => ({
-    ...g,
-    log: [
-      ...g.log,
-      ...Array.from({ length: n }, (): GameEvent => ({
-        turn: 1, playerId: 1, type: "play", cardId: "grow-crops",
-      })),
-    ],
-  });
+describe("the turnip bar chip and the harvest offer", () => {
+  const playing = () => newPlaying();
 
   it("hides the chip for a run that holds no turnips and grew none", () => {
     const { container, hud } = setup();
-    hud.update(playing());
+    // The starting deck carries a Grow turnips, so a hidden chip needs a
+    // player stripped of every copy.
+    const g = playing();
+    const strip = (cards: string[]) => cards.filter((c) => c !== "grow-crops");
+    const p = {
+      ...g.players[0],
+      deck: strip(g.players[0].deck),
+      hand: strip(g.players[0].hand),
+      discard: strip(g.players[0].discard),
+    };
+    hud.update({ ...g, players: [p, ...g.players.slice(1)] });
     expect(q(container, ".status-turnips").classList.contains("hidden"))
       .toBe(true);
   });
 
-  it("fills count and bar from the same log-derived window", () => {
+  it("fills count and bar from the stored counter, over the threshold of 5", () => {
     const { container, hud } = setup();
-    hud.update(grownLog(playing(), 2));
+    hud.update({ ...playing(), turnips: { beta: 2 } });
     const chip = q(container, ".status-turnips");
     expect(chip.classList.contains("hidden")).toBe(false);
-    expect(q(container, ".turnip-count").textContent).toBe("Turnips 2/4");
-    expect(q(container, ".turnip-fill").style.width).toBe("50%");
+    expect(q(container, ".turnip-count").textContent).toBe("Turnips 2/5");
+    expect(q(container, ".turnip-fill").style.width).toBe("40%");
   });
 
   it("shows the chip the moment a turnip is merely held", () => {
     const { container, hud } = setup();
-    const g = playing();
-    const p = { ...g.players[0], deck: [...g.players[0].deck, "grow-crops"] };
-    hud.update({ ...g, players: [p, ...g.players.slice(1)] });
+    hud.update(playing()); // the starting deck holds a Grow turnips
     expect(q(container, ".status-turnips").classList.contains("hidden"))
       .toBe(false);
-    expect(q(container, ".turnip-count").textContent).toBe("Turnips 0/4");
+    expect(q(container, ".turnip-count").textContent).toBe("Turnips 0/5");
   });
 
-  it("prices the band x3 under unlimited turns", () => {
-    const { container, hud } = setup();
-    const g = pickFaction(
-      chooseDeck(
-        chooseRules(startGame(newGame(FACTIONS)), {
-          ...DEFAULT_RULES, turn: "unlimited",
-        }),
-        buildDeck(),
-      ),
-      "beta", seededRng(1),
-    );
-    hud.update(grownLog(g, 2));
-    expect(q(container, ".turnip-count").textContent).toBe("Turnips 2/12");
-  });
-
-  it("renders boon labels as segments and greys a blocked slot with its reason", () => {
+  it("offers the rolled cards with their rules text, and answers with the id", () => {
     const { container, hud } = setup();
     hud.update(playing());
     const onPick = vi.fn();
-    hud.showHarvestChoice(
-      [
-        {
-          effect: "wealth-1", eligible: true, reason: null,
-          label: [t("Gain 1 wealth")],
-        },
-        {
-          effect: "swap-common", eligible: false,
-          reason: [t("no "), card("grow-crops"), t(" left to trade")],
-          label: [t("Trade a "), card("grow-crops"), t(" for a random rare or epic card")],
-        },
-        {
-          effect: "swap-known", eligible: true, reason: null,
-          label: [t("Trade a "), card("grow-crops"), t(" for "), card("alliance")],
-        },
-      ],
-      { onPick, onCancel: vi.fn() },
-    );
+    const onSkip = vi.fn();
+    hud.showHarvestOffer(["hillfort", "subjugate"], {
+      onPick, onSkip, onCancel: vi.fn(),
+    });
     expect(q(container, ".harvest-overlay").classList.contains("hidden"))
       .toBe(false);
     const options = [...container.querySelectorAll(".harvest-option")];
+    // Two rolled cards plus the skip button, which is an option in its own
+    // right: skipping commits the play and keeps nothing.
     expect(options).toHaveLength(3);
-    // the card name is a hoverable segment node, never baked text
-    expect(options[1].querySelector(".rt-card")?.textContent)
-      .toBe("Grow turnips");
-    expect((options[1] as HTMLButtonElement).disabled).toBe(true);
-    expect(options[1].textContent).toContain("no Grow turnips left to trade");
-    // the named-card trade points at BOTH cards - the price and the prize
-    const named = [...options[2].querySelectorAll(".rt-card")]
-      .map((n) => n.textContent);
-    expect(named).toEqual(["Grow turnips", "Alliance"]);
+    // The card name is a hoverable segment node, never baked text, and the
+    // rules text is under it so the choice reads without a hover.
+    expect(options[0].querySelector(".rt-card")?.textContent).toBe("Hillfort");
+    expect(options[0].textContent).toContain(CARDS.hillfort.text);
+    expect(options[2].textContent).toContain("Keep nothing");
     (options[0] as HTMLButtonElement).click();
-    expect(onPick).toHaveBeenCalledWith("wealth-1");
+    expect(onPick).toHaveBeenCalledWith("hillfort");
+    (options[2] as HTMLButtonElement).click();
+    expect(onSkip).toHaveBeenCalledOnce();
   });
 
-  it("Escape cancels whichever harvest overlay is up", () => {
+  it("Escape cancels the offer - backing out, not skipping", () => {
     const { container, hud } = setup();
     hud.update(playing());
     const onCancel = vi.fn();
-    hud.showHarvestChoice(
-      [{
-        effect: "wealth-1", eligible: true, reason: null,
-        label: [t("Gain 1 wealth")],
-      }],
-      { onPick: vi.fn(), onCancel },
-    );
+    const onSkip = vi.fn();
+    hud.showHarvestOffer(["hillfort"], { onPick: vi.fn(), onSkip, onCancel });
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(onCancel).toHaveBeenCalledOnce();
+    expect(onSkip).not.toHaveBeenCalled();
     hud.hideHarvestUi();
     expect(q(container, ".harvest-overlay").classList.contains("hidden"))
       .toBe(true);
   });
 
-  it("the card picker lists cards as segments and answers with the id", () => {
-    const { container, hud } = setup();
-    hud.update(playing());
-    const onPick = vi.fn();
-    hud.showCardPicker(["raid"], { onPick, onCancel: vi.fn() });
-    const option = q(container, ".harvest-option");
-    expect(option.querySelector(".rt-card")?.textContent).toBe("Raid");
-    // the rules text is under the name, so the choice reads without a hover
-    expect(option.textContent).toContain(CARDS.raid.text);
-    option.click();
-    expect(onPick).toHaveBeenCalledWith("raid");
-  });
-
   it("a phase change tears the overlay down", () => {
     const { container, hud } = setup();
     hud.update(playing());
-    hud.showCardPicker(["raid"], { onPick: vi.fn(), onCancel: vi.fn() });
+    hud.showHarvestOffer(["hillfort"], {
+      onPick: vi.fn(), onSkip: vi.fn(), onCancel: vi.fn(),
+    });
     hud.update(newGame(FACTIONS));
     expect(q(container, ".harvest-overlay").classList.contains("hidden"))
       .toBe(true);
   });
+});
 
-  it("glows exactly the empowered card in hand", () => {
+describe("scoreboard", () => {
+  const playing = () => newPlaying();
+
+  it("is hidden outside play", () => {
     const { container, hud } = setup();
-    let g = withHand(playing(), 0, ["raid", "fortify"]);
-    g = { ...g, empoweredCardId: "raid" };
-    hud.update(g);
-    const cards = [...container.querySelectorAll(".hand .card")];
-    expect(cards[0].classList.contains("card-empowered")).toBe(true);
-    expect(cards[1].classList.contains("card-empowered")).toBe(false);
+    hud.update(newGame(FACTIONS));
+    expect(q(container, ".scoreboard").classList.contains("hidden")).toBe(true);
   });
 
-  it("suffixes an empowered play on its log line", () => {
+  it("names the frontrunner and the human's own standing", () => {
+    const { container, hud } = setup();
+    // alpha absorbs gamma: 2 lands of the 2 needed on a 3-faction map.
+    const g = { ...playing(), incorporated: { gamma: "alpha" } };
+    hud.update(g);
+    const rows = [...container.querySelectorAll(".sb-row")];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelector(".sb-who")!.textContent).toBe("Alpha");
+    expect(rows[0].querySelector(".sb-lands")!.textContent).toBe("2/2 lands");
+    expect(rows[0].querySelector(".sb-pct")!.textContent).toBe("100%");
+    // The human's own row is labelled "You", never by faction name.
+    expect(rows[1].querySelector(".sb-who")!.textContent).toBe("You");
+    expect(rows[1].classList.contains("sb-you")).toBe(true);
+    // The passive-rate column retired with the Might bar.
+    expect(container.querySelector(".sb-passive")).toBeNull();
+  });
+
+  it("puts the human at the top when they lead, without a duplicate row", () => {
+    const { container, hud } = setup();
+    const g = { ...playing(), incorporated: { gamma: "beta" } };
+    hud.update(g);
+    const rows = [...container.querySelectorAll(".sb-row")];
+    // gamma is absorbed, so only alpha and beta are still contenders.
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelector(".sb-who")!.textContent).toBe("You");
+    expect(rows.filter((r) => r.classList.contains("sb-you"))).toHaveLength(1);
+  });
+
+  it("counts a land your vassal annexed, which the map already draws as yours", () => {
+    // The reported bug, at the scale it was seen: you -> a vassal -> a land the
+    // vassal had annexed. That land carries your stripes, sits inside your realm
+    // outline and hovers as "itself your vassal", so a score that walked one
+    // level was quoting a smaller realm than the player could see.
+    // A fourth faction so the win target is 3 and the count is legible.
+    const { container, hud } = setup();
+    const g = newPlaying([...FACTIONS, "delta"]);
+    hud.update({
+      ...g,
+      overlords: new Map([["gamma", "beta"]]),
+      incorporated: { alpha: "gamma" },
+    });
+    const you = q(container, ".sb-row.sb-you");
+    // beta + gamma + alpha. One level out stops at 2.
+    expect(you.querySelector(".sb-lands")!.textContent).toBe("3/3 lands");
+  });
+});
+
+describe("surrender", () => {
+  const playing = () => newPlaying();
+
+  it("is absent when no surrender callback is wired", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    expect(q(container, ".surrender-btn").classList.contains("hidden")).toBe(true);
+  });
+
+  it("needs a confirming second click, so a stray click cannot end the run", () => {
+    const onSurrender = vi.fn();
+    const { container, hud } = setup({ onSurrender });
+    hud.update(playing());
+    const btn = q(container, ".surrender-btn");
+    expect(btn.classList.contains("hidden")).toBe(false);
+    btn.click();
+    expect(onSurrender).not.toHaveBeenCalled();
+    expect(btn.textContent).toBe("Really surrender?");
+    btn.click();
+    expect(onSurrender).toHaveBeenCalledOnce();
+  });
+
+  it("disarms and hides once the run is over", () => {
+    const onSurrender = vi.fn();
+    const { container, hud } = setup({ onSurrender });
+    hud.update(playing());
+    const btn = q(container, ".surrender-btn");
+    btn.click();
+    expect(btn.classList.contains("confirm")).toBe(true);
+    hud.update({ ...playing(), phase: "defeat" });
+    expect(btn.classList.contains("hidden")).toBe(true);
+    expect(btn.textContent).toBe("Surrender");
+    expect(btn.classList.contains("confirm")).toBe(false);
+  });
+
+  it("postmortem names the concession instead of inventing a killer", () => {
     const { container, hud } = setup();
     const g = playing();
     hud.update({
       ...g,
-      log: [...g.log, {
-        turn: 1, playerId: 1, type: "play", cardId: "raid",
-        targetFactionId: "alpha", amount: 4, empowered: true,
-      }],
+      phase: "defeat",
+      log: [...g.log, { turn: 4, playerId: 1, type: "surrendered" }],
     });
-    const lines = [...container.querySelectorAll(".log-entry")]
-      .map((el) => el.textContent ?? "");
-    expect(lines.some((line) => line.includes("- empowered"))).toBe(true);
+    expect(q(container, ".pm-title").textContent).toBe("Surrendered");
+    expect(q(container, ".pm-cause").textContent).toContain("You conceded");
+    expect(q(container, ".pm-deltas").textContent).toBe("");
+  });
+});
+
+describe("hand tips", () => {
+  const playing = () => newPlaying();
+
+  it("hand cards carry a name span and a rules tip", () => {
+    const { container, hud } = setup();
+    const g = withHand(playing(), 0, ["great-raid"]);
+    hud.update(g);
+    const card = q(container, ".hand .card");
+    expect(card.querySelector(".card-name")!.textContent).toBe("Great raid");
+    expect(card.querySelector(".card-tip")!.textContent).toBe(CARDS["great-raid"].text);
+  });
+
+  it("shows an active modifier above the card description", () => {
+    const { container, hud } = setup({
+      cardModifiers: () => ["Favourable omens: this attack counts double."],
+    });
+    hud.update(withHand(playing(), 0, ["raid"]));
+    const tip = q(container, ".card-tip");
+    expect(tip.firstElementChild!.className).toBe("card-tip-modifier");
+    expect(tip.textContent).toContain("Favourable omens: this attack counts double.");
+    expect(tip.textContent).toContain("in reach"); // description still there
   });
 });

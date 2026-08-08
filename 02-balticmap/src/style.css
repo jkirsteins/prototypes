@@ -134,27 +134,6 @@ svg.map.dragging {
   stroke-width: 3px;
 }
 
-/* Ruler's seats (Seat of power). The whole group ignores the pointer, like
-   the vassal stripes, so a keep never steals its land's hover or click. The
-   dark casing is what keeps a rival's keep - filled inline in its owner's
-   colour - legible on an annexed land already wearing that colour. */
-.seats {
-  pointer-events: none;
-}
-
-.seat-marker path {
-  stroke: #2b2115;
-  stroke-width: 1.4;
-  stroke-linejoin: miter;
-}
-
-/* The player's own keep: gold, so "my stronghold" reads at a glance the way
-   the realm outline reads "mine". Rivals' keeps get their fill inline from
-   the owner's faction colour in renderSeatMarkers. */
-.seat-marker.seat-mine path {
-  fill: #e0b23e;
-}
-
 .label-people,
 .label-people-minor {
   font-weight: 600;
@@ -343,8 +322,8 @@ svg.map.dragging {
   white-space: nowrap;
 }
 
-/* The ruler's prowess, same chip shape as the treasury; the iron grey marks
-   it as martial rather than monetary. */
+/* The ruler's leadership, same chip shape as the treasury; the iron grey
+   marks it as martial rather than monetary. */
 .status-prowess {
   border-left: 1px solid #d0d0d0;
   padding-left: 12px;
@@ -401,37 +380,6 @@ svg.map.dragging {
   z-index: 7;
 }
 
-/* The tier band. One rule for every tier: the colour arrives as --rarity from
-   applyRarityBand, so a new tier is an entry in RARITY_TIERS and nothing here.
-   Saturated on purpose - the map's faction fills are all muted pastels, so a
-   band never reads as somebody's territory. */
-.rarity-band::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 4px;
-  background: var(--rarity);
-  border-radius: 0 0 7px 7px;
-  pointer-events: none;
-}
-
-/* The labelled ribbon: same element, grown to name its tier. content reads
-   the data-rarity attribute applyRarityBand stamps, so the tier id is the
-   display text and a new tier needs nothing here. Only the picker and the
-   pack reveal are labelled; the hand keeps the 4px band above. White on
-   every tier colour - all three are dark enough. */
-.rarity-band.rarity-labelled::after {
-  content: attr(data-rarity);
-  height: auto;
-  padding: 3px 0 4px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  text-align: center;
-  color: #fff;
-}
-
 .postmortem-overlay {
   position: absolute;
   inset: 0;
@@ -467,44 +415,6 @@ svg.map.dragging {
   font-size: 12px;
   color: #e8b0a8;
 }
-
-.pm-xp {
-  margin: 0.6rem 0 0;
-  color: #c9a227;
-  font-size: 1.05rem;
-  letter-spacing: 0.06em;
-}
-
-.pm-xp-track {
-  height: 0.55rem;
-  margin: 0.45rem 0 0.35rem;
-  border: 1px solid rgba(201, 162, 39, 0.45);
-  border-radius: 0.3rem;
-  background: rgba(201, 162, 39, 0.08);
-  overflow: hidden;
-}
-
-.pm-xp-track.hidden { display: none; }
-
-.pm-xp-fill {
-  width: 0;
-  height: 100%;
-  background: linear-gradient(90deg, #8a6f1c, #f0d060);
-}
-
-/* The instant a band completes, before the bar resets for the next one. */
-.pm-xp-fill.pm-xp-levelled {
-  background: linear-gradient(90deg, #f0d060, #fff4c2);
-}
-
-.pm-xp-next {
-  margin: 0;
-  font-size: 0.85rem;
-  letter-spacing: 0.05em;
-  opacity: 0.7;
-}
-
-.pm-xp-next.hidden { display: none; }
 
 .menu-reset {
   font-size: 12px;
@@ -555,153 +465,62 @@ svg.map.dragging {
   letter-spacing: 0.08em;
 }
 
-/* The picker grid. A grid and not a wrapping flex row, because every tile
-   carries its card's full rules text and so they must all be one size: in a
-   flex row `align-self: stretch` sized each tile from the tallest card in its
-   own row, and one long card inflated five innocent neighbours.
-
-   Fixed 190px tracks, not minmax(190px, 1fr). auto-fit collapses the empty
-   trailing tracks either way, so four tiles centre as four tiles rather than
-   sitting left of centre in a five-track row - but a 1fr track would also
-   stretch those four to fill the box. How wide a card is must not depend on
-   how many cards you own.
-
-   The width has to be stated. auto-fit resolves its repeat count against a
-   definite inline size, and .deck-screen is align-items: center, which leaves
-   this shrink-to-fit; left as auto the whole grid collapses to one column.
-   Five columns are 5x210 + 4x10 = 1090, and the extra 32px is so a classic
-   15-17px scrollbar cannot drop the count to four the moment it starts
-   scrolling - which would add a row and make it scroll further.
-
-   Bounded and scrolling, because html, body and #app are overflow: hidden:
-   before this the last row and the Choose your lands button under it were
-   clipped off the bottom of a short window and simply unreachable. 264px is
-   the chrome outside this box - roughly 216px of title, label, counter,
-   collected line and button plus their gaps - and 24px of air at each end.
-   Everything but the grid stays outside the scroll region, so the button is
-   always on screen. */
-.ds-deck {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, 210px);
-  grid-auto-rows: 180px;
+/* The build picker: two tiles, side by side, each stating its build's cards
+   in full - the deck picker's read-at-a-glance rule carried over. The row
+   scrolls on a short window so Choose your lands stays outside it and
+   reachable, the same trap the old picker fixed. */
+.ds-builds {
+  display: flex;
+  gap: 14px;
   justify-content: center;
-  gap: 10px;
-  width: min(1122px, 100% - 32px);
-  max-height: calc(100vh - 264px);
+  width: min(1000px, 100% - 32px);
+  max-height: calc(100vh - 240px);
   overflow-y: auto;
 }
 
-/* One tile is one card, stated in full, so the picker is read at a glance
-   instead of hovered card by card. Both numbers below were measured against
-   the real pool in a browser, not derived: the longest rules text is Found a
-   settlement at 228 characters, nearly double the next longest, and it is what
-   sets the size. 210px rather than 190 because the two trade against each
-   other - a wider tile spends the outlier in fewer lines, and 210 needs 146px
-   of height where 190 needed 162. Wider and shorter at once, so past 210 the
-   line count stops falling and only the width grows.
-
-   180px is the measured 176 - Found a settlement's scrollHeight with its
-   "Costs 1 wealth." sentence and the labelled rarity ribbon in the bottom
-   padding - plus slack for a platform whose font metrics run larger. The height
-   comes from the grid's grid-auto-rows and
-   never from a min-height here, so every tile in every row is identical;
-   anything that still outgrows it clips, and the shared tooltip is the safety
-   net (see the mousemove hook in src/deck-screen.ts). Re-measure both numbers
-   when a card's text grows - the console one-liner is in the deck-screen
-   section of AGENTS.md.
-
-   display: flex is load-bearing twice, and neither reason is layout taste. A
-   <button> taller than its content centres that content vertically under the
-   UA stylesheet, which floats the card name into the middle of the tile. And
-   it is what makes overlong text spill past the bottom edge, where the
-   overflow: hidden below catches it.
-
-   font-family: inherit for a related reason: a <button> does not inherit it
-   and nothing else sets it, so this face rendered in the UA default while
-   .ds-pack-card, a div, rendered in system-ui.
-
-   overflow-wrap: break-word, not `anywhere`. `anywhere` breaks any word at any
-   point and is what turned "Assassinate ruler" into "Assassinat / e ruler" at
-   the old 84px. break-word only breaks a word that cannot fit a line by
-   itself, and the longest word in the pool is 72px against a 188px content
-   box, so it never fires today - it is here for a future compound, not for
-   these cards. */
-.ds-card {
-  position: relative;
+.ds-build {
+  flex: 1 1 0;
+  max-width: 460px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
   border: 1px solid #7a6a55;
   border-radius: 8px;
   background: #fdfaf4;
   color: #3f3428;
   font-family: inherit;
   font-size: 12px;
-  /* buttons centre their text; a paragraph of rules has to read left-aligned.
-     .ds-filler re-centres itself below, at higher specificity. */
   text-align: left;
-  /* 26px at the bottom, not 10: the labelled rarity ribbon (~19px of text
-     plus its padding) sits in that padding. */
-  padding: 10px 10px 26px;
+  padding: 12px;
   cursor: pointer;
   opacity: 0.6;
-  overflow: hidden;
   overflow-wrap: break-word;
 }
 
-.ds-card.selected {
+.ds-build.selected {
   opacity: 1;
   outline: 2px solid #7cb06a;
   outline-offset: -2px;
 }
 
-/* The copy count under a multi-copy rule ("x1"/"x2"). A real child rather
-   than ::after, which the rarity ribbon already owns. Absolute so the tile's
-   text flow and the measured grid numbers are untouched; colour stated
-   because the tile is a light box on a dark screen. */
-.ds-card-count {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  padding: 0.05rem 0.35rem;
-  border-radius: 0.2rem;
-  background: #7cb06a;
-  color: #1b1710;
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
+.ds-build-blurb {
+  color: #6b5d49;
 }
 
-.ds-card-count.hidden { display: none; }
-
-/* deck full: the leftovers read as "swap one out", not as dead buttons */
-.ds-card.deck-full {
-  opacity: 0.3;
-  cursor: not-allowed;
-  border-style: dashed;
-}
-
-/* Centred in both axes, but read the two properties backwards: .ds-card is a
-   column-direction flex container, so align-items centres horizontally and
-   justify-content vertically. */
-.ds-card.ds-filler {
-  background: #f1e9da;
-  cursor: default;
-  opacity: 1;
+.ds-build-card {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid #e4dbc8;
+  padding-top: 6px;
 }
 
-.ds-counter {
-  font-size: 13px;
-  color: #fdfaf4;
-}
-
-.ds-undiscovered {
+.ds-neutrals {
+  margin: 0;
+  max-width: 720px;
   font-size: 11px;
   color: #b8b0a2;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  text-align: center;
 }
 
 .card.discard-hint {
@@ -711,26 +530,6 @@ svg.map.dragging {
 
 .region.dimmed {
   opacity: 0.225;
-}
-
-.region.threat-1 {
-  stroke: #c9807a;
-  stroke-width: 1.4;
-}
-
-.region.threat-2 {
-  stroke: #b5544c;
-  stroke-width: 2;
-}
-
-.region.threat-3 {
-  stroke: #992f27;
-  stroke-width: 2.6;
-}
-
-.region.advantage {
-  stroke: #5d8a55;
-  stroke-width: 1.4;
 }
 
 /* Targeting cues live at the END of this file on purpose: while a card is
@@ -793,11 +592,6 @@ svg.map.dragging {
   stroke-width: 1;
 }
 
-.threat-badge.danger .badge-bg {
-  stroke: #992f27;
-  stroke-width: 2.2;
-}
-
 .threat-badge .badge-text {
   font-size: 18px;
   font-weight: 600;
@@ -805,17 +599,31 @@ svg.map.dragging {
   dominant-baseline: central;
 }
 
-.threat-badge .badge-danger-mark {
-  fill: #992f27;
-  font-weight: 700;
+/* The three defense bands. The open gate is the state that must pop: red
+   text and a heavy red box mean "this polygon can be subjugated NOW". High
+   is the independence side of the ledger, middle the space between. */
+.threat-badge.band-high .badge-defense {
+  fill: #2e7d32;
 }
 
-/* A vassal of yours holding a live Revolt. Amber rather than the danger red:
-   red on this map means a rival can take you NOW, and this is a thing about to
-   be taken FROM you - the same size of bad news, a different direction. */
-.threat-badge .badge-unrest-mark {
-  fill: #b5701f;
-  font-weight: 700;
+.threat-badge.band-middle .badge-defense {
+  fill: #8a6d1c;
+}
+
+.threat-badge.band-open .badge-defense {
+  fill: #992f27;
+}
+
+.threat-badge.band-open .badge-bg {
+  stroke: #992f27;
+  stroke-width: 2.2;
+}
+
+/* One pip per disease stack, filled inline in its owner's colour; the pale
+   casing keeps a dark pip legible over any land fill. */
+.threat-badge .badge-pip {
+  stroke: #fdfaf4;
+  stroke-width: 1;
 }
 
 .lead-good {
@@ -828,20 +636,6 @@ svg.map.dragging {
 
 .lead-even {
   fill: #6b5d49;
-}
-
-.lead-ally {
-  fill: #1d4ed8;
-}
-
-/* A badge Might value with a live pact's temporary +1 inside it. Amber over
-   the sign colours above, because on this map amber means "a card's effect,
-   running out" - the unrest mark and the hover's tone-info note say the same.
-   The badge box is white, so this is the unrest mark's light-background amber
-   and not the dark tooltip's #d9b45c. Scoped under .threat-badge to outweigh
-   the single-class lead-* fills. */
-.threat-badge .lead-boosted {
-  fill: #b5701f;
 }
 
 /* The respite countdown: this faction escaped vassalage and cannot be
@@ -1334,6 +1128,11 @@ svg.map.dragging {
   cursor: pointer;
 }
 
+.harvest-option.harvest-skip {
+  opacity: 0.75;
+  border-style: dashed;
+}
+
 .harvest-option:hover:not(:disabled) {
   background: #efe3c8;
 }
@@ -1346,24 +1145,6 @@ svg.map.dragging {
   font-size: 12px;
   color: #6b5d49;
   margin-top: 2px;
-}
-
-.harvest-option.harvest-blocked {
-  cursor: default;
-  opacity: 0.55;
-  background: #f1ece0;
-}
-
-.harvest-reason {
-  font-size: 12px;
-  font-style: italic;
-  color: #8a6d4f;
-  margin-top: 2px;
-}
-
-/* The empower mark: the card glows until the play that spends it. */
-.card.card-empowered {
-  box-shadow: 0 0 12px 3px rgba(157, 195, 90, 0.85);
 }
 
 .log-entry.log-you {
@@ -1718,107 +1499,6 @@ svg.map.dragging {
   opacity: 0.5;
   cursor: default;
 }
-
-/* Pack-opening overlay. Same overlay treatment as .notice-overlay, but scoped
-   to the deck screen, which is a separate phase with its own root. */
-.ds-pack-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(12, 10, 8, 0.88);
-  z-index: 20;
-}
-
-.ds-pack-overlay.hidden { display: none; }
-
-.ds-pack-inner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  max-width: 44rem;
-  padding: 2rem;
-  text-align: center;
-}
-
-.ds-pack-count {
-  margin: 0;
-  font-size: 1.1rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.75;
-}
-
-.ds-pack-sealed {
-  width: 9rem;
-  height: 13rem;
-  border: 2px solid #c9a227;
-  border-radius: 0.6rem;
-  background: linear-gradient(160deg, #4a3a18, #2a2113);
-  color: #f2e2b0;
-  font-size: 1.2rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  cursor: pointer;
-  animation: pack-breathe 2.2s ease-in-out infinite;
-}
-
-.ds-pack-sealed:hover { border-color: #f0d060; }
-.ds-pack-sealed.hidden { display: none; }
-
-@keyframes pack-breathe {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 1.4rem rgba(201, 162, 39, 0.25); }
-  50% { transform: scale(1.03); box-shadow: 0 0 2.4rem rgba(201, 162, 39, 0.55); }
-}
-
-.ds-pack-hint { margin: 0; opacity: 0.6; font-size: 0.9rem; }
-.ds-pack-hint.hidden { display: none; }
-
-.ds-pack-cards {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.ds-pack-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  width: 13rem;
-  /* extra at the bottom: the labelled rarity ribbon sits in that padding */
-  padding: 0.9rem 0.9rem 1.8rem;
-  border: 1px solid #6b5a34;
-  border-radius: 0.5rem;
-  background: #1b1710;
-  text-align: left;
-}
-
-/* .ds-card-text serves the light picker box and this dark one; its colour is
-   the light box's, so the dark box scopes its own. */
-.ds-pack-card .ds-card-text { color: #b8b0a2; }
-
-.ds-pack-new {
-  align-self: flex-start;
-  padding: 0.1rem 0.4rem;
-  border-radius: 0.2rem;
-  background: #c9a227;
-  color: #1b1710;
-  font-size: 0.7rem;
-  letter-spacing: 0.1em;
-}
-
-.ds-pack-dupe {
-  align-self: flex-start;
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  opacity: 0.5;
-}
-
-.ds-pack-continue.hidden { display: none; }
 
 .ds-rules-row {
   display: flex;

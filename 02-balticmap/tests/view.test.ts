@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  fitView, clampView, formatLead, holderOf, homeView, panBy,
-  politicalFactionForPolygon, relationshipLine, restiveVassalOf, seatHolderOf,
-  standingsFor,
+  fitView, clampView, holderOf, homeView, leadClass, panBy,
+  politicalFactionForPolygon, relationshipLine,
+  standingChangeText, standingsFor,
   withArticle,
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
@@ -153,21 +153,41 @@ describe("zoom floor", () => {
   });
 });
 
-describe("formatLead", () => {
-  it("signs the lead and leaves plain zero unsigned", () => {
-    expect(formatLead("M", 2)).toBe("M+2");
-    expect(formatLead("M", -1)).toBe("M-1");
-    expect(formatLead("S", 0)).toBe("S0");
+describe("standingChangeText", () => {
+  /** One spelling for the modal and the log suffix: the delta the event moved
+   *  the score by, then where it landed. ASCII "->", never a unicode arrow. */
+  it("formats a defense drop as its signed delta and landing point", () => {
+    expect(
+      standingChangeText({ polygon: "selija", track: "defense", before: 600, after: 450 }),
+    ).toBe("Defense -150 -> 450");
   });
 
-  it("appends the bar to clear when a requirement applies, on both tracks", () => {
-    expect(formatLead("M", 2, 4)).toBe("M+2/4");
-    expect(formatLead("S", 0, 4)).toBe("S0/4");
-    expect(formatLead("M", -1, 2)).toBe("M-1/2");
+  it("signs a heal positively", () => {
+    expect(
+      standingChangeText({ polygon: "selija", track: "defense", before: 450, after: 600 }),
+    ).toBe("Defense +150 -> 600");
   });
 
-  it("omits the bar when no requirement applies", () => {
-    expect(formatLead("M", 2, null)).toBe("M+2");
+  it("formats disease stacks on the same shape", () => {
+    expect(
+      standingChangeText({
+        polygon: "selija", track: "disease", owner: "selonians", before: 2, after: 3,
+      }),
+    ).toBe("Disease +1 -> 3");
+  });
+
+  it("leaves a zero delta unsigned", () => {
+    expect(
+      standingChangeText({ polygon: "selija", track: "defense", before: 600, after: 600 }),
+    ).toBe("Defense 0 -> 600");
+  });
+});
+
+describe("leadClass", () => {
+  it("names the tone of a movement, not its colour", () => {
+    expect(leadClass(2)).toBe("lead-good");
+    expect(leadClass(-1)).toBe("lead-bad");
+    expect(leadClass(0)).toBe("lead-even");
   });
 });
 
@@ -224,77 +244,6 @@ describe("holderOf", () => {
 
   it("is null for a land that answers to nobody", () => {
     expect(held("zemgale")).toBeNull();
-  });
-});
-
-describe("seatHolderOf", () => {
-  const world = (
-    seats: Record<string, string>,
-    incorporated: Record<string, string> = {},
-    overlords: [string, string][] = [],
-  ) => ({ seats, incorporated, overlords: new Map(overlords) });
-
-  it("names the owner whose seat stands on this polygon", () => {
-    expect(seatHolderOf(world({ lietuva: "lietuva" }), "lietuva")).toBe("lietuva");
-    // A seat planted on an annexed land belongs to the conqueror.
-    expect(
-      seatHolderOf(world({ lietuva: "zemgale" }, { zemgale: "lietuva" }), "zemgale"),
-    ).toBe("lietuva");
-  });
-
-  it("never marks an inert entry", () => {
-    // The land left the owner's holdings; the sweep has not run yet.
-    expect(seatHolderOf(world({ lietuva: "zemgale" }), "zemgale")).toBeNull();
-    // The owner was vassalized.
-    expect(
-      seatHolderOf(
-        world({ lietuva: "lietuva" }, {}, [["lietuva", "zemgale"]]),
-        "lietuva",
-      ),
-    ).toBeNull();
-  });
-
-  it("is null for a plain land", () => {
-    expect(seatHolderOf(world({}), "semba")).toBeNull();
-  });
-});
-
-/** The map badge and the hover both ask this, and neither could be tested where
- *  it used to live (main.ts). A vassal holding a live Revolt is the one thing
- *  inside your own realm worth a mark: the card ends your overlordship whenever
- *  it surfaces, and the only word of it was a single modal on the turn it was
- *  sown - which a player with popups muted never saw at all. */
-describe("restiveVassalOf", () => {
-  const restive = (
-    polygon: string,
-    overlords: [string, string][],
-    liveRevolts: string[],
-  ) => restiveVassalOf(polygon, "me", new Map(overlords), liveRevolts);
-
-  it("marks a vassal of yours that is holding a live Revolt", () => {
-    expect(restive("zemgale", [["zemgale", "me"]], ["zemgale"])).toBe(true);
-  });
-
-  it("leaves a quiet vassal alone", () => {
-    expect(restive("zemgale", [["zemgale", "me"]], [])).toBe(false);
-  });
-
-  /** Somebody else's restive vassal is not the player's business, and marking
-   *  them would fill the map with other people's problems. */
-  it("ignores a rival's restive vassal", () => {
-    expect(restive("zemgale", [["zemgale", "lietuva"]], ["zemgale"])).toBe(false);
-  });
-
-  /** A vassal of your vassal walks out on THEM, not on you, so the mark belongs
-   *  on the land that will actually leave your realm. */
-  it("ignores a vassal of your vassal", () => {
-    expect(
-      restive("zemgale", [["zemgale", "lietuva"], ["lietuva", "me"]], ["zemgale"]),
-    ).toBe(false);
-  });
-
-  it("says nothing about a free faction holding one", () => {
-    expect(restive("zemgale", [], ["zemgale"])).toBe(false);
   });
 });
 
@@ -418,7 +367,6 @@ describe("standingsFor", () => {
     factionIds: ["a", "b", "c"],
     incorporated: {} as Record<string, string>,
     needed: 15,
-    passiveFor: () => 0,
   };
 
   it("ranks the top three, biggest first", () => {
@@ -497,22 +445,6 @@ describe("standingsFor", () => {
     };
     expect(standingsFor(args).map((r) => r.factionId)).toEqual(["a", "b", "d", "c"]);
     expect(standingsFor(args).map((r) => r.factionId)).toEqual(["a", "b", "d", "c"]);
-  });
-
-  it("reports the passive garrison rate only on the human's own row", () => {
-    const rows = standingsFor({
-      ...base,
-      humanFactionId: "c",
-      realmSize: (f) => ({ a: 14, b: 9, c: 5 })[f] ?? 0,
-      passiveFor: (f) => (f === "c" ? 2 : 3),
-    });
-    const you = rows.find((r) => r.isHuman)!;
-    expect(you.passivePerTurn).toBe(2);
-    // A rival's garrison strength is never stated outright - the player reads
-    // it off the Might lead instead.
-    for (const r of rows.filter((x) => !x.isHuman)) {
-      expect(r.passivePerTurn).toBeUndefined();
-    }
   });
 
   it("returns nothing when every faction has been absorbed", () => {

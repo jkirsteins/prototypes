@@ -1,7 +1,7 @@
-import { CARDS, FAN_OUT_CARDS, guardAgainst } from "./cards";
-import { applyRarityBand } from "./rarity-band";
+import { CARDS, guardAgainst } from "./cards";
 import {
-  victoryRealmSize, viewOf, type GameEvent, type GameState,
+  TURNIP_HARVEST_THRESHOLD, victoryRealmSize, viewOf,
+  type GameEvent, type GameState,
 } from "./game";
 import { flyCard, runAnimation, type Flight } from "./animate";
 import { fullRealmOf, incorporatedRealmOf } from "./relations";
@@ -9,21 +9,16 @@ import {
   buildRoundSummary, isNoticeWorthy, walkCtxOf,
   type NoticeCtx, type RoundSummary,
 } from "./notices";
-import { walkStandings, type StandingChange } from "./standings";
-import { count } from "./plural";
 import {
-  allianceExpiry, leadsIn, passiveFortifyFor, prowessReductionFor,
-  subjugationGripOn, subjugationRequirement, wealthIncomeFor, wealthOf,
-} from "./playability";
+  defenseMaxOf, defenseOf, diseaseOn, subjugationGateOpen,
+} from "./defense";
+import { walkStandings, type StandingChange } from "./standings";
+import { wealthIncomeFor, wealthOf } from "./playability";
 import {
   multipliedWord, type TargetExplanation,
 } from "./target-explanations";
 import type { TooltipLine } from "./panel";
 import { memoryStorage, type MetaStorage } from "./meta";
-import type { HarvestEffectId, HarvestOption } from "./harvest";
-import {
-  harvestMultiplier, harvestProgress, levelWindow, runTurnips, runXp,
-} from "./xp";
 import { standingChangeText, standingsFor } from "./view";
 import {
   card, cardName, cardTextSegments, faction, factionIds, possessive,
@@ -60,15 +55,6 @@ export interface HudCallbacks {
   isResolving?(): boolean;
   /** Renders the main-menu Reset progress control when provided. */
   onResetProgress?(): void;
-  /** Lifetime XP after this run was banked, for the postmortem progress bar.
-   *  Absent where there is no persistent progress to report (tests), in which
-   *  case the bar is hidden and only the "+N XP earned" line shows. */
-  lifetimeXp?(): number;
-  /** Packs earned but not yet opened, after this run was banked. The pity
-   *  floor and the turnip milestones both grant packs without a level
-   *  crossing, and "N XP to your next pack" would lie beside one - the pack
-   *  is already waiting. Absent where lifetimeXp is (tests). */
-  packsWaiting?(): number;
   /** Lights this faction's realm on the map, exactly as hovering its land
    *  does; null clears. Absent where there is no map (tests), in which case
    *  a hovered faction name in prose is inert. */
@@ -131,21 +117,17 @@ export interface Hud {
    *  this takes no name of its own. Passing one is how the line came to
    *  read "Waiting for Curonians (Bela) (Bela)...". */
   setWaiting(factionId: string | null): void;
-  /** The Turnip harvest choice modal: three rolled boons, pick one. Dumb
-   *  render - the roll, its caching and what a pick means live in main.ts.
-   *  `onCancel` fires on the Cancel button and Escape; the modal stays up
-   *  until `hideHarvestUi` or another show call replaces it. */
-  showHarvestChoice(
-    options: HarvestOption[],
-    hooks: { onPick(effect: HarvestEffectId): void; onCancel(): void },
+  /** The Turnip harvest offer modal: up to three rolled cards, keep one or
+   *  skip. Dumb render - the roll, its caching and what a pick means live in
+   *  main.ts. `onCancel` fires on the Cancel button and Escape; the modal
+   *  stays up until `hideHarvestUi` or another show call replaces it. Skip
+   *  is its own button, distinct from Cancel: skipping commits the play and
+   *  keeps nothing, cancelling backs out of playing the card at all. */
+  showHarvestOffer(
+    offer: string[],
+    hooks: { onPick(cardId: string): void; onSkip(): void; onCancel(): void },
   ): void;
-  /** The empower boon's sub-pick: one button per card id. Same contract as
-   *  showHarvestChoice. */
-  showCardPicker(
-    cardIds: string[],
-    hooks: { onPick(cardId: string): void; onCancel(): void },
-  ): void;
-  /** Closes whichever harvest overlay is up. Safe when none is. */
+  /** Closes the harvest overlay. Safe when none is up. */
   hideHarvestUi(): void;
 }
 
@@ -323,18 +305,14 @@ export function eventSegments(
         return clause(actor, "play", [t(" a secret card")], "past");
       }
       // rulerSuffix takes precedence over the readings marker: safe only
-      // because assassinate-ruler (the only card rulerSuffix fires for) is not
-      // in DOUBLABLE_CARDS (src/cards.ts). If it were ever added there, a
-      // multiplied assassination would silently lose its "- doubled" marker
-      // on this line. A prevented play resolved nothing, so it can carry
-      // neither of the other marks; readings and the empower mark can
-      // co-occur (an empowered Raid with omens held) and both are said.
+      // because assassinate-ruler (the only card rulerSuffix fires for) is
+      // not an attack card (src/cards.ts). A prevented play resolved
+      // nothing, so it can carry no other mark.
       const marks = e.prevented
         ? ["prevented"]
-        : [
-            ...(e.readings ? [multipliedWord(2 ** e.readings)] : []),
-            ...(e.empowered ? ["empowered"] : []),
-          ];
+        : e.readings
+          ? [multipliedWord(2 ** e.readings)]
+          : [];
       const suffix =
         rulerSuffix(e) ?? (marks.length > 0 ? ` - ${marks.join(", ")}` : "");
       // "on you", not "on Beta": the target is a name to look up everywhere
@@ -368,7 +346,10 @@ export function eventSegments(
       ];
     case "discard":
       return clause(actor, "discard", [t(" a card")], "past");
-    case "reclaimed":
+    case "independence":
+      // The gate, not a play: the vassal's home defenses recovered and the
+      // clock noticed at its own turn start. Third-person by name even for
+      // the player, like `subjugated` - it happened to them.
       return clause(named(e.targetFactionId), "reclaim", [
         t(" independence from "), faction(e.overlordFactionId ?? ""),
       ]);
@@ -378,86 +359,33 @@ export function eventSegments(
       ]);
     case "settled":
       return clause(named(e.targetFactionId), "found", [t(" a new settlement")]);
-    case "seat-moved":
-      // The subject is the actor, not the land: moving the seat is a choice,
-      // where a settlement belongs to the land it stands in.
-      return clause(actor, "move", [
-        t(" the ruler's seat to "), faction(e.targetFactionId ?? ""),
-      ]);
-    case "seat-lost":
-      // Third-person by name even for the player, like `subjugated`: the
-      // sweep noticed it, nobody did it, and the owner is who it happened to.
-      return clause(named(e.targetFactionId), "lose", [t(" the ruler's seat")]);
-    case "seeded":
-      return clause(named(e.targetFactionId), "sow", [
-        t(" the seeds of revolt against "), faction(e.overlordFactionId ?? ""),
-      ]);
-    case "hostage-taken":
-      return clause(named(e.targetFactionId), "send", [
-        t(" a hostage to the camp of "), faction(e.overlordFactionId ?? ""),
-      ]);
-    case "hostage-returned":
-      // Invariant subject, like the pact-lapsed line: the hostage is who
-      // returns, and neither camp is the actor of a debt simply running out.
+    case "damaged":
+      // Invariant subject - the defenses are what the line is about, and the
+      // actor is already named on the play this nests under. The numbers ride
+      // in the impactText suffix, the same division of labour as ever.
+      return [t("The defenses of "), faction(e.targetFactionId ?? ""), t(" are battered")];
+    case "healed":
+      return [t("The defenses of "), faction(e.targetFactionId ?? ""), t(" are restored")];
+    case "disease-spread":
+      return [t("Disease takes root in "), faction(e.targetFactionId ?? "")];
+    case "plagued":
+      // The card as a segment, not the word as text: the capitalized "Plague"
+      // is the card, and the naming-convention sweep holds this line to that.
+      return [card("plague"), t(" ravages "), faction(e.targetFactionId ?? "")];
+    case "winds-shifted":
       return [
-        t("The hostage of "), faction(e.targetFactionId ?? ""),
-        t(" returns home from "), faction(e.overlordFactionId ?? ""),
+        t("The disease on "), faction(e.targetFactionId ?? ""),
+        t(" changes hands"),
       ];
-    case "pact-lapsed":
-      // Both allies named, neither as the subject: the seat whose clock tick
-      // noticed the expiry did not do this, so a line reading "X ends the pact"
-      // would name an actor where there is none. The verb agrees with "pact",
-      // which is invariant, so `clause` has nothing to agree here.
-      return [
-        t("The pact between "), faction(e.targetFactionId ?? ""),
-        t(" and "), faction(e.overlordFactionId ?? ""), t(" has run out"),
-      ];
-    case "garrisoned": {
-      // The one line whose subject is not the actor: the garrisons are, and
-      // they are plural, so the verb is invariant and `clause` has nothing to
-      // agree. That is the NUMBER axis (plural.ts), not the person axis this
-      // helper owns, and forcing it through `verb` would claim an agreement
-      // that is not the one in play.
-      //
-      // "Your" here is a genitive on the actor rather than a determiner, so it
-      // is not `possessive` either: "Your garrisons" against "Nadruvians's
-      // garrisons".
-      const whose: Segment[] = you ? [t("Your")] : [...actor.segments, t("'s")];
-      // A vassal's tick skipped its lord (the revolt gate reads that pair),
-      // and a line claiming "all" would contradict the badge that did not
-      // move. The skipped lord is on the event; the person axis follows the
-      // possessive already chosen above.
-      const scope = e.overlordFactionId === undefined
-        ? "all"
-        : you ? "all but your overlord" : "all but their overlord";
-      return [
-        ...whose,
-        t(` garrisons stand watch (+${e.amount} Might against ${scope})`),
-      ];
-    }
     case "harvest-earned":
       // The bar crossing. "a" reads oddly against a plural-looking name, but
       // the card is one card, and the article is what says a COPY arrived.
       return clause(actor, "earn", [t(" a "), card("turnip-harvest")], "past");
-    case "harvest-traded":
-      return clause(actor, "trade", [
-        t(" a "), card("grow-crops"), t(" for "), card(e.cardId ?? ""),
-      ], "past");
-    case "harvest-might":
-      // One pair per event - the might-reset boon logs one line per rival it
-      // caught up with, and the impactText suffix carries each line's number.
-      return clause(actor, "gain", [
-        t(" Might over "), faction(e.targetFactionId ?? ""),
-      ], "past");
-    case "harvest-wealth":
-      // The coins are inline, like the garrison line's own number: no counter
-      // moved, so no walk suffix will restate it.
-      return clause(actor, "gain", [
-        t(` ${e.wealth ?? 0} wealth from the harvest`),
-      ], "past");
-    case "empowered":
-      return clause(actor, "empower", [
-        t(" "), card(e.cardId ?? ""), t(" - its next play resolves twice"),
+    case "harvest-picked":
+      // Public by decision - see NOTICE_RULES["harvest-picked"]: the pick is
+      // drafting, and every seat's log says what every seat kept.
+      return clause(actor, "keep", [
+        t(" "), card(e.cardId ?? ""), t(" from the harvest"),
       ], "past");
     case "surrendered":
       return clause(actor, "concede", [t(" the Baltic")], "past");
@@ -467,11 +395,6 @@ export function eventSegments(
       return [t("Your realm has been incorporated by "), faction(e.overlordFactionId ?? "")];
     case "unified":
       return clause(named(e.overlordFactionId), "unify", [t(" the Balts")]);
-    case "stranded":
-      return [
-        t("Your people have no way out of vassalage to "),
-        faction(e.overlordFactionId ?? ""),
-      ];
   }
 }
 
@@ -533,85 +456,46 @@ export function revealedSecrets(state: GameState, localPlayerId = 1): Set<number
   return out;
 }
 
-/** What one log line's event actually did, as a suffix in parentheses: the
- *  human's signed lead before -> after, `standingChangeText`'s one format, the
- *  same convention as the map badges, the map hover preview and the round
- *  summary. Null where the human can see no number - a card that moves no
- *  track, a prevented assassination, an AI hitting another AI.
+/** What one log line's event actually did, as a suffix in parentheses:
+ *  `standingChangeText`'s one format - `(Defense -150 -> 450)`,
+ *  `(Disease +1 -> 3)` - the same convention as the map badges and the round
+ *  summary. Null where there is no number to show - a card that moves no
+ *  score, a prevented assassination.
  *
- *  Not a Segment: it names no card and no faction (see the rule in AGENTS.md),
- *  and keeping it out of `eventSegments` is what lets the postmortem log render
- *  the same lines without a batch to walk.
+ *  The tone is about the POLYGON the line names, not the human: its defenses
+ *  falling is red on its line whoever benefits, which is also the only honest
+ *  answer a suffix can give without knowing whose realm the polygon sits in.
+ *
+ *  Not a Segment: it names no card and no faction (see the rule in
+ *  AGENTS.md), and keeping it out of `eventSegments` is what lets the
+ *  postmortem log render the same lines without a batch to walk.
  *
  *  `changes` is one event's slice of `walkStandings`. */
 export function impactText(
   e: GameEvent,
   changes: StandingChange[],
 ): { text: string; tone: "good" | "bad" | "even" } | null {
-  // The garrison line states its own "+N Might against all" inside its
-  // segments, because the postmortem log renders those segments with no suffix
-  // beside them. Adding one here would print the number twice in the activity
-  // log; removing it from the segments would blank it in the postmortem.
-  if (e.type === "garrisoned") return null;
-
-  // A tribute's coins moved no counter, so the walk has no line for them and
-  // the amount comes off the event - exactly as the fan-out amounts do. A
-  // part-covered payment shows both halves: the coins, then the standing the
-  // shortfall moved. Tone follows the standing half alone; coins leaving a
-  // vassal are the neutral cost of the card, not a lead moving.
+  // The tribute's coins moved no score, so the walk has no line for them and
+  // the amount comes off the event. Coins leaving a vassal are the neutral
+  // cost of the card.
   if (e.type === "tribute" && e.wealth !== undefined) {
-    const rest = changes.map(standingChangeText).join(", ");
-    const net = changes.reduce((sum, c) => sum + (c.after - c.before), 0);
-    return {
-      text: `${e.wealth} wealth${rest.length > 0 ? `, ${rest}` : ""}`,
-      tone: net > 0 ? "good" : net < 0 ? "bad" : "even",
-    };
+    return { text: `${e.wealth} wealth`, tone: "even" };
   }
-
-  /** A fan-out card: every living faction, so the count is the whole map and
-   *  the amount comes off the event rather than from any one pair. A vassal's
-   *  fan-out skipped its lord (`overlordFactionId` on the event), and saying
-   *  so is what keeps this suffix agreeing with the lord's unmoved badge.
-   *  "The overlord", person-free, because this suffix decorates lines whose
-   *  actor is you on your own play and a rival on theirs. */
-  const fanOut = (): { text: string; tone: "good" } | null => {
-    if (e.amount === undefined) return null;
-    const scope = e.overlordFactionId === undefined ? "all" : "all but the overlord";
-    return {
-      text: `+${e.amount} Might against ${scope}`,
-      tone: "good",
-    };
-  };
-
-  /** Several pairs, but a BOUNDED set of them - a pact's shared neighbours.
-   *  Says how many, because "against all" would overstate two neighbours by the
-   *  width of the map, and signed, because the same event reads as a gain to an
-   *  ally and a loss to the neighbour on the other end of it. */
-  const spread = (): { text: string; tone: "good" | "bad" } | null => {
-    const delta = changes[0].after - changes[0].before;
-    if (delta === 0) return null;
-    return {
-      text:
-        `${delta > 0 ? "+" : ""}${delta} Might ` +
-        `against ${count(changes.length, "faction")}`,
-      tone: delta > 0 ? "good" : "bad",
-    };
-  };
-
-  const factions = new Set(changes.map((c) => c.factionId));
-  const isFanOut =
-    e.type === "play" && e.cardId !== undefined && FAN_OUT_CARDS.has(e.cardId);
-  // Your own Fortify: one card, +1 against every living faction, so there is
-  // no single pair to quote. `leadMovesOf` deliberately returns
-  // nothing for it (see the doc comment in standings.ts), so the amount comes
-  // off the event, exactly as the garrison line's does.
-  if (factions.size === 0) return isFanOut ? fanOut() : null;
-  if (factions.size > 1) return isFanOut ? fanOut() : spread();
-
+  // War council: leadership is not a walked score - it lives on the ruler -
+  // so the play line quotes its own amount, the tribute pattern.
+  if (e.type === "play" && e.cardId === "war-council" && e.amount !== undefined) {
+    return { text: `Leadership +${e.amount}`, tone: "good" };
+  }
+  if (changes.length === 0) return null;
   const net = changes.reduce((sum, c) => sum + (c.after - c.before), 0);
+  const tone =
+    changes[0].track === "defense"
+      ? net > 0 ? "good" : net < 0 ? "bad" : "even"
+      // Disease climbing on a polygon is always pressure on it.
+      : net > 0 ? "bad" : net < 0 ? "good" : "even";
   return {
     text: changes.map(standingChangeText).join(", "),
-    tone: net > 0 ? "good" : net < 0 ? "bad" : "even",
+    tone,
   };
 }
 
@@ -666,32 +550,25 @@ export function createHud(
    *
    *  Without this the log would announce every faction's private preparations
    *  across the whole map. */
-  function isObservable(e: GameEvent, humanFactionId: string | undefined): boolean {
+  function isObservable(e: GameEvent, _humanFactionId: string | undefined): boolean {
     // A draw happens for every seat, every turn, without exception - it is
     // never news, only noise, so it never reaches the log regardless of whose
-    // turn it was.
-    if (e.type === "draw") return false;
-    // A garrison gain is public in principle, but it fires every turn for every
-    // realm past the threshold. Left unfiltered, the late-game log is nothing
-    // but garrison lines from both surviving blocs and the events that actually
-    // matter scroll away. The player's own is kept, because that is where they
-    // learn the rule exists; a rival's shows up in the Might lead on the badge.
-    if (e.type === "garrisoned") return e.playerId === localPlayerId();
-    if (e.type !== "seeded") return true;
-    return e.playerId === localPlayerId() || e.overlordFactionId === humanFactionId;
+    // turn it was. Everything else in this roster is a public fact about the
+    // map, harvest picks included (a public draft - see NOTICE_RULES).
+    return e.type !== "draw";
   }
 
   /** What you played or discarded, and the events your own play caused. Never
    *  hidden by the "Targeting me" filter: a filter that removes the line you
    *  just made is a filter that lies about your own turn.
    *
-   *  The automatic garrison tick, the deck reshuffle and a pact lapsing are
-   *  excluded. You did not choose any of them - a lapse's playerId is only the
-   *  seat whose clock tick noticed it (see sweepLapsedPacts in game.ts) - and
-   *  they are exactly the noise the filters exist to remove. */
+   *  The deck reshuffle and the independence gate are excluded. You did not
+   *  choose either - independence is the clock noticing your defenses
+   *  recovered - and they are exactly the noise the filters exist to
+   *  remove. */
   function isYourDoing(e: GameEvent): boolean {
-    return e.playerId === localPlayerId() && e.type !== "garrisoned" &&
-      e.type !== "reshuffle" && e.type !== "pact-lapsed";
+    return e.playerId === localPlayerId() &&
+      e.type !== "reshuffle" && e.type !== "independence";
   }
 
   function involvesHuman(e: GameEvent, humanFactionId: string | undefined): boolean {
@@ -750,27 +627,11 @@ export function createHud(
   pmDeltas.className = "pm-deltas";
   const pmBuildup = document.createElement("div");
   pmBuildup.className = "pm-buildup";
-  const pmXp = document.createElement("p");
-  pmXp.className = "pm-xp";
-  // The bar fills from where the run started to where it ended, so the run's
-  // contribution is the part that moves. A flat "+17 XP earned" left a first
-  // run looking like it had achieved nothing; what it had actually done was
-  // get two thirds of the way to a pack.
-  const pmXpTrack = document.createElement("div");
-  pmXpTrack.className = "pm-xp-track";
-  const pmXpFill = document.createElement("div");
-  pmXpFill.className = "pm-xp-fill";
-  pmXpTrack.appendChild(pmXpFill);
-  const pmXpToNext = document.createElement("p");
-  pmXpToNext.className = "pm-xp-next";
   const pmNewGame = document.createElement("button");
   pmNewGame.className = "menu-new-game";
   pmNewGame.textContent = "New game";
   pmNewGame.addEventListener("click", () => cb.onNewGame());
-  pmSummary.append(
-    pmTitle, pmCause, pmDeltas, pmBuildup,
-    pmXp, pmXpTrack, pmXpToNext, pmNewGame,
-  );
+  pmSummary.append(pmTitle, pmCause, pmDeltas, pmBuildup, pmNewGame);
   const pmLog = document.createElement("div");
   pmLog.className = "pm-log";
   postmortem.append(pmSummary, pmLog);
@@ -817,17 +678,14 @@ export function createHud(
   // promise and the tick cannot drift. Rivals' treasuries appear nowhere.
   const wealthChip = document.createElement("span");
   wealthChip.className = "status-wealth hidden";
-  // The player's own ruler's prowess, hidden until a Mighty ruler play buys
-  // the first level. The discount quotes `prowessReductionFor` - the same
-  // call `subjugationRequirement` spends - so the chip and the rule cannot
-  // drift. Rivals' prowess surfaces only where it bites: the threshold
-  // breakdown and the "can subjugate you at a lead of N" lines.
-  const prowessChip = document.createElement("span");
-  prowessChip.className = "status-prowess hidden";
+  // The player's own ruler's leadership, hidden until a War council play
+  // buys the first stack. Attack damage adds it, and it dies with the ruler.
+  const leadershipChip = document.createElement("span");
+  leadershipChip.className = "status-prowess hidden";
   // The turnip bar: how far the player's Grow turnips plays have filled
-  // toward the next Turnip harvest. Count and fill both read
-  // `harvestProgress`, one call, so they cannot disagree; hidden entirely for
-  // a run that holds no turnips, where the mechanic does not exist.
+  // toward the next Turnip harvest. Count and fill both read the same stored
+  // counter, so they cannot disagree; hidden entirely for a run that holds
+  // no turnips, where the mechanic does not exist.
   const turnipChip = document.createElement("span");
   turnipChip.className = "status-turnips hidden";
   const turnipCount = document.createElement("span");
@@ -846,15 +704,14 @@ export function createHud(
           text:
             "Every Grow turnips you play fills this bar. Filling it " +
             "shuffles a Turnip harvest into your deck - play that card to " +
-            "pick one of three boons. Each harvest costs more turnips than " +
-            "the last.",
+            "keep one of three offered cards for good, or skip.",
         },
       ],
       e.clientX, e.clientY,
     );
   });
   turnipChip.addEventListener("mouseleave", () => cb.onHideTip?.());
-  status.append(statusText, wealthChip, prowessChip, turnipChip);
+  status.append(statusText, wealthChip, leadershipChip, turnipChip);
 
   function makePile(kind: string, label: string) {
     const root = document.createElement("div");
@@ -986,45 +843,21 @@ export function createHud(
     cb.onHighlightFaction?.(null);
   }
 
-  function showHarvestChoice(
-    options: HarvestOption[],
-    hooks: { onPick(effect: HarvestEffectId): void; onCancel(): void },
+  function showHarvestOffer(
+    offer: string[],
+    hooks: { onPick(cardId: string): void; onSkip(): void; onCancel(): void },
   ): void {
-    harvestTitle.textContent = "Turnip harvest - keep one boon";
+    harvestTitle.textContent = "Turnip harvest - keep one card, or none";
     harvestOnCancel = hooks.onCancel;
+    const skipBtn = document.createElement("button");
+    skipBtn.className = "harvest-option harvest-skip";
+    const skipLabel = document.createElement("div");
+    skipLabel.className = "harvest-option-label";
+    skipLabel.textContent = "Keep nothing - a lean deck draws its best cards sooner";
+    skipBtn.appendChild(skipLabel);
+    skipBtn.addEventListener("click", () => hooks.onSkip());
     harvestOptions.replaceChildren(
-      ...options.map((option) => {
-        const btn = document.createElement("button");
-        btn.className = "harvest-option";
-        btn.classList.toggle("harvest-blocked", !option.eligible);
-        btn.disabled = !option.eligible;
-        const label = document.createElement("div");
-        label.className = "harvest-option-label";
-        label.appendChild(renderSegments(option.label, richTextHooks));
-        btn.appendChild(label);
-        if (option.reason !== null) {
-          const reason = document.createElement("div");
-          reason.className = "harvest-reason";
-          reason.appendChild(renderSegments(option.reason, richTextHooks));
-          btn.appendChild(reason);
-        }
-        if (option.eligible) {
-          btn.addEventListener("click", () => hooks.onPick(option.effect));
-        }
-        return btn;
-      }),
-    );
-    harvestOverlay.classList.remove("hidden");
-  }
-
-  function showCardPicker(
-    cardIds: string[],
-    hooks: { onPick(cardId: string): void; onCancel(): void },
-  ): void {
-    harvestTitle.textContent = "Empower a card - its next play resolves twice";
-    harvestOnCancel = hooks.onCancel;
-    harvestOptions.replaceChildren(
-      ...cardIds.map((cardId) => {
+      ...offer.map((cardId) => {
         const btn = document.createElement("button");
         btn.className = "harvest-option";
         const label = document.createElement("div");
@@ -1040,6 +873,7 @@ export function createHud(
         btn.addEventListener("click", () => hooks.onPick(cardId));
         return btn;
       }),
+      skipBtn,
     );
     harvestOverlay.classList.remove("hidden");
   }
@@ -1108,15 +942,18 @@ export function createHud(
   function buildNoticeCtx(state: GameState): NoticeCtx | null {
     const human = humanPlayer(state);
     if (!human) return null;
+    const realm = fullRealmOf(
+      human.factionId, state.overlords, state.incorporated,
+    );
     return {
       humanFactionId: human.factionId,
       factionOf: (playerId) =>
         state.players.find((pl) => pl.id === playerId)?.factionId,
-      leads: (other) => leadsIn(state, human.factionId, other),
-      subjugationGrip: () => subjugationGripOn(viewOf(state), human.factionId),
-      subjugationBarAgainstYou: (other) =>
-        subjugationRequirement(viewOf(state), other, human.factionId),
-      allianceExpiry: (other) => allianceExpiry(state, human.factionId, other),
+      defense: (polygon) => defenseOf(state, polygon),
+      defenseMax: (polygon) => defenseMaxOf(state, polygon),
+      diseaseOf: (polygon, owner) => diseaseOn(state.disease, polygon, owner),
+      inHumanRealm: (polygon) => realm.has(polygon),
+      homeGateOpen: () => subjugationGateOpen(state, human.factionId),
     };
   }
 
@@ -1251,88 +1088,12 @@ export function createHud(
     flush();
   }
 
-  /** Appends entries for events not yet rendered; returns those events so
-   *  animations can key off the same diff. */
-  /** Cancels the in-flight postmortem bar fill, if any. A second postmortem
-   *  (a new run ending) must not have two fills racing on the same element. */
-  let xpFill: { cancel(): void } | null = null;
-
-  /** Fills the postmortem bar from where this run started to where it ended.
-   *
-   *  Crossing a level is animated as a run to full, a reset to empty, and a
-   *  fresh fill into the new band - chained on each leg reporting itself
-   *  finished, never on a timer set to the same number (the rule in
-   *  AGENTS.md). Without the chaining a crossing would slide the fill
-   *  backwards, which reads as losing progress at the exact moment a pack
-   *  was won.
-   *
-   *  Falls back to the finished state with no animation when the caller
-   *  supplies no lifetime context, which is every test that does not opt in
-   *  and any run banked outside a seat. */
-  function renderXpBar(earned: number): void {
-    xpFill?.cancel();
-    xpFill = null;
-    const total = cb.lifetimeXp?.();
-    const hasContext = typeof total === "number";
-    pmXpTrack.classList.toggle("hidden", !hasContext);
-    pmXpToNext.classList.toggle("hidden", !hasContext);
-    if (!hasContext) return;
-
-    const after = levelWindow(total);
-    const startXp = Math.max(0, total - Math.max(0, earned));
-    const before = levelWindow(startXp);
-    // Crossing at all is the headline, not landing exactly on the threshold:
-    // a run that ended at 26 has WON a pack, and telling it "49 XP to your
-    // next pack" buries that under a number about the pack after it.
-    pmXpToNext.textContent =
-      after.level > before.level
-        ? `Level ${after.level} reached - a pack is waiting`
-        : (cb.packsWaiting?.() ?? 0) > 0
-          ? "A pack is waiting"
-          : `${after.toNext} XP to your next pack`;
-
-    const pct = (w: { into: number; span: number }): number =>
-      w.span === 0 ? 100 : (w.into / w.span) * 100;
-
-    // One leg per band the run passed through: the first runs from where the
-    // run started, every later one from empty.
-    const legs: { from: number; to: number }[] = [];
-    for (let lvl = before.level; lvl < after.level; lvl++) {
-      legs.push({ from: lvl === before.level ? pct(before) : 0, to: 100 });
-    }
-    legs.push({
-      from: after.level === before.level ? pct(before) : 0,
-      to: pct(after),
-    });
-
-    const LEG_MS = 650;
-    const run = (i: number): void => {
-      const leg = legs[i];
-      if (leg === undefined) {
-        xpFill = null;
-        return;
-      }
-      pmXpFill.style.width = `${leg.from}%`;
-      pmXpFill.classList.toggle("pm-xp-levelled", leg.to === 100 && i < legs.length - 1);
-      xpFill = runAnimation(
-        pmXpFill,
-        [{ width: `${leg.from}%` }, { width: `${leg.to}%` }],
-        LEG_MS,
-        () => {
-          pmXpFill.style.width = `${leg.to}%`;
-          run(i + 1);
-        },
-      );
-    };
-    run(0);
-  }
-
   /** Which factions a line is about, for the highlight. Read off the segments,
    *  so a line lights exactly when it visibly names the faction - plus the actor
    *  when that is you, because your own actions render as "You" and name no
-   *  faction at all. Not for a pact lapse: its playerId is only the seat whose
-   *  clock tick noticed it, the line never says "You", and both allies it IS
-   *  about are already in the segments.
+   *  faction at all. Not for an independence: its playerId is only the seat
+   *  whose clock tick noticed it, the line never says "You", and both sides
+   *  it IS about are already in the segments.
    *
    *  Shared by the first render and by a reveal's rewrite: revealing a secret
    *  play can add a faction to the line, so the two must agree on how the list
@@ -1344,7 +1105,7 @@ export function createHud(
   ): string[] {
     const named = factionIds(segs);
     if (
-      e.playerId === localPlayerId() && e.type !== "pact-lapsed" &&
+      e.playerId === localPlayerId() && e.type !== "independence" &&
       humanFactionId !== undefined && !named.includes(humanFactionId)
     ) {
       named.push(humanFactionId);
@@ -1516,9 +1277,6 @@ export function createHud(
     human.hand.forEach((cardId, i) => {
       const card = document.createElement("button");
       card.className = "card";
-      applyRarityBand(card, cardId);
-      // The empower mark: the glow holds until the play that spends it.
-      card.classList.toggle("card-empowered", state.empoweredCardId === cardId);
       const name = document.createElement("span");
       name.className = "card-name";
       name.textContent = CARDS[cardId]?.name ?? cardId;
@@ -1729,37 +1487,31 @@ export function createHud(
       wealthChip.textContent =
         `Wealth ${wealthOf(view, humanFaction)} ` +
         `(+${wealthIncomeFor(view, humanFaction)}/turn)`;
-      const prowess = view.leadership[humanFaction] ?? 0;
-      prowessChip.classList.toggle("hidden", prowess === 0);
-      if (prowess > 0) {
-        const cut = prowessReductionFor(view, humanFaction);
-        prowessChip.textContent =
-          `Prowess ${prowess}` +
-          (cut > 0 ? ` (-${cut} to subjugation bars)` : "");
+      const leadership = view.leadership[humanFaction] ?? 0;
+      leadershipChip.classList.toggle("hidden", leadership === 0);
+      if (leadership > 0) {
+        leadershipChip.textContent =
+          `Leadership ${leadership} (added to every attack)`;
       }
       // Lowercase "turnips": the common noun, per the naming rule - the card
       // is named in the hover explanation, where it can be read in full.
-      // The LOCAL seat's bar, not seat 0's. Only the host can earn a harvest
-      // (the injection is host-seat-gated), but anybody can play the card, so
-      // a guest's chip has to count the guest's own turnips.
+      // The LOCAL seat's own counter - every seat counts now.
       const human = humanPlayer(state);
-      const grown = runTurnips(state.log, localPlayerId());
+      const into = state.turnips[humanFaction] ?? 0;
       const holdsTurnip =
         human !== undefined && (
           human.deck.includes("grow-crops") ||
           human.hand.includes("grow-crops") ||
           human.discard.includes("grow-crops"));
-      const showTurnips = grown > 0 || holdsTurnip;
+      const showTurnips = into > 0 || holdsTurnip;
       turnipChip.classList.toggle("hidden", !showTurnips);
       if (showTurnips) {
-        const { into, span } = harvestProgress(
-          grown, harvestMultiplier(state.rules),
-        );
+        const span = TURNIP_HARVEST_THRESHOLD;
         turnipCount.textContent = `Turnips ${into}/${span}`;
         turnipFill.style.width = `${Math.round((into / span) * 100)}%`;
       }
     } else {
-      prowessChip.classList.add("hidden");
+      leadershipChip.classList.add("hidden");
       turnipChip.classList.add("hidden");
     }
     if (state.phase === "pick-faction") {
@@ -1814,7 +1566,6 @@ export function createHud(
       realmSize: (f) => fullRealmOf(f, state.overlords, state.incorporated).size,
       incorporated: state.incorporated,
       needed: victoryRealmSize(state.factionIds.length),
-      passiveFor: (f) => passiveFortifyFor(viewOf(state), f),
     });
     scoreboard.replaceChildren(
       ...rows.map((r) => {
@@ -1838,15 +1589,6 @@ export function createHud(
         pct.className = "sb-pct";
         pct.textContent = `${r.percent}%`;
         row.append(who, lands, pct);
-        // The one place the passive garrison rule is stated outright. Without
-        // it a player watching their Might climb every turn has no way to learn
-        // why, since the log line alone does not say where the number comes from.
-        if (r.passivePerTurn !== undefined && r.passivePerTurn > 0) {
-          const passive = document.createElement("span");
-          passive.className = "sb-passive";
-          passive.textContent = `garrisons +${r.passivePerTurn} Might/turn`;
-          row.appendChild(passive);
-        }
         return row;
       }),
     );
@@ -1860,14 +1602,11 @@ export function createHud(
     pmCause.replaceChildren(renderSegments(segments, richTextHooks));
   }
 
-  /** Where the two of you stood, and the last five things they aimed at you.
-   *  Shared by the endings that have a faction to blame - an incorporation and
-   *  a vassalage with no way out. */
+  /** The last five things the ender aimed at you, for the postmortem's
+   *  killer-versus-you block. */
   function renderEnderComparison(state: GameState, ender: string): void {
     const human = humanPlayer(state)!;
-    const l = leadsIn(state, ender, human.factionId);
-    pmDeltas.textContent =
-      `Might: ${l > 0 ? `they led by ${l}` : l < 0 ? `you led by ${-l}` : "even"}`;
+    pmDeltas.textContent = "";
     const enderPlayer = state.players.find((p) => p.factionId === ender);
     const plays = state.log
       .filter(
@@ -1933,22 +1672,10 @@ export function createHud(
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();
     } else {
-      // A dead-end vassalage: the map never moved, so the cause has to say
-      // outright what was missing, and it names both cards so the player can
-      // read what they should have carried and go build it next run.
-      const stranded = [...state.log].reverse().find((e) => e.type === "stranded");
       // A rival unification ends the game the same way an incorporation does,
       // but there is no killer-vs-you comparison to show - just name the winner.
       const unified = [...state.log].reverse().find((e) => e.type === "unified");
-      if (stranded !== undefined) {
-        const lord = stranded.overlordFactionId;
-        setCause([
-          t("Vassal of "), faction(lord ?? ""), t(" with no way out - no "),
-          card("seeds-of-revolt"), t(" and no "), card("revolt"),
-          t(" anywhere in your deck"),
-        ]);
-        if (lord !== undefined) renderEnderComparison(state, lord);
-      } else if (unified !== undefined) {
+      if (unified !== undefined) {
         setCause([
           faction(unified.overlordFactionId ?? ""), t(" unified the Balts"),
         ]);
@@ -1963,14 +1690,6 @@ export function createHud(
         }
       }
     }
-    // XP is derived from the log, never a counter carried on state - see
-    // src/xp.ts. The number here is the same one that gets banked, which is
-    // why it takes the local seat: `bankRunProgress` banks
-    // `runXp(log, localHuman().id)`, and a defaulted 1 here quoted the HOST's
-    // earnings on the guest's own end screen.
-    const earned = runXp(state.log, localPlayerId());
-    pmXp.textContent = `+${earned} XP earned`;
-    renderXpBar(earned);
     pmLog.replaceChildren(
       ...state.log.filter((e) => e.type !== "draw").map((e) => {
         const d = document.createElement("div");
@@ -2096,8 +1815,7 @@ export function createHud(
         }
       }
     },
-    showHarvestChoice,
-    showCardPicker,
+    showHarvestOffer,
     hideHarvestUi,
   };
 }

@@ -3,10 +3,13 @@ import type { MetaStorage } from "./meta";
 /** The rules the player can swap before a game. Organized as AXES: each axis
  *  is a group of mutually exclusive options and a game carries exactly one
  *  pick per axis, so "both options of one axis" is unrepresentable and picks
- *  on different axes combine freely. No recalibration ships with a pick:
- *  `npm run balance` runs the standard rules, and calibration against another
- *  set happens only when asked for by name. See the 2026-08-08 rule-variants
- *  design doc. */
+ *  on different axes combine freely. See the 2026-08-08 rule-variants design
+ *  doc.
+ *
+ *  The `copies` axis retired with the deck picker (2026-08-08 defense-score
+ *  design): with a growing deck there is no build-time copy count to cap, and
+ *  `maxPerDeck` gating harvest offers is the successor rule. Stored prefs
+ *  naming it degrade silently through `mergeRules`'s unknown-axis drop. */
 export interface RuleOption {
   id: string;
   name: string;
@@ -26,7 +29,6 @@ export interface RuleAxis {
  *  checked by tsc, and a future axis extends this type. */
 export interface RuleSelections {
   turn: "standard" | "unlimited";
-  copies: "single" | "double";
 }
 
 export const RULE_AXES: RuleAxis[] = [
@@ -50,50 +52,24 @@ export const RULE_AXES: RuleAxis[] = [
       },
     ],
   },
-  {
-    id: "copies",
-    name: "Deck copies",
-    defaultOption: "single",
-    options: [
-      {
-        id: "single",
-        name: "1 of each card",
-        text: "A deck holds at most one copy of each card.",
-      },
-      {
-        id: "double",
-        name: "Up to 2 of each card",
-        text: "A deck holds up to two copies of each card - enemy decks may double up too.",
-      },
-    ],
-  },
 ];
 
 /** A literal rather than a derivation, so the conformance test in
  *  tests/rules.test.ts can catch the two drifting apart. */
-export const DEFAULT_RULES: RuleSelections = { turn: "standard", copies: "single" };
+export const DEFAULT_RULES: RuleSelections = { turn: "standard" };
 
 /** Whether this rule set's turns include discarding at all. The unlimited
- *  turn structure removes discards entirely: a hand with nothing playable
- *  waits, and the turn ends by the explicit End turn action alone. Consumed
- *  by `playableSet`, so "no discards" is decided once, not per call site. */
+ *  turn structure removes discards entirely. Consumed by `playableSet`, so
+ *  "no discards" is decided once, not per call site. */
 export function allowsDiscards(rules: RuleSelections): boolean {
   return rules.turn !== "unlimited";
 }
 
-/** How many copies of one card a deck may hold under this rule set. The cap
- *  applies to deck-buildable non-basics only - Grow turnips filler is outside
- *  it (`maxPerDeck: null`). Consumed by every enforcement point rather than
- *  each reading `rules.copies` itself: the deck screen's click cycle,
- *  `buildPlayerDeck`, and `buildAiDeck` via `pickFaction`'s default deck. */
-export function copiesAllowed(rules: RuleSelections): number {
-  return rules.copies === "double" ? 2 : 1;
-}
-
 /** Folds unknown-checked picks over the defaults: an axis or option that does
- *  not exist falls back to that axis's default, the same drop rule `rel=`
- *  applies to an unknown track. Every reader of untrusted picks (storage, a
- *  URL) comes through here, so the fallback is one rule, not three copies. */
+ *  not exist falls back to that axis's default. Every reader of untrusted
+ *  picks (storage, a URL) comes through here, so the fallback is one rule -
+ *  and a stored `copies` pick from before that axis retired is dropped here
+ *  without ceremony. */
 export function mergeRules(picks: Record<string, unknown>): RuleSelections {
   const out: Record<string, string> = { ...DEFAULT_RULES };
   for (const axis of RULE_AXES) {
@@ -105,8 +81,7 @@ export function mergeRules(picks: Record<string, unknown>): RuleSelections {
   return out as unknown as RuleSelections;
 }
 
-/** The deck screen's one-line overview: the picked option's name per axis.
- *  Names only - the options themselves appear nowhere but the modal. */
+/** The build screen's one-line overview: the picked option's name per axis. */
 export function summarizeRules(rules: RuleSelections): string {
   return RULE_AXES
     .map((a) => a.options.find((o) => o.id === rules[a.id])?.name ?? "")
@@ -115,8 +90,8 @@ export function summarizeRules(rules: RuleSelections): string {
 }
 
 /** Last-used picks, remembered game to game. A preference, not progression,
- *  so it lives beside the log prefs rather than in MetaRecord - and through
- *  the same MetaStorage abstraction, for the same reason LogPrefs does. */
+ *  so it lives beside the log prefs, through the same MetaStorage
+ *  abstraction. */
 export const RULES_PREFS_KEY = "balticmap-rules-prefs-v1";
 
 export function loadRulesPrefs(storage: MetaStorage): RuleSelections {

@@ -1,11 +1,11 @@
-/** Headless conquest run: how long does a world of equal decks take to
- *  resolve, and do the scaling Raid and Favourable omens shorten it?
+/** Headless conquest run: how long does a world of equal seats take to
+ *  resolve under each build assignment?
  *
- *  npm run simulate:world -- --games=52 --cap=200 --seed=1 --arms=conquest-scaled,conquest-omens
+ *  npm run simulate:world -- --games=52 --cap=200 --seed=1 --arms=mixed,all-warpath,all-pestilence
  */
 import {
-  WORLD_ARMS, aggregateWorld, runWorldBatch,
-  type WorldStats, type WorldSummary,
+  BUILD_ARMS, aggregateWorld, runWorldBatch,
+  type BuildArm, type WorldStats, type WorldSummary,
 } from "../src/sim";
 
 function flag(name: string, fallback: string): string {
@@ -27,13 +27,13 @@ const turnCap = num("cap", 200);
 const firstSeed = num("seed", 1);
 const arms = flag(
   "arms",
-  "conquest-scaled,conquest-omens",
-).split(",");
+  "mixed,all-warpath,all-pestilence",
+).split(",") as BuildArm[];
 
 for (const arm of arms) {
-  if (!(arm in WORLD_ARMS)) {
+  if (!BUILD_ARMS.includes(arm)) {
     throw new Error(
-      `unknown world arm "${arm}"; known: ${Object.keys(WORLD_ARMS).join(", ")}`,
+      `unknown world arm "${arm}"; known: ${BUILD_ARMS.join(", ")}`,
     );
   }
 }

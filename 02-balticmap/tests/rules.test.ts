@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  DEFAULT_RULES, RULE_AXES, RULES_PREFS_KEY, copiesAllowed, loadRulesPrefs,
+  DEFAULT_RULES, RULE_AXES, RULES_PREFS_KEY, allowsDiscards, loadRulesPrefs,
   mergeRules, saveRulesPrefs, summarizeRules,
 } from "../src/rules";
 import { memoryStorage } from "../src/meta";
@@ -17,6 +17,11 @@ describe("RULE_AXES", () => {
       expect(DEFAULT_RULES[axis.id]).toBe(axis.defaultOption);
     }
   });
+
+  it("carries only the turn axis - copies retired with the deck picker", () => {
+    expect(RULE_AXES.map((a) => a.id)).toEqual(["turn"]);
+    expect(DEFAULT_RULES).toEqual({ turn: "standard" });
+  });
 });
 
 describe("unlimited option text", () => {
@@ -28,24 +33,26 @@ describe("unlimited option text", () => {
   });
 });
 
+describe("allowsDiscards", () => {
+  it("is on under standard turns and off under unlimited", () => {
+    expect(allowsDiscards(DEFAULT_RULES)).toBe(true);
+    expect(allowsDiscards({ ...DEFAULT_RULES, turn: "unlimited" })).toBe(false);
+  });
+});
+
 describe("mergeRules", () => {
   it("keeps a known pick and drops an unknown axis or option", () => {
     expect(mergeRules({ turn: "unlimited", bogus: "x" }))
       .toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
     expect(mergeRules({ turn: "gone" })).toEqual(DEFAULT_RULES);
   });
-  it("merges picks on different axes independently", () => {
-    expect(mergeRules({ copies: "double" }))
-      .toEqual({ ...DEFAULT_RULES, copies: "double" });
-    expect(mergeRules({ turn: "unlimited", copies: "double" }))
-      .toEqual({ turn: "unlimited", copies: "double" });
-  });
-});
 
-describe("copiesAllowed", () => {
-  it("is 1 by default and 2 under the double rule", () => {
-    expect(copiesAllowed(DEFAULT_RULES)).toBe(1);
-    expect(copiesAllowed({ ...DEFAULT_RULES, copies: "double" })).toBe(2);
+  it("drops a retired copies pick without ceremony", () => {
+    // Stored prefs from before the axis retired name it; the unknown-axis
+    // rule is what lets them degrade to defaults instead of wedging boot.
+    expect(mergeRules({ copies: "double" })).toEqual(DEFAULT_RULES);
+    expect(mergeRules({ turn: "unlimited", copies: "double" }))
+      .toEqual({ turn: "unlimited" });
   });
 });
 
@@ -55,6 +62,7 @@ describe("rules prefs", () => {
     saveRulesPrefs(s, { ...DEFAULT_RULES, turn: "unlimited" });
     expect(loadRulesPrefs(s)).toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
   });
+
   it("absent, corrupt or stale storage yields defaults", () => {
     const s = memoryStorage();
     expect(loadRulesPrefs(s)).toEqual(DEFAULT_RULES);
@@ -63,13 +71,18 @@ describe("rules prefs", () => {
     s.setItem(RULES_PREFS_KEY, JSON.stringify({ turn: "gone" }));
     expect(loadRulesPrefs(s)).toEqual(DEFAULT_RULES);
   });
+
+  it("a pre-flip record naming copies loads with the pick kept and the axis dropped", () => {
+    const s = memoryStorage();
+    s.setItem(RULES_PREFS_KEY, JSON.stringify({ turn: "unlimited", copies: "double" }));
+    expect(loadRulesPrefs(s)).toEqual({ turn: "unlimited" });
+  });
 });
 
 describe("summarizeRules", () => {
   it("names the picked option per axis", () => {
-    expect(summarizeRules(DEFAULT_RULES))
-      .toBe("One card per turn, 1 of each card");
-    expect(summarizeRules({ turn: "unlimited", copies: "double" }))
-      .toBe("Unlimited plays, Up to 2 of each card");
+    expect(summarizeRules(DEFAULT_RULES)).toBe("One card per turn");
+    expect(summarizeRules({ ...DEFAULT_RULES, turn: "unlimited" }))
+      .toBe("Unlimited plays");
   });
 });

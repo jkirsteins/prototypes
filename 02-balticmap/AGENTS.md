@@ -13,56 +13,40 @@ changing the code it describes.
 Query params replay the real transitions, so checking something is one
 navigation and the same URL gives the same run every time:
 
-    http://127.0.0.1:4173/prototypes/02/?seed=7&faction=selonians&turns=5&hand=alliance&rel=talavians:might=3
+    http://127.0.0.1:4173/prototypes/02/?seed=7&faction=selonians&build=warpath&turns=5&defense=selija:100
 
 - `seed=N` - seeds the rng.
-- `deck=a,b,c` - deck-screen picks, padded to ten with Grow turnips. Omit for
-  the standard deck. A card named twice is capped by the `copies` rule: one
-  copy by default, two under `rules=copies:double` - `rules=` is stamped
-  before the deck, so one URL carries both.
-- `screen=deck` - stops on the deck screen instead of picking for you. The one
-  stop that must be asked for: `chooseDeck` runs whether or not `deck=` was
-  named, so nothing else leaves the phase at `deck-building`.
+- `build=warpath|pestilence` - the build screen's pick. Omit for warpath.
+- `screen=deck` - stops on the build screen instead of picking for you. The
+  one stop that must be asked for: `chooseBuild` runs whether or not `build=`
+  was named, so nothing else leaves the phase at `deck-building`.
 - `faction=id` - a **faction** id, not a region id (`selonians`, not `selija`).
 - `turns=N` - plays N rounds with the AI policy on every seat, then hands back
   on your turn.
 - `hand=a,b,c` - replaces your hand.
-- `known=a,b,c` - the collection the deck screen offers. **Added** to what every
-  player starts with, never replacing it, so a booted collection is one a real
-  player could hold. Omit for every card; `known=` alone is the starting four.
-- `xp=N` - lifetime XP, which is what `pendingPacks` derives the pack-opening
-  overlay from. One level is one pack, and `xpThresholdForLevel(L)` is `20*L`
-  through level 5, then the triangular ramp resumes (150, 225, 325, ...), so
-  `xp=20` owes one pack and `xp=40` two. Real profiles are also floored by
-  completed games - the first five games each pay a pack - and the first five
-  packs opened each guarantee a new card, epic first then descending; see
-  `pendingPacks` in `src/meta.ts` and `NEW_CARD_GUARANTEES` in `src/packs.ts`.
-  Boot params carry no games counter, so a booted page owes packs through XP
-  alone.
-- `rel=faction:might=3;other:might=-1` - standings as **your signed lead**,
-  the `formatLead` convention the HUD already uses. A pre-removal URL naming
-  `status=` still boots; the unknown-track rule drops that pair.
+- `defense=selija:100;talava:0` - polygon defense overrides, clamped into
+  [0, max]; a value at or above max deletes the key (absent = pristine).
+  Polygon ids are the land's own faction id.
+- `disease=talava:selonians:3` - `polygon:owner:count` stacks.
+- `leadership=selonians:100` - ruler leadership overrides.
+- `turnips=N` - the human's turnip counter, clamped under the threshold (5).
+- `wealth=N` - the human faction's treasury.
 - `rules=turn:unlimited` - rule picks, `axis:option` pairs separated by `;`.
-  An unknown axis or option is dropped by the `rel=` unknown-track rule; an
-  omitted axis keeps its default. The pick also seeds the booted page's rules
-  preference, so a booted deck screen shows it.
+  An unknown axis or option is dropped; an omitted axis keeps its default.
+  The pick also seeds the booted page's rules preference. A pre-flip URL
+  naming the retired `copies` axis still boots - the unknown-axis rule drops
+  it, and `rel=`, `deck=`, `known=` and `xp=` are simply not boot keys any
+  more.
 - `popups=off` - sets the existing "Show popups" log pref.
 
-The deck screen therefore reads as three URLs rather than a hand-edited
-localStorage record: `?screen=deck` is the full twelve-card picker,
-`?screen=deck&known=` the sparse one, and `?screen=deck&xp=20&known=` a pack
-waiting to be opened whose cards are all new - and, being the first pack
-against a sparse collection, one whose guaranteed slot is an epic.
-
-`src/boot-params.ts` owns them, with the ordering rules and their consequences
-in its doc comments; `tests/boot-params.test.ts` pins the behaviour. It has two
-entry points, because the deck screen reads progress rather than game state:
-`applyBootParams` builds the `GameState` and `applyBootMeta` the `MetaRecord`.
-Three properties to preserve: a URL naming no boot param parses to `null`, so a
-player's page is untouched; a booted run uses memory storage with every card
-known, so it neither banks XP nor inherits a profile's unlocks; and `xp=` is
-clamped, because `levelForXp` counts levels in a loop and an unclamped value
-froze the tab once already (see `isCount` in `src/meta.ts`).
+`src/boot-params.ts` owns them, with the ordering rules and their
+consequences in its doc comments; `tests/boot-params.test.ts` pins the
+behaviour. The properties to preserve: a URL naming no boot param parses to
+`null`, so a player's page is untouched; a booted run uses memory storage, so
+it neither reads nor writes the player's saved preferences; overrides apply
+AFTER the fast-forward, so the number means the store as it stands; and every
+numeric override is clamped, because a URL is the same attack surface as a
+hand-edited record.
 
 **There is deliberately no `window` handle on the game state.** A browser pass
 asserts what the player can see; state assertions belong in vitest. A refresh
@@ -117,35 +101,37 @@ plain-text segment contains a card name from `CARDS` or a faction name from
 
 Do not add a second modal, and do not restore the three-paragraph notice format.
 One `Continue`. One line per notice-worthy event: what card, who did it, and the
-standing it moved, as `(Might +1 -> 0)`. Rules consequences that are not tied to
-one event - the Pay tribute injection, the shrunk-realm subjugation bar - go in
-the footer block under the list, deduplicated, not appended to a line.
+score it moved, as `(Defense -150 -> 450)` or `(Disease +1 -> 3)`. Rules
+consequences that are not tied to one event - the Pay tribute injection, the
+open home gate - go in the footer block under the list, deduplicated, not
+appended to a line.
 
-**Standing numbers are always the human's signed lead over the other side**,
-positive = you lead, formatted by `formatLead` in `src/view.ts`. This is the same
-convention as the map badges, the hover tooltip and the scoreboard.
+**Score numbers belong to the polygon the line names** - a defense before ->
+after on the damaged land's own line, formatted by `standingChangeText` in
+`src/view.ts`. This is the same convention as the map badges and the hover
+tooltip.
 
 ## The activity log says what happened, and never hides your own turn
 
 The log carries the same numbers, from the same walk. `renderLog` runs
 `walkStandings` over the fresh batch through `walkCtxOf` - the identical context
 `buildRoundSummary` uses - and `impactText` renders one event's slice as the
-`(Might +1 -> 2)` suffix. The modal and the log therefore cannot quote different
-numbers for the same event, and a test asserts they do not. A card that moves no
-track gets no suffix: its name is a hoverable segment that already says what it
-does.
+`(Defense -150 -> 450)` suffix. The modal and the log therefore cannot quote
+different numbers for the same event, and a test asserts they do not. A card
+that moves no score gets no suffix: its name is a hoverable segment that
+already says what it does. War council and tribute are the two suffixes that
+come off the event rather than the walk - leadership lives on the ruler and
+coins move no walked score.
 
 Two things this deliberately does not do. The suffix is **not** a `Segment` and
 does not live in `eventSegments`: the postmortem log renders those segments over
-a whole finished game, with no batch to walk, which is also why the `garrisoned`
-line keeps its own "+N Might against all" inline and `impactText` returns null
-for it. And the "Targeting me" filter never hides an entry tagged `.log-mine` -
-what you played or discarded, and the events your play caused. A filter that
-removes the line you just made is a filter that lies about your own turn. The
-automatic garrison tick, the reshuffle and a pact lapsing are excluded from
-`.log-mine`: you did not choose them - a lapse's `playerId` is only the seat
-whose clock tick noticed it - and they are the noise the filter exists to
-remove.
+a whole finished game, with no batch to walk. And the "Targeting me" filter
+never hides an entry tagged `.log-mine` - what you played or discarded, and the
+events your play caused. A filter that removes the line you just made is a
+filter that lies about your own turn. The reshuffle and the independence gate
+are excluded from `.log-mine`: you did not choose them - an independence's
+`playerId` is only the seat whose turn-start clock noticed the recovered
+defenses - and they are the noise the filter exists to remove.
 
 Pinning a land filters the log to that realm: the pinned faction plus the
 lands incorporated into it (`incorporatedRealmOf`), never vassals - a vassal
@@ -171,14 +157,14 @@ warns about.
 
 `nestsUnderItsPlay` decides which event types nest, as an exhaustive switch with
 no `default`, so a new `GameEventType` stops compiling until somebody classifies
-it. Endings (`victory`, `defeat`, `unified`, `stranded`) are excluded on purpose:
-a play can win the run, but the run's last line is a headline, not a sub-item.
+it. Endings (`victory`, `defeat`, `unified`) are excluded on purpose: a play can
+win the run, but the run's last line is a headline, not a sub-item.
 
 The "Targeting me" filter must never show a consequence indented under nothing.
-A rival's Revolt is not aimed at you, so its `play` is neither notice-worthy nor
-`.log-mine`, while the `reclaimed` it caused is - `renderLog` therefore tags the
-play `.notice-cause` and the filter exempts it. Any new reason for the filter to
-hide a line has to answer the same question.
+A rival's Great raid is not aimed at you, so its `play` is neither notice-worthy
+nor `.log-mine`, while the `damaged` it landed on your polygon is - `renderLog`
+therefore tags the play `.notice-cause` and the filter exempts it. Any new
+reason for the filter to hide a line has to answer the same question.
 
 ## Two realm sizes, and only one of them is a score
 
@@ -196,8 +182,8 @@ interchangeable:
   member's own annexations. This is the answer to "how much of the map is
   theirs", so it is what the scoreboard, the win condition, the postmortem,
   the ownership shading and the hover halo count. It is also what every rule
-  that scales with "the realm" uses: the subjugation bar, `reachOf` and
-  `borderStrength` in `src/playability.ts` - taking a lord takes its whole
+  that scales with "the realm" uses: `reachOf`, `attackReach` and
+  `borderPolygonsOf` in `src/playability.ts` - taking a lord takes its whole
   pyramid, and a grand-vassal's border is the pyramid's border.
 
 The flat version shipped and rotted exactly where you would expect. At turn 35
@@ -216,58 +202,28 @@ own outline that their score would not count.
 
 ## A dark box states its own text colour
 
-`.deck-screen` and the notice overlays are dark; the deck picker's card boxes and
-the buttons on top of them are light. Text that declares no colour inherits the
-browser default black, which is invisible on the dark half. So: a container with a
-dark background declares `color`, and a class shared between a light box and a dark
-one is scoped to each rather than left to inherit.
+`.deck-screen` and the notice overlays are dark; the build tiles and the
+buttons on top of them are light. Text that declares no colour inherits the
+browser default black, which is invisible on the dark half. So: a container
+with a dark background declares `color`, and a class shared between a light
+box and a dark one is scoped to each rather than left to inherit.
 
-This shipped. `.ds-pack-card` was cloned from the light `.ds-card`, took the dark
-background and left the `color` behind, so every revealed card's title was black on
-`#1b1710`. Its "already known" tag, the pack count and the "Click to open" hint had
-the same hole.
+This shipped, in the meta era: a dark card box cloned from a light one left
+the `color` behind, and every revealed card's title was black on `#1b1710`.
 
-Which is also the reading rule for screenshots: when you take one, read the text in
-it before moving on. The browser passes over the pack overlay missed this because
+Which is also the reading rule for screenshots: when you take one, read the
+text in it before moving on. That pass missed the black-on-dark hole because
 the screenshot was checked for layout and never read.
 
-## The deck picker is sized to the longest card, and the size is measured
+## The build screen states everything, and the actions stay outside the scroll
 
-Every picker tile carries its card's whole rules text, so the grid in
-`src/style.css` (`.ds-deck`, `.ds-card`) is one tile size for all of them and the
-longest card sets it. Today that is Found a settlement at 228 characters, nearly
-double the next longest - one outlier decides the layout for sixteen cards.
-
-The two numbers, `grid-template-columns: repeat(auto-fit, 210px)` and
-`grid-auto-rows`, trade against each other: a wider tile spends the outlier in
-fewer lines, which is why 210px needs 146px of height where 190px needed 162.
-Past 210 the line count stops falling and only the width grows.
-
-**Both were measured in a browser, so re-measure them when a card's text grows.**
-Load `?screen=deck` and run:
-
-```js
-[...document.querySelectorAll('.ds-deck .ds-card')]
-  .map(c => [c.querySelector('.ds-card-name')?.textContent,
-             c.scrollHeight - c.clientHeight])
-  .filter(([, spill]) => spill > 0)
-```
-
-An empty array means the row height still clears every card. Anything listed is
-clipped mid-sentence on the screen the player picks their deck on. A card that
-still outgrows the tile falls back to the shared tooltip - the `mousemove` hook
-in `src/deck-screen.ts` opens it only on a tile that actually spills - but that
-is the safety net, not the plan: the picker exists to be read at a glance, and a
-card you have to hover to finish reading has defeated it.
-
-Two things not to undo. `.ds-deck` is the scroll region and **everything the
-player acts on stays outside it** - the counter, the collected line and Choose
-your lands. The bug this replaced was that button clipped off the bottom of a
-short window with `#app` at `overflow: hidden`, i.e. unreachable, and moving it
-inside the grid is the tempting way to bring it back. And the row height comes
-from `grid-auto-rows`, never a `min-height` on the tile: a fixed row is what
-makes every tile identical across all rows, where the old wrapping flex row let
-one long card inflate the five beside it.
+Each build tile (`.ds-build` in `src/style.css`) carries every card of its
+build with full rules text, so the choice is read at a glance rather than
+hovered card by card - the deck picker's rule, carried over. The tile row
+(`.ds-builds`) is the scroll region on a short window, and **everything the
+player acts on stays outside it** - the rules row and Choose your lands. The
+bug this guards against was that button clipped off the bottom of a short
+window with `#app` at `overflow: hidden`, i.e. unreachable.
 
 ## The human's turn ends when their card lands, not when they click
 
@@ -294,31 +250,27 @@ animation itself the source of truth.
 
 ## Card changes
 
-The repo `AGENTS.md` card rule applies: a `POLICY_COVERAGE` branch, a discovery
-route, then play it. Also add a `NOTICE_RULES` entry for any new `GameEventType`
-- the exhaustive `Record` will refuse to compile until you decide modal or
-silent and write down why - and record `amount` on any event that moves the
-Might counter, or the before/after standings silently drift.
+The repo `AGENTS.md` card rule applies: a `POLICY_COVERAGE` branch, a
+discovery route, then play it. The harvest pool IS the discovery route now: a
+deck-buildable card belongs to `BUILDS` or falls into `NEUTRAL_POOL` (derived,
+in `src/cards.ts`), and either way every seat can reach it through the offer.
+Also add a `NOTICE_RULES` entry for any new `GameEventType` - the exhaustive
+`Record` will refuse to compile until you decide modal or silent and write
+down why - and record `amount` on any event that moves a defense score or a
+disease stack, or the before/after suffixes silently drift.
 
 A card marked `secret: true` needs two more things checked, because neither is
-a type error. It must **move no relation counter** - `impactText` prints the
-`(Might +1 -> 2)` suffix beside the line whatever the name says, and a suffix
-names the card in all but words. And it must have a **reveal clause** in
-`revealedSecrets` (src/hud.ts) saying when the card stops being secret, or it is
-hidden forever and the log will contradict what the player has plainly seen
-happen. Both live in the doc comment on `CardDef.secret`; the 2026-08-01
-secret-cards design doc has the reasoning. The secret set is pinned to a literal
-in `tests/cards.test.ts` so it cannot grow without somebody reading this.
+a type error. It must **move no score** - `impactText` prints the
+`(Defense -150 -> 450)` suffix beside the line whatever the name says, and a
+suffix names the card in all but words. And it must have a **reveal clause**
+in `revealedSecrets` (src/hud.ts) saying when the card stops being secret, or
+it is hidden forever and the log will contradict what the player has plainly
+seen happen. Both live in the doc comment on `CardDef.secret`; the 2026-08-01
+secret-cards design doc has the reasoning. The secret set is pinned to the
+GUARDS identity in `tests/cards.test.ts` so it cannot grow without somebody
+reading this.
 
-A new deck-buildable card also needs a measured impact and the tier that
-follows from it. Run `npm run rarity` with the card added to `CARDS`, then set
-its `rarity` from `rarityForImpact`. The conformance test in
-`tests/cards.test.ts` fails until you do, and hand-tagging a card fails it
-too. Cards outside `ACQUIRABLE_CARDS` are common by rule and wear no band.
-
-A full pass is the only route today. The 2026-07-31 card-rarity design doc
-describes a cheaper one: a single arm against a frozen reference deck, six
-seconds rather than two minutes, for placing one added card against the
-stored table. Nobody has built it. Eight cards is small enough that the full
-pass is still the honest tool; write the cheap one when the pool passes
-roughly 20 cards.
+Rarity is suspended for this roster: every card is `common`, hand-tagged, per
+the 2026-08-08 defense-score design. `npm run rarity` is not run until the
+later balance pass; the tier table stays in `src/cards.ts` for when it
+resumes.

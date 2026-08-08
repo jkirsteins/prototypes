@@ -1,61 +1,13 @@
-import { timedActive } from "./timed";
-
-/** Pairwise Might store keyed "actorFactionId|targetFactionId".
- *  A missing key means 0. Values only grow, with two named exceptions -
- *  `levelMight` (Assassinate ruler raises both sides to the max) and
- *  `resetMight` (subjugation clears the new vassal's direction). Subjugation
- *  itself is stored on GameState, never derived. */
-export type Relations = Record<string, number>;
+/** The realm walks and the fealty types. The pairwise Might store that used
+ *  to live here retired with the defense-score design (2026-08-08): standing
+ *  between factions is now the defense score on each polygon, and this module
+ *  keeps only the questions about who holds what. */
 
 /** vassal faction id -> overlord faction id (stored on GameState) */
 export type Overlords = Map<string, string>;
 
 /** vassal faction id -> owner faction id (permanent annexation) */
 export type Incorporated = Record<string, string>;
-
-export function relKey(actor: string, target: string): string {
-  return `${actor}|${target}`;
-}
-
-export function getRel(rel: Relations, actor: string, target: string): number {
-  return rel[relKey(actor, target)] ?? 0;
-}
-
-export function bumpMightBy(
-  rel: Relations, actor: string, target: string, amount: number,
-): Relations {
-  // A zero amount must not materialise a key; a missing key already means 0.
-  if (amount <= 0) return rel;
-  return {
-    ...rel,
-    [relKey(actor, target)]: getRel(rel, actor, target) + amount,
-  };
-}
-
-export function bumpMight(rel: Relations, actor: string, target: string): Relations {
-  return bumpMightBy(rel, actor, target, 1);
-}
-
-/** A's raw Might margin over B; positive = A is ahead. The store alone -
- *  what the rules see adds pact terms, and that is `leadIn`. */
-export function leadOf(rel: Relations, a: string, b: string): number {
-  return getRel(rel, a, b) - getRel(rel, b, a);
-}
-
-/** +amount might from actor toward every id in others (the Fortify effect). */
-export function bumpMightAllBy(
-  rel: Relations, actor: string, others: string[], amount: number,
-): Relations {
-  let out = rel;
-  for (const target of others) out = bumpMightBy(out, actor, target, amount);
-  return out;
-}
-
-export function bumpMightAll(
-  rel: Relations, actor: string, others: string[],
-): Relations {
-  return bumpMightAllBy(rel, actor, others, 1);
-}
 
 /** What F holds DIRECTLY: itself, its vassals, its incorporated lands. One
  *  level out - a vassal's own annexations belong to the vassal, not to F.
@@ -65,11 +17,10 @@ export function bumpMightAll(
  *  the AI's incorporate scoring (digestion keeps the target's annexations and
  *  frees its vassals, so the direct holding is what turns permanent).
  *
- *  Everything that scales with "the realm" - the subjugation bar, `reachOf`,
- *  `borderStrength`, the scoreboard, the win condition, the ownership shading
- *  - uses `fullRealmOf`, which walks chains of vassalage to any depth.
- *  Picking this one there is what put a land inside the player's own outline
- *  that the scoreboard refused to count. */
+ *  Everything that scales with "the realm" - the win condition, reach, the
+ *  scoreboard, the ownership shading - uses `fullRealmOf`, which walks chains
+ *  of vassalage to any depth. Picking this one there is what put a land
+ *  inside the player's own outline that the scoreboard refused to count. */
 export function realmOf(
   factionId: string,
   overlords: Overlords,
@@ -162,81 +113,4 @@ export function incorporatedRealmOf(
     if (owner === factionId) members.add(land);
   }
   return members;
-}
-
-/** Clears ONE direction's might counter: the key is deleted, because a
- *  missing key already means 0 and a zero must not be materialised (the same
- *  convention `bumpMightBy` keeps). The opposite direction is untouched - a
- *  subjugation resets what the new vassal had built against its lord while
- *  the lord's grip on it survives. */
-export function resetMight(rel: Relations, actor: string, target: string): Relations {
-  const key = relKey(actor, target);
-  if (!(key in rel)) return rel;
-  const { [key]: _, ...out } = rel;
-  return out;
-}
-
-/** Raises BOTH directions' might counters to the max of the two, so the raw
- *  might lead becomes 0 (Assassinate ruler; with `resetMight`, one of the two
- *  ways the store moves other than growing). Levels the STORE only: a pact
- *  term lives on the alliance, not here, so a visible lead bought by a live
- *  pact survives the levelling. */
-export function levelMight(rel: Relations, a: string, b: string): Relations {
-  const ab = getRel(rel, a, b);
-  const ba = getRel(rel, b, a);
-  const max = Math.max(ab, ba);
-  if (ab === max && ba === max) return rel;
-  return {
-    ...rel,
-    [relKey(a, b)]: max,
-    [relKey(b, a)]: max,
-  };
-}
-
-/** Sorted pair key for symmetric per-pair state keyed by two faction ids
- *  (e.g. GameState.alliances), order-independent. */
-export function allianceKey(a: string, b: string): string {
-  return [a, b].sort().join("|");
-}
-
-/** One sealed pact: when it lapses, and which factions it buys both allies a
- *  Might lead over.
- *
- *  `against` is FROZEN at the moment of sealing - the factions bordering both
- *  realms then, and not a step later. Recomputing it live would have been
- *  cheaper to write and is the wrong rule: either ally conquering a land, or a
- *  shared neighbour being incorporated, would silently move the human's Might
- *  lead with no event behind it, and `src/standings.ts` walks a batch backwards
- *  from the current leads on the assumption that every move was recorded. See
- *  the `amount` rule in CLAUDE.md. Frozen, the bonus moves exactly twice - the
- *  `play` that seals it and the `pact-lapsed` that ends it - and both say so.
- *
- *  It is also what makes the pact previewable: the card tip can name the
- *  factions the pact would buy a lead over, before the player commits. */
-export interface Pact {
-  expiry: number;
-  against: string[];
-}
-
-/** Sorted-pair key -> the pact between that pair. An entry is deleted the turn
- *  it lapses (see `sweepLapsedPacts` in src/game.ts), so a key present here has
- *  not necessarily been checked against the clock but has at least not been
- *  swept yet. `allianceActive` is still the only truth. */
-export type Alliances = Record<string, Pact>;
-
-export function pactBetween(
-  view: { alliances: Alliances },
-  a: string,
-  b: string,
-): Pact | undefined {
-  return view.alliances[allianceKey(a, b)];
-}
-
-/** True while a pact between a and b has not yet expired. */
-export function allianceActive(
-  view: { alliances: Alliances; turn: number },
-  a: string,
-  b: string,
-): boolean {
-  return timedActive(pactBetween(view, a, b)?.expiry, view.turn);
 }

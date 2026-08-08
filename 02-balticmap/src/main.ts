@@ -7,30 +7,27 @@ import {
 } from "./panel";
 import { attachInteraction } from "./interaction";
 import {
-  newGame, startGame, chooseDeck, chooseRules, pickFaction, playCard,
+  newGame, startGame, chooseBuild, chooseRules, pickFaction, playCard,
   discardCard, advance, surrender, viewOf, endTurn,
   type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
+import { fullRealmOf, realmOf, realmRootOf } from "./relations";
 import {
-  fullRealmOf, pactBetween, realmOf, realmRootOf,
-} from "./relations";
-import {
-  allianceExpiry, handBlockReason, leadsIn, PACT_MIGHT_BONUS,
-  pactBoostExpiriesOn, playableSet, respiteExpiry, seatOf,
-  validTargetsFor, targetEligibilityFor, subjugationRaceFor, raidGainFor,
+  handBlockReason, playableSet, respiteExpiry,
+  validTargetsFor, targetEligibilityFor, attackDamageFor,
 } from "./playability";
-import { count } from "./plural";
 import {
-  cardBlockLine, cardModifierLines, cardRiskLine, explainTargetEligibility,
-  multipliedWord, pactBoostLines, respiteLines, settlementBlock, targetImpactLines,
-  targetOddsLines, subjugationBreakdown,
+  defenseMaxOf, defenseOf, gateBandOf, type GateBand,
+} from "./defense";
+import {
+  cardBlockLine, cardModifierLines, cardRiskLine, defenseBreakdown,
+  diseaseBreakdown, explainTargetEligibility, multipliedWord,
+  plaguePreviewLines, respiteLines, settlementBlock, targetImpactLines,
+  targetOddsLines,
 } from "./target-explanations";
-import { ACQUIRABLE_CARDS, buildAiDeck, CARDS } from "./cards";
-import {
-  empowerableCards, harvestEligibility, harvestSubjugateTargets, rollHarvest,
-  type HarvestChoice, type HarvestEffectId, type HarvestRoll,
-} from "./harvest";
+import { ATTACK_CARDS, CARDS, type Strategy } from "./cards";
+import { rollHarvestOffer, type HarvestChoice } from "./harvest";
 import { createHud, LOG_PREFS_KEY } from "./hud";
 import { createDeckScreen } from "./deck-screen";
 import { createHostSession, type HostSession } from "./net-host";
@@ -41,24 +38,16 @@ import {
   guestPhaseView, seatOfFaction, type NetAction, type Wire,
 } from "./net-protocol";
 import {
-  applyPack, bankRun, buildPlayerDeck, collectedCount, loadMeta,
-  memoryStorage, pendingPacks, resetMeta, saveMeta,
-  type MetaRecord, type MetaStorage,
+  loadBuildPref, memoryStorage, saveBuildPref, type MetaStorage,
 } from "./meta";
+import { applyBootParams, parseBootParams } from "./boot-params";
 import {
-  applyBootMeta, applyBootParams, parseBootParams,
-} from "./boot-params";
-import {
-  allowsDiscards, copiesAllowed, RULES_PREFS_KEY, loadRulesPrefs,
+  allowsDiscards, RULES_PREFS_KEY, loadRulesPrefs,
   saveRulesPrefs, type RuleSelections,
 } from "./rules";
 import { seededRng } from "./rng";
-import { untilTurn } from "./timed";
-import { runTurnips, runXp } from "./xp";
-import { openPack } from "./packs";
 import {
-  formatLead, holderOf, leadClass, politicalFactionForPolygon, relationshipLine,
-  restiveVassalOf, seatHolderOf,
+  holderOf, politicalFactionForPolygon, relationshipLine,
 } from "./view";
 import { defenseMaxOf as mapDefenseMax, factionAdjacencyOf, siteCapsOf, siteListsOf } from "./adjacency";
 import "./style.css";
@@ -69,7 +58,7 @@ const app = document.getElementById("app")!;
 const {
   svg, regionPaths, revealSettlement, clearFoundedSettlements,
   realmOutlineGroup, realmUnionGroup, realmHoverGroup, realmEdgeGroup,
-  vassalOverlayGroup, seatGroup, peopleLabels, outerOutline, outsideMask,
+  vassalOverlayGroup, peopleLabels, outerOutline, outsideMask,
 } = renderMap(data, app);
 
 /** The masked stroke-only copy of each land that sits in a realm of 2+, by
@@ -149,19 +138,12 @@ const boot = parseBootParams(window.location.search);
 const joinId = new URLSearchParams(window.location.search).get("join");
 
 const rng = boot?.seed != null ? seededRng(boot.seed) : Math.random;
-const { storage, storageIsPersistent } = ((): {
-  storage: MetaStorage;
-  storageIsPersistent: boolean;
-} => {
-  // A booted run is sealed off from real progress in both directions: it must
-  // not bank XP into the player's record, and it must not inherit whichever
-  // cards this browser profile happens to have unlocked, or the same URL would
-  // deal a different deck on a different machine. The probe below is skipped
-  // rather than run-and-discarded because the probe itself writes.
-  //
-  // `storageIsPersistent` is reported as the probe would have found it, not
-  // forced: it only decides whether the menu carries a "Reset progress"
-  // button, and a booted page must show the DOM production shows.
+const storage: MetaStorage = ((): MetaStorage => {
+  // A booted run is sealed off from the player's real preferences in both
+  // directions: it must not overwrite them, and it must not inherit them, or
+  // the same URL would boot differently on a different machine. The probe
+  // below is skipped rather than run-and-discarded because the probe itself
+  // writes.
   if (boot !== null) {
     const mem = memoryStorage();
     if (boot.popups !== null) {
@@ -170,15 +152,18 @@ const { storage, storageIsPersistent } = ((): {
     if (boot.rules !== null) {
       mem.setItem(RULES_PREFS_KEY, JSON.stringify(boot.rules));
     }
-    return { storage: mem, storageIsPersistent: true };
+    if (boot.build !== null) {
+      mem.setItem("balticmap-build-pref-v1", boot.build);
+    }
+    return mem;
   }
   try {
     const probe = "balticmap-meta-probe";
     window.localStorage.setItem(probe, "1");
     window.localStorage.removeItem(probe);
-    return { storage: window.localStorage, storageIsPersistent: true };
+    return window.localStorage;
   } catch {
-    return { storage: memoryStorage(), storageIsPersistent: false };
+    return memoryStorage();
   }
 })();
 /** Where the net panel keeps the player's display name - session storage,
@@ -208,16 +193,14 @@ const netStorage: MetaStorage = ((): MetaStorage => {
     return memoryStorage();
   }
 })();
-let meta: MetaRecord = boot === null ? loadMeta(storage) : applyBootMeta(boot);
+/** The build the last game confirmed, seeding the build screen. A
+ *  preference, like the rules - the meta progression retired with the
+ *  defense-score design. */
+let buildPref: Strategy = loadBuildPref(storage);
 /** The rule picks the next game starts with. Loaded once and kept in sync
  *  with storage on every change; a booted page's memory storage was seeded
  *  from `rules=` above, so this needs no boot special case. */
 let rulesPrefs: RuleSelections = loadRulesPrefs(storage);
-let runBanked = false;
-/** The pack currently revealed on the deck screen, or null when none is open.
- *  A fresh array per pack: the deck screen compares identity to decide whether
- *  to replay the reveal animation. */
-let packReveal: { id: string; isNew: boolean }[] | null = null;
 let game: GameState = newGame(
   data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
   SITE_CAPS, DEFENSE_MAX,
@@ -234,21 +217,13 @@ if (boot !== null) {
   }
 }
 let armed: number | null = null; // hand index of the armed targeted card
-/** The Turnip harvest flow's roll - the three effect ids AND the named card
- *  the swap-known boon offers - cached from the first click on the card until
- *  any play commits. Cancelling the modal keeps it, so closing and reopening
- *  cannot fish for a better roll or a better trade; eligibility (and so what
- *  is greyed out) is re-derived on every open. */
-let harvestRoll: HarvestRoll | null = null;
-/** Non-null while the harvest flow owns the input: the three-boon modal is
- *  up, the map is choosing a boon's target, or the empower picker is up.
- *  `index` is the harvest card's hand index, held so every step can commit
- *  the same play. */
-let pendingHarvest:
-  | { step: "modal"; index: number }
-  | { step: "target"; index: number; effect: "subjugate"; targets: string[] }
-  | { step: "card"; index: number }
-  | null = null;
+/** The Turnip harvest's rolled offer, cached from the first click on the
+ *  card until any play commits. Cancelling the modal keeps it, so closing
+ *  and reopening cannot fish for a better roll. */
+let harvestRoll: string[] | null = null;
+/** Non-null while the harvest offer modal owns the input. `index` is the
+ *  harvest card's hand index, held so the pick commits the same play. */
+let pendingHarvest: { index: number } | null = null;
 let hoveredRegion: Region | null = null; // region under the cursor, for hover re-apply on refresh
 /** The land clicked to hold its faction's highlight, or null. A pin outranks
  *  the cursor: it exists so the activity log can be read, and reaching the log
@@ -300,8 +275,8 @@ type NetState =
       role: "guest";
       session: GuestSession | null;
       hostId: string;
-      /** The deck the guest confirmed, until the host deals with it. */
-      deckCards: string[] | null;
+      /** The build the guest confirmed, until the host deals with it. */
+      build: Strategy | null;
       /** The guest's faction, set by the start snapshot. */
       faction: string | null;
       /** The land the host has taken, from the lobby. Marked unpickable on
@@ -408,22 +383,6 @@ function allegianceOf(
   );
 }
 
-/** The pact line, when one binds the human and this faction. Names the Might it
- *  is buying as well as the truce: the bonus is a term in every lead on screen
- *  (see `leadsIn`), and a player who could not see where it came from would read
- *  their own badges as a mystery. */
-function allianceLine(f: string, humanFaction: string): string | null {
-  if (!inPlay()) return null;
-  const until = allianceExpiry(game, humanFaction, f);
-  if (until === undefined) return null;
-  const shared = pactBetween(game, humanFaction, f)?.against.length ?? 0;
-  const bonus =
-    shared === 0
-      ? ""
-      : `, +${PACT_MIGHT_BONUS} Might for you both against ${count(shared, "shared neighbour")}`;
-  return `Allied ${untilTurn(until)} - no hostile cards between you${bonus}`;
-}
-
 function effectiveFaction(f: string): string {
   return game.incorporated[f] ?? f;
 }
@@ -461,7 +420,6 @@ function applyOwnership(): void {
     } else {
       el.style.removeProperty("--owned-stroke");
     }
-    applyThreat(el, region.faction, human?.factionId, humanRealm);
   }
   renderRealmHalo(human?.factionId, humanRealm);
   renderVassalOverlay();
@@ -508,55 +466,6 @@ function syncVassalStripes(): void {
   }
 }
 
-/** A keep silhouette, 14x14 around the origin: three merlons over a solid
- *  body. A SHAPE, deliberately not another circle, so a seat can never be
- *  read as a settlement dot. Full opacity always, like the threat badges and
- *  unlike the vassal stripes: seats are public knowledge and the marker is
- *  UI chrome, not terrain - synced to a dimmed rival land it vanished at
- *  map rest, which contradicted the design's "the map says who sits
- *  where". */
-const SEAT_GLYPH_D =
-  "M-7,7 V-7 H-4.2 V-4.2 H-1.4 V-7 H1.4 V-4.2 H4.2 V-7 H7 V7 Z";
-
-/** One marker per standing seat, the player's in its own class. Clear and
- *  redraw per refresh like the threat badges - seats move mid-game. Offset
- *  above the region's centre so the badge that renders AT the centre never
- *  sits on top of it. `pointer-events: none` comes from the CSS on the
- *  group, the vassal-overlay precedent, so the marker never steals the
- *  land's hover or click. */
-function renderSeatMarkers(): void {
-  seatGroup.replaceChildren();
-  const human = localHuman();
-  if (!inPlay() || !human) return;
-  const v = viewOf(game);
-  for (const owner of Object.keys(game.seats)) {
-    const land = seatOf(v, owner);
-    if (land === undefined) continue;
-    const regionId = regionByFaction.get(land);
-    const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
-    if (!pathEl) continue;
-    const bbox = pathEl.getBBox();
-    const cx = bbox.x + bbox.width / 2;
-    const cy = bbox.y + bbox.height / 2;
-    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    g.classList.add("seat-marker");
-    if (owner === human.factionId) g.classList.add("seat-mine");
-    g.setAttribute("transform", `translate(${cx}, ${cy - 20})`);
-    const glyph = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    glyph.setAttribute("d", SEAT_GLYPH_D);
-    // A rival's keep wears its OWNER's colour, not the land's: a seat planted
-    // on annexed land belongs to the conqueror, and the dark casing (CSS) is
-    // what keeps it legible over a fill already in that colour. The player's
-    // own keep takes its gold from the CSS class instead.
-    if (owner !== human.factionId) {
-      const colour = factionById.get(owner)?.color;
-      if (colour !== undefined) glyph.style.fill = colour;
-    }
-    g.appendChild(glyph);
-    seatGroup.appendChild(g);
-  }
-}
-
 /** A people's label hides once every faction of that ethnicity is
  *  incorporated - the polity is gone and its fill has flipped to its
  *  owner's color, so the ethnonym stops floating over another realm. */
@@ -569,31 +478,6 @@ function applyPeopleLabels(): void {
         .every((f) => f.id in game.incorporated);
     for (const label of labels) label.classList.toggle("hidden", hidden);
   }
-}
-
-function applyThreat(
-  el: SVGPathElement,
-  faction: string,
-  humanFaction: string | undefined,
-  humanRealm: Set<string>,
-): void {
-  let threat = 0;
-  let advantage = false;
-  if (
-    inPlay() &&
-    humanFaction !== undefined &&
-    !humanRealm.has(faction) &&
-    !(faction in game.incorporated)
-  ) {
-    const theirs = leadsIn(game, faction, humanFaction);
-    const yours = leadsIn(game, humanFaction, faction);
-    threat = Math.min(3, Math.max(0, theirs));
-    advantage = theirs <= 0 && yours >= 1;
-  }
-  el.classList.toggle("threat-1", threat === 1);
-  el.classList.toggle("threat-2", threat === 2);
-  el.classList.toggle("threat-3", threat === 3);
-  el.classList.toggle("advantage", advantage);
 }
 
 function renderRealmHalo(
@@ -708,19 +592,9 @@ function syncRealmEdges(): void {
   }
 }
 
-/** `restiveVassalOf` bound to the live game - the badge and the hover both ask
- *  it, and neither should have to assemble the arguments. */
-function unrestOf(factionId: string): boolean {
-  const human = localHuman();
-  if (!human || !inPlay()) return false;
-  return restiveVassalOf(
-    factionId, human.factionId, game.overlords, viewOf(game).liveRevolts,
-  );
-}
-
 /** One countdown tspan on a badge: a timed status's letter and the turns it
  *  has left, in that status's colour. Every timed status the badge counts
- *  down (a pact's A, a respite's R) goes through here, so they all share the
+ *  down (a respite's R) goes through here, so they all share the
  *  `expiry - turn` arithmetic and the 9px gap. */
 function appendCountdown(
   text: SVGTextElement, letter: string, turnsLeft: number, className: string,
@@ -732,41 +606,38 @@ function appendCountdown(
   text.appendChild(tspan);
 }
 
-/** One badge per living faction outside the human's realm with a non-zero
- *  lead on either track, anchored at that faction's home region bbox.
+const BAND_CLASS: Record<GateBand, string> = {
+  high: "band-high",
+  middle: "band-middle",
+  open: "band-open",
+};
+
+/** One badge per living polygon: its `defense/max`, coloured by the band it
+ *  sits in - at or above the independence line, between the gates, or at or
+ *  under the subjugation gate, which is the state that must pop. Disease
+ *  shows as one pip per stack in the owner's faction colour under the
+ *  number.
  *
  *  While a card is armed the board narrows to what the card can be aimed at:
- *  badges survive only on the legal targets. A lead over a land this card
- *  cannot touch is not information the player needs while choosing, and it
- *  floats at full contrast above a polygon the targeting cues have deliberately
- *  greyed out - which reads as a live option rather than an excluded one. */
+ *  badges survive only on the legal targets, so a number floating over an
+ *  excluded polygon never reads as a live option. */
 function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
   const human = localHuman();
   if (!inPlay() || !human) return;
-  // The full realm, like applyOwnership: a grand-vassal sits inside the human
-  // realm's outline, and a badge floating on a land the outline claims reads
-  // as a contradiction. Restive DIRECT vassals keep their unrest badge via
-  // `restive` below, and while a card is armed `targets` re-narrows to what
-  // is legal - so a poachable grand-vassal still badges when it matters.
-  const humanRealm = fullRealmOf(
-    human.factionId, game.overlords, game.incorporated,
-  );
-  const targets = armed === null ? null : new Set(armedTargets());
+  const v = viewOf(game);
+  const targets = targetingLive() ? new Set(armedTargets()) : null;
   for (const factionId of game.factionIds) {
-    if (factionId in game.incorporated) continue; // dead (absorbed)
-    // The one thing inside your own realm worth a badge. A vassal that has sown
-    // its Revolt is holding a live card that ends your overlordship whenever it
-    // surfaces, and until now the only word of it was a single modal on the
-    // turn it was sown - which a muted player never saw at all. Every other
-    // land of your realm stays badgeless: there is nothing to race there.
-    const restive = unrestOf(factionId);
-    if (humanRealm.has(factionId) && !restive) continue;
+    if (factionId in game.incorporated && targets === null) {
+      // An annexed polygon still has a defense score a card can hit, so it
+      // keeps its badge while targeting narrows the map to it - but at rest
+      // it is part of a realm, and a full-strength badge on every dead land
+      // buries the live ones.
+      const undamaged = defenseOf(v, factionId) >= defenseMaxOf(v, factionId);
+      const noDisease = game.disease[factionId] === undefined;
+      if (undamaged && noDisease) continue;
+    }
     if (targets !== null && !targets.has(factionId)) continue;
-    // Both tracks, both directions and the danger mark in one call, so the
-    // badge and the hover breakdown cannot quote different numbers.
-    const race = subjugationRaceFor(viewOf(game), human.factionId, factionId);
-    if (race.quiet && !restive) continue;
     const regionId = regionByFaction.get(factionId);
     const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
     if (!pathEl) continue;
@@ -776,8 +647,8 @@ function renderThreatBadges(): void {
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     g.classList.add("threat-badge");
-    if (race.danger) g.classList.add("danger");
-    if (restive) g.classList.add("restive");
+    const band = gateBandOf(v, factionId);
+    g.classList.add(BAND_CLASS[band]);
     g.setAttribute("transform", `translate(${cx}, ${cy})`);
 
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -787,51 +658,40 @@ function renderThreatBadges(): void {
 
     const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
     text.classList.add("badge-text");
-    if (race.danger) {
-      const bang = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-      bang.classList.add("badge-danger-mark");
-      bang.textContent = "! ";
-      text.appendChild(bang);
-    }
-    // Two bangs, not one, and its own colour: "!" already means a rival can
-    // take YOU now, and this is the opposite direction - something of yours is
-    // about to be taken. A doubled mark reads as louder rather than as a
-    // different scale, which is right; they are the same size of bad news.
-    if (restive) {
-      const mark = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-      mark.classList.add("badge-unrest-mark");
-      mark.textContent = "!!";
-      text.appendChild(mark);
-    }
-    // A restive vassal of yours has no race to show - you cannot subjugate what
-    // you already hold - so the mark stands alone rather than beside a pair of
-    // dashes. Any land you DO have a race with keeps its numbers.
-    if (!race.quiet) {
-      const mightTspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-      mightTspan.classList.add(leadClass(race.lead));
-      // A live pact of yours is a term inside this figure, so the value wears
-      // amber over its sign colour - the badge-level echo of the hover's amber
-      // note, and the same gate, so the mark never appears where the hover
-      // would not explain it.
-      if (pactBoostExpiriesOn(game, human.factionId, factionId).length > 0) {
-        mightTspan.classList.add("lead-boosted");
-      }
-      if (restive) mightTspan.setAttribute("dx", "9");
-      mightTspan.textContent = formatLead("M", race.lead, race.bar);
-      text.appendChild(mightTspan);
-    }
-    if (race.allied) {
-      const expiry = allianceExpiry(game, human.factionId, factionId) ?? game.turn;
-      appendCountdown(text, "A", expiry - game.turn, "lead-ally");
-    }
-    // A faction under its post-escape respite cannot be subjugated, so the
-    // race its numbers describe is paused: the countdown says for how long,
-    // the same treatment the pact's A gives an equally illegal attack.
+    const score = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+    score.classList.add("badge-defense");
+    score.textContent = `${defenseOf(v, factionId)}/${defenseMaxOf(v, factionId)}`;
+    text.appendChild(score);
+    // A faction under its post-escape respite cannot be subjugated even at an
+    // open gate: the countdown says for how long.
     const respite = respiteExpiry(game, factionId);
     if (respite !== undefined) {
       appendCountdown(text, "R", respite - game.turn, "lead-respite");
     }
     g.appendChild(text);
+
+    // The disease pips: one circle per stack, in the owner's colour, in
+    // faction order so a seeded run draws deterministically. Public state,
+    // per the design - counts live in the hover's disease block.
+    const owners = game.disease[factionId];
+    if (owners !== undefined) {
+      let pip = 0;
+      for (const owner of game.factionIds) {
+        const stacks = owners[owner] ?? 0;
+        for (let s = 0; s < stacks; s++) {
+          const dot = document.createElementNS(
+            "http://www.w3.org/2000/svg", "circle",
+          );
+          dot.classList.add("badge-pip");
+          dot.setAttribute("r", "3.5");
+          dot.setAttribute("cx", String(pip * 9));
+          dot.setAttribute("cy", "14");
+          dot.setAttribute("fill", factionById.get(owner)?.color ?? "#000");
+          g.appendChild(dot);
+          pip++;
+        }
+      }
+    }
     badgeGroup.appendChild(g);
 
     const textBox = text.getBBox();
@@ -871,73 +731,61 @@ function hoverLines(region: Region): TooltipLine[] {
   if (!inPlay() || !human) return lines;
   const held = allegianceOf(region.faction, human.factionId);
   if (held !== null) lines.push({ text: held });
-  // Straight after "Your vassal", because it is the rest of that sentence. The
-  // card is not named: this line is plain text, and a card name the player
-  // cannot point at is the inert kind AGENTS.md warns about - "a revolt" as an
-  // ordinary English word says the same thing and reads better.
-  if (unrestOf(region.faction)) {
-    lines.push({
-      text: "On the verge of revolt: it holds the card and can play it any turn",
-      tone: "bad",
-    });
-  }
-  // The seat only ever stands on a land its owner holds outright, so "this
-  // realm" is already named by the lines above - no faction name needed,
-  // which is what keeps this plain-text line inside the naming rule.
-  const seatOwner = seatHolderOf(viewOf(game), region.faction);
-  if (seatOwner !== null) {
-    lines.push(
-      seatOwner === human.factionId
-        ? { text: "Your ruler's seat stands here.", tone: "good" }
-        : { text: "The ruler's seat of this realm stands here." },
-    );
-  }
   // The same resolution `interceptClick` uses, or the lines below would answer
   // for a different faction than the click aims at on an absorbed land.
   const f = politicalFactionForPolygon(region.faction, game.incorporated);
-  // The pact line is back now that the hover speaks with no card armed: without
-  // it the breakdown reads as a plan you could act on against a faction you
-  // cannot legally touch for another five turns.
-  const pact = allianceLine(f, human.factionId);
-  if (pact !== null) lines.push({ text: pact, tone: "good" });
-  // A shared neighbour of a live pact instead gets the amber note: part of the
-  // lead on their badge is temporary, and this says until when. Without it the
-  // pact term is invisible wherever it does not change the sign - a boosted 0
-  // reads as no bonus at all.
-  lines.push(...pactBoostLines(game, human.factionId, f));
-  // The respite note rides beside the pact note for the same reason: part of
-  // what the bars imply - "this faction can be taken" - is temporarily false,
-  // and this says until when. On the human's own land it is the one surface
-  // carrying the fact at all, since their realm draws no badge.
+  // The respite note: part of what the badge implies - "this faction can be
+  // taken at the gate" - is temporarily false, and this says until when. On
+  // the human's own land it is the one surface carrying the fact at all.
   lines.push(...respiteLines(game, human.factionId, f));
-  // `region.faction`, not the resolved `f`: settlements belong to the land, so
-  // an absorbed land must report its own count and not its absorber's. First of
-  // the blocks, so the sentence-shaped lines above stay one group.
+  // `region.faction`, not the resolved `f`: settlements belong to the land,
+  // so an absorbed land must report its own count and not its absorber's.
   lines.push(...settlementBlock(viewOf(game), region.faction));
-  const breakdown = subjugationBreakdown(viewOf(game), human.factionId, f);
+  // An armed card's preview aims at the POLYGON for attack and disease
+  // cards, the resolved faction for the political ones - the same id the
+  // click will commit.
   if (armed !== null) {
+    const cardId = human.hand[armed];
+    const aim = ATTACK_CARDS.has(cardId) || !CARDS[cardId]?.targeted ||
+      cardId === "spread-disease" || cardId === "localized-outbreak" ||
+      cardId === "hillfort"
+        ? region.faction
+        : f;
     lines.push(...targetImpactLines(
-      viewOf(game), human.factionId, human.hand[armed], f, breakdown.length > 0,
+      viewOf(game), human.factionId, cardId, aim,
     ));
   }
-  lines.push(...breakdown);
+  // The badge's numbers itemised: the score over its max and the two gate
+  // lines. The polygon's own, like the settlements.
+  lines.push(...defenseBreakdown(
+    viewOf(game), region.faction, game.overlords.has(region.faction),
+  ));
+  lines.push(...diseaseBreakdown(
+    viewOf(game), region.faction, (id) => factionById.get(id)?.name ?? id,
+  ));
   return lines;
 }
 
-/** True while a click on the map means "aim here": an armed targeted card,
- *  or a harvest boon choosing its target. Every surface that yields the map
- *  to targeting cues - the halo, the log dimming, the valid/invalid classes -
- *  asks this one predicate, so the two flows cannot diverge. */
+/** True while a click on the map means "aim here": an armed targeted card.
+ *  Every surface that yields the map to targeting cues - the halo, the log
+ *  dimming, the valid/invalid classes - asks this one predicate. */
 function targetingLive(): boolean {
-  return armed !== null || pendingHarvest?.step === "target";
+  return armed !== null;
+}
+
+/** Whether the armed card aims at POLYGONS (a land's own id, annexed or not)
+ *  rather than at politically resolved factions. Attack, disease and heal
+ *  cards hit polygons; Subjugate, Incorporate and Assassinate ruler aim at
+ *  factions. One predicate, shared by the hover preview, the targeting
+ *  classes and the click, so the three cannot resolve a click differently. */
+function aimsAtPolygons(cardId: string): boolean {
+  return ATTACK_CARDS.has(cardId) || cardId === "spread-disease" ||
+    cardId === "localized-outbreak" || cardId === "hillfort";
 }
 
 function armedTargets(): string[] {
   const human = localHuman();
   if (!human) return [];
-  // The harvest boon's target set is the flow's own (frozen when the boon was
-  // picked), not a card's validTargetsFor - the card itself is untargeted.
-  if (pendingHarvest?.step === "target") return pendingHarvest.targets;
   if (armed === null) return [];
   return validTargetsFor(viewOf(game), human.factionId, human.hand[armed]);
 }
@@ -945,6 +793,10 @@ function armedTargets(): string[] {
 function applyTargeting(): void {
   const targets = new Set(armedTargets());
   const live = targetingLive();
+  const human = localHuman();
+  const polygonAim =
+    live && armed !== null && human !== undefined &&
+    aimsAtPolygons(human.hand[armed]);
   // The one land a guest may not pick. Reuses the armed-card "you cannot aim
   // here" treatment rather than inventing a second vocabulary for the same
   // sentence - both mean "this click will do nothing".
@@ -952,8 +804,10 @@ function applyTargeting(): void {
     net.role === "guest" && game.phase === "pick-faction" ? net.taken : null;
   for (const [id, el] of regionPaths) {
     const f = factionByRegion.get(id)!;
-    const political = politicalFactionForPolygon(f, game.incorporated);
-    const valid = live && targets.has(political);
+    // A polygon card lights the polygon itself; a faction card lights every
+    // land of the target's realm through the political resolution.
+    const aim = polygonAim ? f : politicalFactionForPolygon(f, game.incorporated);
+    const valid = live && targets.has(aim);
     el.classList.toggle("target-valid", valid);
     el.classList.toggle(
       "target-invalid", (live && !valid) || f === takenByHost,
@@ -1061,32 +915,21 @@ function disarm(): void {
   hud.setArmed(null);
 }
 
-// --- the Turnip harvest flow: roll, pick, sub-pick, commit -----------------
+// --- the Turnip harvest flow: roll the offer, keep one or skip -------------
 
-/** Opens (or re-opens) the three-boon modal for the harvest at `index`.
- *  Rolls once per cached roll - see `harvestRoll` - and re-derives
- *  eligibility every time, so a boon that has since died greys out rather
- *  than resolving on stale facts. */
+/** Opens (or re-opens) the offer modal for the harvest at `index`. Rolls
+ *  once per cached roll - see `harvestRoll` - so closing and reopening
+ *  cannot fish for a better offer. */
 function openHarvestModal(index: number): void {
-  // The seat this screen plays. Only ever seat 0 in practice - a guest is
-  // turned back in onPlayCard before it can reach the harvest flow, and the
-  // injection that grants a harvest is host-seat-gated - but it is spelt as
-  // the local seat so no reader has to re-derive that argument.
   const human = localHuman();
-  harvestRoll ??= rollHarvest(viewOf(game), human, rng);
-  const eligibility =
-    harvestEligibility(viewOf(game), human, harvestRoll.swapCardId);
-  const options = harvestRoll.effects.map((id) => eligibility[id]);
-  // The roll guaranteed a live slot at roll time and no play has happened
-  // since (any commit clears the cache), so this swap is belt-and-braces
-  // against an eligibility rule that moves between the two calls.
-  if (!options.some((o) => o.eligible)) {
-    options[2] = eligibility["wealth-1"];
-  }
-  pendingHarvest = { step: "modal", index };
-  hud.showHarvestChoice(options, {
-    onPick(effect) {
-      pickHarvestBoon(index, effect);
+  harvestRoll ??= rollHarvestOffer(human, rng);
+  pendingHarvest = { index };
+  hud.showHarvestOffer(harvestRoll, {
+    onPick(cardId) {
+      commitHarvest(index, { cardId });
+    },
+    onSkip() {
+      commitHarvest(index, { skip: true });
     },
     onCancel() {
       pendingHarvest = null;
@@ -1095,64 +938,20 @@ function openHarvestModal(index: number): void {
   });
 }
 
-/** A boon was picked off the modal: simple boons commit at once, the rest
- *  step into their sub-pick - the map for a target, the picker for a card. */
-function pickHarvestBoon(index: number, effect: HarvestEffectId): void {
-  const human = localHuman();
-  switch (effect) {
-    case "subjugate": {
-      const targets = harvestSubjugateTargets(viewOf(game), human.factionId);
-      pendingHarvest = { step: "target", index, effect, targets };
-      hud.hideHarvestUi();
-      // The armed-card cues, reused: armedTargets reads the frozen set above
-      // while the harvest owns targeting, and the status line says what is
-      // being aimed.
-      applyTargeting();
-      hud.setArmed(index, CARDS["turnip-harvest"].name);
-      return;
-    }
-    case "empower": {
-      pendingHarvest = { step: "card", index };
-      hud.showCardPicker(empowerableCards(human), {
-        onPick(cardId) {
-          commitHarvest(index, { effect: "empower", cardId });
-        },
-        onCancel() {
-          openHarvestModal(index);
-        },
-      });
-      return;
-    }
-    case "swap-known":
-      // The cache is non-null here: this runs from the modal's onPick, and
-      // the modal cannot open without the roll.
-      commitHarvest(
-        index, { effect: "swap-known", cardId: harvestRoll!.swapCardId },
-      );
-      return;
-    case "swap-common":
-      commitHarvest(index, { effect: "swap-common" });
-      return;
-    case "might-reset":
-      commitHarvest(index, { effect: "might-reset" });
-      return;
-    case "wealth-1":
-      commitHarvest(index, { effect: "wealth-1" });
-      return;
-    case "wealth-income":
-      commitHarvest(index, { effect: "wealth-income" });
-      return;
-  }
-}
-
-/** The one exit of the flow that plays the card. Every step funnels here, so
- *  the teardown - overlay, cues, cache - cannot be forgotten by one of them. */
+/** The one exit of the flow that plays the card, so the teardown - overlay,
+ *  cache - cannot be forgotten. A guest's pick rides the wire instead of
+ *  resolving locally: the host is the only place a card is really played. */
 function commitHarvest(index: number, choice: HarvestChoice): void {
   hud.hideHarvestUi();
-  hud.setArmed(null);
   pendingHarvest = null;
   harvestRoll = null;
-  applyTargeting();
+  if (net.role === "guest") {
+    sendGuestAction({
+      type: "play", cardIndex: index,
+      cardId: localHuman().hand[index], harvest: choice,
+    });
+    return;
+  }
   game = playCard(game, index, rng, undefined, { harvest: choice });
   afterHumanPlay();
 }
@@ -1194,7 +993,6 @@ function refresh(opts?: { animate?: boolean }): void {
   applyOwnership();
   applyTargeting();
   revealFoundedSettlements();
-  renderSeatMarkers();
   renderThreatBadges();
   // Re-resolve the pin before the render it must agree with: an incorporation
   // this refresh carries can change who the pinned land answers for, and the
@@ -1216,26 +1014,6 @@ function refresh(opts?: { animate?: boolean }): void {
   // moved. Guarded by hoveredRegion so a card or faction name being hovered
   // elsewhere keeps its own tip.
   if (hoveredRegion !== null) tooltip.redraw(hoverLines(hoveredRegion));
-}
-
-/** Banks this run's XP and turnips into the persistent record, once per run.
- *  Both totals are derived from the log rather than carried on state, so this
- *  is the only place progress is written and it cannot double-count.
- *
- *  Three routes end a run and every one of them calls this before refreshing:
- *  `afterHumanAction` and `resumeChain` for a seat that plays the engine, and
- *  the guest's `onState` - whose run ends the way its every turn arrives, as
- *  a message, with no local call to `advance` anywhere to hang this off. */
-function bankRunProgress(): void {
-  if (runBanked || game.players.length === 0) return;
-  runBanked = true;
-  const me = localHuman();
-  meta = bankRun(
-    meta,
-    runXp(game.log, me?.id ?? 1),
-    runTurnips(game.log, me?.id ?? 1),
-  );
-  saveMeta(storage, meta);
 }
 
 /** After a completed human action: advance, then run every AI turn back to
@@ -1263,7 +1041,6 @@ function resumeChain(): void {
     }
     game = advance(aiTakeTurn(game, rng), rng);
   }
-  if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
   if (net.role === "host") net.session?.pushUpdate();
   resolving =
     game.phase === "playing" && controllerOf(game.current) === "remote";
@@ -1277,7 +1054,6 @@ function afterHumanAction(): void {
   // so the anti-fishing cache survives exactly the closes it should.
   harvestRoll = null;
   game = advance(game, rng);
-  if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
   if (net.role === "host") net.session?.pushUpdate();
   refresh();
   if (game.phase !== "playing" || controllerOf(game.current) === "local") {
@@ -1360,8 +1136,6 @@ function startStagingRun(): void {
   // A pin must not outlive the run it was set in: the fresh game re-colours
   // every polygon, and the held highlight would describe the last one.
   interaction.deselect();
-  runBanked = false;
-  packReveal = null;
   deckScreen.update(deckScreenView(true));
   refresh();
 }
@@ -1370,7 +1144,6 @@ const hud = createHud(
   app,
   {
     onNewGame() {
-      bankRunProgress();
       // A DEALT network game cannot be restarted for one seat, so New game
       // abandons it outright: say so on the wire and hand the broker id back
       // rather than leave a half-live session behind. A game still in the
@@ -1410,7 +1183,6 @@ const hud = createHud(
       }
       disarm();
       game = surrender(game);
-      bankRunProgress();
       // The run is over for both of them, and this is the only push that
       // will ever carry that - nothing advances behind a surrender.
       if (net.role === "host") net.session?.pushUpdate();
@@ -1529,16 +1301,17 @@ const hud = createHud(
         // that can fail, or the roll reads as a bug. Its own band in the tip,
         // not another annotation line: the two say opposite things.
         (id) => targetOddsLines(view, human.factionId, cardId, id),
-        (id) => {
-          if (cardId !== "raid") return [];
-          // Quote the convex yield, not the border count: the two diverge fast
-          // (a 5-land border is worth 15), and the number the player is shown
-          // before aiming has to be the number they get - which is why it comes
-          // from the same call `playCard` resolves the raid with.
-          const { gain, multiplier } = raidGainFor(view, human.factionId, id);
+        () => {
+          if (!ATTACK_CARDS.has(cardId)) return [];
+          // Quote the resolved damage, readings included - the same call
+          // `playCard` resolves the attack with, so the number the player is
+          // shown before aiming is the number they get.
+          const { damage, multiplier } = attackDamageFor(
+            view, human.factionId, cardId,
+          );
           return [multiplier > 1
-            ? `+${gain} Might (${multipliedWord(multiplier)})`
-            : `+${gain} Might`];
+            ? `-${damage} defense (${multipliedWord(multiplier)})`
+            : `-${damage} defense`];
         },
       );
     },
@@ -1550,10 +1323,10 @@ const hud = createHud(
       const lines = human
         ? cardModifierLines(game, human.factionId, cardId)
         : [];
-      // First, above the standing modifiers: the mark is the one thing the
-      // glow on the card is asking about.
-      return game.empoweredCardId === cardId
-        ? ["Empowered - its next play resolves twice.", ...lines]
+      // What a Plague is worth right now rides with its modifiers: the
+      // stacks are on the map, the sum is not.
+      return human && cardId === "plague"
+        ? [...plaguePreviewLines(viewOf(game), human.factionId), ...lines]
         : lines;
     },
     isDiscardMode() {
@@ -1581,33 +1354,12 @@ const hud = createHud(
     playerNameOf(factionId) {
       return playerNameOfFaction(factionId);
     },
-    // Read after bankRunProgress() has folded this run in - the postmortem
-    // only ever renders on an ended run, and every route that ends one banks
-    // before refreshing. The bar derives the run's start from this minus the
-    // run's own XP, so there is no second counter to drift.
-    lifetimeXp() {
-      return meta.xp;
-    },
-    // Named packsWaiting rather than pendingPacks so the callback cannot be
-    // confused with the imported function it wraps.
-    packsWaiting() {
-      return pendingPacks(meta);
-    },
     onShowTip(lines, clientX, clientY) {
       tooltip.showLines(lines, clientX, clientY);
     },
     onHideTip() {
       tooltip.hide();
     },
-    ...(storageIsPersistent
-      ? {
-          onResetProgress() {
-            meta = resetMeta(storage);
-            packReveal = null;
-            deckScreen.update(deckScreenView(game.phase === "deck-building"));
-          },
-        }
-      : {}),
   },
   new Map(data.factions.map((f) => [f.id, f.name])),
   new Set(data.factions.filter((f) => f.placeName).map((f) => f.id)),
@@ -1617,11 +1369,7 @@ const hud = createHud(
 function deckScreenView(visible: boolean) {
   return {
     visible,
-    knownCards: meta.knownCards,
-    collected: collectedCount(meta),
-    pendingPacks: pendingPacks(meta),
-    reveal: packReveal,
-    savedPicks: meta.lastPicks,
+    build: buildPref,
     rules: rulesPrefs,
     // A guest plays the host's rules - `onLobby` overwrites `rulesPrefs` with
     // them, and the start snapshot carries them inside the state regardless.
@@ -1637,21 +1385,11 @@ const deckScreen = createDeckScreen(app, {
   onHideTip() {
     tooltip.hide();
   },
-  onOpenPack() {
-    if (pendingPacks(meta) === 0 || packReveal !== null) return;
-    const drawn = openPack(ACQUIRABLE_CARDS, rng, {
-      packIndex: meta.packsOpened,
-      unknownIds: ACQUIRABLE_CARDS.filter((id) => !meta.knownCards.includes(id)),
-    });
-    const { meta: next, results } = applyPack(meta, drawn);
-    meta = next;
-    packReveal = results;
-    saveMeta(storage, meta);
-    deckScreen.update(deckScreenView(true));
-  },
-  onDismissReveal() {
-    packReveal = null;
-    deckScreen.update(deckScreenView(true));
+  onBuildChange(build) {
+    // Saved per change, like the rules, so the pick is remembered even if
+    // the player leaves the screen another way.
+    buildPref = build;
+    saveBuildPref(storage, buildPref);
   },
   onRulesChange(next) {
     // A guest's radios are disabled, so this is unreachable there - but the
@@ -1665,34 +1403,24 @@ const deckScreen = createDeckScreen(app, {
     if (net.role === "host") net.session?.sendLobby();
     deckScreen.update(deckScreenView(true));
   },
-  onStart(selectedIds) {
-    // A pack still waiting is the screen's own business - it hides the deck
-    // builder - but guard anyway so a stray call cannot skip the reveal.
-    if (pendingPacks(meta) > 0 || packReveal !== null) return;
-    // Remember the loadout on confirm rather than on every toggle: what is
-    // worth restoring is the deck actually played, and it is one write a run.
-    // This hands the screen a fresh array, so it re-seeds from it next time it
-    // is shown - with the very picks it just reported, which is a no-op.
-    meta = { ...meta, lastPicks: [...selectedIds] };
-    saveMeta(storage, meta);
+  onStart(build) {
+    buildPref = build;
+    saveBuildPref(storage, buildPref);
     if (net.role === "guest") {
-      // The deck the host will deal this seat from, held until the map click
+      // The build the host will stamp on this seat, held until the map click
       // names the land it belongs to. The local transitions below it are a
       // staging area only - they carry the guest to the faction-pick screen,
       // and the host's start snapshot replaces every one of them.
-      net.deckCards = buildPlayerDeck(meta.knownCards, selectedIds);
+      net.build = build;
       game = chooseRules(game, rulesPrefs);
-      game = chooseDeck(game, net.deckCards);
+      game = chooseBuild(game, build);
       deckScreen.update(deckScreenView(false));
       netPanel.setStatus("Pick your land on the map.");
       refresh();
       return;
     }
     game = chooseRules(game, rulesPrefs);
-    game = chooseDeck(
-      game,
-      buildPlayerDeck(meta.knownCards, selectedIds, copiesAllowed(rulesPrefs)),
-    );
+    game = chooseBuild(game, build);
     deckScreen.update(deckScreenView(false));
     refresh();
   },
@@ -1795,19 +1523,24 @@ function attachHostWire(wire: Wire): void {
   netPanel.setStatus("Connected.");
 }
 
-/** Deals once both humans have picked. The guest's deck rides in through
- *  pickFaction's `aiDeckFor` override: its seat is built from the deck the
- *  guest chose out of its own collection, and every other seat from the
- *  ordinary AI deck. */
+/** Deals once both humans have picked. Every seat gets the same starting
+ *  deck now, so the guest's pick carries only its BUILD: the deal rolls the
+ *  guest's seat a strategy like any AI seat (keeping the rng draw count a
+ *  frozen contract) and the chosen build is stamped over it after. */
 function tryDeal(): void {
   if (net.role !== "host" || net.session === null) return;
   const pick = net.session.guestPick();
   if (net.hostPick === null || pick === null) return;
   if (game.phase !== "pick-faction") return;
-  game = pickFaction(game, net.hostPick, rng, (r, fid) =>
-    fid === pick.factionId ? pick.deck : buildAiDeck(r),
-  );
-  net.guestSeat = seatOfFaction(game, pick.factionId);
+  game = pickFaction(game, net.hostPick, rng);
+  const guestSeat = seatOfFaction(game, pick.factionId);
+  net.guestSeat = guestSeat;
+  game = {
+    ...game,
+    players: game.players.map((p, i) =>
+      i === guestSeat ? { ...p, strategy: pick.build } : p,
+    ),
+  };
   net.session.markStarted(pick.factionId);
   netPanel.setVisible(false);
   refresh();
@@ -1826,8 +1559,8 @@ function sendGuestAction(a: NetAction): void {
 
 function guestPickFaction(fid: string): void {
   if (net.role !== "guest" || net.session === null) return;
-  if (net.deckCards === null) return;
-  net.session.sendPick(net.deckCards, fid);
+  if (net.build === null) return;
+  net.session.sendPick(net.build, fid);
   netPanel.setStatus("Waiting for the host to start the game...");
 }
 
@@ -1839,7 +1572,7 @@ function attachGuestWire(wire: Wire, hostId: string): void {
   // before this function has finished running.
   net = {
     role: "guest", session: null, hostId,
-    deckCards: prev?.deckCards ?? null, faction: prev?.faction ?? null,
+    build: prev?.build ?? null, faction: prev?.faction ?? null,
     // Dropped on a reconnect: the host re-sends its lobby on the next hello,
     // and a remembered pick could be one the host has since changed.
     taken: null,
@@ -1912,8 +1645,7 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // derived the run's start from a lifetime total this run was missing
       // from. `runBanked` is still the once-per-run guard, so the several
       // updates an ending can arrive in bank once between them.
-      if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
-      refresh(source === "update" ? undefined : { animate: false });
+          refresh(source === "update" ? undefined : { animate: false });
       updateWaitingStatus();
     },
     onReject(reason) {
@@ -2016,34 +1748,20 @@ if (joinId !== null) {
   }
 }
 
-// A run booted straight into an ending never passed through the code paths
-// that bank it, and the postmortem's XP bar would animate up from zero.
-if (boot !== null && (game.phase === "victory" || game.phase === "defeat")) {
-  bankRunProgress();
-}
 hud.update(game, { animate: boot === null });
-// A boot that stopped short - an unknown faction id, a deck of card ids that
-// do not exist - leaves the phase at deck-building, whose screen is hidden
-// from page load. Without this the page is a bare map with no way forward.
+// A boot that stopped short - an unknown faction id - leaves the phase at
+// deck-building, whose screen is hidden from page load. Without this the
+// page is a bare map with no way forward.
 if (boot !== null) {
   deckScreen.update(deckScreenView(game.phase === "deck-building"));
 }
 
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  // The harvest flow outranks everything: while it holds input, Escape steps
-  // BACK - from a target pick to the modal - rather than falling through to
-  // the disarm/unpin below. The modal and picker steps are handled by the
-  // hud's own Escape handler (their overlay is up), so only the map step
-  // acts here; the early return still keeps this Escape from also unpinning.
-  if (pendingHarvest !== null) {
-    if (pendingHarvest.step === "target") {
-      hud.setArmed(null);
-      openHarvestModal(pendingHarvest.index);
-      applyTargeting();
-    }
-    return;
-  }
+  // The harvest offer outranks everything while it holds input; its Escape
+  // is the hud's own handler (the overlay is up), and the early return keeps
+  // this one from also unpinning underneath it.
+  if (pendingHarvest !== null) return;
   // An armed card goes first, so one Escape never both disarms and unpins.
   if (armed !== null) disarm();
   else if (pinnedRegion !== null) interaction.deselect();
@@ -2100,37 +1818,25 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       refresh();
       return true;
     }
-    // Above the armed branch: while a harvest boon is aiming, the click is
-    // its answer. A valid land commits the play; anything else steps back to
-    // the modal, the armed-card disarm made recoverable.
-    if (game.phase === "playing" && pendingHarvest?.step === "target") {
-      const ph = pendingHarvest;
-      const raw = regionId !== null ? factionByRegion.get(regionId) : undefined;
-      const faction = raw === undefined
-        ? undefined
-        : politicalFactionForPolygon(raw, game.incorporated);
-      if (faction !== undefined && ph.targets.includes(faction)) {
-        commitHarvest(ph.index, { effect: ph.effect, targetId: faction });
-      } else {
-        hud.setArmed(null);
-        openHarvestModal(ph.index);
-        applyTargeting();
-      }
-      return true;
-    }
     if (game.phase === "playing" && armed !== null) {
       const idx = armed;
+      const cardId = localHuman().hand[idx];
       const raw = regionId !== null ? factionByRegion.get(regionId) : undefined;
+      // A polygon card aims at the land itself, a faction card at whoever
+      // holds it - the same resolution the targeting classes and the hover
+      // preview use (`aimsAtPolygons`).
       const faction = raw === undefined
         ? undefined
-        : politicalFactionForPolygon(raw, game.incorporated);
+        : aimsAtPolygons(cardId)
+          ? raw
+          : politicalFactionForPolygon(raw, game.incorporated);
       const valid = faction !== undefined && armedTargets().includes(faction);
       disarm();
       if (valid) {
         if (net.role === "guest") {
           sendGuestAction({
             type: "play", cardIndex: idx,
-            cardId: localHuman().hand[idx], targetId: faction,
+            cardId, targetId: faction,
           });
         } else {
           game = playCard(game, idx, rng, faction);

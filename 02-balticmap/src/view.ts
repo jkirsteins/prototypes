@@ -1,5 +1,5 @@
 import { realmRootOf, type Incorporated, type Overlords } from "./relations";
-import { seatOf } from "./playability";
+import type { StandingChange } from "./standings";
 
 export interface View {
   x: number;
@@ -30,10 +30,6 @@ export interface StandingRow {
   /** Whole percent of the way to victory, floored, capped at 100. */
   percent: number;
   isHuman: boolean;
-  /** Standing Might per turn this realm earns from its annexed lands. Only
-   *  ever set for the human's own row: a rival's garrison strength is not
-   *  something the player is told outright, they read it off the Might lead. */
-  passivePerTurn?: number;
 }
 
 /** The scoreboard: the top three contenders, plus the human's own row when the
@@ -57,7 +53,6 @@ export function standingsFor(args: {
   realmSize(factionId: string): number;
   incorporated: Incorporated;
   needed: number;
-  passiveFor(factionId: string): number;
 }): StandingRow[] {
   const { factionIds, humanFactionId, realmSize, incorporated, needed } = args;
   const pct = (lands: number): number =>
@@ -68,9 +63,6 @@ export function standingsFor(args: {
     needed,
     percent: pct(realmSize(factionId)),
     isHuman: factionId === humanFactionId,
-    ...(factionId === humanFactionId
-      ? { passivePerTurn: args.passiveFor(factionId) }
-      : {}),
   });
   const contenders = factionIds.filter((f) => !(f in incorporated));
   if (contenders.length === 0) return [];
@@ -172,29 +164,6 @@ export function relationshipLine(
     : `Vassal of ${factionName(lord)}${ultimately(polygonFactionId)}, ${holds}`;
 }
 
-/** Is this land a vassal of the human's that is holding a live Revolt? The card
- *  sits in its deck, hand or discard from the turn it sows Seeds of revolt
- *  until it plays it, and `liveRevolts` is how the rules already track that -
- *  Seeds of revolt reads the same list to refuse sowing a second one.
- *
- *  Only the human's DIRECT vassals. A rival's restive vassal is not the
- *  player's business and would fill the map with other people's problems, and
- *  a vassal of your vassal walks out on them, not on you.
- *
- *  Here rather than in main.ts, where the map badge and the hover both want it,
- *  because a predicate the tests cannot reach is a predicate nobody checks. */
-export function restiveVassalOf(
-  polygonFactionId: string,
-  humanFactionId: string,
-  overlords: Overlords,
-  liveRevolts: readonly string[],
-): boolean {
-  return (
-    overlords.get(polygonFactionId) === humanFactionId &&
-    liveRevolts.includes(polygonFactionId)
-  );
-}
-
 /** The faction whose OWN polygon holds this land: the realm that absorbed it,
  *  or the overlord it owes fealty to. Null when it answers to nobody.
  *
@@ -209,27 +178,6 @@ export function holderOf(
   return incorporated[polygonFactionId] ?? overlords.get(polygonFactionId) ?? null;
 }
 
-/** The faction whose ruler's seat stands on this polygon, or null. The
- *  reverse read of `GameState.seats`, through `seatOf` so an inert entry -
- *  a land its owner no longer holds, an owner since vassalized - never marks
- *  the map even before the sweep catches it. Here rather than in main.ts for
- *  the same reason as `restiveVassalOf`: the marker and the hover line both
- *  ask it, and a predicate the tests cannot reach is a predicate nobody
- *  checks. */
-export function seatHolderOf(
-  view: {
-    seats: Record<string, string>;
-    incorporated: Incorporated;
-    overlords: Overlords;
-  },
-  polygonFactionId: string,
-): string | null {
-  for (const owner of Object.keys(view.seats)) {
-    if (seatOf(view, owner) === polygonFactionId) return owner;
-  }
-  return null;
-}
-
 /** "the Ugandians", but "Lietuva" - the one faction named for a land rather
  *  than a people takes no article. Both the activity log and the notices use
  *  this, so the two surfaces cannot drift apart. */
@@ -237,34 +185,24 @@ export function withArticle(name: string, placeName: boolean): string {
   return placeName ? name : `the ${name}`;
 }
 
-/** One track for a map badge: "M+2" on its own, "M+2/4" against a bar to
- *  clear. Zero is unsigned; the bar is omitted when no requirement applies. */
-export function formatLead(
-  label: string,
-  n: number,
-  required?: number | null,
-): string {
-  const value = n === 0 ? "0" : n > 0 ? `+${n}` : `${n}`;
-  return required == null
-    ? `${label}${value}`
-    : `${label}${value}/${required}`;
+/** "Defense -150 -> 450" / "Disease +1 -> 3" for the round summary and the
+ *  activity log: the delta this event moved the score by, then where it
+ *  landed. One spelling for both surfaces, so they cannot quote different
+ *  numbers for the same event. ASCII "->", never a unicode arrow: nothing in
+ *  this codebase uses one. */
+export function standingChangeText(c: StandingChange): string {
+  const delta = c.after - c.before;
+  const signed = delta > 0 ? `+${delta}` : `${delta}`;
+  const track = c.track === "defense" ? "Defense" : "Disease";
+  return `${track} ${signed} -> ${c.after}`;
 }
 
-/** "Might +1 -> 0" for the round summary: both numbers are the human's signed
- *  lead over the other side, direction included - the same convention as the
- *  map badges and the scoreboard. ASCII "->", never a unicode arrow: nothing
- *  in this codebase uses one. */
-export function standingChangeText(c: { before: number; after: number }): string {
-  return `Might ${formatLead("", c.before)} -> ${formatLead("", c.after)}`;
-}
-
-/** The sign colour of a standing value: positive is yours to press, negative is
- *  theirs, zero is neither. One scale for the map badges, the activity log, the
- *  round summary and the hover, so a number never changes meaning by moving
- *  between them. The classes only name the tone - each surface declares what
- *  the tone looks like against its own background. */
-export function leadClass(n: number): string {
-  return n > 0 ? "lead-good" : n < 0 ? "lead-bad" : "lead-even";
+/** The tone of a score movement as the HUMAN reads it: their polygon losing
+ *  defense is bad, a rival's losing it is pressure working. The caller says
+ *  whose side the moved score sits on; the classes only name the tone - each
+ *  surface declares what the tone looks like against its own background. */
+export function leadClass(delta: number): string {
+  return delta > 0 ? "lead-good" : delta < 0 ? "lead-bad" : "lead-even";
 }
 
 /** Smallest view that covers the whole map, centered, with the viewport's aspect. */

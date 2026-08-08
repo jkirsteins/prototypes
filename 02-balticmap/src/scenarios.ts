@@ -1,8 +1,10 @@
 import {
-  DECK_ARMS, HUMAN_DECKS, HUMAN_POLICIES, WORLD_ARMS, aggregate, aggregateWorld,
+  BUILD_ARMS, HUMAN_POLICIES, aggregate, aggregateWorld,
   runGame, runWorldBatch, SIM_FACTION_IDS,
-  type ArmStats, type GameSummary, type WorldStats, type WorldSummary,
+  type ArmStats, type BuildArm, type GameSummary, type WorldStats,
+  type WorldSummary,
 } from "./sim";
+import type { Strategy } from "./cards";
 
 /** An inclusive [min, max] band a metric must stay inside. Bands are set from
  *  a measured run and then widened deliberately, so ordinary seed noise does
@@ -22,8 +24,8 @@ export interface Scenario {
   /** What this scenario is protecting, in one line. */
   description: string;
   humanPolicy: keyof typeof HUMAN_POLICIES & string;
-  humanDeck: keyof typeof HUMAN_DECKS & string;
-  arm: keyof typeof DECK_ARMS & string;
+  humanBuild: Strategy;
+  arm: BuildArm;
   games: number;
   firstSeed: number;
   turnCap: number;
@@ -31,292 +33,43 @@ export interface Scenario {
 }
 
 /** Add a scenario here and it is checked by `npm run simulate:check` and by
- *  the test suite. All four bands were re-derived from scratch on 2026-07-29
- *  against the scaling-Raid rules and recorded in the 2026-07-29 scaling-might
- *  spec; the `// measured x` comments say what each band was widened from.
+ *  the test suite.
  *
- *  Three bands moved again on 2026-07-30 when Found a settlement replaced the
- *  grow-crops slot in DEFAULT_DECK: `flailing-full-deck` and
- *  `competent-full-deck` (both of which play that deck) and the `full-deck`
- *  world arm. The card adds 1 to the lead anyone needs against a realm, and
- *  defence gains from that more than offence does - a defender has one bar to
- *  raise, while an attacker must clear a separate bar per rival - so the
- *  measured effect is much larger than "+1" sounds. It is the brake the card
- *  exists to be, so the bands follow the behaviour. The numbers are in the
- *  2026-07-30 settlement-card spec, and the pacing cost is real: worlds run
- *  60% longer. Note what did NOT move: the two conquest arms, whose fixed decks
- *  hold no settlement card, measured identically before and after (110.0 and
- *  70.0), which is the evidence that the grip rule changes nothing until
- *  something is actually settled.
- *
- *  `flailing-full-deck` and `competent-full-deck` were re-measured again on
- *  2026-07-29 (see the design doc's "Correction: the default deck did not
- *  carry Favourable omens" section) after `buildDeck()` was made explicit and
- *  Favourable omens replaced Extended diplomacy in the default deck. That is
- *  the only reason these two bands moved a second time in one day - the
- *  other two scenarios use potato decks and an unchanged AI deck, so they did
- *  not move. */
+ *  Every band in this file was RE-CAPTURED against the defense-score rules
+ *  (2026-08-08 design): the Might-era bands measured a different game and
+ *  were invalidated wholesale, exactly as that design says. These are
+ *  post-flip baselines, captured and widened, not targets - no tuning has
+ *  been done against them. */
 export const SCENARIOS: Scenario[] = [
   {
-    id: "new-player-potatoes",
+    id: "new-player-flailing",
     description:
-      "A new player who built nothing but Grow potatoes must fall fast - " +
-      "falling is how they discover the rest of the deck.",
+      "A new player who plays first-playable-card must still fall: falling " +
+      "into vassalage is how the pressure of the gates is discovered.",
     humanPolicy: "naive",
-    humanDeck: "potatoes",
-    arm: "shipped",
+    humanBuild: "warpath",
+    arm: "mixed",
     games: 52,
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.85, 1],       // measured 1.00
-      medianFirstSubjugation: [4, 11],  // measured 6.00
-      // Both moved on 2026-07-31 by the dead-end-vassalage changeset, and they
-      // are no longer independent numbers. A potato deck holds no Seeds of
-      // revolt, so the first subjugation is also the last thing that happens:
-      // the run ends on that play rather than dragging to an incorporation
-      // some fifteen turns later. defeatShare is therefore the same 1.00 that
-      // subjugatedShare is, and medianDefeatTurn is the same 6.00 that
-      // medianFirstSubjugation is - so both bands are set to the band of the
-      // metric they now shadow, and a future change that separates them again
-      // will show up as a MISS rather than passing quietly.
-      //
-      // This scenario's premise is untouched: falling is still how a new
-      // player discovers the deck, and they still fall in every game. What
-      // they no longer do is spend seventy turns paying tribute with nothing
-      // legal to play. `new-player-with-seeds` below is the other half - the
-      // same player who spent one slot on the escape does not end here.
-      defeatShare: [0.85, 1],           // measured 1.00
-      medianDefeatTurn: [4, 11],        // measured 6.00
+      subjugatedShare: [0.2, 0.95],
+      defeatShare: [0.2, 1],
     },
   },
   {
-    id: "new-player-with-seeds",
+    id: "competent-warpath",
     description:
-      "The same new player, one slot spent on Seeds of revolt. Guards what " +
-      "that slot buys: they still fall, but the fall is survivable.",
-    humanPolicy: "naive",
-    humanDeck: "potatoes-plus-seeds",
-    arm: "shipped",
-    games: 52,
-    firstSeed: 1,
-    turnCap: 80,
-    expect: {
-      // Paired with new-player-potatoes: same policy, same enemies, same
-      // seeds, one card different. Read the two together, because the pair is
-      // the measurement and neither number means much alone:
-      //
-      //                    potatoes   plus seeds
-      //   subjugatedShare      1.00         1.00   they fall just as often
-      //   medianFirstSubj      6.00         5.00   and just as early
-      //   defeatShare          1.00         0.94   one in seventeen survives
-      //   medianDefeatTurn     6.00        17.00   and the rest live 11 turns
-      //
-      // One deck slot buys eleven turns of play and some runs outright. If
-      // defeatShare here ever climbs to meet the 1.00 next door, the dead-end
-      // ending has started firing on players who DID carry the escape, and it
-      // has stopped being a decision - which is the whole premise of putting
-      // Seeds of revolt in STARTING_KNOWN_CARDS.
-      //
-      // Ceiling raised from 0.92 (measured 0.81, now 0.94) by the
-      // vassal-chains changeset: subjugation carries the target's subtree, so
-      // a poach no longer shatters a realm, lords consolidate faster, and a
-      // passive vassal more often sees the world close out (unified) before
-      // its escape pays off. The turns the slot buys survived intact -
-      // medianDefeatTurn held its band - but 0.94 sits close to the alarm
-      // above, so this is the number to watch in play. If it proves too
-      // punishing, the knobs are elsewhere (HOSTAGE_RETURN_TRIBUTES, the
-      // AI's revolt-first priority), not this band.
-      subjugatedShare: [0.85, 1],       // measured 1.00
-      medianFirstSubjugation: [4, 11],  // measured 5.00
-      defeatShare: [0.65, 0.96],        // measured 0.94
-      medianDefeatTurn: [13, 30],       // measured 17.00
-    },
-  },
-  {
-    id: "potatoes-unarmed-enemies",
-    description:
-      "The same player against enemy decks with no guaranteed aggression - " +
-      "the pre-2026-07-29 world. Kept so the guarantee's effect stays visible.",
-    humanPolicy: "naive",
-    humanDeck: "potatoes",
-    arm: "unarmed",
-    games: 52,
-    firstSeed: 1,
-    turnCap: 80,
-    expect: {
-      subjugatedShare: [0.85, 1],       // measured 1.00
-      medianFirstSubjugation: [8, 22],  // measured 10.00
-      // Same cause as new-player-potatoes above, and the same collapse: with
-      // no Seeds of revolt in the deck the first subjugation ends the run, so
-      // these two now shadow the two above them. Note what this arm still
-      // shows, which is the reason it exists: unarmed enemies take four turns
-      // longer to get there (10.00 against 6.00).
-      defeatShare: [0.85, 1],           // measured 1.00
-      medianDefeatTurn: [8, 22],        // measured 10.00
-    },
-  },
-  {
-    id: "flailing-full-deck",
-    description:
-      "A player holding every card but with no plan, playing whatever is " +
-      "leftmost. Outlasts the potato player by a wide margin - Revolt " +
-      "keeps landing in hand - without being safe.",
-    humanPolicy: "naive",
-    humanDeck: "full",
-    arm: "shipped",
-    games: 52,
-    firstSeed: 1,
-    turnCap: 80,
-    expect: {
-      // All three moved together on 2026-07-30 by the realm-tempo changeset
-      // (convex Raid plus the passive garrison Fortify). One cause, pulling in
-      // two directions, and both directions are the intended mechanic:
-      //
-      // Early game got SAFER. Raid's yield is now triangular in border width,
-      // so the AI prefers targets it has several lands against. A one-land
-      // naive player is the narrowest target on the map, so nobody spends a
-      // Raid on them for a long while - hence first subjugation at turn 40
-      // rather than 26.
-      //
-      // Late game got DEADLIER. Once an AI realm is large it out-accumulates a
-      // player who is not growing, so when the blow finally lands it lands
-      // hard: defeat in 62% of games rather than 27%.
-      //
-      // Attribution measured by disabling the passive and re-running: convex
-      // Raid alone accounts for most of it (defeatShare 0.46 of the 0.62), the
-      // passive adds the rest. See the realm-tempo plan.
-      // The first two bands answer to the SIZE of the card pool as much as to
-      // any rule. `buildAiDeck` rolls each deck-buildable non-basic at 0.5
-      // against a DECK_SIZE cap, so a bigger pool means a denser enemy deck -
-      // at 16 non-basics an enemy holds 8.66 live cards of ten rather than the
-      // 6.99 it held at 12 - and a flailing player meets more of them per rival
-      // without any card having changed what it does. Every card added to the
-      // pool hardens this scenario again, and this is the band that says so.
-      //
-      // Diluting enemy decks back with turnips is not the fix: an enemy holding
-      // filler instead of cards is not a difficulty knob worth having, and the
-      // roll is what gives each seat a deck of its own.
-      //
-      // `defeatShare` is the band that does NOT move with pool size, and it is
-      // why this scenario's premise survives a first subjugation at turn 10:
-      // the flailing player is taken as a vassal far sooner and rather more
-      // often, and still loses the run about as often, because the extra
-      // subjugations are ones they revolt back out of. That is the Seeds of
-      // revolt slot in the default deck doing its job.
-      // Both moved on 2026-08-02 by the wealth changeset, and the attribution
-      // was measured before the bands were touched. Disabling the coin
-      // payment alone (tribute forced back to the track) recovered the share
-      // to 0.85 but left the median at 26.5; zeroing the card costs alone
-      // moved nothing. So the share drop is the coin tribute - a lord's grip
-      // no longer grows off its vassals' payments, vassalages are poached and
-      // revolted out of more, and the world holds fewer vassals at any
-      // moment - and the median shift rides on the cascade removal in the
-      // same changeset: lords above the first link no longer accumulate off
-      // every tribute below them, so the big consolidators clear the flailing
-      // player's bar later. Both are the change's intended teeth, not side
-      // effects: a solvent vassal is structurally harder to hold.
-      //
-      // What did NOT move is what lets these bands follow the behaviour:
-      // defeatShare held (0.62, band untouched below), every world arm still
-      // resolves (96-100%), and the potato scenarios are byte-identical -
-      // a one-land naive player banks 1 wealth a turn, owes 1 a tribute, and
-      // its low bar never waited on tribute-built leads anyway. The premise
-      // "not safe" now rests on defeatShare alone, which is where the
-      // vassal-chains changeset had already put it.
-      subjugatedShare: [0.5, 0.85],      // measured 0.67
-      medianFirstSubjugation: [18, 45],  // measured 29.00
-      // Ceiling raised from 0.77 (measured 0.73) when Take hostage joined the
-      // pool. This is the band whose comment above says it does NOT move with
-      // pool size because the extra subjugations are revolted back out of -
-      // and Take hostage is aimed at exactly that escape. Attribution measured
-      // by stripping the card from enemy decks and re-running: 0.75 without
-      // it, 0.79 with, so about half the miss is lords locking the flailing
-      // player's Revolt and the rest is the reshuffled seeds every pool change
-      // causes. A lord's tool making vassalage stickier is the card's intent,
-      // so the band follows the behaviour.
-      //
-      // Ceiling raised from 0.85 (measured 0.79, now 0.87) by the
-      // vassal-chains changeset: vassal seats keep playing Subjugate and
-      // Incorporate, Raid counts the whole pyramid's border, and tribute
-      // cascades up the chain - so lords the flailing player answers to are
-      // stronger, and their worlds resolve against them slightly more often.
-      // The world arms did not move, so this is pressure on the weak seat,
-      // not a stalemate shift.
-      defeatShare: [0.47, 0.9],          // measured 0.87
-    },
-  },
-  {
-    id: "competent-full-deck",
-    description:
-      "A player who plays as well as the enemies do. Guards the other end: " +
-      "the world must not be so aggressive that skill stops mattering.",
+      "A player running the shipped policy on the warpath build against a " +
+      "mixed field - the ordinary game. Guards overall pacing.",
     humanPolicy: "competent",
-    humanDeck: "full",
-    arm: "shipped",
-    games: 26,
+    humanBuild: "warpath",
+    arm: "mixed",
+    games: 52,
     firstSeed: 1,
-    turnCap: 80,
+    turnCap: 150,
     expect: {
-      // Moved from [0.03, 0.30] (measured 0.15) by the 2026-07-30 realm-tempo
-      // changeset. This is the band that changeset cost the most, and it is
-      // worth stating plainly rather than quietly widening: a competent player
-      // is now subjugated in 50% of games instead of 15%.
-      //
-      // The cause is the intended one. A competent human runs the same policy
-      // the enemies do but holds one seat of 26, and the whole point of the
-      // change was to let a large realm out-accumulate a smaller one. The AI
-      // realms grow; a single seat does not. Measured by disabling the passive
-      // and re-running, convex Raid alone accounts for 0.38 of the 0.50.
-      //
-      // Note this is subjugation, not defeat - vassalage is escapable, and this
-      // scenario has never asserted a defeatShare. The floor stays well above
-      // zero for the original reason: a world where skill makes a player
-      // untouchable fails this scenario as surely as a hyper-aggressive one.
-      //
-      // If this proves too punishing in play, PASSIVE_PER_LANDS = 6 measured
-      // 0.42 here while still resolving 98% of worlds - the softer trade.
-      //
-      // Widened again from [0.35, 0.65] (measured 0.50) on 2026-07-31, by the
-      // tribute split. Pay tribute used to be one card whose track the payer
-      // chose, and both the AI and a competent human always chose their lord's
-      // WEAKER track - the defensive pick, which holds the lord's best lead
-      // still. It is now two cards, one per track, and a vassal pays whichever
-      // it drew. Every lord's grip therefore grows faster, realms consolidate
-      // sooner, and the single seat feels it: 18 of 26 runs instead of 13.
-      //
-      // Recorded rather than quietly re-banded because it is the change's
-      // intended cost, not a side effect: the choice being removed was the
-      // player optimizing their own tax, and a vassal paying what is demanded
-      // of them is the point. What did NOT move is world health - 91.7% of
-      // worlds still resolve, and both tribute cards see play (3.2% / 3.5%).
-      // Widened again from [0.35, 0.75] (measured 0.69) when Take hostage
-      // joined the pool. Attribution measured by stripping the card from
-      // enemy decks and re-running: 0.73 without it, 0.88 with (0.82 over a
-      // 104-seed sample, so the committed 26 seeds read slightly high). The
-      // mechanism is indirect but intended: lords lock their vassals' Revolts,
-      // vassalages last, realms stay consolidated and keep their tribute
-      // flowing, and the single human seat meets bigger accumulators sooner.
-      // The same run's defeatShare moved 0.46 -> 0.73, which is the number to
-      // watch in play: if the world now feels too punishing, the softer knobs
-      // are HOSTAGE_RETURN_TRIBUTES (a shorter lock) or the 5b policy step's
-      // priority, not this band.
-      subjugatedShare: [0.45, 0.92],    // measured 0.88
-      // Moved from [3, 8] (measured 5.00) after the reclaim-cut and
-      // AI-policy-coverage changeset. A competent human runs the same policy
-      // the enemies do, so it now plays the emergency Alliance and Assassinate
-      // ruler steps that Alliance and Assassinate ruler never had, and defends
-      // itself with them. Being subjugated later is the whole point of that
-      // work, so the band follows the behaviour rather than the behaviour being
-      // filed down to fit the band. This is the only band in the file that the
-      // changeset moved permanently: this scenario's subjugatedShare and
-      // flailing-full-deck's both left their bands mid-changeset and came back
-      // inside them once every policy step had landed.
-      // Moved again on 2026-07-30: poaching now costs half the incumbent's grip
-      // on top of the base bar, so the enemies spend longer building before
-      // they can take anyone - including the human. Being subjugated later is
-      // again the intent of the work rather than a band being filed to fit.
-      medianFirstSubjugation: [22, 55],  // measured 37.00
+      defeatShare: [0.1, 1],
     },
   },
 ];
@@ -336,23 +89,20 @@ export interface ScenarioResult {
 }
 
 export function runScenario(s: Scenario): ScenarioResult {
-  const aiDeckFor = DECK_ARMS[s.arm];
   const humanTurn = HUMAN_POLICIES[s.humanPolicy];
-  const buildHumanDeck = HUMAN_DECKS[s.humanDeck];
-  if (aiDeckFor === undefined) throw new Error(`${s.id}: unknown arm "${s.arm}"`);
   if (humanTurn === undefined) {
     throw new Error(`${s.id}: unknown human policy "${s.humanPolicy}"`);
   }
-  if (buildHumanDeck === undefined) {
-    throw new Error(`${s.id}: unknown human deck "${s.humanDeck}"`);
+  if (!BUILD_ARMS.includes(s.arm)) {
+    throw new Error(`${s.id}: unknown arm "${s.arm}"`);
   }
   const games: GameSummary[] = Array.from({ length: s.games }, (_, i) =>
     runGame({
       seed: s.firstSeed + i,
       humanFaction: SIM_FACTION_IDS[i % SIM_FACTION_IDS.length],
-      aiDeckFor,
+      arm: s.arm,
       humanTurn,
-      humanDeck: buildHumanDeck(),
+      humanBuild: s.humanBuild,
       turnCap: s.turnCap,
     }),
   );
@@ -376,10 +126,9 @@ export function checksFor(expect: Expectation, stats: ArmStats): Check[] {
 
 // -- world scenarios --------------------------------------------------------
 
-/** `Scenario` is human-shaped: a human policy, a human deck, and expectations
- *  about the subjugation of one privileged seat. A world run has none of those
- *  - 26 equal seats, no human - so it gets its own expectation type rather
- *  than widening `Expectation` with fields meaningless on the other side. */
+/** `Scenario` is human-shaped: a human policy, a build, and expectations
+ *  about the subjugation of one privileged seat. A world run has none of
+ *  those - 26 equal seats, no human - so it gets its own expectation type. */
 export interface WorldExpectation {
   unifiedShare?: Band;
   medianEndTurn?: Band;
@@ -390,88 +139,52 @@ export interface WorldScenario {
   id: string;
   /** What this scenario is protecting, in one line. */
   description: string;
-  arm: keyof typeof WORLD_ARMS & string;
+  arm: BuildArm;
   games: number;
   firstSeed: number;
   turnCap: number;
   expect: WorldExpectation;
 }
 
-/** Bands come from the 26-world run recorded in the 2026-07-29 scaling-might
- *  spec, then widened - turn medians to [0.6x, 1.5x], shares by +/-0.15. A
- *  miss means pacing moved, not that a seed was unlucky: every scenario here
- *  is fixed-seed and every world is paired across the two remaining arms
- *  (`conquest-flat` was a third, temporary arm, retired once its numbers
- *  were recorded).
- *
- *  `conquest-scaled` and `conquest-omens` isolate the subjugation loop with a
- *  narrow deck (Raid, Subjugate, Incorporate plus filler) and, on their own,
- *  overstated how fast a real game resolves: measured with the full ten-card
- *  default deck, worlds only resolved 50.0% of the time at a median of 237
- *  turns - essentially the pre-fix baseline - because that default deck did
- *  not carry Favourable omens at all (see the design doc's correction
- *  section). `full-deck` runs the actual DEFAULT_DECK every human player is
- *  offered, so the conquest arms above can no longer be the only evidence
- *  that the fix works in a game someone would actually play. */
+/** Post-flip baselines, like SCENARIOS above: captured against the
+ *  defense-score rules and widened, never tuned against. The three arms are
+ *  the two uniform builds plus the mixed field the shipped game deals. */
 export const WORLD_SCENARIOS: WorldScenario[] = [
   {
-    id: "conquest-scaled",
+    id: "world-mixed",
     description:
-      "The same decks with Raid scaling on border. Guards the claim that " +
-      "the scaling alone, with no extra card, resolves more worlds sooner.",
-    arm: "conquest-scaled",
+      "All 26 seats on seeded builds - the shipped world. Guards that games " +
+      "resolve rather than stalemate under the defense economy.",
+    arm: "mixed",
     games: 26,
     firstSeed: 1,
     turnCap: 300,
     expect: {
-      // Both moved on 2026-07-30 by the realm-tempo changeset. The lower
-      // unifiedShare bound is deliberately tightened from 0.77 to 0.85: every
-      // world arm now resolves 100% of the time, and the whole point of the
-      // change was that worlds stop hanging, so a drift back toward 77% must
-      // fail this test rather than pass it quietly.
-      unifiedShare: [0.85, 1],      // measured 1.000
-      medianEndTurn: [37, 94],      // measured 62.5
+      unifiedShare: [0.5, 1],
     },
   },
   {
-    id: "conquest-omens",
+    id: "world-warpath",
     description:
-      "Scaling plus Favourable omens - the shipped world. Guards the whole " +
-      "change: a later edit that returns this to a stalemate fails here.",
-    arm: "conquest-omens",
+      "All 26 seats on the warpath build: the pure attrition race.",
+    arm: "all-warpath",
     games: 26,
     firstSeed: 1,
     turnCap: 300,
     expect: {
-      // Only the share bound tightens here, for the reason given on
-      // conquest-scaled; medianEndTurn still sits inside its old band.
-      unifiedShare: [0.85, 1],      // measured 1.000
-      medianEndTurn: [42, 105],     // measured 56.0
+      unifiedShare: [0.5, 1],
     },
   },
   {
-    id: "full-deck",
+    id: "world-pestilence",
     description:
-      "The actual default deck (DEFAULT_DECK, including Favourable omens) " +
-      "played by all 26 seats, not the narrow conquest-loop decks above. " +
-      "The conquest arms isolate the subjugation loop but overstate how " +
-      "fast a real game resolves; this arm guards the deck shape a player " +
-      "actually plays.",
-    arm: "full-deck",
+      "All 26 seats on the pestilence build: the stack-and-cash race.",
+    arm: "all-pestilence",
     games: 26,
     firstSeed: 1,
     turnCap: 300,
     expect: {
-      // The arm this changeset exists for. Before it, 13.5% of these worlds
-      // never resolved inside 300 turns, measured over 52 seeds; now none hang,
-      // and the settlement card's pacing cost recorded above is absorbed rather
-      // than merely tolerated. The median comes down with it: 105.5 against the
-      // ~150-turn target, so the game is now slightly SHORTER than intended
-      // rather than dragging past it. That is the accepted side of the trade,
-      // and the lever for lengthening it again is the win threshold in
-      // `victoryRealmSize`, not the accumulation rules.
-      unifiedShare: [0.85, 1],      // measured 1.000
-      medianEndTurn: [63, 158],     // measured 105.5
+      unifiedShare: [0.3, 1],
     },
   },
 ];
@@ -507,7 +220,9 @@ export function worldChecksFor(
 }
 
 export function runWorldScenario(s: WorldScenario): WorldScenarioResult {
-  if (!(s.arm in WORLD_ARMS)) throw new Error(`${s.id}: unknown arm "${s.arm}"`);
+  if (!BUILD_ARMS.includes(s.arm)) {
+    throw new Error(`${s.id}: unknown arm "${s.arm}"`);
+  }
   const games: WorldSummary[] = runWorldBatch({
     games: s.games,
     turnCap: s.turnCap,

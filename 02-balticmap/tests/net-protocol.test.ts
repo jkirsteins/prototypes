@@ -1,22 +1,105 @@
 import { describe, it, expect } from "vitest";
 import {
-  newGame, startGame, chooseDeck, pickFaction, advance, type GameState,
+  newGame, startGame, chooseBuild, pickFaction, advance, type GameState,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
-import { buildDeck, type Rng } from "../src/cards";
+import type { Rng } from "../src/cards";
 import { seededRng } from "../src/rng";
 import {
-  applyNetAction, applyUpdate, buildUpdate, guestPhaseView, seatOfFaction,
-  validateAction, wirePair, type NetMessage,
+  applyNetAction, applyUpdate, buildUpdate, cardSetHash, guestPhaseView,
+  PROTOCOL_VERSION, seatOfFaction, validateAction, wirePair, type NetMessage,
 } from "../src/net-protocol";
+import { createHostSession, type HostDeps } from "../src/net-host";
 
 const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
 function freshGame(rng: Rng): GameState {
   let g = startGame(newGame(FACTIONS));
-  g = chooseDeck(g, buildDeck());
+  g = chooseBuild(g, "warpath");
   return pickFaction(g, "alpha", rng);
 }
+
+function withHand(g: GameState, seat: number, hand: string[]): GameState {
+  return {
+    ...g,
+    players: g.players.map((p, i) => (i === seat ? { ...p, hand } : p)),
+  };
+}
+
+/** The smallest host over one wire: enough deps to test the handshake and
+ *  the lobby shapes without the whole net-pipe harness. */
+function smallHost(rng: Rng) {
+  const [hostWire, guestWire] = wirePair();
+  let game = freshGame(rng);
+  const deps: HostDeps = {
+    getGame: () => game,
+    setGame: (g) => { game = g; },
+    rng,
+    name: "Hosta",
+    rules: () => ({ turn: "standard" }),
+    hostFactionId: () => "alpha",
+    onGuestHello: () => {},
+    onGuestPick: () => {},
+    onGuestAction: () => {},
+    onClosed: () => {},
+  };
+  const session = createHostSession(hostWire, deps);
+  const got: NetMessage[] = [];
+  let closed = false;
+  guestWire.onMessage((m) => got.push(m));
+  guestWire.onClose(() => { closed = true; });
+  return { session, guestWire, got, isClosed: () => closed };
+}
+
+describe("handshake", () => {
+  it("speaks protocol version 2 - the defense-score wire", () => {
+    // Bumped when the message set changes shape; v2 is the flip that put
+    // `build` on lobby-guest and `harvest` on the play action. Two deploys
+    // on different versions must refuse, not desync.
+    expect(PROTOCOL_VERSION).toBe(2);
+  });
+
+  it("refuses a hello from a different protocol version at the lobby", () => {
+    const h = smallHost(seededRng(1));
+    h.guestWire.send({
+      type: "hello", version: PROTOCOL_VERSION + 1, cards: cardSetHash(),
+      name: "Gusta",
+    });
+    expect(h.got.map((m) => m.type)).toEqual(["refuse"]);
+    expect(h.isClosed()).toBe(true);
+  });
+});
+
+describe("lobby-guest", () => {
+  it("carries the guest's BUILD and faction - the deck retired with the meta system", () => {
+    const h = smallHost(seededRng(1));
+    h.guestWire.send({
+      type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+      name: "Gusta",
+    });
+    h.guestWire.send({
+      type: "lobby-guest", build: "pestilence", factionId: "gamma",
+    });
+    expect(h.session.guestPick())
+      .toEqual({ build: "pestilence", factionId: "gamma" });
+  });
+
+  it("rejects an unknown faction and the host's own faction", () => {
+    const h = smallHost(seededRng(1));
+    h.guestWire.send({
+      type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+      name: "Gusta",
+    });
+    h.guestWire.send({
+      type: "lobby-guest", build: "warpath", factionId: "atlantis",
+    });
+    h.guestWire.send({
+      type: "lobby-guest", build: "warpath", factionId: "alpha",
+    });
+    expect(h.got.filter((m) => m.type === "reject")).toHaveLength(2);
+    expect(h.session.guestPick()).toBeNull();
+  });
+});
 
 describe("action validation", () => {
   it("accepts the current seat's play of the card actually at that index", () => {
@@ -54,6 +137,63 @@ describe("action validation", () => {
       type: "play", cardIndex: 0, cardId: "not-the-card-at-0",
     })).toMatch(/hand/);
   });
+
+  it("refuses a harvest pick from outside the chooser's own pool", () => {
+    // The host can recompute harvestPool, so a stale or fabricated pick is
+    // refused rather than shuffled in. Seat 0 is on the warpath build:
+    // spread-disease belongs to the other build's pool.
+    const rng = seededRng(3);
+    const g = withHand(freshGame(rng), 0, ["turnip-harvest"]);
+    expect(validateAction(g, 0, g.turn, {
+      type: "play", cardIndex: 0, cardId: "turnip-harvest",
+      harvest: { cardId: "spread-disease" },
+    })).toMatch(/pool/);
+    // A pick from the pool, and a skip, both pass.
+    expect(validateAction(g, 0, g.turn, {
+      type: "play", cardIndex: 0, cardId: "turnip-harvest",
+      harvest: { cardId: "war-council" },
+    })).toBeNull();
+    expect(validateAction(g, 0, g.turn, {
+      type: "play", cardIndex: 0, cardId: "turnip-harvest",
+      harvest: { skip: true },
+    })).toBeNull();
+  });
+});
+
+describe("applyNetAction", () => {
+  it("routes end-turn to endTurn only under unlimited rules (standard refuses)", () => {
+    const rng = seededRng(5);
+    const g = freshGame(rng);
+    expect(applyNetAction(g, rng, { type: "end-turn" })).toBe(g);
+  });
+
+  it("passes the harvest pick through to playCard", () => {
+    const rng = seededRng(5);
+    const g = withHand(freshGame(rng), 0, ["turnip-harvest"]);
+    const next = applyNetAction(g, rng, {
+      type: "play", cardIndex: 0, cardId: "turnip-harvest",
+      harvest: { cardId: "war-council" },
+    });
+    expect(next).not.toBe(g);
+    expect(next.log.at(-1)).toMatchObject({
+      type: "harvest-picked", cardId: "war-council",
+    });
+    expect(next.players[0].deck).toContain("war-council");
+  });
+
+  it("honours a skip - no pick, no card gained", () => {
+    const rng = seededRng(5);
+    const g = withHand(freshGame(rng), 0, ["turnip-harvest"]);
+    const next = applyNetAction(g, rng, {
+      type: "play", cardIndex: 0, cardId: "turnip-harvest",
+      harvest: { skip: true },
+    });
+    expect(next).not.toBe(g);
+    expect(next.log.at(-1)).toMatchObject({
+      type: "play", cardId: "turnip-harvest",
+    });
+    expect(next.log.some((e) => e.type === "harvest-picked")).toBe(false);
+  });
 });
 
 describe("updates", () => {
@@ -76,14 +216,6 @@ describe("updates", () => {
       }
     }
     expect(guest).toEqual(host);
-  });
-});
-
-describe("applyNetAction", () => {
-  it("routes end-turn to endTurn only under unlimited rules (standard refuses)", () => {
-    const rng = seededRng(5);
-    const g = freshGame(rng);
-    expect(applyNetAction(g, rng, { type: "end-turn" })).toBe(g);
   });
 });
 
@@ -126,22 +258,6 @@ describe("guestPhaseView", () => {
     expect(guestPhaseView(g, "beta")).toBe("victory");
     // Somebody else took the host: both humans lost this one.
     expect(guestPhaseView(g, "gamma")).toBe("defeat");
-  });
-
-  // A dead-end vassalage is nobody's act this turn - the overlord on a
-  // `stranded` event is a standing relationship, not a blow struck.
-  it("leaves a stranded host as a defeat for the guest that holds it", () => {
-    const rng = seededRng(5);
-    const base = freshGame(rng);
-    const g: GameState = {
-      ...base,
-      phase: "defeat",
-      log: [...base.log, {
-        turn: base.turn, playerId: 2, type: "stranded",
-        targetFactionId: "alpha", overlordFactionId: "beta",
-      }],
-    };
-    expect(guestPhaseView(g, "beta")).toBe("defeat");
   });
 });
 

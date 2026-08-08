@@ -14,9 +14,9 @@ vi.mock("../src/animate", () => ({
 
 import { createHud, type HudCallbacks } from "../src/hud";
 import {
-  newGame, startGame, chooseDeck, pickFaction, playCard,
+  newGame, startGame, chooseBuild, pickFaction, playCard,
 } from "../src/game";
-import { buildDeck, type Rng } from "../src/cards";
+import type { Rng } from "../src/cards";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -38,7 +38,7 @@ describe("afterPlayAnimation watchdog", () => {
       ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
     ]));
 
-    let g = pickFaction(chooseDeck(startGame(newGame(FACTIONS)), buildDeck()), "beta", seededRng(1));
+    let g = pickFaction(chooseBuild(startGame(newGame(FACTIONS)), "warpath"), "beta", seededRng(1));
     hud.update(g); // opening draw - the mocked flyCard never resolves it either
     const p0 = { ...g.players[0], hand: ["grow-crops"] };
     g = { ...g, players: [p0, ...g.players.slice(1)] };
