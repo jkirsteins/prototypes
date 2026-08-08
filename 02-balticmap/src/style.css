@@ -1795,3 +1795,17 @@ svg.map.dragging {
 }
 .net-panel .net-status { margin-top: 6px; min-height: 1em; opacity: 0.9; }
 .net-panel .hidden { display: none; }
+
+/* A live connection is not a lobby. The name field, "Host a game" and the
+   Join row are the controls for MAKING a connection and have nothing to say
+   while one is running, so a connected panel is its status line, its invite
+   block (.net-copy-row, not .net-row - deliberately untouched here) and
+   Reconnect. A drop clears the class and brings them all back.
+
+   Compound selectors, so specificity (0,3,0) settles this against both
+   `.net-panel .net-row`'s display and the `.hidden` rule above rather than
+   source order - the convention the two rules above already rely on. */
+.net-panel.net-connected .net-row,
+.net-panel.net-connected .net-host {
+  display: none;
+}

@@ -6,6 +6,12 @@ export interface NetPanel {
   root: HTMLElement;
   name(): string;
   setVisible(v: boolean): void;
+  /** Whether a connection is live. A connected panel drops the controls
+   *  for MAKING one - the name field, Host and Join - and keeps what a
+   *  running game still has use for: the status line, the invite block
+   *  and Reconnect. Only the class is set here; which children that
+   *  hides is style.css's business. */
+  setConnected(connected: boolean): void;
   setStatus(text: string): void;
   showInvite(link: string, peerId: string): void;
   showReconnect(fn: () => void): void;
@@ -99,6 +105,9 @@ export function createNetPanel(
       (nameInput.value.trim().length > 0 ? nameInput.value.trim() : defaultName),
     setVisible(v) {
       root.classList.toggle("hidden", !v);
+    },
+    setConnected(connected) {
+      root.classList.toggle("net-connected", connected);
     },
     setStatus(text) {
       status.textContent = text;

@@ -1143,6 +1143,36 @@ function afterHumanPlay(): void {
   afterHumanAction();
 }
 
+/** A fresh world on the deck screen: everything the New game click does once
+ *  this run's progress has been banked and any network game settled.
+ *
+ *  Extracted because the HOST runs the identical flow unasked, the moment a
+ *  guest connects. A host left sitting on the main menu while its friend is
+ *  already picking a deck is a lobby that looks broken from both ends - the
+ *  guest is waiting on a pick the host has not been offered the screen to
+ *  make. Two copies of this would be two chances to forget the pin, the
+ *  settlements or the stale continuation. */
+function startStagingRun(): void {
+  // Belt-and-braces: onNewGame is unreachable mid-resolution in practice
+  // (the menu is hidden while playing, and the postmortem appears only
+  // once the run has ended), but a stray call must not leave a stale
+  // continuation armed against the fresh game that follows.
+  resolving = false;
+  game = startGame(newGame(
+    data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
+    SITE_CAPS,
+  ));
+  clearFoundedSettlements();
+  disarm();
+  // A pin must not outlive the run it was set in: the fresh game re-colours
+  // every polygon, and the held highlight would describe the last one.
+  interaction.deselect();
+  runBanked = false;
+  packReveal = null;
+  deckScreen.update(deckScreenView(true));
+  refresh();
+}
+
 const hud = createHud(
   app,
   {
@@ -1162,30 +1192,14 @@ const hud = createHud(
         localSeat = 0;
         app.classList.remove("net-guest");
         hud.setWaiting(null);
+        netPanel.setConnected(false);
       } else if (net.role === "host") {
         // The fresh game holds no pick, so the lobby must stop reporting one
         // or the guest's map keeps a land marked as taken.
         net.hostPick = null;
         net.session?.sendLobby();
       }
-      // Belt-and-braces: onNewGame is unreachable mid-resolution in practice
-      // (the menu is hidden while playing, and the postmortem appears only
-      // once the run has ended), but a stray call must not leave a stale
-      // continuation armed against the fresh game that follows.
-      resolving = false;
-      game = startGame(newGame(
-        data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
-        SITE_CAPS,
-      ));
-      clearFoundedSettlements();
-      disarm();
-      // A pin must not outlive the run it was set in: the fresh game re-colours
-      // every polygon, and the held highlight would describe the last one.
-      interaction.deselect();
-      runBanked = false;
-      packReveal = null;
-      deckScreen.update(deckScreenView(true));
-      refresh();
+      startStagingRun();
     },
     onSurrender() {
       // Ending the run is a host-seat privilege: the engine's endings pivot
@@ -1474,8 +1488,21 @@ function attachHostWire(wire: Wire): void {
       hostFactionId: () => (net.role === "host" ? net.hostPick : null),
       onGuestHello(name) {
         if (net.role !== "host" || net.session !== session) return;
-        netPanel.setStatus(`${name} is connected.`);
+        // Two different arrivals: a rejoin into a running game, and a friend
+        // turning up to a lobby that has not dealt yet. Only the second has
+        // anything to report about progress. A player name is plain text -
+        // no faction is named on this line, and none should be.
+        netPanel.setStatus(
+          netStarted()
+            ? `${name} is connected.`
+            : `${name} is picking their deck and land...`,
+        );
+        netPanel.setConnected(true);
         netPanel.hideReconnect();
+        // The guest is already on its deck screen, so the host cannot be left
+        // on the main menu waiting to be told to press New game - it is the
+        // one seat that has to pick before either of them can start.
+        if (!netStarted() && game.phase === "main-menu") startStagingRun();
         // A drop froze this screen (see onClosed); the rejoin thaws it back
         // to whatever the turn order actually says, which is the same rule
         // resumeChain settles on.
@@ -1486,6 +1513,13 @@ function attachHostWire(wire: Wire): void {
       },
       onGuestPick() {
         if (net.role !== "host" || net.session !== session) return;
+        // Only worth saying while the host still owes a pick of its own -
+        // once both are in, tryDeal deals and the panel goes away.
+        if (net.hostPick === null) {
+          netPanel.setStatus(
+            `${session?.guestName() ?? "Your friend"} has chosen their land.`,
+          );
+        }
         tryDeal();
       },
       onGuestAction() {
@@ -1505,6 +1539,9 @@ function attachHostWire(wire: Wire): void {
         resolving = game.phase === "playing";
         hud.setWaiting(null);
         netPanel.setVisible(true);
+        // The join controls come back with the drop: this is a lobby again
+        // until somebody reconnects.
+        netPanel.setConnected(false);
         netPanel.setStatus(
           "Your friend disconnected. The game is paused until they rejoin with the same link.",
         );
@@ -1573,6 +1610,7 @@ function attachGuestWire(wire: Wire, hostId: string): void {
     onHostHello(name) {
       if (net.role !== "guest" || net.session !== session) return;
       netPanel.setStatus(`Connected to ${name}. Pick your deck and land.`);
+      netPanel.setConnected(true);
       netPanel.hideReconnect();
       // The reconnect thaws the freeze onClosed put on this screen. A game
       // already dealt has its snapshot on the way in the same breath as this
@@ -1644,6 +1682,9 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       resolving = true; // nothing can act until the host is back
       hud.setWaiting(null);
       netPanel.setVisible(true);
+      // The join controls come back with the drop - the Join field is the
+      // way to a DIFFERENT host, which Reconnect cannot offer.
+      netPanel.setConnected(false);
       netPanel.setStatus("Connection lost.");
       netPanel.showReconnect(() => startJoin(hostId));
     },
