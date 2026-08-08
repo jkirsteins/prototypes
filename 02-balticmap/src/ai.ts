@@ -138,7 +138,11 @@ function settlementTarget(
   )[0];
 }
 
-/** Deterministic policy v2; see the rules-v2 spec, "AI policy v2". */
+/** Deterministic policy v2; see the rules-v2 spec, "AI policy v2". Calls
+ *  `playableSet` with no `discards` option on purpose: the "discard" verdict
+ *  it can then return means "nothing playable" under any rule set, and
+ *  `aiTakeTurn`'s unlimited loop relies on exactly that verdict as its stop
+ *  signal, never acting on it as a real discard. */
 export function chooseAction(state: GameState): AiAction {
   const p = state.players[state.current];
   const v = viewOf(state);
