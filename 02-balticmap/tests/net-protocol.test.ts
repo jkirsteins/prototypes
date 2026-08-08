@@ -108,6 +108,41 @@ describe("guestPhaseView", () => {
     expect(guestPhaseView(g, "beta")).toBe("victory");
     expect(guestPhaseView(g, "gamma")).toBe("defeat");
   });
+
+  // The engine's `defeat` means the HOST was incorporated. If the faction
+  // that did it was the guest's own, the guest just won the game - telling
+  // it that it lost states the opposite of what it watched happen.
+  it("maps a host defeat the guest caused to victory", () => {
+    const rng = seededRng(5);
+    const base = freshGame(rng);
+    const g: GameState = {
+      ...base,
+      phase: "defeat",
+      log: [...base.log, {
+        turn: base.turn, playerId: 2, type: "defeat",
+        targetFactionId: "alpha", overlordFactionId: "beta",
+      }],
+    };
+    expect(guestPhaseView(g, "beta")).toBe("victory");
+    // Somebody else took the host: both humans lost this one.
+    expect(guestPhaseView(g, "gamma")).toBe("defeat");
+  });
+
+  // A dead-end vassalage is nobody's act this turn - the overlord on a
+  // `stranded` event is a standing relationship, not a blow struck.
+  it("leaves a stranded host as a defeat for the guest that holds it", () => {
+    const rng = seededRng(5);
+    const base = freshGame(rng);
+    const g: GameState = {
+      ...base,
+      phase: "defeat",
+      log: [...base.log, {
+        turn: base.turn, playerId: 2, type: "stranded",
+        targetFactionId: "alpha", overlordFactionId: "beta",
+      }],
+    };
+    expect(guestPhaseView(g, "beta")).toBe("defeat");
+  });
 });
 
 describe("wirePair", () => {

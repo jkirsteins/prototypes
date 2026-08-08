@@ -101,9 +101,17 @@ export function applyUpdate(
 
 /** The engine's endings are host-centric (they pivot on humanSeat, the
  *  host's seat 0). The guest maps the phase for presentation: the
- *  host's victory is the guest's defeat, and a unification by the
- *  guest's own faction is the guest's victory. See the spec's
- *  host-seat privileges section. */
+ *  host's victory is the guest's defeat, and a host `defeat` the guest
+ *  itself brought about is the guest's victory. See the spec's
+ *  host-seat privileges section.
+ *
+ *  Two ways the guest can be the cause, and both read off the same
+ *  field. `unified` names the faction that swallowed the map. `defeat`
+ *  names the faction that incorporated the host - and if that was the
+ *  guest, telling it that it lost is telling it the opposite of what it
+ *  just did. `stranded` is deliberately NOT here: a host with no way out
+ *  of its vassalage has not been beaten by anybody this turn, and the
+ *  overlord on that event is a standing relationship, not an act. */
 export function guestPhaseView(
   state: GameState, guestFactionId: string,
 ): GamePhase {
@@ -111,7 +119,7 @@ export function guestPhaseView(
   if (state.phase === "defeat") {
     const ending = state.log[state.log.length - 1];
     if (
-      ending?.type === "unified" &&
+      (ending?.type === "unified" || ending?.type === "defeat") &&
       ending.overlordFactionId === guestFactionId
     ) {
       return "victory";

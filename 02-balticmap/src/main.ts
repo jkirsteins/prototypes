@@ -273,6 +273,10 @@ type NetState =
       deckCards: string[] | null;
       /** The guest's faction, set by the start snapshot. */
       faction: string | null;
+      /** The land the host has taken, from the lobby. Marked unpickable on
+       *  the guest's map: the host's reject is a backstop, not the way a
+       *  player should learn a land is gone. */
+      taken: string | null;
     };
 
 let net: NetState = { role: "solo" };
@@ -899,12 +903,19 @@ function armedTargets(): string[] {
 
 function applyTargeting(): void {
   const targets = new Set(armedTargets());
+  // The one land a guest may not pick. Reuses the armed-card "you cannot aim
+  // here" treatment rather than inventing a second vocabulary for the same
+  // sentence - both mean "this click will do nothing".
+  const takenByHost =
+    net.role === "guest" && game.phase === "pick-faction" ? net.taken : null;
   for (const [id, el] of regionPaths) {
     const f = factionByRegion.get(id)!;
     const political = politicalFactionForPolygon(f, game.incorporated);
     const valid = armed !== null && targets.has(political);
     el.classList.toggle("target-valid", valid);
-    el.classList.toggle("target-invalid", armed !== null && !valid);
+    el.classList.toggle(
+      "target-invalid", (armed !== null && !valid) || f === takenByHost,
+    );
   }
   // Targeting cues win the map while armed - applyHighlight suppresses itself
   // then. Disarming lands here too, and brings the pin, or the live hover, back.
@@ -1071,7 +1082,12 @@ function refresh(opts?: { animate?: boolean }): void {
 
 /** Banks this run's XP and turnips into the persistent record, once per run.
  *  Both totals are derived from the log rather than carried on state, so this
- *  is the only place progress is written and it cannot double-count. */
+ *  is the only place progress is written and it cannot double-count.
+ *
+ *  Three routes end a run and every one of them calls this before refreshing:
+ *  `afterHumanAction` and `resumeChain` for a seat that plays the engine, and
+ *  the guest's `onState` - whose run ends the way its every turn arrives, as
+ *  a message, with no local call to `advance` anywhere to hang this off. */
 function bankRunProgress(): void {
   if (runBanked || game.players.length === 0) return;
   runBanked = true;
@@ -1219,6 +1235,11 @@ const hud = createHud(
         app.classList.remove("net-guest");
         hud.setWaiting(null);
         netPanel.setConnected(false);
+        // A guest's rulesPrefs was overwritten by the host's lobby and is not
+        // this player's preference at all. Re-read the saved one, or the next
+        // solo game in this tab would silently be played under the rules of a
+        // host who has gone.
+        rulesPrefs = loadRulesPrefs(storage);
       } else if (net.role === "host") {
         // The fresh game holds no pick, so the lobby must stop reporting one
         // or the guest's map keeps a land marked as taken.
@@ -1635,6 +1656,9 @@ function attachGuestWire(wire: Wire, hostId: string): void {
   net = {
     role: "guest", session: null, hostId,
     deckCards: prev?.deckCards ?? null, faction: prev?.faction ?? null,
+    // Dropped on a reconnect: the host re-sends its lobby on the next hello,
+    // and a remembered pick could be one the host has since changed.
+    taken: null,
   };
   app.classList.add("net-guest");
   // The wire being replaced is dropped, and every callback below checks it
@@ -1671,9 +1695,14 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // is theirs. The deck screen redraws so the picker shows them.
       rulesPrefs = info.rules;
       deckScreen.update(deckScreenView(game.phase === "deck-building"));
+      net.taken = info.takenFactionId;
       if (info.takenFactionId !== null) {
         netPanel.setStatus("Host has picked their land.");
       }
+      // The map has to show which land went, not just say that one did -
+      // applyTargeting greys it. Cheap and safe at any phase: it is a class
+      // toggle per polygon, and it reads `game.phase` itself.
+      applyTargeting();
     },
     onState(g, fid, source) {
       if (net.role !== "guest" || net.session !== session) return;
@@ -1692,6 +1721,14 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // line up. Correct it now: the panel is hidden here, but a later drop
       // shows it again and it must not be advertising the deck screen.
       netPanel.setStatus(`Playing with ${net.session?.hostName() ?? "the host"}.`);
+      // The guest's run ends the same way its every other turn arrives - as a
+      // message - so this is the ONLY route by which a finished game reaches
+      // this screen. Without banking here a guest that closed the tab after a
+      // full game kept none of its XP or turnips, and the postmortem's bar
+      // derived the run's start from a lifetime total this run was missing
+      // from. `runBanked` is still the once-per-run guard, so the several
+      // updates an ending can arrive in bank once between them.
+      if (game.phase === "victory" || game.phase === "defeat") bankRunProgress();
       refresh(source === "update" ? undefined : { animate: false });
       updateWaitingStatus();
     },
@@ -1852,6 +1889,13 @@ const interaction = attachInteraction(svg, regionPaths, data, {
         return true;
       }
       if (net.role === "guest") {
+        // The map already greys this land; refusing the click here is what
+        // makes the grey mean something. The host's reject still stands
+        // behind both, for the pick that crosses with the host's own.
+        if (picked === net.taken) {
+          netPanel.setStatus("The host has taken that land - pick another.");
+          return true;
+        }
         guestPickFaction(picked);
         return true;
       }
