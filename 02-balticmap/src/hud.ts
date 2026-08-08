@@ -612,6 +612,10 @@ export function createHud(
     showTip: cb.onShowTip,
     hideTip: cb.onHideTip,
     highlightFaction: cb.onHighlightFaction,
+    // Every faction name the HUD renders carries who is playing it, from this
+    // one wiring - see RichTextHooks.playerNameOf. Absent outside a network
+    // game, so nothing but a multiplayer run renders any differently.
+    playerNameOf: (id) => cb.playerNameOf?.(id) ?? null,
   };
 
   /** Whether the player could actually know this happened.
@@ -1637,16 +1641,11 @@ export function createHud(
         who.className = "sb-who";
         if (r.isHuman) who.textContent = "You";
         else {
+          // The "(Bela)" beside the name comes from `renderSegments` itself
+          // now - every faction name in the HUD carries it, not just this row
+          // - so there is deliberately nothing to append here. A second append
+          // would read "Curonians (Bela) (Bela)".
           who.replaceChildren(renderSegments([faction(r.factionId)], richTextHooks));
-          // Plain text, not a segment - a display name is not a card or a
-          // faction, the only two things the naming rule in AGENTS.md covers.
-          // Absent for every AI seat and for a solo game (cb.playerNameOf is
-          // absent there entirely); present for a remote human's faction once
-          // Task 10 wires the callback up.
-          const playerName = cb.playerNameOf?.(r.factionId);
-          if (playerName !== null && playerName !== undefined) {
-            who.appendChild(document.createTextNode(` (${playerName})`));
-          }
         }
         const lands = document.createElement("span");
         lands.className = "sb-lands";

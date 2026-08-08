@@ -2617,6 +2617,28 @@ describe("localPlayerId", () => {
     expect(guestXp).not.toBe(hostXp);
   });
 
+  // Every faction name the HUD renders is a segment, and the segment renderer
+  // is where the controlling player's name is appended - so the log, the round
+  // summary, the postmortem and the scoreboard all carry it from one wiring.
+  // The log is checked here because it is the surface the requirement named:
+  // "Raid played against you by Osilians (Bela)".
+  it("names the human behind a faction wherever the faction is named", () => {
+    const state = withEvents(playing(), [yourPlay]); // player 2 (beta) raids gamma
+    const named = setup({ playerNameOf: (id) => (id === "gamma" ? "Bela" : null) });
+    named.hud.update(state);
+    const withName = q(named.container, ".activity-log").textContent!;
+    expect(withName).toContain("Gamma (Bela)");
+    // Only the faction the callback answers for gets one. Beta is named on the
+    // very same line as the raider, and stays bare.
+    expect(withName).toContain("Beta");
+    expect(withName).not.toContain("Beta (");
+
+    // The same state with no callback is the solo game, unchanged.
+    const plain = setup();
+    plain.hud.update(state);
+    expect(q(plain.container, ".activity-log").textContent!).not.toContain("(Bela)");
+  });
+
   // Only the host seat can surrender, so on a guest's screen this run ended
   // by somebody else's choice. "You conceded" over a game the player was
   // still playing is a lie about what they just did.
