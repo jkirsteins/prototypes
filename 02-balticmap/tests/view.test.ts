@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   fitView, clampView, formatLead, holderOf, homeView, panBy,
-  politicalFactionForPolygon, relationshipLine, restiveVassalOf, standingsFor,
+  politicalFactionForPolygon, relationshipLine, restiveVassalOf, seatHolderOf,
+  standingsFor,
   withArticle,
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
@@ -223,6 +224,38 @@ describe("holderOf", () => {
 
   it("is null for a land that answers to nobody", () => {
     expect(held("zemgale")).toBeNull();
+  });
+});
+
+describe("seatHolderOf", () => {
+  const world = (
+    seats: Record<string, string>,
+    incorporated: Record<string, string> = {},
+    overlords: [string, string][] = [],
+  ) => ({ seats, incorporated, overlords: new Map(overlords) });
+
+  it("names the owner whose seat stands on this polygon", () => {
+    expect(seatHolderOf(world({ lietuva: "lietuva" }), "lietuva")).toBe("lietuva");
+    // A seat planted on an annexed land belongs to the conqueror.
+    expect(
+      seatHolderOf(world({ lietuva: "zemgale" }, { zemgale: "lietuva" }), "zemgale"),
+    ).toBe("lietuva");
+  });
+
+  it("never marks an inert entry", () => {
+    // The land left the owner's holdings; the sweep has not run yet.
+    expect(seatHolderOf(world({ lietuva: "zemgale" }), "zemgale")).toBeNull();
+    // The owner was vassalized.
+    expect(
+      seatHolderOf(
+        world({ lietuva: "lietuva" }, {}, [["lietuva", "zemgale"]]),
+        "lietuva",
+      ),
+    ).toBeNull();
+  });
+
+  it("is null for a plain land", () => {
+    expect(seatHolderOf(world({}), "semba")).toBeNull();
   });
 });
 

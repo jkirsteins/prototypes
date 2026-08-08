@@ -122,7 +122,7 @@ const NON_BASICS = [
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens", "found-settlement",
   "population-boom", "distrustful-neighbour",
-  "take-hostage", "mighty-ruler",
+  "take-hostage", "mighty-ruler", "seat-of-power",
 ];
 
 /** A vassalage held long enough that Incorporate is certain, so a test about
@@ -1168,13 +1168,83 @@ describe("population boom and settlement growth", () => {
   });
 });
 
+describe("seat of power", () => {
+  it("places the seat, spends the coin, and logs the move under the play", () => {
+    const g = withHand(playingState(LINE_ADJ), 0, ["seat-of-power"]);
+    const after = playCard(g, 0, rng(), "beta");
+    expect(after.seats.beta).toBe("beta");
+    expect(after.wealth.beta ?? 0).toBe(0);
+    const e = after.log.at(-1);
+    expect(e).toMatchObject({
+      type: "seat-moved", targetFactionId: "beta", consequence: true,
+    });
+  });
+
+  it("replaying moves the single seat to the new land", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["seat-of-power"]);
+    g = {
+      ...g,
+      incorporated: { ...g.incorporated, gamma: "beta" },
+      seats: { ...g.seats, beta: "beta" },
+      wealth: { ...g.wealth, beta: 1 },
+    };
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after.seats).toEqual({ beta: "gamma" });
+  });
+
+  it("refuses the land the seat already stands on", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["seat-of-power"]);
+    g = {
+      ...g,
+      seats: { ...g.seats, beta: "beta" },
+      wealth: { ...g.wealth, beta: 1 },
+    };
+    expect(playCard(g, 0, rng(), "beta").playedThisTurn).toBe(false);
+  });
+
+  it("sweeps a seat on a land no longer held, and says so", () => {
+    let g = playingState(LINE_ADJ);
+    g = {
+      ...g,
+      seats: { ...g.seats, alpha: "gamma" },
+      incorporated: { ...g.incorporated, gamma: "delta" },
+    };
+    const g2 = beginTurn(g, rng());
+    expect(g2.seats.alpha).toBeUndefined();
+    const e = g2.log.find((ev) => ev.type === "seat-lost");
+    expect(e).toMatchObject({ targetFactionId: "alpha" });
+    // A clock tick, not a consequence of any play.
+    expect(e?.consequence).toBeUndefined();
+  });
+
+  it("sweeps the seat of a vassalized owner", () => {
+    let g = playingState(LINE_ADJ);
+    g = {
+      ...g,
+      seats: { ...g.seats, alpha: "alpha" },
+      overlords: new Map([...g.overlords, ["alpha", "delta"]]),
+    };
+    const g2 = beginTurn(g, rng());
+    expect(g2.seats.alpha).toBeUndefined();
+    expect(g2.log.some((ev) => ev.type === "seat-lost")).toBe(true);
+  });
+
+  it("keeps a standing seat unswept", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, seats: { ...g.seats, alpha: "alpha" } };
+    const g2 = beginTurn(g, rng());
+    expect(g2.seats.alpha).toBe("alpha");
+    expect(g2.log.some((ev) => ev.type === "seat-lost")).toBe(false);
+  });
+});
+
 describe("wealth", () => {
-  it("banks 1 per settlement in the faction's own realm when its turn begins", () => {
-    // The boot beginTurn already paid the human's first income: one land, its
-    // one starting settlement.
+  it("banks 1 plus founded settlements in the faction's own realm when its turn begins", () => {
+    // The boot beginTurn already paid the human's first income: the base coin.
     const g = playingState(LINE_ADJ);
     expect(g.wealth.beta).toBe(1);
-    // An annexed land and its founded settlements pay too; a vassal's do not.
+    // A settlement founded in an annexed land pays too; the annexed land
+    // itself prints nothing, and a vassal's founding pays only the vassal.
     let g2: GameState = {
       ...g,
       incorporated: { delta: "beta" },
@@ -1182,8 +1252,8 @@ describe("wealth", () => {
       overlords: new Map([["gamma", "beta"]]),
     };
     g2 = beginTurn(g2, rng());
-    // itself (1) + delta (1 starting + 1 founded) = 3 more on top of the 1
-    expect(g2.wealth.beta).toBe(4);
+    // the base coin (1) + delta's founded settlement (1) on top of the 1 held
+    expect(g2.wealth.beta).toBe(3);
     expect(g2.wealth.gamma).toBeUndefined();
   });
 

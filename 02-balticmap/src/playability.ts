@@ -96,6 +96,13 @@ export interface RulesView {
    *  successor starts at 0 because `replaceRuler` builds it so, and a test
    *  view carrying no rulers is a world of unproven ones. */
   prowess: Record<string, number>;
+  /** Owner faction id -> the land its ruler's seat stands on (Seat of power).
+   *  One seat per owner by construction - a Record cannot hold two - and the
+   *  land is the owner itself or a land it incorporated. Read only through
+   *  `seatOf`, so an entry the owner no longer holds outright, or one whose
+   *  owner has since been vassalized, is inert by construction; the
+   *  `beginTurn` sweep deletes it and reports `seat-lost`. */
+  seats: Record<string, string>;
 }
 
 /** Turns of unbroken vassalage after which Incorporate is certain. Below it the
@@ -328,24 +335,60 @@ export function wealthOf(
   return view.wealth[factionId] ?? 0;
 }
 
-/** Wealth `factionId` earns when its turn begins: 1 per settlement standing
- *  in its own realm - itself plus the lands incorporated into it, and
+/** Wealth `factionId` earns when its turn begins: 1, plus 1 per settlement
+ *  FOUNDED in its own realm - itself plus the lands incorporated into it, and
  *  deliberately no vassals. A vassal is a live seat earning into its own
  *  treasury, and tribute is the channel by which its wealth reaches the lord;
  *  counting its lands here would tax them twice.
  *
- *  Three callers, one sum: the `beginTurn` tick, the tribute a vassal owes
- *  (1 per land of the same set, see `playCard`), and the HUD's "+N/turn"
+ *  The base is one coin a turn, not one per land: annexation must not print
+ *  money, or a grown realm shrugs at every wealth cost the cards carry. Size
+ *  buys tempo through the garrison tick; treasuries grow only by founding.
+ *  (Tribute stays 1 per land - it counts `incorporatedRealmOf` itself in
+ *  `playCard` and never asks this function.)
+ *
+ *  Two callers, one sum: the `beginTurn` tick and the HUD's "+N/turn"
  *  readout - which is how the promise and the tick cannot drift. */
 export function wealthIncomeFor(
   view: { incorporated: Incorporated; settlements: Record<string, number> },
   factionId: string,
 ): number {
-  let sum = 0;
+  let founded = 0;
   for (const land of incorporatedRealmOf(factionId, view.incorporated)) {
-    sum += settlementsIn(view, land);
+    founded += view.settlements[land] ?? 0;
   }
-  return sum;
+  return 1 + founded;
+}
+
+/** What the ruler's seat adds to its owner's subjugation bar. */
+export const SEAT_BAR_BONUS = 2;
+
+/** The flat Might the seat adds to its owner's raids on the seat land's
+ *  neighbours. Flat and applied AFTER the omen multiplier - the seat pays a
+ *  fixed levy on top, it is not a term readings double. The 2026-08-02 raid
+ *  Status rider died on the pacing gate; keeping this one small and outside
+ *  the doubling is what the seat-of-power design accepted instead. */
+export const SEAT_RAID_BONUS = 1;
+
+/** The land `factionId`'s ruler's seat stands on, while it stands at all.
+ *  The one read every rule and surface goes through - the grip term, the raid
+ *  rider, the map marker and the hover line cannot disagree about whether the
+ *  seat stands because they all ask this. A seat stands only while its owner
+ *  holds the land outright (itself or its own annexation) and answers to no
+ *  overlord; anything else is inert, whether or not the sweep has caught up. */
+export function seatOf(
+  view: {
+    seats: Record<string, string>;
+    incorporated: Incorporated;
+    overlords: Overlords;
+  },
+  factionId: string,
+): string | undefined {
+  const land = view.seats[factionId];
+  if (land === undefined) return undefined;
+  if (view.overlords.get(factionId) !== undefined) return undefined;
+  const holds = land === factionId || view.incorporated[land] === factionId;
+  return holds ? land : undefined;
 }
 
 /** The incumbent overlord's hold on a vassal: its lead over it, floored at 0,
@@ -498,7 +541,10 @@ export function omensHeld(view: { omens: Omens }, factionId: string): number {
  *  get.
  *
  *  The multiplier applies after `raidYield`, so a stack multiplies the convex
- *  number rather than the border count. */
+ *  number rather than the border count. The seat's `SEAT_RAID_BONUS` lands
+ *  after the multiplier again - a flat levy on raids against the seat land's
+ *  neighbours, resolved through `incorporated` the way `borderStrength`
+ *  resolves every border. */
 export function raidGainFor(
   view: RulesView,
   actorFactionId: string,
@@ -506,7 +552,15 @@ export function raidGainFor(
 ): { gain: number; multiplier: number } {
   const multiplier = omenMultiplier(view, actorFactionId, "raid");
   const gain = raidYield(borderStrength(view, actorFactionId, targetFactionId));
-  return { gain: gain * multiplier, multiplier };
+  const seat = seatOf(view, actorFactionId);
+  const seatBonus =
+    seat !== undefined &&
+    (view.adjacency[seat] ?? []).some(
+      (adj) => (view.incorporated[adj] ?? adj) === targetFactionId,
+    )
+      ? SEAT_RAID_BONUS
+      : 0;
+  return { gain: gain * multiplier + seatBonus, multiplier };
 }
 
 /** Lands this faction has permanently annexed. Counted straight off
@@ -543,10 +597,16 @@ export function passiveFortifyFor(view: RulesView, factionId: string): number {
 }
 
 /** What a faction's grip is made of: the lands of its realm, the settlements
- *  founded in them, and the Might bar they demand together. */
+ *  founded in them, the ruler's seat if one stands, and the Might bar they
+ *  demand together. */
 export interface GripParts {
   lands: number;
   settlements: number;
+  /** `SEAT_BAR_BONUS` while the faction's own seat stands, else 0. Its own
+   *  part, never folded silently into `might`: the tooltip itemises the bar,
+   *  and a hidden term would corrupt any caller recovering a part by
+   *  subtraction. */
+  seat: number;
   might: number;
 }
 
@@ -569,9 +629,13 @@ export function gripPartsOn(view: RulesView, factionId: string): GripParts {
     (sum, m) => sum + (view.settlements[m] ?? 0),
     0,
   );
+  // The faction's OWN seat alone. A vassal's seat is inert while the
+  // vassalage lasts (`seatOf`), and a lord's seat does not shelter the
+  // vassals under it - the seat guards the ruler who sits in it.
+  const seat = seatOf(view, factionId) !== undefined ? SEAT_BAR_BONUS : 0;
   return {
-    lands, settlements,
-    might: SUBJUGATE_THRESHOLD * lands + settlements,
+    lands, settlements, seat,
+    might: SUBJUGATE_THRESHOLD * lands + settlements + seat,
   };
 }
 
@@ -795,7 +859,10 @@ export type TargetBlockReason =
   | { code: "no-revolt" }
   /** Take hostage: one hostage per vassal at a time. A second would be a
    *  wasted card - the Revolt is already locked. */
-  | { code: "hostage-already-held" };
+  | { code: "hostage-already-held" }
+  /** Seat of power: the actor's seat already stands on this land, so moving
+   *  it here would change nothing. */
+  | { code: "already-seat" };
 
 export type TargetEligibility =
   | { state: "irrelevant"; factionId: string }
@@ -845,17 +912,24 @@ export function targetEligibilityFor(
   // needs nothing: it only ever targets the actor's own direct vassal.
   const lieges = new Set(overlordChainOf(actorFactionId, view.overlords));
   const reach = reachOf(view, actorFactionId);
-  // Found a settlement is aimed at your own realm, so neither the pact block
-  // nor the self and incorporated blocks apply to it: your own land and the
-  // lands you have annexed are exactly what it is for.
-  const inward = cardId === "found-settlement";
+  // Found a settlement and Seat of power are aimed at your own realm, so
+  // neither the pact block nor the self and incorporated blocks apply to
+  // them: your own land and the lands you have annexed are exactly what they
+  // are for.
+  const inward = cardId === "found-settlement" || cardId === "seat-of-power";
   const hostile = cardId !== "alliance" && !inward;
-  // Full realm, like `reachOf`: a lord may found in a grand-vassal's land.
-  // The settlement still belongs to the land and raises whatever bar that
-  // land sits under.
-  const ownRealm = inward
-    ? [...fullRealmOf(actorFactionId, view.overlords, view.incorporated)]
-    : [];
+  // Each inward card names its own realm. Found a settlement reaches the
+  // FULL realm, like `reachOf`: a lord may found in a grand-vassal's land,
+  // and the settlement still belongs to the land and raises whatever bar
+  // that land sits under. The seat reaches only what the actor holds
+  // OUTRIGHT - itself and its annexations - because a vassal's land answers
+  // to its own ruler, and `seatOf` would hold any wider placement inert.
+  const ownRealm =
+    cardId === "found-settlement"
+      ? [...fullRealmOf(actorFactionId, view.overlords, view.incorporated)]
+      : cardId === "seat-of-power"
+        ? [...incorporatedRealmOf(actorFactionId, view.incorporated)]
+        : [];
 
   return view.factionIds.map((factionId): TargetEligibility => {
     const specialOverlord =
@@ -942,14 +1016,21 @@ export function targetEligibilityFor(
     // left for can never be built in again, so saying "raise your population"
     // there would send the player after a boom that would not help. The
     // allowance is only quoted once the map could actually draw one.
-    if (inward && freeSitesIn(view, factionId) === 0) {
+    if (cardId === "found-settlement" && freeSitesIn(view, factionId) === 0) {
       reasons.push({ code: "no-free-site" });
-    } else if (inward) {
+    } else if (cardId === "found-settlement") {
       const have = settlementsIn(view, factionId);
       const allowance = settlementAllowance(view, actorFactionId);
       if (have >= allowance) {
         reasons.push({ code: "needs-population", have, allowance });
       }
+    }
+
+    if (
+      cardId === "seat-of-power" &&
+      seatOf(view, actorFactionId) === factionId
+    ) {
+      reasons.push({ code: "already-seat" });
     }
 
     return reasons.length === 0
@@ -990,6 +1071,11 @@ export type CardBlockReason =
    *  "locked" cannot see that paying down the debt is what unlocks it. */
   | { code: "hostage-held"; remaining: number }
   | { code: "no-target" }
+  /** Seat of power while the actor has an overlord. A vassal's seat is inert
+   *  (`seatOf`) and the sweep would report it lost next turn, so the card is
+   *  a dead play for the whole vassalage - the reason says so rather than
+   *  letting a placement silently lapse. */
+  | { code: "vassal-no-seat" }
   | { code: "unavailable" };
 
 /** Why this card cannot be played on its own terms, or null when it can.
@@ -1063,6 +1149,9 @@ export function cardBlockReason(
       vassalOnly() ??
       (view.liveRevolts.includes(factionId) ? { code: "revolt-live" } : null)
     );
+  }
+  if (cardId === "seat-of-power" && overlord !== undefined) {
+    return { code: "vassal-no-seat" };
   }
   if (card.targeted) {
     return validTargetsFor(view, factionId, cardId).length > 0

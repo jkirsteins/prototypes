@@ -117,6 +117,14 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "settled", targetFactionId: H },
     { turn: 1, playerId: 2, type: "settled", targetFactionId: RIVAL },
   ],
+  "seat-moved": [
+    { turn: 1, playerId: 1, type: "seat-moved", targetFactionId: H },
+    { turn: 1, playerId: 2, type: "seat-moved", targetFactionId: RIVAL },
+  ],
+  "seat-lost": [
+    { turn: 1, playerId: 1, type: "seat-lost", targetFactionId: H },
+    { turn: 1, playerId: 2, type: "seat-lost", targetFactionId: RIVAL },
+  ],
   seeded: [
     { turn: 1, playerId: 2, type: "seeded", targetFactionId: H, overlordFactionId: RIVAL },
     { turn: 1, playerId: 1, type: "seeded", targetFactionId: RIVAL, overlordFactionId: H },

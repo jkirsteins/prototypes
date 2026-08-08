@@ -12,6 +12,7 @@ const ALL_TYPES: GameEventType[] = [
   "draw", "play", "reshuffle", "discard",
   "subjugated", "released", "incorporated", "reclaimed", "tribute",
   "settled", "seeded", "garrisoned", "pact-lapsed",
+  "seat-moved", "seat-lost",
   "subjugate-failed", "incorporate-failed",
   "victory", "defeat", "unified", "surrendered",
 ];
@@ -96,6 +97,38 @@ describe("a founded settlement", () => {
         ctx,
       ),
     ).toBeNull();
+  });
+});
+
+describe("the ruler's seat", () => {
+  it("a move stays silent, on the same grounds as a settlement", () => {
+    expect(NOTICE_RULES["seat-moved"].kind).toBe("silent");
+    expect(
+      oneSummary(ev({ type: "seat-moved", targetFactionId: "jersika" })),
+    ).toBeNull();
+  });
+
+  it("losing YOUR seat interrupts, with the lowered bar as a footnote", () => {
+    const s = oneSummary(ev({ type: "seat-lost", targetFactionId: "livs" }));
+    expect(s).not.toBeNull();
+    expect(lineText(s)).toMatch(/seat is lost/);
+    expect(footnoteTexts(s).join(" ")).toMatch(/enough to subjugate you/);
+  });
+
+  it("a rival losing theirs is no interruption", () => {
+    expect(
+      oneSummary(ev({ type: "seat-lost", targetFactionId: "jersika" })),
+    ).toBeNull();
+  });
+
+  it("pierces a muted round: the seat is a thing the player holds", () => {
+    const s = buildRoundSummary(
+      [ev({ type: "seat-lost", targetFactionId: "livs" })],
+      ctx,
+      { criticalOnly: true },
+    );
+    expect(s).not.toBeNull();
+    expect(s!.title).toBe("Your seat is lost");
   });
 });
 
@@ -980,6 +1013,7 @@ describe("critical events pierce a muted popup", () => {
     // asserted separately below.
     expect(critical).toEqual([
       "play", "subjugated", "released", "reclaimed",
+      "seat-lost",
       "subjugate-failed", "incorporate-failed",
     ]);
   });

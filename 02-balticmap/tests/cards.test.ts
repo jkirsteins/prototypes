@@ -14,7 +14,7 @@ const NON_BASICS = [
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens", "found-settlement",
   "population-boom", "distrustful-neighbour",
-  "take-hostage",
+  "take-hostage", "mighty-ruler", "seat-of-power",
 ];
 
 function seededRng(seed: number): Rng {
@@ -125,6 +125,13 @@ describe("cards", () => {
         "Revolt cannot be played until they pay tribute twice and the " +
         "hostage goes home.",
     );
+    expectProps(
+      "seat-of-power", "Seat of power", true, false, 1, true, false,
+      "Costs 1 wealth. Move your ruler's seat to a land you hold outright. " +
+        "Others need +2 more Might lead to subjugate you, and your raids on " +
+        "the seat's neighbours gain +1 Might. Only one seat stands at a time.",
+      1,
+    );
   });
 
   it("keeps the secret cards and the guards the same set", () => {
@@ -155,7 +162,7 @@ describe("cards", () => {
         .filter((c) => c.wealthCost !== undefined)
         .map((c) => [c.id, c.wealthCost]),
     );
-    expect(costed).toEqual({ "found-settlement": 1 });
+    expect(costed).toEqual({ "found-settlement": 1, "seat-of-power": 1 });
     // A forced card with a cost would jam the forced set against an empty
     // treasury; nothing forces the two apart today except this line.
     for (const id of Object.keys(costed)) {
@@ -386,7 +393,7 @@ describe("rarity and the acquirable pool", () => {
       "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
       "favourable-omens", "found-settlement",
       "population-boom", "distrustful-neighbour",
-      "take-hostage", "mighty-ruler",
+      "take-hostage", "mighty-ruler", "seat-of-power",
     ]);
     // the escape is a starting card now, not a pack drop
     expect(ACQUIRABLE_CARDS).not.toContain("seeds-of-revolt");

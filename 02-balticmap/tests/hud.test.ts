@@ -791,9 +791,15 @@ describe("card animations", () => {
   // has to interrupt them exactly as any other round would.
   it("still raises the round summary on the round after a silent paint", () => {
     let g = playing();
-    for (let i = 0; i < 12 && g.phase === "playing"; i++) {
-      g = advance(aiTakeTurn(g, seededRng(i + 1)), seededRng(i + 1));
+    // As many rounds as the seed allows while KEEPING the game live: the
+    // point is a summary raised after the silent paint, and a run that ended
+    // mid-loop would test the postmortem instead.
+    for (let i = 0; i < 12; i++) {
+      const next = advance(aiTakeTurn(g, seededRng(i + 1)), seededRng(i + 1));
+      if (next.phase !== "playing") break;
+      g = next;
     }
+    expect(g.phase).toBe("playing");
     const { container, hud } = setup();
     hud.update(g, { animate: false });
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);

@@ -32,17 +32,14 @@ export const RARITY_TIERS = [
   // table - Found a settlement rose to epic; Eloping heirs and Favourable
   // omens fell to common.
   //
-  // Both cuts were re-read after the Status track's removal (2026-08-08)
-  // and again the same day when Mighty ruler and the AI's move onto
-  // subjugationRequirement moved every coefficient once more. Both still
-  // land in gaps: 0.139 between Assassinate ruler (0.171) and Favourable
-  // omens (0.136) - a thin 0.003 above the card, so the next rules change
-  // will likely demand a re-cut - and 0.013 between Found a settlement
-  // (0.058) and Distrustful neighbour (0.002). Past the top of the table a
-  // card's measured contribution to final realm size is small and
-  // noise-dominated, so the rare/common line is a design decision about
-  // what feels worth finding rather than a measurement. Treat it as
-  // something to playtest.
+  // Both cuts were last re-read with the Seat of power pass, which also cut
+  // wealth income to 1 + founded settlements and re-ordered most of the
+  // table. Both still land in gaps: 0.139 between Incorporate (0.177) and
+  // Extended diplomacy (0.043), and 0.013 between Take hostage (0.042) and
+  // Alliance (-0.006). Past the top of the table a card's measured
+  // contribution to final realm size is small and noise-dominated, so the
+  // rare/common line is a design decision about what feels worth finding
+  // rather than a measurement. Treat it as something to playtest.
   //
   // An empty top tier is a real failure and not a tidy one: `rollTier` falls
   // back to the base tier, so 5% of pack slots would quietly become common
@@ -130,23 +127,24 @@ export const CARDS: Record<string, CardDef> = {
   "pay-military-tribute": { id: "pay-military-tribute", name: "Pay tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced: while a vassal, pay 1 wealth per land of your realm to your overlord; what your treasury cannot cover, grant as Might instead." },
   "seeds-of-revolt": { id: "seeds-of-revolt", name: "Seeds of revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "While a vassal: shuffle a Revolt into your deck. Only one Revolt at a time." },
   "revolt": { id: "revolt", name: "Revolt", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Cast off your overlord, no lead required. They lose 1 Might against you, and none may subjugate you for 2 turns. Leaves your deck for good." },
-  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Even the score: the Might lead between you and one faction in reach resets to none." },
+  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Even the score: the Might lead between you and one faction in reach resets to none." },
   "alliance": { id: "alliance", name: "Alliance", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Seal a pact with one faction in reach: no hostile cards between you for 5 turns, and +1 Might for both of you against every faction bordering both realms. Sealed again with an ally, the pact runs 5 turns longer." },
-  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Patient envoys: your next Alliance lasts twice as long." },
+  "extended-diplomacy": { id: "extended-diplomacy", name: "Extended diplomacy", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Patient envoys: your next Alliance lasts twice as long." },
   // Secret. The rules already treat a posted guard as hidden - `failureRiskOf`
   // in src/playability.ts refuses to read the guard lists so the Assassinate
   // ruler tooltip cannot become a detector - and a log line naming the card was
   // that detector by another route.
-  "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card." },
-  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "The signs are read: your next Might gain counts double." },
-  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", wealthCost: 1, text: "Costs 1 wealth. Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
+  "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card." },
+  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "The signs are read: your next Might gain counts double." },
+  "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", wealthCost: 1, text: "Costs 1 wealth. Raise another settlement in one land of your realm, up to what your people support - two, and one more for each Population boom you hold. Each settlement adds +1 to the Might lead others need to subjugate you, and spends a boom." },
   // Appended, never inserted: `buildAiDeck` rolls one rng draw per entry here
   // in declaration order, so where a card sits decides which draw it answers
   // to. See the warning on DEFAULT_DECK.
   "population-boom": { id: "population-boom", name: "Population boom", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Your people multiply: one more settlement than your lands would otherwise support. Stacks, and waits in hand until a settlement is founded." },
-  "distrustful-neighbour": { id: "distrustful-neighbour", name: "Distrustful neighbour", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your neighbours grow wary: the next Alliance sealed with you fails. No stacking. Others see only that you played a secret card." },
-  "take-hostage": { id: "take-hostage", name: "Take hostage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Take a hostage from a vassal of yours whose deck holds a Revolt: the Revolt cannot be played until they pay tribute twice and the hostage goes home." },
+  "distrustful-neighbour": { id: "distrustful-neighbour", name: "Distrustful neighbour", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", text: "Your neighbours grow wary: the next Alliance sealed with you fails. No stacking. Others see only that you played a secret card." },
+  "take-hostage": { id: "take-hostage", name: "Take hostage", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "rare", text: "Take a hostage from a vassal of yours whose deck holds a Revolt: the Revolt cannot be played until they pay tribute twice and the hostage goes home." },
   "mighty-ruler": { id: "mighty-ruler", name: "Mighty ruler", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler grows in prowess. Every 4 levels lower the Might lead you need to subjugate anyone by 1, never below 1. A successor starts unproven." },
+  "seat-of-power": { id: "seat-of-power", name: "Seat of power", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "epic", wealthCost: 1, text: "Costs 1 wealth. Move your ruler's seat to a land you hold outright. Others need +2 more Might lead to subjugate you, and your raids on the seat's neighbours gain +1 Might. Only one seat stands at a time." },
 };
 
 /** Guard card -> the card it turns aside, once, for whoever posted it.

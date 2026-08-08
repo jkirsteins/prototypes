@@ -17,6 +17,9 @@ export interface RenderResult {
   realmHoverGroup: SVGGElement;
   realmEdgeGroup: SVGGElement;
   vassalOverlayGroup: SVGGElement;
+  /** Empty layer for the ruler's-seat keeps, above settlements and below
+   *  labels; `renderSeatMarkers` in main.ts owns its contents. */
+  seatGroup: SVGGElement;
   peopleLabels: Map<string, SVGTextElement[]>;
   /** Appends a `<mask>` to `group` that hides everything inside `paths` and
    *  shows everything outside them, and returns the `url(#id)` to reference it
@@ -232,6 +235,15 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     foundedElements.clear();
   };
 
+  // Seat markers live above the settlement dots they must never be confused
+  // with, and below the labels and the threat badges (main.ts appends the
+  // badge group last, so it stays on top). Empty at build time: seats are
+  // play-state, so `renderSeatMarkers` in main.ts clears and redraws this
+  // group on every refresh, the way the badge group works.
+  const seatGroup = el("g") as SVGGElement;
+  seatGroup.classList.add("seats");
+  svg.appendChild(seatGroup);
+
   const labelsGroup = el("g");
   labelsGroup.classList.add("labels");
   const peopleLabels = new Map<string, SVGTextElement[]>();
@@ -308,6 +320,6 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   return {
     svg, regionPaths, settlementDots, revealSettlement, clearFoundedSettlements,
     realmOutlineGroup, realmUnionGroup, realmHoverGroup, realmEdgeGroup,
-    vassalOverlayGroup, peopleLabels, outerOutline, outsideMask,
+    vassalOverlayGroup, seatGroup, peopleLabels, outerOutline, outsideMask,
   };
 }

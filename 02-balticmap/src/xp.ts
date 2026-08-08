@@ -22,6 +22,9 @@ export const XP_TABLE: Record<GameEventType, number> = {
   "subjugate-failed": 1, // the card was spent and the turn is gone
   "incorporate-failed": 1,
   "hostage-taken": 2, // locking an escape is a positional play, like seeding one
+  "seat-moved": 3, // a positional build, like settling: a bar raised and a raid edge
+  // The clock noticing the seat is gone, not a choice - and never a reward.
+  "seat-lost": 0,
   // Fires off the vassal's FORCED tribute - when the human is that vassal it
   // was not a choice, and when the human is the lord it is not their event.
   "hostage-returned": 0,

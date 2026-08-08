@@ -334,6 +334,16 @@ export function eventSegments(
       ]);
     case "settled":
       return clause(named(e.targetFactionId), "found", [t(" a new settlement")]);
+    case "seat-moved":
+      // The subject is the actor, not the land: moving the seat is a choice,
+      // where a settlement belongs to the land it stands in.
+      return clause(actor, "move", [
+        t(" the ruler's seat to "), faction(e.targetFactionId ?? ""),
+      ]);
+    case "seat-lost":
+      // Third-person by name even for the player, like `subjugated`: the
+      // sweep noticed it, nobody did it, and the owner is who it happened to.
+      return clause(named(e.targetFactionId), "lose", [t(" the ruler's seat")]);
     case "seeded":
       return clause(named(e.targetFactionId), "sow", [
         t(" the seeds of revolt against "), faction(e.overlordFactionId ?? ""),

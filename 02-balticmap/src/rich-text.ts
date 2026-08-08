@@ -65,6 +65,8 @@ const VERBS = {
   fail: { third: "fails", past: "failed" },
   found: { third: "founds", past: "founded" },
   incorporate: { third: "incorporates", past: "incorporated" },
+  lose: { third: "loses", past: "lost" },
+  move: { third: "moves", past: "moved" },
   pass: { third: "passes", past: "passed" },
   pay: { third: "pays", past: "paid" },
   play: { third: "plays", past: "played" },

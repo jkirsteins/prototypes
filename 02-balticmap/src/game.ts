@@ -12,7 +12,7 @@ import {
   loyaltyKey, ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES,
   incorporationChance, leadsIn, PACT_MIGHT_BONUS, sharedNeighboursOf,
   subjugationChance, type Guards, type Omens, omenMultiplier, passiveFortifyFor,
-  playableSet, raidGainFor, validTargetsFor, wealthIncomeFor,
+  playableSet, raidGainFor, seatOf, validTargetsFor, wealthIncomeFor,
   type RulesView,
 } from "./playability";
 import { initialRulers, prowessByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
@@ -23,6 +23,7 @@ export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
   | "subjugated" | "released" | "incorporated" | "reclaimed" | "tribute"
   | "settled" | "seeded" | "garrisoned" | "pact-lapsed"
+  | "seat-moved" | "seat-lost"
   | "hostage-taken" | "hostage-returned"
   | "subjugate-failed" | "incorporate-failed"
   | "victory" | "defeat" | "unified" | "surrendered" | "stranded";
@@ -158,6 +159,13 @@ export interface GameState {
    *  and the badge already counted it down. `respiteExpiry` is the only
    *  reader, so the sweep is hygiene rather than correctness. */
   respites: Record<string, number>;
+  /** Owner faction id -> the land its ruler's seat stands on (Seat of power).
+   *  Written by the seat-of-power branch in `playCard`; read only through
+   *  `seatOf` in src/playability.ts, which also says when an entry is inert.
+   *  Swept in `beginTurn` with a `seat-lost` event, so the log agrees with
+   *  the vanished map marker. Permanent until moved or lost - deliberately
+   *  not on the src/timed.ts clock. */
+  seats: Record<string, string>;
   /** One ruler per faction id, total. Read through `rulerOf`, written only
    *  by `replaceRuler`. */
   rulers: Rulers;
@@ -211,6 +219,7 @@ export function viewOf(state: GameState): RulesView {
     hostages: state.hostages,
     wealth: state.wealth,
     respites: state.respites,
+    seats: state.seats,
     prowess: prowessByFaction(state.rulers),
     liveRevolts: state.players
       .filter((pl) =>
@@ -255,6 +264,7 @@ export function newGame(
     hostages: {},
     wealth: {},
     respites: {},
+    seats: {},
     ethnicities,
     rulers: initialRulers(factionIds, ethnicities),
     humanSeat: 0,
@@ -346,6 +356,9 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     // logged in `beginTurn`, which never opens a batch with a play, so this is
     // unreachable today - but it is the honest answer if that ever changes.
     case "pact-lapsed":
+    // The seat sweep is the same kind of clock tick: `seatOf` stopped
+    // validating the entry, and the seat whose turn was starting noticed.
+    case "seat-lost":
     // The run is over. See above.
     case "victory":
     case "defeat":
@@ -363,6 +376,7 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     case "garrisoned":
     case "subjugate-failed":
     case "incorporate-failed":
+    case "seat-moved":
     // The taking follows its play; the return follows the tribute play that
     // paid the debt off.
     case "hostage-taken":
@@ -453,12 +467,39 @@ function sweepLapsedPacts(
   return { alliances: kept, events };
 }
 
+/** Seat entries `seatOf` no longer validates - the land left its owner's
+ *  direct holdings, or the owner was vassalized - removed from the record and
+ *  reported, once, as `seat-lost`. Reported at all because the map marker
+ *  vanishes with the entry and a log that never said so would contradict what
+ *  the player plainly saw. Same delete-and-report shape as
+ *  `sweepLapsedPacts`, and the same `playerId` doctrine: the seat whose clock
+ *  tick noticed it, nobody's doing. The owner is `targetFactionId`. */
+function sweepLapsedSeats(
+  state: GameState,
+  playerId: number,
+): { seats: Record<string, string>; events: GameEvent[] } {
+  const view = viewOf(state);
+  const lapsed = Object.keys(state.seats).filter(
+    (owner) => seatOf(view, owner) === undefined,
+  );
+  if (lapsed.length === 0) return { seats: state.seats, events: [] };
+  const seats = { ...state.seats };
+  for (const owner of lapsed) delete seats[owner];
+  return {
+    seats,
+    events: lapsed.map((owner) => ({
+      turn: state.turn, playerId, type: "seat-lost", targetFactionId: owner,
+    })),
+  };
+}
+
 export function beginTurn(state: GameState, rng: Rng): GameState {
   if (state.players.length === 0) return state;
   const p = state.players[state.current];
   let { deck, discard } = p;
   const lapsed = sweepLapsedPacts(state, p.id);
-  const events: GameEvent[] = [...lapsed.events];
+  const lapsedSeats = sweepLapsedSeats(state, p.id);
+  const events: GameEvent[] = [...lapsed.events, ...lapsedSeats.events];
   if (deck.length === 0 && discard.length > 0) {
     deck = shuffle(discard, rng);
     discard = [];
@@ -524,6 +565,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     : state.wealth;
   return {
     ...state, players, relations, wealth, alliances: lapsed.alliances,
+    seats: lapsedSeats.seats,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(state.respites, state.turn, (e) => e).kept,
@@ -654,6 +696,7 @@ export function playCard(
   let respites = state.respites;
   let rulers = state.rulers;
   let wealth = state.wealth;
+  let seats = state.seats;
   // A tribute owes 1 per land of the payer's own realm - the exact set its
   // income sums over, so you pay 1 per land you earn from - and the treasury
   // covers what it can before any counter moves. Computed here, before the
@@ -821,6 +864,15 @@ export function playCard(
     if (held > 0) booms = { ...booms, [p.factionId]: held - 1 };
     events.push({
       turn: state.turn, playerId: p.id, type: "settled",
+      targetFactionId: targetId,
+    });
+  } else if (cardId === "seat-of-power" && targetId !== undefined) {
+    // One entry per owner is the whole "only one seat" rule: a Record cannot
+    // hold two, so a replay overwrites - the move - and nothing else needs to
+    // check. The bar and raid effects live on `seatOf` reads, not here.
+    seats = { ...seats, [p.factionId]: targetId };
+    events.push({
+      turn: state.turn, playerId: p.id, type: "seat-moved",
       targetFactionId: targetId,
     });
   } else if (isGuardCard(cardId)) {
@@ -1090,7 +1142,7 @@ export function playCard(
   return {
     ...state, phase, players, relations, overlords, incorporated,
     alliances, diplomacyBoost, guards, omens, settlements, booms, hostages,
-    wealth, respites, rulers,
+    wealth, respites, rulers, seats,
     log: appendEvents(state, events),
     playedThisTurn: state.rules.turn !== "unlimited",
   };

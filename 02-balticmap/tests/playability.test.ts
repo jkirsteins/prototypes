@@ -2,13 +2,16 @@ import { describe, it, expect } from "vitest";
 import { pact, settledOnce, siteCaps } from "./helpers";
 import {
   INCORPORATE_RAMP, PASSIVE_PER_LANDS, POACH_CHANCE, PROWESS_PER_REDUCTION,
+  SEAT_BAR_BONUS, SEAT_RAID_BONUS,
   SUBJUGATE_THRESHOLD, annexedLandsOf, borderStrength, cardBlockReason,
   gripPartsOn, handBlockReason,
-  incorporationChance, passiveFortifyFor, prowessReductionFor, raidYield,
+  incorporationChance, passiveFortifyFor, prowessReductionFor, raidGainFor,
+  raidYield,
   isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
-  reachOf, respiteExpiry, sharedNeighboursOf,
+  reachOf, respiteExpiry, seatOf, sharedNeighboursOf,
   subjugationChance, subjugationGripOn, subjugationRaceFor,
   subjugationRequirement, targetEligibilityFor, threatsTo, validTargetsFor,
+  wealthIncomeFor,
   type RulesView,
 } from "../src/playability";
 import { TRIBUTE_CARDS } from "../src/cards";
@@ -43,6 +46,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     settlements: {},
     booms: {},
     prowess: {},
+    seats: {},
     ...partial,
   };
 }
@@ -341,7 +345,7 @@ describe("gripPartsOn", () => {
     });
     // Two settlements raise the bar to 6.
     expect(gripPartsOn(v, "beta"))
-      .toEqual({ lands: 2, settlements: 2, might: 6 });
+      .toEqual({ lands: 2, settlements: 2, seat: 0, might: 6 });
     expect(subjugationGripOn(v, "beta")).toBe(6);
     expect(subjugationRequirement(v, "alpha", "beta")).toBe(6);
   });
@@ -349,7 +353,7 @@ describe("gripPartsOn", () => {
   it("ignores settlements outside the realm", () => {
     const v = view({ settlements: settledOnce(["alpha", "gamma"]) });
     expect(gripPartsOn(v, "beta"))
-      .toEqual({ lands: 1, settlements: 0, might: 2 });
+      .toEqual({ lands: 1, settlements: 0, seat: 0, might: 2 });
   });
 
   it("reports the settlements behind an insufficient-lead block", () => {
@@ -646,7 +650,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       siteCaps: {},
       settlements: {},
       booms: {},
-      prowess: {},
+      prowess: {}, seats: {},
     };
     const targets = validTargetsFor(v, "me", "raid");
     expect(targets).toContain("owner");
@@ -674,7 +678,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       siteCaps: {},
       settlements: {},
       booms: {},
-      prowess: {},
+      prowess: {}, seats: {},
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "me", "target");
@@ -683,6 +687,165 @@ describe("reach through incorporated lands and scaled thresholds", () => {
     expect(validTargetsFor({ ...base, relations: rel }, "me", "subjugate")).toContain("target");
   });
 
+});
+
+describe("seatOf", () => {
+  it("returns the seat land while the owner holds it outright", () => {
+    expect(seatOf(view({ seats: { alpha: "alpha" } }), "alpha")).toBe("alpha");
+    const v = view({ seats: { alpha: "beta" }, incorporated: { beta: "alpha" } });
+    expect(seatOf(v, "alpha")).toBe("beta");
+  });
+
+  it("is undefined with no seat placed", () => {
+    expect(seatOf(view(), "alpha")).toBeUndefined();
+  });
+
+  it("goes inert when the seat land is no longer directly held", () => {
+    // beta was alpha's annexed seat land; the annexation record now names gamma.
+    const v = view({ seats: { alpha: "beta" }, incorporated: { beta: "gamma" } });
+    expect(seatOf(v, "alpha")).toBeUndefined();
+  });
+
+  it("goes inert while the owner is somebody's vassal", () => {
+    const v = view({
+      seats: { alpha: "alpha" },
+      overlords: new Map([["alpha", "beta"]]),
+    });
+    expect(seatOf(v, "alpha")).toBeUndefined();
+  });
+});
+
+describe("the seat on the subjugation bar", () => {
+  it("adds SEAT_BAR_BONUS to the owner's bar, itemised as its own part", () => {
+    const v = view({ seats: { beta: "beta" } });
+    const parts = gripPartsOn(v, "beta");
+    expect(parts.seat).toBe(SEAT_BAR_BONUS);
+    expect(parts.might).toBe(SUBJUGATE_THRESHOLD + SEAT_BAR_BONUS);
+    expect(subjugationRequirement(v, "alpha", "beta"))
+      .toBe(SUBJUGATE_THRESHOLD + SEAT_BAR_BONUS);
+  });
+
+  it("adds nothing for an inert seat", () => {
+    const v = view({
+      seats: { beta: "gamma" },
+      incorporated: { gamma: "delta" },
+    });
+    expect(gripPartsOn(v, "beta").seat).toBe(0);
+    expect(gripPartsOn(v, "beta").might).toBe(SUBJUGATE_THRESHOLD);
+  });
+
+  it("guards the owner alone, never the owner's vassals", () => {
+    const v = view({
+      seats: { beta: "beta" },
+      overlords: new Map([["gamma", "beta"]]),
+    });
+    expect(gripPartsOn(v, "gamma").seat).toBe(0);
+  });
+});
+
+describe("the seat on raids", () => {
+  it("adds SEAT_RAID_BONUS when the target neighbours the seat land", () => {
+    // alpha's seat on its own land; beta is adjacent to alpha.
+    const v = view({ seats: { alpha: "alpha" } });
+    const { gain } = raidGainFor(v, "alpha", "beta");
+    expect(gain).toBe(raidYield(1) + SEAT_RAID_BONUS);
+  });
+
+  it("adds nothing against a target away from the seat", () => {
+    // alpha-beta-gamma line: alpha's seat touches only beta, and annexing
+    // beta is what puts gamma in reach. One border land, no seat bonus.
+    const v = view({
+      seats: { alpha: "alpha" },
+      incorporated: { beta: "alpha" },
+    });
+    const { gain } = raidGainFor(v, "alpha", "gamma");
+    expect(gain).toBe(raidYield(1));
+  });
+
+  it("resolves the seat's neighbours through incorporated lands", () => {
+    // delta's only border with alpha's seat runs through gamma, which delta
+    // has annexed: the rider must still see delta as a neighbour.
+    const v = view({
+      seats: { alpha: "beta" },
+      incorporated: { beta: "alpha", gamma: "delta" },
+    });
+    const { gain } = raidGainFor(v, "alpha", "delta");
+    expect(gain).toBe(raidYield(1) + SEAT_RAID_BONUS);
+  });
+
+  it("stays flat under a Favourable omens reading", () => {
+    const v = view({ seats: { alpha: "alpha" }, omens: { alpha: 1 } });
+    const { gain, multiplier } = raidGainFor(v, "alpha", "beta");
+    expect(multiplier).toBe(2);
+    expect(gain).toBe(raidYield(1) * 2 + SEAT_RAID_BONUS);
+  });
+});
+
+describe("seat-of-power targeting", () => {
+  it("offers the actor's own land and annexed lands, never a vassal's", () => {
+    const v = view({
+      incorporated: { beta: "alpha" },
+      overlords: new Map([["gamma", "alpha"]]),
+      wealth: { alpha: 1 },
+    });
+    expect(validTargetsFor(v, "alpha", "seat-of-power")).toEqual(["alpha", "beta"]);
+  });
+
+  it("blocks the land the seat already stands on", () => {
+    const v = view({
+      seats: { alpha: "alpha" },
+      incorporated: { beta: "alpha" },
+      wealth: { alpha: 1 },
+    });
+    expect(validTargetsFor(v, "alpha", "seat-of-power")).toEqual(["beta"]);
+    const entry = targetEligibilityFor(v, "alpha", "seat-of-power")
+      .find((e) => e.factionId === "alpha");
+    expect(entry?.state).toBe("blocked");
+    if (entry?.state === "blocked") {
+      expect(entry.reasons.map((r) => r.code)).toContain("already-seat");
+    }
+  });
+
+  it("is a dead card while the actor is a vassal", () => {
+    const v = view({
+      overlords: new Map([["alpha", "delta"]]),
+      wealth: { alpha: 1 },
+    });
+    expect(cardBlockReason(v, "alpha", "seat-of-power"))
+      .toEqual({ code: "vassal-no-seat" });
+  });
+
+  it("asks its wealth cost before anything else", () => {
+    expect(cardBlockReason(view(), "alpha", "seat-of-power"))
+      .toEqual({ code: "cannot-afford", cost: 1, held: 0 });
+  });
+});
+
+describe("wealthIncomeFor", () => {
+  it("pays a fresh one-land faction exactly 1 a turn", () => {
+    expect(wealthIncomeFor(view(), "alpha")).toBe(1);
+  });
+
+  it("pays nothing extra for annexed lands", () => {
+    const v = view({ incorporated: { beta: "alpha", gamma: "alpha" } });
+    expect(wealthIncomeFor(v, "alpha")).toBe(1);
+  });
+
+  it("adds 1 per settlement founded anywhere in the incorporated realm", () => {
+    const v = view({
+      incorporated: { beta: "alpha" },
+      settlements: { alpha: 1, beta: 2 },
+    });
+    expect(wealthIncomeFor(v, "alpha")).toBe(4);
+  });
+
+  it("never counts a vassal's lands or settlements", () => {
+    const v = view({
+      overlords: new Map([["gamma", "alpha"]]),
+      settlements: { gamma: 5 },
+    });
+    expect(wealthIncomeFor(v, "alpha")).toBe(1);
+  });
 });
 
 describe("alliances", () => {

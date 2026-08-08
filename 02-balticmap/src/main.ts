@@ -17,7 +17,7 @@ import {
 } from "./relations";
 import {
   allianceExpiry, handBlockReason, leadsIn, PACT_MIGHT_BONUS,
-  pactBoostExpiriesOn, playableSet, respiteExpiry,
+  pactBoostExpiriesOn, playableSet, respiteExpiry, seatOf,
   validTargetsFor, targetEligibilityFor, subjugationRaceFor, raidGainFor,
 } from "./playability";
 import { count } from "./plural";
@@ -47,7 +47,7 @@ import { runTurnips, runXp } from "./xp";
 import { openPack } from "./packs";
 import {
   formatLead, holderOf, leadClass, politicalFactionForPolygon, relationshipLine,
-  restiveVassalOf,
+  restiveVassalOf, seatHolderOf,
 } from "./view";
 import { factionAdjacencyOf, siteCapsOf, siteListsOf } from "./adjacency";
 import "./style.css";
@@ -58,7 +58,7 @@ const app = document.getElementById("app")!;
 const {
   svg, regionPaths, revealSettlement, clearFoundedSettlements,
   realmOutlineGroup, realmUnionGroup, realmHoverGroup, realmEdgeGroup,
-  vassalOverlayGroup, peopleLabels, outerOutline, outsideMask,
+  vassalOverlayGroup, seatGroup, peopleLabels, outerOutline, outsideMask,
 } = renderMap(data, app);
 
 /** The masked stroke-only copy of each land that sits in a realm of 2+, by
@@ -345,6 +345,55 @@ function syncVassalStripes(): void {
     const regionId = regionByFaction.get(lord);
     const el = regionId !== undefined ? regionPaths.get(regionId) : undefined;
     if (el) path.style.opacity = getComputedStyle(el).opacity;
+  }
+}
+
+/** A keep silhouette, 14x14 around the origin: three merlons over a solid
+ *  body. A SHAPE, deliberately not another circle, so a seat can never be
+ *  read as a settlement dot. Full opacity always, like the threat badges and
+ *  unlike the vassal stripes: seats are public knowledge and the marker is
+ *  UI chrome, not terrain - synced to a dimmed rival land it vanished at
+ *  map rest, which contradicted the design's "the map says who sits
+ *  where". */
+const SEAT_GLYPH_D =
+  "M-7,7 V-7 H-4.2 V-4.2 H-1.4 V-7 H1.4 V-4.2 H4.2 V-7 H7 V7 Z";
+
+/** One marker per standing seat, the player's in its own class. Clear and
+ *  redraw per refresh like the threat badges - seats move mid-game. Offset
+ *  above the region's centre so the badge that renders AT the centre never
+ *  sits on top of it. `pointer-events: none` comes from the CSS on the
+ *  group, the vassal-overlay precedent, so the marker never steals the
+ *  land's hover or click. */
+function renderSeatMarkers(): void {
+  seatGroup.replaceChildren();
+  const human = game.players[0];
+  if (!inPlay() || !human) return;
+  const v = viewOf(game);
+  for (const owner of Object.keys(game.seats)) {
+    const land = seatOf(v, owner);
+    if (land === undefined) continue;
+    const regionId = regionByFaction.get(land);
+    const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
+    if (!pathEl) continue;
+    const bbox = pathEl.getBBox();
+    const cx = bbox.x + bbox.width / 2;
+    const cy = bbox.y + bbox.height / 2;
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.classList.add("seat-marker");
+    if (owner === human.factionId) g.classList.add("seat-mine");
+    g.setAttribute("transform", `translate(${cx}, ${cy - 20})`);
+    const glyph = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    glyph.setAttribute("d", SEAT_GLYPH_D);
+    // A rival's keep wears its OWNER's colour, not the land's: a seat planted
+    // on annexed land belongs to the conqueror, and the dark casing (CSS) is
+    // what keeps it legible over a fill already in that colour. The player's
+    // own keep takes its gold from the CSS class instead.
+    if (owner !== human.factionId) {
+      const colour = factionById.get(owner)?.color;
+      if (colour !== undefined) glyph.style.fill = colour;
+    }
+    g.appendChild(glyph);
+    seatGroup.appendChild(g);
   }
 }
 
@@ -667,6 +716,17 @@ function hoverLines(region: Region): TooltipLine[] {
       tone: "bad",
     });
   }
+  // The seat only ever stands on a land its owner holds outright, so "this
+  // realm" is already named by the lines above - no faction name needed,
+  // which is what keeps this plain-text line inside the naming rule.
+  const seatOwner = seatHolderOf(viewOf(game), region.faction);
+  if (seatOwner !== null) {
+    lines.push(
+      seatOwner === human.factionId
+        ? { text: "Your ruler's seat stands here.", tone: "good" }
+        : { text: "The ruler's seat of this realm stands here." },
+    );
+  }
   // The same resolution `interceptClick` uses, or the lines below would answer
   // for a different faction than the click aims at on an absorbed land.
   const f = politicalFactionForPolygon(region.faction, game.incorporated);
@@ -836,6 +896,7 @@ function refresh(): void {
   applyOwnership();
   applyTargeting();
   revealFoundedSettlements();
+  renderSeatMarkers();
   renderThreatBadges();
   // Re-resolve the pin before the render it must agree with: an incorporation
   // this refresh carries can change who the pinned land answers for, and the

@@ -2,7 +2,7 @@ import { CARDS, DOUBLABLE_CARDS, isTributeCard, type Rng } from "./cards";
 import { fullRealmOf, realmOf } from "./relations";
 import {
   holdsGuard, leadsIn, omenMultiplier, playableSet, raidGainFor,
-  subjugationRequirement, subjugationChance,
+  seatOf, subjugationRequirement, subjugationChance,
   incorporationChance, targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView, type Threat,
 } from "./playability";
@@ -37,13 +37,16 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "fortify": "7: defensive fan-out",
   "found-settlement":
     "7b: settle against a nearing threat, else 9b: settle a spare turn",
+  "seat-of-power":
+    "7c: seat against a nearing threat, else 9c: seat the widest border, " +
+    "moving only to a strictly better land",
   "favourable-omens":
     "8: read the omens before building, stacking on a held reading",
   "extended-diplomacy": "8b: extend the next pact",
   "bodyguard": "8c: post the guard whose card is aimed at this position",
   "distrustful-neighbour": "8c: post the guard whose card is aimed at this position",
   "population-boom": "8d: raise the population when it would unlock a settlement",
-  "mighty-ruler": "9c: level the ruler on a spare turn",
+  "mighty-ruler": "9d: level the ruler on a spare turn",
   "grow-crops": "10: grow crops",
 };
 
@@ -136,6 +139,50 @@ function settlementTarget(
       rank(a) - rank(b) ||
       state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
   )[0];
+}
+
+/** How well the seat would serve from `land`: the distinct raidable rivals
+ *  its neighbours resolve to, since the seat pays its raid bonus against
+ *  exactly the factions the seat land touches. Distinct owners, resolved
+ *  through `incorporated` the way the rider itself resolves them, because
+ *  two adjacent lands of one rival still colour only that rival's raids. */
+function seatScore(v: RulesView, actorFactionId: string, land: string): number {
+  const raidable = new Set(validTargetsFor(v, actorFactionId, "raid"));
+  const owners = new Set(
+    (v.adjacency[land] ?? [])
+      .map((adj) => v.incorporated[adj] ?? adj)
+      .filter((owner) => raidable.has(owner)),
+  );
+  return owners.size;
+}
+
+/** The seat play both seat steps share, or null when the turn is better spent
+ *  elsewhere: the widest-border legal land, ties on faction order like
+ *  `settlementTarget` - and, while a seat already stands, only a STRICTLY
+ *  better land is worth the coin. Equal is not a move: a policy that shuffles
+ *  its seat between equivalent lands pays 1 wealth a turn for nothing, which
+ *  is the "AI shuffling its seat" failure the design doc names first. */
+function seatPlay(
+  state: GameState,
+  v: RulesView,
+  actorFactionId: string,
+  cardIndex: number,
+): AiAction | null {
+  const targets = validTargetsFor(v, actorFactionId, "seat-of-power");
+  if (targets.length === 0) return null;
+  const best = [...targets].sort(
+    (a, b) =>
+      seatScore(v, actorFactionId, b) - seatScore(v, actorFactionId, a) ||
+      state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
+  )[0];
+  const current = seatOf(v, actorFactionId);
+  if (
+    current !== undefined &&
+    seatScore(v, actorFactionId, best) <= seatScore(v, actorFactionId, current)
+  ) {
+    return null;
+  }
+  return { type: "play", cardIndex, targetId: best };
 }
 
 /** Deterministic policy v2; see the rules-v2 spec, "AI policy v2". Calls
@@ -377,6 +424,16 @@ export function chooseAction(state: GameState): AiAction {
     }
   }
 
+  // 7c: plant the seat while a threat is closing, for the same reason 7b
+  // settles: +2 on the bar buys about two turns against a rival gaining 1 a
+  // turn. Below 7b only because a settlement also feeds income; the ordering
+  // between them is a preference, not a rule.
+  const seat = idxOf("seat-of-power");
+  if (seat !== undefined && threats.some((t) => t.shortfall <= 2)) {
+    const play = seatPlay(state, v, p.factionId, seat);
+    if (play !== null) return play;
+  }
+
   // 8: read the omens before building. Raid is one per deck, so spending a
   // turn now and playing it doubled next turn beats playing it plain and
   // following with filler. Never while a vassal: a forced tribute would
@@ -484,13 +541,24 @@ export function chooseAction(state: GameState): AiAction {
     }
   }
 
-  // 9c: nothing to resolve, build toward or settle - level the ruler. Honest
-  // about the card's weight: the first PROWESS_PER_REDUCTION - 1 levels move
-  // no bar at all, so this must never pre-empt a play that moves the map now.
-  // It outranks exactly one thing, turnips: permanent progress toward cheaper
-  // Subjugates beats a card defined as no effect. Unconditional at this depth
-  // on purpose - a cleverer gate would leave a legal copy to the step-11
-  // fallthrough, the exact failure POLICY_COVERAGE exists to stop.
+  // 9c: a spare turn plants (or upgrades) the seat: a permanent +2 bar and a
+  // raid edge beat the slower builds below. `seatPlay` refuses a sideways
+  // shuffle, so a standing seat on its best land leaves the copy in hand -
+  // where, unlike the cards below, letting it wait is the honest policy: the
+  // card's whole value is WHERE it lands, and there is nowhere better.
+  if (seat !== undefined) {
+    const play = seatPlay(state, v, p.factionId, seat);
+    if (play !== null) return play;
+  }
+
+  // 9d: nothing to resolve, build toward, settle or seat - level the ruler.
+  // Honest about the card's weight: the first PROWESS_PER_REDUCTION - 1
+  // levels move no bar at all, so this must never pre-empt a play that moves
+  // the map now. It outranks exactly one thing, turnips: permanent progress
+  // toward cheaper Subjugates beats a card defined as no effect.
+  // Unconditional at this depth on purpose - a cleverer gate would leave a
+  // legal copy to the step-11 fallthrough, the exact failure POLICY_COVERAGE
+  // exists to stop.
   const mighty = idxOf("mighty-ruler");
   if (mighty !== undefined) return { type: "play", cardIndex: mighty };
 

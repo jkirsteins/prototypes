@@ -1,6 +1,7 @@
 import {
   HOSTAGE_RETURN_TRIBUTES,
-  INCORPORATE_RAMP, PACT_MIGHT_BONUS, POACH_CHANCE, SETTLEMENT_BASE_CAP,
+  INCORPORATE_RAMP, PACT_MIGHT_BONUS, POACH_CHANCE, SEAT_BAR_BONUS,
+  SEAT_RAID_BONUS, SETTLEMENT_BASE_CAP,
   boomsHeld, failureRiskOf, freeSitesIn, gripPartsOn, holdsGuard, leadsIn,
   omenMultiplier, omensHeld, pactBoostExpiriesOn, poachSurchargeOn, raidGainFor,
   respiteExpiry,
@@ -112,6 +113,8 @@ function explainReason(reason: TargetBlockReason): string[] {
       ];
     case "no-free-site":
       return ["No room for another settlement."];
+    case "already-seat":
+      return ["The ruler's seat already stands here."];
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -395,6 +398,18 @@ function availableImpacts(
         : []),
     ];
   }
+  if (cardId === "seat-of-power") {
+    // Quotes the two constants the rules run on, so the promise cannot drift
+    // from `gripPartsOn` and `raidGainFor`.
+    return [
+      prose(
+        `+${SEAT_BAR_BONUS} to the Might lead others need to subjugate you.`,
+      ),
+      prose(
+        `+${SEAT_RAID_BONUS} Might on your raids against this land's neighbours.`,
+      ),
+    ];
+  }
   if (cardId === "take-hostage") {
     return [
       prose("Their Revolt cannot be played while you hold the hostage."),
@@ -444,7 +459,15 @@ export function targetImpactLines(
   // otherwise print an answer ("Out of reach") that is nonsense for the land
   // you are standing on. Never reached by Found a settlement, which is aimed
   // at your own realm and comes back available.
-  if (entry.state !== "available" && targetFactionId === actorFactionId) {
+  // The inward cards are exempt: their own land is a real candidate, so a
+  // block there (the map has no dot left, the seat already stands here) is
+  // the reason to print, not "Your own land."
+  const inwardCard = cardId === "found-settlement" || cardId === "seat-of-power";
+  if (
+    entry.state !== "available" &&
+    targetFactionId === actorFactionId &&
+    !inwardCard
+  ) {
     return [{ text: "Your own land.", tone: "bad" }];
   }
   if (entry.state === "irrelevant") {
@@ -452,7 +475,9 @@ export function targetImpactLines(
       text:
         cardId === "found-settlement"
           ? "Not in your realm."
-          : "Out of reach.",
+          : cardId === "seat-of-power"
+            ? "Not a land you hold outright."
+            : "Out of reach.",
       tone: "bad",
     }];
   }
@@ -493,9 +518,10 @@ function trackBlock(
   const parts = gripPartsOn(view, takenFactionId);
   const surcharge = poachSurchargeOn(view, takenFactionId);
   // The base is recovered from the parts rather than recomputed - the bar
-  // minus the settlements stacked on it - so the column never repeats the
-  // per-land multiplication and cannot drift from the heading above it.
-  const base = parts.might - parts.settlements;
+  // minus the settlements and the seat stacked on it - so the column never
+  // repeats the per-land multiplication and cannot drift from the heading
+  // above it.
+  const base = parts.might - parts.settlements - parts.seat;
   const rows: TooltipLine[] = [
     {
       amount: `${base}`,
@@ -506,6 +532,12 @@ function trackBlock(
     rows.push({
       amount: `+${parts.settlements}`,
       text: `from ${count(parts.settlements, "settlement")}`,
+    });
+  }
+  if (parts.seat > 0) {
+    rows.push({
+      amount: `+${parts.seat}`,
+      text: "from the ruler's seat",
     });
   }
   // Named separately or the threshold looks wrong: a one-land vassal demanding
@@ -701,6 +733,10 @@ export function cardBlockLine(reason: CardBlockReason): string {
       );
     case "no-target":
       return "Nothing in reach is a legal target.";
+    case "vassal-no-seat":
+      // Says why, not just no: the seat rule is that a vassal's seat is inert
+      // and swept, so playing the card now would buy nothing.
+      return "Only while you answer to nobody: a vassal's seat does not stand.";
     case "unavailable":
       return "Not playable now.";
     default: {

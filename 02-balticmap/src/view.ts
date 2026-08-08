@@ -1,4 +1,5 @@
 import { realmRootOf, type Incorporated, type Overlords } from "./relations";
+import { seatOf } from "./playability";
 
 export interface View {
   x: number;
@@ -206,6 +207,27 @@ export function holderOf(
   incorporated: Incorporated,
 ): string | null {
   return incorporated[polygonFactionId] ?? overlords.get(polygonFactionId) ?? null;
+}
+
+/** The faction whose ruler's seat stands on this polygon, or null. The
+ *  reverse read of `GameState.seats`, through `seatOf` so an inert entry -
+ *  a land its owner no longer holds, an owner since vassalized - never marks
+ *  the map even before the sweep catches it. Here rather than in main.ts for
+ *  the same reason as `restiveVassalOf`: the marker and the hover line both
+ *  ask it, and a predicate the tests cannot reach is a predicate nobody
+ *  checks. */
+export function seatHolderOf(
+  view: {
+    seats: Record<string, string>;
+    incorporated: Incorporated;
+    overlords: Overlords;
+  },
+  polygonFactionId: string,
+): string | null {
+  for (const owner of Object.keys(view.seats)) {
+    if (seatOf(view, owner) === polygonFactionId) return owner;
+  }
+  return null;
 }
 
 /** "the Ugandians", but "Lietuva" - the one faction named for a land rather

@@ -643,6 +643,35 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // the activity log names the land.
     reason: "changes a bar the map and tooltip already show, never a lead",
   },
+  "seat-moved": {
+    kind: "silent",
+    // The same grounds as `settled`: a seat raises a bar and colours future
+    // raids, moves no lead, and the marker it plants is already on the map.
+    reason: "changes a bar the map and tooltip already show, never a lead",
+  },
+  "seat-lost": {
+    kind: "modal",
+    // Only the owner. A rival's seat falling changes the bar against THEM,
+    // which the badge and tooltip already restate - and it always rides along
+    // with the subjugation or annexation that caused it, which has its own
+    // notice where the human was involved.
+    appliesToHuman: (e, ctx) => e.targetFactionId === ctx.humanFactionId,
+    // Critical on the HOLDS ground: the seat is a thing the player built and
+    // banked, its marker just vanished from the map, and unlike a pact there
+    // was no expiry countdown warning them it could end.
+    critical: (e, ctx) =>
+      e.targetFactionId === ctx.humanFactionId ? "Your seat is lost" : null,
+    lines: (events, changes) =>
+      events.map((_e, i) => ({
+        text: [t("Your ruler's seat is lost")],
+        changes: changesFor(i, changes),
+        tone: "bad",
+      })),
+    footnotes: (_events, ctx) => [[
+      t(`The seat's bar is gone: a lead of ${ctx.subjugationGrip()} over `),
+      t("you is now enough to subjugate you."),
+    ]],
+  },
   seeded: {
     kind: "modal",
     // Your own vassal sowing is the warning that starts the race: a Revolt is

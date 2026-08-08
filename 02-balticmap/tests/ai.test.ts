@@ -538,7 +538,75 @@ describe("found a settlement (steps 7b and 9b)", () => {
     };
     expect(chooseAction(g)).toMatchObject({ cardIndex: 1, targetId: "gamma" });
   });
+});
 
+describe("seat of power (steps 7c and 9c)", () => {
+  // alpha is the actor throughout; beta is the human seat.
+  const threatened = (g: GameState, by: string, n: number): GameState => ({
+    ...g,
+    relations: lead({}, by, "alpha", n),
+  });
+
+  it("places the seat against a threat within two plays of taking it", () => {
+    const g = threatened(withHand(base(), ["seat-of-power"]), "gamma", 1);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "alpha",
+    });
+  });
+
+  it("spends an unthreatened spare turn on the seat rather than turnips", () => {
+    const g = withHand(base(), ["grow-crops", "seat-of-power"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "alpha",
+    });
+  });
+
+  it("puts the seat where the most raidable neighbours touch it", () => {
+    // alpha's own land borders only its annexed delta; delta fronts both
+    // beta and gamma. The seat belongs on the border, not the heartland.
+    const g = {
+      ...withHand(base(), ["seat-of-power"]),
+      incorporated: { delta: "alpha" },
+      adjacency: {
+        alpha: ["delta"],
+        delta: ["alpha", "beta", "gamma"],
+        beta: ["delta", "gamma"],
+        gamma: ["delta", "beta"],
+      },
+    };
+    expect(chooseAction(g)).toMatchObject({ targetId: "delta" });
+  });
+
+  it("does not shuffle a standing seat to an equal land", () => {
+    // Complete graph: the annexed delta fronts the same rivals alpha does, so
+    // moving the seat buys nothing and the turn goes to turnips.
+    const g = {
+      ...withHand(base(), ["seat-of-power", "grow-crops"]),
+      seats: { alpha: "alpha" },
+      incorporated: { delta: "alpha" },
+    };
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 1 });
+  });
+
+  it("moves a standing seat to a strictly better border", () => {
+    // The seat sits on the heartland (no raidable neighbour); delta fronts
+    // two rivals. Worth the coin.
+    const g = {
+      ...withHand(base(), ["seat-of-power", "grow-crops"]),
+      seats: { alpha: "alpha" },
+      incorporated: { delta: "alpha" },
+      adjacency: {
+        alpha: ["delta"],
+        delta: ["alpha", "beta", "gamma"],
+        beta: ["delta", "gamma"],
+        gamma: ["delta", "beta"],
+      },
+    };
+    expect(chooseAction(g)).toMatchObject({ cardIndex: 0, targetId: "delta" });
+  });
+});
+
+describe("found a settlement, continued", () => {
   it("raids toward a subjugation rather than settling, when one is near", () => {
     // Step 9 outranks 9b: a lead that wins a vassal beats a bar that delays one.
     const g = {
