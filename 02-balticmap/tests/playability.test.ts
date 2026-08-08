@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { pact, settledOnce, siteCaps } from "./helpers";
 import {
-  INCORPORATE_RAMP, PASSIVE_PER_LANDS, POACH_CHANCE,
+  INCORPORATE_RAMP, PASSIVE_PER_LANDS, POACH_CHANCE, PROWESS_PER_REDUCTION,
   SUBJUGATE_THRESHOLD, annexedLandsOf, borderStrength, cardBlockReason,
   gripPartsOn,
-  incorporationChance, passiveFortifyFor, raidYield,
+  incorporationChance, passiveFortifyFor, prowessReductionFor, raidYield,
   isCardPlayable, loyaltyKey, overlordGrip, playableSet, poachSurchargeOn,
   reachOf, respiteExpiry, sharedNeighboursOf,
   subjugationChance, subjugationGripOn, subjugationRaceFor,
@@ -42,6 +42,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     siteCaps: siteCaps(ORDER),
     settlements: {},
     booms: {},
+    prowess: {},
     ...partial,
   };
 }
@@ -363,6 +364,7 @@ describe("gripPartsOn", () => {
         realmSize: 1,
         settlements: 1,
         poachSurcharge: 0,
+        prowessReduction: 0,
       }],
     });
   });
@@ -421,6 +423,7 @@ describe("targetEligibilityFor", () => {
           realmSize: 1,
           settlements: 0,
           poachSurcharge: 0,
+          prowessReduction: 0,
         },
       ],
     });
@@ -443,6 +446,7 @@ describe("targetEligibilityFor", () => {
         realmSize: 2,
         settlements: 0,
         poachSurcharge: 0,
+        prowessReduction: 0,
       }],
     });
   });
@@ -592,6 +596,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       siteCaps: {},
       settlements: {},
       booms: {},
+      prowess: {},
     };
     const targets = validTargetsFor(v, "me", "raid");
     expect(targets).toContain("owner");
@@ -619,6 +624,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       siteCaps: {},
       settlements: {},
       booms: {},
+      prowess: {},
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "me", "target");
@@ -712,6 +718,7 @@ describe("post-escape respite", () => {
           realmSize: 1,
           settlements: 0,
           poachSurcharge: 0,
+          prowessReduction: 0,
         },
       ],
     });
@@ -1185,5 +1192,67 @@ describe("take hostage", () => {
     // must still answer for a free faction, and it answers needs-overlord.
     expect(cardBlockReason(view({ hostages: { beta: 1 } }), "beta", "revolt"))
       .toEqual({ code: "needs-overlord" });
+  });
+});
+
+describe("ruler prowess lowers the bar", () => {
+  it("converts levels to bar points at PROWESS_PER_REDUCTION apiece", () => {
+    for (const [levels, cut] of [[0, 0], [3, 0], [4, 1], [7, 1], [8, 2]]) {
+      expect(prowessReductionFor(view({ prowess: { beta: levels } }), "beta"))
+        .toBe(cut);
+    }
+    // absent means unproven, the projection contract with prowessByFaction
+    expect(prowessReductionFor(view(), "beta")).toBe(0);
+    expect(PROWESS_PER_REDUCTION).toBe(4);
+  });
+
+  it("is scoped to the actor: only the proven ruler's bar drops", () => {
+    const v = view({ prowess: { beta: PROWESS_PER_REDUCTION } });
+    expect(subjugationRequirement(v, "beta", "gamma")).toBe(SUBJUGATE_THRESHOLD - 1);
+    expect(subjugationRequirement(v, "alpha", "gamma")).toBe(SUBJUGATE_THRESHOLD);
+    // and the bar itself is a fact about the target alone, untouched
+    expect(subjugationGripOn(v, "gamma")).toBe(SUBJUGATE_THRESHOLD);
+  });
+
+  it("never lets the bar fall below 1", () => {
+    const v = view({ prowess: { beta: 3 * PROWESS_PER_REDUCTION } });
+    expect(subjugationRequirement(v, "beta", "gamma")).toBe(1);
+  });
+
+  it("quotes the EFFECTIVE reduction in the insufficient-lead reason", () => {
+    // Two levels of cut asked, one delivered: the 1-land bar of 2 clamps at 1.
+    const v = view({ prowess: { beta: 2 * PROWESS_PER_REDUCTION } });
+    expect(targetEligibilityFor(v, "beta", "subjugate")).toContainEqual({
+      state: "blocked",
+      factionId: "gamma",
+      reasons: [{
+        code: "insufficient-lead",
+        required: 1,
+        lead: 0,
+        realmSize: 1,
+        settlements: 0,
+        poachSurcharge: 0,
+        prowessReduction: 1,
+      }],
+    });
+  });
+
+  it("flips the map badge to danger at a lead the raw bar refuses", () => {
+    const relations = mightLead("gamma", "beta", 1);
+    const raw = subjugationRaceFor(view({ relations }), "beta", "gamma");
+    expect(raw.danger).toBe(false);
+    const proven = subjugationRaceFor(
+      view({ relations, prowess: { gamma: PROWESS_PER_REDUCTION } }),
+      "beta", "gamma",
+    );
+    expect(proven.bar).toBe(SUBJUGATE_THRESHOLD - 1);
+    expect(proven.danger).toBe(true);
+  });
+
+  it("reaches threatsTo, so guard cases see the reduced bar", () => {
+    const relations = mightLead("gamma", "beta", 1);
+    const v = view({ relations, prowess: { gamma: PROWESS_PER_REDUCTION } });
+    const threat = threatsTo(v, "beta").find((t) => t.factionId === "gamma");
+    expect(threat?.shortfall).toBe(0);
   });
 });

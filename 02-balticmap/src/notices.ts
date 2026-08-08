@@ -186,7 +186,12 @@ function noticeRoleOf(e: GameEvent, ctx: NoticeCtx): NoticeRole {
 }
 
 /** Every way a vassal leaves the human shrinks the realm, which lowers the
- *  bar rivals need to subjugate the human in turn. */
+ *  bar rivals need to subjugate the human in turn.
+ *
+ *  The number is the actor-less grip - what ANYONE needs. A rival whose
+ *  ruler carries prowess needs less, and that lower figure is quoted by the
+ *  per-rival lines instead (`subjugationBarAgainstYou`), which know who is
+ *  asking. */
 function realmShrunkFootnote(ctx: NoticeCtx): Segment[] {
   return [
     t(`Your realm is smaller: a lead of ${ctx.subjugationGrip()} over `),

@@ -322,6 +322,16 @@ svg.map.dragging {
   white-space: nowrap;
 }
 
+/* The ruler's prowess, same chip shape as the treasury; the iron grey marks
+   it as martial rather than monetary. */
+.status-prowess {
+  border-left: 1px solid #d0d0d0;
+  padding-left: 12px;
+  color: #4a4f57;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .hand {
   position: absolute;
   bottom: -30px;

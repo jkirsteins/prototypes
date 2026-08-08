@@ -1,8 +1,8 @@
 import { CARDS, DOUBLABLE_CARDS, isTributeCard, type Rng } from "./cards";
 import { fullRealmOf, realmOf } from "./relations";
 import {
-  holdsGuard, leadsIn, omenMultiplier, playableSet, raidGainFor, subjugationGripOn,
-  subjugationRequirement, poachSurchargeOn, subjugationChance,
+  holdsGuard, leadsIn, omenMultiplier, playableSet, raidGainFor,
+  subjugationRequirement, subjugationChance,
   incorporationChance, targetEligibilityFor, threatsTo, validTargetsFor,
   type RulesView, type Threat,
 } from "./playability";
@@ -43,6 +43,7 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "bodyguard": "8c: post the guard whose card is aimed at this position",
   "distrustful-neighbour": "8c: post the guard whose card is aimed at this position",
   "population-boom": "8d: raise the population when it would unlock a settlement",
+  "mighty-ruler": "9c: level the ruler on a spare turn",
   "grow-crops": "10: grow crops",
 };
 
@@ -325,7 +326,11 @@ export function chooseAction(state: GameState): AiAction {
     if (i !== undefined) {
       for (const t of validTargetsFor(v, p.factionId, "raid")) {
         if (state.overlords.get(t) === p.factionId) continue;
-        const needed = subjugationGripOn(v, t) + poachSurchargeOn(v, t);
+        // The actor-aware bar, not grip + surcharge inlined: prowess lowers
+        // it, and a pair the requirement rules out (a grand-liege, say) is
+        // one there is no threshold to finish against.
+        const needed = subjugationRequirement(v, p.factionId, t);
+        if (needed === null) continue;
         if (
           leadsIn(v, p.factionId, t) +
             gainOf(state, p.factionId, "raid", t) >= needed
@@ -444,7 +449,9 @@ export function chooseAction(state: GameState): AiAction {
   if (buildRaid !== undefined) {
     for (const t of validTargetsFor(v, p.factionId, "raid")) {
       if (state.overlords.get(t) === p.factionId) continue;
-      const needed = subjugationGripOn(v, t) + poachSurchargeOn(v, t);
+      // Same actor-aware bar as step 6, for the same reasons.
+      const needed = subjugationRequirement(v, p.factionId, t);
+      if (needed === null) continue;
       const deficit = needed - leadsIn(v, p.factionId, t);
       const plays = Math.ceil(deficit / gainOf(state, p.factionId, "raid", t));
       const order = state.factionIds.indexOf(t);
@@ -472,6 +479,16 @@ export function chooseAction(state: GameState): AiAction {
       return { type: "play", cardIndex: settle, targetId: target };
     }
   }
+
+  // 9c: nothing to resolve, build toward or settle - level the ruler. Honest
+  // about the card's weight: the first PROWESS_PER_REDUCTION - 1 levels move
+  // no bar at all, so this must never pre-empt a play that moves the map now.
+  // It outranks exactly one thing, turnips: permanent progress toward cheaper
+  // Subjugates beats a card defined as no effect. Unconditional at this depth
+  // on purpose - a cleverer gate would leave a legal copy to the step-11
+  // fallthrough, the exact failure POLICY_COVERAGE exists to stop.
+  const mighty = idxOf("mighty-ruler");
+  if (mighty !== undefined) return { type: "play", cardIndex: mighty };
 
   // 10: grow crops
   const grow = idxOf("grow-crops");

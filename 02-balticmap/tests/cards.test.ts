@@ -386,7 +386,7 @@ describe("rarity and the acquirable pool", () => {
       "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
       "favourable-omens", "found-settlement",
       "population-boom", "distrustful-neighbour",
-      "take-hostage",
+      "take-hostage", "mighty-ruler",
     ]);
     // the escape is a starting card now, not a pack drop
     expect(ACQUIRABLE_CARDS).not.toContain("seeds-of-revolt");

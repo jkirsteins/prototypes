@@ -91,6 +91,11 @@ export interface RulesView {
    *  payload; read only through `respiteExpiry`, so a stale unswept entry is
    *  inert by construction. */
   respites: Record<string, number>;
+  /** Faction id -> its CURRENT ruler's prowess. Absent = 0. Projected from
+   *  GameState.rulers by `prowessByFaction`, never read off a Ruler here: a
+   *  successor starts at 0 because `replaceRuler` builds it so, and a test
+   *  view carrying no rulers is a world of unproven ones. */
+  prowess: Record<string, number>;
 }
 
 /** Turns of unbroken vassalage after which Incorporate is certain. Below it the
@@ -585,15 +590,39 @@ export function subjugationGripOn(
   return gripPartsOn(view, factionId).might;
 }
 
+/** Prowess levels per -1 on the bar a ruler's own Subjugates need. Four: the
+ *  player-facing rule is "a quarter per level", made integer at the boundary
+ *  the way `poachSurchargeOn` ceils - so levels 1 to 3 move nothing, and the
+ *  Mighty ruler card is honest about that in its text. */
+export const PROWESS_PER_REDUCTION = 4;
+
+/** What the actor's ruler shaves off any target's subjugation bar. A fact
+ *  about the actor, which is why it cannot live in `gripPartsOn` - the bar
+ *  there is a fact about the target alone. */
+export function prowessReductionFor(
+  view: RulesView,
+  actorFactionId: string,
+): number {
+  return Math.floor((view.prowess[actorFactionId] ?? 0) / PROWESS_PER_REDUCTION);
+}
+
+/** The one spelling of "prowess lowers the bar": floored at 1, because a lead
+ *  of 0 clears a bar of 0 and subjugation must never become free. */
+function lessProwess(bar: number, reduction: number): number {
+  return Math.max(1, bar - reduction);
+}
+
 /** The Might lead the actor needs to Subjugate the target: two per land of
  *  the target's realm, counting its vassals and the lands it has
  *  incorporated, plus one per settlement, plus the poach surcharge when the
- *  target already has a lord. Null when Subjugate could never apply to that
- *  pair at all - self, an incorporated land, the actor's own direct vassal,
- *  or the actor's own liege (any ancestor in its overlord chain) - so callers
- *  can leave the bar off rather than quote a meaningless number. A vassal
- *  actor gets a real bar against everyone else: vassals can Subjugate, which
- *  is also why they now show up in `threatsTo` and on the map badges.
+ *  target already has a lord, less what the actor's ruler's prowess shaves
+ *  off (`prowessReductionFor`, never below 1). Null when Subjugate could
+ *  never apply to that pair at all - self, an incorporated land, the actor's
+ *  own direct vassal, or the actor's own liege (any ancestor in its overlord
+ *  chain) - so callers can leave the bar off rather than quote a meaningless
+ *  number. A vassal actor gets a real bar against everyone else: vassals can
+ *  Subjugate, which is also why they now show up in `threatsTo` and on the
+ *  map badges.
  *
  *  Same rule as the `insufficient-lead` block reason, kept here so the map
  *  and the tooltip can show the bar without re-deriving it. */
@@ -608,8 +637,11 @@ export function subjugationRequirement(
   if (overlordChainOf(actorFactionId, view.overlords).includes(targetFactionId)) {
     return null;
   }
-  return subjugationGripOn(view, targetFactionId) +
-    poachSurchargeOn(view, targetFactionId);
+  return lessProwess(
+    subjugationGripOn(view, targetFactionId) +
+      poachSurchargeOn(view, targetFactionId),
+    prowessReductionFor(view, actorFactionId),
+  );
 }
 
 export interface Threat {
@@ -740,6 +772,11 @@ export type TargetBlockReason =
        *  when it is free. Part of `required`, broken out so the tooltip can
        *  say why the bar is higher than the realm alone explains. */
       poachSurcharge: number;
+      /** What the actor's ruler's prowess actually removed from the bar - the
+       *  `prowessReductionFor` ask, clamped so the bar never fell below 1. 0
+       *  for an unproven ruler. Part of `required`, broken out like
+       *  `poachSurcharge` so the tooltip column keeps summing. */
+      prowessReduction: number;
     }
   | { code: "already-vassal" }
   /** The land already holds every settlement the actor's people can support.
@@ -883,7 +920,10 @@ export function targetEligibilityFor(
       }
       const grip = gripPartsOn(view, factionId);
       const surcharge = poachSurchargeOn(view, factionId);
-      const required = grip.might + surcharge;
+      const required = lessProwess(
+        grip.might + surcharge,
+        prowessReductionFor(view, actorFactionId),
+      );
       const lead = leadsIn(view, actorFactionId, factionId);
       if (lead < required) {
         reasons.push({
@@ -893,6 +933,7 @@ export function targetEligibilityFor(
           realmSize: grip.lands,
           settlements: grip.settlements,
           poachSurcharge: surcharge,
+          prowessReduction: grip.might + surcharge - required,
         });
       }
     }
@@ -980,14 +1021,15 @@ export function cardBlockReason(
   const overlord = view.overlords.get(factionId);
   const vassalOnly = (): CardBlockReason | null =>
     overlord === undefined ? { code: "needs-overlord" } : null;
-  // Favourable omens and Population boom are always legal: both stack, so a
-  // second one is a bigger allowance rather than a dead card, and a boom held
-  // with no settlement to spend it on simply waits. Listed here explicitly
-  // because the tail of this function answers `unavailable` for untargeted
-  // cards.
+  // Favourable omens, Population boom and Mighty ruler are always legal: all
+  // three stack, so a second one is a bigger allowance rather than a dead
+  // card, and a boom held with no settlement to spend it on simply waits.
+  // Listed here explicitly because the tail of this function answers
+  // `unavailable` for untargeted cards.
   if (
     cardId === "grow-crops" || cardId === "fortify" ||
-    cardId === "favourable-omens" || cardId === "population-boom"
+    cardId === "favourable-omens" || cardId === "population-boom" ||
+    cardId === "mighty-ruler"
   ) {
     return null;
   }

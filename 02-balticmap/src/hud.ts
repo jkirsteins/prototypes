@@ -12,8 +12,8 @@ import {
 import { walkStandings, type StandingChange } from "./standings";
 import { count } from "./plural";
 import {
-  allianceExpiry, leadsIn, passiveFortifyFor, subjugationGripOn,
-  subjugationRequirement, wealthIncomeFor, wealthOf,
+  allianceExpiry, leadsIn, passiveFortifyFor, prowessReductionFor,
+  subjugationGripOn, subjugationRequirement, wealthIncomeFor, wealthOf,
 } from "./playability";
 import {
   multipliedWord, type TargetExplanation,
@@ -702,7 +702,14 @@ export function createHud(
   // promise and the tick cannot drift. Rivals' treasuries appear nowhere.
   const wealthChip = document.createElement("span");
   wealthChip.className = "status-wealth hidden";
-  status.append(statusText, wealthChip);
+  // The player's own ruler's prowess, hidden until a Mighty ruler play buys
+  // the first level. The discount quotes `prowessReductionFor` - the same
+  // call `subjugationRequirement` spends - so the chip and the rule cannot
+  // drift. Rivals' prowess surfaces only where it bites: the threshold
+  // breakdown and the "can subjugate you at a lead of N" lines.
+  const prowessChip = document.createElement("span");
+  prowessChip.className = "status-prowess hidden";
+  status.append(statusText, wealthChip, prowessChip);
 
   function makePile(kind: string, label: string) {
     const root = document.createElement("div");
@@ -1472,6 +1479,16 @@ export function createHud(
       wealthChip.textContent =
         `Wealth ${wealthOf(view, humanFaction)} ` +
         `(+${wealthIncomeFor(view, humanFaction)}/turn)`;
+      const prowess = view.prowess[humanFaction] ?? 0;
+      prowessChip.classList.toggle("hidden", prowess === 0);
+      if (prowess > 0) {
+        const cut = prowessReductionFor(view, humanFaction);
+        prowessChip.textContent =
+          `Prowess ${prowess}` +
+          (cut > 0 ? ` (-${cut} to subjugation bars)` : "");
+      }
+    } else {
+      prowessChip.classList.add("hidden");
     }
     if (state.phase === "pick-faction") {
       statusText.textContent = "Choose your faction";

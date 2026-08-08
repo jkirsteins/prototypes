@@ -13,8 +13,9 @@ import {
 } from "../src/relations";
 import {
   ESCAPE_RESPITE_TURNS, HOSTAGE_RETURN_TRIBUTES, INCORPORATE_RAMP,
-  PASSIVE_PER_LANDS, cardBlockReason, leadsIn, loyaltyKey, playableSet,
-  raidYield, subjugationGripOn, validTargetsFor,
+  PASSIVE_PER_LANDS, PROWESS_PER_REDUCTION, cardBlockReason, leadsIn,
+  loyaltyKey, playableSet, raidYield, subjugationGripOn,
+  subjugationRequirement, validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
 import { runTurnips, runXp } from "../src/xp";
@@ -112,7 +113,7 @@ const NON_BASICS = [
   "assassinate-ruler", "alliance", "extended-diplomacy", "bodyguard",
   "favourable-omens", "found-settlement",
   "population-boom", "distrustful-neighbour",
-  "take-hostage",
+  "take-hostage", "mighty-ruler",
 ];
 
 /** A vassalage held long enough that Incorporate is certain, so a test about
@@ -2106,5 +2107,46 @@ describe("take hostage", () => {
     expect(g.overlords.get("alpha")).toBe("beta"); // subtree came along
     expect(g.hostages).toEqual({ alpha: HOSTAGE_RETURN_TRIBUTES });
     expect(g.log.some((e) => e.type === "hostage-returned")).toBe(false);
+  });
+});
+
+describe("Mighty ruler", () => {
+  /** The current ruler of `factionId` hardened to `prowess` levels, the state
+   *  a run reaches by playing the card that many times. */
+  function withProwess(g: GameState, factionId: string, prowess: number): GameState {
+    const ruler = rulerOf(g.rulers, factionId);
+    return { ...g, rulers: { ...g.rulers, [factionId]: { ...ruler, prowess } } };
+  }
+
+  it("levels the acting ruler and leaves the input state untouched", () => {
+    const g = withHand(playingState(), 0, ["mighty-ruler"]);
+    const before = rulerOf(g.rulers, "beta");
+    const after = playCard(g, 0, rng());
+    expect(rulerOf(after.rulers, "beta").prowess).toBe(1);
+    expect(rulerOf(after.rulers, "beta").name).toBe(before.name);
+    expect(rulerOf(g.rulers, "beta").prowess).toBe(0);
+    // no Might counter moved, so the log line must carry no standings suffix
+    const play = after.log.find((e) => e.type === "play" && e.cardId === "mighty-ruler");
+    expect(play?.amount).toBeUndefined();
+  });
+
+  it("stacks across plays through the rules view", () => {
+    let g = withProwess(playingState(), "beta", PROWESS_PER_REDUCTION - 1);
+    g = withHand(g, 0, ["mighty-ruler"]);
+    const after = playCard(g, 0, rng());
+    expect(viewOf(after).prowess.beta).toBe(PROWESS_PER_REDUCTION);
+    expect(subjugationRequirement(viewOf(after), "beta", "alpha")).toBe(1);
+  });
+
+  it("dies with the ruler: assassination restores the full bar", () => {
+    // gamma's ruler carries a full reduction, so gamma needs 1 against beta
+    let g = withProwess(playingState(LINE_ADJ), "gamma", PROWESS_PER_REDUCTION);
+    expect(subjugationRequirement(viewOf(g), "gamma", "beta")).toBe(1);
+    // the human evens the score with gamma's ruler
+    g = withHand(g, 0, ["assassinate-ruler"]);
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(rulerOf(after.rulers, "gamma").prowess).toBe(0);
+    expect(subjugationRequirement(viewOf(after), "gamma", "beta"))
+      .toBe(subjugationGripOn(viewOf(after), "beta"));
   });
 });

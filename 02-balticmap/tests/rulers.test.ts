@@ -113,6 +113,28 @@ describe("replaceRuler", () => {
     }
   });
 
+  it("seats every founding ruler unproven", () => {
+    const rulers = initialRulers(["alpha", "beta"], ethnicities);
+    expect(rulerOf(rulers, "alpha").prowess).toBe(0);
+    expect(rulerOf(rulers, "beta").prowess).toBe(0);
+  });
+
+  it("seats the successor at prowess 0, never inheriting", () => {
+    const before = initialRulers(["alpha", "beta"], ethnicities);
+    const hardened = {
+      ...before,
+      alpha: { ...rulerOf(before, "alpha"), prowess: 5 },
+    };
+    const out = replaceRuler(hardened, ethnicities, "alpha", 12);
+    // The WHOLE literal, so a future `...predecessor` spread in replaceRuler
+    // fails here instead of quietly carrying prowess across a succession.
+    expect(rulerOf(out.rulers, "alpha")).toEqual({
+      name: out.successor,
+      since: 12,
+      prowess: 0,
+    });
+  });
+
   it("takes a patronymic once the pool is spent", () => {
     // One faction per name in the pool leaves nothing free, so the successor
     // must be distinguished the way the chronicles do it.

@@ -758,3 +758,19 @@ describe("5b: take a hostage", () => {
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 });
+
+describe("9c: level the ruler on a spare turn", () => {
+  it("outranks turnips when nothing moves the map", () => {
+    let g = base();
+    g = withHand(g, ["grow-crops", "mighty-ruler"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("never pre-empts building toward a subjugation", () => {
+    let g = base();
+    g = withHand(g, ["mighty-ruler", "raid"]);
+    const action = chooseAction(g);
+    expect(action.type).toBe("play");
+    if (action.type === "play") expect(action.cardIndex).toBe(1);
+  });
+});

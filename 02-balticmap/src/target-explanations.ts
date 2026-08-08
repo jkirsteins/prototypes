@@ -76,8 +76,12 @@ function explainReason(reason: TargetBlockReason): string[] {
         reason.poachSurcharge === 0
           ? ""
           : `, plus ${reason.poachSurcharge} to prise them off their overlord`;
+      const proven =
+        reason.prowessReduction === 0
+          ? ""
+          : `, less ${reason.prowessReduction} for your ruler's prowess`;
       return [
-        `Need a Might lead of ${reason.required} because their realm has ${lands}${settled}${poached}.`,
+        `Need a Might lead of ${reason.required} because their realm has ${lands}${settled}${poached}${proven}.`,
         `Current lead: Might ${reason.lead}.`,
       ];
     }
@@ -517,6 +521,20 @@ function trackBlock(
       text: mine
         ? "from your overlord's support"
         : "from their overlord's support",
+    });
+  }
+  // Recovered by subtraction like `base`, so the row is the EFFECTIVE
+  // discount - what prowess actually removed after the never-below-1 clamp -
+  // and the column cannot stop summing to the heading. The possessive is the
+  // surcharge's mirrored: prowess belongs to whoever is TAKING, so on a "Your
+  // thresholds" block the ruler named is the rival's.
+  const prowessCut = parts.might + surcharge - bar;
+  if (prowessCut > 0) {
+    rows.push({
+      amount: `-${prowessCut}`,
+      text: mine
+        ? "for their ruler's prowess"
+        : "for your ruler's prowess",
     });
   }
   return [

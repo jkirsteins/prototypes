@@ -46,6 +46,7 @@ describe("explainTargetEligibility", () => {
           realmSize: 2,
           settlements: 0,
           poachSurcharge: 0,
+          prowessReduction: 0,
         },
       ],
     }], nameOf, noRisk)).toEqual([{
@@ -72,6 +73,7 @@ describe("explainTargetEligibility", () => {
         realmSize: 1,
         settlements: 0,
         poachSurcharge: 0,
+        prowessReduction: 0,
       }],
     }], nameOf, noRisk)[0]?.lines).toEqual([
       "Alpha",
@@ -206,6 +208,7 @@ describe("targetOddsLines", () => {
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
+    prowess: {},
     ...partial,
   });
 
@@ -357,7 +360,8 @@ describe("cardRiskLine", () => {
       adjacency: { alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta"] },
       factionIds: ids, alliances: {}, turn: 1, guards: {}, omens: {},
       diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
-    respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
+      respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
+      prowess: {},
     };
     const fallible = Object.keys(CARDS).filter((id) =>
       ids.some((target) => failureRiskOf(view, "alpha", id, target) !== null),
@@ -378,6 +382,7 @@ describe("targetImpactLines", () => {
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
+    prowess: {},
     ...partial,
   });
 
@@ -560,6 +565,7 @@ describe("subjugationBreakdown", () => {
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
+    prowess: {},
     ...partial,
   });
 
@@ -608,6 +614,32 @@ describe("subjugationBreakdown", () => {
       lines.slice(from, to).reduce((n, l) => n + Number(l.amount), 0);
     expect(lines[0].text).toBe("Might +1/5. Opponent's thresholds:");
     expect(sum(1, 3)).toBe(5);
+  });
+
+  it("itemises your ruler's prowess as a cut, and the column still sums", () => {
+    const view = v({
+      relations: lead("alpha", "beta", 1),
+      prowess: { alpha: 4 },
+    });
+    expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([
+      { text: "Might +1/1. Opponent's thresholds:", tone: "good", blockStart: true },
+      { amount: "2", text: "from realm size (1 land)" },
+      { amount: "-1", text: "for your ruler's prowess" },
+    ]);
+  });
+
+  // The mirrored possessive: on a "Your thresholds" block the prowess named
+  // is the rival ruler's, the one doing the taking.
+  it("itemises a proven rival's cut into the threshold you race", () => {
+    const view = v({
+      relations: lead("beta", "alpha", 1),
+      prowess: { beta: 4 },
+    });
+    expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([
+      { text: "Might -1/1. Your thresholds:", tone: "bad", blockStart: true },
+      { amount: "2", text: "from realm size (1 land)" },
+      { amount: "-1", text: "for their ruler's prowess" },
+    ]);
   });
 
   it("itemises your own realm, and warns, when they are the ones racing", () => {
@@ -689,6 +721,7 @@ describe("pactBoostLines", () => {
     factionIds: ["alpha", "beta", "gamma", "delta"], alliances: {}, turn: 1,
     guards: {}, omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
+    prowess: {},
     ...partial,
   });
 
@@ -733,6 +766,7 @@ describe("respiteLines", () => {
     factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
     omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
+    prowess: {},
     ...partial,
   });
 
@@ -769,6 +803,7 @@ describe("settlementBlock", () => {
     factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
     omens: {}, diplomacyBoost: [], loyalty: {}, liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
+    prowess: {},
     ...partial,
   });
 

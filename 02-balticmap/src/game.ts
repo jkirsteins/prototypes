@@ -15,7 +15,7 @@ import {
   playableSet, raidGainFor, validTargetsFor, wealthIncomeFor,
   type RulesView,
 } from "./playability";
-import { initialRulers, replaceRuler, rulerOf, type Rulers } from "./rulers";
+import { initialRulers, prowessByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
 import { sweepLapsed } from "./timed";
 
 export type GameEventType =
@@ -199,6 +199,7 @@ export function viewOf(state: GameState): RulesView {
     hostages: state.hostages,
     wealth: state.wealth,
     respites: state.respites,
+    prowess: prowessByFaction(state.rulers),
     liveRevolts: state.players
       .filter((pl) =>
         pl.deck.includes("revolt") || pl.hand.includes("revolt") ||
@@ -732,6 +733,15 @@ export function playCard(
     omens = { ...omens, [p.factionId]: (omens[p.factionId] ?? 0) + 1 };
   } else if (cardId === "population-boom") {
     booms = { ...booms, [p.factionId]: (booms[p.factionId] ?? 0) + 1 };
+  } else if (cardId === "mighty-ruler") {
+    // The ACTING faction's CURRENT ruler. The level dies with him: replaceRuler
+    // seats the successor at prowess 0. No `amount` on the event - no Might
+    // counter moved, so the log line carries no standings suffix.
+    const ruler = rulerOf(rulers, p.factionId);
+    rulers = {
+      ...rulers,
+      [p.factionId]: { ...ruler, prowess: ruler.prowess + 1 },
+    };
   } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
     // Captured before assassinate() levels it away: the "before" of a
     // standings line has to come from somewhere once the reset erases it.
