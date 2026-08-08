@@ -60,7 +60,7 @@ import {
   formatLead, holderOf, leadClass, politicalFactionForPolygon, relationshipLine,
   restiveVassalOf, seatHolderOf,
 } from "./view";
-import { factionAdjacencyOf, siteCapsOf, siteListsOf } from "./adjacency";
+import { defenseMaxOf as mapDefenseMax, factionAdjacencyOf, siteCapsOf, siteListsOf } from "./adjacency";
 import "./style.css";
 
 const data = rawData as MapData;
@@ -132,6 +132,7 @@ const regionByFaction = new Map(data.regions.map((r) => [r.faction, r.id]));
  *  no region id is ever a member of a realm. */
 const sitesByFaction = siteListsOf(data);
 const SITE_CAPS = siteCapsOf(data);
+const DEFENSE_MAX = mapDefenseMax(data);
 const factionAdjacency = factionAdjacencyOf(data);
 const factionEthnicities: Record<string, string> = Object.fromEntries(
   data.factions.map((f) => [f.id, f.ethnicity]),
@@ -219,7 +220,7 @@ let runBanked = false;
 let packReveal: { id: string; isNew: boolean }[] | null = null;
 let game: GameState = newGame(
   data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
-  SITE_CAPS,
+  SITE_CAPS, DEFENSE_MAX,
 );
 if (boot !== null) {
   // Nothing here may render: `hud` does not exist yet, and a throw at module
@@ -1348,7 +1349,7 @@ function startStagingRun(): void {
   resolving = false;
   game = startGame(newGame(
     data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
-    SITE_CAPS,
+    SITE_CAPS, DEFENSE_MAX,
   ));
   clearFoundedSettlements();
   // The harvest flow must not outlive its run: the overlay itself hides

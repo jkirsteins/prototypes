@@ -20,7 +20,8 @@ import {
   autoHarvestChoice, empowerableCards, harvestSubjugateTargets,
   harvestSwapPool, type HarvestChoice,
 } from "./harvest";
-import { initialRulers, prowessByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
+import { DEFAULT_DEFENSE_MAX, type Defense, type Disease } from "./defense";
+import { initialRulers, leadershipByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
 import { allowsDiscards, copiesAllowed, DEFAULT_RULES, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
 import { harvestMultiplier, harvestsEarned, runTurnips } from "./xp";
@@ -112,6 +113,9 @@ export type GamePhase =
 export interface PlayerState {
   id: number; // 1 = human, 2..N = AI
   factionId: string;
+  /** The build this seat plays and harvests from. The human picks on the
+   *  build screen; AI seats roll theirs, seeded, in `pickFaction`. */
+  strategy: "warpath" | "pestilence";
   deck: string[];
   hand: string[];
   discard: string[];
@@ -187,6 +191,25 @@ export interface GameState {
    *  Human-only by construction: only the empower boon writes it, and only
    *  the human seat ever earns a harvest. */
   empoweredCardId: string | null;
+  /** Polygon id -> current defense, present only while damaged (absent = at
+   *  `defenseMax`). See src/defense.ts for the store's conventions. */
+  defense: Defense;
+  /** Polygon id -> static ceiling, `population / 50` on the real map.
+   *  Map-derived like `adjacency` and `siteCaps`; `DEFAULT_DEFENSE_MAX` for
+   *  every faction in a world nobody handed a map to. */
+  defenseMax: Record<string, number>;
+  /** Polygon id -> owner faction id -> disease stacks. Owned per rival, so
+   *  two factions can sicken the same polygon without touching each other's
+   *  counts. */
+  disease: Disease;
+  /** Faction id -> unspent Miasma readings - the Plague reserve, shaped like
+   *  `omens` for the same stacking reason. */
+  miasma: Readonly<Record<string, number>>;
+  /** Faction id -> Grow turnips plays since the last Turnip harvest was
+   *  earned. Stored rather than log-derived because EVERY seat counts now,
+   *  and a per-play log walk per seat buys nothing. Reset to 0 at the
+   *  threshold. */
+  turnips: Record<string, number>;
   /** One ruler per faction id, total. Read through `rulerOf`, written only
    *  by `replaceRuler`. */
   rulers: Rulers;
@@ -240,7 +263,12 @@ export function viewOf(state: GameState): RulesView {
     wealth: state.wealth,
     respites: state.respites,
     seats: state.seats,
-    prowess: prowessByFaction(state.rulers),
+    defense: state.defense,
+    defenseMax: state.defenseMax,
+    disease: state.disease,
+    miasma: state.miasma,
+    turnips: state.turnips,
+    leadership: leadershipByFaction(state.rulers),
     liveRevolts: state.players
       .filter((pl) =>
         pl.deck.includes("revolt") || pl.hand.includes("revolt") ||
@@ -259,6 +287,10 @@ export function newGame(
    *  Found a settlement is playable everywhere unless they say otherwise, and
    *  where a boom has something to spend itself on. */
   siteCaps?: Record<string, number>,
+  /** Faction id -> the polygon's defense ceiling, `population / 50` on the
+   *  real map. Defaults every faction to `DEFAULT_DEFENSE_MAX`, the same way
+   *  `siteCaps` defaults: tests get polygons both gates are reachable on. */
+  defenseMax?: Record<string, number>,
 ): GameState {
   return {
     phase: "main-menu",
@@ -280,6 +312,13 @@ export function newGame(
       Object.fromEntries(factionIds.map((id) => [id, DEFAULT_SITE_CAP])),
     settlements: {},
     booms: {},
+    defense: {},
+    defenseMax:
+      defenseMax ??
+      Object.fromEntries(factionIds.map((id) => [id, DEFAULT_DEFENSE_MAX])),
+    disease: {},
+    miasma: {},
+    turnips: {},
     hostages: {},
     wealth: {},
     respites: {},
@@ -332,6 +371,7 @@ function makePlayer(
   return {
     id,
     factionId,
+    strategy: "warpath",
     hand: deck.slice(0, OPENING_HAND),
     deck: deck.slice(OPENING_HAND),
     discard: [],
@@ -925,7 +965,7 @@ export function playCard(
       const ruler = rulerOf(rulers, p.factionId);
       rulers = {
         ...rulers,
-        [p.factionId]: { ...ruler, prowess: ruler.prowess + 1 },
+        [p.factionId]: { ...ruler, leadership: ruler.leadership + 1 },
       };
     } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
       // Captured before assassinate() levels it away: the "before" of a

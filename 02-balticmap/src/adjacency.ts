@@ -1,3 +1,4 @@
+import { defenseMaxFromPopulations } from "./defense";
 import type { MapData, Settlement } from "./types";
 
 /** Faction id -> ids of the factions it can reach, derived from region borders.
@@ -35,5 +36,14 @@ export function siteListsOf(data: MapData): Map<string, Settlement[]> {
 export function siteCapsOf(data: MapData): Record<string, number> {
   return Object.fromEntries(
     [...siteListsOf(data)].map(([faction, sites]) => [faction, sites.length]),
+  );
+}
+
+/** Each polygon's defense ceiling, keyed by FACTION id like `siteCapsOf` and
+ *  for the same reason: the simulation plays the shipped map and must see the
+ *  same ceilings the app does. */
+export function defenseMaxOf(data: MapData): Record<string, number> {
+  return defenseMaxFromPopulations(
+    Object.fromEntries(data.regions.map((r) => [r.faction, r.population])),
   );
 }

@@ -1729,7 +1729,7 @@ export function createHud(
       wealthChip.textContent =
         `Wealth ${wealthOf(view, humanFaction)} ` +
         `(+${wealthIncomeFor(view, humanFaction)}/turn)`;
-      const prowess = view.prowess[humanFaction] ?? 0;
+      const prowess = view.leadership[humanFaction] ?? 0;
       prowessChip.classList.toggle("hidden", prowess === 0);
       if (prowess > 0) {
         const cut = prowessReductionFor(view, humanFaction);

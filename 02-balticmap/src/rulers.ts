@@ -4,12 +4,11 @@ export interface Ruler {
   name: string;
   /** Turn this ruler took over; 1 for the rulers a world starts with. */
   since: number;
-  /** Levels of battle-hardening bought by Mighty ruler plays. Every
-   *  PROWESS_PER_REDUCTION of them shave 1 off the bar this ruler's own
-   *  Subjugates need (src/playability.ts). Dies with the ruler: replaceRuler
-   *  builds the successor as a fresh literal at 0 - never spread the
-   *  predecessor there. */
-  prowess: number;
+  /** Battle-hardening bought by War council plays; attack damage adds it
+   *  (src/playability.ts). Dies with the ruler: replaceRuler builds the
+   *  successor as a fresh literal at 0 - never spread the predecessor
+   *  there, which is what makes assassination reset the stack for free. */
+  leadership: number;
 }
 
 /** Total over the world's faction ids. `initialRulers` is the only
@@ -77,7 +76,7 @@ export function initialRulers(
   for (const factionId of factionIds) {
     const name = rulerNameFor(factionId, ethnicities[factionId], 0, taken);
     taken.add(name);
-    rulers[factionId] = { name, since: 1, prowess: 0 };
+    rulers[factionId] = { name, since: 1, leadership: 0 };
   }
   return rulers;
 }
@@ -105,7 +104,7 @@ export function replaceRuler(
   const taken = new Set(Object.values(rulers).map((r) => r.name));
   const successor = rulerNameFor(factionId, ethnicities[factionId], turn, taken);
   return {
-    rulers: { ...rulers, [factionId]: { name: successor, since: turn, prowess: 0 } },
+    rulers: { ...rulers, [factionId]: { name: successor, since: turn, leadership: 0 } },
     killed,
     successor,
   };
@@ -115,10 +114,10 @@ export function replaceRuler(
  *  `omens` shape - absent means 0 - so a test-built view carrying no rulers
  *  reads as a world of unproven rulers rather than hitting `rulerOf`'s gap
  *  error. */
-export function prowessByFaction(rulers: Rulers): Record<string, number> {
+export function leadershipByFaction(rulers: Rulers): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [factionId, ruler] of Object.entries(rulers)) {
-    if (ruler.prowess > 0) out[factionId] = ruler.prowess;
+    if (ruler.leadership > 0) out[factionId] = ruler.leadership;
   }
   return out;
 }

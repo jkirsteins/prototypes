@@ -208,7 +208,7 @@ describe("targetOddsLines", () => {
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
-    prowess: {}, seats: {},
+    leadership: {}, seats: {}, defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
     ...partial,
   });
 
@@ -336,7 +336,7 @@ describe("cardRiskLine", () => {
       factionIds: ids, alliances: {}, turn: 1, guards: {}, omens: {},
       diplomacyBoost: [], liveRevolts: [], hostages: {},
       respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
-      prowess: {}, seats: {},
+      leadership: {}, seats: {}, defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
     };
     const fallible = Object.keys(CARDS).filter((id) =>
       ids.some((target) => failureRiskOf(view, "alpha", id, target) !== null),
@@ -357,7 +357,7 @@ describe("targetImpactLines", () => {
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
-    prowess: {}, seats: {},
+    leadership: {}, seats: {}, defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
     ...partial,
   });
 
@@ -559,7 +559,7 @@ describe("subjugationBreakdown", () => {
     factionIds: ORDER, alliances: {}, turn: 1, guards: {}, omens: {},
     diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
-    prowess: {}, seats: {},
+    leadership: {}, seats: {}, defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
     ...partial,
   });
 
@@ -626,7 +626,7 @@ describe("subjugationBreakdown", () => {
   it("itemises your ruler's prowess as a cut, and the column still sums", () => {
     const view = v({
       relations: lead("alpha", "beta", 1),
-      prowess: { alpha: 4 },
+      leadership: { alpha: 4 },
     });
     expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([
       { text: "Might +1/1. Opponent's thresholds:", tone: "good", blockStart: true },
@@ -640,7 +640,7 @@ describe("subjugationBreakdown", () => {
   it("itemises a proven rival's cut into the threshold you race", () => {
     const view = v({
       relations: lead("beta", "alpha", 1),
-      prowess: { beta: 4 },
+      leadership: { beta: 4 },
     });
     expect(subjugationBreakdown(view, "alpha", "beta")).toEqual([
       { text: "Might -1/1. Your thresholds:", tone: "bad", blockStart: true },
@@ -728,7 +728,7 @@ describe("pactBoostLines", () => {
     factionIds: ["alpha", "beta", "gamma", "delta"], alliances: {}, turn: 1,
     guards: {}, omens: {}, diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
-    prowess: {}, seats: {},
+    leadership: {}, seats: {}, defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
     ...partial,
   });
 
@@ -773,7 +773,7 @@ describe("respiteLines", () => {
     factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
     omens: {}, diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
-    prowess: {}, seats: {},
+    leadership: {}, seats: {}, defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
     ...partial,
   });
 
@@ -810,7 +810,7 @@ describe("settlementBlock", () => {
     factionIds: ["alpha", "beta"], alliances: {}, turn: 1, guards: {},
     omens: {}, diplomacyBoost: [], liveRevolts: [], hostages: {},
     respites: {}, wealth: {}, siteCaps: {}, settlements: {}, booms: {},
-    prowess: {}, seats: {},
+    leadership: {}, seats: {}, defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
     ...partial,
   });
 

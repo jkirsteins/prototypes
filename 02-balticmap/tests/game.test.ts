@@ -2444,18 +2444,18 @@ describe("take hostage", () => {
 describe("Mighty ruler", () => {
   /** The current ruler of `factionId` hardened to `prowess` levels, the state
    *  a run reaches by playing the card that many times. */
-  function withProwess(g: GameState, factionId: string, prowess: number): GameState {
+  function withProwess(g: GameState, factionId: string, leadership: number): GameState {
     const ruler = rulerOf(g.rulers, factionId);
-    return { ...g, rulers: { ...g.rulers, [factionId]: { ...ruler, prowess } } };
+    return { ...g, rulers: { ...g.rulers, [factionId]: { ...ruler, leadership } } };
   }
 
   it("levels the acting ruler and leaves the input state untouched", () => {
     const g = withHand(playingState(), 0, ["mighty-ruler"]);
     const before = rulerOf(g.rulers, "beta");
     const after = playCard(g, 0, rng());
-    expect(rulerOf(after.rulers, "beta").prowess).toBe(1);
+    expect(rulerOf(after.rulers, "beta").leadership).toBe(1);
     expect(rulerOf(after.rulers, "beta").name).toBe(before.name);
-    expect(rulerOf(g.rulers, "beta").prowess).toBe(0);
+    expect(rulerOf(g.rulers, "beta").leadership).toBe(0);
     // no Might counter moved, so the log line must carry no standings suffix
     const play = after.log.find((e) => e.type === "play" && e.cardId === "mighty-ruler");
     expect(play?.amount).toBeUndefined();
@@ -2465,7 +2465,7 @@ describe("Mighty ruler", () => {
     let g = withProwess(playingState(), "beta", PROWESS_PER_REDUCTION - 1);
     g = withHand(g, 0, ["mighty-ruler"]);
     const after = playCard(g, 0, rng());
-    expect(viewOf(after).prowess.beta).toBe(PROWESS_PER_REDUCTION);
+    expect(viewOf(after).leadership.beta).toBe(PROWESS_PER_REDUCTION);
     expect(subjugationRequirement(viewOf(after), "beta", "alpha")).toBe(1);
   });
 
@@ -2476,7 +2476,7 @@ describe("Mighty ruler", () => {
     // the human evens the score with gamma's ruler
     g = withHand(g, 0, ["assassinate-ruler"]);
     const after = playCard(g, 0, rng(), "gamma");
-    expect(rulerOf(after.rulers, "gamma").prowess).toBe(0);
+    expect(rulerOf(after.rulers, "gamma").leadership).toBe(0);
     expect(subjugationRequirement(viewOf(after), "gamma", "beta"))
       .toBe(subjugationGripOn(viewOf(after), "beta"));
   });

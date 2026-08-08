@@ -115,15 +115,15 @@ describe("replaceRuler", () => {
 
   it("seats every founding ruler unproven", () => {
     const rulers = initialRulers(["alpha", "beta"], ethnicities);
-    expect(rulerOf(rulers, "alpha").prowess).toBe(0);
-    expect(rulerOf(rulers, "beta").prowess).toBe(0);
+    expect(rulerOf(rulers, "alpha").leadership).toBe(0);
+    expect(rulerOf(rulers, "beta").leadership).toBe(0);
   });
 
   it("seats the successor at prowess 0, never inheriting", () => {
     const before = initialRulers(["alpha", "beta"], ethnicities);
     const hardened = {
       ...before,
-      alpha: { ...rulerOf(before, "alpha"), prowess: 5 },
+      alpha: { ...rulerOf(before, "alpha"), leadership: 5 },
     };
     const out = replaceRuler(hardened, ethnicities, "alpha", 12);
     // The WHOLE literal, so a future `...predecessor` spread in replaceRuler
@@ -131,7 +131,7 @@ describe("replaceRuler", () => {
     expect(rulerOf(out.rulers, "alpha")).toEqual({
       name: out.successor,
       since: 12,
-      prowess: 0,
+      leadership: 0,
     });
   });
 

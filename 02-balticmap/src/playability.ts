@@ -7,6 +7,7 @@ import {
   type Alliances, type Incorporated, type Overlords, type Relations,
 } from "./relations";
 import { activeExpiry, timedActive } from "./timed";
+import type { Defense, Disease } from "./defense";
 
 export const SUBJUGATE_THRESHOLD = 2;
 
@@ -95,11 +96,21 @@ export interface RulesView {
    *  payload; read only through `respiteExpiry`, so a stale unswept entry is
    *  inert by construction. */
   respites: Record<string, number>;
-  /** Faction id -> its CURRENT ruler's prowess. Absent = 0. Projected from
-   *  GameState.rulers by `prowessByFaction`, never read off a Ruler here: a
-   *  successor starts at 0 because `replaceRuler` builds it so, and a test
-   *  view carrying no rulers is a world of unproven ones. */
-  prowess: Record<string, number>;
+  /** Faction id -> its CURRENT ruler's leadership. Absent = 0. Projected
+   *  from GameState.rulers by `leadershipByFaction`, never read off a Ruler
+   *  here: a successor starts at 0 because `replaceRuler` builds it so, and
+   *  a test view carrying no rulers is a world of unproven ones. */
+  leadership: Record<string, number>;
+  /** Polygon id -> current defense; absent = at max (src/defense.ts). */
+  defense: Defense;
+  /** Polygon id -> static defense ceiling. Map-derived, like `adjacency`. */
+  defenseMax: Record<string, number>;
+  /** Polygon id -> owner faction id -> disease stacks (src/defense.ts). */
+  disease: Disease;
+  /** Faction id -> unspent Miasma readings, the `omens` shape. */
+  miasma: Readonly<Record<string, number>>;
+  /** Faction id -> Grow turnips plays since the last harvest was earned. */
+  turnips: Record<string, number>;
   /** Owner faction id -> the land its ruler's seat stands on (Seat of power).
    *  One seat per owner by construction - a Record cannot hold two - and the
    *  land is the owner itself or a land it incorporated. Read only through
@@ -611,7 +622,7 @@ export function prowessReductionFor(
   view: RulesView,
   actorFactionId: string,
 ): number {
-  return Math.floor((view.prowess[actorFactionId] ?? 0) / PROWESS_PER_REDUCTION);
+  return Math.floor((view.leadership[actorFactionId] ?? 0) / PROWESS_PER_REDUCTION);
 }
 
 /** The one spelling of "prowess lowers the bar": floored at 1, because a lead

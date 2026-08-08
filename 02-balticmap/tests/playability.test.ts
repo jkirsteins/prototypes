@@ -44,7 +44,12 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     siteCaps: siteCaps(ORDER),
     settlements: {},
     booms: {},
-    prowess: {},
+    leadership: {},
+    defense: {},
+    defenseMax: {},
+    disease: {},
+    miasma: {},
+    turnips: {},
     seats: {},
     ...partial,
   };
@@ -656,7 +661,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       siteCaps: {},
       settlements: {},
       booms: {},
-      prowess: {}, seats: {},
+      leadership: {}, seats: {}, defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
     };
     const targets = validTargetsFor(v, "me", "raid");
     expect(targets).toContain("owner");
@@ -683,7 +688,7 @@ describe("reach through incorporated lands and scaled thresholds", () => {
       siteCaps: {},
       settlements: {},
       booms: {},
-      prowess: {}, seats: {},
+      leadership: {}, seats: {}, defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
     };
     let rel: Relations = {};
     for (let i = 0; i < 3; i++) rel = bumpMight(rel, "me", "target");
@@ -1542,7 +1547,7 @@ describe("revolt lead gate", () => {
 describe("ruler prowess lowers the bar", () => {
   it("converts levels to bar points at PROWESS_PER_REDUCTION apiece", () => {
     for (const [levels, cut] of [[0, 0], [3, 0], [4, 1], [7, 1], [8, 2]]) {
-      expect(prowessReductionFor(view({ prowess: { beta: levels } }), "beta"))
+      expect(prowessReductionFor(view({ leadership: { beta: levels } }), "beta"))
         .toBe(cut);
     }
     // absent means unproven, the projection contract with prowessByFaction
@@ -1551,7 +1556,7 @@ describe("ruler prowess lowers the bar", () => {
   });
 
   it("is scoped to the actor: only the proven ruler's bar drops", () => {
-    const v = view({ prowess: { beta: PROWESS_PER_REDUCTION } });
+    const v = view({ leadership: { beta: PROWESS_PER_REDUCTION } });
     expect(subjugationRequirement(v, "beta", "gamma")).toBe(SUBJUGATE_THRESHOLD - 1);
     expect(subjugationRequirement(v, "alpha", "gamma")).toBe(SUBJUGATE_THRESHOLD);
     // and the bar itself is a fact about the target alone, untouched
@@ -1559,13 +1564,13 @@ describe("ruler prowess lowers the bar", () => {
   });
 
   it("never lets the bar fall below 1", () => {
-    const v = view({ prowess: { beta: 3 * PROWESS_PER_REDUCTION } });
+    const v = view({ leadership: { beta: 3 * PROWESS_PER_REDUCTION } });
     expect(subjugationRequirement(v, "beta", "gamma")).toBe(1);
   });
 
   it("quotes the EFFECTIVE reduction in the insufficient-lead reason", () => {
     // Two levels of cut asked, one delivered: the 1-land bar of 2 clamps at 1.
-    const v = view({ prowess: { beta: 2 * PROWESS_PER_REDUCTION } });
+    const v = view({ leadership: { beta: 2 * PROWESS_PER_REDUCTION } });
     expect(targetEligibilityFor(v, "beta", "subjugate")).toContainEqual({
       state: "blocked",
       factionId: "gamma",
@@ -1586,7 +1591,7 @@ describe("ruler prowess lowers the bar", () => {
     const raw = subjugationRaceFor(view({ relations }), "beta", "gamma");
     expect(raw.danger).toBe(false);
     const proven = subjugationRaceFor(
-      view({ relations, prowess: { gamma: PROWESS_PER_REDUCTION } }),
+      view({ relations, leadership: { gamma: PROWESS_PER_REDUCTION } }),
       "beta", "gamma",
     );
     expect(proven.bar).toBe(SUBJUGATE_THRESHOLD - 1);
@@ -1595,7 +1600,7 @@ describe("ruler prowess lowers the bar", () => {
 
   it("reaches threatsTo, so guard cases see the reduced bar", () => {
     const relations = mightLead("gamma", "beta", 1);
-    const v = view({ relations, prowess: { gamma: PROWESS_PER_REDUCTION } });
+    const v = view({ relations, leadership: { gamma: PROWESS_PER_REDUCTION } });
     const threat = threatsTo(v, "beta").find((t) => t.factionId === "gamma");
     expect(threat?.shortfall).toBe(0);
   });
