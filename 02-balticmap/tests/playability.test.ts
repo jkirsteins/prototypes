@@ -570,6 +570,34 @@ describe("playableSet", () => {
     const set = playableSet(view(), "beta", ["pay-military-tribute"]);
     expect(set).toEqual({ mode: "discard", cardIndexes: [0] });
   });
+
+  it("a dead hand degrades to discard mode by default", () => {
+    const set = playableSet(view(), "beta", ["subjugate", "incorporate"]);
+    expect(set).toEqual({ mode: "discard", cardIndexes: [0, 1] });
+  });
+
+  it("with discards off, a dead hand stays in play mode with nothing to click", () => {
+    const set = playableSet(view(), "beta", ["subjugate", "incorporate"], {
+      discards: false,
+    });
+    expect(set).toEqual({ mode: "play", cardIndexes: [] });
+  });
+
+  it("with discards off, a forced tribute hand still monopolizes on the forced indexes", () => {
+    const sub = view({ overlords: new Map([["beta", "alpha"]]) });
+    const set = playableSet(
+      sub, "beta", ["raid", "pay-military-tribute", "grow-crops"],
+      { discards: false },
+    );
+    expect(set).toEqual({ mode: "play", cardIndexes: [1] });
+  });
+
+  it("with discards off, a playable hand is unchanged", () => {
+    const set = playableSet(view(), "beta", ["subjugate", "grow-crops", "raid"], {
+      discards: false,
+    });
+    expect(set).toEqual({ mode: "play", cardIndexes: [1, 2] });
+  });
 });
 
 describe("handBlockReason", () => {

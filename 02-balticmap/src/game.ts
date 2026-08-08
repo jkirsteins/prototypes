@@ -16,7 +16,7 @@ import {
   type RulesView,
 } from "./playability";
 import { initialRulers, prowessByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
-import { DEFAULT_RULES, type RuleSelections } from "./rules";
+import { allowsDiscards, DEFAULT_RULES, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
 
 export type GameEventType =
@@ -629,7 +629,9 @@ export function playCard(
   if (state.phase !== "playing") return state;
   if (state.playedThisTurn) return state;
   const p = state.players[state.current];
-  const set = playableSet(viewOf(state), p.factionId, p.hand);
+  const set = playableSet(viewOf(state), p.factionId, p.hand, {
+    discards: allowsDiscards(state.rules),
+  });
   if (set.mode !== "play" || !set.cardIndexes.includes(cardIndex)) return state;
   const cardId = p.hand[cardIndex];
   const card = CARDS[cardId];
@@ -1094,15 +1096,16 @@ export function playCard(
   };
 }
 
-/** Forced discard when nothing in hand is playable. */
+/** Forced discard when nothing in hand is playable. Under rules that refuse
+ *  discards, `playableSet` never returns "discard" mode, so this simply never
+ *  finds a set to act on and falls through to the no-op return below. */
 export function discardCard(state: GameState, cardIndex: number): GameState {
   if (state.phase !== "playing") return state;
   if (state.playedThisTurn) return state;
-  // No discards of any kind under the unlimited turn structure: a dead hand
-  // waits for the board to change, and the turn ends by endTurn alone.
-  if (state.rules.turn === "unlimited") return state;
   const p = state.players[state.current];
-  const set = playableSet(viewOf(state), p.factionId, p.hand);
+  const set = playableSet(viewOf(state), p.factionId, p.hand, {
+    discards: allowsDiscards(state.rules),
+  });
   if (set.mode !== "discard" || !set.cardIndexes.includes(cardIndex)) return state;
   const cardId = p.hand[cardIndex];
   const players = state.players.map((pl, i) =>

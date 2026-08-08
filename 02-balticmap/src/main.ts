@@ -38,7 +38,8 @@ import {
   applyBootMeta, applyBootParams, parseBootParams,
 } from "./boot-params";
 import {
-  RULES_PREFS_KEY, loadRulesPrefs, saveRulesPrefs, type RuleSelections,
+  allowsDiscards, RULES_PREFS_KEY, loadRulesPrefs, saveRulesPrefs,
+  type RuleSelections,
 } from "./rules";
 import { seededRng } from "./rng";
 import { untilTurn } from "./timed";
@@ -212,7 +213,9 @@ function inPlay(): boolean {
 
 function humanPlayableSet() {
   const human = game.players[0];
-  return playableSet(viewOf(game), human.factionId, human.hand);
+  return playableSet(viewOf(game), human.factionId, human.hand, {
+    discards: allowsDiscards(game.rules),
+  });
 }
 
 /** Why the human cannot play this card this turn, or null when they can. The
@@ -221,13 +224,12 @@ function humanBlockReason(cardId: string) {
   const human = game.players[0];
   if (!human) return null;
   return handBlockReason(viewOf(game), human.factionId, human.hand, cardId, {
-    discards: game.rules.turn !== "unlimited",
+    discards: allowsDiscards(game.rules),
   });
 }
 
 function discardMode(): boolean {
   return (
-    game.rules.turn !== "unlimited" &&
     isHumanTurn(game) &&
     !game.playedThisTurn &&
     humanPlayableSet().mode === "discard"

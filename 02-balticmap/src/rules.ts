@@ -52,6 +52,14 @@ export const RULE_AXES: RuleAxis[] = [
  *  tests/rules.test.ts can catch the two drifting apart. */
 export const DEFAULT_RULES: RuleSelections = { turn: "standard" };
 
+/** Whether this rule set's turns include discarding at all. The unlimited
+ *  turn structure removes discards entirely: a hand with nothing playable
+ *  waits, and the turn ends by the explicit End turn action alone. Consumed
+ *  by `playableSet`, so "no discards" is decided once, not per call site. */
+export function allowsDiscards(rules: RuleSelections): boolean {
+  return rules.turn !== "unlimited";
+}
+
 /** Folds unknown-checked picks over the defaults: an axis or option that does
  *  not exist falls back to that axis's default, the same drop rule `rel=`
  *  applies to an unknown track. Every reader of untrusted picks (storage, a

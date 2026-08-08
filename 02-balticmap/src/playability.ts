@@ -1087,11 +1087,14 @@ export interface PlayableSet {
 
 /** Which hand indexes may be played this turn. Forced cards (the tribute cards)
  *  monopolize the set; an empty playable set means a forced discard of any
- *  card in hand. */
+ *  card in hand - unless the rules refuse discards, in which case the set
+ *  stays in "play" mode with nothing in it: there is no discard mode to
+ *  degrade to, so the hand simply has nothing to click. */
 export function playableSet(
   view: RulesView,
   factionId: string,
   hand: string[],
+  opts: { discards?: boolean } = {},
 ): PlayableSet {
   const forced: number[] = [];
   hand.forEach((c, i) => {
@@ -1103,6 +1106,9 @@ export function playableSet(
     if (!CARDS[c]?.forced && isCardPlayable(view, factionId, c)) playable.push(i);
   });
   if (playable.length > 0) return { mode: "play", cardIndexes: playable };
+  // With discards off the table there is no discard mode to degrade to: the
+  // hand simply has nothing to click, and the per-card reasons stay honest.
+  if (opts.discards === false) return { mode: "play", cardIndexes: [] };
   return { mode: "discard", cardIndexes: hand.map((_, i) => i) };
 }
 
@@ -1113,9 +1119,10 @@ export function playableSet(
  *  the turn. Read straight off `playableSet` rather than re-deriving the
  *  forced rule, so what the hover says and what the click allows are the same
  *  decision. In discard mode nothing is blocked - every card may go - and this
- *  returns null for all of them, but only while discards exist: a caller whose
- *  rules refuse discards passes `opts.discards: false` and gets the card's own
- *  reason instead. */
+ *  returns null for all of them, but only while the rules allow discards:
+ *  `opts.discards: false` flows straight through to `playableSet`, whose
+ *  empty play set makes every card fall through below and report its own
+ *  reason instead of a blanket null. */
 export function handBlockReason(
   view: RulesView,
   factionId: string,
@@ -1123,14 +1130,7 @@ export function handBlockReason(
   cardId: string,
   opts: { discards?: boolean } = {},
 ): CardBlockReason | null {
-  const set = playableSet(view, factionId, hand);
-  // A degraded set means "discard anything": with discards on the table
-  // nothing is blocked, but a caller whose rules refuse discards (the
-  // unlimited turn structure) is owed the card's own reason instead - a
-  // dead hand painted playable is a click that does nothing.
-  if (set.mode === "discard" && opts.discards === false) {
-    return cardBlockReason(view, factionId, cardId) ?? { code: "forced-first" };
-  }
+  const set = playableSet(view, factionId, hand, opts);
   if (set.cardIndexes.some((i) => hand[i] === cardId)) return null;
   return cardBlockReason(view, factionId, cardId) ?? { code: "forced-first" };
 }
