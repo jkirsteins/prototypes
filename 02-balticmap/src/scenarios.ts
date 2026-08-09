@@ -36,10 +36,15 @@ export interface Scenario {
  *  the test suite.
  *
  *  Every band in this file was RE-CAPTURED against the defense-score rules
- *  (2026-08-08 design): the Might-era bands measured a different game and
- *  were invalidated wholesale, exactly as that design says. These are
- *  post-flip baselines, captured and widened, not targets - no tuning has
- *  been done against them. */
+ *  (2026-08-08 design) on 2026-08-09: the Might-era bands measured a
+ *  different game and were invalidated wholesale, exactly as that design
+ *  says. These are post-flip baselines - measured, then widened the usual
+ *  way (turn medians to [0.6x, 1.5x], shares by +/-0.15) - not targets: no
+ *  tuning has been done against them. The headline worth knowing before a
+ *  playtest: the defense economy resolves worlds FAST - median end turn
+ *  30..43 across all three arms against the old game's ~105 - and a
+ *  flailing player still falls (defeatShare 1.00), so pacing pressure is
+ *  the first thing to judge at the table. */
 export const SCENARIOS: Scenario[] = [
   {
     id: "new-player-flailing",
@@ -53,8 +58,10 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.2, 0.95],
-      defeatShare: [0.2, 1],
+      subjugatedShare: [0.3, 0.62],       // measured 0.46
+      medianFirstSubjugation: [12, 31],   // measured 20.5
+      defeatShare: [0.85, 1],             // measured 1.00
+      medianDefeatTurn: [19, 47],         // measured 31.5
     },
   },
   {
@@ -69,7 +76,9 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 150,
     expect: {
-      defeatShare: [0.1, 1],
+      subjugatedShare: [0.5, 0.8],        // measured 0.65
+      defeatShare: [0.79, 1],             // measured 0.94
+      medianDefeatTurn: [20, 50],         // measured 33
     },
   },
 ];
@@ -146,9 +155,12 @@ export interface WorldScenario {
   expect: WorldExpectation;
 }
 
-/** Post-flip baselines, like SCENARIOS above: captured against the
- *  defense-score rules and widened, never tuned against. The three arms are
- *  the two uniform builds plus the mixed field the shipped game deals. */
+/** Post-flip baselines, like SCENARIOS above: measured on 2026-08-09 and
+ *  widened, never tuned against. The three arms are the two uniform builds
+ *  plus the mixed field the shipped game deals. Every arm resolved every
+ *  world (unifiedShare 1.00 over 26 seeds at cap 300), so the lower share
+ *  bound is deliberately tight: worlds stopping resolving is the failure
+ *  the old game died of, and it must fail here rather than pass quietly. */
 export const WORLD_SCENARIOS: WorldScenario[] = [
   {
     id: "world-mixed",
@@ -160,7 +172,8 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     firstSeed: 1,
     turnCap: 300,
     expect: {
-      unifiedShare: [0.5, 1],
+      unifiedShare: [0.85, 1],      // measured 1.00
+      medianEndTurn: [19, 48],      // measured 32.0
     },
   },
   {
@@ -172,7 +185,8 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     firstSeed: 1,
     turnCap: 300,
     expect: {
-      unifiedShare: [0.5, 1],
+      unifiedShare: [0.85, 1],      // measured 1.00
+      medianEndTurn: [18, 46],      // measured 30.5
     },
   },
   {
@@ -184,7 +198,8 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     firstSeed: 1,
     turnCap: 300,
     expect: {
-      unifiedShare: [0.3, 1],
+      unifiedShare: [0.85, 1],      // measured 1.00
+      medianEndTurn: [26, 64],      // measured 42.5
     },
   },
 ];

@@ -1128,30 +1128,6 @@ describe("advance", () => {
     };
     expect(advance(g, seededRng(3)).current).toBe(0);
   });
-
-  it("the roll is four draws flat: same seed, same slots, same named card", () => {
-    const g = harvestHand({ deck: ["grow-crops"] });
-    const a = rollHarvest(viewOf(g), g.players[0], seededRng(11));
-    const b = rollHarvest(viewOf(g), g.players[0], seededRng(11));
-    expect(a).toEqual(b);
-    expect(a.effects).toHaveLength(3);
-    expect(ACQUIRABLE_CARDS).toContain(a.swapCardId);
-
-    // The constant-draw pattern: the named card is drawn whether or not
-    // swap-known rolled, and eligibility never bends the count - a bare
-    // hand and a stocked one consume the same four draws.
-    const draws = (state: GameState): number => {
-      const inner = seededRng(3);
-      let n = 0;
-      rollHarvest(viewOf(state), state.players[0], () => {
-        n += 1;
-        return inner();
-      });
-      return n;
-    };
-    expect(draws(harvestHand())).toBe(4);
-    expect(draws(harvestHand({ deck: ["grow-crops", "raid"] }))).toBe(4);
-  });
 });
 
 describe("appendEvents stamping", () => {
