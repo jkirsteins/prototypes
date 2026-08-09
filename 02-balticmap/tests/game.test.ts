@@ -9,7 +9,7 @@ import { DEFAULT_RULES } from "../src/rules";
 import { isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
   DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, SUBJUGATION_GATE,
-  GREAT_RAID_DAMAGE, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
+  FORTIFY_HEAL_PER_OMEN, GREAT_RAID_DAMAGE, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
   PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
 import { ESCAPE_RESPITE_TURNS } from "../src/playability";
@@ -449,10 +449,10 @@ describe("great-raid", () => {
     g = {
       ...g,
       omens: { beta: 1 },
-      rulers: { ...g.rulers, beta: { ...g.rulers.beta, leadership: 50 } },
+      rulers: { ...g.rulers, beta: { ...g.rulers.beta, leadership: 5 } },
     };
     const after = playCard(g, 0, rng());
-    const each = (GREAT_RAID_DAMAGE + 50) * 2;
+    const each = (GREAT_RAID_DAMAGE + 5) * 2;
     expect(after.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - each);
     expect(after.defense.gamma).toBe(DEFAULT_DEFENSE_MAX - each);
     expect(after.log.find((e) => e.type === "play")?.readings).toBe(1);
@@ -525,7 +525,7 @@ describe("disease", () => {
     expect(after.disease).toEqual({ gamma: { delta: 1 } });
     const plagued = fresh(after, before).filter((e) => e.type === "plagued");
     expect(plagued.map((e) => [e.targetFactionId, e.amount])).toEqual([
-      ["alpha", 200], ["gamma", 100],
+      ["alpha", 20], ["gamma", 10],
     ]);
   });
 
@@ -581,20 +581,20 @@ describe("disease", () => {
 });
 
 describe("heals", () => {
-  it("hillfort restores 150 to one realm polygon, capped at its max", () => {
+  it("hillfort restores 15 to one realm polygon, capped at its max", () => {
     const g = withHand(
-      { ...playingState(), defense: { beta: 500 } }, 0, ["hillfort"],
+      { ...playingState(), defense: { beta: 50 } }, 0, ["hillfort"],
     );
     const after = playCard(g, 0, rng(), "beta");
     expect(after.defense.beta).toBeUndefined(); // back at max: key deleted
     expect(after.log.at(-1)).toMatchObject({
-      type: "healed", cardId: "hillfort", targetFactionId: "beta", amount: 100,
+      type: "healed", cardId: "hillfort", targetFactionId: "beta", amount: 10,
     });
     const deep = playCard(
-      withHand({ ...playingState(), defense: { beta: 300 } }, 0, ["hillfort"]),
+      withHand({ ...playingState(), defense: { beta: 30 } }, 0, ["hillfort"]),
       0, rng(), "beta",
     );
-    expect(deep.defense.beta).toBe(300 + HILLFORT_HEAL);
+    expect(deep.defense.beta).toBe(30 + HILLFORT_HEAL);
   });
 
   it("hillfort cannot target a polygon already at full defense", () => {
@@ -607,12 +607,12 @@ describe("heals", () => {
     g = {
       ...g,
       overlords: new Map([["gamma", "beta"]]),
-      defense: { beta: 500 }, // gamma pristine: the feast moves nothing there
+      defense: { beta: 50 }, // gamma pristine: the feast moves nothing there
     };
     g = withHand(g, 0, ["harvest-feast"]);
     const before = g.log.length;
     const after = playCard(g, 0, rng());
-    expect(after.defense.beta).toBe(500 + HARVEST_FEAST_HEAL);
+    expect(after.defense.beta).toBe(50 + HARVEST_FEAST_HEAL);
     const healed = fresh(after, before).filter((e) => e.type === "healed");
     expect(healed).toHaveLength(1);
     expect(healed[0]).toMatchObject({
@@ -623,6 +623,27 @@ describe("heals", () => {
   it("harvest-feast is dead while the whole realm stands at full defense", () => {
     const g = withHand(playingState(), 0, ["harvest-feast", "grow-crops"]);
     expect(playCard(g, 0, rng())).toBe(g);
+  });
+
+  it("fortify heals the realm by 1 per held omens reading, capped, no cash", () => {
+    // Zero readings: legal, but heals nothing - a wasted turn, not a refusal.
+    const dry = withHand({ ...playingState(), defense: { beta: 30 } }, 0, ["fortify"]);
+    const after = playCard(dry, 0, rng());
+    expect(after.defense.beta).toBe(30);
+    expect(after.log.at(-1)).toMatchObject({ type: "play", cardId: "fortify" });
+
+    // Two readings: 2 * FORTIFY_HEAL_PER_OMEN per realm polygon, and the
+    // stack survives the play - Fortify reads it, it does not cash it.
+    let g: GameState = { ...playingState(), defense: { beta: 30 }, omens: { beta: 2 } };
+    g = withHand(g, 0, ["fortify"]);
+    const healed = playCard(g, 0, rng());
+    expect(healed.defense.beta).toBe(30 + 2 * FORTIFY_HEAL_PER_OMEN);
+    expect(healed.omens.beta).toBe(2);
+
+    // Capped at max, like every other heal.
+    let capped: GameState = { ...playingState(), defense: { beta: 59 }, omens: { beta: 5 } };
+    capped = withHand(capped, 0, ["fortify"]);
+    expect(playCard(capped, 0, rng()).defense.beta).toBeUndefined();
   });
 });
 

@@ -69,7 +69,7 @@ describe("harvestPool", () => {
       .map((c) => c.id);
     const p = player("warpath", { discard: allCapped });
     expect(harvestPool(p)).toEqual([
-      "raid", "great-raid", "favourable-omens", "war-council",
+      "raid", "great-raid", "favourable-omens", "war-council", "fortify",
       "hillfort", "harvest-feast",
     ]);
   });
@@ -101,9 +101,9 @@ describe("rollHarvestOffer", () => {
   });
 
   it("draws without replacement - a middle pick shifts what follows", () => {
-    // Slot 1 takes index 6 of the 11-card warpath pool (subjugate); the pool
+    // Slot 1 takes index 7 of the 12-card warpath pool (subjugate); the pool
     // closes up, so two zero draws then take the unchanged head.
-    const { rng } = scriptedRng([6 / 11 + 0.001, 0, 0]);
+    const { rng } = scriptedRng([7 / 12 + 0.001, 0, 0]);
     expect(rollHarvestOffer(player("warpath"), rng))
       .toEqual(["subjugate", "raid", "great-raid"]);
   });
@@ -129,7 +129,7 @@ describe("autoHarvestChoice", () => {
   it("keeps the offered card its strategy ranks highest", () => {
     // The offer is [subjugate, raid, great-raid]; warpath ranks subjugate
     // above both.
-    const { rng } = scriptedRng([6 / 11 + 0.001, 0, 0]);
+    const { rng } = scriptedRng([7 / 12 + 0.001, 0, 0]);
     expect(autoHarvestChoice(player("warpath"), rng))
       .toEqual({ cardId: "subjugate" });
   });
@@ -144,8 +144,8 @@ describe("autoHarvestChoice", () => {
 
   it("prefers priority order over offer order", () => {
     // Offer [great-raid, favourable-omens, raid] (index 1, then 1, then 0 of
-    // the shrinking pool): warpath ranks raid above both others.
-    const { rng } = scriptedRng([1 / 11 + 0.001, 1 / 10 + 0.001, 0]);
+    // the shrinking 12-card pool): warpath ranks raid above both others.
+    const { rng } = scriptedRng([1 / 12 + 0.001, 1 / 11 + 0.001, 0]);
     expect(autoHarvestChoice(player("warpath"), rng))
       .toEqual({ cardId: "raid" });
   });

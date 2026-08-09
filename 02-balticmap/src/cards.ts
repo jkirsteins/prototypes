@@ -88,11 +88,13 @@ export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "No effect - a quiet season. Every 5th play earns a Turnip harvest.",
     textSegments: [t("No effect - a quiet season. Every 5th play earns a "), card("turnip-harvest"), t(".")] },
   // Build A - Warpath.
-  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Deal 10 damage, plus your ruler's leadership, to the defenses of one land in reach." },
-  "great-raid": { id: "great-raid", name: "Great raid", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Deal 5 damage, plus your ruler's leadership, to the defenses of every land bordering your realm." },
+  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Deal 1 damage, plus your ruler's leadership, to the defenses of one land in reach." },
+  "great-raid": { id: "great-raid", name: "Great raid", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Deal 0.5 damage, plus your ruler's leadership, to the defenses of every land bordering your realm." },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "The signs are read: your next Raid or Great raid deals double damage. Readings stack.",
     textSegments: [t("The signs are read: your next "), card("raid"), t(" or "), card("great-raid"), t(" deals double damage. Readings stack.")] },
-  "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 50 leadership, added to every attack. Stacks, and dies with the ruler." },
+  "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 5 leadership, added to every attack. Stacks, and dies with the ruler." },
+  "fortify": { id: "fortify", name: "Fortify", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 1 defense per Favourable omens reading you hold to every land of your realm, up to what each once held.",
+    textSegments: [t("Restore 1 defense per "), card("favourable-omens"), t(" reading you hold to every land of your realm, up to what each once held.")] },
   // Build B - Pestilence. Stacks are owned: each rival's disease on a land is
   // its own count, and only your own stacks feed your Plague.
   "spread-disease": { id: "spread-disease", name: "Spread disease", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Set one of your disease stacks on a land in reach. Stacks sit harmless until a Plague cashes them." ,
@@ -100,11 +102,11 @@ export const CARDS: Record<string, CardDef> = {
   "localized-outbreak": { id: "localized-outbreak", name: "Localized outbreak", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Set one of your disease stacks on every neighbour of a land in reach, except lands of your own realm. Third parties are hit." },
   "miasma": { id: "miasma", name: "Miasma", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Foul air gathers: your next Plague counts each of your stacks double. Stacks.",
     textSegments: [t("Foul air gathers: your next "), card("plague"), t(" counts each of your stacks double. Stacks.")] },
-  "plague": { id: "plague", name: "Plague", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Every land holding your disease takes 100 damage per stack of yours, and your stacks are spent. Other owners' stacks are untouched." },
+  "plague": { id: "plague", name: "Plague", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Every land holding your disease takes 10 damage per stack of yours, and your stacks are spent. Other owners' stacks are untouched." },
   "foul-winds": { id: "foul-winds", name: "Foul winds", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Every disease stack on every land, whoever owns it, becomes yours." },
   // Neutrals - reachable by every deck through the harvest pool.
-  "hillfort": { id: "hillfort", name: "Hillfort", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 150 defense to one land of your realm, up to what it once held." },
-  "harvest-feast": { id: "harvest-feast", name: "Harvest feast", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 50 defense to every land of your realm, up to what each once held." },
+  "hillfort": { id: "hillfort", name: "Hillfort", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 15 defense to one land of your realm, up to what it once held." },
+  "harvest-feast": { id: "harvest-feast", name: "Harvest feast", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 5 defense to every land of your realm, up to what each once held." },
   "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Turn a faction in reach into your vassal. Legal only while their home land's defenses sit at a quarter or less. Vassals pay tribute." },
   "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Permanently absorb one of your vassals into your realm. Needs a realm of 4 lands." },
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "The ruler of one faction in reach dies. The successor starts with no leadership." },
@@ -130,7 +132,7 @@ export const CARDS: Record<string, CardDef> = {
 export type Strategy = "warpath" | "pestilence";
 
 export const BUILDS: Record<Strategy, readonly string[]> = {
-  warpath: ["raid", "great-raid", "favourable-omens", "war-council"],
+  warpath: ["raid", "great-raid", "favourable-omens", "war-council", "fortify"],
   pestilence: [
     "spread-disease", "localized-outbreak", "miasma", "plague", "foul-winds",
   ],
@@ -189,11 +191,16 @@ export const isTributeCard = (cardId: string): boolean =>
 /** Returns a float in [0, 1). Injected so tests are deterministic. */
 export type Rng = () => number;
 
-/** The deck every seat starts with, human and AI alike: five Raids and the
- *  turnip that feeds the harvest bar. No padding and no DECK_SIZE - the deck
- *  is exactly what you hold, and it grows only through harvest picks. */
+/** The deck every seat starts with, human and AI alike: 3 Raid, 5 Fortify,
+ *  and the turnip that feeds the harvest bar. No padding and no DECK_SIZE -
+ *  the deck is exactly what you hold, and it grows only through harvest
+ *  picks. */
 export function startingDeck(): string[] {
-  return ["raid", "raid", "raid", "raid", "raid", "grow-crops"];
+  return [
+    "raid", "raid", "raid",
+    "fortify", "fortify", "fortify", "fortify", "fortify",
+    "grow-crops",
+  ];
 }
 
 /** Fisher-Yates; returns a new array, input untouched. */

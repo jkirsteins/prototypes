@@ -46,7 +46,7 @@ export function rollHarvestOffer(player: PlayerState, rng: Rng): string[] {
 export const HARVEST_PRIORITY: Record<Strategy, readonly string[]> = {
   warpath: [
     "subjugate", "war-council", "raid", "favourable-omens", "great-raid",
-    "hillfort", "harvest-feast", "incorporate", "assassinate-ruler",
+    "fortify", "hillfort", "harvest-feast", "incorporate", "assassinate-ruler",
     "bodyguard", "found-settlement",
   ],
   pestilence: [

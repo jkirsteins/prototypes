@@ -285,10 +285,10 @@ describe("applyBootParams", () => {
     const dv = (g: GameState) => ({ defense: g.defense, defenseMax: g.defenseMax });
 
     it("writes the store, clamped into [0, max]", () => {
-      const g = boot("?faction=beta&defense=alpha:100;gamma:0");
-      expect(g.defense.alpha).toBe(100);
+      const g = boot("?faction=beta&defense=alpha:20;gamma:0");
+      expect(g.defense.alpha).toBe(20);
       expect(g.defense.gamma).toBe(0);
-      expect(defenseOf(dv(g), "alpha")).toBe(100);
+      expect(defenseOf(dv(g), "alpha")).toBe(20);
     });
 
     it("deletes the key at or above max - absent means pristine", () => {
@@ -296,7 +296,7 @@ describe("applyBootParams", () => {
       // entry every walk and every badge has to special-case.
       const g = boot("?faction=beta&defense=alpha:999");
       expect("alpha" in g.defense).toBe(false);
-      expect(defenseOf(dv(g), "alpha")).toBe(600);
+      expect(defenseOf(dv(g), "alpha")).toBe(60);
     });
 
     it("deletes a key the fast-forward had damaged, not only fresh ones", () => {

@@ -8,12 +8,12 @@
  *  the id is stable through vassalage and incorporation. The home polygon of
  *  faction F is F's own id. */
 
-export const DEFENSE_PER_POPULATION = 50;
+export const DEFENSE_PER_POPULATION = 500;
 
 /** defenseMax for a world nobody handed a map to, the DEFAULT_SITE_CAP
  *  convention: tests get polygons big enough to exercise both gates without
- *  passing a map in. The real map derives 200..1800. */
-export const DEFAULT_DEFENSE_MAX = 600;
+ *  passing a map in. The real map derives 20..180. */
+export const DEFAULT_DEFENSE_MAX = 60;
 
 /** Subjugate is legal while the target's HOME polygon sits at or below this
  *  share of its max. */
@@ -23,12 +23,16 @@ export const SUBJUGATION_GATE = 0.25;
  *  regains independence at the start of its own turn. */
 export const INDEPENDENCE_GATE = 0.75;
 
-export const RAID_DAMAGE = 10;
-export const GREAT_RAID_DAMAGE = 5;
-export const WAR_COUNCIL_LEADERSHIP = 50;
-export const PLAGUE_DAMAGE_PER_STACK = 100;
-export const HILLFORT_HEAL = 150;
-export const HARVEST_FEAST_HEAL = 50;
+export const RAID_DAMAGE = 1;
+export const GREAT_RAID_DAMAGE = 0.5;
+export const WAR_COUNCIL_LEADERSHIP = 5;
+export const PLAGUE_DAMAGE_PER_STACK = 10;
+export const HILLFORT_HEAL = 15;
+export const HARVEST_FEAST_HEAL = 5;
+/** Fortify's heal, per land of the actor's realm, per Favourable omens
+ *  reading currently held - linear, not the 2**n attack multiplier. Zero
+ *  readings means zero heal. */
+export const FORTIFY_HEAL_PER_OMEN = 1;
 
 /** polygon id -> current defense. A key is present ONLY while the polygon is
  *  damaged; absent means "at defenseMax" - the missing-key-means-pristine

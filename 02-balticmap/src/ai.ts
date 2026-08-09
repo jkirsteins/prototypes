@@ -6,7 +6,7 @@ import {
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
 import {
-  attackDamageFor, borderPolygonsOf, holdsGuard, plagueMultiplier,
+  attackDamageFor, borderPolygonsOf, holdsGuard, omensHeld, plagueMultiplier,
   playableSet, validTargetsFor, type RulesView,
 } from "./playability";
 import { discardCard, endTurn, playCard, viewOf, type GameState } from "./game";
@@ -32,6 +32,7 @@ export const POLICY_COVERAGE: Record<string, string> = {
     "4: assassinate the highest leadership in reach, bodyguard risk unknown",
   "hillfort": "5: heal toward a gate - escape as a vassal, repair while free",
   "harvest-feast": "5: heal toward a gate, realm-wide arm",
+  "fortify": "5: heal toward a gate, realm-wide, only while a reading would land",
   "raid":
     "6W: suppress a vassal nearing its gate or finish an opening; 11W: " +
     "build toward the nearest gate",
@@ -224,6 +225,10 @@ export function chooseAction(state: GameState): AiAction {
   // While free and the realm's worst polygon sits under 50%, repair it.
   const hillfort = idxOf("hillfort");
   const feast = idxOf("harvest-feast");
+  // Only worth a turn while it would actually heal something - a 0-reading
+  // Fortify is a dead card, same test the always-legal rule waves through.
+  const fortify = idxOf("fortify");
+  const hasFortifyHeal = omensHeld(v, p.factionId) > 0;
   const home = p.factionId;
   if (lord !== undefined && !independenceGateOpen(v, home)) {
     const homeTargets = validTargetsFor(v, p.factionId, "hillfort");
@@ -232,6 +237,9 @@ export function chooseAction(state: GameState): AiAction {
     }
     if (feast !== undefined && defenseOf(v, home) < defenseMaxOf(v, home)) {
       return { type: "play", cardIndex: feast };
+    }
+    if (fortify !== undefined && hasFortifyHeal) {
+      return { type: "play", cardIndex: fortify };
     }
   }
   if (lord === undefined) {
@@ -252,6 +260,9 @@ export function chooseAction(state: GameState): AiAction {
         return { type: "play", cardIndex: hillfort, targetId: worst };
       }
       if (feast !== undefined) return { type: "play", cardIndex: feast };
+      if (fortify !== undefined && hasFortifyHeal) {
+        return { type: "play", cardIndex: fortify };
+      }
     }
   }
 

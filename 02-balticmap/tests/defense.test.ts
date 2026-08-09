@@ -101,10 +101,10 @@ describe("defense store", () => {
     expect(diseaseOn(after, "selija", "selonians")).toBe(4);
   });
 
-  it("derives defenseMax as population / 50", () => {
-    expect(DEFENSE_PER_POPULATION).toBe(50);
+  it("derives defenseMax as population / 500", () => {
+    expect(DEFENSE_PER_POPULATION).toBe(500);
     expect(
       defenseMaxFromPopulations({ "eastern-aukstaitija": 90000, pilsotas: 10000 }),
-    ).toEqual({ "eastern-aukstaitija": 1800, pilsotas: 200 });
+    ).toEqual({ "eastern-aukstaitija": 180, pilsotas: 20 });
   });
 });

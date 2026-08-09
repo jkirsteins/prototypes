@@ -473,12 +473,14 @@ export function cardBlockReason(
     return { code: "cannot-afford", cost, held: wealthOf(view, factionId) };
   }
   // Always legal: the filler, the reserves (both stack, so a second is a
-  // bigger allowance rather than a dead card), the council, and the harvest
-  // (its offer always includes skip, so it is never dead in hand).
+  // bigger allowance rather than a dead card), the council, Fortify (a
+  // 0-reading play heals nothing, same as grow-crops doing nothing - a
+  // wasted turn, not an illegal one), and the harvest (its offer always
+  // includes skip, so it is never dead in hand).
   if (
     cardId === "grow-crops" || cardId === "favourable-omens" ||
     cardId === "miasma" || cardId === "war-council" ||
-    cardId === "turnip-harvest"
+    cardId === "fortify" || cardId === "turnip-harvest"
   ) {
     return null;
   }

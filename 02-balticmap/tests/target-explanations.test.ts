@@ -22,7 +22,7 @@ const noRisk = (): string[] => [];
 const ORDER = ["alpha", "beta", "gamma", "delta"];
 
 /** A four-polygon line: alpha - beta - gamma - delta. Every polygon defaults
- *  to pristine 600 defense (absent key = at max), the src/defense.ts
+ *  to pristine 60 defense (absent key = at max), the src/defense.ts
  *  convention. */
 const v = (partial: Partial<RulesView> = {}): RulesView => ({
   overlords: new Map(), incorporated: {},
@@ -325,7 +325,7 @@ describe("targetImpactLines", () => {
 
   it("heads the block with the card, then the defense move it would deal", () => {
     expect(shown(targetImpactLines(v(), "alpha", "raid", "beta")))
-      .toEqual(["If Raid played here:", "-10 Defense (600 -> 590)"]);
+      .toEqual(["If Raid played here:", "-1 Defense (60 -> 59)"]);
     expect(targetImpactLines(v(), "alpha", "raid", "beta")[0].blockStart).toBe(true);
   });
 
@@ -336,36 +336,36 @@ describe("targetImpactLines", () => {
   });
 
   it("floors the landing point at zero, the same clamp the resolution applies", () => {
-    const view = v({ defense: { beta: 5 } });
+    const view = v({ defense: { beta: 0 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-10 Defense (5 -> 0)");
+      .toBe("-1 Defense (0 -> 0)");
   });
 
   it("adds the ruler's leadership into the quoted damage", () => {
-    const view = v({ leadership: { alpha: 50 } });
+    const view = v({ leadership: { alpha: 5 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-60 Defense (600 -> 540)");
+      .toBe("-6 Defense (60 -> 54)");
   });
 
   it("doubles a held reading, and says which word is the reading's", () => {
     const view = v({ omens: { alpha: 1 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-20 Defense (600 -> 580, doubled)");
+      .toBe("-2 Defense (60 -> 58, doubled)");
   });
 
   it("quotes a stack at its real multiple before it is aimed", () => {
     const view = v({ omens: { alpha: 2 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-40 Defense (600 -> 560, quadrupled)");
+      .toBe("-4 Defense (60 -> 56, quadrupled)");
   });
 
   it("previews a Hillfort as the heal it is, capped at what the land once held", () => {
-    const view = v({ defense: { alpha: 400 } });
+    const view = v({ defense: { alpha: 40 } });
     expect(shown(targetImpactLines(view, "alpha", "hillfort", "alpha")))
-      .toEqual(["If Hillfort played here:", "+150 Defense (400 -> 550)"]);
-    const nearFull = v({ defense: { alpha: 500 } });
+      .toEqual(["If Hillfort played here:", "+15 Defense (40 -> 55)"]);
+    const nearFull = v({ defense: { alpha: 50 } });
     expect(shown(targetImpactLines(nearFull, "alpha", "hillfort", "alpha"))[1])
-      .toBe("+150 Defense (500 -> 600)");
+      .toBe("+15 Defense (50 -> 60)");
   });
 
   it("previews a disease stack as your own count there, +1", () => {
@@ -384,7 +384,7 @@ describe("targetImpactLines", () => {
   });
 
   it("marks an effect that is not a number rather than leaving the column blank", () => {
-    const open = v({ defense: { beta: 100 } });
+    const open = v({ defense: { beta: 10 } });
     expect(shown(targetImpactLines(open, "alpha", "subjugate", "beta")))
       .toEqual(["If Subjugate played here:", "-- Becomes your vassal."]);
     const vassal = v({
@@ -425,7 +425,7 @@ describe("targetImpactLines", () => {
   it("keeps a refusal one red line, with no block heading over it", () => {
     const view = v({ defense: { beta: 200 } });
     expect(targetImpactLines(view, "alpha", "subjugate", "beta")).toEqual([
-      { text: "Their home defenses stand at 200; subjugation opens at 150 or less.", tone: "bad" },
+      { text: "Their home defenses stand at 60; subjugation opens at 15 or less.", tone: "bad" },
     ]);
   });
 
@@ -468,24 +468,24 @@ describe("targetImpactLines", () => {
   it("a lord may raid its own vassal - the aim previews rather than refusing", () => {
     const view = v({ overlords: new Map([["beta", "alpha"]]) });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta")))
-      .toEqual(["If Raid played here:", "-10 Defense (600 -> 590)"]);
+      .toEqual(["If Raid played here:", "-1 Defense (60 -> 59)"]);
   });
 });
 
 describe("defenseBreakdown", () => {
   it("quotes the standing defense over its max and the gate line", () => {
-    const view = v({ defense: { beta: 480 } });
+    const view = v({ defense: { beta: 48 } });
     expect(defenseBreakdown(view, "beta", false)).toEqual([
       { text: "Defenses", blockStart: true },
-      { amount: "480/600", text: "standing" },
-      { amount: "150", text: "or less opens subjugation" },
+      { amount: "48/60", text: "standing" },
+      { amount: "15", text: "or less opens subjugation" },
     ]);
   });
 
   it("shouts when the gate stands open", () => {
-    const view = v({ defense: { beta: 150 } });
+    const view = v({ defense: { beta: 15 } });
     expect(defenseBreakdown(view, "beta", false)[1]).toEqual({
-      amount: "150/600", text: "standing - the gate is OPEN", tone: "bad",
+      amount: "15/60", text: "standing - the gate is OPEN", tone: "bad",
     });
   });
 
@@ -493,7 +493,7 @@ describe("defenseBreakdown", () => {
     const view = v({ defense: { beta: 300 } });
     const asVassal = defenseBreakdown(view, "beta", true);
     expect(asVassal[3]).toEqual({
-      amount: "450", text: "or more regains independence at their turn",
+      amount: "45", text: "or more regains independence at their turn",
     });
     expect(defenseBreakdown(view, "beta", false)).toHaveLength(3);
   });
@@ -530,7 +530,7 @@ describe("plaguePreviewLines", () => {
   it("totals the damage across every land holding your stacks", () => {
     const view = v({ disease: { beta: { alpha: 2 }, gamma: { alpha: 1 } } });
     expect(plaguePreviewLines(view, "alpha")).toEqual([
-      "Would deal 300 damage across 2 lands.",
+      "Would deal 30 damage across 2 lands.",
     ]);
   });
 
@@ -540,17 +540,17 @@ describe("plaguePreviewLines", () => {
     // beta are somebody else's and feed nothing.
     const view = v({
       disease: { beta: { alpha: 3, gamma: 5 } },
-      defense: { beta: 100 },
+      defense: { beta: 20 },
     });
     expect(plaguePreviewLines(view, "alpha")).toEqual([
-      "Would deal 100 damage across 1 land.",
+      "Would deal 20 damage across 1 land.",
     ]);
   });
 
   it("multiplies by gathered miasma", () => {
     const view = v({ disease: { beta: { alpha: 2 } }, miasma: { alpha: 1 } });
     expect(plaguePreviewLines(view, "alpha")).toEqual([
-      "Would deal 400 damage across 1 land.",
+      "Would deal 40 damage across 1 land.",
     ]);
   });
 

@@ -42,13 +42,13 @@ describe("sim map", () => {
     expect(factionAdjacencyOf(data)).toEqual({ f1: ["f2"], f2: ["f1"] });
   });
 
-  it("derives every land's defense ceiling, 200 (Pilsotas) to 1800 (E. Aukstaitija)", () => {
+  it("derives every land's defense ceiling, 20 (Pilsotas) to 180 (E. Aukstaitija)", () => {
     const values = Object.values(SIM_DEFENSE_MAX);
     expect(values).toHaveLength(26);
-    // population / 50 on the shipped map: a simulated Pilsotas must fall in
+    // population / 500 on the shipped map: a simulated Pilsotas must fall in
     // one doubled Raid while Eastern Aukstaitija shrugs it off.
-    expect(Math.min(...values)).toBe(200);
-    expect(Math.max(...values)).toBe(1800);
+    expect(Math.min(...values)).toBe(20);
+    expect(Math.max(...values)).toBe(180);
   });
 });
 

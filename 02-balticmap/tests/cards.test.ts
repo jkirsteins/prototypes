@@ -34,12 +34,12 @@ describe("cards", () => {
     // Build A - Warpath.
     expectProps(
       "raid", "Raid", true, false, null, true, false,
-      "Deal 10 damage, plus your ruler's leadership, to the defenses of one " +
+      "Deal 1 damage, plus your ruler's leadership, to the defenses of one " +
         "land in reach.",
     );
     expectProps(
       "great-raid", "Great raid", false, false, null, true, false,
-      "Deal 5 damage, plus your ruler's leadership, to the defenses of " +
+      "Deal 0.5 damage, plus your ruler's leadership, to the defenses of " +
         "every land bordering your realm.",
     );
     expectProps(
@@ -49,8 +49,13 @@ describe("cards", () => {
     );
     expectProps(
       "war-council", "War council", false, false, null, true, false,
-      "Your ruler gains 50 leadership, added to every attack. Stacks, and " +
+      "Your ruler gains 5 leadership, added to every attack. Stacks, and " +
         "dies with the ruler.",
+    );
+    expectProps(
+      "fortify", "Fortify", false, false, null, true, false,
+      "Restore 1 defense per Favourable omens reading you hold to every " +
+        "land of your realm, up to what each once held.",
     );
     // Build B - Pestilence.
     expectProps(
@@ -70,7 +75,7 @@ describe("cards", () => {
     );
     expectProps(
       "plague", "Plague", false, false, null, true, false,
-      "Every land holding your disease takes 100 damage per stack of yours, " +
+      "Every land holding your disease takes 10 damage per stack of yours, " +
         "and your stacks are spent. Other owners' stacks are untouched.",
     );
     expectProps(
@@ -80,11 +85,11 @@ describe("cards", () => {
     // Neutrals - reachable by every deck through the harvest pool.
     expectProps(
       "hillfort", "Hillfort", true, false, null, true, false,
-      "Restore 150 defense to one land of your realm, up to what it once held.",
+      "Restore 15 defense to one land of your realm, up to what it once held.",
     );
     expectProps(
       "harvest-feast", "Harvest feast", false, false, null, true, false,
-      "Restore 50 defense to every land of your realm, up to what each once " +
+      "Restore 5 defense to every land of your realm, up to what each once " +
         "held.",
     );
     expectProps(
@@ -222,7 +227,7 @@ describe("builds and the neutral pool", () => {
 
   it("pins the two build lists to literals", () => {
     expect(BUILDS.warpath).toEqual([
-      "raid", "great-raid", "favourable-omens", "war-council",
+      "raid", "great-raid", "favourable-omens", "war-council", "fortify",
     ]);
     expect(BUILDS.pestilence).toEqual([
       "spread-disease", "localized-outbreak", "miasma", "plague", "foul-winds",
@@ -257,9 +262,11 @@ describe("builds and the neutral pool", () => {
 });
 
 describe("startingDeck", () => {
-  it("is five Raids and the turnip that feeds the harvest bar", () => {
+  it("is 3 Raid, 5 Fortify, and the turnip that feeds the harvest bar", () => {
     expect(startingDeck()).toEqual([
-      "raid", "raid", "raid", "raid", "raid", "grow-crops",
+      "raid", "raid", "raid",
+      "fortify", "fortify", "fortify", "fortify", "fortify",
+      "grow-crops",
     ]);
   });
 
@@ -268,7 +275,7 @@ describe("startingDeck", () => {
     const b = startingDeck();
     expect(a).not.toBe(b);
     a.pop();
-    expect(startingDeck()).toHaveLength(6);
+    expect(startingDeck()).toHaveLength(9);
   });
 });
 

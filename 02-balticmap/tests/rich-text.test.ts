@@ -100,7 +100,7 @@ describe("renderSegments", () => {
     const span = frag.querySelector(".rt-card")!;
     move(span as HTMLElement);
     expect(showTip).toHaveBeenCalledWith(
-      [{ text: "Raid" }, { text: expect.stringContaining("10 damage") }],
+      [{ text: "Raid" }, { text: expect.stringContaining("1 damage") }],
       10, 20,
     );
     span.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));

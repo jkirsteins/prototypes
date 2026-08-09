@@ -64,7 +64,7 @@ describe("the spine, steps 1..5", () => {
 
   it("2: subjugates through an open gate, above every voluntary play", () => {
     let g = base();
-    g = { ...g, defense: { beta: 150 } }; // exactly the 25% line of 600
+    g = { ...g, defense: { beta: 15 } }; // exactly the 25% line of 60
     g = withHand(g, ["raid", "subjugate"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta",
@@ -76,7 +76,7 @@ describe("the spine, steps 1..5", () => {
     // beta's 1 even though beta sorts first.
     let g = base();
     g = { ...g, overlords: new Map([["delta", "gamma"]]) };
-    g = { ...g, defense: { beta: 100, gamma: 120 } };
+    g = { ...g, defense: { beta: 10, gamma: 12 } };
     g = withHand(g, ["subjugate"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "gamma",
@@ -88,7 +88,7 @@ describe("the spine, steps 1..5", () => {
     // target, and the build raid must not batter the open gate further - the
     // gateCandidates filter sends it at a CLOSED gate (gamma, by tie order).
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 100 }, respites: { beta: 5 }, turn: 2 };
+    g = { ...g, defense: { beta: 10 }, respites: { beta: 5 }, turn: 2 };
     g = withHand(g, ["subjugate", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "gamma",
@@ -142,7 +142,7 @@ describe("the spine, steps 1..5", () => {
   });
 
   it("4: holds the card below one council's worth of leadership", () => {
-    let g = withLeadership(base(), { beta: 49 });
+    let g = withLeadership(base(), { beta: 4 });
     g = withHand(g, ["grow-crops", "assassinate-ruler"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
@@ -150,7 +150,7 @@ describe("the spine, steps 1..5", () => {
   it("5: a vassal heals its home toward the independence gate", () => {
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = { ...g, defense: { alpha: 300 } }; // one Hillfort short of 450
+    g = { ...g, defense: { alpha: 30 } }; // one Hillfort short of 45
     expect(chooseAction(withHand(g, ["hillfort", "grow-crops"]))).toEqual({
       type: "play", cardIndex: 0, targetId: "alpha",
     });
@@ -162,14 +162,14 @@ describe("the spine, steps 1..5", () => {
   it("5: stops healing once the home stands at the gate - beginTurn frees it", () => {
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = { ...g, defense: { alpha: 450 } }; // ceil(0.75 * 600): gate open
+    g = { ...g, defense: { alpha: 45 } }; // ceil(0.75 * 60): gate open
     g = withHand(g, ["hillfort", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
   it("5: while free, repairs a realm polygon under half strength", () => {
     let g = base();
-    g = { ...g, defense: { alpha: 250 } };
+    g = { ...g, defense: { alpha: 25 } };
     g = withHand(g, ["hillfort", "grow-crops"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "alpha",
@@ -178,7 +178,7 @@ describe("the spine, steps 1..5", () => {
 
   it("5: leaves a scratch above half strength for the harvest loop", () => {
     let g = base();
-    g = { ...g, defense: { alpha: 350 } };
+    g = { ...g, defense: { alpha: 35 } };
     g = withHand(g, ["hillfort", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
@@ -188,7 +188,7 @@ describe("6W: warpath decisive moves", () => {
   it("6W-1: raids its own vassal one heal from the independence gate", () => {
     let g = asStrategy(base(), "warpath");
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    g = { ...g, defense: { beta: 320 } }; // 320 + 150 >= 450
+    g = { ...g, defense: { beta: 32 } }; // 32 + 15 >= 45
     g = withHand(g, ["raid", "grow-crops"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "beta",
@@ -197,7 +197,7 @@ describe("6W: warpath decisive moves", () => {
 
   it("6W-2: finishes a gate one raid can open - above the council", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 160 } }; // gap 10 <= raid damage 10
+    g = { ...g, defense: { beta: 16 } }; // gap 1 <= raid damage 1
     g = withHand(g, ["war-council", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta",
@@ -206,26 +206,26 @@ describe("6W: warpath decisive moves", () => {
 
   it("6W-3: fans a great raid when it would open two or more border gates", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 154, gamma: 154 } }; // gaps 4 <= fan 5
+    g = { ...g, defense: { beta: 15.4, gamma: 15.4 } }; // gaps 0.4 <= fan 0.5
     g = withHand(g, ["great-raid", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
     // One gate is not worth the fan: the turn feeds the harvest loop instead.
     const one = withHand(
-      { ...g, defense: { beta: 154 } }, ["great-raid", "grow-crops"],
+      { ...g, defense: { beta: 15.4 } }, ["great-raid", "grow-crops"],
     );
     expect(chooseAction(one)).toEqual({ type: "play", cardIndex: 1 });
   });
 
   it("6W-4: reads the omens when only the doubled raid opens a gate", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 165 } }; // gap 15: >10, <=20
+    g = { ...g, defense: { beta: 16.5 } }; // gap 1.5: >1, <=2
     g = withHand(g, ["favourable-omens", "raid"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 
   it("6W-4: never delays a finishing raid to stack a reading", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 160 } };
+    g = { ...g, defense: { beta: 16 } };
     g = withHand(g, ["favourable-omens", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta",
@@ -237,7 +237,7 @@ describe("6P: pestilence decisive moves", () => {
   it("6P-1: plagues its restive vassal's stacks before any outward play", () => {
     let g = asStrategy(base(), "pestilence");
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    g = { ...g, defense: { beta: 320 }, disease: { beta: { alpha: 1 } } };
+    g = { ...g, defense: { beta: 32 }, disease: { beta: { alpha: 1 } } };
     g = withHand(g, ["plague", "spread-disease"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
@@ -245,7 +245,7 @@ describe("6P: pestilence decisive moves", () => {
   it("6P-1: sickens the restive vassal when no stacks sit there yet", () => {
     let g = asStrategy(base(), "pestilence");
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    g = { ...g, defense: { beta: 320 } };
+    g = { ...g, defense: { beta: 32 } };
     g = withHand(g, ["spread-disease", "grow-crops"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "beta",
@@ -254,24 +254,24 @@ describe("6P: pestilence decisive moves", () => {
 
   it("6P-2: cashes the plague when it opens a gate", () => {
     let g = asStrategy(base(), "pestilence");
-    g = { ...g, defense: { beta: 250 }, disease: { beta: { alpha: 1 } } };
+    g = { ...g, defense: { beta: 25 }, disease: { beta: { alpha: 1 } } };
     g = withHand(g, ["plague", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 
   it("6P-2: cashes when the total damage beats a raid, else waits", () => {
     // "A raid's worth" moves with leadership, so the waits-arm needs a
-    // council-stacked ruler: at leadership 200 a raid is worth 210, and two
-    // stacks (200) sit under it while three (300) beat it.
+    // council-stacked ruler: at leadership 20 a raid is worth 21, and two
+    // stacks (20) sit under it while three (30) beat it.
     let g = asStrategy(base(), "pestilence");
     g = {
       ...g,
-      rulers: { ...g.rulers, alpha: { ...g.rulers.alpha, leadership: 200 } },
+      rulers: { ...g.rulers, alpha: { ...g.rulers.alpha, leadership: 20 } },
     };
-    const fat = { ...g, disease: { beta: { alpha: 3 } } }; // 300 > 210
+    const fat = { ...g, disease: { beta: { alpha: 3 } } }; // 30 > 21
     expect(chooseAction(withHand(fat, ["plague", "grow-crops"])))
       .toEqual({ type: "play", cardIndex: 0 });
-    const thin = { ...g, disease: { beta: { alpha: 2 } } }; // 200 <= 210
+    const thin = { ...g, disease: { beta: { alpha: 2 } } }; // 20 <= 21
     expect(chooseAction(withHand(thin, ["plague", "grow-crops"])))
       .toEqual({ type: "play", cardIndex: 1 });
   });
@@ -296,14 +296,14 @@ describe("6P: pestilence decisive moves", () => {
 
   it("6P-4: reads the miasma when only the doubled plague opens a gate", () => {
     let g = asStrategy(base(), "pestilence");
-    // gap 150: one stack cashes 100 (no), doubled 200 (yes). Leadership
-    // keeps a raid's worth above the plain 100, or the total-beats-a-raid
-    // arm of 6P-2 would cash the stack before this step is reached.
+    // gap 15: one stack cashes 10 (no), doubled 20 (yes). Leadership keeps
+    // a raid's worth above the plain 10, or the total-beats-a-raid arm of
+    // 6P-2 would cash the stack before this step is reached.
     g = {
       ...g,
       rulers: { ...g.rulers, alpha: { ...g.rulers.alpha, leadership: 100 } },
     };
-    g = { ...g, defense: { beta: 300 }, disease: { beta: { alpha: 1 } } };
+    g = { ...g, defense: { beta: 30 }, disease: { beta: { alpha: 1 } } };
     g = withHand(g, ["miasma", "plague"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
@@ -408,13 +408,13 @@ describe("steps 7..10: guard, settle, harvest, turnips", () => {
 describe("step 11: build moves", () => {
   it("11W-1: councils while no gate is within two attacks", () => {
     let g = asStrategy(base(), "warpath");
-    g = withHand(g, ["war-council", "raid"]); // every gap is 450 > 2 attacks
+    g = withHand(g, ["war-council", "raid"]); // every gap is 45 > 2 attacks
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 
   it("11W-2: raids the polygon nearest its gate once one is within reach", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { gamma: 165 } }; // gap 15 <= 2 attacks (20)
+    g = { ...g, defense: { gamma: 16.5 } }; // gap 1.5 <= 2 attacks (2)
     g = withHand(g, ["war-council", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "gamma",
@@ -423,7 +423,7 @@ describe("step 11: build moves", () => {
 
   it("11W-2: the build raid skips open gates - those want Subjugate", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 100, gamma: 400 } };
+    g = { ...g, defense: { beta: 10, gamma: 40 } };
     g = withHand(g, ["raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "gamma",
@@ -432,7 +432,7 @@ describe("step 11: build moves", () => {
 
   it("11P: spreads disease on the polygon nearest its closed gate", () => {
     let g = asStrategy(base(), "pestilence");
-    g = { ...g, defense: { beta: 400, gamma: 200 } };
+    g = { ...g, defense: { beta: 40, gamma: 20 } };
     g = withHand(g, ["spread-disease"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "gamma",
@@ -445,7 +445,7 @@ describe("fallthrough and dead hands", () => {
     // A damaged-but-healthy home: step 5 refuses (above half), the branches
     // hold nothing else, so the hillfort lands as the last resort.
     let g = base();
-    g = { ...g, defense: { alpha: 500 } };
+    g = { ...g, defense: { alpha: 50 } };
     g = withHand(g, ["hillfort"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "alpha",

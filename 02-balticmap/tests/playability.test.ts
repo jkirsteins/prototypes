@@ -544,14 +544,14 @@ describe("attackDamageFor", () => {
 });
 
 describe("plagueDamageOn", () => {
-  it("is 100 per OWN stack, doubled per miasma reading", () => {
+  it("is 10 per OWN stack, doubled per miasma reading", () => {
     const v = view({
       disease: { beta: { alpha: 3, gamma: 2 } },
       miasma: { alpha: 1 },
     });
-    expect(plagueDamageOn(v, "alpha", "beta")).toBe(600);
+    expect(plagueDamageOn(v, "alpha", "beta")).toBe(60);
     // gamma's own two stacks feed gamma's plague, unscaled
-    expect(plagueDamageOn(v, "gamma", "beta")).toBe(200);
+    expect(plagueDamageOn(v, "gamma", "beta")).toBe(20);
     expect(plagueDamageOn(v, "alpha", "gamma")).toBe(0);
     expect(plagueMultiplier(v, "alpha")).toBe(2);
     expect(miasmaHeld(v, "alpha")).toBe(1);

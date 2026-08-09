@@ -34,25 +34,55 @@ type ScoreMove =
  *  before -> after suffixes drift silently. `tests/standings.test.ts`
  *  replays seeded games and checks the walk against the real stores.
  *
- *  Foul winds is one event per polygon carrying the stacks the actor GAINED
- *  there; the losers' counts are not walked - the log line is about the
- *  claim, and every loser's count is 0 after by construction. */
+ *  Plagued moves BOTH tracks: the defense damage (`amount`) and, via
+ *  `stacksSpent`, the actor's own disease clearing on that same polygon -
+ *  `clearDiseaseOf` empties it silently, and without this second move an
+ *  earlier `disease-spread` in the same batch would walk back through a
+ *  store the clear had already zeroed, landing on a negative "before".
+ *
+ *  Winds-shifted is the same shape from the other side: the actor's gain
+ *  (`amount`) plus, via `losses`, every OTHER owner's stack on that polygon
+ *  going to 0 - `transferAllDiseaseTo` empties them all silently, and any
+ *  of them who spread a stack earlier in the same batch needs a move here
+ *  or the walk hits the identical negative-"before" bug. */
 export function scoreMovesOf(e: GameEvent, ctx: WalkCtx): ScoreMove[] {
   const A = ctx.factionOf(e.playerId);
   const polygon = e.targetFactionId;
-  if (e.amount === undefined || polygon === undefined) return [];
+  if (polygon === undefined) return [];
   switch (e.type) {
     case "damaged":
-    case "plagued":
-      return e.amount === 0
+      return e.amount === undefined || e.amount === 0
         ? []
         : [{ track: "defense", polygon, delta: -e.amount }];
+    case "plagued": {
+      const moves: ScoreMove[] = [];
+      if (e.amount !== undefined && e.amount !== 0) {
+        moves.push({ track: "defense", polygon, delta: -e.amount });
+      }
+      if (A !== undefined && e.stacksSpent !== undefined && e.stacksSpent !== 0) {
+        moves.push({ track: "disease", polygon, owner: A, delta: -e.stacksSpent });
+      }
+      return moves;
+    }
     case "healed":
-      return [{ track: "defense", polygon, delta: e.amount }];
-    case "disease-spread":
-    case "winds-shifted":
-      if (A === undefined) return [];
+      return e.amount === undefined
+        ? []
+        : [{ track: "defense", polygon, delta: e.amount }];
+    case "disease-spread": {
+      if (A === undefined || e.amount === undefined) return [];
       return [{ track: "disease", polygon, owner: A, delta: e.amount }];
+    }
+    case "winds-shifted": {
+      const moves: ScoreMove[] = [];
+      if (A !== undefined && e.amount !== undefined) {
+        moves.push({ track: "disease", polygon, owner: A, delta: e.amount });
+      }
+      for (const [loser, lost] of Object.entries(e.losses ?? {})) {
+        if (lost === 0) continue;
+        moves.push({ track: "disease", polygon, owner: loser, delta: -lost });
+      }
+      return moves;
+    }
     default:
       return [];
   }

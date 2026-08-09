@@ -115,8 +115,9 @@ describe("createHud", () => {
     const g = withHand(playing(), 0, ["grow-crops"]);
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
-    // The 6-card starting deck: 3 dealt to hand, 1 drawn at turn start.
-    expect(q(container, ".pile-deck .pile-count").textContent).toBe("2");
+    // The 9-card starting deck (3 raid, 5 fortify, 1 grow-crops): 3 dealt
+    // to hand, 1 drawn at turn start.
+    expect(q(container, ".pile-deck .pile-count").textContent).toBe("5");
     expect(q(container, ".pile-deck .pile-label").textContent).toBe("Deck");
     expect(q(container, ".pile-discard .pile-count").textContent).toBe("0");
     expect(q(container, ".pile-discard .pile-label").textContent).toBe("Discard");
@@ -183,7 +184,7 @@ describe("createHud", () => {
     hud.update(g);
     expect(q(container, ".status-prowess").classList.contains("hidden")).toBe(false);
     expect(q(container, ".status-prowess").textContent).toBe(
-      "Leadership 50 (added to every attack)",
+      "Leadership 5 (added to every attack)",
     );
   });
 
@@ -242,8 +243,8 @@ describe("visual piles", () => {
     // force a non-targeted card so playCard(g, 0) below succeeds regardless
     // of what the seeded shuffle happened to deal
     const g = withHand(newPlaying(), 0, ["grow-crops"]);
-    hud.update(g); // deck 2, discard 0
-    expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(1);
+    hud.update(g); // deck 5, discard 0
+    expect(container.querySelectorAll(".pile-deck .card-back")).toHaveLength(2);
     expect(container.querySelectorAll(".pile-discard .card-back")).toHaveLength(0);
     expect(
       q(container, ".pile-discard .pile-stack").classList.contains("empty"),
@@ -351,18 +352,18 @@ describe("activity log", () => {
     // The play line carries no suffix - the damage rides on the consequence
     // line, which is where the number belongs.
     expect(texts).toContain("You played Raid on Alpha");
-    expect(texts).toContain("The defenses of Alpha are battered (Defense -10 -> 590)");
+    expect(texts).toContain("The defenses of Alpha are battered (Defense -1 -> 59)");
     const damaged = entries.find((el) =>
       el.textContent?.startsWith("The defenses of Alpha"))!;
     expect(damaged.classList.contains("log-consequence")).toBe(true);
     // The number the log quotes is the number on the map, not a second
     // reckoning of its own.
-    expect(g.defense.alpha).toBe(590);
+    expect(g.defense.alpha).toBe(59);
   });
 
   it("colours a hit red and a heal green, by the polygon's own movement", () => {
     const { container, hud } = setup();
-    let g: GameState = { ...playing(), defense: { beta: 400 } };
+    let g: GameState = { ...playing(), defense: { beta: 40 } };
     g = withHand(g, 0, ["hillfort"]);
     g = playCard(g, 0, seededRng(1), "beta");
     g = {
@@ -371,17 +372,17 @@ describe("activity log", () => {
         ...g.log,
         {
           turn: 1, playerId: 2, type: "damaged", cardId: "raid",
-          targetFactionId: "gamma", amount: 150,
+          targetFactionId: "gamma", amount: 10,
         },
       ],
-      defense: { ...g.defense, gamma: 450 },
+      defense: { ...g.defense, gamma: 50 },
     };
     hud.update(g);
     const changes = [...container.querySelectorAll(".log-change")];
     expect(changes[0].className).toBe("log-change lead-good"); // your heal
-    expect(changes[0].textContent).toBe(" (Defense +150 -> 550)");
+    expect(changes[0].textContent).toBe(" (Defense +15 -> 55)");
     expect(changes[1].className).toBe("log-change lead-bad"); // the hit
-    expect(changes[1].textContent).toBe(" (Defense -150 -> 450)");
+    expect(changes[1].textContent).toBe(" (Defense -10 -> 50)");
   });
 
   it("suffixes a disease stack by owner count, red - pressure on the land", () => {
@@ -404,7 +405,7 @@ describe("activity log", () => {
     hud.update(g);
     const entry = [...container.querySelectorAll(".log-entry")].find((el) =>
       el.textContent?.startsWith("You played War council"))!;
-    expect(entry.textContent).toBe("You played War council (Leadership +50)");
+    expect(entry.textContent).toBe("You played War council (Leadership +5)");
     expect(entry.querySelector(".log-change")!.className).toBe("log-change lead-good");
   });
 
@@ -585,10 +586,10 @@ describe("activity log filters", () => {
     let g = playing();
     g = {
       ...g,
-      defense: { beta: 450 },
+      defense: { beta: 50 },
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
+        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 10 },
       ],
     };
     hud.update(g);
@@ -604,10 +605,10 @@ describe("activity log filters", () => {
     const base = playing();
     const g = {
       ...base,
-      defense: { beta: 450 },
+      defense: { beta: 50 },
       log: [
         ...base.log,
-        { turn: 1, playerId: 2, type: "damaged" as const, cardId: "raid", targetFactionId: "beta", amount: 150 },
+        { turn: 1, playerId: 2, type: "damaged" as const, cardId: "raid", targetFactionId: "beta", amount: 10 },
       ],
     };
     hud.update(g);
@@ -617,7 +618,7 @@ describe("activity log filters", () => {
       .find((el) => el.textContent?.startsWith("The defenses of Beta"))!
       .querySelector(".log-change")!.textContent;
     expect(logged).toBe(noticed);
-    expect(logged).toBe(" (Defense -150 -> 450)");
+    expect(logged).toBe(" (Defense -10 -> 50)");
   });
 
   it("persists both preferences across HUD instances sharing storage", () => {
@@ -639,16 +640,16 @@ describe("activity log filters", () => {
     let g = playing();
     g = {
       ...g,
-      defense: { beta: 450 },
+      defense: { beta: 50 },
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
+        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 10 },
       ],
     };
     hud.update(g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
     const texts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(texts).toContain("The defenses of Beta are battered (Defense -150 -> 450)");
+    expect(texts).toContain("The defenses of Beta are battered (Defense -10 -> 50)");
   });
 
   /** The mute narrows the interrupt, it does not switch it off. Being made
@@ -661,11 +662,11 @@ describe("activity log filters", () => {
     let g = playing();
     g = {
       ...g,
-      defense: { beta: 450 },
+      defense: { beta: 50 },
       overlords: new Map([["beta", "alpha"]]),
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
+        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 10 },
         { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
       ],
     };
@@ -677,7 +678,7 @@ describe("activity log filters", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/fealty/i);
     const logTexts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(logTexts).toContain("The defenses of Beta are battered (Defense -150 -> 450)");
+    expect(logTexts).toContain("The defenses of Beta are battered (Defense -10 -> 50)");
   });
 
   /** The other half of the mute's narrow gap: your agency survives a poach, but
@@ -773,10 +774,10 @@ describe("activity log filters", () => {
     let g = playing();
     g = {
       ...g,
-      defense: { beta: 100 }, // 100 <= floor(0.25 * 600): the gate stands open
+      defense: { beta: 10 }, // 10 <= floor(0.25 * 60): the gate stands open
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
+        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 10 },
       ],
     };
     hud.update(g);
@@ -1108,7 +1109,7 @@ describe("targeted plays in the log and the hand tips", () => {
     const { container, hud } = setup();
     // The gate is on the target's HOME defense now: open it, then play the
     // explicit Subjugate card to raise the event.
-    let g: GameState = { ...playing(), defense: { alpha: 100 } };
+    let g: GameState = { ...playing(), defense: { alpha: 10 } };
     g = withHand(g, 0, ["subjugate"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
@@ -1122,7 +1123,7 @@ describe("targeted plays in the log and the hand tips", () => {
   it("hovering a faction name in the log highlights that faction on the map", () => {
     const onHighlightFaction = vi.fn();
     const { container, hud } = setup({ onHighlightFaction });
-    let g: GameState = { ...playing(), defense: { alpha: 100 } };
+    let g: GameState = { ...playing(), defense: { alpha: 10 } };
     g = withHand(g, 0, ["subjugate"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
@@ -1477,15 +1478,15 @@ describe("notice modal", () => {
 
   it("lists 2 hits in one update as 2 lines in a single modal, chained backwards", () => {
     const { container, hud } = setup();
-    const g = { ...playing(), defense: { beta: 300 } };
+    const g = { ...playing(), defense: { beta: 30 } };
     hud.update(withEvents(g, [
-      { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
-      { turn: 1, playerId: 3, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
+      { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 15 },
+      { turn: 1, playerId: 3, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 15 },
     ]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(lineTexts(container)).toEqual([
-      "Raid by Alpha battered your home defenses (Defense -150 -> 450)",
-      "Raid by Gamma battered your home defenses (Defense -150 -> 300)",
+      "Raid by Alpha battered your home defenses (Defense -15 -> 45)",
+      "Raid by Gamma battered your home defenses (Defense -15 -> 30)",
     ]);
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);

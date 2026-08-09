@@ -9,9 +9,9 @@ import {
 } from "./relations";
 import {
   addDisease, applyDamage, applyHeal, clearDiseaseOf, DEFAULT_DEFENSE_MAX,
-  defenseOf, HARVEST_FEAST_HEAL, HILLFORT_HEAL, independenceGateOpen,
-  PLAGUE_DAMAGE_PER_STACK, transferAllDiseaseTo, WAR_COUNCIL_LEADERSHIP,
-  type Defense, type Disease,
+  defenseOf, FORTIFY_HEAL_PER_OMEN, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
+  independenceGateOpen, PLAGUE_DAMAGE_PER_STACK, transferAllDiseaseTo,
+  WAR_COUNCIL_LEADERSHIP, type Defense, type Disease,
 } from "./defense";
 import {
   attackDamageFor, attackMultiplier, borderPolygonsOf, ESCAPE_RESPITE_TURNS,
@@ -55,6 +55,21 @@ export interface GameEvent {
    *  summary silently, which is why tests/standings.test.ts replays a full
    *  game and checks the walk against the real stores. */
   amount?: number;
+  /** plagued: the actor's OWN disease stacks cleared from this polygon by
+   *  the same play - `clearDiseaseOf` empties every polygon at once, and
+   *  this is the one place each polygon's share of that clear is recorded,
+   *  so a `disease-spread` earlier in the same batch has a `plagued` to
+   *  walk back through rather than reading a store already zeroed by a
+   *  clear the walk was never told about. Absent (never 0): a polygon with
+   *  no stacks of the actor's own never gets a `plagued` event at all. */
+  stacksSpent?: number;
+  /** winds-shifted: every OTHER owner's stacks this polygon lost to the
+   *  actor's claim, by faction id. The event's own `amount` already carries
+   *  the actor's gain (their sum); this is the breakdown the walk needs to
+   *  zero each loser's own count, or an earlier `disease-spread` for that
+   *  loser in the same batch would walk back through a store the claim had
+   *  already emptied. Absent when nobody else held a stack there. */
+  losses?: Readonly<Record<string, number>>;
   /** tribute: the coins this payment moved from the vassal to its lord. */
   wealth?: number;
   /** play: the card was turned aside by the target's guard (see `GUARDS` in
@@ -746,23 +761,25 @@ export function playCard(
       // went. `amount` is the defense moved, 0 included.
       events.push({
         turn: state.turn, playerId: p.id, type: "plagued", cardId,
-        targetFactionId: polygon, amount: moved,
+        targetFactionId: polygon, amount: moved, stacksSpent: stacks,
       });
     }
     disease = clearDiseaseOf(disease, p.factionId);
   } else if (cardId === "foul-winds") {
     // One event per polygon whose ownership moved: the stacks the actor
-    // GAINED there, which is the total held by others before the shift.
+    // GAINED there (the total held by others before the shift), plus the
+    // per-loser breakdown the walk needs to zero each of THEIR counts too.
     for (const polygon of state.factionIds) {
       const owners = disease[polygon];
       if (owners === undefined) continue;
-      const gained = Object.entries(owners)
-        .filter(([owner]) => owner !== p.factionId)
-        .reduce((sum, [, n]) => sum + n, 0);
+      const losses = Object.fromEntries(
+        Object.entries(owners).filter(([owner]) => owner !== p.factionId),
+      );
+      const gained = Object.values(losses).reduce((sum, n) => sum + n, 0);
       if (gained === 0) continue;
       events.push({
         turn: state.turn, playerId: p.id, type: "winds-shifted", cardId,
-        targetFactionId: polygon, amount: gained,
+        targetFactionId: polygon, amount: gained, losses,
       });
     }
     disease = transferAllDiseaseTo(disease, p.factionId);
@@ -772,6 +789,15 @@ export function playCard(
     const realm = fullRealmOf(p.factionId, overlords, incorporated);
     for (const polygon of state.factionIds.filter((f) => realm.has(f))) {
       landHeal(polygon, HARVEST_FEAST_HEAL);
+    }
+  } else if (cardId === "fortify") {
+    // Linear in held readings, not the 2**n attack multiplier - Favourable
+    // omens' own text only promises that to "your next Raid or Great raid".
+    // Readings are not spent: Fortify reads the count, it does not cash it.
+    const heal = FORTIFY_HEAL_PER_OMEN * (state.omens[p.factionId] ?? 0);
+    const realm = fullRealmOf(p.factionId, overlords, incorporated);
+    for (const polygon of state.factionIds.filter((f) => realm.has(f))) {
+      landHeal(polygon, heal);
     }
   } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
     const out = replaceRuler(rulers, state.ethnicities, targetId, state.turn);
