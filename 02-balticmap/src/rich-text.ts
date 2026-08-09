@@ -1,4 +1,5 @@
 import { CARDS } from "./cards";
+import { PASSIVES } from "./passives";
 import { t, faction } from "./segments";
 import { withArticle } from "./view";
 import type { Segment } from "./segments";
@@ -7,7 +8,7 @@ import type { TooltipLine } from "./panel";
 // The segment type and constructors live in segments.ts (a leaf module, so
 // cards.ts can author them too); re-exported here so every prose surface keeps
 // one import for the whole vocabulary.
-export { t, card, faction, theFaction } from "./segments";
+export { t, card, faction, passive, theFaction } from "./segments";
 export type { Segment } from "./segments";
 
 /** "A", "A and B", "A, B and C" - the one place a run of names becomes a
@@ -52,6 +53,7 @@ export interface Speaker {
  *  have caught. */
 const VERBS = {
   break: { third: "breaks", past: "broke" },
+  burn: { third: "burns", past: "burned" },
   concede: { third: "concedes", past: "conceded" },
   discard: { third: "discards", past: "discarded" },
   draw: { third: "draws", past: "drew" },
@@ -115,6 +117,9 @@ export const optionalPhrase = (
 ): Segment[] =>
   factionId === undefined || factionId === "" ? [] : [t(lead), faction(factionId)];
 
+/** The single passive-name resolver, beside the card one. */
+export const passiveName = (id: string): string => PASSIVES[id]?.name ?? id;
+
 /** The single card-name resolver. Was written twice (hud.ts, deck-screen.ts). */
 export const cardName = (id: string | undefined): string =>
   (id !== undefined ? CARDS[id]?.name : undefined) ?? id ?? "";
@@ -166,6 +171,7 @@ export function plainText(segs: Segment[], names: NameLookup): string {
     .map((seg) => {
       if (seg.kind === "text") return seg.text;
       if (seg.kind === "card") return cardName(seg.cardId);
+      if (seg.kind === "passive") return passiveName(seg.passiveId);
       return factionText(seg, names);
     })
     .join("");
@@ -207,6 +213,20 @@ export function renderSegments(segs: Segment[], hooks: RichTextHooks): DocumentF
           cardDef === undefined
             ? [{ text: span.textContent ?? "" }]
             : [{ text: cardDef.name }, { text: cardDef.text }],
+          e.clientX, e.clientY,
+        );
+      });
+      span.addEventListener("mouseleave", () => hooks.hideTip?.());
+    } else if (seg.kind === "passive") {
+      // The card pattern exactly: the name is the node, the rule is the tip.
+      span.className = "rt-passive";
+      span.textContent = passiveName(seg.passiveId);
+      const def = PASSIVES[seg.passiveId];
+      span.addEventListener("mousemove", (e) => {
+        hooks.showTip?.(
+          def === undefined
+            ? [{ text: span.textContent ?? "" }]
+            : [{ text: def.name }, { text: def.text }],
           e.clientX, e.clientY,
         );
       });

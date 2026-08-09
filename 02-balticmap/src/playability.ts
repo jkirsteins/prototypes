@@ -1,17 +1,19 @@
 import {
-  ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isTributeCard,
+  ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isMarchCard, isTributeCard,
 } from "./cards";
 import {
   fullRealmOf, incorporatedRealmOf, overlordChainOf,
   type Incorporated, type Overlords,
 } from "./relations";
 import {
-  defenseMaxOf, defenseOf, GREAT_RAID_DAMAGE, PLAGUE_DAMAGE_PER_STACK,
-  RAID_DAMAGE, SUBJUGATION_GATE, subjugationGateOpen,
-  type Defense, type Disease,
+  armyCapFor, defenseMaxOf, defenseOf, GREAT_RAID_DAMAGE, STRONG_BONUS,
+  PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, SUBJUGATION_GATE, subjugationGateOpen,
+  turnipThresholdFor, type Defense, type Disease,
 } from "./defense";
-import { freeArmiesOn, type Armies, type Marches } from "./marches";
-import type { Passives } from "./passives";
+import {
+  armiesOn, freeArmiesOn, type Armies, type Claims, type Marches,
+} from "./marches";
+import { hasPassive, type Passives } from "./passives";
 import { activeExpiry } from "./timed";
 
 /** Settlements a land supports - the one standing there since the map was
@@ -74,6 +76,10 @@ export interface RulesView {
    *  here: a successor starts at 0 because `replaceRuler` builds it so, and
    *  a test view carrying no rulers is a world of unproven ones. */
   leadership: Record<string, number>;
+  /** Faction id -> true where a leader sits. The projection of the ruler
+   *  vacancy, in the same shape as `leadership`: absent means nobody leads
+   *  that land, so it takes no turn and has nobody to assassinate. */
+  leaders: Record<string, boolean>;
   /** Polygon id -> current defense; absent = at max (src/defense.ts). */
   defense: Defense;
   /** Polygon id -> static defense ceiling. Map-derived, like `adjacency`. */
@@ -88,8 +94,29 @@ export interface RulesView {
    *  here because an army already out on a march cannot be spent on a second
    *  one, which makes reach an army question as well as an adjacency one. */
   marches: Marches;
-  /** Polygon id -> armies stationed; absent = ARMIES_PER_POLYGON. */
+  /** Subjugations declared but not yet answered (src/marches.ts). Read by the
+   *  legality of a second Subjugate at the same land and by the map, which
+   *  draws one as an arrow like any other pending thing. */
+  claims: Claims;
+  /** Polygon id -> armies stationed; absent = the land's own army cap. */
   armies: Armies;
+}
+
+/** How many armies this land may field: its ceiling's worth. The one place
+ *  the rules ask, so the badge, the legality and the AI cannot disagree. */
+export function armyCapOn(view: RulesView, polygon: string): number {
+  return armyCapFor(defenseMaxOf(view, polygon));
+}
+
+/** Armies on a land that are not already out on a march. */
+export function freeArmiesFor(view: RulesView, polygon: string): number {
+  return freeArmiesOn(view.armies, view.marches, polygon, armyCapOn(view, polygon));
+}
+
+/** Grow turnips plays this faction owes before a harvest is earned, from its
+ *  HOME land's ceiling - the land its people actually farm. */
+export function turnipThresholdOn(view: RulesView, factionId: string): number {
+  return turnipThresholdFor(defenseMaxOf(view, factionId));
 }
 
 /** Whether `factionId` is holding `guardCardId` unspent. */
@@ -159,14 +186,23 @@ export function wealthOf(
  *  deliberately no vassals. Tribute is the channel by which a vassal's wealth
  *  reaches the lord; counting its lands here would tax them twice. */
 export function wealthIncomeFor(
-  view: { incorporated: Incorporated; settlements: Record<string, number> },
+  view: {
+    incorporated: Incorporated;
+    settlements: Record<string, number>;
+    passives: Passives;
+  },
   factionId: string,
 ): number {
   let founded = 0;
+  let trade = 0;
   for (const land of incorporatedRealmOf(factionId, view.incorporated)) {
     founded += view.settlements[land] ?? 0;
+    // River trade pays whoever holds the bank. A vassal's river is left out
+    // for the same reason its settlements are: tribute is the channel by which
+    // a vassal's wealth reaches its lord, and counting it here taxes it twice.
+    if (hasPassive(view.passives, land, "river-trade")) trade += 1;
   }
-  return 1 + founded;
+  return 1 + founded + trade;
 }
 
 /** Every faction the actor's FULL realm borders, each land resolved to
@@ -226,7 +262,7 @@ export function marchSourcesFor(view: RulesView, actor: string): string[] {
   return view.factionIds.filter(
     (land) =>
       realm.has(land) &&
-      freeArmiesOn(view.armies, view.marches, land) > 0 &&
+      freeArmiesFor(view, land) > 0 &&
       (view.adjacency[land] ?? []).some((adj) => reach.has(adj)),
   );
 }
@@ -277,8 +313,7 @@ export function greatRaidMarches(
     }
     const fresh = view.factionIds.find(
       (land) =>
-        neighbours.has(land) && realm.has(land) &&
-        freeArmiesOn(view.armies, view.marches, land) > 0,
+        neighbours.has(land) && realm.has(land) && freeArmiesFor(view, land) > 0,
     );
     if (fresh === undefined) continue;
     sallying.add(fresh);
@@ -338,7 +373,11 @@ export function attackDamageFor(
   actorFactionId: string,
   cardId: string,
 ): { damage: number; multiplier: number } {
-  const base = cardId === "great-raid" ? GREAT_RAID_DAMAGE : RAID_DAMAGE;
+  const base = cardId === "great-raid"
+    ? GREAT_RAID_DAMAGE
+    : cardId === "strong-raid"
+      ? RAID_DAMAGE + STRONG_BONUS
+      : RAID_DAMAGE;
   const multiplier = attackMultiplier(view, actorFactionId, cardId);
   const leadership = view.leadership[actorFactionId] ?? 0;
   return { damage: (base + leadership) * multiplier, multiplier };
@@ -400,6 +439,10 @@ export type TargetBlockReason =
    *  nothing. */
   | { code: "at-full-defense" }
   | { code: "already-vassal" }
+  /** Assassinate ruler: nobody leads this land, so there is nobody to kill. */
+  | { code: "no-ruler" }
+  /** Create army: the land already fields every army its ceiling allows. */
+  | { code: "at-army-cap"; cap: number }
   /** The land already holds every settlement the actor's people can support. */
   | { code: "needs-population"; have: number; allowance: number }
   | { code: "no-free-site" }
@@ -461,18 +504,19 @@ export function targetEligibilityFor(
   // and resolve through `reachOf`; the inward cards aim at the actor's own
   // realm.
   const polygonCard =
-    cardId === "raid" || cardId === "spread-disease" ||
+    isMarchCard(cardId) || cardId === "spread-disease" ||
     cardId === "localized-outbreak";
   const inward =
     cardId === "found-settlement" || cardId === "hillfort" ||
-    cardId === "create-army" || cardId === "fortify";
+    cardId === "fortify" ||
+    cardId === "prosperous-proliferation";
   const vassalCard = cardId === "incorporate";
 
   // Every polygon a free army of the actor's borders, computed once for the
   // whole pass rather than per candidate: `marchSourcesFor` walks the realm,
   // and Raid asks the question 26 times.
   const sources =
-    cardId === "raid"
+    isMarchCard(cardId)
       ? new Set(
           marchSourcesFor(view, actorFactionId).flatMap(
             (land) => view.adjacency[land] ?? [],
@@ -494,6 +538,11 @@ export function targetEligibilityFor(
     }
     if (!polygonCard && !inward && factionId in view.incorporated) {
       reasons.push({ code: "incorporated" });
+    }
+    // A land nobody leads has nobody to assassinate. The vacancy is public -
+    // the hover says so - so this is not a detector for anything hidden.
+    if (cardId === "assassinate-ruler" && (view.leaders[factionId] !== true)) {
+      reasons.push({ code: "no-ruler" });
     }
     if (cardId === "subjugate") {
       if (lieges.has(factionId)) reasons.push({ code: "liege" });
@@ -520,7 +569,7 @@ export function targetEligibilityFor(
     // Computed per target rather than once, because the answer differs per
     // target: the realm may hold free armies and still have none next to this
     // particular border.
-    if (cardId === "raid" && sources !== null && !sources.has(factionId)) {
+    if (isMarchCard(cardId) && sources !== null && !sources.has(factionId)) {
       reasons.push({ code: "no-army" });
     }
     // The two single-land heals, one rule: a land already at its ceiling has
@@ -634,7 +683,7 @@ export function cardBlockReason(
       ? null
       : { code: "no-army" };
   }
-  if (cardId === "raid") {
+  if (isMarchCard(cardId)) {
     if (attackReach(view, factionId).size === 0) return { code: "no-target" };
     return marchSourcesFor(view, factionId).length > 0
       ? null
@@ -685,15 +734,19 @@ export interface PlayableSet {
   cardIndexes: number[];
 }
 
-/** Which hand indexes may be played this turn. Forced cards (the tribute cards)
- *  monopolize the set; an empty playable set means a forced discard of any
- *  card in hand - unless the rules refuse discards, in which case the set
- *  stays in "play" mode with nothing in it. */
+/** Which hand indexes may be played this turn. Forced cards (the tribute
+ *  cards) monopolize the set; an empty playable set means a forced discard of
+ *  any card in hand.
+ *
+ *  The discard is unconditional, under every rule set. It used to be off
+ *  under unlimited turns, on the reading that a dead hand should wait for the
+ *  board to change - but a hand that refills to a fixed size never changes on
+ *  its own, so a seat holding four unplayable cards held those same four for
+ *  the rest of the game, played nothing, and ended every turn in silence. */
 export function playableSet(
   view: RulesView,
   factionId: string,
   hand: string[],
-  opts: { discards?: boolean } = {},
 ): PlayableSet {
   const forced: number[] = [];
   hand.forEach((c, i) => {
@@ -705,22 +758,27 @@ export function playableSet(
     if (!CARDS[c]?.forced && isCardPlayable(view, factionId, c)) playable.push(i);
   });
   if (playable.length > 0) return { mode: "play", cardIndexes: playable };
-  if (opts.discards === false) return { mode: "play", cardIndexes: [] };
   return { mode: "discard", cardIndexes: hand.map((_, i) => i) };
 }
 
 /** Why this card in this hand cannot be played THIS TURN, or null when it
  *  can. Read straight off `playableSet` rather than re-deriving the forced
  *  rule, so what the hover says and what the click allows are the same
- *  decision. */
+ *  decision.
+ *
+ *  The mode test is load-bearing: a "discard" set lists every card in hand,
+ *  and those are the cards that may be DISCARDED, not played. Without it a
+ *  dead hand reported every card as playable, which stayed invisible only
+ *  while the surface asking was also rendering discard mode over the top. */
 export function handBlockReason(
   view: RulesView,
   factionId: string,
   hand: string[],
   cardId: string,
-  opts: { discards?: boolean } = {},
 ): CardBlockReason | null {
-  const set = playableSet(view, factionId, hand, opts);
-  if (set.cardIndexes.some((i) => hand[i] === cardId)) return null;
+  const set = playableSet(view, factionId, hand);
+  if (set.mode === "play" && set.cardIndexes.some((i) => hand[i] === cardId)) {
+    return null;
+  }
   return cardBlockReason(view, factionId, cardId) ?? { code: "forced-first" };
 }

@@ -8,10 +8,18 @@
 export type Segment =
   | { kind: "text"; text: string }
   | { kind: "card"; cardId: string }
-  | { kind: "faction"; factionId: string; article?: true };
+  | { kind: "faction"; factionId: string; article?: true }
+  /** A land's passive status (src/passives.ts). Renders as its NAME alone,
+   *  with the rule on the hover: a status is a standing property somebody may
+   *  have to reason about several lines into a tooltip, and spelling out what
+   *  each one does every time it is mentioned would bury the land it is
+   *  about. */
+  | { kind: "passive"; passiveId: string };
 
 export const t = (text: string): Segment => ({ kind: "text", text });
 export const card = (cardId: string): Segment => ({ kind: "card", cardId });
+export const passive = (passiveId: string): Segment =>
+  ({ kind: "passive", passiveId });
 export const faction = (factionId: string): Segment => ({ kind: "faction", factionId });
 /** "the Selonians", but "Lietuva" for the one faction named for a land.
  *  Mid-sentence only - write lines so a faction never opens a sentence. */

@@ -155,3 +155,91 @@ export function flyCard(
     },
   };
 }
+
+
+/** ONE animation at a time, in the order they were asked for.
+ *
+ *  Every visible sequence in the game goes through here rather than starting
+ *  the moment its caller happens to run: a card flying to the discard, a
+ *  harvest revealing what it gave, a score rising off a land, a march flashing
+ *  where it landed. Started freely, they overlapped - a Turnip harvest was
+ *  still flying to the discard while the card it granted faded in over the
+ *  board, and the player was shown two answers to two different questions at
+ *  once.
+ *
+ *  A queue and not a set of waits: "wait for the flight before revealing" is
+ *  one rule written at one call site, and the next pair of animations has to
+ *  learn it again. The order things are ASKED for is already the order they
+ *  should be seen in, so the queue is the whole rule.
+ *
+ *  Each step is handed a `done` it must call exactly once - the same contract
+ *  `runAnimation`'s `onDone` already has, so a step is usually one call. A
+ *  step that throws still releases the queue: a broken animation must not
+ *  wedge the game behind it. */
+export interface AnimationQueue {
+  /** Runs `step` when everything queued before it has finished. */
+  push(step: (done: () => void) => void): void;
+  /** True while a step is running or waiting to. Callers that must not act
+   *  mid-animation ask this rather than tracking flights of their own. */
+  busy(): boolean;
+  /** Runs `fn` once the queue has drained. Fires immediately when it is
+   *  already empty, so a caller can always wait on it without asking. */
+  onIdle(fn: () => void): void;
+  /** Drops everything not yet started. The step in flight is left to finish -
+   *  it owns DOM that has to be cleaned up by its own `done`. */
+  clear(): void;
+}
+
+export function createAnimationQueue(): AnimationQueue {
+  const pending: ((done: () => void) => void)[] = [];
+  const idle: (() => void)[] = [];
+  let running = false;
+
+  function drain(): void {
+    if (running) return;
+    const step = pending.shift();
+    if (step === undefined) {
+      const waiting = idle.splice(0, idle.length);
+      for (const fn of waiting) fn();
+      return;
+    }
+    running = true;
+    let released = false;
+    const done = (): void => {
+      if (released) return;
+      released = true;
+      running = false;
+      drain();
+    };
+    try {
+      step(done);
+    } catch {
+      done();
+    }
+  }
+
+  return {
+    push(step) {
+      pending.push(step);
+      drain();
+    },
+    busy() {
+      return running || pending.length > 0;
+    },
+    onIdle(fn) {
+      if (!running && pending.length === 0) {
+        fn();
+        return;
+      }
+      idle.push(fn);
+    },
+    clear() {
+      pending.length = 0;
+    },
+  };
+}
+
+/** The one queue the whole game animates through. A module singleton because
+ *  there is one screen: the HUD and the map both draw on it, and two queues
+ *  would be two things overlapping again. */
+export const animations = createAnimationQueue();

@@ -4,7 +4,7 @@ import {
   type GameEvent, type GamePhase, type GameState,
 } from "./game";
 import { marchSourcesAgainst } from "./playability";
-import { harvestPool, type HarvestChoice } from "./harvest";
+import { buildOffer, type HarvestChoice } from "./harvest";
 import type { RuleSelections } from "./rules";
 import {
   deserializeGame, serializeGame, type SerializedGameState,
@@ -84,10 +84,10 @@ export function validateAction(
   // bugs, not malice.
   if (
     action.type === "play" && action.harvest !== undefined &&
-    !("skip" in action.harvest) &&
-    !harvestPool(state.players[seat]).includes(action.harvest.cardId)
+    action.harvest.kind === "build" &&
+    !buildOffer(state.players[seat]).includes(action.harvest.cardId)
   ) {
-    return "harvest pick is not in your pool";
+    return "harvest pick is not in your build";
   }
   // The source is checked on the same footing as the harvest pick, and for
   // the same reason: the host can recompute what is legal, so a stale tail is

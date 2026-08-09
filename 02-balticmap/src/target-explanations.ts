@@ -14,6 +14,8 @@ import {
   defenseMaxOf, defenseOf, HILLFORT_HEAL, INDEPENDENCE_GATE,
 } from "./defense";
 import { ATTACK_CARDS, CARDS, isGuardCard } from "./cards";
+import { PASSIVES, passivesOn, type Passives } from "./passives";
+import { passive } from "./segments";
 import { count } from "./plural";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
 import { untilTurn } from "./timed";
@@ -63,8 +65,14 @@ function explainReason(reason: TargetBlockReason): string[] {
       return ["Defenses already stand at full strength."];
     case "already-vassal":
       return ["Already your vassal."];
+    case "no-ruler":
+      return ["Nobody leads this land."];
     case "liege":
       return ["You owe them fealty, directly or through your lords."];
+    case "at-army-cap":
+      return [
+        `Already fielding all ${reason.cap} armies its defenses support.`,
+      ];
     case "incorporated":
       return ["Already incorporated."];
     case "self":
@@ -316,6 +324,24 @@ export function targetImpactLines(
  *  home the subjugation line is the one that bites; on a vassal's home the
  *  independence line is. Takes no faction-name lookup, so it structurally
  *  cannot violate the naming rule - the land is named on the lines above. */
+/** Every passive status on a land, one line each: what it is and what it does.
+ *  Public whoever holds the land - a status the player cannot see is a rule
+ *  they cannot play around, which is why no status ships without this. */
+export function passiveLines(
+  passives: Passives, polygon: string,
+): TooltipLine[] {
+  const ids = passivesOn(passives, polygon);
+  if (ids.length === 0) return [];
+  // The NAME only, the card rule exactly: a card is named and its rules text
+  // waits on the name's own hover, and a status is the same kind of thing.
+  // Spelling every rule out inline made a land with three of them a wall of
+  // prose over the two numbers the tip exists to show.
+  return [
+    { text: "Statuses", blockStart: true as const },
+    ...ids.map((id) => ({ text: PASSIVES[id].name, segments: [passive(id)] })),
+  ];
+}
+
 export function defenseBreakdown(
   view: RulesView,
   polygon: string,

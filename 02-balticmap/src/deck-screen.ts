@@ -82,16 +82,23 @@ export function createDeckScreen(
   buildRow.className = "ds-builds";
 
   let current: Strategy = "warpath";
-  const tiles = (Object.keys(BUILDS) as Strategy[]).map((build) => {
+  // Warpath only, for now. Pestilence is played by the AI seats - half of
+  // them - and is not offered to the human until its cards have been through
+  // a pass of their own. A build nobody can pick is still a build the player
+  // meets on the board, which is the point of hiding it rather than cutting
+  // it.
+  const tiles = (Object.keys(BUILDS) as Strategy[])
+    .filter((build) => build !== "pestilence")
+    .map((build) => {
     const tile = document.createElement("button");
     tile.className = "ds-build";
-    const name = document.createElement("span");
-    name.className = "ds-card-name";
-    name.textContent = BUILD_COPY[build].title;
+    // The build's own blurb, with no title above it: `.ds-card-name` is the
+    // heading a CARD line uses, so the build's name in it read as a card
+    // called Warpath sitting above the real ones.
     const blurb = document.createElement("span");
     blurb.className = "ds-build-blurb";
     blurb.textContent = BUILD_COPY[build].blurb;
-    tile.append(name, blurb);
+    tile.append(blurb);
     for (const id of BUILDS[build]) {
       const line = document.createElement("span");
       line.className = "ds-build-card";

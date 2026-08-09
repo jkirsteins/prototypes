@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addArmy, addMarch, ARMIES_PER_POLYGON, armiesOn, axisKeyOf, axesOf,
+  addArmy, addMarch, armiesOn, axisKeyOf, axesOf,
   clearMarches, freeArmiesOn, marchesAgainst, marchesFrom, resolveAxis,
   type March, type Marches,
 } from "../src/marches";
@@ -10,40 +10,49 @@ const march = (over: Partial<March> = {}): March => ({
   cardId: "raid", damage: 4, holdsArmy: true, expiry: 3, ...over,
 });
 
+/** This module takes a land's army cap as a plain argument now - it knows
+ *  nothing of defense scores, only src/defense.ts's `armyCapFor` derives one
+ *  from a real ceiling. 1 throughout, the same "one army per land" default
+ *  the old ARMIES_PER_POLYGON constant stood in for. */
+const CAP = 1;
+
 describe("armies", () => {
   it("reads an absent polygon as the default rather than zero", () => {
-    expect(armiesOn({}, "selija")).toBe(ARMIES_PER_POLYGON);
-    expect(armiesOn({ selija: 3 }, "selija")).toBe(3);
-    expect(armiesOn({ selija: 0 }, "selija")).toBe(0);
+    expect(armiesOn({}, "selija", CAP)).toBe(CAP);
+    expect(armiesOn({ selija: 3 }, "selija", CAP)).toBe(3);
+    expect(armiesOn({ selija: 0 }, "selija", CAP)).toBe(0);
   });
 
   it("clamps a hand-edited negative count to zero", () => {
-    expect(armiesOn({ selija: -2 }, "selija")).toBe(0);
+    expect(armiesOn({ selija: -2 }, "selija", CAP)).toBe(0);
   });
 
-  it("raises one and keeps the store sparse elsewhere", () => {
-    expect(addArmy({}, "selija")).toEqual({ selija: ARMIES_PER_POLYGON + 1 });
-    expect(addArmy({ selija: 4 }, "selija")).toEqual({ selija: 5 });
+  it("raises one, capped at the land's own ceiling", () => {
+    // A cap of 1 leaves no room to show a raise, so this one case asks for a
+    // roomier land explicitly.
+    expect(addArmy({ selija: 2 }, "selija", 3)).toEqual({ selija: 3 });
+    // Already at its (default) cap: raising it again does nothing further.
+    expect(addArmy({}, "selija", CAP)).toEqual({ selija: CAP });
   });
 });
 
 describe("free armies", () => {
   it("counts a declared march as holding its source's army", () => {
     const marches = addMarch({}, march());
-    expect(freeArmiesOn({}, marches, "selija")).toBe(0);
-    expect(freeArmiesOn({ selija: 2 }, marches, "selija")).toBe(1);
+    expect(freeArmiesOn({}, marches, "selija", CAP)).toBe(0);
+    expect(freeArmiesOn({ selija: 2 }, marches, "selija", CAP)).toBe(1);
   });
 
   it("never goes negative when more marches leave than armies remain", () => {
     let marches: Marches = {};
     marches = addMarch(marches, march({ to: "talava" }));
     marches = addMarch(marches, march({ to: "latgale" }));
-    expect(freeArmiesOn({}, marches, "selija")).toBe(0);
+    expect(freeArmiesOn({}, marches, "selija", CAP)).toBe(0);
   });
 
   it("does not charge the target for a march aimed at it", () => {
     const marches = addMarch({}, march());
-    expect(freeArmiesOn({}, marches, "talava")).toBe(ARMIES_PER_POLYGON);
+    expect(freeArmiesOn({}, marches, "talava", CAP)).toBe(CAP);
   });
 
   it("charges one army for a whole fan, not one per arrow", () => {
@@ -53,8 +62,8 @@ describe("free armies", () => {
     marches = addMarch(marches, march({ to: "talava", holdsArmy: true }));
     marches = addMarch(marches, march({ to: "latgale", holdsArmy: false }));
     marches = addMarch(marches, march({ to: "zemgale", holdsArmy: false }));
-    expect(freeArmiesOn({}, marches, "selija")).toBe(0);
-    expect(freeArmiesOn({ selija: 2 }, marches, "selija")).toBe(1);
+    expect(freeArmiesOn({}, marches, "selija", CAP)).toBe(0);
+    expect(freeArmiesOn({ selija: 2 }, marches, "selija", CAP)).toBe(1);
   });
 });
 

@@ -174,6 +174,7 @@ function footnoteKey(segs: Segment[]): string {
     .map((s) => {
       if (s.kind === "text") return `t:${s.text}`;
       if (s.kind === "card") return `card:${s.cardId}`;
+      if (s.kind === "passive") return `passive:${s.passiveId}`;
       return `faction:${s.factionId}`;
     })
     .join("|");
@@ -621,6 +622,14 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   incorporated: {
     kind: "silent",
     reason: "human target always co-occurs with defeat; postmortem covers it",
+  },
+  transferred: {
+    kind: "silent",
+    reason: "the player moved their own points, and the badges show both ends",
+  },
+  "harvest-burned": {
+    kind: "silent",
+    reason: "the player chose it and the deck count shows it; the log carries it",
   },
   tribute: {
     kind: "silent",

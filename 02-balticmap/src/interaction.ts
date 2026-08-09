@@ -13,10 +13,17 @@ export interface InteractionCallbacks {
   /** Return true to consume the click (e.g. during faction picking):
    *  selection state is left untouched and onSelect does not fire. */
   interceptClick?(regionId: string | null): boolean;
+  /** Return true to take a PRESS before it becomes a pan - what aiming a raid
+   *  by dragging needs, since the same gesture otherwise drags the map. The
+   *  caller owns the pointer until it comes back up. */
+  interceptPress?(regionId: string | null, e: PointerEvent): boolean;
 }
 
 export interface InteractionHandle {
   deselect(): void;
+  /** Map coordinates for a screen point: what a drag needs to draw anything
+   *  in the map's own 1000x1400 space while the pointer moves. */
+  toMapPoint(clientX: number, clientY: number): { x: number; y: number };
 }
 
 /** Pointer travel past which a press is a pan rather than a click. Exported
@@ -111,6 +118,12 @@ export function attachInteraction(
     if ((e as PointerEvent).button !== 0) return;
     const me = e as MouseEvent;
     const pe = e as PointerEvent;
+    // A caller may take the press outright - aiming a raid by dragging. The
+    // pan never starts, so the map stays still under the arrow being drawn.
+    const under = (e.target as Element | null)?.closest?.("[data-id]");
+    if (cb.interceptPress?.(under?.getAttribute("data-id") ?? null, pe) === true) {
+      return;
+    }
     down = { x: me.clientX, y: me.clientY, pointerId: pe.pointerId };
     dragged = false;
   });
@@ -140,6 +153,10 @@ export function attachInteraction(
   });
 
   svg.addEventListener("pointerup", (e) => {
+    // Left button only. `pointerup` fires for every button, so without this a
+    // right click selected a land as well as doing whatever it was aimed at -
+    // and right click is a game input now, not a second way to click.
+    if ((e as PointerEvent).button !== 0) return;
     const wasDrag = dragged;
     endDrag();
     if (wasDrag) return;
@@ -170,6 +187,13 @@ export function attachInteraction(
   );
 
   return {
+    toMapPoint(clientX: number, clientY: number) {
+      const box = svg.getBoundingClientRect();
+      return {
+        x: view.x + ((clientX - box.left) / box.width) * view.w,
+        y: view.y + ((clientY - box.top) / box.height) * view.h,
+      };
+    },
     deselect() {
       state = withClick(state, state.selected);
       applySelection();

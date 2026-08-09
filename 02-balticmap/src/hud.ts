@@ -1,9 +1,9 @@
 import { CARDS, guardAgainst } from "./cards";
 import {
-  TURNIP_HARVEST_THRESHOLD, victoryRealmSize, viewOf,
+  victoryRealmSize, viewOf,
   type GameEvent, type GameState,
 } from "./game";
-import { flyCard, runAnimation, type Flight } from "./animate";
+import { animations, flyCard, runAnimation, type Flight } from "./animate";
 import { fullRealmOf, incorporatedRealmOf } from "./relations";
 import {
   buildRoundSummary, isNoticeWorthy, walkCtxOf,
@@ -13,13 +13,16 @@ import {
   defenseMaxOf, defenseOf, diseaseOn, subjugationGateOpen,
 } from "./defense";
 import { walkStandings, type StandingChange } from "./standings";
-import { wealthIncomeFor, wealthOf } from "./playability";
+import { turnipThresholdOn, wealthIncomeFor, wealthOf } from "./playability";
+import { milestonePoints, milestoneStandings } from "./milestones";
+import { count } from "./plural";
 import {
   multipliedWord, type TargetExplanation,
 } from "./target-explanations";
 import type { TooltipLine } from "./panel";
 import { memoryStorage, type MetaStorage } from "./meta";
 import { standingChangeText, standingsFor } from "./view";
+import { hasRuler } from "./rulers";
 import {
   card, cardName, cardTextSegments, faction, factionIds, possessive,
   renderSegments, t, theFaction, verb,
@@ -113,6 +116,13 @@ export interface Hud {
    *  says so, and says how to clear it, since a held highlight with nothing
    *  explaining it reads as the game being stuck. */
   setPinned(factionId: string | null): void;
+  /** The pinned land's own tooltip, held still down the left; null hides it.
+   *  The lines are the ones the floating tip would have shown - main.ts owns
+   *  what a land says about itself - but rendered through the HUD's rich-text
+   *  hooks, so a faction or a status named in them is a node with its own tip
+   *  and its own map highlight. That is the whole point of pinning: a tip that
+   *  follows the cursor cannot be pointed at. */
+  setPinnedLand(lines: TooltipLine[] | null): void;
   /** Renders "Waiting for <faction>..." in the status bar while a remote
    *  seat holds the turn; null clears it. The faction is a segment, which
    *  is also where the player's name comes from: `renderSegments` appends
@@ -126,12 +136,41 @@ export interface Hud {
    *  stays up until `hideHarvestUi` or another show call replaces it. Skip
    *  is its own button, distinct from Cancel: skipping commits the play and
    *  keeps nothing, cancelling backs out of playing the card at all. */
+  /** The harvest's three ways to spend it. `buildCards` is what the "take a
+   *  card from your build" option opens onto - the seat's own build, and
+   *  nothing else. */
   showHarvestOffer(
-    offer: string[],
-    hooks: { onPick(cardId: string): void; onSkip(): void; onCancel(): void },
+    offer: { buildCards: string[]; heldCards: string[] },
+    hooks: {
+      onGrowth(): void;
+      onBuild(cardId: string): void;
+      onRandom(): void;
+      onDestroy(cardId: string): void;
+      onSkip(): void;
+      onCancel(): void;
+    },
   ): void;
   /** Closes the harvest overlay. Safe when none is up. */
   hideHarvestUi(): void;
+  /** Shows each card a harvest just put in the deck, one at a time: it fades
+   *  in over the board with a line saying what it is, holds, then flies into
+   *  the deck pile. `onDone` fires once, after the last one lands - callers
+   *  wait on it rather than on a duration of their own. */
+  revealGainedCards(cardIds: string[], onDone?: () => void): void;
+  /** Asks how much defense to send from the land a conquest was made with
+   *  into the land taken. `max` is already clamped by the rules - what the
+   *  origin holds and what the destination has room for - so the slider can
+   *  offer everything it shows. */
+  showTransferOffer(
+    offer: {
+      from: string; to: string; max: number;
+      /** What each land holds now, and its ceiling: the modal states where
+       *  BOTH ends finish, because moving defenders is a trade and a slider
+       *  that showed only the amount asked the player to do the arithmetic. */
+      fromHas: number; toHas: number; toMax: number; fromMax: number;
+    },
+    hooks: { onConfirm(amount: number): void },
+  ): void;
 }
 
 const FAN_ANGLE_DEG = 5;
@@ -364,6 +403,11 @@ export function eventSegments(
       return clause(named(e.targetFactionId), "found", [t(" a new settlement")]);
     case "healed":
       return [t("The defenses of "), faction(e.targetFactionId ?? ""), t(" are restored")];
+    case "transferred":
+      return [
+        t("Defenders march from "), faction(e.sourceFactionId ?? ""),
+        t(" into "), faction(e.targetFactionId ?? ""),
+      ];
     case "disease-spread":
       return [t("Disease takes root in "), faction(e.targetFactionId ?? "")];
     case "plagued":
@@ -411,12 +455,24 @@ export function eventSegments(
       // The bar crossing. "a" reads oddly against a plural-looking name, but
       // the card is one card, and the article is what says a COPY arrived.
       return clause(actor, "earn", [t(" a "), card("turnip-harvest")], "past");
+    case "harvest-burned":
+      // `possessive` and not a literal "their": the actor may be "You", and
+      // "You burned Fortify from their deck" is the exact class of mistake
+      // src/rich-text.ts exists to stop.
+      return clause(actor, "burn", [
+        t(" "), card(e.cardId ?? ""), t(" from "),
+        possessive(actor.person), t(" deck"),
+      ], "past");
     case "harvest-picked":
       // Public by decision - see NOTICE_RULES["harvest-picked"]: the pick is
-      // drafting, and every seat's log says what every seat kept.
-      return clause(actor, "keep", [
-        t(" "), card(e.cardId ?? ""), t(" from the harvest"),
-      ], "past");
+      // drafting, and every seat's log says what every seat kept. The card
+      // that comes WITH a harvest is not a keep, and saying "kept" for both
+      // read as the player having chosen twice.
+      return e.bonus === true
+        ? [...actor.segments, t(" also found "), card(e.cardId ?? ""), t(" in the harvest")]
+        : clause(actor, "keep", [
+            t(" "), card(e.cardId ?? ""), t(" from the harvest"),
+          ], "past");
     case "surrendered":
       return clause(actor, "concede", [t(" the Baltic")], "past");
     case "victory":
@@ -670,6 +726,29 @@ export function createHud(
   const scoreboard = document.createElement("div");
   scoreboard.className = "scoreboard hidden";
 
+  // The pinned land, down the left. What the floating tooltip says about a
+  // land, held still so it can be READ - and, because it holds still, pointed
+  // at: the faction and status names in it are nodes with their own tips,
+  // which a tip chasing the cursor could never be.
+  const pinnedPanel = document.createElement("div");
+  pinnedPanel.className = "pinned-panel hidden";
+
+  // Victory milestones: a drawer rather than a panel, because it is a table
+  // the player consults between decisions and not something to read the board
+  // through. Collapsed by default for that reason.
+  const milestonesBtn = document.createElement("button");
+  milestonesBtn.className = "milestones-btn hidden";
+  milestonesBtn.textContent = "Milestones";
+  const milestonesDrawer = document.createElement("div");
+  milestonesDrawer.className = "milestones-drawer hidden";
+  let milestonesOpen = false;
+  milestonesBtn.addEventListener("click", () => {
+    milestonesOpen = !milestonesOpen;
+    milestonesDrawer.classList.toggle("open", milestonesOpen);
+    milestonesBtn.classList.toggle("on", milestonesOpen);
+    if (lastState !== null) renderMilestones(lastState);
+  });
+
   // Concede. Two-click confirm, the same shape the Reset progress control uses,
   // because it is terminal and a stray click must not end the run.
   const surrenderBtn = document.createElement("button");
@@ -873,50 +952,255 @@ export function createHud(
     cb.onHighlightFaction?.(null);
   }
 
-  function showHarvestOffer(
-    offer: string[],
-    hooks: { onPick(cardId: string): void; onSkip(): void; onCancel(): void },
+  /** How long a revealed card is held still before it flies to the deck. Long
+   *  enough to read the name and the rules text, short enough that two of them
+   *  in a row is not a wait. */
+  const REVEAL_HOLD_MS = 900;
+  const REVEAL_FADE_MS = 220;
+  const REVEAL_FLY_MS = 420;
+
+  function revealGainedCards(cardIds: string[], onDone?: () => void): void {
+    // One card per queue step, so a reveal never starts while the play that
+    // earned it is still flying, and two cards never fade in together.
+    for (const cardId of cardIds) {
+      animations.push((done) => revealOneCard(cardId, done));
+    }
+    if (onDone !== undefined) animations.onIdle(onDone);
+  }
+
+  function revealOneCard(cardId: string, done: () => void): void {
+      const wrap = document.createElement("div");
+      wrap.className = "card-reveal";
+      const label = document.createElement("div");
+      label.className = "card-reveal-label";
+      label.textContent = "Added to your deck";
+      const face = document.createElement("div");
+      face.className = "card-reveal-card";
+      const name = document.createElement("div");
+      name.className = "card-reveal-name";
+      name.appendChild(renderSegments([card(cardId)], richTextHooks));
+      const text = document.createElement("div");
+      text.className = "card-reveal-text";
+      text.appendChild(renderSegments(cardTextSegments(cardId), richTextHooks));
+      face.append(name, text);
+      wrap.append(label, face);
+      container.appendChild(wrap);
+
+      // Fade in, hold, then fly to the deck. Each leg waits on the one before
+      // reporting itself finished - no leg is timed twice.
+      runAnimation(
+        wrap,
+        [{ opacity: 0, transform: "scale(0.92)" }, { opacity: 1, transform: "scale(1)" }],
+        REVEAL_FADE_MS,
+        () => {
+          runAnimation(wrap, [{ opacity: 1 }, { opacity: 1 }], REVEAL_HOLD_MS, () => {
+            const from = face.getBoundingClientRect();
+            const to = deckPile.root.getBoundingClientRect();
+            const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+            const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+            runAnimation(
+              wrap,
+              [
+                { transform: "translate(0, 0) scale(1)", opacity: 1 },
+                {
+                  transform: `translate(${dx}px, ${dy}px) scale(0.2)`,
+                  opacity: 0.1,
+                },
+              ],
+              REVEAL_FLY_MS,
+              () => {
+                wrap.remove();
+                done();
+              },
+            );
+          });
+        },
+      );
+  }
+
+  function showTransferOffer(
+    offer: {
+      from: string; to: string; max: number;
+      fromHas: number; toHas: number; toMax: number; fromMax: number;
+    },
+    hooks: { onConfirm(amount: number): void },
   ): void {
-    harvestTitle.textContent = "Turnip harvest - keep one card, or none";
+    harvestTitle.textContent = "Send defenders with the conquest?";
+    // No cancel: the land is already taken, and the only question is how many
+    // defenders march over. Answering 0 is a real answer, so Escape and the
+    // Confirm button lead to the same place.
+    harvestOnCancel = () => hooks.onConfirm(0);
+
+    const line = document.createElement("div");
+    line.className = "transfer-line";
+    line.append(
+      renderSegments([faction(offer.from)], richTextHooks),
+      document.createTextNode(" -> "),
+      renderSegments([faction(offer.to)], richTextHooks),
+    );
+
+    // One row per land, each naming the land and the score it would be left
+    // with. The names are nodes, so pointing at either lights it on the map.
+    const ends = document.createElement("div");
+    ends.className = "transfer-ends";
+    const endRow = (factionId: string): HTMLElement => {
+      const el = document.createElement("div");
+      el.className = "transfer-end";
+      const who = document.createElement("span");
+      who.appendChild(renderSegments([faction(factionId)], richTextHooks));
+      const score = document.createElement("span");
+      score.className = "transfer-score";
+      el.append(who, score);
+      return el;
+    };
+    const fromRow = endRow(offer.from);
+    const toRow = endRow(offer.to);
+    ends.append(fromRow, toRow);
+
+    const row = document.createElement("div");
+    row.className = "transfer-row";
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = String(offer.max);
+    slider.value = "0";
+    slider.className = "transfer-slider";
+    const figure = document.createElement("span");
+    figure.className = "transfer-figure";
+    const say = () => {
+      const n = Number(slider.value);
+      figure.textContent = `${n} of ${offer.max}`;
+      fromRow.querySelector(".transfer-score")!.textContent =
+        `keeps ${offer.fromHas - n} / ${offer.fromMax}`;
+      toRow.querySelector(".transfer-score")!.textContent =
+        `holds ${offer.toHas + n} / ${offer.toMax}`;
+    };
+    say();
+    slider.addEventListener("input", say);
+    row.append(slider, figure);
+
+    const confirm = document.createElement("button");
+    confirm.className = "harvest-option harvest-skip";
+    confirm.textContent = "Send them";
+    confirm.addEventListener("click", () => hooks.onConfirm(Number(slider.value)));
+
+    harvestOptions.replaceChildren(line, ends, row, confirm);
+    harvestOverlay.classList.remove("hidden");
+  }
+
+  function showHarvestOffer(
+    offer: { buildCards: string[]; heldCards: string[] },
+    hooks: {
+      onGrowth(): void;
+      onBuild(cardId: string): void;
+      onRandom(): void;
+      onDestroy(cardId: string): void;
+      onSkip(): void;
+      onCancel(): void;
+    },
+  ): void {
     harvestOnCancel = hooks.onCancel;
-    const skipBtn = document.createElement("button");
-    skipBtn.className = "harvest-option harvest-skip";
-    const skipLabel = document.createElement("div");
-    skipLabel.className = "harvest-option-label";
-    skipLabel.textContent = "Keep nothing - a lean deck draws its best cards sooner";
-    skipBtn.appendChild(skipLabel);
-    skipBtn.addEventListener("click", () => hooks.onSkip());
-    harvestOptions.replaceChildren(
-      ...offer.map((cardId) => {
+
+    /** One option button: a heading and a line saying what it does. */
+    const option = (
+      title: string, blurb: string, onPick: () => void,
+    ): HTMLElement => {
+      const btn = document.createElement("button");
+      btn.className = "harvest-option";
+      const label = document.createElement("div");
+      label.className = "harvest-option-label";
+      label.textContent = title;
+      const text = document.createElement("div");
+      text.className = "harvest-option-text";
+      text.textContent = blurb;
+      btn.append(label, text);
+      btn.addEventListener("click", onPick);
+      return btn;
+    };
+
+    /** A second screen listing cards by name with their rules text - the same
+     *  reading the build tile gives, since these are the same decisions made
+     *  later. Shared by "take one from your build" and "burn one", which are
+     *  the same screen pointed at two different lists. */
+    const showCardPicker = (
+      title: string, cardIds: string[], onPick: (cardId: string) => void,
+    ): void => {
+      harvestTitle.textContent = title;
+      const cards = cardIds.map((cardId) => {
         const btn = document.createElement("button");
         btn.className = "harvest-option";
         const label = document.createElement("div");
         label.className = "harvest-option-label";
         label.appendChild(renderSegments([card(cardId)], richTextHooks));
-        btn.appendChild(label);
-        // The rules text under the name, like a picker tile: the choice is
-        // about what the card does, and a hover-only answer defeats a list.
         const text = document.createElement("div");
         text.className = "harvest-option-text";
         text.appendChild(renderSegments(cardTextSegments(cardId), richTextHooks));
-        btn.appendChild(text);
-        btn.addEventListener("click", () => hooks.onPick(cardId));
+        btn.append(label, text);
+        btn.addEventListener("click", () => onPick(cardId));
         return btn;
-      }),
-      skipBtn,
-    );
+      });
+      const back = document.createElement("button");
+      back.className = "harvest-option harvest-skip";
+      back.textContent = "Back";
+      back.addEventListener("click", showChoices);
+      harvestOptions.replaceChildren(...cards, back);
+    };
+
+    function showChoices(): void {
+      harvestTitle.textContent = "Turnip harvest - take one";
+      const growth = option(
+        "Grow your people",
+        "A land of your realm grows: one more defense, ceiling and all.",
+        hooks.onGrowth,
+      );
+      const build = option(
+        "A card from your build",
+        offer.buildCards.length === 0
+          ? "Nothing left to take - your build is already in your deck."
+          : "Choose one of your build's cards by name.",
+        () => showCardPicker(
+          "Take a card from your build", offer.buildCards, hooks.onBuild,
+        ),
+      );
+      (build as HTMLButtonElement).disabled = offer.buildCards.length === 0;
+      const random = option(
+        "A card from anywhere",
+        "One card out of everything the game knows, sight unseen.",
+        hooks.onRandom,
+      );
+      const destroy = option(
+        "Burn a card",
+        offer.heldCards.length === 0
+          ? "Nothing to burn."
+          : "Take a card out of your deck for good. A leaner deck draws its best cards sooner.",
+        () => showCardPicker(
+          "Burn a card for good", offer.heldCards, hooks.onDestroy,
+        ),
+      );
+      (destroy as HTMLButtonElement).disabled = offer.heldCards.length === 0;
+      const skip = option(
+        "Take nothing",
+        "The harvest is spent and the deck is left exactly as it is.",
+        hooks.onSkip,
+      );
+      harvestOptions.replaceChildren(
+        growth, build, random, destroy, skip, harvestCancelBtn(),
+      );
+    }
+
+    showChoices();
     harvestOverlay.classList.remove("hidden");
   }
 
-  window.addEventListener("keydown", (e) => {
-    if (harvestOverlay.classList.contains("hidden")) return;
-    if (e.key !== "Escape") return;
-    e.preventDefault();
-    harvestOnCancel?.();
-  });
+  /** The one control that backs out of the whole play. */
+  function harvestCancelBtn(): HTMLElement {
+    const cancel = document.createElement("button");
+    cancel.className = "harvest-cancel";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => harvestOnCancel?.());
+    return cancel;
+  }
 
-  /** Shows the round's summary and hides it again on Continue/Escape/Enter -
-   *  there is no queue: one AI round is one modal (see AGENTS.md). */
   function showRoundSummary(summary: RoundSummary): void {
     noticeTitle.textContent = summary.title;
     noticeLines.replaceChildren(
@@ -1028,9 +1312,18 @@ export function createHud(
     dismissSummary();
   });
 
+  // Everything down the left lives in ONE column, in flow. Three panels each
+  // positioned from the top-left corner independently is three panels drawn
+  // over each other the moment two of them are up - which is exactly how
+  // pinning a land looked like it had closed the milestones drawer.
+  const leftColumn = document.createElement("div");
+  leftColumn.className = "hud-left";
+  leftColumn.append(surrenderBtn, milestonesBtn, milestonesDrawer, pinnedPanel);
+
   container.append(
-    menu, postmortem, status, scoreboard, surrenderBtn, endTurnBtn, deckPile.root,
-    discardPile.root, hand, logPanel, noticeOverlay, harvestOverlay,
+    menu, postmortem, status, scoreboard, leftColumn, endTurnBtn,
+    deckPile.root, discardPile.root, hand, logPanel, noticeOverlay,
+    harvestOverlay,
   );
 
   let pendingPlayRect: DOMRect | null = null;
@@ -1165,6 +1458,49 @@ export function createHud(
     entry.classList.add("log-revealed");
   }
 
+  /** What the log says about a turn in which nobody did anything worth a line.
+   *
+   *  Picked by turn number rather than at random: the log is rebuilt from
+   *  scratch whenever it is cleared, and a phrase that changed under the
+   *  player on a redraw would read as a second, different turn. */
+  const QUIET_TURNS = [
+    "eerily quiet",
+    "nothing stirred",
+    "a quiet season",
+    "no smoke on the horizon",
+    "the roads stayed empty",
+    "word came of nothing at all",
+  ];
+
+  /** Opens a turn's block in the log. */
+  function openTurn(turn: number): void {
+    const sep = document.createElement("div");
+    sep.className = "log-turn";
+    sep.textContent = `Turn ${turn}`;
+    logEntries.appendChild(sep);
+    lastRenderedTurn = turn;
+  }
+
+  /** Headers and a line of flavour for every turn up to `through` that passed
+   *  with nothing in it.
+   *
+   *  Without this a run where nobody acts shows no sign of time passing at
+   *  all: the log's last entry stays on turn 4 while the status bar reads
+   *  turn 17, which looks exactly like a game that has stopped working. */
+  function markQuietTurns(through: number): void {
+    for (let turn = lastRenderedTurn + 1; turn <= through; turn++) {
+      openTurn(turn);
+      const line = document.createElement("div");
+      // Deliberately NOT a `.log-entry`: every filter in this panel works by
+      // hiding entries, and a turn that passed is not something any filter
+      // should be able to deny. Same reasoning as the `.log-turn` headers it
+      // sits under.
+      line.className = "log-quiet";
+      line.textContent = QUIET_TURNS[turn % QUIET_TURNS.length];
+      logEntries.appendChild(line);
+    }
+  }
+
   function renderLog(state: GameState, animate: boolean): GameEvent[] {
     if (state.log.length < renderedEvents) {
       logEntries.replaceChildren();
@@ -1199,12 +1535,11 @@ export function createHud(
     let cause: HTMLElement | null = null;
     fresh.forEach((e, i) => {
       const logIndex = base + i;
+      // Every turn between the last one rendered and this event's had nothing
+      // in it, so it gets a header and a line saying so.
+      markQuietTurns(e.turn - 1);
       if (e.turn !== lastRenderedTurn) {
-        const sep = document.createElement("div");
-        sep.className = "log-turn";
-        sep.textContent = `Turn ${e.turn}`;
-        logEntries.appendChild(sep);
-        lastRenderedTurn = e.turn;
+        openTurn(e.turn);
       }
       if (!isObservable(e, humanFactionId)) return;
       const entry = document.createElement("div");
@@ -1251,6 +1586,11 @@ export function createHud(
       logEntries.appendChild(entry);
     });
     renderedEvents = state.log.length;
+    // Turns that have finished with nothing in them get their line now rather
+    // than waiting for the next event to arrive - which, in a run where every
+    // seat is out of playable cards, may never happen. The turn in progress is
+    // deliberately excluded: it has not finished being quiet yet.
+    markQuietTurns(state.turn - 1);
     // Everything this batch made public that was already on screen hiding it.
     for (const idx of revealed) {
       if (shownRevealed.has(idx)) continue;
@@ -1377,8 +1717,12 @@ export function createHud(
       card.disabled = !canPlay;
       card.setAttribute("aria-disabled", String(!playable));
       card.classList.toggle("discard-hint", discardMode);
+      // Grey once the turn is spent, too - not only when the CARD is the
+      // problem. A hand that looks live after its one play, under a status
+      // line still reading "play a card", is the game telling the player to
+      // do something it will refuse.
       card.classList.toggle(
-        "unplayable", canPlay && !discardMode && !cardAllowed,
+        "unplayable", !canPlay || (!discardMode && !cardAllowed),
       );
       if (playable)
         card.addEventListener("click", () => {
@@ -1438,21 +1782,34 @@ export function createHud(
     const from = deckPile.root.getBoundingClientRect();
     const newest = hand.lastElementChild;
     newest?.classList.add("card-incoming");
-    // Deliberately not tracked in liveFlights: the draw is short, concurrent
-    // with any play flight, and gating the turn on it would add nothing.
-    flyCard(
+    // Not tracked in liveFlights - the turn does not wait on a draw - but
+    // queued like everything else, so it never plays over a card in flight.
+    animations.push((done) => flyCard(
       container,
       "back",
       "",
       { x: from.x, y: from.y, width: CARD_W, height: CARD_H },
       [{ to: center(hand.getBoundingClientRect()), scale: 1, durationMs: DRAW_MS }],
-      () => newest?.classList.remove("card-incoming"),
-    );
+      () => {
+        newest?.classList.remove("card-incoming");
+        done();
+      },
+    ));
   }
 
   function animatePlay(cardId: string): void {
+    // The rect is read NOW, while the card is still where the player left it -
+    // the queue may not reach this step until the hand has been re-rendered,
+    // and a flight starting from a stale layout would jump.
     const from = pendingPlayRect ?? hand.getBoundingClientRect();
     pendingPlayRect = null;
+    animations.push((done) => runPlayFlight(cardId, from, done));
+  }
+
+  function runPlayFlight(
+    cardId: string, from: DOMRect | { x: number; y: number },
+    done: () => void,
+  ): void {
     const flight = flyCard(
       container,
       "",
@@ -1474,23 +1831,29 @@ export function createHud(
       () => {
         liveFlights.delete(flight);
         if (liveFlights.size === 0) settleTurn();
+        done();
       },
     );
     liveFlights.add(flight);
   }
 
   function pulseDeck(): void {
-    deckPile.root.classList.add("pulse");
-    runAnimation(
-      deckPile.stack,
-      [
-        { offset: 0, transform: "scale(1)" },
-        { offset: 0.5, transform: "scale(1.12)" },
-        { offset: 1, transform: "scale(1)" },
-      ],
-      RESHUFFLE_PULSE_MS,
-      () => deckPile.root.classList.remove("pulse"),
-    );
+    animations.push((done) => {
+      deckPile.root.classList.add("pulse");
+      runAnimation(
+        deckPile.stack,
+        [
+          { offset: 0, transform: "scale(1)" },
+          { offset: 0.5, transform: "scale(1.12)" },
+          { offset: 1, transform: "scale(1)" },
+        ],
+        RESHUFFLE_PULSE_MS,
+        () => {
+          deckPile.root.classList.remove("pulse");
+          done();
+        },
+      );
+    });
   }
 
   /** Human-only: AI actions surface as log entries, nothing moves on screen. */
@@ -1536,7 +1899,10 @@ export function createHud(
       const showTurnips = into > 0 || holdsTurnip;
       turnipChip.classList.toggle("hidden", !showTurnips);
       if (showTurnips) {
-        const span = TURNIP_HARVEST_THRESHOLD;
+        // The seat's OWN threshold: a big home land waits longer between
+        // harvests, so a flat number here would be a bar that never filled
+        // where it said it would.
+        const span = turnipThresholdOn(view, humanFaction);
         turnipCount.textContent = `Turnips ${into}/${span}`;
         turnipFill.style.width = `${Math.round((into / span) * 100)}%`;
       }
@@ -1574,9 +1940,14 @@ export function createHud(
           statusText.textContent =
             `Turn ${state.turn} - play cards, then end your turn`;
         } else {
-          statusText.textContent = (cb.isDiscardMode?.() ?? false)
-            ? "No playable card - discard one"
-            : `Turn ${state.turn} - play a card`;
+          // A spent standard turn is asking for one thing only, and it is not
+          // a card. Saying "play a card" over a hand the rules will refuse is
+          // the game giving an instruction it will not honour.
+          statusText.textContent = state.playedThisTurn
+            ? `Turn ${state.turn} - end your turn`
+            : (cb.isDiscardMode?.() ?? false)
+              ? "No playable card - discard one"
+              : `Turn ${state.turn} - play a card`;
         }
       } else {
         statusText.textContent = "Waiting on other players...";
@@ -1587,7 +1958,12 @@ export function createHud(
   function renderScoreboard(state: GameState): void {
     const human = humanPlayer(state);
     const rows = standingsFor({
-      factionIds: state.factionIds,
+      // One row per faction with a LEADER, in seat order. A land nobody leads
+      // is ground, not a contender - and if a card ever seats a chief on one,
+      // it joins the board the same turn it joins the game.
+      acting: state.players
+        .map((pl) => pl.factionId)
+        .filter((f) => hasRuler(state.rulers, f)),
       humanFactionId: human?.factionId,
       // `fullRealmOf`, the same count the win condition applies: a land a vassal
       // annexed already sits inside its lord's outline on the map, so a
@@ -1622,6 +1998,80 @@ export function createHud(
         return row;
       }),
     );
+  }
+
+  /** The milestones table, for whichever faction the player is looking at:
+   *  the highlighted one - a name hovered in prose, a land hovered or pinned -
+   *  and otherwise your own. That is the whole interaction the drawer has:
+   *  point at somebody and the bars answer for them. */
+  function renderMilestones(state: GameState): void {
+    if (!milestonesOpen) return;
+    const acting = state.players
+      .map((pl) => pl.factionId)
+      .filter((f) => hasRuler(state.rulers, f));
+    const focus = highlightedFaction ?? humanPlayer(state)?.factionId;
+    const rows = milestoneStandings(state, acting, focus);
+
+    const head = document.createElement("div");
+    head.className = "ms-head";
+    const title = document.createElement("span");
+    title.textContent = "Victory milestones";
+    const who = document.createElement("span");
+    who.className = "ms-focus";
+    if (focus !== undefined) {
+      who.append(
+        renderSegments([faction(focus)], richTextHooks),
+        document.createTextNode(
+          ` - ${count(milestonePoints(state, focus), "point")}`,
+        ),
+      );
+    }
+    head.append(title, who);
+
+    const table = document.createElement("div");
+    table.className = "ms-table";
+    for (const row of rows) {
+      const el = document.createElement("div");
+      el.className = "ms-row";
+      el.classList.toggle("ms-done", row.done);
+
+      const name = document.createElement("div");
+      name.className = "ms-name";
+      name.textContent = row.milestone.name;
+      const points = document.createElement("span");
+      points.className = "ms-points";
+      points.textContent = `${row.milestone.points} VP`;
+      name.appendChild(points);
+
+      const text = document.createElement("div");
+      text.className = "ms-text";
+      text.textContent = row.milestone.text;
+
+      const bar = document.createElement("div");
+      bar.className = "ms-bar";
+      const fill = document.createElement("div");
+      fill.className = "ms-fill";
+      fill.style.width = `${(row.progress / row.milestone.goal) * 100}%`;
+      bar.appendChild(fill);
+      const figure = document.createElement("span");
+      figure.className = "ms-figure";
+      figure.textContent = `${row.progress} / ${row.milestone.goal}`;
+
+      const badges = document.createElement("div");
+      badges.className = "ms-badges";
+      // One badge per faction that has it, names as nodes: hovering a badge
+      // lights that realm on the map, which is how the table answers "who".
+      for (const f of row.achievedBy) {
+        const badge = document.createElement("span");
+        badge.className = "ms-badge";
+        badge.appendChild(renderSegments([faction(f)], richTextHooks));
+        badges.appendChild(badge);
+      }
+
+      el.append(name, text, bar, figure, badges);
+      table.appendChild(el);
+    }
+    milestonesDrawer.replaceChildren(head, table);
   }
 
   /** The cause line is the one place the postmortem names a faction, so it is
@@ -1761,19 +2211,31 @@ export function createHud(
       logPanel.classList.toggle("hidden", state.phase !== "playing");
       postmortem.classList.toggle("hidden", !ended);
       scoreboard.classList.toggle("hidden", state.phase !== "playing");
+      milestonesBtn.classList.toggle("hidden", state.phase !== "playing");
+      // Phase only: `.open` is what the button drives, and having the two
+      // decide visibility together is what hid a drawer somebody had opened.
+      milestonesDrawer.classList.toggle("hidden", state.phase !== "playing");
       surrenderBtn.classList.toggle(
         "hidden",
         state.phase !== "playing" || cb.onSurrender === undefined,
       );
       if (state.phase !== "playing") disarmSurrender();
+      // Shown under EVERY rule set now: a turn never ends itself, so this is
+      // the only way a round is handed over and it cannot be a control that
+      // appears only for one turn structure.
       endTurnBtn.classList.toggle(
         "hidden",
-        state.phase !== "playing" || state.rules.turn !== "unlimited" ||
-          cb.onEndTurn === undefined,
+        state.phase !== "playing" || cb.onEndTurn === undefined,
       );
+      // Enabled when it can actually do something: a spent standard turn (the
+      // hand-over it now owns), or an unlimited turn, which may be closed at
+      // any point. A standard turn with the card still unplayed has no
+      // hand-over to give - the turn IS the card - so the button is disabled
+      // rather than left live and inert.
       endTurnBtn.disabled =
-        !isLocalTurn(state) || state.playedThisTurn ||
-        (cb.isResolving?.() ?? false);
+        !isLocalTurn(state) ||
+        (cb.isResolving?.() ?? false) ||
+        (state.rules.turn !== "unlimited" && !state.playedThisTurn);
       // A run ending or a new game must not leave a harvest choice hanging
       // over the wrong screen - the hideSummary reasoning, same shape.
       if (state.phase !== "playing") hideHarvestUi();
@@ -1786,6 +2248,7 @@ export function createHud(
         renderPile(discardPile, human.discard.length);
         renderHand(state);
         renderScoreboard(state);
+        renderMilestones(state);
         const fresh = renderLog(state, animate);
         // Animate first, decide second. `showRoundSummaryIfAny` asks whether a
         // flight is in the air to know whether the turn it is describing has
@@ -1830,6 +2293,46 @@ export function createHud(
       // the map answers it rather than pinning. setArmed(null) renders again.
       if (lastState !== null && armedIndex === null) renderStatus(lastState);
     },
+    setPinnedLand(lines) {
+      pinnedPanel.classList.toggle("hidden", lines === null);
+      if (lines === null) {
+        pinnedPanel.replaceChildren();
+        return;
+      }
+      const body = document.createElement("div");
+      body.className = "pinned-body";
+      // The first line is the land's own name, rendered like every other line
+      // rather than as a bare heading string: the people it names is a node
+      // there too, so pointing at it lights their realm exactly as it does in
+      // the activity log.
+      lines.forEach((line, i) => {
+        const el = document.createElement("div");
+        el.className = i === 0
+          ? "pinned-line pinned-title"
+          : `pinned-line tone-${line.tone ?? "neutral"}`;
+        if (line.blockStart === true) el.classList.add("pinned-block");
+        // Nodes when the line has them, plain text when it does not: a line
+        // that names nothing has nothing to point at, and giving it a
+        // segments array of one text run would just be ceremony.
+        if (line.segments !== undefined) {
+          el.replaceChildren(renderSegments(line.segments, richTextHooks));
+        } else {
+          el.textContent = line.text;
+        }
+        if (line.amount !== undefined) {
+          // Only a row that HAS a figure becomes a two-column flex row.
+          // Applied to every line, the spread pushed the runs of a segment
+          // line apart: "Saaremaa (        Osilians        )".
+          el.classList.add("pinned-has-amount");
+          const amount = document.createElement("span");
+          amount.className = "pinned-amount";
+          amount.textContent = line.amount;
+          el.appendChild(amount);
+        }
+        body.appendChild(el);
+      });
+      pinnedPanel.replaceChildren(body);
+    },
     setWaiting(factionId) {
       waitingFaction = factionId;
       if (lastState !== null) renderStatus(lastState);
@@ -1840,6 +2343,9 @@ export function createHud(
       // while the answer cannot have changed.
       if (factionId === highlightedFaction) return;
       highlightedFaction = factionId;
+      // The drawer answers for whoever is highlighted, so it moves with the
+      // pointer exactly as the log dimming does.
+      if (lastState !== null) renderMilestones(lastState);
       logPanel.classList.toggle("log-highlighting", factionId !== null);
       for (const entry of logEntries.children) {
         if (entry instanceof HTMLElement && entry.classList.contains("log-entry")) {
@@ -1848,6 +2354,8 @@ export function createHud(
       }
     },
     showHarvestOffer,
+    revealGainedCards,
+    showTransferOffer,
     hideHarvestUi,
   };
 }

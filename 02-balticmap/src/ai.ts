@@ -6,11 +6,12 @@ import {
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
 import {
-  attackDamageFor, attackReach, borderPolygonsOf, holdsGuard,
+  attackDamageFor, attackReach, borderPolygonsOf, freeArmiesFor, holdsGuard,
   marchSourcesAgainst, plagueMultiplier, playableSet,
   validTargetsFor, type RulesView,
 } from "./playability";
-import { axesOf, freeArmiesOn } from "./marches";
+import { axesOf } from "./marches";
+import { hasPassive } from "./passives";
 import { discardCard, endTurn, playCard, viewOf, type GameState } from "./game";
 
 export type AiAction =
@@ -31,13 +32,23 @@ export type AiAction =
  *  measurement that put it there. */
 export const POLICY_COVERAGE: Record<string, string> = {
   "pay-military-tribute": "1: forced tribute",
-  "subjugate": "2: subjugate any faction whose gate is open",
+  "subjugate":
+    "2: subjugate any faction whose gate is open, quiet lands included - a " +
+    "land that takes no turns is a faction in reach like any other; the pick " +
+    "among open gates is the biggest full realm, ties by faction order",
   "incorporate": "3: incorporate the best permanent gain net of freed vassals",
   "assassinate-ruler":
-    "4: assassinate the highest leadership in reach, bodyguard risk unknown",
+    "4: kill the ruler of a land carrying No successor in reach, which takes " +
+    "it outright; else the highest leadership in reach, bodyguard risk unknown",
   "hillfort": "5: heal toward a gate - escape as a vassal, repair while free",
   "harvest-feast": "5: heal toward a gate, realm-wide arm",
   "fortify": "5: heal toward a gate - the weaker of the two single-land heals, taken when no Hillfort is in hand",
+  "strong-raid":
+    "5A/6W/11W: the same branches Raid uses - `isMarchCard` covers both, and " +
+    "the AI reaches for whichever of the two is in hand",
+  "strong-fortify":
+    "5: heal toward a gate - preferred over Fortify where both are held, " +
+    "since it is the same play for one more point",
   "raid":
     "5A: counter a march that would break one of our lands, or that we out-" +
     "muscle; 6W: suppress a vassal nearing its gate or finish an opening; " +
@@ -47,9 +58,10 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "great-raid":
     "6W: fan damage when 2+ borders would reach their gates; 11W: pressure " +
     "when a stacked council faces 3+ border rivals",
-  "create-army":
-    "12: garrison the frontier land with the most rivals on it and no army " +
-    "left to send - both builds, since it is a neutral",
+  "prosperous-proliferation":
+    "8R: raise the ceiling of the realm's biggest land whenever held - it is " +
+    "always in the harvest offer, so a seat that never picked it up is a seat " +
+    "that chose otherwise",
   "favourable-omens": "6W: read the omens when the doubled attack opens a gate",
   "war-council": "11W: build leadership while no gate is within 2 attacks",
   "plague": "6P: cash stacks when a gate opens or the damage beats a raid",
@@ -64,6 +76,20 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "turnip-harvest": "9: cash the harvest whenever held (auto-picks by build)",
   "grow-crops": "10: grow turnips whenever held (feeds the harvest loop)",
 };
+
+/** The march card this hand would rather send, and its id: the strong one
+ *  where both are held, since it is the same play for one more point. One
+ *  lookup for every branch that sends an army, so a new march card is a line
+ *  in `MARCH_CARDS` rather than a hunt through this file. */
+function marchPick(
+  idxOf: (id: string) => number | undefined,
+): { index: number; id: string } | undefined {
+  for (const id of ["strong-raid", "raid"]) {
+    const index = idxOf(id);
+    if (index !== undefined) return { index, id };
+  }
+  return undefined;
+}
 
 /** The subjugation-gate line of a polygon, and how far above it the score
  *  sits. Positive gap = closed by that much. */
@@ -267,16 +293,22 @@ export function chooseAction(state: GameState): AiAction {
   // the leadership standing.
   const assassinate = idxOf("assassinate-ruler");
   if (assassinate !== undefined) {
-    const pick = validTargetsFor(v, p.factionId, "assassinate-ruler")
-      .filter(
-        (t) =>
-          (v.leadership[t] ?? 0) >= WAR_COUNCIL_LEADERSHIP &&
-          !holdsGuard(v, t, "bodyguard"),
-      )
-      .sort(
-        (a, b) => (v.leadership[b] ?? 0) - (v.leadership[a] ?? 0) ||
-          order(a) - order(b),
-      )[0];
+    const targets = validTargetsFor(v, p.factionId, "assassinate-ruler")
+      .filter((t) => !holdsGuard(v, t, "bodyguard"));
+    // A land carrying No successor is taken outright by the killing, whatever
+    // its ruler was worth: a card that wins a land beats a card that removes a
+    // leadership stack.
+    const free = targets
+      .filter((t) => hasPassive(v.passives, t, "no-successor"))
+      .sort((a, b) => order(a) - order(b))[0];
+    const pick =
+      free ??
+      targets
+        .filter((t) => (v.leadership[t] ?? 0) >= WAR_COUNCIL_LEADERSHIP)
+        .sort(
+          (a, b) => (v.leadership[b] ?? 0) - (v.leadership[a] ?? 0) ||
+            order(a) - order(b),
+        )[0];
     if (pick !== undefined) {
       return { type: "play", cardIndex: assassinate, targetId: pick };
     }
@@ -289,12 +321,15 @@ export function chooseAction(state: GameState): AiAction {
   // a land is worth it. Fortify is the weaker, and the one every deck starts
   // holding five of.
   const hillfort = idxOf("hillfort");
+  const strongFortify = idxOf("strong-fortify");
   const fortify = idxOf("fortify");
   const feast = idxOf("harvest-feast");
   /** The strongest heal in hand that this land is a legal target for. */
   const healAt = (land: string): AiAction | null => {
     for (const [index, cardId] of [
-      [hillfort, "hillfort"] as const, [fortify, "fortify"] as const,
+      [hillfort, "hillfort"] as const,
+      [strongFortify, "strong-fortify"] as const,
+      [fortify, "fortify"] as const,
     ]) {
       if (index === undefined) continue;
       if (validTargetsFor(v, p.factionId, cardId).includes(land)) {
@@ -372,6 +407,19 @@ export function chooseAction(state: GameState): AiAction {
     if (highest) return { type: "play", cardIndex: bodyguard };
   }
 
+  // 8R: raise a ceiling. Consumed on play and permanent, so it is spent on
+  // the land worth compounding: the biggest already, ties by faction order.
+  // Ahead of the settlement because it buys an army as well as the headroom.
+  const ramparts = idxOf("prosperous-proliferation");
+  if (ramparts !== undefined) {
+    const best = [...validTargetsFor(v, p.factionId, "prosperous-proliferation")].sort(
+      (a, b) => defenseMaxOf(v, b) - defenseMaxOf(v, a) || order(a) - order(b),
+    )[0];
+    if (best !== undefined) {
+      return { type: "play", cardIndex: ramparts, targetId: best };
+    }
+  }
+
   // 8: found a settlement on a spare turn - permanent income.
   const settle = idxOf("found-settlement");
   if (settle !== undefined) {
@@ -405,16 +453,11 @@ export function chooseAction(state: GameState): AiAction {
       : pestilenceBuild(state, v, p.factionId, idxOf);
   if (build !== null) return build;
 
-  // 12: garrison a frontier land with no army left to send. Both strategies:
-  // Create army is a neutral, so a pestilence seat can hold one too.
-  const garrisoned = garrison(state, v, p.factionId, idxOf);
-  if (garrisoned !== null) return garrisoned;
-
-  // 13: first playable card as a last resort.
+  // 12: first playable card as a last resort.
   const i0 = set.cardIndexes[0];
-  const cardId = p.hand[i0];
-  if (CARDS[cardId]?.targeted) {
-    const legal = validTargetsFor(v, p.factionId, cardId);
+  const lastResort = p.hand[i0];
+  if (CARDS[lastResort]?.targeted) {
+    const legal = validTargetsFor(v, p.factionId, lastResort);
     return { type: "play", cardIndex: i0, targetId: legal[0] };
   }
   return { type: "play", cardIndex: i0 };
@@ -440,11 +483,12 @@ function counterRaid(
   actor: string,
   idxOf: (id: string) => number | undefined,
 ): AiAction | null {
-  const raid = idxOf("raid");
-  if (raid === undefined) return null;
-  const { damage } = attackDamageFor(v, actor, "raid");
+  const pick = marchPick(idxOf);
+  if (pick === undefined) return null;
+  const raid = pick.index;
+  const { damage } = attackDamageFor(v, actor, pick.id);
   const realm = fullRealmOf(actor, v.overlords, v.incorporated);
-  const targets = new Set(validTargetsFor(v, actor, "raid"));
+  const targets = new Set(validTargetsFor(v, actor, pick.id));
 
   const answerable = axesOf(v.marches)
     .flatMap((axis) => [
@@ -490,11 +534,12 @@ function warpathDecisive(
   actor: string,
   idxOf: (id: string) => number | undefined,
 ): AiAction | null {
-  const raid = idxOf("raid");
+  const pick = marchPick(idxOf);
+  const raid = pick?.index;
   const greatRaid = idxOf("great-raid");
   const omens = idxOf("favourable-omens");
   const raidTargets =
-    raid === undefined ? [] : validTargetsFor(v, actor, "raid");
+    pick === undefined ? [] : validTargetsFor(v, actor, pick.id);
 
   // 6W-1: vassal suppression - raid the vassal one heal from its gate.
   const restive = vassalNearingEscape(state, v, actor);
@@ -551,12 +596,13 @@ function warpathBuild(
   actor: string,
   idxOf: (id: string) => number | undefined,
 ): AiAction | null {
-  const raid = idxOf("raid");
+  const pick = marchPick(idxOf);
+  const raid = pick?.index;
   const greatRaid = idxOf("great-raid");
   const council = idxOf("war-council");
   const raidTargets =
-    raid === undefined ? [] : validTargetsFor(v, actor, "raid");
-  const { damage } = attackDamageFor(v, actor, "raid");
+    pick === undefined ? [] : validTargetsFor(v, actor, pick.id);
+  const { damage } = attackDamageFor(v, actor, pick?.id ?? "raid");
   const candidates = gateCandidates(state, v, actor, raidTargets);
 
   // 11W-1: war council while no target's gate is within 2 attacks - build
@@ -587,46 +633,6 @@ function warpathBuild(
   }
 
   return null;
-}
-
-/** Step 12: garrison a frontier land that has nothing left to send.
- *
- *  Shared by both strategies rather than living in `warpathBuild`, because
- *  Create army is a NEUTRAL - a pestilence seat can harvest it too, and a card
- *  a seat can hold with no branch to decide it is exactly the fallthrough the
- *  POLICY_COVERAGE rule exists to stop.
- *
- *  Below the build moves, because an army raised is a turn that hit nothing.
- *  It only pays where the realm is actually attack-starved: a land on the
- *  frontier whose army is already out. The land facing the most rivals goes
- *  first, ties by faction order. */
-function garrison(
-  state: GameState,
-  v: RulesView,
-  actor: string,
-  idxOf: (id: string) => number | undefined,
-): AiAction | null {
-  const army = idxOf("create-army");
-  if (army === undefined) return null;
-  const realm = fullRealmOf(actor, v.overlords, v.incorporated);
-  const reach = attackReach(v, actor);
-  const frontage = (land: string): number =>
-    (v.adjacency[land] ?? []).filter((adj) => reach.has(adj)).length;
-  const starved = state.factionIds
-    .filter(
-      (land) =>
-        realm.has(land) &&
-        freeArmiesOn(v.armies, v.marches, land) === 0 &&
-        frontage(land) > 0,
-    )
-    .sort(
-      (a, b) =>
-        frontage(b) - frontage(a) ||
-        state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
-    )[0];
-  return starved === undefined
-    ? null
-    : { type: "play", cardIndex: army, targetId: starved };
 }
 
 /** Step 6, Pestilence: the decisive moves - cashing a gate open outranks

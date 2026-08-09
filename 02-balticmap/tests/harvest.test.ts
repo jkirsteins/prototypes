@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  HARVEST_PRIORITY, autoHarvestChoice, harvestPool, rollHarvestOffer,
+  autoHarvestChoice, buildOffer, destroyOffer, GROWTH_CARD, harvestCard,
+  HARVEST_PRIORITY, randomPool,
 } from "../src/harvest";
-import { BUILDS, CARDS, NEUTRAL_POOL, type Rng, type Strategy } from "../src/cards";
+import { BUILDS, CARDS, type Strategy } from "../src/cards";
+import { seededRng } from "../src/rng";
 import type { PlayerState } from "../src/game";
 
 function player(
@@ -16,33 +18,38 @@ function player(
   };
 }
 
-/** An rng that returns `values` in order, then 0 - and counts its draws. */
-function scriptedRng(values: number[]): { rng: Rng; draws: () => number } {
-  let i = 0;
-  return {
-    rng: () => {
-      const value = i < values.length ? values[i] : 0;
-      i++;
-      return value;
-    },
-    draws: () => i,
-  };
-}
+describe("buildOffer", () => {
+  it("is exactly the seat's own build for a fresh seat", () => {
+    expect(buildOffer(player("warpath"))).toEqual(BUILDS.warpath);
+    expect(buildOffer(player("pestilence"))).toEqual(BUILDS.pestilence);
+  });
 
-describe("harvestPool", () => {
-  it("is the build's cards plus the neutrals for a fresh seat", () => {
-    expect(harvestPool(player("warpath")))
-      .toEqual([...BUILDS.warpath, ...NEUTRAL_POOL]);
-    expect(harvestPool(player("pestilence")))
-      .toEqual([...BUILDS.pestilence, ...NEUTRAL_POOL]);
+  it("drops a capped build card whichever pile holds it", () => {
+    // foul-winds is the one capped card either build carries.
+    for (const pile of ["deck", "hand", "discard"] as const) {
+      const p = player("pestilence", { [pile]: ["foul-winds"] });
+      expect(buildOffer(p), pile).not.toContain("foul-winds");
+    }
+  });
+
+  it("never runs dry: every other build card is uncapped", () => {
+    const p = player("pestilence", { discard: ["foul-winds"] });
+    expect(buildOffer(p)).toEqual([
+      "spread-disease", "localized-outbreak", "miasma", "plague",
+    ]);
+  });
+});
+
+describe("randomPool", () => {
+  it("is every deck-buildable card for a fresh seat", () => {
+    const all = Object.values(CARDS).filter((c) => c.deckBuildable).map((c) => c.id);
+    expect([...randomPool(player("warpath"))].sort()).toEqual([...all].sort());
   });
 
   it("drops a capped card whichever pile holds it", () => {
-    // maxPerDeck is enforced HERE, at the offer, not at play time - so each
-    // of the three piles must count.
     for (const pile of ["deck", "hand", "discard"] as const) {
       const p = player("warpath", { [pile]: ["subjugate"] });
-      expect(harvestPool(p), pile).not.toContain("subjugate");
+      expect(randomPool(p), pile).not.toContain("subjugate");
     }
   });
 
@@ -50,111 +57,94 @@ describe("harvestPool", () => {
     const p = player("warpath", {
       deck: ["found-settlement"], hand: ["raid"], discard: ["raid"],
     });
-    expect(harvestPool(p)).not.toContain("found-settlement");
+    expect(randomPool(p)).not.toContain("found-settlement");
     // Uncapped cards are offered no matter how many are held.
-    expect(harvestPool(p)).toContain("raid");
+    expect(randomPool(p)).toContain("raid");
   });
 
-  it("caps a build's own card too - foul winds for a pestilence seat", () => {
-    const p = player("pestilence", { discard: ["foul-winds"] });
-    expect(harvestPool(p)).not.toContain("foul-winds");
-  });
-
-  it("never runs dry: the build cores and the heal cards are uncapped", () => {
-    // Every capped card held once still leaves the uncapped remainder, which
-    // is why the skip arm of autoHarvestChoice is defensive rather than
-    // reachable: a real seat's pool is never shorter than this.
-    const allCapped = Object.values(CARDS)
-      .filter((c) => c.maxPerDeck !== null)
-      .map((c) => c.id);
-    const p = player("warpath", { discard: allCapped });
-    expect(harvestPool(p)).toEqual([
-      "raid", "great-raid", "favourable-omens", "war-council", "fortify",
-      "hillfort", "harvest-feast", "create-army",
-    ]);
+  it("never offers an injection-only card - prosperous-proliferation has its own slot", () => {
+    expect(randomPool(player("warpath"))).not.toContain("prosperous-proliferation");
   });
 });
 
-describe("rollHarvestOffer", () => {
-  it("offers three distinct cards from the pool", () => {
-    const { rng } = scriptedRng([0, 0, 0]);
-    const offer = rollHarvestOffer(player("warpath"), rng);
-    expect(offer).toEqual(["raid", "great-raid", "favourable-omens"]);
-    expect(new Set(offer).size).toBe(3);
-    for (const id of offer) {
-      expect([...BUILDS.warpath, ...NEUTRAL_POOL]).toContain(id);
-    }
+describe("destroyOffer", () => {
+  it("is every card held anywhere, deduplicated and sorted", () => {
+    const p = player("warpath", {
+      deck: ["raid", "raid"], hand: ["fortify"], discard: ["raid", "grow-crops"],
+    });
+    expect(destroyOffer(p)).toEqual(["fortify", "grow-crops", "raid"]);
   });
 
-  it("always consumes exactly three rng draws, whatever the pool holds", () => {
-    // The constant-draw contract: a shrunken pool must not shift a seeded
-    // stream, so the three slots always roll.
-    const fresh = scriptedRng([]);
-    rollHarvestOffer(player("warpath"), fresh.rng);
-    expect(fresh.draws()).toBe(3);
-    const allCapped = Object.values(CARDS)
-      .filter((c) => c.maxPerDeck !== null)
-      .map((c) => c.id);
-    const reduced = scriptedRng([]);
-    rollHarvestOffer(player("pestilence", { discard: allCapped }), reduced.rng);
-    expect(reduced.draws()).toBe(3);
+  it("excludes forced cards - a tribute demand cannot be ducked by burning it", () => {
+    const p = player("warpath", { hand: ["pay-military-tribute", "raid"] });
+    expect(destroyOffer(p)).toEqual(["raid"]);
+  });
+});
+
+describe("harvestCard", () => {
+  it("skip and destroy grant nothing - the caller handles the burn itself", () => {
+    const p = player("warpath");
+    expect(harvestCard(p, { kind: "skip" }, seededRng(1))).toBeNull();
+    expect(harvestCard(p, { kind: "destroy", cardId: "raid" }, seededRng(1)))
+      .toBeNull();
   });
 
-  it("draws without replacement - a middle pick shifts what follows", () => {
-    // Slot 1 takes index 7 of the 12-card warpath pool (subjugate); the pool
-    // closes up, so two zero draws then take the unchanged head.
-    const { rng } = scriptedRng([7 / 12 + 0.001, 0, 0]);
-    expect(rollHarvestOffer(player("warpath"), rng))
-      .toEqual(["subjugate", "raid", "great-raid"]);
+  it("growth always grants the growth card", () => {
+    expect(harvestCard(player("warpath"), { kind: "growth" }, seededRng(1)))
+      .toBe(GROWTH_CARD);
+  });
+
+  it("build grants the named card only while its own build still offers it", () => {
+    const p = player("warpath");
+    expect(harvestCard(p, { kind: "build", cardId: "war-council" }, seededRng(1)))
+      .toBe("war-council");
+    // foul-winds is a pestilence card, not warpath's own - buildOffer refuses
+    // it whatever the piles hold.
+    expect(harvestCard(p, { kind: "build", cardId: "foul-winds" }, seededRng(1)))
+      .toBeNull();
+  });
+
+  it("random draws exactly once from the pool, by position", () => {
+    const p = player("warpath");
+    const pool = randomPool(p);
+    let draws = 0;
+    const rng = () => { draws++; return 0; };
+    expect(harvestCard(p, { kind: "random" }, rng)).toBe(pool[0]);
+    expect(draws).toBe(1);
   });
 });
 
 describe("HARVEST_PRIORITY", () => {
-  it("ranks exactly the cards a seat's pool can ever offer", () => {
-    // A card the pool offers but the list omits would fall to the
-    // MAX_SAFE_INTEGER fallback and lose every ranking silently.
+  it("ranks exactly the cards buildOffer can ever return", () => {
+    // A card buildOffer could hand out but this list omits would fall to the
+    // MAX_SAFE_INTEGER fallback in autoHarvestChoice and lose its ranking
+    // silently.
     for (const strategy of ["warpath", "pestilence"] as const) {
       expect([...HARVEST_PRIORITY[strategy]].sort())
-        .toEqual([...BUILDS[strategy], ...NEUTRAL_POOL].sort());
+        .toEqual([...BUILDS[strategy]].sort());
     }
   });
 
-  it("puts subjugate first for both builds - the win-condition card", () => {
-    expect(HARVEST_PRIORITY.warpath[0]).toBe("subjugate");
-    expect(HARVEST_PRIORITY.pestilence[0]).toBe("subjugate");
+  it("pins each build's decisive card first", () => {
+    expect(HARVEST_PRIORITY.warpath[0]).toBe("war-council");
+    expect(HARVEST_PRIORITY.pestilence[0]).toBe("plague");
   });
 });
 
 describe("autoHarvestChoice", () => {
-  it("keeps the offered card its strategy ranks highest", () => {
-    // The offer is [subjugate, raid, great-raid]; warpath ranks subjugate
-    // above both.
-    const { rng } = scriptedRng([7 / 12 + 0.001, 0, 0]);
-    expect(autoHarvestChoice(player("warpath"), rng))
-      .toEqual({ cardId: "subjugate" });
+  it("takes its own build's top-priority card for a fresh seat", () => {
+    expect(autoHarvestChoice(player("warpath")))
+      .toEqual({ kind: "build", cardId: "war-council" });
+    expect(autoHarvestChoice(player("pestilence")))
+      .toEqual({ kind: "build", cardId: "plague" });
   });
 
-  it("ranks by its own build - the same slots read differently", () => {
-    const { rng } = scriptedRng([0, 0, 0]);
-    // Pestilence pool head: spread-disease, localized-outbreak, miasma;
-    // the priority list keeps spread-disease above the other two.
-    expect(autoHarvestChoice(player("pestilence"), rng))
-      .toEqual({ cardId: "spread-disease" });
-  });
-
-  it("prefers priority order over offer order", () => {
-    // Offer [great-raid, favourable-omens, raid] (index 1, then 1, then 0 of
-    // the shrinking 12-card pool): warpath ranks raid above both others.
-    const { rng } = scriptedRng([1 / 12 + 0.001, 1 / 11 + 0.001, 0]);
-    expect(autoHarvestChoice(player("warpath"), rng))
-      .toEqual({ cardId: "raid" });
-  });
-
-  it("never skips a live offer - skip is the empty-pool arm only", () => {
-    // The pool cannot empty through play (the uncapped core above), so a
-    // choiceless harvest always keeps something.
-    const { rng } = scriptedRng([0.9, 0.9, 0.9]);
-    const choice = autoHarvestChoice(player("warpath"), rng);
-    expect("cardId" in choice).toBe(true);
+  it("prefers priority order over buildOffer's own declaration order", () => {
+    // BUILDS.warpath declares strong-raid first; HARVEST_PRIORITY.warpath
+    // ranks war-council above it. The pick has to read the priority list,
+    // not just take buildOffer's own first entry.
+    expect(BUILDS.warpath[0]).not.toBe(HARVEST_PRIORITY.warpath[0]);
+    expect(autoHarvestChoice(player("warpath")))
+      .toEqual({ kind: "build", cardId: HARVEST_PRIORITY.warpath[0] });
   });
 });

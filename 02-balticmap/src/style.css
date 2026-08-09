@@ -176,6 +176,11 @@ svg.map.dragging {
 
 .tooltip {
   position: fixed;
+  /* Parked at an edge rather than placed at the cursor - see `place` in
+     src/panel.ts. The side is chosen per hover; the vertical position is
+     fixed so the tip never chases anything. */
+  top: 96px;
+  bottom: auto;
   background: rgba(30, 30, 30, 0.85);
   color: #fff;
   padding: 4px 8px;
@@ -191,8 +196,19 @@ svg.map.dragging {
   z-index: 60;
 }
 
+.tooltip.tip-left {
+  left: 16px;
+  right: auto;
+}
+
+.tooltip.tip-right {
+  right: 16px;
+  left: auto;
+}
+
 .rt-card,
-.rt-faction {
+.rt-faction,
+.rt-passive {
   border-bottom: 1px dotted currentColor;
   cursor: help;
 }
@@ -259,6 +275,94 @@ svg.map.dragging {
    first line, which already has the tip's own padding above it. */
 .tooltip-line.block-start:not(:first-child) {
   margin-top: 8px;
+}
+
+/* The conquest transfer: two names, a slider and one button. Lives inside the
+   harvest overlay, which is already the modal that asks a question about a
+   play that has happened. */
+.transfer-line {
+  text-align: center;
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.transfer-ends {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.transfer-end {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.transfer-score {
+  font-variant-numeric: tabular-nums;
+}
+
+.transfer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.transfer-slider {
+  flex: 1;
+}
+
+.transfer-figure {
+  flex: none;
+  min-width: 6ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A card a harvest just added, held over the board on its way to the deck.
+   Inert to the pointer: it is an announcement, not a control. */
+.card-reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  z-index: 45;
+}
+
+.card-reveal-label {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fdfaf4;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+}
+
+.card-reveal-card {
+  width: 260px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  background: #fdfaf4;
+  border: 1px solid #c9b896;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  color: #3f3428;
+}
+
+.card-reveal-name {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.card-reveal-text {
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .menu-overlay {
@@ -532,6 +636,15 @@ svg.map.dragging {
   opacity: 0.225;
 }
 
+/* A land inside a rival PLAYER's realm. Dimmed - it is not yours - but well
+   clear of the ground nobody plays, because "who else is in this game, and
+   how much do they hold" is the question the map is asked most often. At the
+   same 0.225 as the quiet lands, four rivals were indistinguishable from the
+   twenty-one lands that will never take a turn. */
+.region.dimmed.in-play {
+  opacity: 0.72;
+}
+
 /* Targeting cues live at the END of this file on purpose: while a card is
    armed they must outrank the hover and threat strokes, which are later
    rules of equal specificity. See ".region.target-*" below. */
@@ -704,15 +817,147 @@ svg.map.dragging {
   opacity: 0.45;
 }
 
-.march-arrow .march-strength {
+/* A claim of fealty in flight. Dashed, with a ring for a head: nothing is
+   marching, and an arrow that looked like an army would have the player
+   reading strength into it. */
+.claim-arrow line {
+  stroke: currentColor;
+  stroke-width: 5;
+  stroke-dasharray: 10 6;
+  stroke-linecap: round;
+}
+
+.claim-arrow circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 4;
+}
+
+/* Violet, and only violet: a claim is a different KIND of thing from a raid,
+   so it does not borrow the red/gold/neutral scale that says whose army an
+   arrow is. Whose claim it is reads off the land it comes from. */
+.claim-arrow.march-hostile line,
+.claim-arrow.march-ours line,
+.claim-arrow.march-other line,
+.claim-arrow.march-hostile circle,
+.claim-arrow.march-ours circle,
+.claim-arrow.march-other circle {
+  color: #6b2fa0;
+}
+
+/* An arrow a pin is not about. Faint rather than hidden: the board still has
+   to read as a whole while one land is being studied. */
+.march-arrow.arrow-dim,
+.claim-arrow.arrow-dim {
+  opacity: 0.16;
+}
+
+.claim-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  fill: #6b2fa0;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgba(253, 250, 244, 0.85);
+  stroke-width: 3px;
+  pointer-events: none;
+}
+
+/* Which of the things aimed at a land lands first. Only drawn where there is
+   more than one, so a chip on the map always means a comparison - and drawn as
+   a CHIP, because the arrow's strength is a bare number and two bare numbers on
+   one arrow cannot be told apart. */
+.march-order {
+  pointer-events: none;
+}
+
+.march-order-bg {
+  fill: #3f3428;
+  stroke: rgba(253, 250, 244, 0.9);
+  stroke-width: 1.5;
+}
+
+.march-order-text {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  fill: #fdfaf4;
+  text-anchor: middle;
+}
+
+/* The arrow being dragged out. Hollow while it points at nothing legal, solid
+   the moment it finds a land the raid may actually be aimed at - so the answer
+   is in the shape rather than in a message somewhere else. */
+.aim-arrows {
+  pointer-events: none;
+}
+
+.aim-arrow polygon {
+  fill: none;
+  stroke: #8a7f6f;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.aim-arrow.aim-valid polygon {
+  fill: #d4af37;
+  stroke: #8a6d1f;
+  stroke-dasharray: none;
+}
+
+/* The land an aim-drag is currently pointing at. Brighter and outlined, so
+   the arrow's destination is never a matter of reading where its tip fell. */
+/* A score that just moved, rising off the land it moved on. The badge says
+   where the number ended; this is the only thing that says it changed. */
+.score-floats {
+  pointer-events: none;
+}
+
+.score-float {
   font-size: 15px;
   font-weight: 700;
   text-anchor: middle;
-  fill: #2b2318;
+  paint-order: stroke;
+  stroke: rgba(253, 250, 244, 0.9);
+  stroke-width: 3.5px;
+}
+
+.score-float.float-good {
+  fill: #3f7a2e;
+}
+
+.score-float.float-bad {
+  fill: #a8352b;
+}
+
+/* What the arrow hits for, in the arrow's OWN colour - red into your realm,
+   gold for yours, the actor's own for a quarrel between rivals - so strength
+   belongs to the arrow it sits on. The landing order is the other number on
+   the same arrow and is deliberately not coloured like this: it is a black
+   chip, because it belongs to the QUARREL rather than to either side. */
+.march-strength {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-anchor: middle;
+  fill: currentColor;
   paint-order: stroke;
   stroke: #fdfaf4;
   stroke-width: 3.5;
   stroke-linejoin: round;
+}
+
+.march-arrow.march-hostile .march-strength {
+  color: #992f27;
+}
+
+.march-arrow.march-ours .march-strength {
+  color: #8a6d1f;
+}
+
+.march-arrow.march-other .march-strength {
+  color: #5b4f3d;
 }
 
 /* The clash flash: a ghost of the arrow that just resolved, fading out under
@@ -904,6 +1149,17 @@ svg.map.dragging {
   color: #8a7f6f;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+/* A turn nobody did anything in. Quieter than an entry and italic, so it reads
+   as the log describing the silence rather than reporting an event - but it is
+   never hidden, because "time passed" is the one thing a filter must not be
+   able to deny. */
+.log-quiet {
+  padding: 2px 0;
+  font-size: 12px;
+  font-style: italic;
+  color: #9a9082;
 }
 
 /* The realized before -> after on a log line. Its own colours rather than
@@ -1414,6 +1670,33 @@ svg.map.dragging {
   display: block;
 }
 
+/* While a land is pinned the map answers one question and only one: this land.
+   Everything else recedes, including the rival players `.in-play` lifts and
+   the human's own realm - a pin is the player asking about a polygon, not
+   about who is winning.
+
+   The descendant selector is what carries this over every opacity rule above
+   it: `svg.map.pinning .region` outranks `.region.dimmed.in-play` and
+   `.region.realm-hover.dimmed` on specificity rather than on source order, so
+   it cannot be undone by a rule somebody adds later in this file. */
+svg.map.pinning .region:not(.pinned-one) {
+  opacity: 0.2;
+}
+
+svg.map.pinning .region.pinned-one {
+  opacity: 1;
+}
+
+/* The overlays that draw a realm rather than a land: the human's halo, the
+   always-on realm outlines and the hover halo. They are not `.region`s, so the
+   rule above never reached them, and a pin that dimmed every land while your
+   own realm kept glowing at full strength was still two things competing. */
+svg.map.pinning .realm-outline,
+svg.map.pinning .realm-union,
+svg.map.pinning .realm-hover-halo {
+  opacity: 0.2;
+}
+
 .region.realm-hover {
   stroke: #3f3428;
   stroke-width: 1.4;
@@ -1522,6 +1805,227 @@ svg.map.dragging {
   display: none;
 }
 
+/* The pinned land, down the left where nothing else lives. Light, unlike the
+   dark floating tooltip: this one is READ rather than glanced at, and it sits
+   over the map for as long as the pin holds. */
+/* The milestones button and its drawer, down the left under Surrender. The
+   drawer slides rather than appears: it covers the map while it is out, so the
+   movement is what says it is a thing the player opened and can close again. */
+/* The left column: Surrender, the milestones button, its drawer, and the
+   pinned land, stacked in flow so no two of them can cover each other. */
+.hud-left {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-height: calc(100vh - 32px);
+  z-index: 7;
+  /* The column is a layout box over the map, not a surface: only its children
+     take the pointer, or the empty space beside a short panel would swallow
+     clicks meant for the land under it. */
+  pointer-events: none;
+}
+
+.hud-left > * {
+  pointer-events: auto;
+}
+
+.milestones-btn {
+  padding: 6px 12px;
+  border: 1px solid #7a6a55;
+  border-radius: 6px;
+  background: #fdfaf4;
+  color: #3f3428;
+  font-size: 13px;
+  cursor: pointer;
+  z-index: 7;
+}
+
+.milestones-btn:hover {
+  background: #f1e9da;
+}
+
+.milestones-btn.on {
+  background: #e6dcc6;
+}
+
+.milestones-btn.hidden,
+.milestones-drawer.hidden {
+  display: none;
+}
+
+.milestones-drawer {
+  width: 320px;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 0 12px;
+  color: #3f3428;
+  /* Rolls open rather than sliding across, because it lives in the column now:
+     a translated panel would leave a hole where it used to be and shove the
+     pinned land down the screen for nothing. */
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  border-width: 0;
+  transition: max-height 200ms ease, opacity 140ms ease, padding 200ms ease;
+}
+
+.milestones-drawer.open {
+  max-height: 62vh;
+  opacity: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-width: 1px;
+}
+
+.ms-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+/* Whose bars these are. Lighter than the title: the table is the subject and
+   the faction is the lens. */
+.ms-focus {
+  font-weight: 400;
+  font-size: 12px;
+  color: #6f6250;
+}
+
+.ms-row {
+  padding: 8px 0;
+  border-top: 1px solid #ece5d8;
+  font-size: 12px;
+}
+
+.ms-name {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ms-points {
+  flex: none;
+  color: #8a6d1f;
+}
+
+.ms-text {
+  color: #6f6250;
+  margin-bottom: 4px;
+}
+
+.ms-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #ece5d8;
+  overflow: hidden;
+}
+
+.ms-fill {
+  height: 100%;
+  background: #7a9b5e;
+  transition: width 160ms ease;
+}
+
+.ms-figure {
+  display: block;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+  color: #6f6250;
+}
+
+/* A milestone somebody has reached reads as banked rather than pending. */
+.ms-row.ms-done .ms-fill {
+  background: #c8a23a;
+}
+
+.ms-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.ms-badge {
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #f4efe3;
+  border: 1px solid #ddd3bf;
+  font-size: 11px;
+}
+
+.pinned-panel {
+  width: 232px;
+  max-height: 40vh;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #3f3428;
+  z-index: 6;
+}
+
+.pinned-panel.hidden {
+  display: none;
+}
+
+.pinned-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.pinned-line {
+  display: block;
+}
+
+/* A row that is a table row rather than a sentence: the figure gets its own
+   right-aligned column. Only these - a segment line laid out as a spread flex
+   row has its own runs pushed to opposite ends of the panel. */
+.pinned-line.pinned-has-amount {
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+/* Opens a block, the tooltip's own `blockStart` rule: a panel carrying three
+   tables is read as three rather than as one long list. */
+.pinned-line.pinned-block {
+  margin-top: 8px;
+}
+
+.pinned-amount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: #6f6250;
+}
+
+.pinned-line.tone-good {
+  color: #3f7a2e;
+}
+
+.pinned-line.tone-bad {
+  color: #a8352b;
+}
+
+.pinned-line.tone-info {
+  color: #8a6d1f;
+}
+
 .sb-row {
   display: grid;
   /* fixed lands/percent columns so the two rows' numbers line up under each
@@ -1561,9 +2065,6 @@ svg.map.dragging {
    the bottom right, and the hand the bottom centre. Sat at bottom right first
    and collided with the deck pile's label. */
 .surrender-btn {
-  position: absolute;
-  top: 16px;
-  left: 16px;
   font-size: 12px;
   padding: 5px 14px;
   border: 1px solid #c9b896;
@@ -1748,4 +2249,38 @@ svg.map.dragging {
 .net-panel.net-connected .net-row,
 .net-panel.net-connected .net-host {
   display: none;
+}
+
+/* --- the aim: after the targeting cues, or it does not render at all ---
+
+   The land an arrow is currently pointing at. This has to sit BELOW
+   `.region.target-valid` and `.region.target-invalid` in the file: an aim only
+   ever happens while a card is armed, so every land on screen already carries
+   one of those two, and at equal specificity the later rule wins. Written
+   above them, this rule was in the class list and invisible on the map - the
+   highlight looked like it was working to anything that asked the DOM, and
+   like nothing at all to the player.
+
+   `!important` on the opacity for the same reason one rung down: an aimed land
+   may also be `.target-invalid` at 0.07 while the drag is over it, and the
+   whole point is that the aim answers "here". */
+.region.aim-target,
+.region.aim-target.hovered,
+.region.aim-target.target-valid,
+.region.aim-target.target-invalid,
+.region.aim-target.dimmed {
+  opacity: 1 !important;
+  stroke: #8a2f27;
+  stroke-width: 4.5;
+  stroke-dasharray: none;
+  filter: brightness(1.3) saturate(1.4);
+}
+
+/* The masked stroke-only copy carries the region's classes verbatim, so the
+   outline survives on a land inside a realm, where the seam rule would
+   otherwise silence it. */
+.region.aim-target.realm-edge {
+  stroke: #8a2f27 !important;
+  stroke-width: 4.5 !important;
+  stroke-dasharray: none !important;
 }

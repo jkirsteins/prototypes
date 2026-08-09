@@ -1,4 +1,5 @@
 import type { Settlement } from "./types";
+import type { Segment } from "./segments";
 import { leadClass } from "./view";
 
 /** The one place the settlement tooltip's shape is decided: the place name,
@@ -19,6 +20,11 @@ export interface TooltipSpan {
 
 export interface TooltipLine {
   text: string;
+  /** The same line as nodes, for a surface that can be hovered - the pinned
+   *  land panel. The floating tooltip renders `text`, because a tip that
+   *  follows the cursor cannot be pointed at. `text` must stay the plain-text
+   *  equivalent, the rule `spans` already keeps. */
+  segments?: Segment[];
   /** "info" is the armed card's own colour: a preview of what a card would do
    *  is not a verdict, and giving the whole block one scannable amber keeps it
    *  from competing with the red/green that means threshold direction. */
@@ -100,18 +106,21 @@ export function createTooltip(container: HTMLElement): Tooltip {
    *  element measures 0 and would never flip. Under happy-dom every measurement
    *  is 0, so the flip is simply a no-op there - the tests assert placement,
    *  Chrome is where the flip is confirmed. */
-  const place = (clientX: number, clientY: number): void => {
-    const axis = (
-      cursor: number,
-      size: number,
-      limit: number,
-    ): number => {
-      const after = cursor + TIP_GAP_PX;
-      const start = after + size > limit ? cursor - TIP_GAP_PX - size : after;
-      return Math.max(TIP_MARGIN_PX, Math.min(start, limit - size - TIP_MARGIN_PX));
-    };
-    el.style.left = `${axis(clientX, el.offsetWidth, window.innerWidth)}px`;
-    el.style.top = `${axis(clientY, el.offsetHeight, window.innerHeight)}px`;
+  const place = (clientX: number, _clientY: number): void => {
+    // Parked at a screen edge, never under the pointer. A tip that follows the
+    // cursor sits on top of the very land being pointed at - unreadable while
+    // aiming, because the arrow's head and the numbers deciding where to send
+    // it are the same few pixels.
+    //
+    // Which edge is the one the pointer is NOT on: the tip crosses to the far
+    // side as the cursor passes the middle of the window, so it never covers
+    // what the hand is doing. Vertically it is fixed, because a tip that also
+    // moved up and down would still be chasing.
+    const onLeftHalf = clientX < window.innerWidth / 2;
+    el.classList.toggle("tip-right", onLeftHalf);
+    el.classList.toggle("tip-left", !onLeftHalf);
+    el.style.left = "";
+    el.style.top = "";
   };
 
   const fill = (lines: TooltipLine[]): void => {

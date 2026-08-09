@@ -8,9 +8,10 @@
  *  `keeps-to-itself` is why this module is small and the rest of the game did
  *  not have to grow a second kind of land. A quiet faction is an ordinary
  *  faction that skips its turn: it can be raided, subjugated, poached, healed
- *  and incorporated by the rules that already exist, and a card that removed
- *  the status would hand it back the turns and the deck it was dealt at the
- *  start.
+ *  and incorporated by the rules that already exist. Taking one strips the
+ *  status, so it wakes up holding the deck it was dealt at the start - which
+ *  is also the whole rule behind "only unheld lands raid on their own". That
+ *  is not a condition anybody writes down twice; it is what the status means.
  *
  *  A new status is a row here plus the one hook that reads it, and it does not
  *  ship until the land hover names it. */
@@ -27,8 +28,8 @@ export interface PassiveDef {
 export const PASSIVES: Record<string, PassiveDef> = {
   "keeps-to-itself": {
     id: "keeps-to-itself", name: "Keeps to itself",
-    text: "This land takes no turns and plays no cards.",
-    strippedOnCapture: false,
+    text: "Answers to nobody: takes no turns and plays no cards, but its people raid a neighbour about one round in four. Taking the land dissolves this, and its people join the game.",
+    strippedOnCapture: true,
   },
   "wild-lands": {
     id: "wild-lands", name: "Wild lands",
@@ -52,12 +53,27 @@ export const PASSIVES: Record<string, PassiveDef> = {
   },
 };
 
-/** What a land that does not act starts with. Only the last two are stripped
- *  when somebody takes it: a conquest stops repairing itself and stops falling
- *  to an assassin, but it stays quiet. */
+/** What a land that does not act starts with. All three are stripped when
+ *  somebody takes it: a conquest stops repairing itself, stops falling to an
+ *  assassin, and stops keeping to itself - its people join the game as their
+ *  new lord's vassal, with turns, a deck and tribute to pay. */
 export const QUIET_PASSIVES: readonly string[] = [
   "keeps-to-itself", "wild-lands", "no-successor",
 ];
+
+/** How often a land that keeps to itself sends a raid of its own at a
+ *  neighbour.
+ *
+ *  A land that takes no turns is not a land that does nothing: twenty-one of
+ *  them sitting perfectly still made the middle of the map a queue rather than
+ *  a frontier, and a raid nobody chose to send is the cheapest way for the
+ *  ground between two players to be dangerous.
+ *
+ *  It stops the moment somebody takes the land, and there is no second rule
+ *  saying so: `strippedOnCapture` takes the status off, and the raid asks for
+ *  the status. A vassal picking its own fights in its lord's name would need
+ *  the status back to do it. */
+export const RESTLESS_RAID_CHANCE = 0.25;
 
 export const WILD_LANDS_HEAL_CHANCE = 0.1;
 export const WILD_LANDS_HEAL = 1;
@@ -162,7 +178,13 @@ export function seedPassives(
 export function damageAfterTerrain(
   view: { passives: Passives }, polygon: string, damage: number,
 ): number {
-  return hasPassive(view.passives, polygon, "hill-country")
-    ? damage * (1 - HILL_COUNTRY_REDUCTION)
-    : damage;
+  if (!hasPassive(view.passives, polygon, "hill-country")) return damage;
+  // Whole numbers out. A quarter off a raid of 1 is 0.75, and a score that
+  // reads 0.75/6 on a badge is a score nobody can plan against - the reduction
+  // is only worth having where there is enough damage for a quarter of it to
+  // be worth a number. Never below 1, and never ABOVE what was coming: a hill
+  // must not make a half-damage Great raid hit harder than it would on a
+  // plain.
+  const reduced = Math.round(damage * (1 - HILL_COUNTRY_REDUCTION));
+  return Math.min(damage, Math.max(1, reduced));
 }

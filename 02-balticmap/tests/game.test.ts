@@ -6,16 +6,16 @@ import {
   victoryRealmSize, type GameState,
 } from "../src/game";
 import { playsTurns } from "../src/passives";
-import { ARMIES_PER_POLYGON } from "../src/marches";
 import { DEFAULT_RULES } from "../src/rules";
 import { isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
-  DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, SUBJUGATION_GATE,
+  DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, LAND_GROWTH, SUBJUGATION_GATE,
   FORTIFY_HEAL, GREAT_RAID_DAMAGE, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
-  PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, WAR_COUNCIL_LEADERSHIP,
+  PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, turnipThresholdFor,
+  WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
 import {
-  cardBlockReason, ESCAPE_RESPITE_TURNS, validTargetsFor,
+  cardBlockReason, ESCAPE_RESPITE_TURNS, playableSet, validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
 
@@ -49,6 +49,11 @@ const maxes = (ids: string[]): Record<string, number> =>
  *  polygon opens to Subjugate at 15 and crosses back to freedom at 45. */
 const SUBJUGATE_LINE = Math.floor(SUBJUGATION_GATE * FIXTURE_MAX);
 const INDEPENDENCE_LINE = Math.ceil(INDEPENDENCE_GATE * FIXTURE_MAX);
+
+/** Grow turnips plays a FIXTURE_MAX land owes before a harvest - the same
+ *  derivation `turnipThresholdOn` runs against the real ceiling, so a fixture
+ *  at FIXTURE_MAX cannot borrow the module's DEFAULT_DEFENSE_MAX constant. */
+const FIXTURE_TURNIP_THRESHOLD = turnipThresholdFor(FIXTURE_MAX);
 
 function playingState(adj?: Record<string, string[]>): GameState {
   return pickFaction(
@@ -124,8 +129,8 @@ it("victoryRealmSize is half the map: 2 of 4 lands, 3 of 6, 13 of 26", () => {
   expect(victoryRealmSize(26)).toBe(13);
 });
 
-it("earns a harvest every third turnip", () => {
-  expect(TURNIP_HARVEST_THRESHOLD).toBe(3);
+it("earns a harvest every second turnip, in a world nobody handed a map to", () => {
+  expect(TURNIP_HARVEST_THRESHOLD).toBe(2);
 });
 
 describe("setup", () => {
@@ -167,10 +172,10 @@ describe("setup", () => {
 
   it("chooseRules is legal only while deck-building", () => {
     const started = startGame(newGame(FACTIONS));
-    const ruled = chooseRules(started, { turn: "unlimited" });
+    const ruled = chooseRules(started, { ...DEFAULT_RULES, turn: "unlimited" });
     expect(ruled.rules.turn).toBe("unlimited");
     const built = chooseBuild(started, "warpath");
-    expect(chooseRules(built, { turn: "unlimited" })).toBe(built); // too late
+    expect(chooseRules(built, { ...DEFAULT_RULES, turn: "unlimited" })).toBe(built); // too late
   });
 
   it("pickFaction deals the same starting deck to every seat", () => {
@@ -180,9 +185,10 @@ describe("setup", () => {
     );
     for (const p of g.players) {
       // The draw only moves a card between piles, so the multiset holds for
-      // the human seat too.
+      // the human seat too. Each seat's OWN build, since an AI seat can roll
+      // pestilence even though the human here chose warpath.
       expect([...p.hand, ...p.deck, ...p.discard].sort())
-        .toEqual(startingDeck().sort());
+        .toEqual(startingDeck(p.strategy).sort());
     }
     expect(g.players[0].hand).toHaveLength(OPENING_HAND + 1); // +1 = turn draw
     expect(g.players.slice(1).every((p) => p.hand.length === OPENING_HAND))
@@ -616,6 +622,10 @@ describe("great-raid", () => {
 
   it("cannot sally at all once the frontier's armies are already out", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["raid", "great-raid"]);
+    // At FIXTURE_MAX every land already fields many armies at once; shrink
+    // beta's own ceiling to exactly one army's worth so a single raid can
+    // actually exhaust it.
+    g = { ...g, defenseMax: { ...g.defenseMax, beta: 3 } };
     g = playCard(g, 0, rng(), "alpha");
     const after = playCard({ ...g, playedThisTurn: false }, 0, rng());
     // beta is the realm's only land and its army is on the road to alpha.
@@ -659,32 +669,36 @@ describe("great-raid", () => {
   });
 });
 
-describe("create-army", () => {
-  it("stations an army and leaves the deck instead of discarding", () => {
-    const g = withHand(playingState(), 0, ["create-army"]);
+describe("prosperous-proliferation", () => {
+  it("grows a land's ceiling and heals it to match, leaving the deck instead of discarding", () => {
+    let g = withHand(playingState(), 0, ["prosperous-proliferation"]);
+    g = { ...g, defense: { beta: FIXTURE_MAX - 5 } }; // damaged, so the heal moves something
     const before = g.log.length;
     const after = playCard(g, 0, rng(), "beta");
-    expect(after.armies).toEqual({ beta: ARMIES_PER_POLYGON + 1 });
+    expect(after.defenseMax.beta).toBe(FIXTURE_MAX + LAND_GROWTH);
+    expect(after.defense.beta).toBe(FIXTURE_MAX - 5 + LAND_GROWTH);
     // Gone for good: the discard is where a card waits to be reshuffled back,
-    // and an army raised twice off one pick is the compounding this prevents.
-    expect(after.players[0].discard).not.toContain("create-army");
-    expect(pilesOf(after, "beta")).not.toContain("create-army");
-    // No event of its own - armies are not a walked standing, so the play
-    // line carries no suffix and there is nothing else to say.
-    expect(fresh(after, before)).toHaveLength(1);
+    // and a ceiling raised twice off one pick is the compounding this
+    // prevents.
+    expect(after.players[0].discard).not.toContain("prosperous-proliferation");
+    expect(pilesOf(after, "beta")).not.toContain("prosperous-proliferation");
+    expect(fresh(after, before).map((e) => e.type)).toEqual(["play", "healed"]);
   });
 
-  it("lets the second army march while the first is away", () => {
-    let g = withHand(unlimitedPlaying(LINE_ADJ), 0, ["create-army", "raid", "raid"]);
-    g = playCard(g, 0, rng(), "beta");
-    g = playCard(g, 0, rng(), "alpha");
-    g = playCard(g, 0, rng(), "gamma");
-    expect(Object.values(g.marches).map((m) => m.to)).toEqual(["alpha", "gamma"]);
+  it("grows a land already at full defense without a heal nobody sees move", () => {
+    const g = withHand(playingState(), 0, ["prosperous-proliferation"]);
+    const after = playCard(g, 0, rng(), "beta");
+    expect(after.defenseMax.beta).toBe(FIXTURE_MAX + LAND_GROWTH);
+    // Absent means "at max" for both defense and its new ceiling at once, so
+    // an undamaged land grows without a heal event to log.
+    expect(after.defense.beta).toBeUndefined();
+    expect(after.log.some((e) => e.type === "healed")).toBe(false);
   });
 
-  it("aims only inward - a rival's land is no place to raise your army", () => {
-    const g = withHand(playingState(LINE_ADJ), 0, ["create-army"]);
-    expect(validTargetsFor(viewOf(g), "beta", "create-army")).toEqual(["beta"]);
+  it("aims only inward - a rival's land is no place to grow", () => {
+    const g = withHand(playingState(LINE_ADJ), 0, ["prosperous-proliferation"]);
+    expect(validTargetsFor(viewOf(g), "beta", "prosperous-proliferation"))
+      .toEqual(["beta"]);
   });
 });
 
@@ -753,7 +767,7 @@ describe("disease", () => {
     expect(after.disease).toEqual({ gamma: { delta: 1 } });
     const plagued = fresh(after, before).filter((e) => e.type === "plagued");
     expect(plagued.map((e) => [e.targetFactionId, e.amount])).toEqual([
-      ["alpha", 20], ["gamma", 10],
+      ["alpha", 2 * PLAGUE_DAMAGE_PER_STACK], ["gamma", 1 * PLAGUE_DAMAGE_PER_STACK],
     ]);
   });
 
@@ -809,14 +823,16 @@ describe("disease", () => {
 });
 
 describe("heals", () => {
-  it("hillfort restores 15 to one realm polygon, capped at its max", () => {
+  it("hillfort restores HILLFORT_HEAL to one realm polygon, capped at its max", () => {
     const g = withHand(
-      { ...playingState(), defense: { beta: 50 } }, 0, ["hillfort"],
+      { ...playingState(), defense: { beta: FIXTURE_MAX - HILLFORT_HEAL } },
+      0, ["hillfort"],
     );
     const after = playCard(g, 0, rng(), "beta");
     expect(after.defense.beta).toBeUndefined(); // back at max: key deleted
     expect(after.log.at(-1)).toMatchObject({
-      type: "healed", cardId: "hillfort", targetFactionId: "beta", amount: 10,
+      type: "healed", cardId: "hillfort", targetFactionId: "beta",
+      amount: HILLFORT_HEAL,
     });
     const deep = playCard(
       withHand({ ...playingState(), defense: { beta: 30 } }, 0, ["hillfort"]),
@@ -884,12 +900,16 @@ describe("heals", () => {
 });
 
 describe("subjugate", () => {
+  // Subjugate is DECLARED, the same shape a Raid takes: playCard registers a
+  // Claim and it lands only at the actor's next turn (landMarches), where the
+  // gate is checked again against whatever the target's defense has become
+  // by then.
   it("is legal at exactly the 25% line and refused one point above it", () => {
     const open = withHand(
       { ...playingState(), defense: { alpha: SUBJUGATE_LINE } },
       0, ["subjugate"],
     );
-    const after = playCard(open, 0, rng(), "alpha");
+    const after = landMarches(playCard(open, 0, rng(), "alpha"));
     expect(after.overlords.get("alpha")).toBe("beta");
 
     const closed = withHand(
@@ -905,13 +925,17 @@ describe("subjugate", () => {
     const g = withHand(
       { ...playingSix(), defense: { alpha: 0 } }, 0, ["subjugate"],
     );
-    const after = playCard(g, 0, rng(), "alpha");
+    const declared = playCard(g, 0, rng(), "alpha");
+    const before = declared.log.length;
+    const after = landMarches(declared);
     expect(after.overlords.get("alpha")).toBe("beta");
     expect(pilesOf(after, "alpha").filter(isTributeCard)).toHaveLength(1);
-    expect(after.log.at(-1)).toMatchObject({
+    // Not the log's last line: the claim lands before the turn's own draw.
+    const subjugated = fresh(after, before).find((e) => e.type === "subjugated");
+    expect(subjugated).toMatchObject({
       type: "subjugated", targetFactionId: "alpha", overlordFactionId: "beta",
     });
-    expect(after.log.at(-1)?.formerOverlordFactionId).toBeUndefined();
+    expect(subjugated?.formerOverlordFactionId).toBeUndefined();
     expect(g.overlords.size).toBe(0); // input untouched
   });
 
@@ -923,9 +947,12 @@ describe("subjugate", () => {
       defense: { alpha: 0 },
     };
     g = withHand(g, 0, ["subjugate"]);
-    const after = playCard(g, 0, rng(), "alpha");
+    const declared = playCard(g, 0, rng(), "alpha");
+    const before = declared.log.length;
+    const after = landMarches(declared);
     expect(after.overlords.get("alpha")).toBe("beta");
-    expect(after.log.at(-1)?.formerOverlordFactionId).toBe("gamma");
+    const subjugated = fresh(after, before).find((e) => e.type === "subjugated");
+    expect(subjugated?.formerOverlordFactionId).toBe("gamma");
     expect(after.respites.alpha).toBeUndefined(); // poached, not escaped
   });
 
@@ -939,7 +966,7 @@ describe("subjugate", () => {
       defense: { alpha: 0 },
     };
     g = withHand(g, 0, ["subjugate"]);
-    const after = playCard(g, 0, rng(), "alpha");
+    const after = landMarches(playCard(g, 0, rng(), "alpha"));
     expect(after.phase).toBe("playing");
     expect(after.overlords.get("alpha")).toBe("beta");
     expect(after.overlords.get("delta")).toBe("alpha"); // chain intact
@@ -1147,18 +1174,18 @@ describe("tribute", () => {
 describe("the turnip bar", () => {
   it("counts grow-crops plays below the threshold without a harvest", () => {
     const g = withHand(
-      { ...playingState(), turnips: { beta: TURNIP_HARVEST_THRESHOLD - 2 } },
+      { ...playingState(), turnips: { beta: FIXTURE_TURNIP_THRESHOLD - 2 } },
       0, ["grow-crops"],
     );
     const after = playCard(g, 0, rng());
-    expect(after.turnips.beta).toBe(TURNIP_HARVEST_THRESHOLD - 1);
+    expect(after.turnips.beta).toBe(FIXTURE_TURNIP_THRESHOLD - 1);
     expect(after.log.some((e) => e.type === "harvest-earned")).toBe(false);
     expect(pilesOf(after, "beta")).not.toContain("turnip-harvest");
   });
 
-  it("the 5th play crosses the bar: reset, injection, harvest-earned", () => {
+  it("crossing the bar: reset, injection, harvest-earned", () => {
     const g = withHand(
-      { ...playingState(), turnips: { beta: TURNIP_HARVEST_THRESHOLD - 1 } },
+      { ...playingState(), turnips: { beta: FIXTURE_TURNIP_THRESHOLD - 1 } },
       0, ["grow-crops"],
     );
     const after = playCard(g, 0, rng());
@@ -1171,12 +1198,12 @@ describe("the turnip bar", () => {
     });
   });
 
-  it("every seat counts: an AI seat's 5th play earns its harvest too", () => {
+  it("every seat counts: an AI seat crossing the bar earns its harvest too", () => {
     let g = playingState();
     g = {
       ...g,
       current: 1, playedThisTurn: false,
-      turnips: { alpha: TURNIP_HARVEST_THRESHOLD - 1 },
+      turnips: { alpha: FIXTURE_TURNIP_THRESHOLD - 1 },
     };
     g = withHand(g, 1, ["grow-crops"]);
     const after = playCard(g, 0, rng());
@@ -1189,7 +1216,7 @@ describe("turnip-harvest", () => {
   it("a pick rides the play and is shuffled into the deck", () => {
     const g = withHand(playingState(), 0, ["turnip-harvest"]);
     const after = playCard(g, 0, rng(), undefined, {
-      harvest: { cardId: "war-council" },
+      harvest: { kind: "build", cardId: "war-council" },
     });
     expect(after.players[0].deck).toContain("war-council");
     expect(after.log.at(-1)).toMatchObject({
@@ -1200,33 +1227,31 @@ describe("turnip-harvest", () => {
   it("a skip keeps the deck lean and logs no pick", () => {
     const g = withHand(playingState(), 0, ["turnip-harvest"]);
     const after = playCard(g, 0, rng(), undefined, {
-      harvest: { skip: true },
+      harvest: { kind: "skip" },
     });
     expect(after.players[0].deck.sort()).toEqual(g.players[0].deck.sort());
     expect(after.log.some((e) => e.type === "harvest-picked")).toBe(false);
     expect(after.players[0].discard).toContain("turnip-harvest"); // still spent
   });
 
-  it("a choiceless play auto-picks, and never a card already at its cap", () => {
-    // Subjugate tops both strategies' priority but is capped at one copy;
-    // with one in the deck the pool must not offer it, whatever the seed.
-    for (let seed = 1; seed <= 20; seed++) {
-      let g = playingState();
-      g = {
-        ...g,
-        players: g.players.map((pl, i) =>
-          i === 0 ? { ...pl, deck: [...pl.deck, "subjugate"] } : pl,
-        ),
-      };
-      g = withHand(g, 0, ["turnip-harvest"]);
-      const after = playCard(g, 0, seededRng(seed));
-      const picked = after.log.find((e) => e.type === "harvest-picked");
-      expect(picked).toBeDefined();
-      expect(picked?.cardId).not.toBe("subjugate");
-      expect(
-        after.players[0].deck.filter((c) => c === "subjugate"),
-      ).toHaveLength(1);
-    }
+  it("a choiceless play never re-offers a build card already at its cap", () => {
+    // foul-winds is capped at one copy; with one already in the deck the
+    // choiceless pick has to skip it even though it sits in the seat's own
+    // build and every other pestilence card outranks nothing there.
+    let g = playingState();
+    g = {
+      ...g,
+      players: g.players.map((pl, i) =>
+        i === 0 ? { ...pl, strategy: "pestilence", deck: [...pl.deck, "foul-winds"] } : pl,
+      ),
+    };
+    g = withHand(g, 0, ["turnip-harvest"]);
+    const after = playCard(g, 0, rng());
+    const picked = after.log.find((e) => e.type === "harvest-picked");
+    expect(picked).toMatchObject({ cardId: "plague" });
+    expect(
+      after.players[0].deck.filter((c) => c === "foul-winds"),
+    ).toHaveLength(1);
   });
 });
 
@@ -1332,13 +1357,16 @@ describe("unlimited turn flow", () => {
     expect(advance(g, seededRng(3)).current).not.toBe(0);
   });
 
-  it("closes the turn by itself when the last card is played", () => {
+  it("does not close itself when the last card is played - only endTurn does", () => {
+    // A turn that ended itself the moment the last card left would hand the
+    // round over while the player was still reading what their play did.
     let g = unlimitedPlaying();
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
     expect(g.players[0].hand).toHaveLength(0);
-    expect(g.playedThisTurn).toBe(true);
-    expect(advance(g, seededRng(3)).current).not.toBe(0);
+    expect(g.playedThisTurn).toBe(false);
+    expect(advance(g, seededRng(3))).toBe(g); // still not complete
+    expect(endTurn(g).playedThisTurn).toBe(true);
   });
 
   it("endTurn is a no-op under standard rules and on a closed turn", () => {
@@ -1349,15 +1377,17 @@ describe("unlimited turn flow", () => {
     expect(endTurn(g)).toBe(g);
   });
 
-  it("never discards in unlimited mode, even with nothing playable", () => {
+  it("discards a dead hand under unlimited turns too - the discard is unconditional now", () => {
     let g = unlimitedPlaying();
     g = withHand(g, 0, ["subjugate"]); // every gate closed: dead hand
-    expect(discardCard(g, 0)).toBe(g);
-    expect(playCard(g, 0, rng(), "alpha")).toBe(g);
-    // the way out is endTurn, with the dead card still held
-    const done = endTurn(g);
-    expect(done.playedThisTurn).toBe(true);
-    expect(done.players[0].hand).toEqual(["subjugate"]);
+    expect(playCard(g, 0, rng(), "alpha")).toBe(g); // still not a legal target
+    const after = discardCard(g, 0);
+    expect(after.players[0].hand).toHaveLength(0);
+    expect(after.players[0].discard).toContain("subjugate");
+    expect(after.playedThisTurn).toBe(true);
+    // endTurn is still a second way out, dead card and all.
+    expect(endTurn(g).players[0].hand).toEqual(["subjugate"]);
+    expect(endTurn(g).playedThisTurn).toBe(true);
   });
 });
 
@@ -1424,6 +1454,63 @@ describe("appendEvents stamping", () => {
     const after = beginTurn(g, seededRng(2));
     const draw = fresh(after, before).find((e) => e.type === "draw");
     expect(draw?.consequence).toBeUndefined();
+  });
+});
+
+describe("a dead hand under unlimited turns", () => {
+  /** Unlimited turns, a hand of cards none of which can be played: five
+   *  Fortify with the whole realm at full defense. The hand refills to 4 at
+   *  turn start, so nothing leaves it on its own - without a discard the seat
+   *  holds the same dead four for the rest of the game and every turn after
+   *  this one is silent. */
+  function stuck(): GameState {
+    const g = unlimitedPlaying();
+    return withHand(g, 0, ["fortify", "fortify", "fortify", "fortify"]);
+  }
+
+  it("offers the discard rather than leaving the turn with nothing to do", () => {
+    const set = playableSet(viewOf(stuck()), "beta", stuck().players[0].hand);
+    expect(set.mode).toBe("discard");
+  });
+
+  it("lets the card actually go, and logs it", () => {
+    const g = stuck();
+    const after = discardCard(g, 0);
+    expect(after.players[0].hand).toHaveLength(3);
+    expect(after.players[0].discard).toContain("fortify");
+    expect(after.log.at(-1)).toMatchObject({ type: "discard", cardId: "fortify" });
+  });
+});
+
+describe("the hand sweep", () => {
+  const sweeping = (g: GameState): GameState =>
+    ({ ...g, rules: { ...g.rules, hand: "sweep" } });
+
+  it("discards what is left in hand when the turn moves on", () => {
+    const g = withHand(sweeping(playingState()), 0, ["grow-crops", "fortify", "raid"]);
+    const played = playCard(g, 0, rng());
+    const after = advance(played, rng());
+    const beta = after.players.find((p) => p.factionId === "beta")!;
+    expect(beta.hand).toEqual([]);
+    // The played card and the two swept ones all land in the discard.
+    expect(beta.discard).toEqual(
+      expect.arrayContaining(["grow-crops", "fortify", "raid"]),
+    );
+  });
+
+  it("keeps the hand when the rules say to", () => {
+    const g = withHand(playingState(), 0, ["grow-crops", "fortify", "raid"]);
+    const after = advance(playCard(g, 0, rng()), rng());
+    const beta = after.players.find((p) => p.factionId === "beta")!;
+    expect(beta.hand).toEqual(["fortify", "raid"]);
+  });
+
+  it("sweeps the seat whose turn ended, not the one whose turn begins", () => {
+    const g = withHand(sweeping(playingState()), 1, ["fortify", "raid"]);
+    const played = playCard(withHand(g, 0, ["grow-crops"]), 0, rng());
+    const after = advance(played, rng());
+    const alpha = after.players.find((p) => p.factionId === "alpha")!;
+    expect(alpha.hand).toEqual(expect.arrayContaining(["fortify", "raid"]));
   });
 });
 

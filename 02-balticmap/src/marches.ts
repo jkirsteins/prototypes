@@ -17,10 +17,12 @@
 
 import { sweepLapsed } from "./timed";
 
-/** How many armies a land fields with nobody having raised one. Every land has
- *  exactly one, so at the start of a game every land can mount one attack at a
- *  time and no more; Create army is the only way past that. */
-export const ARMIES_PER_POLYGON = 1;
+/** How many armies a land fields with nobody having raised one: its ceiling's
+ *  worth, `armyCapFor(defenseMax)`. A big land musters more than a small one
+ *  without anybody spending a card on it, and Create army is what fills a land
+ *  back up to its cap after its armies are spent - see `armyCapFor` in
+ *  src/defense.ts. Callers pass the cap in, because this module knows nothing
+ *  about defense scores and should not learn. */
 
 export interface March {
   /** The faction that declared it. Not derivable from `from`: a lord may march
@@ -69,7 +71,7 @@ export interface March {
 export type Marches = Readonly<Record<string, March>>;
 
 /** Polygon id -> armies stationed there. Sparse with a default, the
- *  src/defense.ts convention: an absent key means ARMIES_PER_POLYGON, not
+ *  src/defense.ts convention: an absent key means the land's army CAP, not
  *  zero, so a fresh game writes no keys at all. Armies belong to the LAND, not
  *  to the faction, so they change hands with it on Subjugate and Incorporate
  *  without any bookkeeping. */
@@ -78,15 +80,23 @@ export type Armies = Readonly<Record<string, number>>;
 /** Armies stationed on a polygon, committed ones included. Clamped at 0 - the
  *  clamp is defensive, like `defenseOf`'s, because a boot override is the same
  *  attack surface as a hand-edited store. */
-export function armiesOn(armies: Armies, polygon: string): number {
+export function armiesOn(
+  armies: Armies, polygon: string, cap: number,
+): number {
   const n = armies[polygon];
-  if (n === undefined) return ARMIES_PER_POLYGON;
+  if (n === undefined) return cap;
   return Math.max(0, Math.floor(n));
 }
 
-/** Create army's effect. */
-export function addArmy(armies: Armies, polygon: string): Armies {
-  return { ...armies, [polygon]: armiesOn(armies, polygon) + 1 };
+/** Create army's effect. Legality caps it at the land's own `armyCapFor`; the
+ *  clamp here is that rule's floor, not a second copy of it. */
+export function addArmy(
+  armies: Armies, polygon: string, cap: number,
+): Armies {
+  return {
+    ...armies,
+    [polygon]: Math.min(cap, armiesOn(armies, polygon, cap) + 1),
+  };
 }
 
 export function marchesFrom(marches: Marches, polygon: string): March[] {
@@ -103,10 +113,10 @@ export function marchesAgainst(marches: Marches, polygon: string): March[] {
  *  armies were taken from under a march in flight reads as empty rather than
  *  negative. */
 export function freeArmiesOn(
-  armies: Armies, marches: Marches, polygon: string,
+  armies: Armies, marches: Marches, polygon: string, cap: number,
 ): number {
   const out = marchesFrom(marches, polygon).filter((m) => m.holdsArmy).length;
-  return Math.max(0, armiesOn(armies, polygon) - out);
+  return Math.max(0, armiesOn(armies, polygon, cap) - out);
 }
 
 /** Declare a march, taking the lowest free slot for its direction. Reusing a
@@ -233,4 +243,51 @@ export function resolveAxis(
   const delta = Math.abs(totalA - totalB);
   if (delta === 0) return { loser: null, delta: 0, totalA, totalB };
   return { loser: totalA > totalB ? b : a, delta, totalA, totalB };
+}
+
+/** A SUBJUGATION in flight: a demand of fealty declared on one turn and
+ *  answered at the start of the actor's next, exactly as a raid is.
+ *
+ *  Its own store rather than a 0-damage march, because a march is an army and
+ *  the axis arithmetic in `resolveAxis` is about armies meeting each other. A
+ *  claim meets nothing: it either finds the land still broken when it arrives,
+ *  or it finds it standing and comes to nothing.
+ *
+ *  `from` is the land the demand is made out of - the actor's home for a
+ *  Subjugate - and is what a defense transfer moves points from when the claim
+ *  lands. */
+export interface Claim {
+  actor: string;
+  from: string;
+  to: string;
+  expiry: number;
+}
+
+/** Key -> claim, keyed by direction like `Marches`: one claim per actor per
+ *  target, so playing a second Subjugate at the same land replaces the first
+ *  rather than queueing two answers to one question. */
+export type Claims = Readonly<Record<string, Claim>>;
+
+export const claimKeyOf = (actor: string, to: string): string =>
+  `${actor}>${to}`;
+
+export function addClaim(claims: Claims, claim: Claim): Claims {
+  return { ...claims, [claimKeyOf(claim.actor, claim.to)]: claim };
+}
+
+export function clearClaims(claims: Claims, keys: string[]): Claims {
+  const out: Record<string, Claim> = {};
+  for (const [key, claim] of Object.entries(claims)) {
+    if (!keys.includes(key)) out[key] = claim;
+  }
+  return out;
+}
+
+/** Every claim of this actor's whose turn has come. */
+export function lapsedClaimsOf(
+  claims: Claims, actor: string, turn: number,
+): { key: string; claim: Claim }[] {
+  return Object.entries(claims)
+    .filter(([, c]) => c.actor === actor && c.expiry <= turn)
+    .map(([key, claim]) => ({ key, claim }));
 }

@@ -8,34 +8,40 @@ import {
 import { attachInteraction, DRAG_THRESHOLD_PX } from "./interaction";
 import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, playCard,
-  discardCard, advance, surrender, viewOf, endTurn,
+  discardCard, advance, surrender, viewOf, endTurn, transferDefense,
+  transferLimit,
   type GameEvent, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { fullRealmOf, realmOf, realmRootOf } from "./relations";
+import { playsTurns } from "./passives";
+import { rulerNameOf } from "./rulers";
+import {
+  faction, plainText, t, type NameLookup, type Segment,
+} from "./rich-text";
 import {
   handBlockReason, marchSourcesAgainst, marchSourcesFor, marchTargetsFrom,
   playableSet, respiteExpiry, validTargetsFor, targetEligibilityFor,
-  attackDamageFor,
+  armyCapOn, attackDamageFor, freeArmiesFor, miasmaHeld, omensHeld,
 } from "./playability";
-import { armiesOn, axesOf, freeArmiesOn, type March } from "./marches";
+import { armiesOn, axesOf, type Claim, type March } from "./marches";
 import {
   clashFraction, insetSegment, offsetSegment, pointAlong, scaleSpear,
   spearPolygon, SPEAR,
 } from "./arrows";
-import { runAnimation } from "./animate";
+import { animations, runAnimation } from "./animate";
 import {
   defenseMaxOf, defenseOf, gateBandOf, type GateBand,
 } from "./defense";
 import {
   cardBlockLine, cardModifierLines, cardRiskLine, defenseBreakdown,
-  diseaseBreakdown, explainTargetEligibility, multipliedWord,
+  diseaseBreakdown, explainTargetEligibility, multipliedWord, passiveLines,
   plaguePreviewLines, respiteLines, settlementBlock, targetImpactLines,
   targetOddsLines,
 } from "./target-explanations";
 import { ATTACK_CARDS, CARDS, type Strategy } from "./cards";
-import { rollHarvestOffer, type HarvestChoice } from "./harvest";
-import { createHud, LOG_PREFS_KEY } from "./hud";
+import { buildOffer, destroyOffer, type HarvestChoice } from "./harvest";
+import { createHud, LOG_PREFS_KEY, type HudCallbacks } from "./hud";
 import { createDeckScreen } from "./deck-screen";
 import { createHostSession, type HostSession } from "./net-host";
 import { createGuestSession, type GuestSession } from "./net-guest";
@@ -49,7 +55,7 @@ import {
 } from "./meta";
 import { applyBootParams, parseBootParams } from "./boot-params";
 import {
-  allowsDiscards, RULES_PREFS_KEY, loadRulesPrefs,
+  forcesDiscardWhenStuck, RULES_PREFS_KEY, loadRulesPrefs,
   saveRulesPrefs, type RuleSelections,
 } from "./rules";
 import { seededRng } from "./rng";
@@ -61,6 +67,16 @@ import "./style.css";
 
 const data = rawData as MapData;
 const app = document.getElementById("app")!;
+
+// No browser context menu anywhere, and no text selection anywhere. Right
+// click is a game input - it cancels an aim - and a menu opening over the map
+// instead is an input the player cannot take back. Selection is the same kind
+// of accident: a drag across the board that highlights a settlement label
+// instead of aiming an army. The CSS in style.css already forbids selection;
+// these two catch what CSS cannot, a drag that has already begun and the menu
+// itself.
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+document.addEventListener("selectstart", (e) => e.preventDefault());
 
 const {
   svg, regionPaths, revealSettlement, clearFoundedSettlements,
@@ -75,7 +91,9 @@ const realmEdgePaths = new Map<string, SVGPathElement>();
 /** Every vassal-stripe path with the overlord whose colour it carries, so the
  *  stripes can be held at that overlord's own intensity. Rebuilt by
  *  `renderVassalOverlay`. */
-const vassalStripes: { path: SVGPathElement; lord: string }[] = [];
+const vassalStripes: {
+  path: SVGPathElement; lord: string; land: string;
+}[] = [];
 
 /** One path carrying `d`, clipped by `mask`, appended to `group`. */
 function maskedPath(group: SVGGElement, d: string, mask: string): SVGPathElement {
@@ -105,6 +123,23 @@ const arrowGroup = document.createElementNS(
 ) as SVGGElement;
 arrowGroup.classList.add("march-arrows");
 svg.appendChild(arrowGroup);
+
+// The arrow being dragged out while a Raid is aimed. Its own group above the
+// declared ones: a preview must never be mistaken for something the game has
+// promised.
+const aimGroup = document.createElementNS(
+  "http://www.w3.org/2000/svg", "g",
+) as SVGGElement;
+aimGroup.classList.add("aim-arrows");
+svg.appendChild(aimGroup);
+
+// The rising "+1"/"-1" marks. Above everything, and inert to the pointer.
+const floatGroup = document.createElementNS(
+  "http://www.w3.org/2000/svg", "g",
+) as SVGGElement;
+floatGroup.classList.add("score-floats");
+svg.appendChild(floatGroup);
+
 const badgeGroup = document.createElementNS(
   "http://www.w3.org/2000/svg", "g",
 ) as SVGGElement;
@@ -371,9 +406,7 @@ function inPlay(): boolean {
 
 function humanPlayableSet() {
   const human = localHuman();
-  return playableSet(viewOf(game), human.factionId, human.hand, {
-    discards: allowsDiscards(game.rules),
-  });
+  return playableSet(viewOf(game), human.factionId, human.hand);
 }
 
 /** Why the human cannot play this card this turn, or null when they can. The
@@ -381,15 +414,47 @@ function humanPlayableSet() {
 function humanBlockReason(cardId: string) {
   const human = localHuman();
   if (!human) return null;
-  return handBlockReason(viewOf(game), human.factionId, human.hand, cardId, {
-    discards: allowsDiscards(game.rules),
-  });
+  return handBlockReason(viewOf(game), human.factionId, human.hand, cardId);
+}
+
+/** Puts the conquest transfer question up when the state carries one for the
+ *  local seat. Idempotent: the modal is only raised once per pending
+ *  question, and answering clears it. */
+let transferAsked: string | null = null;
+function askTransferIfPending(): void {
+  const pending = game.pendingTransfer;
+  if (pending === null) {
+    transferAsked = null;
+    return;
+  }
+  const key = `${pending.from}>${pending.to}`;
+  if (transferAsked === key) return;
+  transferAsked = key;
+  const v = viewOf(game);
+  hud.showTransferOffer(
+    {
+      ...pending,
+      max: transferLimit(game, pending.from, pending.to),
+      fromHas: defenseOf(v, pending.from),
+      fromMax: defenseMaxOf(v, pending.from),
+      toHas: defenseOf(v, pending.to),
+      toMax: defenseMaxOf(v, pending.to),
+    },
+    {
+      onConfirm(amount) {
+        hud.hideHarvestUi();
+        game = transferDefense(game, amount);
+        refresh();
+      },
+    },
+  );
 }
 
 function discardMode(): boolean {
   return (
     isLocalTurn() &&
     !game.playedThisTurn &&
+    forcesDiscardWhenStuck(game.rules) &&
     humanPlayableSet().mode === "discard"
   );
 }
@@ -399,16 +464,29 @@ function discardMode(): boolean {
 function allegianceOf(
   polygonFaction: string,
   humanFaction: string,
-): string | null {
+): Segment[] | null {
   return relationshipLine(
     polygonFaction, humanFaction, game.overlords, game.incorporated,
-    (id) => factionById.get(id)!.name,
   );
 }
+
+/** Names for the plain-text half of a segment line. The HUD owns the hoverable
+ *  half through its own `richTextHooks`; this is only what a floating tooltip,
+ *  which cannot be pointed at, falls back to. */
+const richTextNames: NameLookup = {
+  factionName: (id) => factionById.get(id)?.name ?? id,
+  isPlaceName: (id) => factionById.get(id)?.placeName === true,
+};
 
 function effectiveFaction(f: string): string {
   return game.incorporated[f] ?? f;
 }
+
+/** What a land nobody plays and nobody holds is painted. One flat grey for all
+ *  of them: twenty-one peoples' hues, none of them playing, was the map
+ *  describing a game that was not happening. Darker than the off-map neighbour
+ *  grey, so the coast still reads as the edge of the world. */
+const UNOWNED_FILL = "#c3bfb6";
 
 function applyOwnership(): void {
   const human = localHuman();
@@ -428,11 +506,29 @@ function applyOwnership(): void {
   for (const [id, el] of regionPaths) {
     const region = regionById.get(id)!;
     const effective = inPlay() ? effectiveFaction(region.faction) : region.faction;
-    el.setAttribute("fill", factionById.get(effective)!.color);
+    // Grey is "keeps to itself", and nothing else: the status comes off the
+    // moment somebody takes the land, so a conquest turns its own hue under
+    // the vassal stripes without this having to ask who holds it.
+    const grey = inPlay() && !playsTurns(game.passives, region.faction);
+    el.setAttribute(
+      "fill", grey ? UNOWNED_FILL : factionById.get(effective)!.color,
+    );
     const owned = humanRealm.has(region.faction);
     el.classList.toggle(
       "dimmed",
       inPlay() && !owned && !overlordRealm.has(region.faction),
+    );
+    // A land that belongs to a rival PLAYER's realm, by its realm root rather
+    // than by itself: a quiet land somebody has subjugated is part of that
+    // player's showing on the map, and reading it off the land's own faction
+    // would leave every conquest looking like unheld ground.
+    el.classList.toggle(
+      "in-play",
+      inPlay() &&
+        playsTurns(
+          game.passives,
+          realmRootOf(region.faction, game.overlords, game.incorporated),
+        ),
     );
     el.classList.toggle("owned", owned);
     if (owned) {
@@ -465,7 +561,7 @@ function renderVassalOverlay(): void {
       p.setAttribute("fill", `url(#vassal-stripes-${lord})`);
       p.setAttribute("pointer-events", "none");
       vassalOverlayGroup.appendChild(p);
-      vassalStripes.push({ path: p, lord });
+      vassalStripes.push({ path: p, lord, land: factionId });
     }
   }
   syncVassalStripes();
@@ -482,8 +578,13 @@ function renderVassalOverlay(): void {
  *  interacting - dimmed, realm-hover, holder-hover, target-invalid - and this
  *  wants the result, not a second copy of the reasoning. */
 function syncVassalStripes(): void {
-  for (const { path, lord } of vassalStripes) {
-    const regionId = regionByFaction.get(lord);
+  for (const { path, lord, land } of vassalStripes) {
+    // While a pin holds, a stripe follows the LAND it is drawn on rather than
+    // its lord: the pinned land is the one thing on the map that must stay
+    // legible, and taking its lord's opacity would strip the pinned vassal of
+    // the very marking that says whose it is.
+    const source = svg.classList.contains("pinning") ? land : lord;
+    const regionId = regionByFaction.get(source);
     const el = regionId !== undefined ? regionPaths.get(regionId) : undefined;
     if (el) path.style.opacity = getComputedStyle(el).opacity;
   }
@@ -661,6 +762,99 @@ function regionCenter(factionId: string): { x: number; y: number } | undefined {
   return { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
 }
 
+/** How far through the log the floating marks have been shown. Every batch is
+ *  floated once, on the refresh that first sees it. */
+let floatedEvents = 0;
+
+/** How long a floating "+1" lives. One number, used for the animation and
+ *  nothing else - the mark removes itself when the animation reports itself
+ *  finished, never on a second timer (see the rule in AGENTS.md). */
+const FLOAT_MS = 1100;
+
+/** The defense a single event moved on the land it names, or null. Read off
+ *  `amount` at the same sites `standingChangeText` reads, so a mark and its
+ *  log line cannot disagree about what happened. */
+function floatFor(e: GameEvent): { polygon: string; delta: number }[] {
+  if (e.amount === undefined || e.amount === 0) return [];
+  const to = e.targetFactionId;
+  if (to === undefined) return [];
+  switch (e.type) {
+    case "healed":
+      return [{ polygon: to, delta: e.amount }];
+    case "march-resolved":
+    case "plagued":
+      return [{ polygon: to, delta: -e.amount }];
+    case "transferred":
+      return [
+        { polygon: to, delta: e.amount },
+        ...(e.sourceFactionId === undefined
+          ? []
+          : [{ polygon: e.sourceFactionId, delta: -e.amount }]),
+      ];
+    default:
+      return [];
+  }
+}
+
+/** Floats every defense change in the newest log entries over the land it
+ *  happened to. The badge shows where a score ENDED; this is the only thing
+ *  on the map that says it moved at all, which is what a heal for 1 needs to
+ *  be visible. */
+function floatScoreMarks(): void {
+  if (game.log.length < floatedEvents) floatedEvents = 0;
+  const fresh = game.log.slice(floatedEvents);
+  floatedEvents = game.log.length;
+  if (!inPlay()) return;
+  const marks: SVGTextElement[] = [];
+  let lane = 0;
+  for (const e of fresh) {
+    for (const mark of floatFor(e)) {
+      const centre = regionCenter(mark.polygon);
+      if (centre === undefined) continue;
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.classList.add("score-float", mark.delta > 0 ? "float-good" : "float-bad");
+      text.setAttribute("x", String(centre.x));
+      // Stacked, so two changes on one land in a batch do not print on top of
+      // each other.
+      text.setAttribute("y", String(centre.y - 22 - (lane % 3) * 14));
+      text.textContent = mark.delta > 0 ? `+${mark.delta}` : String(mark.delta);
+      floatGroup.appendChild(text);
+      lane++;
+      // Queued like everything else, and as ONE step for the whole batch:
+      // the marks of a single round rise together, which is one animation,
+      // not six racing each other.
+      marks.push(text);
+    }
+  }
+  queueFloats(marks);
+}
+
+/** Enqueues the batch's marks as one step. */
+function queueFloats(marks: SVGTextElement[]): void {
+  if (marks.length === 0) return;
+  animations.push((done) => {
+    let left = marks.length;
+    const one = (): void => {
+      left -= 1;
+      if (left === 0) done();
+    };
+    for (const text of marks) {
+      runAnimation(
+        text,
+        [
+          { transform: "translateY(0)", opacity: 1 },
+          { transform: "translateY(-18px)", opacity: 0 },
+        ],
+        FLOAT_MS,
+        () => {
+          text.remove();
+          one();
+        },
+      );
+    }
+  });
+}
+
 function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
   const human = localHuman();
@@ -668,16 +862,21 @@ function renderThreatBadges(): void {
   const v = viewOf(game);
   const targets = targetingLive() ? new Set(armedTargets()) : null;
   for (const factionId of game.factionIds) {
-    if (factionId in game.incorporated && targets === null) {
-      // An annexed polygon still has a defense score a card can hit, so it
-      // keeps its badge while targeting narrows the map to it - but at rest
-      // it is part of a realm, and a full-strength badge on every dead land
-      // buries the live ones.
-      const undamaged = defenseOf(v, factionId) >= defenseMaxOf(v, factionId);
-      const noDisease = game.disease[factionId] === undefined;
-      if (undamaged && noDisease) continue;
+    // An annexed polygon still has a defense score a card can hit, so it keeps
+    // its badge while targeting narrows the map to it - but at rest it is part
+    // of a realm, and a full-strength badge on every dead land buries the live
+    // ones.
+    const annexedAndWhole =
+      factionId in game.incorporated &&
+      defenseOf(v, factionId) >= defenseMaxOf(v, factionId) &&
+      game.disease[factionId] === undefined;
+    // Aiming does NOT take the numbers away. The badges used to narrow to the
+    // legal targets, which meant that while picking the land a raid marches
+    // OUT of, every land it could be sent AT lost the one number that decides
+    // where to send it.
+    if (annexedAndWhole && (targets === null || !targets.has(factionId))) {
+      continue;
     }
-    if (targets !== null && !targets.has(factionId)) continue;
     const centre = regionCenter(factionId);
     if (centre === undefined) continue;
     const { x: cx, y: cy } = centre;
@@ -734,8 +933,8 @@ function renderThreatBadges(): void {
     // that can still be sent. Capped at ARMY_PIPS_SHOWN and then counted,
     // because Create army is uncapped and a land holding six would otherwise
     // grow a badge wider than the land it sits on.
-    const stationed = armiesOn(game.armies, factionId);
-    const free = freeArmiesOn(game.armies, game.marches, factionId);
+    const stationed = armiesOn(game.armies, factionId, armyCapOn(v, factionId));
+    const free = freeArmiesFor(v, factionId);
     if (stationed > 0) {
       const shown = Math.min(stationed, ARMY_PIPS_SHOWN);
       for (let i = 0; i < shown; i++) {
@@ -772,35 +971,46 @@ function renderThreatBadges(): void {
  *  beside the widest defense number without overhanging its box. */
 const ARMY_PIPS_SHOWN = 5;
 
-/** How far an arrow's ends are pulled in from the two region centres, so the
- *  shaft leaves the source's edge and the head bites the target's rather than
- *  both ends sitting under a badge. User space, like every other length here.
+/** How far an arrow's ends stop short of the two TOWNS it runs between.
  *
- *  Capped at a share of the axis, because a march always runs between two
- *  NEIGHBOURING lands and their centres can be close together. A flat 34 at
- *  each end left a short axis about twenty units of arrow, which the head then
- *  ate: two small lands got a triangle between them rather than a spear
- *  pointing one way. */
-const ARROW_INSET = 34;
-const ARROW_INSET_SHARE = 0.2;
+ *  The anchors are towns (`marchAnchors`), so the only thing an end has to
+ *  clear is the dot itself and the name under it. The insets these replaced
+ *  were sized for region centres - 34 units off the tail and a further share
+ *  off the head - which on a town anchor meant an arrow that began well past
+ *  the town it left and gave up well short of the one it was aimed at.
+ *
+ *  The tail clears the dot AND the label below it; the head only has to not
+ *  cover the dot it bites. Scaled down together on a short axis, because two
+ *  neighbouring towns can be 90 units apart and a clearance longer than the
+ *  axis turns the segment inside out. */
+const TOWN_CLEARANCE_TAIL = 12;
+const TOWN_CLEARANCE_HEAD = 6;
+const CLEARANCE_MAX_SHARE = 0.35;
 
-/** The head is pulled in less than the tail. The tail has to clear the town
- *  dot and its name; the head only has to stop short of the target's, and an
- *  arrow that gives up a fifth of the way out from where it is aimed reads as
- *  pointing at nothing in particular. */
-const ARROW_HEAD_INSET_SHARE = 0.45;
-
-function insetFor(length: number): number {
-  return Math.min(ARROW_INSET, length * ARROW_INSET_SHARE);
+/** Both clearances at the size this axis can afford. */
+function clearancesFor(length: number): { pull: number; head: number } {
+  const fit = Math.min(
+    1,
+    (length * CLEARANCE_MAX_SHARE) / (TOWN_CLEARANCE_TAIL + TOWN_CLEARANCE_HEAD),
+  );
+  return { pull: TOWN_CLEARANCE_TAIL * fit, head: TOWN_CLEARANCE_HEAD * fit };
 }
 
-/** Every town the map draws in each land, by faction id - the starting one and
- *  the locked sites alike. Deliberately not `sitesByFaction`, which drops the
- *  unlocked starting settlement because it answers a different question (where
- *  can this land still build). Here any real place will do. */
+/** Every town the map actually DRAWS in each land, by faction id.
+ *
+ *  Unlocked only. A locked site is authored but never rendered, and an arrow
+ *  anchored on one points at a place the player cannot see: the head stopped
+ *  in open country dozens of units from the town it was supposed to bite,
+ *  which reads as an arrow aimed at nothing. An anchor has to be somewhere
+ *  there is a dot.
+ *
+ *  Deliberately not `sitesByFaction`, which answers the opposite question -
+ *  where can this land still build - and therefore drops exactly the towns
+ *  that are standing there. */
 const townsByFaction = ((): Map<string, { x: number; y: number }[]> => {
   const out = new Map<string, { x: number; y: number }[]>();
   for (const s of data.settlements) {
+    if (!s.unlocked) continue;
     const faction = factionByRegion.get(s.land);
     if (faction === undefined) continue;
     out.set(faction, [...(out.get(faction) ?? []), { x: s.x, y: s.y }]);
@@ -894,11 +1104,166 @@ const MIN_FIT = 0.45;
  *
  *  Hidden entirely while a card is armed: targeting cues own the map then, the
  *  same rule `renderThreatBadges` and `renderRealmUnions` already follow. */
+/** How many turns until this faction acts again, from where the round stands.
+ *  A seat whose turn is happening NOW is a full lap away from its next one,
+ *  which is why 0 reads as `players.length` rather than as "immediately". */
+function turnsUntilActs(factionId: string): number {
+  const n = game.players.length;
+  const seat = game.players.findIndex((p) => p.factionId === factionId);
+  if (seat < 0) return Number.POSITIVE_INFINITY;
+  const steps = (seat - game.current + n) % n;
+  return steps === 0 ? n : steps;
+}
+
+/** Everything in flight at each land, in the order it will resolve.
+ *
+ *  A march and a claim both land at the start of their actor's next turn, so
+ *  the order is "whose turn comes first", and the answer decides whether a
+ *  second raid finds a land already flat - or whether a subjugation arrives
+ *  before the raids that would have answered it. The player cannot work that
+ *  out from the board, so the arrows carry it.
+ *
+ *  Grouped by TARGET, and only by target: an ordinal answers "who gets there
+ *  first" between things racing for the SAME land.
+ *
+ *  Deliberately NOT by axis. Two arrows pointing at each other do not take
+ *  turns - `resolveAxis` takes both off the board together and lands only the
+ *  difference - so numbering them 1st and 2nd described a sequence that never
+ *  happens. That pair gets a clash marker instead (`drawClash`). */
+function landingOrder(): Map<string, { order: number; clash: boolean }> {
+  const axisOf = (a: string, b: string): string => [a, b].sort().join("|");
+  const pending: {
+    key: string; to: string; from: string; axis: string; at: number;
+  }[] = [];
+  for (const [key, m] of Object.entries(game.marches)) {
+    pending.push({
+      key, to: m.to, from: m.from, axis: axisOf(m.from, m.to),
+      at: m.expiry * 100 + turnsUntilActs(m.actor),
+    });
+  }
+  for (const [key, c] of Object.entries(game.claims)) {
+    pending.push({
+      key: `claim:${key}`, to: c.to, from: c.from, axis: axisOf(c.from, c.to),
+      at: c.expiry * 100 + turnsUntilActs(c.actor),
+    });
+  }
+  // A clash is two arrows on one axis pointing OPPOSITE ways. They do not
+  // take turns - `resolveAxis` takes both off the board together and lands
+  // only the difference - so they share a rank and say so.
+  const clashing = new Set(
+    pending
+      .filter((item) =>
+        pending.some((other) => other.to === item.from && other.from === item.to),
+      )
+      .map((item) => item.key),
+  );
+  const out = new Map<string, { order: number; clash: boolean }>();
+  const byTarget = new Map<string, typeof pending>();
+  for (const item of pending) {
+    byTarget.set(item.to, [...(byTarget.get(item.to) ?? []), item]);
+  }
+  for (const group of byTarget.values()) {
+    [...group]
+      .sort((a, b) => a.at - b.at || a.key.localeCompare(b.key))
+      .forEach((item, i) => {
+        const clash = clashing.has(item.key);
+        // A lone arrow at a land needs no ordinal, but one locked in a clash
+        // does: the label is the only thing saying the two answer each other.
+        if (group.length < 2 && !clash) return;
+        out.set(item.key, { order: i + 1, clash });
+      });
+  }
+  return out;
+}
+
+/** An aim in progress: the land an army would march out of, and where the
+ *  pointer is now. Only ever set while a Raid is armed - the same gesture
+ *  pans the map otherwise, and a map that moved under a half-drawn arrow
+ *  would be answering a question nobody asked. */
+interface AimDrag {
+  from: string;
+  at: { x: number; y: number };
+  over: string | null;
+}
+let aiming: AimDrag | null = null;
+/** True while the pointer is down on an aim-drag. The hover preview below
+ *  must not touch `aiming` then: the drag owns the arrow until it is let go. */
+let aimDragging = false;
+
+/** The arrow the two-click flow draws once a source is picked. Same preview
+ *  the drag shows, driven by the pointer instead of by a held button - after
+ *  the first click the game is asking "at what", and an answer with no arrow
+ *  in it makes the player aim at a status line. */
+function updateAimPreview(
+  region: Region | null, clientX: number, clientY: number,
+): void {
+  if (aimDragging) return;
+  const human = localHuman();
+  if (armed === null || armedSource === null || !human) {
+    if (aiming !== null) {
+      aiming = null;
+      renderAimArrow();
+    }
+    return;
+  }
+  const faction = region === null ? undefined : factionByRegion.get(region.id);
+  const legal =
+    faction !== undefined &&
+    marchTargetsFrom(viewOf(game), human.factionId, armedSource).includes(faction)
+      ? faction
+      : null;
+  aiming = {
+    from: armedSource,
+    at: interaction.toMapPoint(clientX, clientY),
+    over: legal,
+  };
+  renderAimArrow();
+}
+
+/** The arrow being dragged, drawn in the map's own space so it pans and zooms
+ *  with everything else. Its own group, cleared and rebuilt per move: this is
+ *  a preview, and a stale one is a promise the game has not made. */
+function renderAimArrow(): void {
+  aimGroup.replaceChildren();
+  // The land the arrow would land on, marked on the map itself. An arrow
+  // ending near a border is ambiguous at any zoom, and the answer to "which
+  // land is this aimed at" must not be the player's guess.
+  for (const [id, el] of regionPaths) {
+    el.classList.toggle(
+      "aim-target",
+      aiming !== null && aiming.over !== null &&
+        factionByRegion.get(id) === aiming.over,
+    );
+  }
+  if (aiming === null) return;
+  const towns = townsByFaction.get(aiming.from) ?? [];
+  const start = aiming.over !== null
+    ? marchAnchors(aiming.from, aiming.over)?.from
+    : towns[0];
+  const end = aiming.over !== null
+    ? marchAnchors(aiming.from, aiming.over)?.to
+    : aiming.at;
+  if (start === undefined || end === undefined) return;
+  const length = Math.hypot(end.x - start.x, end.y - start.y);
+  const { pull, head } = clearancesFor(length);
+  const seg = insetSegment(start.x, start.y, end.x, end.y, pull, head);
+  const points = spearPolygon(seg.ax, seg.ay, seg.bx, seg.by);
+  if (points === "") return;
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  g.classList.add("aim-arrow");
+  g.classList.toggle("aim-valid", aiming.over !== null);
+  const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+  poly.setAttribute("points", points);
+  g.appendChild(poly);
+  aimGroup.appendChild(g);
+}
+
 function renderMarchArrows(): void {
   arrowGroup.replaceChildren();
   const human = localHuman();
   if (!inPlay() || !human || targetingLive()) return;
   const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
+  const order = landingOrder();
   for (const axis of axesOf(game.marches)) {
     const opening = axis.opening === "a" ? axis.fromA : axis.fromB;
     const answer = axis.opening === "a" ? axis.fromB : axis.fromA;
@@ -923,13 +1288,15 @@ function renderMarchArrows(): void {
     // then be centred against each other. An arrangement whose middle sits off
     // the line between the two lands is an arrangement pointing at neither of
     // them, which is exactly how a counter beside two attacks was misread.
+    const keyOfMarch = (march: March): string =>
+      Object.entries(game.marches).find(([, m]) => m === march)?.[0] ?? "";
     const plan = [
       ...opening.map((m, i) => ({
-        m, offset: (i - (opening.length - 1) / 2) * mainGap,
+        m, key: keyOfMarch(m), offset: (i - (opening.length - 1) / 2) * mainGap,
         scale: fit, lengthShare: 1, forward: true,
       })),
       ...answer.map((m, i) => ({
-        m,
+        m, key: keyOfMarch(m),
         offset: answerBase + (i - (answer.length - 1) / 2) * COUNTER_GAP * fit,
         scale: COUNTER_SCALE * fit, lengthShare: COUNTER_LENGTH_SHARE,
         forward: false,
@@ -942,24 +1309,122 @@ function renderMarchArrows(): void {
       // the opening side's "right", and one world direction is what keeps the
       // counter consistently on one side of the pair.
       const lateral = (p.offset - centre) * (p.forward ? 1 : -1);
-      drawMarch(p.m, lateral, realm, p.scale, p.lengthShare);
+      drawMarch(p.m, lateral, realm, p.scale, p.lengthShare, order.get(p.key));
     }
+  }
+  // Claims LAST, so they sit above the spears. A demand of fealty decides who
+  // owns a land; a raid decides a number on it, and the more consequential of
+  // the two must not end up under the other.
+  for (const [key, claim] of Object.entries(game.claims)) {
+    drawClaim(claim, realm, order.get(`claim:${key}`));
   }
 }
 
 /** One arrow, `lateral` user-units to the left of its own direction of travel,
  *  at `scale` of full width and covering `lengthShare` of the axis - measured
  *  back from the head, so a shortened arrow still bites the same land. */
+/** "1st", "2nd", "3rd", "4th" - the landing order in words, so the number can
+ *  never be read as a strength. */
+function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  const suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th";
+  return `${n}${suffix}`;
+}
+
+/** The landing order an arrow carries when more than one thing is aimed at its
+ *  land, or when two things share an axis: 1st lands first.
+ *
+ *  A chip, and an ordinal rather than a bare digit. The arrow's STRENGTH is
+ *  already a bare number on the same arrow, and two bare numbers cannot be told
+ *  apart - a "2" beside a "1" read as a second strength rather than as the
+ *  order the two resolve in. */
+function appendOrder(
+  g: SVGGElement, at: { x: number; y: number },
+  rank: { order: number; clash: boolean },
+): void {
+  // "1st", or "1st - clash" where the arrow is answered head-on. One label,
+  // not a second marker on the map: the two facts are about the same arrow.
+  const label = rank.clash ? `${ordinal(rank.order)} - clash` : ordinal(rank.order);
+  const width = 12 + label.length * 5.6;
+  const chip = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  chip.classList.add("march-order");
+  const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  bg.classList.add("march-order-bg");
+  bg.setAttribute("x", String(at.x - width / 2));
+  bg.setAttribute("y", String(at.y - 9));
+  bg.setAttribute("width", String(width));
+  bg.setAttribute("height", "15");
+  bg.setAttribute("rx", "7.5");
+  const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  text.classList.add("march-order-text");
+  text.setAttribute("x", String(at.x));
+  text.setAttribute("y", String(at.y + 2));
+  text.textContent = label;
+  chip.append(bg, text);
+  g.appendChild(chip);
+}
+
+/** A subjugation in flight, drawn from the demanding land to the land
+ *  demanded. Thin and dashed rather than a spear: nobody is marching, and a
+ *  claim that reads as an army would have the player counting strength that
+ *  does not exist. */
+function drawClaim(
+  claim: Claim, realm: ReadonlySet<string>,
+  rank: { order: number; clash: boolean } | undefined,
+): void {
+  const anchors = marchAnchors(claim.from, claim.to);
+  if (anchors === null) return;
+  const { from, to } = anchors;
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  const { pull, head } = clearancesFor(length);
+  const seg = insetSegment(from.x, from.y, to.x, to.y, pull, head);
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  g.classList.add("claim-arrow");
+  g.dataset.actor = claim.actor;
+  g.dataset.target = claim.to;
+  const against = realm.has(claim.to);
+  const ours = realm.has(claim.from);
+  g.classList.add(against ? "march-hostile" : ours ? "march-ours" : "march-other");
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", String(seg.ax));
+  line.setAttribute("y1", String(seg.ay));
+  line.setAttribute("x2", String(seg.bx));
+  line.setAttribute("y2", String(seg.by));
+  g.appendChild(line);
+  // A ring at the head rather than a barb: a claim arrives and demands, it
+  // does not strike, and the two must not be told apart by squinting at a
+  // dash pattern.
+  const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  ring.classList.add("claim-head");
+  ring.setAttribute("cx", String(seg.bx));
+  ring.setAttribute("cy", String(seg.by));
+  ring.setAttribute("r", "7");
+  g.appendChild(ring);
+  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  label.classList.add("claim-label");
+  const mid = pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.5);
+  label.setAttribute("x", String(mid.x));
+  label.setAttribute("y", String(mid.y));
+  label.textContent = "SUBJUGATE";
+  g.appendChild(label);
+  if (rank !== undefined) {
+    appendOrder(g, pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.85), rank);
+  }
+  arrowGroup.appendChild(g);
+}
+
 function drawMarch(
   m: March, lateral: number, realm: ReadonlySet<string>,
   scale: number, lengthShare: number,
+  rank?: { order: number; clash: boolean },
 ): void {
   const anchors = marchAnchors(m.from, m.to);
   if (anchors === null) return;
   const { from, to } = anchors;
-  const pull = insetFor(Math.hypot(to.x - from.x, to.y - from.y));
-  const head = pull * ARROW_HEAD_INSET_SHARE;
-  const usable = Math.hypot(to.x - from.x, to.y - from.y) - pull - head;
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  const { pull, head } = clearancesFor(length);
+  const usable = length - pull - head;
   const inset = insetSegment(
     from.x, from.y, to.x, to.y,
     pull + Math.max(0, usable) * (1 - lengthShare), head,
@@ -973,6 +1438,8 @@ function drawMarch(
   const ours = realm.has(m.from);
   const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
   g.classList.add("march-arrow");
+  g.dataset.actor = m.actor;
+  g.dataset.target = m.to;
   // Against you first: an arrow between your own two lands cannot happen
   // (attackReach excludes what you hold outright, and a raid on your own
   // vassal IS aimed at your realm), so the order only decides how a lord's
@@ -994,13 +1461,19 @@ function drawMarch(
   const mid = pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.5);
   label.setAttribute("x", String(mid.x));
   label.setAttribute("y", String(mid.y));
-  label.textContent = String(m.damage);
+  // "1 STR", not a bare "1". Two numbers ride on one arrow - what it hits for
+  // and when it lands - and a digit alone cannot say which it is.
+  label.textContent = `${m.damage} STR`;
   g.appendChild(label);
 
   // An arrow you could answer right now is a button. Picking a source and a
   // target by hand to aim a counter back down an arrow already on the screen
   // is the game asking the player to restate something it can see, so the
   // arrow takes the click itself.
+  if (rank !== undefined) {
+    appendOrder(g, pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.82), rank);
+  }
+
   const counterIndex = counterFor(m);
   if (counterIndex !== null) {
     g.classList.add("march-counterable");
@@ -1025,9 +1498,7 @@ function counterFor(m: March): number | null {
   if (!realm.has(m.to) || realm.has(m.from)) return null;
   const v = viewOf(game);
   if (!marchSourcesAgainst(v, human.factionId, m.from).includes(m.to)) return null;
-  const set = playableSet(v, human.factionId, human.hand, {
-    discards: allowsDiscards(game.rules),
-  });
+  const set = playableSet(v, human.factionId, human.hand);
   if (set.mode !== "play") return null;
   return set.cardIndexes.find((i) => human.hand[i] === "raid") ?? null;
 }
@@ -1104,10 +1575,10 @@ function flashMarchResolution(
     return;
   }
   const { from, to } = anchors;
-  const pull = insetFor(Math.hypot(to.x - from.x, to.y - from.y));
-  const seg = insetSegment(
-    from.x, from.y, to.x, to.y, pull, pull * ARROW_HEAD_INSET_SHARE,
-  );
+  // The same clearances the live arrow used, so the ghost fades out exactly
+  // where the arrow stood rather than jumping as it goes.
+  const { pull, head } = clearancesFor(Math.hypot(to.x - from.x, to.y - from.y));
+  const seg = insetSegment(from.x, from.y, to.x, to.y, pull, head);
   // A standoff has no loser, so it is neither your bad news nor your good.
   const standoff = e.amount === undefined;
   const struckUs = e.targetFactionId !== undefined && realm.has(e.targetFactionId);
@@ -1208,12 +1679,26 @@ function flashResolutions(then: () => void): void {
  *  showing that denominator. The settlement dots are drawn on the polygon and
  *  both Found a settlement and Population boom turn on how many a land holds
  *  and how many it still has room for, and nothing else states either. */
+/** A land's name and its people's: the first line of every surface that
+ *  describes it, and the plain-text half of that line's segments. */
+function landTitle(region: Region): string {
+  return `${region.name} (${factionById.get(region.faction)!.name})`;
+}
+
 function hoverLines(region: Region): TooltipLine[] {
   const human = localHuman();
   // The land's OWN faction, never the politically resolved one: an absorbed
   // land keeps its name here and the line below says who took it.
   const lines: TooltipLine[] = [
-    { text: `${region.name} (${factionById.get(region.faction)!.name})` },
+    {
+      text: landTitle(region),
+      // The people's name is a node wherever it is drawn: pointing at it lights
+      // their whole realm on the map, which on a title line is exactly the
+      // question being asked - "whose is this".
+      segments: [
+        t(`${region.name} (`), faction(region.faction), t(")"),
+      ],
+    },
   ];
   // Straight under the land's name, because "who is playing this" outranks
   // everything the rules have to say about it. A player name is plain text
@@ -1222,7 +1707,9 @@ function hoverLines(region: Region): TooltipLine[] {
   if (otherHuman !== null) lines.push({ text: `Played by ${otherHuman}` });
   if (!inPlay() || !human) return lines;
   const held = allegianceOf(region.faction, human.factionId);
-  if (held !== null) lines.push({ text: held });
+  if (held !== null) {
+    lines.push({ text: plainText(held, richTextNames), segments: held });
+  }
   // The same resolution `interceptClick` uses, or the lines below would answer
   // for a different faction than the click aims at on an absorbed land.
   const f = politicalFactionForPolygon(region.faction, game.incorporated);
@@ -1255,6 +1742,25 @@ function hoverLines(region: Region): TooltipLine[] {
   lines.push(...diseaseBreakdown(
     viewOf(game), region.faction, (id) => factionById.get(id)?.name ?? id,
   ));
+  // Who leads this land and what they have gathered. A vacant seat is the
+  // whole reason a land takes no turn, so it is stated rather than left to be
+  // inferred from the land never doing anything.
+  const v = viewOf(game);
+  const leader = rulerNameOf(game.rulers, region.faction);
+  lines.push({ text: "Leader", blockStart: true });
+  if (leader === null) {
+    lines.push({ text: "Nobody leads this land" });
+  } else {
+    lines.push({ text: leader, amount: String(v.leadership[region.faction] ?? 0) });
+    const omens = omensHeld(v, region.faction);
+    if (omens > 0) lines.push({ text: "Omens read", amount: String(omens) });
+    const miasma = miasmaHeld(v, region.faction);
+    if (miasma > 0) lines.push({ text: "Miasma gathered", amount: String(miasma) });
+  }
+  // The land's standing properties, last: they are true of the ground whoever
+  // holds it, so they read as the footnote to everything above rather than as
+  // part of this turn's arithmetic.
+  lines.push(...passiveLines(game.passives, region.faction));
   return lines;
 }
 
@@ -1383,15 +1889,28 @@ function applyHighlight(region: Region | null, factionId: string | null): void {
  *  incorporated holdings that `realmOf` alone would miss. No-op (all
  *  classes cleared) when there is no hover or the phase is not in play. */
 function applyRealmHover(region: Region | null): void {
+  // A PIN is about one land, and the panel beside it describes that land
+  // alone: it marks the polygon and nothing else. A hover still lights the
+  // whole realm - that is the question a passing cursor is asking, and with
+  // five players holding several lands each it is the more useful answer of
+  // the two, which is exactly why the pin needs the narrower one.
+  const pinned = pinnedRegion !== null && region === pinnedRegion;
   // while targeting is live, it owns the map: a realm halo here would
   // outrank the valid/invalid cues and make blocked targets look clickable
   const members =
     region && inPlay() && !targetingLive()
-      ? fullRealmOf(
-          realmRootOf(region.faction, game.overlords, game.incorporated),
-          game.overlords, game.incorporated,
-        )
+      ? pinned
+        ? new Set([region.faction])
+        : fullRealmOf(
+            realmRootOf(region.faction, game.overlords, game.incorporated),
+            game.overlords, game.incorporated,
+          )
       : new Set<string>();
+  // Everything else recedes while the pin holds. Without it the pin barely
+  // reads: a rival player's lands sit at .in-play's opacity, which is bright
+  // enough that four realms compete with the one land being asked about.
+  svg.classList.toggle("pinning", pinned && inPlay() && !targetingLive());
+  syncArrowDimming(pinned && inPlay() && !targetingLive() ? region : null);
   // The polygon of the faction that holds the hovered land - who took it -
   // marked on its own, not its whole realm. Suppressed while targeting is
   // live, for the same reason the realm halo is.
@@ -1401,6 +1920,7 @@ function applyRealmHover(region: Region | null): void {
       : null;
   for (const [id, el] of regionPaths) {
     const f = factionByRegion.get(id)!;
+    el.classList.toggle("pinned-one", pinned && region !== null && id === region.id);
     el.classList.toggle("realm-hover", members.has(f));
     el.classList.toggle("holder-hover", holder !== null && f === holder);
     el.classList.toggle(
@@ -1412,6 +1932,26 @@ function applyRealmHover(region: Region | null): void {
     );
   }
   renderRealmHoverHalo(members);
+}
+
+/** While a pin holds, the arrows that are not about the pinned LAND recede
+ *  with everything else. An arrow belongs to the pin if that land sent it or
+ *  is the land it is aimed at - studying a land means seeing both what it is
+ *  doing and what is coming at it, and dimming the incoming half would hide
+ *  the more urgent one.
+ *
+ *  The land, not its realm: the pin already narrows the map to one polygon,
+ *  and reading this off the realm root lit every arrow in an empire when a
+ *  single vassal was pinned. */
+function syncArrowDimming(pinnedOn: Region | null): void {
+  const land = pinnedOn?.faction ?? null;
+  for (const g of arrowGroup.children) {
+    if (!(g instanceof SVGGElement)) continue;
+    g.classList.toggle(
+      "arrow-dim",
+      land !== null && g.dataset.actor !== land && g.dataset.target !== land,
+    );
+  }
 }
 
 /** One outline around the hovered realm: `outerOutline` masks away everything
@@ -1435,40 +1975,50 @@ function renderRealmHoverHalo(members: Set<string>): void {
 function disarm(): void {
   armed = null;
   armedSource = null;
+  aimDragging = false;
+  aiming = null;
+  renderAimArrow();
   applyTargeting();
   hud.setArmed(null);
 }
 
 // --- the Turnip harvest flow: roll the offer, keep one or skip -------------
 
-/** Opens (or re-opens) the offer modal for the harvest at `index`. Rolls
- *  once per cached roll - see `harvestRoll` - so closing and reopening
- *  cannot fish for a better offer. */
+/** Opens (or re-opens) the harvest modal for the play at `index`. Nothing is
+ *  rolled here any more: the three options are fixed and the only randomness
+ *  is inside the "from anywhere" option, drawn when the play resolves. */
 function openHarvestModal(index: number): void {
   const human = localHuman();
-  harvestRoll ??= rollHarvestOffer(human, rng);
   pendingHarvest = { index };
-  hud.showHarvestOffer(harvestRoll, {
-    onPick(cardId) {
-      commitHarvest(index, { cardId });
+  hud.showHarvestOffer(
+    { buildCards: buildOffer(human), heldCards: destroyOffer(human) },
+    {
+      onGrowth() {
+        commitHarvest(index, { kind: "growth" });
+      },
+      onBuild(cardId) {
+        commitHarvest(index, { kind: "build", cardId });
+      },
+      onRandom() {
+        commitHarvest(index, { kind: "random" });
+      },
+      onDestroy(cardId) {
+        commitHarvest(index, { kind: "destroy", cardId });
+      },
+      onSkip() {
+        commitHarvest(index, { kind: "skip" });
+      },
+      onCancel() {
+        pendingHarvest = null;
+        hud.hideHarvestUi();
+      },
     },
-    onSkip() {
-      commitHarvest(index, { skip: true });
-    },
-    onCancel() {
-      pendingHarvest = null;
-      hud.hideHarvestUi();
-    },
-  });
+  );
 }
 
-/** The one exit of the flow that plays the card, so the teardown - overlay,
- *  cache - cannot be forgotten. A guest's pick rides the wire instead of
- *  resolving locally: the host is the only place a card is really played. */
 function commitHarvest(index: number, choice: HarvestChoice): void {
   hud.hideHarvestUi();
   pendingHarvest = null;
-  harvestRoll = null;
   if (net.role === "guest") {
     sendGuestAction({
       type: "play", cardIndex: index,
@@ -1476,8 +2026,13 @@ function commitHarvest(index: number, choice: HarvestChoice): void {
     });
     return;
   }
+  const before = game.log.length;
   game = playCard(game, index, rng, undefined, { harvest: choice });
+  // The play first, then what it gave: `afterHumanPlay` refreshes, which is
+  // what queues the card's flight to the discard, and the reveal goes on the
+  // same queue behind it.
   afterHumanPlay();
+  revealHarvestGains(before);
 }
 
 /** Draws the dot for every settlement founded so far, from state, on every
@@ -1524,7 +2079,16 @@ function refresh(opts?: { animate?: boolean }): void {
   // status bar and the log filter both read the pin. Free when nothing moved -
   // setPinned early-returns on an unchanged id.
   hud.setPinned(pinnedFactionId());
+  // The pinned land's own tooltip, refreshed with the board: a panel quoting a
+  // defense score from three plays ago is worse than no panel.
+  hud.setPinnedLand(pinnedRegion === null ? null : hoverLines(pinnedRegion));
+  // A conquest the local player made and has not answered for: how many
+  // defenders march over with it. Raised here rather than at the play, because
+  // a land can also be walked into by a raid landing at turn start - one
+  // question, however the land was taken.
+  askTransferIfPending();
   hud.update(viewState(), opts);
+  floatScoreMarks();
   // The menu carries the panel; so does a network game that has lost its
   // session, or one whose lobby is still being filled in - the status line
   // is the only place either of those speaks.
@@ -1586,7 +2150,6 @@ function afterHumanAction(): void {
   // Any committed action invalidates the cached harvest roll: the play it
   // priced is no longer the next play. Cancelling a modal never comes here,
   // so the anti-fishing cache survives exactly the closes it should.
-  harvestRoll = null;
   game = advance(game, rng);
   if (net.role === "host") net.session?.pushUpdate();
   refresh();
@@ -1628,25 +2191,39 @@ function updateWaitingStatus(): void {
  *  than to the AI chain. A standard turn, a play that ended the run, or a
  *  play that emptied the hand (playCard closes the turn itself then) falls
  *  through to afterHumanAction as before. */
+/** Shows every card a harvest just added to the LOCAL player's deck, in the
+ *  order the log recorded them: the pick first, then the one that came with
+ *  it. Read off the log rather than handed down from the play, so a card
+ *  granted by any future route is announced too. */
+function revealHarvestGains(since: number): void {
+  const human = localHuman();
+  if (!human) return;
+  const gained = game.log
+    .slice(since)
+    .filter((e) => e.type === "harvest-picked" && e.playerId === human.id)
+    .map((e) => e.cardId)
+    .filter((id): id is string => id !== undefined);
+  if (gained.length > 0) hud.revealGainedCards(gained);
+}
+
+/** What follows the player's own card, under EVERY rule set: the board
+ *  updates, the card flies, and nothing else happens.
+ *
+ *  A standard turn used to hand over here, the instant the card landed. It
+ *  does not any more - End turn is the only thing that resolves a round, so
+ *  the player reads what their play did before the world answers. `endTurn`
+ *  itself refuses a spent standard turn, so the button's handler advances
+ *  directly; this function's whole job is the animation and the repaint. */
 function afterHumanPlay(): void {
-  harvestRoll = null; // see afterHumanAction; unlimited turns return early
-  if (
-    game.rules.turn === "unlimited" && game.phase === "playing" &&
-    !game.playedThisTurn
-  ) {
-    resolving = true;
-    // Nothing else will push this play: the turn stays open, so there is no
-    // advance behind it and no AI chain to settle. Without this the guest
-    // would not see the host's card until the whole turn finally ended.
-    if (net.role === "host") net.session?.pushUpdate();
+  resolving = true;
+  // The guest sees the host's card now rather than when the turn finally
+  // ends: nothing else is going to push this play.
+  if (net.role === "host") net.session?.pushUpdate();
+  refresh();
+  hud.afterPlayAnimation(() => {
+    resolving = false;
     refresh();
-    hud.afterPlayAnimation(() => {
-      resolving = false;
-      refresh();
-    });
-    return;
-  }
-  afterHumanAction();
+  });
 }
 
 /** A fresh world on the deck screen: everything the New game click does once
@@ -1672,7 +2249,6 @@ function startStagingRun(): void {
   // The harvest flow must not outlive its run: the overlay itself hides
   // on the phase change, this is the state behind it.
   pendingHarvest = null;
-  harvestRoll = null;
   disarm();
   // A pin must not outlive the run it was set in: the fresh game re-colours
   // every polygon, and the held highlight would describe the last one.
@@ -1681,9 +2257,10 @@ function startStagingRun(): void {
   refresh();
 }
 
-const hud = createHud(
-  app,
-  {
+/** The HUD's callbacks, held in a name so a keyboard shortcut can invoke the
+ *  same handler the button does rather than keeping a second copy of the
+ *  rules about when a turn may end. */
+const hudCallbacks: HudCallbacks = {
     onNewGame() {
       // A DEALT network game cannot be restarted for one seat, so New game
       // abandons it outright: say so on the wire and hand the broker id back
@@ -1792,6 +2369,13 @@ const hud = createHud(
           disarm();
           return;
         }
+        // One legal target is not a decision. Fortify with a single damaged
+        // land, Incorporate with one vassal: the click that armed the card
+        // already said everything the game was going to ask.
+        if (autoAimIfOnlyOne(index)) {
+          disarm();
+          return;
+        }
         armed = index;
         if (armedTargets().length === 0) {
           disarm();
@@ -1806,14 +2390,16 @@ const hud = createHud(
       afterHumanPlay();
     },
     onEndTurn() {
-      if (
-        !isLocalTurn() || game.playedThisTurn || resolving ||
-        pendingHarvest !== null
-      ) {
+      if (!isLocalTurn() || resolving || pendingHarvest !== null) return;
+      disarm();
+      // A spent standard turn has nothing left to close - `endTurn` refuses
+      // it - so the click is what HANDS OVER: the round resolves here rather
+      // than the moment the card landed. Nothing on the board moves without
+      // the player asking for it now.
+      if (game.playedThisTurn) {
+        afterHumanAction();
         return;
       }
-      if (game.rules.turn !== "unlimited") return;
-      disarm();
       if (net.role === "guest") {
         sendGuestAction({ type: "end-turn" });
         return;
@@ -1901,7 +2487,11 @@ const hud = createHud(
     onHideTip() {
       tooltip.hide();
     },
-  },
+};
+
+const hud = createHud(
+  app,
+  hudCallbacks,
   new Map(data.factions.map((f) => [f.id, f.name])),
   new Set(data.factions.filter((f) => f.placeName).map((f) => f.id)),
   storage,
@@ -2303,6 +2893,14 @@ if (boot !== null) {
 }
 
 window.addEventListener("keydown", (e) => {
+  // E or Backspace hands the turn over, wherever the pointer is. Backspace
+  // would otherwise navigate back in some browsers, so it is taken outright.
+  if (e.key === "e" || e.key === "E" || e.key === "Backspace") {
+    e.preventDefault();
+    if (pendingHarvest !== null || game.pendingTransfer !== null) return;
+    hudCallbacks.onEndTurn?.();
+    return;
+  }
   if (e.key !== "Escape") return;
   // The harvest offer outranks everything while it holds input; its Escape
   // is the hud's own handler (the overlay is up), and the early return keeps
@@ -2313,8 +2911,101 @@ window.addEventListener("keydown", (e) => {
   else if (pinnedRegion !== null) interaction.deselect();
 });
 
+/** Plays a targeted card that has exactly one legal target, without asking.
+ *  A choice between one thing is not a choice - it is a click the game already
+ *  knows the answer to. Raid is excluded: its first pick is the land the army
+ *  leaves from, and a realm with one legal SOURCE may still have several
+ *  places to send it. */
+function autoAimIfOnlyOne(index: number): boolean {
+  const human = localHuman();
+  if (!human) return false;
+  const cardId = human.hand[index];
+  if (!CARDS[cardId]?.targeted || needsSource(cardId)) return false;
+  const targets = validTargetsFor(viewOf(game), human.factionId, cardId);
+  if (targets.length !== 1) return false;
+  if (net.role === "guest") {
+    sendGuestAction({
+      type: "play", cardIndex: index, cardId, targetId: targets[0],
+    });
+    return true;
+  }
+  game = playCard(game, index, rng, targets[0]);
+  afterHumanPlay();
+  return true;
+}
+
+/** Commits the raid an aim-drag drew. The same call the two-click flow makes,
+ *  so a raid aimed by dragging and one aimed by clicking are the same play. */
+function commitRaid(from: string, to: string): void {
+  const human = localHuman();
+  if (!human || armed === null) return;
+  const idx = armed;
+  const cardId = human.hand[idx];
+  disarm();
+  if (net.role === "guest") {
+    sendGuestAction({
+      type: "play", cardIndex: idx, cardId, targetId: to, sourceId: from,
+    });
+    return;
+  }
+  game = playCard(game, idx, rng, to, { sourceId: from });
+  afterHumanPlay();
+}
+
+/** Ends an aim-drag without playing anything. */
+function cancelAim(): void {
+  aimDragging = false;
+  aiming = null;
+  renderAimArrow();
+}
+
+// Aiming a raid by dragging: press a land your army can leave from, pull the
+// arrow to the land you mean, release. The two-click flow is untouched - this
+// is a faster way to say the same thing, and a press that starts anywhere else
+// still pans the map.
+svg.addEventListener("pointermove", (e) => {
+  if (aiming === null) return;
+  const at = interaction.toMapPoint(e.clientX, e.clientY);
+  const under = (e.target as Element | null)?.closest?.("[data-id]");
+  const regionId = under?.getAttribute("data-id") ?? null;
+  const faction = regionId === null ? null : factionByRegion.get(regionId) ?? null;
+  // The targets of the land being dragged FROM, not `armedTargets()`: with no
+  // source committed that still answers the first question - which lands an
+  // army may leave from - and every land under the pointer would read as
+  // illegal.
+  const human = localHuman();
+  const legal =
+    faction !== null && human !== undefined &&
+    marchTargetsFrom(viewOf(game), human.factionId, aiming.from).includes(faction)
+      ? faction
+      : null;
+  aiming = { ...aiming, at, over: legal };
+  renderAimArrow();
+});
+
+svg.addEventListener("pointerup", (e) => {
+  if (aiming === null) return;
+  const target = aiming.over;
+  const from = aiming.from;
+  cancelAim();
+  if (e.button === 0 && target !== null) commitRaid(from, target);
+});
+
+// Right click gives the aim up, wherever the pointer is and whichever way it
+// was being aimed - mid-drag, or after a source was clicked. The browser menu
+// is suppressed for the whole armed state rather than only while an arrow is
+// on screen: a right click that opened a context menu over the map instead of
+// cancelling is the one input the player cannot take back.
+svg.addEventListener("contextmenu", (e) => {
+  if (armed === null && aiming === null) return;
+  e.preventDefault();
+  cancelAim();
+  disarm();
+});
+
 const interaction = attachInteraction(svg, regionPaths, data, {
   onHover(region, clientX, clientY) {
+    updateAimPreview(region, clientX, clientY);
     if (region) tooltip.showLines(hoverLines(region), clientX, clientY);
     else tooltip.hide();
     hoveredRegion = region;
@@ -2325,9 +3016,28 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       tooltip.show(settlementTooltipText(settlement), clientX, clientY);
     } else tooltip.hide();
   },
+  interceptPress(regionId, e) {
+    // Only while a Raid is armed and the press lands on a land its armies can
+    // actually leave from. Everything else is a pan, as it always was.
+    const human = localHuman();
+    if (!human || armed === null || regionId === null) return false;
+    if (!needsSource(human.hand[armed])) return false;
+    if (armedSource !== null) return false;
+    const faction = factionByRegion.get(regionId);
+    if (faction === undefined || !armedTargets().includes(faction)) return false;
+    aimDragging = true;
+    aiming = {
+      from: faction,
+      at: interaction.toMapPoint(e.clientX, e.clientY),
+      over: null,
+    };
+    renderAimArrow();
+    return true;
+  },
   onSelect(region) {
     pinnedRegion = region;
     hud.setPinned(pinnedFactionId());
+    hud.setPinnedLand(region === null ? null : hoverLines(region));
     applyHighlight(region, region?.faction ?? null);
   },
   interceptClick(regionId) {

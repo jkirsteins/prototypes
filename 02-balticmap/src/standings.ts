@@ -72,6 +72,21 @@ export function scoreMovesOf(e: GameEvent, ctx: WalkCtx): ScoreMove[] {
       return e.amount === undefined
         ? []
         : [{ track: "defense", polygon, delta: e.amount }];
+    // Both ends off one event: the land that gained is `targetFactionId` and
+    // the land that gave is `sourceFactionId`. Walking only the gain would
+    // leave the giving land's badge and the log disagreeing by the amount.
+    case "transferred": {
+      if (e.amount === undefined || e.amount === 0) return [];
+      const moves: ScoreMove[] = [
+        { track: "defense", polygon, delta: e.amount },
+      ];
+      if (e.sourceFactionId !== undefined) {
+        moves.push({
+          track: "defense", polygon: e.sourceFactionId, delta: -e.amount,
+        });
+      }
+      return moves;
+    }
     case "disease-spread": {
       if (A === undefined || e.amount === undefined) return [];
       return [{ track: "disease", polygon, owner: A, delta: e.amount }];

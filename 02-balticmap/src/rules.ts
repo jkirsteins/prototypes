@@ -29,6 +29,7 @@ export interface RuleAxis {
  *  checked by tsc, and a future axis extends this type. */
 export interface RuleSelections {
   turn: "standard" | "unlimited";
+  hand: "keep" | "sweep";
 }
 
 export const RULE_AXES: RuleAxis[] = [
@@ -48,7 +49,24 @@ export const RULE_AXES: RuleAxis[] = [
         // rules.ts) - change both together.
         id: "unlimited",
         name: "Unlimited plays",
-        text: "Play any number of cards each turn; your hand refills to 4 at turn start. No discards - a dead hand waits for the board to change.",
+        text: "Play any number of cards each turn; your hand refills to 4 at turn start.",
+      },
+    ],
+  },
+  {
+    id: "hand",
+    name: "Cards left over",
+    defaultOption: "keep",
+    options: [
+      {
+        id: "keep",
+        name: "Keep your hand",
+        text: "Cards you do not play stay in hand from turn to turn.",
+      },
+      {
+        id: "sweep",
+        name: "Discard at turn's end",
+        text: "Every card still in hand when your turn ends is discarded. Your deck comes round faster, and a card held for later is a card lost.",
       },
     ],
   },
@@ -56,13 +74,28 @@ export const RULE_AXES: RuleAxis[] = [
 
 /** A literal rather than a derivation, so the conformance test in
  *  tests/rules.test.ts can catch the two drifting apart. */
-export const DEFAULT_RULES: RuleSelections = { turn: "standard" };
+export const DEFAULT_RULES: RuleSelections = { turn: "standard", hand: "keep" };
 
-/** Whether this rule set's turns include discarding at all. The unlimited
- *  turn structure removes discards entirely. Consumed by `playableSet`, so
- *  "no discards" is decided once, not per call site. */
-export function allowsDiscards(rules: RuleSelections): boolean {
-  return rules.turn !== "unlimited";
+/** Whether a turn ending throws away what is left in hand.
+ *
+ *  Its own axis rather than a rider on the turn structure, because the two
+ *  ask different questions - how many cards a turn may play, and what happens
+ *  to the ones it did not - and every combination of them is a game somebody
+ *  might want. */
+export function sweepsHandAtTurnEnd(rules: RuleSelections): boolean {
+  return rules.hand === "sweep";
+}
+
+/** Whether a turn with nothing playable in hand must still spend a card to
+ *  end.
+ *
+ *  The forced discard exists to get a stuck turn moving, and a standard turn
+ *  has no other way to move: playing or discarding IS how it ends. An
+ *  unlimited turn ends on End turn instead, and if the rules sweep the hand
+ *  that click bins the dead cards anyway - so making the player pick one of
+ *  them by hand first is asking for a decision that changes nothing. */
+export function forcesDiscardWhenStuck(rules: RuleSelections): boolean {
+  return rules.turn !== "unlimited" || !sweepsHandAtTurnEnd(rules);
 }
 
 /** Folds unknown-checked picks over the defaults: an axis or option that does

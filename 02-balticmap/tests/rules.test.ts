@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  DEFAULT_RULES, RULE_AXES, RULES_PREFS_KEY, allowsDiscards, loadRulesPrefs,
-  mergeRules, saveRulesPrefs, summarizeRules,
+  DEFAULT_RULES, RULE_AXES, RULES_PREFS_KEY, loadRulesPrefs,
+  mergeRules, saveRulesPrefs, summarizeRules, sweepsHandAtTurnEnd,
 } from "../src/rules";
 import { memoryStorage } from "../src/meta";
 import { HAND_REFILL } from "../src/game";
@@ -18,9 +18,9 @@ describe("RULE_AXES", () => {
     }
   });
 
-  it("carries only the turn axis - copies retired with the deck picker", () => {
-    expect(RULE_AXES.map((a) => a.id)).toEqual(["turn"]);
-    expect(DEFAULT_RULES).toEqual({ turn: "standard" });
+  it("carries the turn and hand axes - copies retired with the deck picker", () => {
+    expect(RULE_AXES.map((a) => a.id)).toEqual(["turn", "hand"]);
+    expect(DEFAULT_RULES).toEqual({ turn: "standard", hand: "keep" });
   });
 });
 
@@ -33,10 +33,10 @@ describe("unlimited option text", () => {
   });
 });
 
-describe("allowsDiscards", () => {
-  it("is on under standard turns and off under unlimited", () => {
-    expect(allowsDiscards(DEFAULT_RULES)).toBe(true);
-    expect(allowsDiscards({ ...DEFAULT_RULES, turn: "unlimited" })).toBe(false);
+describe("sweepsHandAtTurnEnd", () => {
+  it("is off by default and on under the sweeping pick", () => {
+    expect(sweepsHandAtTurnEnd(DEFAULT_RULES)).toBe(false);
+    expect(sweepsHandAtTurnEnd({ ...DEFAULT_RULES, hand: "sweep" })).toBe(true);
   });
 });
 

@@ -1,4 +1,5 @@
 import { realmRootOf, type Incorporated, type Overlords } from "./relations";
+import { faction, t, type Segment } from "./segments";
 import type { StandingChange } from "./standings";
 
 export interface View {
@@ -18,10 +19,6 @@ export const MAX_ZOOM = 8;
  *  they were rather than 16 percent smaller. */
 export const MIN_ZOOM = 1.3;
 
-/** How many contenders the scoreboard ranks. The human gets a further row when
- *  they fall outside it, so the board can show one more than this. */
-export const SCOREBOARD_ROWS = 3;
-
 /** One row of the victory scoreboard. */
 export interface StandingRow {
   factionId: string;
@@ -32,48 +29,40 @@ export interface StandingRow {
   isHuman: boolean;
 }
 
-/** The scoreboard: the top three contenders, plus the human's own row when the
- *  human is outside that three. Four rows at most.
+/** The scoreboard: one row per faction that ACTS, best realm first.
  *
- *  Three rather than the full 26: a complete ranking is noise, but a single
- *  leader hides the shape of the endgame. Two rivals within a land of each
- *  other is a different board from one runaway, and that difference is what
- *  tells a player whether to attack the front or wait.
+ *  Every player fits now - five of them, not twenty-six factions - so there is
+ *  no top-N cut and no separate row for a human who fell outside it. A land
+ *  that takes no turns gets no row: it is ground to be taken, not a
+ *  contender, and twenty-one rows of 1/13 would bury the five that matter.
  *
- *  Only factions that could actually win are ranked, which is the same test the
- *  victory check applies - not incorporated. A vassal stays in the ranking
- *  because the rules let one win.
+ *  Only factions that could actually win are ranked, which is the same test
+ *  the victory check applies - not incorporated. A vassal stays in the
+ *  ranking because the rules let one win.
  *
- *  Ties on land count resolve by `factionIds` order: `contenders` is built by
- *  filtering `factionIds`, and `sort` is stable, so equal realms keep a fixed
- *  order and the board does not reshuffle itself from one turn to the next. */
+ *  Ties on land count resolve by seat order: `acting` arrives in seat order
+ *  and `sort` is stable, so equal realms keep a fixed order and the board does
+ *  not reshuffle itself from one turn to the next. */
 export function standingsFor(args: {
-  factionIds: string[];
+  acting: string[];
   humanFactionId: string | undefined;
   realmSize(factionId: string): number;
   incorporated: Incorporated;
   needed: number;
 }): StandingRow[] {
-  const { factionIds, humanFactionId, realmSize, incorporated, needed } = args;
+  const { acting, humanFactionId, realmSize, incorporated, needed } = args;
   const pct = (lands: number): number =>
     Math.min(100, Math.floor((lands / needed) * 100));
-  const row = (factionId: string): StandingRow => ({
-    factionId,
-    lands: realmSize(factionId),
-    needed,
-    percent: pct(realmSize(factionId)),
-    isHuman: factionId === humanFactionId,
-  });
-  const contenders = factionIds.filter((f) => !(f in incorporated));
-  if (contenders.length === 0) return [];
-  const top = [...contenders]
+  return acting
+    .filter((f) => !(f in incorporated))
     .sort((a, b) => realmSize(b) - realmSize(a))
-    .slice(0, SCOREBOARD_ROWS);
-  const rows = top.map(row);
-  if (humanFactionId !== undefined && !top.includes(humanFactionId)) {
-    rows.push(row(humanFactionId));
-  }
-  return rows;
+    .map((factionId) => ({
+      factionId,
+      lands: realmSize(factionId),
+      needed,
+      percent: pct(realmSize(factionId)),
+      isHuman: factionId === humanFactionId,
+    }));
 }
 
 export function politicalFactionForPolygon(
@@ -83,15 +72,16 @@ export function politicalFactionForPolygon(
   return incorporated[polygonFactionId] ?? polygonFactionId;
 }
 
-/** "A", "A and B", "A, B and C". Plain text, not segments: these tooltip lines
- *  have always been plain (`Vassal of ${name}` above it), and the segment rule
- *  in AGENTS.md governs the prose that renders through `renderSegments`. */
-function andList(names: string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+/** "A", "A and B", "A, B and C" over faction NODES. Its own spelling rather
+ *  than `joinSegments` from rich-text.ts: that module imports this one for
+ *  `withArticle`, and reaching back would close a cycle for four lines of
+ *  comma. */
+function andFactions(ids: string[]): Segment[] {
+  return ids.flatMap((id, i) => {
+    if (i === 0) return [faction(id)];
+    return [t(i === ids.length - 1 ? " and " : ", "), faction(id)];
+  });
 }
-
-const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** How a polygon stands to the human, from the polygon's OWN faction id.
  *
@@ -109,34 +99,35 @@ export function relationshipLine(
   humanFactionId: string,
   overlords: Overlords,
   incorporated: Incorporated,
-  factionName: (id: string) => string,
-): string | null {
+): Segment[] | null {
   const owner = incorporated[polygonFactionId];
   const lord = overlords.get(polygonFactionId);
   // The chain can run deeper than one link. Name the direct lord and, when
   // the chain's root is somebody further up, the root - the two ends are what
   // the player can act on; spelling every middle link is noise.
-  const ultimately = (of: string): string => {
+  const ultimately = (of: string): Segment[] => {
     const root = realmRootOf(of, overlords, incorporated);
     const direct = overlords.get(of);
-    if (direct === undefined || root === direct) return "";
+    if (direct === undefined || root === direct) return [];
     return root === humanFactionId
-      ? ", ultimately your vassal"
-      : `, ultimately a vassal of ${factionName(root)}`;
+      ? [t(", ultimately your vassal")]
+      : [t(", ultimately a vassal of "), faction(root)];
   };
-  if (owner === humanFactionId) return "Part of your realm (incorporated)";
+  if (owner === humanFactionId) return [t("Part of your realm (incorporated)")];
   if (owner !== undefined) {
     // Follow the chain. Every land of a vassal's realm carries the overlord's
     // stripes, so naming only the absorber leaves the stripes unexplained and
     // makes one realm read as two unrelated stories.
     const ownersLord = overlords.get(owner);
-    const suffix =
+    const suffix: Segment[] =
       ownersLord === undefined
-        ? ""
+        ? []
         : ownersLord === humanFactionId
-          ? ", itself your vassal"
-          : `, itself a vassal of ${factionName(ownersLord)}`;
-    return `Incorporated into ${factionName(owner)}${suffix}${ultimately(owner)}`;
+          ? [t(", itself your vassal")]
+          : [t(", itself a vassal of "), faction(ownersLord)];
+    return [
+      t("Incorporated into "), faction(owner), ...suffix, ...ultimately(owner),
+    ];
   }
   // Who this land holds, on top of who holds it. Without it the fealty only
   // ever read one way: a vassal's hover named its lord while the lord's own
@@ -145,23 +136,31 @@ export function relationshipLine(
   // "Your overlord" below already says that better than a name in a list would.
   const held = [...overlords]
     .filter(([v, l]) => l === polygonFactionId && v !== humanFactionId && !(v in incorporated))
-    .map(([v]) => factionName(v))
+    .map(([v]) => v)
     .sort();
-  const holds = held.length > 0 ? `overlord of ${andList(held)}` : null;
+  const holds: Segment[] | null =
+    held.length > 0
+      ? [t("overlord of "), ...andFactions(held)]
+      : null;
   if (lord === humanFactionId) {
-    return holds === null ? "Your vassal" : `Your vassal, ${holds}`;
+    return holds === null ? [t("Your vassal")] : [t("Your vassal, "), ...holds];
   }
   if (overlords.get(humanFactionId) === polygonFactionId) {
     // The human is deliberately absent from `held`, so this reads as "yours and
     // theirs" rather than repeating you back at yourself.
-    return holds === null ? "Your overlord" : `Your overlord, and ${holds}`;
+    return holds === null
+      ? [t("Your overlord")]
+      : [t("Your overlord, and "), ...holds];
   }
   if (lord === undefined) {
-    return holds === null ? null : capitalize(holds);
+    // Capitalized by hand: the run starts with a common noun here and with a
+    // name everywhere else, and a name is a node whose text nobody may edit.
+    return holds === null ? null : [t("Overlord of "), ...holds.slice(1)];
   }
-  return holds === null
-    ? `Vassal of ${factionName(lord)}${ultimately(polygonFactionId)}`
-    : `Vassal of ${factionName(lord)}${ultimately(polygonFactionId)}, ${holds}`;
+  return [
+    t("Vassal of "), faction(lord), ...ultimately(polygonFactionId),
+    ...(holds === null ? [] : [t(", "), ...holds]),
+  ];
 }
 
 /** The faction whose OWN polygon holds this land: the realm that absorbed it,
@@ -185,16 +184,22 @@ export function withArticle(name: string, placeName: boolean): string {
   return placeName ? name : `the ${name}`;
 }
 
-/** "Defense -150 -> 450" / "Disease +1 -> 3" for the round summary and the
- *  activity log: the delta this event moved the score by, then where it
- *  landed. One spelling for both surfaces, so they cannot quote different
+/** "Defense 6 -> 5 (-1)" / "Disease 2 -> 3 (+1)" for the round summary and
+ *  the activity log: where the score stood, where it landed, and the movement
+ *  in brackets. One spelling for both surfaces, so they cannot quote different
  *  numbers for the same event. ASCII "->", never a unicode arrow: nothing in
- *  this codebase uses one. */
+ *  this codebase uses one.
+ *
+ *  The arrow used to run from the DELTA to the after ("Defense -1 -> 5"),
+ *  which reads as a score that went from -1 to 5. Nobody noticed while every
+ *  number was a round hundred and the delta was obviously not a score; a
+ *  "-0.75 -> 0.75" on the smaller scale made it plain that the arrow was
+ *  pointing between two different kinds of thing. */
 export function standingChangeText(c: StandingChange): string {
   const delta = c.after - c.before;
   const signed = delta > 0 ? `+${delta}` : `${delta}`;
   const track = c.track === "defense" ? "Defense" : "Disease";
-  return `${track} ${signed} -> ${c.after}`;
+  return `${track} ${c.before} -> ${c.after} (${signed})`;
 }
 
 /** The tone of a score movement as the HUMAN reads it: their polygon losing

@@ -40,12 +40,16 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     wealth: {},
     respites: {},
     leadership: {},
+    // Every faction leads by default: a vacancy is the exception a test asks
+    // for by name, not the fixture's resting state.
+    leaders: Object.fromEntries(ORDER.map((id) => [id, true])),
     defense: {},
     defenseMax: defenseMaxAll(ORDER),
     disease: {},
     miasma: {},
     turnips: {},
     marches: {},
+    claims: {},
     armies: {},
     ...partial,
   };
@@ -124,7 +128,12 @@ describe("marching: sources, targets and armies", () => {
   });
 
   it("drops a land whose army is already out on a march", () => {
-    const v = view({ marches: outFrom("beta", "alpha") });
+    // At the default 600 ceiling beta already fields 200 armies; shrink it to
+    // exactly one army's worth so a single march can actually exhaust it.
+    const v = view({
+      marches: outFrom("beta", "alpha"),
+      defenseMax: defenseMaxAll(ORDER, 3),
+    });
     expect(marchSourcesFor(v, "beta")).toEqual([]);
     // A second army on the same land puts it back.
     expect(marchSourcesFor(view({ ...v, armies: { beta: 2 } }), "beta"))
@@ -143,7 +152,10 @@ describe("marching: sources, targets and armies", () => {
   });
 
   it("blocks a raid target no free army borders, and says which refusal it is", () => {
-    const v = view({ marches: outFrom("beta", "alpha") });
+    const v = view({
+      marches: outFrom("beta", "alpha"),
+      defenseMax: defenseMaxAll(ORDER, 3),
+    });
     const alpha = targetEligibilityFor(v, "beta", "raid")
       .find((e) => e.factionId === "alpha")!;
     expect(alpha).toEqual({
@@ -544,38 +556,23 @@ describe("playableSet", () => {
     expect(set).toEqual({ mode: "discard", cardIndexes: [0] });
   });
 
-  it("a dead hand degrades to discard mode over the whole hand", () => {
+  it("a dead hand degrades to discard mode over the whole hand, unconditionally", () => {
+    // There is no rules knob to turn this off any more: a hand that refills
+    // to a fixed size never changes on its own, so a seat holding only dead
+    // cards needs a way out under every rule set - see the doc comment on
+    // playableSet in src/playability.ts.
     const set = playableSet(view(), "beta", ["subjugate", "incorporate"]);
     expect(set).toEqual({ mode: "discard", cardIndexes: [0, 1] });
-  });
-
-  it("with discards off, a dead hand stays in play mode with nothing to click", () => {
-    const set = playableSet(view(), "beta", ["subjugate", "incorporate"], {
-      discards: false,
-    });
-    expect(set).toEqual({ mode: "play", cardIndexes: [] });
-  });
-
-  it("with discards off, the forced tribute still monopolizes", () => {
-    const sub = view({ overlords: new Map([["beta", "alpha"]]) });
-    const set = playableSet(
-      sub, "beta", ["raid", "pay-military-tribute", "grow-crops"],
-      { discards: false },
-    );
-    expect(set).toEqual({ mode: "play", cardIndexes: [1] });
   });
 });
 
 describe("handBlockReason", () => {
-  it("a dead hand blocks nothing by default: discards are on the table", () => {
-    expect(handBlockReason(view(), "beta", ["subjugate"], "subjugate")).toBeNull();
-  });
-
-  it("with discards off, a dead hand quotes the card's own reason", () => {
-    const reason = handBlockReason(view(), "beta", ["subjugate"], "subjugate", {
-      discards: false,
-    });
-    expect(reason).toEqual({ code: "no-target" });
+  it("still quotes a card's own reason even though the hand could be discarded", () => {
+    // Discard mode answers "what may I send to the discard", not "was this
+    // particular card legal" - cardBlockReason still answers that question,
+    // and the mode test in playableSet is what keeps the two from blurring.
+    expect(handBlockReason(view(), "beta", ["subjugate"], "subjugate"))
+      .toEqual({ code: "no-target" });
   });
 
   it("a playable card locked out by the forced tribute reads forced-first", () => {
@@ -614,14 +611,14 @@ describe("attackDamageFor", () => {
 });
 
 describe("plagueDamageOn", () => {
-  it("is 10 per OWN stack, doubled per miasma reading", () => {
+  it("is 1 per OWN stack, doubled per miasma reading", () => {
     const v = view({
       disease: { beta: { alpha: 3, gamma: 2 } },
       miasma: { alpha: 1 },
     });
-    expect(plagueDamageOn(v, "alpha", "beta")).toBe(60);
+    expect(plagueDamageOn(v, "alpha", "beta")).toBe(6);
     // gamma's own two stacks feed gamma's plague, unscaled
-    expect(plagueDamageOn(v, "gamma", "beta")).toBe(20);
+    expect(plagueDamageOn(v, "gamma", "beta")).toBe(2);
     expect(plagueDamageOn(v, "alpha", "gamma")).toBe(0);
     expect(plagueMultiplier(v, "alpha")).toBe(2);
     expect(miasmaHeld(v, "alpha")).toBe(1);

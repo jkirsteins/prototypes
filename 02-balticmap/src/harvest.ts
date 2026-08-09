@@ -1,80 +1,107 @@
-import { BUILDS, CARDS, NEUTRAL_POOL, type Rng, type Strategy } from "./cards";
+import { BUILDS, CARDS, type Rng, type Strategy } from "./cards";
 import type { PlayerState } from "./game";
 
-/** The Turnip harvest pick: keep one offered card - shuffled into the deck
- *  permanently - or skip and gain nothing. Skipping is a real choice: it
- *  keeps the deck lean. */
-export type HarvestChoice = { cardId: string } | { skip: true };
+/** The Turnip harvest: three ways to spend it, and one card comes of it
+ *  whichever is taken.
+ *
+ *  - `growth` grows a land - the card that raises a ceiling.
+ *  - `build` takes a card from the seat's OWN build, chosen by name. The
+ *    build's cards only: the harvest is how a build deepens, and offering the
+ *    neutrals here made every seat's deck converge on the same pile.
+ *  - `random` takes one card from everything the game knows, sight unseen.
+ *
+ *  - `destroy` burns one card out of the seat's own piles for good.
+ *  - `skip` takes nothing, which is a real answer when every card on offer
+ *    would only dilute a deck that is already drawing what it wants. */
+export type HarvestChoice =
+  | { kind: "growth" }
+  | { kind: "build"; cardId: string }
+  | { kind: "random" }
+  /** Burn a card out of the deck for good. A deck this small draws its best
+   *  card sooner for every card that is not in it, so thinning is a real use
+   *  of a harvest and not a consolation prize. */
+  | { kind: "destroy"; cardId: string }
+  | { kind: "skip" };
 
-/** The seat's harvest pool: its build's cards plus the deck-buildable
- *  neutrals, minus anything whose copies across deck, hand and discard have
- *  reached `maxPerDeck` (null = uncapped). Scanning all three piles is
- *  enough because the piles only cycle - nothing but the vassalage strips
- *  ever removes a card, and those remove only injected tribute. */
-export function harvestPool(player: PlayerState): string[] {
-  const held = [...player.deck, ...player.hand, ...player.discard];
-  const copiesOf = (id: string): number =>
-    held.filter((c) => c === id).length;
-  return [...BUILDS[player.strategy], ...NEUTRAL_POOL].filter((id) => {
-    const cap = CARDS[id]?.maxPerDeck;
-    return cap === null || cap === undefined || copiesOf(id) < cap;
-  });
+/** The card `growth` grants. Named here rather than at the call site so the
+ *  offer, the resolution and the AI all mean the same card. */
+export const GROWTH_CARD = "prosperous-proliferation";
+
+/** Copies of `cardId` across a seat's piles - deck, hand and discard. The
+ *  piles only cycle, so this is the whole count. */
+function copiesOf(player: PlayerState, cardId: string): number {
+  return [...player.deck, ...player.hand, ...player.discard]
+    .filter((c) => c === cardId).length;
 }
 
-/** Three distinct cards from the pool, uniform without replacement - EXACTLY
- *  three rng draws whatever the pool holds, the constant-draw pattern the old
- *  boon roll kept, so a short pool cannot shift a seeded stream. A pool
- *  shorter than three offers what exists. */
-export function rollHarvestOffer(player: PlayerState, rng: Rng): string[] {
-  const pool = harvestPool(player);
-  const offer: string[] = [];
-  for (let slot = 0; slot < 3; slot++) {
-    const draw = rng();
-    if (pool.length === 0) continue;
-    const picked = Math.floor(draw * pool.length);
-    offer.push(pool[picked]);
-    pool.splice(picked, 1);
+const underCap = (player: PlayerState, cardId: string): boolean => {
+  const cap = CARDS[cardId]?.maxPerDeck;
+  return cap === null || cap === undefined || copiesOf(player, cardId) < cap;
+};
+
+/** The build cards this seat may still take, in build order. */
+export function buildOffer(player: PlayerState): string[] {
+  return BUILDS[player.strategy].filter((id) => underCap(player, id));
+}
+
+/** Everything the game knows that this seat may still take - what `random`
+ *  draws from. Deck-buildable only: the injection-only cards (tribute, the
+ *  harvest itself) are not cards anybody may be handed. */
+export function randomPool(player: PlayerState): string[] {
+  return Object.values(CARDS)
+    .filter((c) => c.deckBuildable && underCap(player, c.id))
+    .map((c) => c.id);
+}
+
+/** The card a choice actually grants, or null when there is nothing left to
+ *  give. EXACTLY one rng draw on the random path and none on the other two, so
+ *  a seeded run's stream depends on what was chosen and not on what was
+ *  offered. */
+export function harvestCard(
+  player: PlayerState, choice: HarvestChoice, rng: Rng,
+): string | null {
+  if (choice.kind === "skip" || choice.kind === "destroy") return null;
+  if (choice.kind === "growth") return GROWTH_CARD;
+  if (choice.kind === "build") {
+    return buildOffer(player).includes(choice.cardId) ? choice.cardId : null;
   }
-  return offer;
+  const pool = randomPool(player);
+  const draw = rng();
+  return pool.length === 0 ? null : pool[Math.floor(draw * pool.length)];
+}
+
+/** Every card the seat holds anywhere, deduplicated and in a stable order -
+ *  what `destroy` may be aimed at. The tribute cards are excluded: they are
+ *  injected by a vassalage and stripped by its end, and burning one would be
+ *  a way to duck a demand the rules mean to be forced. */
+export function destroyOffer(player: PlayerState): string[] {
+  const held = [...player.deck, ...player.hand, ...player.discard];
+  return [...new Set(held)].filter((id) => CARDS[id]?.forced !== true).sort();
 }
 
 /** Each strategy's pick order for a choiceless harvest, most wanted first.
- *  Subjugate is taken first by either strategy while none is in the piles -
- *  `harvestPool` has already dropped it when one is - and the heal cards
- *  outrank the remaining neutrals, matching policy step 5's heal-toward-a-
- *  gate priority.
- *
- *  Create army is the one neutral the two builds rank far apart. An army is
- *  the cap on how many attacks a warpath realm can have in flight, so it sits
- *  among that build's attack cards; a pestilence seat attacks only with the
- *  Raids its starting deck dealt it, so for that build it is a late pick. */
+ *  Only the build's own cards appear: those are the only ones a `build` choice
+ *  can take, and the AI always takes one where it can. */
 export const HARVEST_PRIORITY: Record<Strategy, readonly string[]> = {
   warpath: [
-    "subjugate", "war-council", "raid", "favourable-omens", "great-raid",
-    "create-army", "fortify", "hillfort", "harvest-feast", "incorporate",
-    "assassinate-ruler", "bodyguard", "found-settlement",
+    "war-council", "strong-raid", "favourable-omens", "great-raid",
+    "strong-fortify",
   ],
   pestilence: [
-    "subjugate", "spread-disease", "plague", "localized-outbreak", "miasma",
-    "foul-winds", "hillfort", "harvest-feast", "create-army", "incorporate",
-    "assassinate-ruler", "bodyguard", "found-settlement",
+    "plague", "spread-disease", "localized-outbreak", "miasma", "foul-winds",
   ],
 };
 
 /** A choiceless play's pick - the sim, a `turns=` fast-forward, an AI seat.
- *  Rolls the same three slots (same three draws) and keeps the offered card
- *  its strategy ranks highest. Skips only when the offer is empty, which is
- *  the every-offer-at-cap case the design doc names. */
-export function autoHarvestChoice(
-  player: PlayerState,
-  rng: Rng,
-): HarvestChoice {
-  const offer = rollHarvestOffer(player, rng);
-  if (offer.length === 0) return { skip: true };
+ *  Takes the build card it ranks highest, and grows a land when its build has
+ *  nothing left to take: growth is never capped, so this never comes back with
+ *  nothing. No rng - which option an AI takes is a decision, not a roll. */
+export function autoHarvestChoice(player: PlayerState): HarvestChoice {
+  const offer = buildOffer(player);
   const rank = (id: string): number => {
     const i = HARVEST_PRIORITY[player.strategy].indexOf(id);
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
   const best = [...offer].sort((a, b) => rank(a) - rank(b))[0];
-  return { cardId: best };
+  return best === undefined ? { kind: "growth" } : { kind: "build", cardId: best };
 }

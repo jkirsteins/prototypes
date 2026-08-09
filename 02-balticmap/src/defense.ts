@@ -23,12 +23,44 @@ export const SUBJUGATION_GATE = 0.25;
  *  regains independence at the start of its own turn. */
 export const INDEPENDENCE_GATE = 0.75;
 
+/** Defense ceiling per army a land may field, and per turnip its people owe
+ *  before a harvest comes in.
+ *
+ *  One constant for both on purpose: a land's ceiling is the one number that
+ *  says how big it is, so how many armies it can raise and how long its
+ *  seasons take are two readings of the same fact. Growing a land (see
+ *  `LAND_GROWTH`) therefore works toward another army and, at the same time,
+ *  toward slower harvests - which is what keeps growth a decision rather than
+ *  a free upgrade. */
+export const DEFENSE_PER_ARMY = 3;
+
+/** How many armies a land of this ceiling may field. At least one: a land
+ *  that could raise none could never attack and never answer an attack, which
+ *  is not a smaller land but a land outside the game. */
+export function armyCapFor(defenseMax: number): number {
+  return Math.max(1, Math.floor(defenseMax / DEFENSE_PER_ARMY));
+}
+
+/** Grow turnips plays this land's people owe before a Turnip harvest is
+ *  earned. Same divisor as the army cap, rounded the other way: a part-grown
+ *  land musters no army for the remainder, but its people still eat, so a 5
+ *  owes 2 seasons where it fields 1 army. */
+export function turnipThresholdFor(defenseMax: number): number {
+  return Math.max(1, Math.ceil(defenseMax / DEFENSE_PER_ARMY));
+}
+
+/** How far Prosperous proliferation lifts a land's ceiling. One: growth is
+ *  meant to be a run of good years compounding, not a card that buys an army
+ *  outright - three of them is what `DEFENSE_PER_ARMY` asks for the next
+ *  army, and that is the pace. */
+export const LAND_GROWTH = 1;
+
 export const RAID_DAMAGE = 1;
 export const GREAT_RAID_DAMAGE = 0.5;
-export const WAR_COUNCIL_LEADERSHIP = 5;
-export const PLAGUE_DAMAGE_PER_STACK = 10;
-export const HILLFORT_HEAL = 15;
-export const HARVEST_FEAST_HEAL = 5;
+export const WAR_COUNCIL_LEADERSHIP = 1;
+export const PLAGUE_DAMAGE_PER_STACK = 1;
+export const HILLFORT_HEAL = 3;
+export const HARVEST_FEAST_HEAL = 1;
 /** Fortify's heal, on the one land it is aimed at.
  *
  *  It used to be `1 per Favourable omens reading held`, realm-wide, which read
@@ -40,7 +72,13 @@ export const HARVEST_FEAST_HEAL = 5;
  *  Below `HILLFORT_HEAL` on purpose. Fortify is what every deck STARTS with,
  *  five copies of it; Hillfort is the same shape, twice as strong, and has to
  *  be harvested. */
-export const FORTIFY_HEAL = 4;
+export const FORTIFY_HEAL = 1;
+
+/** What the "strong" version of a starting card adds. Flat, and one: on a
+ *  board of 2..18 a single point is a quarter of a small land's ceiling, and
+ *  the point of the pair is that a harvest offers something better than the
+ *  card the seat already holds five of - not something different in kind. */
+export const STRONG_BONUS = 1;
 
 /** polygon id -> current defense. A key is present ONLY while the polygon is
  *  damaged; absent means "at defenseMax" - the missing-key-means-pristine

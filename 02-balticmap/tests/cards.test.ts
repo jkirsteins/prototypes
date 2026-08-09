@@ -29,113 +29,115 @@ describe("cards", () => {
     };
     expectProps(
       "grow-crops", "Grow turnips", false, false, null, true, false,
-      "No effect - a quiet season. Every 5th play earns a Turnip harvest.",
+      "Nothing happens. Enough of these earn a Turnip harvest.",
     );
     // Build A - Warpath.
     expectProps(
       "raid", "Raid", true, false, null, true, false,
-      "March an army out of one of your lands at a land it borders. It lands " +
-        "at the start of your next turn for 1 damage plus your ruler's " +
-        "leadership, less whatever counter-raid it meets on the way.",
+      "Send an army at a bordering land. It lands next turn for 1 damage " +
+        "plus your leadership, less any counter-raid.",
     );
     expectProps(
       "great-raid", "Great raid", false, false, null, true, false,
-      "One sally: every land of your realm that can spare an army marches on " +
-        "each land it borders. They land at the start of your next turn for " +
-        "0.5 damage plus your ruler's leadership.",
+      "Every land of yours that can spare an army raids all it borders. " +
+        "They land next turn for 0.5 damage plus your leadership.",
     );
     expectProps(
       "favourable-omens", "Favourable omens", false, false, null, true, false,
-      "The signs are read: your next Raid or Great raid deals double damage. " +
-        "Readings stack.",
+      "Your next Raid or Great raid deals double damage. Stacks.",
     );
     expectProps(
       "war-council", "War council", false, false, null, true, false,
-      "Your ruler gains 5 leadership, added to every attack. Stacks, and " +
-        "dies with the ruler.",
+      "Your ruler gains 1 leadership, added to every attack. Stacks. Lost " +
+        "when the ruler dies.",
+    );
+    expectProps(
+      "strong-raid", "Strong raid", true, false, null, true, false,
+      "Send an army at a bordering land. It lands next turn for 2 damage " +
+        "plus your leadership, less any counter-raid.",
+    );
+    expectProps(
+      "strong-fortify", "Strong fortify", true, false, null, true, false,
+      "Restore 2 defense to one of your lands.",
     );
     expectProps(
       "fortify", "Fortify", true, false, null, true, false,
-      "Restore 4 defense to one land of your realm, up to what it once held.",
+      "Restore 1 defense to one of your lands.",
     );
     // Build B - Pestilence.
     expectProps(
       "spread-disease", "Spread disease", true, false, null, true, false,
-      "Set one of your disease stacks on a land in reach. Stacks sit " +
-        "harmless until a Plague cashes them.",
+      "Put 1 disease on a land in reach. It does nothing until a Plague.",
     );
     expectProps(
       "localized-outbreak", "Localized outbreak", true, false, null, true, false,
-      "Set one of your disease stacks on every neighbour of a land in reach, " +
-        "except lands of your own realm. Third parties are hit.",
+      "Put 1 disease on every neighbour of a land in reach. Skips your own " +
+        "lands.",
     );
     expectProps(
       "miasma", "Miasma", false, false, null, true, false,
-      "Foul air gathers: your next Plague counts each of your stacks double. " +
-        "Stacks.",
+      "Your next Plague counts each of your stacks double. Stacks.",
     );
     expectProps(
       "plague", "Plague", false, false, null, true, false,
-      "Every land holding your disease takes 10 damage per stack of yours, " +
-        "and your stacks are spent. Other owners' stacks are untouched.",
+      "Every land holding your disease takes 1 damage per stack. Your " +
+        "stacks are spent.",
     );
     expectProps(
       "foul-winds", "Foul winds", false, false, 1, true, false,
-      "Every disease stack on every land, whoever owns it, becomes yours.",
+      "Every disease stack on the map becomes yours.",
     );
     // Neutrals - reachable by every deck through the harvest pool.
     expectProps(
       "hillfort", "Hillfort", true, false, null, true, false,
-      "Restore 15 defense to one land of your realm, up to what it once held.",
+      "Restore 3 defense to one of your lands.",
     );
     expectProps(
       "harvest-feast", "Harvest feast", false, false, null, true, false,
-      "Restore 5 defense to every land of your realm, up to what each once " +
-        "held.",
+      "Restore 1 defense to every land you hold.",
     );
     expectProps(
       "subjugate", "Subjugate", true, false, 1, true, false,
-      "Turn a faction in reach into your vassal. Legal only while their home " +
-        "land's defenses sit at a quarter or less. Vassals pay tribute.",
+      "Take a faction in reach as your vassal. Only while their home " +
+        "defense is a quarter or less. Vassals pay tribute.",
     );
     expectProps(
       "incorporate", "Incorporate", true, false, 1, true, false,
-      "Permanently absorb one of your vassals into your realm. Needs a realm " +
-        "of 4 lands.",
+      "Absorb one of your vassals for good. Needs a realm of 4 lands.",
     );
     expectProps(
       "assassinate-ruler", "Assassinate ruler", true, false, 1, true, false,
-      "The ruler of one faction in reach dies. The successor starts with no " +
-        "leadership.",
+      "Kill a ruler in reach. Their successor starts with no leadership.",
     );
     expectProps(
       "bodyguard", "Bodyguard", false, true, 1, true, false,
-      "Post a bodyguard: the next Assassinate ruler against you fails. " +
-        "No stacking. Others see only that you played a secret card.",
+      "The next Assassinate ruler against you fails. One at a time. Others " +
+        "see only that you played a secret card.",
     );
+    // Consumed: leaves the deck for good rather than a build or the neutral
+    // pool, since the harvest offers it in a fixed slot of its own.
     expectProps(
-      "create-army", "Create army", true, false, null, true, false,
-      "Station another army in one land of your realm, so it can march while " +
-        "its first army is away. This card leaves your deck for good.",
+      "prosperous-proliferation", "Prosperous proliferation", true, false,
+      null, false, false,
+      "Good years: one of your lands grows by 1, ceiling and defense alike. " +
+        "Leaves your deck.",
     );
     expectProps(
       "found-settlement", "Found a settlement", true, false, 1, true, false,
-      "Costs 1 wealth. Raise another settlement in one land of your realm, " +
-        "up to what your people support. Each settlement founded earns " +
-        "1 wealth a turn.",
+      "Costs 1 wealth. Build a settlement in one of your lands. Each one " +
+        "founded earns 1 wealth a turn.",
       1,
     );
     // Injection-only pair: subjugation injects the tribute, the turnip bar
     // injects the harvest.
     expectProps(
       "pay-military-tribute", "Pay tribute", false, false, null, false, true,
-      "Forced: while a vassal, pay 1 wealth per land of your realm to your " +
-        "overlord; what your treasury cannot cover is forgiven.",
+      "Forced. Pay your overlord 1 wealth per land of yours. What you " +
+        "cannot pay is forgiven.",
     );
     expectProps(
       "turnip-harvest", "Turnip harvest", false, false, null, false, false,
-      "The quiet seasons pay off: three cards from your build's pool are " +
-        "offered and you keep one, or none. The keep joins your deck for good.",
+      "Three cards are offered. Keep one, or none. The keep joins your deck.",
     );
     // The table above IS the roster: a card added to CARDS without a row here
     // fails, so nothing ships property-unreviewed.
@@ -233,7 +235,8 @@ describe("builds and the neutral pool", () => {
 
   it("pins the two build lists to literals", () => {
     expect(BUILDS.warpath).toEqual([
-      "raid", "great-raid", "favourable-omens", "war-council", "fortify",
+      "strong-raid", "great-raid", "favourable-omens", "war-council",
+      "strong-fortify",
     ]);
     expect(BUILDS.pestilence).toEqual([
       "spread-disease", "localized-outbreak", "miasma", "plague", "foul-winds",
@@ -241,30 +244,33 @@ describe("builds and the neutral pool", () => {
   });
 
   it("derives the neutrals in declaration order", () => {
+    // Plain Raid and Fortify sit here, not in BUILDS.warpath: every deck
+    // already opens with four of each, so the harvest's own job is the
+    // stronger pair instead - see BUILDS.warpath's doc comment.
     expect(NEUTRAL_POOL).toEqual([
-      "hillfort", "harvest-feast", "subjugate", "incorporate",
-      "assassinate-ruler", "bodyguard", "create-army", "found-settlement",
+      "raid", "fortify", "hillfort", "harvest-feast", "subjugate",
+      "incorporate", "assassinate-ruler", "bodyguard", "found-settlement",
     ]);
   });
 
   it("pins the attack cards - what an omens reading doubles", () => {
-    expect([...ATTACK_CARDS].sort()).toEqual(["great-raid", "raid"]);
+    expect([...ATTACK_CARDS].sort()).toEqual(["great-raid", "raid", "strong-raid"]);
     for (const id of ATTACK_CARDS) {
       expect(CARDS[id]).toBeDefined();
-      expect(BUILDS.warpath).toContain(id);
+      // Reachable by a warpath seat either way: strong-raid and great-raid
+      // through the build, plain raid through the neutral pool every seat
+      // shares (and the starting deck besides).
+      expect([...BUILDS.warpath, ...NEUTRAL_POOL]).toContain(id);
     }
   });
 
   it("pins the consumed set - what leaves the deck instead of discarding", () => {
-    expect([...CONSUMED_CARDS].sort()).toEqual(["create-army"]);
+    expect([...CONSUMED_CARDS].sort()).toEqual(["prosperous-proliferation"]);
     for (const id of CONSUMED_CARDS) {
       expect(CARDS[id]).toBeDefined();
-      // A consumed card must be uncapped and deck-buildable: capping it would
-      // be belt and braces on a card that already cannot repeat, and a card
-      // the harvest never offers could only be consumed once from the
-      // starting deck, which it is not in.
+      // Uncapped: a card that already cannot repeat needs no belt-and-braces
+      // maxPerDeck on top of that.
       expect(CARDS[id].maxPerDeck).toBeNull();
-      expect(CARDS[id].deckBuildable).toBe(true);
       expect(startingDeck()).not.toContain(id);
     }
   });
@@ -282,10 +288,19 @@ describe("builds and the neutral pool", () => {
 });
 
 describe("startingDeck", () => {
-  it("is 3 Raid, 5 Fortify, the turnip, and the one card that takes ground", () => {
+  it("is 4 Raid, 4 Fortify, the turnip, and the one card that takes ground", () => {
     expect(startingDeck()).toEqual([
-      "raid", "raid", "raid",
-      "fortify", "fortify", "fortify", "fortify", "fortify",
+      "raid", "raid", "raid", "raid",
+      "fortify", "fortify", "fortify", "fortify",
+      "grow-crops",
+      "subjugate",
+    ]);
+  });
+
+  it("swaps in the pestilence build's own opener, same shape otherwise", () => {
+    expect(startingDeck("pestilence")).toEqual([
+      "spread-disease", "spread-disease", "spread-disease", "plague",
+      "fortify", "fortify", "fortify", "fortify",
       "grow-crops",
       "subjugate",
     ]);
@@ -323,9 +338,12 @@ describe("every card is reachable by a player", () => {
   // only exemption is injection-only cards, which must name what injects them.
   const INJECTED_BY: Record<string, string> = {
     ...Object.fromEntries(TRIBUTE_CARDS.map((id) => [id, "subjugate"])),
-    // The turnip bar: 5 grow-crops plays shuffle one into the deck
+    // The turnip bar: enough grow-crops plays shuffle one into the deck
     // (playCard's harvest-earned block), announced by a critical notice.
     "turnip-harvest": "grow-crops",
+    // The harvest's own "growth" choice always offers it, in a slot of its
+    // own - resolving a turnip-harvest is what reaches it.
+    "prosperous-proliferation": "turnip-harvest",
   };
 
   it("makes every non-deck-buildable card reachable by something that injects it", () => {

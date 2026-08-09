@@ -11,9 +11,13 @@ export interface Ruler {
   leadership: number;
 }
 
-/** Total over the world's faction ids. `initialRulers` is the only
- *  constructor and `replaceRuler` the only writer, so nothing else can
- *  create a gap. */
+/** Faction id -> its ruler, for the factions that HAVE one. A missing key is
+ *  a vacant seat: a land whose people follow nobody.
+ *
+ *  The vacancy is the whole difference between a faction that plays and one
+ *  that does not - `advance` skips a faction with no ruler, and that is the
+ *  only test anywhere. Grey lands start vacant; the five players do not, and
+ *  cannot become vacant, because `replaceRuler` always seats a successor. */
 export type Rulers = Record<string, Ruler>;
 
 const POOLS = pools as Record<string, string[]>;
@@ -66,7 +70,8 @@ export function rulerNameFor(
   throw new Error(`no unique ruler name left for faction "${factionId}"`);
 }
 
-/** Seats a ruler for every faction. The only way to build a `Rulers`. */
+/** Seats a ruler for every faction named. The only way to build a `Rulers`;
+ *  `vacateRulers` is how the lands nobody plays lose theirs at the deal. */
 export function initialRulers(
   factionIds: string[],
   ethnicities: Record<string, string> = {},
@@ -81,9 +86,33 @@ export function initialRulers(
   return rulers;
 }
 
-/** Throws on a gap. A faction with no ruler is a bug in the model, and it
- *  should fail a test or a simulation rather than print "undefined" on a
- *  tooltip. */
+/** Empties every seat except the ones named. What makes a land unplayable:
+ *  no leader, so no turn, so no cards - even after somebody takes it, which
+ *  is why a conquest is property rather than a new player at the table. */
+export function vacateRulers(rulers: Rulers, seated: readonly string[]): Rulers {
+  const out: Rulers = {};
+  for (const [factionId, ruler] of Object.entries(rulers)) {
+    if (seated.includes(factionId)) out[factionId] = ruler;
+  }
+  return out;
+}
+
+/** Whether this faction has a leader at all - the one question the turn loop
+ *  asks, and the one legality test Assassinate ruler needs. */
+export function hasRuler(rulers: Rulers, factionId: string): boolean {
+  return rulers[factionId] !== undefined;
+}
+
+/** The ruler's name, or null for a vacant seat. For surfaces that describe
+ *  any land on the map rather than only the ones being played. */
+export function rulerNameOf(rulers: Rulers, factionId: string): string | null {
+  return rulers[factionId]?.name ?? null;
+}
+
+/** Throws on a VACANT seat. Callers that may be looking at a land nobody
+ *  plays ask `hasRuler` or `rulerNameOf` first; this one is for the paths
+ *  where a ruler is part of the rules being applied, and a missing one is a
+ *  bug rather than a state. */
 export function rulerOf(rulers: Rulers, factionId: string): Ruler {
   const ruler = rulers[factionId];
   if (ruler === undefined) {
@@ -108,6 +137,12 @@ export function replaceRuler(
     killed,
     successor,
   };
+}
+
+/** Where a leader sits, by faction id - the vacancy projected into the
+ *  RulesView in the `leadership` shape. Absent means nobody leads that land. */
+export function leadersByFaction(rulers: Rulers): Record<string, boolean> {
+  return Object.fromEntries(Object.keys(rulers).map((id) => [id, true]));
 }
 
 /** Prowess by faction id, the RulesView projection. A count map in the
