@@ -6,7 +6,7 @@ import {
   newGame, isHumanTurn, OPENING_HAND, TURNIP_HARVEST_THRESHOLD,
   type GameState,
 } from "../src/game";
-import { defenseOf } from "../src/defense";
+import { defenseOf, RAID_DAMAGE } from "../src/defense";
 import { rulerOf } from "../src/rulers";
 import { seededRng } from "../src/rng";
 import { DEFAULT_RULES } from "../src/rules";
@@ -64,13 +64,15 @@ describe("parseBootParams", () => {
     expect(parseBootParams("?turnips=3")).not.toBeNull();
     expect(parseBootParams("?wealth=2")).not.toBeNull();
     expect(parseBootParams("?popups=off")).not.toBeNull();
+    expect(parseBootParams("?armies=alpha:3")).not.toBeNull();
+    expect(parseBootParams("?march=alpha>beta")).not.toBeNull();
   });
 
   it("defaults everything the URL does not name", () => {
     expect(params("?seed=7")).toEqual({
       seed: 7, build: null, screen: null, faction: null, hand: null, turns: 0,
-      defense: {}, disease: {}, leadership: {}, turnips: null, wealth: null,
-      popups: null, rules: null,
+      defense: {}, disease: {}, leadership: {}, armies: {}, marches: [],
+      turnips: null, wealth: null, popups: null, rules: null,
     });
   });
 
@@ -137,6 +139,20 @@ describe("parseBootParams", () => {
     expect(params("?defense=alpha:-50").defense).toEqual({ alpha: 0 });
   });
 
+  it("parses armies as polygon:count, on the defense clamp", () => {
+    expect(params("?armies=alpha:3;beta:0").armies).toEqual({ alpha: 3, beta: 0 });
+    expect(params("?armies=alpha:-2").armies).toEqual({ alpha: 0 });
+    expect(params("?armies=alpha").armies).toEqual({});
+  });
+
+  it("parses marches as from>to, dropping a clause missing either end", () => {
+    expect(params("?march=alpha>beta;gamma>delta").marches)
+      .toEqual([{ from: "alpha", to: "beta" }, { from: "gamma", to: "delta" }]);
+    expect(params("?march=alpha").marches).toEqual([]);
+    expect(params("?march=>beta").marches).toEqual([]);
+    expect(params("?march=alpha>").marches).toEqual([]);
+  });
+
   it("parses disease as polygon:owner:count, dropping empty stacks", () => {
     expect(params("?disease=alpha:beta:2;gamma:delta:1").disease)
       .toEqual({ alpha: { beta: 2 }, gamma: { delta: 1 } });
@@ -188,6 +204,27 @@ describe("applyBootParams", () => {
     // Withheld, not applied early: the build is chosen by the click this URL
     // is withholding, so the state still carries the newGame default.
     expect(g.humanStrategy).toBe("warpath");
+  });
+
+  it("stations armies, and declares a march through the real rules", () => {
+    // The line is alpha - beta - gamma - delta and the human sits on beta.
+    const g = boot("?faction=beta&armies=beta:2&march=beta>alpha;beta>gamma");
+    expect(g.armies.beta).toBe(2);
+    expect(Object.values(g.marches).map((m) => [m.from, m.to]))
+      .toEqual([["beta", "alpha"], ["beta", "gamma"]]);
+    // Damage is not settable: a booted arrow promises what a played one would.
+    expect(Object.values(g.marches)[0].damage).toBe(RAID_DAMAGE);
+  });
+
+  it("drops a march the rules would refuse, rather than conjuring one", () => {
+    // beta does not border delta, and a URL that could draw an impossible
+    // arrow would be checking a state the game cannot reach.
+    expect(boot("?faction=beta&march=beta>delta").marches).toEqual({});
+    // Nor can one land send more armies than it has: beta holds one.
+    const one = boot("?faction=beta&march=beta>alpha;beta>gamma");
+    expect(Object.keys(one.marches)).toHaveLength(1);
+    // Nor can an unknown land send anything.
+    expect(boot("?faction=beta&march=atlantis>alpha").marches).toEqual({});
   });
 
   it("ignores the params past the stop, rather than half-applying them", () => {

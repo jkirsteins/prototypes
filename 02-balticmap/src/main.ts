@@ -9,14 +9,17 @@ import { attachInteraction } from "./interaction";
 import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, playCard,
   discardCard, advance, surrender, viewOf, endTurn,
-  type GameState,
+  type GameEvent, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { fullRealmOf, realmOf, realmRootOf } from "./relations";
 import {
-  handBlockReason, playableSet, respiteExpiry,
-  validTargetsFor, targetEligibilityFor, attackDamageFor,
+  handBlockReason, marchSourcesFor, marchTargetsFrom, playableSet,
+  respiteExpiry, validTargetsFor, targetEligibilityFor, attackDamageFor,
 } from "./playability";
+import { armiesOn, freeArmiesOn } from "./marches";
+import { clashFraction, insetSegment, pointAlong, spearPolygon } from "./arrows";
+import { runAnimation } from "./animate";
 import {
   defenseMaxOf, defenseOf, gateBandOf, type GateBand,
 } from "./defense";
@@ -89,8 +92,15 @@ const realmEdgeObserver = new MutationObserver(() => {
   syncVassalStripes();
 });
 
-// map-render.ts doesn't expose a badge group; appended here, last in the SVG
-// (after realm-outline/vassal-overlay, on top of the whole map stack).
+// map-render.ts doesn't expose either of these; appended here, last in the SVG
+// (after realm-outline/vassal-overlay, on top of the whole map stack). Arrows
+// go on FIRST so the badges sit above them: an arrow crossing a land must not
+// bury the defense number that decides whether the arrow matters.
+const arrowGroup = document.createElementNS(
+  "http://www.w3.org/2000/svg", "g",
+) as SVGGElement;
+arrowGroup.classList.add("march-arrows");
+svg.appendChild(arrowGroup);
 const badgeGroup = document.createElementNS(
   "http://www.w3.org/2000/svg", "g",
 ) as SVGGElement;
@@ -217,6 +227,15 @@ if (boot !== null) {
   }
 }
 let armed: number | null = null; // hand index of the armed targeted card
+/** The land an armed Raid will march out of, once the player has clicked it.
+ *
+ *  Raid is the one card aimed twice: an arrow has a tail as well as a head,
+ *  and which of your lands the army leaves from is a real decision, because
+ *  that is the land a counter-raid comes back at. Null means the first click
+ *  is still to come and the map is lighting SOURCES; set means it is lighting
+ *  the targets that source can reach. Cleared by `disarm` along with `armed`,
+ *  so the two can never disagree about which step is live. */
+let armedSource: string | null = null;
 /** The Turnip harvest's rolled offer, cached from the first click on the
  *  card until any play commits. Cancelling the modal keeps it, so closing
  *  and reopening cannot fish for a better roll. */
@@ -621,6 +640,23 @@ const BAND_CLASS: Record<GateBand, string> = {
  *  While a card is armed the board narrows to what the card can be aimed at:
  *  badges survive only on the legal targets, so a number floating over an
  *  excluded polygon never reads as a live option. */
+/** A polygon's drawing anchor: the centre of its bounding box, in the map's
+ *  own 1000x1400 user space.
+ *
+ *  Shared by the badge and the march arrows deliberately. Two anchors computed
+ *  two ways would drift, and an arrow whose head lands somewhere other than
+ *  the badge it is about is an arrow the player has to guess at. Undefined for
+ *  a faction with no region, and zeros under happy-dom, where `getBBox` is a
+ *  stub - which is why arrow GEOMETRY is tested against src/arrows.ts with
+ *  injected points rather than through this. */
+function regionCenter(factionId: string): { x: number; y: number } | undefined {
+  const regionId = regionByFaction.get(factionId);
+  const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
+  if (!pathEl) return undefined;
+  const bbox = pathEl.getBBox();
+  return { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
+}
+
 function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
   const human = localHuman();
@@ -638,12 +674,9 @@ function renderThreatBadges(): void {
       if (undamaged && noDisease) continue;
     }
     if (targets !== null && !targets.has(factionId)) continue;
-    const regionId = regionByFaction.get(factionId);
-    const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
-    if (!pathEl) continue;
-    const bbox = pathEl.getBBox();
-    const cx = bbox.x + bbox.width / 2;
-    const cy = bbox.y + bbox.height / 2;
+    const centre = regionCenter(factionId);
+    if (centre === undefined) continue;
+    const { x: cx, y: cy } = centre;
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     g.classList.add("threat-badge");
@@ -692,6 +725,34 @@ function renderThreatBadges(): void {
         }
       }
     }
+    // The army pips, above the number where the disease pips sit below it: a
+    // hollow one is an army already out on a march and a filled one is an army
+    // that can still be sent. Capped at ARMY_PIPS_SHOWN and then counted,
+    // because Create army is uncapped and a land holding six would otherwise
+    // grow a badge wider than the land it sits on.
+    const stationed = armiesOn(game.armies, factionId);
+    const free = freeArmiesOn(game.armies, game.marches, factionId);
+    if (stationed > 0) {
+      const shown = Math.min(stationed, ARMY_PIPS_SHOWN);
+      for (let i = 0; i < shown; i++) {
+        const pip = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        pip.classList.add("badge-army", i < free ? "army-free" : "army-away");
+        pip.setAttribute("width", "4");
+        pip.setAttribute("height", "6");
+        pip.setAttribute("rx", "1");
+        pip.setAttribute("x", String(i * 6 - (shown * 6 - 2) / 2));
+        pip.setAttribute("y", "-19");
+        g.appendChild(pip);
+      }
+      if (stationed > shown) {
+        const more = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        more.classList.add("badge-army-more");
+        more.setAttribute("x", String((shown * 6 - 2) / 2 + 2));
+        more.setAttribute("y", "-13");
+        more.textContent = `x${stationed}`;
+        g.appendChild(more);
+      }
+    }
     badgeGroup.appendChild(g);
 
     const textBox = text.getBBox();
@@ -700,6 +761,191 @@ function renderThreatBadges(): void {
     rect.setAttribute("y", String(textBox.y - pad));
     rect.setAttribute("width", String(textBox.width + pad * 2));
     rect.setAttribute("height", String(textBox.height + pad * 2));
+  }
+}
+
+/** Army pips drawn before the badge falls back to a count. Five is what fits
+ *  beside the widest defense number without overhanging its box. */
+const ARMY_PIPS_SHOWN = 5;
+
+/** How far an arrow's ends are pulled in from the two region centres, so the
+ *  shaft leaves the source's edge and the head bites the target's rather than
+ *  both ends sitting under a badge. User space, like every other length here. */
+const ARROW_INSET = 34;
+
+/** One tapered spear per march in flight, plus the strength it carries.
+ *
+ *  Rebuilt whole on every refresh, the `renderThreatBadges` shape: a march
+ *  store this small is cheaper to redraw than to diff, and a stale arrow is a
+ *  lie about what is coming. Colour says whose it is at a glance - red for one
+ *  aimed into your realm, gold for one of yours, the attacker's own colour
+ *  faded for a quarrel between two rivals.
+ *
+ *  Hidden entirely while a card is armed: targeting cues own the map then, the
+ *  same rule `renderThreatBadges` and `renderRealmUnions` already follow. */
+function renderMarchArrows(): void {
+  arrowGroup.replaceChildren();
+  const human = localHuman();
+  if (!inPlay() || !human || targetingLive()) return;
+  const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
+  // Sorted by key so a redraw stacks the arrows the same way every time.
+  for (const key of Object.keys(game.marches).sort()) {
+    const m = game.marches[key];
+    const from = regionCenter(m.from);
+    const to = regionCenter(m.to);
+    if (from === undefined || to === undefined) continue;
+    const seg = insetSegment(from.x, from.y, to.x, to.y, ARROW_INSET, ARROW_INSET);
+    const points = spearPolygon(seg.ax, seg.ay, seg.bx, seg.by);
+    if (points === "") continue;
+
+    const against = realm.has(m.to);
+    const ours = realm.has(m.from);
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.classList.add("march-arrow");
+    // Against you first: an arrow between your own two lands cannot happen
+    // (attackReach excludes what you hold outright, and a raid on your own
+    // vassal IS aimed at your realm), so the order only decides how a lord's
+    // raid on its own vassal reads - and that is an attack on your realm.
+    g.classList.add(against ? "march-hostile" : ours ? "march-ours" : "march-other");
+    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    poly.setAttribute("points", points);
+    if (!against && !ours) {
+      poly.setAttribute("fill", factionById.get(m.actor)?.color ?? "#7a6a55");
+    }
+    g.appendChild(poly);
+
+    // The strength, on the arrow. The player was promised source, target and
+    // number when the arrow appeared; the number is the half they cannot read
+    // off the map.
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.classList.add("march-strength");
+    const mid = pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.5);
+    label.setAttribute("x", String(mid.x));
+    label.setAttribute("y", String(mid.y - 8));
+    label.textContent = String(m.damage);
+    g.appendChild(label);
+    arrowGroup.appendChild(g);
+  }
+}
+
+/** How long a resolved march is shown before the map moves on. One number,
+ *  handed to `runAnimation`, which reports back when it is actually over -
+ *  never copied into a second timer. */
+const CLASH_FLASH_MS = 1200;
+
+/** Log entries whose resolutions have already been flashed. Advanced whenever
+ *  the flash runs, and jumped to the end for a state this screen did not play
+ *  into - a boot, or a guest's snapshot - so history is never replayed. */
+let animatedLog = 0;
+
+/** Show one march landing: a ghost of the arrow fading out, and over it the
+ *  damage that actually got through.
+ *
+ *  The ghost is rebuilt from the event rather than kept alive from
+ *  `game.marches`, which is already empty by the time this runs - the event
+ *  carries both ends of the axis precisely so the picture can be redrawn from
+ *  the log alone.
+ *
+ *  The arrow points from the winner's land at the loser's, so a counter that
+ *  won is drawn pointing BACK - which is the whole story of the clash in one
+ *  shape. The label reads what landed out of what was thrown: "-3/10" in red
+ *  when it was your land, "+7/10" in green when it was theirs. */
+function flashMarchResolution(
+  e: GameEvent, realm: ReadonlySet<string>, onDone: () => void,
+): void {
+  const from = e.sourceFactionId !== undefined
+    ? regionCenter(e.sourceFactionId) : undefined;
+  const to = e.targetFactionId !== undefined
+    ? regionCenter(e.targetFactionId) : undefined;
+  if (from === undefined || to === undefined) {
+    onDone();
+    return;
+  }
+  const seg = insetSegment(from.x, from.y, to.x, to.y, ARROW_INSET, ARROW_INSET);
+  // A standoff has no loser, so it is neither your bad news nor your good.
+  const standoff = e.amount === undefined;
+  const struckUs = e.targetFactionId !== undefined && realm.has(e.targetFactionId);
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  g.classList.add(
+    "clash-flash",
+    standoff ? "clash-even" : struckUs ? "clash-bad" : "clash-good",
+  );
+
+  const points = spearPolygon(seg.ax, seg.ay, seg.bx, seg.by);
+  if (points !== "") {
+    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    poly.setAttribute("points", points);
+    poly.setAttribute(
+      "fill", standoff ? "#6b5d49" : struckUs ? "#992f27" : "#d4af37",
+    );
+    poly.setAttribute("stroke", "#fdfaf4");
+    poly.setAttribute("stroke-width", "1.2");
+    g.appendChild(poly);
+    runAnimation(poly, [{ opacity: 1 }, { opacity: 0 }], CLASH_FLASH_MS);
+  }
+
+  const amount = e.amount ?? 0;
+  // Where the two forces met, biased toward the side that gave ground. With no
+  // counter there is no meeting point, so the label sits near the head.
+  const t = clashFraction(e.clash?.incoming ?? 1, e.clash?.counter ?? 0);
+  const at = pointAlong(seg.ax, seg.ay, seg.bx, seg.by, t);
+  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  label.classList.add("clash-label");
+  label.setAttribute("x", String(at.x));
+  label.setAttribute("y", String(at.y));
+  // The denominator is what a counter took off the top, so an uncontested
+  // landing has none: there is nothing for the number to be a fraction OF.
+  label.textContent = standoff
+    ? `0/${e.clash?.incoming ?? 0}`
+    : e.clash === undefined
+      ? `${struckUs ? "-" : "+"}${amount}`
+      : `${struckUs ? "-" : "+"}${amount}/${e.clash.incoming}`;
+  g.appendChild(label);
+  arrowGroup.appendChild(g);
+  runAnimation(
+    label,
+    [
+      { opacity: 0, transform: "translateY(6px)" },
+      { opacity: 1, transform: "translateY(0)", offset: 0.2 },
+      { opacity: 1, transform: "translateY(0)", offset: 0.7 },
+      { opacity: 0, transform: "translateY(-8px)" },
+    ],
+    CLASH_FLASH_MS,
+    () => {
+      g.remove();
+      onDone();
+    },
+  );
+}
+
+/** Flash every march that landed since the last time this ran and touched the
+ *  human's realm, then call back. Concurrent, not queued: marches that resolve
+ *  in the same turn start resolve at the same moment, and showing them one
+ *  after another would say otherwise. */
+function flashResolutions(then: () => void): void {
+  const fresh = game.log.slice(animatedLog);
+  animatedLog = game.log.length;
+  const human = localHuman();
+  if (!human) {
+    then();
+    return;
+  }
+  const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
+  const mine = fresh.filter(
+    (e) =>
+      e.type === "march-resolved" &&
+      ((e.targetFactionId !== undefined && realm.has(e.targetFactionId)) ||
+        (e.sourceFactionId !== undefined && realm.has(e.sourceFactionId))),
+  );
+  if (mine.length === 0) {
+    then();
+    return;
+  }
+  let pending = mine.length;
+  for (const e of mine) {
+    flashMarchResolution(e, realm, () => {
+      if (--pending === 0) then();
+    });
   }
 }
 
@@ -783,11 +1029,40 @@ function aimsAtPolygons(cardId: string): boolean {
     cardId === "localized-outbreak" || cardId === "hillfort";
 }
 
+/** Whether this card is aimed twice - source first, then target. Only Raid:
+ *  Great raid assigns its own sources, and no other card sends an army. */
+function needsSource(cardId: string): boolean {
+  return cardId === "raid";
+}
+
+/** The status line for the step the map is currently asking about, or
+ *  undefined to leave `setArmed`'s "Choose a target" default. A first click
+ *  labelled "target" would send the player at the enemy when the map is
+ *  lighting their own lands. */
+function armPrompt(cardId: string): string | undefined {
+  return needsSource(cardId) && armedSource === null
+    ? `Choose the land ${CARDS[cardId].name} marches out of`
+    : undefined;
+}
+
+/** What the map is lighting right now. For a Raid on its first click that is
+ *  the lands an army could march OUT of; after the source is picked, and for
+ *  every other card, it is the ordinary target list. One function, because
+ *  three surfaces ask it - the classes, the bail-on-empty in `onPlayCard`, and
+ *  the click - and a step they disagreed on would be a click that does
+ *  nothing. */
 function armedTargets(): string[] {
   const human = localHuman();
   if (!human) return [];
   if (armed === null) return [];
-  return validTargetsFor(viewOf(game), human.factionId, human.hand[armed]);
+  const cardId = human.hand[armed];
+  const v = viewOf(game);
+  if (needsSource(cardId)) {
+    return armedSource === null
+      ? marchSourcesFor(v, human.factionId)
+      : marchTargetsFrom(v, human.factionId, armedSource);
+  }
+  return validTargetsFor(v, human.factionId, cardId);
 }
 
 function applyTargeting(): void {
@@ -816,10 +1091,12 @@ function applyTargeting(): void {
   // Targeting cues win the map while armed - applyHighlight suppresses itself
   // then. Disarming lands here too, and brings the pin, or the live hover, back.
   applyHighlight(hoveredRegion, hoveredRegion?.faction ?? null);
-  // Arming and disarming both land here without a full refresh, and the badges
-  // and the always-on realm outlines are part of the targeting picture - see
-  // renderThreatBadges and renderRealmUnions.
+  // Arming and disarming both land here without a full refresh, and the
+  // badges, the arrows and the always-on realm outlines are all part of the
+  // targeting picture - see renderThreatBadges, renderMarchArrows and
+  // renderRealmUnions.
   renderThreatBadges();
+  renderMarchArrows();
   renderRealmUnions();
 }
 
@@ -911,6 +1188,7 @@ function renderRealmHoverHalo(members: Set<string>): void {
 
 function disarm(): void {
   armed = null;
+  armedSource = null;
   applyTargeting();
   hud.setArmed(null);
 }
@@ -994,6 +1272,7 @@ function refresh(opts?: { animate?: boolean }): void {
   applyTargeting();
   revealFoundedSettlements();
   renderThreatBadges();
+  renderMarchArrows();
   // Re-resolve the pin before the render it must agree with: an incorporation
   // this refresh carries can change who the pinned land answers for, and the
   // status bar and the log filter both read the pin. Free when nothing moved -
@@ -1042,10 +1321,19 @@ function resumeChain(): void {
     game = advance(aiTakeTurn(game, rng), rng);
   }
   if (net.role === "host") net.session?.pushUpdate();
-  resolving =
+  const remoteHolds =
     game.phase === "playing" && controllerOf(game.current) === "remote";
+  // Input stays locked through the clash flash. A march landing is the one
+  // thing that moved while the player was not being shown a play, so it gets
+  // its moment before the map is handed back - the same reason the AI chain
+  // waits out the played card's flight.
+  resolving = true;
   refresh();
-  updateWaitingStatus();
+  flashResolutions(() => {
+    resolving = remoteHolds;
+    refresh();
+    updateWaitingStatus();
+  });
 }
 
 function afterHumanAction(): void {
@@ -1057,7 +1345,14 @@ function afterHumanAction(): void {
   if (net.role === "host") net.session?.pushUpdate();
   refresh();
   if (game.phase !== "playing" || controllerOf(game.current) === "local") {
-    updateWaitingStatus();
+    // No AI chain behind this, so the flash is the only thing left to wait
+    // for - the next seat is the player's own and its marches just landed.
+    resolving = true;
+    flashResolutions(() => {
+      resolving = false;
+      refresh();
+      updateWaitingStatus();
+    });
     return;
   }
   resolving = true;
@@ -1222,7 +1517,7 @@ const hud = createHud(
             return;
           }
           applyTargeting();
-          hud.setArmed(index, guestCard.name);
+          hud.setArmed(index, guestCard.name, armPrompt(guestCard.id));
           return;
         }
         disarm();
@@ -1257,7 +1552,7 @@ const hud = createHud(
           return;
         }
         applyTargeting();
-        hud.setArmed(index, card.name);
+        hud.setArmed(index, card.name, armPrompt(card.id));
         return;
       }
       disarm();
@@ -1645,7 +1940,12 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // derived the run's start from a lifetime total this run was missing
       // from. `runBanked` is still the once-per-run guard, so the several
       // updates an ending can arrive in bank once between them.
-          refresh(source === "update" ? undefined : { animate: false });
+      // A snapshot is a whole game arriving at once, so its log is history,
+      // not this screen's round: mark every march in it as already shown or
+      // the guest would watch twenty turns of arrows land.
+      if (source !== "update") animatedLog = game.log.length;
+      refresh(source === "update" ? undefined : { animate: false });
+      if (source === "update") flashResolutions(() => refresh());
       updateWaitingStatus();
     },
     onReject(reason) {
@@ -1822,6 +2122,20 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       const idx = armed;
       const cardId = localHuman().hand[idx];
       const raw = regionId !== null ? factionByRegion.get(regionId) : undefined;
+      // Raid's first click picks the tail, not the head. It commits nothing -
+      // the card is still in hand, and clicking the same land again, or the
+      // card again, backs out - so the step is safe to explore.
+      if (needsSource(cardId) && armedSource === null) {
+        if (raw !== undefined && armedTargets().includes(raw)) {
+          armedSource = raw;
+          applyTargeting();
+          const land = factionById.get(raw)?.name ?? raw;
+          hud.setArmed(idx, `${CARDS[cardId].name} out of ${land}`);
+        } else {
+          disarm();
+        }
+        return true;
+      }
       // A polygon card aims at the land itself, a faction card at whoever
       // holds it - the same resolution the targeting classes and the hover
       // preview use (`aimsAtPolygons`).
@@ -1831,15 +2145,19 @@ const interaction = attachInteraction(svg, regionPaths, data, {
           ? raw
           : politicalFactionForPolygon(raw, game.incorporated);
       const valid = faction !== undefined && armedTargets().includes(faction);
+      const sourceId = armedSource;
       disarm();
       if (valid) {
         if (net.role === "guest") {
           sendGuestAction({
             type: "play", cardIndex: idx,
             cardId, targetId: faction,
+            ...(sourceId !== null ? { sourceId } : {}),
           });
         } else {
-          game = playCard(game, idx, rng, faction);
+          game = playCard(game, idx, rng, faction, {
+            ...(sourceId !== null ? { sourceId } : {}),
+          });
           afterHumanPlay();
         }
       }

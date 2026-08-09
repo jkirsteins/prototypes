@@ -32,7 +32,10 @@ export interface Flight {
  *  hidden: a backgrounded rAF can otherwise stall `onfinish` indefinitely,
  *  and nobody is watching a card fly on a tab nobody is looking at. */
 export function runAnimation(
-  el: HTMLElement,
+  /** `Element`, not `HTMLElement`: the march-resolution flash animates SVG
+   *  nodes, and `animate` is an Element-level API. Nothing here touches
+   *  anything HTML-specific. */
+  el: Element,
   frames: Keyframe[],
   durationMs: number,
   onDone?: () => void,

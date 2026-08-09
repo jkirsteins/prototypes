@@ -361,6 +361,21 @@ function marchResolvedLines(
       && ctx.inHumanRealm(e.targetFactionId);
     const home = e.targetFactionId === ctx.humanFactionId;
     const cardSeg = e.cardId !== undefined ? [card(e.cardId)] : [t("An attack")];
+    // A standoff: both sides spent an army and neither score moved. Neither
+    // end is the loser, so it is neither good news nor bad, and the line
+    // names the two as equals - but it is still a line, because a player
+    // whose raid was answered exactly must not think the card did nothing.
+    if (e.clash !== undefined && e.amount === undefined) {
+      return {
+        text: [
+          ...cardSeg, t(" out of "), faction(e.sourceFactionId ?? ""),
+          t(" and the counter from "), faction(e.targetFactionId ?? ""),
+          t(" cancel each other"),
+        ],
+        changes: changesFor(i, changes),
+        tone: "neutral" as SummaryLine["tone"],
+      };
+    }
     // "A counter out of X threw it back onto Y" only when the human's own
     // counter is what won: `clash` is present exactly when both sides had
     // armies on the axis, and it carries the two totals the arrow promised.

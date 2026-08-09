@@ -626,6 +626,101 @@ svg.map.dragging {
   stroke-width: 1;
 }
 
+/* Army pips, above the number where the disease pips sit below it. Filled is
+   an army that can still be sent; hollow is one already out on a march, which
+   is the state that decides whether a land can answer an arrow at all. */
+.threat-badge .badge-army {
+  stroke: #3f3428;
+  stroke-width: 1;
+}
+
+.threat-badge .badge-army.army-free {
+  fill: #3f3428;
+}
+
+.threat-badge .badge-army.army-away {
+  fill: #fdfaf4;
+  opacity: 0.75;
+}
+
+.threat-badge .badge-army-more {
+  font-size: 9px;
+  font-weight: 600;
+  fill: #3f3428;
+  dominant-baseline: central;
+}
+
+/* March arrows: one filled polygon per attack in flight, drawn under the
+   badges so a shaft crossing a land never buries the defense number that
+   decides whether the arrow matters. Non-interactive like every overlay
+   group here - an arrow that ate clicks would make the lands under it
+   unpickable. */
+.march-arrows {
+  pointer-events: none;
+}
+
+.march-arrow polygon {
+  stroke: #fdfaf4;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+/* Aimed into your realm: the danger red the open-gate badge already uses, so
+   "something is about to break here" is one colour across the map. */
+.march-arrow.march-hostile polygon {
+  fill: #992f27;
+}
+
+/* Yours, in the same gold your realm outline is drawn in. */
+.march-arrow.march-ours polygon {
+  fill: #d4af37;
+}
+
+/* A quarrel between two rivals: their own colour, faded, because it is
+   information rather than a decision. */
+.march-arrow.march-other {
+  opacity: 0.45;
+}
+
+.march-arrow .march-strength {
+  font-size: 15px;
+  font-weight: 700;
+  text-anchor: middle;
+  fill: #2b2318;
+  paint-order: stroke;
+  stroke: #fdfaf4;
+  stroke-width: 3.5;
+  stroke-linejoin: round;
+}
+
+/* The clash flash: a ghost of the arrow that just resolved, fading out under
+   a label saying what actually landed. Both are removed the moment the
+   animation reports itself finished - see flashMarchResolution in main.ts,
+   and the rule in AGENTS.md about never re-deriving a duration. */
+.clash-flash .clash-label {
+  font-size: 26px;
+  font-weight: 800;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: #fdfaf4;
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+
+.clash-flash.clash-bad .clash-label {
+  fill: #992f27;
+}
+
+.clash-flash.clash-good .clash-label {
+  fill: #2e7d32;
+}
+
+/* A standoff: both armies spent, no score moved, so neither the bad red nor
+   the good green - the same neutral ink `lead-even` uses. */
+.clash-flash.clash-even .clash-label {
+  fill: #6b5d49;
+}
+
 .lead-good {
   fill: #2e7d32;
 }

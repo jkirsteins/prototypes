@@ -1,11 +1,14 @@
 import { CARDS, type Rng, type Strategy } from "./cards";
 import {
   advance, chooseBuild, chooseRules, isHumanTurn, pickFaction, startGame,
-  TURNIP_HARVEST_THRESHOLD,
+  TURNIP_HARVEST_THRESHOLD, viewOf,
   type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
 import { defenseMaxOf } from "./defense";
+import { addMarch } from "./marches";
+import { attackDamageFor, marchSourcesAgainst } from "./playability";
+import { realmRootOf } from "./relations";
 import { rulerOf } from "./rulers";
 import { mergeRules, type RuleSelections } from "./rules";
 
@@ -38,6 +41,12 @@ export interface BootParams {
   disease: Record<string, Record<string, number>>;
   /** Faction id -> ruler leadership override. */
   leadership: Record<string, number>;
+  /** Polygon id -> armies stationed there. */
+  armies: Record<string, number>;
+  /** Marches to declare, source before target. Damage is not settable: it is
+   *  whatever a Raid out of that land would actually deal, so a booted arrow
+   *  promises the same number a played one would. */
+  marches: { from: string; to: string }[];
   /** The human faction's turnip counter, clamped under the threshold. */
   turnips: number | null;
   /** The human faction's treasury, own faction only - rivals' treasuries are
@@ -94,6 +103,25 @@ function parseDefense(raw: string): Record<string, number> {
   return out;
 }
 
+/** `armies=selija:3;talava:0` - one `polygon:count` clause per polygon. */
+function parseArmies(raw: string): Record<string, number> {
+  return parseDefense(raw); // same shape, same clamp
+}
+
+/** `march=talava>selija;zemgale>selija` - one `from>to` clause per arrow, so
+ *  a browser check can boot straight into an incoming attack or a live clash
+ *  rather than playing four turns to reach one. */
+function parseMarches(raw: string): { from: string; to: string }[] {
+  const out: { from: string; to: string }[] = [];
+  for (const clause of raw.split(";")) {
+    const [from, to] = clause.split(">");
+    if (from === undefined || to === undefined) continue;
+    if (from.trim().length === 0 || to.trim().length === 0) continue;
+    out.push({ from: from.trim(), to: to.trim() });
+  }
+  return out;
+}
+
 /** `disease=talava:selonians:3;selija:lietuva:1` - polygon:owner:count. */
 function parseDisease(raw: string): Record<string, Record<string, number>> {
   const out: Record<string, Record<string, number>> = {};
@@ -138,7 +166,7 @@ function parseRules(raw: string): RuleSelections {
 
 const BOOT_KEYS = [
   "seed", "build", "screen", "faction", "hand", "turns", "defense", "disease",
-  "leadership", "turnips", "wealth", "popups", "rules",
+  "leadership", "armies", "march", "turnips", "wealth", "popups", "rules",
 ];
 
 /** Null when the URL names no boot param at all, which is the ordinary case:
@@ -153,6 +181,8 @@ export function parseBootParams(search: string): BootParams | null {
   const defense = q.get("defense");
   const disease = q.get("disease");
   const leadership = q.get("leadership");
+  const armies = q.get("armies");
+  const march = q.get("march");
   const turns = intOr(q.get("turns"), 0) ?? 0;
   const turnips = intOr(q.get("turnips"), null);
   const wealth = intOr(q.get("wealth"), null);
@@ -169,6 +199,8 @@ export function parseBootParams(search: string): BootParams | null {
     defense: defense === null ? {} : parseDefense(defense),
     disease: disease === null ? {} : parseDisease(disease),
     leadership: leadership === null ? {} : parseLeadership(leadership),
+    armies: armies === null ? {} : parseArmies(armies),
+    marches: march === null ? [] : parseMarches(march),
     // Clamped UNDER the threshold: a counter at or past it is a state the
     // game never holds - the crossing play resets it and injects.
     turnips:
@@ -273,6 +305,32 @@ export function applyBootParams(
   }
   if (params.turnips !== null && me !== undefined) {
     g = { ...g, turnips: { ...g.turnips, [me]: params.turnips } };
+  }
+  // Armies before marches: a march declared below spends one, and a URL that
+  // asks for three armies and two arrows out of the same land must get both.
+  for (const [polygon, value] of Object.entries(params.armies)) {
+    if (!g.factionIds.includes(polygon)) continue;
+    g = { ...g, armies: { ...g.armies, [polygon]: value } };
+  }
+  // A booted march is declared through the same rules a played one is: the
+  // source must be in the actor's realm with an army free and the target must
+  // be something that actor may attack, or the clause is dropped. A URL that
+  // could conjure an impossible arrow would be checking a state the game
+  // cannot reach.
+  for (const { from, to } of params.marches) {
+    if (!g.factionIds.includes(from) || !g.factionIds.includes(to)) continue;
+    const actor = realmRootOf(from, g.overlords, g.incorporated);
+    const v = viewOf(g);
+    if (!marchSourcesAgainst(v, actor, to).includes(from)) continue;
+    g = {
+      ...g,
+      marches: addMarch(g.marches, {
+        actor, from, to, cardId: "raid",
+        damage: attackDamageFor(v, actor, "raid").damage,
+        holdsArmy: true,
+        expiry: g.turn + 1,
+      }),
+    };
   }
   return g;
 }

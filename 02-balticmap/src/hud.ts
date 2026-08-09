@@ -86,7 +86,10 @@ export interface Hud {
    *  board a second after load, unasked. Every later update animates normally,
    *  because `renderedEvents` has caught up by then. */
   update(state: GameState, opts?: { animate?: boolean }): void;
-  setArmed(index: number | null, cardName?: string): void;
+  /** `prompt` overrides the "Choose a target for X" line. Raid is aimed
+   *  twice - the land the army leaves from, then the land it is sent at - and
+   *  a first click labelled "target" would send the player at the enemy. */
+  setArmed(index: number | null, cardName?: string, prompt?: string): void;
   /** Runs `fn` once the play flight started by the most recent `update()` has
    *  landed. Fires exactly once, always:
    *   - nothing in the air (a forced discard animates nothing, and an AI
@@ -379,15 +382,26 @@ export function eventSegments(
       // which on a won counter is the land that was being attacked - so the
       // sentence stays true whichever way the clash went. The numbers ride in
       // the impactText suffix as always.
-      return e.clash === undefined
-        ? [
-            card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
-            t(" falls on "), faction(e.targetFactionId ?? ""),
-          ]
-        : [
-            card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
-            t(" breaks through against "), faction(e.targetFactionId ?? ""),
-          ];
+      if (e.clash === undefined) {
+        return [
+          card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
+          t(" falls on "), faction(e.targetFactionId ?? ""),
+        ];
+      }
+      // A standoff moves no score, so it carries no `amount` - and neither
+      // end is the loser, so the line names them as equals rather than
+      // picking one to have been struck.
+      if (e.amount === undefined) {
+        return [
+          card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
+          t(" and the counter from "), faction(e.targetFactionId ?? ""),
+          t(" cancel each other"),
+        ];
+      }
+      return [
+        card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
+        t(" breaks through against "), faction(e.targetFactionId ?? ""),
+      ];
     case "march-lapsed":
       return [
         card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
@@ -1785,12 +1799,14 @@ export function createHud(
         renderPostmortem(state);
       }
     },
-    setArmed(index, cardNameText) {
+    setArmed(index, cardNameText, prompt) {
       armedIndex = index;
       [...hand.children].forEach((el, i) => {
         el.classList.toggle("card-armed", i === index);
       });
-      if (index !== null && cardNameText !== undefined) {
+      if (index !== null && prompt !== undefined) {
+        statusText.textContent = prompt;
+      } else if (index !== null && cardNameText !== undefined) {
         statusText.textContent = `Choose a target for ${cardNameText}`;
       } else if (lastState) {
         renderStatus(lastState);

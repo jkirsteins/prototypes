@@ -52,11 +52,12 @@ function smallHost(rng: Rng) {
 }
 
 describe("handshake", () => {
-  it("speaks protocol version 2 - the defense-score wire", () => {
-    // Bumped when the message set changes shape; v2 is the flip that put
-    // `build` on lobby-guest and `harvest` on the play action. Two deploys
-    // on different versions must refuse, not desync.
-    expect(PROTOCOL_VERSION).toBe(2);
+  it("speaks protocol version 3 - the telegraphed-raid wire", () => {
+    // Bumped when the message set changes shape; v2 put `build` on
+    // lobby-guest and `harvest` on the play action, v3 puts `sourceId` there
+    // too - the land a Raid's army marches out of. Two deploys on different
+    // versions must refuse, not desync.
+    expect(PROTOCOL_VERSION).toBe(3);
   });
 
   it("refuses a hello from a different protocol version at the lobby", () => {
@@ -156,6 +157,25 @@ describe("action validation", () => {
     expect(validateAction(g, 0, g.turn, {
       type: "play", cardIndex: 0, cardId: "turnip-harvest",
       harvest: { skip: true },
+    })).toBeNull();
+  });
+
+  it("refuses a raid source no free army of the guest's borders", () => {
+    // Refused, not redirected: silently marching out of another land would
+    // expose a land the guest never chose to expose to the counter-raid.
+    const g = withHand(freshGame(seededRng(3)), 0, ["raid"]);
+    expect(validateAction(g, 0, g.turn, {
+      type: "play", cardIndex: 0, cardId: "raid",
+      targetId: "beta", sourceId: "gamma",
+    })).toMatch(/army/);
+    // The seat's own land is the legal tail, and naming none is still fine -
+    // playCard takes the first legal source for a caller with no opinion.
+    expect(validateAction(g, 0, g.turn, {
+      type: "play", cardIndex: 0, cardId: "raid",
+      targetId: "beta", sourceId: "alpha",
+    })).toBeNull();
+    expect(validateAction(g, 0, g.turn, {
+      type: "play", cardIndex: 0, cardId: "raid", targetId: "beta",
     })).toBeNull();
   });
 });

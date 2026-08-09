@@ -540,9 +540,26 @@ describe("the counter-raid clash", () => {
     });
   });
 
-  it("cancels an even clash, moving no score and clearing both arrows", () => {
+  it("cancels an even clash, moving no score but still reporting it", () => {
     const after = landMarches(facingRaids(5, 5));
     expect(after.defense).toEqual({});
+    expect(after.marches).toEqual({});
+    // A line without an `amount`: nothing moved, but two armies met and both
+    // are spent, and a player whose raid was answered exactly must not be
+    // left thinking their card did nothing.
+    const line = after.log.find((e) => e.type === "march-resolved")!;
+    expect(line).toMatchObject({ clash: { incoming: 5, counter: 5 } });
+    expect(line.amount).toBeUndefined();
+  });
+
+  it("reports nothing for a march that met no counter and hit a dead land", () => {
+    // The other zero: one side only, aimed at a polygon already at 0. Nothing
+    // met it and nothing moved, so there is no clash to report - the standoff
+    // line above exists because two armies were spent, and here only one was.
+    const declared = playCard(
+      withHand(playingState(LINE_ADJ), 0, ["raid"]), 0, rng(), "alpha",
+    );
+    const after = landMarches({ ...declared, defense: { alpha: 0 } });
     expect(after.marches).toEqual({});
     expect(after.log.some((e) => e.type === "march-resolved")).toBe(false);
   });

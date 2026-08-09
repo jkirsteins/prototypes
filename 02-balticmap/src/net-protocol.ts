@@ -1,15 +1,16 @@
 import { CARDS, type Rng, type Strategy } from "./cards";
 import {
-  discardCard, endTurn, playCard,
+  discardCard, endTurn, playCard, viewOf,
   type GameEvent, type GamePhase, type GameState,
 } from "./game";
+import { marchSourcesAgainst } from "./playability";
 import { harvestPool, type HarvestChoice } from "./harvest";
 import type { RuleSelections } from "./rules";
 import {
   deserializeGame, serializeGame, type SerializedGameState,
 } from "./net-codec";
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** Fingerprint of the build's card set. Two deploys whose CARDS differ
  *  cannot share a game - hand indexes and rules text would disagree -
@@ -22,11 +23,17 @@ export function cardSetHash(): string {
  *  beside `cardIndex` so the host can refuse a hand-order mismatch
  *  instead of silently playing the wrong card. `harvest` rides the play
  *  the same way the pick rides `playCard`'s opts locally: every seat can
- *  hold a Turnip harvest now, so a guest's pick must cross the wire. */
+ *  hold a Turnip harvest now, so a guest's pick must cross the wire.
+ *
+ *  `sourceId` is Raid's tail, riding the play for the same reason the
+ *  target does: the guest chose it and the host cannot infer it. Note
+ *  what is NOT here - a counter-raid is an ordinary Raid played on the
+ *  defender's own turn, so telegraphed attacks need no out-of-turn
+ *  action and the "not this seat's turn" refusal stands untouched. */
 export type NetAction =
   | {
       type: "play"; cardIndex: number; cardId: string; targetId?: string;
-      harvest?: HarvestChoice;
+      sourceId?: string; harvest?: HarvestChoice;
     }
   | { type: "discard"; cardIndex: number; cardId: string }
   | { type: "end-turn" };
@@ -82,6 +89,20 @@ export function validateAction(
   ) {
     return "harvest pick is not in your pool";
   }
+  // The source is checked on the same footing as the harvest pick, and for
+  // the same reason: the host can recompute what is legal, so a stale tail is
+  // refused rather than quietly redirected. Redirecting would be worse than
+  // refusing here - it would expose a land the guest never chose to expose to
+  // the counter-raid.
+  if (
+    action.type === "play" && action.sourceId !== undefined &&
+    action.targetId !== undefined &&
+    !marchSourcesAgainst(
+      viewOf(state), state.players[seat].factionId, action.targetId,
+    ).includes(action.sourceId)
+  ) {
+    return "no free army of yours borders that land";
+  }
   return null;
 }
 
@@ -92,6 +113,7 @@ export function applyNetAction(
     case "play":
       return playCard(state, action.cardIndex, rng, action.targetId, {
         ...(action.harvest !== undefined ? { harvest: action.harvest } : {}),
+        ...(action.sourceId !== undefined ? { sourceId: action.sourceId } : {}),
       });
     case "discard":
       return discardCard(state, action.cardIndex);

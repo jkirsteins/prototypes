@@ -24,11 +24,25 @@ navigation and the same URL gives the same run every time:
 - `turns=N` - plays N rounds with the AI policy on every seat, then hands back
   on your turn.
 - `hand=a,b,c` - replaces your hand.
-- `defense=selija:100;talava:0` - polygon defense overrides, clamped into
-  [0, max]; a value at or above max deletes the key (absent = pristine).
-  Polygon ids are the land's own faction id.
-- `disease=talava:selonians:3` - `polygon:owner:count` stacks.
+- `defense=selonians:100;jersikans:0` - polygon defense overrides, clamped
+  into [0, max]; a value at or above max deletes the key (absent = pristine).
+- `disease=selonians:jersikans:3` - `polygon:owner:count` stacks.
 - `leadership=selonians:100` - ruler leadership overrides.
+- `armies=selonians:3` - armies stationed per polygon, clamped at 0. Absent
+  means the default of one.
+- `march=jersikans>selonians;semigallian-confederacy>selonians` - declare an
+  attack already in flight, `from>to` per arrow. Declared through the real
+  rules, so a source with no free army or a target it does not border is
+  dropped rather than conjured, and the damage is whatever a Raid out of that
+  land would actually deal.
+
+**Every polygon id above is the land's own FACTION id**, not the region id -
+`selonians`, not `selija`. The two id spaces are different words for the same
+land ("Selija" the land, "Selonians" the people) and only the faction id is
+what `factionIds`, `defense`, `armies` and `marches` are keyed by. This
+section used to show `defense=selija:100`, which silently parsed and then
+dropped: `applyBootParams` skips a clause naming no known faction, so a wrong
+id boots a perfectly ordinary game and says nothing.
 - `turnips=N` - the human's turnip counter, clamped under the threshold (5).
 - `wealth=N` - the human faction's treasury.
 - `rules=turn:unlimited` - rule picks, `axis:option` pairs separated by `;`.

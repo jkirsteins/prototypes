@@ -604,9 +604,24 @@ function resolveMarches(
     const { loser, delta, totalA, totalB } = resolveAxis(
       axis.a, axis.b, axis.fromA, axis.fromB,
     );
-    if (loser === null || delta <= 0) continue;
-    const winner = loser === axis.a ? axis.b : axis.a;
     const contested = axis.fromA.length > 0 && axis.fromB.length > 0;
+    // A standoff still gets a line. It moves no score, so it carries no
+    // `amount` - but two armies met and both are spent, and a player whose
+    // raid was answered exactly must not be left thinking their card did
+    // nothing. `a` and `b` are the axis's own sorted ends, since neither side
+    // is the winner and calling one of them the target would be a lie.
+    if (loser === null || delta <= 0) {
+      if (contested) {
+        events.push({
+          turn: state.turn, playerId: p.id, type: "march-resolved",
+          cardId: axis.fromA[0].cardId,
+          targetFactionId: axis.a, sourceFactionId: axis.b,
+          clash: { incoming: totalB, counter: totalA },
+        });
+      }
+      continue;
+    }
+    const winner = loser === axis.a ? axis.b : axis.a;
     const before = defenseOf({ defense, defenseMax: state.defenseMax }, loser);
     const moved = Math.min(before, delta);
     if (moved <= 0) continue;
