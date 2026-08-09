@@ -73,6 +73,15 @@ Both are already tests, so they cost nothing to honour:
   injected must not ship. If its effect is private - moving cards inside a
   faction's own deck rather than changing the map - decide who can observe it
   and keep the activity log and notices agreeing with that decision.
+- **The one exception: a WITHDRAWN card.** A card may be taken out of every
+  pool - not deck-buildable, in no starting deck, injected by nothing - while
+  its definition, its AI branch and the machinery it drives stay in the tree.
+  That is what "we may bring this back" looks like in code, and deleting it
+  instead means rebuilding the machinery from a commit message later. A
+  withdrawn card must say so in a comment beside its definition, and say what
+  took over the job it was doing. `subjugate` is the standing example: a land
+  changes hands by an army walking into it now, and the claim system it
+  declares through is still what a Subjugate would need.
 
 Then play it. Your judgement is the gate, so end card work by saying what to
 play and what would look wrong.
