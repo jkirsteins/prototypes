@@ -15,9 +15,18 @@ export const DEFENSE_PER_POPULATION = 5000;
  *  passing a map in. The real map derives 2..18. */
 export const DEFAULT_DEFENSE_MAX = 6;
 
-/** Subjugate is legal while the target's HOME polygon sits at or below this
- *  share of its max. */
-export const SUBJUGATION_GATE = 0.25;
+/** The share of its ceiling a land's HOME polygon must be at or below before
+ *  it can be taken.
+ *
+ *  Zero: a land falls when its defenses are gone, and not a moment sooner. One
+ *  number for one rule, so the badge that turns red, the band the map draws and
+ *  the army that walks in all mean the same thing - the land is flattened. A
+ *  fractional gate meant a land could be taken while it was still standing,
+ *  which is a second way to lose a land and a second number to read.
+ *
+ *  Kept as a share rather than folded away because it is the dial: the whole
+ *  rule moves by changing this line. */
+export const SUBJUGATION_GATE = 0;
 
 /** A vassal whose home polygon has climbed back to this share of its max
  *  regains independence at the start of its own turn. */

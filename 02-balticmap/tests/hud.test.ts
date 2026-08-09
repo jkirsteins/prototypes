@@ -255,7 +255,7 @@ describe("createHud", () => {
       onEndTurn: vi.fn(),
     });
     expect(g.playedThisTurn).toBe(true);
-    expect(g.repeatCardId).toBe("raid");
+    expect(g.repeatGroup).toBe("raid");
     hud.update(g);
     const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
     expect(cards.map((c) => c.querySelector(".card-name")!.textContent))
@@ -288,7 +288,7 @@ describe("createHud", () => {
     const { container, cb, hud } = setup({
       canPlayCard: rulesGate(() => g), onEndTurn,
     });
-    expect(g.repeatCardId).toBe("raid");
+    expect(g.repeatGroup).toBe("raid");
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - end your turn");
     const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];

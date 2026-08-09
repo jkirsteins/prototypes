@@ -1,13 +1,13 @@
 import {
   ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isInwardCard, isMarchCard,
-  isSingleLandHeal, isTributeCard,
+  isRaidCard, isSingleLandHeal, isTributeCard,
 } from "./cards";
 import {
   fullRealmOf, incorporatedRealmOf, overlordChainOf,
   type Incorporated, type Overlords,
 } from "./relations";
 import {
-  armyCapFor, defenseMaxOf, defenseOf, GREAT_RAID_DAMAGE, STRONG_BONUS,
+  armyCapFor, defenseMaxOf, defenseOf, STRONG_BONUS,
   PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, SUBJUGATION_GATE, subjugationGateOpen,
   turnipThresholdFor, type Defense, type Disease,
 } from "./defense";
@@ -15,6 +15,9 @@ import {
   freeArmiesOn, type Armies, type Claims, type Marches,
 } from "./marches";
 import { hasPassive, perArmyOn, type Passives } from "./passives";
+import {
+  hasAbility, RAID_LEADERSHIP, type LeaderAbilities,
+} from "./abilities";
 import { activeExpiry } from "./timed";
 
 /** Settlements a land supports - the one standing there since the map was
@@ -77,6 +80,10 @@ export interface RulesView {
    *  here: a successor starts at 0 because `replaceRuler` builds it so, and
    *  a test view carrying no rulers is a world of unproven ones. */
   leadership: Record<string, number>;
+  /** Faction id -> the abilities its current ruler holds (src/abilities.ts).
+   *  Absent means none, so a test-built view carrying no rulers is a world of
+   *  leaders who add nothing. */
+  leaderAbilities: LeaderAbilities;
   /** Faction id -> true where a leader sits. The projection of the ruler
    *  vacancy, in the same shape as `leadership`: absent means nobody leads
    *  that land, so it takes no turn and has nobody to assassinate. */
@@ -283,45 +290,30 @@ export function marchTargetsFrom(
 /** Every march Great raid would declare right now, in faction order: one arrow
  *  per bordering polygon, exactly the set the card's text promises.
  *
- *  It is ONE sally, not a raid per land. A land pays an army to march out and
- *  then strikes everything it borders, so the first arrow out of each land
- *  holds that land's army (`holdsArmy`) and the rest of its fan ride along
- *  free - which is why targets are walked in faction order and a land already
- *  sallying is preferred over a fresh one. A border polygon that no land with
- *  a free army can reach is skipped, so a realm whose frontier armies are all
- *  out on marches cannot great-raid at all.
+ *  Every land of the actor's realm that borders the TARGET and has a free
+ *  army sends one, so the card is a way to play several Raids at once rather
+ *  than a fan across the frontier. Each arrow is its own axis, which is what
+ *  makes it heavy: a counter-raid answers one of them and the rest land.
+ *
+ *  Order of play matters and is meant to. A land whose only army is already
+ *  out on a march sends nothing, so a Raid declared first out of the same land
+ *  is one arrow fewer here.
  *
  *  Legality, resolution and the arrow preview all call this rather than
  *  re-deriving it: the promise the card tip makes and the arrows that appear
  *  cannot drift apart if there is only one list. */
 export function greatRaidMarches(
-  view: RulesView, actor: string,
+  view: RulesView, actor: string, target: string,
 ): { from: string; to: string; holdsArmy: boolean }[] {
   const realm = fullRealmOf(actor, view.overlords, view.incorporated);
-  const border = borderPolygonsOf(view, actor);
-  const sallying = new Set<string>();
-  const out: { from: string; to: string; holdsArmy: boolean }[] = [];
-  for (const target of view.factionIds) {
-    if (!border.has(target)) continue;
-    const neighbours = new Set(view.adjacency[target] ?? []);
-    // A land already out on this sally costs nothing more. Only when no such
-    // land borders the target does another army have to leave home.
-    const riding = view.factionIds.find(
-      (land) => neighbours.has(land) && sallying.has(land),
-    );
-    if (riding !== undefined) {
-      out.push({ from: riding, to: target, holdsArmy: false });
-      continue;
-    }
-    const fresh = view.factionIds.find(
+  const neighbours = new Set(view.adjacency[target] ?? []);
+  return view.factionIds
+    .filter(
       (land) =>
-        neighbours.has(land) && realm.has(land) && freeArmiesFor(view, land) > 0,
-    );
-    if (fresh === undefined) continue;
-    sallying.add(fresh);
-    out.push({ from: fresh, to: target, holdsArmy: true });
-  }
-  return out;
+        land !== target && neighbours.has(land) && realm.has(land) &&
+        freeArmiesFor(view, land) > 0,
+    )
+    .map((from) => ({ from, to: target, holdsArmy: true }));
 }
 
 /** Which of the actor's lands could send an army at `target`. Empty means the
@@ -375,14 +367,30 @@ export function attackDamageFor(
   actorFactionId: string,
   cardId: string,
 ): { damage: number; multiplier: number } {
-  const base = cardId === "great-raid"
-    ? GREAT_RAID_DAMAGE
-    : cardId === "strong-raid"
-      ? RAID_DAMAGE + STRONG_BONUS
-      : RAID_DAMAGE;
+  // Great raid is several Raids, so an arrow of one is worth exactly a Raid.
+  // There is no number of its own to keep in step any more.
+  const base = cardId === "strong-raid"
+    ? RAID_DAMAGE + STRONG_BONUS
+    : RAID_DAMAGE;
   const multiplier = attackMultiplier(view, actorFactionId, cardId);
-  const leadership = view.leadership[actorFactionId] ?? 0;
-  return { damage: (base + leadership) * multiplier, multiplier };
+  return {
+    damage: (base + raidLeadership(view, actorFactionId, cardId)) * multiplier,
+    multiplier,
+  };
+}
+
+/** What the actor's LEADER adds to this attack. Zero unless the card carries
+ *  the raid keyword and the ruler holds the ability that makes leadership
+ *  count - a people who never learned to fight behind a chief get nothing from
+ *  one, however hardened the chief is. The one reader of `war-leader`. */
+export function raidLeadership(
+  view: RulesView, actorFactionId: string, cardId: string,
+): number {
+  if (!isRaidCard(cardId)) return 0;
+  if (!hasAbility(view.leaderAbilities, actorFactionId, RAID_LEADERSHIP)) {
+    return 0;
+  }
+  return view.leadership[actorFactionId] ?? 0;
 }
 
 /** What a Plague would deal to one polygon right now: `PLAGUE_DAMAGE_PER_STACK`
@@ -504,7 +512,7 @@ export function targetEligibilityFor(
   // and resolve through `reachOf`; the inward cards aim at the actor's own
   // realm.
   const polygonCard =
-    isMarchCard(cardId) || cardId === "spread-disease" ||
+    isRaidCard(cardId) || cardId === "spread-disease" ||
     cardId === "localized-outbreak";
   const inward = isInwardCard(cardId);
   const vassalCard = cardId === "incorporate";
@@ -569,6 +577,16 @@ export function targetEligibilityFor(
     if (isMarchCard(cardId) && sources !== null && !sources.has(factionId)) {
       reasons.push({ code: "no-army" });
     }
+    // Great raid asks the same question of a whole neighbourhood: it is legal
+    // where at least one land of the realm bordering this target still has an
+    // army at home. Its own list, because the answer IS the arrows it would
+    // send - the card tip quotes the same call.
+    if (
+      cardId === "great-raid" &&
+      greatRaidMarches(view, actorFactionId, factionId).length === 0
+    ) {
+      reasons.push({ code: "no-army" });
+    }
     // The single-land heals, one rule: a land already at its ceiling has
     // nothing to restore, whichever card is aimed at it.
     if (
@@ -593,6 +611,28 @@ export function targetEligibilityFor(
       ? { state: "available", factionId }
       : { state: "blocked", factionId, reasons };
   });
+}
+
+/** Whether a declared Subjugate would still land if it resolved right now.
+ *
+ *  The map asks it to label an arrow that is going to come to nothing, and
+ *  `beginTurn` asks it when the demand actually arrives. ONE spelling, because
+ *  an arrow labelled "will fail" that then took a land - or the reverse -
+ *  would make the label worse than no label at all.
+ *
+ *  Four ways to lose it, and each is something that can change in the turn the
+ *  demand is riding: the land put its defenses back up, it won a respite,
+ *  somebody else took it first, or the actor lost the border it was reaching
+ *  across. */
+export function claimWouldLand(
+  view: RulesView, actor: string, target: string,
+): boolean {
+  return (
+    subjugationGateOpen(view, target) &&
+    respiteExpiry(view, target) === undefined &&
+    !fullRealmOf(actor, view.overlords, view.incorporated).has(target) &&
+    reachOf(view, actor).has(target)
+  );
 }
 
 /** Valid targets for a targeted card, in faction order. */
@@ -679,8 +719,9 @@ export function cardBlockReason(
   // question first, because a realm surrounded by its own lands has nothing to
   // raid however many armies it is sitting on.
   if (cardId === "great-raid") {
-    if (borderPolygonsOf(view, factionId).size === 0) return { code: "no-target" };
-    return greatRaidMarches(view, factionId).length > 0
+    const border = borderPolygonsOf(view, factionId);
+    if (border.size === 0) return { code: "no-target" };
+    return [...border].some((t) => greatRaidMarches(view, factionId, t).length > 0)
       ? null
       : { code: "no-army" };
   }

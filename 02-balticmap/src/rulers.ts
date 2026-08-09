@@ -1,14 +1,22 @@
 import pools from "./data/ruler-names.json";
+import type { LeaderAbilities } from "./abilities";
 
 export interface Ruler {
   name: string;
   /** Turn this ruler took over; 1 for the rulers a world starts with. */
   since: number;
-  /** Battle-hardening bought by War council plays; attack damage adds it
-   *  (src/playability.ts). Dies with the ruler: replaceRuler builds the
-   *  successor as a fresh literal at 0 - never spread the predecessor
-   *  there, which is what makes assassination reset the stack for free. */
+  /** Battle-hardening bought by War council plays; a raid adds it when this
+   *  ruler holds the ability that makes it count (src/abilities.ts). Dies
+   *  with the ruler: replaceRuler builds the successor as a fresh literal at
+   *  0 - never spread the predecessor there, which is what makes
+   *  assassination reset the stack for free. */
   leadership: number;
+  /** Standing abilities this ruler holds (src/abilities.ts). Unlike
+   *  `leadership` these SURVIVE an assassination: what a people have learned
+   *  about war outlives the chief who taught them, and a successor who lost
+   *  the ability too would make one card wipe out a build. Absent means
+   *  none. */
+  abilities?: readonly string[];
 }
 
 /** Faction id -> its ruler, for the factions that HAVE one. A missing key is
@@ -129,11 +137,19 @@ export function replaceRuler(
   factionId: string,
   turn: number,
 ): { rulers: Rulers; killed: string; successor: string } {
-  const killed = rulerOf(rulers, factionId).name;
+  const dead = rulerOf(rulers, factionId);
+  const killed = dead.name;
   const taken = new Set(Object.values(rulers).map((r) => r.name));
   const successor = rulerNameFor(factionId, ethnicities[factionId], turn, taken);
   return {
-    rulers: { ...rulers, [factionId]: { name: successor, since: turn, leadership: 0 } },
+    rulers: {
+      ...rulers,
+      [factionId]: {
+        name: successor, since: turn, leadership: 0,
+        // The abilities carry over; the leadership does not. See `Ruler`.
+        ...(dead.abilities !== undefined ? { abilities: dead.abilities } : {}),
+      },
+    },
     killed,
     successor,
   };
@@ -153,6 +169,33 @@ export function leadershipByFaction(rulers: Rulers): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [factionId, ruler] of Object.entries(rulers)) {
     if (ruler.leadership > 0) out[factionId] = ruler.leadership;
+  }
+  return out;
+}
+
+/** The abilities each seated ruler holds, the RulesView projection. Sparse
+ *  like the two above: a seat with none contributes no key. */
+export function abilitiesByFaction(rulers: Rulers): LeaderAbilities {
+  const out: Record<string, readonly string[]> = {};
+  for (const [factionId, ruler] of Object.entries(rulers)) {
+    const held = ruler.abilities ?? [];
+    if (held.length > 0) out[factionId] = held;
+  }
+  return out;
+}
+
+/** Grants an ability to the rulers of the named factions. The one writer, so
+ *  a second ability is a call here and not a second way to seat one. */
+export function grantAbility(
+  rulers: Rulers, factionIds: readonly string[], abilityId: string,
+): Rulers {
+  const out: Rulers = { ...rulers };
+  for (const factionId of factionIds) {
+    const ruler = out[factionId];
+    if (ruler === undefined) continue;
+    const held = ruler.abilities ?? [];
+    if (held.includes(abilityId)) continue;
+    out[factionId] = { ...ruler, abilities: [...held, abilityId] };
   }
   return out;
 }

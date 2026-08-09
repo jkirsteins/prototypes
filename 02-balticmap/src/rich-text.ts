@@ -1,5 +1,6 @@
-import { CARDS } from "./cards";
+import { CARDS, KEYWORDS, keywordOf, type KeywordDef } from "./cards";
 import { PASSIVES } from "./passives";
+import { LEADER_ABILITIES } from "./abilities";
 import { t, faction } from "./segments";
 import { withArticle } from "./view";
 import type { Segment } from "./segments";
@@ -8,7 +9,9 @@ import type { TooltipLine } from "./panel";
 // The segment type and constructors live in segments.ts (a leaf module, so
 // cards.ts can author them too); re-exported here so every prose surface keeps
 // one import for the whole vocabulary.
-export { t, card, faction, passive, theFaction } from "./segments";
+export {
+  t, ability, card, faction, keyword, passive, theFaction,
+} from "./segments";
 export type { Segment } from "./segments";
 
 /** "A", "A and B", "A, B and C" - the one place a run of names becomes a
@@ -117,8 +120,66 @@ export const optionalPhrase = (
 ): Segment[] =>
   factionId === undefined || factionId === "" ? [] : [t(lead), faction(factionId)];
 
+/** How a keyword titles itself, wherever it is shown. The word "Keyword" is
+ *  part of the title and not decoration: a block headed just "Raid" under a
+ *  card called Raid reads as a second card, which is how it read.
+ *
+ *  One spelling, so the popup and the two element surfaces cannot title the
+ *  same keyword differently. */
+const keywordHeading = (keyword: KeywordDef): string =>
+  `Keyword: ${keyword.name}`;
+
+/** A card's keyword, as the block every surface shows it in. Null where the
+ *  card carries none.
+ *
+ *  ONE builder, because the alternative was three: the build screen, the hand's
+ *  card tip and the hover popup all have to teach the same rule, and the first
+ *  version had two of them doing it and the third quietly not. A surface that
+ *  renders a card renders this under its text; nothing else decides how a
+ *  keyword looks.
+ *
+ *  DOM here rather than a `TooltipLine[]` because two of the three consumers
+ *  are building elements anyway; `cardTipLines` below is the line-shaped form
+ *  for the one that is not. */
+export function keywordBlock(cardId: string): HTMLElement | null {
+  const keyword = keywordOf(cardId);
+  if (keyword === null) return null;
+  const block = document.createElement("section");
+  block.className = "card-keyword";
+  const heading = document.createElement("div");
+  heading.className = "card-keyword-heading";
+  heading.textContent = keywordHeading(keyword);
+  const text = document.createElement("div");
+  text.textContent = keyword.text;
+  block.append(heading, text);
+  return block;
+}
+
+/** A card's popup as tooltip lines: its name, its rules text, and its keyword
+ *  where it has one. What the hover on a `card()` segment shows, and the same
+ *  three facts `keywordBlock`'s consumers render as elements. */
+export function cardTipLines(cardId: string): TooltipLine[] {
+  const def = CARDS[cardId];
+  if (def === undefined) return [{ text: cardName(cardId) }];
+  const keyword = keywordOf(cardId);
+  return [
+    { text: def.name },
+    { text: def.text },
+    ...(keyword === null
+      ? []
+      : [
+          { text: keywordHeading(keyword), blockStart: true as const },
+          { text: keyword.text },
+        ]),
+  ];
+}
+
 /** The single passive-name resolver, beside the card one. */
 export const passiveName = (id: string): string => PASSIVES[id]?.name ?? id;
+
+/** The same, for a leader's abilities. */
+export const abilityName = (id: string): string =>
+  LEADER_ABILITIES[id]?.name ?? id;
 
 /** The single card-name resolver. Was written twice (hud.ts, deck-screen.ts). */
 export const cardName = (id: string | undefined): string =>
@@ -172,6 +233,10 @@ export function plainText(segs: Segment[], names: NameLookup): string {
       if (seg.kind === "text") return seg.text;
       if (seg.kind === "card") return cardName(seg.cardId);
       if (seg.kind === "passive") return passiveName(seg.passiveId);
+      if (seg.kind === "ability") return abilityName(seg.abilityId);
+      if (seg.kind === "keyword") {
+        return KEYWORDS[seg.keywordId]?.noun ?? seg.keywordId;
+      }
       return factionText(seg, names);
     })
     .join("");
@@ -207,12 +272,34 @@ export function renderSegments(segs: Segment[], hooks: RichTextHooks): DocumentF
     if (seg.kind === "card") {
       span.className = "rt-card";
       span.textContent = cardName(seg.cardId);
-      const cardDef = CARDS[seg.cardId];
+      span.addEventListener("mousemove", (e) => {
+        hooks.showTip?.(cardTipLines(seg.cardId), e.clientX, e.clientY);
+      });
+      span.addEventListener("mouseleave", () => hooks.hideTip?.());
+    } else if (seg.kind === "keyword") {
+      // The keyword's own block, the same one every card carrying it shows.
+      span.className = "rt-passive";
+      const def = KEYWORDS[seg.keywordId];
+      span.textContent = def?.noun ?? seg.keywordId;
       span.addEventListener("mousemove", (e) => {
         hooks.showTip?.(
-          cardDef === undefined
+          def === undefined
             ? [{ text: span.textContent ?? "" }]
-            : [{ text: cardDef.name }, { text: cardDef.text }],
+            : [{ text: keywordHeading(def) }, { text: def.text }],
+          e.clientX, e.clientY,
+        );
+      });
+      span.addEventListener("mouseleave", () => hooks.hideTip?.());
+    } else if (seg.kind === "ability") {
+      // The passive pattern exactly, one table over.
+      span.className = "rt-passive";
+      const def = LEADER_ABILITIES[seg.abilityId];
+      span.textContent = def?.name ?? seg.abilityId;
+      span.addEventListener("mousemove", (e) => {
+        hooks.showTip?.(
+          def === undefined
+            ? [{ text: span.textContent ?? "" }]
+            : [{ text: def.name }, { text: def.text }],
           e.clientX, e.clientY,
         );
       });

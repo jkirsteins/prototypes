@@ -1390,7 +1390,7 @@ describe("a card that plays again", () => {
   it("leaves the turn open for another copy of itself", () => {
     const after = playCard(twoArmies(), 0, rng(), "alpha");
     expect(after.playedThisTurn).toBe(true);
-    expect(after.repeatCardId).toBe("raid");
+    expect(after.repeatGroup).toBe("raid");
   });
 
   it("accepts the second copy even though the turn is spent", () => {
@@ -1421,7 +1421,7 @@ describe("a card that plays again", () => {
 
   it("clears at the next turn start", () => {
     const first = playCard(twoArmies(), 0, rng(), "alpha");
-    expect(beginTurn({ ...first, turn: first.turn + 1 }, rng()).repeatCardId)
+    expect(beginTurn({ ...first, turn: first.turn + 1 }, rng()).repeatGroup)
       .toBeNull();
   });
 
@@ -1432,7 +1432,7 @@ describe("a card that plays again", () => {
     );
     const after = playCard(g, 0, rng(), "beta");
     expect(after.playedThisTurn).toBe(true);
-    expect(after.repeatCardId).toBeNull();
+    expect(after.repeatGroup).toBeNull();
     expect(playCard(after, 0, rng(), "alpha")).toBe(after);
   });
 
@@ -1441,14 +1441,14 @@ describe("a card that plays again", () => {
     // this one test is the point: the rule is the field, and no branch
     // anywhere asks whether the card is a Raid.
     const def = CARDS.fortify;
-    CARDS.fortify = { ...def, playsAgain: true };
+    CARDS.fortify = { ...def, repeatGroup: "raid" };
     try {
       const g = withHand(
         { ...playingState(LINE_ADJ), defense: { beta: 10 } }, 0,
         ["fortify", "fortify"],
       );
       const first = playCard(g, 0, rng(), "beta");
-      expect(first.repeatCardId).toBe("fortify");
+      expect(first.repeatGroup).toBe("fortify");
       expect(playCard(first, 0, rng(), "beta").defense.beta)
         .toBe(10 + 2 * FORTIFY_HEAL);
     } finally {
@@ -1461,15 +1461,15 @@ describe("a card that plays again", () => {
     // unlimited rules would hand back a turn the player just gave up.
     const g = withHand(unlimitedPlaying(LINE_ADJ), 0, ["raid", "raid"]);
     const played = playCard(g, 0, rng(), "alpha");
-    expect(played.repeatCardId).toBe("raid");
-    expect(endTurn(played).repeatCardId).toBeNull();
+    expect(played.repeatGroup).toBe("raid");
+    expect(endTurn(played).repeatGroup).toBeNull();
     // The discard half asks the same of a turn that IS open: a fresh state's
-    // repeatCardId is already null, so discarding into one proves nothing.
+    // repeatGroup is already null, so discarding into one proves nothing.
     // Under unlimited rules a discard is legal with the turn still live.
     const open = withHand(unlimitedPlaying(LINE_ADJ), 0, ["raid", "subjugate"]);
     const raided = playCard(open, 0, rng(), "alpha");
-    expect(raided.repeatCardId).toBe("raid");
-    expect(discardCard(raided, 0).repeatCardId).toBeNull();
+    expect(raided.repeatGroup).toBe("raid");
+    expect(discardCard(raided, 0).repeatGroup).toBeNull();
   });
 });
 

@@ -1,4 +1,4 @@
-import { CARDS, guardAgainst } from "./cards";
+import { CARDS, guardAgainst, KEYWORDS, repeatGroupOf } from "./cards";
 import {
   turnOpen, victoryRealmSize, viewOf,
   type GameEvent, type GameState,
@@ -24,8 +24,8 @@ import { memoryStorage, type MetaStorage } from "./meta";
 import { standingChangeText, standingsFor } from "./view";
 import { hasRuler } from "./rulers";
 import {
-  card, cardName, cardTextSegments, faction, factionIds, possessive,
-  renderSegments, t, theFaction, verb,
+  card, cardName, cardTextSegments, faction, factionIds, keywordBlock,
+  possessive, renderSegments, t, theFaction, verb,
   type RichTextHooks, type Segment, type Speaker, type Verb,
 } from "./rich-text";
 
@@ -1733,6 +1733,11 @@ export function createHud(
       description.className = "card-tip-description";
       description.textContent = CARDS[cardId]?.text ?? "";
       tip.appendChild(description);
+      // The keyword the card carries, explained on the card that carries it.
+      // A rule shared by three cards is a rule the player meets on whichever
+      // of them they draw first, so it cannot live only in a rules screen.
+      const keyword = keywordBlock(cardId);
+      if (keyword !== null) tip.appendChild(keyword);
       // Under the description, above the targets: the card's own failure mode
       // is a fact about the card, so it reads with the card's text, and it has
       // to be there before the player starts comparing candidates.
@@ -2044,20 +2049,31 @@ export function createHud(
           //
           // The card is a segment, not a name spliced into the sentence: this
           // is the line that teaches the rule, so pointing at the name has to
-          // say what the card does, here as everywhere else. It is also why
-          // nothing here knows WHICH card - `repeatCardId` carries it.
-          const repeat = state.repeatCardId;
+          // say what the card does, here as everywhere else. Nothing here
+          // knows WHICH cards - `repeatGroup` names a group, and the hand
+          // answers which of its members are actually playable.
+          const repeat = state.repeatGroup;
           const hand = humanPlayer(state)?.hand ?? [];
-          const again =
-            repeat !== null &&
-            hand.some((c) => c === repeat && (cb.canPlayCard?.(c) ?? true));
-          if (repeat !== null && again) {
+          const offers = [...new Set(hand.filter(
+            (c) => repeatGroupOf(c) === repeat && (cb.canPlayCard?.(c) ?? true),
+          ))];
+          if (repeat !== null && offers.length > 0) {
             statusText.replaceChildren(
               renderSegments(
-                [
-                  t(`Turn ${state.turn} - `), card(repeat),
-                  t(" again, or end your turn"),
-                ],
+                // One card of the group left: name it, and the name teaches.
+                // Several: the group's common noun, because picking one of
+                // them to name would tell the player the wrong thing about
+                // what the turn will take.
+                offers.length === 1
+                  ? [
+                      t(`Turn ${state.turn} - `), card(offers[0]),
+                      t(" again, or end your turn"),
+                    ]
+                  : [t(
+                      `Turn ${state.turn} - another `
+                      + `${KEYWORDS[repeat]?.noun ?? "card"}`
+                      + ", or end your turn",
+                    )],
                 richTextHooks,
               ),
             );

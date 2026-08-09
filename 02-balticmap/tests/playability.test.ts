@@ -40,6 +40,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     wealth: {},
     respites: {},
     leadership: {},
+    leaderAbilities: {},
     // Every faction leads by default: a vacancy is the exception a test asks
     // for by name, not the fixture's resting state.
     leaders: Object.fromEntries(ORDER.map((id) => [id, true])),
@@ -167,19 +168,21 @@ describe("marching: sources, targets and armies", () => {
     expect(cardBlockReason(v, "beta", "great-raid")).toEqual({ code: "no-army" });
   });
 
-  it("fans a great raid out of one army, one arrow per bordering land", () => {
-    expect(greatRaidMarches(view(), "beta")).toEqual([
+  it("sends one arrow from every realm land bordering the target", () => {
+    // The line alpha - beta - gamma - delta. Only beta borders alpha.
+    expect(greatRaidMarches(view(), "beta", "alpha")).toEqual([
       { from: "beta", to: "alpha", holdsArmy: true },
-      { from: "beta", to: "gamma", holdsArmy: false },
     ]);
   });
 
-  it("pays a second army only for a border its first land cannot reach", () => {
-    // beta holds gamma as a vassal: beta borders alpha, gamma borders delta.
-    // Two lands must sally, so two armies go out.
-    const v = view({ overlords: new Map([["gamma", "beta"]]) });
-    expect(greatRaidMarches(v, "beta")).toEqual([
-      { from: "beta", to: "alpha", holdsArmy: true },
+  it("musters every neighbour of the target, each spending its own army", () => {
+    // beta holds gamma as a vassal, and on the full map both border delta.
+    const v = view({
+      overlords: new Map([["gamma", "beta"]]),
+      adjacency: FULL_ADJ,
+    });
+    expect(greatRaidMarches(v, "beta", "delta")).toEqual([
+      { from: "beta", to: "delta", holdsArmy: true },
       { from: "gamma", to: "delta", holdsArmy: true },
     ]);
   });

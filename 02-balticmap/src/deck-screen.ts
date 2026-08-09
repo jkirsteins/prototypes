@@ -1,5 +1,9 @@
-import { BUILDS, CARDS, NEUTRAL_POOL, startingDeck, type Strategy } from "./cards";
-import { cardName, cardTextSegments, renderSegments, type RichTextHooks } from "./rich-text";
+import { BUILDS, type Strategy } from "./cards";
+import { BUILD_ABILITIES, LEADER_ABILITIES } from "./abilities";
+import {
+  cardName, cardTextSegments, keywordBlock, renderSegments,
+  type RichTextHooks,
+} from "./rich-text";
 import {
   DEFAULT_RULES, RULE_AXES, summarizeRules,
   type RuleSelections,
@@ -72,12 +76,6 @@ export function createDeckScreen(
   title.className = "menu-title";
   title.textContent = "Choose your build";
 
-  const intro = document.createElement("p");
-  intro.className = "ds-label";
-  intro.textContent =
-    `Every realm starts with the same ${startingDeck().length} cards. ` +
-    "Turnip harvests grow your deck from your build's pool plus the neutral cards.";
-
   const buildRow = document.createElement("div");
   buildRow.className = "ds-builds";
 
@@ -108,7 +106,39 @@ export function createDeckScreen(
       text.className = "ds-card-text";
       text.appendChild(renderSegments(cardTextSegments(id), rtHooks));
       line.append(cardTitle, text);
+      // The keyword the card carries, from the one builder every surface that
+      // renders a card uses - so this screen and the hand's tip cannot come to
+      // explain the same rule two different ways.
+      const keyword = keywordBlock(id);
+      if (keyword !== null) line.appendChild(keyword);
       tile.appendChild(line);
+    }
+    // What the build gives the RULER, in a block of its own under the cards.
+    // Not mixed in with them: an ability is not a card, cannot be drawn,
+    // played or harvested, and a row that looked like the rows above would be
+    // read as one more card in the deck.
+    const abilities = (BUILD_ABILITIES[build] ?? [])
+      .map((id) => LEADER_ABILITIES[id])
+      .filter((def) => def !== undefined);
+    if (abilities.length > 0) {
+      const block = document.createElement("span");
+      block.className = "ds-build-leader";
+      const heading = document.createElement("span");
+      heading.className = "ds-leader-heading";
+      heading.textContent = "Your leader";
+      block.appendChild(heading);
+      for (const def of abilities) {
+        const line = document.createElement("span");
+        line.className = "ds-build-card";
+        const abilityTitle = document.createElement("strong");
+        abilityTitle.textContent = def.name;
+        const text = document.createElement("span");
+        text.className = "ds-card-text";
+        text.textContent = def.text;
+        line.append(abilityTitle, text);
+        block.appendChild(line);
+      }
+      tile.appendChild(block);
     }
     tile.addEventListener("click", () => {
       current = build;
@@ -118,14 +148,6 @@ export function createDeckScreen(
     return { build, tile };
   });
   buildRow.append(...tiles.map((t) => t.tile));
-
-  // The neutral pool, stated once under the tiles: both builds harvest from
-  // it, so it belongs to neither tile.
-  const neutrals = document.createElement("p");
-  neutrals.className = "ds-neutrals";
-  neutrals.textContent =
-    `Both builds also harvest from the neutral pool: ${
-      NEUTRAL_POOL.map((id) => CARDS[id].name).join(", ")}.`;
 
   const start = document.createElement("button");
   start.className = "menu-new-game ds-start";
@@ -195,7 +217,7 @@ export function createDeckScreen(
     rulesOverlay.classList.add("hidden"),
   );
 
-  root.append(title, intro, buildRow, neutrals, rulesRow, start, rulesOverlay);
+  root.append(title, buildRow, rulesRow, start, rulesOverlay);
   container.appendChild(root);
 
   start.addEventListener("click", () => cb.onStart(current));

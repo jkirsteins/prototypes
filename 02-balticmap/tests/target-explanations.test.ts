@@ -34,6 +34,7 @@ const v = (partial: Partial<RulesView> = {}): RulesView => ({
   },
   factionIds: ORDER, passives: {}, turn: 1, guards: {}, omens: {},
   siteCaps: {}, settlements: {}, wealth: {}, respites: {}, leadership: {},
+  leaderAbilities: {},
   leaders: Object.fromEntries(ORDER.map((id) => [id, true])),
   defense: {},
   defenseMax: Object.fromEntries(ORDER.map((id) => [id, 60])),

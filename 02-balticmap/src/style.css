@@ -619,12 +619,53 @@ svg.map.dragging {
   padding-top: 6px;
 }
 
-.ds-neutrals {
-  margin: 0;
-  max-width: 720px;
+/* A keyword on a card: the rule several cards share, set apart from the card's
+   own text so the two are not read as one sentence about this card. */
+.card-keyword {
+  display: block;
+  margin-top: 6px;
+  padding: 5px 7px;
+  border-radius: 4px;
+  background: rgba(122, 106, 85, 0.1);
   font-size: 11px;
-  color: #b8b0a2;
-  text-align: center;
+  line-height: 1.35;
+  color: #6b5d49;
+}
+
+.card-keyword-heading {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a7c66;
+}
+
+/* What the build gives the RULER, kept visibly apart from the cards above it.
+   An ability cannot be drawn or played, so a block that looked like the card
+   rows would be read as one more card in the deck. */
+.ds-build-leader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #efe7d5;
+  border: 1px solid #ddd2ba;
+}
+
+.ds-leader-heading {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a7c66;
+}
+
+/* Inside the leader block the rows do not need the card rows' separator: the
+   block's own edge already says where they begin. */
+.ds-build-leader .ds-build-card {
+  border-top: none;
+  padding-top: 2px;
 }
 
 .card.discard-hint {
@@ -862,6 +903,19 @@ svg.map.dragging {
   stroke: rgba(253, 250, 244, 0.85);
   stroke-width: 3px;
   pointer-events: none;
+}
+
+/* A demand that has already been answered. Faded rather than recoloured: it
+   is still the same arrow and still on the map until it resolves, and a second
+   colour would read as a second kind of thing. */
+.claim-doomed line,
+.claim-doomed .claim-head {
+  opacity: 0.4;
+}
+
+.claim-doomed .claim-label {
+  fill: #8d7fa0;
+  letter-spacing: 0.04em;
 }
 
 /* Which of the things aimed at a land lands first. Only drawn where there is

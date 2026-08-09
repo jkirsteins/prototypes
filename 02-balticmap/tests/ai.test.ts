@@ -702,7 +702,7 @@ describe("aiTakeTurn on a turn a card re-opened", () => {
     const after = aiTakeTurn(before, seededRng(1));
     expect(after.players[1].hand).toEqual(["grow-crops"]);
     expect(after.playedThisTurn).toBe(true);
-    expect(after.repeatCardId).toBe(null);
+    expect(after.repeatGroup).toBe(null);
   });
 });
 

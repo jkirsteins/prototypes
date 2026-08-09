@@ -1,6 +1,6 @@
 import {
   CARDS, CONSUMED_CARDS, guardAgainst, isGuardCard, isMarchCard,
-  isSingleLandHeal, isTributeCard, playsAgain, startingDeck, shuffle,
+  isSingleLandHeal, isTributeCard, repeatGroupOf, startingDeck, shuffle,
   TRIBUTE_CARDS, type Rng, type Strategy,
 } from "./cards";
 
@@ -12,15 +12,14 @@ import {
   addDisease, applyDamage, applyHeal, clearDiseaseOf, DEFAULT_DEFENSE_MAX,
   defenseMaxOf, defenseOf, HARVEST_FEAST_HEAL, independenceGateOpen,
   PLAGUE_DAMAGE_PER_STACK, LAND_GROWTH, SINGLE_LAND_HEAL,
-  subjugationGateOpen,
   transferAllDiseaseTo, turnipThresholdFor, WAR_COUNCIL_LEADERSHIP,
   type Defense, type Disease,
 } from "./defense";
 import {
   attackDamageFor, attackMultiplier, attackReach,
   ESCAPE_RESPITE_TURNS, freeArmiesFor, greatRaidMarches, marchSourcesAgainst,
-  respiteExpiry,
-  marchTargetsFrom, outbreakPolygons, plagueMultiplier, playableSet, reachOf,
+  claimWouldLand, marchTargetsFrom, outbreakPolygons, plagueMultiplier,
+  playableSet,
   turnipThresholdOn, validTargetsFor, wealthIncomeFor,
   type Guards, type Omens, type RulesView,
 } from "./playability";
@@ -39,9 +38,11 @@ import {
   WILD_LANDS_HEAL_CHANCE, type Passives,
 } from "./passives";
 import {
-  hasRuler, initialRulers, leadersByFaction, leadershipByFaction, replaceRuler,
-  rulerNameOf, rulerOf, vacateRulers, type Rulers,
+  abilitiesByFaction, grantAbility, hasRuler, initialRulers, leadersByFaction,
+  leadershipByFaction, replaceRuler, rulerNameOf, rulerOf, vacateRulers,
+  type Rulers,
 } from "./rulers";
+import { BUILD_ABILITIES } from "./abilities";
 import { DEFAULT_RULES, sweepsHandAtTurnEnd, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
 
@@ -156,7 +157,7 @@ export interface GameState {
   playedThisTurn: boolean;
   /** The card a SPENT turn will still accept, or null.
    *
-   *  Written by playing a card that declares `CardDef.playsAgain`: that play
+   *  Written by playing a card that declares `CardDef.repeatGroup`: that play
    *  spends the turn like any other and leaves this behind, so the turn goes
    *  on accepting more of the same card and nothing else. Cleared at the next
    *  turn start, and by anything else that ends a turn - only a play re-opens
@@ -166,7 +167,7 @@ export interface GameState {
    *  card", and it is the only thing about the mechanism the state remembers:
    *  how many copies may follow is not counted here, ordinary legality decides
    *  it. Nothing reads this against a card id of its own. */
-  repeatCardId: string | null;
+  repeatGroup: string | null;
   /** One pick per rule axis, stamped before the game starts and immutable for
    *  the run. `chooseRules` is the only writer. See src/rules.ts. */
   rules: RuleSelections;
@@ -307,6 +308,7 @@ export function viewOf(state: GameState): RulesView {
     armies: state.armies,
     passives: state.passives,
     leadership: leadershipByFaction(state.rulers),
+    leaderAbilities: abilitiesByFaction(state.rulers),
     leaders: leadersByFaction(state.rulers),
   };
 }
@@ -330,7 +332,7 @@ export function newGame(
     players: [],
     current: 0,
     playedThisTurn: false,
-    repeatCardId: null,
+    repeatGroup: null,
     rules: { ...DEFAULT_RULES },
     factionIds,
     overlords: new Map(),
@@ -571,7 +573,16 @@ export function pickFaction(
   // Only the factions that act keep a leader. Everything else about a quiet
   // land follows from the vacancy: no ruler, no turn, and no turn even after
   // somebody takes it.
-  const rulers = vacateRulers(state.rulers, acting);
+  // What each build's chief brings, from the one table the build screen also
+  // reads. Seeded off the build rather than written into the raid cards: the
+  // Pestilence seats hold Raid too, and theirs deal what the card says. The
+  // ability outlives an assassination - see `Ruler.abilities`.
+  let rulers = vacateRulers(state.rulers, acting);
+  for (const pl of players) {
+    for (const id of BUILD_ABILITIES[pl.strategy] ?? []) {
+      rulers = grantAbility(rulers, [pl.factionId], id);
+    }
+  }
   return beginTurn(
     { ...state, phase: "playing", players, current: 0, passives, rulers }, rng,
   );
@@ -754,19 +765,10 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     for (const { key, claim } of lapsedClaimsOf(claims, actor, state.turn)) {
       claims = clearClaims(claims, [key]);
       const view = {
-        ...viewOf({ ...state, players }), overlords, defense, marches, claims,
+        ...viewOf({ ...state, players }),
+        overlords, defense, marches, claims, respites,
       };
-      const stillOpen =
-        subjugationGateOpen(
-          { defense, defenseMax: state.defenseMax }, claim.to,
-        ) &&
-        respiteExpiry({ respites, turn: state.turn }, claim.to) === undefined &&
-        !fullRealmOf(claim.actor, overlords, state.incorporated).has(claim.to) &&
-        // Still within reach, the test a march in flight also makes: a demand
-        // whose only border was a land the actor lost while it was riding is a
-        // demand that never arrives.
-        reachOf(view, claim.actor).has(claim.to);
-      if (!stillOpen) {
+      if (!claimWouldLand(view, claim.actor, claim.to)) {
         // The land put its defenses back up, somebody else took it first, or
         // it is no longer anybody the actor can reach.
         events.push({
@@ -911,7 +913,14 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       if (seat === undefined) continue;
       const view = { ...viewOf({ ...state, players }), marches, defense };
       if (freeArmiesFor(view, land) === 0) continue;
-      const targets = marchTargetsFrom(view, land, land);
+      // Never at a land already flattened. An army walking into an empty land
+      // TAKES it, and a land nobody leads is picking a fight, not building an
+      // empire - grey conquering grey turned the middle of the map into a
+      // land-grab nobody chose. With nothing standing left to hit, it sits
+      // this round out.
+      const targets = marchTargetsFrom(view, land, land).filter(
+        (to) => defenseOf({ defense, defenseMax: state.defenseMax }, to) > 0,
+      );
       if (targets.length === 0) continue;
       const to = targets[Math.floor(rng() * targets.length)];
       marches = addMarch(marches, {
@@ -979,7 +988,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
     log: appendEvents(state, events),
-    playedThisTurn: false, repeatCardId: null,
+    playedThisTurn: false, repeatGroup: null,
   };
 }
 
@@ -1157,26 +1166,28 @@ function updateFaction(
 /** Whether the turn as it stands still accepts `cardId`.
  *
  *  An unspent turn accepts anything the ordinary rules allow. A spent one
- *  accepts only the card that re-opened it, and only because that card said it
- *  could - `repeatCardId` is written from `CardDef.playsAgain` and read back
- *  here, so no rule anywhere has to know which card is doing this. What stops
+ *  accepts only cards of the GROUP that re-opened it, and only because that
+ *  card said it could - `repeatGroup` is written from `CardDef.repeatGroup`
+ *  and read back here, so no rule anywhere has to know which cards those are.
+ *  All three raids share one group, so a Raid buys a Strong raid or a Great
+ *  raid just as readily as another Raid. What stops
  *  the run is legality: the reopened turn hands the question straight back to
  *  `playableSet`, which answers it the same way it would on any other turn. */
 export function turnAccepts(state: GameState, cardId: string): boolean {
-  return !state.playedThisTurn || cardId === state.repeatCardId;
+  return !state.playedThisTurn || repeatGroupOf(cardId) === state.repeatGroup;
 }
 
 /** The card a spent turn is narrowed to, in the shape `playableSet` asks for:
  *  null while the turn is open (it accepts anything) or closed for good (it
  *  accepts nothing, which `turnAccepts` has already said). */
 export function repeatOnlyOf(state: GameState): string | null {
-  return state.playedThisTurn ? state.repeatCardId : null;
+  return state.playedThisTurn ? state.repeatGroup : null;
 }
 
 /** Whether the turn still accepts a card AT ALL - unspent, or spent by a play
  *  that re-opened it. This is what the screen and the AI ask instead of
  *  `playedThisTurn`, which stopped being the whole answer the moment a card
- *  could declare `playsAgain`.
+ *  could declare `CardDef.repeatGroup`.
  *
  *  It says nothing about WHICH card the turn would accept: that is
  *  `turnAccepts` one card at a time, and `playableSet` with `repeatOnly` for a
@@ -1184,7 +1195,7 @@ export function repeatOnlyOf(state: GameState): string | null {
  *  measure - the hand renders live and every card in it greys itself, which is
  *  the state that reads "end your turn". */
 export function turnOpen(state: GameState): boolean {
-  return !state.playedThisTurn || state.repeatCardId !== null;
+  return !state.playedThisTurn || state.repeatGroup !== null;
 }
 
 /** Whether this faction will never see a `beginTurn` of its own. Two reasons,
@@ -1464,12 +1475,13 @@ export function playCard(
     // formula: the card tip quotes the same call, so what the arrow promises
     // and what lands next turn cannot drift.
     declareMarch(sourceId, targetId, attackDamageFor(view, p.factionId, cardId).damage);
-  } else if (cardId === "great-raid") {
+  } else if (cardId === "great-raid" && targetId !== undefined) {
     const { damage } = attackDamageFor(view, p.factionId, cardId);
     // `greatRaidMarches` is the one list: legality asked it, the card tip
-    // quotes it, and it is already in faction order with its sources assigned
-    // deterministically, so a seeded run declares the same fan every time.
-    for (const { from, to, holdsArmy } of greatRaidMarches(view, p.factionId)) {
+    // quotes it, and it is in faction order, so a seeded run declares the same
+    // arrows every time. Each one holds its own land's army and lands on its
+    // own axis - the card is several Raids, not one big one.
+    for (const { from, to, holdsArmy } of greatRaidMarches(view, p.factionId, targetId)) {
       declareMarch(from, to, damage, holdsArmy);
     }
   } else if (cardId === "prosperous-proliferation" && targetId !== undefined) {
@@ -1749,7 +1761,7 @@ export function playCard(
     // And the played card says whether the spent turn accepts more of itself.
     // Overwritten rather than accumulated: the run is a run of ONE card, so
     // the last play is the whole of the answer.
-    repeatCardId: playsAgain(cardId) ? cardId : null,
+    repeatGroup: repeatGroupOf(cardId),
   };
 }
 
@@ -1779,7 +1791,7 @@ export function discardCard(state: GameState, cardIndex: number): GameState {
       { turn: state.turn, playerId: p.id, type: "discard", cardId },
     ]),
     // Closed, and closed for good: only a play re-opens a turn. See `endTurn`.
-    playedThisTurn: true, repeatCardId: null,
+    playedThisTurn: true, repeatGroup: null,
   };
 }
 
@@ -1793,17 +1805,17 @@ export function discardCard(state: GameState, cardIndex: number): GameState {
  *  turn again. */
 export function endTurn(state: GameState): GameState {
   if (state.phase !== "playing") return state;
-  // A turn a card re-opened can be given up under ANY rule set: `playsAgain`
+  // A turn a card re-opened can be given up under ANY rule set: a repeat
   // grants another play, never an obligation to make one. Without this the
   // standard branch below refuses, `advance` refuses in turn - it asks
   // `turnOpen` now - and a seat holding a raid it cannot aim anywhere sits
   // there forever.
-  if (state.repeatCardId !== null) {
-    return { ...state, playedThisTurn: true, repeatCardId: null };
+  if (state.repeatGroup !== null) {
+    return { ...state, playedThisTurn: true, repeatGroup: null };
   }
   if (state.rules.turn !== "unlimited") return state;
   if (state.playedThisTurn) return state;
-  return { ...state, playedThisTurn: true, repeatCardId: null };
+  return { ...state, playedThisTurn: true, repeatGroup: null };
 }
 
 /** Moves to the next living player after a completed turn. An incorporated

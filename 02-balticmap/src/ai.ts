@@ -6,7 +6,7 @@ import {
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
 import {
-  attackDamageFor, borderPolygonsOf, holdsGuard,
+  attackDamageFor, borderPolygonsOf, greatRaidMarches, holdsGuard,
   marchSourcesAgainst, plagueMultiplier, playableSet,
   validTargetsFor, type RulesView,
 } from "./playability";
@@ -36,9 +36,10 @@ export type AiAction =
 export const POLICY_COVERAGE: Record<string, string> = {
   "pay-military-tribute": "1: forced tribute",
   "subjugate":
-    "2: subjugate any faction whose gate is open, quiet lands included - a " +
+    "2B: subjugate any faction whose gate is open, quiet lands included - a " +
     "land that takes no turns is a faction in reach like any other; the pick " +
-    "among open gates is the biggest full realm, ties by faction order",
+    "among open gates is the biggest full realm, ties by faction order. The " +
+    "card is withdrawn from every pool, so the branch stands unreached",
   "incorporate": "3: incorporate the best permanent gain net of freed vassals",
   "assassinate-ruler":
     "4: kill the ruler of a land carrying No successor in reach, which takes " +
@@ -47,20 +48,23 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "harvest-feast": "5: heal toward a gate, realm-wide arm",
   "fortify": "5: heal toward a gate - the weaker of the two single-land heals, taken when no Hillfort is in hand",
   "strong-raid":
-    "5A/6W/11W: the same branches Raid uses - `isMarchCard` covers both, and " +
+    "2A/5A/6W/11W: the same branches Raid uses - `marchPick` covers both, and " +
     "the AI reaches for whichever of the two is in hand",
   "strong-fortify":
     "5: heal toward a gate - preferred over Fortify where both are held, " +
     "since it is the same play for one more point",
   "raid":
+    "2A: walk into a bordering land whose defenses are gone, which takes it - " +
+    "the biggest realm first; " +
     "5A: counter a march that would break one of our lands, or that we out-" +
     "muscle; 6W: suppress a vassal nearing its gate or finish an opening; " +
     "11W: build toward the nearest gate. Source: the land the counter must " +
     "leave from, else the one whose own defenses best survive being counter-" +
     "raided back",
   "great-raid":
-    "6W: fan damage when 2+ borders would reach their gates; 11W: pressure " +
-    "when a stacked council faces 3+ border rivals",
+    "6W: aim it where the arrows it musters flatten the land outright; 11W: " +
+    "pressure the neighbourhood that musters most, 2 arrows or more. Target: " +
+    "greatRaidPick, the bordering land its own neighbours can hit hardest",
   "prosperous-proliferation":
     "8R: raise the ceiling of the realm's biggest land whenever held - it is " +
     "always in the harvest offer, so a seat that never picked it up is a seat " +
@@ -249,10 +253,39 @@ export function chooseAction(state: GameState): AiAction {
     if (tribute !== undefined) return { type: "play", cardIndex: tribute };
   }
 
-  // 2: subjugate any faction whose gate is open - the certain gain outranks
+  // 2A: walk into a land that is already down. An army arriving where nothing
+  // is left to fight TAKES the land, so a raid at a flattened neighbour is a
+  // conquest rather than an attack - and it is the only way a land changes
+  // hands now. It outranks everything voluntary for the same reason the old
+  // Subjugate branch did: a certain gain beats every plan.
+  //
+  // Ahead of the gate-hunting branches on purpose. Those aim at lands still
+  // standing (`gateCandidates` drops a land whose gate is already open), so
+  // without this step a seat would flatten its neighbours one after another
+  // and never move in.
+  const walkIn = marchPick(idxOf);
+  if (walkIn !== undefined) {
+    const realm = fullRealmOf(p.factionId, state.overlords, state.incorporated);
+    const empty = validTargetsFor(v, p.factionId, walkIn.id)
+      .filter((t) => !realm.has(t) && defenseOf(v, t) <= 0)
+      // The biggest pyramid first: taking a lord takes everything under it.
+      .sort(
+        (a, b) =>
+          fullRealmOf(b, state.overlords, state.incorporated).size -
+            fullRealmOf(a, state.overlords, state.incorporated).size ||
+          order(a) - order(b),
+      );
+    if (empty.length > 0) {
+      return raidAt(state, v, p.factionId, walkIn.index, empty[0]);
+    }
+  }
+
+  // 2B: subjugate any faction whose gate is open - the certain gain outranks
   // everything voluntary. Legality owns the gate, the respite and the liege
   // rule; the pick among several open gates is the biggest full realm, since
-  // taking a lord takes its pyramid.
+  // taking a lord takes its pyramid. The card is withdrawn from every pool,
+  // so this is unreachable until it comes back; it is kept because the branch
+  // is what the card means, not what any deck happens to hold.
   const subjugate = idxOf("subjugate");
   if (subjugate !== undefined) {
     const targets = validTargetsFor(v, p.factionId, "subjugate");
@@ -575,16 +608,14 @@ function warpathDecisive(
     if (finish !== undefined) return raidAt(state, v, actor, raid, finish);
   }
 
-  // 6W-3: great raid when 2 or more bordering home polygons would be pushed
-  // at or under their gates by its damage.
+  // 6W-3: great raid where the arrows it musters flatten the land outright.
+  // It is several Raids at one target now, so the question is the finisher's
+  // question with a bigger number: how much lands, against what is standing.
   if (greatRaid !== undefined) {
-    const fan = attackDamageFor(v, actor, "great-raid").damage;
-    const border = borderPolygonsOf(v, actor);
-    const opened = [...border].filter(
-      (t) => !(t in v.incorporated) && gateGap(v, t) > 0 &&
-        gateGap(v, t) <= fan,
-    );
-    if (opened.length >= 2) return { type: "play", cardIndex: greatRaid };
+    const best = greatRaidPick(v, actor);
+    if (best !== null && best.damage >= gateGap(v, best.target)) {
+      return { type: "play", cardIndex: greatRaid, targetId: best.target };
+    }
   }
 
   // 6W-4: read the omens when the doubled attack would open a gate this
@@ -629,22 +660,44 @@ function warpathBuild(
     return raidAt(state, v, actor, raid, candidates[0]);
   }
 
-  // 11W-3: great raid as pressure - 3 or more rivals border the realm and
-  // leadership is stacked, so the fan is worth more than one aim.
+  // 11W-3: great raid as pressure, where two or more lands can ride at once.
+  // One arrow is a Raid played at a card's price, so the card is only worth
+  // spending where the neighbourhood actually musters.
   if (greatRaid !== undefined) {
-    const border = borderPolygonsOf(v, actor);
-    const rivals = new Set(
-      [...border].map((t) => v.incorporated[t] ?? t),
-    );
-    if (
-      rivals.size >= 3 &&
-      (v.leadership[actor] ?? 0) >= 2 * WAR_COUNCIL_LEADERSHIP
-    ) {
-      return { type: "play", cardIndex: greatRaid };
+    const best = greatRaidPick(v, actor);
+    if (best !== null && best.arrows >= 2) {
+      return { type: "play", cardIndex: greatRaid, targetId: best.target };
     }
   }
 
   return null;
+}
+
+/** Where a Great raid would land hardest: the bordering polygon its own
+ *  neighbourhood can throw the most damage at, ties broken toward the land
+ *  nearest falling. Null when no target musters an arrow at all.
+ *
+ *  One list, `greatRaidMarches`, which is also what legality and the card tip
+ *  read - the AI must not score a fan the rules would not send. */
+function greatRaidPick(
+  v: RulesView, actor: string,
+): { target: string; arrows: number; damage: number } | null {
+  const each = attackDamageFor(v, actor, "great-raid").damage;
+  let best: { target: string; arrows: number; damage: number } | null = null;
+  for (const target of borderPolygonsOf(v, actor)) {
+    if (target in v.incorporated) continue;
+    const arrows = greatRaidMarches(v, actor, target).length;
+    if (arrows === 0) continue;
+    const damage = arrows * each;
+    if (
+      best === null ||
+      damage > best.damage ||
+      (damage === best.damage && gateGap(v, target) < gateGap(v, best.target))
+    ) {
+      best = { target, arrows, damage };
+    }
+  }
+  return best;
 }
 
 /** Step 6, Pestilence: the decisive moves - cashing a gate open outranks

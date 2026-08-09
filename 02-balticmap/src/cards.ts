@@ -1,5 +1,5 @@
 import { SINGLE_LAND_HEAL } from "./defense";
-import { card, t, type Segment } from "./segments";
+import { card, keyword, t, type Segment } from "./segments";
 
 /** One pack draw tier. The meta progression retired with the defense-score
  *  design (2026-08-08) - nothing rolls tiers today - but the table and
@@ -84,11 +84,13 @@ export interface CardDef {
    *  a land with a free army to march out of - so the limit is the board,
    *  not a count kept here.
    *
-   *  Deliberately not "raids are special": any card can carry it, and the
-   *  rule reads the same for all of them. Nothing outside `playsAgain` below
-   *  and `GameState.repeatCardId` knows this rule exists, and neither of them
-   *  knows which card is carrying it. */
-  playsAgain?: true;
+   *  A GROUP and not a card id: the three raids are one keyword, so a Raid
+   *  re-opens the turn for a Strong raid and a Great raid alike. Deliberately
+   *  not "raids are special" - any set of cards can share a group, and the
+   *  rule reads the same for all of them. Nothing outside `repeatGroupOf`
+   *  below and `GameState.repeatGroup` knows this rule exists, and neither of
+   *  them knows which cards are in the group. */
+  repeatGroup?: string;
   /** One-line rules text shown to the player. */
   text: string;
   /** `text`, with every card the text names as a `card()` segment, so the
@@ -102,12 +104,12 @@ export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Nothing happens. Enough of these earn a Turnip harvest.",
     textSegments: [t("Nothing happens. Enough of these earn a "), card("turnip-harvest"), t(".")] },
   // Build A - Warpath.
-  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", playsAgain: true, text: "Send an army at a bordering land. It lands next turn for 1 damage plus your leadership, less any counter-raid." },
-  "great-raid": { id: "great-raid", name: "Great raid", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Every land of yours that can spare an army raids all it borders. They land next turn for 0.5 damage plus your leadership." },
-  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next Raid or Great raid deals double damage. Stacks.",
-    textSegments: [t("Your next "), card("raid"), t(" or "), card("great-raid"), t(" deals double damage. Stacks.")] },
-  "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership, added to every attack. Stacks. Lost when the ruler dies." },
-  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", playsAgain: true, text: "Send an army at a bordering land. It lands next turn for 2 damage plus your leadership, less any counter-raid." },
+  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", repeatGroup: "raid", text: "Send an army at a bordering land. It lands next turn for 1 damage, less any counter-raid." },
+  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", repeatGroup: "raid", text: "Every land of yours bordering one land raids it, one army each. Each lands next turn like a Raid, answered separately." },
+  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next raid card deals double damage. Stacks.",
+    textSegments: [t("Your next "), keyword("raid"), t(" card deals double damage. Stacks.")] },
+  "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
+  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", repeatGroup: "raid", text: "Send an army at a bordering land. It lands next turn for 2 damage, less any counter-raid." },
   "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 2 defense to one of your lands." },
   "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 1 defense to one of your lands." },
   // Build B - Pestilence. Stacks are owned: each rival's disease on a land is
@@ -122,7 +124,12 @@ export const CARDS: Record<string, CardDef> = {
   // Neutrals - reachable by every deck through the harvest pool.
   "hillfort": { id: "hillfort", name: "Hillfort", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 3 defense to one of your lands." },
   "harvest-feast": { id: "harvest-feast", name: "Harvest feast", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 1 defense to every land you hold." },
-  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Take a faction in reach as your vassal. Only while their home defense is a quarter or less. Vassals pay tribute." },
+  // WITHDRAWN. Not deck-buildable and in no starting deck, so no seat can hold
+  // one and no route offers it: a land changes hands one way now, by an army
+  // walking into it once its defenses are gone. The definition and the claim
+  // machinery stay because the card is meant to come back, and a card nobody
+  // can obtain is the one shape the discovery rule allows to sit idle.
+  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Take a faction in reach as your vassal, once their defenses are gone. Vassals pay tribute." },
   "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Absorb one of your vassals for good. Needs a realm of 4 lands." },
   "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Kill a ruler in reach. Their successor starts with no leadership." },
   // Secret. The rules already treat a posted guard as hidden - `failureRiskOf`
@@ -192,6 +199,17 @@ export const ATTACK_CARDS: ReadonlySet<string> = new Set([
  *  to find all eight. */
 export const MARCH_CARDS: ReadonlySet<string> = new Set(["raid", "strong-raid"]);
 
+/** The raid keyword: every card that sends armies at a land, whatever shape.
+ *  What the leader's raid-leadership ability adds to, and the group the turn
+ *  re-opens for. `MARCH_CARDS` is the narrower question - which of them the
+ *  player aims one army at, two clicks - and Great raid picks its own sources,
+ *  so it is here and not there. */
+export const RAID_CARDS: ReadonlySet<string> = new Set([
+  "raid", "strong-raid", "great-raid",
+]);
+
+export const isRaidCard = (cardId: string): boolean => RAID_CARDS.has(cardId);
+
 export const isMarchCard = (cardId: string): boolean => MARCH_CARDS.has(cardId);
 
 /** The cards that restore defense to ONE land of the actor's own realm. A set
@@ -224,11 +242,42 @@ export const INWARD_CARDS: ReadonlySet<string> = new Set([
 export const isInwardCard = (cardId: string): boolean =>
   INWARD_CARDS.has(cardId);
 
-/** Whether playing `cardId` re-opens the turn for another copy of itself
- *  (`CardDef.playsAgain`). The one reader of the field: the turn-spent gate
- *  asks this, and the state it writes, rather than naming a card. */
-export const playsAgain = (cardId: string): boolean =>
-  CARDS[cardId]?.playsAgain === true;
+/** A keyword: a rule several cards share, named once and explained once.
+ *
+ *  `noun` is the group's common NOUN, lowercase, for the line that has to say
+ *  what a re-opened turn will take when several cards would satisfy it -
+ *  "another raid" is English, "another Raid" would be claiming one particular
+ *  card. `name` is how the keyword is titled where it is explained.
+ *
+ *  Every card carrying a keyword shows this text with its own rules text, so
+ *  the rule is learned from the card that has it rather than from somewhere
+ *  else the player has to go looking. */
+export interface KeywordDef {
+  name: string;
+  noun: string;
+  text: string;
+}
+
+export const KEYWORDS: Readonly<Record<string, KeywordDef>> = {
+  raid: {
+    name: "Raid",
+    noun: "raid",
+    text: "Playing a raid card leaves your turn open for another one. You may keep going while you hold a raid card and a land with an army to spare.",
+  },
+};
+
+/** The keyword a card carries, or null. One lookup, so a surface that explains
+ *  keywords never has to know which ones exist. */
+export const keywordOf = (cardId: string): KeywordDef | null => {
+  const group = CARDS[cardId]?.repeatGroup;
+  return group === undefined ? null : KEYWORDS[group] ?? null;
+};
+
+/** The group playing `cardId` re-opens the turn for, or null. The one reader
+ *  of the field: the turn-spent gate asks this, and the group it writes,
+ *  rather than naming a card. */
+export const repeatGroupOf = (cardId: string): string | null =>
+  CARDS[cardId]?.repeatGroup ?? null;
 
 /** Guard card -> the card it turns aside, once, for whoever posted it.
  *
@@ -296,9 +345,6 @@ export function startingDeck(strategy: Strategy = "warpath"): string[] {
     ...work,
     "fortify", "fortify", "fortify", "fortify",
     "grow-crops",
-    // Every seat opens on a map that is mostly lands nobody plays, so a deck
-    // without this can win nothing.
-    "subjugate",
   ];
 }
 

@@ -17,11 +17,14 @@ import { fullRealmOf, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
 import { rulerNameOf } from "./rulers";
 import {
-  faction, plainText, t, type NameLookup, type Segment,
+  ability, abilityName, faction, plainText, t,
+  type NameLookup, type Segment,
 } from "./rich-text";
+import { abilitiesOf } from "./abilities";
 import {
   handBlockReason, marchSourcesAgainst, marchSourcesFor, marchTargetsFrom,
-  playableSet, respiteExpiry, validTargetsFor, targetEligibilityFor,
+  claimWouldLand, playableSet, respiteExpiry, validTargetsFor,
+  targetEligibilityFor,
   armyCapOn, attackDamageFor, freeArmiesFor, miasmaHeld, omensHeld,
 } from "./playability";
 import { armiesOn, axesOf, type Claim, type March } from "./marches";
@@ -1421,7 +1424,13 @@ function drawClaim(
   const mid = pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.5);
   label.setAttribute("x", String(mid.x));
   label.setAttribute("y", String(mid.y));
-  label.textContent = "SUBJUGATE";
+  // Says so when it is already going to come to nothing. The demand rides for
+  // a whole turn and the board moves under it - a heal past the gate is the
+  // ordinary answer to one - so an arrow that still reads as a threat after it
+  // has been answered is the map lying about the one thing it is for.
+  const doomed = !claimWouldLand(viewOf(game), claim.actor, claim.to);
+  g.classList.toggle("claim-doomed", doomed);
+  label.textContent = doomed ? "SUBJUGATE (will fail)" : "SUBJUGATE";
   g.appendChild(label);
   if (rank !== undefined) {
     appendOrder(g, pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.85), rank);
@@ -1799,6 +1808,13 @@ function hoverLines(region: Region): TooltipLine[] {
     lines.push({ text: "Nobody leads this land" });
   } else {
     lines.push({ text: leader, amount: String(v.leadership[region.faction] ?? 0) });
+    // What this leader can do, named. A leadership figure beside a chief who
+    // has no way to spend it would read as a number that does nothing, and an
+    // ability the player cannot see is a rule they cannot play around - the
+    // same reason no land status ships without its hover.
+    for (const id of abilitiesOf(v.leaderAbilities, region.faction)) {
+      lines.push({ text: abilityName(id), segments: [ability(id)] });
+    }
     const omens = omensHeld(v, region.faction);
     if (omens > 0) lines.push({ text: "Omens read", amount: String(omens) });
     const miasma = miasmaHeld(v, region.faction);

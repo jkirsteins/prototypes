@@ -3,7 +3,7 @@ import {
   ATTACK_CARDS, BASE_RARITY, BUILDS, CARDS, CONSUMED_CARDS, GUARDS,
   INWARD_CARDS, NEUTRAL_POOL, RARITY_TIERS, SINGLE_LAND_HEALS, TRIBUTE_CARDS,
   guardAgainst, isGuardCard, isInwardCard, isSingleLandHeal, isTributeCard,
-  playsAgain, rarityForImpact, shuffle, startingDeck,
+  repeatGroupOf, rarityForImpact, shuffle, startingDeck,
 } from "../src/cards";
 import { SINGLE_LAND_HEAL } from "../src/defense";
 import { cardTextSegments, plainText, t, type NameLookup } from "../src/rich-text";
@@ -24,7 +24,7 @@ describe("cards", () => {
     ) => {
       LISTED.push(id);
       const {
-        rarity: _tier, textSegments: _segs, playsAgain: _again, ...rest
+        rarity: _tier, textSegments: _segs, repeatGroup: _again, ...rest
       } = CARDS[id];
       expect(rest).toEqual({
         id, name, targeted, secret, maxPerDeck, deckBuildable, forced, text,
@@ -279,17 +279,20 @@ describe("builds and the neutral pool", () => {
     }
   });
 
-  it("pins the plays-again set - the cards a spent turn still accepts", () => {
-    const again = Object.values(CARDS).filter((c) => c.playsAgain === true)
+  it("pins the repeat groups - what a spent turn still accepts", () => {
+    const again = Object.values(CARDS).filter((c) => c.repeatGroup !== undefined)
       .map((c) => c.id).sort();
-    expect(again).toEqual(["raid", "strong-raid"]);
-    // The predicate is the only reader of the field, so a card that declares
-    // nothing must answer false through it rather than by being left out of a
+    // All three raids share one group, so any of them re-opens the turn for
+    // any other.
+    expect(again).toEqual(["great-raid", "raid", "strong-raid"]);
+    for (const id of again) expect(repeatGroupOf(id)).toBe("raid");
+    // The reader is the only reader of the field, so a card that declares
+    // nothing must answer null through it rather than by being left out of a
     // list somewhere else.
     for (const id of Object.keys(CARDS)) {
-      expect(playsAgain(id)).toBe(again.includes(id));
+      expect(repeatGroupOf(id) !== null).toBe(again.includes(id));
     }
-    expect(playsAgain("no-such-card")).toBe(false);
+    expect(repeatGroupOf("no-such-card")).toBeNull();
   });
 
   it("pins the single-land heals to the amounts they restore", () => {
