@@ -23,8 +23,8 @@ export const SUBJUGATION_GATE = 0.25;
  *  regains independence at the start of its own turn. */
 export const INDEPENDENCE_GATE = 0.75;
 
-export const RAID_DAMAGE = 150;
-export const GREAT_RAID_DAMAGE = 75;
+export const RAID_DAMAGE = 10;
+export const GREAT_RAID_DAMAGE = 5;
 export const WAR_COUNCIL_LEADERSHIP = 50;
 export const PLAGUE_DAMAGE_PER_STACK = 100;
 export const HILLFORT_HEAL = 150;

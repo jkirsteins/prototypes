@@ -390,8 +390,7 @@ describe("raid", () => {
     const two = playCard(
       { ...base, omens: { beta: 2 } }, 0, rng(), "alpha",
     );
-    // 150 * 4 = 600: the polygon bottoms out exactly.
-    expect(two.defense.alpha).toBe(0);
+    expect(two.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE * 4);
     expect(two.log.at(-1)).toMatchObject({
       type: "damaged", amount: RAID_DAMAGE * 4,
     });
@@ -400,9 +399,14 @@ describe("raid", () => {
 
   it("records the actual movement on a nearly-broken polygon, and nothing at 0", () => {
     const g = withHand(playingState(), 0, ["raid"]);
-    const low = playCard({ ...g, defense: { alpha: 100 } }, 0, rng(), "alpha");
+    // A polygon standing at less than one raid's damage: the event records
+    // the actual movement, not the card's number.
+    const standing = Math.max(1, RAID_DAMAGE - 1);
+    const low = playCard(
+      { ...g, defense: { alpha: standing } }, 0, rng(), "alpha",
+    );
     expect(low.defense.alpha).toBe(0);
-    expect(low.log.at(-1)).toMatchObject({ type: "damaged", amount: 100 });
+    expect(low.log.at(-1)).toMatchObject({ type: "damaged", amount: standing });
 
     const dead = playCard({ ...g, defense: { alpha: 0 } }, 0, rng(), "alpha");
     // Nothing special happens at 0: the play lands, no damage to record.

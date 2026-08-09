@@ -40,11 +40,12 @@ export interface Scenario {
  *  different game and were invalidated wholesale, exactly as that design
  *  says. These are post-flip baselines - measured, then widened the usual
  *  way (turn medians to [0.6x, 1.5x], shares by +/-0.15) - not targets: no
- *  tuning has been done against them. The headline worth knowing before a
- *  playtest: the defense economy resolves worlds FAST - median end turn
- *  30..43 across all three arms against the old game's ~105 - and a
- *  flailing player still falls (defeatShare 1.00), so pacing pressure is
- *  the first thing to judge at the table. */
+ *  tuning has been done against them beyond one directed change: raid
+ *  damage was cut 15x on 2026-08-09 (150/75 -> 10/5) and every band was
+ *  re-measured. The cut lengthened worlds less than the factor suggests
+ *  (medians 30..43 -> 44..59): with the bases this small, War council
+ *  leadership and Plague's 100-per-stack carry the tempo, and a plain raid
+ *  is close to a token. Worlds still resolve on every arm. */
 export const SCENARIOS: Scenario[] = [
   {
     id: "new-player-flailing",
@@ -58,10 +59,10 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.3, 0.62],       // measured 0.46
-      medianFirstSubjugation: [12, 31],   // measured 20.5
-      defeatShare: [0.85, 1],             // measured 1.00
-      medianDefeatTurn: [19, 47],         // measured 31.5
+      subjugatedShare: [0.5, 0.8],        // measured 0.65
+      medianFirstSubjugation: [21, 53],   // measured 35
+      defeatShare: [0.77, 1],             // measured 0.92
+      medianDefeatTurn: [31, 77],         // measured 51
     },
   },
   {
@@ -76,9 +77,9 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 150,
     expect: {
-      subjugatedShare: [0.5, 0.8],        // measured 0.65
-      defeatShare: [0.79, 1],             // measured 0.94
-      medianDefeatTurn: [20, 50],         // measured 33
+      subjugatedShare: [0.58, 0.88],      // measured 0.73
+      defeatShare: [0.81, 1],             // measured 0.96
+      medianDefeatTurn: [30, 75],         // measured 50
     },
   },
 ];
@@ -173,7 +174,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [19, 48],      // measured 32.0
+      medianEndTurn: [32, 79],      // measured 52.5
     },
   },
   {
@@ -186,7 +187,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [18, 46],      // measured 30.5
+      medianEndTurn: [27, 67],      // measured 44.5
     },
   },
   {
@@ -199,7 +200,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [26, 64],      // measured 42.5
+      medianEndTurn: [35, 89],      // measured 59
     },
   },
 ];

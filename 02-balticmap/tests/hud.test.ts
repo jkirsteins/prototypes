@@ -351,13 +351,13 @@ describe("activity log", () => {
     // The play line carries no suffix - the damage rides on the consequence
     // line, which is where the number belongs.
     expect(texts).toContain("You played Raid on Alpha");
-    expect(texts).toContain("The defenses of Alpha are battered (Defense -150 -> 450)");
+    expect(texts).toContain("The defenses of Alpha are battered (Defense -10 -> 590)");
     const damaged = entries.find((el) =>
       el.textContent?.startsWith("The defenses of Alpha"))!;
     expect(damaged.classList.contains("log-consequence")).toBe(true);
     // The number the log quotes is the number on the map, not a second
     // reckoning of its own.
-    expect(g.defense.alpha).toBe(450);
+    expect(g.defense.alpha).toBe(590);
   });
 
   it("colours a hit red and a heal green, by the polygon's own movement", () => {

@@ -34,12 +34,12 @@ describe("cards", () => {
     // Build A - Warpath.
     expectProps(
       "raid", "Raid", true, false, null, true, false,
-      "Deal 150 damage, plus your ruler's leadership, to the defenses of one " +
+      "Deal 10 damage, plus your ruler's leadership, to the defenses of one " +
         "land in reach.",
     );
     expectProps(
       "great-raid", "Great raid", false, false, null, true, false,
-      "Deal 75 damage, plus your ruler's leadership, to the defenses of " +
+      "Deal 5 damage, plus your ruler's leadership, to the defenses of " +
         "every land bordering your realm.",
     );
     expectProps(

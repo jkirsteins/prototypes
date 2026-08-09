@@ -197,7 +197,7 @@ describe("6W: warpath decisive moves", () => {
 
   it("6W-2: finishes a gate one raid can open - above the council", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 300 } }; // gap 150 <= raid damage 150
+    g = { ...g, defense: { beta: 160 } }; // gap 10 <= raid damage 10
     g = withHand(g, ["war-council", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta",
@@ -206,26 +206,26 @@ describe("6W: warpath decisive moves", () => {
 
   it("6W-3: fans a great raid when it would open two or more border gates", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 200, gamma: 200 } }; // gaps 50 <= fan 75
+    g = { ...g, defense: { beta: 154, gamma: 154 } }; // gaps 4 <= fan 5
     g = withHand(g, ["great-raid", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
     // One gate is not worth the fan: the turn feeds the harvest loop instead.
     const one = withHand(
-      { ...g, defense: { beta: 200 } }, ["great-raid", "grow-crops"],
+      { ...g, defense: { beta: 154 } }, ["great-raid", "grow-crops"],
     );
     expect(chooseAction(one)).toEqual({ type: "play", cardIndex: 1 });
   });
 
   it("6W-4: reads the omens when only the doubled raid opens a gate", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 400 } }; // gap 250: >150, <=300
+    g = { ...g, defense: { beta: 165 } }; // gap 15: >10, <=20
     g = withHand(g, ["favourable-omens", "raid"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 
   it("6W-4: never delays a finishing raid to stack a reading", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 300 } };
+    g = { ...g, defense: { beta: 160 } };
     g = withHand(g, ["favourable-omens", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta",
@@ -260,11 +260,18 @@ describe("6P: pestilence decisive moves", () => {
   });
 
   it("6P-2: cashes when the total damage beats a raid, else waits", () => {
+    // "A raid's worth" moves with leadership, so the waits-arm needs a
+    // council-stacked ruler: at leadership 200 a raid is worth 210, and two
+    // stacks (200) sit under it while three (300) beat it.
     let g = asStrategy(base(), "pestilence");
-    g = { ...g, disease: { beta: { alpha: 2 } } }; // 200 > 150
-    g = withHand(g, ["plague", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-    const thin = { ...g, disease: { beta: { alpha: 1 } } }; // 100 <= 150
+    g = {
+      ...g,
+      rulers: { ...g.rulers, alpha: { ...g.rulers.alpha, leadership: 200 } },
+    };
+    const fat = { ...g, disease: { beta: { alpha: 3 } } }; // 300 > 210
+    expect(chooseAction(withHand(fat, ["plague", "grow-crops"])))
+      .toEqual({ type: "play", cardIndex: 0 });
+    const thin = { ...g, disease: { beta: { alpha: 2 } } }; // 200 <= 210
     expect(chooseAction(withHand(thin, ["plague", "grow-crops"])))
       .toEqual({ type: "play", cardIndex: 1 });
   });
@@ -289,7 +296,13 @@ describe("6P: pestilence decisive moves", () => {
 
   it("6P-4: reads the miasma when only the doubled plague opens a gate", () => {
     let g = asStrategy(base(), "pestilence");
-    // gap 150: one stack cashes 100 (no), doubled 200 (yes).
+    // gap 150: one stack cashes 100 (no), doubled 200 (yes). Leadership
+    // keeps a raid's worth above the plain 100, or the total-beats-a-raid
+    // arm of 6P-2 would cash the stack before this step is reached.
+    g = {
+      ...g,
+      rulers: { ...g.rulers, alpha: { ...g.rulers.alpha, leadership: 100 } },
+    };
     g = { ...g, defense: { beta: 300 }, disease: { beta: { alpha: 1 } } };
     g = withHand(g, ["miasma", "plague"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
@@ -395,13 +408,13 @@ describe("steps 7..10: guard, settle, harvest, turnips", () => {
 describe("step 11: build moves", () => {
   it("11W-1: councils while no gate is within two attacks", () => {
     let g = asStrategy(base(), "warpath");
-    g = withHand(g, ["war-council", "raid"]); // every gap is 450 > 300
+    g = withHand(g, ["war-council", "raid"]); // every gap is 450 > 2 attacks
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 
   it("11W-2: raids the polygon nearest its gate once one is within reach", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { gamma: 400 } }; // gap 250 <= 2 attacks
+    g = { ...g, defense: { gamma: 165 } }; // gap 15 <= 2 attacks (20)
     g = withHand(g, ["war-council", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "gamma",

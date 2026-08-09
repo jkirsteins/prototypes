@@ -325,7 +325,7 @@ describe("targetImpactLines", () => {
 
   it("heads the block with the card, then the defense move it would deal", () => {
     expect(shown(targetImpactLines(v(), "alpha", "raid", "beta")))
-      .toEqual(["If Raid played here:", "-150 Defense (600 -> 450)"]);
+      .toEqual(["If Raid played here:", "-10 Defense (600 -> 590)"]);
     expect(targetImpactLines(v(), "alpha", "raid", "beta")[0].blockStart).toBe(true);
   });
 
@@ -336,27 +336,27 @@ describe("targetImpactLines", () => {
   });
 
   it("floors the landing point at zero, the same clamp the resolution applies", () => {
-    const view = v({ defense: { beta: 100 } });
+    const view = v({ defense: { beta: 5 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-150 Defense (100 -> 0)");
+      .toBe("-10 Defense (5 -> 0)");
   });
 
   it("adds the ruler's leadership into the quoted damage", () => {
     const view = v({ leadership: { alpha: 50 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-200 Defense (600 -> 400)");
+      .toBe("-60 Defense (600 -> 540)");
   });
 
   it("doubles a held reading, and says which word is the reading's", () => {
     const view = v({ omens: { alpha: 1 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-300 Defense (600 -> 300, doubled)");
+      .toBe("-20 Defense (600 -> 580, doubled)");
   });
 
   it("quotes a stack at its real multiple before it is aimed", () => {
     const view = v({ omens: { alpha: 2 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-600 Defense (600 -> 0, quadrupled)");
+      .toBe("-40 Defense (600 -> 560, quadrupled)");
   });
 
   it("previews a Hillfort as the heal it is, capped at what the land once held", () => {
@@ -468,7 +468,7 @@ describe("targetImpactLines", () => {
   it("a lord may raid its own vassal - the aim previews rather than refusing", () => {
     const view = v({ overlords: new Map([["beta", "alpha"]]) });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta")))
-      .toEqual(["If Raid played here:", "-150 Defense (600 -> 450)"]);
+      .toEqual(["If Raid played here:", "-10 Defense (600 -> 590)"]);
   });
 });
 

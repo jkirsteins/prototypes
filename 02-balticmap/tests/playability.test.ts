@@ -522,10 +522,10 @@ describe("attackDamageFor", () => {
     expect(attackDamageFor(view(), "alpha", "raid"))
       .toEqual({ damage: RAID_DAMAGE, multiplier: 1 });
     const led = view({ leadership: { alpha: 50 } });
-    expect(attackDamageFor(led, "alpha", "raid").damage).toBe(200);
+    expect(attackDamageFor(led, "alpha", "raid").damage).toBe(RAID_DAMAGE + 50);
     const read = view({ leadership: { alpha: 50 }, omens: { alpha: 2 } });
     expect(attackDamageFor(read, "alpha", "raid"))
-      .toEqual({ damage: 800, multiplier: 4 });
+      .toEqual({ damage: (RAID_DAMAGE + 50) * 4, multiplier: 4 });
   });
 
   it("great raid uses its own base under the same formula", () => {
