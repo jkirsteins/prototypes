@@ -40,12 +40,17 @@ export interface Scenario {
  *  different game and were invalidated wholesale, exactly as that design
  *  says. These are post-flip baselines - measured, then widened the usual
  *  way (turn medians to [0.6x, 1.5x], shares by +/-0.15) - not targets: no
- *  tuning has been done against them beyond one directed change: raid
- *  damage was cut 15x on 2026-08-09 (150/75 -> 10/5) and every band was
- *  re-measured. The cut lengthened worlds less than the factor suggests
- *  (medians 30..43 -> 44..59): with the bases this small, War council
- *  leadership and Plague's 100-per-stack carry the tempo, and a plain raid
- *  is close to a token. Worlds still resolve on every arm. */
+ *  tuning has been done against them.
+ *
+ *  Two directed changes have moved them since, each followed by a full
+ *  re-measure. Raid damage was cut 15x (150/75 -> 10/5), which lengthened
+ *  worlds less than the factor suggests: with the bases this small, War
+ *  council leadership and Plague's 100-per-stack carry the tempo and a plain
+ *  raid is close to a token. Then every constant was scaled by 1/10 and
+ *  Fortify was reintroduced, which lengthened everything again and softened
+ *  the naive player's fall - a starting deck holding five Fortify heals a
+ *  flailing player back over the subjugation gate often enough to drop
+ *  `defeatShare` from 0.92 to 0.62. Worlds still resolve on every arm. */
 export const SCENARIOS: Scenario[] = [
   {
     id: "new-player-flailing",
@@ -59,10 +64,13 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 80,
     expect: {
-      subjugatedShare: [0.5, 0.8],        // measured 0.65
-      medianFirstSubjugation: [21, 53],   // measured 35
-      defeatShare: [0.77, 1],             // measured 0.92
-      medianDefeatTurn: [31, 77],         // measured 51
+      subjugatedShare: [0.64, 0.94],      // measured 0.79
+      medianFirstSubjugation: [29, 72],   // measured 48
+      defeatShare: [0.47, 0.77],          // measured 0.62
+      // measured 75. The widened upper bound would be 113, past the 80-turn
+      // cap this scenario runs to, so it is clamped to the cap: a median
+      // cannot exceed the horizon it is measured over.
+      medianDefeatTurn: [45, 80],
     },
   },
   {
@@ -77,9 +85,9 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 150,
     expect: {
-      subjugatedShare: [0.58, 0.88],      // measured 0.73
+      subjugatedShare: [0.62, 0.92],      // measured 0.77
       defeatShare: [0.81, 1],             // measured 0.96
-      medianDefeatTurn: [30, 75],         // measured 50
+      medianDefeatTurn: [47, 117],        // measured 78
     },
   },
 ];
@@ -174,7 +182,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [32, 79],      // measured 52.5
+      medianEndTurn: [49, 122],     // measured 81
     },
   },
   {
@@ -187,7 +195,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [27, 67],      // measured 44.5
+      medianEndTurn: [45, 113],     // measured 75.5
     },
   },
   {
@@ -200,7 +208,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [35, 89],      // measured 59
+      medianEndTurn: [55, 138],     // measured 92
     },
   },
 ];
