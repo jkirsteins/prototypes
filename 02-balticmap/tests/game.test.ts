@@ -2,12 +2,14 @@ import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, beginTurn,
   playCard, discardCard, endTurn, advance, surrender, viewOf,
+  autoTransfer, transferDefense, transferLimit,
   OPENING_HAND, HAND_REFILL, MAX_ACTIVE, TURNIP_HARVEST_THRESHOLD,
   victoryRealmSize, type GameState,
 } from "../src/game";
 import {
-  hasPassive, passivesOn, playsTurns, QUIET_PASSIVES,
+  hasPassive, passivesOn, playsTurns, QUIET_PASSIVES, stripOnCapture,
 } from "../src/passives";
+import { hasRuler } from "../src/rulers";
 import { DEFAULT_RULES } from "../src/rules";
 import { CARDS, isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
@@ -1765,5 +1767,352 @@ describe("the ground under the faction picker", () => {
         expect(passivesOn(g.passives, land), land).toContain(id);
       }
     }
+  });
+});
+
+describe("a claim in flight", () => {
+  /** beta demands alpha's fealty with alpha's defenses at 0. */
+  function declared(): GameState {
+    const g = withHand(
+      { ...playingSix(), defense: { alpha: 0 } }, 0, ["subjugate"],
+    );
+    return playCard(g, 0, rng(), "alpha");
+  }
+
+  it("changes nothing when it is played - it is a demand made a turn ahead", () => {
+    const g = declared();
+    expect(g.overlords.size).toBe(0);
+    expect(g.claims["beta>alpha"]).toMatchObject({
+      actor: "beta", from: "beta", to: "alpha",
+    });
+    expect(g.log.some((e) => e.type === "subjugated")).toBe(false);
+  });
+
+  it("answers at the ACTOR's next turn, not at whoever's turn comes round", () => {
+    const g = declared();
+    // Another seat's turn beginning, and the clock moved: still not beta's
+    // demand to answer.
+    const elsewhere = beginTurn({ ...g, current: 1, turn: g.turn + 1 }, rng());
+    expect(elsewhere.overlords.size).toBe(0);
+    expect(elsewhere.claims["beta>alpha"]).toBeDefined();
+
+    const landed = landMarches(g);
+    expect(landed.overlords.get("alpha")).toBe("beta");
+    expect(landed.claims["beta>alpha"]).toBeUndefined();
+  });
+
+  it("lapses when it finds the gate closed, and takes nothing", () => {
+    const g = declared();
+    // alpha put its defenses back over the line while the demand was in the
+    // air - the whole point of declaring it a turn ahead.
+    const repaired = { ...g, defense: { alpha: SUBJUGATE_LINE + 1 } };
+    const before = repaired.log.length;
+    const after = landMarches(repaired);
+    expect(after.overlords.size).toBe(0);
+    expect(after.claims["beta>alpha"]).toBeUndefined();
+    expect(fresh(after, before)).toContainEqual(expect.objectContaining({
+      type: "march-lapsed", cardId: "subjugate", targetFactionId: "alpha",
+      sourceFactionId: "beta",
+    }));
+  });
+
+  it("lapses when the land is already the actor's own", () => {
+    // Still broken, but it answers to beta now: there is no fealty left to
+    // demand, and a second `subjugated` line would say it changed hands twice.
+    const g = declared();
+    const after = landMarches({
+      ...g, overlords: new Map([["alpha", "beta"]]),
+    });
+    expect(after.claims["beta>alpha"]).toBeUndefined();
+    expect(after.log.filter((e) => e.type === "subjugated")).toHaveLength(0);
+    expect(after.log.some(
+      (e) => e.type === "march-lapsed" && e.cardId === "subjugate",
+    )).toBe(true);
+  });
+
+  it("lapses against a land that escaped into its respite while it flew", () => {
+    const g = declared();
+    const after = landMarches({
+      ...g, respites: { alpha: g.turn + ESCAPE_RESPITE_TURNS },
+    });
+    expect(after.overlords.size).toBe(0);
+    expect(after.claims["beta>alpha"]).toBeUndefined();
+    expect(after.log.some(
+      (e) => e.type === "march-lapsed" && e.cardId === "subjugate",
+    )).toBe(true);
+  });
+
+  it("is broken by an army marching at the same land - by anyone else", () => {
+    // A land being fought over is a land not submitting to anybody, which is
+    // what makes a raid an answer to a Subjugate rather than a race beside it.
+    let g = playingSix();
+    g = {
+      ...g,
+      defense: { alpha: 0 },
+      claims: {
+        "gamma>alpha": {
+          actor: "gamma", from: "gamma", to: "alpha", expiry: g.turn + 1,
+        },
+      },
+    };
+    const before = g.log.length;
+    const after = playCard(
+      withHand(g, 0, ["raid"]), 0, rng(), "alpha", { sourceId: "beta" },
+    );
+    expect(after.claims["gamma>alpha"]).toBeUndefined();
+    expect(fresh(after, before)).toContainEqual(expect.objectContaining({
+      type: "march-lapsed", cardId: "subjugate", targetFactionId: "alpha",
+      sourceFactionId: "gamma",
+    }));
+  });
+
+  it("survives its own actor's raid at the same land", () => {
+    // Otherwise Subjugate and Raid would refuse to be played together.
+    let g = playingSix();
+    g = {
+      ...g,
+      defense: { alpha: 0 },
+      claims: {
+        "beta>alpha": {
+          actor: "beta", from: "beta", to: "alpha", expiry: g.turn + 1,
+        },
+      },
+    };
+    const after = playCard(
+      withHand(g, 0, ["raid"]), 0, rng(), "alpha", { sourceId: "beta" },
+    );
+    expect(after.claims["beta>alpha"]).toBeDefined();
+  });
+});
+
+describe("an army walking into a broken land", () => {
+  it("takes it - two raids on one land need no Subjugate between them", () => {
+    let g = playingSix();
+    g = withHand({ ...g, defense: { alpha: 0 } }, 0, ["raid"]);
+    const declaredRaid = playCard(g, 0, rng(), "alpha", { sourceId: "beta" });
+    const before = declaredRaid.log.length;
+    const after = landMarches(declaredRaid);
+    expect(after.overlords.get("alpha")).toBe("beta");
+    expect(fresh(after, before)).toContainEqual(expect.objectContaining({
+      type: "subjugated", targetFactionId: "alpha", overlordFactionId: "beta",
+    }));
+    // Nothing was damaged: there was nothing left to damage.
+    expect(after.log.some(
+      (e) => e.type === "march-resolved" && e.targetFactionId === "alpha",
+    )).toBe(false);
+  });
+
+  it("wakes the land up - a conquest is a vassal with turns and a deck", () => {
+    let g = playingSix();
+    g = {
+      ...g,
+      defense: { alpha: 0 },
+      passives: { alpha: ["keeps-to-itself", "wild-lands", "hill-country"] },
+    };
+    const after = landMarches(
+      playCard(withHand(g, 0, ["raid"]), 0, rng(), "alpha", { sourceId: "beta" }),
+    );
+    expect(playsTurns(after.passives, "alpha")).toBe(true);
+    expect(hasPassive(after.passives, "alpha", "wild-lands")).toBe(false);
+    // The ground stays: it was never about who held the land.
+    expect(hasPassive(after.passives, "alpha", "hill-country")).toBe(true);
+    expect(pilesOf(after, "alpha").filter(isTributeCard)).toHaveLength(1);
+  });
+
+  it("takes nothing for a faction with no leader - a raid is not a conquest", () => {
+    // The grey middle raids, and without this it quietly ate itself: lands
+    // with no chief to answer for them ended up holding vassals.
+    const g = playingSix();
+    const leaderless = g.factionIds.filter((f) => !hasRuler(g.rulers, f));
+    expect(leaderless.length).toBeGreaterThan(0);
+    const raider = leaderless[0];
+    const target = g.factionIds.find(
+      (f) => f !== raider && hasRuler(g.rulers, f),
+    )!;
+    const armed: GameState = {
+      ...g,
+      current: 0,
+      defense: { [target]: 0 },
+      marches: {
+        [`${raider}>${target}#0`]: {
+          actor: raider, from: raider, to: target, cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: g.turn,
+        },
+      },
+    };
+    const after = beginTurn(armed, rng());
+    expect(after.marches[`${raider}>${target}#0`]).toBeUndefined();
+    expect(after.overlords.get(target)).toBeUndefined();
+    expect(after.log.some((e) => e.type === "subjugated")).toBe(false);
+  });
+});
+
+describe("the defense transfer", () => {
+  /** The human's own capture leaves the question pending; an AI's does not. */
+  function captured(): GameState {
+    const g = withHand(
+      { ...playingSix(), defense: { alpha: 0, beta: 40 } }, 0, ["raid"],
+    );
+    return landMarches(playCard(g, 0, rng(), "alpha", { sourceId: "beta" }));
+  }
+
+  it("asks the human, and answers nothing until they say", () => {
+    const after = captured();
+    expect(after.pendingTransfer).toEqual({ from: "beta", to: "alpha" });
+    expect(after.defense.alpha).toBe(0);
+    expect(after.defense.beta).toBe(40);
+  });
+
+  it("moves the points the player names and clears the question", () => {
+    const g = captured();
+    const after = transferDefense(g, 10);
+    expect(after.defense.beta).toBe(30);
+    expect(after.defense.alpha).toBe(10);
+    expect(after.pendingTransfer).toBeNull();
+    expect(after.log.at(-1)).toMatchObject({
+      type: "transferred", targetFactionId: "alpha", sourceFactionId: "beta",
+      amount: 10,
+    });
+  });
+
+  it("clamps to what the origin holds", () => {
+    const g = captured();
+    expect(transferLimit(g, "beta", "alpha")).toBe(40);
+    const after = transferDefense(g, 9999);
+    expect(after.defense.beta).toBe(0);
+    expect(after.defense.alpha).toBe(40);
+    expect(after.log.at(-1)).toMatchObject({ type: "transferred", amount: 40 });
+  });
+
+  it("clamps to the room the destination has - points past a ceiling would vanish", () => {
+    const g = { ...captured(), defense: { alpha: FIXTURE_MAX - 5, beta: 40 } };
+    expect(transferLimit(g, "beta", "alpha")).toBe(5);
+    const after = transferDefense(g, 40);
+    expect(after.defense.beta).toBe(35);
+    // A land back at its ceiling drops its key, the pristine convention.
+    expect(after.defense.alpha).toBeUndefined();
+  });
+
+  it("0 is a real answer: the question closes and nothing moves", () => {
+    const g = captured();
+    const before = g.log.length;
+    const after = transferDefense(g, 0);
+    expect(after.pendingTransfer).toBeNull();
+    expect(after.defense.beta).toBe(40);
+    expect(fresh(after, before)).toEqual([]);
+  });
+
+  it("does nothing at all when no capture is waiting on an answer", () => {
+    const g = playingSix();
+    expect(transferDefense(g, 10)).toBe(g);
+  });
+
+  it("a seat nobody can ask moves half of what the origin holds", () => {
+    // Deterministic - no rng - so an AI seat's conquest replays identically.
+    const g = { ...playingSix(), defense: { alpha: 0, beta: 41 } };
+    expect(autoTransfer(g, "beta", "alpha")).toBe(20);
+    // And still clamped by the destination's room.
+    const tight = { ...g, defense: { alpha: FIXTURE_MAX - 3, beta: 41 } };
+    expect(autoTransfer(tight, "beta", "alpha")).toBe(3);
+  });
+
+  it("moves it on the spot for an AI capture, with no question left over", () => {
+    const base = playingSix();
+    // An acting seat that is not the human's: it cannot be asked, so it
+    // decides for itself.
+    const raider = base.factionIds.find(
+      (f) => f !== "beta" && hasRuler(base.rulers, f),
+    )!;
+    const target = base.factionIds.find((f) => f !== "beta" && f !== raider)!;
+    const g: GameState = {
+      ...base,
+      current: base.players.findIndex((p) => p.factionId === raider),
+      defense: { [target]: 0, [raider]: 40 },
+      marches: {
+        [`${raider}>${target}#0`]: {
+          actor: raider, from: raider, to: target, cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: base.turn,
+        },
+      },
+    };
+    const after = beginTurn(g, rng());
+    expect(after.overlords.get(target)).toBe(raider);
+    expect(after.pendingTransfer).toBeNull();
+    expect(after.defense[raider]).toBe(20);
+    expect(after.defense[target]).toBe(20);
+  });
+});
+
+describe("the restless middle of the map", () => {
+  /** Every roll comes up, so the raid that happens about one round in four
+   *  happens here. */
+  const always = () => 0;
+
+  function quietLands(g: GameState): string[] {
+    return g.factionIds.filter(
+      (f) => hasPassive(g.passives, f, "keeps-to-itself"),
+    );
+  }
+
+  it("sends a raid out of a land that takes no turns, at the round wrap", () => {
+    const g = playingSix();
+    const quiet = quietLands(g);
+    expect(quiet.length).toBeGreaterThan(0);
+    const before = g.log.length;
+    const after = beginTurn({ ...g, current: 0, turn: g.turn + 1 }, always);
+    const arrows = Object.values(after.marches)
+      .filter((m) => quiet.includes(m.actor));
+    expect(arrows).toHaveLength(quiet.length);
+    for (const arrow of arrows) {
+      expect(arrow.from).toBe(arrow.actor);
+      expect(arrow.cardId).toBe("raid");
+      expect(arrow.expiry).toBe(after.turn + 1);
+    }
+    // Logged as the play it reads as on the map, and out of nobody's deck.
+    const declaredBy = fresh(after, before).filter(
+      (e) => e.type === "play" && e.cardId === "raid" &&
+        quiet.includes(e.sourceFactionId ?? ""),
+    );
+    expect(declaredBy).toHaveLength(quiet.length);
+  });
+
+  it("never sends one out of a land somebody has taken", () => {
+    // The status IS the condition: capture strips it, so there is no second
+    // rule anywhere saying an unheld land is the one that raids.
+    const g = playingSix();
+    const quiet = quietLands(g)[0];
+    const taken: GameState = {
+      ...g,
+      passives: stripOnCapture(g.passives, quiet),
+      overlords: new Map([[quiet, "beta"]]),
+    };
+    const after = beginTurn({ ...taken, current: 0, turn: g.turn + 1 }, always);
+    expect(Object.values(after.marches).some((m) => m.actor === quiet))
+      .toBe(false);
+  });
+
+  it("lands its arrow at the next wrap - nothing it declares stands forever", () => {
+    const g = playingSix();
+    const quiet = quietLands(g);
+    const declaredRound = beginTurn(
+      { ...g, current: 0, turn: g.turn + 1 }, always,
+    );
+    const standing = Object.values(declaredRound.marches)
+      .filter((m) => quiet.includes(m.actor));
+    expect(standing.length).toBeGreaterThan(0);
+    for (const m of standing) {
+      expect(m.expiry).toBe(declaredRound.turn + 1);
+    }
+
+    const nextRound = beginTurn(
+      { ...declaredRound, current: 0, turn: declaredRound.turn + 1 }, always,
+    );
+    // Nothing declared before this round is still on the map - the arrows on
+    // it are the ones this wrap just drew. Asserted on the expiry rather than
+    // the key, because a freed slot is reused by the next declaration.
+    for (const m of Object.values(nextRound.marches)) {
+      expect(m.expiry).toBeGreaterThan(nextRound.turn);
+    }
+    expect(nextRound.log.some((e) => e.type === "march-resolved")).toBe(true);
   });
 });

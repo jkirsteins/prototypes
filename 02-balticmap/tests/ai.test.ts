@@ -5,6 +5,10 @@ import {
   type GameState,
 } from "../src/game";
 import { CARDS, type Strategy } from "../src/cards";
+import {
+  HILLFORT_HEAL, INDEPENDENCE_GATE, PLAGUE_DAMAGE_PER_STACK,
+  SUBJUGATION_GATE, WAR_COUNCIL_LEADERSHIP,
+} from "../src/defense";
 import { DEFAULT_RULES } from "../src/rules";
 import { seededRng } from "../src/rng";
 
@@ -19,6 +23,11 @@ const FACTIONS = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
  *  instead. tests/playability.test.ts works at 600 for the same reason. */
 const FIXTURE_MAX = 60;
 const MAXES = Object.fromEntries(FACTIONS.map((id) => [id, FIXTURE_MAX]));
+
+/** The two gate lines of a FIXTURE_MAX polygon, spelled once: it opens to
+ *  Subjugate at 15 and crosses back to freedom at 45. */
+const SUBJUGATE_LINE = Math.floor(SUBJUGATION_GATE * FIXTURE_MAX);
+const INDEPENDENCE_LINE = Math.ceil(INDEPENDENCE_GATE * FIXTURE_MAX);
 
 function base(): GameState {
   const g = pickFaction(
@@ -157,15 +166,36 @@ describe("the spine, steps 1..5", () => {
   });
 
   it("4: holds the card below one council's worth of leadership", () => {
-    let g = withLeadership(base(), { beta: 4 });
+    // Nothing on this board carries No successor, so the only reason to spend
+    // the card is a ruler worth killing - one War council's worth of hardening
+    // is the bar, and an unproven board sits under it.
+    const unproven = withHand(base(), ["grow-crops", "assassinate-ruler"]);
+    expect(chooseAction(unproven)).toEqual({ type: "play", cardIndex: 0 });
+    const proven = withHand(
+      withLeadership(base(), { beta: WAR_COUNCIL_LEADERSHIP }),
+      ["grow-crops", "assassinate-ruler"],
+    );
+    expect(chooseAction(proven)).toEqual({
+      type: "play", cardIndex: 1, targetId: "beta",
+    });
+  });
+
+  it("4: takes a No successor land outright, whatever its ruler is worth", () => {
+    // Killing the ruler of a land with nobody to take up the crown takes the
+    // land: a card that wins a land beats a card that removes a leadership
+    // stack, so the unproven gamma outranks the hardened beta.
+    let g = withLeadership(base(), { beta: 100 });
+    g = { ...g, passives: { gamma: ["no-successor"] } };
     g = withHand(g, ["grow-crops", "assassinate-ruler"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "gamma",
+    });
   });
 
   it("5: a vassal heals its home toward the independence gate", () => {
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = { ...g, defense: { alpha: 30 } }; // one Hillfort short of 45
+    g = { ...g, defense: { alpha: INDEPENDENCE_LINE - HILLFORT_HEAL } };
     expect(chooseAction(withHand(g, ["hillfort", "grow-crops"]))).toEqual({
       type: "play", cardIndex: 0, targetId: "alpha",
     });
@@ -177,7 +207,7 @@ describe("the spine, steps 1..5", () => {
   it("5: stops healing once the home stands at the gate - beginTurn frees it", () => {
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = { ...g, defense: { alpha: 45 } }; // ceil(0.75 * 60): gate open
+    g = { ...g, defense: { alpha: INDEPENDENCE_LINE } }; // gate open
     g = withHand(g, ["hillfort", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
@@ -277,45 +307,26 @@ describe("5A: answering a march", () => {
   });
 });
 
-describe("12: garrison", () => {
-  it("raises an army on the frontier land that has none left to send", () => {
+describe("8R: raising a ceiling", () => {
+  it("grows the realm's biggest land, ties by faction order", () => {
     let g = asStrategy(base(), "warpath");
     g = {
-      ...g, turn: 2,
-      marches: {
-        "alpha>beta#0": {
-          actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: 3,
-        },
-      },
+      ...g,
+      overlords: new Map([["beta", "alpha"]]),
+      defenseMax: { ...g.defenseMax, beta: FIXTURE_MAX + 10 },
     };
-    g = withHand(g, ["create-army"]);
+    g = withHand(g, ["prosperous-proliferation"]);
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "alpha",
+      type: "play", cardIndex: 0, targetId: "beta",
     });
   });
 
-  it("holds the card while the frontier still has an army free", () => {
+  it("takes the ceiling above the settlement - it buys an army as well", () => {
     let g = asStrategy(base(), "warpath");
-    g = withHand(g, ["create-army", "grow-crops"]);
-    // alpha's army is home, so the turn feeds the harvest loop instead.
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
-  });
-
-  it("decides the card for a pestilence seat too - it is a neutral", () => {
-    let g = asStrategy(base(), "pestilence");
-    g = {
-      ...g, turn: 2,
-      marches: {
-        "alpha>beta#0": {
-          actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: 3,
-        },
-      },
-    };
-    g = withHand(g, ["create-army"]);
+    g = { ...g, wealth: { alpha: 1 } };
+    g = withHand(g, ["found-settlement", "prosperous-proliferation"]);
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "alpha",
+      type: "play", cardIndex: 1, targetId: "alpha",
     });
   });
 });
@@ -324,7 +335,9 @@ describe("6W: warpath decisive moves", () => {
   it("6W-1: raids its own vassal one heal from the independence gate", () => {
     let g = asStrategy(base(), "warpath");
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    g = { ...g, defense: { beta: 32 } }; // 32 + 15 >= 45
+    // One Hillfort short of its own independence line, which is what "restive"
+    // means to `vassalNearingEscape`.
+    g = { ...g, defense: { beta: INDEPENDENCE_LINE - HILLFORT_HEAL } };
     g = withHand(g, ["raid", "grow-crops"]);
     // Out of alpha, not out of the vassal itself: no land borders itself, so
     // holding a vassal down always takes an army from next door.
@@ -371,11 +384,61 @@ describe("6W: warpath decisive moves", () => {
   });
 });
 
+describe("the strong pair: same branch, better card", () => {
+  it("sends the strong raid where a plain raid would go", () => {
+    // `marchPick` is the one lookup every branch that marches asks, so the
+    // preference is not a branch of its own: the finishing hit reaches for
+    // whichever of the two is in hand, and the stronger one when both are.
+    let g = asStrategy(base(), "warpath");
+    g = { ...g, defense: { beta: SUBJUGATE_LINE + 1 } };
+    g = withHand(g, ["raid", "strong-raid"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 1, targetId: "beta", sourceId: "alpha",
+    });
+  });
+
+  it("spends the strong fortify first while a land is worth it", () => {
+    // Step 5's heals in strength order. Hillfort is stronger still, so the
+    // pair only decides between themselves.
+    let g = base();
+    g = { ...g, defense: { alpha: 25 } };
+    expect(chooseAction(withHand(g, ["fortify", "strong-fortify"]))).toEqual({
+      type: "play", cardIndex: 1, targetId: "alpha",
+    });
+    expect(chooseAction(withHand(g, ["fortify", "hillfort"]))).toEqual({
+      type: "play", cardIndex: 1, targetId: "alpha",
+    });
+    // And the weak one alone still heals: it is what every deck starts with.
+    expect(chooseAction(withHand(g, ["grow-crops", "fortify"]))).toEqual({
+      type: "play", cardIndex: 1, targetId: "alpha",
+    });
+  });
+
+  it("2: subjugates a quiet land like any other faction in reach", () => {
+    // Subjugate sits in every deck now, and a land that takes no turns is a
+    // faction in reach like the rest - the branch asks the gate, not the seat.
+    let g = base();
+    g = {
+      ...g,
+      passives: { gamma: ["keeps-to-itself", "wild-lands", "no-successor"] },
+      defense: { gamma: SUBJUGATE_LINE },
+    };
+    g = withHand(g, ["subjugate", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "gamma",
+    });
+  });
+});
+
 describe("6P: pestilence decisive moves", () => {
   it("6P-1: plagues its restive vassal's stacks before any outward play", () => {
     let g = asStrategy(base(), "pestilence");
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    g = { ...g, defense: { beta: 32 }, disease: { beta: { alpha: 1 } } };
+    g = {
+      ...g,
+      defense: { beta: INDEPENDENCE_LINE - HILLFORT_HEAL },
+      disease: { beta: { alpha: 1 } },
+    };
     g = withHand(g, ["plague", "spread-disease"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
@@ -383,7 +446,7 @@ describe("6P: pestilence decisive moves", () => {
   it("6P-1: sickens the restive vassal when no stacks sit there yet", () => {
     let g = asStrategy(base(), "pestilence");
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    g = { ...g, defense: { beta: 32 } };
+    g = { ...g, defense: { beta: INDEPENDENCE_LINE - HILLFORT_HEAL } };
     g = withHand(g, ["spread-disease", "grow-crops"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "beta",
@@ -392,24 +455,27 @@ describe("6P: pestilence decisive moves", () => {
 
   it("6P-2: cashes the plague when it opens a gate", () => {
     let g = asStrategy(base(), "pestilence");
-    g = { ...g, defense: { beta: 25 }, disease: { beta: { alpha: 1 } } };
+    // One stack short of the gate line, and one stack held: the cash-out
+    // opens it exactly.
+    g = {
+      ...g,
+      defense: { beta: SUBJUGATE_LINE + PLAGUE_DAMAGE_PER_STACK },
+      disease: { beta: { alpha: 1 } },
+    };
     g = withHand(g, ["plague", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 
   it("6P-2: cashes when the total damage beats a raid, else waits", () => {
-    // "A raid's worth" moves with leadership, so the waits-arm needs a
-    // council-stacked ruler: at leadership 20 a raid is worth 21, and two
-    // stacks (20) sit under it while three (30) beat it.
+    // "A raid's worth" moves with leadership, so the waits-arm needs a proven
+    // ruler: at leadership 1 a raid is worth 2, and two stacks sit level with
+    // it while three beat it. No gate is near, so this is the total arm alone.
     let g = asStrategy(base(), "pestilence");
-    g = {
-      ...g,
-      rulers: { ...g.rulers, alpha: { ...g.rulers.alpha, leadership: 20 } },
-    };
-    const fat = { ...g, disease: { beta: { alpha: 3 } } }; // 30 > 21
+    g = withLeadership(g, { alpha: 1 });
+    const fat = { ...g, disease: { beta: { alpha: 3 } } };
     expect(chooseAction(withHand(fat, ["plague", "grow-crops"])))
       .toEqual({ type: "play", cardIndex: 0 });
-    const thin = { ...g, disease: { beta: { alpha: 2 } } }; // 20 <= 21
+    const thin = { ...g, disease: { beta: { alpha: 2 } } };
     expect(chooseAction(withHand(thin, ["plague", "grow-crops"])))
       .toEqual({ type: "play", cardIndex: 1 });
   });
@@ -433,17 +499,24 @@ describe("6P: pestilence decisive moves", () => {
   });
 
   it("6P-4: reads the miasma when only the doubled plague opens a gate", () => {
+    // A gap of two stacks' worth: one stack cashed plain leaves the gate shut,
+    // and doubled it opens. An unproven ruler keeps a raid's worth at 1, so
+    // the total arm of 6P-2 does not cash the stack before this step.
     let g = asStrategy(base(), "pestilence");
-    // gap 15: one stack cashes 10 (no), doubled 20 (yes). Leadership keeps
-    // a raid's worth above the plain 10, or the total-beats-a-raid arm of
-    // 6P-2 would cash the stack before this step is reached.
     g = {
       ...g,
-      rulers: { ...g.rulers, alpha: { ...g.rulers.alpha, leadership: 100 } },
+      defense: { beta: SUBJUGATE_LINE + 2 * PLAGUE_DAMAGE_PER_STACK },
+      disease: { beta: { alpha: 1 } },
     };
-    g = { ...g, defense: { beta: 30 }, disease: { beta: { alpha: 1 } } };
     g = withHand(g, ["miasma", "plague"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
+    // And with the gate already inside one plain cash-out, 6P-2 takes it
+    // instead - the miasma is a reserve, not a habit.
+    const nearer = withHand(
+      { ...g, defense: { beta: SUBJUGATE_LINE + PLAGUE_DAMAGE_PER_STACK } },
+      ["miasma", "plague"],
+    );
+    expect(chooseAction(nearer)).toEqual({ type: "play", cardIndex: 1 });
   });
 
   it("6P-5: seeds the junction with the most non-own neighbours", () => {

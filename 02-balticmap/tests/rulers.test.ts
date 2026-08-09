@@ -1,13 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
-  initialRulers, replaceRuler, rulerNameFor, rulerOf,
+  hasRuler, initialRulers, replaceRuler, rulerNameFor, rulerOf, vacateRulers,
 } from "../src/rulers";
 import raw from "../src/data/map.json";
 import pools from "../src/data/ruler-names.json";
 import type { MapData } from "../src/types";
 import {
-  newGame, startGame, chooseBuild, pickFaction, advance, type GameState,
+  newGame, startGame, chooseBuild, pickFaction, advance, beginTurn, MAX_ACTIVE,
+  type GameState,
 } from "../src/game";
+import { playsTurns } from "../src/passives";
 import { aiTakeTurn } from "../src/ai";
 import { SIM_FACTION_IDS, SIM_ADJACENCY, seededRng } from "../src/sim";
 
@@ -158,11 +160,90 @@ describe("rulerNameFor", () => {
   });
 });
 
+describe("vacateRulers", () => {
+  it("empties every seat except the ones named", () => {
+    const rulers = initialRulers(["alpha", "beta", "gamma"]);
+    const seated = vacateRulers(rulers, ["beta"]);
+    expect(hasRuler(seated, "beta")).toBe(true);
+    expect(hasRuler(seated, "alpha")).toBe(false);
+    expect(hasRuler(seated, "gamma")).toBe(false);
+    // The kept ruler is the same object: vacating is a filter, not a re-seat.
+    expect(seated.beta).toBe(rulers.beta);
+  });
+
+  it("names a seat that never existed without inventing one", () => {
+    expect(vacateRulers(initialRulers(["alpha"]), ["beta"])).toEqual({});
+  });
+});
+
+describe("the leader gate", () => {
+  // Six lands on a complete graph: MAX_ACTIVE caps the table at five, so
+  // exactly one land ends up leaderless whatever the seed does.
+  const SIX = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
+
+  function dealt(): GameState {
+    return pickFaction(
+      chooseBuild(startGame(newGame(SIX)), "warpath", seededRng(1)),
+      "alpha", seededRng(1),
+    );
+  }
+
+  const leaderless = (g: GameState): string[] =>
+    g.factionIds.filter((id) => !hasRuler(g.rulers, id));
+
+  it("seats a leader on the acting factions alone", () => {
+    const g = dealt();
+    expect(Object.keys(g.rulers)).toHaveLength(MAX_ACTIVE);
+    expect(leaderless(g)).toHaveLength(SIX.length - MAX_ACTIVE);
+    // A land nobody leads is exactly a land that keeps to itself: one fact,
+    // read two ways, never two conditions that could disagree.
+    for (const id of leaderless(g)) {
+      expect(playsTurns(g.passives, id), id).toBe(false);
+    }
+  });
+
+  it("passes over a leaderless seat when the turn moves on", () => {
+    let g = dealt();
+    const quiet = new Set(leaderless(g));
+    expect(quiet.size).toBeGreaterThan(0);
+    for (let step = 0; step < SIX.length * 2; step++) {
+      g = advance({ ...g, playedThisTurn: true }, seededRng(step + 1));
+      expect(quiet.has(g.players[g.current].factionId)).toBe(false);
+    }
+  });
+
+  it("resolves a leaderless faction's march at the round wrap", () => {
+    // A march resolves in its actor's own beginTurn, and a leaderless actor
+    // never gets one - so without the round-wrap sweep its arrow would stand
+    // on the map for the rest of the game.
+    const g = dealt();
+    const quiet = leaderless(g)[0];
+    const key = `${quiet}>alpha#0`;
+    const armed: GameState = {
+      ...g,
+      current: 0,
+      defense: { alpha: 40 },
+      defenseMax: Object.fromEntries(SIX.map((id) => [id, 60])),
+      marches: {
+        [key]: {
+          actor: quiet, from: quiet, to: "alpha", cardId: "raid",
+          damage: 6, holdsArmy: true, expiry: g.turn,
+        },
+      },
+    };
+    const after = beginTurn(armed, seededRng(4));
+    expect(after.marches[key]).toBeUndefined();
+    expect(after.defense.alpha).toBe(34);
+    expect(after.log.some(
+      (e) => e.type === "march-resolved" && e.targetFactionId === "alpha",
+    )).toBe(true);
+  });
+});
+
 describe("ruler invariant over a full game", () => {
   // runGame (src/sim.ts) returns a GameSummary, not the state, so drive a
-  // game by hand: seat every faction and step turns with aiTakeTurn/advance
-  // directly.
-  it("resolves every faction through rulerOf, with no since ahead of the current turn", () => {
+  // game by hand: deal a map and step turns with aiTakeTurn/advance directly.
+  it("resolves every seated faction through rulerOf, with no since ahead of the current turn", () => {
     const TURN_CAP = 120;
     const rng = seededRng(1);
     let state: GameState = pickFaction(
@@ -173,6 +254,7 @@ describe("ruler invariant over a full game", () => {
       SIM_FACTION_IDS[0],
       rng,
     );
+    const seatedAtDeal = Object.keys(state.rulers).sort();
     while (state.phase === "playing" && state.turn <= TURN_CAP) {
       const next = aiTakeTurn(state, rng);
       state = next.phase === "playing" ? advance(next, rng) : next;
@@ -180,10 +262,17 @@ describe("ruler invariant over a full game", () => {
     // Sanity: the game actually progressed, so the invariant below is
     // exercised against successions, not just the untouched setup rulers.
     expect(state.turn).toBeGreaterThan(1);
-    for (const id of state.factionIds) {
+    // A run seats nobody new and vacates nobody: assassination replaces a
+    // ruler, and a conquest wins the land rather than its people's allegiance.
+    expect(Object.keys(state.rulers).sort()).toEqual(seatedAtDeal);
+    for (const id of seatedAtDeal) {
       const ruler = rulerOf(state.rulers, id);
       expect(ruler.name.length, `ruler name for ${id}`).toBeGreaterThan(0);
       expect(ruler.since, `since for ${id}`).toBeLessThanOrEqual(state.turn);
+    }
+    for (const id of state.factionIds) {
+      if (seatedAtDeal.includes(id)) continue;
+      expect(() => rulerOf(state.rulers, id), id).toThrow(id);
     }
   });
 });

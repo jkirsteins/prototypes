@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import { flyCard, runAnimation } from "../src/animate";
+import {
+  animations, createAnimationQueue, flyCard, runAnimation,
+} from "../src/animate";
 
 describe("flyCard", () => {
   it("spawns at the source, transitions through stages, then removes itself", () => {
@@ -147,5 +149,100 @@ describe("runAnimation", () => {
     cancel();
     expect(fakeAnim.cancel).toHaveBeenCalledOnce();
     expect(done).toHaveBeenCalledOnce();
+  });
+});
+
+describe("the animation queue", () => {
+  it("runs one step at a time, in the order they were asked for", () => {
+    const q = createAnimationQueue();
+    const order: string[] = [];
+    const releases: (() => void)[] = [];
+    for (const name of ["first", "second", "third"]) {
+      q.push((done) => {
+        order.push(name);
+        releases.push(done);
+      });
+    }
+    // Only the first has started: the other two are waiting on it.
+    expect(order).toEqual(["first"]);
+    releases[0]();
+    expect(order).toEqual(["first", "second"]);
+    releases[1]();
+    expect(order).toEqual(["first", "second", "third"]);
+  });
+
+  it("is busy from the moment something is queued until the last step releases", () => {
+    const q = createAnimationQueue();
+    expect(q.busy()).toBe(false);
+    const releases: (() => void)[] = [];
+    q.push((done) => releases.push(done));
+    q.push((done) => releases.push(done));
+    expect(q.busy()).toBe(true);
+    releases[0]();
+    // The second step is now running and has not released.
+    expect(q.busy()).toBe(true);
+    releases[1]();
+    expect(q.busy()).toBe(false);
+  });
+
+  it("ignores a step calling its done twice, so the queue cannot skip ahead", () => {
+    const q = createAnimationQueue();
+    const order: string[] = [];
+    const releases: (() => void)[] = [];
+    q.push((done) => releases.push(done));
+    q.push((done) => { order.push("second"); releases.push(done); });
+    q.push((done) => { order.push("third"); done(); });
+    releases[0]();
+    releases[0]();
+    // The second is still running: a stale release must not start the third.
+    expect(order).toEqual(["second"]);
+    releases[1]();
+    expect(order).toEqual(["second", "third"]);
+  });
+
+  it("releases the queue when a step throws - a broken animation must not wedge the game", () => {
+    const q = createAnimationQueue();
+    const after = vi.fn();
+    q.push(() => { throw new Error("animation blew up"); });
+    q.push((done) => { after(); done(); });
+    expect(after).toHaveBeenCalledOnce();
+    expect(q.busy()).toBe(false);
+  });
+
+  it("onIdle fires immediately on an empty queue and after the last step otherwise", () => {
+    const q = createAnimationQueue();
+    const now = vi.fn();
+    q.onIdle(now);
+    expect(now).toHaveBeenCalledOnce();
+
+    const releases: (() => void)[] = [];
+    q.push((done) => releases.push(done));
+    const later = vi.fn();
+    q.onIdle(later);
+    expect(later).not.toHaveBeenCalled();
+    releases[0]();
+    expect(later).toHaveBeenCalledOnce();
+  });
+
+  it("clear() drops what has not started and leaves the step in flight to finish", () => {
+    const q = createAnimationQueue();
+    const started = vi.fn();
+    const releases: (() => void)[] = [];
+    q.push((done) => releases.push(done));
+    q.push(() => started());
+    q.clear();
+    expect(started).not.toHaveBeenCalled();
+    // The running step still owns DOM its own done has to clean up, so it is
+    // left alone - and releasing it finds nothing behind it.
+    releases[0]();
+    expect(started).not.toHaveBeenCalled();
+    expect(q.busy()).toBe(false);
+  });
+
+  it("ships one queue for the whole screen", () => {
+    // A module singleton because there is one screen: two queues would be two
+    // things overlapping again, which is what the queue exists to stop.
+    expect(animations.busy()).toBe(false);
+    expect(animations).not.toBe(createAnimationQueue());
   });
 });
