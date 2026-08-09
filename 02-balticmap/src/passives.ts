@@ -17,6 +17,7 @@
  *  ship until the land hover names it. */
 
 import type { Rng } from "./cards";
+import { DEFENSE_PER_ARMY } from "./defense";
 
 export interface PassiveDef {
   id: string;
@@ -51,6 +52,11 @@ export const PASSIVES: Record<string, PassiveDef> = {
     text: "Earns its holder 1 extra wealth a turn.",
     strippedOnCapture: false,
   },
+  "burden-of-bureaucracy": {
+    id: "burden-of-bureaucracy", name: "Burden of bureaucracy",
+    text: "Its people are many and slow to muster: 1 army per 4 defense, not per 3.",
+    strippedOnCapture: false,
+  },
 };
 
 /** What a land that does not act starts with. All three are stripped when
@@ -78,6 +84,22 @@ export const RESTLESS_RAID_CHANCE = 0.25;
 export const WILD_LANDS_HEAL_CHANCE = 0.1;
 export const WILD_LANDS_HEAL = 1;
 export const HILL_COUNTRY_REDUCTION = 0.25;
+
+/** Defense per army on a land that carries `burden-of-bureaucracy`.
+ *
+ *  The three biggest polygons on the map are all Lithuanian, and at the map's
+ *  own divisor the largest fields six armies to a small land's one - enough
+ *  standing force to raid every neighbour every round and still hold. Raising
+ *  the divisor on those three leaves them the strongest lands in the game
+ *  (four, three and three) without letting one polygon out-muster a realm. */
+export const BUREAUCRACY_PER_ARMY = 4;
+
+/** The lands that carry it from the first turn. Named rather than rolled: it
+ *  is a fact about how big these three are, so a run where they muster freely
+ *  is not a different map but the same imbalance back. */
+export const BUREAUCRACY_LANDS: readonly string[] = [
+  "eastern-aukstaitian-confederacy", "samogitian-confederacy", "lietuva",
+];
 
 /** polygon id -> the statuses it carries. Absent key means none, the sparse
  *  convention `defense` and `armies` already keep. */
@@ -112,6 +134,18 @@ export function stripOnCapture(p: Passives, polygon: string): Passives {
  *  asks; everything else about a quiet land is the ordinary rules. */
 export function playsTurns(p: Passives, factionId: string): boolean {
   return !hasPassive(p, factionId, "keeps-to-itself");
+}
+
+/** The defense this land needs per army it fields. Asked by `armyCapOn` alone,
+ *  so the badge, the legality and the AI read one answer.
+ *
+ *  The turnip threshold deliberately does NOT ask: bureaucracy is about
+ *  mustering, and slowing a big land's harvests as well would punish it twice
+ *  for the same size. */
+export function perArmyOn(p: Passives, polygon: string): number {
+  return hasPassive(p, polygon, "burden-of-bureaucracy")
+    ? BUREAUCRACY_PER_ARMY
+    : DEFENSE_PER_ARMY;
 }
 
 /** Which lands could plausibly carry which ground, read off what the map
@@ -165,6 +199,10 @@ export function seedPassives(
   factionIds: string[], acting: readonly string[], rng: Rng,
 ): Passives {
   let out = rollTerrain(factionIds, rng);
+  // After the roll, so adding a named status never shifts a draw.
+  for (const land of BUREAUCRACY_LANDS) {
+    if (factionIds.includes(land)) out = addPassive(out, land, "burden-of-bureaucracy");
+  }
   for (const land of factionIds) {
     if (acting.includes(land)) continue;
     for (const id of QUIET_PASSIVES) out = addPassive(out, land, id);

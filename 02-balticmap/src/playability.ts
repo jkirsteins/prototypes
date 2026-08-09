@@ -13,7 +13,7 @@ import {
 import {
   armiesOn, freeArmiesOn, type Armies, type Claims, type Marches,
 } from "./marches";
-import { hasPassive, type Passives } from "./passives";
+import { hasPassive, perArmyOn, type Passives } from "./passives";
 import { activeExpiry } from "./timed";
 
 /** Settlements a land supports - the one standing there since the map was
@@ -105,7 +105,7 @@ export interface RulesView {
 /** How many armies this land may field: its ceiling's worth. The one place
  *  the rules ask, so the badge, the legality and the AI cannot disagree. */
 export function armyCapOn(view: RulesView, polygon: string): number {
-  return armyCapFor(defenseMaxOf(view, polygon));
+  return armyCapFor(defenseMaxOf(view, polygon), perArmyOn(view.passives, polygon));
 }
 
 /** Armies on a land that are not already out on a march. */

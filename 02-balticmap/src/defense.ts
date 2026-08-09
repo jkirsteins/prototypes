@@ -36,9 +36,15 @@ export const DEFENSE_PER_ARMY = 3;
 
 /** How many armies a land of this ceiling may field. At least one: a land
  *  that could raise none could never attack and never answer an attack, which
- *  is not a smaller land but a land outside the game. */
-export function armyCapFor(defenseMax: number): number {
-  return Math.max(1, Math.floor(defenseMax / DEFENSE_PER_ARMY));
+ *  is not a smaller land but a land outside the game.
+ *
+ *  `perArmy` is the divisor a passive status may raise - see `perArmyOn` in
+ *  src/passives.ts. It is a parameter rather than a second function because
+ *  the floor and the minimum of one are the parts that must not be respelled. */
+export function armyCapFor(
+  defenseMax: number, perArmy: number = DEFENSE_PER_ARMY,
+): number {
+  return Math.max(1, Math.floor(defenseMax / perArmy));
 }
 
 /** Grow turnips plays this land's people owe before a Turnip harvest is

@@ -783,8 +783,14 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       if (defenseOf(v, polygon) >= defenseMaxOf(v, polygon)) continue;
       if (rng() >= WILD_LANDS_HEAL_CHANCE) continue;
       defense = applyHeal(v, polygon, WILD_LANDS_HEAL);
+      // The land's OWN seat owns the line, never the seat whose turn happens to
+      // be starting. The log tags an entry `.log-mine` off `playerId` and lets
+      // it through every filter, so charging these to the human made a wild
+      // land on the far side of the map read as something the player did, and
+      // kept it on screen while the log was pinned to somebody else's realm.
+      const owner = players.find((pl) => pl.factionId === polygon);
       events.push({
-        turn: state.turn, playerId: p.id, type: "healed",
+        turn: state.turn, playerId: owner?.id ?? p.id, type: "healed",
         targetFactionId: polygon, amount: WILD_LANDS_HEAL,
       });
     }
@@ -800,7 +806,16 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     const restless = state.factionIds.filter(
       (land) => hasPassive(state.passives, land, "keeps-to-itself"),
     );
-    for (const land of restless) {
+    // Whose arrows land here: every seat that will never see a `beginTurn` of
+    // its own. `advance` skips a leaderless seat, so a march declared by one
+    // would otherwise stand on the map for the rest of the game - never
+    // resolving, never expiring, and never explaining itself in the log. That
+    // is not only the restless lands: taking a quiet land strips the status
+    // while its arrow is still in flight, and the vacancy is what outlives it.
+    const dormant = state.factionIds.filter(
+      (land) => !hasRuler(state.rulers, land),
+    );
+    for (const land of dormant) {
       const seat = players.find((pl) => pl.factionId === land);
       if (seat === undefined) continue;
       const out = resolveMarches(

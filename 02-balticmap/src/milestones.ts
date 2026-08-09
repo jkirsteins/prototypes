@@ -15,6 +15,7 @@
 
 import { fullRealmOf } from "./relations";
 import { armyCapFor } from "./defense";
+import { perArmyOn } from "./passives";
 import type { GameEvent, GameState } from "./game";
 
 export interface Milestone {
@@ -84,7 +85,10 @@ export const MILESTONES: readonly Milestone[] = [
     // field a host rather than for a card that no longer exists.
     progress: (state, f) =>
       [...fullRealmOf(f, state.overlords, state.incorporated)].reduce(
-        (sum, land) => sum + armyCapFor(state.defenseMax[land] ?? 0),
+        (sum, land) =>
+          sum + armyCapFor(
+            state.defenseMax[land] ?? 0, perArmyOn(state.passives, land),
+          ),
         0,
       ),
   },
