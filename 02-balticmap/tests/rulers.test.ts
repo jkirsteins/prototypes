@@ -166,7 +166,10 @@ describe("ruler invariant over a full game", () => {
     const TURN_CAP = 120;
     const rng = seededRng(1);
     let state: GameState = pickFaction(
-      chooseBuild(startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY)), "warpath"),
+      chooseBuild(
+        startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY)),
+        "warpath", seededRng(1),
+      ),
       SIM_FACTION_IDS[0],
       rng,
     );

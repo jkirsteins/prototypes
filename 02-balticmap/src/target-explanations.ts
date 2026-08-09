@@ -1,7 +1,8 @@
 import {
-  attackDamageFor, attackMultiplier, failureRiskOf, freeSitesIn, holdsGuard,
-  miasmaHeld, omensHeld, outbreakPolygons, plagueDamageOn, plagueMultiplier,
-  respiteExpiry, settlementsIn, subjugationGateOn, targetEligibilityFor,
+  armyCapOn, attackDamageFor, attackMultiplier, failureRiskOf, freeSitesIn,
+  holdsGuard, miasmaHeld, omensHeld, outbreakPolygons, plagueDamageOn,
+  plagueMultiplier, respiteExpiry, settlementsIn, subjugationGateOn,
+  targetEligibilityFor,
   type CardBlockReason,
   type FailureRisk,
   type Guards,
@@ -16,7 +17,7 @@ import {
 import { ATTACK_CARDS, CARDS, isGuardCard } from "./cards";
 import { PASSIVES, passivesOn, type Passives } from "./passives";
 import { passive } from "./segments";
-import { count } from "./plural";
+import { count, plural } from "./plural";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
 import { untilTurn } from "./timed";
 
@@ -373,6 +374,34 @@ export function defenseBreakdown(
     });
   }
   return rows;
+}
+
+/** What a land IS, for a hover with no seat behind it - the faction picker's.
+ *  Every figure here is a standing property of the ground: what it can absorb,
+ *  what it can muster, what stands on it and what the ground itself does. None
+ *  of it asks who holds the land, because at pick time nobody does.
+ *
+ *  Assembled out of the same blocks the in-play hover uses, so the land the
+ *  player chose reads the same way the moment the game starts. The army count
+ *  goes through `armyCapOn`, which is the rules' one answer, so a status that
+ *  raises the divisor (`burden-of-bureaucracy`) is already in the number. */
+export function landFactsLines(
+  view: RulesView, polygon: string,
+): TooltipLine[] {
+  const cap = armyCapOn(view, polygon);
+  return [
+    // Never a vassal home: nobody owes fealty to anybody before the deal.
+    ...defenseBreakdown(view, polygon, false),
+    // Inside the defense block rather than under a heading of its own, because
+    // the cap is that ceiling divided: it belongs beside the number it is read
+    // off, not in a second place the player has to relate back to it.
+    {
+      amount: `${cap}`,
+      text: `${plural(cap, "army", "armies")} its defenses support`,
+    },
+    ...settlementBlock(view, polygon),
+    ...passiveLines(view.passives, polygon),
+  ];
 }
 
 /** The disease stacks sitting on one polygon, one row per owner, in faction

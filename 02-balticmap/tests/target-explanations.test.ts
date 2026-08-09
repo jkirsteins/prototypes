@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   GUARD_POSTED, GUARD_RISK, cardBlockLine, cardModifierLines, cardRiskLine,
-  defenseBreakdown, diseaseBreakdown, explainTargetEligibility,
+  defenseBreakdown, diseaseBreakdown, explainTargetEligibility, landFactsLines,
   plaguePreviewLines, respiteLines, riskLines, settlementBlock,
   targetImpactLines, targetOddsLines,
 } from "../src/target-explanations";
+import { passive } from "../src/segments";
 import { CARDS, GUARDS } from "../src/cards";
 import type { TooltipLine } from "../src/panel";
 import {
@@ -515,6 +516,46 @@ describe("defenseBreakdown", () => {
       { amount: "50", text: "or less opens subjugation" },
       { amount: "150", text: "or more regains independence at their turn" },
     ]);
+  });
+});
+
+describe("landFactsLines", () => {
+  /** What the faction picker's hover has to answer, with no seat behind it. */
+  const facts = (partial: Partial<RulesView> = {}): TooltipLine[] =>
+    landFactsLines(v(partial), "beta");
+
+  it("states the ceiling, the muster, the settlements and the ground", () => {
+    expect(facts({
+      siteCaps: { beta: 2 },
+      passives: { beta: ["hill-country"] },
+    })).toEqual([
+      { text: "Defenses", blockStart: true },
+      { amount: "60/60", text: "standing" },
+      { amount: "15", text: "or less opens subjugation" },
+      { amount: "20", text: "armies its defenses support" },
+      { text: "Settlements", blockStart: true },
+      { amount: "1/3", text: "on this land" },
+      { text: "Statuses", blockStart: true },
+      { text: "Hill country", segments: [passive("hill-country")] },
+    ]);
+  });
+
+  it("musters fewer where the burden raises the divisor", () => {
+    const plain = facts();
+    const burdened = facts({ passives: { beta: ["burden-of-bureaucracy"] } });
+    expect(plain[3]).toEqual({ amount: "20", text: "armies its defenses support" });
+    expect(burdened[3]).toEqual({ amount: "15", text: "armies its defenses support" });
+  });
+
+  it("counts one army in the singular", () => {
+    const tiny = landFactsLines(v({ defenseMax: { beta: 2 } }), "beta");
+    expect(tiny[3]).toEqual({ amount: "1", text: "army its defenses support" });
+  });
+
+  it("never speaks of vassalage - nobody owes fealty before the deal", () => {
+    for (const line of facts()) {
+      expect(line.text).not.toContain("independence");
+    }
   });
 });
 

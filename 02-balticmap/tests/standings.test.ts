@@ -181,7 +181,7 @@ describe("walkStandings matches the real stores across a seeded game", () => {
           SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS,
           SIM_DEFENSE_MAX,
         )),
-        "warpath",
+        "warpath", seededRng(1),
       ),
       BASELINE_FACTION,
       rng,

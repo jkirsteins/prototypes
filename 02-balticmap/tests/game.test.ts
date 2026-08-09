@@ -5,7 +5,9 @@ import {
   OPENING_HAND, HAND_REFILL, MAX_ACTIVE, TURNIP_HARVEST_THRESHOLD,
   victoryRealmSize, type GameState,
 } from "../src/game";
-import { playsTurns } from "../src/passives";
+import {
+  hasPassive, passivesOn, playsTurns, QUIET_PASSIVES,
+} from "../src/passives";
 import { DEFAULT_RULES } from "../src/rules";
 import { CARDS, isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
@@ -59,7 +61,7 @@ function playingState(adj?: Record<string, string[]>): GameState {
   return pickFaction(
     chooseBuild(
       startGame(newGame(FACTIONS, adj, {}, undefined, maxes(FACTIONS))),
-      "warpath",
+      "warpath", seededRng(1),
     ),
     "beta",
     seededRng(1),
@@ -72,7 +74,7 @@ function unlimitedPlaying(adj?: Record<string, string[]>): GameState {
     startGame(newGame(FACTIONS, adj, {}, undefined, maxes(FACTIONS))),
     { ...DEFAULT_RULES, turn: "unlimited" },
   );
-  return pickFaction(chooseBuild(g, "warpath"), "beta", seededRng(1));
+  return pickFaction(chooseBuild(g, "warpath", seededRng(1)), "beta", seededRng(1));
 }
 
 function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
@@ -111,14 +113,20 @@ const TEN = [...SIX, "eta", "theta", "iota", "kappa"];
 
 function playingSix(): GameState {
   return pickFaction(
-    chooseBuild(startGame(newGame(SIX, undefined, {}, undefined, maxes(SIX))), "warpath"),
+    chooseBuild(
+      startGame(newGame(SIX, undefined, {}, undefined, maxes(SIX))),
+      "warpath", seededRng(1),
+    ),
     "beta", seededRng(1),
   );
 }
 
 function playingTen(): GameState {
   return pickFaction(
-    chooseBuild(startGame(newGame(TEN, undefined, {}, undefined, maxes(TEN))), "warpath"),
+    chooseBuild(
+      startGame(newGame(TEN, undefined, {}, undefined, maxes(TEN))),
+      "warpath", seededRng(1),
+    ),
     "beta", seededRng(1),
   );
 }
@@ -162,10 +170,10 @@ describe("setup", () => {
 
   it("startGame and chooseBuild walk the phases, refusing out of order", () => {
     const g = newGame(FACTIONS);
-    expect(chooseBuild(g, "pestilence")).toBe(g); // not deck-building yet
+    expect(chooseBuild(g, "pestilence", seededRng(1))).toBe(g); // not deck-building yet
     const started = startGame(g);
     expect(started.phase).toBe("deck-building");
-    const built = chooseBuild(started, "pestilence");
+    const built = chooseBuild(started, "pestilence", seededRng(1));
     expect(built.phase).toBe("pick-faction");
     expect(built.humanStrategy).toBe("pestilence");
   });
@@ -174,7 +182,7 @@ describe("setup", () => {
     const started = startGame(newGame(FACTIONS));
     const ruled = chooseRules(started, { ...DEFAULT_RULES, turn: "unlimited" });
     expect(ruled.rules.turn).toBe("unlimited");
-    const built = chooseBuild(started, "warpath");
+    const built = chooseBuild(started, "warpath", seededRng(1));
     expect(chooseRules(built, { ...DEFAULT_RULES, turn: "unlimited" })).toBe(built); // too late
   });
 
@@ -198,14 +206,14 @@ describe("setup", () => {
   });
 
   it("pickFaction refuses a faction id off the roster", () => {
-    const g = chooseBuild(startGame(newGame(FACTIONS)), "warpath");
+    const g = chooseBuild(startGame(newGame(FACTIONS)), "warpath", seededRng(1));
     expect(pickFaction(g, "atlantis", seededRng(1))).toBe(g);
   });
 
   it("the human seat plays the chosen build; AI builds are rolled seeded", () => {
     const at = (seed: number) =>
       pickFaction(
-        chooseBuild(startGame(newGame(FACTIONS)), "pestilence"),
+        chooseBuild(startGame(newGame(FACTIONS)), "pestilence", seededRng(1)),
         "beta", seededRng(seed),
       );
     const g = at(3);
@@ -1362,7 +1370,8 @@ describe("a card that plays again", () => {
   function twoArmies(): GameState {
     const g = pickFaction(
       chooseBuild(
-        startGame(newGame(SIX, LINE_SIX, {}, undefined, maxes(SIX))), "warpath",
+        startGame(newGame(SIX, LINE_SIX, {}, undefined, maxes(SIX))),
+        "warpath", seededRng(1),
       ),
       "beta", seededRng(1),
     );
@@ -1644,7 +1653,7 @@ describe("who acts", () => {
   );
   const deal = (seed: number, opts?: { reservedFactionIds?: string[] }) =>
     pickFaction(
-      chooseBuild(startGame(newGame(RING, ringAdj)), "warpath"),
+      chooseBuild(startGame(newGame(RING, ringAdj)), "warpath", seededRng(1)),
       "a", seededRng(seed), opts,
     );
   const acting = (g: GameState): string[] =>
@@ -1696,7 +1705,7 @@ describe("who acts", () => {
       ]),
     );
     const g = pickFaction(
-      chooseBuild(startGame(newGame(TIGHT, tightAdj)), "warpath"),
+      chooseBuild(startGame(newGame(TIGHT, tightAdj)), "warpath", seededRng(1)),
       "a", seededRng(1),
     );
     expect(acting(g)).toHaveLength(MAX_ACTIVE);
@@ -1704,7 +1713,7 @@ describe("who acts", () => {
 
   it("lets everybody act when the map is smaller than the table", () => {
     const g = pickFaction(
-      chooseBuild(startGame(newGame(["a", "b", "c"])), "warpath"),
+      chooseBuild(startGame(newGame(["a", "b", "c"])), "warpath", seededRng(1)),
       "a", seededRng(1),
     );
     expect(acting(g)).toHaveLength(3);
@@ -1715,5 +1724,46 @@ describe("who acts", () => {
     const next = advance({ ...g, playedThisTurn: true }, seededRng(1));
     expect(playsTurns(next.passives, next.players[next.current].factionId)).toBe(true);
     expect(next.current).not.toBe(0);
+  });
+});
+
+describe("the ground under the faction picker", () => {
+  /** Real land ids, because the terrain tables name the shipped map and this
+   *  is a question about what the shipped map's picker can say. More lands
+   *  than MAX_ACTIVE, so somebody ends up quiet. */
+  const GROUND = [
+    "lietuva", "selonians", "jersikans", "sakalans",
+    "ugandians", "talavians", "dainavians", "osilians",
+  ];
+  const built = (seed: number): GameState =>
+    chooseBuild(startGame(newGame(GROUND)), "warpath", seededRng(seed));
+
+  it("rolls the ground before the faction is picked", () => {
+    const g = built(1);
+    expect(g.phase).toBe("pick-faction");
+    // Something for the picker's hover to read whatever the roll did: the
+    // burden is named rather than rolled.
+    expect(hasPassive(g.passives, "lietuva", "burden-of-bureaucracy")).toBe(true);
+    // And nothing that turns on who acts, because nobody has picked yet.
+    for (const carried of Object.values(g.passives)) {
+      for (const id of QUIET_PASSIVES) expect(carried).not.toContain(id);
+    }
+  });
+
+  it("rolls the same ground twice from the same seed", () => {
+    expect(built(4).passives).toEqual(built(4).passives);
+  });
+
+  it("adds the quiet set when the seats are dealt, and keeps the ground", () => {
+    const before = built(1);
+    const g = pickFaction(before, "lietuva", seededRng(1));
+    const quiet = GROUND.filter((id) => !playsTurns(g.passives, id));
+    expect(quiet.length).toBeGreaterThan(0);
+    // The map the player picked off does not change under the pick.
+    for (const land of GROUND) {
+      for (const id of passivesOn(before.passives, land)) {
+        expect(passivesOn(g.passives, land), land).toContain(id);
+      }
+    }
   });
 });

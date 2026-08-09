@@ -15,7 +15,7 @@ const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
 function freshGame(rng: Rng): GameState {
   let g = startGame(newGame(FACTIONS));
-  g = chooseBuild(g, "warpath");
+  g = chooseBuild(g, "warpath", seededRng(1));
   return pickFaction(g, "alpha", rng);
 }
 

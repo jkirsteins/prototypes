@@ -259,7 +259,7 @@ export function applyBootParams(
   // leaves behind is the one the player sees before they choose, and
   // "Choose your lands" runs the same chooseBuild from there.
   if (params.screen === "deck") return g;
-  g = chooseBuild(g, params.build ?? "warpath");
+  g = chooseBuild(g, params.build ?? "warpath", rng);
   if (params.faction === null) return g;
   g = pickFaction(g, params.faction, rng);
   if (g.phase !== "playing") return g;

@@ -17,7 +17,7 @@ const FACTIONS = ["alpha", "beta", "gamma", "delta"];
  *  JSON cannot carry). */
 function midGame(rng: Rng): GameState {
   let g = startGame(newGame(FACTIONS));
-  g = chooseBuild(g, "warpath");
+  g = chooseBuild(g, "warpath", seededRng(1));
   g = pickFaction(g, "alpha", rng);
   for (let i = 0; i < 12 && g.phase === "playing"; i++) {
     g = advance(aiTakeTurn(g, rng), rng);

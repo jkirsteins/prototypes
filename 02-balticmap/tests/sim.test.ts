@@ -72,7 +72,7 @@ describe("naive human policy", () => {
     pickFaction(
       chooseBuild(
         startGame(newGame(SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES)),
-        "warpath",
+        "warpath", seededRng(1),
       ),
       HUMAN,
       seededRng(1),

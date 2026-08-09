@@ -18,7 +18,9 @@ const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 /** A host harness over one wire: real deps wired to a mutable game. */
 function makeHost(rng: Rng) {
   const [hostWire, guestWire] = wirePair();
-  let game: GameState = chooseBuild(startGame(newGame(FACTIONS)), "warpath");
+  let game: GameState = chooseBuild(
+    startGame(newGame(FACTIONS)), "warpath", seededRng(1),
+  );
   const picks: { build: Strategy; factionId: string }[] = [];
   const deps: HostDeps = {
     getGame: () => game,

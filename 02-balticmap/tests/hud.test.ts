@@ -128,7 +128,7 @@ function newPlaying(factionIds = FACTIONS): GameState {
   const g = pickFaction(
     chooseBuild(
       startGame(newGame(factionIds, undefined, {}, undefined, maxes(factionIds))),
-      "warpath",
+      "warpath", seededRng(1),
     ),
     "beta", seededRng(1),
   );
@@ -152,7 +152,7 @@ describe("createHud", () => {
 
   it("prompts for a faction during pick-faction", () => {
     const { container, hud } = setup();
-    hud.update(chooseBuild(startGame(newGame(FACTIONS)), "warpath"));
+    hud.update(chooseBuild(startGame(newGame(FACTIONS)), "warpath", seededRng(1)));
     expect(q(container, ".menu-overlay").classList.contains("hidden")).toBe(true);
     expect(q(container, ".status-bar").classList.contains("hidden")).toBe(false);
     expect(q(container, ".status-text").textContent).toBe("Choose your faction");
@@ -1457,7 +1457,7 @@ describe("hud v2", () => {
         startGame(newGame(
           [...FACTIONS, "delta", "e1", "e2", "e3", "e4", "e5", "e6"],
         )),
-        "warpath",
+        "warpath", seededRng(1),
       ),
       "beta", seededRng(1),
     );
@@ -1493,7 +1493,8 @@ describe("hud v2", () => {
     const { container, hud } = setup();
     const many = Array.from({ length: 20 }, (_, i) => `f${i}`);
     let g = pickFaction(
-      chooseBuild(startGame(newGame(many)), "warpath"), "f0", seededRng(1),
+      chooseBuild(startGame(newGame(many)), "warpath", seededRng(1)),
+      "f0", seededRng(1),
     );
     const inc: Record<string, string> = {};
     for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
@@ -1531,7 +1532,7 @@ describe("End turn button", () => {
     const g = chooseRules(startGame(newGame(FACTIONS)), {
       ...DEFAULT_RULES, turn: "unlimited",
     });
-    return pickFaction(chooseBuild(g, "warpath"), "alpha", seededRng(1));
+    return pickFaction(chooseBuild(g, "warpath", seededRng(1)), "alpha", seededRng(1));
   }
 
   it("shows but stays disabled under standard rules until a card is played", () => {
@@ -2235,7 +2236,8 @@ describe("localPlayerId", () => {
 
   function playing(): GameState {
     return pickFaction(
-      chooseBuild(startGame(newGame(FOUR)), "warpath"), "alpha", seededRng(1),
+      chooseBuild(startGame(newGame(FOUR)), "warpath", seededRng(1)),
+      "alpha", seededRng(1),
     );
   }
 

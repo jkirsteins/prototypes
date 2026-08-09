@@ -163,7 +163,7 @@ export function runGame(opts: RunOptions): GameSummary {
   const { seed, humanFaction, turnCap } = opts;
   const rng = seededRng(seed);
   let state = pickFaction(
-    chooseBuild(startGame(newSimGame()), opts.humanBuild ?? "warpath"),
+    chooseBuild(startGame(newSimGame()), opts.humanBuild ?? "warpath", rng),
     humanFaction,
     rng,
   );
@@ -402,7 +402,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
   };
   let state = applyBuildArm(
     pickFaction(
-      chooseBuild(startGame(seeded), "warpath"),
+      chooseBuild(startGame(seeded), "warpath", rng),
       SIM_FACTION_IDS[0],
       rng,
     ),

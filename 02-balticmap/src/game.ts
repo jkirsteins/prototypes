@@ -33,9 +33,9 @@ import {
   autoHarvestChoice, harvestCard, type HarvestChoice,
 } from "./harvest";
 import {
-  damageAfterTerrain, hasPassive, playsTurns, RESTLESS_RAID_CHANCE,
-  seedPassives, stripOnCapture, WILD_LANDS_HEAL, WILD_LANDS_HEAL_CHANCE,
-  type Passives,
+  damageAfterTerrain, hasPassive, playsTurns, quietPassives,
+  RESTLESS_RAID_CHANCE, seedTerrain, stripOnCapture, WILD_LANDS_HEAL,
+  WILD_LANDS_HEAL_CHANCE, type Passives,
 } from "./passives";
 import {
   hasRuler, initialRulers, leadersByFaction, leadershipByFaction, replaceRuler,
@@ -440,10 +440,25 @@ export function startGame(state: GameState): GameState {
 
 /** Locks in the human's build and proceeds to faction picking. The successor
  *  of `chooseDeck`: the deck itself is no longer chosen - every seat starts
- *  with `startingDeck()` and grows it through harvests. */
-export function chooseBuild(state: GameState, build: Strategy): GameState {
+ *  with `startingDeck()` and grows it through harvests.
+ *
+ *  The ground is rolled here rather than in `pickFaction` because the screen
+ *  this transition opens is the one where the player chooses a land: a status
+ *  seeded after the pick is a status they picked blind. Only the ground - the
+ *  quiet set waits for `pickFaction`, which is where "who acts" is decided.
+ *
+ *  So this takes the rng, and it draws before every draw `pickFaction` makes.
+ *  tests/rng-isolation.test.ts is where that contract is written down. */
+export function chooseBuild(
+  state: GameState, build: Strategy, rng: Rng,
+): GameState {
   if (state.phase !== "deck-building") return state;
-  return { ...state, phase: "pick-faction", humanStrategy: build };
+  return {
+    ...state,
+    phase: "pick-faction",
+    humanStrategy: build,
+    passives: seedTerrain(state.factionIds, rng),
+  };
 }
 
 /** Locks in the rule picks. Legal only while deck-building, like the build
@@ -515,7 +530,8 @@ function actingFactions(
  *  its build, seeded - one rng draw per AI seat, in seat order, BEFORE its
  *  deck is shuffled, so the draw count per seat is a frozen contract the same
  *  way the old deck builder's was (tests/rng-isolation.test.ts pins it). The
- *  acting draw comes before the deal and the status roll after it. */
+ *  acting draw comes before the deal, and nothing here draws after it: the
+ *  ground was rolled at `chooseBuild`, and the quiet set is not a roll. */
 export function pickFaction(
   state: GameState,
   factionId: string,
@@ -546,7 +562,10 @@ export function pickFaction(
       ),
     ),
   ];
-  const passives = seedPassives(state.factionIds, acting, rng);
+  // On top of the ground `chooseBuild` already rolled, never a re-roll: the
+  // player picked their land off what the map said, and the map must not
+  // change under the pick.
+  const passives = quietPassives(state.passives, state.factionIds, acting);
   // Only the factions that act keep a leader. Everything else about a quiet
   // land follows from the vacancy: no ruler, no turn, and no turn even after
   // somebody takes it.

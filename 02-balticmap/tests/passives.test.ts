@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  addPassive, damageAfterTerrain, hasPassive, PASSIVES, passivesOn, playsTurns,
-  QUIET_PASSIVES, rollTerrain, seedPassives, stripOnCapture,
-  TERRAIN_ELIGIBILITY, type Passives,
+  addPassive, BUREAUCRACY_LANDS, damageAfterTerrain, hasPassive, PASSIVES,
+  passivesOn, playsTurns, QUIET_PASSIVES, quietPassives, rollTerrain,
+  seedTerrain, stripOnCapture, TERRAIN_ELIGIBILITY, type Passives,
 } from "../src/passives";
 import { seededRng } from "../src/sim";
 import data from "../src/data/map.json";
@@ -94,14 +94,39 @@ describe("terrain eligibility", () => {
   });
 });
 
-describe("seedPassives", () => {
+describe("seedTerrain", () => {
+  it("carries the named burden as well as the roll", () => {
+    const lands = [...BUREAUCRACY_LANDS, "selonians"];
+    const ground = seedTerrain(lands, seededRng(1));
+    for (const land of BUREAUCRACY_LANDS) {
+      expect(hasPassive(ground, land, "burden-of-bureaucracy"), land).toBe(true);
+    }
+    expect(hasPassive(ground, "selonians", "burden-of-bureaucracy")).toBe(false);
+  });
+
+  it("says nothing about who acts - that is not the ground's question", () => {
+    const ground = seedTerrain(["selonians", "jersikans"], seededRng(1));
+    for (const carried of Object.values(ground)) {
+      for (const id of QUIET_PASSIVES) expect(carried).not.toContain(id);
+    }
+  });
+});
+
+describe("quietPassives", () => {
   it("quiets every land that does not act, and none that does", () => {
     const lands = ["selonians", "jersikans", "sakalans"];
-    const seeded = seedPassives(lands, ["selonians"], seededRng(1));
+    const seeded = quietPassives({}, lands, ["selonians"]);
     expect(playsTurns(seeded, "selonians")).toBe(true);
     expect(playsTurns(seeded, "jersikans")).toBe(false);
     expect(hasPassive(seeded, "jersikans", "wild-lands")).toBe(true);
     expect(hasPassive(seeded, "selonians", "no-successor")).toBe(false);
+  });
+
+  it("leaves the ground it was handed alone", () => {
+    const ground = addPassive({}, "selonians", "hill-country");
+    const seeded = quietPassives(ground, ["selonians", "jersikans"], ["jersikans"]);
+    expect(hasPassive(seeded, "selonians", "hill-country")).toBe(true);
+    expect(hasPassive(seeded, "selonians", "keeps-to-itself")).toBe(true);
   });
 });
 

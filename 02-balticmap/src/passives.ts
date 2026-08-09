@@ -193,16 +193,25 @@ export function rollTerrain(factionIds: string[], rng: Rng): Passives {
   return out;
 }
 
-/** The statuses a fresh game starts with: the ground, rolled, plus the quiet
- *  set on every faction that does not act. */
-export function seedPassives(
-  factionIds: string[], acting: readonly string[], rng: Rng,
-): Passives {
+/** Everything the ground says about a land: the roll, plus the named burden
+ *  the three biggest carry. Both are facts about the map rather than about who
+ *  sits where, so this is knowable - and shown - before any seat is dealt. */
+export function seedTerrain(factionIds: string[], rng: Rng): Passives {
   let out = rollTerrain(factionIds, rng);
   // After the roll, so adding a named status never shifts a draw.
   for (const land of BUREAUCRACY_LANDS) {
     if (factionIds.includes(land)) out = addPassive(out, land, "burden-of-bureaucracy");
   }
+  return out;
+}
+
+/** The quiet set on every faction that does not act, on top of the ground.
+ *  Separate from `seedTerrain` because it answers a question the ground does
+ *  not: which lands take turns is not known until somebody has picked one. */
+export function quietPassives(
+  passives: Passives, factionIds: string[], acting: readonly string[],
+): Passives {
+  let out = passives;
   for (const land of factionIds) {
     if (acting.includes(land)) continue;
     for (const id of QUIET_PASSIVES) out = addPassive(out, land, id);

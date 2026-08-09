@@ -21,6 +21,10 @@ function playTo(seed: number, turnCap: number): GameState {
         SIM_DEFENSE_MAX,
       )),
       "warpath",
+      // The same stream `pickFaction` goes on to draw from, which is what
+      // makes the terrain roll part of the run's contract rather than a
+      // side channel of its own.
+      rng,
     ),
     BASELINE_FACTION,
     rng,
@@ -35,12 +39,21 @@ function playTo(seed: number, turnCap: number): GameState {
 }
 
 describe("rng isolation", () => {
-  // The draw contract of the new world: `pickFaction` rolls ONE strategy
-  // draw per AI seat, in seat order, before that seat's deck shuffle; ruler
-  // naming is a pure hash and must never cost a draw; a harvest offer always
-  // rolls exactly three. If any of those drifts, the two runs below diverge
-  // and this test says so - the successor of the frozen-fixture baseline,
-  // which measured a different game.
+  // The draw contract of the new world, in the order the draws happen:
+  // `chooseBuild` rolls the ground FIRST - two draws per eligible land, in
+  // faction order - because the faction picker it opens has to say what a
+  // land is before the player picks one; then `pickFaction` rolls the acting
+  // set, ONE strategy draw per AI seat, in seat order, before that seat's
+  // deck shuffle, and nothing after the deal, the quiet set being a rule
+  // rather than a roll; ruler naming is a pure hash and must never cost a
+  // draw; a harvest offer always rolls exactly three. If any of those drifts,
+  // the two runs below diverge and this test says so - the successor of the
+  // frozen-fixture baseline, which measured a different game.
+  //
+  // Moving the terrain roll off the end of the deal and onto the front of the
+  // run does change which game a seed plays, and deliberately: no golden value
+  // is pinned here, only that a seed replays itself, so the reordering is
+  // visible in this comment rather than in a failure.
   it("the same seed replays the identical game, log for log", () => {
     for (const seed of [1, 7]) {
       const a = playTo(seed, 40);

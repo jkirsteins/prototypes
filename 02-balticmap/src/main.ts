@@ -35,9 +35,9 @@ import {
 } from "./defense";
 import {
   cardBlockLine, cardModifierLines, cardRiskLine, defenseBreakdown,
-  diseaseBreakdown, explainTargetEligibility, multipliedWord, passiveLines,
-  plaguePreviewLines, respiteLines, settlementBlock, targetImpactLines,
-  targetOddsLines,
+  diseaseBreakdown, explainTargetEligibility, landFactsLines, multipliedWord,
+  passiveLines, plaguePreviewLines, respiteLines, settlementBlock,
+  targetImpactLines, targetOddsLines,
 } from "./target-explanations";
 import { ATTACK_CARDS, CARDS, type Strategy } from "./cards";
 import { buildOffer, destroyOffer, type HarvestChoice } from "./harvest";
@@ -1725,6 +1725,13 @@ function hoverLines(region: Region): TooltipLine[] {
   // and names no card or faction, so this line stays inside the naming rule.
   const otherHuman = playerNameOfFaction(region.faction);
   if (otherHuman !== null) lines.push({ text: `Played by ${otherHuman}` });
+  // The picker asks one question - "what am I getting" - and it is the one
+  // hover with no seat to answer from, so it gets the land's standing facts
+  // and nothing that needs a human player to exist. Everything below this
+  // point does.
+  if (game.phase === "pick-faction") {
+    lines.push(...landFactsLines(viewOf(game), region.faction));
+  }
   if (!inPlay() || !human) return lines;
   const held = allegianceOf(region.faction, human.factionId);
   if (held !== null) {
@@ -2567,14 +2574,18 @@ const deckScreen = createDeckScreen(app, {
       // and the host's start snapshot replaces every one of them.
       net.build = build;
       game = chooseRules(game, rulesPrefs);
-      game = chooseBuild(game, build);
+      // The ground is the host's to roll. A local roll would show this player
+      // hills and rivers that the start snapshot then moves, so the staged
+      // state carries none and the picker's hover simply says nothing about
+      // the ground here.
+      game = { ...chooseBuild(game, build, rng), passives: {} };
       deckScreen.update(deckScreenView(false));
       netPanel.setStatus("Pick your land on the map.");
       refresh();
       return;
     }
     game = chooseRules(game, rulesPrefs);
-    game = chooseBuild(game, build);
+    game = chooseBuild(game, build, rng);
     deckScreen.update(deckScreenView(false));
     refresh();
   },

@@ -24,7 +24,7 @@ function base(): GameState {
   const g = pickFaction(
     chooseBuild(
       startGame(newGame(FACTIONS, undefined, {}, undefined, MAXES)),
-      "warpath",
+      "warpath", seededRng(1),
     ),
     "zeta", seededRng(1),
   );
@@ -458,7 +458,7 @@ describe("6P: pestilence decisive moves", () => {
       zeta: ["gamma"],
     };
     let g = pickFaction(
-      chooseBuild(startGame(newGame(FACTIONS, ADJ)), "warpath"),
+      chooseBuild(startGame(newGame(FACTIONS, ADJ)), "warpath", seededRng(1)),
       "zeta", seededRng(1),
     );
     g = asStrategy({ ...g, current: 1 }, "pestilence");
@@ -473,7 +473,7 @@ describe("6P: pestilence decisive moves", () => {
       zeta: ["epsilon"],
     };
     let flat = pickFaction(
-      chooseBuild(startGame(newGame(FACTIONS, LINE)), "warpath"),
+      chooseBuild(startGame(newGame(FACTIONS, LINE)), "warpath", seededRng(1)),
       "zeta", seededRng(1),
     );
     flat = asStrategy({ ...flat, current: 1 }, "pestilence");
@@ -638,7 +638,7 @@ function unlimitedAiPlaying(): GameState {
     ...DEFAULT_RULES,
     turn: "unlimited",
   });
-  return pickFaction(chooseBuild(g, "warpath"), "zeta", seededRng(1));
+  return pickFaction(chooseBuild(g, "warpath", seededRng(1)), "zeta", seededRng(1));
 }
 
 describe("aiTakeTurn under unlimited rules", () => {
