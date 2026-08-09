@@ -866,6 +866,17 @@ const COUNTER_SCALE = 0.62;
 const COUNTER_LENGTH_SHARE = 0.62;
 const COUNTER_CLEARANCE = 8;
 
+/** The axis length at which a crowded bundle gets its full spacing. Shorter
+ *  axes shrink toward `MIN_FIT`.
+ *
+ *  Neighbouring lands can have their towns 90 units apart, and a counter
+ *  pushed 40 units sideways off a 90-unit axis stops reading as "beside that
+ *  arrow" and starts reading as "aimed at whatever is over there" - which is
+ *  exactly how it was misread. A lone arrow is never shrunk: it has nothing to
+ *  clear, and thinning it would cost legibility for nothing. */
+const ARROW_FIT_LENGTH = 200;
+const MIN_FIT = 0.45;
+
 /** One tapered spear per march in flight, plus the strength it carries.
  *
  *  Laid out per AXIS, not per march, because a quarrel has two sides and
@@ -891,23 +902,48 @@ function renderMarchArrows(): void {
   for (const axis of axesOf(game.marches)) {
     const opening = axis.opening === "a" ? axis.fromA : axis.fromB;
     const answer = axis.opening === "a" ? axis.fromB : axis.fromA;
-    // Half the width the opening bundle occupies, so the answer can be placed
-    // clear of ALL of it rather than clear of one arrow.
-    const openingHalf = ((opening.length - 1) / 2) * MAIN_GAP + SPEAR.headHalf;
+    const span = marchAnchors(axis.a, axis.b);
+    if (span === null) continue;
+    // Everything the layout spends sideways is scaled to the room the axis
+    // has, and only when the axis is actually crowded - a lone arrow has
+    // nothing to clear and loses legibility for nothing if it is thinned.
+    const length = Math.hypot(span.to.x - span.from.x, span.to.y - span.from.y);
+    const fit = opening.length + answer.length <= 1
+      ? 1
+      : Math.max(MIN_FIT, Math.min(1, length / ARROW_FIT_LENGTH));
+    const mainGap = MAIN_GAP * fit;
+    const headHalf = SPEAR.headHalf * fit;
+    // Half the width the opening bundle occupies, so the answer clears ALL of
+    // it rather than just one arrow.
+    const openingHalf = ((opening.length - 1) / 2) * mainGap + headHalf;
     const answerBase =
-      openingHalf + SPEAR.headHalf * COUNTER_SCALE + COUNTER_CLEARANCE;
-    opening.forEach((m, i) => {
-      drawMarch(m, ((i - (opening.length - 1) / 2) * MAIN_GAP), realm, 1, 1);
-    });
-    answer.forEach((m, i) => {
-      // Negated: the answer runs the other way, so its own "left" is the
-      // opening side's "right". Both bundles are measured in one world
-      // direction, which is what keeps the counter consistently on one side.
-      const within = (i - (answer.length - 1) / 2) * COUNTER_GAP;
-      drawMarch(
-        m, -(answerBase + within), realm, COUNTER_SCALE, COUNTER_LENGTH_SHARE,
-      );
-    });
+      openingHalf + headHalf * COUNTER_SCALE + COUNTER_CLEARANCE * fit;
+
+    // Every offset in ONE frame - the opening side's - so the two bundles can
+    // then be centred against each other. An arrangement whose middle sits off
+    // the line between the two lands is an arrangement pointing at neither of
+    // them, which is exactly how a counter beside two attacks was misread.
+    const plan = [
+      ...opening.map((m, i) => ({
+        m, offset: (i - (opening.length - 1) / 2) * mainGap,
+        scale: fit, lengthShare: 1, forward: true,
+      })),
+      ...answer.map((m, i) => ({
+        m,
+        offset: answerBase + (i - (answer.length - 1) / 2) * COUNTER_GAP * fit,
+        scale: COUNTER_SCALE * fit, lengthShare: COUNTER_LENGTH_SHARE,
+        forward: false,
+      })),
+    ];
+    const offsets = plan.map((p) => p.offset);
+    const centre = (Math.min(...offsets) + Math.max(...offsets)) / 2;
+    for (const p of plan) {
+      // Negated for the answer: it runs the other way, so its own "left" is
+      // the opening side's "right", and one world direction is what keeps the
+      // counter consistently on one side of the pair.
+      const lateral = (p.offset - centre) * (p.forward ? 1 : -1);
+      drawMarch(p.m, lateral, realm, p.scale, p.lengthShare);
+    }
   }
 }
 
