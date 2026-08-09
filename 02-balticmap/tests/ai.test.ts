@@ -90,8 +90,9 @@ describe("the spine, steps 1..5", () => {
     let g = asStrategy(base(), "warpath");
     g = { ...g, defense: { beta: 10 }, respites: { beta: 5 }, turn: 2 };
     g = withHand(g, ["subjugate", "raid"]);
+    // alpha is the realm's only land, so the arrow's tail can only be alpha.
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "gamma",
+      type: "play", cardIndex: 1, targetId: "gamma", sourceId: "alpha",
     });
   });
 
@@ -184,14 +185,137 @@ describe("the spine, steps 1..5", () => {
   });
 });
 
+describe("5A: answering a march", () => {
+  /** One march aimed at `at`, out of `from`, by whoever holds `from`. */
+  const incoming = (from: string, at: string, damage: number) => ({
+    [`${from}>${at}#0`]: {
+      actor: from, from, to: at, cardId: "raid", damage,
+      holdsArmy: true, expiry: 3,
+    },
+  });
+
+  it("5A: counters a march it out-muscles, out of the land under threat", () => {
+    let g = asStrategy(base(), "warpath");
+    g = { ...g, marches: incoming("beta", "alpha", 1), turn: 2 };
+    g = withHand(g, ["raid", "grow-crops"]);
+    // The counter aims BACK at the source, and must march out of the land the
+    // arrow is pointed at - anywhere else is a fresh attack on another axis.
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "beta", sourceId: "alpha",
+    });
+  });
+
+  it("5A: counters a march it cannot win when the hit would open its gate", () => {
+    let g = asStrategy(base(), "warpath");
+    // alpha sits 2 above its gate and 6 damage is coming: our raid deals 1,
+    // which loses the clash outright but keeps the gate shut.
+    g = {
+      ...g, defense: { alpha: 17 },
+      marches: incoming("beta", "alpha", 6), turn: 2,
+    };
+    g = withHand(g, ["raid", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "beta", sourceId: "alpha",
+    });
+  });
+
+  it("5A: lets a march it neither survives nor loses to go by", () => {
+    let g = asStrategy(base(), "warpath");
+    // 6 incoming against a land 40 above its gate, and our raid deals 1:
+    // trading the army buys nothing the turn cannot buy elsewhere.
+    g = {
+      ...g, defense: { alpha: 55 },
+      marches: incoming("beta", "alpha", 6), turn: 2,
+    };
+    g = withHand(g, ["raid", "grow-crops"]);
+    expect(chooseAction(g)).not.toMatchObject({ targetId: "beta" });
+  });
+
+  it("5A: ignores a march already answered by a counter of our own", () => {
+    let g = asStrategy(base(), "warpath");
+    g = {
+      ...g, turn: 2,
+      marches: {
+        ...incoming("beta", "alpha", 4),
+        "alpha>beta#0": {
+          actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
+          damage: 4, holdsArmy: true, expiry: 3,
+        },
+      },
+    };
+    g = withHand(g, ["raid", "grow-crops"]);
+    // The axis already nets to nothing, and alpha's army is out anyway.
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("5A: heals against the braced score, not the standing one", () => {
+    let g = asStrategy(base(), "warpath");
+    // alpha stands at 35 - above half of 60, so untouched it is a scratch the
+    // policy leaves alone - but 10 is in the air, which puts it under.
+    g = {
+      ...g, defense: { alpha: 35 },
+      marches: incoming("beta", "alpha", 10), turn: 2,
+    };
+    g = withHand(g, ["hillfort", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "alpha",
+    });
+  });
+});
+
+describe("12: garrison", () => {
+  it("raises an army on the frontier land that has none left to send", () => {
+    let g = asStrategy(base(), "warpath");
+    g = {
+      ...g, turn: 2,
+      marches: {
+        "alpha>beta#0": {
+          actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: 3,
+        },
+      },
+    };
+    g = withHand(g, ["create-army"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "alpha",
+    });
+  });
+
+  it("holds the card while the frontier still has an army free", () => {
+    let g = asStrategy(base(), "warpath");
+    g = withHand(g, ["create-army", "grow-crops"]);
+    // alpha's army is home, so the turn feeds the harvest loop instead.
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("decides the card for a pestilence seat too - it is a neutral", () => {
+    let g = asStrategy(base(), "pestilence");
+    g = {
+      ...g, turn: 2,
+      marches: {
+        "alpha>beta#0": {
+          actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: 3,
+        },
+      },
+    };
+    g = withHand(g, ["create-army"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "alpha",
+    });
+  });
+});
+
 describe("6W: warpath decisive moves", () => {
   it("6W-1: raids its own vassal one heal from the independence gate", () => {
     let g = asStrategy(base(), "warpath");
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
     g = { ...g, defense: { beta: 32 } }; // 32 + 15 >= 45
     g = withHand(g, ["raid", "grow-crops"]);
+    // Out of alpha, not out of the vassal itself: no land borders itself, so
+    // holding a vassal down always takes an army from next door.
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "beta",
+      type: "play", cardIndex: 0, targetId: "beta", sourceId: "alpha",
     });
   });
 
@@ -200,7 +324,7 @@ describe("6W: warpath decisive moves", () => {
     g = { ...g, defense: { beta: 16 } }; // gap 1 <= raid damage 1
     g = withHand(g, ["war-council", "raid"]);
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "beta",
+      type: "play", cardIndex: 1, targetId: "beta", sourceId: "alpha",
     });
   });
 
@@ -228,7 +352,7 @@ describe("6W: warpath decisive moves", () => {
     g = { ...g, defense: { beta: 16 } };
     g = withHand(g, ["favourable-omens", "raid"]);
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "beta",
+      type: "play", cardIndex: 1, targetId: "beta", sourceId: "alpha",
     });
   });
 });
@@ -417,7 +541,7 @@ describe("step 11: build moves", () => {
     g = { ...g, defense: { gamma: 16.5 } }; // gap 1.5 <= 2 attacks (2)
     g = withHand(g, ["war-council", "raid"]);
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "gamma",
+      type: "play", cardIndex: 1, targetId: "gamma", sourceId: "alpha",
     });
   });
 
@@ -426,7 +550,7 @@ describe("step 11: build moves", () => {
     g = { ...g, defense: { beta: 10, gamma: 40 } };
     g = withHand(g, ["raid"]);
     expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "gamma",
+      type: "play", cardIndex: 0, targetId: "gamma", sourceId: "alpha",
     });
   });
 

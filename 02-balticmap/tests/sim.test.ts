@@ -89,7 +89,7 @@ describe("naive human policy", () => {
     expect(play).toMatchObject({ cardId: "raid" });
     expect(play?.targetFactionId).toBeDefined();
     // The raid landed: an untargeted or refused play would have no damage.
-    expect(g.log.some((e) => e.type === "damaged")).toBe(true);
+    expect(g.log.some((e) => e.type === "march-resolved")).toBe(true);
   });
 
   it("plays forced tribute ahead of anything else", () => {

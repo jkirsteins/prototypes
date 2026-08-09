@@ -1,6 +1,6 @@
 import {
-  CARDS, guardAgainst, isGuardCard, isTributeCard, startingDeck, shuffle,
-  TRIBUTE_CARDS, type Rng, type Strategy,
+  CARDS, CONSUMED_CARDS, guardAgainst, isGuardCard, isTributeCard,
+  startingDeck, shuffle, TRIBUTE_CARDS, type Rng, type Strategy,
 } from "./cards";
 
 import {
@@ -14,9 +14,9 @@ import {
   WAR_COUNCIL_LEADERSHIP, type Defense, type Disease,
 } from "./defense";
 import {
-  attackDamageFor, attackMultiplier, attackReach, borderPolygonsOf,
-  ESCAPE_RESPITE_TURNS, greatRaidMarches, marchSourcesAgainst, outbreakPolygons,
-  plagueMultiplier, playableSet, validTargetsFor, wealthIncomeFor,
+  attackDamageFor, attackMultiplier, attackReach, ESCAPE_RESPITE_TURNS,
+  greatRaidMarches, marchSourcesAgainst, outbreakPolygons, plagueMultiplier,
+  playableSet, validTargetsFor, wealthIncomeFor,
   type Guards, type Omens, type RulesView,
 } from "./playability";
 import {
@@ -32,7 +32,7 @@ export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
   | "subjugated" | "released" | "incorporated" | "independence" | "tribute"
   | "settled"
-  | "damaged" | "healed" | "disease-spread" | "plagued" | "winds-shifted"
+  | "healed" | "disease-spread" | "plagued" | "winds-shifted"
   | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked"
   | "victory" | "defeat" | "unified" | "surrendered";
@@ -405,7 +405,6 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     case "incorporated":
     case "tribute":
     case "settled":
-    case "damaged":
     case "healed":
     case "disease-spread":
     case "plagued":
@@ -774,13 +773,18 @@ export function playCard(
     },
   ];
 
-  // move the played card out of hand first, then apply effects to players
+  // Move the played card out of hand first, then apply effects to players. A
+  // consumed card (src/cards.ts) skips the discard entirely and is simply gone
+  // - a deck this small reshuffles its discard back every few turns, so a card
+  // whose effect is permanent has to leave or it compounds.
   let players = state.players.map((pl, i) =>
     i === state.current
       ? {
           ...pl,
           hand: pl.hand.filter((_, j) => j !== cardIndex),
-          discard: [...pl.discard, cardId],
+          discard: CONSUMED_CARDS.has(cardId)
+            ? pl.discard
+            : [...pl.discard, cardId],
         }
       : pl,
   );
@@ -797,22 +801,6 @@ export function playCard(
         });
       }
     }
-  };
-
-  /** One attack card's landing on one polygon: the defense moved is what the
-   *  event records - the actual movement, not the raw card damage, so the
-   *  walk in src/standings.ts can replay it against the store. A polygon
-   *  already at 0 records nothing; the spec is explicit that nothing special
-   *  happens at 0. */
-  const landDamage = (polygon: string, damage: number): void => {
-    const before = defenseOf({ defense, defenseMax: state.defenseMax }, polygon);
-    const moved = Math.min(before, damage);
-    if (moved <= 0) return;
-    defense = applyDamage({ defense, defenseMax: state.defenseMax }, polygon, damage);
-    events.push({
-      turn: state.turn, playerId: p.id, type: "damaged", cardId,
-      targetFactionId: polygon, amount: moved,
-    });
   };
 
   /** One attack card committing one army. No event: the `play` event carries
@@ -905,6 +893,11 @@ export function playCard(
     for (const { from, to, holdsArmy } of greatRaidMarches(view, p.factionId)) {
       declareMarch(from, to, damage, holdsArmy);
     }
+  } else if (cardId === "create-army" && targetId !== undefined) {
+    // No event: armies are not a walked standing, so there is no before ->
+    // after suffix for a line to carry, and the play line already names the
+    // land. The pip appearing on the badge is the feedback.
+    armies = addArmy(armies, targetId);
   } else if (cardId === "favourable-omens") {
     omens = { ...omens, [p.factionId]: (omens[p.factionId] ?? 0) + 1 };
   } else if (cardId === "miasma") {

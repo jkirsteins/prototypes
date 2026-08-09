@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  ATTACK_CARDS, BASE_RARITY, BUILDS, CARDS, GUARDS, NEUTRAL_POOL,
-  RARITY_TIERS, TRIBUTE_CARDS,
+  ATTACK_CARDS, BASE_RARITY, BUILDS, CARDS, CONSUMED_CARDS, GUARDS,
+  NEUTRAL_POOL, RARITY_TIERS, TRIBUTE_CARDS,
   guardAgainst, isGuardCard, isTributeCard, rarityForImpact, shuffle,
   startingDeck,
 } from "../src/cards";
@@ -34,13 +34,15 @@ describe("cards", () => {
     // Build A - Warpath.
     expectProps(
       "raid", "Raid", true, false, null, true, false,
-      "Deal 1 damage, plus your ruler's leadership, to the defenses of one " +
-        "land in reach.",
+      "March an army out of one of your lands at a land it borders. It lands " +
+        "at the start of your next turn for 1 damage plus your ruler's " +
+        "leadership, less whatever counter-raid it meets on the way.",
     );
     expectProps(
       "great-raid", "Great raid", false, false, null, true, false,
-      "Deal 0.5 damage, plus your ruler's leadership, to the defenses of " +
-        "every land bordering your realm.",
+      "One sally: every land of your realm that can spare an army marches on " +
+        "each land it borders. They land at the start of your next turn for " +
+        "0.5 damage plus your ruler's leadership.",
     );
     expectProps(
       "favourable-omens", "Favourable omens", false, false, null, true, false,
@@ -111,6 +113,11 @@ describe("cards", () => {
       "bodyguard", "Bodyguard", false, true, 1, true, false,
       "Post a bodyguard: the next Assassinate ruler against you fails. " +
         "No stacking. Others see only that you played a secret card.",
+    );
+    expectProps(
+      "create-army", "Create army", true, false, null, true, false,
+      "Station another army in one land of your realm, so it can march while " +
+        "its first army is away. This card leaves your deck for good.",
     );
     expectProps(
       "found-settlement", "Found a settlement", true, false, 1, true, false,
@@ -237,7 +244,7 @@ describe("builds and the neutral pool", () => {
   it("derives the neutrals in declaration order", () => {
     expect(NEUTRAL_POOL).toEqual([
       "hillfort", "harvest-feast", "subjugate", "incorporate",
-      "assassinate-ruler", "bodyguard", "found-settlement",
+      "assassinate-ruler", "bodyguard", "create-army", "found-settlement",
     ]);
   });
 
@@ -246,6 +253,20 @@ describe("builds and the neutral pool", () => {
     for (const id of ATTACK_CARDS) {
       expect(CARDS[id]).toBeDefined();
       expect(BUILDS.warpath).toContain(id);
+    }
+  });
+
+  it("pins the consumed set - what leaves the deck instead of discarding", () => {
+    expect([...CONSUMED_CARDS].sort()).toEqual(["create-army"]);
+    for (const id of CONSUMED_CARDS) {
+      expect(CARDS[id]).toBeDefined();
+      // A consumed card must be uncapped and deck-buildable: capping it would
+      // be belt and braces on a card that already cannot repeat, and a card
+      // the harvest never offers could only be consumed once from the
+      // starting deck, which it is not in.
+      expect(CARDS[id].maxPerDeck).toBeNull();
+      expect(CARDS[id].deckBuildable).toBe(true);
+      expect(startingDeck()).not.toContain(id);
     }
   });
 

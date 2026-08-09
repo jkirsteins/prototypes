@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, beginTurn,
-  playCard, discardCard, endTurn, advance, surrender,
+  playCard, discardCard, endTurn, advance, surrender, viewOf,
   OPENING_HAND, HAND_REFILL, TURNIP_HARVEST_THRESHOLD, victoryRealmSize,
   type GameState,
 } from "../src/game";
+import { ARMIES_PER_POLYGON } from "../src/marches";
 import { DEFAULT_RULES } from "../src/rules";
 import { isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
@@ -12,7 +13,7 @@ import {
   FORTIFY_HEAL_PER_OMEN, GREAT_RAID_DAMAGE, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
   PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
-import { ESCAPE_RESPITE_TURNS } from "../src/playability";
+import { ESCAPE_RESPITE_TURNS, validTargetsFor } from "../src/playability";
 import { rulerOf } from "../src/rulers";
 
 function seededRng(seed: number): Rng {
@@ -607,6 +608,35 @@ describe("great-raid", () => {
     const each = (GREAT_RAID_DAMAGE + 5) * 2;
     expect(after.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - each);
     expect(after.defense.gamma).toBe(DEFAULT_DEFENSE_MAX - each);
+  });
+});
+
+describe("create-army", () => {
+  it("stations an army and leaves the deck instead of discarding", () => {
+    const g = withHand(playingState(), 0, ["create-army"]);
+    const before = g.log.length;
+    const after = playCard(g, 0, rng(), "beta");
+    expect(after.armies).toEqual({ beta: ARMIES_PER_POLYGON + 1 });
+    // Gone for good: the discard is where a card waits to be reshuffled back,
+    // and an army raised twice off one pick is the compounding this prevents.
+    expect(after.players[0].discard).not.toContain("create-army");
+    expect(pilesOf(after, "beta")).not.toContain("create-army");
+    // No event of its own - armies are not a walked standing, so the play
+    // line carries no suffix and there is nothing else to say.
+    expect(fresh(after, before)).toHaveLength(1);
+  });
+
+  it("lets the second army march while the first is away", () => {
+    let g = withHand(unlimitedPlaying(LINE_ADJ), 0, ["create-army", "raid", "raid"]);
+    g = playCard(g, 0, rng(), "beta");
+    g = playCard(g, 0, rng(), "alpha");
+    g = playCard(g, 0, rng(), "gamma");
+    expect(Object.values(g.marches).map((m) => m.to)).toEqual(["alpha", "gamma"]);
+  });
+
+  it("aims only inward - a rival's land is no place to raise your army", () => {
+    const g = withHand(playingState(LINE_ADJ), 0, ["create-army"]);
+    expect(validTargetsFor(viewOf(g), "beta", "create-army")).toEqual(["beta"]);
   });
 });
 

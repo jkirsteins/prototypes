@@ -26,7 +26,7 @@ function ctx(over: Partial<WalkCtx> = {}): WalkCtx {
 }
 
 function event(overrides: Partial<GameEvent>): GameEvent {
-  return { turn: 1, playerId: 2, type: "damaged", ...overrides };
+  return { turn: 1, playerId: 2, type: "march-resolved", ...overrides };
 }
 
 describe("scoreMovesOf", () => {
@@ -47,7 +47,7 @@ describe("scoreMovesOf", () => {
   it("a zero-amount damaged or plagued moves nothing", () => {
     // Plague logs amount 0 where the stacks burned on a broken polygon - the
     // line still renders, but there is no before -> after to reconstruct.
-    for (const type of ["damaged", "plagued"] as const) {
+    for (const type of ["march-resolved", "plagued"] as const) {
       const e = event({ type, targetFactionId: X, amount: 0 });
       expect(scoreMovesOf(e, ctx())).toEqual([]);
     }

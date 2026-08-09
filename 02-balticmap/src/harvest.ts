@@ -42,16 +42,21 @@ export function rollHarvestOffer(player: PlayerState, rng: Rng): string[] {
  *  Subjugate is taken first by either strategy while none is in the piles -
  *  `harvestPool` has already dropped it when one is - and the heal cards
  *  outrank the remaining neutrals, matching policy step 5's heal-toward-a-
- *  gate priority. */
+ *  gate priority.
+ *
+ *  Create army is the one neutral the two builds rank far apart. An army is
+ *  the cap on how many attacks a warpath realm can have in flight, so it sits
+ *  among that build's attack cards; a pestilence seat attacks only with the
+ *  Raids its starting deck dealt it, so for that build it is a late pick. */
 export const HARVEST_PRIORITY: Record<Strategy, readonly string[]> = {
   warpath: [
     "subjugate", "war-council", "raid", "favourable-omens", "great-raid",
-    "fortify", "hillfort", "harvest-feast", "incorporate", "assassinate-ruler",
-    "bodyguard", "found-settlement",
+    "create-army", "fortify", "hillfort", "harvest-feast", "incorporate",
+    "assassinate-ruler", "bodyguard", "found-settlement",
   ],
   pestilence: [
     "subjugate", "spread-disease", "plague", "localized-outbreak", "miasma",
-    "foul-winds", "hillfort", "harvest-feast", "incorporate",
+    "foul-winds", "hillfort", "harvest-feast", "create-army", "incorporate",
     "assassinate-ruler", "bodyguard", "found-settlement",
   ],
 };

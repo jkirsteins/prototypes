@@ -370,9 +370,13 @@ function marchResolvedLines(
           ...(e.clash !== undefined
             ? [t(" broke through the counter from ")]
             : [t(" fell on ")]),
-          ...(home && e.clash === undefined
+          // "your home defenses" for the home polygon, the land's own name
+          // plus "in your realm" for anything else under you - the same
+          // division `damagedLines` draws, because which land was hit is a
+          // different fact from whether it was the seat of power.
+          ...(home
             ? [t("your home defenses")]
-            : [faction(e.targetFactionId ?? "")]),
+            : [faction(e.targetFactionId ?? ""), t(" in your realm")]),
         ]
       : [
           ...cardSeg, t(" out of "), faction(e.sourceFactionId ?? ""),
@@ -454,34 +458,19 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   },
   discard: { kind: "silent", reason: "routine; visible in log" },
   reshuffle: { kind: "silent", reason: "routine; deck pulse animation" },
-  damaged: {
-    kind: "modal",
-    // A hit on any polygon of the human's realm, by somebody else. The
-    // human's own attacks are visible where they aimed them.
-    appliesToHuman: (e, ctx, localPlayerId = 1) =>
-      e.playerId !== localPlayerId &&
-      e.targetFactionId !== undefined &&
-      ctx.inHumanRealm(e.targetFactionId),
-    // Critical exactly when the HOME gate now stands open: any rival in
-    // reach can take the human on its next turn, and playing on without
-    // knowing that is playing a different game. Post-batch truth is the
-    // right read - what matters is the state the player wakes up in.
-    critical: (e, ctx) =>
-      e.targetFactionId === ctx.humanFactionId && ctx.homeGateOpen()
-        ? "Your defenses are broken"
-        : null,
-    lines: damagedLines,
-    footnotes: (_events, ctx) =>
-      ctx.homeGateOpen() ? [GATE_OPEN_FOOTNOTE()] : [],
-  },
   plagued: {
     kind: "modal",
-    // The same rule as `damaged` - a Plague is a hit with a different verb -
-    // kept as its own type so the log can say the stacks were cashed.
+    // A hit on any polygon of the human's realm, by somebody else. The human's
+    // own Plague is visible where they aimed it. Marches are the other half of
+    // this rule and answer it differently - see `march-resolved` below.
     appliesToHuman: (e, ctx, localPlayerId = 1) =>
       e.playerId !== localPlayerId &&
       e.targetFactionId !== undefined &&
       ctx.inHumanRealm(e.targetFactionId),
+    // Critical exactly when the HOME gate now stands open: any rival in reach
+    // can take the human on its next turn, and playing on without knowing
+    // that is playing a different game. Post-batch truth is the right read -
+    // what matters is the state the player wakes up in.
     critical: (e, ctx) =>
       e.targetFactionId === ctx.humanFactionId && ctx.homeGateOpen()
         ? "Your defenses are broken"

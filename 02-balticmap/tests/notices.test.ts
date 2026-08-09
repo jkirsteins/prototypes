@@ -12,7 +12,8 @@ const ALL_TYPES: GameEventType[] = [
   "draw", "play", "reshuffle", "discard",
   "subjugated", "released", "incorporated", "independence", "tribute",
   "settled",
-  "damaged", "healed", "disease-spread", "plagued", "winds-shifted",
+  "healed", "disease-spread", "plagued", "winds-shifted",
+  "march-resolved", "march-lapsed",
   "harvest-earned", "harvest-picked",
   "victory", "defeat", "unified", "surrendered",
 ];
@@ -101,9 +102,11 @@ describe("NOTICE_RULES registry", () => {
       return rule.kind === "modal" && rule.critical !== undefined;
     });
     // `play` is here only for the actor arm - a bodyguard stopping YOUR blade.
-    // `damaged` and `plagued` fire only when the hit left the home gate open.
+    // `march-resolved` and `plagued` fire only when the hit left the home gate
+    // open. The order is ALL_TYPES' order, not the registry's.
     expect(critical).toEqual([
-      "play", "subjugated", "released", "independence", "damaged", "plagued",
+      "play", "subjugated", "released", "independence", "plagued",
+      "march-resolved",
       "harvest-earned",
     ]);
   });
@@ -133,10 +136,13 @@ describe("damage to the human's realm", () => {
   it("a rival's raid on the home names the card, the actor and the defense it moved", () => {
     defenseTable = { livs: 450 };
     const s = oneSummary(
-      ev({ type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 }),
+      ev({
+        type: "march-resolved", cardId: "raid", targetFactionId: "livs",
+        sourceFactionId: "jersika", amount: 150,
+      }),
     )!;
     expect(s.title).toBe(ROUND_SUMMARY_TITLE);
-    expect(lineText(s)).toBe("Raid by Jersikans battered your home defenses");
+    expect(lineText(s)).toBe("Raid out of Jersikans fell on your home defenses");
     expect(s.lines[0].changes).toEqual([
       { polygon: "livs", track: "defense", before: 600, after: 450 },
     ]);
@@ -147,10 +153,13 @@ describe("damage to the human's realm", () => {
     humanRealm = new Set(["livs", "curonia"]);
     defenseTable = { curonia: 525 };
     const s = oneSummary(
-      ev({ type: "damaged", cardId: "great-raid", targetFactionId: "curonia", amount: 75 }),
+      ev({
+        type: "march-resolved", cardId: "great-raid", targetFactionId: "curonia",
+        sourceFactionId: "jersika", amount: 75,
+      }),
     )!;
     expect(lineText(s)).toBe(
-      "Great raid by Jersikans battered the defenses of Curonians in your realm",
+      "Great raid out of Jersikans fell on Curonians in your realm",
     );
     expect(s.lines[0].changes).toEqual([
       { polygon: "curonia", track: "defense", before: 600, after: 525 },
@@ -159,15 +168,18 @@ describe("damage to the human's realm", () => {
 
   it("falls back to 'An attack' when the event names no card", () => {
     const s = oneSummary(
-      ev({ type: "damaged", targetFactionId: "livs", amount: 150 }),
+      ev({
+        type: "march-resolved", targetFactionId: "livs",
+        sourceFactionId: "jersika", amount: 150,
+      }),
     )!;
-    expect(lineText(s)).toBe("An attack by Jersikans battered your home defenses");
+    expect(lineText(s)).toBe("An attack out of Jersikans fell on your home defenses");
   });
 
   it("stays silent for the human's own attacks and for hits outside the realm", () => {
     for (const e of [
-      ev({ type: "damaged", playerId: 1, cardId: "raid", targetFactionId: "jersika", amount: 150 }),
-      ev({ type: "damaged", cardId: "raid", targetFactionId: "latgale", amount: 150 }),
+      ev({ type: "march-resolved", playerId: 1, cardId: "raid", targetFactionId: "jersika", amount: 150 }),
+      ev({ type: "march-resolved", cardId: "raid", targetFactionId: "latgale", amount: 150 }),
     ]) {
       expect(oneSummary(e), `expected null for ${e.targetFactionId}`).toBeNull();
     }
@@ -187,8 +199,8 @@ describe("damage to the human's realm", () => {
   it("chains two hits on the same polygon backwards from the post-batch score", () => {
     defenseTable = { livs: 300 };
     const s = buildRoundSummary([
-      ev({ turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 }),
-      ev({ turn: 2, playerId: 3, type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 }),
+      ev({ turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 }),
+      ev({ turn: 2, playerId: 3, type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 }),
     ], ctx)!;
     expect(s.lines).toHaveLength(2);
     expect(s.lines[0].changes).toEqual([
@@ -204,9 +216,9 @@ describe("damage to the human's realm", () => {
   it("a silent heal between two hits keeps the shown numbers honest", () => {
     defenseTable = { livs: 200 };
     const events: GameEvent[] = [
-      ev({ turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 }),
+      ev({ turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 }),
       ev({ turn: 1, playerId: 1, type: "healed", cardId: "hillfort", targetFactionId: "livs", amount: 100 }),
-      ev({ turn: 2, playerId: 3, type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 }),
+      ev({ turn: 2, playerId: 3, type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 }),
     ];
     const s = buildRoundSummary(events, ctx)!;
     expect(s.lines).toHaveLength(2);
@@ -221,9 +233,9 @@ describe("damage to the human's realm", () => {
   it("warns 'Your defenses are broken' when a hit on the home left the gate open", () => {
     gateOpen = true;
     defenseTable = { livs: 100 };
-    const e = ev({ type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 });
-    const rule = NOTICE_RULES.damaged;
-    if (rule.kind !== "modal") throw new Error("damaged must be modal");
+    const e = ev({ type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 });
+    const rule = NOTICE_RULES["march-resolved"];
+    if (rule.kind !== "modal") throw new Error("march-resolved must be modal");
     expect(rule.critical!(e, ctx)).toBe("Your defenses are broken");
     const s = oneSummary(e)!;
     expect(footnoteTexts(s)).toEqual([
@@ -233,9 +245,9 @@ describe("damage to the human's realm", () => {
   });
 
   it("does not mark a hit critical while the gate holds, and raises no footnote", () => {
-    const e = ev({ type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 });
-    const rule = NOTICE_RULES.damaged;
-    if (rule.kind !== "modal") throw new Error("damaged must be modal");
+    const e = ev({ type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 });
+    const rule = NOTICE_RULES["march-resolved"];
+    if (rule.kind !== "modal") throw new Error("march-resolved must be modal");
     expect(rule.critical!(e, ctx)).toBeNull();
     expect(footnoteTexts(oneSummary(e))).toEqual([]);
   });
@@ -243,20 +255,20 @@ describe("damage to the human's realm", () => {
   it("a hit on a vassal's land is never critical - the gate is about the HOME", () => {
     gateOpen = true;
     humanRealm = new Set(["livs", "curonia"]);
-    const e = ev({ type: "damaged", cardId: "raid", targetFactionId: "curonia", amount: 150 });
-    const rule = NOTICE_RULES.damaged;
-    if (rule.kind !== "modal") throw new Error("damaged must be modal");
+    const e = ev({ type: "march-resolved", cardId: "raid", targetFactionId: "curonia", amount: 150 });
+    const rule = NOTICE_RULES["march-resolved"];
+    if (rule.kind !== "modal") throw new Error("march-resolved must be modal");
     expect(rule.critical!(e, ctx)).toBeNull();
   });
 
   /** Two hits, one warning: the gate footnote compares rendered shape, so the
-   *  same text from two events - or from a damaged group AND a plagued group -
+   *  same text from two events - or from a march group AND a plagued group -
    *  collapses to one. */
   it("deduplicates the gate footnote across events and across event types", () => {
     gateOpen = true;
     defenseTable = { livs: 0 };
     const s = buildRoundSummary([
-      ev({ turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 }),
+      ev({ turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 }),
       ev({ turn: 2, playerId: 3, type: "plagued", cardId: "plague", targetFactionId: "livs", amount: 200 }),
     ], ctx)!;
     expect(s.lines).toHaveLength(2);
@@ -268,7 +280,7 @@ describe("damage to the human's realm", () => {
     defenseTable = { livs: 100 };
     const events: GameEvent[] = [
       ev({ turn: 1, playerId: 1, type: "healed", cardId: "hillfort", targetFactionId: "livs", amount: 50 }),
-      ev({ turn: 2, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 }),
+      ev({ turn: 2, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 }),
     ];
     const full = buildRoundSummary(events, ctx)!;
     const muted = buildRoundSummary(events, ctx, { criticalOnly: true })!;
@@ -709,7 +721,7 @@ describe("subjugation, release and independence roles", () => {
 
     it("criticalOnly keeps the subjugation and drops the round's other news", () => {
       const events: GameEvent[] = [
-        ev({ type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 }),
+        ev({ type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 }),
         ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
       ];
       const full = buildRoundSummary(events, ctx)!;
@@ -730,7 +742,7 @@ describe("subjugation, release and independence roles", () => {
 
     it("stays silent when a muted round holds nothing critical", () => {
       const events: GameEvent[] = [
-        ev({ type: "damaged", cardId: "raid", targetFactionId: "livs", amount: 150 }),
+        ev({ type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 }),
         ev({ type: "disease-spread", cardId: "spread-disease", targetFactionId: "livs", amount: 1 }),
       ];
       expect(buildRoundSummary(events, ctx)).not.toBeNull();

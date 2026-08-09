@@ -524,7 +524,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     firstLegalTargetPlays,
     preventedAssassinations,
     untestedGuards,
-    damageDealt: sumAmounts(["damaged", "plagued"]),
+    damageDealt: sumAmounts(["march-resolved", "plagued"]),
     defenseHealed: sumAmounts(["healed"]),
     vassalTenures,
     settlementsFounded: state.log.filter((e) => e.type === "settled").length,

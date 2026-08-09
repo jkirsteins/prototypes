@@ -133,6 +133,11 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
       targetFactionId: RIVAL, sourceFactionId: H, amount: 2,
       clash: { incoming: 4, counter: 6 },
     },
+    // No cardId: the "An attack" fallback line has to sweep too.
+    {
+      turn: 2, playerId: 2, type: "march-resolved",
+      targetFactionId: H, sourceFactionId: RIVAL, amount: 4,
+    },
   ],
   "march-lapsed": [
     {
@@ -143,12 +148,6 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
       turn: 2, playerId: 2, type: "march-lapsed", cardId: "great-raid",
       targetFactionId: H, sourceFactionId: RIVAL,
     },
-  ],
-  damaged: [
-    { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: H, amount: 150 },
-    { turn: 1, playerId: 1, type: "damaged", cardId: "great-raid", targetFactionId: RIVAL, amount: 75 },
-    // No cardId: the "An attack" fallback line has to sweep too.
-    { turn: 1, playerId: 2, type: "damaged", targetFactionId: H, amount: 150 },
   ],
   healed: [
     { turn: 1, playerId: 1, type: "healed", cardId: "hillfort", targetFactionId: H, amount: 150 },
@@ -349,7 +348,7 @@ describe("naming convention: no card or faction name as raw text", () => {
 
     // A play is silent now - the damage consequence carries the summary line.
     const summary = buildRoundSummary(
-      [{ turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: H, amount: 150 }],
+      [{ turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: H, amount: 150 }],
       ctx,
     )!;
     expect(summary.lines[0].text.some((s) => s.kind === "card" && s.cardId === "raid")).toBe(true);

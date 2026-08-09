@@ -50,11 +50,10 @@ export function scoreMovesOf(e: GameEvent, ctx: WalkCtx): ScoreMove[] {
   const polygon = e.targetFactionId;
   if (polygon === undefined) return [];
   switch (e.type) {
-    case "damaged":
-    // A march landing is a `damaged` with a turn between it and its card. It
-    // records the same `amount` - the defense actually moved on the polygon it
-    // names, which on a won counter is the ATTACKER's own land - so the walk
-    // wants exactly the same move out of it.
+    // Every attack lands as a march now, a turn after the card that sent it,
+    // so this is the one defense-loss event left. `amount` is the defense
+    // actually moved on the polygon it names - which on a won counter is the
+    // ATTACKER's own land.
     case "march-resolved":
       return e.amount === undefined || e.amount === 0
         ? []

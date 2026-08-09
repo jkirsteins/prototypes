@@ -70,7 +70,7 @@ describe("harvestPool", () => {
     const p = player("warpath", { discard: allCapped });
     expect(harvestPool(p)).toEqual([
       "raid", "great-raid", "favourable-omens", "war-council", "fortify",
-      "hillfort", "harvest-feast",
+      "hillfort", "harvest-feast", "create-army",
     ]);
   });
 });

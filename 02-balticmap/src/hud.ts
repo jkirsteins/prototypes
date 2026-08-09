@@ -359,11 +359,6 @@ export function eventSegments(
       ]);
     case "settled":
       return clause(named(e.targetFactionId), "found", [t(" a new settlement")]);
-    case "damaged":
-      // Invariant subject - the defenses are what the line is about, and the
-      // actor is already named on the play this nests under. The numbers ride
-      // in the impactText suffix, the same division of labour as ever.
-      return [t("The defenses of "), faction(e.targetFactionId ?? ""), t(" are battered")];
     case "healed":
       return [t("The defenses of "), faction(e.targetFactionId ?? ""), t(" are restored")];
     case "disease-spread":

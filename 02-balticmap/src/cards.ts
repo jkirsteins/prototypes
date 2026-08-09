@@ -88,8 +88,8 @@ export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "No effect - a quiet season. Every 5th play earns a Turnip harvest.",
     textSegments: [t("No effect - a quiet season. Every 5th play earns a "), card("turnip-harvest"), t(".")] },
   // Build A - Warpath.
-  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Deal 1 damage, plus your ruler's leadership, to the defenses of one land in reach." },
-  "great-raid": { id: "great-raid", name: "Great raid", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Deal 0.5 damage, plus your ruler's leadership, to the defenses of every land bordering your realm." },
+  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "March an army out of one of your lands at a land it borders. It lands at the start of your next turn for 1 damage plus your ruler's leadership, less whatever counter-raid it meets on the way." },
+  "great-raid": { id: "great-raid", name: "Great raid", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "One sally: every land of your realm that can spare an army marches on each land it borders. They land at the start of your next turn for 0.5 damage plus your ruler's leadership." },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "The signs are read: your next Raid or Great raid deals double damage. Readings stack.",
     textSegments: [t("The signs are read: your next "), card("raid"), t(" or "), card("great-raid"), t(" deals double damage. Readings stack.")] },
   "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 5 leadership, added to every attack. Stacks, and dies with the ruler." },
@@ -116,6 +116,8 @@ export const CARDS: Record<string, CardDef> = {
   // that detector by another route.
   "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Post a bodyguard: the next Assassinate ruler against you fails. No stacking. Others see only that you played a secret card.",
     textSegments: [t("Post a bodyguard: the next "), card("assassinate-ruler"), t(" against you fails. No stacking. Others see only that you played a secret card.")] },
+  // Consumed on play (see CONSUMED_CARDS): one card, one army, forever.
+  "create-army": { id: "create-army", name: "Create army", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Station another army in one land of your realm, so it can march while its first army is away. This card leaves your deck for good." },
   "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", wealthCost: 1, text: "Costs 1 wealth. Raise another settlement in one land of your realm, up to what your people support. Each settlement founded earns 1 wealth a turn." },
   // Injection-only: a Subjugate shuffles one into the vassal's deck (see
   // playCard) and a release strips it out again. Never offered by a harvest.
@@ -170,6 +172,20 @@ export const ATTACK_CARDS: ReadonlySet<string> = new Set(["raid", "great-raid"])
 export const GUARDS: Readonly<Record<string, string>> = {
   "bodyguard": "assassinate-ruler",
 };
+
+/** Cards that LEAVE the deck when played, rather than going to the discard.
+ *
+ *  A deck here is small and never shuffles anything out, so a card that must
+ *  not repeat has to be removed by hand. Create army is the one: its effect is
+ *  permanent - the army stays on the land for the rest of the game - so a copy
+ *  cycling back round would compound into a realm fielding a dozen arrows off
+ *  one pick. Spending the card is what the army costs.
+ *
+ *  A Set beside `ATTACK_CARDS` and `GUARDS` rather than a `CardDef` field, the
+ *  same as those two: the rule belongs to a handful of cards and the twenty
+ *  that do not care should not have to answer for it. Pinned in
+ *  tests/cards.test.ts. */
+export const CONSUMED_CARDS: ReadonlySet<string> = new Set(["create-army"]);
 
 export const isGuardCard = (cardId: string): boolean => cardId in GUARDS;
 

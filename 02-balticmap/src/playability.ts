@@ -459,7 +459,9 @@ export function targetEligibilityFor(
   const polygonCard =
     cardId === "raid" || cardId === "spread-disease" ||
     cardId === "localized-outbreak";
-  const inward = cardId === "found-settlement" || cardId === "hillfort";
+  const inward =
+    cardId === "found-settlement" || cardId === "hillfort" ||
+    cardId === "create-army";
   const vassalCard = cardId === "incorporate";
 
   // Every polygon a free army of the actor's borders, computed once for the

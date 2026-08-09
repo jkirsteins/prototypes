@@ -379,7 +379,7 @@ describe("activity log", () => {
       log: [
         ...g.log,
         {
-          turn: 1, playerId: 2, type: "damaged", cardId: "raid",
+          turn: 1, playerId: 2, type: "march-resolved", cardId: "raid",
           targetFactionId: "gamma", amount: 10,
         },
       ],
@@ -525,18 +525,18 @@ describe("activity log filters", () => {
       defense: { beta: 450, gamma: 450 },
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 150 },
-        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "gamma", amount: 150 },
+        { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 150 },
+        { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "gamma", sourceFactionId: "alpha", amount: 150 },
       ],
     };
     hud.update(g);
     q(container, ".notice-continue").click(); // dismiss the round summary the hit raised
     const entries = [...container.querySelectorAll(".activity-log .log-entry")];
     const hitOnYou = entries.find(
-      (el) => el.textContent?.startsWith("The defenses of Beta"),
+      (el) => el.textContent?.startsWith("Raid out of Alpha falls on Beta"),
     )!;
     const hitOnGamma = entries.find(
-      (el) => el.textContent?.startsWith("The defenses of Gamma"),
+      (el) => el.textContent?.startsWith("Raid out of Alpha falls on Gamma"),
     )!;
     expect(hitOnYou.classList.contains("notice-worthy")).toBe(true);
     expect(hitOnGamma.classList.contains("notice-worthy")).toBe(false);
@@ -597,7 +597,7 @@ describe("activity log filters", () => {
       defense: { beta: 50 },
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 10 },
+        { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 10 },
       ],
     };
     hud.update(g);
@@ -616,14 +616,14 @@ describe("activity log filters", () => {
       defense: { beta: 50 },
       log: [
         ...base.log,
-        { turn: 1, playerId: 2, type: "damaged" as const, cardId: "raid", targetFactionId: "beta", amount: 10 },
+        { turn: 1, playerId: 2, type: "march-resolved" as const, cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 10 },
       ],
     };
     hud.update(g);
     const noticed = q(container, ".notice-change").textContent;
     q(container, ".notice-continue").click();
     const logged = [...container.querySelectorAll(".log-entry")]
-      .find((el) => el.textContent?.startsWith("The defenses of Beta"))!
+      .find((el) => el.textContent?.startsWith("Raid out of Alpha falls on Beta"))!
       .querySelector(".log-change")!.textContent;
     expect(logged).toBe(noticed);
     expect(logged).toBe(" (Defense -10 -> 50)");
@@ -651,13 +651,13 @@ describe("activity log filters", () => {
       defense: { beta: 50 },
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 10 },
+        { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 10 },
       ],
     };
     hud.update(g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
     const texts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(texts).toContain("The defenses of Beta are battered (Defense -10 -> 50)");
+    expect(texts).toContain("Raid out of Alpha falls on Beta (Defense -10 -> 50)");
   });
 
   /** The mute narrows the interrupt, it does not switch it off. Being made
@@ -674,7 +674,7 @@ describe("activity log filters", () => {
       overlords: new Map([["beta", "alpha"]]),
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 10 },
+        { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 10 },
         { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
       ],
     };
@@ -686,7 +686,7 @@ describe("activity log filters", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/fealty/i);
     const logTexts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(logTexts).toContain("The defenses of Beta are battered (Defense -10 -> 50)");
+    expect(logTexts).toContain("Raid out of Alpha falls on Beta (Defense -10 -> 50)");
   });
 
   /** The other half of the mute's narrow gap: your agency survives a poach, but
@@ -785,7 +785,7 @@ describe("activity log filters", () => {
       defense: { beta: 10 }, // 10 <= floor(0.25 * 60): the gate stands open
       log: [
         ...g.log,
-        { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 10 },
+        { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 10 },
       ],
     };
     hud.update(g);
@@ -1488,13 +1488,15 @@ describe("notice modal", () => {
     const { container, hud } = setup();
     const g = { ...playing(), defense: { beta: 30 } };
     hud.update(withEvents(g, [
-      { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 15 },
-      { turn: 1, playerId: 3, type: "damaged", cardId: "raid", targetFactionId: "beta", amount: 15 },
+      { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 15 },
+      { turn: 1, playerId: 3, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "gamma", amount: 15 },
     ]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
+    // The line names the land the army marched OUT of, not the seat whose
+    // turn resolved it: a march outlives the turn its card was played on.
     expect(lineTexts(container)).toEqual([
-      "Raid by Alpha battered your home defenses (Defense -15 -> 45)",
-      "Raid by Gamma battered your home defenses (Defense -15 -> 30)",
+      "Raid out of Alpha fell on your home defenses (Defense -15 -> 45)",
+      "Raid out of Gamma fell on your home defenses (Defense -15 -> 30)",
     ]);
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
@@ -1557,7 +1559,7 @@ describe("notice modal", () => {
     hud.update(withEvents(playing(), [
       { turn: 1, playerId: 1, type: "subjugated", targetFactionId: "alpha", overlordFactionId: "beta" },
       { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "gamma", overlordFactionId: "alpha" },
-      { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: "gamma", amount: 150 },
+      { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "gamma", sourceFactionId: "alpha", amount: 150 },
     ]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
@@ -2351,6 +2353,7 @@ describe("hand tips", () => {
     const tip = q(container, ".card-tip");
     expect(tip.firstElementChild!.className).toBe("card-tip-modifier");
     expect(tip.textContent).toContain("Favourable omens: this attack counts double.");
-    expect(tip.textContent).toContain("in reach"); // description still there
+    // description still there
+    expect(tip.textContent).toContain("March an army out of one of your lands");
   });
 });

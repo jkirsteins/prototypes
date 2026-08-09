@@ -6,13 +6,18 @@ import {
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
 import {
-  attackDamageFor, borderPolygonsOf, holdsGuard, omensHeld, plagueMultiplier,
-  playableSet, validTargetsFor, type RulesView,
+  attackDamageFor, attackReach, borderPolygonsOf, holdsGuard,
+  marchSourcesAgainst, omensHeld, plagueMultiplier, playableSet,
+  validTargetsFor, type RulesView,
 } from "./playability";
+import { axesOf, freeArmiesOn } from "./marches";
 import { discardCard, endTurn, playCard, viewOf, type GameState } from "./game";
 
 export type AiAction =
-  | { type: "play"; cardIndex: number; targetId?: string }
+  /** `sourceId` is Raid's tail - the land the army marches out of. Omitted by
+   *  every other card, and by a Raid whose branch has no opinion, in which
+   *  case `playCard` takes the first legal source in faction order. */
+  | { type: "play"; cardIndex: number; targetId?: string; sourceId?: string }
   | { type: "discard"; cardIndex: number };
 
 /** Which branch of `chooseAction` decides each card. Keyed on every id in
@@ -34,11 +39,17 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "harvest-feast": "5: heal toward a gate, realm-wide arm",
   "fortify": "5: heal toward a gate, realm-wide, only while a reading would land",
   "raid":
-    "6W: suppress a vassal nearing its gate or finish an opening; 11W: " +
-    "build toward the nearest gate",
+    "5A: counter a march that would break one of our lands, or that we out-" +
+    "muscle; 6W: suppress a vassal nearing its gate or finish an opening; " +
+    "11W: build toward the nearest gate. Source: the land the counter must " +
+    "leave from, else the one whose own defenses best survive being counter-" +
+    "raided back",
   "great-raid":
     "6W: fan damage when 2+ borders would reach their gates; 11W: pressure " +
     "when a stacked council faces 3+ border rivals",
+  "create-army":
+    "12: garrison the frontier land with the most rivals on it and no army " +
+    "left to send - both builds, since it is a neutral",
   "favourable-omens": "6W: read the omens when the doubled attack opens a gate",
   "war-council": "11W: build leadership while no gate is within 2 attacks",
   "plague": "6P: cash stacks when a gate opens or the damage beats a raid",
@@ -106,6 +117,57 @@ function vassalNearingEscape(
     .sort(
       (a, b) => state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
     )[0];
+}
+
+/** Damage already in the air at a polygon, net of what the polygon's own side
+ *  has aimed back down the same axis. What `gateGap` arithmetic has to net out
+ *  now that an attack is visible a turn before it lands: a heal that ignores
+ *  an incoming march heals a land that is about to be broken anyway. */
+function incomingAt(v: RulesView, polygon: string): number {
+  let net = 0;
+  for (const axis of axesOf(v.marches)) {
+    if (axis.a !== polygon && axis.b !== polygon) continue;
+    const [at, back] = axis.a === polygon
+      ? [axis.fromB, axis.fromA]
+      : [axis.fromA, axis.fromB];
+    net += Math.max(
+      0,
+      at.reduce((s, m) => s + m.damage, 0) -
+        back.reduce((s, m) => s + m.damage, 0),
+    );
+  }
+  return net;
+}
+
+/** Which land to march a Raid out of, given where it is aimed.
+ *
+ *  The tail is now a real decision: whatever land the army leaves from is the
+ *  land a counter-raid comes back at, so the pick is the source that best
+ *  survives being answered. Highest defense first - a land near its own
+ *  subjugation gate is the worst place to expose - ties by faction order so a
+ *  seeded run marches out of the same land every time. */
+function marchSourceFor(
+  state: GameState, v: RulesView, actor: string, target: string,
+): string | undefined {
+  return [...marchSourcesAgainst(v, actor, target)].sort(
+    (a, b) =>
+      defenseOf(v, b) - defenseOf(v, a) ||
+      state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
+  )[0];
+}
+
+/** A raid play with its tail chosen. Every raid the policy returns goes
+ *  through here, so no branch can forget the source and quietly fall back on
+ *  `playCard`'s first-legal default. */
+function raidAt(
+  state: GameState, v: RulesView, actor: string,
+  cardIndex: number, target: string,
+): AiAction {
+  const sourceId = marchSourceFor(state, v, actor, target);
+  return {
+    type: "play", cardIndex, targetId: target,
+    ...(sourceId !== undefined ? { sourceId } : {}),
+  };
 }
 
 /** Which land of the realm to settle: a land held outright is yours for
@@ -246,12 +308,17 @@ export function chooseAction(state: GameState): AiAction {
     const realmPolys = [
       ...fullRealmOf(p.factionId, state.overlords, state.incorporated),
     ];
+    // Braced: a land reads as damaged by what has already landed PLUS what is
+    // in the air at it, netted against our own counter on the same axis. An
+    // arrow is visible a turn ahead, so a heal that ignores it repairs a land
+    // that is about to be knocked straight back down.
+    const braced = (m: string): number =>
+      Math.max(0, defenseOf(v, m) - incomingAt(v, m));
     const worst = realmPolys
-      .filter((m) => defenseOf(v, m) < 0.5 * defenseMaxOf(v, m))
+      .filter((m) => braced(m) < 0.5 * defenseMaxOf(v, m))
       .sort(
         (a, b) =>
-          defenseOf(v, a) / defenseMaxOf(v, a) -
-            defenseOf(v, b) / defenseMaxOf(v, b) ||
+          braced(a) / defenseMaxOf(v, a) - braced(b) / defenseMaxOf(v, b) ||
           order(a) - order(b),
       )[0];
     if (worst !== undefined) {
@@ -265,6 +332,16 @@ export function chooseAction(state: GameState): AiAction {
       }
     }
   }
+
+  // 5A: answer a march. An arrow is visible for exactly one turn, so this is
+  // the most perishable move on the spine and sits directly under the heals it
+  // competes with - a Hillfort on a land about to be broken is worth less than
+  // the counter that stops it being broken.
+  //
+  // Both strategies, not just Warpath: every seat starts holding Raids
+  // whatever build it picked, and a march is aimed at the land, not the plan.
+  const counter = counterRaid(state, v, p.factionId, idxOf);
+  if (counter !== null) return counter;
 
   // 6: the strategy branch's DECISIVE moves - the ones whose moment passes:
   // vassal suppression, a finishing hit, a fan that opens gates, a reserve
@@ -326,7 +403,12 @@ export function chooseAction(state: GameState): AiAction {
       : pestilenceBuild(state, v, p.factionId, idxOf);
   if (build !== null) return build;
 
-  // 12: first playable card as a last resort.
+  // 12: garrison a frontier land with no army left to send. Both strategies:
+  // Create army is a neutral, so a pestilence seat can hold one too.
+  const garrisoned = garrison(state, v, p.factionId, idxOf);
+  if (garrisoned !== null) return garrisoned;
+
+  // 13: first playable card as a last resort.
   const i0 = set.cardIndexes[0];
   const cardId = p.hand[i0];
   if (CARDS[cardId]?.targeted) {
@@ -334,6 +416,68 @@ export function chooseAction(state: GameState): AiAction {
     return { type: "play", cardIndex: i0, targetId: legal[0] };
   }
   return { type: "play", cardIndex: i0 };
+}
+
+/** Step 5A: raid back down an axis somebody is marching along.
+ *
+ *  A counter is a Raid like any other - the clash is recognised by the axis,
+ *  not by a card - so the whole move is "aim a raid at the land the arrow came
+ *  out of". Worth a turn on two conditions, either alone:
+ *
+ *  - the incoming would push one of our lands to or under its subjugation
+ *    gate, which is the only damage that costs more than a card; or
+ *  - our raid is at least as strong as theirs, so the clash cancels their
+ *    attack outright and may throw the difference back.
+ *
+ *  Without the second condition a weak seat would trade its army for nothing;
+ *  without the first, a seat about to be broken would sit and take it because
+ *  the arithmetic said its counter was too small to win. */
+function counterRaid(
+  state: GameState,
+  v: RulesView,
+  actor: string,
+  idxOf: (id: string) => number | undefined,
+): AiAction | null {
+  const raid = idxOf("raid");
+  if (raid === undefined) return null;
+  const { damage } = attackDamageFor(v, actor, "raid");
+  const realm = fullRealmOf(actor, v.overlords, v.incorporated);
+  const targets = new Set(validTargetsFor(v, actor, "raid"));
+
+  const answerable = axesOf(v.marches)
+    .flatMap((axis) => [
+      { under: axis.a, from: axis.b, incoming: axis.fromB, ours: axis.fromA },
+      { under: axis.b, from: axis.a, incoming: axis.fromA, ours: axis.fromB },
+    ])
+    .filter(
+      (x) =>
+        realm.has(x.under) && !realm.has(x.from) &&
+        x.incoming.length > 0 && targets.has(x.from) &&
+        // Only from the land actually under threat: a counter declared from
+        // anywhere else is a fresh attack on a different axis and does not
+        // meet this one at all.
+        marchSourcesAgainst(v, actor, x.from).includes(x.under),
+    )
+    .map((x) => {
+      const at = x.incoming.reduce((s, m) => s + m.damage, 0);
+      const back = x.ours.reduce((s, m) => s + m.damage, 0);
+      return { ...x, net: Math.max(0, at - back) };
+    })
+    .filter(
+      (x) => x.net > 0 && (damage >= x.net || gateGap(v, x.under) <= x.net),
+    );
+  if (answerable.length === 0) return null;
+
+  // The land in the most trouble first: nearest its gate after the hit it is
+  // about to take, ties by faction order.
+  const worst = answerable.sort(
+    (a, b) =>
+      gateGap(v, a.under) - a.net - (gateGap(v, b.under) - b.net) ||
+      state.factionIds.indexOf(a.under) - state.factionIds.indexOf(b.under),
+  )[0];
+  return {
+    type: "play", cardIndex: raid, targetId: worst.from, sourceId: worst.under,
+  };
 }
 
 /** Step 6, Warpath: the decisive moves, every one condition-gated so a quiet
@@ -353,18 +497,23 @@ function warpathDecisive(
   // 6W-1: vassal suppression - raid the vassal one heal from its gate.
   const restive = vassalNearingEscape(state, v, actor);
   if (raid !== undefined && restive !== undefined && raidTargets.includes(restive)) {
-    return { type: "play", cardIndex: raid, targetId: restive };
+    return raidAt(state, v, actor, raid, restive);
   }
 
   const { damage } = attackDamageFor(v, actor, "raid");
   const candidates = gateCandidates(state, v, actor, raidTargets);
 
   // 6W-2: the finishing hit - a polygon whose gate this one raid opens.
+  // Netted against what is already in the air at that polygon: a march
+  // already aimed there does part of the work, and one aimed the other way
+  // will eat part of ours. Both are known a turn ahead now, so a "finisher"
+  // that ignores them is the raid-status-rider bug again - a decisive branch
+  // firing at a target it cannot actually finish.
   if (raid !== undefined) {
-    const finish = candidates.find((t) => gateGap(v, t) <= damage);
-    if (finish !== undefined) {
-      return { type: "play", cardIndex: raid, targetId: finish };
-    }
+    const finish = candidates.find(
+      (t) => gateGap(v, t) - incomingAt(v, t) <= damage,
+    );
+    if (finish !== undefined) return raidAt(state, v, actor, raid, finish);
   }
 
   // 6W-3: great raid when 2 or more bordering home polygons would be pushed
@@ -417,7 +566,7 @@ function warpathBuild(
 
   // 11W-2: raid the polygon nearest its subjugation gate.
   if (raid !== undefined && candidates.length > 0) {
-    return { type: "play", cardIndex: raid, targetId: candidates[0] };
+    return raidAt(state, v, actor, raid, candidates[0]);
   }
 
   // 11W-3: great raid as pressure - 3 or more rivals border the realm and
@@ -434,7 +583,48 @@ function warpathBuild(
       return { type: "play", cardIndex: greatRaid };
     }
   }
+
   return null;
+}
+
+/** Step 12: garrison a frontier land that has nothing left to send.
+ *
+ *  Shared by both strategies rather than living in `warpathBuild`, because
+ *  Create army is a NEUTRAL - a pestilence seat can harvest it too, and a card
+ *  a seat can hold with no branch to decide it is exactly the fallthrough the
+ *  POLICY_COVERAGE rule exists to stop.
+ *
+ *  Below the build moves, because an army raised is a turn that hit nothing.
+ *  It only pays where the realm is actually attack-starved: a land on the
+ *  frontier whose army is already out. The land facing the most rivals goes
+ *  first, ties by faction order. */
+function garrison(
+  state: GameState,
+  v: RulesView,
+  actor: string,
+  idxOf: (id: string) => number | undefined,
+): AiAction | null {
+  const army = idxOf("create-army");
+  if (army === undefined) return null;
+  const realm = fullRealmOf(actor, v.overlords, v.incorporated);
+  const reach = attackReach(v, actor);
+  const frontage = (land: string): number =>
+    (v.adjacency[land] ?? []).filter((adj) => reach.has(adj)).length;
+  const starved = state.factionIds
+    .filter(
+      (land) =>
+        realm.has(land) &&
+        freeArmiesOn(v.armies, v.marches, land) === 0 &&
+        frontage(land) > 0,
+    )
+    .sort(
+      (a, b) =>
+        frontage(b) - frontage(a) ||
+        state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
+    )[0];
+  return starved === undefined
+    ? null
+    : { type: "play", cardIndex: army, targetId: starved };
 }
 
 /** Step 6, Pestilence: the decisive moves - cashing a gate open outranks
@@ -567,7 +757,9 @@ export function aiTakeTurn(state: GameState, rng: Rng): GameState {
     for (let plays = 0; g.phase === "playing" && plays < MAX_AI_PLAYS; plays++) {
       const a = chooseAction(g);
       if (a.type === "discard") break;
-      const next = playCard(g, a.cardIndex, rng, a.targetId);
+      const next = playCard(g, a.cardIndex, rng, a.targetId, {
+        ...(a.sourceId !== undefined ? { sourceId: a.sourceId } : {}),
+      });
       if (next === g) break; // a refused play must not spin
       g = next;
     }
@@ -576,5 +768,7 @@ export function aiTakeTurn(state: GameState, rng: Rng): GameState {
   const a = chooseAction(state);
   return a.type === "discard"
     ? discardCard(state, a.cardIndex)
-    : playCard(state, a.cardIndex, rng, a.targetId);
+    : playCard(state, a.cardIndex, rng, a.targetId, {
+        ...(a.sourceId !== undefined ? { sourceId: a.sourceId } : {}),
+      });
 }
