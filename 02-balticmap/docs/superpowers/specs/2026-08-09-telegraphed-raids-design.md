@@ -111,6 +111,21 @@ are top-level lines they name both ends of the arrow themselves.
   your realm, gold for yours, the attacker's colour faded for a rival quarrel.
   Under the badges, so a shaft never buries a defense number. Hidden while a
   card is armed - targeting cues own the map.
+- **Laid out per axis.** The side that declared first (`Axis.opening`) runs
+  full size on the line; the side answering it runs smaller, shorter and clear
+  of it, because two equal spears nose to nose are one confused shape and which
+  is the attack is the whole question. Each side is a bundle laid out side by
+  side, so several armies read as several arrows.
+- **Anchored on towns.** Ends are the closest pair of settlements across the
+  border, not bounding-box centres - these polygons bend around coastline and a
+  box centre can sit in a bay, so arrows were starting at sea. Purely
+  presentational; the rules never see it.
+- **An answerable arrow is a button.** Holding a Raid that could counter it
+  makes the arrow itself clickable, no source or target to pick: aiming a
+  counter by hand back down an arrow already on screen is the game asking the
+  player to restate what it can see. It is the only thing in the arrow layer
+  that takes pointer events, and it measures the press against the map's own
+  drag threshold so panning from on top of one still works.
 - **Two-step targeting.** Raid's first click picks the land the army marches
   out of, which is a real decision because that is the land a counter comes
   back at. The status line asks in those words; "Choose a target" on the first
@@ -147,6 +162,23 @@ and the AI's one-decision-per-turn shape both survive intact.
 - **12, garrison** - Create army on a starved frontier land, on the shared
   spine rather than in `warpathBuild`, since a pestilence seat can harvest it.
 
+## Fortify, fixed alongside
+
+Not part of the telegraph, but found by playing it: Fortify healed `1 per
+Favourable omens reading held` over the whole realm, so a seat holding no
+readings healed **zero** - and Fortify is a third of all plays in the game.
+The delay made it worse, because Fortify is the card you most want to react to
+an arrow with.
+
+It is a flat `FORTIFY_HEAL = 4` on one chosen land now, aimed inward like
+Hillfort and blocked on a land already at full defense. Below Hillfort's 15 on
+purpose: Fortify is what every deck starts with five copies of, Hillfort is the
+same shape twice as strong and has to be harvested. The AI's step 5 spends the
+stronger of the two heals it holds on the land it picks.
+
+8 was the first guess and pushed world medians past 123 with two bands out of
+range. Measured down to 4, which keeps the game's pace recognisable.
+
 ## Measured
 
 Worlds lengthened by roughly a tenth (medians 81/75/92 -> 89.5/82/91.5) and
@@ -159,3 +191,6 @@ defeatShare fell to 0.21 while its medianDefeatTurn sat at 78 - the metric had
 stopped measuring whether a flailing player falls and started measuring whether
 they fall before the horizon. At 150 it answers its own question again: 0.94
 fall, median turn 90.
+
+Fixing Fortify then lengthened worlds another quarter, to 110/113.5/114, still
+resolving on every arm. Bands re-captured at that pacing.
