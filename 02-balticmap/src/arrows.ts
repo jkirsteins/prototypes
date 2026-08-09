@@ -64,6 +64,36 @@ export function insetSegment(
   };
 }
 
+/** Slide a segment sideways, perpendicular to its own direction. What keeps a
+ *  counter-raid beside the attack it answers rather than drawn straight
+ *  through it: two spears nose to nose on the same line read as one confused
+ *  shape, and which of them is the attack is exactly what the player needs to
+ *  see. Positive `d` is to the left of the direction of travel. */
+export function offsetSegment(
+  ax: number, ay: number, bx: number, by: number, d: number,
+): { ax: number; ay: number; bx: number; by: number } {
+  const len = Math.hypot(bx - ax, by - ay);
+  if (len === 0 || d === 0) return { ax, ay, bx, by };
+  const nx = -(by - ay) / len;
+  const ny = (bx - ax) / len;
+  return {
+    ax: ax + nx * d, ay: ay + ny * d,
+    bx: bx + nx * d, by: by + ny * d,
+  };
+}
+
+/** A spear of the same proportions at a different size, for the answering
+ *  half of a clash. Scaling every width by one factor is what keeps the
+ *  smaller arrow recognisably the same object rather than a different one. */
+export function scaleSpear(opts: SpearOptions, k: number): SpearOptions {
+  return {
+    baseHalf: opts.baseHalf * k,
+    waistHalf: opts.waistHalf * k,
+    headHalf: opts.headHalf * k,
+    headLen: opts.headLen * k,
+  };
+}
+
 /** The `points` attribute of one spear, tip exactly on (bx, by).
  *
  *  Seven points, walked around the outline from the base's left shoulder:

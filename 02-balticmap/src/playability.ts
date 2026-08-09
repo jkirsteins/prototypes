@@ -461,7 +461,7 @@ export function targetEligibilityFor(
     cardId === "localized-outbreak";
   const inward =
     cardId === "found-settlement" || cardId === "hillfort" ||
-    cardId === "create-army";
+    cardId === "create-army" || cardId === "fortify";
   const vassalCard = cardId === "incorporate";
 
   // Every polygon a free army of the actor's borders, computed once for the
@@ -519,7 +519,12 @@ export function targetEligibilityFor(
     if (cardId === "raid" && sources !== null && !sources.has(factionId)) {
       reasons.push({ code: "no-army" });
     }
-    if (cardId === "hillfort" && defenseOf(view, factionId) >= defenseMaxOf(view, factionId)) {
+    // The two single-land heals, one rule: a land already at its ceiling has
+    // nothing to restore, whichever card is aimed at it.
+    if (
+      (cardId === "hillfort" || cardId === "fortify") &&
+      defenseOf(view, factionId) >= defenseMaxOf(view, factionId)
+    ) {
       reasons.push({ code: "at-full-defense" });
     }
     // Two different refusals, ordered: a land the map has no dot left for can
@@ -594,14 +599,15 @@ export function cardBlockReason(
     return { code: "cannot-afford", cost, held: wealthOf(view, factionId) };
   }
   // Always legal: the filler, the reserves (both stack, so a second is a
-  // bigger allowance rather than a dead card), the council, Fortify (a
-  // 0-reading play heals nothing, same as grow-crops doing nothing - a
-  // wasted turn, not an illegal one), and the harvest (its offer always
-  // includes skip, so it is never dead in hand).
+  // bigger allowance rather than a dead card), the council, and the harvest
+  // (its offer always includes skip, so it is never dead in hand). Fortify
+  // used to be here on the grounds that a 0-reading play was a wasted turn
+  // rather than an illegal one; it is a targeted heal now and falls through
+  // to the ordinary no-target rule with the rest of them.
   if (
     cardId === "grow-crops" || cardId === "favourable-omens" ||
     cardId === "miasma" || cardId === "war-council" ||
-    cardId === "fortify" || cardId === "turnip-harvest"
+    cardId === "turnip-harvest"
   ) {
     return null;
   }

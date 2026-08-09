@@ -48,9 +48,10 @@ export interface Scenario {
  *  council leadership and Plague's 100-per-stack carry the tempo and a plain
  *  raid is close to a token. Then every constant was scaled by 1/10 and
  *  Fortify was reintroduced, which lengthened everything again and softened
- *  the naive player's fall - a starting deck holding five Fortify heals a
- *  flailing player back over the subjugation gate often enough to have
- *  dropped `defeatShare` from 0.92 to 0.62.
+ *  the naive player's fall: Fortify was always legal and healed nothing
+ *  without omens, so a naive seat holding five of them spent most of its
+ *  turns doing nothing and provoking nobody, and `defeatShare` fell from
+ *  0.92 to 0.62.
  *
  *  Then raids became marches: declared on the turn they are played, landing
  *  at the start of the declarer's next turn, and cancellable by a counter
@@ -59,7 +60,15 @@ export interface Scenario {
  *  (1979 per world against 2041), so the delay costs tempo rather than
  *  output. The visible second-order effect is standoffs: two seats raiding
  *  each other now cancel, which is why `new-player-flailing` needed a longer
- *  horizon - see the comment on its `turnCap`. */
+ *  horizon - see the comment on its `turnCap`.
+ *
+ *  Then Fortify was fixed: a flat 4 on one chosen land instead of 1 per omens
+ *  reading over the whole realm, i.e. a third of all plays in the game went
+ *  from doing literally nothing to healing something. Worlds lengthened
+ *  another quarter (89.5/82/91.5 -> 110/113.5/114) and still resolve on every
+ *  arm. The heal was measured down to 4 from a first guess of 8, which pushed
+ *  the medians past 123 and two bands out of range - the card is a bug fix,
+ *  not a mandate to slow the game by half. */
 export const SCENARIOS: Scenario[] = [
   {
     id: "new-player-flailing",
@@ -79,10 +88,10 @@ export const SCENARIOS: Scenario[] = [
     // inside a fixed number of turns.
     turnCap: 150,
     expect: {
-      subjugatedShare: [0.60, 0.90],      // measured 0.75
-      medianFirstSubjugation: [34, 86],   // measured 57
-      defeatShare: [0.79, 1],             // measured 0.94
-      medianDefeatTurn: [54, 135],        // measured 90
+      subjugatedShare: [0.64, 0.94],      // measured 0.79
+      medianFirstSubjugation: [44, 110],  // measured 73
+      defeatShare: [0.83, 1],             // measured 0.98
+      medianDefeatTurn: [65, 150],        // measured 108, upper clamped to cap
     },
   },
   {
@@ -97,9 +106,9 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 150,
     expect: {
-      subjugatedShare: [0.64, 0.94],      // measured 0.79
-      defeatShare: [0.83, 1],             // measured 0.98
-      medianDefeatTurn: [55, 137],        // measured 91
+      subjugatedShare: [0.54, 0.84],      // measured 0.69
+      defeatShare: [0.81, 1],             // measured 0.96
+      medianDefeatTurn: [66, 150],        // measured 109.5, upper clamped to cap
     },
   },
 ];
@@ -194,7 +203,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [54, 134],     // measured 89.5
+      medianEndTurn: [66, 165],     // measured 110
     },
   },
   {
@@ -207,7 +216,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [49, 123],     // measured 82
+      medianEndTurn: [68, 170],     // measured 113.5
     },
   },
   {
@@ -220,7 +229,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [55, 137],     // measured 91.5
+      medianEndTurn: [68, 171],     // measured 114
     },
   },
 ];

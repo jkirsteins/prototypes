@@ -10,10 +10,12 @@ import { DEFAULT_RULES } from "../src/rules";
 import { isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
   DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, SUBJUGATION_GATE,
-  FORTIFY_HEAL_PER_OMEN, GREAT_RAID_DAMAGE, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
+  FORTIFY_HEAL, GREAT_RAID_DAMAGE, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
   PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
-import { ESCAPE_RESPITE_TURNS, validTargetsFor } from "../src/playability";
+import {
+  cardBlockReason, ESCAPE_RESPITE_TURNS, validTargetsFor,
+} from "../src/playability";
 import { rulerOf } from "../src/rulers";
 
 function seededRng(seed: number): Rng {
@@ -822,25 +824,33 @@ describe("heals", () => {
     expect(playCard(g, 0, rng())).toBe(g);
   });
 
-  it("fortify heals the realm by 1 per held omens reading, capped, no cash", () => {
-    // Zero readings: legal, but heals nothing - a wasted turn, not a refusal.
-    const dry = withHand({ ...playingState(), defense: { beta: 30 } }, 0, ["fortify"]);
-    const after = playCard(dry, 0, rng());
-    expect(after.defense.beta).toBe(30);
-    expect(after.log.at(-1)).toMatchObject({ type: "play", cardId: "fortify" });
-
-    // Two readings: 2 * FORTIFY_HEAL_PER_OMEN per realm polygon, and the
-    // stack survives the play - Fortify reads it, it does not cash it.
-    let g: GameState = { ...playingState(), defense: { beta: 30 }, omens: { beta: 2 } };
+  it("fortify heals the one land it is aimed at, capped, whatever the omens", () => {
+    let g: GameState = { ...playingState(), defense: { beta: 30 } };
     g = withHand(g, 0, ["fortify"]);
-    const healed = playCard(g, 0, rng());
-    expect(healed.defense.beta).toBe(30 + 2 * FORTIFY_HEAL_PER_OMEN);
-    expect(healed.omens.beta).toBe(2);
+    const healed = playCard(g, 0, rng(), "beta");
+    // A flat heal: it no longer reads the omens stack at all, which is what
+    // made it a dead card in a hand holding no readings.
+    expect(healed.defense.beta).toBe(30 + FORTIFY_HEAL);
+    expect(healed.log.at(-1)).toMatchObject({
+      type: "healed", cardId: "fortify", targetFactionId: "beta",
+      amount: FORTIFY_HEAL,
+    });
 
     // Capped at max, like every other heal.
-    let capped: GameState = { ...playingState(), defense: { beta: 59 }, omens: { beta: 5 } };
+    let capped: GameState = { ...playingState(), defense: { beta: 59 } };
     capped = withHand(capped, 0, ["fortify"]);
-    expect(playCard(capped, 0, rng()).defense.beta).toBeUndefined();
+    expect(playCard(capped, 0, rng(), "beta").defense.beta).toBeUndefined();
+  });
+
+  it("fortify aims inward, and never at a land already at full defense", () => {
+    const g = { ...playingState(), defense: { beta: 30 } };
+    // Own realm only - the whole point of the card is that it is not an
+    // attack, and alpha is a rival.
+    expect(validTargetsFor(viewOf(g), "beta", "fortify")).toEqual(["beta"]);
+    // Nothing to restore, so nothing to aim at, so the card is dead in hand -
+    // the same rule Hillfort keeps.
+    expect(cardBlockReason(viewOf(playingState()), "beta", "fortify"))
+      .toEqual({ code: "no-target" });
   });
 });
 

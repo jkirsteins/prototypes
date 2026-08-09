@@ -7,7 +7,7 @@ import {
 } from "./defense";
 import {
   attackDamageFor, attackReach, borderPolygonsOf, holdsGuard,
-  marchSourcesAgainst, omensHeld, plagueMultiplier, playableSet,
+  marchSourcesAgainst, plagueMultiplier, playableSet,
   validTargetsFor, type RulesView,
 } from "./playability";
 import { axesOf, freeArmiesOn } from "./marches";
@@ -37,7 +37,7 @@ export const POLICY_COVERAGE: Record<string, string> = {
     "4: assassinate the highest leadership in reach, bodyguard risk unknown",
   "hillfort": "5: heal toward a gate - escape as a vassal, repair while free",
   "harvest-feast": "5: heal toward a gate, realm-wide arm",
-  "fortify": "5: heal toward a gate, realm-wide, only while a reading would land",
+  "fortify": "5: heal toward a gate - the weaker of the two single-land heals, taken when no Hillfort is in hand",
   "raid":
     "5A: counter a march that would break one of our lands, or that we out-" +
     "muscle; 6W: suppress a vassal nearing its gate or finish an opening; " +
@@ -285,23 +285,30 @@ export function chooseAction(state: GameState): AiAction {
   // 5: heal toward a gate. While a vassal, heal the HOME polygon toward the
   // 75% independence line - escape outranks aggression, as Revolt used to.
   // While free and the realm's worst polygon sits under 50%, repair it.
+  // The two single-land heals in strength order: spend the big one first while
+  // a land is worth it. Fortify is the weaker, and the one every deck starts
+  // holding five of.
   const hillfort = idxOf("hillfort");
-  const feast = idxOf("harvest-feast");
-  // Only worth a turn while it would actually heal something - a 0-reading
-  // Fortify is a dead card, same test the always-legal rule waves through.
   const fortify = idxOf("fortify");
-  const hasFortifyHeal = omensHeld(v, p.factionId) > 0;
+  const feast = idxOf("harvest-feast");
+  /** The strongest heal in hand that this land is a legal target for. */
+  const healAt = (land: string): AiAction | null => {
+    for (const [index, cardId] of [
+      [hillfort, "hillfort"] as const, [fortify, "fortify"] as const,
+    ]) {
+      if (index === undefined) continue;
+      if (validTargetsFor(v, p.factionId, cardId).includes(land)) {
+        return { type: "play", cardIndex: index, targetId: land };
+      }
+    }
+    return null;
+  };
   const home = p.factionId;
   if (lord !== undefined && !independenceGateOpen(v, home)) {
-    const homeTargets = validTargetsFor(v, p.factionId, "hillfort");
-    if (hillfort !== undefined && homeTargets.includes(home)) {
-      return { type: "play", cardIndex: hillfort, targetId: home };
-    }
+    const heal = healAt(home);
+    if (heal !== null) return heal;
     if (feast !== undefined && defenseOf(v, home) < defenseMaxOf(v, home)) {
       return { type: "play", cardIndex: feast };
-    }
-    if (fortify !== undefined && hasFortifyHeal) {
-      return { type: "play", cardIndex: fortify };
     }
   }
   if (lord === undefined) {
@@ -322,14 +329,9 @@ export function chooseAction(state: GameState): AiAction {
           order(a) - order(b),
       )[0];
     if (worst !== undefined) {
-      const homeTargets = validTargetsFor(v, p.factionId, "hillfort");
-      if (hillfort !== undefined && homeTargets.includes(worst)) {
-        return { type: "play", cardIndex: hillfort, targetId: worst };
-      }
+      const heal = healAt(worst);
+      if (heal !== null) return heal;
       if (feast !== undefined) return { type: "play", cardIndex: feast };
-      if (fortify !== undefined && hasFortifyHeal) {
-        return { type: "play", cardIndex: fortify };
-      }
     }
   }
 

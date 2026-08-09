@@ -665,6 +665,28 @@ svg.map.dragging {
   stroke-linejoin: round;
 }
 
+/* An arrow you hold a Raid for is a button: click it and the counter is
+   declared back down the same axis, no source or target to pick. The only
+   thing in the arrow layer that takes pointer events - the group stays
+   `none`, so every land under every other arrow is still clickable. */
+.march-arrow.march-counterable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* The pale casing `.region.target-valid` uses for "this click is legal",
+   deliberately the same vocabulary rather than a second one: a heavier or
+   darker outline read as "selected", which is a different sentence. */
+.march-arrow.march-counterable polygon {
+  stroke: #fdfaf4;
+  stroke-width: 2.4;
+}
+
+.march-arrow.march-counterable:hover polygon {
+  stroke-width: 3.4;
+  filter: brightness(1.12);
+}
+
 /* Aimed into your realm: the danger red the open-gate badge already uses, so
    "something is about to break here" is one colour across the map. */
 .march-arrow.march-hostile polygon {

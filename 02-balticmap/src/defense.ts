@@ -29,10 +29,18 @@ export const WAR_COUNCIL_LEADERSHIP = 5;
 export const PLAGUE_DAMAGE_PER_STACK = 10;
 export const HILLFORT_HEAL = 15;
 export const HARVEST_FEAST_HEAL = 5;
-/** Fortify's heal, per land of the actor's realm, per Favourable omens
- *  reading currently held - linear, not the 2**n attack multiplier. Zero
- *  readings means zero heal. */
-export const FORTIFY_HEAL_PER_OMEN = 1;
+/** Fortify's heal, on the one land it is aimed at.
+ *
+ *  It used to be `1 per Favourable omens reading held`, realm-wide, which read
+ *  as a scaling card and behaved as a dead one: a seat holding no readings
+ *  healed nothing, and Fortify is a third of all plays in the game, so a third
+ *  of the plays in the game did nothing at all. A flat heal on a chosen land
+ *  is what the card was always pretending to be.
+ *
+ *  Below `HILLFORT_HEAL` on purpose. Fortify is what every deck STARTS with,
+ *  five copies of it; Hillfort is the same shape, twice as strong, and has to
+ *  be harvested. */
+export const FORTIFY_HEAL = 4;
 
 /** polygon id -> current defense. A key is present ONLY while the polygon is
  *  damaged; absent means "at defenseMax" - the missing-key-means-pristine

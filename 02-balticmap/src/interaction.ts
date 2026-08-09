@@ -19,7 +19,11 @@ export interface InteractionHandle {
   deselect(): void;
 }
 
-const DRAG_THRESHOLD_PX = 5;
+/** Pointer travel past which a press is a pan rather than a click. Exported
+ *  so anything that swallows a click on top of the map - the counterable
+ *  march arrows in src/main.ts - reads "was that a drag?" the same way this
+ *  file does, instead of keeping a second copy of the number. */
+export const DRAG_THRESHOLD_PX = 5;
 const WHEEL_ZOOM_BASE = 1.0015;
 
 export function attachInteraction(

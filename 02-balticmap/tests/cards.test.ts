@@ -55,9 +55,8 @@ describe("cards", () => {
         "dies with the ruler.",
     );
     expectProps(
-      "fortify", "Fortify", false, false, null, true, false,
-      "Restore 1 defense per Favourable omens reading you hold to every " +
-        "land of your realm, up to what each once held.",
+      "fortify", "Fortify", true, false, null, true, false,
+      "Restore 4 defense to one land of your realm, up to what it once held.",
     );
     // Build B - Pestilence.
     expectProps(

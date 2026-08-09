@@ -5,7 +5,7 @@ import {
   createTooltip, settlementTooltipText,
   type TooltipLine,
 } from "./panel";
-import { attachInteraction } from "./interaction";
+import { attachInteraction, DRAG_THRESHOLD_PX } from "./interaction";
 import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, playCard,
   discardCard, advance, surrender, viewOf, endTurn,
@@ -14,11 +14,15 @@ import {
 import { aiTakeTurn } from "./ai";
 import { fullRealmOf, realmOf, realmRootOf } from "./relations";
 import {
-  handBlockReason, marchSourcesFor, marchTargetsFrom, playableSet,
-  respiteExpiry, validTargetsFor, targetEligibilityFor, attackDamageFor,
+  handBlockReason, marchSourcesAgainst, marchSourcesFor, marchTargetsFrom,
+  playableSet, respiteExpiry, validTargetsFor, targetEligibilityFor,
+  attackDamageFor,
 } from "./playability";
-import { armiesOn, freeArmiesOn } from "./marches";
-import { clashFraction, insetSegment, pointAlong, spearPolygon } from "./arrows";
+import { armiesOn, axesOf, freeArmiesOn, type March } from "./marches";
+import {
+  clashFraction, insetSegment, offsetSegment, pointAlong, scaleSpear,
+  spearPolygon, SPEAR,
+} from "./arrows";
 import { runAnimation } from "./animate";
 import {
   defenseMaxOf, defenseOf, gateBandOf, type GateBand,
@@ -770,10 +774,106 @@ const ARMY_PIPS_SHOWN = 5;
 
 /** How far an arrow's ends are pulled in from the two region centres, so the
  *  shaft leaves the source's edge and the head bites the target's rather than
- *  both ends sitting under a badge. User space, like every other length here. */
+ *  both ends sitting under a badge. User space, like every other length here.
+ *
+ *  Capped at a share of the axis, because a march always runs between two
+ *  NEIGHBOURING lands and their centres can be close together. A flat 34 at
+ *  each end left a short axis about twenty units of arrow, which the head then
+ *  ate: two small lands got a triangle between them rather than a spear
+ *  pointing one way. */
 const ARROW_INSET = 34;
+const ARROW_INSET_SHARE = 0.2;
+
+/** The head is pulled in less than the tail. The tail has to clear the town
+ *  dot and its name; the head only has to stop short of the target's, and an
+ *  arrow that gives up a fifth of the way out from where it is aimed reads as
+ *  pointing at nothing in particular. */
+const ARROW_HEAD_INSET_SHARE = 0.45;
+
+function insetFor(length: number): number {
+  return Math.min(ARROW_INSET, length * ARROW_INSET_SHARE);
+}
+
+/** Every town the map draws in each land, by faction id - the starting one and
+ *  the locked sites alike. Deliberately not `sitesByFaction`, which drops the
+ *  unlocked starting settlement because it answers a different question (where
+ *  can this land still build). Here any real place will do. */
+const townsByFaction = ((): Map<string, { x: number; y: number }[]> => {
+  const out = new Map<string, { x: number; y: number }[]>();
+  for (const s of data.settlements) {
+    const faction = factionByRegion.get(s.land);
+    if (faction === undefined) continue;
+    out.set(faction, [...(out.get(faction) ?? []), { x: s.x, y: s.y }]);
+  }
+  return out;
+})();
+
+/** Where an arrow between two lands starts and ends: the closest pair of towns
+ *  across the border, one in each land.
+ *
+ *  A bounding-box centre is not a place. These polygons are long and bent
+ *  around coastline, so the centre of the box around one can sit in a bay -
+ *  arrows were starting out at sea. A town is guaranteed to be inside its own
+ *  land because the map drew it there, and taking the closest pair points the
+ *  arrow along the border the two lands actually share instead of across
+ *  whatever the boxes happened to line up.
+ *
+ *  Purely presentational: nothing in the rules knows about it. Falls back to
+ *  the box centre for a land the map gave no town, and for the test
+ *  environment, where `getBBox` is a stub anyway. */
+function marchAnchors(
+  from: string, to: string,
+): { from: { x: number; y: number }; to: { x: number; y: number } } | null {
+  const fallbackFrom = regionCenter(from);
+  const fallbackTo = regionCenter(to);
+  if (fallbackFrom === undefined || fallbackTo === undefined) return null;
+  const a = townsByFaction.get(from) ?? [];
+  const b = townsByFaction.get(to) ?? [];
+  if (a.length === 0 || b.length === 0) {
+    return { from: fallbackFrom, to: fallbackTo };
+  }
+  let best = { from: a[0], to: b[0] };
+  let bestDist = Number.POSITIVE_INFINITY;
+  // In map order both ways, so a tie picks the same pair on every redraw.
+  for (const p of a) {
+    for (const q of b) {
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < bestDist) {
+        bestDist = d;
+        best = { from: p, to: q };
+      }
+    }
+  }
+  return best;
+}
+
+/** Gap between two arrows of the same bundle, wide enough that their barbs
+ *  clear each other: a side may field several armies at once, and stacking
+ *  them on one line would say "one attack" when there are three. */
+const MAIN_GAP = 30;
+const COUNTER_GAP = 20;
+
+/** How much smaller the answering side is drawn, and the clear air between
+ *  the two bundles. The counter is a reply to the attack, so it reads as the
+ *  smaller shape beside it rather than an equal one nose to nose.
+ *
+ *  Length as well as width. Scaling only the widths made no visible
+ *  difference: a spear's size on this map is mostly its LENGTH, which is the
+ *  axis, and the axis is the same for both sides. The counter therefore runs
+ *  only the last stretch toward its target - shorter, thinner, and plainly
+ *  the answer to the arrow beside it. */
+const COUNTER_SCALE = 0.62;
+const COUNTER_LENGTH_SHARE = 0.62;
+const COUNTER_CLEARANCE = 8;
 
 /** One tapered spear per march in flight, plus the strength it carries.
+ *
+ *  Laid out per AXIS, not per march, because a quarrel has two sides and
+ *  several armies may be on each. The side that opened is drawn full size
+ *  centred on the line between the two lands; the side answering it is drawn
+ *  smaller and clear of it, so which is the attack and which the counter is
+ *  readable at a glance. Within each side the arrows fan out side by side -
+ *  three armies marching the same way are three arrows, not one dark smear.
  *
  *  Rebuilt whole on every refresh, the `renderThreatBadges` shape: a march
  *  store this small is cheaper to redraw than to diff, and a stale arrow is a
@@ -788,44 +888,149 @@ function renderMarchArrows(): void {
   const human = localHuman();
   if (!inPlay() || !human || targetingLive()) return;
   const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
-  // Sorted by key so a redraw stacks the arrows the same way every time.
-  for (const key of Object.keys(game.marches).sort()) {
-    const m = game.marches[key];
-    const from = regionCenter(m.from);
-    const to = regionCenter(m.to);
-    if (from === undefined || to === undefined) continue;
-    const seg = insetSegment(from.x, from.y, to.x, to.y, ARROW_INSET, ARROW_INSET);
-    const points = spearPolygon(seg.ax, seg.ay, seg.bx, seg.by);
-    if (points === "") continue;
-
-    const against = realm.has(m.to);
-    const ours = realm.has(m.from);
-    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    g.classList.add("march-arrow");
-    // Against you first: an arrow between your own two lands cannot happen
-    // (attackReach excludes what you hold outright, and a raid on your own
-    // vassal IS aimed at your realm), so the order only decides how a lord's
-    // raid on its own vassal reads - and that is an attack on your realm.
-    g.classList.add(against ? "march-hostile" : ours ? "march-ours" : "march-other");
-    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-    poly.setAttribute("points", points);
-    if (!against && !ours) {
-      poly.setAttribute("fill", factionById.get(m.actor)?.color ?? "#7a6a55");
-    }
-    g.appendChild(poly);
-
-    // The strength, on the arrow. The player was promised source, target and
-    // number when the arrow appeared; the number is the half they cannot read
-    // off the map.
-    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    label.classList.add("march-strength");
-    const mid = pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.5);
-    label.setAttribute("x", String(mid.x));
-    label.setAttribute("y", String(mid.y - 8));
-    label.textContent = String(m.damage);
-    g.appendChild(label);
-    arrowGroup.appendChild(g);
+  for (const axis of axesOf(game.marches)) {
+    const opening = axis.opening === "a" ? axis.fromA : axis.fromB;
+    const answer = axis.opening === "a" ? axis.fromB : axis.fromA;
+    // Half the width the opening bundle occupies, so the answer can be placed
+    // clear of ALL of it rather than clear of one arrow.
+    const openingHalf = ((opening.length - 1) / 2) * MAIN_GAP + SPEAR.headHalf;
+    const answerBase =
+      openingHalf + SPEAR.headHalf * COUNTER_SCALE + COUNTER_CLEARANCE;
+    opening.forEach((m, i) => {
+      drawMarch(m, ((i - (opening.length - 1) / 2) * MAIN_GAP), realm, 1, 1);
+    });
+    answer.forEach((m, i) => {
+      // Negated: the answer runs the other way, so its own "left" is the
+      // opening side's "right". Both bundles are measured in one world
+      // direction, which is what keeps the counter consistently on one side.
+      const within = (i - (answer.length - 1) / 2) * COUNTER_GAP;
+      drawMarch(
+        m, -(answerBase + within), realm, COUNTER_SCALE, COUNTER_LENGTH_SHARE,
+      );
+    });
   }
+}
+
+/** One arrow, `lateral` user-units to the left of its own direction of travel,
+ *  at `scale` of full width and covering `lengthShare` of the axis - measured
+ *  back from the head, so a shortened arrow still bites the same land. */
+function drawMarch(
+  m: March, lateral: number, realm: ReadonlySet<string>,
+  scale: number, lengthShare: number,
+): void {
+  const anchors = marchAnchors(m.from, m.to);
+  if (anchors === null) return;
+  const { from, to } = anchors;
+  const pull = insetFor(Math.hypot(to.x - from.x, to.y - from.y));
+  const head = pull * ARROW_HEAD_INSET_SHARE;
+  const usable = Math.hypot(to.x - from.x, to.y - from.y) - pull - head;
+  const inset = insetSegment(
+    from.x, from.y, to.x, to.y,
+    pull + Math.max(0, usable) * (1 - lengthShare), head,
+  );
+  const seg = offsetSegment(inset.ax, inset.ay, inset.bx, inset.by, lateral);
+  const opts = scale === 1 ? SPEAR : scaleSpear(SPEAR, scale);
+  const points = spearPolygon(seg.ax, seg.ay, seg.bx, seg.by, opts);
+  if (points === "") return;
+
+  const against = realm.has(m.to);
+  const ours = realm.has(m.from);
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  g.classList.add("march-arrow");
+  // Against you first: an arrow between your own two lands cannot happen
+  // (attackReach excludes what you hold outright, and a raid on your own
+  // vassal IS aimed at your realm), so the order only decides how a lord's
+  // raid on its own vassal reads - and that is an attack on your realm.
+  g.classList.add(against ? "march-hostile" : ours ? "march-ours" : "march-other");
+  const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+  poly.setAttribute("points", points);
+  if (!against && !ours) {
+    poly.setAttribute("fill", factionById.get(m.actor)?.color ?? "#7a6a55");
+  }
+  g.appendChild(poly);
+
+  // The strength, on the arrow. The player was promised source, target and
+  // number when the arrow appeared; the number is the half they cannot read
+  // off the map. On the shaft rather than above it, so a bundle's labels sit
+  // apart exactly as far as its arrows do.
+  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  label.classList.add("march-strength");
+  const mid = pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.5);
+  label.setAttribute("x", String(mid.x));
+  label.setAttribute("y", String(mid.y));
+  label.textContent = String(m.damage);
+  g.appendChild(label);
+
+  // An arrow you could answer right now is a button. Picking a source and a
+  // target by hand to aim a counter back down an arrow already on the screen
+  // is the game asking the player to restate something it can see, so the
+  // arrow takes the click itself.
+  const counterIndex = counterFor(m);
+  if (counterIndex !== null) {
+    g.classList.add("march-counterable");
+    armArrowAsCounter(g, m, counterIndex);
+  }
+  arrowGroup.appendChild(g);
+}
+
+/** The hand index of a Raid that could answer this march right now, or null.
+ *
+ *  Every condition the two-step targeting flow would have applied, asked in
+ *  one place: it is this screen's turn to act, the arrow is aimed at a land of
+ *  ours, and that land itself has a free army to send back down the axis. The
+ *  last one is what makes the click a real shortcut rather than a guess - a
+ *  counter declared from anywhere else is a fresh attack on a different axis
+ *  and would not meet this one at all. */
+function counterFor(m: March): number | null {
+  const human = localHuman();
+  if (!human || !isLocalTurn() || game.playedThisTurn || resolving) return null;
+  if (pendingHarvest !== null || discardMode()) return null;
+  const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
+  if (!realm.has(m.to) || realm.has(m.from)) return null;
+  const v = viewOf(game);
+  if (!marchSourcesAgainst(v, human.factionId, m.from).includes(m.to)) return null;
+  const set = playableSet(v, human.factionId, human.hand, {
+    discards: allowsDiscards(game.rules),
+  });
+  if (set.mode !== "play") return null;
+  return set.cardIndexes.find((i) => human.hand[i] === "raid") ?? null;
+}
+
+/** Make one arrow answer a click by countering it.
+ *
+ *  Listens on the arrow rather than routing through `interceptClick`, which
+ *  only ever learns a region id and could not tell which of two arrows over
+ *  the same land was meant. The press is measured against the map's own drag
+ *  threshold, so dragging the board from on top of an arrow still pans -
+ *  swallowing that would put a dead zone over the most interesting part of
+ *  the map. Only a real click stops propagation. */
+function armArrowAsCounter(g: SVGGElement, m: March, cardIndex: number): void {
+  let start: { x: number; y: number } | null = null;
+  g.addEventListener("pointerdown", (e) => {
+    start = { x: e.clientX, y: e.clientY };
+  });
+  g.addEventListener("pointerup", (e) => {
+    const from = start;
+    start = null;
+    if (from === null) return;
+    if (Math.hypot(e.clientX - from.x, e.clientY - from.y) >= DRAG_THRESHOLD_PX) {
+      return; // a pan that happened to begin here; let the map have it
+    }
+    e.stopPropagation();
+    // Re-asked, not trusted: this listener was attached on the last render and
+    // the board may have moved since - a guest's update, an AI round.
+    if (counterFor(m) === null) return;
+    disarm();
+    if (net.role === "guest") {
+      sendGuestAction({
+        type: "play", cardIndex, cardId: "raid",
+        targetId: m.from, sourceId: m.to,
+      });
+      return;
+    }
+    game = playCard(game, cardIndex, rng, m.from, { sourceId: m.to });
+    afterHumanPlay();
+  });
 }
 
 /** How long a resolved march is shown before the map moves on. One number,
@@ -853,15 +1058,20 @@ let animatedLog = 0;
 function flashMarchResolution(
   e: GameEvent, realm: ReadonlySet<string>, onDone: () => void,
 ): void {
-  const from = e.sourceFactionId !== undefined
-    ? regionCenter(e.sourceFactionId) : undefined;
-  const to = e.targetFactionId !== undefined
-    ? regionCenter(e.targetFactionId) : undefined;
-  if (from === undefined || to === undefined) {
+  // The same anchors the live arrow used, so the ghost fades out where the
+  // arrow actually was rather than jumping to the middle of the two lands.
+  const anchors = e.sourceFactionId !== undefined && e.targetFactionId !== undefined
+    ? marchAnchors(e.sourceFactionId, e.targetFactionId)
+    : null;
+  if (anchors === null) {
     onDone();
     return;
   }
-  const seg = insetSegment(from.x, from.y, to.x, to.y, ARROW_INSET, ARROW_INSET);
+  const { from, to } = anchors;
+  const pull = insetFor(Math.hypot(to.x - from.x, to.y - from.y));
+  const seg = insetSegment(
+    from.x, from.y, to.x, to.y, pull, pull * ARROW_HEAD_INSET_SHARE,
+  );
   // A standoff has no loser, so it is neither your bad news nor your good.
   const standoff = e.amount === undefined;
   const struckUs = e.targetFactionId !== undefined && realm.has(e.targetFactionId);

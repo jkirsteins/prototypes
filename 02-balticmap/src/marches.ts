@@ -155,6 +155,18 @@ export interface Axis {
   keys: string[];
   fromA: March[];
   fromB: March[];
+  /** Which end opened the quarrel - the side that declared first. The other
+   *  side is the answer to it.
+   *
+   *  Nothing in the RULES cares: a clash is symmetric, and `resolveAxis` sums
+   *  both sides the same way whoever moved first. The map cares. An attack and
+   *  the counter-raid answering it drawn as two equal arrows nose to nose read
+   *  as one confused shape, so the opening side is drawn full size on the axis
+   *  and the answer smaller and off to one side.
+   *
+   *  Read off the expiry, which IS the declaration turn plus one, falling back
+   *  to insertion order for two declared in the same round. */
+  opening: "a" | "b";
 }
 
 /** Every axis these marches run along, ordered by axis key. Sorted rather than
@@ -162,16 +174,37 @@ export interface Axis {
  *  seeded run must log them in the same order every time. */
 export function axesOf(marches: Marches): Axis[] {
   const byKey = new Map<string, Axis>();
+  /** First position in the record at which each side of an axis appeared -
+   *  the tie-break for two sides declared in the same round. */
+  const firstSeen = new Map<string, { a: number; b: number }>();
+  let index = 0;
   for (const [key, m] of Object.entries(marches)) {
     const axisKey = axisKeyOf(m.from, m.to);
     let axis = byKey.get(axisKey);
     if (axis === undefined) {
       const [a, b] = m.from < m.to ? [m.from, m.to] : [m.to, m.from];
-      axis = { a, b, keys: [], fromA: [], fromB: [] };
+      axis = { a, b, keys: [], fromA: [], fromB: [], opening: "a" };
       byKey.set(axisKey, axis);
+      firstSeen.set(axisKey, {
+        a: Number.POSITIVE_INFINITY, b: Number.POSITIVE_INFINITY,
+      });
     }
     axis.keys.push(key);
-    (m.from === axis.a ? axis.fromA : axis.fromB).push(m);
+    const side = m.from === axis.a ? "a" : "b";
+    (side === "a" ? axis.fromA : axis.fromB).push(m);
+    const seen = firstSeen.get(axisKey)!;
+    seen[side] = Math.min(seen[side], index);
+    index++;
+  }
+  for (const [axisKey, axis] of byKey) {
+    const earliest = (side: March[]): number =>
+      side.length === 0
+        ? Number.POSITIVE_INFINITY
+        : Math.min(...side.map((m) => m.expiry));
+    const ea = earliest(axis.fromA);
+    const eb = earliest(axis.fromB);
+    const seen = firstSeen.get(axisKey)!;
+    axis.opening = ea !== eb ? (ea < eb ? "a" : "b") : seen.a <= seen.b ? "a" : "b";
   }
   return [...byKey.entries()]
     .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))

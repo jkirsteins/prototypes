@@ -93,8 +93,7 @@ export const CARDS: Record<string, CardDef> = {
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "The signs are read: your next Raid or Great raid deals double damage. Readings stack.",
     textSegments: [t("The signs are read: your next "), card("raid"), t(" or "), card("great-raid"), t(" deals double damage. Readings stack.")] },
   "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 5 leadership, added to every attack. Stacks, and dies with the ruler." },
-  "fortify": { id: "fortify", name: "Fortify", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 1 defense per Favourable omens reading you hold to every land of your realm, up to what each once held.",
-    textSegments: [t("Restore 1 defense per "), card("favourable-omens"), t(" reading you hold to every land of your realm, up to what each once held.")] },
+  "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 4 defense to one land of your realm, up to what it once held." },
   // Build B - Pestilence. Stacks are owned: each rival's disease on a land is
   // its own count, and only your own stacks feed your Plague.
   "spread-disease": { id: "spread-disease", name: "Spread disease", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Set one of your disease stacks on a land in reach. Stacks sit harmless until a Plague cashes them." ,

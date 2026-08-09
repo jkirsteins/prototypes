@@ -126,8 +126,10 @@ describe("runGame", () => {
   it("gives different arms different games", () => {
     // The arm only changes strategies, and strategies only bite through the
     // harvest pool - so this needs enough turns for harvests to start
-    // shaping decks, which by turn 60 they reliably have.
-    const opts = { seed: 42, humanFaction: HUMAN, turnCap: 60 };
+    // shaping decks. It was 60; the game is a third longer since Fortify
+    // stopped being a no-op, and at 60 both arms now just report "cap" with
+    // the same numbers and compare equal.
+    const opts = { seed: 42, humanFaction: HUMAN, turnCap: 90 };
     const a = runGame({ ...opts, arm: "all-warpath" });
     const b = runGame({ ...opts, arm: "all-pestilence" });
     expect(a).not.toEqual(b);

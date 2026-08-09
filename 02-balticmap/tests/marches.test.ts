@@ -112,6 +112,33 @@ describe("axesOf", () => {
     expect(axes[0].fromB.map((m) => m.damage)).toEqual([6]);
   });
 
+  it("names the side that declared first as the one that opened", () => {
+    let marches: Marches = {};
+    // Declared on turn 1 (expiry 2); the answer comes on turn 2 (expiry 3).
+    marches = addMarch(marches, march({ from: "talava", to: "selija", expiry: 2 }));
+    marches = addMarch(marches, march({ from: "selija", to: "talava", expiry: 3 }));
+    // The axis sorts selija before talava, so the opener is side b.
+    expect(axesOf(marches)[0].opening).toBe("b");
+  });
+
+  it("falls back to declaration order for two declared in the same round", () => {
+    let marches: Marches = {};
+    marches = addMarch(marches, march({ from: "talava", to: "selija", expiry: 2 }));
+    marches = addMarch(marches, march({ from: "selija", to: "talava", expiry: 2 }));
+    expect(axesOf(marches)[0].opening).toBe("b");
+    // And the other way round, so the tie-break is really being read.
+    let other: Marches = {};
+    other = addMarch(other, march({ from: "selija", to: "talava", expiry: 2 }));
+    other = addMarch(other, march({ from: "talava", to: "selija", expiry: 2 }));
+    expect(axesOf(other)[0].opening).toBe("a");
+  });
+
+  it("calls a one-sided axis its own opener", () => {
+    expect(axesOf(addMarch({}, march())) [0].opening).toBe("a");
+    expect(axesOf(addMarch({}, march({ from: "talava", to: "selija" })))[0].opening)
+      .toBe("b");
+  });
+
   it("orders axes deterministically, not by declaration order", () => {
     let marches: Marches = {};
     marches = addMarch(marches, march({ from: "zemgale", to: "selija" }));

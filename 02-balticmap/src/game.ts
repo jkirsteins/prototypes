@@ -9,7 +9,7 @@ import {
 } from "./relations";
 import {
   addDisease, applyDamage, applyHeal, clearDiseaseOf, DEFAULT_DEFENSE_MAX,
-  defenseOf, FORTIFY_HEAL_PER_OMEN, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
+  defenseOf, FORTIFY_HEAL, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
   independenceGateOpen, PLAGUE_DAMAGE_PER_STACK, transferAllDiseaseTo,
   WAR_COUNCIL_LEADERSHIP, type Defense, type Disease,
 } from "./defense";
@@ -985,15 +985,8 @@ export function playCard(
     for (const polygon of state.factionIds.filter((f) => realm.has(f))) {
       landHeal(polygon, HARVEST_FEAST_HEAL);
     }
-  } else if (cardId === "fortify") {
-    // Linear in held readings, not the 2**n attack multiplier - Favourable
-    // omens' own text only promises that to "your next Raid or Great raid".
-    // Readings are not spent: Fortify reads the count, it does not cash it.
-    const heal = FORTIFY_HEAL_PER_OMEN * (state.omens[p.factionId] ?? 0);
-    const realm = fullRealmOf(p.factionId, overlords, incorporated);
-    for (const polygon of state.factionIds.filter((f) => realm.has(f))) {
-      landHeal(polygon, heal);
-    }
+  } else if (cardId === "fortify" && targetId !== undefined) {
+    landHeal(targetId, FORTIFY_HEAL);
   } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
     const out = replaceRuler(rulers, state.ethnicities, targetId, state.turn);
     rulers = out.rulers;
