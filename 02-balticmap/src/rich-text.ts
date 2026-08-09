@@ -1,4 +1,4 @@
-import { CARDS, KEYWORDS, keywordOf, type KeywordDef } from "./cards";
+import { CARDS, KEYWORDS, keywordsOf, type KeywordDef } from "./cards";
 import { PASSIVES } from "./passives";
 import { LEADER_ABILITIES } from "./abilities";
 import { TERMS, termName } from "./glossary";
@@ -142,18 +142,22 @@ const keywordHeading = (keyword: KeywordDef): string =>
  *  DOM here rather than a `TooltipLine[]` because two of the three consumers
  *  are building elements anyway; `cardTipLines` below is the line-shaped form
  *  for the one that is not. */
-export function keywordBlock(cardId: string): HTMLElement | null {
-  const keyword = keywordOf(cardId);
-  if (keyword === null) return null;
-  const block = document.createElement("section");
-  block.className = "card-keyword";
-  const heading = document.createElement("div");
-  heading.className = "card-keyword-heading";
-  heading.textContent = keywordHeading(keyword);
-  const text = document.createElement("div");
-  text.textContent = keyword.text;
-  block.append(heading, text);
-  return block;
+export function keywordBlock(cardId: string): DocumentFragment | null {
+  const keywords = keywordsOf(cardId);
+  if (keywords.length === 0) return null;
+  const frag = document.createDocumentFragment();
+  for (const keyword of keywords) {
+    const block = document.createElement("section");
+    block.className = "card-keyword";
+    const heading = document.createElement("div");
+    heading.className = "card-keyword-heading";
+    heading.textContent = keywordHeading(keyword);
+    const text = document.createElement("div");
+    text.textContent = keyword.text;
+    block.append(heading, text);
+    frag.appendChild(block);
+  }
+  return frag;
 }
 
 /** A card's popup as tooltip lines: its name, its rules text, and its keyword
@@ -162,16 +166,13 @@ export function keywordBlock(cardId: string): HTMLElement | null {
 export function cardTipLines(cardId: string): TooltipLine[] {
   const def = CARDS[cardId];
   if (def === undefined) return [{ text: cardName(cardId) }];
-  const keyword = keywordOf(cardId);
   return [
     { text: def.name },
     { text: def.text },
-    ...(keyword === null
-      ? []
-      : [
-          { text: keywordHeading(keyword), blockStart: true as const },
-          { text: keyword.text },
-        ]),
+    ...keywordsOf(cardId).flatMap((keyword) => [
+      { text: keywordHeading(keyword), blockStart: true as const },
+      { text: keyword.text },
+    ]),
   ];
 }
 

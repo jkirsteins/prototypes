@@ -22,11 +22,13 @@ import {
 } from "./rich-text";
 import { termName } from "./glossary";
 import { abilitiesOf } from "./abilities";
+import { count } from "./plural";
 import {
   handBlockReason, marchSourcesAgainst, marchSourcesFor, marchTargetsFrom,
   claimWouldLand, playableSet, respiteExpiry, validTargetsFor,
   targetEligibilityFor,
-  armyCapOn, attackDamageFor, freeArmiesFor, miasmaHeld, omensHeld,
+  armyCapOn, attackDamageFor, attackImpactOn, freeArmiesFor, miasmaHeld,
+  omensHeld,
 } from "./playability";
 import { armiesOn, axesOf, type Claim, type March } from "./marches";
 import {
@@ -551,9 +553,18 @@ function applyOwnership(): void {
     );
     el.classList.toggle("owned", owned);
     if (owned) {
+      // The REALM's colour, not this land's. The outline runs around the whole
+      // realm, and taking each land's own hue made one continuous border
+      // change colour part-way along it and vanish where it met a fill of the
+      // same family - which reads as an outline with holes in it.
       el.style.setProperty(
         "--owned-stroke",
-        darkenColor(factionById.get(effective)!.color, 0.55),
+        darkenColor(
+          factionById.get(
+            realmRootOf(region.faction, game.overlords, game.incorporated),
+          )!.color,
+          0.55,
+        ),
       );
     } else {
       el.style.removeProperty("--owned-stroke");
@@ -2509,17 +2520,21 @@ const hudCallbacks: HudCallbacks = {
         // that can fail, or the roll reads as a bug. Its own band in the tip,
         // not another annotation line: the two say opposite things.
         (id) => targetOddsLines(view, human.factionId, cardId, id),
-        () => {
+        (id) => {
           if (!ATTACK_CARDS.has(cardId)) return [];
-          // Quote the resolved damage, readings included - the same call
-          // `playCard` resolves the attack with, so the number the player is
-          // shown before aiming is the number they get.
-          const { damage, multiplier } = attackDamageFor(
-            view, human.factionId, cardId,
+          // Per TARGET, not per card: a Great raid takes a different number off
+          // a land three of your own border than off one that only touches
+          // one. Through `attackImpactOn`, which the land hover also asks, so
+          // the two previews of the same play cannot disagree.
+          const { damage, multiplier, arrows } = attackImpactOn(
+            view, human.factionId, cardId, id,
           );
-          return [multiplier > 1
-            ? `-${damage} defense (${multipliedWord(multiplier)})`
-            : `-${damage} defense`];
+          const suffix = multiplier > 1
+            ? ` (${multipliedWord(multiplier)})`
+            : "";
+          return [arrows > 1
+            ? `-${damage} defense, ${count(arrows, "arrow")}${suffix}`
+            : `-${damage} defense${suffix}`];
         },
       );
     },

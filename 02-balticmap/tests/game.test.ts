@@ -1441,7 +1441,7 @@ describe("a card that plays again", () => {
     // this one test is the point: the rule is the field, and no branch
     // anywhere asks whether the card is a Raid.
     const def = CARDS.fortify;
-    CARDS.fortify = { ...def, keyword: "raid" };
+    CARDS.fortify = { ...def, keywords: ["raid"] };
     try {
       const g = withHand(
         { ...playingState(LINE_ADJ), defense: { beta: 10 } }, 0,

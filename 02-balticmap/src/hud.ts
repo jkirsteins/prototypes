@@ -735,10 +735,28 @@ export function createHud(
   pmNewGame.className = "menu-new-game";
   pmNewGame.textContent = "New game";
   pmNewGame.addEventListener("click", () => cb.onNewGame());
-  pmSummary.append(pmTitle, pmCause, pmDeltas, pmBuildup, pmNewGame);
+  /** Stands the overlay aside so the finished map can be read. Nothing is
+   *  playable behind it - the phase is over and every control is already
+   *  hidden by phase - so this is a curtain and not a mode. */
+  const pmViewMap = document.createElement("button");
+  pmViewMap.className = "menu-new-game pm-view-map";
+  pmViewMap.textContent = "View the map";
+  pmViewMap.addEventListener("click", () => setPostmortemAside(true));
+  pmSummary.append(pmTitle, pmCause, pmDeltas, pmBuildup, pmViewMap, pmNewGame);
   const pmLog = document.createElement("div");
   pmLog.className = "pm-log";
   postmortem.append(pmSummary, pmLog);
+  /** The way back, which lives outside the overlay because the overlay is what
+   *  it brings back. Hidden with the overlay and shown in its place. */
+  const pmReturn = document.createElement("button");
+  pmReturn.className = "pm-return hidden";
+  pmReturn.textContent = "Back to the result";
+  pmReturn.addEventListener("click", () => setPostmortemAside(false));
+
+  function setPostmortemAside(aside: boolean): void {
+    postmortem.classList.toggle("aside", aside);
+    pmReturn.classList.toggle("hidden", !aside);
+  }
 
   // Top-right scoreboard: who is closest to ending the run, and where you sit.
   const scoreboard = document.createElement("div");
@@ -1380,7 +1398,7 @@ export function createHud(
   );
 
   container.append(
-    menu, postmortem, status, scoreboard, leftColumn, endTurnBtn,
+    menu, postmortem, pmReturn, status, scoreboard, leftColumn, endTurnBtn,
     deckPile.root, discardPile.root, hand, logPanel, noticeOverlay,
     harvestOverlay,
   );
@@ -2257,7 +2275,10 @@ export function createHud(
   function renderPostmortem(state: GameState): void {
     const human = humanPlayer(state)!;
     const won = state.phase === "victory";
-    pmTitle.textContent = won ? "Victory" : "Game over";
+    // The words themselves. "Game over" is the one thing a player reads on
+    // this screen first, and it says nothing about which way it went - the
+    // verdict was left to be inferred from a sentence naming somebody else.
+    pmTitle.textContent = won ? "You won" : "You lost";
     if (won) {
       const size = fullRealmOf(
         human.factionId, state.overlords, state.incorporated,
@@ -2284,7 +2305,7 @@ export function createHud(
       const size = fullRealmOf(
         human.factionId, state.overlords, state.incorporated,
       ).size;
-      pmTitle.textContent = "Surrendered";
+      pmTitle.textContent = mine ? "You conceded" : "You won";
       setCause([
         t(mine
           ? `You conceded with ${size} of the ` +
@@ -2299,8 +2320,14 @@ export function createHud(
       // but there is no killer-vs-you comparison to show - just name the winner.
       const unified = [...state.log].reverse().find((e) => e.type === "unified");
       if (unified !== undefined) {
+        // Named the way the log names an actor: a chief and their people. The
+        // faction alone left the run ending at the hands of a map label.
+        const chief = unified.actorRuler;
         setCause([
-          faction(unified.overlordFactionId ?? ""), t(" unified the Balts"),
+          ...(chief === undefined || chief === ""
+            ? [faction(unified.overlordFactionId ?? "")]
+            : [t(`${chief} of `), theFaction(unified.overlordFactionId ?? "")]),
+          t(" unified the Balts"),
         ]);
         pmDeltas.textContent = "";
         pmBuildup.replaceChildren();
@@ -2329,6 +2356,10 @@ export function createHud(
         return d;
       }),
     );
+    // The end of the run, not the start of it. This log is read backwards from
+    // whatever just happened - the play that ended the game is its last line,
+    // and opening at turn 1 buries it under a hundred others.
+    pmLog.scrollTop = pmLog.scrollHeight;
   }
 
   return {
@@ -2353,6 +2384,10 @@ export function createHud(
       hand.classList.toggle("hidden", state.phase !== "playing");
       logPanel.classList.toggle("hidden", state.phase !== "playing");
       postmortem.classList.toggle("hidden", !ended);
+      // A run that is not over cannot have its result stood aside: without
+      // this the toggle survives into the next game and hides the screen it
+      // was meant to reveal.
+      if (!ended) setPostmortemAside(false);
       scoreboard.classList.toggle("hidden", state.phase !== "playing");
       milestonesBtn.classList.toggle("hidden", state.phase !== "playing");
       // Phase only: `.open` is what the button drives, and having the two

@@ -84,17 +84,21 @@ svg.map.dragging {
 }
 
 /* The stroke-only copies. `fill: none` because a path defaults to filled black
-   and these carry only an outline; no stroke of their own, so a member with
-   nothing to say draws nothing here and the .region rules above supply the rest
-   when it has. Inert to the pointer - the land itself is still the hit target,
-   which a mask does not affect. */
+   and these carry only an outline. Inert to the pointer - the land itself is
+   still the hit target, which a mask does not affect.
+
+   No `stroke: none` here, and that is the point. The seam rule above takes the
+   member's own outline away with !important, so this copy is the ONLY thing
+   left painting that land's border; zeroing it meant every realm but the
+   player's own lost its outline entirely - the rival realms in a game read as
+   fills with no edges at all. What the copy draws is whatever the region's own
+   classes say, which is exactly what the land would have drawn unseamed. */
 .realm-edges {
   pointer-events: none;
 }
 
 .realm-edge {
   fill: none;
-  stroke: none;
 }
 
 .river {
@@ -494,6 +498,30 @@ svg.map.dragging {
   padding: 48px;
   background: rgba(24, 32, 38, 0.88);
   z-index: 20;
+}
+
+/* Stood aside so the finished map can be read. Not `hidden`: the overlay keeps
+   its content and its scroll position, so coming back lands where it was left,
+   and the transition says the screen was moved rather than destroyed. */
+.postmortem-overlay.aside {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The way back. Sits where the End turn button did, which is the corner this
+   screen's one action has always been in. */
+.pm-return {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  padding: 10px 18px;
+  border: 1px solid #7a6a55;
+  border-radius: 8px;
+  background: #fdfaf4;
+  color: #3f3428;
+  font-size: 15px;
+  cursor: pointer;
+  z-index: 21;
 }
 
 .pm-summary {

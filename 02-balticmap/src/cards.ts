@@ -84,17 +84,19 @@ export interface CardDef {
    *  a land with a free army to march out of - so the limit is the board,
    *  not a count kept here.
    *
-   *  The keyword this card carries, if any - the name of a CLASS of cards
-   *  that share rules. What those rules are is the keyword's business, not the
-   *  card's: see `KEYWORDS`. A card says which class it is in and nothing
+   *  The keywords this card carries - the names of the CLASSES of cards it
+   *  belongs to. What each class means is the keyword's business, not the
+   *  card's: see `KEYWORDS`. A card says which classes it is in and nothing
    *  more, so a rule added to a keyword reaches every card carrying it without
    *  touching one of them.
    *
-   *  Kept apart from the rules themselves because they came coupled and it was
-   *  wrong: the field used to BE the repeat group, which made "has a keyword"
-   *  and "repeats" the same fact and left no way to say that fortify cards are
-   *  a class without also saying you may play two. */
-  keyword?: string;
+   *  A LIST because the classes are independent: Unique says a card leaves the
+   *  deck, Raid says it re-opens the turn, and a card can perfectly well be
+   *  both. Kept apart from the rules themselves for the same reason - the
+   *  field used to BE the repeat group, which made "has a keyword" and
+   *  "repeats" one fact and left no way to say fortify cards are a class
+   *  without also saying you may play two. */
+  keywords?: readonly string[];
   /** One-line rules text shown to the player. */
   text: string;
   /** `text`, with every card the text names as a `card()` segment, so the
@@ -108,14 +110,14 @@ export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Nothing happens. Enough of these earn a Turnip harvest.",
     textSegments: [t("Nothing happens. Enough of these earn a "), card("turnip-harvest"), t(".")] },
   // Build A - Warpath.
-  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keyword: "raid", text: "Send an army at a bordering land. It lands next turn for 1 damage, less any counter-raid." },
-  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keyword: "raid", text: "Every land of yours bordering one land raids it, one army each. Each lands next turn like a Raid, answered separately." },
+  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid"], text: "Send an army at a bordering land. It lands next turn for 1 damage, less any counter-raid." },
+  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid"], text: "Every land of yours bordering one land raids it, one army each. Each lands next turn like a Raid, answered separately." },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next raid or fortify card counts double. Stacks.",
     textSegments: [t("Your next "), keyword("raid"), t(" or "), keyword("fortify"), t(" card counts double. Stacks.")] },
   "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
-  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keyword: "raid", text: "Send an army at a bordering land. It lands next turn for 2 damage, less any counter-raid." },
-  "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keyword: "fortify", text: "Restore 2 defense to one of your lands." },
-  "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keyword: "fortify", text: "Restore 1 defense to one of your lands." },
+  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid"], text: "Send an army at a bordering land. It lands next turn for 2 damage, less any counter-raid." },
+  "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 2 defense to one of your lands." },
+  "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 1 defense to one of your lands." },
   // Build B - Pestilence. Stacks are owned: each rival's disease on a land is
   // its own count, and only your own stacks feed your Plague.
   "spread-disease": { id: "spread-disease", name: "Spread disease", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Put 1 disease on a land in reach. It does nothing until a Plague." ,
@@ -142,19 +144,19 @@ export const CARDS: Record<string, CardDef> = {
   // that detector by another route.
   "bodyguard": { id: "bodyguard", name: "Bodyguard", targeted: false, secret: true, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "The next Assassinate ruler against you fails. One at a time. Others see only that you played a secret card.",
     textSegments: [t("The next "), card("assassinate-ruler"), t(" against you fails. One at a time. Others see only that you played a secret card.")] },
-  // Consumed on play (see CONSUMED_CARDS): the ceiling it raises is permanent.
+  // Unique: the ceiling it raises is permanent, so it must not come round.
   // Never in a build or the neutral pool - `deckBuildable: false` - because
   // the harvest offers it in a slot of its own, every time. That fixed slot IS
   // its discovery route, and it is why the offer can never come back with
   // nothing worth taking.
-  "prosperous-proliferation": { id: "prosperous-proliferation", name: "Prosperous proliferation", targeted: true, secret: false, maxPerDeck: null, deckBuildable: false, forced: false, rarity: "common", text: "Good years: one of your lands grows by 1, ceiling and defense alike. Leaves your deck." },
+  "prosperous-proliferation": { id: "prosperous-proliferation", name: "Prosperous proliferation", targeted: true, secret: false, maxPerDeck: null, deckBuildable: false, forced: false, rarity: "common", keywords: ["unique"], text: "Good years: one of your lands grows by 1, ceiling and defense alike." },
   "found-settlement": { id: "found-settlement", name: "Found a settlement", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", wealthCost: 1, text: "Costs 1 wealth. Build a settlement in one of your lands. Each one founded earns 1 wealth a turn." },
   // Injection-only: a Subjugate shuffles one into the vassal's deck (see
   // playCard) and a release strips it out again. Never offered by a harvest.
   "pay-military-tribute": { id: "pay-military-tribute", name: "Pay tribute", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: true, rarity: "common", text: "Forced. Pay your overlord 1 wealth per land of yours. What you cannot pay is forgiven." },
   // Injection-only: earned by the turnip bar, every seat alike. Its discovery
   // route is the bar itself - the harvest-earned notice says it arrived.
-  "turnip-harvest": { id: "turnip-harvest", name: "Turnip harvest", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: false, rarity: "common", text: "Three cards are offered. Keep one, or none. The keep joins your deck." },
+  "turnip-harvest": { id: "turnip-harvest", name: "Turnip harvest", targeted: false, secret: false, maxPerDeck: null, deckBuildable: false, forced: false, rarity: "common", keywords: ["unique"], text: "Three cards are offered. Keep one, or none. The keep joins your deck." },
 };
 
 /** The two builds. A seat picks one before the game and its harvest pool is
@@ -251,6 +253,9 @@ export const isInwardCard = (cardId: string): boolean =>
  *  the rule is learned from the card that has it rather than from somewhere
  *  else the player has to go looking. */
 export interface KeywordDef {
+  /** Its own key, so a lookup's RESULT can be written back as a group id
+   *  without the caller carrying the key alongside it. */
+  id: string;
   name: string;
   noun: string;
   text: string;
@@ -259,17 +264,30 @@ export interface KeywordDef {
   repeats?: true;
   /** Favourable omens doubles what a card of this class does. */
   doubledByOmens?: true;
+  /** The card leaves the deck for good when played - no discard, no reshuffle
+   *  back. For a card whose effect is permanent, or one the game hands out
+   *  again when it is earned again. */
+  consumesSelf?: true;
 }
 
 export const KEYWORDS: Readonly<Record<string, KeywordDef>> = {
   raid: {
+    id: "raid",
     name: "Raid",
     noun: "raid",
     text: "Playing a raid card leaves your turn open for another one - you may keep going while you hold one and a land can spare an army. Favourable omens doubles its damage.",
     repeats: true,
     doubledByOmens: true,
   },
+  unique: {
+    id: "unique",
+    name: "Unique",
+    noun: "unique card",
+    text: "Leaves your deck for good once played. It does not come round again with the discard.",
+    consumesSelf: true,
+  },
   fortify: {
+    id: "fortify",
     name: "Fortify",
     noun: "fortify",
     // No `repeats`: a raid runs out of armies and a heal would run out of
@@ -279,25 +297,25 @@ export const KEYWORDS: Readonly<Record<string, KeywordDef>> = {
   },
 };
 
-/** The keyword a card carries, or null. One lookup, so a surface that explains
- *  keywords never has to know which ones exist. */
-export const keywordOf = (cardId: string): KeywordDef | null => {
-  const id = CARDS[cardId]?.keyword;
-  return id === undefined ? null : KEYWORDS[id] ?? null;
-};
+/** The keywords a card carries, in the order it declares them. One lookup, so
+ *  a surface that explains keywords never has to know which ones exist. */
+export const keywordsOf = (cardId: string): KeywordDef[] =>
+  (CARDS[cardId]?.keywords ?? [])
+    .map((id) => KEYWORDS[id])
+    .filter((def): def is KeywordDef => def !== undefined);
 
-/** Whether a card's keyword turns on `flag`. The one reader of the flags, so
- *  a rule keyed on a keyword is a lookup rather than a list of card ids kept
- *  somewhere else and forgotten. */
+/** Whether ANY keyword this card carries turns on `flag`. The one reader of
+ *  the flags, so a rule keyed on a keyword is a lookup rather than a list of
+ *  card ids kept somewhere else and forgotten. */
 export const keywordHas = (
-  cardId: string, flag: "repeats" | "doubledByOmens",
-): boolean => keywordOf(cardId)?.[flag] === true;
+  cardId: string, flag: "repeats" | "doubledByOmens" | "consumesSelf",
+): boolean => keywordsOf(cardId).some((def) => def[flag] === true);
 
 /** The keyword a spent turn is re-opened for by playing `cardId`, or null
  *  where the card's keyword does not repeat. What the turn-spent gate writes
  *  and reads back, so no rule anywhere names a card. */
 export const repeatGroupOf = (cardId: string): string | null =>
-  keywordHas(cardId, "repeats") ? CARDS[cardId]?.keyword ?? null : null;
+  keywordsOf(cardId).find((def) => def.repeats === true)?.id ?? null;
 
 /** Guard card -> the card it turns aside, once, for whoever posted it.
  *
@@ -316,18 +334,20 @@ export const GUARDS: Readonly<Record<string, string>> = {
 
 /** Cards that LEAVE the deck when played, rather than going to the discard.
  *
- *  A deck here is small and never shuffles anything out, so a card that must
- *  not repeat has to be removed by hand. Growing a land is the one: the
- *  ceiling it raises is permanent, so a copy cycling back round would compound
- *  into a land twice the size of anything on the map off a single pick.
+ *  Derived from the Unique keyword, not written out: a deck here is small and
+ *  never shuffles anything out, so "this does not come round again" is a rule
+ *  the player has to be told, and a keyword is how a card tells them. The set
+ *  exists only so `playCard` can ask its question the way it always has.
  *
- *  A Set beside `ATTACK_CARDS` and `GUARDS` rather than a `CardDef` field, the
- *  same as those two: the rule belongs to a handful of cards and the twenty
- *  that do not care should not have to answer for it. Pinned in
- *  tests/cards.test.ts. */
-export const CONSUMED_CARDS: ReadonlySet<string> = new Set([
-  "prosperous-proliferation",
-]);
+ *  Growing a land is unique because the ceiling it raises is permanent, and a
+ *  copy cycling back round would compound into a land twice the size of
+ *  anything on the map off a single pick. The harvest is unique because the
+ *  turnip bar hands out a fresh one every time it fills, and one that also
+ *  came back through the discard would cash a season nobody farmed. */
+export const CONSUMED_CARDS: ReadonlySet<string> = new Set(
+  Object.values(CARDS).filter((c) => keywordHas(c.id, "consumesSelf"))
+    .map((c) => c.id),
+);
 
 export const isGuardCard = (cardId: string): boolean => cardId in GUARDS;
 

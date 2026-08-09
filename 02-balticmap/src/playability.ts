@@ -1,6 +1,6 @@
 import {
   ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isInwardCard, isMarchCard,
-  isSingleLandHeal, isTributeCard, keywordHas,
+  isSingleLandHeal, isTributeCard, keywordHas, keywordsOf,
 } from "./cards";
 import {
   fullRealmOf, incorporatedRealmOf, overlordChainOf,
@@ -381,6 +381,24 @@ export function attackDamageFor(
   };
 }
 
+/** What this card would take off ONE named land, arrows and readings included.
+ *
+ *  `attackDamageFor` answers per ARROW, which is what a march carries and what
+ *  an arrow label prints. A Great raid sends one arrow per bordering land of
+ *  the realm, so the figure a player reads before aiming is a different
+ *  question, and it has to be asked here rather than at each surface: the card
+ *  tip and the land hover both quote it, and they were quoting one arrow's
+ *  worth for a play that lands three. */
+export function attackImpactOn(
+  view: RulesView, actorFactionId: string, cardId: string, target: string,
+): { damage: number; multiplier: number; arrows: number } {
+  const { damage, multiplier } = attackDamageFor(view, actorFactionId, cardId);
+  const arrows = cardId === "great-raid"
+    ? greatRaidMarches(view, actorFactionId, target).length
+    : 1;
+  return { damage: damage * arrows, multiplier, arrows };
+}
+
 /** What the actor's LEADER adds to this card. Zero unless the leader holds an
  *  ability that boosts the card's own keyword - a people who never learned to
  *  fight behind a chief get nothing from one, however hardened the chief is.
@@ -391,10 +409,10 @@ export function attackDamageFor(
 export function leadershipBonus(
   view: RulesView, actorFactionId: string, cardId: string,
 ): number {
-  const keywordId = CARDS[cardId]?.keyword;
-  if (keywordId === undefined) return 0;
-  if (!boostsKeyword(view.leaderAbilities, actorFactionId, keywordId)) return 0;
-  return view.leadership[actorFactionId] ?? 0;
+  const boosted = keywordsOf(cardId).some(
+    (def) => boostsKeyword(view.leaderAbilities, actorFactionId, def.id),
+  );
+  return boosted ? view.leadership[actorFactionId] ?? 0 : 0;
 }
 
 /** What a Plague would deal to one polygon right now: `PLAGUE_DAMAGE_PER_STACK`

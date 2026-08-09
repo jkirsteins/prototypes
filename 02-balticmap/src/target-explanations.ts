@@ -1,5 +1,6 @@
 import {
-  armyCapOn, attackDamageFor, omensMultiplier, failureRiskOf, freeSitesIn,
+  armyCapOn, attackImpactOn, omensMultiplier,
+  failureRiskOf, freeSitesIn,
   holdsGuard, miasmaHeld, omensHeld, outbreakPolygons, plagueDamageOn,
   plagueMultiplier, respiteExpiry, settlementsIn, subjugationGateOn,
   targetEligibilityFor,
@@ -229,7 +230,9 @@ function availableImpacts(
   targetFactionId: string,
 ): Impact[] {
   if (ATTACK_CARDS.has(cardId)) {
-    const { damage, multiplier } = attackDamageFor(view, actorFactionId, cardId);
+    const { damage, multiplier } = attackImpactOn(
+      view, actorFactionId, cardId, targetFactionId,
+    );
     return [defenseMove(view, targetFactionId, -damage, multiplier)];
   }
   if (isSingleLandHeal(cardId)) {
