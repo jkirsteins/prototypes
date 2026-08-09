@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   ATTACK_CARDS, BASE_RARITY, BUILDS, CARDS, CONSUMED_CARDS, GUARDS,
-  NEUTRAL_POOL, RARITY_TIERS, TRIBUTE_CARDS,
-  guardAgainst, isGuardCard, isTributeCard, playsAgain, rarityForImpact,
-  shuffle, startingDeck,
+  INWARD_CARDS, NEUTRAL_POOL, RARITY_TIERS, SINGLE_LAND_HEALS, TRIBUTE_CARDS,
+  guardAgainst, isGuardCard, isInwardCard, isSingleLandHeal, isTributeCard,
+  playsAgain, rarityForImpact, shuffle, startingDeck,
 } from "../src/cards";
+import { SINGLE_LAND_HEAL } from "../src/defense";
 import { cardTextSegments, plainText, t, type NameLookup } from "../src/rich-text";
 import { seededRng } from "../src/rng";
 
@@ -289,6 +290,38 @@ describe("builds and the neutral pool", () => {
       expect(playsAgain(id)).toBe(again.includes(id));
     }
     expect(playsAgain("no-such-card")).toBe(false);
+  });
+
+  it("pins the single-land heals to the amounts they restore", () => {
+    // The set is the amount table's key set: a heal in one and not the other
+    // would be a card whose preview and whose effect disagree.
+    expect([...SINGLE_LAND_HEALS].sort())
+      .toEqual(["fortify", "hillfort", "strong-fortify"]);
+    for (const id of SINGLE_LAND_HEALS) {
+      expect(CARDS[id], id).toBeDefined();
+      expect(isSingleLandHeal(id), id).toBe(true);
+      expect(SINGLE_LAND_HEAL[id], id).toBeGreaterThan(0);
+    }
+    expect(isSingleLandHeal("raid")).toBe(false);
+  });
+
+  it("pins the inward cards - what is aimed at your own realm", () => {
+    // The click, the targeting cues and the hover all ask this one question,
+    // and only an INCORPORATED land tells a right answer from a wrong one:
+    // resolved politically, a card aimed at an annexed land lands on its
+    // annexer's home instead.
+    expect([...INWARD_CARDS].sort()).toEqual([
+      "fortify", "found-settlement", "hillfort", "prosperous-proliferation",
+      "strong-fortify",
+    ]);
+    for (const id of INWARD_CARDS) {
+      expect(CARDS[id], id).toBeDefined();
+      expect(CARDS[id].targeted, id).toBe(true);
+      expect(isInwardCard(id), id).toBe(true);
+    }
+    // Every heal is inward; not everything inward is a heal.
+    for (const id of SINGLE_LAND_HEALS) expect(INWARD_CARDS.has(id), id).toBe(true);
+    expect(isInwardCard("subjugate")).toBe(false);
   });
 
   it("pins the one-per-deck set - what the harvest offer stops re-offering", () => {

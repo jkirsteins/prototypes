@@ -378,6 +378,21 @@ describe("targetImpactLines", () => {
       .toBe("+3 Defense (59 -> 60)");
   });
 
+  it("previews every single-land heal by its own amount", () => {
+    // The whole class, not Hillfort alone: a heal the preview does not know
+    // about falls through to "Available.", which is a card that says nothing
+    // about what it would do.
+    const view = v({ defense: { alpha: 40 } });
+    for (const [cardId, line] of [
+      ["fortify", "+1 Defense (40 -> 41)"],
+      ["strong-fortify", "+2 Defense (40 -> 42)"],
+      ["hillfort", "+3 Defense (40 -> 43)"],
+    ] as const) {
+      expect(shown(targetImpactLines(view, "alpha", cardId, "alpha"))[1], cardId)
+        .toBe(line);
+    }
+  });
+
   it("previews a disease stack as your own count there, +1", () => {
     expect(shown(targetImpactLines(v(), "alpha", "spread-disease", "beta")))
       .toEqual(["If Spread disease played here:", "+1 Disease (0 -> 1)"]);
@@ -470,9 +485,15 @@ describe("targetImpactLines", () => {
     expect(targetImpactLines(v(), "alpha", "found-settlement", "beta")).toEqual([
       { text: "Not in your realm.", tone: "bad" },
     ]);
-    expect(targetImpactLines(v(), "alpha", "hillfort", "beta")).toEqual([
-      { text: "Not in your realm.", tone: "bad" },
-    ]);
+    // Every inward card, so the answer cannot be right for one heal and
+    // "Out of reach." for the two beside it.
+    for (const cardId of [
+      "hillfort", "fortify", "strong-fortify", "prosperous-proliferation",
+    ]) {
+      expect(targetImpactLines(v(), "alpha", cardId, "beta"), cardId).toEqual([
+        { text: "Not in your realm.", tone: "bad" },
+      ]);
+    }
   });
 
   it("a lord may raid its own vassal - the aim previews rather than refusing", () => {

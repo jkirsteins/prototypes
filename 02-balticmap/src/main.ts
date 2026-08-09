@@ -39,7 +39,9 @@ import {
   passiveLines, plaguePreviewLines, respiteLines, settlementBlock,
   targetImpactLines, targetOddsLines,
 } from "./target-explanations";
-import { ATTACK_CARDS, CARDS, type Strategy } from "./cards";
+import {
+  ATTACK_CARDS, CARDS, isInwardCard, isMarchCard, type Strategy,
+} from "./cards";
 import { buildOffer, destroyOffer, type HarvestChoice } from "./harvest";
 import { createHud, LOG_PREFS_KEY, type HudCallbacks } from "./hud";
 import { createDeckScreen } from "./deck-screen";
@@ -266,19 +268,16 @@ if (boot !== null) {
   }
 }
 let armed: number | null = null; // hand index of the armed targeted card
-/** The land an armed Raid will march out of, once the player has clicked it.
+/** The land an armed march card will send its army out of, once the player
+ *  has clicked it.
  *
- *  Raid is the one card aimed twice: an arrow has a tail as well as a head,
+ *  A march card is aimed twice: an arrow has a tail as well as a head,
  *  and which of your lands the army leaves from is a real decision, because
  *  that is the land a counter-raid comes back at. Null means the first click
  *  is still to come and the map is lighting SOURCES; set means it is lighting
  *  the targets that source can reach. Cleared by `disarm` along with `armed`,
  *  so the two can never disagree about which step is live. */
 let armedSource: string | null = null;
-/** The Turnip harvest's rolled offer, cached from the first click on the
- *  card until any play commits. Cancelling the modal keeps it, so closing
- *  and reopening cannot fish for a better roll. */
-let harvestRoll: string[] | null = null;
 /** Non-null while the harvest offer modal owns the input. `index` is the
  *  harvest card's hand index, held so the pick commits the same play. */
 let pendingHarvest: { index: number } | null = null;
@@ -1747,16 +1746,14 @@ function hoverLines(region: Region): TooltipLine[] {
   // `region.faction`, not the resolved `f`: settlements belong to the land,
   // so an absorbed land must report its own count and not its absorber's.
   lines.push(...settlementBlock(viewOf(game), region.faction));
-  // An armed card's preview aims at the POLYGON for attack and disease
-  // cards, the resolved faction for the political ones - the same id the
-  // click will commit.
+  // An armed card's preview aims at the POLYGON for attack, disease and
+  // inward cards, the resolved faction for the political ones - the same id
+  // the click will commit, through the same predicate.
   if (armed !== null) {
     const cardId = human.hand[armed];
-    const aim = ATTACK_CARDS.has(cardId) || !CARDS[cardId]?.targeted ||
-      cardId === "spread-disease" || cardId === "localized-outbreak" ||
-      cardId === "hillfort"
-        ? region.faction
-        : f;
+    const aim = aimsAtPolygons(cardId) || !CARDS[cardId]?.targeted
+      ? region.faction
+      : f;
     lines.push(...targetImpactLines(
       viewOf(game), human.factionId, cardId, aim,
     ));
@@ -1799,19 +1796,23 @@ function targetingLive(): boolean {
 }
 
 /** Whether the armed card aims at POLYGONS (a land's own id, annexed or not)
- *  rather than at politically resolved factions. Attack, disease and heal
+ *  rather than at politically resolved factions. Attack, disease and inward
  *  cards hit polygons; Subjugate, Incorporate and Assassinate ruler aim at
  *  factions. One predicate, shared by the hover preview, the targeting
- *  classes and the click, so the three cannot resolve a click differently. */
+ *  classes and the click, so the three cannot resolve a click differently -
+ *  and it asks what the card IS, so a new heal or a new attack does not have
+ *  to find this line. */
 function aimsAtPolygons(cardId: string): boolean {
-  return ATTACK_CARDS.has(cardId) || cardId === "spread-disease" ||
-    cardId === "localized-outbreak" || cardId === "hillfort";
+  return ATTACK_CARDS.has(cardId) || isInwardCard(cardId) ||
+    cardId === "spread-disease" || cardId === "localized-outbreak";
 }
 
-/** Whether this card is aimed twice - source first, then target. Only Raid:
- *  Great raid assigns its own sources, and no other card sends an army. */
+/** Whether this card is aimed twice - source first, then target. The march
+ *  cards, and only those: an arrow has a tail, and which land the army leaves
+ *  from is the player's decision. Great raid assigns its own sources, and no
+ *  other card sends an army. */
 function needsSource(cardId: string): boolean {
-  return cardId === "raid";
+  return isMarchCard(cardId);
 }
 
 /** The status line for the step the map is currently asking about, or
@@ -2691,13 +2692,20 @@ function attachHostWire(wire: Wire): void {
 /** Deals once both humans have picked. Every seat gets the same starting
  *  deck now, so the guest's pick carries only its BUILD: the deal rolls the
  *  guest's seat a strategy like any AI seat (keeping the rng draw count a
- *  frozen contract) and the chosen build is stamped over it after. */
+ *  frozen contract) and the chosen build is stamped over it after.
+ *
+ *  The guest's land is RESERVED, because only the acting factions keep a
+ *  leader and a land without one takes no turn: dealt like any other rival it
+ *  would be drawn into the acting set or not, and a guest whose land was not
+ *  drawn would sit through the whole game unable to play. */
 function tryDeal(): void {
   if (net.role !== "host" || net.session === null) return;
   const pick = net.session.guestPick();
   if (net.hostPick === null || pick === null) return;
   if (game.phase !== "pick-faction") return;
-  game = pickFaction(game, net.hostPick, rng);
+  game = pickFaction(game, net.hostPick, rng, {
+    reservedFactionIds: [pick.factionId],
+  });
   const guestSeat = seatOfFaction(game, pick.factionId);
   net.guestSeat = guestSeat;
   game = {
@@ -2947,9 +2955,9 @@ window.addEventListener("keydown", (e) => {
 
 /** Plays a targeted card that has exactly one legal target, without asking.
  *  A choice between one thing is not a choice - it is a click the game already
- *  knows the answer to. Raid is excluded: its first pick is the land the army
- *  leaves from, and a realm with one legal SOURCE may still have several
- *  places to send it. */
+ *  knows the answer to. The march cards are excluded: their first pick is the
+ *  land the army leaves from, and a realm with one legal SOURCE may still have
+ *  several places to send it. */
 function autoAimIfOnlyOne(index: number): boolean {
   const human = localHuman();
   if (!human) return false;
@@ -3051,8 +3059,9 @@ const interaction = attachInteraction(svg, regionPaths, data, {
     } else tooltip.hide();
   },
   interceptPress(regionId, e) {
-    // Only while a Raid is armed and the press lands on a land its armies can
-    // actually leave from. Everything else is a pan, as it always was.
+    // Only while a march card is armed and the press lands on a land its
+    // armies can actually leave from. Everything else is a pan, as it always
+    // was.
     const human = localHuman();
     if (!human || armed === null || regionId === null) return false;
     if (!needsSource(human.hand[armed])) return false;
@@ -3112,9 +3121,9 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       const idx = armed;
       const cardId = localHuman().hand[idx];
       const raw = regionId !== null ? factionByRegion.get(regionId) : undefined;
-      // Raid's first click picks the tail, not the head. It commits nothing -
-      // the card is still in hand, and clicking the same land again, or the
-      // card again, backs out - so the step is safe to explore.
+      // A march card's first click picks the tail, not the head. It commits
+      // nothing - the card is still in hand, and clicking the same land again,
+      // or the card again, backs out - so the step is safe to explore.
       if (needsSource(cardId) && armedSource === null) {
         if (raw !== undefined && armedTargets().includes(raw)) {
           armedSource = raw;

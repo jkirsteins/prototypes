@@ -1,6 +1,7 @@
 import {
-  CARDS, CONSUMED_CARDS, guardAgainst, isGuardCard, isMarchCard, isTributeCard,
-  playsAgain, startingDeck, shuffle, TRIBUTE_CARDS, type Rng, type Strategy,
+  CARDS, CONSUMED_CARDS, guardAgainst, isGuardCard, isMarchCard,
+  isSingleLandHeal, isTributeCard, playsAgain, startingDeck, shuffle,
+  TRIBUTE_CARDS, type Rng, type Strategy,
 } from "./cards";
 
 import {
@@ -9,14 +10,14 @@ import {
 } from "./relations";
 import {
   addDisease, applyDamage, applyHeal, clearDiseaseOf, DEFAULT_DEFENSE_MAX,
-  defenseMaxOf, defenseOf, FORTIFY_HEAL, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
-  independenceGateOpen, PLAGUE_DAMAGE_PER_STACK, LAND_GROWTH, STRONG_BONUS,
+  defenseMaxOf, defenseOf, HARVEST_FEAST_HEAL, independenceGateOpen,
+  PLAGUE_DAMAGE_PER_STACK, LAND_GROWTH, SINGLE_LAND_HEAL,
   subjugationGateOpen,
   transferAllDiseaseTo, turnipThresholdFor, WAR_COUNCIL_LEADERSHIP,
   type Defense, type Disease,
 } from "./defense";
 import {
-  armyCapOn, attackDamageFor, attackMultiplier, attackReach,
+  attackDamageFor, attackMultiplier, attackReach,
   ESCAPE_RESPITE_TURNS, freeArmiesFor, greatRaidMarches, marchSourcesAgainst,
   respiteExpiry,
   marchTargetsFrom, outbreakPolygons, plagueMultiplier, playableSet,
@@ -24,7 +25,7 @@ import {
   type Guards, type Omens, type RulesView,
 } from "./playability";
 import {
-  addArmy, addClaim, addMarch, axesOf, axisKeyOf, claimKeyOf, clearClaims,
+  addClaim, addMarch, axesOf, axisKeyOf, claimKeyOf, clearClaims,
   clearMarches,
   lapsedClaimsOf, lapsedMarchesOf, resolveAxis,
   type Armies, type Claims, type Marches,
@@ -33,7 +34,7 @@ import {
   autoHarvestChoice, harvestCard, type HarvestChoice,
 } from "./harvest";
 import {
-  damageAfterTerrain, hasPassive, playsTurns, quietPassives,
+  damageAfterTerrain, hasPassive, quietPassives,
   RESTLESS_RAID_CHANCE, seedTerrain, stripOnCapture, WILD_LANDS_HEAL,
   WILD_LANDS_HEAL_CHANCE, type Passives,
 } from "./passives";
@@ -1484,17 +1485,15 @@ export function playCard(
       });
     }
     disease = transferAllDiseaseTo(disease, p.factionId);
-  } else if (cardId === "hillfort" && targetId !== undefined) {
-    landHeal(targetId, HILLFORT_HEAL);
+  } else if (isSingleLandHeal(cardId) && targetId !== undefined) {
+    // One branch for the whole class: which card it is decides only how much,
+    // and that number is the table the hover quoted before the click.
+    landHeal(targetId, SINGLE_LAND_HEAL[cardId]);
   } else if (cardId === "harvest-feast") {
     const realm = fullRealmOf(p.factionId, overlords, incorporated);
     for (const polygon of state.factionIds.filter((f) => realm.has(f))) {
       landHeal(polygon, HARVEST_FEAST_HEAL);
     }
-  } else if (cardId === "fortify" && targetId !== undefined) {
-    landHeal(targetId, FORTIFY_HEAL);
-  } else if (cardId === "strong-fortify" && targetId !== undefined) {
-    landHeal(targetId, FORTIFY_HEAL + STRONG_BONUS);
   } else if (cardId === "assassinate-ruler" && targetId !== undefined) {
     const out = replaceRuler(rulers, state.ethnicities, targetId, state.turn);
     rulers = out.rulers;

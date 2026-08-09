@@ -1,3 +1,4 @@
+import { SINGLE_LAND_HEAL } from "./defense";
 import { card, t, type Segment } from "./segments";
 
 /** One pack draw tier. The meta progression retired with the defense-score
@@ -197,13 +198,31 @@ export const isMarchCard = (cardId: string): boolean => MARCH_CARDS.has(cardId);
  *  for the reason `MARCH_CARDS` is one: legality asks two questions of every
  *  one of them - it aims inward, and a land already at its ceiling is no
  *  target - and a heal left out of the set aims OUTWARD, which is a card that
- *  refuses your own lands and repairs a rival's. */
-export const SINGLE_LAND_HEALS: ReadonlySet<string> = new Set([
-  "hillfort", "fortify", "strong-fortify",
-]);
+ *  refuses your own lands and repairs a rival's.
+ *
+ *  Derived from the amount table in src/defense.ts rather than written out
+ *  again, so a heal cannot be in one and missing from the other. */
+export const SINGLE_LAND_HEALS: ReadonlySet<string> = new Set(
+  Object.keys(SINGLE_LAND_HEAL),
+);
 
 export const isSingleLandHeal = (cardId: string): boolean =>
   SINGLE_LAND_HEALS.has(cardId);
+
+/** The cards aimed at a land of the actor's OWN realm rather than at a rival.
+ *
+ *  Three surfaces ask this one question and must agree: legality resolves the
+ *  candidates through the realm instead of `reachOf`, the hover explains a
+ *  miss as "not in your realm", and the click aims at the POLYGON. An
+ *  incorporated land is where they part - it sits in its annexer's realm under
+ *  its own id, so a card resolved politically there heals, grows or builds in
+ *  the annexer's home instead of the land the player clicked. */
+export const INWARD_CARDS: ReadonlySet<string> = new Set([
+  ...SINGLE_LAND_HEALS, "found-settlement", "prosperous-proliferation",
+]);
+
+export const isInwardCard = (cardId: string): boolean =>
+  INWARD_CARDS.has(cardId);
 
 /** Whether playing `cardId` re-opens the turn for another copy of itself
  *  (`CardDef.playsAgain`). The one reader of the field: the turn-spent gate

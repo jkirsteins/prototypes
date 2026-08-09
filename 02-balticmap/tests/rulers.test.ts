@@ -202,6 +202,22 @@ describe("the leader gate", () => {
     }
   });
 
+  it("seats a leader on a reserved land - the multiplayer guest's pick", () => {
+    // A guest picks its own land, and the deal must not then decide that land
+    // takes no turns: the reservation is what makes the pick playable, and
+    // without it a guest can sit through a whole game unable to act.
+    const quiet = leaderless(dealt())[0];
+    const g = pickFaction(
+      chooseBuild(startGame(newGame(SIX)), "warpath", seededRng(1)),
+      "alpha", seededRng(1), { reservedFactionIds: [quiet] },
+    );
+    expect(hasRuler(g.rulers, quiet)).toBe(true);
+    expect(playsTurns(g.passives, quiet)).toBe(true);
+    // The table is still MAX_ACTIVE wide: a reservation displaces a drawn
+    // land rather than seating one more.
+    expect(Object.keys(g.rulers)).toHaveLength(MAX_ACTIVE);
+  });
+
   it("passes over a leaderless seat when the turn moves on", () => {
     let g = dealt();
     const quiet = new Set(leaderless(g));

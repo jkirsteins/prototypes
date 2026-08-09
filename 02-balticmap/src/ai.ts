@@ -6,7 +6,7 @@ import {
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
 import {
-  attackDamageFor, attackReach, borderPolygonsOf, freeArmiesFor, holdsGuard,
+  attackDamageFor, borderPolygonsOf, holdsGuard,
   marchSourcesAgainst, plagueMultiplier, playableSet,
   validTargetsFor, type RulesView,
 } from "./playability";
@@ -764,10 +764,12 @@ function pestilenceBuild(
   return null;
 }
 
-/** Ceiling on plays per unlimited AI turn. The refill happens only at turn
- *  start, so the hand itself bounds the loop; the cap is belt-and-braces
- *  against a future card that adds cards to the hand mid-turn. */
-const MAX_AI_PLAYS = 16;
+/** Ceiling on plays per AI turn. The refill happens only at turn start, so
+ *  the hand itself bounds the loop; the cap is belt-and-braces against a
+ *  future card that adds cards to the hand mid-turn. Exported because the
+ *  balance harness walks a turn the same way and must not bound it
+ *  differently. */
+export const MAX_AI_PLAYS = 16;
 
 /** One WHOLE turn for the current seat, in either mode - every caller wraps
  *  this in `advance`, so a partial turn here would stall the game. */

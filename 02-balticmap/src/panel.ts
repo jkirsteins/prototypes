@@ -85,27 +85,20 @@ function fillText(parent: HTMLElement, line: TooltipLine): void {
   }
 }
 
-/** Gap between the cursor and the tip, and the smallest margin the tip is
- *  allowed to keep from the edge of the window. */
-const TIP_GAP_PX = 12;
-const TIP_MARGIN_PX = 4;
-
 export function createTooltip(container: HTMLElement): Tooltip {
   const el = document.createElement("div");
   el.className = "tooltip hidden";
   container.appendChild(el);
   /** Where the tip was last opened. `redraw` has no cursor of its own - it is
    *  driven by the game changing, not by the mouse moving - and re-placing from
-   *  this keeps the flip and the clamp right as the content grows or shrinks. */
+   *  this keeps the tip on the right side as the content grows or shrinks. */
   let lastX = 0;
   let lastY = 0;
 
-  /** Below and right of the cursor, flipped to the other side when that would
-   *  run off the window, then clamped so it can never be pushed off the near
-   *  edge either. Must run AFTER the tip is unhidden and filled: a hidden
-   *  element measures 0 and would never flip. Under happy-dom every measurement
-   *  is 0, so the flip is simply a no-op there - the tests assert placement,
-   *  Chrome is where the flip is confirmed. */
+  /** Parks the tip against whichever side of the window the pointer is not
+   *  on. The side is the whole placement: the CSS owns the offsets, so
+   *  nothing here measures anything and the tip cannot be pushed off an edge
+   *  by its own contents. */
   const place = (clientX: number, _clientY: number): void => {
     // Parked at a screen edge, never under the pointer. A tip that follows the
     // cursor sits on top of the very land being pointed at - unreadable while

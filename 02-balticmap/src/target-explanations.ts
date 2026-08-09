@@ -12,9 +12,11 @@ import {
   type TargetEligibility,
 } from "./playability";
 import {
-  defenseMaxOf, defenseOf, HILLFORT_HEAL, INDEPENDENCE_GATE,
+  defenseMaxOf, defenseOf, INDEPENDENCE_GATE, SINGLE_LAND_HEAL,
 } from "./defense";
-import { ATTACK_CARDS, CARDS, isGuardCard } from "./cards";
+import {
+  ATTACK_CARDS, CARDS, isGuardCard, isInwardCard, isSingleLandHeal,
+} from "./cards";
 import { PASSIVES, passivesOn, type Passives } from "./passives";
 import { passive } from "./segments";
 import { count, plural } from "./plural";
@@ -234,8 +236,8 @@ function availableImpacts(
     const { damage, multiplier } = attackDamageFor(view, actorFactionId, cardId);
     return [defenseMove(view, targetFactionId, -damage, multiplier)];
   }
-  if (cardId === "hillfort") {
-    return [defenseMove(view, targetFactionId, HILLFORT_HEAL, 1)];
+  if (isSingleLandHeal(cardId)) {
+    return [defenseMove(view, targetFactionId, SINGLE_LAND_HEAL[cardId], 1)];
   }
   if (cardId === "spread-disease") {
     const held = view.disease[targetFactionId]?.[actorFactionId] ?? 0;
@@ -287,7 +289,7 @@ export function targetImpactLines(
   // Your own land, before anything else - unless the card is aimed inward,
   // where its own land is a real candidate and the block there (no dot left,
   // already at full defense) is the reason to print.
-  const inwardCard = cardId === "found-settlement" || cardId === "hillfort";
+  const inwardCard = isInwardCard(cardId);
   if (
     entry.state !== "available" &&
     targetFactionId === actorFactionId &&
@@ -297,10 +299,7 @@ export function targetImpactLines(
   }
   if (entry.state === "irrelevant") {
     return [{
-      text:
-        cardId === "found-settlement" || cardId === "hillfort"
-          ? "Not in your realm."
-          : "Out of reach.",
+      text: inwardCard ? "Not in your realm." : "Out of reach.",
       tone: "bad",
     }];
   }

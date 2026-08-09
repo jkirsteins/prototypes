@@ -86,6 +86,17 @@ export const FORTIFY_HEAL = 1;
  *  card the seat already holds five of - not something different in kind. */
 export const STRONG_BONUS = 1;
 
+/** How much each single-land heal restores, by card id. One table, because
+ *  three things read it: the play resolves through it, the hover quotes it
+ *  before the click, and `SINGLE_LAND_HEALS` in src/cards.ts is its key set.
+ *  A heal whose amount lived at the play alone would preview as a card that
+ *  does nothing in particular. */
+export const SINGLE_LAND_HEAL: Readonly<Record<string, number>> = {
+  "hillfort": HILLFORT_HEAL,
+  "fortify": FORTIFY_HEAL,
+  "strong-fortify": FORTIFY_HEAL + STRONG_BONUS,
+};
+
 /** polygon id -> current defense. A key is present ONLY while the polygon is
  *  damaged; absent means "at defenseMax" - the missing-key-means-pristine
  *  convention the old Relations store kept for 0. `applyHeal` deletes a key

@@ -4,11 +4,11 @@ import { defenseMaxOf, factionAdjacencyOf, siteCapsOf } from "./adjacency";
 import { CARDS, GUARDS, guardAgainst, type Rng, type Strategy } from "./cards";
 import {
   advance, chooseBuild, discardCard, newGame, pickFaction, playCard,
-  startGame, viewOf, type GameState,
+  startGame, turnOpen, viewOf, type GameState,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
 import { seededRng } from "./rng";
-import { aiTakeTurn, chooseAction } from "./ai";
+import { aiTakeTurn, chooseAction, MAX_AI_PLAYS } from "./ai";
 import { fullRealmOf } from "./relations";
 
 const data = rawData as MapData;
@@ -415,34 +415,53 @@ export function runWorld(opts: WorldOptions): WorldSummary {
   while (state.phase === "playing" && state.turn <= opts.turnCap) {
     const p = state.players[state.current];
     const actor = p.factionId;
-    // The targeting metrics need the alternatives the policy had at decision
-    // time, which the log does not record, so the action is inspected before
-    // it is applied. The equivalence "`aiTakeTurn` is exactly `chooseAction`
-    // followed by one of discardCard/playCard" holds only for the
-    // standard-rules arm, and sim always runs DEFAULT_RULES.
-    const action = chooseAction(state);
-    if (action.type === "play") {
-      const cardId = p.hand[action.cardIndex];
-      playsByCard[cardId] = (playsByCard[cardId] ?? 0) + 1;
-      if (CARDS[cardId]?.targeted === true) {
-        const legal = validTargetsFor(viewOf(state), actor, cardId);
-        if (legal.length > 1) {
-          targetedPlays++;
-          if (action.targetId === legal[0]) firstLegalTargetPlays++;
+    // The seat's WHOLE turn, walked the way `aiTakeTurn` walks it: a card
+    // carrying `playsAgain` leaves the turn open for another of its own kind,
+    // and a harness that stopped after one play would count a seat's raids as
+    // one raid. The loop is inlined rather than delegated because the
+    // targeting metrics need the alternatives the policy had at decision
+    // time, which the log does not record - so each action is inspected
+    // before it is applied. `aiTakeTurn`'s other arm is the unlimited rule
+    // set, which the sim never runs.
+    let acted = state;
+    for (let plays = 0; acted.phase === "playing" && plays < MAX_AI_PLAYS; plays++) {
+      // The state before the play, kept so the metrics below read the board
+      // the policy decided on. A GameState is immutable, so asking it after
+      // the play still answers "what else was legal at the time".
+      const before = acted;
+      const action = chooseAction(before);
+      const next =
+        action.type === "discard"
+          ? discardCard(before, action.cardIndex)
+          : playCard(before, action.cardIndex, rng, action.targetId, {
+              ...(action.sourceId !== undefined
+                ? { sourceId: action.sourceId }
+                : {}),
+            });
+      // A refused play returns the state unchanged. Counting it would inflate
+      // the play share with a card that never left the hand.
+      if (next === before) break;
+      if (action.type === "play") {
+        const cardId = before.players[before.current].hand[action.cardIndex];
+        playsByCard[cardId] = (playsByCard[cardId] ?? 0) + 1;
+        if (CARDS[cardId]?.targeted === true) {
+          const legal = validTargetsFor(viewOf(before), actor, cardId);
+          if (legal.length > 1) {
+            targetedPlays++;
+            if (action.targetId === legal[0]) firstLegalTargetPlays++;
+          }
         }
       }
+      acted = next;
+      if (!turnOpen(acted)) break;
     }
-    const next =
-      action.type === "discard"
-        ? discardCard(state, action.cardIndex)
-        : playCard(state, action.cardIndex, rng, action.targetId);
-    if (!next.playedThisTurn) {
+    if (!acted.playedThisTurn) {
       throw new Error(
         `stuck turn: seed ${opts.seed}, turn ${state.turn}, actor ${actor}, ` +
           `hand [${p.hand.join(", ")}]`,
       );
     }
-    state = next.phase === "playing" ? advance(next, rng) : next;
+    state = acted.phase === "playing" ? advance(acted, rng) : acted;
     largestRealm = Math.max(largestRealm, biggestRealm(state));
   }
   const unified = state.log.find((e) => e.type === "unified");

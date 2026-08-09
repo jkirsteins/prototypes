@@ -41,12 +41,15 @@ function makeHost(rng: Rng) {
   };
 }
 
-/** Deals exactly as main.ts's tryDeal: pickFaction rolls every AI seat a
- *  strategy (keeping the rng draw count a frozen contract), then the guest's
- *  chosen build is stamped over its seat. */
+/** Deals exactly as main.ts's tryDeal: the guest's land is reserved so it is
+ *  one of the factions that act, pickFaction rolls every AI seat a strategy
+ *  (keeping the rng draw count a frozen contract), then the guest's chosen
+ *  build is stamped over its seat. */
 function deal(h: ReturnType<typeof makeHost>, rng: Rng): number {
   const pick = h.picks[0];
-  let g = pickFaction(h.game(), "alpha", rng);
+  let g = pickFaction(h.game(), "alpha", rng, {
+    reservedFactionIds: [pick.factionId],
+  });
   const guestSeat = seatOfFaction(g, pick.factionId);
   g = {
     ...g,

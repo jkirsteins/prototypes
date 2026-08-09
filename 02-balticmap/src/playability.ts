@@ -1,5 +1,5 @@
 import {
-  ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isMarchCard,
+  ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isInwardCard, isMarchCard,
   isSingleLandHeal, isTributeCard,
 } from "./cards";
 import {
@@ -507,9 +507,7 @@ export function targetEligibilityFor(
   const polygonCard =
     isMarchCard(cardId) || cardId === "spread-disease" ||
     cardId === "localized-outbreak";
-  const inward =
-    cardId === "found-settlement" || isSingleLandHeal(cardId) ||
-    cardId === "prosperous-proliferation";
+  const inward = isInwardCard(cardId);
   const vassalCard = cardId === "incorporate";
 
   // Every polygon a free army of the actor's borders, computed once for the
