@@ -377,6 +377,27 @@ export function eventSegments(
         t("The disease on "), faction(e.targetFactionId ?? ""),
         t(" changes hands"),
       ];
+    case "march-resolved":
+      // Invariant subject like `damaged`, and for a stronger reason: this line
+      // does not nest under a play, so it has to name both ends of the arrow
+      // itself. `sourceFactionId` is the land the winning army came out of,
+      // which on a won counter is the land that was being attacked - so the
+      // sentence stays true whichever way the clash went. The numbers ride in
+      // the impactText suffix as always.
+      return e.clash === undefined
+        ? [
+            card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
+            t(" falls on "), faction(e.targetFactionId ?? ""),
+          ]
+        : [
+            card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
+            t(" breaks through against "), faction(e.targetFactionId ?? ""),
+          ];
+    case "march-lapsed":
+      return [
+        card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
+        t(" against "), faction(e.targetFactionId ?? ""), t(" comes to nothing"),
+      ];
     case "harvest-earned":
       // The bar crossing. "a" reads oddly against a plural-looking name, but
       // the card is one card, and the article is what says a COPY arrived.

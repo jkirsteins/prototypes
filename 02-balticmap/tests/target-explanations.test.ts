@@ -33,6 +33,7 @@ const v = (partial: Partial<RulesView> = {}): RulesView => ({
   factionIds: ORDER, turn: 1, guards: {}, omens: {},
   siteCaps: {}, settlements: {}, wealth: {}, respites: {}, leadership: {},
   defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
+  marches: {}, armies: {},
   ...partial,
 });
 

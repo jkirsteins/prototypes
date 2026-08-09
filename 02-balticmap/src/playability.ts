@@ -10,6 +10,7 @@ import {
   RAID_DAMAGE, SUBJUGATION_GATE, subjugationGateOpen,
   type Defense, type Disease,
 } from "./defense";
+import { freeArmiesOn, type Armies, type Marches } from "./marches";
 import { activeExpiry } from "./timed";
 
 /** Settlements a land supports - the one standing there since the map was
@@ -79,6 +80,12 @@ export interface RulesView {
   miasma: Readonly<Record<string, number>>;
   /** Faction id -> Grow turnips plays since the last harvest was earned. */
   turnips: Record<string, number>;
+  /** Declared-but-unlanded attacks, keyed by direction (src/marches.ts). Read
+   *  here because an army already out on a march cannot be spent on a second
+   *  one, which makes reach an army question as well as an adjacency one. */
+  marches: Marches;
+  /** Polygon id -> armies stationed; absent = ARMIES_PER_POLYGON. */
+  armies: Armies;
 }
 
 /** Whether `factionId` is holding `guardCardId` unspent. */
@@ -202,6 +209,90 @@ export function attackReach(view: RulesView, actor: string): Set<string> {
   return out;
 }
 
+/** Lands the actor could march an army OUT of: full-realm members holding a
+ *  free army that border something the actor may attack. The tail of every
+ *  arrow the actor can draw.
+ *
+ *  The realm half is `fullRealmOf`, not `incorporatedRealmOf` - a lord marches
+ *  out of its vassals' lands too, the same pyramid rule `attackReach` follows
+ *  on the other end. */
+export function marchSourcesFor(view: RulesView, actor: string): string[] {
+  const reach = attackReach(view, actor);
+  const realm = fullRealmOf(actor, view.overlords, view.incorporated);
+  return view.factionIds.filter(
+    (land) =>
+      realm.has(land) &&
+      freeArmiesOn(view.armies, view.marches, land) > 0 &&
+      (view.adjacency[land] ?? []).some((adj) => reach.has(adj)),
+  );
+}
+
+/** What an army standing in `source` can be aimed at: everything in the
+ *  actor's attack reach that `source` borders. An army marches to a
+ *  neighbouring land, so the arrow is always one step long. */
+export function marchTargetsFrom(
+  view: RulesView, actor: string, source: string,
+): string[] {
+  const reach = attackReach(view, actor);
+  const adjacent = new Set(view.adjacency[source] ?? []);
+  return view.factionIds.filter((land) => reach.has(land) && adjacent.has(land));
+}
+
+/** Every march Great raid would declare right now, in faction order: one arrow
+ *  per bordering polygon, exactly the set the card's text promises.
+ *
+ *  It is ONE sally, not a raid per land. A land pays an army to march out and
+ *  then strikes everything it borders, so the first arrow out of each land
+ *  holds that land's army (`holdsArmy`) and the rest of its fan ride along
+ *  free - which is why targets are walked in faction order and a land already
+ *  sallying is preferred over a fresh one. A border polygon that no land with
+ *  a free army can reach is skipped, so a realm whose frontier armies are all
+ *  out on marches cannot great-raid at all.
+ *
+ *  Legality, resolution and the arrow preview all call this rather than
+ *  re-deriving it: the promise the card tip makes and the arrows that appear
+ *  cannot drift apart if there is only one list. */
+export function greatRaidMarches(
+  view: RulesView, actor: string,
+): { from: string; to: string; holdsArmy: boolean }[] {
+  const realm = fullRealmOf(actor, view.overlords, view.incorporated);
+  const border = borderPolygonsOf(view, actor);
+  const sallying = new Set<string>();
+  const out: { from: string; to: string; holdsArmy: boolean }[] = [];
+  for (const target of view.factionIds) {
+    if (!border.has(target)) continue;
+    const neighbours = new Set(view.adjacency[target] ?? []);
+    // A land already out on this sally costs nothing more. Only when no such
+    // land borders the target does another army have to leave home.
+    const riding = view.factionIds.find(
+      (land) => neighbours.has(land) && sallying.has(land),
+    );
+    if (riding !== undefined) {
+      out.push({ from: riding, to: target, holdsArmy: false });
+      continue;
+    }
+    const fresh = view.factionIds.find(
+      (land) =>
+        neighbours.has(land) && realm.has(land) &&
+        freeArmiesOn(view.armies, view.marches, land) > 0,
+    );
+    if (fresh === undefined) continue;
+    sallying.add(fresh);
+    out.push({ from: fresh, to: target, holdsArmy: true });
+  }
+  return out;
+}
+
+/** Which of the actor's lands could send an army at `target`. Empty means the
+ *  target is in reach on the map but out of reach in fact: every land that
+ *  borders it has its army already out. */
+export function marchSourcesAgainst(
+  view: RulesView, actor: string, target: string,
+): string[] {
+  const adjacent = new Set(view.adjacency[target] ?? []);
+  return marchSourcesFor(view, actor).filter((land) => adjacent.has(land));
+}
+
 /** What the actor's held omens readings multiply an attack card by:
  *  `2 ** readings`, 1 for anything outside ATTACK_CARDS. Spent as a whole
  *  stack by the next attack, exactly the reserve shape omens have always
@@ -308,6 +399,11 @@ export type TargetBlockReason =
   /** The land already holds every settlement the actor's people can support. */
   | { code: "needs-population"; have: number; allowance: number }
   | { code: "no-free-site" }
+  /** Raid: the land borders the actor's realm, but every realm land touching
+   *  it already has its army out on a march. Reach on the map, out of reach in
+   *  fact - and unlike the others here, the actor fixes it by waiting a turn
+   *  for an army to come home, or by raising one. */
+  | { code: "no-army" }
   | { code: "liege" }
   | { code: "incorporated" }
   | { code: "self" }
@@ -366,6 +462,18 @@ export function targetEligibilityFor(
   const inward = cardId === "found-settlement" || cardId === "hillfort";
   const vassalCard = cardId === "incorporate";
 
+  // Every polygon a free army of the actor's borders, computed once for the
+  // whole pass rather than per candidate: `marchSourcesFor` walks the realm,
+  // and Raid asks the question 26 times.
+  const sources =
+    cardId === "raid"
+      ? new Set(
+          marchSourcesFor(view, actorFactionId).flatMap(
+            (land) => view.adjacency[land] ?? [],
+          ),
+        )
+      : null;
+
   return view.factionIds.map((factionId): TargetEligibility => {
     const relevant = polygonCard
       ? polygonReach.has(factionId)
@@ -401,6 +509,13 @@ export function targetEligibilityFor(
     }
     if (vassalCard && view.overlords.get(factionId) !== actorFactionId) {
       reasons.push({ code: "not-your-vassal" });
+    }
+    // A raid is an army leaving a land, so it needs a land to leave FROM.
+    // Computed per target rather than once, because the answer differs per
+    // target: the realm may hold free armies and still have none next to this
+    // particular border.
+    if (cardId === "raid" && sources !== null && !sources.has(factionId)) {
+      reasons.push({ code: "no-army" });
     }
     if (cardId === "hillfort" && defenseOf(view, factionId) >= defenseMaxOf(view, factionId)) {
       reasons.push({ code: "at-full-defense" });
@@ -453,6 +568,10 @@ export type CardBlockReason =
   | { code: "no-disease" }
   /** Harvest feast with the whole realm at full defense. */
   | { code: "at-full-defense" }
+  /** A raid with no army left to send: every land of the realm that borders
+   *  anything already has its army out on a march. Distinct from `no-target`
+   *  because the fix is different - wait a turn, or raise one. */
+  | { code: "no-army" }
   | { code: "no-target" }
   | { code: "unavailable" };
 
@@ -493,10 +612,21 @@ export function cardBlockReason(
       ? { code: "needs-overlord" }
       : null;
   }
+  // The two attack cards answer the same two questions in the same order: is
+  // there anything to hit, and is there an army free to send at it. The border
+  // question first, because a realm surrounded by its own lands has nothing to
+  // raid however many armies it is sitting on.
   if (cardId === "great-raid") {
-    return borderPolygonsOf(view, factionId).size > 0
+    if (borderPolygonsOf(view, factionId).size === 0) return { code: "no-target" };
+    return greatRaidMarches(view, factionId).length > 0
       ? null
-      : { code: "no-target" };
+      : { code: "no-army" };
+  }
+  if (cardId === "raid") {
+    if (attackReach(view, factionId).size === 0) return { code: "no-target" };
+    return marchSourcesFor(view, factionId).length > 0
+      ? null
+      : { code: "no-army" };
   }
   if (cardId === "plague") {
     const held = Object.values(view.disease).some(

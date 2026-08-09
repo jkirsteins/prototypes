@@ -112,6 +112,38 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "settled", targetFactionId: H },
     { turn: 1, playerId: 2, type: "settled", targetFactionId: RIVAL },
   ],
+  "march-resolved": [
+    // Both directions, and both the uncontested landing and the clash - the
+    // two read as different sentences, so both must be swept.
+    {
+      turn: 2, playerId: 2, type: "march-resolved", cardId: "raid",
+      targetFactionId: H, sourceFactionId: RIVAL, amount: 4,
+    },
+    {
+      turn: 2, playerId: 1, type: "march-resolved", cardId: "raid",
+      targetFactionId: RIVAL, sourceFactionId: H, amount: 4,
+    },
+    {
+      turn: 2, playerId: 2, type: "march-resolved", cardId: "great-raid",
+      targetFactionId: H, sourceFactionId: RIVAL, amount: 2,
+      clash: { incoming: 6, counter: 4 },
+    },
+    {
+      turn: 2, playerId: 2, type: "march-resolved", cardId: "raid",
+      targetFactionId: RIVAL, sourceFactionId: H, amount: 2,
+      clash: { incoming: 4, counter: 6 },
+    },
+  ],
+  "march-lapsed": [
+    {
+      turn: 2, playerId: 1, type: "march-lapsed", cardId: "raid",
+      targetFactionId: RIVAL, sourceFactionId: H,
+    },
+    {
+      turn: 2, playerId: 2, type: "march-lapsed", cardId: "great-raid",
+      targetFactionId: H, sourceFactionId: RIVAL,
+    },
+  ],
   damaged: [
     { turn: 1, playerId: 2, type: "damaged", cardId: "raid", targetFactionId: H, amount: 150 },
     { turn: 1, playerId: 1, type: "damaged", cardId: "great-raid", targetFactionId: RIVAL, amount: 75 },

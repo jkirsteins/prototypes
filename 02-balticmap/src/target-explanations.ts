@@ -78,6 +78,11 @@ function explainReason(reason: TargetBlockReason): string[] {
       ];
     case "no-free-site":
       return ["No room for another settlement."];
+    case "no-army":
+      return [
+        "No free army borders this land. Your armies here are already out " +
+          "on a march; one comes home when it lands.",
+      ];
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -424,6 +429,8 @@ export function cardBlockLine(reason: CardBlockReason): string {
       return "No disease stacks stand anywhere for this to work on.";
     case "at-full-defense":
       return "Every land of your realm already stands at full defense.";
+    case "no-army":
+      return "Every army on your borders is already out on a march.";
     case "no-target":
       return "Nothing in reach is a legal target.";
     case "unavailable":

@@ -14,10 +14,15 @@ import {
   WAR_COUNCIL_LEADERSHIP, type Defense, type Disease,
 } from "./defense";
 import {
-  attackDamageFor, attackMultiplier, borderPolygonsOf, ESCAPE_RESPITE_TURNS,
-  outbreakPolygons, plagueMultiplier, playableSet, validTargetsFor,
-  wealthIncomeFor, type Guards, type Omens, type RulesView,
+  attackDamageFor, attackMultiplier, attackReach, borderPolygonsOf,
+  ESCAPE_RESPITE_TURNS, greatRaidMarches, marchSourcesAgainst, outbreakPolygons,
+  plagueMultiplier, playableSet, validTargetsFor, wealthIncomeFor,
+  type Guards, type Omens, type RulesView,
 } from "./playability";
+import {
+  addArmy, addMarch, axesOf, axisKeyOf, clearMarches, lapsedMarchesOf,
+  resolveAxis, type Armies, type Marches,
+} from "./marches";
 import { autoHarvestChoice, type HarvestChoice } from "./harvest";
 import { initialRulers, leadershipByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
 import { allowsDiscards, DEFAULT_RULES, type RuleSelections } from "./rules";
@@ -28,6 +33,7 @@ export type GameEventType =
   | "subjugated" | "released" | "incorporated" | "independence" | "tribute"
   | "settled"
   | "damaged" | "healed" | "disease-spread" | "plagued" | "winds-shifted"
+  | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked"
   | "victory" | "defeat" | "unified" | "surrendered";
 
@@ -42,6 +48,18 @@ export interface GameEvent {
   targetFactionId?: string;
   /** Usually the lord an event happened under. */
   overlordFactionId?: string;
+  /** The OTHER end of a march: the land the army marched out of, when
+   *  `targetFactionId` is the land it hit, and the land it was aimed at when a
+   *  counter threw it back onto its own source. Also stamped on the `play`
+   *  event that declares a march, so the arrow's tail survives a reload of the
+   *  log alone. */
+  sourceFactionId?: string;
+  /** march-resolved: what the two sides of the clash were worth, attacker
+   *  first. `amount` is only the leftover that landed; these are what it was
+   *  the leftover OF, which is the whole story of a counter-raid and cannot be
+   *  reconstructed once the marches are gone. Absent on an uncontested
+   *  landing, where the leftover is the whole strength. */
+  clash?: { incoming: number; counter: number };
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
   /** How far this event moved the counter it names, written at every site
    *  that moves one, so src/standings.ts can reconstruct a before -> after
@@ -149,6 +167,16 @@ export interface GameState {
    *  earned. Stored rather than log-derived because EVERY seat counts now.
    *  Reset to 0 at the threshold. */
   turnips: Record<string, number>;
+  /** Attacks declared but not yet landed, keyed by direction. A Raid played on
+   *  turn T lands at the start of the actor's turn T+1, resolved in
+   *  `beginTurn`; until then it is an arrow on the map that anyone may answer.
+   *  See src/marches.ts. */
+  marches: Marches;
+  /** Polygon id -> armies stationed there; absent = ARMIES_PER_POLYGON, the
+   *  sparse-with-a-default convention `defense` uses. One march holds one
+   *  army of its source until it lands, so armies are what caps how many
+   *  attacks a realm can have in flight at once. */
+  armies: Armies;
   /** Faction id -> treasury. Absent = 0, never negative, uncapped. Earned in
    *  `beginTurn` - 1 plus 1 per settlement founded in the faction's own
    *  realm, via `wealthIncomeFor` - silently: income moves no score, and one
@@ -216,6 +244,8 @@ export function viewOf(state: GameState): RulesView {
     disease: state.disease,
     miasma: state.miasma,
     turnips: state.turnips,
+    marches: state.marches,
+    armies: state.armies,
     leadership: leadershipByFaction(state.rulers),
   };
 }
@@ -256,6 +286,8 @@ export function newGame(
     disease: {},
     miasma: {},
     turnips: {},
+    marches: {},
+    armies: {},
     wealth: {},
     respites: {},
     ethnicities,
@@ -356,6 +388,12 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     // batch that never opens with a play, so this is unreachable today, but
     // it is the honest answer if a heal ever frees mid-play.
     case "independence":
+    // A march lands at the start of its actor's NEXT turn, a turn after the
+    // Raid that declared it and from a batch that opens with no play. The
+    // causing card is a turn in the past and is named on the line itself, so
+    // there is nothing here to indent under.
+    case "march-resolved":
+    case "march-lapsed":
     // The run is over. See above.
     case "victory":
     case "defeat":
@@ -437,6 +475,15 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       targetFactionId: p.factionId, overlordFactionId: lord,
     });
   }
+  // Marches land next, after the gate and before the draw. After the gate,
+  // because the gate answers for the defenses as they stood when the vassal's
+  // turn came round - letting its overlord's own pending raid land first would
+  // retroactively deny an escape that had already been earned. Before the
+  // draw, so the hand this seat decides with reflects the damage.
+  const landed = resolveMarches({ ...state, overlords }, p, events);
+  const marches = landed.marches;
+  const defense = landed.defense;
+
   const self = players[state.current];
   let { deck, discard } = self;
   if (deck.length === 0 && discard.length > 0) {
@@ -481,12 +528,111 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       }
     : state.wealth;
   return {
-    ...state, players, overlords, wealth,
+    ...state, players, overlords, wealth, marches, defense,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
     log: appendEvents(state, events), playedThisTurn: false,
   };
+}
+
+/** Lands every march this seat declared a turn ago, and every counter standing
+ *  against one of them.
+ *
+ *  Resolution is per AXIS, not per march: both directions of a clash come off
+ *  the board together and only the difference between the two sides lands, on
+ *  whichever side pushed less hard. That is why a counter still standing in
+ *  flight is pulled in here even though its own expiry has not come round -
+ *  "the earlier of the two turns" is what makes a counter-raid an answer
+ *  rather than a trade, and leaving half a clash on the board would let the
+ *  attacker's own resolution hit before the counter it provoked.
+ *
+ *  Pushes onto `events` and returns the moved stores; the caller owns the
+ *  batch. Consumes no rng, deliberately - `tests/rng-isolation.test.ts` can
+ *  only catch nondeterminism, not an added draw, so the discipline has to be
+ *  structural. */
+function resolveMarches(
+  state: GameState,
+  p: PlayerState,
+  events: GameEvent[],
+): { marches: Marches; defense: Defense } {
+  const lapsed = lapsedMarchesOf(state.marches, p.factionId, state.turn);
+  if (lapsed.length === 0) {
+    return { marches: state.marches, defense: state.defense };
+  }
+  const view = viewOf(state);
+  let marches = state.marches;
+  let defense = state.defense;
+
+  // A march whose ground moved under it while it was in flight is dropped:
+  // the army has no land left to have marched out of, or the land it was
+  // aimed at is no longer something its actor may attack. Both are the
+  // ordinary consequence of somebody else's turn, so they are reported.
+  //
+  // The source test is two questions, not one. A polygon stays in its own
+  // `fullRealmOf` even after it is annexed - the id is the land's, and the
+  // land is still there - so the second question is who HOLDS it now. An
+  // annexed land answers to its annexer, and an army cannot march out of a
+  // land its owner has lost.
+  const alive: typeof lapsed = [];
+  for (const entry of lapsed) {
+    const realm = fullRealmOf(entry.march.actor, state.overlords, state.incorporated);
+    const reach = attackReach(view, entry.march.actor);
+    const holder = state.incorporated[entry.march.from] ?? entry.march.from;
+    if (
+      realm.has(entry.march.from) && realm.has(holder) &&
+      reach.has(entry.march.to)
+    ) {
+      alive.push(entry);
+      continue;
+    }
+    marches = clearMarches(marches, [entry.key]);
+    events.push({
+      turn: state.turn, playerId: p.id, type: "march-lapsed",
+      cardId: entry.march.cardId,
+      targetFactionId: entry.march.to, sourceFactionId: entry.march.from,
+    });
+  }
+  if (alive.length === 0) return { marches, defense };
+
+  // Only the axes the landing marches run along, but each taken WHOLE, so a
+  // counter still in flight is spent answering the attack it was declared
+  // against rather than surviving to strike an undefended land next turn.
+  const landing = new Set(alive.map((e) => axisKeyOf(e.march.from, e.march.to)));
+  for (const axis of axesOf(marches)) {
+    if (!landing.has(axisKeyOf(axis.a, axis.b))) continue;
+    marches = clearMarches(marches, axis.keys);
+    const { loser, delta, totalA, totalB } = resolveAxis(
+      axis.a, axis.b, axis.fromA, axis.fromB,
+    );
+    if (loser === null || delta <= 0) continue;
+    const winner = loser === axis.a ? axis.b : axis.a;
+    const contested = axis.fromA.length > 0 && axis.fromB.length > 0;
+    const before = defenseOf({ defense, defenseMax: state.defenseMax }, loser);
+    const moved = Math.min(before, delta);
+    if (moved <= 0) continue;
+    defense = applyDamage(
+      { defense, defenseMax: state.defenseMax }, loser, delta,
+    );
+    events.push({
+      turn: state.turn, playerId: p.id, type: "march-resolved",
+      // The card of whichever side actually landed - the counter's, when a
+      // counter won, since that is the play the damage came out of.
+      cardId: (loser === axis.a ? axis.fromB : axis.fromA)[0].cardId,
+      targetFactionId: loser, sourceFactionId: winner, amount: moved,
+      // `incoming` is always the strength aimed AT the loser and `counter`
+      // what the loser mustered against it, whichever end of the axis that
+      // turned out to be. The label the player reads is delta out of incoming.
+      ...(contested
+        ? {
+            clash: loser === axis.a
+              ? { incoming: totalB, counter: totalA }
+              : { incoming: totalA, counter: totalB },
+          }
+        : {}),
+    });
+  }
+  return { marches, defense };
 }
 
 /** The player concedes. Terminal, and deliberately not reversible. Its own
@@ -529,8 +675,14 @@ export function playCard(
   targetId?: string,
   /** `harvest` is the resolved Turnip harvest pick. The app rolls the offer
    *  pre-play and hands the pick in; a caller that passes nothing (the sim,
-   *  a fast-forward, an AI seat) gets `autoHarvestChoice`. */
-  opts?: { harvest?: HarvestChoice },
+   *  a fast-forward, an AI seat) gets `autoHarvestChoice`.
+   *
+   *  `sourceId` is the land a Raid's army marches out of - the tail of the
+   *  arrow. Only Raid reads it; Great raid assigns its own sources through
+   *  `greatRaidMarches`, and every other card ignores it. A Raid that names
+   *  no legal source is refused, the same way a targeted card naming no legal
+   *  target is: an arrow with no tail is not a play. */
+  opts?: { harvest?: HarvestChoice; sourceId?: string },
 ): GameState {
   if (state.phase !== "playing") return state;
   if (state.playedThisTurn) return state;
@@ -546,6 +698,20 @@ export function playCard(
     const targets = validTargetsFor(viewOf(state), p.factionId, cardId);
     if (targetId === undefined || !targets.includes(targetId)) return state;
   }
+  // A named source is checked on the same footing as the target and refused
+  // when illegal. An UNnamed one defaults to the first legal source in faction
+  // order, which is the difference between the two: every caller has always
+  // had to name a target, while a source is new, and the sim, a fast-forward
+  // and a lobby guest on an older build all have a legitimate no-opinion.
+  let sourceId: string | undefined;
+  if (cardId === "raid" && targetId !== undefined) {
+    const sources = marchSourcesAgainst(viewOf(state), p.factionId, targetId);
+    if (sources.length === 0) return state;
+    if (opts?.sourceId !== undefined && !sources.includes(opts.sourceId)) {
+      return state;
+    }
+    sourceId = opts?.sourceId ?? sources[0];
+  }
 
   const view = viewOf(state);
   const overlords = new Map(state.overlords);
@@ -560,6 +726,8 @@ export function playCard(
   let respites = state.respites;
   let rulers = state.rulers;
   let wealth = state.wealth;
+  let marches = state.marches;
+  let armies = state.armies;
 
   // The reserve spends, computed against the PRE-play state. An attack play
   // cashes the whole omens stack at once; a Plague cashes the miasma stack.
@@ -600,6 +768,9 @@ export function playCard(
       ...(card.targeted && targetId !== undefined
         ? { targetFactionId: targetId }
         : {}),
+      // The tail of the arrow this play just drew, so the log line can name
+      // where the army left from without holding on to the march itself.
+      ...(sourceId !== undefined ? { sourceFactionId: sourceId } : {}),
     },
   ];
 
@@ -641,6 +812,20 @@ export function playCard(
     events.push({
       turn: state.turn, playerId: p.id, type: "damaged", cardId,
       targetFactionId: polygon, amount: moved,
+    });
+  };
+
+  /** One attack card committing one army. No event: the `play` event carries
+   *  both ends of the arrow already, and the damage is a promise about next
+   *  turn, not a score that moved - `march-resolved` is where the numbers go.
+   *  Expiry is the src/timed.ts convention, one turn out, which is this seat's
+   *  next `beginTurn` whichever seat it is. */
+  const declareMarch = (
+    from: string, to: string, damage: number, holdsArmy = true,
+  ): void => {
+    marches = addMarch(marches, {
+      actor: p.factionId, from, to, cardId, damage, holdsArmy,
+      expiry: state.turn + 1,
     });
   };
 
@@ -707,16 +892,18 @@ export function playCard(
     if (cardId === "assassinate-ruler") {
       events[0] = { ...events[0], targetRuler: rulerOf(rulers, targetId).name };
     }
-  } else if (cardId === "raid" && targetId !== undefined) {
-    // Through `attackDamageFor` rather than a local formula: the card tip
-    // quotes the same call, so the promise and the resolution cannot drift.
-    landDamage(targetId, attackDamageFor(view, p.factionId, cardId).damage);
+  } else if (cardId === "raid" && targetId !== undefined && sourceId !== undefined) {
+    // Declared, not landed. Through `attackDamageFor` rather than a local
+    // formula: the card tip quotes the same call, so what the arrow promises
+    // and what lands next turn cannot drift.
+    declareMarch(sourceId, targetId, attackDamageFor(view, p.factionId, cardId).damage);
   } else if (cardId === "great-raid") {
     const { damage } = attackDamageFor(view, p.factionId, cardId);
-    // In faction order, not Set order, so a seeded run logs deterministically.
-    const border = borderPolygonsOf(view, p.factionId);
-    for (const polygon of state.factionIds.filter((f) => border.has(f))) {
-      landDamage(polygon, damage);
+    // `greatRaidMarches` is the one list: legality asked it, the card tip
+    // quotes it, and it is already in faction order with its sources assigned
+    // deterministically, so a seeded run declares the same fan every time.
+    for (const { from, to, holdsArmy } of greatRaidMarches(view, p.factionId)) {
+      declareMarch(from, to, damage, holdsArmy);
     }
   } else if (cardId === "favourable-omens") {
     omens = { ...omens, [p.factionId]: (omens[p.factionId] ?? 0) + 1 };
@@ -931,6 +1118,7 @@ export function playCard(
   return {
     ...state, phase, players, overlords, incorporated, guards, omens, miasma,
     settlements, defense, disease, turnips, wealth, respites, rulers,
+    marches, armies,
     log: appendEvents(state, events),
     // An unlimited turn stays open while cards remain; an emptied hand has
     // nothing left to play or hold for, so the last play closes the turn

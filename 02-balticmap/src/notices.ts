@@ -343,6 +343,52 @@ function independenceLines(
   }));
 }
 
+/** A march landing, a turn after the card that sent it.
+ *
+ *  Unlike `damagedLines` this cannot lean on "by whoever just played": the
+ *  play was a turn ago and the line stands on its own, so it names both ends
+ *  of the arrow. Whether it reads as good or bad is not the actor's identity
+ *  either - the human's own counter winning is reported on the RIVAL's turn,
+ *  under the rival's player id - it is which end of the axis the human's realm
+ *  was on. */
+function marchResolvedLines(
+  events: GameEvent[],
+  changes: StandingChange[][],
+  ctx: NoticeCtx,
+): SummaryLine[] {
+  return events.map((e, i) => {
+    const struckUs = e.targetFactionId !== undefined
+      && ctx.inHumanRealm(e.targetFactionId);
+    const home = e.targetFactionId === ctx.humanFactionId;
+    const cardSeg = e.cardId !== undefined ? [card(e.cardId)] : [t("An attack")];
+    // "A counter out of X threw it back onto Y" only when the human's own
+    // counter is what won: `clash` is present exactly when both sides had
+    // armies on the axis, and it carries the two totals the arrow promised.
+    const text: Segment[] = struckUs
+      ? [
+          ...cardSeg, t(" out of "), faction(e.sourceFactionId ?? ""),
+          ...(e.clash !== undefined
+            ? [t(" broke through the counter from ")]
+            : [t(" fell on ")]),
+          ...(home && e.clash === undefined
+            ? [t("your home defenses")]
+            : [faction(e.targetFactionId ?? "")]),
+        ]
+      : [
+          ...cardSeg, t(" out of "), faction(e.sourceFactionId ?? ""),
+          ...(e.clash !== undefined
+            ? [t(" met their attack and threw it back onto ")]
+            : [t(" fell on ")]),
+          faction(e.targetFactionId ?? ""),
+        ];
+    return {
+      text,
+      changes: changesFor(i, changes),
+      tone: (struckUs ? "bad" : "good") as SummaryLine["tone"],
+    };
+  });
+}
+
 function releasedLines(events: GameEvent[], ctx: NoticeCtx, role: HumanRole): SummaryLine[] {
   if (role === "lord") {
     return [{
@@ -443,6 +489,41 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     lines: damagedLines,
     footnotes: (_events, ctx) =>
       ctx.homeGateOpen() ? [GATE_OPEN_FOOTNOTE()] : [],
+  },
+  "march-resolved": {
+    kind: "modal",
+    // Either end of the arrow, and deliberately NOT gated on `playerId`: a
+    // march resolves on its declarer's turn, so the human's own raid landing
+    // and the human's own counter winning both arrive under somebody's turn
+    // start rather than under a play the human just made. A turn has passed
+    // since the card; if this is silent the player never learns how it went.
+    appliesToHuman: (e, ctx) =>
+      (e.targetFactionId !== undefined && ctx.inHumanRealm(e.targetFactionId)) ||
+      (e.sourceFactionId !== undefined && ctx.inHumanRealm(e.sourceFactionId)),
+    // The `damaged` rule, for the same reason: waking up with the home gate
+    // open is a different game, and a march is the one attack that can open it
+    // while the player is not being shown a play.
+    critical: (e, ctx) =>
+      e.targetFactionId === ctx.humanFactionId && ctx.homeGateOpen()
+        ? "Your defenses are broken"
+        : null,
+    lines: marchResolvedLines,
+    footnotes: (events, ctx) =>
+      ctx.homeGateOpen() &&
+      events.some(
+        (e) => e.targetFactionId !== undefined && ctx.inHumanRealm(e.targetFactionId),
+      )
+        ? [GATE_OPEN_FOOTNOTE()]
+        : [],
+  },
+  "march-lapsed": {
+    kind: "silent",
+    // The ground moved under a march in flight - its source left the realm, or
+    // its target joined it - so nothing landed and no score moved. The log
+    // carries the line for a player who wants to know why their arrow vanished;
+    // a modal for an attack that did nothing is the noise the filter exists to
+    // remove.
+    reason: "moves no score; the arrow simply goes, and the log says why",
   },
   healed: {
     kind: "silent",

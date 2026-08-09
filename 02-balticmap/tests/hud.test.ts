@@ -341,21 +341,29 @@ describe("activity log", () => {
     expect(container.querySelectorAll(".log-entry")).toHaveLength(0);
   });
 
-  it("states what your raid did, on its consequence line, in the badges' form", () => {
+  it("states what your raid declared, then what it did a turn later", () => {
     const { container, hud } = setup();
     let g = playing(); // you are beta; adjacency defaults to a complete graph
     g = withHand(g, 0, ["raid"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
+    // The declaration moves no score, so it carries no suffix: an arrow is a
+    // promise about next turn, and the log does not quote it as a number.
+    expect([...container.querySelectorAll(".log-entry")].map((el) => el.textContent))
+      .toContain("You played Raid on Alpha");
+    expect(g.defense.alpha).toBeUndefined();
+
+    // A turn on, the march lands and the number arrives with it.
+    g = beginTurn({ ...g, turn: g.turn + 1 }, seededRng(1));
+    hud.update(g);
     const entries = [...container.querySelectorAll(".log-entry")] as HTMLElement[];
-    const texts = entries.map((el) => el.textContent);
-    // The play line carries no suffix - the damage rides on the consequence
-    // line, which is where the number belongs.
-    expect(texts).toContain("You played Raid on Alpha");
-    expect(texts).toContain("The defenses of Alpha are battered (Defense -1 -> 59)");
-    const damaged = entries.find((el) =>
-      el.textContent?.startsWith("The defenses of Alpha"))!;
-    expect(damaged.classList.contains("log-consequence")).toBe(true);
+    expect(entries.map((el) => el.textContent))
+      .toContain("Raid out of Beta falls on Alpha (Defense -1 -> 59)");
+    // Not a consequence: the play that caused it was a turn ago, in another
+    // batch, so there is nothing above it to indent under.
+    const landed = entries.find((el) =>
+      el.textContent?.startsWith("Raid out of Beta"))!;
+    expect(landed.classList.contains("log-consequence")).toBe(false);
     // The number the log quotes is the number on the map, not a second
     // reckoning of its own.
     expect(g.defense.alpha).toBe(59);

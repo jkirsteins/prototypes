@@ -3,8 +3,9 @@ import { defenseMaxAll, siteCaps } from "./helpers";
 import {
   ESCAPE_RESPITE_TURNS, INCORPORATE_REALM_GATE, SETTLEMENT_BASE_CAP,
   attackDamageFor, attackMultiplier, attackReach, borderPolygonsOf,
-  cardBlockReason, failureRiskOf, freeSitesIn, handBlockReason, holdsGuard,
-  incorporateRealmGate, isCardPlayable, miasmaHeld, omensHeld,
+  cardBlockReason, failureRiskOf, freeSitesIn, greatRaidMarches,
+  handBlockReason, holdsGuard, incorporateRealmGate, isCardPlayable,
+  marchSourcesAgainst, marchSourcesFor, marchTargetsFrom, miasmaHeld, omensHeld,
   outbreakPolygons, plagueDamageOn, plagueMultiplier, playableSet, reachOf,
   respiteExpiry, settlementAllowance, settlementsIn, subjugationGateOn,
   targetEligibilityFor, validTargetsFor, wealthIncomeFor, wealthOf,
@@ -43,6 +44,8 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     disease: {},
     miasma: {},
     turnips: {},
+    marches: {},
+    armies: {},
     ...partial,
   };
 }
@@ -100,6 +103,72 @@ describe("borderPolygonsOf", () => {
       overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
     });
     expect(borderPolygonsOf(v, "alpha")).toEqual(new Set(["delta"]));
+  });
+});
+
+describe("marching: sources, targets and armies", () => {
+  /** One march out of `from`, holding that land's army. */
+  const outFrom = (from: string, to: string, over = {}) => ({
+    [`${from}>${to}#0`]: {
+      actor: from, from, to, cardId: "raid", damage: 4,
+      holdsArmy: true, expiry: 2, ...over,
+    },
+  });
+
+  it("names the realm lands with a free army that border something in reach", () => {
+    // The line alpha - beta - gamma - delta. beta borders both ends.
+    expect(marchSourcesFor(view(), "beta")).toEqual(["beta"]);
+    expect(marchSourcesFor(view({ overlords: new Map([["gamma", "beta"]]) }), "beta"))
+      .toEqual(["beta", "gamma"]);
+  });
+
+  it("drops a land whose army is already out on a march", () => {
+    const v = view({ marches: outFrom("beta", "alpha") });
+    expect(marchSourcesFor(v, "beta")).toEqual([]);
+    // A second army on the same land puts it back.
+    expect(marchSourcesFor(view({ ...v, armies: { beta: 2 } }), "beta"))
+      .toEqual(["beta"]);
+  });
+
+  it("aims an army only at what its own land borders", () => {
+    const v = view({ overlords: new Map([["gamma", "beta"]]) });
+    // beta borders alpha and its own vassal gamma, and may batter either.
+    expect(marchTargetsFrom(v, "beta", "beta")).toEqual(["alpha", "gamma"]);
+    // The vassal's own army reaches delta - and not gamma itself: no land
+    // borders itself, so holding a vassal down takes an army from next door.
+    expect(marchTargetsFrom(v, "beta", "gamma")).toEqual(["delta"]);
+    expect(marchSourcesAgainst(v, "beta", "delta")).toEqual(["gamma"]);
+    expect(marchSourcesAgainst(v, "beta", "gamma")).toEqual(["beta"]);
+  });
+
+  it("blocks a raid target no free army borders, and says which refusal it is", () => {
+    const v = view({ marches: outFrom("beta", "alpha") });
+    const alpha = targetEligibilityFor(v, "beta", "raid")
+      .find((e) => e.factionId === "alpha")!;
+    expect(alpha).toEqual({
+      state: "blocked", factionId: "alpha", reasons: [{ code: "no-army" }],
+    });
+    // And at the card level it is `no-army`, not `no-target`: alpha is still
+    // in reach, there is simply nothing left to send.
+    expect(cardBlockReason(v, "beta", "raid")).toEqual({ code: "no-army" });
+    expect(cardBlockReason(v, "beta", "great-raid")).toEqual({ code: "no-army" });
+  });
+
+  it("fans a great raid out of one army, one arrow per bordering land", () => {
+    expect(greatRaidMarches(view(), "beta")).toEqual([
+      { from: "beta", to: "alpha", holdsArmy: true },
+      { from: "beta", to: "gamma", holdsArmy: false },
+    ]);
+  });
+
+  it("pays a second army only for a border its first land cannot reach", () => {
+    // beta holds gamma as a vassal: beta borders alpha, gamma borders delta.
+    // Two lands must sally, so two armies go out.
+    const v = view({ overlords: new Map([["gamma", "beta"]]) });
+    expect(greatRaidMarches(v, "beta")).toEqual([
+      { from: "beta", to: "alpha", holdsArmy: true },
+      { from: "gamma", to: "delta", holdsArmy: true },
+    ]);
   });
 });
 

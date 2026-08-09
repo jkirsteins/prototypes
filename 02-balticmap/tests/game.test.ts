@@ -70,6 +70,14 @@ function fresh(g: GameState, before: number) {
 
 const rng = () => seededRng(7);
 
+/** Roll the clock forward to the CURRENT seat's next turn, without walking
+ *  every other seat through theirs. That is exactly where a march lands - a
+ *  march declared on turn T stores expiry T+1 and resolves in its actor's own
+ *  `beginTurn` - so this is the fixture for "and then it landed". */
+function landMarches(g: GameState): GameState {
+  return beginTurn({ ...g, turn: g.turn + 1 }, rng());
+}
+
 // The four-faction world's victory size (3) sits BELOW the incorporate realm
 // gate (4), so a fixture that opens the gate by growing the actor's realm can
 // tip a test into victory by accident. Fixtures below either hang the spare
@@ -352,49 +360,84 @@ describe("playCard validation", () => {
 });
 
 describe("raid", () => {
-  it("deals 150 to one polygon in reach and logs the movement", () => {
+  it("declares a march instead of landing, and moves nothing this turn", () => {
     const g = withHand(playingState(), 0, ["raid"]);
     const before = g.log.length;
     const after = playCard(g, 0, rng(), "alpha");
-    expect(after.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE);
+    expect(after.defense.alpha).toBeUndefined(); // untouched, still at max
     const events = fresh(after, before);
+    expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       type: "play", cardId: "raid", targetFactionId: "alpha",
+      sourceFactionId: "beta",
     });
-    expect(events[1]).toMatchObject({
-      type: "damaged", cardId: "raid", targetFactionId: "alpha",
-      amount: RAID_DAMAGE,
-    });
+    expect(Object.values(after.marches)).toEqual([{
+      actor: "beta", from: "beta", to: "alpha", cardId: "raid",
+      damage: RAID_DAMAGE, holdsArmy: true, expiry: g.turn + 1,
+    }]);
   });
 
-  it("adds the ruler's leadership to the damage", () => {
+  it("lands at the start of the actor's next turn and logs the movement", () => {
+    const g = playCard(withHand(playingState(), 0, ["raid"]), 0, rng(), "alpha");
+    const before = g.log.length;
+    const after = landMarches(g);
+    expect(after.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE);
+    expect(after.marches).toEqual({}); // the army is home
+    expect(fresh(after, before).find((e) => e.type === "march-resolved"))
+      .toMatchObject({
+        type: "march-resolved", cardId: "raid", targetFactionId: "alpha",
+        sourceFactionId: "beta", amount: RAID_DAMAGE,
+      });
+  });
+
+  it("marches out of the source the caller names, and refuses an illegal one", () => {
+    let g = playingState(LINE_ADJ); // alpha - beta - gamma - delta
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    // beta and gamma both border delta's neighbour gamma; only gamma borders
+    // delta itself, so gamma is the one legal tail.
+    const out = playCard(g, 0, rng(), "delta", { sourceId: "gamma" });
+    expect(Object.values(out.marches)[0]).toMatchObject({
+      from: "gamma", to: "delta",
+    });
+    // beta does not border delta, so naming it is refused outright rather
+    // than quietly redirected.
+    expect(playCard(g, 0, rng(), "delta", { sourceId: "beta" })).toBe(g);
+  });
+
+  it("adds the ruler's leadership to the damage, frozen at declaration", () => {
     let g = withHand(playingState(), 0, ["raid"]);
     g = {
       ...g,
       rulers: { ...g.rulers, beta: { ...g.rulers.beta, leadership: 50 } },
     };
-    const after = playCard(g, 0, rng(), "alpha");
-    expect(after.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - (RAID_DAMAGE + 50));
+    let after = playCard(g, 0, rng(), "alpha");
+    // Losing the ruler after the arrow is drawn does not disarm it: the
+    // march carries the number the card tip promised.
+    after = {
+      ...after,
+      rulers: { ...after.rulers, beta: { ...after.rulers.beta, leadership: 0 } },
+    };
+    expect(landMarches(after).defense.alpha)
+      .toBe(DEFAULT_DEFENSE_MAX - (RAID_DAMAGE + 50));
   });
 
-  it("cashes the whole omens stack: x2 for one reading, x4 for two, readings stamped", () => {
+  it("cashes the whole omens stack at declaration: x2 for one reading, x4 for two", () => {
     const base = withHand(playingState(), 0, ["raid"]);
 
-    const one = playCard(
-      { ...base, omens: { beta: 1 } }, 0, rng(), "alpha",
-    );
-    expect(one.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE * 2);
+    const one = playCard({ ...base, omens: { beta: 1 } }, 0, rng(), "alpha");
     expect(one.log.find((e) => e.type === "play")?.readings).toBe(1);
-    expect(one.omens.beta).toBeUndefined(); // spent whole
+    expect(one.omens.beta).toBeUndefined(); // spent whole, at declaration
+    expect(landMarches(one).defense.alpha)
+      .toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE * 2);
 
-    const two = playCard(
-      { ...base, omens: { beta: 2 } }, 0, rng(), "alpha",
+    const two = landMarches(
+      playCard({ ...base, omens: { beta: 2 } }, 0, rng(), "alpha"),
     );
     expect(two.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE * 4);
-    expect(two.log.at(-1)).toMatchObject({
-      type: "damaged", amount: RAID_DAMAGE * 4,
+    expect(two.log.find((e) => e.type === "march-resolved")).toMatchObject({
+      type: "march-resolved", amount: RAID_DAMAGE * 4,
     });
-    expect(two.log.find((e) => e.type === "play")?.readings).toBe(2);
   });
 
   it("records the actual movement on a nearly-broken polygon, and nothing at 0", () => {
@@ -402,35 +445,142 @@ describe("raid", () => {
     // A polygon standing at less than one raid's damage: the event records
     // the actual movement, not the card's number.
     const standing = Math.max(1, RAID_DAMAGE - 1);
-    const low = playCard(
-      { ...g, defense: { alpha: standing } }, 0, rng(), "alpha",
+    const low = landMarches(
+      playCard({ ...g, defense: { alpha: standing } }, 0, rng(), "alpha"),
     );
     expect(low.defense.alpha).toBe(0);
-    expect(low.log.at(-1)).toMatchObject({ type: "damaged", amount: standing });
+    expect(low.log.find((e) => e.type === "march-resolved")).toMatchObject({
+      type: "march-resolved", amount: standing,
+    });
 
-    const dead = playCard({ ...g, defense: { alpha: 0 } }, 0, rng(), "alpha");
-    // Nothing special happens at 0: the play lands, no damage to record.
-    expect(dead.log.at(-1)?.type).toBe("play");
+    const dead = landMarches(
+      playCard({ ...g, defense: { alpha: 0 } }, 0, rng(), "alpha"),
+    );
+    // Nothing special happens at 0: the march comes home, nothing to record.
+    expect(dead.log.some((e) => e.type === "march-resolved")).toBe(false);
+    expect(dead.marches).toEqual({});
   });
 
   it("may target the actor's own vassal - vassalage is upkeep", () => {
     let g = playingState();
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["raid"]);
-    const after = playCard(g, 0, rng(), "gamma");
+    const after = landMarches(playCard(g, 0, rng(), "gamma"));
     expect(after.defense.gamma).toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE);
     expect(after.overlords.get("gamma")).toBe("beta"); // fealty untouched
+  });
+
+  it("holds the source's army until the march lands", () => {
+    const g = withHand(playingState(LINE_ADJ), 0, ["raid", "raid"]);
+    const one = playCard(g, 0, rng(), "alpha");
+    // beta's single army is out, and beta is the only land of this realm, so
+    // a second raid has nothing left to send.
+    expect(playCard({ ...one, playedThisTurn: false }, 0, rng(), "gamma"))
+      .toMatchObject({ marches: one.marches });
+    expect(landMarches(one).marches).toEqual({});
+  });
+
+  it("drops a march whose source left the realm while it was in flight", () => {
+    const g = playCard(
+      withHand(playingState(LINE_ADJ), 0, ["raid"]), 0, rng(), "alpha",
+    );
+    // beta is annexed by gamma before the army gets anywhere: there is no
+    // longer a land of beta's realm for it to have marched out of.
+    const stolen = { ...g, incorporated: { beta: "gamma" } };
+    const after = landMarches(stolen);
+    expect(after.defense.alpha).toBeUndefined();
+    expect(after.marches).toEqual({});
+    expect(after.log.find((e) => e.type === "march-lapsed")).toMatchObject({
+      type: "march-lapsed", cardId: "raid",
+      targetFactionId: "alpha", sourceFactionId: "beta",
+    });
+  });
+});
+
+describe("the counter-raid clash", () => {
+  /** alpha - beta - gamma - delta, with alpha's seat holding a raid aimed
+   *  back down the axis beta is marching along. */
+  function facingRaids(betaDamage: number, alphaDamage: number): GameState {
+    let g = withHand(playingState(LINE_ADJ), 0, ["raid"]);
+    g = playCard(g, 0, rng(), "alpha");
+    // Hand-place alpha's counter rather than walking its turn: the clash is
+    // about the two marches, not about how the second one got declared.
+    return {
+      ...g,
+      marches: {
+        ...Object.fromEntries(
+          Object.entries(g.marches).map(([k, m]) => [k, { ...m, damage: betaDamage }]),
+        ),
+        "alpha>beta#0": {
+          actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
+          damage: alphaDamage, holdsArmy: true, expiry: g.turn + 1,
+        },
+      },
+    };
+  }
+
+  it("lands only the leftover when the counter is weaker", () => {
+    const after = landMarches(facingRaids(10, 4));
+    expect(after.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - 6);
+    expect(after.defense.beta).toBeUndefined();
+    expect(after.log.find((e) => e.type === "march-resolved")).toMatchObject({
+      type: "march-resolved", targetFactionId: "alpha", sourceFactionId: "beta",
+      amount: 6, clash: { incoming: 10, counter: 4 },
+    });
+  });
+
+  it("throws the leftover back onto the attacker when the counter is stronger", () => {
+    const after = landMarches(facingRaids(4, 10));
+    expect(after.defense.beta).toBe(DEFAULT_DEFENSE_MAX - 6);
+    expect(after.defense.alpha).toBeUndefined();
+    expect(after.log.find((e) => e.type === "march-resolved")).toMatchObject({
+      type: "march-resolved", targetFactionId: "beta", sourceFactionId: "alpha",
+      amount: 6, clash: { incoming: 10, counter: 4 },
+    });
+  });
+
+  it("cancels an even clash, moving no score and clearing both arrows", () => {
+    const after = landMarches(facingRaids(5, 5));
+    expect(after.defense).toEqual({});
+    expect(after.marches).toEqual({});
+    expect(after.log.some((e) => e.type === "march-resolved")).toBe(false);
+  });
+
+  it("spends the counter even though its own turn has not come round", () => {
+    // The counter's expiry is a turn out too, but the axis resolves whole at
+    // the earlier of the two - otherwise the attack would land first and the
+    // counter would survive to strike an already-battered land.
+    expect(landMarches(facingRaids(4, 10)).marches).toEqual({});
   });
 });
 
 describe("great-raid", () => {
-  it("hits exactly the polygons bordering the full realm, in faction order", () => {
+  it("fans one army out of each sallying land, one arrow per bordering polygon", () => {
     const g = withHand(playingState(LINE_ADJ), 0, ["great-raid"]);
-    const before = g.log.length;
     const after = playCard(g, 0, rng());
-    const damaged = fresh(after, before).filter((e) => e.type === "damaged");
-    expect(damaged.map((e) => e.targetFactionId)).toEqual(["alpha", "gamma"]);
-    expect(damaged.every((e) => e.amount === GREAT_RAID_DAMAGE)).toBe(true);
+    expect(Object.values(after.marches).map((m) => [m.from, m.to, m.holdsArmy]))
+      .toEqual([["beta", "alpha", true], ["beta", "gamma", false]]);
+    // One army for the sally, two arrows. beta's army is out either way, so
+    // nothing else may march from it until these land.
+    expect(after.defense).toEqual({}); // nothing lands yet
+  });
+
+  it("cannot sally at all once the frontier's armies are already out", () => {
+    let g = withHand(playingState(LINE_ADJ), 0, ["raid", "great-raid"]);
+    g = playCard(g, 0, rng(), "alpha");
+    const after = playCard({ ...g, playedThisTurn: false }, 0, rng());
+    // beta is the realm's only land and its army is on the road to alpha.
+    expect(after.marches).toEqual(g.marches);
+  });
+
+  it("hits exactly the polygons bordering the full realm when they land", () => {
+    const g = withHand(playingState(LINE_ADJ), 0, ["great-raid"]);
+    const before = playCard(g, 0, rng());
+    const after = landMarches(before);
+    const landed = fresh(after, before.log.length)
+      .filter((e) => e.type === "march-resolved");
+    expect(landed.map((e) => e.targetFactionId)).toEqual(["alpha", "gamma"]);
+    expect(landed.every((e) => e.amount === GREAT_RAID_DAMAGE)).toBe(true);
     expect(after.defense.beta).toBeUndefined(); // never hits itself
   });
 
@@ -438,10 +588,9 @@ describe("great-raid", () => {
     let g = playingState(); // complete graph
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["great-raid"]);
-    const before = g.log.length;
-    const after = playCard(g, 0, rng());
-    const damaged = fresh(after, before).filter((e) => e.type === "damaged");
-    expect(damaged.map((e) => e.targetFactionId)).toEqual(["alpha", "delta"]);
+    const after = landMarches(playCard(g, 0, rng()));
+    const landed = after.log.filter((e) => e.type === "march-resolved");
+    expect(landed.map((e) => e.targetFactionId)).toEqual(["alpha", "delta"]);
   });
 
   it("stacks leadership and omens like a raid, one multiplier over every polygon", () => {
@@ -451,12 +600,13 @@ describe("great-raid", () => {
       omens: { beta: 1 },
       rulers: { ...g.rulers, beta: { ...g.rulers.beta, leadership: 5 } },
     };
-    const after = playCard(g, 0, rng());
+    const declared = playCard(g, 0, rng());
+    expect(declared.log.find((e) => e.type === "play")?.readings).toBe(1);
+    expect(declared.omens.beta).toBeUndefined();
+    const after = landMarches(declared);
     const each = (GREAT_RAID_DAMAGE + 5) * 2;
     expect(after.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - each);
     expect(after.defense.gamma).toBe(DEFAULT_DEFENSE_MAX - each);
-    expect(after.log.find((e) => e.type === "play")?.readings).toBe(1);
-    expect(after.omens.beta).toBeUndefined();
   });
 });
 
@@ -1157,14 +1307,26 @@ describe("advance", () => {
 
 describe("appendEvents stamping", () => {
   it("nests a play's damage under the play and stamps the acting ruler", () => {
-    const g = withHand(playingState(), 0, ["raid"]);
+    // Plague, not Raid: a raid is declared now and lands a turn later, from a
+    // batch that opens with no play, so it has nothing to nest under.
+    const g = withHand(
+      { ...playingState(), disease: { alpha: { beta: 1 } } }, 0, ["plague"],
+    );
     const before = g.log.length;
-    const after = playCard(g, 0, rng(), "alpha");
-    const [play, damaged] = fresh(after, before);
+    const after = playCard(g, 0, rng());
+    const [play, plagued] = fresh(after, before);
     expect(play.type).toBe("play");
     expect(play.consequence).toBeUndefined(); // the play leads, never nests
-    expect(damaged).toMatchObject({ type: "damaged", consequence: true });
+    expect(plagued).toMatchObject({ type: "plagued", consequence: true });
     expect(play.actorRuler).toBe(rulerOf(g.rulers, "beta").name);
+  });
+
+  it("a march landing is nobody's consequence - its card was a turn ago", () => {
+    const g = playCard(withHand(playingState(), 0, ["raid"]), 0, rng(), "alpha");
+    const before = g.log.length;
+    const landed = fresh(landMarches(g), before)
+      .find((e) => e.type === "march-resolved");
+    expect(landed?.consequence).toBeUndefined();
   });
 
   it("a turn-start draw is nobody's consequence", () => {
