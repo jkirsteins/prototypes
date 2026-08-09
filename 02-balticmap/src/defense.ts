@@ -95,6 +95,21 @@ export const FORTIFY_HEAL = 1;
  *  card the seat already holds four of - not something different in kind. */
 export const STRONG_BONUS = 1;
 
+/** What each attack card deals to one polygon before the leader and the
+ *  readings have their say, by card id. The sibling of `SINGLE_LAND_HEAL`
+ *  below, and a table for the same reason: `attackDamageFor` used a ternary on
+ *  the card id, so a new attack card silently inherited a Raid's damage from
+ *  the else branch rather than failing to compile.
+ *
+ *  Great raid is absent no longer having a number of its own - it is several
+ *  Raids, so an arrow of one is worth what a Raid is worth, and the table says
+ *  so rather than a comment somewhere else. */
+export const ATTACK_DAMAGE: Readonly<Record<string, number>> = {
+  "raid": RAID_DAMAGE,
+  "strong-raid": RAID_DAMAGE + STRONG_BONUS,
+  "great-raid": RAID_DAMAGE,
+};
+
 /** How much each single-land heal restores, by card id. One table, because
  *  three things read it: the play resolves through it, the hover quotes it
  *  before the click, and `SINGLE_LAND_HEALS` in src/cards.ts is its key set.

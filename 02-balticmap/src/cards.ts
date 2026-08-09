@@ -1,4 +1,4 @@
-import { SINGLE_LAND_HEAL } from "./defense";
+import { ATTACK_DAMAGE, SINGLE_LAND_HEAL } from "./defense";
 import { card, keyword, t, type Segment } from "./segments";
 
 /** One pack draw tier. The meta progression retired with the defense-score
@@ -190,12 +190,13 @@ export const NEUTRAL_POOL: readonly string[] = Object.values(CARDS)
   )
   .map((c) => c.id);
 
-/** The cards a Favourable omens reading doubles - the attack cards. Damage
- *  resolution, the reserve spend, the card tip and the AI all key on this
- *  set, so a new attack card is one entry here. */
-export const ATTACK_CARDS: ReadonlySet<string> = new Set([
-  "raid", "strong-raid", "great-raid",
-]);
+/** The cards that deal damage to one polygon. Derived from the damage table
+ *  rather than written out again, the `SINGLE_LAND_HEALS` rule: a card cannot
+ *  be in the set and missing an amount, or carry an amount nothing treats as
+ *  an attack. */
+export const ATTACK_CARDS: ReadonlySet<string> = new Set(
+  Object.keys(ATTACK_DAMAGE),
+);
 
 /** The cards that send ONE army at ONE land - the two-step aim (a source, then
  *  a target), the arrow, and the `no-army` refusal. Keyed as a set because

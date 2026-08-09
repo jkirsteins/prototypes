@@ -7,8 +7,8 @@ import {
   type Incorporated, type Overlords,
 } from "./relations";
 import {
-  armyCapFor, defenseMaxOf, defenseOf, STRONG_BONUS,
-  PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, SUBJUGATION_GATE, subjugationGateOpen,
+  armyCapFor, ATTACK_DAMAGE, defenseMaxOf, defenseOf,
+  PLAGUE_DAMAGE_PER_STACK, SUBJUGATION_GATE, subjugationGateOpen,
   turnipThresholdFor, type Defense, type Disease,
 } from "./defense";
 import {
@@ -371,11 +371,9 @@ export function attackDamageFor(
   actorFactionId: string,
   cardId: string,
 ): { damage: number; multiplier: number } {
-  // Great raid is several Raids, so an arrow of one is worth exactly a Raid.
-  // There is no number of its own to keep in step any more.
-  const base = cardId === "strong-raid"
-    ? RAID_DAMAGE + STRONG_BONUS
-    : RAID_DAMAGE;
+  // From the table, never a ternary on the id: a card that is not an attack
+  // gets 0 here rather than quietly inheriting a Raid's damage.
+  const base = ATTACK_DAMAGE[cardId] ?? 0;
   const multiplier = omensMultiplier(view, actorFactionId, cardId);
   return {
     damage: (base + leadershipBonus(view, actorFactionId, cardId)) * multiplier,
