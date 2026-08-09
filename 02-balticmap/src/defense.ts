@@ -76,14 +76,14 @@ export const HARVEST_FEAST_HEAL = 1;
  *  is what the card was always pretending to be.
  *
  *  Below `HILLFORT_HEAL` on purpose. Fortify is what every deck STARTS with,
- *  five copies of it; Hillfort is the same shape, twice as strong, and has to
- *  be harvested. */
+ *  four copies of it; Hillfort is the same shape, three times as strong, and
+ *  has to be harvested. */
 export const FORTIFY_HEAL = 1;
 
 /** What the "strong" version of a starting card adds. Flat, and one: on a
  *  board of 2..18 a single point is a quarter of a small land's ceiling, and
  *  the point of the pair is that a harvest offers something better than the
- *  card the seat already holds five of - not something different in kind. */
+ *  card the seat already holds four of - not something different in kind. */
 export const STRONG_BONUS = 1;
 
 /** How much each single-land heal restores, by card id. One table, because
@@ -152,7 +152,7 @@ export function applyHeal(
 }
 
 /** The one spelling of each gate line, floored so the boundary is a whole
- *  number the badge can print: a 600 polygon opens at 150 and frees at 450. */
+ *  number the badge can print: a 6 polygon opens at 1 and frees at 5. */
 export function subjugationGateOpen(
   view: DefenseView, factionId: string,
 ): boolean {

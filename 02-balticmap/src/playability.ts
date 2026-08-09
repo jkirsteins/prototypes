@@ -384,8 +384,8 @@ export function attackDamageFor(
   return { damage: (base + leadership) * multiplier, multiplier };
 }
 
-/** What a Plague would deal to one polygon right now: 100 per stack the
- *  actor owns there, times the held Miasma readings. */
+/** What a Plague would deal to one polygon right now: `PLAGUE_DAMAGE_PER_STACK`
+ *  per stack the actor owns there, times the held Miasma readings. */
 export function plagueDamageOn(
   view: RulesView,
   actorFactionId: string,

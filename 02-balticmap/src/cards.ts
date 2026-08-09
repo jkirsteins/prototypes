@@ -154,8 +154,8 @@ export type Strategy = "warpath" | "pestilence";
 
 export const BUILDS: Record<Strategy, readonly string[]> = {
   // The strong pair rather than the plain one: every deck already OPENS with
-  // three Raids and five Fortifies, so a harvest that offered them again was
-  // offering a card the seat was already holding five of. What the pool owes
+  // four Raids and four Fortifies, so a harvest that offered them again was
+  // offering a card the seat was already holding four of. What the pool owes
   // a warpath seat is a better version of what it already does.
   warpath: [
     "strong-raid", "great-raid", "favourable-omens", "war-council",

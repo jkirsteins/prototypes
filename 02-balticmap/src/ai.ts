@@ -331,7 +331,7 @@ export function chooseAction(state: GameState): AiAction {
   // While free and the realm's worst polygon sits under 50%, repair it.
   // The two single-land heals in strength order: spend the big one first while
   // a land is worth it. Fortify is the weaker, and the one every deck starts
-  // holding five of.
+  // holding four of.
   const hillfort = idxOf("hillfort");
   const strongFortify = idxOf("strong-fortify");
   const fortify = idxOf("fortify");

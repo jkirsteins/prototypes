@@ -1,9 +1,15 @@
 # AGENTS.md
 
 Baltic Tribes. Plain TypeScript + Vite, no framework, imperative DOM. `npm test`
-and `npm run build` must both pass before committing. Verify in a browser through
-the root dev server at `http://127.0.0.1:4173/prototypes/` - not this prototype's
-own bare root; see the repo `AGENTS.md` for why.
+and `npm run build` must both pass before committing. Verify in a browser
+through this prototype's own dev server (`npm run dev` from this directory) at
+`http://127.0.0.1:5173/prototypes/02/` - the `base` in `vite.config.ts`, not the
+bare root. There is no root dev server; the repo `AGENTS.md` says why.
+
+`npm test` deliberately excludes `tests/sim.test.ts` and
+`tests/scenarios.test.ts` - the balance suites, which are minutes rather than
+seconds. `npm run balance` is theirs, and the repo rule is that balance
+evidence is produced on demand.
 
 Specs and plans live in `docs/superpowers/`. Read the relevant one before
 changing the code it describes.
@@ -13,7 +19,7 @@ changing the code it describes.
 Query params replay the real transitions, so checking something is one
 navigation and the same URL gives the same run every time:
 
-    http://127.0.0.1:4173/prototypes/02/?seed=7&faction=selonians&build=warpath&turns=5&defense=selija:100
+    http://127.0.0.1:5173/prototypes/02/?seed=7&faction=selonians&build=warpath&turns=5&defense=selonians:1
 
 - `seed=N` - seeds the rng.
 - `build=warpath|pestilence` - the build screen's pick. Omit for warpath.
@@ -21,11 +27,14 @@ navigation and the same URL gives the same run every time:
   one stop that must be asked for: `chooseBuild` runs whether or not `build=`
   was named, so nothing else leaves the phase at `deck-building`.
 - `faction=id` - a **faction** id, not a region id (`selonians`, not `selija`).
-- `turns=N` - plays N rounds with the AI policy on every seat, then hands back
-  on your turn.
+- `turns=N` - plays N rounds with the AI policy on every seat that takes turns,
+  yours included, then hands back on your turn. It goes through `aiTakeTurn`,
+  so a fast-forwarded turn plays a repeat the same way a live one would.
 - `hand=a,b,c` - replaces your hand.
-- `defense=selonians:100;jersikans:0` - polygon defense overrides, clamped
+- `defense=selonians:1;jersikans:0` - polygon defense overrides, clamped
   into [0, max]; a value at or above max deletes the key (absent = pristine).
+  The ceilings are small - 2 to 18 across the map - so the useful numbers here
+  are single digits, and `defense=x:0` is a land one army walks into.
 - `disease=selonians:jersikans:3` - `polygon:owner:count` stacks.
 - `leadership=selonians:100` - ruler leadership overrides.
 - `armies=selonians:3` - armies stationed per polygon, clamped at 0. Absent
@@ -43,7 +52,10 @@ what `factionIds`, `defense`, `armies` and `marches` are keyed by. This
 section used to show `defense=selija:100`, which silently parsed and then
 dropped: `applyBootParams` skips a clause naming no known faction, so a wrong
 id boots a perfectly ordinary game and says nothing.
-- `turnips=N` - the human's turnip counter, clamped under the threshold (5).
+- `turnips=N` - the human's turnip counter, clamped under the threshold. The
+  threshold is the land's own (`turnipThresholdFor`, the army divisor rounded
+  the other way), so it is 1 on Pilsotas and 6 on Eastern Aukstaitija rather
+  than one number for the map.
 - `wealth=N` - the human faction's treasury.
 - `rules=turn:unlimited` - rule picks, `axis:option` pairs separated by `;`.
   An unknown axis or option is dropped; an omitted axis keeps its default.
@@ -66,6 +78,81 @@ hand-edited record.
 asserts what the player can see; state assertions belong in vitest. A refresh
 is a clean start - the run is not persisted, and the way back is the URL.
 
+## A status is the only difference between a land that plays and one that does not
+
+Every one of the 26 factions has a seat, a deck and a ruler's chair. Five of
+them act; the rest carry the passive status `keeps-to-itself`, and that status
+is the entire difference. `playsTurns` in `src/passives.ts` is the one question
+the turn loop asks, so a quiet land can be raided, subjugated, poached, healed
+and incorporated by the rules that already exist, and taking it strips the
+status - its people wake up as their new lord's vassal, holding the deck they
+were dealt.
+
+Two things ride on the same fact rather than on conditions written down twice:
+a quiet land raids a neighbour about one round in four (`RESTLESS_RAID_CHANCE`,
+resolved at the round wrap), and it stops the moment somebody takes it, because
+the raid asks for the status and capture takes the status off.
+
+Passive statuses are a table in `src/passives.ts` - the quiet set, the two
+terrain rows rolled onto lands their own flavour text supports, and the burden
+the three biggest polygons carry - plus one hook each. `strippedOnCapture` is
+the axis that keeps "describes the ground" apart from "describes a land nobody
+holds". **A status does not ship until the land hover names it**: a rule the
+player cannot see is a rule that reads as the game cheating.
+
+## A land with no leader takes no turn
+
+`pickFaction` seats a ruler on the acting factions alone (`vacateRulers`), and
+a vacant chair is what `advance` passes over. The gate is on ACTING, not on
+holding: a land somebody has taken still has no leader, and a leaderless
+faction takes no land - a restless raid out of the grey middle is a raid, not
+a conquest.
+
+Because a leaderless actor never gets a `beginTurn` of its own, anything that
+resolves at the actor's turn start is swept at the round wrap instead, or its
+arrow would stand on the map for the rest of the game.
+
+## Nothing ends itself
+
+A turn ends when the player says so, on both rule axes (`RULE_AXES` in
+`src/rules.ts`: `turn` is one card or unlimited, `hand` keeps what is left over
+or sweeps it). What a card leaves behind is a separate question from what it
+does:
+
+- **`playsAgain`** (`CardDef.playsAgain`) re-opens the spent turn for ANOTHER
+  COPY OF THE SAME CARD, and nothing else. The play spends the turn's allowance
+  the way every card does; `GameState.repeatCardId` carries which card, and
+  `turnAccepts` is the only reader. What stops the run is ordinary legality - a
+  raid needs a land with a free army - so the limit is the board, not a count.
+  Nothing outside those two knows the rule exists, and neither knows which card
+  is carrying it, so a new repeating card is one field.
+- A **claim** is a Subjugate in flight: the play declares it, and it answers at
+  the ACTOR's next turn. The land may close its gate in the meantime, somebody
+  else's army may break the claim, and the demand lapses. The same rule as a
+  march arrow, for the same reason - an allegiance that changed the instant a
+  card hit the table gave nobody a chance to see it coming.
+- A **capture** is an army arriving where there is nothing left to fight: a
+  raid that lands on a flattened land takes it. The taker is then asked how
+  much defense to send with the conquest (`pendingTransfer` /
+  `transferDefense`); an AI seat moves half on the spot. 0 is a real answer.
+
+## The harvest is five answers, and the milestones are a table
+
+The Turnip harvest offers five ways to spend it (`HarvestChoice` in
+`src/harvest.ts`): grow a land, take a card from your own build, take one from
+everything the game knows sight unseen, burn a card out of your piles for good,
+or take nothing. Thinning a ten-card deck is a real play, which is why `skip`
+and `destroy` are not consolation prizes. The offer IS the discovery route for
+deck-buildable cards, so `buildOffer` and `randomPool` decide what a seat can
+ever meet.
+
+`MILESTONES` in `src/milestones.ts` is a standing race every faction runs at
+once - subjugate 5 different lands, muster 8 armies, hold 5 lands, found 3
+settlements, grow 3 times, plague 5 lands. Progress is READ off the state and
+the log, never accumulated into a store, which is why "a wide realm" is the
+only one that can go down. A store would be a third copy of what the board and
+the log already hold, and the first to drift.
+
 ## Never interpolate a card or faction name into a string
 
 Every place the game names a card ("Shrewd marriage") or a faction
@@ -78,8 +165,8 @@ The reason is not tidiness. A name rendered as a segment is a node the player
 can point at: a card name shows what the card does, and a faction name lights up
 that faction's realm on the map, exactly as hovering its land does. A name baked
 into a string is inert, and the player is left to remember what "Shrewd marriage"
-does and where Selonians are - in a game with 14 cards and 30-odd factions, on a
-modal that appears once and is dismissed.
+does and where Selonians are - in a game with a score of cards and 26 factions,
+on a modal that appears once and is dismissed.
 
 This rule exists because the flat-string version shipped first and rotted in the
 obvious ways within a week: `cardName` was written twice, once in `src/hud.ts`
@@ -115,7 +202,7 @@ plain-text segment contains a card name from `CARDS` or a faction name from
 
 Do not add a second modal, and do not restore the three-paragraph notice format.
 One `Continue`. One line per notice-worthy event: what card, who did it, and the
-score it moved, as `(Defense -150 -> 450)` or `(Disease +1 -> 3)`. Rules
+score it moved, as `(Defense -1 -> 5)` or `(Disease +1 -> 3)`. Rules
 consequences that are not tied to one event - the Pay tribute injection, the
 open home gate - go in the footer block under the list, deduplicated, not
 appended to a line.
@@ -130,7 +217,7 @@ tooltip.
 The log carries the same numbers, from the same walk. `renderLog` runs
 `walkStandings` over the fresh batch through `walkCtxOf` - the identical context
 `buildRoundSummary` uses - and `impactText` renders one event's slice as the
-`(Defense -150 -> 450)` suffix. The modal and the log therefore cannot quote
+`(Defense -1 -> 5)` suffix. The modal and the log therefore cannot quote
 different numbers for the same event, and a test asserts they do not. A card
 that moves no score gets no suffix: its name is a hoverable segment that
 already says what it does. War council and tribute are the two suffixes that
@@ -247,6 +334,22 @@ clicks. `Hud.afterPlayAnimation` owns the timing and always fires - once - even
 when nothing flew (a forced discard animates nothing) and even if the flight
 somehow never reports itself finished.
 
+## Every visible sequence goes through one queue
+
+`animations` in `src/animate.ts` is a module singleton, and everything the
+player watches is pushed onto it: the turn-start draw, the played card's
+flight, the march-resolution flashes, the harvest reveal. One step at a time,
+in the order asked for, nothing overlapping - which is the whole point, because
+two sequences drawn at once are two sequences the player cannot read.
+
+The queue is why "is anything flying?" is not the same question as "is anything
+still to be drawn?". A card asked for while an earlier step is running has not
+flown yet, and a gate that only counted live flights would release the turn
+over a card still in the player's hand. Count what is QUEUED as well - see
+`playPending` in `src/hud.ts`. A step that throws releases the queue rather
+than wedging the game, and `clear()` drops what has not started while leaving
+the running step to clean up its own DOM.
+
 ## Never re-derive an animation's duration
 
 Game logic waits on the animation reporting itself finished, never on a second
@@ -273,9 +376,20 @@ Also add a `NOTICE_RULES` entry for any new `GameEventType` - the exhaustive
 down why - and record `amount` on any event that moves a defense score or a
 disease stack, or the before/after suffixes silently drift.
 
+**A card that belongs to a class joins the class's set, and every surface asks
+what the card IS.** `ATTACK_CARDS`, `MARCH_CARDS`, `SINGLE_LAND_HEALS`,
+`INWARD_CARDS` and `CardDef.playsAgain` are those sets, in `src/cards.ts`. A
+surface that names a card by literal answers for one member and not the class,
+and the failure is silent: Strong raid shipped never asking the player which
+land its army left from, and three of the four inward cards resolved a click
+politically, which on an incorporated land aimed at the annexer's home rather
+than the land under the cursor. Heal amounts are the same rule one level down -
+`SINGLE_LAND_HEAL` in `src/defense.ts` is read by the play AND by the hover, so
+the preview cannot promise what the card will not do.
+
 A card marked `secret: true` needs two more things checked, because neither is
 a type error. It must **move no score** - `impactText` prints the
-`(Defense -150 -> 450)` suffix beside the line whatever the name says, and a
+`(Defense -1 -> 5)` suffix beside the line whatever the name says, and a
 suffix names the card in all but words. And it must have a **reveal clause**
 in `revealedSecrets` (src/hud.ts) saying when the card stops being secret, or
 it is hidden forever and the log will contradict what the player has plainly

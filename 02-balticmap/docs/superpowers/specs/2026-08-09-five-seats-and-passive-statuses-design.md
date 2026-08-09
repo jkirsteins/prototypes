@@ -31,10 +31,11 @@ Because a quiet land is an ordinary faction:
   resumes with the deck it was dealt at the start. Nothing has to be created
   for that to work.
 
-The things that follow from never taking a turn are consequences, not rules:
-a quiet vassal never plays the tribute cards shuffled into its deck, and never
-reaches the independence gate, which is checked at the start of its own turn.
-Both are correct and deliberate - a conquest stays conquered.
+**Taking a quiet land dissolves the status.** Its people join the game as their
+new lord's vassal, with turns, a deck and tribute to pay - and with a road back
+out through the independence gate, which is checked at the start of the turn it
+now takes. A conquest that stayed silent was a conquest that could never answer
+back, and half the map was that conquest.
 
 ## 1. Who takes turns
 
@@ -53,13 +54,27 @@ It then chooses which factions ACT:
 Order matters because the rng draw count per seat is a frozen contract that
 `tests/rng-isolation.test.ts` pins.
 
-`advance` skips a seat whose faction carries the status, the same way it
-already skips an incorporated one. That single line is the whole turn-loop
-change. `aiTakeTurn` is never reached for a quiet seat, so the AI needs no
-guard of its own.
-
 A land is **quiet** when it carries the status, and **unheld** when no realm
 holds it (`!overlords.has(f) && !(f in incorporated)`).
+
+## 1a. The leader gate
+
+Acting is a chair, not a flag. `pickFaction` seats a ruler on the acting
+factions alone (`vacateRulers`), and a **vacant chair is what the turn loop
+skips** - `advance` passes over a leaderless seat the same way it passes over
+an incorporated one. `aiTakeTurn` is never reached for such a seat, so the AI
+needs no guard of its own.
+
+The gate is on ACTING and not on holding, so it survives conquest: taking a
+quiet land wins the land, not its people's allegiance, and the chair stays
+empty. Two consequences are load-bearing:
+
+- **A leaderless faction takes no land.** A restless raid out of the grey
+  middle is a raid, not a conquest, or the middle would quietly eat itself and
+  lands with no chief to answer for them would end up holding vassals.
+- **Anything that resolves at the actor's turn start is swept at the round
+  wrap instead**, because a leaderless actor never gets a `beginTurn` of its
+  own and its arrow would otherwise stand on the map for the rest of the game.
 
 ## 2. The map
 
@@ -100,20 +115,40 @@ convention `defense` and `armies` already keep.
 
 | id | name | text | stripped on capture |
 |---|---|---|---|
-| `keeps-to-itself` | Keeps to itself | This land takes no turns and plays no cards. | no |
+| `keeps-to-itself` | Keeps to itself | Answers to nobody: takes no turns and plays no cards, but its people raid a neighbour about one round in four. Taking the land dissolves this, and its people join the game. | yes |
 | `wild-lands` | Wild lands | 10% chance each round to recover 1 defense. | yes |
 | `no-successor` | No successor | If its ruler is killed, the land falls to the killer. | yes |
 | `hill-country` | Hill country | Incoming attack damage reduced by a quarter. | no |
 | `river-trade` | River trade | Earns its holder 1 extra wealth a turn. | no |
+| `burden-of-bureaucracy` | Burden of bureaucracy | Its people are many and slow to muster: 1 army per 4 defense, not per 3. | no |
 
 Every land that does not act starts with all three of `keeps-to-itself`,
-`wild-lands` and `no-successor`. Taking one strips the two that describe a
-land nobody holds; it stays quiet, because staying quiet is a fact about the
-land and not about who holds it.
+`wild-lands` and `no-successor`, and a conquest strips all three: its people
+join the game as their new lord's vassal, with turns, a deck and tribute to
+pay. Keeping to itself describes a land that answers to nobody, so being taken
+is exactly the condition that ends it - and the restless raid below stops with
+it, without a second rule saying so.
 
-The five are a table, not five features: a new status is a row plus the one
-hook that reads it, and `strippedOnCapture` is the axis that keeps "describes
-the ground" apart from "describes being unheld".
+The table is not six features: a new status is a row plus the one hook that
+reads it, and `strippedOnCapture` is the axis that keeps "describes the ground"
+apart from "describes a land nobody holds".
+
+`burden-of-bureaucracy` is not rolled. The three biggest polygons on the map
+are all Lithuanian, and at the map's own divisor the largest fields six armies
+to a small land's one - enough standing force to raid every neighbour every
+round and still hold. `BUREAUCRACY_LANDS` names those three, because it is a
+fact about how big they are rather than a draw, and the turnip threshold
+deliberately does not ask: slowing their harvests too would punish one size
+twice.
+
+### The middle is not still
+
+A land that takes no turns is not a land that does nothing. Twenty-one of them
+sitting perfectly still made the middle of the map a queue rather than a
+frontier, so a land carrying `keeps-to-itself` sends a raid at a random
+neighbour with chance `RESTLESS_RAID_CHANCE` (0.25), rolled at the round wrap.
+It is declared out of the land itself through the ordinary march path, so it
+flies, clashes and lands like anybody's raid, and it belongs to no deck.
 
 ### Where the terrain pair may sit
 
@@ -135,8 +170,9 @@ plains and the islands.
 
 ### The hooks
 
-- **Keeps to itself** - `advance` skips the seat. Nothing else in the codebase
-  asks.
+- **Keeps to itself** - `playsTurns` is the one question, and a land carrying
+  it gets no leader at the deal, which is what `advance` skips on (section
+  3a). Its restless raid is the only other reader.
 - **Wild lands** - once per round, in `beginTurn` at the wrap onto the first
   seat (`state.current === 0`): each polygon carrying it that sits below its
   max rolls `rng() < WILD_LANDS_HEAL_CHANCE` (0.10) and heals 1. Each heal
@@ -164,34 +200,104 @@ plains and the islands.
 status, `name - text`, `blockStart` on the first. Held or unheld, yours or a
 rival's - a passive status is public. No status ships without it.
 
-## 4. Capture, spelled out
+## 4. Taking a land, spelled out
 
-Nothing new. Subjugate's existing rule - a faction in reach, its home defense
-at or below the gate, no respite running, not the actor's own liege - already
-reaches a quiet land, because a quiet land is a faction in reach like any
-other. What follows:
+Subjugate's rule - a faction in reach, its home defense at or below the gate,
+no respite running, not the actor's own liege - reaches a quiet land, because a
+quiet land is a faction in reach like any other. What follows is the ordinary
+vassalage: it counts toward the realm and the win condition through
+`fullRealmOf`; a rival may poach it at the gate, so taken ground stays
+contested; and its lord may Incorporate it once the realm gate allows, which is
+the permanent form. What it no longer does is stay silent - the status is
+stripped on capture, so its people take turns, hold a deck and pay the tribute
+shuffled into it.
 
-- It becomes the actor's vassal and counts toward the realm and the win
-  condition through `fullRealmOf`, which the scoreboard, the outline and the
-  victory check already walk.
-- It never pays the tribute shuffled into its deck, and never reaches the
-  independence gate, because both need a turn it does not take.
-- A rival may poach it at the gate exactly as it may poach any vassal, so
-  taken ground stays contested.
-- Its lord may Incorporate it once the realm gate allows, which is the
-  permanent form.
+**A Subjugate is declared, not landed.** The play writes a CLAIM out of the
+actor's home, and the claim answers at the actor's next turn. In between, the
+target may heal its gate shut, somebody else's army may arrive, and the demand
+lapses; a land already inside the actor's realm, or one that escaped into its
+respite, lapses too. The actor's own raid at the same land does not break the
+claim, or Subjugate and Raid could not be played together. This is the march
+rule, for the march reason: an allegiance that changed the instant a card hit
+the table gave the land no chance to answer and everyone else no chance to see
+it coming.
+
+**A raid that lands on a flattened land takes it.** An army arriving where the
+defense is already 0 has nothing left to fight, so it walks in: the same
+allegiance move a claim makes, through the same path. Two raids on one land
+therefore need no Subjugate between them, which is what makes timing them
+worth something - and only a faction with a leader may take a land this way.
+
+**A capture asks what defense goes with it.** The taker leaves a
+`pendingTransfer` from the land the army marched out of to the land it took;
+`transferDefense` answers it, clamped by what the origin holds and by the
+destination's room. 0 is a real answer, and closes the question. An AI seat
+moves half on the spot (`autoTransfer`), and only one question can be pending
+at a time, because the modal asks about one pair of lands.
+
+## 4a. A card may re-open the turn it spent
+
+`CardDef.playsAgain` says that playing this card leaves the turn open for
+ANOTHER COPY OF ITSELF, and nothing else. The play spends the turn's allowance
+the way every card does; what it adds is `GameState.repeatCardId`, and
+`turnAccepts` is the only rule that reads it. What ends the run is ordinary
+legality - a raid needs a land with a free army - so the limit is the board
+rather than a count kept anywhere.
+
+Deliberately not "raids are special": nothing outside `playsAgain` and
+`repeatCardId` knows the rule exists, and neither of them knows which card is
+carrying it. The two raids carry it today.
+
+`aiTakeTurn` walks a turn until it is no longer open or the state stops moving,
+which is also how the balance harness must walk one: a harness that asked the
+policy once per seat turn counted a seat's second raid as no raid.
+
+## 4b. The harvest is five answers
+
+`HarvestChoice`: grow a land, take a card from your own build, take one from
+everything the game knows sight unseen, burn a card out of your piles for good,
+or take nothing. The last two are not consolation prizes - a ten-card deck
+draws its best card sooner for every card that is not in it, so thinning is a
+real play, and skipping is the honest answer when everything on offer would
+only dilute what the deck already draws.
+
+The offer IS the discovery route for deck-buildable cards, which is why growth
+occupies a slot of its own every time: the offer can then never come back with
+nothing worth taking.
+
+## 4c. Milestones
+
+`MILESTONES` is a standing race every acting faction runs at once, each row
+worth points to whoever reaches it: Overlord (subjugate 5 different lands, 3),
+The great host (muster 8 armies, 2), A wide realm (hold 5 lands at once, 3),
+Founders (found 3 settlements, 2), Fruitful lands (grow 3 times, 2), The black
+season (cash a plague on 5 different lands, 2).
+
+Progress is READ off the state and the log, never accumulated into a store -
+which is why "a wide realm" is the only row that can go down, and that is the
+point: a realm is held, not banked. A store would be a third copy of what the
+board and the log already hold, and the first of the three to drift. What
+points buy is a later decision; the milestones are a second scoreboard beside
+the land count.
 
 ## 5. Numbers
 
-- `DEFENSE_PER_POPULATION` 500 -> 5000, so maxes become 2 (Pilsotas) to 18
-  (Eastern Aukštaitija). `DEFAULT_DEFENSE_MAX` 60 -> 6.
-- Damage, heals and leadership are deliberately unchanged. A raid is 1 plus
-  leadership against a 6, so a land falls in a handful of landings instead of
-  forty. The known consequences: a stacked War council empties an average land
-  in one landing, Hillfort (+15) fully heals anything, and one disease stack
-  cashed by Plague (10) empties most lands. Accepted for this pass and
-  re-measured after playtest.
-- `TURNIP_HARVEST_THRESHOLD` 5 -> 3.
+The board is small on purpose, and every number that moves a score is sized to
+it:
+
+- `DEFENSE_PER_POPULATION` 5000, so maxes run 2 (Pilsotas) to 18 (Eastern
+  Aukstaitija). `DEFAULT_DEFENSE_MAX` 6.
+- A Raid deals 1 plus leadership, a Strong raid 2 plus leadership, a Great raid
+  0.5 each. War council is +1 leadership a stack. A disease stack cashes for 1.
+- Fortify heals 1, Strong fortify 2, Hillfort 3, Harvest feast 1 realm-wide.
+  Fortify is below Hillfort on purpose: every deck OPENS with four of it, and a
+  harvested card has to be worth harvesting.
+- `STRONG_BONUS` is 1 - the strong pair is a better version of what the seat
+  already holds four of, not something different in kind.
+- One army per 3 defense (`DEFENSE_PER_ARMY`), floored, minimum one; per 4 on
+  the three bureaucratic lands. The turnip threshold is the same divisor
+  rounded the other way, so a part-grown land musters no army for the remainder
+  but its people still eat.
 - `victoryRealmSize` = `ceil(0.5 * factionCount)` = 13 of 26.
 - One `subjugate` joins `startingDeck()`: every seat opens on a map that is
   mostly unheld, and a deck that cannot take ground can win nothing.
@@ -217,21 +323,45 @@ dot and stops short of Trikāta. Both are replaced by a clearance sized to what
 is actually in the way - the town dot (`r = 3.5`) and its label - capped as a
 share of a very short axis. The fade-out ghost uses the same numbers.
 
+## 7a. The turn structure
+
+Nothing ends itself. A turn ends when the seat says so, on two independent
+axes (`RULE_AXES`): `turn` is one card or unlimited, and `hand` keeps what is
+left over or sweeps it into the discard. They ask different questions - how
+many cards a turn may play, and what becomes of the ones it did not - so every
+combination is a game somebody might want, and `sweepHand` runs where a turn
+actually ends rather than in any one of the four things that can end it.
+
+`playsAgain` (section 4a) is the one thing that reaches across: it re-opens a
+spent turn, so "the turn is spent" and "the turn accepts nothing" stopped being
+the same question. `turnOpen` is the second one, and every screen and policy
+that used to ask about `playedThisTurn` asks it instead.
+
 ## 8. AI
 
-Quiet seats never reach `aiTakeTurn`, so the policy needs no guard. Two
-things change:
+Quiet seats never reach `aiTakeTurn`, so the policy needs no guard. What
+changes:
 
 - The Assassinate branch prefers a target carrying `no-successor` - the
   killing takes the land outright, which beats any leadership stack.
 - `POLICY_COVERAGE` records that preference, and records that Subjugate now
   also takes quiet lands (the branch is unchanged; what it reaches is not).
+- `aiTakeTurn` plays while the turn is still open and the state still moves, so
+  a repeat needs no branch of its own: `repeatOnly` narrows the set the same
+  branches choose out of, aimed afresh at the board the first play left. A
+  refused play returns the state unchanged and stops the run, so the rules end
+  a turn rather than a count of plays; `MAX_AI_PLAYS` is belt and braces.
 
 ## 9. Multiplayer
 
 Unchanged in shape. The guest's pick is passed to `pickFaction` as a reserved
 faction so it ACTS, and `seatOfFaction` still finds its seat. The AI fill
 takes the remaining three acting slots.
+
+The reservation is not optional dressing. Only acting factions keep a leader,
+and a leaderless faction takes no turn, so a guest dealt like any other rival
+would sit through the whole game unable to play - roughly four times in five on
+a 26-land map.
 
 ## 10. Tests
 
@@ -248,12 +378,29 @@ takes the remaining three acting slots.
   Plague; River trade adds income.
 - leaderboard: one row per acting faction, none for a quiet land.
 - `POLICY_COVERAGE` for the rewritten Assassinate branch.
+- the leader gate: a leader on the acting factions alone, a reserved land
+  seated too, `advance` walking past a vacant chair twice round the table, a
+  leaderless faction's march resolving at the round wrap, and a leaderless
+  army taking nothing.
+- claims: a Subjugate changes nothing when played and answers at the ACTOR's
+  next turn; it lapses on a gate the target closed, on a land already in the
+  realm and against a land in its respite; anybody else's army at the claimed
+  land breaks it and the actor's own does not.
+- captures: an army arriving at a 0-defense land takes it with no
+  `march-resolved`; the taken land wakes up; the transfer is asked of a human
+  and taken automatically for an AI, clamped both ways, with 0 a real answer.
+- `playsAgain`: the set is pinned to the field, a spent turn accepts more of
+  the same card and nothing else, and the AI's turn walks until the board
+  stops it.
+- milestones: the table, progress clamped and read off the state, a wide realm
+  going down, and one milestone driven end to end through `playCard`.
+- the animation queue: one step at a time in the order asked for, `busy` from
+  the first push to the last release, a throwing step releasing rather than
+  wedging, and the turn gate holding while a play is still queued.
 
-Updated: `tests/game.test.ts`, `tests/standings.test.ts`, `tests/sim.test.ts`,
-`tests/hud.test.ts`, `tests/boot-params.test.ts` and the scenario pacing
-bands, which will move. `src/sim.ts` needs no seat logic of its own - it
-drives whatever `advance` hands it - but a simulated game is now five acting
-decks on 26 lands, so every number it reports moves.
+`src/sim.ts` needs no seat logic of its own - it drives whatever `advance`
+hands it - but its per-turn loop must mirror `aiTakeTurn`, or a seat that
+raided twice is counted as having raided once.
 
 `npm run balance` is not run as part of this work; the repo rule is that
 balance evidence is produced on demand. `npm test` and `npm run build` must
@@ -261,9 +408,10 @@ pass, then a browser pass.
 
 ## Explicitly not in this design
 
-- No new cards. The status system is built so that a card granting or removing
-  one is a small change later - including the card that would wake a quiet
-  land up - and no such card ships here.
-- No timed statuses. All five are permanent while they hold; `src/timed.ts`
+- No new cards beyond the strong pair the harvest offers. The status system is
+  built so that a card granting or removing one is a small change later -
+  including the card that would wake a quiet land up - and no such card ships
+  here.
+- No timed statuses. All six are permanent while they hold; `src/timed.ts`
   stays the lifecycle core for anything that expires.
 - No rebalance of damage and heals against the smaller maxes beyond section 5.
