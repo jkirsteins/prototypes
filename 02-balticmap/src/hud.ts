@@ -2165,7 +2165,14 @@ export function createHud(
 
       const text = document.createElement("div");
       text.className = "ms-text";
-      text.textContent = row.milestone.text;
+      // Nodes where the line names a card, flat text where it names nothing.
+      if (row.milestone.textSegments !== undefined) {
+        text.appendChild(
+          renderSegments(row.milestone.textSegments, richTextHooks),
+        );
+      } else {
+        text.textContent = row.milestone.text;
+      }
 
       const bar = document.createElement("div");
       bar.className = "ms-bar";

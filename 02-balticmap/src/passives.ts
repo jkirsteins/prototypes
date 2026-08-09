@@ -179,9 +179,11 @@ export const TERRAIN_ELIGIBILITY: Readonly<Record<string, readonly string[]>> = 
  *  of the same map are different maps to fight over. */
 export const TERRAIN_CHANCE = 0.5;
 
-/** Two draws per eligible land, in faction order: whether it carries anything
- *  and which of its own options it gets. A frozen contract like every other
- *  draw in the deal - tests/rng-isolation.test.ts replays it. */
+/** One draw per eligible land, in faction order, plus a second only where the
+ *  first passed: whether it carries anything, and then which of its own
+ *  options it gets. The second decides nothing today - every eligibility list
+ *  holds one id - and is kept because a land with two plausible grounds is a
+ *  row in the table, not a change to this function. */
 export function rollTerrain(factionIds: string[], rng: Rng): Passives {
   let out: Passives = {};
   for (const land of factionIds) {

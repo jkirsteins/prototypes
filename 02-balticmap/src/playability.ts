@@ -96,8 +96,9 @@ export interface RulesView {
    *  one, which makes reach an army question as well as an adjacency one. */
   marches: Marches;
   /** Subjugations declared but not yet answered (src/marches.ts). Read by the
-   *  legality of a second Subjugate at the same land and by the map, which
-   *  draws one as an arrow like any other pending thing. */
+   *  map, which draws one as an arrow like any other pending thing, and by the
+   *  round wrap that lands them. A second Subjugate at the same land is legal
+   *  and simply replaces the first demand (`addClaim`, src/marches.ts). */
   claims: Claims;
   /** Polygon id -> armies stationed; absent = the land's own army cap. */
   armies: Armies;
@@ -442,8 +443,6 @@ export type TargetBlockReason =
   | { code: "already-vassal" }
   /** Assassinate ruler: nobody leads this land, so there is nobody to kill. */
   | { code: "no-ruler" }
-  /** Create army: the land already fields every army its ceiling allows. */
-  | { code: "at-army-cap"; cap: number }
   /** The land already holds every settlement the actor's people can support. */
   | { code: "needs-population"; have: number; allowance: number }
   | { code: "no-free-site" }

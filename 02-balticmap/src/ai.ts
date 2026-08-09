@@ -806,5 +806,8 @@ export function aiTakeTurn(state: GameState, rng: Rng): GameState {
     g = next;
     if (!turnOpen(g)) break;
   }
-  return g;
+  // Gives up whatever is left of a re-opened turn. A seat that stopped with a
+  // repeat still on the table has decided it has no second play worth making,
+  // and `advance` will not move past a turn that is still open.
+  return endTurn(g);
 }

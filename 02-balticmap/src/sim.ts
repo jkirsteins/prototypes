@@ -3,8 +3,8 @@ import type { MapData } from "./types";
 import { defenseMaxOf, factionAdjacencyOf, siteCapsOf } from "./adjacency";
 import { CARDS, GUARDS, guardAgainst, type Rng, type Strategy } from "./cards";
 import {
-  advance, chooseBuild, discardCard, newGame, pickFaction, playCard,
-  startGame, turnOpen, viewOf, type GameState,
+  advance, chooseBuild, discardCard, endTurn, newGame, pickFaction, playCard,
+  repeatOnlyOf, startGame, turnOpen, viewOf, type GameState,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
 import { seededRng } from "./rng";
@@ -52,17 +52,45 @@ function applyBuildArm(state: GameState, arm: BuildArm): GameState {
 }
 
 /** The new player: no plan, just plays whatever the rules allow, first come.
- *  Returns the state after their single action. */
+ *
+ *  Plays until the turn is spent, which under standard rules is one card
+ *  unless that card re-opened the turn for another of its own kind. Modelling
+ *  that as one action per turn both under-counted repeat plays in a balance
+ *  run and, worse, left the turn open - and `advance` refuses an open turn, so
+ *  the harness stalled on it. Ends the turn whatever happens: a naive player
+ *  who runs out of legal plays hands over rather than sitting there. */
 export function naiveHumanTurn(state: GameState, rng: Rng): GameState {
+  let g = state;
+  for (let plays = 0; g.phase === "playing" && plays < MAX_NAIVE_PLAYS; plays++) {
+    const p = g.players[g.current];
+    const set = playableSet(
+      viewOf(g), p.factionId, p.hand, { repeatOnly: repeatOnlyOf(g) },
+    );
+    const next = set.mode === "discard"
+      ? discardCard(g, set.cardIndexes[0])
+      : playFirstPlayable(g, set.cardIndexes[0], rng);
+    if (next === g) break;
+    g = next;
+    if (!turnOpen(g)) break;
+  }
+  return endTurn(g);
+}
+
+/** The bound on one naive turn. A repeat needs a free army and a card in hand,
+ *  so the rules stop this long before the number does; it is here so a rules
+ *  bug cannot hang a balance run. */
+const MAX_NAIVE_PLAYS = 8;
+
+function playFirstPlayable(
+  state: GameState, cardIndex: number | undefined, rng: Rng,
+): GameState {
+  if (cardIndex === undefined) return state;
   const p = state.players[state.current];
-  const set = playableSet(viewOf(state), p.factionId, p.hand);
-  if (set.mode === "discard") return discardCard(state, set.cardIndexes[0]);
-  const i = set.cardIndexes[0];
-  const cardId = p.hand[i];
+  const cardId = p.hand[cardIndex];
   const targetId = CARDS[cardId]?.targeted
     ? validTargetsFor(viewOf(state), p.factionId, cardId)[0]
     : undefined;
-  return playCard(state, i, rng, targetId);
+  return playCard(state, cardIndex, rng, targetId);
 }
 
 /** How the human seat plays. `naive` is the new player; `competent` runs the

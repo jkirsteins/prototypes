@@ -14,8 +14,9 @@
  *  of facts the log and the board already hold, and the first one to drift. */
 
 import { fullRealmOf } from "./relations";
-import { armyCapFor } from "./defense";
+import { armyCapFor, defenseMaxOf } from "./defense";
 import { perArmyOn } from "./passives";
+import { card, t, type Segment } from "./rich-text";
 import type { GameEvent, GameState } from "./game";
 
 export interface Milestone {
@@ -23,6 +24,12 @@ export interface Milestone {
   name: string;
   /** What it asks, in one line - shown under the name in the drawer. */
   text: string;
+  /** The same line as nodes, for a milestone whose text names a card. The
+   *  naming rule, on this surface: "Subjugate" set as flat text is a card the
+   *  player cannot point at. `text` stays the plain-text equivalent, the pair
+   *  `CardDef.textSegments` already keeps. Absent where the line names
+   *  nothing - "Muster 8 armies" has nothing to mark up. */
+  textSegments?: Segment[];
   /** Victory points to every faction that reaches it. */
   points: number;
   /** What counts as done. */
@@ -69,6 +76,7 @@ export const MILESTONES: readonly Milestone[] = [
     id: "overlord",
     name: "Overlord",
     text: "Subjugate 5 different lands.",
+    textSegments: [card("subjugate"), t(" 5 different lands.")],
     points: 3,
     goal: 5,
     // DIFFERENT lands, so taking one land back twice is not two thirds of a
@@ -87,7 +95,7 @@ export const MILESTONES: readonly Milestone[] = [
       [...fullRealmOf(f, state.overlords, state.incorporated)].reduce(
         (sum, land) =>
           sum + armyCapFor(
-            state.defenseMax[land] ?? 0, perArmyOn(state.passives, land),
+            defenseMaxOf(state, land), perArmyOn(state.passives, land),
           ),
         0,
       ),

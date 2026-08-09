@@ -44,29 +44,34 @@ describe("defense store", () => {
     expect("selija" in applyHeal(view({}, v.defenseMax), "selija", 50)).toBe(false);
   });
 
-  it("opens the subjugation gate at exactly 25% of max", () => {
-    const max = { selija: 600 };
-    expect(subjugationGateOpen(view({ selija: 150 }, max), "selija")).toBe(true);
-    expect(subjugationGateOpen(view({ selija: 151 }, max), "selija")).toBe(false);
+  it("opens the subjugation gate at the floor of 25% of max", () => {
+    // A 6 polygon, which is what the shipped map deals: the ceilings are 2..18
+    // and 25% of one is almost never whole. Floor, so the boundary is a number
+    // the badge can print - a 6 opens at 1, not at 1.5.
+    const max = { selija: 6 };
+    expect(subjugationGateOpen(view({ selija: 1 }, max), "selija")).toBe(true);
+    expect(subjugationGateOpen(view({ selija: 2 }, max), "selija")).toBe(false);
     expect(subjugationGateOpen(view({ selija: 0 }, max), "selija")).toBe(true);
     expect(subjugationGateOpen(view({}, max), "selija")).toBe(false);
   });
 
-  it("opens the independence gate at exactly 75% of max", () => {
-    const max = { selija: 600 };
-    expect(independenceGateOpen(view({ selija: 450 }, max), "selija")).toBe(true);
-    expect(independenceGateOpen(view({ selija: 449 }, max), "selija")).toBe(false);
+  it("opens the independence gate at the ceiling of 75% of max", () => {
+    // The same 6: 75% is 4.5, and a vassal is freed at 5 rather than at 4.
+    // Ceiling and not floor, so the two gates never meet in the middle.
+    const max = { selija: 6 };
+    expect(independenceGateOpen(view({ selija: 5 }, max), "selija")).toBe(true);
+    expect(independenceGateOpen(view({ selija: 4 }, max), "selija")).toBe(false);
     // Undamaged means at max, which is above the gate.
     expect(independenceGateOpen(view({}, max), "selija")).toBe(true);
   });
 
   it("bands a polygon for the map badge", () => {
-    const max = { selija: 600 };
+    const max = { selija: 6 };
     expect(gateBandOf(view({}, max), "selija")).toBe("high");
-    expect(gateBandOf(view({ selija: 450 }, max), "selija")).toBe("high");
-    expect(gateBandOf(view({ selija: 449 }, max), "selija")).toBe("middle");
-    expect(gateBandOf(view({ selija: 151 }, max), "selija")).toBe("middle");
-    expect(gateBandOf(view({ selija: 150 }, max), "selija")).toBe("open");
+    expect(gateBandOf(view({ selija: 5 }, max), "selija")).toBe("high");
+    expect(gateBandOf(view({ selija: 4 }, max), "selija")).toBe("middle");
+    expect(gateBandOf(view({ selija: 2 }, max), "selija")).toBe("middle");
+    expect(gateBandOf(view({ selija: 1 }, max), "selija")).toBe("open");
   });
 
   it("keeps disease stacks per owner: two rivals on one polygon", () => {

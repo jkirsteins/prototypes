@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addArmy, addMarch, armiesOn, axisKeyOf, axesOf,
+  addMarch, armiesOn, axisKeyOf, axesOf,
   clearMarches, freeArmiesOn, marchesAgainst, marchesFrom, resolveAxis,
   type March, type Marches,
 } from "../src/marches";
@@ -27,13 +27,6 @@ describe("armies", () => {
     expect(armiesOn({ selija: -2 }, "selija", CAP)).toBe(0);
   });
 
-  it("raises one, capped at the land's own ceiling", () => {
-    // A cap of 1 leaves no room to show a raise, so this one case asks for a
-    // roomier land explicitly.
-    expect(addArmy({ selija: 2 }, "selija", 3)).toEqual({ selija: 3 });
-    // Already at its (default) cap: raising it again does nothing further.
-    expect(addArmy({}, "selija", CAP)).toEqual({ selija: CAP });
-  });
 });
 
 describe("free armies", () => {

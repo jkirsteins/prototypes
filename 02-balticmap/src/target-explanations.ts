@@ -72,10 +72,6 @@ function explainReason(reason: TargetBlockReason): string[] {
       return ["Nobody leads this land."];
     case "liege":
       return ["You owe them fealty, directly or through your lords."];
-    case "at-army-cap":
-      return [
-        `Already fielding all ${reason.cap} armies its defenses support.`,
-      ];
     case "incorporated":
       return ["Already incorporated."];
     case "self":

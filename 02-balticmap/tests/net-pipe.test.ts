@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  newGame, startGame, chooseBuild, pickFaction, advance, type GameState,
+  newGame, startGame, chooseBuild, pickFaction, advance, turnOpen,
+  type GameState,
 } from "../src/game";
 import { aiTakeTurn, chooseAction } from "../src/ai";
 import type { Rng, Strategy } from "../src/cards";
@@ -275,6 +276,15 @@ describe("a whole game over the pipe", () => {
           : { type: "discard", cardIndex: a.cardIndex, cardId: hand[a.cardIndex] });
       }
       expect(rejects).toEqual([]); // every replica-derived action lands
+      // A card that re-opened the turn (`playsAgain`) leaves it open, and the
+      // real client then offers the repeat or ends the turn. This guest always
+      // declines, which keeps one round of the loop to one action - and is the
+      // path that would hang if `endTurn` could not close a turn a card
+      // re-opened under standard rules.
+      if (turnOpen(h.game())) {
+        guest.sendAction({ type: "end-turn" });
+        expect(rejects).toEqual([]);
+      }
       // Host continues the chain past the guest's committed turn.
       h.setGame(runChain(advance(h.game(), rng), rng, guestSeat));
       h.session.pushUpdate();

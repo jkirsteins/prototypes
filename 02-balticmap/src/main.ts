@@ -1519,7 +1519,17 @@ function counterFor(m: March): number | null {
     v, human.factionId, human.hand, { repeatOnly: repeatOnlyOf(game) },
   );
   if (set.mode !== "play") return null;
-  return set.cardIndexes.find((i) => human.hand[i] === "raid") ?? null;
+  // What the card IS, never its name: Strong raid counters exactly as Raid
+  // does, and a literal here left a player holding only the stronger one with
+  // an arrow that simply would not click, and nothing to say why.
+  const counters = set.cardIndexes.filter((i) => isMarchCard(human.hand[i]));
+  if (counters.length === 0) return null;
+  // The heaviest one held. A counter is subtracted from the raid coming the
+  // other way, so offering the weaker of two is never what the click meant.
+  return counters.sort((a, b) =>
+    attackDamageFor(v, human.factionId, human.hand[b]).damage -
+    attackDamageFor(v, human.factionId, human.hand[a]).damage
+  )[0];
 }
 
 /** Make one arrow answer a click by countering it.
@@ -1548,8 +1558,12 @@ function armArrowAsCounter(g: SVGGElement, m: March, cardIndex: number): void {
     if (counterFor(m) === null) return;
     disarm();
     if (net.role === "guest") {
+      // The card at that index, not a name: the host validates the pair, and
+      // a hand holding Strong raid was being announced as a Raid.
+      const cardId = localHuman()?.hand[cardIndex];
+      if (cardId === undefined) return;
       sendGuestAction({
-        type: "play", cardIndex, cardId: "raid",
+        type: "play", cardIndex, cardId,
         targetId: m.from, sourceId: m.to,
       });
       return;
@@ -2184,9 +2198,9 @@ function resumeChain(): void {
 }
 
 function afterHumanAction(): void {
-  // Any committed action invalidates the cached harvest roll: the play it
-  // priced is no longer the next play. Cancelling a modal never comes here,
-  // so the anti-fishing cache survives exactly the closes it should.
+  // `advance` refuses while the turn is still open - a card that re-opened it
+  // for another copy of itself has not finished - so this is safe to call from
+  // every committed action rather than only from the ones that end a turn.
   game = advance(game, rng);
   if (net.role === "host") net.session?.pushUpdate();
   refresh();
@@ -2223,11 +2237,6 @@ function updateWaitingStatus(): void {
   hud.setWaiting(null);
 }
 
-/** After a completed human PLAY. An unlimited turn stays open: wait out the
- *  flight with input locked, then hand the turn back to the player rather
- *  than to the AI chain. A standard turn, a play that ended the run, or a
- *  play that emptied the hand (playCard closes the turn itself then) falls
- *  through to afterHumanAction as before. */
 /** Shows every card a harvest just added to the LOCAL player's deck, in the
  *  order the log recorded them: the pick first, then the one that came with
  *  it. Read off the log rather than handed down from the play, so a card
@@ -2432,11 +2441,13 @@ const hudCallbacks: HudCallbacks = {
     onEndTurn() {
       if (!isLocalTurn() || resolving || pendingHarvest !== null) return;
       disarm();
-      // A spent standard turn has nothing left to close - `endTurn` refuses
-      // it - so the click is what HANDS OVER: the round resolves here rather
-      // than the moment the card landed. Nothing on the board moves without
-      // the player asking for it now.
-      if (game.playedThisTurn) {
+      // A turn with nothing left to close - a spent standard one - just HANDS
+      // OVER: the round resolves on this click rather than the moment the card
+      // landed, so nothing on the board moves without the player asking. A
+      // turn still open is closed first, and that includes one a card
+      // re-opened: `turnOpen`, never `playedThisTurn`, or giving up a granted
+      // second raid would leave the turn open and `advance` refusing it.
+      if (!turnOpen(game)) {
         afterHumanAction();
         return;
       }

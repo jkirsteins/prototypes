@@ -20,7 +20,7 @@ import {
   attackDamageFor, attackMultiplier, attackReach,
   ESCAPE_RESPITE_TURNS, freeArmiesFor, greatRaidMarches, marchSourcesAgainst,
   respiteExpiry,
-  marchTargetsFrom, outbreakPolygons, plagueMultiplier, playableSet,
+  marchTargetsFrom, outbreakPolygons, plagueMultiplier, playableSet, reachOf,
   turnipThresholdOn, validTargetsFor, wealthIncomeFor,
   type Guards, type Omens, type RulesView,
 } from "./playability";
@@ -210,10 +210,11 @@ export interface GameState {
    *  is a demand made a turn ahead, like a raid: everyone sees it coming and
    *  the target has a turn to put its defenses back above the gate. */
   claims: Claims;
-  /** Polygon id -> armies stationed there; absent = ARMIES_PER_POLYGON, the
-   *  sparse-with-a-default convention `defense` uses. One march holds one
-   *  army of its source until it lands, so armies are what caps how many
-   *  attacks a realm can have in flight at once. */
+  /** Polygon id -> armies stationed there; absent = the land's own
+   *  `armyCapOn`, the sparse-with-a-default convention `defense` uses. One
+   *  march holds one army of its source until it lands, so armies are what
+   *  caps how many attacks a realm can have in flight at once. Nothing but a
+   *  boot override writes a key: the cap moves when the ceiling does. */
   armies: Armies;
   /** Faction id -> treasury. Absent = 0, never negative, uncapped. Earned in
    *  `beginTurn` - 1 plus 1 per settlement founded in the faction's own
@@ -718,26 +719,29 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
     // The human is asked; everybody else moves half on the spot. Only one
-    // question can be pending at a time - a second capture in the same batch
-    // keeps the first, because the modal answers about one pair of lands.
+    // question can be pending at a time, because the modal answers about one
+    // pair of lands - so a second conquest in the same batch keeps the first
+    // question and sends no defenders at all. It must NOT fall through to the
+    // automatic half: that moved points out of a land the player was never
+    // asked about, which is the one thing `pendingTransfer` exists to prevent.
     const seat = state.players.findIndex((pl) => pl.factionId === by);
-    if (seat === state.humanSeat && pendingTransfer === null) {
-      pendingTransfer = { from, to: land };
-    } else {
-      const moved = autoTransfer(
-        { ...state, defense, defenseMax: state.defenseMax }, from, land,
+    if (seat === state.humanSeat) {
+      pendingTransfer ??= { from, to: land };
+      return;
+    }
+    const moved = autoTransfer(
+      { ...state, defense, defenseMax: state.defenseMax }, from, land,
+    );
+    if (moved > 0) {
+      const v = { defense, defenseMax: state.defenseMax };
+      defense = applyHeal(
+        { defense: applyDamage(v, from, moved), defenseMax: state.defenseMax },
+        land, moved,
       );
-      if (moved > 0) {
-        const v = { defense, defenseMax: state.defenseMax };
-        defense = applyHeal(
-          { defense: applyDamage(v, from, moved), defenseMax: state.defenseMax },
-          land, moved,
-        );
-        events.push({
-          turn: state.turn, playerId: p.id, type: "transferred",
-          targetFactionId: land, sourceFactionId: from, amount: moved,
-        });
-      }
+      events.push({
+        turn: state.turn, playerId: p.id, type: "transferred",
+        targetFactionId: land, sourceFactionId: from, amount: moved,
+      });
     }
   };
 
@@ -746,41 +750,63 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // taken this way cannot send its armies at its new lord - those raids are
   // called off, while anything it aimed elsewhere flies on. Wars have not
   // stopped, only this one.
-  for (const { key, claim } of lapsedClaimsOf(claims, p.factionId, state.turn)) {
-    claims = clearClaims(claims, [key]);
-    const stillOpen =
-      subjugationGateOpen(
-        { defense, defenseMax: state.defenseMax }, claim.to,
-      ) &&
-      respiteExpiry({ respites, turn: state.turn }, claim.to) === undefined &&
-      !fullRealmOf(claim.actor, overlords, state.incorporated).has(claim.to);
-    if (!stillOpen) {
-      // The land put its defenses back up, or somebody else took it first.
-      events.push({
-        turn: state.turn, playerId: p.id, type: "march-lapsed",
-        cardId: "subjugate",
-        targetFactionId: claim.to, sourceFactionId: claim.from,
-      });
-      continue;
+  const landClaims = (actor: string, playerId: number): void => {
+    for (const { key, claim } of lapsedClaimsOf(claims, actor, state.turn)) {
+      claims = clearClaims(claims, [key]);
+      const view = {
+        ...viewOf({ ...state, players }), overlords, defense, marches, claims,
+      };
+      const stillOpen =
+        subjugationGateOpen(
+          { defense, defenseMax: state.defenseMax }, claim.to,
+        ) &&
+        respiteExpiry({ respites, turn: state.turn }, claim.to) === undefined &&
+        !fullRealmOf(claim.actor, overlords, state.incorporated).has(claim.to) &&
+        // Still within reach, the test a march in flight also makes: a demand
+        // whose only border was a land the actor lost while it was riding is a
+        // demand that never arrives.
+        reachOf(view, claim.actor).has(claim.to);
+      if (!stillOpen) {
+        // The land put its defenses back up, somebody else took it first, or
+        // it is no longer anybody the actor can reach.
+        events.push({
+          turn: state.turn, playerId, type: "march-lapsed",
+          cardId: "subjugate",
+          targetFactionId: claim.to, sourceFactionId: claim.from,
+        });
+        continue;
+      }
+      takeLand(claim.to, claim.actor, claim.from);
+      callOffMarchesAgainstLord(claim.to, claim.actor, playerId);
     }
-    takeLand(claim.to, claim.actor, claim.from);
-    const lordRealm = fullRealmOf(claim.actor, overlords, state.incorporated);
+  };
+
+  /** A land just taken cannot send its armies at its new lord: those raids are
+   *  called off, while anything it aimed elsewhere flies on. Wars have not
+   *  stopped, only this one. Every route into `takeLand` owes this, which is
+   *  why it is a function rather than a step of the claim path. */
+  function callOffMarchesAgainstLord(
+    land: string, lord: string, playerId: number,
+  ): void {
+    const lordRealm = fullRealmOf(lord, overlords, state.incorporated);
     for (const axis of axesOf(marches)) {
       for (const march of [...axis.fromA, ...axis.fromB]) {
-        if (march.actor !== claim.to || !lordRealm.has(march.to)) continue;
+        if (march.actor !== land || !lordRealm.has(march.to)) continue;
         marches = clearMarches(marches, [
           ...Object.entries(marches)
             .filter(([, m]) => m === march)
             .map(([key]) => key),
         ]);
         events.push({
-          turn: state.turn, playerId: p.id, type: "march-lapsed",
+          turn: state.turn, playerId, type: "march-lapsed",
           cardId: march.cardId,
           targetFactionId: march.to, sourceFactionId: march.from,
         });
       }
     }
   }
+
+  landClaims(p.factionId, p.id);
 
   for (const capture of landed.captures) {
     // Only a faction with a LEADER takes land. A restless raid out of a land
@@ -816,7 +842,16 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       const v = { defense, defenseMax: state.defenseMax };
       if (defenseOf(v, polygon) >= defenseMaxOf(v, polygon)) continue;
       if (rng() >= WILD_LANDS_HEAL_CHANCE) continue;
+      const before = defenseOf(v, polygon);
       defense = applyHeal(v, polygon, WILD_LANDS_HEAL);
+      // What actually moved, never the constant. A land sitting at half a
+      // point under its ceiling - a Great raid deals halves - takes only that
+      // half, and an event claiming the whole point makes the walk that feeds
+      // the log and the round summary drift from the store for the rest of the
+      // run. `landHeal` in `playCard` keeps the same rule.
+      const moved =
+        defenseOf({ defense, defenseMax: state.defenseMax }, polygon) - before;
+      if (moved <= 0) continue;
       // The land's OWN seat owns the line, never the seat whose turn happens to
       // be starting. The log tags an entry `.log-mine` off `playerId` and lets
       // it through every filter, so charging these to the human made a wild
@@ -825,7 +860,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       const owner = players.find((pl) => pl.factionId === polygon);
       events.push({
         turn: state.turn, playerId: owner?.id ?? p.id, type: "healed",
-        targetFactionId: polygon, amount: WILD_LANDS_HEAL,
+        targetFactionId: polygon, amount: moved,
       });
     }
     // The restless middle of the map. A quiet land nobody holds sends the odd
@@ -841,17 +876,20 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       (land) => hasPassive(state.passives, land, "keeps-to-itself"),
     );
     // Whose arrows land here: every seat that will never see a `beginTurn` of
-    // its own. `advance` skips a leaderless seat, so a march declared by one
-    // would otherwise stand on the map for the rest of the game - never
-    // resolving, never expiring, and never explaining itself in the log. That
-    // is not only the restless lands: taking a quiet land strips the status
-    // while its arrow is still in flight, and the vacancy is what outlives it.
+    // its own, which is exactly what `advance` passes over. A march declared
+    // by one would otherwise stand on the map for the rest of the game - never
+    // resolving, never expiring, never explaining itself in the log. Two ways
+    // in: taking a quiet land strips the status while its arrow is in flight,
+    // and a vassal that was taking turns can be Incorporated out of its seat
+    // with a march or a Subjugate already declared.
     const dormant = state.factionIds.filter(
-      (land) => !hasRuler(state.rulers, land),
+      (land) => takesNoTurn(state, land),
     );
     for (const land of dormant) {
       const seat = players.find((pl) => pl.factionId === land);
       if (seat === undefined) continue;
+      // Claims first, the same order the acting seat's own turn keeps.
+      landClaims(land, seat.id);
       const out = resolveMarches(
         { ...state, overlords, marches, defense }, seat, events,
       );
@@ -1149,6 +1187,21 @@ export function turnOpen(state: GameState): boolean {
   return !state.playedThisTurn || state.repeatCardId !== null;
 }
 
+/** Whether this faction will never see a `beginTurn` of its own. Two reasons,
+ *  and they must be asked together: nobody leads it, or it has been absorbed
+ *  into somebody else's realm outright. A conquest does not wake up - taking a
+ *  land wins the land, not its people's allegiance to a chief who does not
+ *  exist - and an annexed people no longer has a seat to sit in.
+ *
+ *  ONE spelling, because two readers depend on the answer matching. `advance`
+ *  passes over such a seat, and `beginTurn`'s round wrap lands the arrows it
+ *  left behind; a sweep that covered less than the skip did left a march
+ *  standing on the map for the rest of the run, holding an army out of a land
+ *  somebody else now holds. */
+export function takesNoTurn(state: GameState, factionId: string): boolean {
+  return factionId in state.incorporated || !hasRuler(state.rulers, factionId);
+}
+
 export function playCard(
   state: GameState,
   cardIndex: number,
@@ -1359,6 +1412,19 @@ export function playCard(
       targetFactionId: target, overlordFactionId: p.factionId,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
+    // A land just taken cannot send its armies at its new lord. The claim path
+    // in `beginTurn` says the same thing; both routes into a capture owe it,
+    // or which route took the land decides whether its raids fly on.
+    const lordRealm = fullRealmOf(p.factionId, overlords, incorporated);
+    for (const [key, march] of Object.entries(marches)) {
+      if (march.actor !== target || !lordRealm.has(march.to)) continue;
+      marches = clearMarches(marches, [key]);
+      events.push({
+        turn: state.turn, playerId: p.id, type: "march-lapsed",
+        cardId: march.cardId,
+        targetFactionId: march.to, sourceFactionId: march.from,
+      });
+    }
   };
 
   const landIncorporation = (target: string): void => {
@@ -1727,6 +1793,14 @@ export function discardCard(state: GameState, cardIndex: number): GameState {
  *  turn again. */
 export function endTurn(state: GameState): GameState {
   if (state.phase !== "playing") return state;
+  // A turn a card re-opened can be given up under ANY rule set: `playsAgain`
+  // grants another play, never an obligation to make one. Without this the
+  // standard branch below refuses, `advance` refuses in turn - it asks
+  // `turnOpen` now - and a seat holding a raid it cannot aim anywhere sits
+  // there forever.
+  if (state.repeatCardId !== null) {
+    return { ...state, playedThisTurn: true, repeatCardId: null };
+  }
   if (state.rules.turn !== "unlimited") return state;
   if (state.playedThisTurn) return state;
   return { ...state, playedThisTurn: true, repeatCardId: null };
@@ -1759,21 +1833,18 @@ function sweepHand(state: GameState): GameState {
 }
 
 export function advance(rawState: GameState, rng: Rng): GameState {
-  if (rawState.phase !== "playing" || !rawState.playedThisTurn) return rawState;
+  // `turnOpen`, never `playedThisTurn`: a card that re-opened the turn for
+  // another copy of itself has spent the allowance and still has a play
+  // coming. Asking the flag here is what let a network guest's second Raid be
+  // advanced out from under it while the local seat kept its turn.
+  if (rawState.phase !== "playing" || turnOpen(rawState)) return rawState;
   const state = sweepHand(rawState);
-  // A faction with no leader takes no turn at all, so the loop passes over it
-  // exactly as it passes over one that has been incorporated. A conquest does
-  // not wake up: taking a land wins the land, not its people's allegiance to
-  // a chief who does not exist.
-  const inert = (i: number): boolean =>
-    state.players[i].factionId in state.incorporated ||
-    !hasRuler(state.rulers, state.players[i].factionId);
   let current = state.current;
   let turn = state.turn;
   for (let tried = 0; tried < state.players.length; tried++) {
     current = (current + 1) % state.players.length;
     if (current === 0) turn += 1;
-    if (current === state.humanSeat || !inert(current)) {
+    if (current === state.humanSeat || !takesNoTurn(state, state.players[current].factionId)) {
       return beginTurn({ ...state, current, turn }, rng);
     }
   }

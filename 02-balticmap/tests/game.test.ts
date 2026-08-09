@@ -1463,8 +1463,13 @@ describe("a card that plays again", () => {
     const played = playCard(g, 0, rng(), "alpha");
     expect(played.repeatCardId).toBe("raid");
     expect(endTurn(played).repeatCardId).toBeNull();
-    const dead = discardCard(withHand(playingState(), 0, ["subjugate"]), 0);
-    expect(dead.repeatCardId).toBeNull();
+    // The discard half asks the same of a turn that IS open: a fresh state's
+    // repeatCardId is already null, so discarding into one proves nothing.
+    // Under unlimited rules a discard is legal with the turn still live.
+    const open = withHand(unlimitedPlaying(LINE_ADJ), 0, ["raid", "subjugate"]);
+    const raided = playCard(open, 0, rng(), "alpha");
+    expect(raided.repeatCardId).toBe("raid");
+    expect(discardCard(raided, 0).repeatCardId).toBeNull();
   });
 });
 

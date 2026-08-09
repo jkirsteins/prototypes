@@ -3,10 +3,9 @@
  *  A status set on turn T to last N turns stores `expiry = T + N`: active
  *  while `turn < expiry`, over ON turn `expiry`. "Until turn N" in player
  *  prose always quotes that stored number, and a countdown badge shows
- *  `expiry - turn`. Alliances and the post-escape respite are the current
- *  consumers; a new multi-turn status must run on these helpers rather than
- *  hand-rolling a second clock, and a third consumer is the point to weigh a
- *  declarative registry of timed statuses over these shared primitives.
+ *  `expiry - turn`. The post-escape respite, declared marches and declared
+ *  claims are the consumers; a new multi-turn status must run on these
+ *  helpers rather than hand-rolling a second clock.
  *
  *  This is a leaf module on purpose - it imports nothing, so the rules, the
  *  reducer and the DOM layer can all reach it without a cycle. */

@@ -1,8 +1,7 @@
 import { BUILDS, CARDS, type Rng, type Strategy } from "./cards";
 import type { PlayerState } from "./game";
 
-/** The Turnip harvest: three ways to spend it, and one card comes of it
- *  whichever is taken.
+/** The Turnip harvest: five ways to spend it, three of which grant a card.
  *
  *  - `growth` grows a land - the card that raises a ceiling.
  *  - `build` takes a card from the seat's OWN build, chosen by name. The
@@ -54,8 +53,8 @@ export function randomPool(player: PlayerState): string[] {
 }
 
 /** The card a choice actually grants, or null when there is nothing left to
- *  give. EXACTLY one rng draw on the random path and none on the other two, so
- *  a seeded run's stream depends on what was chosen and not on what was
+ *  give. EXACTLY one rng draw on the random path and none on any other, so a
+ *  seeded run's stream depends on what was chosen and not on what was
  *  offered. */
 export function harvestCard(
   player: PlayerState, choice: HarvestChoice, rng: Rng,
@@ -92,16 +91,33 @@ export const HARVEST_PRIORITY: Record<Strategy, readonly string[]> = {
   ],
 };
 
+/** Copies of a build card an AI seat wants before it starts looking outside
+ *  its build. One: deepening is what the build is for, but a seat that only
+ *  ever deepened could never hold a neutral card at all. */
+export const HARVEST_BUILD_COPIES = 1;
+
 /** A choiceless play's pick - the sim, a `turns=` fast-forward, an AI seat.
- *  Takes the build card it ranks highest, and grows a land when its build has
- *  nothing left to take: growth is never capped, so this never comes back with
- *  nothing. No rng - which option an AI takes is a decision, not a roll. */
+ *  Deepen, then broaden, then grow: the highest-ranked build card it does not
+ *  yet hold; failing that a card from everything the game knows; failing that
+ *  a land, which is never capped and so never comes back with nothing.
+ *
+ *  The middle step is not a nicety. `random` is the ONLY route to
+ *  `NEUTRAL_POOL`, and a policy that never took it left six cards -
+ *  Incorporate, Assassinate ruler, Bodyguard, Found a settlement, Hillfort,
+ *  Harvest feast - unable to reach four seats in five. No rival could annex,
+ *  and the player could never learn those cards by witnessing one.
+ *
+ *  No rng: which option an AI takes is a decision. The draw that picks WHICH
+ *  neutral belongs to `harvestCard`, where a seeded run can account for it. */
 export function autoHarvestChoice(player: PlayerState): HarvestChoice {
-  const offer = buildOffer(player);
   const rank = (id: string): number => {
     const i = HARVEST_PRIORITY[player.strategy].indexOf(id);
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
-  const best = [...offer].sort((a, b) => rank(a) - rank(b))[0];
-  return best === undefined ? { kind: "growth" } : { kind: "build", cardId: best };
+  const best = buildOffer(player)
+    .filter((id) => copiesOf(player, id) < HARVEST_BUILD_COPIES)
+    .sort((a, b) => rank(a) - rank(b))[0];
+  if (best !== undefined) return { kind: "build", cardId: best };
+  if (randomPool(player).length > 0) return { kind: "random" };
+  return { kind: "growth" };
 }

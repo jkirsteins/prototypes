@@ -18,11 +18,11 @@
 import { sweepLapsed } from "./timed";
 
 /** How many armies a land fields with nobody having raised one: its ceiling's
- *  worth, `armyCapFor(defenseMax)`. A big land musters more than a small one
- *  without anybody spending a card on it, and Create army is what fills a land
- *  back up to its cap after its armies are spent - see `armyCapFor` in
- *  src/defense.ts. Callers pass the cap in, because this module knows nothing
- *  about defense scores and should not learn. */
+ *  worth, `armyCapFor(defenseMax)` in src/defense.ts. A big land musters more
+ *  than a small one, and no card raises or spends armies - a march holds one
+ *  of its source's until it lands, and returns it by lapsing. Callers pass the
+ *  cap in, because this module knows nothing about defense scores and should
+ *  not learn. */
 
 export interface March {
   /** The faction that declared it. Not derivable from `from`: a lord may march
@@ -86,17 +86,6 @@ export function armiesOn(
   const n = armies[polygon];
   if (n === undefined) return cap;
   return Math.max(0, Math.floor(n));
-}
-
-/** Create army's effect. Legality caps it at the land's own `armyCapFor`; the
- *  clamp here is that rule's floor, not a second copy of it. */
-export function addArmy(
-  armies: Armies, polygon: string, cap: number,
-): Armies {
-  return {
-    ...armies,
-    [polygon]: Math.min(cap, armiesOn(armies, polygon, cap) + 1),
-  };
 }
 
 export function marchesFrom(marches: Marches, polygon: string): March[] {
