@@ -1,6 +1,6 @@
 import {
-  CARDS, guardAgainst, isGuardCard, isInwardCard, isMarchCard,
-  isRaidCard, isSingleLandHeal, isTributeCard, keywordHas,
+  ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isInwardCard, isMarchCard,
+  isSingleLandHeal, isTributeCard, keywordHas,
 } from "./cards";
 import {
   fullRealmOf, incorporatedRealmOf, overlordChainOf,
@@ -15,9 +15,7 @@ import {
   freeArmiesOn, type Armies, type Claims, type Marches,
 } from "./marches";
 import { hasPassive, perArmyOn, type Passives } from "./passives";
-import {
-  hasAbility, RAID_LEADERSHIP, type LeaderAbilities,
-} from "./abilities";
+import { boostsKeyword, type LeaderAbilities } from "./abilities";
 import { activeExpiry } from "./timed";
 
 /** Settlements a land supports - the one standing there since the map was
@@ -380,22 +378,24 @@ export function attackDamageFor(
     : RAID_DAMAGE;
   const multiplier = omensMultiplier(view, actorFactionId, cardId);
   return {
-    damage: (base + raidLeadership(view, actorFactionId, cardId)) * multiplier,
+    damage: (base + leadershipBonus(view, actorFactionId, cardId)) * multiplier,
     multiplier,
   };
 }
 
-/** What the actor's LEADER adds to this attack. Zero unless the card carries
- *  the raid keyword and the ruler holds the ability that makes leadership
- *  count - a people who never learned to fight behind a chief get nothing from
- *  one, however hardened the chief is. The one reader of `war-leader`. */
-export function raidLeadership(
+/** What the actor's LEADER adds to this card. Zero unless the leader holds an
+ *  ability that boosts the card's own keyword - a people who never learned to
+ *  fight behind a chief get nothing from one, however hardened the chief is.
+ *
+ *  Names neither the card nor the ability. A fourth raid card joins the raid
+ *  keyword and is boosted; an ability that boosts a different keyword is a row
+ *  in `LEADER_ABILITIES` and reaches every card of that class at once. */
+export function leadershipBonus(
   view: RulesView, actorFactionId: string, cardId: string,
 ): number {
-  if (!isRaidCard(cardId)) return 0;
-  if (!hasAbility(view.leaderAbilities, actorFactionId, RAID_LEADERSHIP)) {
-    return 0;
-  }
+  const keywordId = CARDS[cardId]?.keyword;
+  if (keywordId === undefined) return 0;
+  if (!boostsKeyword(view.leaderAbilities, actorFactionId, keywordId)) return 0;
   return view.leadership[actorFactionId] ?? 0;
 }
 
@@ -518,7 +518,7 @@ export function targetEligibilityFor(
   // and resolve through `reachOf`; the inward cards aim at the actor's own
   // realm.
   const polygonCard =
-    isRaidCard(cardId) || cardId === "spread-disease" ||
+    ATTACK_CARDS.has(cardId) || cardId === "spread-disease" ||
     cardId === "localized-outbreak";
   const inward = isInwardCard(cardId);
   const vassalCard = cardId === "incorporate";

@@ -20,17 +20,27 @@ export interface AbilityDef {
   id: string;
   name: string; // player-facing, shown wherever a ruler is named
   text: string; // one line, what it does
+  /** The KEYWORD (src/cards.ts) whose cards this leader's leadership is added
+   *  to. The whole rule, machine-readable: the damage site asks the card for
+   *  its keyword and the leader for an ability boosting it, so a fourth raid
+   *  card is one field on that card and nothing here.
+   *
+   *  A keyword id and not a list of card ids on purpose. A list would be a
+   *  third place stating what "a raid card" means, beside the cards' own
+   *  keyword and the class sets - and the one that nobody updates. */
+  boostsKeyword?: string;
 }
 
-/** The ability that makes a ruler's leadership count. Named rather than
- *  inlined at its one reader, so the seeding, the hover and the rule all mean
- *  the same string. */
+/** The ability that makes a ruler's leadership count on a raid. Named rather
+ *  than inlined at the one place that seeds it; the RULE does not name it -
+ *  see `boostsKeyword`. */
 export const RAID_LEADERSHIP = "war-leader";
 
 export const LEADER_ABILITIES: Record<string, AbilityDef> = {
   "war-leader": {
     id: "war-leader", name: "War leader",
     text: "Their people ride behind them: every raid this leader sends deals its leadership on top of its own damage.",
+    boostsKeyword: "raid",
   },
 };
 
@@ -50,6 +60,17 @@ export function hasAbility(
   a: LeaderAbilities, factionId: string, id: string,
 ): boolean {
   return abilitiesOf(a, factionId).includes(id);
+}
+
+/** Whether this leader holds any ability that adds their leadership to cards
+ *  of `keywordId`. The one reader of `boostsKeyword`, so the rule is a lookup
+ *  rather than a branch per ability. */
+export function boostsKeyword(
+  a: LeaderAbilities, factionId: string, keywordId: string,
+): boolean {
+  return abilitiesOf(a, factionId).some(
+    (id) => LEADER_ABILITIES[id]?.boostsKeyword === keywordId,
+  );
 }
 
 /** What each build's ruler is granted at the deal. The build screen reads this

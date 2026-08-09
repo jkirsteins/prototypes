@@ -203,17 +203,6 @@ export const ATTACK_CARDS: ReadonlySet<string> = new Set([
  *  to find all eight. */
 export const MARCH_CARDS: ReadonlySet<string> = new Set(["raid", "strong-raid"]);
 
-/** The raid keyword: every card that sends armies at a land, whatever shape.
- *  What the leader's raid-leadership ability adds to, and the group the turn
- *  re-opens for. `MARCH_CARDS` is the narrower question - which of them the
- *  player aims one army at, two clicks - and Great raid picks its own sources,
- *  so it is here and not there. */
-export const RAID_CARDS: ReadonlySet<string> = new Set([
-  "raid", "strong-raid", "great-raid",
-]);
-
-export const isRaidCard = (cardId: string): boolean => RAID_CARDS.has(cardId);
-
 export const isMarchCard = (cardId: string): boolean => MARCH_CARDS.has(cardId);
 
 /** The cards that restore defense to ONE land of the actor's own realm. A set
