@@ -15,6 +15,8 @@
  *  A new status is a row here plus the one hook that reads it, and it does not
  *  ship until the land hover names it. */
 
+import type { Rng } from "./cards";
+
 export interface PassiveDef {
   id: string;
   name: string; // player-facing, shown on the land hover
@@ -94,6 +96,64 @@ export function stripOnCapture(p: Passives, polygon: string): Passives {
  *  asks; everything else about a quiet land is the ordinary rules. */
 export function playsTurns(p: Passives, factionId: string): boolean {
   return !hasPassive(p, factionId, "keeps-to-itself");
+}
+
+/** Which lands could plausibly carry which ground, read off what the map
+ *  already says about each region in its own flavour text: hills and uplands
+ *  for `hill-country`, the trade rivers for `river-trade`. Random placement
+ *  that ignored this put hills on the Semigallian plain, which the map calls
+ *  flat and fertile two lines away.
+ *
+ *  A land absent from the table gets no terrain status, which is the honest
+ *  answer for the plains and the islands. */
+export const TERRAIN_ELIGIBILITY: Readonly<Record<string, readonly string[]>> = {
+  // Highlands, uplands and wooded hills.
+  "eastern-aukstaitian-confederacy": ["hill-country"],
+  "sakalans": ["hill-country"],
+  "selonians": ["hill-country"],
+  "ugandians": ["hill-country"],
+  "samogitian-confederacy": ["hill-country"],
+  // The trade rivers: the Daugava, the Gauja, the Nemunas, the Lielupe, the
+  // Vistula.
+  "jersikans": ["river-trade"],
+  "lower-daugava-livs": ["river-trade"],
+  "talavians": ["river-trade"],
+  "lietuva": ["river-trade"],
+  "dainavians": ["river-trade"],
+  "nadruvians": ["river-trade"],
+  "semigallian-confederacy": ["river-trade"],
+  "pomesanians": ["river-trade"],
+};
+
+/** How often an eligible land actually carries its ground. Half, so two runs
+ *  of the same map are different maps to fight over. */
+export const TERRAIN_CHANCE = 0.5;
+
+/** Two draws per eligible land, in faction order: whether it carries anything
+ *  and which of its own options it gets. A frozen contract like every other
+ *  draw in the deal - tests/rng-isolation.test.ts replays it. */
+export function rollTerrain(factionIds: string[], rng: Rng): Passives {
+  let out: Passives = {};
+  for (const land of factionIds) {
+    const eligible = TERRAIN_ELIGIBILITY[land];
+    if (eligible === undefined || eligible.length === 0) continue;
+    if (rng() >= TERRAIN_CHANCE) continue;
+    out = addPassive(out, land, eligible[Math.floor(rng() * eligible.length)]);
+  }
+  return out;
+}
+
+/** The statuses a fresh game starts with: the ground, rolled, plus the quiet
+ *  set on every faction that does not act. */
+export function seedPassives(
+  factionIds: string[], acting: readonly string[], rng: Rng,
+): Passives {
+  let out = rollTerrain(factionIds, rng);
+  for (const land of factionIds) {
+    if (acting.includes(land)) continue;
+    for (const id of QUIET_PASSIVES) out = addPassive(out, land, id);
+  }
+  return out;
 }
 
 /** Hostile damage after the ground has had its say. The one spelling, called

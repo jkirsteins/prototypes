@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   addPassive, damageAfterTerrain, hasPassive, PASSIVES, passivesOn, playsTurns,
-  QUIET_PASSIVES, stripOnCapture, type Passives,
+  QUIET_PASSIVES, rollTerrain, seedPassives, stripOnCapture,
+  TERRAIN_ELIGIBILITY, type Passives,
 } from "../src/passives";
+import { seededRng } from "../src/sim";
+import data from "../src/data/map.json";
 
 describe("the passive table", () => {
   it("gives every status a name, a line of text and a capture rule", () => {
@@ -60,6 +63,45 @@ describe("playsTurns", () => {
     expect(playsTurns({}, "selonians")).toBe(true);
     expect(playsTurns({ selija: ["wild-lands"] }, "selija")).toBe(true);
     expect(playsTurns({ selija: ["keeps-to-itself"] }, "selija")).toBe(false);
+  });
+});
+
+describe("terrain eligibility", () => {
+  it("names only real lands and only statuses that survive capture", () => {
+    const lands = new Set(data.factions.map((f) => f.id));
+    for (const [land, ids] of Object.entries(TERRAIN_ELIGIBILITY)) {
+      expect(lands.has(land), land).toBe(true);
+      expect(ids.length, land).toBeGreaterThan(0);
+      for (const id of ids) {
+        expect(PASSIVES[id], `${land}/${id}`).toBeDefined();
+        expect(PASSIVES[id].strippedOnCapture, `${land}/${id}`).toBe(false);
+      }
+    }
+  });
+
+  it("rolls the same terrain twice from the same seed", () => {
+    const ids = Object.keys(TERRAIN_ELIGIBILITY);
+    expect(rollTerrain(ids, seededRng(3))).toEqual(rollTerrain(ids, seededRng(3)));
+  });
+
+  it("never gives a land a status it is not eligible for", () => {
+    const rolled = rollTerrain(["selonians", "osilians", "jersikans"], seededRng(9));
+    for (const [land, carried] of Object.entries(rolled)) {
+      for (const id of carried) {
+        expect(TERRAIN_ELIGIBILITY[land] ?? [], land).toContain(id);
+      }
+    }
+  });
+});
+
+describe("seedPassives", () => {
+  it("quiets every land that does not act, and none that does", () => {
+    const lands = ["selonians", "jersikans", "sakalans"];
+    const seeded = seedPassives(lands, ["selonians"], seededRng(1));
+    expect(playsTurns(seeded, "selonians")).toBe(true);
+    expect(playsTurns(seeded, "jersikans")).toBe(false);
+    expect(hasPassive(seeded, "jersikans", "wild-lands")).toBe(true);
+    expect(hasPassive(seeded, "selonians", "no-successor")).toBe(false);
   });
 });
 
