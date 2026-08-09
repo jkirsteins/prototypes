@@ -1704,6 +1704,15 @@ function landTitle(region: Region): string {
   return `${region.name} (${factionById.get(region.faction)!.name})`;
 }
 
+/** The pinned land's readout, and the one thing that follows from it: the tip
+ *  is the same dark box parked at the same left edge, so it has to open below
+ *  the panel rather than on top of it. Measured rather than a constant - the
+ *  panel is as tall as the land it describes. */
+function showPinnedLand(region: Region | null): void {
+  hud.setPinnedLand(region === null ? null : hoverLines(region));
+  tooltip.clearTop(region === null ? null : hud.pinnedLandBottom());
+}
+
 function hoverLines(region: Region): TooltipLine[] {
   const human = localHuman();
   // The land's OWN faction, never the politically resolved one: an absorbed
@@ -2109,7 +2118,7 @@ function refresh(opts?: { animate?: boolean }): void {
   hud.setPinned(pinnedFactionId());
   // The pinned land's own tooltip, refreshed with the board: a panel quoting a
   // defense score from three plays ago is worse than no panel.
-  hud.setPinnedLand(pinnedRegion === null ? null : hoverLines(pinnedRegion));
+  showPinnedLand(pinnedRegion);
   // A conquest the local player made and has not answered for: how many
   // defenders march over with it. Raised here rather than at the play, because
   // a land can also be walked into by a raid landing at turn start - one
@@ -2512,8 +2521,8 @@ const hudCallbacks: HudCallbacks = {
     playerNameOf(factionId) {
       return playerNameOfFaction(factionId);
     },
-    onShowTip(lines, clientX, clientY) {
-      tooltip.showLines(lines, clientX, clientY);
+    onShowTip(lines) {
+      tooltip.showLines(lines);
     },
     onHideTip() {
       tooltip.hide();
@@ -2541,8 +2550,8 @@ function deckScreenView(visible: boolean) {
 }
 
 const deckScreen = createDeckScreen(app, {
-  onShowTip(lines, clientX, clientY) {
-    tooltip.showLines(lines, clientX, clientY);
+  onShowTip(lines) {
+    tooltip.showLines(lines);
   },
   onHideTip() {
     tooltip.hide();
@@ -3048,14 +3057,14 @@ svg.addEventListener("contextmenu", (e) => {
 const interaction = attachInteraction(svg, regionPaths, data, {
   onHover(region, clientX, clientY) {
     updateAimPreview(region, clientX, clientY);
-    if (region) tooltip.showLines(hoverLines(region), clientX, clientY);
+    if (region) tooltip.showLines(hoverLines(region));
     else tooltip.hide();
     hoveredRegion = region;
     applyHighlight(region, region?.faction ?? null);
   },
-  onHoverSettlement(settlement, clientX, clientY) {
+  onHoverSettlement(settlement) {
     if (settlement) {
-      tooltip.show(settlementTooltipText(settlement), clientX, clientY);
+      tooltip.show(settlementTooltipText(settlement));
     } else tooltip.hide();
   },
   interceptPress(regionId, e) {
@@ -3080,7 +3089,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
   onSelect(region) {
     pinnedRegion = region;
     hud.setPinned(pinnedFactionId());
-    hud.setPinnedLand(region === null ? null : hoverLines(region));
+    showPinnedLand(region);
     applyHighlight(region, region?.faction ?? null);
   },
   interceptClick(regionId) {

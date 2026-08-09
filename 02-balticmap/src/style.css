@@ -1965,65 +1965,35 @@ svg.map.pinning .realm-hover-halo {
   font-size: 11px;
 }
 
+/* The pinned land panel carries `.tooltip` too: it is the same box as the hover
+   tip, rendered by the same function into the same line classes. Everything
+   here undoes the floating and nothing else, so the two cannot drift into two
+   different-looking readouts of the same land. The pointer can reach this one,
+   which is the whole difference. */
 .pinned-panel {
+  position: static;
+  pointer-events: auto;
   width: 232px;
+  max-width: none;
   max-height: 40vh;
   overflow-y: auto;
-  background: #fff;
-  border: 1px solid #d0d0d0;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1.45;
-  color: #3f3428;
-  z-index: 6;
+  padding: 8px 10px;
+  border-radius: 6px;
+  z-index: 7;
 }
 
-.pinned-panel.hidden {
-  display: none;
+/* The explanation of a word in the panel above it. Same box, no scroll of its
+   own: it holds a name and a line, and a status rule that needed scrolling
+   would be a status rule nobody reads. */
+.pinned-tip {
+  max-height: none;
+  overflow-y: visible;
 }
 
-.pinned-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.pinned-line {
-  display: block;
-}
-
-/* A row that is a table row rather than a sentence: the figure gets its own
-   right-aligned column. Only these - a segment line laid out as a spread flex
-   row has its own runs pushed to opposite ends of the panel. */
-.pinned-line.pinned-has-amount {
-  display: flex;
-  gap: 6px;
-  justify-content: space-between;
-}
-
-/* Opens a block, the tooltip's own `blockStart` rule: a panel carrying three
-   tables is read as three rather than as one long list. */
-.pinned-line.pinned-block {
-  margin-top: 8px;
-}
-
-.pinned-amount {
-  flex: none;
-  font-variant-numeric: tabular-nums;
-  color: #6f6250;
-}
-
-.pinned-line.tone-good {
-  color: #3f7a2e;
-}
-
-.pinned-line.tone-bad {
-  color: #a8352b;
-}
-
-.pinned-line.tone-info {
-  color: #8a6d1f;
+/* The first line of either box is the thing being named. Not bold - the tip's
+   own first line is not either, and the two are the same box. */
+.pinned-tip .tooltip-line:first-child {
+  opacity: 0.75;
 }
 
 .sb-row {

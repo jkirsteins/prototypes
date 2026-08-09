@@ -30,39 +30,49 @@ describe("tooltip", () => {
     const el = container.querySelector(".tooltip") as HTMLElement;
     expect(el.classList.contains("hidden")).toBe(true);
 
-    tooltip.show("Kursa", 100, 200);
+    tooltip.show("Kursa");
     expect(el.classList.contains("hidden")).toBe(false);
     expect(el.textContent).toBe("Kursa");
-    // Parked at a screen edge (the CSS class), never under the pointer -
-    // src/style.css positions .tip-left/.tip-right with a fixed margin, so
-    // there is no pixel offset left for the JS side to set.
+    // Parked at the left edge (the CSS class), never under the pointer -
+    // src/style.css positions .tip-left with a fixed margin, so there is no
+    // pixel offset left for the JS side to set.
     expect(el.style.left).toBe("");
     expect(el.style.top).toBe("");
-    expect(el.classList.contains("tip-right")).toBe(true);
-    expect(el.classList.contains("tip-left")).toBe(false);
+    expect(el.classList.contains("tip-left")).toBe(true);
+    expect(el.classList.contains("tip-right")).toBe(false);
 
     tooltip.hide();
     expect(el.classList.contains("hidden")).toBe(true);
   });
 
-  it("parks on the screen edge the cursor is not on", () => {
+  it("parks at the left edge, wherever the cursor is", () => {
+    // The right side belongs to the scoreboard and the activity log. A tip
+    // that crossed over to dodge the cursor covered both, so it does not.
     const container = document.createElement("div");
     const tooltip = createTooltip(container);
     const el = container.querySelector(".tooltip") as HTMLElement;
 
-    // Left half of the window: parks on the right edge.
-    tooltip.showLines([{ text: "Zemgale (Semigallians)" }], 100, 200);
-    expect(el.classList.contains("tip-right")).toBe(true);
-    expect(el.classList.contains("tip-left")).toBe(false);
-
-    // Right half of the window: parks on the left edge instead.
-    tooltip.showLines(
-      [{ text: "Zemgale (Semigallians)" }],
-      window.innerWidth - 20,
-      window.innerHeight - 20,
-    );
+    tooltip.showLines([{ text: "Zemgale (Semigallians)" }]);
     expect(el.classList.contains("tip-left")).toBe(true);
     expect(el.classList.contains("tip-right")).toBe(false);
+  });
+
+  it("opens below the pinned land panel, which parks at the same edge", () => {
+    // Both are the same dark box at the same left edge. Without this the tip
+    // opens on top of the panel and the two read as one broken readout.
+    const container = document.createElement("div");
+    const tooltip = createTooltip(container);
+    const el = container.querySelector(".tooltip") as HTMLElement;
+
+    tooltip.showLines([{ text: "Zemgale (Semigallians)" }]);
+    expect(el.style.top).toBe("");
+
+    tooltip.clearTop(412);
+    expect(el.style.top).toBe("412px");
+
+    // And back to its own resting height when the pin is cleared.
+    tooltip.clearTop(null);
+    expect(el.style.top).toBe("");
   });
 
   it("gives an amount its own column, because the tip collapses padded spaces", () => {
@@ -72,7 +82,7 @@ describe("tooltip", () => {
     const tooltip = createTooltip(container);
     const el = container.querySelector(".tooltip") as HTMLElement;
 
-    tooltip.showLines([{ amount: "+1", text: "a settlement (Might only)" }], 0, 0);
+    tooltip.showLines([{ amount: "+1", text: "a settlement (Might only)" }]);
     const row = el.querySelector(".tooltip-line") as HTMLElement;
     expect(row.classList.contains("has-amount")).toBe(true);
     expect(row.querySelector(".tooltip-amount")?.textContent).toBe("+1");
@@ -88,7 +98,7 @@ describe("tooltip", () => {
     const tooltip = createTooltip(container);
     const el = container.querySelector(".tooltip") as HTMLElement;
 
-    tooltip.showLines([{ text: "Out of reach.", tone: "bad" }], 0, 0);
+    tooltip.showLines([{ text: "Out of reach.", tone: "bad" }]);
     const row = el.querySelector(".tooltip-line") as HTMLElement;
     expect(row.classList.contains("has-amount")).toBe(false);
     expect(row.querySelector(".tooltip-amount")).toBeNull();
@@ -105,7 +115,7 @@ describe("tooltip", () => {
       { text: "-2", lead: -2 },
       { text: " -> " },
       { text: "-1", lead: -1 },
-    ])], 0, 0);
+    ])]);
     const values = [...el.querySelectorAll(".tooltip-value")];
     expect(values.map((v) => v.textContent)).toEqual(["-2", "-1"]);
     expect(values.every((v) => v.classList.contains("lead-bad"))).toBe(true);
@@ -120,14 +130,13 @@ describe("tooltip", () => {
     const tooltip = createTooltip(container);
     const el = container.querySelector(".tooltip") as HTMLElement;
 
-    tooltip.showLines([{ text: "Might +1/2" }], 100, 200);
+    tooltip.showLines([{ text: "Might +1/2" }]);
     tooltip.redraw([{ text: "Might +2/2" }]);
     expect(el.textContent).toBe("Might +2/2");
     expect(el.classList.contains("hidden")).toBe(false);
-    // Placed from the cursor it was opened at, not from 0,0: still parked on
-    // the edge across from where showLines was first called.
-    expect(el.classList.contains("tip-right")).toBe(true);
-    expect(el.classList.contains("tip-left")).toBe(false);
+    // Still parked where it was, and a redraw does not move it.
+    expect(el.classList.contains("tip-left")).toBe(true);
+    expect(el.classList.contains("tip-right")).toBe(false);
 
     tooltip.hide();
     tooltip.redraw([{ text: "should not appear" }]);
@@ -140,16 +149,16 @@ describe("tooltip", () => {
     const tooltip = createTooltip(container);
     const el = container.querySelector(".tooltip") as HTMLElement;
 
-    tooltip.showLines([{ amount: "=", text: "6", tone: "bad" }], 0, 0);
+    tooltip.showLines([{ amount: "=", text: "6", tone: "bad" }]);
     const row = el.querySelector(".tooltip-line") as HTMLElement;
     expect(row.classList.contains("tone-bad")).toBe(true);
   });
 
   it("still parks cleanly on the edge in a window too narrow for the old flip math", () => {
     // The margin used to be JS clamp arithmetic against a measured tip width;
-    // it is now a fixed margin in the .tip-left/.tip-right CSS rule (see
-    // src/style.css), so a narrow window can never push it off-screen and
-    // there is nothing left for `place` to compute or clamp.
+    // it is now a fixed margin in the .tip-left CSS rule (see src/style.css),
+    // so a narrow window can never push it off-screen and there is nothing
+    // left for `place` to compute or clamp.
     const container = document.createElement("div");
     const tooltip = createTooltip(container);
     const el = container.querySelector(".tooltip") as HTMLElement;
@@ -157,8 +166,8 @@ describe("tooltip", () => {
     const width = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { value: 200, configurable: true });
     try {
-      tooltip.showLines([{ text: "x" }], 10, 10);
-      expect(el.classList.contains("tip-right")).toBe(true);
+      tooltip.showLines([{ text: "x" }]);
+      expect(el.classList.contains("tip-left")).toBe(true);
       expect(el.style.left).toBe("");
     } finally {
       Object.defineProperty(window, "innerWidth", { value: width, configurable: true });

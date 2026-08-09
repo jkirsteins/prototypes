@@ -19,7 +19,7 @@ import { count } from "./plural";
 import {
   multipliedWord, type TargetExplanation,
 } from "./target-explanations";
-import type { TooltipLine } from "./panel";
+import { fillTooltipLines, type TooltipLine } from "./panel";
 import { memoryStorage, type MetaStorage } from "./meta";
 import { standingChangeText, standingsFor } from "./view";
 import { hasRuler } from "./rulers";
@@ -123,6 +123,10 @@ export interface Hud {
    *  and its own map highlight. That is the whole point of pinning: a tip that
    *  follows the cursor cannot be pointed at. */
   setPinnedLand(lines: TooltipLine[] | null): void;
+  /** Where the pinned land panel ends, in client pixels, or null while none is
+   *  up. The floating tip parks at the same edge and needs somewhere to start
+   *  that is not on top of it. */
+  pinnedLandBottom(): number | null;
   /** Renders "Waiting for <faction>..." in the status bar while a remote
    *  seat holds the turn; null clears it. The faction is a segment, which
    *  is also where the player's name comes from: `renderSegments` appends
@@ -626,6 +630,20 @@ export function createHud(
     playerNameOf: (id) => cb.playerNameOf?.(id) ?? null,
   };
 
+  /** The same hooks for anything rendered inside the pinned panel, with the
+   *  tip redirected to the box beneath it. Only the destination differs, so a
+   *  name explains itself identically wherever it is read. */
+  const pinnedHooks: RichTextHooks = {
+    ...richTextHooks,
+    showTip(lines) {
+      fillTooltipLines(pinnedTip, lines);
+      pinnedTip.classList.remove("hidden");
+    },
+    hideTip() {
+      pinnedTip.classList.add("hidden");
+    },
+  };
+
   /** Whether the player could actually know this happened.
    *
    *  Almost every event is a public fact about the map - who submitted to whom,
@@ -731,7 +749,19 @@ export function createHud(
   // at: the faction and status names in it are nodes with their own tips,
   // which a tip chasing the cursor could never be.
   const pinnedPanel = document.createElement("div");
-  pinnedPanel.className = "pinned-panel hidden";
+  // `tooltip` first: the pinned panel IS the hover tip, parked in the left
+  // column instead of floating, and `pinned-panel` undoes only the floating.
+  pinnedPanel.className = "tooltip pinned-panel hidden";
+  /** What a name INSIDE the pinned panel explains itself in: the same box
+   *  again, stacked directly under the panel. The floating tip is parked at
+   *  whichever screen edge the panel is not on, and sending a status hovered
+   *  in the left column all the way across the window to be read there is a
+   *  answer nobody can follow back to the word they pointed at. */
+  const pinnedTip = document.createElement("div");
+  pinnedTip.className = "tooltip pinned-panel pinned-tip hidden";
+  /** The gap `.hud-left` puts between its children, which the floating tip
+   *  has to reproduce because it is not one of them. */
+  const PINNED_STACK_GAP_PX = 8;
 
   // Victory milestones: a drawer rather than a panel, because it is a table
   // the player consults between decisions and not something to read the board
@@ -1345,7 +1375,9 @@ export function createHud(
   // pinning a land looked like it had closed the milestones drawer.
   const leftColumn = document.createElement("div");
   leftColumn.className = "hud-left";
-  leftColumn.append(surrenderBtn, milestonesBtn, milestonesDrawer, pinnedPanel);
+  leftColumn.append(
+    surrenderBtn, milestonesBtn, milestonesDrawer, pinnedPanel, pinnedTip,
+  );
 
   container.append(
     menu, postmortem, status, scoreboard, leftColumn, endTurnBtn,
@@ -2387,43 +2419,27 @@ export function createHud(
     },
     setPinnedLand(lines) {
       pinnedPanel.classList.toggle("hidden", lines === null);
+      // The sub-box explains a word in the panel above it, so it cannot
+      // outlive the panel, and it must not outlive a re-render either: the
+      // node the pointer was over is gone.
+      pinnedTip.classList.add("hidden");
       if (lines === null) {
         pinnedPanel.replaceChildren();
         return;
       }
-      const body = document.createElement("div");
-      body.className = "pinned-body";
-      // The first line is the land's own name, rendered like every other line
-      // rather than as a bare heading string: the people it names is a node
-      // there too, so pointing at it lights their realm exactly as it does in
-      // the activity log.
-      lines.forEach((line, i) => {
-        const el = document.createElement("div");
-        el.className = i === 0
-          ? "pinned-line pinned-title"
-          : `pinned-line tone-${line.tone ?? "neutral"}`;
-        if (line.blockStart === true) el.classList.add("pinned-block");
-        // Nodes when the line has them, plain text when it does not: a line
-        // that names nothing has nothing to point at, and giving it a
-        // segments array of one text run would just be ceremony.
-        if (line.segments !== undefined) {
-          el.replaceChildren(renderSegments(line.segments, richTextHooks));
-        } else {
-          el.textContent = line.text;
-        }
-        if (line.amount !== undefined) {
-          // Only a row that HAS a figure becomes a two-column flex row.
-          // Applied to every line, the spread pushed the runs of a segment
-          // line apart: "Saaremaa (        Osilians        )".
-          el.classList.add("pinned-has-amount");
-          const amount = document.createElement("span");
-          amount.className = "pinned-amount";
-          amount.textContent = line.amount;
-          el.appendChild(amount);
-        }
-        body.appendChild(el);
-      });
-      pinnedPanel.replaceChildren(body);
+      // The same renderer and the same classes the floating tip uses, so the
+      // two boxes are one box in two places. The panel's only difference is
+      // that the pointer can reach it, which is what earns the segments: a
+      // faction the first line names lights its realm, exactly as in the log.
+      fillTooltipLines(
+        pinnedPanel, lines, (segs) => renderSegments(segs, pinnedHooks),
+      );
+    },
+    pinnedLandBottom() {
+      if (pinnedPanel.classList.contains("hidden")) return null;
+      // Plus the column's own gap, so the tip sits in the stack rather than
+      // flush against the panel.
+      return pinnedPanel.getBoundingClientRect().bottom + PINNED_STACK_GAP_PX;
     },
     setWaiting(factionId) {
       waitingFaction = factionId;
