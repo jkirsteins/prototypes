@@ -42,15 +42,24 @@ export interface Scenario {
  *  way (turn medians to [0.6x, 1.5x], shares by +/-0.15) - not targets: no
  *  tuning has been done against them.
  *
- *  Two directed changes have moved them since, each followed by a full
+ *  Three directed changes have moved them since, each followed by a full
  *  re-measure. Raid damage was cut 15x (150/75 -> 10/5), which lengthened
  *  worlds less than the factor suggests: with the bases this small, War
  *  council leadership and Plague's 100-per-stack carry the tempo and a plain
  *  raid is close to a token. Then every constant was scaled by 1/10 and
  *  Fortify was reintroduced, which lengthened everything again and softened
  *  the naive player's fall - a starting deck holding five Fortify heals a
- *  flailing player back over the subjugation gate often enough to drop
- *  `defeatShare` from 0.92 to 0.62. Worlds still resolve on every arm. */
+ *  flailing player back over the subjugation gate often enough to have
+ *  dropped `defeatShare` from 0.92 to 0.62.
+ *
+ *  Then raids became marches: declared on the turn they are played, landing
+ *  at the start of the declarer's next turn, and cancellable by a counter
+ *  down the same axis. Worlds lengthened by roughly a tenth (medians 81/75/92
+ *  -> 89.5/82/91.5) and still resolve on every arm; total damage barely moved
+ *  (1979 per world against 2041), so the delay costs tempo rather than
+ *  output. The visible second-order effect is standoffs: two seats raiding
+ *  each other now cancel, which is why `new-player-flailing` needed a longer
+ *  horizon - see the comment on its `turnCap`. */
 export const SCENARIOS: Scenario[] = [
   {
     id: "new-player-flailing",
@@ -62,15 +71,18 @@ export const SCENARIOS: Scenario[] = [
     arm: "mixed",
     games: 52,
     firstSeed: 1,
-    turnCap: 80,
+    // 150, matching competent-warpath. It was 80, and telegraphed raids
+    // pushed the median world past that: with `medianDefeatTurn` sitting at
+    // 78 against an 80-turn horizon, the share of naive players who fall was
+    // measuring the cap rather than the question the scenario asks. The
+    // question is whether a flailing player falls, not whether they fall
+    // inside a fixed number of turns.
+    turnCap: 150,
     expect: {
-      subjugatedShare: [0.64, 0.94],      // measured 0.79
-      medianFirstSubjugation: [29, 72],   // measured 48
-      defeatShare: [0.47, 0.77],          // measured 0.62
-      // measured 75. The widened upper bound would be 113, past the 80-turn
-      // cap this scenario runs to, so it is clamped to the cap: a median
-      // cannot exceed the horizon it is measured over.
-      medianDefeatTurn: [45, 80],
+      subjugatedShare: [0.60, 0.90],      // measured 0.75
+      medianFirstSubjugation: [34, 86],   // measured 57
+      defeatShare: [0.79, 1],             // measured 0.94
+      medianDefeatTurn: [54, 135],        // measured 90
     },
   },
   {
@@ -85,9 +97,9 @@ export const SCENARIOS: Scenario[] = [
     firstSeed: 1,
     turnCap: 150,
     expect: {
-      subjugatedShare: [0.62, 0.92],      // measured 0.77
-      defeatShare: [0.81, 1],             // measured 0.96
-      medianDefeatTurn: [47, 117],        // measured 78
+      subjugatedShare: [0.64, 0.94],      // measured 0.79
+      defeatShare: [0.83, 1],             // measured 0.98
+      medianDefeatTurn: [55, 137],        // measured 91
     },
   },
 ];
@@ -182,7 +194,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [49, 122],     // measured 81
+      medianEndTurn: [54, 134],     // measured 89.5
     },
   },
   {
@@ -195,7 +207,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [45, 113],     // measured 75.5
+      medianEndTurn: [49, 123],     // measured 82
     },
   },
   {
@@ -208,7 +220,7 @@ export const WORLD_SCENARIOS: WorldScenario[] = [
     turnCap: 300,
     expect: {
       unifiedShare: [0.85, 1],      // measured 1.00
-      medianEndTurn: [55, 138],     // measured 92
+      medianEndTurn: [55, 137],     // measured 91.5
     },
   },
 ];

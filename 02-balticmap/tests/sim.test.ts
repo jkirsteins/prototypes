@@ -88,8 +88,11 @@ describe("naive human policy", () => {
     const play = g.log.find((e) => e.type === "play");
     expect(play).toMatchObject({ cardId: "raid" });
     expect(play?.targetFactionId).toBeDefined();
-    // The raid landed: an untargeted or refused play would have no damage.
-    expect(g.log.some((e) => e.type === "march-resolved")).toBe(true);
+    // The raid was really declared, and out of a real land: an untargeted or
+    // refused play would leave no march behind. It does not LAND this turn -
+    // a raid is an arrow now, and it resolves at the start of the next one.
+    expect(play?.sourceFactionId).toBeDefined();
+    expect(Object.keys(g.marches)).toHaveLength(1);
   });
 
   it("plays forced tribute ahead of anything else", () => {
