@@ -24,7 +24,7 @@ import {
   resolveAxis, type Armies, type Marches,
 } from "./marches";
 import { autoHarvestChoice, type HarvestChoice } from "./harvest";
-import type { Passives } from "./passives";
+import { playsTurns, seedPassives, type Passives } from "./passives";
 import { initialRulers, leadershipByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
 import { allowsDiscards, DEFAULT_RULES, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
@@ -352,17 +352,61 @@ function makePlayer(
   };
 }
 
-/** Every seat gets the same starting deck; each AI seat rolls its build,
- *  seeded - one rng draw per AI seat, in seat order, BEFORE its deck is
- *  shuffled, so the draw count per seat is a frozen contract the same way
- *  the old deck builder's was (tests/rng-isolation.test.ts pins it). */
+/** How many factions take turns on a map. Everybody else keeps a seat and a
+ *  deck and simply never plays - see `keeps-to-itself` in src/passives.ts.
+ *  Clamped to the land count, so a three-land test map has everybody acting. */
+export const MAX_ACTIVE = 5;
+
+/** Which factions take turns: the human's pick, any reserved pick (a
+ *  multiplayer guest), then lands drawn from a seeded shuffle of the rest,
+ *  skipping any that borders one already chosen.
+ *
+ *  The spacing pass can run out of room - a small or a chain-shaped map - so a
+ *  second pass fills what is left without the test. Placement never fails, and
+ *  that fallback is the only reason two acting lands may end up adjacent. */
+function actingFactions(
+  state: GameState, humanFactionId: string, reserved: string[], rng: Rng,
+): string[] {
+  const out = [humanFactionId];
+  for (const id of reserved) {
+    if (id !== humanFactionId && state.factionIds.includes(id) && !out.includes(id)) {
+      out.push(id);
+    }
+  }
+  const cap = Math.max(out.length, Math.min(MAX_ACTIVE, state.factionIds.length));
+  const pool = shuffle(state.factionIds.filter((id) => !out.includes(id)), rng);
+  const spaced = (id: string): boolean =>
+    out.every((placed) => !(state.adjacency[placed] ?? []).includes(id));
+  for (const id of pool) {
+    if (out.length >= cap) break;
+    if (spaced(id)) out.push(id);
+  }
+  for (const id of pool) {
+    if (out.length >= cap) break;
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/** Every faction gets a seat and the same starting deck; only `MAX_ACTIVE` of
+ *  them take turns, and the rest carry `keeps-to-itself`. Each AI seat rolls
+ *  its build, seeded - one rng draw per AI seat, in seat order, BEFORE its
+ *  deck is shuffled, so the draw count per seat is a frozen contract the same
+ *  way the old deck builder's was (tests/rng-isolation.test.ts pins it). The
+ *  acting draw comes before the deal and the status roll after it. */
 export function pickFaction(
   state: GameState,
   factionId: string,
   rng: Rng,
+  /** Factions besides the human's that must take turns - a multiplayer
+   *  guest's pick. Everything else is chosen at random. */
+  opts?: { reservedFactionIds?: string[] },
 ): GameState {
   if (state.phase !== "pick-faction") return state;
   if (!state.factionIds.includes(factionId)) return state;
+  const acting = actingFactions(
+    state, factionId, opts?.reservedFactionIds ?? [], rng,
+  );
   const others = state.factionIds.filter((id) => id !== factionId);
   const players = [
     makePlayer(1, factionId, state.humanStrategy, rng),
@@ -372,7 +416,10 @@ export function pickFaction(
       ),
     ),
   ];
-  return beginTurn({ ...state, phase: "playing", players, current: 0 }, rng);
+  const passives = seedPassives(state.factionIds, acting, rng);
+  return beginTurn(
+    { ...state, phase: "playing", players, current: 0, passives }, rng,
+  );
 }
 
 /** Whether this kind of event, when a play caused it, reads as that play's
@@ -1185,8 +1232,12 @@ export function endTurn(state: GameState): GameState {
  *  turn counter bumps on wrap. */
 export function advance(state: GameState, rng: Rng): GameState {
   if (state.phase !== "playing" || !state.playedThisTurn) return state;
+  // A quiet faction takes no turn at all, so the loop passes over it exactly
+  // as it passes over one that has been incorporated. This is the whole
+  // turn-loop cost of a map that is mostly unheld.
   const inert = (i: number): boolean =>
-    state.players[i].factionId in state.incorporated;
+    state.players[i].factionId in state.incorporated ||
+    !playsTurns(state.passives, state.players[i].factionId);
   let current = state.current;
   let turn = state.turn;
   for (let tried = 0; tried < state.players.length; tried++) {

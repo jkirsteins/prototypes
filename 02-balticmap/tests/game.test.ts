@@ -2,9 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, beginTurn,
   playCard, discardCard, endTurn, advance, surrender, viewOf,
-  OPENING_HAND, HAND_REFILL, TURNIP_HARVEST_THRESHOLD, victoryRealmSize,
-  type GameState,
+  OPENING_HAND, HAND_REFILL, MAX_ACTIVE, TURNIP_HARVEST_THRESHOLD,
+  victoryRealmSize, type GameState,
 } from "../src/game";
+import { playsTurns } from "../src/passives";
 import { ARMIES_PER_POLYGON } from "../src/marches";
 import { DEFAULT_RULES } from "../src/rules";
 import { isTributeCard, startingDeck, type Rng } from "../src/cards";
@@ -1392,5 +1393,95 @@ describe("appendEvents stamping", () => {
     const after = beginTurn(g, seededRng(2));
     const draw = fresh(after, before).find((e) => e.type === "draw");
     expect(draw?.consequence).toBeUndefined();
+  });
+});
+
+describe("who acts", () => {
+  /** A ring of twenty: each land borders the next, so the spacing rule has
+   *  real work, and there is room for five apart from each other. A ring of
+   *  ten would not be - a 10-cycle has exactly one five-land independent set,
+   *  and greedy placement is not meant to search for it. */
+  const RING = [
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+    "k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
+  ];
+  const ringAdj = Object.fromEntries(
+    RING.map((id, i) => [
+      id, [RING[(i + 1) % RING.length], RING[(i + RING.length - 1) % RING.length]],
+    ]),
+  );
+  const deal = (seed: number, opts?: { reservedFactionIds?: string[] }) =>
+    pickFaction(
+      chooseBuild(startGame(newGame(RING, ringAdj)), "warpath"),
+      "a", seededRng(seed), opts,
+    );
+  const acting = (g: GameState): string[] =>
+    g.players.map((p) => p.factionId).filter((f) => playsTurns(g.passives, f));
+
+  it("still deals every faction a seat and a deck", () => {
+    const g = deal(1);
+    expect(g.players).toHaveLength(RING.length);
+    for (const p of g.players) {
+      expect(p.deck.length + p.hand.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("lets exactly five of them act, the human first", () => {
+    const g = deal(1);
+    expect(acting(g)).toHaveLength(MAX_ACTIVE);
+    expect(acting(g)[0]).toBe("a");
+  });
+
+  it("never lets two acting factions border each other", () => {
+    for (const seed of [1, 2, 3, 7, 11]) {
+      const homes = acting(deal(seed));
+      for (const home of homes) {
+        for (const other of homes) {
+          if (home === other) continue;
+          expect(ringAdj[home], `seed ${seed}`).not.toContain(other);
+        }
+      }
+    }
+  });
+
+  it("picks the same five twice from the same seed", () => {
+    expect(acting(deal(5))).toEqual(acting(deal(5)));
+  });
+
+  it("lets a reserved pick act", () => {
+    expect(acting(deal(4, { reservedFactionIds: ["f"] }))).toContain("f");
+  });
+
+  it("seats the table anyway on a map with no room to spread out", () => {
+    // A ring of five wanting five: every candidate borders one already
+    // chosen, so the spacing pass finds nothing and the fallback fills the
+    // table. Placement never failing outranks placement being pretty.
+    const TIGHT = ["a", "b", "c", "d", "e"];
+    const tightAdj = Object.fromEntries(
+      TIGHT.map((id, i) => [
+        id,
+        [TIGHT[(i + 1) % TIGHT.length], TIGHT[(i + TIGHT.length - 1) % TIGHT.length]],
+      ]),
+    );
+    const g = pickFaction(
+      chooseBuild(startGame(newGame(TIGHT, tightAdj)), "warpath"),
+      "a", seededRng(1),
+    );
+    expect(acting(g)).toHaveLength(MAX_ACTIVE);
+  });
+
+  it("lets everybody act when the map is smaller than the table", () => {
+    const g = pickFaction(
+      chooseBuild(startGame(newGame(["a", "b", "c"])), "warpath"),
+      "a", seededRng(1),
+    );
+    expect(acting(g)).toHaveLength(3);
+  });
+
+  it("skips a quiet seat when the turn moves on", () => {
+    const g = deal(1);
+    const next = advance({ ...g, playedThisTurn: true }, seededRng(1));
+    expect(playsTurns(next.passives, next.players[next.current].factionId)).toBe(true);
+    expect(next.current).not.toBe(0);
   });
 });
