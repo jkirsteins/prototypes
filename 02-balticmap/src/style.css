@@ -837,8 +837,33 @@ svg.map.dragging {
    decides whether the arrow matters. Non-interactive like every overlay
    group here - an arrow that ate clicks would make the lands under it
    unpickable. */
+/* The layer is inert; the arrows in it are not. Each one takes the pointer so
+   it can be hovered, and `landUnder` in src/interaction.ts looks through them
+   for the land beneath - the arrows are drawn OVER the map, not instead of
+   it. */
 .march-arrows {
   pointer-events: none;
+}
+
+.march-arrow,
+.claim-arrow {
+  pointer-events: auto;
+}
+
+/* Pointing at an arrow asks "which two lands is this about". Everything that
+   is not one of the two steps back, the pin's own vocabulary at a lighter
+   weight - this is a glance, not a decision. */
+svg.map.arrow-focused .region:not(.arrow-end) {
+  opacity: 0.45;
+}
+
+svg.map.arrow-focused .region.arrow-end {
+  filter: brightness(1.06);
+}
+
+.march-arrow.arrow-faded,
+.claim-arrow.arrow-faded {
+  opacity: 0.25;
 }
 
 .march-arrow polygon {

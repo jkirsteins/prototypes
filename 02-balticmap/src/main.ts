@@ -1413,6 +1413,8 @@ function drawClaim(
   g.classList.add("claim-arrow");
   g.dataset.actor = claim.actor;
   g.dataset.target = claim.to;
+  g.dataset.from = claim.from;
+  focusOnHover(g, claim.from, claim.to);
   const against = realm.has(claim.to);
   const ours = realm.has(claim.from);
   g.classList.add(against ? "march-hostile" : ours ? "march-ours" : "march-other");
@@ -1476,6 +1478,11 @@ function drawMarch(
   g.classList.add("march-arrow");
   g.dataset.actor = m.actor;
   g.dataset.target = m.to;
+  // The two ENDS, which is what the hover lights. Not the same question as
+  // `actor`: a lord marches out of a land its vassal holds, so who sent the
+  // army and where it left from are different lands.
+  g.dataset.from = m.from;
+  focusOnHover(g, m.from, m.to);
   // Against you first: an arrow between your own two lands cannot happen
   // (attackReach excludes what you hold outright, and a raid on your own
   // vassal IS aimed at your realm), so the order only decides how a lord's
@@ -2035,6 +2042,52 @@ function applyRealmHover(region: Region | null): void {
  *  The land, not its realm: the pin already narrows the map to one polygon,
  *  and reading this off the realm root lit every arrow in an empire when a
  *  single vassal was pinned. */
+/** The two lands an arrow runs between, while the pointer is on it. Null when
+ *  it is not, which is most of the time. */
+let arrowFocus: { from: string; to: string } | null = null;
+
+/** Lights the two ends of one arrow and dims everything else, for as long as
+ *  the pointer is on it.
+ *
+ *  An arrow crosses several lands on its way and says which two it is about
+ *  only by where it starts and stops - on a crowded frontier that is a lot of
+ *  tracing. Pointing at it answers the question directly. Hover only: nothing
+ *  is clicked, nothing is remembered, and the pin is the thing that persists. */
+function focusOnHover(g: SVGGElement, from: string, to: string): void {
+  g.addEventListener("pointerenter", () => {
+    arrowFocus = { from, to };
+    applyArrowFocus();
+  });
+  g.addEventListener("pointerleave", () => {
+    arrowFocus = null;
+    applyArrowFocus();
+  });
+}
+
+/** Paints the current arrow focus, or clears it. The pin owns the map when one
+ *  is held and while a card is armed the targeting cues do, so this stands
+ *  down for both rather than adding a third voice. */
+function applyArrowFocus(): void {
+  const focus = pinnedRegion !== null || targetingLive() ? null : arrowFocus;
+  svg.classList.toggle("arrow-focused", focus !== null);
+  for (const [id, el] of regionPaths) {
+    const region = regionById.get(id);
+    el.classList.toggle(
+      "arrow-end",
+      focus !== null && region !== undefined &&
+        (region.faction === focus.from || region.faction === focus.to),
+    );
+  }
+  for (const g of arrowGroup.children) {
+    if (!(g instanceof SVGGElement)) continue;
+    g.classList.toggle(
+      "arrow-faded",
+      focus !== null &&
+        !(g.dataset.from === focus.from && g.dataset.target === focus.to),
+    );
+  }
+}
+
 function syncArrowDimming(pinnedOn: Region | null): void {
   const land = pinnedOn?.faction ?? null;
   for (const g of arrowGroup.children) {

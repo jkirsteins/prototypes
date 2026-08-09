@@ -161,12 +161,31 @@ export function attachInteraction(
     endDrag();
     if (wasDrag) return;
     if ((e.target as Element).closest?.("[data-settlement-id]")) return;
-    const target = (e.target as Element).closest?.("[data-id]") ?? null;
-    const id = target?.getAttribute("data-id") ?? null;
+    const id = landUnder(e as PointerEvent);
     if (cb.interceptClick?.(id)) return;
     state = withClick(state, id);
     applySelection();
   });
+
+  /** The land a press lands on, looking THROUGH the arrow layer.
+   *
+   *  An arrow takes pointer events so it can be hovered, and it carries no
+   *  `data-id` - so asking the event target alone answers "no land" for a
+   *  press anywhere along an arrow, and a click over one cleared the pin
+   *  instead of pinning the land beneath it. The arrows are drawn over the
+   *  map, not instead of it. */
+  const landUnder = (e: PointerEvent): string | null => {
+    const direct = (e.target as Element).closest?.("[data-id]") ?? null;
+    if (direct !== null) return direct.getAttribute("data-id");
+    // The first thing under the pointer that is a land AND says which one.
+    // The realm-edge copies carry `.region` too and carry no id - they are an
+    // outline OF a land, not the land - so matching on the class alone found
+    // one of those and answered "no land".
+    const beneath = document
+      .elementsFromPoint(e.clientX, e.clientY)
+      .find((el) => el.classList.contains("region") && el.hasAttribute("data-id"));
+    return beneath?.getAttribute("data-id") ?? null;
+  };
 
   svg.addEventListener("pointercancel", endDrag);
 
