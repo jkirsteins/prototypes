@@ -221,15 +221,15 @@ export const HAND_REFILL = OPENING_HAND + 1;
 /** Grow turnips plays that earn one Turnip harvest. Static - the counter
  *  resets and counts the same 5 again, forever. The pacing knob the design
  *  doc names, deliberately one constant. */
-export const TURNIP_HARVEST_THRESHOLD = 5;
+export const TURNIP_HARVEST_THRESHOLD = 3;
 
 /** Further settlements a land gets in a world nobody handed a map to. */
 export const DEFAULT_SITE_CAP = 3;
 
-/** Lands needed to win: a 55 percent majority of the roster, rounded up.
- *  Derived rather than hardcoded so it cannot rot when the map changes. */
+/** Lands needed to win: half the roster, rounded up. Derived rather than
+ *  hardcoded so it cannot rot when the map changes. */
 export function victoryRealmSize(factionCount: number): number {
-  return Math.ceil(0.55 * factionCount);
+  return Math.ceil(0.5 * factionCount);
 }
 
 export function viewOf(state: GameState): RulesView {

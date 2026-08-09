@@ -35,14 +35,27 @@ const LINE_ADJ = {
   delta: ["gamma"],
 };
 
-/** The one gate arithmetic the fixtures lean on, spelled out once: a 600
- *  polygon opens to Subjugate at 150 and crosses back to freedom at 450. */
-const SUBJUGATE_LINE = Math.floor(SUBJUGATION_GATE * DEFAULT_DEFENSE_MAX);
-const INDEPENDENCE_LINE = Math.ceil(INDEPENDENCE_GATE * DEFAULT_DEFENSE_MAX);
+/** A roomy polygon for the fixtures, well above the shipped map's 2..18.
+ *  The rules are scale-free and the heals are not: at a shipped max of 6 a
+ *  Hillfort (15) fills anything and a Fortify (4) all but does, so every
+ *  test about "how much did this move" would be a test about the cap. A 60
+ *  polygon leaves both gates and both heals distinguishable, the same reason
+ *  tests/playability.test.ts works at 600. */
+const FIXTURE_MAX = 60;
+const maxes = (ids: string[]): Record<string, number> =>
+  Object.fromEntries(ids.map((id) => [id, FIXTURE_MAX]));
+
+/** The one gate arithmetic the fixtures lean on, spelled out once: a 60
+ *  polygon opens to Subjugate at 15 and crosses back to freedom at 45. */
+const SUBJUGATE_LINE = Math.floor(SUBJUGATION_GATE * FIXTURE_MAX);
+const INDEPENDENCE_LINE = Math.ceil(INDEPENDENCE_GATE * FIXTURE_MAX);
 
 function playingState(adj?: Record<string, string[]>): GameState {
   return pickFaction(
-    chooseBuild(startGame(newGame(FACTIONS, adj)), "warpath"),
+    chooseBuild(
+      startGame(newGame(FACTIONS, adj, {}, undefined, maxes(FACTIONS))),
+      "warpath",
+    ),
     "beta",
     seededRng(1),
   );
@@ -50,10 +63,10 @@ function playingState(adj?: Record<string, string[]>): GameState {
 
 /** A playing state under unlimited turn rules, human seat current. */
 function unlimitedPlaying(adj?: Record<string, string[]>): GameState {
-  const g = chooseRules(startGame(newGame(FACTIONS, adj)), {
-    ...DEFAULT_RULES,
-    turn: "unlimited",
-  });
+  const g = chooseRules(
+    startGame(newGame(FACTIONS, adj, {}, undefined, maxes(FACTIONS))),
+    { ...DEFAULT_RULES, turn: "unlimited" },
+  );
   return pickFaction(chooseBuild(g, "warpath"), "beta", seededRng(1));
 }
 
@@ -82,22 +95,37 @@ function landMarches(g: GameState): GameState {
   return beginTurn({ ...g, turn: g.turn + 1 }, rng());
 }
 
-// The four-faction world's victory size (3) sits BELOW the incorporate realm
-// gate (4), so a fixture that opens the gate by growing the actor's realm can
-// tip a test into victory by accident. Fixtures below either hang the spare
-// factions under the TARGET - freed by the digest, so the realm falls back
-// out of the win line - or move to a six-faction roster whose win size is 4.
+// Victory is half the map, and the incorporate realm gate is a flat 4, so a
+// small roster puts the two in each other's way: on four lands a single
+// subjugation already wins, and on six a pyramid of three does. A fixture
+// that grows the actor's realm therefore states which roster it needs -
+// SIX (win size 3) for one vassal, TEN (win size 5) for anything that has to
+// reach the incorporate gate.
 const SIX = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
+const TEN = [...SIX, "eta", "theta", "iota", "kappa"];
 
 function playingSix(): GameState {
   return pickFaction(
-    chooseBuild(startGame(newGame(SIX)), "warpath"), "beta", seededRng(1),
+    chooseBuild(startGame(newGame(SIX, undefined, {}, undefined, maxes(SIX))), "warpath"),
+    "beta", seededRng(1),
   );
 }
 
-it("victoryRealmSize anchors the fixtures: 3 of 4 lands, 4 of 6", () => {
-  expect(victoryRealmSize(FACTIONS.length)).toBe(3);
-  expect(victoryRealmSize(SIX.length)).toBe(4);
+function playingTen(): GameState {
+  return pickFaction(
+    chooseBuild(startGame(newGame(TEN, undefined, {}, undefined, maxes(TEN))), "warpath"),
+    "beta", seededRng(1),
+  );
+}
+
+it("victoryRealmSize is half the map: 2 of 4 lands, 3 of 6, 13 of 26", () => {
+  expect(victoryRealmSize(FACTIONS.length)).toBe(2);
+  expect(victoryRealmSize(SIX.length)).toBe(3);
+  expect(victoryRealmSize(26)).toBe(13);
+});
+
+it("earns a harvest every third turnip", () => {
+  expect(TURNIP_HARVEST_THRESHOLD).toBe(3);
 });
 
 describe("setup", () => {
@@ -385,7 +413,7 @@ describe("raid", () => {
     const g = playCard(withHand(playingState(), 0, ["raid"]), 0, rng(), "alpha");
     const before = g.log.length;
     const after = landMarches(g);
-    expect(after.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE);
+    expect(after.defense.alpha).toBe(FIXTURE_MAX - RAID_DAMAGE);
     expect(after.marches).toEqual({}); // the army is home
     expect(fresh(after, before).find((e) => e.type === "march-resolved"))
       .toMatchObject({
@@ -423,7 +451,7 @@ describe("raid", () => {
       rulers: { ...after.rulers, beta: { ...after.rulers.beta, leadership: 0 } },
     };
     expect(landMarches(after).defense.alpha)
-      .toBe(DEFAULT_DEFENSE_MAX - (RAID_DAMAGE + 50));
+      .toBe(FIXTURE_MAX - (RAID_DAMAGE + 50));
   });
 
   it("cashes the whole omens stack at declaration: x2 for one reading, x4 for two", () => {
@@ -433,12 +461,12 @@ describe("raid", () => {
     expect(one.log.find((e) => e.type === "play")?.readings).toBe(1);
     expect(one.omens.beta).toBeUndefined(); // spent whole, at declaration
     expect(landMarches(one).defense.alpha)
-      .toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE * 2);
+      .toBe(FIXTURE_MAX - RAID_DAMAGE * 2);
 
     const two = landMarches(
       playCard({ ...base, omens: { beta: 2 } }, 0, rng(), "alpha"),
     );
-    expect(two.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE * 4);
+    expect(two.defense.alpha).toBe(FIXTURE_MAX - RAID_DAMAGE * 4);
     expect(two.log.find((e) => e.type === "march-resolved")).toMatchObject({
       type: "march-resolved", amount: RAID_DAMAGE * 4,
     });
@@ -470,7 +498,7 @@ describe("raid", () => {
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["raid"]);
     const after = landMarches(playCard(g, 0, rng(), "gamma"));
-    expect(after.defense.gamma).toBe(DEFAULT_DEFENSE_MAX - RAID_DAMAGE);
+    expect(after.defense.gamma).toBe(FIXTURE_MAX - RAID_DAMAGE);
     expect(after.overlords.get("gamma")).toBe("beta"); // fealty untouched
   });
 
@@ -525,7 +553,7 @@ describe("the counter-raid clash", () => {
 
   it("lands only the leftover when the counter is weaker", () => {
     const after = landMarches(facingRaids(10, 4));
-    expect(after.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - 6);
+    expect(after.defense.alpha).toBe(FIXTURE_MAX - 6);
     expect(after.defense.beta).toBeUndefined();
     expect(after.log.find((e) => e.type === "march-resolved")).toMatchObject({
       type: "march-resolved", targetFactionId: "alpha", sourceFactionId: "beta",
@@ -535,7 +563,7 @@ describe("the counter-raid clash", () => {
 
   it("throws the leftover back onto the attacker when the counter is stronger", () => {
     const after = landMarches(facingRaids(4, 10));
-    expect(after.defense.beta).toBe(DEFAULT_DEFENSE_MAX - 6);
+    expect(after.defense.beta).toBe(FIXTURE_MAX - 6);
     expect(after.defense.alpha).toBeUndefined();
     expect(after.log.find((e) => e.type === "march-resolved")).toMatchObject({
       type: "march-resolved", targetFactionId: "beta", sourceFactionId: "alpha",
@@ -626,8 +654,8 @@ describe("great-raid", () => {
     expect(declared.omens.beta).toBeUndefined();
     const after = landMarches(declared);
     const each = (GREAT_RAID_DAMAGE + 5) * 2;
-    expect(after.defense.alpha).toBe(DEFAULT_DEFENSE_MAX - each);
-    expect(after.defense.gamma).toBe(DEFAULT_DEFENSE_MAX - each);
+    expect(after.defense.alpha).toBe(FIXTURE_MAX - each);
+    expect(after.defense.gamma).toBe(FIXTURE_MAX - each);
   });
 });
 
@@ -719,9 +747,9 @@ describe("disease", () => {
     const before = g.log.length;
     const after = playCard(g, 0, rng());
     expect(after.defense.alpha)
-      .toBe(DEFAULT_DEFENSE_MAX - 2 * PLAGUE_DAMAGE_PER_STACK);
+      .toBe(FIXTURE_MAX - 2 * PLAGUE_DAMAGE_PER_STACK);
     expect(after.defense.gamma)
-      .toBe(DEFAULT_DEFENSE_MAX - PLAGUE_DAMAGE_PER_STACK);
+      .toBe(FIXTURE_MAX - PLAGUE_DAMAGE_PER_STACK);
     expect(after.disease).toEqual({ gamma: { delta: 1 } });
     const plagued = fresh(after, before).filter((e) => e.type === "plagued");
     expect(plagued.map((e) => [e.targetFactionId, e.amount])).toEqual([
@@ -739,7 +767,7 @@ describe("disease", () => {
     g = withHand(g, 0, ["plague"]);
     const after = playCard(g, 0, rng());
     expect(after.defense.alpha)
-      .toBe(DEFAULT_DEFENSE_MAX - 2 * PLAGUE_DAMAGE_PER_STACK * 2);
+      .toBe(FIXTURE_MAX - 2 * PLAGUE_DAMAGE_PER_STACK * 2);
     expect(after.miasma.beta).toBeUndefined();
     expect(after.log.find((e) => e.type === "play")?.readings).toBe(1);
   });
@@ -872,8 +900,10 @@ describe("subjugate", () => {
   });
 
   it("stores the overlord, injects the tribute card, logs", () => {
+    // SIX, not the four-faction roster: half of four is two, so beta taking
+    // one vassal would win the run and the log would end on `victory`.
     const g = withHand(
-      { ...playingState(), defense: { alpha: 0 } }, 0, ["subjugate"],
+      { ...playingSix(), defense: { alpha: 0 } }, 0, ["subjugate"],
     );
     const after = playCard(g, 0, rng(), "alpha");
     expect(after.overlords.get("alpha")).toBe("beta");
@@ -886,7 +916,7 @@ describe("subjugate", () => {
   });
 
   it("poaching records the former lord and grants the target no respite", () => {
-    let g = playingState();
+    let g = playingSix();
     g = {
       ...g,
       overlords: new Map([["alpha", "gamma"]]),
@@ -900,9 +930,9 @@ describe("subjugate", () => {
   });
 
   it("taking a lord takes its whole pyramid, releasing nobody", () => {
-    // The six-faction roster: beta + alpha + delta is 3 lands, below its win
-    // size of 4, so the pyramid landing cannot tip the phase.
-    let g = playingSix();
+    // The ten-faction roster: beta + alpha + delta is 3 lands, below its win
+    // size of 5, so the pyramid landing cannot tip the phase.
+    let g = playingTen();
     g = {
       ...g,
       overlords: new Map([["delta", "alpha"]]),
@@ -930,9 +960,10 @@ describe("subjugate", () => {
 
 describe("incorporate", () => {
   it("digests a vassal at the realm gate, freeing the target's own vassals", () => {
-    // The spare factions hang under the TARGET: the digest frees them, so the
-    // realm falls back below the win line and the test stays about the digest.
-    let g = playingState();
+    // TEN, because the incorporate realm gate is a flat 4 and victory is half
+    // the map: on any smaller roster the realm that opens the gate has
+    // already won, and the play would log `victory` instead of a digest.
+    let g = playingTen();
     g = {
       ...g,
       overlords: new Map([
@@ -1072,12 +1103,12 @@ describe("found-settlement", () => {
 
 describe("tribute", () => {
   /** Human beta a vassal of alpha holding one annexed land, so the owed sum
-   *  (1 per land of the payer's own realm) is 2. On the six-faction roster,
-   *  because the lord's realm counts the vassal's annexation: on four
-   *  factions alpha would stand at the win line and every play here would
-   *  end as `unified`. */
+   *  (1 per land of the payer's own realm) is 2. On the ten-faction roster,
+   *  because the lord's realm counts the vassal's annexation: alpha stands
+   *  at three lands, and on any smaller roster that is the win line, so
+   *  every play here would end as `unified` instead of as tribute. */
   function owing(wealth: Record<string, number>): GameState {
-    let g = playingSix();
+    let g = playingTen();
     g = {
       ...g,
       overlords: new Map([["beta", "alpha"]]),

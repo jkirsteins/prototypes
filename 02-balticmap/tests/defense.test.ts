@@ -101,10 +101,10 @@ describe("defense store", () => {
     expect(diseaseOn(after, "selija", "selonians")).toBe(4);
   });
 
-  it("derives defenseMax as population / 500", () => {
-    expect(DEFENSE_PER_POPULATION).toBe(500);
+  it("sizes the real map's lands from 2 to 18", () => {
+    expect(DEFENSE_PER_POPULATION).toBe(5000);
     expect(
       defenseMaxFromPopulations({ "eastern-aukstaitija": 90000, pilsotas: 10000 }),
-    ).toEqual({ "eastern-aukstaitija": 180, pilsotas: 20 });
+    ).toEqual({ "eastern-aukstaitija": 18, pilsotas: 2 });
   });
 });

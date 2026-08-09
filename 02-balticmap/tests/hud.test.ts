@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { createHud, type Hud, type HudCallbacks } from "../src/hud";
 import {
   newGame, startGame, chooseBuild, pickFaction, advance, playCard, beginTurn,
-  chooseRules,
+  chooseRules, TURNIP_HARVEST_THRESHOLD,
   type GameState, type GameEvent,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
@@ -80,11 +80,26 @@ function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
   return { ...g, players: g.players.map((pl, i) => (i === playerIdx ? p : pl)) };
 }
 
-/** The human is beta everywhere in this file. */
+/** A roomy polygon for the fixtures, well above the shipped map's 2..18: the
+ *  log and the round summary are checked here for the NUMBERS they quote, and
+ *  at a shipped max of 6 every one of them would be a number the cap had
+ *  already swallowed. */
+const FIXTURE_MAX = 60;
+const maxes = (ids: string[]): Record<string, number> =>
+  Object.fromEntries(ids.map((id) => [id, FIXTURE_MAX]));
+
+/** The human is beta everywhere in this file. Every faction acts: these tests
+ *  are about what the HUD says, and a quiet rival would stop appearing in the
+ *  scoreboard and the log without the test saying so. */
 function newPlaying(factionIds = FACTIONS): GameState {
-  return pickFaction(
-    chooseBuild(startGame(newGame(factionIds)), "warpath"), "beta", seededRng(1),
+  const g = pickFaction(
+    chooseBuild(
+      startGame(newGame(factionIds, undefined, {}, undefined, maxes(factionIds))),
+      "warpath",
+    ),
+    "beta", seededRng(1),
   );
+  return { ...g, passives: {} };
 }
 
 describe("createHud", () => {
@@ -1291,7 +1306,12 @@ describe("hud v2", () => {
     // - so gamma's full realm meets the Incorporate gate of 4.
     let g = pickFaction(
       chooseBuild(
-        startGame(newGame([...FACTIONS, "delta", "e1", "e2", "e3", "e4"])),
+        // Ten lands, so gamma's four-land realm - the Incorporate gate - sits
+        // below the win line of five. On a smaller roster the raid a line up
+        // would already have unified the map and this play would be refused.
+        startGame(newGame(
+          [...FACTIONS, "delta", "e1", "e2", "e3", "e4", "e5", "e6"],
+        )),
         "warpath",
       ),
       "beta", seededRng(1),
@@ -2160,13 +2180,14 @@ describe("the turnip bar chip and the harvest offer", () => {
       .toBe(true);
   });
 
-  it("fills count and bar from the stored counter, over the threshold of 5", () => {
+  it("fills count and bar from the stored counter, over the threshold of 3", () => {
     const { container, hud } = setup();
     hud.update({ ...playing(), turnips: { beta: 2 } });
     const chip = q(container, ".status-turnips");
     expect(chip.classList.contains("hidden")).toBe(false);
-    expect(q(container, ".turnip-count").textContent).toBe("Turnips 2/5");
-    expect(q(container, ".turnip-fill").style.width).toBe("40%");
+    expect(q(container, ".turnip-count").textContent).toBe("Turnips 2/3");
+    expect(q(container, ".turnip-fill").style.width)
+      .toBe(`${Math.round((2 / TURNIP_HARVEST_THRESHOLD) * 100)}%`);
   });
 
   it("shows the chip the moment a turnip is merely held", () => {
@@ -2174,7 +2195,8 @@ describe("the turnip bar chip and the harvest offer", () => {
     hud.update(playing()); // the starting deck holds a Grow turnips
     expect(q(container, ".status-turnips").classList.contains("hidden"))
       .toBe(false);
-    expect(q(container, ".turnip-count").textContent).toBe("Turnips 0/5");
+    expect(q(container, ".turnip-count").textContent)
+      .toBe(`Turnips 0/${TURNIP_HARVEST_THRESHOLD}`);
   });
 
   it("offers the rolled cards with their rules text, and answers with the id", () => {
@@ -2270,9 +2292,11 @@ describe("scoreboard", () => {
     // vassal had annexed. That land carries your stripes, sits inside your realm
     // outline and hovers as "itself your vassal", so a score that walked one
     // level was quoting a smaller realm than the player could see.
-    // A fourth faction so the win target is 3 and the count is legible.
+    // Six factions so the win target is 3 and the count is legible: victory
+    // is half the map, so a smaller roster would put the target under the
+    // three lands this fixture is about.
     const { container, hud } = setup();
-    const g = newPlaying([...FACTIONS, "delta"]);
+    const g = newPlaying([...FACTIONS, "delta", "epsilon", "zeta"]);
     hud.update({
       ...g,
       overlords: new Map([["gamma", "beta"]]),

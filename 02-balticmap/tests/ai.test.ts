@@ -13,11 +13,25 @@ import { seededRng } from "../src/rng";
 // The human sits on zeta; the actor is alpha at index 1 throughout.
 const FACTIONS = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
 
+/** A roomy polygon, well above the shipped map's 2..18: the policy is
+ *  scale-free and the heals are not, so at a shipped max of 6 every "does
+ *  this heal reach the gate" branch would be a question about the cap
+ *  instead. tests/playability.test.ts works at 600 for the same reason. */
+const FIXTURE_MAX = 60;
+const MAXES = Object.fromEntries(FACTIONS.map((id) => [id, FIXTURE_MAX]));
+
 function base(): GameState {
   const g = pickFaction(
-    chooseBuild(startGame(newGame(FACTIONS)), "warpath"), "zeta", seededRng(1),
+    chooseBuild(
+      startGame(newGame(FACTIONS, undefined, {}, undefined, MAXES)),
+      "warpath",
+    ),
+    "zeta", seededRng(1),
   );
-  return { ...g, current: 1 };
+  // Every faction acts here. These tests are about the policy, not about who
+  // is quiet, and a quiet rival would drop out of the candidate sets the
+  // branches sort over without the test ever saying so.
+  return { ...g, current: 1, passives: {} };
 }
 
 function withHand(g: GameState, hand: string[]): GameState {

@@ -8,12 +8,12 @@
  *  the id is stable through vassalage and incorporation. The home polygon of
  *  faction F is F's own id. */
 
-export const DEFENSE_PER_POPULATION = 500;
+export const DEFENSE_PER_POPULATION = 5000;
 
 /** defenseMax for a world nobody handed a map to, the DEFAULT_SITE_CAP
  *  convention: tests get polygons big enough to exercise both gates without
- *  passing a map in. The real map derives 20..180. */
-export const DEFAULT_DEFENSE_MAX = 60;
+ *  passing a map in. The real map derives 2..18. */
+export const DEFAULT_DEFENSE_MAX = 6;
 
 /** Subjugate is legal while the target's HOME polygon sits at or below this
  *  share of its max. */
@@ -171,9 +171,9 @@ export function transferAllDiseaseTo(disease: Disease, owner: string): Disease {
   return out;
 }
 
-/** The map-derived store, `population / 50`: 200 (Pilsotas) to 1800 (Eastern
- *  Aukstaitija). Keyed by faction id like `siteCaps` - the map's region ids
- *  are translated by the caller. */
+/** The map-derived store: 2 (Pilsotas) to 18 (Eastern Aukstaitija). Keyed by
+ *  faction id like `siteCaps` - the map's region ids are translated by the
+ *  caller. */
 export function defenseMaxFromPopulations(
   populations: Record<string, number>,
 ): Record<string, number> {

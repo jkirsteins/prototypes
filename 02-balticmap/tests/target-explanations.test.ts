@@ -22,8 +22,9 @@ const noRisk = (): string[] => [];
 const ORDER = ["alpha", "beta", "gamma", "delta"];
 
 /** A four-polygon line: alpha - beta - gamma - delta. Every polygon defaults
- *  to pristine 60 defense (absent key = at max), the src/defense.ts
- *  convention. */
+ *  to a pristine 60 defense (absent key = at max, the src/defense.ts
+ *  convention) - roomy on purpose, well above the shipped map's 2..18, so a
+ *  heal and a raid both quote a number the cap has not already swallowed. */
 const v = (partial: Partial<RulesView> = {}): RulesView => ({
   overlords: new Map(), incorporated: {},
   adjacency: {
@@ -32,7 +33,9 @@ const v = (partial: Partial<RulesView> = {}): RulesView => ({
   },
   factionIds: ORDER, passives: {}, turn: 1, guards: {}, omens: {},
   siteCaps: {}, settlements: {}, wealth: {}, respites: {}, leadership: {},
-  defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
+  defense: {},
+  defenseMax: Object.fromEntries(ORDER.map((id) => [id, 60])),
+  disease: {}, miasma: {}, turnips: {},
   marches: {}, armies: {},
   ...partial,
 });

@@ -22,7 +22,16 @@ const LINE_ADJ: Record<string, string[]> = {
   delta: ["gamma"],
 };
 
-const fresh = (): GameState => newGame(FACTIONS, LINE_ADJ);
+/** A roomy polygon, well above the shipped map's 2..18: these cases are about
+ *  a URL's number surviving the clamp, and at a max of 6 every interesting
+ *  value would clamp to the same handful. */
+const FIXTURE_MAX = 60;
+
+const fresh = (): GameState =>
+  newGame(
+    FACTIONS, LINE_ADJ, {}, undefined,
+    Object.fromEntries(FACTIONS.map((id) => [id, FIXTURE_MAX])),
+  );
 
 const params = (search: string): BootParams => {
   const p = parseBootParams(search);
@@ -118,7 +127,7 @@ describe("parseBootParams", () => {
   it("clamps turnips UNDER the threshold, a state the game can actually hold", () => {
     // The crossing play resets the counter and injects, so a counter at or
     // past the threshold is a state no real game ever holds.
-    expect(params("?turnips=3").turnips).toBe(3);
+    expect(params("?turnips=1").turnips).toBe(1);
     expect(params("?turnips=9").turnips).toBe(TURNIP_HARVEST_THRESHOLD - 1);
     expect(params(`?turnips=${TURNIP_HARVEST_THRESHOLD}`).turnips)
       .toBe(TURNIP_HARVEST_THRESHOLD - 1);
@@ -381,8 +390,9 @@ describe("applyBootParams", () => {
 
   describe("?turnips", () => {
     it("sets the human's counter", () => {
-      const g = boot("?faction=beta&turnips=4");
-      expect(g.turnips.beta).toBe(4);
+      // Under the threshold, which is what the parse clamps to.
+      const g = boot("?faction=beta&turnips=2");
+      expect(g.turnips.beta).toBe(2);
     });
   });
 });
