@@ -193,6 +193,18 @@ export const MARCH_CARDS: ReadonlySet<string> = new Set(["raid", "strong-raid"])
 
 export const isMarchCard = (cardId: string): boolean => MARCH_CARDS.has(cardId);
 
+/** The cards that restore defense to ONE land of the actor's own realm. A set
+ *  for the reason `MARCH_CARDS` is one: legality asks two questions of every
+ *  one of them - it aims inward, and a land already at its ceiling is no
+ *  target - and a heal left out of the set aims OUTWARD, which is a card that
+ *  refuses your own lands and repairs a rival's. */
+export const SINGLE_LAND_HEALS: ReadonlySet<string> = new Set([
+  "hillfort", "fortify", "strong-fortify",
+]);
+
+export const isSingleLandHeal = (cardId: string): boolean =>
+  SINGLE_LAND_HEALS.has(cardId);
+
 /** Whether playing `cardId` re-opens the turn for another copy of itself
  *  (`CardDef.playsAgain`). The one reader of the field: the turn-spent gate
  *  asks this, and the state it writes, rather than naming a card. */

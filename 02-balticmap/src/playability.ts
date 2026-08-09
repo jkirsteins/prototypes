@@ -1,5 +1,6 @@
 import {
-  ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isMarchCard, isTributeCard,
+  ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isMarchCard,
+  isSingleLandHeal, isTributeCard,
 } from "./cards";
 import {
   fullRealmOf, incorporatedRealmOf, overlordChainOf,
@@ -507,8 +508,7 @@ export function targetEligibilityFor(
     isMarchCard(cardId) || cardId === "spread-disease" ||
     cardId === "localized-outbreak";
   const inward =
-    cardId === "found-settlement" || cardId === "hillfort" ||
-    cardId === "fortify" ||
+    cardId === "found-settlement" || isSingleLandHeal(cardId) ||
     cardId === "prosperous-proliferation";
   const vassalCard = cardId === "incorporate";
 
@@ -572,10 +572,10 @@ export function targetEligibilityFor(
     if (isMarchCard(cardId) && sources !== null && !sources.has(factionId)) {
       reasons.push({ code: "no-army" });
     }
-    // The two single-land heals, one rule: a land already at its ceiling has
+    // The single-land heals, one rule: a land already at its ceiling has
     // nothing to restore, whichever card is aimed at it.
     if (
-      (cardId === "hillfort" || cardId === "fortify") &&
+      isSingleLandHeal(cardId) &&
       defenseOf(view, factionId) >= defenseMaxOf(view, factionId)
     ) {
       reasons.push({ code: "at-full-defense" });

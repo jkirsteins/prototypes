@@ -1316,13 +1316,13 @@ export function createHud(
       criticalOnly: !logPrefs.showPopups,
     }, localPlayerId());
     if (summary === null) return;
-    // A live flight means one thing only: the local player's own played card
-    // is on screen. `animateEvents` skips every event with
-    // `playerId !== localPlayerId()` and the draw is deliberately untracked,
-    // so this is the honest test for "the turn this summary describes is not
-    // over yet" - read off the animation rather than from a predicate that
-    // re-guesses which events animate.
-    if (liveFlights.size > 0) {
+    // A pending play means one thing only: the local player's own played card
+    // is on screen or still queued to be. `animateEvents` skips every event
+    // with `playerId !== localPlayerId()` and the draw is deliberately
+    // untracked, so this is the honest test for "the turn this summary
+    // describes is not over yet" - read off the animation rather than from a
+    // predicate that re-guesses which events animate.
+    if (playPending()) {
       pendingSummary = summary;
       return;
     }
@@ -1773,6 +1773,17 @@ export function createHud(
   // guesses its length. See afterPlayAnimation's doc comment and AGENTS.md. --
 
   const liveFlights = new Set<Flight>();
+  /** Play flights asked for but not yet started.
+   *
+   *  The queue may not reach a play step until whatever was asked for before
+   *  it has finished, so "no flight is live" is not the same question as "the
+   *  player's card has landed" - between the two the card has not even left
+   *  the hand. Reading `liveFlights` alone there released the turn before the
+   *  play was drawn: the AI round resolved, and the summary went up, over a
+   *  card the player had not been shown yet. */
+  let queuedPlayFlights = 0;
+  const playPending = (): boolean =>
+    liveFlights.size > 0 || queuedPlayFlights > 0;
   let pendingContinuation: (() => void) | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
   /** A summary the human's OWN turn raised, held back until their card lands.
@@ -1807,6 +1818,22 @@ export function createHud(
     // Copy first: a flight's own onDone removes itself from liveFlights, so
     // mutating the Set while iterating it would skip entries.
     for (const flight of [...liveFlights]) flight.cancel();
+    // A play still queued belongs to a run that has ended or a game that has
+    // been replaced, so nothing is owed it. Dropping the queue's own pending
+    // steps is `animations.clear()`'s job, not this counter's.
+    queuedPlayFlights = 0;
+    animations.clear();
+  }
+
+  /** Arms the last-resort net against the flights actually in the air. Called
+   *  again when a queued play finally starts, because until then there is no
+   *  `totalMs` to derive a deadline from - and deriving one any other way is
+   *  the duration copy AGENTS.md forbids. */
+  function armFlightWatchdog(): void {
+    if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+    if (pendingContinuation === null || liveFlights.size === 0) return;
+    const longestMs = Math.max(...[...liveFlights].map((f) => f.totalMs));
+    watchdog = setTimeout(settleTurn, longestMs + FLIGHT_WATCHDOG_SLACK_MS);
   }
 
   function animateDraw(): void {
@@ -1834,7 +1861,12 @@ export function createHud(
     // and a flight starting from a stale layout would jump.
     const from = pendingPlayRect ?? hand.getBoundingClientRect();
     pendingPlayRect = null;
-    animations.push((done) => runPlayFlight(cardId, from, done));
+    queuedPlayFlights += 1;
+    animations.push((done) => {
+      queuedPlayFlights -= 1;
+      runPlayFlight(cardId, from, done);
+      armFlightWatchdog();
+    });
   }
 
   function runPlayFlight(
@@ -1861,7 +1893,7 @@ export function createHud(
       ],
       () => {
         liveFlights.delete(flight);
-        if (liveFlights.size === 0) settleTurn();
+        if (!playPending()) settleTurn();
         done();
       },
     );
@@ -2334,12 +2366,16 @@ export function createHud(
     afterPlayAnimation(fn) {
       if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
       pendingContinuation = fn;
-      if (liveFlights.size === 0) {
+      // Nothing flew and nothing is coming - a forced discard, a play the
+      // local seat did not make. Still asynchronous, so a caller's continuation
+      // never runs inside its own call.
+      if (!playPending()) {
         setTimeout(settleTurn, 0);
         return;
       }
-      const longestMs = Math.max(...[...liveFlights].map((f) => f.totalMs));
-      watchdog = setTimeout(settleTurn, longestMs + FLIGHT_WATCHDOG_SLACK_MS);
+      // A play still queued arms nothing yet: `animatePlay`'s step calls
+      // `armFlightWatchdog` the moment its flight exists.
+      armFlightWatchdog();
     },
     setPinned(factionId) {
       if (factionId === pinnedFaction) return;
