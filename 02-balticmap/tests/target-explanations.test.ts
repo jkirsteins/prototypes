@@ -30,7 +30,7 @@ const v = (partial: Partial<RulesView> = {}): RulesView => ({
     alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta", "delta"],
     delta: ["gamma"],
   },
-  factionIds: ORDER, turn: 1, guards: {}, omens: {},
+  factionIds: ORDER, passives: {}, turn: 1, guards: {}, omens: {},
   siteCaps: {}, settlements: {}, wealth: {}, respites: {}, leadership: {},
   defense: {}, defenseMax: {}, disease: {}, miasma: {}, turnips: {},
   marches: {}, armies: {},

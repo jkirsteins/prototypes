@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   realmOf, realmRootOf, fullRealmOf, overlordChainOf, incorporatedRealmOf,
+  isUnheld,
 } from "../src/relations";
 
 describe("realmOf", () => {
@@ -83,5 +84,19 @@ describe("incorporatedRealmOf", () => {
       ["beta", "epsilon"],
     );
     expect([...incorporatedRealmOf("delta", inc)]).toEqual(["delta"]);
+  });
+});
+
+describe("isUnheld", () => {
+  it("is true for a land in nobody's realm", () => {
+    expect(isUnheld("jersikans", new Map(), {})).toBe(true);
+  });
+
+  it("is false once somebody has subjugated it", () => {
+    expect(isUnheld("jersikans", new Map([["jersikans", "selonians"]]), {})).toBe(false);
+  });
+
+  it("is false once somebody has annexed it", () => {
+    expect(isUnheld("jersikans", new Map(), { jersikans: "selonians" })).toBe(false);
   });
 });

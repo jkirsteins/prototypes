@@ -31,6 +31,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     incorporated: {},
     adjacency: LINE_ADJ,
     factionIds: ORDER,
+    passives: {},
     turn: 1,
     guards: {},
     omens: {},

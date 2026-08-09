@@ -24,6 +24,7 @@ import {
   resolveAxis, type Armies, type Marches,
 } from "./marches";
 import { autoHarvestChoice, type HarvestChoice } from "./harvest";
+import type { Passives } from "./passives";
 import { initialRulers, leadershipByFaction, replaceRuler, rulerOf, type Rulers } from "./rulers";
 import { allowsDiscards, DEFAULT_RULES, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
@@ -192,6 +193,11 @@ export interface GameState {
   /** One ruler per faction id, total. Read through `rulerOf`, written only
    *  by `replaceRuler`. */
   rulers: Rulers;
+  /** Polygon id -> the passive statuses it carries (src/passives.ts). Seeded
+   *  at the deal in `pickFaction`; the writers after that are capture, which
+   *  strips what said nobody held the land, and any future card that grants
+   *  or removes one. */
+  passives: Passives;
   /** Faction id -> ethnicity id, for the ruler name pools. Map-derived, like
    *  `adjacency`; empty in tests, which then draw from the generic pool. */
   ethnicities: Record<string, string>;
@@ -246,6 +252,7 @@ export function viewOf(state: GameState): RulesView {
     turnips: state.turnips,
     marches: state.marches,
     armies: state.armies,
+    passives: state.passives,
     leadership: leadershipByFaction(state.rulers),
   };
 }
@@ -291,6 +298,7 @@ export function newGame(
     wealth: {},
     respites: {},
     ethnicities,
+    passives: {},
     rulers: initialRulers(factionIds, ethnicities),
     humanSeat: 0,
     humanStrategy: "warpath",

@@ -68,6 +68,17 @@ export function realmRootOf(
   return chain.length === 0 ? held : chain[chain.length - 1];
 }
 
+/** A land no realm holds: nobody's vassal and nobody's annexation. What the
+ *  grey fill asks, together with the land being quiet - an unheld land that
+ *  plays its own turns is simply a rival at full independence. */
+export function isUnheld(
+  factionId: string,
+  overlords: Overlords,
+  incorporated: Incorporated,
+): boolean {
+  return !overlords.has(factionId) && !(factionId in incorporated);
+}
+
 /** EVERY land under one root: vassals of vassals to any depth, plus each
  *  member's own incorporated lands. This is the answer to "how much of the
  *  map is theirs" - the scoreboard, the win condition, the postmortem, the

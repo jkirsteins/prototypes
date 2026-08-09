@@ -11,6 +11,7 @@ import {
   type Defense, type Disease,
 } from "./defense";
 import { freeArmiesOn, type Armies, type Marches } from "./marches";
+import type { Passives } from "./passives";
 import { activeExpiry } from "./timed";
 
 /** Settlements a land supports - the one standing there since the map was
@@ -47,6 +48,9 @@ export interface RulesView {
   incorporated: Incorporated;
   adjacency: Record<string, string[]>; // polygon id -> adjacent polygon ids
   factionIds: string[];
+  /** Polygon id -> the passive statuses it carries (src/passives.ts). Read by
+   *  the damage sites, the income rule and the AI. */
+  passives: Passives;
   turn: number;
   guards: Guards; // guard card id -> faction ids holding it unspent
   omens: Omens; // faction id -> unspent Favourable omens readings held
