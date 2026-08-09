@@ -152,6 +152,8 @@ describe("cardBlockLine", () => {
       .toBe("Nothing in reach is a legal target.");
     expect(cardBlockLine({ code: "unavailable" }))
       .toBe("Not playable now.");
+    expect(cardBlockLine({ code: "turn-spent" }))
+      .toBe("Only another copy of the card you played may follow.");
   });
 
   it("quotes both numbers of the affordability block - income arrives every turn", () => {

@@ -632,6 +632,10 @@ export type CardBlockReason =
    *  anything already has its army out on a march. Distinct from `no-target`
    *  because the fix is different - wait a turn, or raise one. */
   | { code: "no-army" }
+  /** The turn has been spent, and the play that spent it re-opened it for
+   *  more of its own kind only (`CardDef.playsAgain`). Says nothing about
+   *  this card: it is the turn that is out, not the card that is illegal. */
+  | { code: "turn-spent" }
   | { code: "no-target" }
   | { code: "unavailable" };
 
@@ -734,9 +738,21 @@ export interface PlayableSet {
   cardIndexes: number[];
 }
 
+/** How far open the turn is, for the two hand-level questions below.
+ *
+ *  `repeatOnly` is a card id when the turn has already been spent by a play
+ *  that re-opened it for another copy of itself, and null or absent when the
+ *  turn is simply open. It is a card ID rather than a flag because the rule is
+ *  "another copy of THAT card": the caller holds the id
+ *  (`GameState.repeatCardId`), the rules never ask which card it is. */
+export interface HandOptions {
+  repeatOnly?: string | null;
+}
+
 /** Which hand indexes may be played this turn. Forced cards (the tribute
  *  cards) monopolize the set; an empty playable set means a forced discard of
- *  any card in hand.
+ *  any card in hand - unless `opts.repeatOnly` narrows the turn, in which case
+ *  an empty set means the run is over and the turn ends.
  *
  *  The discard is unconditional, under every rule set. It used to be off
  *  under unlimited turns, on the reading that a dead hand should wait for the
@@ -747,7 +763,22 @@ export function playableSet(
   view: RulesView,
   factionId: string,
   hand: string[],
+  opts: HandOptions = {},
 ): PlayableSet {
+  // A re-opened turn is the narrowest set there is, so it is answered before
+  // anything else. It outranks the forced card because the forced card is a
+  // claim on a turn that has yet to be spent, and this turn has been spent
+  // already. And it never degrades to a discard: the forced discard exists to
+  // unstick a turn that has done nothing, so a turn that has already played
+  // its card ends instead - an empty set here means "end your turn".
+  const repeat = opts.repeatOnly;
+  if (repeat !== undefined && repeat !== null) {
+    const again: number[] = [];
+    hand.forEach((c, i) => {
+      if (c === repeat && isCardPlayable(view, factionId, c)) again.push(i);
+    });
+    return { mode: "play", cardIndexes: again };
+  }
   const forced: number[] = [];
   hand.forEach((c, i) => {
     if (CARDS[c]?.forced && isCardPlayable(view, factionId, c)) forced.push(i);
@@ -775,10 +806,19 @@ export function handBlockReason(
   factionId: string,
   hand: string[],
   cardId: string,
+  opts: HandOptions = {},
 ): CardBlockReason | null {
-  const set = playableSet(view, factionId, hand);
+  const set = playableSet(view, factionId, hand, opts);
   if (set.mode === "play" && set.cardIndexes.some((i) => hand[i] === cardId)) {
     return null;
   }
-  return cardBlockReason(view, factionId, cardId) ?? { code: "forced-first" };
+  // The card's own reason first, whichever rule locked the hand: what the
+  // player has to fix is the board, and "a forced card must go first" would
+  // send them looking for a fix that changes nothing.
+  const own = cardBlockReason(view, factionId, cardId);
+  if (own !== null) return own;
+  const repeat = opts.repeatOnly;
+  return repeat !== undefined && repeat !== null
+    ? { code: "turn-spent" }
+    : { code: "forced-first" };
 }

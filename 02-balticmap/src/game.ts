@@ -1,6 +1,6 @@
 import {
   CARDS, CONSUMED_CARDS, guardAgainst, isGuardCard, isMarchCard, isTributeCard,
-  startingDeck, shuffle, TRIBUTE_CARDS, type Rng, type Strategy,
+  playsAgain, startingDeck, shuffle, TRIBUTE_CARDS, type Rng, type Strategy,
 } from "./cards";
 
 import {
@@ -153,6 +153,19 @@ export interface GameState {
    *  or an unlimited turn's explicit endTurn. `advance` refuses to move on
    *  until it is set. */
   playedThisTurn: boolean;
+  /** The card a SPENT turn will still accept, or null.
+   *
+   *  Written by playing a card that declares `CardDef.playsAgain`: that play
+   *  spends the turn like any other and leaves this behind, so the turn goes
+   *  on accepting more of the same card and nothing else. Cleared at the next
+   *  turn start, and by anything else that ends a turn - only a play re-opens
+   *  one.
+   *
+   *  A card ID rather than a flag because the rule is "another copy of THAT
+   *  card", and it is the only thing about the mechanism the state remembers:
+   *  how many copies may follow is not counted here, ordinary legality decides
+   *  it. Nothing reads this against a card id of its own. */
+  repeatCardId: string | null;
   /** One pick per rule axis, stamped before the game starts and immutable for
    *  the run. `chooseRules` is the only writer. See src/rules.ts. */
   rules: RuleSelections;
@@ -315,6 +328,7 @@ export function newGame(
     players: [],
     current: 0,
     playedThisTurn: false,
+    repeatCardId: null,
     rules: { ...DEFAULT_RULES },
     factionIds,
     overlords: new Map(),
@@ -906,7 +920,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
-    log: appendEvents(state, events), playedThisTurn: false,
+    log: appendEvents(state, events),
+    playedThisTurn: false, repeatCardId: null,
   };
 }
 
@@ -1081,6 +1096,25 @@ function updateFaction(
   return players.map((p) => (p.factionId === factionId ? fn(p) : p));
 }
 
+/** Whether the turn as it stands still accepts `cardId`.
+ *
+ *  An unspent turn accepts anything the ordinary rules allow. A spent one
+ *  accepts only the card that re-opened it, and only because that card said it
+ *  could - `repeatCardId` is written from `CardDef.playsAgain` and read back
+ *  here, so no rule anywhere has to know which card is doing this. What stops
+ *  the run is legality: the reopened turn hands the question straight back to
+ *  `playableSet`, which answers it the same way it would on any other turn. */
+export function turnAccepts(state: GameState, cardId: string): boolean {
+  return !state.playedThisTurn || cardId === state.repeatCardId;
+}
+
+/** The card a spent turn is narrowed to, in the shape `playableSet` asks for:
+ *  null while the turn is open (it accepts anything) or closed for good (it
+ *  accepts nothing, which `turnAccepts` has already said). */
+export function repeatOnlyOf(state: GameState): string | null {
+  return state.playedThisTurn ? state.repeatCardId : null;
+}
+
 export function playCard(
   state: GameState,
   cardIndex: number,
@@ -1098,11 +1132,18 @@ export function playCard(
   opts?: { harvest?: HarvestChoice; sourceId?: string },
 ): GameState {
   if (state.phase !== "playing") return state;
-  if (state.playedThisTurn) return state;
   const p = state.players[state.current];
-  const set = playableSet(viewOf(state), p.factionId, p.hand);
-  if (set.mode !== "play" || !set.cardIndexes.includes(cardIndex)) return state;
   const cardId = p.hand[cardIndex];
+  if (cardId === undefined) return state;
+  // The turn-spent gate. A spent turn is not simply closed: the play that
+  // spent it may have re-opened it for more of its own kind, and this is the
+  // one question that decides which. It never names a card - `repeatCardId`
+  // carries whichever card declared itself repeatable.
+  if (!turnAccepts(state, cardId)) return state;
+  const set = playableSet(
+    viewOf(state), p.factionId, p.hand, { repeatOnly: repeatOnlyOf(state) },
+  );
+  if (set.mode !== "play" || !set.cardIndexes.includes(cardIndex)) return state;
   const card = CARDS[cardId];
   if (card === undefined) return state;
   if (card.targeted) {
@@ -1607,6 +1648,10 @@ export function playCard(
     // ended itself the moment the last card left made the round hand over
     // while the player was still reading what their play had done.
     playedThisTurn: state.rules.turn !== "unlimited",
+    // And the played card says whether the spent turn accepts more of itself.
+    // Overwritten rather than accumulated: the run is a run of ONE card, so
+    // the last play is the whole of the answer.
+    repeatCardId: playsAgain(cardId) ? cardId : null,
   };
 }
 
@@ -1635,18 +1680,24 @@ export function discardCard(state: GameState, cardIndex: number): GameState {
     log: appendEvents(state, [
       { turn: state.turn, playerId: p.id, type: "discard", cardId },
     ]),
-    playedThisTurn: true,
+    // Closed, and closed for good: only a play re-opens a turn. See `endTurn`.
+    playedThisTurn: true, repeatCardId: null,
   };
 }
 
 /** Closes an unlimited-rules turn. The only writer of `playedThisTurn` that
  *  moves nothing else: no event and no log line, because the log already
- *  carries every play the turn made. */
+ *  carries every play the turn made.
+ *
+ *  It clears the repeat as well, because giving the turn up has to be final:
+ *  a turn left carrying the card that re-opened it would come back the moment
+ *  it was closed, and the player who clicked End turn would be handed their
+ *  turn again. */
 export function endTurn(state: GameState): GameState {
   if (state.phase !== "playing") return state;
   if (state.rules.turn !== "unlimited") return state;
   if (state.playedThisTurn) return state;
-  return { ...state, playedThisTurn: true };
+  return { ...state, playedThisTurn: true, repeatCardId: null };
 }
 
 /** Moves to the next living player after a completed turn. An incorporated

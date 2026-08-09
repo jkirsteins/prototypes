@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   ATTACK_CARDS, BASE_RARITY, BUILDS, CARDS, CONSUMED_CARDS, GUARDS,
   NEUTRAL_POOL, RARITY_TIERS, TRIBUTE_CARDS,
-  guardAgainst, isGuardCard, isTributeCard, rarityForImpact, shuffle,
-  startingDeck,
+  guardAgainst, isGuardCard, isTributeCard, playsAgain, rarityForImpact,
+  shuffle, startingDeck,
 } from "../src/cards";
 import { cardTextSegments, plainText, t, type NameLookup } from "../src/rich-text";
 import { seededRng } from "../src/rng";
@@ -13,15 +13,18 @@ describe("cards", () => {
 
   it("defines each card's properties and rules text", () => {
     // Everything but `rarity` - the whole roster is common by design until the
-    // balance pass re-measures it - and `textSegments`, which is `text` in
-    // another shape; the equivalence test below pins the pair to each other.
+    // balance pass re-measures it - `textSegments`, which is `text` in another
+    // shape, and `playsAgain`, which has its own pin below; the equivalence
+    // test further down pins text and segments to each other.
     const expectProps = (
       id: string, name: string, targeted: boolean, secret: boolean,
       maxPerDeck: number | null, deckBuildable: boolean, forced: boolean,
       text: string, wealthCost?: number,
     ) => {
       LISTED.push(id);
-      const { rarity: _tier, textSegments: _segs, ...rest } = CARDS[id];
+      const {
+        rarity: _tier, textSegments: _segs, playsAgain: _again, ...rest
+      } = CARDS[id];
       expect(rest).toEqual({
         id, name, targeted, secret, maxPerDeck, deckBuildable, forced, text,
         ...(wealthCost !== undefined ? { wealthCost } : {}),
@@ -273,6 +276,19 @@ describe("builds and the neutral pool", () => {
       expect(CARDS[id].maxPerDeck).toBeNull();
       expect(startingDeck()).not.toContain(id);
     }
+  });
+
+  it("pins the plays-again set - the cards a spent turn still accepts", () => {
+    const again = Object.values(CARDS).filter((c) => c.playsAgain === true)
+      .map((c) => c.id).sort();
+    expect(again).toEqual(["raid", "strong-raid"]);
+    // The predicate is the only reader of the field, so a card that declares
+    // nothing must answer false through it rather than by being left out of a
+    // list somewhere else.
+    for (const id of Object.keys(CARDS)) {
+      expect(playsAgain(id)).toBe(again.includes(id));
+    }
+    expect(playsAgain("no-such-card")).toBe(false);
   });
 
   it("pins the one-per-deck set - what the harvest offer stops re-offering", () => {

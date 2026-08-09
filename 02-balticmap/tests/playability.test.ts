@@ -556,6 +556,48 @@ describe("playableSet", () => {
     expect(set).toEqual({ mode: "discard", cardIndexes: [0] });
   });
 
+  it("repeatOnly narrows the set to that card, whatever else is legal", () => {
+    const set = playableSet(view(), "beta", ["raid", "grow-crops", "raid"],
+      { repeatOnly: "raid" });
+    expect(set).toEqual({ mode: "play", cardIndexes: [0, 2] });
+  });
+
+  it("repeatOnly outranks the forced tribute - the turn is already spent", () => {
+    // The forced card monopolizes a turn that has yet to be spent. This one
+    // has been, and the play that spent it re-opened the turn for its own
+    // kind only, so the tribute waits for the next turn like anything else.
+    const sub = view({ overlords: new Map([["beta", "alpha"]]) });
+    const hand = ["raid", "pay-military-tribute"];
+    expect(playableSet(sub, "beta", hand, { repeatOnly: "raid" }))
+      .toEqual({ mode: "play", cardIndexes: [0] });
+    expect(playableSet(sub, "beta", hand))
+      .toEqual({ mode: "play", cardIndexes: [1] });
+  });
+
+  it("repeatOnly still asks ordinary legality of the repeat card", () => {
+    // No free army anywhere: the copy in hand is the right card and still
+    // cannot be played, which is what ends the run.
+    const stuck = view({ marches: { "beta>alpha#0": {
+      actor: "beta", from: "beta", to: "alpha", cardId: "raid",
+      damage: 1, holdsArmy: true, expiry: 2,
+    } }, armies: { beta: 1 } });
+    expect(playableSet(stuck, "beta", ["raid", "grow-crops"],
+      { repeatOnly: "raid" })).toEqual({ mode: "play", cardIndexes: [] });
+  });
+
+  it("a spent turn is never offered a discard, however dead the hand", () => {
+    // The forced discard is how a turn that has done NOTHING gets moving. A
+    // turn already spent by the play that re-opened it has nothing to unstick,
+    // so an empty play set here means "end your turn", not "bin a card".
+    expect(playableSet(view(), "beta", ["subjugate"], { repeatOnly: "raid" }))
+      .toEqual({ mode: "play", cardIndexes: [] });
+  });
+
+  it("a repeatOnly of null is the ordinary open turn", () => {
+    expect(playableSet(view(), "beta", ["grow-crops"], { repeatOnly: null }))
+      .toEqual(playableSet(view(), "beta", ["grow-crops"]));
+  });
+
   it("a dead hand degrades to discard mode over the whole hand, unconditionally", () => {
     // There is no rules knob to turn this off any more: a hand that refills
     // to a fixed size never changes on its own, so a seat holding only dead
@@ -573,6 +615,18 @@ describe("handBlockReason", () => {
     // and the mode test in playableSet is what keeps the two from blurring.
     expect(handBlockReason(view(), "beta", ["subjugate"], "subjugate"))
       .toEqual({ code: "no-target" });
+  });
+
+  it("a card locked out by the re-opened turn reads turn-spent", () => {
+    const hand = ["raid", "grow-crops"];
+    expect(handBlockReason(view(), "beta", hand, "grow-crops",
+      { repeatOnly: "raid" })).toEqual({ code: "turn-spent" });
+    expect(handBlockReason(view(), "beta", hand, "raid",
+      { repeatOnly: "raid" })).toBeNull();
+    // The card's own reason still outranks it: what the player has to fix is
+    // the board, not the turn.
+    expect(handBlockReason(view(), "beta", ["raid", "subjugate"], "subjugate",
+      { repeatOnly: "raid" })).toEqual({ code: "no-target" });
   });
 
   it("a playable card locked out by the forced tribute reads forced-first", () => {

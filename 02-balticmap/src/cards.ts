@@ -75,6 +75,19 @@ export interface CardDef {
    *  `playCard` deducts it at the moment of play, unconditionally. The costed
    *  set is pinned to a literal in tests/cards.test.ts. */
   wealthCost?: number;
+  /** Playing this card leaves the turn open for ANOTHER COPY OF IT.
+   *
+   *  The card still spends the turn's allowance the way every card does; what
+   *  it adds is that the spent turn will accept more of the same card, and
+   *  nothing else. What stops the run is ordinary legality - for the raids,
+   *  a land with a free army to march out of - so the limit is the board,
+   *  not a count kept here.
+   *
+   *  Deliberately not "raids are special": any card can carry it, and the
+   *  rule reads the same for all of them. Nothing outside `playsAgain` below
+   *  and `GameState.repeatCardId` knows this rule exists, and neither of them
+   *  knows which card is carrying it. */
+  playsAgain?: true;
   /** One-line rules text shown to the player. */
   text: string;
   /** `text`, with every card the text names as a `card()` segment, so the
@@ -88,12 +101,12 @@ export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Nothing happens. Enough of these earn a Turnip harvest.",
     textSegments: [t("Nothing happens. Enough of these earn a "), card("turnip-harvest"), t(".")] },
   // Build A - Warpath.
-  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Send an army at a bordering land. It lands next turn for 1 damage plus your leadership, less any counter-raid." },
+  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", playsAgain: true, text: "Send an army at a bordering land. It lands next turn for 1 damage plus your leadership, less any counter-raid." },
   "great-raid": { id: "great-raid", name: "Great raid", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Every land of yours that can spare an army raids all it borders. They land next turn for 0.5 damage plus your leadership." },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next Raid or Great raid deals double damage. Stacks.",
     textSegments: [t("Your next "), card("raid"), t(" or "), card("great-raid"), t(" deals double damage. Stacks.")] },
   "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership, added to every attack. Stacks. Lost when the ruler dies." },
-  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Send an army at a bordering land. It lands next turn for 2 damage plus your leadership, less any counter-raid." },
+  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", playsAgain: true, text: "Send an army at a bordering land. It lands next turn for 2 damage plus your leadership, less any counter-raid." },
   "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 2 defense to one of your lands." },
   "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 1 defense to one of your lands." },
   // Build B - Pestilence. Stacks are owned: each rival's disease on a land is
@@ -179,6 +192,12 @@ export const ATTACK_CARDS: ReadonlySet<string> = new Set([
 export const MARCH_CARDS: ReadonlySet<string> = new Set(["raid", "strong-raid"]);
 
 export const isMarchCard = (cardId: string): boolean => MARCH_CARDS.has(cardId);
+
+/** Whether playing `cardId` re-opens the turn for another copy of itself
+ *  (`CardDef.playsAgain`). The one reader of the field: the turn-spent gate
+ *  asks this, and the state it writes, rather than naming a card. */
+export const playsAgain = (cardId: string): boolean =>
+  CARDS[cardId]?.playsAgain === true;
 
 /** Guard card -> the card it turns aside, once, for whoever posted it.
  *

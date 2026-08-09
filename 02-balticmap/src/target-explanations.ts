@@ -457,6 +457,10 @@ export function cardBlockLine(reason: CardBlockReason): string {
       return "Every land of your realm already stands at full defense.";
     case "no-army":
       return "Every army on your borders is already out on a march.";
+    case "turn-spent":
+      // Names no card: the card that re-opened the turn is the one still lit
+      // up in the hand, and this line is read on the greyed-out ones.
+      return "Only another copy of the card you played may follow.";
     case "no-target":
       return "Nothing in reach is a legal target.";
     case "unavailable":

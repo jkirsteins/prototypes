@@ -7,7 +7,7 @@ import {
 } from "../src/game";
 import { playsTurns } from "../src/passives";
 import { DEFAULT_RULES } from "../src/rules";
-import { isTributeCard, startingDeck, type Rng } from "../src/cards";
+import { CARDS, isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
   DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, LAND_GROWTH, SUBJUGATION_GATE,
   FORTIFY_HEAL, GREAT_RAID_DAMAGE, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
@@ -1340,6 +1340,120 @@ describe("discardCard", () => {
   it("is refused while anything is playable", () => {
     const g = withHand(playingState(), 0, ["grow-crops"]);
     expect(discardCard(g, 0)).toBe(g);
+  });
+});
+
+describe("a card that plays again", () => {
+  /** Six lands in a line: alpha - beta - gamma - delta - epsilon - zeta. */
+  const LINE_SIX: Record<string, string[]> = {
+    alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta", "delta"],
+    delta: ["gamma", "epsilon"], epsilon: ["delta", "zeta"], zeta: ["epsilon"],
+  };
+
+  /** Two lands with ONE army each, and two Raids in hand. beta can only reach
+   *  alpha and its vassal gamma only delta, so the two raids come out of
+   *  different lands.
+   *
+   *  Six factions rather than four because a realm of two wins a four-land
+   *  map outright, and a play that ends the run answers no question about
+   *  what the next play may do. The army counts are explicit for the opposite
+   *  reason: a FIXTURE_MAX land musters twenty, and a rule about running out
+   *  of armies cannot be tested on lands that never do. */
+  function twoArmies(): GameState {
+    const g = pickFaction(
+      chooseBuild(
+        startGame(newGame(SIX, LINE_SIX, {}, undefined, maxes(SIX))), "warpath",
+      ),
+      "beta", seededRng(1),
+    );
+    return withHand(
+      {
+        ...g,
+        overlords: new Map([["gamma", "beta"]]),
+        armies: { beta: 1, gamma: 1 },
+      },
+      0, ["raid", "raid", "fortify"],
+    );
+  }
+
+  it("leaves the turn open for another copy of itself", () => {
+    const after = playCard(twoArmies(), 0, rng(), "alpha");
+    expect(after.playedThisTurn).toBe(true);
+    expect(after.repeatCardId).toBe("raid");
+  });
+
+  it("accepts the second copy even though the turn is spent", () => {
+    const first = playCard(twoArmies(), 0, rng(), "alpha");
+    const second = playCard(first, 0, rng(), "delta");
+    expect(Object.values(second.marches)).toHaveLength(2);
+  });
+
+  it("refuses every OTHER card once the turn is spent", () => {
+    // Fortify is legal on its own terms on a damaged land, so what refuses it
+    // afterwards is the spent turn rather than the card's own rule.
+    const g = { ...twoArmies(), defense: { beta: 10 } };
+    expect(playCard(g, 2, rng(), "beta")).not.toBe(g);
+    const first = playCard(g, 0, rng(), "alpha");
+    const fortifyIndex = first.players[0].hand.indexOf("fortify");
+    expect(playCard(first, fortifyIndex, rng(), "beta")).toBe(first);
+  });
+
+  it("stops when the armies run out, not at a count of plays", () => {
+    // One land, one army: the second Raid has nowhere to march out of.
+    const g = withHand(
+      { ...playingState(), armies: { beta: 1 } }, 0, ["raid", "raid"],
+    );
+    const first = playCard(g, 0, rng(), "alpha");
+    expect(validTargetsFor(viewOf(first), "beta", "raid")).toEqual([]);
+    expect(playCard(first, 0, rng(), "alpha")).toBe(first);
+  });
+
+  it("clears at the next turn start", () => {
+    const first = playCard(twoArmies(), 0, rng(), "alpha");
+    expect(beginTurn({ ...first, turn: first.turn + 1 }, rng()).repeatCardId)
+      .toBeNull();
+  });
+
+  it("a card that declares nothing closes the turn, as every card always has", () => {
+    const g = withHand(
+      { ...playingState(LINE_ADJ), defense: { beta: 10 } }, 0,
+      ["fortify", "raid"],
+    );
+    const after = playCard(g, 0, rng(), "beta");
+    expect(after.playedThisTurn).toBe(true);
+    expect(after.repeatCardId).toBeNull();
+    expect(playCard(after, 0, rng(), "alpha")).toBe(after);
+  });
+
+  it("is the declaration that re-opens the turn, not the card's name", () => {
+    // Nothing about Fortify is a raid. Declaring it a plays-again card for
+    // this one test is the point: the rule is the field, and no branch
+    // anywhere asks whether the card is a Raid.
+    const def = CARDS.fortify;
+    CARDS.fortify = { ...def, playsAgain: true };
+    try {
+      const g = withHand(
+        { ...playingState(LINE_ADJ), defense: { beta: 10 } }, 0,
+        ["fortify", "fortify"],
+      );
+      const first = playCard(g, 0, rng(), "beta");
+      expect(first.repeatCardId).toBe("fortify");
+      expect(playCard(first, 0, rng(), "beta").defense.beta)
+        .toBe(10 + 2 * FORTIFY_HEAL);
+    } finally {
+      CARDS.fortify = def;
+    }
+  });
+
+  it("a turn closed by a discard or by endTurn stays closed", () => {
+    // Only a play re-opens a turn. Ending one does not, or End turn under
+    // unlimited rules would hand back a turn the player just gave up.
+    const g = withHand(unlimitedPlaying(LINE_ADJ), 0, ["raid", "raid"]);
+    const played = playCard(g, 0, rng(), "alpha");
+    expect(played.repeatCardId).toBe("raid");
+    expect(endTurn(played).repeatCardId).toBeNull();
+    const dead = discardCard(withHand(playingState(), 0, ["subjugate"]), 0);
+    expect(dead.repeatCardId).toBeNull();
   });
 });
 
