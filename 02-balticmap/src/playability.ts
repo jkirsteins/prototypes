@@ -12,7 +12,7 @@ import {
   turnipThresholdFor, type Defense, type Disease,
 } from "./defense";
 import {
-  armiesOn, freeArmiesOn, type Armies, type Claims, type Marches,
+  freeArmiesOn, type Armies, type Claims, type Marches,
 } from "./marches";
 import { hasPassive, perArmyOn, type Passives } from "./passives";
 import { activeExpiry } from "./timed";
