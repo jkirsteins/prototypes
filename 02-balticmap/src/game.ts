@@ -16,7 +16,7 @@ import {
   type Defense, type Disease,
 } from "./defense";
 import {
-  attackDamageFor, attackMultiplier, attackReach,
+  attackDamageFor, omensMultiplier, attackReach,
   ESCAPE_RESPITE_TURNS, freeArmiesFor, greatRaidMarches, marchSourcesAgainst,
   claimWouldLand, marchTargetsFrom, outbreakPolygons, plagueMultiplier,
   playableSet,
@@ -1284,8 +1284,8 @@ export function playCard(
 
   // The reserve spends, computed against the PRE-play state. An attack play
   // cashes the whole omens stack at once; a Plague cashes the miasma stack.
-  const isAttack = attackMultiplier(view, p.factionId, cardId) > 1;
-  const attackReadings = isAttack ? (state.omens[p.factionId] ?? 0) : 0;
+  const doubled = omensMultiplier(view, p.factionId, cardId) > 1;
+  const attackReadings = doubled ? (state.omens[p.factionId] ?? 0) : 0;
   if (attackReadings > 0) {
     const spent = { ...omens };
     delete spent[p.factionId];
@@ -1566,7 +1566,12 @@ export function playCard(
   } else if (isSingleLandHeal(cardId) && targetId !== undefined) {
     // One branch for the whole class: which card it is decides only how much,
     // and that number is the table the hover quoted before the click.
-    landHeal(targetId, SINGLE_LAND_HEAL[cardId]);
+    // Through the multiplier, so a held omens reading doubles a heal exactly
+    // as it doubles a raid - and the reading is spent above by the same test.
+    landHeal(
+      targetId,
+      SINGLE_LAND_HEAL[cardId] * omensMultiplier(view, p.factionId, cardId),
+    );
   } else if (cardId === "harvest-feast") {
     const realm = fullRealmOf(p.factionId, overlords, incorporated);
     for (const polygon of state.factionIds.filter((f) => realm.has(f))) {

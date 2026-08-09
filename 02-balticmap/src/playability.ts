@@ -1,6 +1,6 @@
 import {
-  ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isInwardCard, isMarchCard,
-  isRaidCard, isSingleLandHeal, isTributeCard,
+  CARDS, guardAgainst, isGuardCard, isInwardCard, isMarchCard,
+  isRaidCard, isSingleLandHeal, isTributeCard, keywordHas,
 } from "./cards";
 import {
   fullRealmOf, incorporatedRealmOf, overlordChainOf,
@@ -327,15 +327,21 @@ export function marchSourcesAgainst(
 }
 
 /** What the actor's held omens readings multiply an attack card by:
- *  `2 ** readings`, 1 for anything outside ATTACK_CARDS. Spent as a whole
+ *  `2 ** readings`, 1 for a card whose keyword does not say so. Spent whole
  *  stack by the next attack, exactly the reserve shape omens have always
  *  had. */
-export function attackMultiplier(
+export function omensMultiplier(
   view: { omens: Omens },
   factionId: string,
   cardId: string,
 ): number {
-  return ATTACK_CARDS.has(cardId) ? 2 ** (view.omens[factionId] ?? 0) : 1;
+  // What the card IS, through its keyword, rather than a list of ids kept
+  // here. A heal is doubled by the same reading a raid is, which is why this
+  // is not called `attackMultiplier` any more - the readings are worth the
+  // same whichever way the card points.
+  return keywordHas(cardId, "doubledByOmens")
+    ? 2 ** (view.omens[factionId] ?? 0)
+    : 1;
 }
 
 /** How many unspent omens readings this faction holds. */
@@ -372,7 +378,7 @@ export function attackDamageFor(
   const base = cardId === "strong-raid"
     ? RAID_DAMAGE + STRONG_BONUS
     : RAID_DAMAGE;
-  const multiplier = attackMultiplier(view, actorFactionId, cardId);
+  const multiplier = omensMultiplier(view, actorFactionId, cardId);
   return {
     damage: (base + raidLeadership(view, actorFactionId, cardId)) * multiplier,
     multiplier,

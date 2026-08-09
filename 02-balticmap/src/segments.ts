@@ -22,7 +22,10 @@ export type Segment =
    *  the keyword's common noun, so "your next raid card" is one hoverable word
    *  rather than a list of the cards it happens to cover today - which is what
    *  a keyword is for. */
-  | { kind: "keyword"; keywordId: string };
+  | { kind: "keyword"; keywordId: string }
+  /** A counter the surface prints a number beside (src/glossary.ts). Renders
+   *  as the term's label; the hover says what the number is. */
+  | { kind: "term"; termId: string };
 
 export const t = (text: string): Segment => ({ kind: "text", text });
 export const card = (cardId: string): Segment => ({ kind: "card", cardId });
@@ -34,6 +37,8 @@ export const ability = (abilityId: string): Segment =>
 
 export const keyword = (keywordId: string): Segment =>
   ({ kind: "keyword", keywordId });
+
+export const term = (termId: string): Segment => ({ kind: "term", termId });
 export const faction = (factionId: string): Segment => ({ kind: "faction", factionId });
 /** "the Selonians", but "Lietuva" for the one faction named for a land.
  *  Mid-sentence only - write lines so a faction never opens a sentence. */

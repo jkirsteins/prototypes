@@ -177,6 +177,7 @@ function footnoteKey(segs: Segment[]): string {
       if (s.kind === "passive") return `passive:${s.passiveId}`;
       if (s.kind === "ability") return `ability:${s.abilityId}`;
       if (s.kind === "keyword") return `keyword:${s.keywordId}`;
+      if (s.kind === "term") return `term:${s.termId}`;
       return `faction:${s.factionId}`;
     })
     .join("|");

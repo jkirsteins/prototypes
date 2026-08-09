@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { defenseMaxAll, siteCaps } from "./helpers";
 import {
   ESCAPE_RESPITE_TURNS, INCORPORATE_REALM_GATE, SETTLEMENT_BASE_CAP,
-  attackDamageFor, attackMultiplier, attackReach, borderPolygonsOf,
+  attackDamageFor, omensMultiplier, attackReach, borderPolygonsOf,
   cardBlockReason, failureRiskOf, freeSitesIn, greatRaidMarches,
   handBlockReason, holdsGuard, incorporateRealmGate, isCardPlayable,
   marchSourcesAgainst, marchSourcesFor, marchTargetsFrom, miasmaHeld, omensHeld,
@@ -660,8 +660,8 @@ describe("attackDamageFor", () => {
 
   it("omens multiply only attack cards", () => {
     const v = view({ omens: { alpha: 3 } });
-    expect(attackMultiplier(v, "alpha", "raid")).toBe(8);
-    expect(attackMultiplier(v, "alpha", "plague")).toBe(1);
+    expect(omensMultiplier(v, "alpha", "raid")).toBe(8);
+    expect(omensMultiplier(v, "alpha", "plague")).toBe(1);
     expect(omensHeld(v, "alpha")).toBe(3);
     expect(omensHeld(v, "beta")).toBe(0);
   });

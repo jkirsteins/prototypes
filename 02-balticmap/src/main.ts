@@ -17,9 +17,10 @@ import { fullRealmOf, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
 import { rulerNameOf } from "./rulers";
 import {
-  ability, abilityName, faction, plainText, t,
+  ability, abilityName, faction, plainText, t, term,
   type NameLookup, type Segment,
 } from "./rich-text";
+import { termName } from "./glossary";
 import { abilitiesOf } from "./abilities";
 import {
   handBlockReason, marchSourcesAgainst, marchSourcesFor, marchTargetsFrom,
@@ -1736,6 +1737,15 @@ function showPinnedLand(region: Region | null): void {
   tooltip.clearTop(region === null ? null : hud.pinnedLandBottom());
 }
 
+/** A counter line: the term's label as a hoverable node, its figure in the
+ *  amount column. Every number the hover prints beside a word goes through
+ *  here, so none of them can ship without an explanation. */
+function termLine(termId: string, amount: number): TooltipLine {
+  return {
+    text: termName(termId), segments: [term(termId)], amount: String(amount),
+  };
+}
+
 function hoverLines(region: Region): TooltipLine[] {
   const human = localHuman();
   // The land's OWN faction, never the politically resolved one: an absorbed
@@ -1807,18 +1817,22 @@ function hoverLines(region: Region): TooltipLine[] {
   if (leader === null) {
     lines.push({ text: "Nobody leads this land" });
   } else {
-    lines.push({ text: leader, amount: String(v.leadership[region.faction] ?? 0) });
+    // The ruler's NAME on its own line. It used to carry the leadership as its
+    // amount, which read as "1 Kyrian" - a figure with no label, no way to
+    // learn what it was, and nothing saying it stacks.
+    lines.push({ text: leader });
+    lines.push(termLine("leadership", v.leadership[region.faction] ?? 0));
     // What this leader can do, named. A leadership figure beside a chief who
-    // has no way to spend it would read as a number that does nothing, and an
-    // ability the player cannot see is a rule they cannot play around - the
-    // same reason no land status ships without its hover.
+    // has no way to spend it is a number that does nothing, and an ability the
+    // player cannot see is a rule they cannot play around - the same reason no
+    // land status ships without its hover.
     for (const id of abilitiesOf(v.leaderAbilities, region.faction)) {
       lines.push({ text: abilityName(id), segments: [ability(id)] });
     }
     const omens = omensHeld(v, region.faction);
-    if (omens > 0) lines.push({ text: "Omens read", amount: String(omens) });
+    if (omens > 0) lines.push(termLine("omens", omens));
     const miasma = miasmaHeld(v, region.faction);
-    if (miasma > 0) lines.push({ text: "Miasma gathered", amount: String(miasma) });
+    if (miasma > 0) lines.push(termLine("miasma", miasma));
   }
   // The land's standing properties, last: they are true of the ground whoever
   // holds it, so they read as the footnote to everything above rather than as

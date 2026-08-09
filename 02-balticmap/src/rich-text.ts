@@ -1,6 +1,7 @@
 import { CARDS, KEYWORDS, keywordOf, type KeywordDef } from "./cards";
 import { PASSIVES } from "./passives";
 import { LEADER_ABILITIES } from "./abilities";
+import { TERMS, termName } from "./glossary";
 import { t, faction } from "./segments";
 import { withArticle } from "./view";
 import type { Segment } from "./segments";
@@ -10,7 +11,7 @@ import type { TooltipLine } from "./panel";
 // cards.ts can author them too); re-exported here so every prose surface keeps
 // one import for the whole vocabulary.
 export {
-  t, ability, card, faction, keyword, passive, theFaction,
+  t, ability, card, faction, keyword, passive, term, theFaction,
 } from "./segments";
 export type { Segment } from "./segments";
 
@@ -234,6 +235,7 @@ export function plainText(segs: Segment[], names: NameLookup): string {
       if (seg.kind === "card") return cardName(seg.cardId);
       if (seg.kind === "passive") return passiveName(seg.passiveId);
       if (seg.kind === "ability") return abilityName(seg.abilityId);
+      if (seg.kind === "term") return termName(seg.termId);
       if (seg.kind === "keyword") {
         return KEYWORDS[seg.keywordId]?.noun ?? seg.keywordId;
       }
@@ -274,6 +276,21 @@ export function renderSegments(segs: Segment[], hooks: RichTextHooks): DocumentF
       span.textContent = cardName(seg.cardId);
       span.addEventListener("mousemove", (e) => {
         hooks.showTip?.(cardTipLines(seg.cardId), e.clientX, e.clientY);
+      });
+      span.addEventListener("mouseleave", () => hooks.hideTip?.());
+    } else if (seg.kind === "term") {
+      // The passive pattern again: the label is the node, the number beside it
+      // is the surface's own, and the hover says what the number means.
+      span.className = "rt-passive";
+      const def = TERMS[seg.termId];
+      span.textContent = def?.name ?? seg.termId;
+      span.addEventListener("mousemove", (e) => {
+        hooks.showTip?.(
+          def === undefined
+            ? [{ text: span.textContent ?? "" }]
+            : [{ text: def.name }, { text: def.text }],
+          e.clientX, e.clientY,
+        );
       });
       span.addEventListener("mouseleave", () => hooks.hideTip?.());
     } else if (seg.kind === "keyword") {

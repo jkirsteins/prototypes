@@ -84,13 +84,17 @@ export interface CardDef {
    *  a land with a free army to march out of - so the limit is the board,
    *  not a count kept here.
    *
-   *  A GROUP and not a card id: the three raids are one keyword, so a Raid
-   *  re-opens the turn for a Strong raid and a Great raid alike. Deliberately
-   *  not "raids are special" - any set of cards can share a group, and the
-   *  rule reads the same for all of them. Nothing outside `repeatGroupOf`
-   *  below and `GameState.repeatGroup` knows this rule exists, and neither of
-   *  them knows which cards are in the group. */
-  repeatGroup?: string;
+   *  The keyword this card carries, if any - the name of a CLASS of cards
+   *  that share rules. What those rules are is the keyword's business, not the
+   *  card's: see `KEYWORDS`. A card says which class it is in and nothing
+   *  more, so a rule added to a keyword reaches every card carrying it without
+   *  touching one of them.
+   *
+   *  Kept apart from the rules themselves because they came coupled and it was
+   *  wrong: the field used to BE the repeat group, which made "has a keyword"
+   *  and "repeats" the same fact and left no way to say that fortify cards are
+   *  a class without also saying you may play two. */
+  keyword?: string;
   /** One-line rules text shown to the player. */
   text: string;
   /** `text`, with every card the text names as a `card()` segment, so the
@@ -104,14 +108,14 @@ export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Nothing happens. Enough of these earn a Turnip harvest.",
     textSegments: [t("Nothing happens. Enough of these earn a "), card("turnip-harvest"), t(".")] },
   // Build A - Warpath.
-  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", repeatGroup: "raid", text: "Send an army at a bordering land. It lands next turn for 1 damage, less any counter-raid." },
-  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", repeatGroup: "raid", text: "Every land of yours bordering one land raids it, one army each. Each lands next turn like a Raid, answered separately." },
-  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next raid card deals double damage. Stacks.",
-    textSegments: [t("Your next "), keyword("raid"), t(" card deals double damage. Stacks.")] },
+  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keyword: "raid", text: "Send an army at a bordering land. It lands next turn for 1 damage, less any counter-raid." },
+  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keyword: "raid", text: "Every land of yours bordering one land raids it, one army each. Each lands next turn like a Raid, answered separately." },
+  "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next raid or fortify card counts double. Stacks.",
+    textSegments: [t("Your next "), keyword("raid"), t(" or "), keyword("fortify"), t(" card counts double. Stacks.")] },
   "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
-  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", repeatGroup: "raid", text: "Send an army at a bordering land. It lands next turn for 2 damage, less any counter-raid." },
-  "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 2 defense to one of your lands." },
-  "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 1 defense to one of your lands." },
+  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keyword: "raid", text: "Send an army at a bordering land. It lands next turn for 2 damage, less any counter-raid." },
+  "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keyword: "fortify", text: "Restore 2 defense to one of your lands." },
+  "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keyword: "fortify", text: "Restore 1 defense to one of your lands." },
   // Build B - Pestilence. Stacks are owned: each rival's disease on a land is
   // its own count, and only your own stacks feed your Plague.
   "spread-disease": { id: "spread-disease", name: "Spread disease", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Put 1 disease on a land in reach. It does nothing until a Plague." ,
@@ -242,12 +246,16 @@ export const INWARD_CARDS: ReadonlySet<string> = new Set([
 export const isInwardCard = (cardId: string): boolean =>
   INWARD_CARDS.has(cardId);
 
-/** A keyword: a rule several cards share, named once and explained once.
+/** A keyword: a class of cards, named once and explained once, carrying
+ *  whatever rules the flags below turn on.
  *
- *  `noun` is the group's common NOUN, lowercase, for the line that has to say
- *  what a re-opened turn will take when several cards would satisfy it -
- *  "another raid" is English, "another Raid" would be claiming one particular
- *  card. `name` is how the keyword is titled where it is explained.
+ *  `noun` is the class's common NOUN, lowercase, for prose that names the
+ *  class rather than a card - "your next raid card", "another raid". `name` is
+ *  how the keyword is titled where it is explained.
+ *
+ *  `text` must STATE whatever the flags turn on. They are what the code reads
+ *  and the text is what the player reads, and the two going out of step is the
+ *  whole failure mode a keyword exists to prevent.
  *
  *  Every card carrying a keyword shows this text with its own rules text, so
  *  the rule is learned from the card that has it rather than from somewhere
@@ -256,28 +264,50 @@ export interface KeywordDef {
   name: string;
   noun: string;
   text: string;
+  /** Playing one leaves the turn open for another of the class. Legality still
+   *  decides whether there is one to play. */
+  repeats?: true;
+  /** Favourable omens doubles what a card of this class does. */
+  doubledByOmens?: true;
 }
 
 export const KEYWORDS: Readonly<Record<string, KeywordDef>> = {
   raid: {
     name: "Raid",
     noun: "raid",
-    text: "Playing a raid card leaves your turn open for another one. You may keep going while you hold a raid card and a land with an army to spare.",
+    text: "Playing a raid card leaves your turn open for another one - you may keep going while you hold one and a land can spare an army. Favourable omens doubles its damage.",
+    repeats: true,
+    doubledByOmens: true,
+  },
+  fortify: {
+    name: "Fortify",
+    noun: "fortify",
+    // No `repeats`: a raid runs out of armies and a heal would run out of
+    // nothing, so a repeating fortify would be bounded only by the hand.
+    text: "A fortify card restores defense to one land of your own realm. Favourable omens doubles what it restores.",
+    doubledByOmens: true,
   },
 };
 
 /** The keyword a card carries, or null. One lookup, so a surface that explains
  *  keywords never has to know which ones exist. */
 export const keywordOf = (cardId: string): KeywordDef | null => {
-  const group = CARDS[cardId]?.repeatGroup;
-  return group === undefined ? null : KEYWORDS[group] ?? null;
+  const id = CARDS[cardId]?.keyword;
+  return id === undefined ? null : KEYWORDS[id] ?? null;
 };
 
-/** The group playing `cardId` re-opens the turn for, or null. The one reader
- *  of the field: the turn-spent gate asks this, and the group it writes,
- *  rather than naming a card. */
+/** Whether a card's keyword turns on `flag`. The one reader of the flags, so
+ *  a rule keyed on a keyword is a lookup rather than a list of card ids kept
+ *  somewhere else and forgotten. */
+export const keywordHas = (
+  cardId: string, flag: "repeats" | "doubledByOmens",
+): boolean => keywordOf(cardId)?.[flag] === true;
+
+/** The keyword a spent turn is re-opened for by playing `cardId`, or null
+ *  where the card's keyword does not repeat. What the turn-spent gate writes
+ *  and reads back, so no rule anywhere names a card. */
 export const repeatGroupOf = (cardId: string): string | null =>
-  CARDS[cardId]?.repeatGroup ?? null;
+  keywordHas(cardId, "repeats") ? CARDS[cardId]?.keyword ?? null : null;
 
 /** Guard card -> the card it turns aside, once, for whoever posted it.
  *

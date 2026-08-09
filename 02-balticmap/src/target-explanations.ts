@@ -1,5 +1,5 @@
 import {
-  armyCapOn, attackDamageFor, attackMultiplier, failureRiskOf, freeSitesIn,
+  armyCapOn, attackDamageFor, omensMultiplier, failureRiskOf, freeSitesIn,
   holdsGuard, miasmaHeld, omensHeld, outbreakPolygons, plagueDamageOn,
   plagueMultiplier, respiteExpiry, settlementsIn, subjugationGateOn,
   targetEligibilityFor,
@@ -233,7 +233,10 @@ function availableImpacts(
     return [defenseMove(view, targetFactionId, -damage, multiplier)];
   }
   if (isSingleLandHeal(cardId)) {
-    return [defenseMove(view, targetFactionId, SINGLE_LAND_HEAL[cardId], 1)];
+    const multiplier = omensMultiplier(view, actorFactionId, cardId);
+    return [defenseMove(
+      view, targetFactionId, SINGLE_LAND_HEAL[cardId] * multiplier, multiplier,
+    )];
   }
   if (cardId === "spread-disease") {
     const held = view.disease[targetFactionId]?.[actorFactionId] ?? 0;
@@ -514,9 +517,12 @@ export function cardModifierLines(
   const lines: string[] = [];
   const readings = omensHeld(view, factionId);
   if (readings > 0) {
-    if (ATTACK_CARDS.has(cardId)) {
-      const word = multipleWord(attackMultiplier(view, factionId, cardId));
-      lines.push(`Favourable omens: this attack counts ${word}.`);
+    // Whatever the readings double, not attacks alone: a heal carrying the
+    // fortify keyword is doubled by the same reading, and a line that only
+    // ever said "attack" would have hidden that.
+    const multiplier = omensMultiplier(view, factionId, cardId);
+    if (multiplier > 1) {
+      lines.push(`Favourable omens: this counts ${multipleWord(multiplier)}.`);
     }
     // The only route by which a player finds out readings stack: the card's
     // own text describes one reading, and a second is legal rather than

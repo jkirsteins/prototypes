@@ -24,7 +24,7 @@ describe("cards", () => {
     ) => {
       LISTED.push(id);
       const {
-        rarity: _tier, textSegments: _segs, repeatGroup: _again, ...rest
+        rarity: _tier, textSegments: _segs, keyword: _again, ...rest
       } = CARDS[id];
       expect(rest).toEqual({
         id, name, targeted, secret, maxPerDeck, deckBuildable, forced, text,
@@ -280,7 +280,7 @@ describe("builds and the neutral pool", () => {
   });
 
   it("pins the repeat groups - what a spent turn still accepts", () => {
-    const again = Object.values(CARDS).filter((c) => c.repeatGroup !== undefined)
+    const again = Object.values(CARDS).filter((c) => c.keyword !== undefined)
       .map((c) => c.id).sort();
     // All three raids share one group, so any of them re-opens the turn for
     // any other.
