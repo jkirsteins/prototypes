@@ -1,15 +1,16 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createHud, type Hud, type HudCallbacks } from "../src/hud";
 import {
   newGame, startGame, chooseBuild, pickFaction, advance, playCard, beginTurn,
-  chooseRules, TURNIP_HARVEST_THRESHOLD,
+  chooseRules,
   type GameState, type GameEvent,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
 import { CARDS, type Rng } from "../src/cards";
 import { DEFAULT_RULES } from "../src/rules";
 import { rulerOf } from "../src/rulers";
+import { turnipThresholdFor } from "../src/defense";
 import type { TargetExplanation } from "../src/target-explanations";
 import { memoryStorage, type MetaStorage } from "../src/meta";
 import { ROUND_SUMMARY_TITLE } from "../src/notices";
@@ -23,6 +24,32 @@ function seededRng(seed: number): Rng {
 }
 
 const FACTIONS = ["alpha", "beta", "gamma"];
+
+// Every `hud.update()` in this file may queue a card flight (src/animate.ts's
+// single shared `animations` queue - one module-level singleton for the whole
+// game, and for every Hud this file constructs in it). happy-dom has no
+// Web Animations API, so a flight's fallback timer is a genuine setTimeout;
+// under real timers that leaves it running past the end of whichever test
+// started it, and it then blocks the very first flight the NEXT test tries to
+// queue - a `.flying-card` that should appear synchronously does not. Fake
+// timers for the whole file, drained after every test, keep each test's
+// flights (and the shared queue) fully settled before the next one starts.
+// A test that manages its own fake/real switch (the animation-specific ones
+// below) is unaffected: re-entering fake mode and draining twice is a no-op.
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  if (vi.isFakeTimers()) {
+    // runAllTimers, not runOnlyPendingTimers: a queued flight only schedules
+    // its OWN timers once the flight ahead of it finishes, so draining has to
+    // keep looping until nothing new gets scheduled, not just clear what was
+    // already pending the instant this ran.
+    vi.runAllTimers();
+    vi.useRealTimers();
+  }
+});
 
 function setup(opts?: {
   canPlayCard?: (cardId: string) => boolean;
@@ -87,6 +114,11 @@ function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
 const FIXTURE_MAX = 60;
 const maxes = (ids: string[]): Record<string, number> =>
   Object.fromEntries(ids.map((id) => [id, FIXTURE_MAX]));
+/** The turnip threshold at THIS file's roomy defenseMax, not the shipped
+ *  default `TURNIP_HARVEST_THRESHOLD` (which is sized off DEFAULT_DEFENSE_MAX,
+ *  6) - the HUD reads the threshold off the human's own polygon (`turnipThresholdOn`),
+ *  and every fixture in this file sits at FIXTURE_MAX. */
+const FIXTURE_TURNIP_THRESHOLD = turnipThresholdFor(FIXTURE_MAX);
 
 /** The human is beta everywhere in this file. Every faction acts: these tests
  *  are about what the HUD says, and a quiet rival would stop appearing in the
@@ -199,7 +231,7 @@ describe("createHud", () => {
     hud.update(g);
     expect(q(container, ".status-prowess").classList.contains("hidden")).toBe(false);
     expect(q(container, ".status-prowess").textContent).toBe(
-      "Leadership 5 (added to every attack)",
+      "Leadership 1 (added to every attack)",
     );
   });
 
@@ -373,7 +405,7 @@ describe("activity log", () => {
     hud.update(g);
     const entries = [...container.querySelectorAll(".log-entry")] as HTMLElement[];
     expect(entries.map((el) => el.textContent))
-      .toContain("Raid out of Beta falls on Alpha (Defense -1 -> 59)");
+      .toContain("Raid out of Beta falls on Alpha (Defense 60 -> 59 (-1))");
     // Not a consequence: the play that caused it was a turn ago, in another
     // batch, so there is nothing above it to indent under.
     const landed = entries.find((el) =>
@@ -403,9 +435,9 @@ describe("activity log", () => {
     hud.update(g);
     const changes = [...container.querySelectorAll(".log-change")];
     expect(changes[0].className).toBe("log-change lead-good"); // your heal
-    expect(changes[0].textContent).toBe(" (Defense +15 -> 55)");
+    expect(changes[0].textContent).toBe(" (Defense 40 -> 43 (+3))");
     expect(changes[1].className).toBe("log-change lead-bad"); // the hit
-    expect(changes[1].textContent).toBe(" (Defense -10 -> 50)");
+    expect(changes[1].textContent).toBe(" (Defense 60 -> 50 (-10))");
   });
 
   it("suffixes a disease stack by owner count, red - pressure on the land", () => {
@@ -416,7 +448,7 @@ describe("activity log", () => {
     hud.update(g);
     const entry = [...container.querySelectorAll(".log-entry")].find((el) =>
       el.textContent?.startsWith("Disease takes root in Alpha"))!;
-    expect(entry.querySelector(".log-change")!.textContent).toBe(" (Disease +1 -> 1)");
+    expect(entry.querySelector(".log-change")!.textContent).toBe(" (Disease 0 -> 1 (+1))");
     expect(entry.querySelector(".log-change")!.className).toBe("log-change lead-bad");
   });
 
@@ -428,7 +460,7 @@ describe("activity log", () => {
     hud.update(g);
     const entry = [...container.querySelectorAll(".log-entry")].find((el) =>
       el.textContent?.startsWith("You played War council"))!;
-    expect(entry.textContent).toBe("You played War council (Leadership +5)");
+    expect(entry.textContent).toBe("You played War council (Leadership +1)");
     expect(entry.querySelector(".log-change")!.className).toBe("log-change lead-good");
   });
 
@@ -641,7 +673,7 @@ describe("activity log filters", () => {
       .find((el) => el.textContent?.startsWith("Raid out of Alpha falls on Beta"))!
       .querySelector(".log-change")!.textContent;
     expect(logged).toBe(noticed);
-    expect(logged).toBe(" (Defense -10 -> 50)");
+    expect(logged).toBe(" (Defense 60 -> 50 (-10))");
   });
 
   it("persists both preferences across HUD instances sharing storage", () => {
@@ -672,7 +704,7 @@ describe("activity log filters", () => {
     hud.update(g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
     const texts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(texts).toContain("Raid out of Alpha falls on Beta (Defense -10 -> 50)");
+    expect(texts).toContain("Raid out of Alpha falls on Beta (Defense 60 -> 50 (-10))");
   });
 
   /** The mute narrows the interrupt, it does not switch it off. Being made
@@ -701,7 +733,7 @@ describe("activity log filters", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/fealty/i);
     const logTexts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
-    expect(logTexts).toContain("Raid out of Alpha falls on Beta (Defense -10 -> 50)");
+    expect(logTexts).toContain("Raid out of Alpha falls on Beta (Defense 60 -> 50 (-10))");
   });
 
   /** The other half of the mute's narrow gap: your agency survives a poach, but
@@ -992,6 +1024,11 @@ describe("afterPlayAnimation", () => {
     expect(fn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(0);
     expect(fn).toHaveBeenCalledOnce();
+    // The opening draw's own flight is still in flight (afterPlayAnimation
+    // does not wait on it - see animateDraw's comment) and has to land before
+    // switching timers away, or its still-pending step wedges the shared
+    // animations queue (src/animate.ts) for every test after this one.
+    vi.runAllTimers();
     vi.useRealTimers();
   });
 
@@ -1028,18 +1065,22 @@ describe("afterPlayAnimation", () => {
     vi.useRealTimers();
   });
 
-  /** A play whose card flew and which a guard then turned aside. Appended to
-   *  the batch rather than driven for real: the point under test is the ORDER
-   *  of the modal against the flight, and driving the rules to a genuine
-   *  prevented play would make the test about deck construction instead. */
+  /** A play whose card flew and which a guard then turned aside. Rewrites the
+   *  just-played event in place rather than driving a real guard-protected
+   *  target through the rules, which would make the test about deck
+   *  construction instead. In place, and not appended: `animateEvents` queues
+   *  one flight per own `play` event in the fresh batch now, and a SECOND,
+   *  fabricated play event would queue a second flight the AI-round gate
+   *  never sees in real play - a human gets one play a turn - and its landing
+   *  would release the continuation `pendingSummary` was meant to hold. */
   function withOwnFizzle(g: GameState): GameState {
+    const last = g.log.length - 1;
     return {
       ...g,
-      log: [...g.log, {
-        turn: g.turn, playerId: 1, type: "play",
-        cardId: "assassinate-ruler", targetFactionId: "gamma",
-        prevented: true,
-      }],
+      log: g.log.map((e, i) =>
+        i === last
+          ? { ...e, cardId: "assassinate-ruler", targetFactionId: "gamma", prevented: true }
+          : e),
     };
   }
 
@@ -1131,15 +1172,22 @@ describe("targeted plays in the log and the hand tips", () => {
   it("renders a subjugation's play and consequence with faction names", () => {
     const { container, hud } = setup();
     // The gate is on the target's HOME defense now: open it, then play the
-    // explicit Subjugate card to raise the event.
+    // explicit Subjugate card to declare the claim.
     let g: GameState = { ...playing(), defense: { alpha: 10 } };
     g = withHand(g, 0, ["subjugate"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
-    const texts = [...container.querySelectorAll(".log-entry")].map(
+    let texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
     );
     expect(texts).toContain("You played Subjugate on Alpha");
+
+    // A claim resolves like a raid: at the actor's own next turn.
+    g = beginTurn({ ...g, turn: g.turn + 1 }, seededRng(1));
+    hud.update(g);
+    texts = [...container.querySelectorAll(".log-entry")].map(
+      (el) => el.textContent,
+    );
     expect(texts).toContain("Alpha submits to Beta");
   });
 
@@ -1389,11 +1437,21 @@ describe("End turn button", () => {
     return pickFaction(chooseBuild(g, "warpath"), "alpha", seededRng(1));
   }
 
-  it("is hidden under standard rules", () => {
+  it("shows but stays disabled under standard rules until a card is played", () => {
     const { container, hud } = setup({ onEndTurn: vi.fn() });
-    hud.update(newPlaying(), { animate: false });
+    let g = newPlaying();
+    hud.update(g, { animate: false });
     const btn = container.querySelector(".end-turn-btn") as HTMLButtonElement;
-    expect(btn.classList.contains("hidden")).toBe(true);
+    // Shown under every rule set now - a turn never ends itself, so this is
+    // the only way a round is handed over - but a standard turn with the card
+    // still unplayed has no hand-over to give, so it starts disabled.
+    expect(btn.classList.contains("hidden")).toBe(false);
+    expect(btn.disabled).toBe(true);
+
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g, { animate: false });
+    expect(btn.disabled).toBe(false);
   });
 
   it("shows, enables and fires on the human's unlimited turn", () => {
@@ -1515,8 +1573,8 @@ describe("notice modal", () => {
     // The line names the land the army marched OUT of, not the seat whose
     // turn resolved it: a march outlives the turn its card was played on.
     expect(lineTexts(container)).toEqual([
-      "Raid out of Alpha fell on your home defenses (Defense -15 -> 45)",
-      "Raid out of Gamma fell on your home defenses (Defense -15 -> 30)",
+      "Raid out of Alpha fell on your home defenses (Defense 60 -> 45 (-15))",
+      "Raid out of Gamma fell on your home defenses (Defense 45 -> 30 (-15))",
     ]);
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
@@ -1530,7 +1588,7 @@ describe("notice modal", () => {
       targetFactionId: "beta", amount: 1,
     }]));
     expect(lineTexts(container)).toEqual([
-      "Spread disease by Alpha set disease on your home (Disease +1 -> 1)",
+      "Spread disease by Alpha set disease on your home (Disease 0 -> 1 (+1))",
     ]);
     expect(footnoteTexts(container).join(" ")).toContain("100 damage each");
   });
@@ -2180,14 +2238,15 @@ describe("the turnip bar chip and the harvest offer", () => {
       .toBe(true);
   });
 
-  it("fills count and bar from the stored counter, over the threshold of 3", () => {
+  it("fills count and bar from the stored counter, over the fixture's threshold", () => {
     const { container, hud } = setup();
     hud.update({ ...playing(), turnips: { beta: 2 } });
     const chip = q(container, ".status-turnips");
     expect(chip.classList.contains("hidden")).toBe(false);
-    expect(q(container, ".turnip-count").textContent).toBe("Turnips 2/3");
+    expect(q(container, ".turnip-count").textContent)
+      .toBe(`Turnips 2/${FIXTURE_TURNIP_THRESHOLD}`);
     expect(q(container, ".turnip-fill").style.width)
-      .toBe(`${Math.round((2 / TURNIP_HARVEST_THRESHOLD) * 100)}%`);
+      .toBe(`${Math.round((2 / FIXTURE_TURNIP_THRESHOLD) * 100)}%`);
   });
 
   it("shows the chip the moment a turnip is merely held", () => {
@@ -2196,41 +2255,79 @@ describe("the turnip bar chip and the harvest offer", () => {
     expect(q(container, ".status-turnips").classList.contains("hidden"))
       .toBe(false);
     expect(q(container, ".turnip-count").textContent)
-      .toBe(`Turnips 0/${TURNIP_HARVEST_THRESHOLD}`);
+      .toBe(`Turnips 0/${FIXTURE_TURNIP_THRESHOLD}`);
   });
 
-  it("offers the rolled cards with their rules text, and answers with the id", () => {
+  /** Every hook `showHarvestOffer` takes, defaulted to a fresh spy - callers
+   *  below override only the ones they mean to assert on. */
+  function harvestHooks(overrides: Partial<{
+    onGrowth: () => void; onBuild: (cardId: string) => void;
+    onRandom: () => void; onDestroy: (cardId: string) => void;
+    onSkip: () => void; onCancel: () => void;
+  }> = {}) {
+    return {
+      onGrowth: vi.fn(), onBuild: vi.fn(), onRandom: vi.fn(), onDestroy: vi.fn(),
+      onSkip: vi.fn(), onCancel: vi.fn(), ...overrides,
+    };
+  }
+
+  it("offers a build card by name with its rules text, and answers with the id", () => {
     const { container, hud } = setup();
     hud.update(playing());
-    const onPick = vi.fn();
-    const onSkip = vi.fn();
-    hud.showHarvestOffer(["hillfort", "subjugate"], {
-      onPick, onSkip, onCancel: vi.fn(),
-    });
+    const onBuild = vi.fn();
+    hud.showHarvestOffer(
+      { buildCards: ["hillfort", "subjugate"], heldCards: [] },
+      harvestHooks({ onBuild }),
+    );
     expect(q(container, ".harvest-overlay").classList.contains("hidden"))
       .toBe(false);
-    const options = [...container.querySelectorAll(".harvest-option")];
-    // Two rolled cards plus the skip button, which is an option in its own
-    // right: skipping commits the play and keeps nothing.
-    expect(options).toHaveLength(3);
+    const choices = [...container.querySelectorAll(".harvest-option")];
+    // Grow your people, a card from your build, a card from anywhere, burn a
+    // card, take nothing - the harvest's five options.
+    expect(choices).toHaveLength(5);
+
+    const build = choices.find((el) => el.textContent?.includes("A card from your build"))!;
+    (build as HTMLButtonElement).click();
+    const cards = [...container.querySelectorAll(".harvest-option")];
+    // The two build cards plus Back.
+    expect(cards).toHaveLength(3);
     // The card name is a hoverable segment node, never baked text, and the
     // rules text is under it so the choice reads without a hover.
-    expect(options[0].querySelector(".rt-card")?.textContent).toBe("Hillfort");
-    expect(options[0].textContent).toContain(CARDS.hillfort.text);
-    expect(options[2].textContent).toContain("Keep nothing");
-    (options[0] as HTMLButtonElement).click();
-    expect(onPick).toHaveBeenCalledWith("hillfort");
-    (options[2] as HTMLButtonElement).click();
+    expect(cards[0].querySelector(".rt-card")?.textContent).toBe("Hillfort");
+    expect(cards[0].textContent).toContain(CARDS.hillfort.text);
+    (cards[0] as HTMLButtonElement).click();
+    expect(onBuild).toHaveBeenCalledWith("hillfort");
+  });
+
+  it("takes nothing straight off the top choices, and answers with a skip", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onSkip = vi.fn();
+    hud.showHarvestOffer(
+      { buildCards: ["hillfort"], heldCards: [] },
+      harvestHooks({ onSkip }),
+    );
+    const skip = [...container.querySelectorAll(".harvest-option")]
+      .find((el) => el.textContent?.includes("Take nothing")) as HTMLButtonElement;
+    skip.click();
     expect(onSkip).toHaveBeenCalledOnce();
   });
 
-  it("Escape cancels the offer - backing out, not skipping", () => {
+  // The Cancel button is the only thing that fires `harvestOnCancel` here -
+  // no keydown listener answers Escape for the harvest overlay in
+  // src/hud.ts, even though the doc comment on `showHarvestOffer` and a
+  // comment in src/main.ts both still promise Escape support. See this
+  // task's report for that finding; testing the button, which is real.
+  it("Cancel backs out of the offer - backing out, not skipping", () => {
     const { container, hud } = setup();
     hud.update(playing());
     const onCancel = vi.fn();
     const onSkip = vi.fn();
-    hud.showHarvestOffer(["hillfort"], { onPick: vi.fn(), onSkip, onCancel });
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    hud.showHarvestOffer(
+      { buildCards: ["hillfort"], heldCards: [] },
+      harvestHooks({ onCancel, onSkip }),
+    );
+    (q(container, ".harvest-cancel") as HTMLButtonElement).click();
     expect(onCancel).toHaveBeenCalledOnce();
     expect(onSkip).not.toHaveBeenCalled();
     hud.hideHarvestUi();
@@ -2241,9 +2338,10 @@ describe("the turnip bar chip and the harvest offer", () => {
   it("a phase change tears the overlay down", () => {
     const { container, hud } = setup();
     hud.update(playing());
-    hud.showHarvestOffer(["hillfort"], {
-      onPick: vi.fn(), onSkip: vi.fn(), onCancel: vi.fn(),
-    });
+    hud.showHarvestOffer(
+      { buildCards: ["hillfort"], heldCards: [] },
+      harvestHooks(),
+    );
     hud.update(newGame(FACTIONS));
     expect(q(container, ".harvest-overlay").classList.contains("hidden"))
       .toBe(true);
@@ -2378,6 +2476,6 @@ describe("hand tips", () => {
     expect(tip.firstElementChild!.className).toBe("card-tip-modifier");
     expect(tip.textContent).toContain("Favourable omens: this attack counts double.");
     // description still there
-    expect(tip.textContent).toContain("March an army out of one of your lands");
+    expect(tip.textContent).toContain(CARDS.raid.text);
   });
 });

@@ -33,6 +33,17 @@ const fresh = (): GameState =>
     Object.fromEntries(FACTIONS.map((id) => [id, FIXTURE_MAX])),
   );
 
+/** `fresh()`, but one faction's ceiling is shrunk so its army cap (`armyCapFor`)
+ *  reads as something smaller than the roomy fixture default - needed wherever
+ *  a test means to exhaust a land's free armies. */
+const freshCapped = (factionId: string, defenseMax: number): GameState =>
+  newGame(
+    FACTIONS, LINE_ADJ, {}, undefined,
+    Object.fromEntries(
+      FACTIONS.map((id) => [id, id === factionId ? defenseMax : FIXTURE_MAX]),
+    ),
+  );
+
 const params = (search: string): BootParams => {
   const p = parseBootParams(search);
   if (p === null) throw new Error(`expected boot params from ${search}`);
@@ -229,8 +240,13 @@ describe("applyBootParams", () => {
     // beta does not border delta, and a URL that could draw an impossible
     // arrow would be checking a state the game cannot reach.
     expect(boot("?faction=beta&march=beta>delta").marches).toEqual({});
-    // Nor can one land send more armies than it has: beta holds one.
-    const one = boot("?faction=beta&march=beta>alpha;beta>gamma");
+    // Nor can one land send more armies than it has: shrink beta's ceiling so
+    // its army cap (armyCapFor) reads as one, then ask for two marches.
+    const one = applyBootParams(
+      freshCapped("beta", 3),
+      params("?faction=beta&march=beta>alpha;beta>gamma"),
+      seededRng(1),
+    );
     expect(Object.keys(one.marches)).toHaveLength(1);
     // Nor can an unknown land send anything.
     expect(boot("?faction=beta&march=atlantis>alpha").marches).toEqual({});
@@ -391,8 +407,8 @@ describe("applyBootParams", () => {
   describe("?turnips", () => {
     it("sets the human's counter", () => {
       // Under the threshold, which is what the parse clamps to.
-      const g = boot("?faction=beta&turnips=2");
-      expect(g.turnips.beta).toBe(2);
+      const g = boot("?faction=beta&turnips=1");
+      expect(g.turnips.beta).toBe(1);
     });
   });
 });

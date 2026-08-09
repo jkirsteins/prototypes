@@ -33,10 +33,11 @@ const v = (partial: Partial<RulesView> = {}): RulesView => ({
   },
   factionIds: ORDER, passives: {}, turn: 1, guards: {}, omens: {},
   siteCaps: {}, settlements: {}, wealth: {}, respites: {}, leadership: {},
+  leaders: Object.fromEntries(ORDER.map((id) => [id, true])),
   defense: {},
   defenseMax: Object.fromEntries(ORDER.map((id) => [id, 60])),
   disease: {}, miasma: {}, turnips: {},
-  marches: {}, armies: {},
+  marches: {}, claims: {}, armies: {},
   ...partial,
 });
 
@@ -366,10 +367,12 @@ describe("targetImpactLines", () => {
   it("previews a Hillfort as the heal it is, capped at what the land once held", () => {
     const view = v({ defense: { alpha: 40 } });
     expect(shown(targetImpactLines(view, "alpha", "hillfort", "alpha")))
-      .toEqual(["If Hillfort played here:", "+15 Defense (40 -> 55)"]);
-    const nearFull = v({ defense: { alpha: 50 } });
+      .toEqual(["If Hillfort played here:", "+3 Defense (40 -> 43)"]);
+    // 59 + HILLFORT_HEAL(3) would overshoot the ceiling of 60 - the quoted
+    // landing point is the clamped one, even though the signed amount is not.
+    const nearFull = v({ defense: { alpha: 59 } });
     expect(shown(targetImpactLines(nearFull, "alpha", "hillfort", "alpha"))[1])
-      .toBe("+15 Defense (50 -> 60)");
+      .toBe("+3 Defense (59 -> 60)");
   });
 
   it("previews a disease stack as your own count there, +1", () => {
@@ -532,29 +535,32 @@ describe("diseaseBreakdown", () => {
 
 describe("plaguePreviewLines", () => {
   it("totals the damage across every land holding your stacks", () => {
+    // PLAGUE_DAMAGE_PER_STACK is 1: 2 stacks on beta and 1 on gamma, neither
+    // land's defense standing in the way, is 2 + 1 = 3 total.
     const view = v({ disease: { beta: { alpha: 2 }, gamma: { alpha: 1 } } });
     expect(plaguePreviewLines(view, "alpha")).toEqual([
-      "Would deal 30 damage across 2 lands.",
+      "Would deal 3 damage across 2 lands.",
     ]);
   });
 
   it("counts only what the defense can absorb, and only your own stacks", () => {
-    // 3 stacks promise 300, but beta stands at 100 - the preview quotes the
-    // real movement, the same clamp the resolution applies. gamma's stacks on
+    // 3 stacks promise 3, but beta stands at 2 - the preview quotes the real
+    // movement, the same clamp the resolution applies. gamma's stacks on
     // beta are somebody else's and feed nothing.
     const view = v({
       disease: { beta: { alpha: 3, gamma: 5 } },
-      defense: { beta: 20 },
+      defense: { beta: 2 },
     });
     expect(plaguePreviewLines(view, "alpha")).toEqual([
-      "Would deal 20 damage across 1 land.",
+      "Would deal 2 damage across 1 land.",
     ]);
   });
 
   it("multiplies by gathered miasma", () => {
+    // 2 stacks * PLAGUE_DAMAGE_PER_STACK(1) * plagueMultiplier(2**1) = 4.
     const view = v({ disease: { beta: { alpha: 2 } }, miasma: { alpha: 1 } });
     expect(plaguePreviewLines(view, "alpha")).toEqual([
-      "Would deal 40 damage across 1 land.",
+      "Would deal 4 damage across 1 land.",
     ]);
   });
 

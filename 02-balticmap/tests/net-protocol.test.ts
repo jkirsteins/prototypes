@@ -36,7 +36,7 @@ function smallHost(rng: Rng) {
     setGame: (g) => { game = g; },
     rng,
     name: "Hosta",
-    rules: () => ({ turn: "standard" }),
+    rules: () => ({ turn: "standard", hand: "keep" }),
     hostFactionId: () => "alpha",
     onGuestHello: () => {},
     onGuestPick: () => {},
@@ -140,23 +140,23 @@ describe("action validation", () => {
   });
 
   it("refuses a harvest pick from outside the chooser's own pool", () => {
-    // The host can recompute harvestPool, so a stale or fabricated pick is
+    // The host can recompute buildOffer, so a stale or fabricated pick is
     // refused rather than shuffled in. Seat 0 is on the warpath build:
     // spread-disease belongs to the other build's pool.
     const rng = seededRng(3);
     const g = withHand(freshGame(rng), 0, ["turnip-harvest"]);
     expect(validateAction(g, 0, g.turn, {
       type: "play", cardIndex: 0, cardId: "turnip-harvest",
-      harvest: { cardId: "spread-disease" },
-    })).toMatch(/pool/);
+      harvest: { kind: "build", cardId: "spread-disease" },
+    })).toMatch(/build/);
     // A pick from the pool, and a skip, both pass.
     expect(validateAction(g, 0, g.turn, {
       type: "play", cardIndex: 0, cardId: "turnip-harvest",
-      harvest: { cardId: "war-council" },
+      harvest: { kind: "build", cardId: "war-council" },
     })).toBeNull();
     expect(validateAction(g, 0, g.turn, {
       type: "play", cardIndex: 0, cardId: "turnip-harvest",
-      harvest: { skip: true },
+      harvest: { kind: "skip" },
     })).toBeNull();
   });
 
@@ -192,7 +192,7 @@ describe("applyNetAction", () => {
     const g = withHand(freshGame(rng), 0, ["turnip-harvest"]);
     const next = applyNetAction(g, rng, {
       type: "play", cardIndex: 0, cardId: "turnip-harvest",
-      harvest: { cardId: "war-council" },
+      harvest: { kind: "build", cardId: "war-council" },
     });
     expect(next).not.toBe(g);
     expect(next.log.at(-1)).toMatchObject({
@@ -206,7 +206,7 @@ describe("applyNetAction", () => {
     const g = withHand(freshGame(rng), 0, ["turnip-harvest"]);
     const next = applyNetAction(g, rng, {
       type: "play", cardIndex: 0, cardId: "turnip-harvest",
-      harvest: { skip: true },
+      harvest: { kind: "skip" },
     });
     expect(next).not.toBe(g);
     expect(next.log.at(-1)).toMatchObject({

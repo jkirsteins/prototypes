@@ -52,7 +52,7 @@ describe("mergeRules", () => {
     // rule is what lets them degrade to defaults instead of wedging boot.
     expect(mergeRules({ copies: "double" })).toEqual(DEFAULT_RULES);
     expect(mergeRules({ turn: "unlimited", copies: "double" }))
-      .toEqual({ turn: "unlimited" });
+      .toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
   });
 });
 
@@ -75,14 +75,14 @@ describe("rules prefs", () => {
   it("a pre-flip record naming copies loads with the pick kept and the axis dropped", () => {
     const s = memoryStorage();
     s.setItem(RULES_PREFS_KEY, JSON.stringify({ turn: "unlimited", copies: "double" }));
-    expect(loadRulesPrefs(s)).toEqual({ turn: "unlimited" });
+    expect(loadRulesPrefs(s)).toEqual({ ...DEFAULT_RULES, turn: "unlimited" });
   });
 });
 
 describe("summarizeRules", () => {
   it("names the picked option per axis", () => {
-    expect(summarizeRules(DEFAULT_RULES)).toBe("One card per turn");
+    expect(summarizeRules(DEFAULT_RULES)).toBe("One card per turn, Keep your hand");
     expect(summarizeRules({ ...DEFAULT_RULES, turn: "unlimited" }))
-      .toBe("Unlimited plays");
+      .toBe("Unlimited plays, Keep your hand");
   });
 });

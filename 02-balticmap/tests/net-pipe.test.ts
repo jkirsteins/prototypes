@@ -4,7 +4,7 @@ import {
 } from "../src/game";
 import { aiTakeTurn, chooseAction } from "../src/ai";
 import type { Rng, Strategy } from "../src/cards";
-import { harvestPool } from "../src/harvest";
+import { buildOffer } from "../src/harvest";
 import { seededRng } from "../src/rng";
 import {
   cardSetHash, guestPhaseView, PROTOCOL_VERSION, seatOfFaction, wirePair,
@@ -25,7 +25,7 @@ function makeHost(rng: Rng) {
     setGame: (g) => { game = g; },
     rng,
     name: "Hosta",
-    rules: () => ({ turn: "standard" }),
+    rules: () => ({ turn: "standard", hand: "keep" }),
     hostFactionId: () => "alpha",
     onGuestHello: () => {},
     onGuestPick: (p) => picks.push(p),
@@ -74,7 +74,7 @@ describe("host session", () => {
     expect(got.map((m) => m.type)).toEqual(["hello", "lobby-host"]);
     const lobby = got[1];
     if (lobby.type === "lobby-host") {
-      expect(lobby.rules).toEqual({ turn: "standard" });
+      expect(lobby.rules).toEqual({ turn: "standard", hand: "keep" });
       expect(lobby.takenFactionId).toBe("alpha");
     }
     expect(h.session.guestName()).toBe("Gusta");
@@ -261,7 +261,7 @@ describe("a whole game over the pipe", () => {
         // guest's OWN replica pool - the real client's route.
         guest.sendAction({
           type: "play", cardIndex: a.cardIndex, cardId: hand[a.cardIndex],
-          harvest: { cardId: harvestPool(rg.players[guestSeat])[0] },
+          harvest: { kind: "build", cardId: buildOffer(rg.players[guestSeat])[0] },
         });
       } else {
         guest.sendAction(a.type === "play"
@@ -310,10 +310,10 @@ describe("a whole game over the pipe", () => {
     if (rg === null) throw new Error("no replica");
     // Plague is in the guest's pool because the guest is on pestilence -
     // the build the deal stamped, not the one the seat rolled.
-    expect(harvestPool(rg.players[guestSeat])).toContain("plague");
+    expect(buildOffer(rg.players[guestSeat])).toContain("plague");
     guest.sendAction({
       type: "play", cardIndex: 0, cardId: "turnip-harvest",
-      harvest: { cardId: "plague" },
+      harvest: { kind: "build", cardId: "plague" },
     });
     expect(rejects).toEqual([]);
     expect(h.game().log.at(-1)).toMatchObject({

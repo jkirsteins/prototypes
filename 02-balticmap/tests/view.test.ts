@@ -7,6 +7,16 @@ import {
   zoomAt, MAX_ZOOM, MIN_ZOOM,
   type View,
 } from "../src/view";
+import { plainText, type NameLookup } from "../src/rich-text";
+
+/** relationshipLine returns Segment[], never a string - plainText is the one
+ *  legitimate way to compare it against prose in a test. Upper-cased so the
+ *  expected strings below read the same as they did when the function still
+ *  built plain text itself. */
+const nameLookup: NameLookup = {
+  factionName: (id) => id.toUpperCase(),
+  isPlaceName: () => false,
+};
 
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 6);
 
@@ -154,18 +164,19 @@ describe("zoom floor", () => {
 });
 
 describe("standingChangeText", () => {
-  /** One spelling for the modal and the log suffix: the delta the event moved
-   *  the score by, then where it landed. ASCII "->", never a unicode arrow. */
-  it("formats a defense drop as its signed delta and landing point", () => {
+  /** One spelling for the modal and the log suffix: where the score stood,
+   *  where it landed, and the movement in brackets. ASCII "->", never a
+   *  unicode arrow. */
+  it("formats a defense drop as its landing point and signed delta", () => {
     expect(
-      standingChangeText({ polygon: "selija", track: "defense", before: 600, after: 450 }),
-    ).toBe("Defense -150 -> 450");
+      standingChangeText({ polygon: "selija", track: "defense", before: 6, after: 5 }),
+    ).toBe("Defense 6 -> 5 (-1)");
   });
 
   it("signs a heal positively", () => {
     expect(
-      standingChangeText({ polygon: "selija", track: "defense", before: 450, after: 600 }),
-    ).toBe("Defense +150 -> 600");
+      standingChangeText({ polygon: "selija", track: "defense", before: 5, after: 6 }),
+    ).toBe("Defense 5 -> 6 (+1)");
   });
 
   it("formats disease stacks on the same shape", () => {
@@ -173,13 +184,13 @@ describe("standingChangeText", () => {
       standingChangeText({
         polygon: "selija", track: "disease", owner: "selonians", before: 2, after: 3,
       }),
-    ).toBe("Disease +1 -> 3");
+    ).toBe("Disease 2 -> 3 (+1)");
   });
 
   it("leaves a zero delta unsigned", () => {
     expect(
-      standingChangeText({ polygon: "selija", track: "defense", before: 600, after: 600 }),
-    ).toBe("Defense 0 -> 600");
+      standingChangeText({ polygon: "selija", track: "defense", before: 6, after: 6 }),
+    ).toBe("Defense 6 -> 6 (0)");
   });
 });
 
@@ -248,13 +259,14 @@ describe("holderOf", () => {
 });
 
 describe("relationshipLine", () => {
-  const name = (id: string) => id.toUpperCase();
   const line = (
     polygonFaction: string,
     overlords: [string, string][] = [],
     incorporated: Record<string, string> = {},
-  ) =>
-    relationshipLine(polygonFaction, "me", new Map(overlords), incorporated, name);
+  ) => {
+    const segs = relationshipLine(polygonFaction, "me", new Map(overlords), incorporated);
+    return segs === null ? null : plainText(segs, nameLookup);
+  };
 
   it("names the realm that absorbed the land, from the land's own id", () => {
     // The regression: callers used to pass the politically-resolved faction,
@@ -363,55 +375,58 @@ describe("relationshipLine", () => {
 // tests/playability.test.ts with `subjugationRaceFor`, which owns that rule now.
 
 describe("standingsFor", () => {
+  // `acting`, not `factionIds`: five seats act now, not twenty-six factions,
+  // so every acting faction gets a row - there is no top-N cut and no bolted-on
+  // row for a human who falls outside it, per the doc comment on the source.
   const base = {
-    factionIds: ["a", "b", "c"],
+    acting: ["a", "b", "c"],
     incorporated: {} as Record<string, string>,
     needed: 15,
   };
 
-  it("ranks the top three, biggest first", () => {
+  it("ranks every acting faction, biggest realm first", () => {
     const rows = standingsFor({
       ...base,
-      factionIds: ["a", "b", "c", "d", "e"],
+      acting: ["a", "b", "c", "d", "e"],
       humanFactionId: "a",
       realmSize: (f) => ({ a: 14, b: 9, c: 2, d: 11, e: 1 })[f] ?? 0,
     });
-    expect(rows.map((r) => r.factionId)).toEqual(["a", "d", "b"]);
+    expect(rows.map((r) => r.factionId)).toEqual(["a", "d", "b", "c", "e"]);
     expect(rows[0]).toMatchObject({
       factionId: "a", lands: 14, needed: 15, percent: 93, isHuman: true,
     });
   });
 
-  it("ranks everyone when fewer than three contenders exist", () => {
+  it("ranks everyone when only two contenders act", () => {
     const rows = standingsFor({
       ...base,
-      factionIds: ["a", "b"],
+      acting: ["a", "b"],
       humanFactionId: "a",
       realmSize: (f) => ({ a: 4, b: 2 })[f] ?? 0,
     });
     expect(rows.map((r) => r.factionId)).toEqual(["a", "b"]);
   });
 
-  it("adds the human as a fourth row when they are outside the top three", () => {
+  it("flags the human wherever their realm ranks, not only near the top", () => {
     const rows = standingsFor({
       ...base,
-      factionIds: ["a", "b", "c", "d", "e"],
+      acting: ["a", "b", "c", "d", "e"],
       humanFactionId: "e",
       realmSize: (f) => ({ a: 14, b: 9, c: 2, d: 11, e: 1 })[f] ?? 0,
     });
-    expect(rows.map((r) => r.factionId)).toEqual(["a", "d", "b", "e"]);
-    expect(rows.slice(0, 3).every((r) => !r.isHuman)).toBe(true);
-    expect(rows[3]).toMatchObject({ factionId: "e", lands: 1, isHuman: true });
+    expect(rows.map((r) => r.factionId)).toEqual(["a", "d", "b", "c", "e"]);
+    expect(rows.slice(0, 4).every((r) => !r.isHuman)).toBe(true);
+    expect(rows[4]).toMatchObject({ factionId: "e", lands: 1, isHuman: true });
   });
 
-  it("does not repeat the human when they are already ranked", () => {
+  it("lists every acting faction exactly once, the human included", () => {
     const rows = standingsFor({
       ...base,
-      factionIds: ["a", "b", "c", "d", "e"],
+      acting: ["a", "b", "c", "d", "e"],
       humanFactionId: "b",
       realmSize: (f) => ({ a: 14, b: 9, c: 2, d: 11, e: 1 })[f] ?? 0,
     });
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(5);
     expect(rows.filter((r) => r.isHuman)).toHaveLength(1);
   });
 
@@ -439,7 +454,7 @@ describe("standingsFor", () => {
   it("breaks land-count ties stably, so the board does not reshuffle", () => {
     const args = {
       ...base,
-      factionIds: ["a", "b", "c", "d"],
+      acting: ["a", "b", "c", "d"],
       humanFactionId: "c",
       realmSize: (f: string) => ({ a: 9, b: 9, c: 2, d: 9 })[f] ?? 0,
     };

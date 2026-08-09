@@ -33,35 +33,36 @@ describe("tooltip", () => {
     tooltip.show("Kursa", 100, 200);
     expect(el.classList.contains("hidden")).toBe(false);
     expect(el.textContent).toBe("Kursa");
-    expect(el.style.left).toBe("112px");
-    expect(el.style.top).toBe("212px");
+    // Parked at a screen edge (the CSS class), never under the pointer -
+    // src/style.css positions .tip-left/.tip-right with a fixed margin, so
+    // there is no pixel offset left for the JS side to set.
+    expect(el.style.left).toBe("");
+    expect(el.style.top).toBe("");
+    expect(el.classList.contains("tip-right")).toBe(true);
+    expect(el.classList.contains("tip-left")).toBe(false);
 
     tooltip.hide();
     expect(el.classList.contains("hidden")).toBe(true);
   });
 
-  it("flips to the other side of the cursor rather than off the window", () => {
-    // happy-dom measures every element as 0, so the size has to be stubbed -
-    // without it the flip can never trigger and the test would pass on a
-    // tooltip that still runs off the edge.
+  it("parks on the screen edge the cursor is not on", () => {
     const container = document.createElement("div");
     const tooltip = createTooltip(container);
     const el = container.querySelector(".tooltip") as HTMLElement;
-    Object.defineProperty(el, "offsetWidth", { value: 280 });
-    Object.defineProperty(el, "offsetHeight", { value: 60 });
 
+    // Left half of the window: parks on the right edge.
     tooltip.showLines([{ text: "Zemgale (Semigallians)" }], 100, 200);
-    expect(el.style.left).toBe("112px");
-    expect(el.style.top).toBe("212px");
+    expect(el.classList.contains("tip-right")).toBe(true);
+    expect(el.classList.contains("tip-left")).toBe(false);
 
-    // Near the far corner it goes above and to the left of the cursor instead.
+    // Right half of the window: parks on the left edge instead.
     tooltip.showLines(
       [{ text: "Zemgale (Semigallians)" }],
       window.innerWidth - 20,
       window.innerHeight - 20,
     );
-    expect(el.style.left).toBe(`${window.innerWidth - 20 - 12 - 280}px`);
-    expect(el.style.top).toBe(`${window.innerHeight - 20 - 12 - 60}px`);
+    expect(el.classList.contains("tip-left")).toBe(true);
+    expect(el.classList.contains("tip-right")).toBe(false);
   });
 
   it("gives an amount its own column, because the tip collapses padded spaces", () => {
@@ -123,9 +124,10 @@ describe("tooltip", () => {
     tooltip.redraw([{ text: "Might +2/2" }]);
     expect(el.textContent).toBe("Might +2/2");
     expect(el.classList.contains("hidden")).toBe(false);
-    // Placed from the cursor it was opened at, not from 0,0.
-    expect(el.style.left).toBe("112px");
-    expect(el.style.top).toBe("212px");
+    // Placed from the cursor it was opened at, not from 0,0: still parked on
+    // the edge across from where showLines was first called.
+    expect(el.classList.contains("tip-right")).toBe(true);
+    expect(el.classList.contains("tip-left")).toBe(false);
 
     tooltip.hide();
     tooltip.redraw([{ text: "should not appear" }]);
@@ -143,20 +145,21 @@ describe("tooltip", () => {
     expect(row.classList.contains("tone-bad")).toBe(true);
   });
 
-  it("never leaves the near edge either, when the flip would overshoot it", () => {
+  it("still parks cleanly on the edge in a window too narrow for the old flip math", () => {
+    // The margin used to be JS clamp arithmetic against a measured tip width;
+    // it is now a fixed margin in the .tip-left/.tip-right CSS rule (see
+    // src/style.css), so a narrow window can never push it off-screen and
+    // there is nothing left for `place` to compute or clamp.
     const container = document.createElement("div");
     const tooltip = createTooltip(container);
     const el = container.querySelector(".tooltip") as HTMLElement;
-    Object.defineProperty(el, "offsetWidth", { value: 280 });
-    Object.defineProperty(el, "offsetHeight", { value: 60 });
 
-    // A cursor near the left edge of a window too narrow for the tip: flipping
-    // would put it at a negative left, so it clamps to the margin.
     const width = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { value: 200, configurable: true });
     try {
       tooltip.showLines([{ text: "x" }], 10, 10);
-      expect(el.style.left).toBe("4px");
+      expect(el.classList.contains("tip-right")).toBe(true);
+      expect(el.style.left).toBe("");
     } finally {
       Object.defineProperty(window, "innerWidth", { value: width, configurable: true });
     }

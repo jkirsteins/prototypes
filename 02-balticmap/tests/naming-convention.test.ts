@@ -153,6 +153,10 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "healed", cardId: "hillfort", targetFactionId: H, amount: 150 },
     { turn: 1, playerId: 2, type: "healed", cardId: "harvest-feast", targetFactionId: RIVAL, amount: 50 },
   ],
+  transferred: [
+    { turn: 1, playerId: 1, type: "transferred", targetFactionId: H, sourceFactionId: RIVAL, amount: 1 },
+    { turn: 1, playerId: 2, type: "transferred", targetFactionId: RIVAL, sourceFactionId: H, amount: 1 },
+  ],
   "disease-spread": [
     { turn: 1, playerId: 2, type: "disease-spread", cardId: "spread-disease", targetFactionId: H, amount: 1 },
     { turn: 1, playerId: 1, type: "disease-spread", cardId: "localized-outbreak", targetFactionId: RIVAL, amount: 1 },
@@ -174,6 +178,10 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
   "harvest-picked": [
     { turn: 1, playerId: 1, type: "harvest-picked", cardId: "hillfort" },
     { turn: 1, playerId: 2, type: "harvest-picked", cardId: "subjugate" },
+  ],
+  "harvest-burned": [
+    { turn: 1, playerId: 1, type: "harvest-burned", cardId: "hillfort" },
+    { turn: 1, playerId: 2, type: "harvest-burned", cardId: "subjugate" },
   ],
   victory: [{ turn: 1, playerId: 1, type: "victory" }],
   defeat: [{ turn: 1, playerId: 1, type: "defeat", targetFactionId: H, overlordFactionId: RIVAL }],
