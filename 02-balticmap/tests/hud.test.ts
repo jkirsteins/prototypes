@@ -130,9 +130,9 @@ describe("createHud", () => {
     const g = withHand(playing(), 0, ["grow-crops"]);
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
-    // The 9-card starting deck (3 raid, 5 fortify, 1 grow-crops): 3 dealt
-    // to hand, 1 drawn at turn start.
-    expect(q(container, ".pile-deck .pile-count").textContent).toBe("5");
+    // The 10-card starting deck (3 raid, 5 fortify, 1 grow-crops,
+    // 1 subjugate): 3 dealt to hand, 1 drawn at turn start.
+    expect(q(container, ".pile-deck .pile-count").textContent).toBe("6");
     expect(q(container, ".pile-deck .pile-label").textContent).toBe("Deck");
     expect(q(container, ".pile-discard .pile-count").textContent).toBe("0");
     expect(q(container, ".pile-discard .pile-label").textContent).toBe("Discard");

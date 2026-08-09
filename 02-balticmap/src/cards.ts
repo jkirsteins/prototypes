@@ -207,14 +207,17 @@ export const isTributeCard = (cardId: string): boolean =>
 export type Rng = () => number;
 
 /** The deck every seat starts with, human and AI alike: 3 Raid, 5 Fortify,
- *  and the turnip that feeds the harvest bar. No padding and no DECK_SIZE -
- *  the deck is exactly what you hold, and it grows only through harvest
- *  picks. */
+ *  the turnip that feeds the harvest bar, and one Subjugate. No padding and
+ *  no DECK_SIZE - the deck is exactly what you hold, and it grows only
+ *  through harvest picks. */
 export function startingDeck(): string[] {
   return [
     "raid", "raid", "raid",
     "fortify", "fortify", "fortify", "fortify", "fortify",
     "grow-crops",
+    // The one card that takes ground. Every seat opens on a map that is
+    // mostly lands nobody plays, so a deck without it can win nothing.
+    "subjugate",
   ];
 }
 

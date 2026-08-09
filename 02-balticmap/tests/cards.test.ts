@@ -282,12 +282,18 @@ describe("builds and the neutral pool", () => {
 });
 
 describe("startingDeck", () => {
-  it("is 3 Raid, 5 Fortify, and the turnip that feeds the harvest bar", () => {
+  it("is 3 Raid, 5 Fortify, the turnip, and the one card that takes ground", () => {
     expect(startingDeck()).toEqual([
       "raid", "raid", "raid",
       "fortify", "fortify", "fortify", "fortify", "fortify",
       "grow-crops",
+      "subjugate",
     ]);
+  });
+
+  it("holds one Subjugate, the cap the harvest offer enforces", () => {
+    expect(startingDeck().filter((c) => c === "subjugate")).toHaveLength(1);
+    expect(CARDS.subjugate.maxPerDeck).toBe(1);
   });
 
   it("returns a fresh array each call, so one seat's shuffle cannot leak", () => {
@@ -295,7 +301,7 @@ describe("startingDeck", () => {
     const b = startingDeck();
     expect(a).not.toBe(b);
     a.pop();
-    expect(startingDeck()).toHaveLength(9);
+    expect(startingDeck()).toHaveLength(10);
   });
 });
 
