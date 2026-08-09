@@ -8,8 +8,8 @@ import {
 import { attachInteraction, DRAG_THRESHOLD_PX } from "./interaction";
 import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, playCard,
-  discardCard, advance, surrender, viewOf, endTurn, transferDefense,
-  transferLimit,
+  discardCard, advance, surrender, viewOf, endTurn, repeatOnlyOf, turnOpen,
+  transferDefense, transferLimit,
   type GameEvent, type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
@@ -404,9 +404,17 @@ function inPlay(): boolean {
   );
 }
 
+/** What this screen's seat may play right now.
+ *
+ *  `repeatOnlyOf` is what carries the re-opened turn in: it answers null while
+ *  the turn is unspent, so this one call covers a fresh turn, a turn re-opened
+ *  by a card that plays again, and a turn spent for good - and the screen never
+ *  learns which card did the re-opening. */
 function humanPlayableSet() {
   const human = localHuman();
-  return playableSet(viewOf(game), human.factionId, human.hand);
+  return playableSet(
+    viewOf(game), human.factionId, human.hand, { repeatOnly: repeatOnlyOf(game) },
+  );
 }
 
 /** Why the human cannot play this card this turn, or null when they can. The
@@ -414,7 +422,10 @@ function humanPlayableSet() {
 function humanBlockReason(cardId: string) {
   const human = localHuman();
   if (!human) return null;
-  return handBlockReason(viewOf(game), human.factionId, human.hand, cardId);
+  return handBlockReason(
+    viewOf(game), human.factionId, human.hand, cardId,
+    { repeatOnly: repeatOnlyOf(game) },
+  );
 }
 
 /** Puts the conquest transfer question up when the state carries one for the
@@ -450,6 +461,11 @@ function askTransferIfPending(): void {
   );
 }
 
+/** Whether the hand is a forced discard rather than a play. Reads
+ *  `playedThisTurn` and not `turnOpen`, deliberately: the forced discard exists
+ *  to unstick a turn that has done nothing, and a turn re-opened by its own
+ *  play has already done something. Ending it is the way out of a re-opened
+ *  turn with nothing left to repeat. */
 function discardMode(): boolean {
   return (
     isLocalTurn() &&
@@ -1492,13 +1508,17 @@ function drawMarch(
  *  and would not meet this one at all. */
 function counterFor(m: March): number | null {
   const human = localHuman();
-  if (!human || !isLocalTurn() || game.playedThisTurn || resolving) return null;
+  if (!human || !isLocalTurn() || !turnOpen(game) || resolving) return null;
   if (pendingHarvest !== null || discardMode()) return null;
   const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
   if (!realm.has(m.to) || realm.has(m.from)) return null;
   const v = viewOf(game);
   if (!marchSourcesAgainst(v, human.factionId, m.from).includes(m.to)) return null;
-  const set = playableSet(v, human.factionId, human.hand);
+  // The same narrowed set the hand renders from, so a turn re-opened by a raid
+  // offers the counter-click and a turn spent for good does not.
+  const set = playableSet(
+    v, human.factionId, human.hand, { repeatOnly: repeatOnlyOf(game) },
+  );
   if (set.mode !== "play") return null;
   return set.cardIndexes.find((i) => human.hand[i] === "raid") ?? null;
 }
@@ -2307,8 +2327,11 @@ const hudCallbacks: HudCallbacks = {
       refresh();
     },
     onPlayCard(index) {
+      // `turnOpen`, not `playedThisTurn`: a play that re-opened the turn leaves
+      // a live hand behind it, and which card that hand still accepts is
+      // `humanPlayableSet`'s answer rather than this gate's.
       if (
-        !isLocalTurn() || game.playedThisTurn || resolving ||
+        !isLocalTurn() || !turnOpen(game) || resolving ||
         pendingHarvest !== null
       ) {
         return;

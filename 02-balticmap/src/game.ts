@@ -1115,6 +1115,20 @@ export function repeatOnlyOf(state: GameState): string | null {
   return state.playedThisTurn ? state.repeatCardId : null;
 }
 
+/** Whether the turn still accepts a card AT ALL - unspent, or spent by a play
+ *  that re-opened it. This is what the screen and the AI ask instead of
+ *  `playedThisTurn`, which stopped being the whole answer the moment a card
+ *  could declare `playsAgain`.
+ *
+ *  It says nothing about WHICH card the turn would accept: that is
+ *  `turnAccepts` one card at a time, and `playableSet` with `repeatOnly` for a
+ *  whole hand. A re-opened turn holding no legal repeat is still open by this
+ *  measure - the hand renders live and every card in it greys itself, which is
+ *  the state that reads "end your turn". */
+export function turnOpen(state: GameState): boolean {
+  return !state.playedThisTurn || state.repeatCardId !== null;
+}
+
 export function playCard(
   state: GameState,
   cardIndex: number,

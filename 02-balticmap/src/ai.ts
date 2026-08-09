@@ -12,7 +12,10 @@ import {
 } from "./playability";
 import { axesOf } from "./marches";
 import { hasPassive } from "./passives";
-import { discardCard, endTurn, playCard, viewOf, type GameState } from "./game";
+import {
+  discardCard, endTurn, playCard, repeatOnlyOf, turnOpen, viewOf,
+  type GameState,
+} from "./game";
 
 export type AiAction =
   /** `sourceId` is Raid's tail - the land the army marches out of. Omitted by
@@ -220,11 +223,20 @@ function settlementTarget(
  *  design doc, "AI: two known strategies". Calls `playableSet` with no
  *  `discards` option on purpose: the "discard" verdict it can then return
  *  means "nothing playable" under any rule set, and `aiTakeTurn`'s unlimited
- *  loop relies on exactly that verdict as its stop signal. */
+ *  loop relies on exactly that verdict as its stop signal.
+ *
+ *  `repeatOnly` is how a re-opened turn reaches the policy, and it needs no
+ *  branch of its own: it narrows the set every branch below picks out of, so
+ *  the same branches that chose the first card choose the second, aimed
+ *  afresh at the board the first one left. A turn spent for good narrows the
+ *  set to nothing, and the last-resort step then names a hand index that is
+ *  not there - which `playCard` refuses, and `aiTakeTurn` reads as its stop. */
 export function chooseAction(state: GameState): AiAction {
   const p = state.players[state.current];
   const v = viewOf(state);
-  const set = playableSet(v, p.factionId, p.hand);
+  const set = playableSet(
+    v, p.factionId, p.hand, { repeatOnly: repeatOnlyOf(state) },
+  );
   if (set.mode === "discard") return { type: "discard", cardIndex: 0 };
   const idxOf = (id: string): number | undefined =>
     set.cardIndexes.find((i) => p.hand[i] === id);
@@ -773,10 +785,24 @@ export function aiTakeTurn(state: GameState, rng: Rng): GameState {
     }
     return endTurn(g);
   }
-  const a = chooseAction(state);
-  return a.type === "discard"
-    ? discardCard(state, a.cardIndex)
-    : playCard(state, a.cardIndex, rng, a.targetId, {
-        ...(a.sourceId !== undefined ? { sourceId: a.sourceId } : {}),
-      });
+  // The standard turn is one card - unless that card re-opened it for another
+  // of its own kind, which is a question about the state after the play, not
+  // about the card. So the loop is the unlimited one with a different stop:
+  // keep going while the turn is still open and the state still moves. A
+  // refused play (an empty narrowed set, a run out of armies) returns the
+  // state unchanged and stops it, so the rules end the run rather than a
+  // count of plays; MAX_AI_PLAYS remains the belt-and-braces bound.
+  let g = state;
+  for (let plays = 0; g.phase === "playing" && plays < MAX_AI_PLAYS; plays++) {
+    const a = chooseAction(g);
+    const next = a.type === "discard"
+      ? discardCard(g, a.cardIndex)
+      : playCard(g, a.cardIndex, rng, a.targetId, {
+          ...(a.sourceId !== undefined ? { sourceId: a.sourceId } : {}),
+        });
+    if (next === g) break;
+    g = next;
+    if (!turnOpen(g)) break;
+  }
+  return g;
 }

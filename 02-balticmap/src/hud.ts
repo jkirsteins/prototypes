@@ -1,6 +1,6 @@
 import { CARDS, guardAgainst } from "./cards";
 import {
-  victoryRealmSize, viewOf,
+  turnOpen, victoryRealmSize, viewOf,
   type GameEvent, type GameState,
 } from "./game";
 import { animations, flyCard, runAnimation, type Flight } from "./animate";
@@ -943,8 +943,31 @@ export function createHud(
   let harvestOnCancel: (() => void) | null = null;
   harvestCancel.addEventListener("click", () => harvestOnCancel?.());
 
+  /** Escape backs out of the harvest offer, the same answer its Cancel button
+   *  gives. Held here so it can be taken off again: a listener that outlived
+   *  its overlay would answer for whatever came next, and main.ts's own Escape
+   *  handler stands down only while a harvest is pending. */
+  let harvestEscape: ((e: KeyboardEvent) => void) | null = null;
+
+  function armHarvestEscape(onEscape: () => void): void {
+    releaseHarvestEscape();
+    harvestEscape = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onEscape();
+    };
+    window.addEventListener("keydown", harvestEscape);
+  }
+
+  function releaseHarvestEscape(): void {
+    if (harvestEscape === null) return;
+    window.removeEventListener("keydown", harvestEscape);
+    harvestEscape = null;
+  }
+
   function hideHarvestUi(): void {
     harvestOverlay.classList.add("hidden");
+    releaseHarvestEscape();
     harvestOnCancel = null;
     // Same hygiene as dismissSummary: a close with the cursor on a name must
     // not strand its tip or its map halo.
@@ -1027,9 +1050,12 @@ export function createHud(
   ): void {
     harvestTitle.textContent = "Send defenders with the conquest?";
     // No cancel: the land is already taken, and the only question is how many
-    // defenders march over. Answering 0 is a real answer, so Escape and the
-    // Confirm button lead to the same place.
+    // defenders march over. Answering 0 is a real answer, so backing out and
+    // the Confirm button lead to the same place.
     harvestOnCancel = () => hooks.onConfirm(0);
+    // This overlay takes no key of its own, so any Escape armed for a harvest
+    // offer goes with the offer it belonged to rather than answering here.
+    releaseHarvestEscape();
 
     const line = document.createElement("div");
     line.className = "transfer-line";
@@ -1100,6 +1126,7 @@ export function createHud(
     },
   ): void {
     harvestOnCancel = hooks.onCancel;
+    armHarvestEscape(hooks.onCancel);
 
     /** One option button: a heading and a line saying what it does. */
     const option = (
@@ -1640,8 +1667,12 @@ export function createHud(
     const human = humanPlayer(state);
     if (!human) return;
     const n = human.hand.length;
+    // The hand is live while the TURN is open, which a spent turn can still be
+    // (`turnOpen`). Which of the cards it then accepts is `canPlayCard`'s
+    // answer per card, so a re-opened turn greys everything but the repeat and
+    // one holding no legal repeat greys the lot.
     const canPlay =
-      isLocalTurn(state) && !state.playedThisTurn &&
+      isLocalTurn(state) && turnOpen(state) &&
       !(cb.isResolving?.() ?? false);
     const canPlayCardCb = cb.canPlayCard ?? (() => true);
     human.hand.forEach((cardId, i) => {
@@ -1939,15 +1970,40 @@ export function createHud(
         if (state.rules.turn === "unlimited") {
           statusText.textContent =
             `Turn ${state.turn} - play cards, then end your turn`;
-        } else {
+        } else if (state.playedThisTurn) {
           // A spent standard turn is asking for one thing only, and it is not
-          // a card. Saying "play a card" over a hand the rules will refuse is
-          // the game giving an instruction it will not honour.
-          statusText.textContent = state.playedThisTurn
-            ? `Turn ${state.turn} - end your turn`
-            : (cb.isDiscardMode?.() ?? false)
-              ? "No playable card - discard one"
-              : `Turn ${state.turn} - play a card`;
+          // a card - unless the play that spent it re-opened it for another of
+          // its own kind AND one is still legal. Saying "play a card" over a
+          // hand the rules will refuse is the game giving an instruction it
+          // will not honour; so is offering the repeat once the armies for it
+          // have run out.
+          //
+          // The card is a segment, not a name spliced into the sentence: this
+          // is the line that teaches the rule, so pointing at the name has to
+          // say what the card does, here as everywhere else. It is also why
+          // nothing here knows WHICH card - `repeatCardId` carries it.
+          const repeat = state.repeatCardId;
+          const hand = humanPlayer(state)?.hand ?? [];
+          const again =
+            repeat !== null &&
+            hand.some((c) => c === repeat && (cb.canPlayCard?.(c) ?? true));
+          if (repeat !== null && again) {
+            statusText.replaceChildren(
+              renderSegments(
+                [
+                  t(`Turn ${state.turn} - `), card(repeat),
+                  t(" again, or end your turn"),
+                ],
+                richTextHooks,
+              ),
+            );
+          } else {
+            statusText.textContent = `Turn ${state.turn} - end your turn`;
+          }
+        } else {
+          statusText.textContent = (cb.isDiscardMode?.() ?? false)
+            ? "No playable card - discard one"
+            : `Turn ${state.turn} - play a card`;
         }
       } else {
         statusText.textContent = "Waiting on other players...";

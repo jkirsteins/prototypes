@@ -3,9 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createHud, type Hud, type HudCallbacks } from "../src/hud";
 import {
   newGame, startGame, chooseBuild, pickFaction, advance, playCard, beginTurn,
-  chooseRules,
+  chooseRules, repeatOnlyOf, viewOf,
   type GameState, type GameEvent,
 } from "../src/game";
+import { handBlockReason } from "../src/playability";
 import { aiTakeTurn } from "../src/ai";
 import { CARDS, type Rng } from "../src/cards";
 import { DEFAULT_RULES } from "../src/rules";
@@ -213,6 +214,102 @@ describe("createHud", () => {
     expect(card.disabled).toBe(true);
     card.click();
     expect(cb.onPlayCard).not.toHaveBeenCalled();
+  });
+
+  // --- a turn a card re-opened for another copy of itself ------------------
+  //
+  // Three states, and the HUD tells them apart without ever naming a card:
+  // a fresh turn, a spent turn the play left open with a legal repeat in it,
+  // and a spent turn whose repeat has run out. The last one is not a stuck
+  // state - it is "end your turn", so the hand greys and the button works.
+
+  /** The gate src/main.ts installs, built from the rules rather than stubbed:
+   *  these tests are about the HUD asking per card instead of deciding from
+   *  `playedThisTurn`, and a stub would let it agree with a gate the game does
+   *  not actually have. */
+  const rulesGate = (state: () => GameState) => (cardId: string) => {
+    const s = state();
+    const p = s.players[0];
+    return handBlockReason(
+      viewOf(s), p.factionId, p.hand, cardId,
+      { repeatOnly: repeatOnlyOf(s) },
+    ) === null;
+  };
+
+  /** A turn spent by a Raid, which declares `playsAgain`. Grow turnips stands
+   *  in for "any other card": it is legal on any board, so a greyed one can
+   *  only be the turn talking. `armies` caps how many raids the land can still
+   *  send, which is what ends the run. */
+  const afterRaiding = (armies: number): GameState => {
+    const g = {
+      ...withHand(playing(), 0, ["raid", "raid", "grow-crops"]),
+      armies: { beta: armies },
+    };
+    return playCard(g, 0, seededRng(1), "alpha");
+  };
+
+  it("keeps the repeat card live and greys the rest once the turn is spent", () => {
+    const g = afterRaiding(3);
+    const { container, cb, hud } = setup({
+      canPlayCard: rulesGate(() => g),
+      onEndTurn: vi.fn(),
+    });
+    expect(g.playedThisTurn).toBe(true);
+    expect(g.repeatCardId).toBe("raid");
+    hud.update(g);
+    const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
+    expect(cards.map((c) => c.querySelector(".card-name")!.textContent))
+      .toEqual(["Raid", "Grow turnips"]);
+    expect(cards[0].classList.contains("unplayable")).toBe(false);
+    expect(cards[1].classList.contains("unplayable")).toBe(true);
+    cards[0].click();
+    expect(cb.onPlayCard).toHaveBeenCalledWith(0);
+    cards[1].click();
+    expect(cb.onPlayCard).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the turn takes another of the card that re-opened it", () => {
+    const g = afterRaiding(3);
+    const { container, hud } = setup({ canPlayCard: rulesGate(() => g) });
+    hud.update(g);
+    // The card's name is a node, not text spliced into the line - the same
+    // rule every other player-facing sentence follows.
+    expect(q(container, ".status-text").textContent)
+      .toBe("Turn 1 - Raid again, or end your turn");
+    expect(q(container, ".status-text").querySelector(".rt-card")?.textContent)
+      .toBe("Raid");
+  });
+
+  it("a re-opened turn with nothing left to repeat reads as end your turn", () => {
+    // One army, and the raid that spent the turn is out on the march with it:
+    // the turn is still open and there is nothing legal to put in it.
+    const g = afterRaiding(1);
+    const onEndTurn = vi.fn();
+    const { container, cb, hud } = setup({
+      canPlayCard: rulesGate(() => g), onEndTurn,
+    });
+    expect(g.repeatCardId).toBe("raid");
+    hud.update(g);
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - end your turn");
+    const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
+    expect(cards.every((c) => c.classList.contains("unplayable"))).toBe(true);
+    for (const c of cards) c.click();
+    expect(cb.onPlayCard).not.toHaveBeenCalled();
+    // Not a stuck state: the way out is the button, and it works.
+    const endTurn = q(container, ".end-turn-btn") as HTMLButtonElement;
+    expect(endTurn.classList.contains("hidden")).toBe(false);
+    expect(endTurn.disabled).toBe(false);
+    endTurn.click();
+    expect(onEndTurn).toHaveBeenCalledOnce();
+  });
+
+  it("a fresh turn is untouched by any of it", () => {
+    const g = withHand(playing(), 0, ["raid", "grow-crops"]);
+    const { container, hud } = setup({ canPlayCard: rulesGate(() => g) });
+    hud.update(g);
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
+    const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
+    expect(cards.some((c) => c.classList.contains("unplayable"))).toBe(false);
   });
 
   it("shows the treasury and its income rate", () => {
@@ -2313,11 +2410,10 @@ describe("the turnip bar chip and the harvest offer", () => {
     expect(onSkip).toHaveBeenCalledOnce();
   });
 
-  // The Cancel button is the only thing that fires `harvestOnCancel` here -
-  // no keydown listener answers Escape for the harvest overlay in
-  // src/hud.ts, even though the doc comment on `showHarvestOffer` and a
-  // comment in src/main.ts both still promise Escape support. See this
-  // task's report for that finding; testing the button, which is real.
+  // Cancel and Escape both fire `harvestOnCancel`, which is what the doc
+  // comment on `showHarvestOffer` and the early return in src/main.ts's own
+  // Escape handler have always promised. Both are tested: the promise is
+  // written down in two places, so losing either one is a silent regression.
   it("Cancel backs out of the offer - backing out, not skipping", () => {
     const { container, hud } = setup();
     hud.update(playing());
@@ -2333,6 +2429,45 @@ describe("the turnip bar chip and the harvest offer", () => {
     hud.hideHarvestUi();
     expect(q(container, ".harvest-overlay").classList.contains("hidden"))
       .toBe(true);
+  });
+
+  it("Escape backs out of the offer, exactly as Cancel does", () => {
+    const { hud } = setup();
+    hud.update(playing());
+    const onCancel = vi.fn();
+    const onSkip = vi.fn();
+    hud.showHarvestOffer(
+      { buildCards: ["hillfort"], heldCards: [] },
+      harvestHooks({ onCancel, onSkip }),
+    );
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(onSkip).not.toHaveBeenCalled();
+  });
+
+  it("takes its Escape back down with the offer", () => {
+    // The listener is on `window`, so an offer that left one behind would
+    // answer for the NEXT offer's hooks - or, once the modal is gone, for a
+    // key the player meant for the map underneath it.
+    const { hud } = setup();
+    hud.update(playing());
+    const first = vi.fn();
+    hud.showHarvestOffer(
+      { buildCards: ["hillfort"], heldCards: [] },
+      harvestHooks({ onCancel: first }),
+    );
+    hud.hideHarvestUi();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(first).not.toHaveBeenCalled();
+
+    const second = vi.fn();
+    hud.showHarvestOffer(
+      { buildCards: ["hillfort"], heldCards: [] },
+      harvestHooks({ onCancel: second }),
+    );
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledOnce();
   });
 
   it("a phase change tears the overlay down", () => {

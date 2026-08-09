@@ -596,6 +596,43 @@ describe("fallthrough and dead hands", () => {
   });
 });
 
+describe("aiTakeTurn on a turn a card re-opened", () => {
+  /** Two Raids and the armies to send them, under the standard one-card turn.
+   *  Raid declares `playsAgain`, so the first one leaves the turn open. */
+  function twoArmyRaider(): GameState {
+    const g = asStrategy(base(), "warpath");
+    return { ...withHand(g, ["raid", "raid"]), armies: { alpha: 2 } };
+  }
+
+  it("keeps raiding while it has armies, under one-card-per-turn rules", () => {
+    const before = twoArmyRaider();
+    expect(before.rules.turn).toBe("standard");
+    const after = aiTakeTurn(before, seededRng(1));
+    expect(Object.values(after.marches).length).toBeGreaterThan(1);
+    expect(after.players[1].hand).toEqual([]);
+  });
+
+  it("stops when the armies run out, not when the hand does", () => {
+    // One army to send: the second Raid is legal by name and refused by the
+    // rules, and the turn ends holding it.
+    const before = { ...twoArmyRaider(), armies: { alpha: 1 } };
+    const after = aiTakeTurn(before, seededRng(1));
+    expect(Object.values(after.marches)).toHaveLength(1);
+    expect(after.players[1].hand).toEqual(["raid"]);
+    expect(after.playedThisTurn).toBe(true);
+  });
+
+  it("still spends one card on a turn nothing re-opened", () => {
+    // Grow turnips declares nothing, so the turn closes behind it and the
+    // second copy stays in hand - the ordinary standard turn, unchanged.
+    const before = withHand(base(), ["grow-crops", "grow-crops"]);
+    const after = aiTakeTurn(before, seededRng(1));
+    expect(after.players[1].hand).toEqual(["grow-crops"]);
+    expect(after.playedThisTurn).toBe(true);
+    expect(after.repeatCardId).toBe(null);
+  });
+});
+
 function unlimitedAiPlaying(): GameState {
   const g = chooseRules(startGame(newGame(FACTIONS)), {
     ...DEFAULT_RULES,
