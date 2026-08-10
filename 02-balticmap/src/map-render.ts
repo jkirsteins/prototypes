@@ -1,5 +1,5 @@
 import type { MapData, Settlement } from "./types";
-import { frameRectOf } from "./view";
+import { frameRectOf, visibleRectOf } from "./view";
 
 export interface RenderResult {
   svg: SVGSVGElement;
@@ -335,22 +335,25 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   // under the Iberia bake, and even a real inlet (the Vistula Lagoon, just
   // past Pilsotas Curonians' southeast corner) reads as a rendering glitch at
   // this scale rather than as geography. Rather than baking more coastline or
-  // patching one polygon, the hole this surround punches is the CANVAS itself
-  // - not `frameRectOf`'s wider ring - so the ring is matte, not a narrower
-  // peek at the same imperfect bake. The frame stroke below still marks its
-  // own edge a tenth further out, which is what keeps the "moved 10% out"
-  // read: a deliberate border with breathing room around the playable lands,
-  // not the lands' own ragged edge.
+  // patching one polygon, the hole this surround punches is `visibleRectOf` -
+  // real baked geography out to VISIBLE_RING, not the bare canvas - so the
+  // player sees actual surrounding countries instead of a matte immediately
+  // past the playable lands. The frame stroke below still marks its own edge
+  // further out still (FRAME_RING), which is what keeps a thin matte band
+  // between the visible geography and the frame: a deliberate border with
+  // breathing room, not the bake's own ragged edge.
   const outerX = -data.margin;
   const outerY = -data.margin;
   const outerW = data.width + 2 * data.margin;
   const outerH = data.height + 2 * data.margin;
+  const visible = visibleRectOf(data);
   const surround = el("path") as SVGPathElement;
   surround.classList.add("map-surround");
   surround.setAttribute(
     "d",
     `M ${outerX} ${outerY} H ${outerX + outerW} V ${outerY + outerH} H ${outerX} Z ` +
-      `M 0 0 H ${data.width} V ${data.height} H 0 Z`,
+      `M ${visible.x} ${visible.y} H ${visible.x + visible.w} ` +
+      `V ${visible.y + visible.h} H ${visible.x} Z`,
   );
   surround.setAttribute("fill-rule", "evenodd");
   svg.appendChild(surround);

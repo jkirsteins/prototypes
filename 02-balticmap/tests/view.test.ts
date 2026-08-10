@@ -3,7 +3,7 @@ import {
   clampView, frameRectOf, holderOf, leadClass, panBy,
   politicalFactionForPolygon, relationshipLine,
   standingChangeText, standingsFor,
-  viewBoundsOf,
+  viewBoundsOf, visibleRectOf,
   withArticle,
   zoomAt, DEFAULT_RING, MAX_ZOOM,
 } from "../src/view";
@@ -181,15 +181,42 @@ describe("view bounds", () => {
   });
 });
 
+/** frameRectOf/visibleRectOf multiply by a fractional ring (0.35, 0.3), which
+ *  is not always float-exact - close() rather than toEqual keeps the test
+ *  honest about the ring's math instead of pinning a rounding artifact. */
+const closeRect = (
+  r: { x: number; y: number; w: number; h: number },
+  expected: { x: number; y: number; w: number; h: number },
+) => {
+  close(r.x, expected.x);
+  close(r.y, expected.y);
+  close(r.w, expected.w);
+  close(r.h, expected.h);
+};
+
 describe("frameRectOf", () => {
   it("outsets the canvas by FRAME_RING on every side", () => {
-    const frame = frameRectOf(BALTIC);
-    expect(frame).toEqual({ x: -100, y: -140, w: 1200, h: 1680 });
+    closeRect(frameRectOf(BALTIC), { x: -350, y: -490, w: 1700, h: 2380 });
   });
 
   it("scales with the canvas, not a fixed number of map units", () => {
-    const frame = frameRectOf(IBERIA);
-    expect(frame).toEqual({ x: -140, y: -115, w: 1680, h: 1380 });
+    closeRect(frameRectOf(IBERIA), { x: -490, y: -402.5, w: 2380, h: 1955 });
+  });
+});
+
+describe("visibleRectOf", () => {
+  it("outsets the canvas by VISIBLE_RING on every side, inside frameRectOf", () => {
+    const visible = visibleRectOf(BALTIC);
+    closeRect(visible, { x: -300, y: -420, w: 1600, h: 2240 });
+    const frame = frameRectOf(BALTIC);
+    expect(visible.x).toBeGreaterThan(frame.x);
+    expect(visible.y).toBeGreaterThan(frame.y);
+    expect(visible.x + visible.w).toBeLessThan(frame.x + frame.w);
+    expect(visible.y + visible.h).toBeLessThan(frame.y + frame.h);
+  });
+
+  it("scales with the canvas, not a fixed number of map units", () => {
+    closeRect(visibleRectOf(IBERIA), { x: -420, y: -345, w: 2240, h: 1840 });
   });
 });
 

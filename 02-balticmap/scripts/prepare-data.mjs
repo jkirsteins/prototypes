@@ -34,11 +34,18 @@ const HEIGHT = 1400;
 const PAD = 40;
 const YEAR = 1100;
 // DK was dropped once for being off-canvas at the old frame; the 2000-margin
-// clip below brings it back into view, and NO and DE join it so the
-// zoomed-out view has real ground under its group labels rather than a
-// straight cut into bare sea (the bake warns on any entry that contributes no
-// path, which is what would catch a code that still earns no place here).
-const NEIGHBORS = ["FI", "SE", "RU", "BY", "PL", "DK", "NO", "DE"];
+// clip below brings it back into view, and DE joins it so the zoomed-out view
+// has real ground under its group labels rather than a straight cut into bare
+// sea (the bake warns on any entry that contributes no path, which is what
+// would catch a code that still earns no place here - NO used to be listed
+// alongside DE for the same reason, but it earns no path once the neighbour
+// clip below tightens to NEIGHBOR_CLIP_RING, so it was dropped). UA and CZ
+// close the south edge, where Belarus's own southern border ends short of the
+// visible ring and the sea rect behind everything used to show through as a
+// phantom sea where Ukraine should be. SK also earns a path at that clip;
+// HU, AT and MD do not (measured, not assumed - the bake warns and this list
+// is kept to what it warned clean about).
+const NEIGHBORS = ["FI", "SE", "RU", "BY", "PL", "DK", "DE", "UA", "CZ", "SK"];
 
 // Peoples of the eastern Baltic, ca. 1100. Colors are each family's base
 // hue; faction fills are shades within the family (see FACTIONS).
@@ -1721,6 +1728,41 @@ const labels = LABELS.flatMap((l) => {
   }];
 });
 
+// Neighbour geometry gets its own, much tighter clip. `CLIP_MARGIN` above is
+// the painted rect - what `MapData.margin` reports and what the pan/zoom
+// bound in src/view.ts reads - and it has to reach far past the frame so a
+// neighbour's own border never shows a straight cut with bare sea beyond it.
+// But everything past the frame is hidden behind an opaque surround
+// (`FRAME_RING` in src/view.ts, drawn in map-render.ts), so a neighbour's
+// path stretching out to the full painted margin was mostly bytes nobody
+// could ever see: 89% of this file by weight, almost none of it on screen.
+// NEIGHBOR_CLIP_RING outsets the canvas by 45% of its own width and height
+// instead - comfortably past VISIBLE_RING (0.3) and FRAME_RING (0.35), with
+// headroom for a coastline that runs at an angle through the clip box - and
+// nothing else changes: the sea rect and `margin` still use CLIP_MARGIN.
+const NEIGHBOR_CLIP_RING = 0.45;
+const paintedClip = projection.clipExtent();
+projection.clipExtent([
+  [-WIDTH * NEIGHBOR_CLIP_RING, -HEIGHT * NEIGHBOR_CLIP_RING],
+  [WIDTH * (1 + NEIGHBOR_CLIP_RING), HEIGHT * (1 + NEIGHBOR_CLIP_RING)],
+]);
+const neighborPath = geoPath(projection).digits(1);
+const neighborsOut = neighborFeatures
+  .map((f) => ({ id: f.properties.CNTR_ID, path: neighborPath(f) }))
+  .filter((n) => {
+    if (!n.path) {
+      console.warn(
+        `Neighbor ${n.id} is entirely off-canvas - drop it from NEIGHBORS ` +
+          `or widen the frame`,
+      );
+      return false;
+    }
+    return true;
+  })
+  .sort((a, b) => a.id.localeCompare(b.id));
+// Restore the painted-rect clip: `path` below still draws regions with it.
+projection.clipExtent(paintedClip);
+
 const data = {
   width: WIDTH,
   height: HEIGHT,
@@ -1750,19 +1792,7 @@ const data = {
       };
     })
     .sort((a, b) => a.id.localeCompare(b.id)),
-  neighbors: neighborFeatures
-    .map((f) => ({ id: f.properties.CNTR_ID, path: path(f) }))
-    .filter((n) => {
-      if (!n.path) {
-        console.warn(
-          `Neighbor ${n.id} is entirely off-canvas - drop it from NEIGHBORS ` +
-            `or widen the frame`,
-        );
-        return false;
-      }
-      return true;
-    })
-    .sort((a, b) => a.id.localeCompare(b.id)),
+  neighbors: neighborsOut,
   rivers,
   settlements,
   labels,

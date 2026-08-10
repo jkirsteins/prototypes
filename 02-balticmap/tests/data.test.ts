@@ -15,8 +15,10 @@ const EXPECTED_IDS = [
 // Pinned to what the bake derives, so a neighbor cannot silently vanish the
 // way SE once did (it joined when the frame moved west and Gotland came into
 // view) or reappear silently the way DK now has: the 2000 margin puts it back
-// in view, and NO and DE join it for the zoomed-out surroundings.
-const EXPECTED_NEIGHBOR_IDS = ["BY", "DE", "DK", "FI", "NO", "PL", "RU", "SE"];
+// in view, and DE joins it for the zoomed-out surroundings. UA, CZ and SK
+// closed the south edge's phantom sea; NO dropped out when the neighbour clip
+// tightened to NEIGHBOR_CLIP_RING and stopped reaching its coastline.
+const EXPECTED_NEIGHBOR_IDS = ["BY", "CZ", "DE", "DK", "FI", "PL", "RU", "SE", "SK", "UA"];
 
 const EXPECTED_PEOPLE_IDS = [
   "aukstaitians", "curonians", "estonians", "latgalians", "livs",
@@ -226,7 +228,7 @@ describe("baltic.json (anno 1100)", () => {
 
   it("carries the surrounding countries, not only the bordering ones", () => {
     const ids = data.neighbors.map((n) => n.id);
-    for (const id of ["DK", "NO", "DE", "PL", "RU", "SE", "FI", "BY"]) {
+    for (const id of ["DK", "DE", "PL", "RU", "SE", "FI", "BY", "UA", "CZ", "SK"]) {
       expect(ids, `neighbor ${id}`).toContain(id);
     }
     for (const n of data.neighbors) expect(n.path.startsWith("M")).toBe(true);

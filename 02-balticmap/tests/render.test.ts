@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { renderMap, darkenColor } from "../src/map-render";
-import { frameRectOf } from "../src/view";
+import { frameRectOf, visibleRectOf } from "../src/view";
 import type { MapData } from "../src/types";
 import raw from "../src/data/baltic.json";
 
@@ -73,7 +73,7 @@ describe("renderMap", () => {
   // past the frame - under one fully opaque shape, so the ring `frameRectOf`
   // describes is a matte rather than a narrower peek at the same bake, and
   // the frame marks its own edge, a tenth further out, on top of that.
-  it("hides everything past the canvas with an opaque surround, frames the canvas plus a ring, and draws both above the labels, pointer-inert", () => {
+  it("hides everything past the visible ring with an opaque surround, frames the visible ring plus a matte band, and draws both above the labels, pointer-inert", () => {
     const container = document.createElement("div");
     const { svg } = renderMap(data, container);
 
@@ -84,10 +84,13 @@ describe("renderMap", () => {
     expect(frame).toBeTruthy();
 
     // Two subpaths under evenodd - the painted rect and, punched through it,
-    // the CANVAS rect - or the surround would hide land it must not touch.
+    // the VISIBLE rect (canvas plus VISIBLE_RING) - or the surround would
+    // hide baked geography it must not touch.
     expect(surround!.getAttribute("fill-rule")).toBe("evenodd");
+    const visible = visibleRectOf(data);
     expect(surround!.getAttribute("d")).toContain(
-      `M 0 0 H ${data.width} V ${data.height} H 0 Z`,
+      `M ${visible.x} ${visible.y} H ${visible.x + visible.w} ` +
+        `V ${visible.y + visible.h} H ${visible.x} Z`,
     );
 
     // The frame sits a ring further out than the hole the surround punches -
@@ -104,8 +107,9 @@ describe("renderMap", () => {
     expect(cssDeclares(".map-frame", "pointer-events", "none")).toBe(true);
 
     // Above every layer this render builds, the labels group included: a
-    // group label baked outside the frame (SCANDINAVIA, RUS' on this map)
-    // must be hidden by the surround rather than drawn over it.
+    // group label baked past the visible ring (SCANDINAVIA on this map sits
+    // in the matte band between VISIBLE_RING and FRAME_RING) must be hidden
+    // by the surround rather than drawn over it.
     const idx = (cls: string) => children.findIndex((c) => c.classList.contains(cls));
     const labelsIdx = idx("labels");
     expect(idx("map-surround")).toBeGreaterThan(labelsIdx);

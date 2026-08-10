@@ -14,12 +14,31 @@ export interface View {
 export const DEFAULT_RING = 0.12;
 export const MAX_ZOOM = 8;
 
+/** How far real baked geography is shown past the canvas, as a fraction of
+ *  the canvas's own width and height on every side. This is the surround's
+ *  hole now (see `visibleRectOf`), not the canvas itself - so it is the one
+ *  number that decides how much of the map's baked ground the player ever
+ *  sees beyond the playable lands themselves. Measured clean on the Baltic
+ *  map's south and east edges (0% uncovered) after the neighbour bake in
+ *  scripts/prepare-data.mjs picked up Ukraine, Czechia, Slovakia, Hungary,
+ *  Austria and Moldova; see docs/superpowers for the probe that pinned it. */
+export const VISIBLE_RING = 0.3;
+
+/** The canvas outset by `VISIBLE_RING` on every side - what the surround
+ *  leaves a hole over. Exported for the same reason `frameRectOf` is: the
+ *  renderer punches this hole and the view rules must not spell the same
+ *  rect a second way. */
+export function visibleRectOf(map: { width: number; height: number }): View {
+  const rw = map.width * VISIBLE_RING;
+  const rh = map.height * VISIBLE_RING;
+  return { x: -rw, y: -rh, w: map.width + 2 * rw, h: map.height + 2 * rh };
+}
+
 /** How far the frame sits past the canvas, as a fraction of the canvas's own
- *  width and height on every side. The frame is what the surround (a fully
- *  opaque knockout, drawn in map-render.ts) leaves a hole over - so this is
- *  the one number that decides how much of the map's baked ground the player
- *  ever sees beyond the playable lands themselves. */
-export const FRAME_RING = 0.1;
+ *  width and height on every side. Past `VISIBLE_RING` (with a thin matte
+ *  band between the two), so the frame reads as a deliberate border around
+ *  real surrounding geography rather than as the edge of the bake itself. */
+export const FRAME_RING = 0.35;
 
 /** The most background the player may ever see beyond the frame, in screen
  *  pixels, on the axis the frame binds - see the doc comment on `maxW` for
