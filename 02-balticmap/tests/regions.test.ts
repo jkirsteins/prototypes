@@ -1,8 +1,10 @@
+import { statSync } from "node:fs";
 import { describe, it, expect, afterEach } from "vitest";
 import {
   REGIONS, DEFAULT_REGION, activeRegion, setActiveRegion,
 } from "../src/regions";
 import { loadRegionPref, saveRegionPref, REGION_PREF_KEY, memoryStorage } from "../src/meta";
+import { viewBoundsOf } from "../src/view";
 
 afterEach(() => setActiveRegion(DEFAULT_REGION));
 
@@ -45,6 +47,43 @@ describe("region registry", () => {
         expect(factionIds.has(id), `${region.id} burden on ${id}`).toBe(true);
       }
       expect(region.bureaucracyLands.length).toBe(3);
+
+      // Every region is reachable at both ends of the zoom.
+      const b = viewBoundsOf(region.map, 1440, 749);
+      expect(b.home.x <= 0 && b.home.y <= 0, `${region.id} opens whole`).toBe(true);
+      expect(b.home.x + b.home.w >= region.map.width).toBe(true);
+      expect(b.home.y + b.home.h >= region.map.height).toBe(true);
+      const oldWidest = Math.max(region.map.width, region.map.height / (749 / 1440)) / 1.3;
+      expect(b.maxW / oldWidest, `${region.id} zooms out 2x`).toBeGreaterThanOrEqual(2);
+
+      // The map never goes wordless at the floor.
+      const group = region.map.labels.filter((l) => l.kind === "group");
+      expect(group.length, `${region.id} group labels`).toBeGreaterThanOrEqual(2);
+
+      // Every label sits on painted ground.
+      const m = region.map.margin;
+      expect(m).toBe(2000);
+      for (const l of region.map.labels) {
+        expect(l.x).toBeGreaterThanOrEqual(-m);
+        expect(l.x).toBeLessThanOrEqual(region.map.width + m);
+        expect(l.y).toBeGreaterThanOrEqual(-m);
+        expect(l.y).toBeLessThanOrEqual(region.map.height + m);
+      }
+      // A settlement outside the canvas is a site nobody can reach.
+      for (const s of region.map.settlements) {
+        expect(s.x).toBeGreaterThan(0);
+        expect(s.x).toBeLessThan(region.map.width);
+        expect(s.y).toBeGreaterThan(0);
+        expect(s.y).toBeLessThan(region.map.height);
+      }
+    }
+  });
+
+  it("no region's map data creeps past the bundle budget", () => {
+    for (const file of ["baltic", "iberia"]) {
+      const bytes = statSync(`src/data/${file}.json`).size;
+      expect(bytes, `${file}.json is ${(bytes / 1e6).toFixed(2)} MB`)
+        .toBeLessThan(2.5e6);
     }
   });
 
