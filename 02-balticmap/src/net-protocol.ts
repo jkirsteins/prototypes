@@ -1,6 +1,6 @@
 import { CARDS, type Rng, type Strategy } from "./cards";
 import {
-  discardCard, endTurn, playCard, viewOf,
+  discardCard, endTurn, pickFaction, playCard, viewOf,
   type GameEvent, type GamePhase, type GameState,
 } from "./game";
 import { marchSourcesAgainst } from "./playability";
@@ -61,6 +61,39 @@ export type NetMessage =
 
 export function seatOfFaction(state: GameState, factionId: string): number {
   return state.players.findIndex((p) => p.factionId === factionId);
+}
+
+/** Deals a game two humans are sitting at. One spelling, because the app
+ *  deals and the tests deal, and a guest seated one way in the app and
+ *  another in a test is a guest whose bugs no test can see.
+ *
+ *  Every seat gets the same starting deck, so the guest's pick carries only
+ *  its BUILD: the deal rolls its seat a strategy like any AI seat, keeping
+ *  the rng draw count a frozen contract, and the chosen build is stamped
+ *  over it after.
+ *
+ *  The guest's land is RESERVED, because only the acting factions keep a
+ *  leader and a land without one takes no turn: dealt like any other rival
+ *  it would be drawn into the acting set or not, and a guest whose land was
+ *  not drawn would sit through the whole game unable to play. */
+export function dealNetGame(
+  state: GameState,
+  rng: Rng,
+  picks: { hostFactionId: string; guestFactionId: string; guestBuild: Strategy },
+): { state: GameState; guestSeat: number } {
+  const dealt = pickFaction(state, picks.hostFactionId, rng, {
+    reservedFactionIds: [picks.guestFactionId],
+  });
+  const guestSeat = seatOfFaction(dealt, picks.guestFactionId);
+  return {
+    state: {
+      ...dealt,
+      players: dealt.players.map((p, i) =>
+        i === guestSeat ? { ...p, strategy: picks.guestBuild } : p,
+      ),
+    },
+    guestSeat,
+  };
 }
 
 /** Races and bugs, not malice (trusted friends): is it this seat's

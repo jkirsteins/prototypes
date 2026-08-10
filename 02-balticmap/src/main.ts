@@ -12,7 +12,6 @@ import {
   transferDefense, transferLimit,
   type GameEvent, type GameState,
 } from "./game";
-import { aiTakeTurn } from "./ai";
 import { fullRealmOf, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
 import { hasRuler, rulerNameOf } from "./rulers";
@@ -56,8 +55,13 @@ import { createGuestSession, type GuestSession } from "./net-guest";
 import { hostPeer, joinPeer } from "./net";
 import { createNetPanel } from "./net-ui";
 import {
-  guestPhaseView, seatOfFaction, type NetAction, type Wire,
+  dealNetGame, guestPhaseView, seatOfFaction,
+  type NetAction, type Wire,
 } from "./net-protocol";
+import {
+  controllerOf as controllerOfSeat, runAiSeats,
+  type Controller, type Seats,
+} from "./decisions";
 import {
   loadBuildPref, memoryStorage, saveBuildPref, type MetaStorage,
 } from "./meta";
@@ -353,13 +357,21 @@ let net: NetState = { role: "solo" };
  *  can hand the broker id back rather than leaving it registered. */
 let netPeer: { close(): void } | null = null;
 
+/** The seats this screen can tell apart, as `src/decisions.ts` asks for
+ *  them. Only the host holds a remote seat: a guest runs no turn but its
+ *  own, so the AI chain and the waiting line are questions it never asks. */
+function seats(): Seats {
+  return {
+    localSeat,
+    remoteSeat: net.role === "host" ? net.guestSeat : null,
+  };
+}
+
 /** Who decides this seat's turn. The AI chain runs on `ai` seats only, and
  *  `remote` is the one answer that locks this screen without ending the
  *  round: the other human is thinking. */
-function controllerOf(seat: number): "local" | "remote" | "ai" {
-  if (seat === localSeat) return "local";
-  if (net.role === "host" && seat === net.guestSeat) return "remote";
-  return "ai";
+function controllerOf(seat: number): Controller {
+  return controllerOfSeat(seat, seats());
 }
 
 /** True once the network game has been dealt - the host knows the guest's
@@ -2375,14 +2387,7 @@ function refresh(opts?: { animate?: boolean }): void {
  *  it is waiting for; a remote seat holding the turn keeps input locked
  *  here, because the round has not finished, it has moved elsewhere. */
 function resumeChain(): void {
-  let iterations = 0;
-  while (game.phase === "playing" && controllerOf(game.current) === "ai") {
-    if (++iterations > 1000) {
-      console.error("AI chain stalled - breaking");
-      break;
-    }
-    game = advance(aiTakeTurn(game, rng), rng);
-  }
+  game = runAiSeats(game, rng, seats());
   if (net.role === "host") net.session?.pushUpdate();
   const remoteHolds =
     game.phase === "playing" && controllerOf(game.current) === "remote";
@@ -2915,31 +2920,21 @@ function attachHostWire(wire: Wire): void {
   netPanel.setStatus("Connected.");
 }
 
-/** Deals once both humans have picked. Every seat gets the same starting
- *  deck now, so the guest's pick carries only its BUILD: the deal rolls the
- *  guest's seat a strategy like any AI seat (keeping the rng draw count a
- *  frozen contract) and the chosen build is stamped over it after.
- *
- *  The guest's land is RESERVED, because only the acting factions keep a
- *  leader and a land without one takes no turn: dealt like any other rival it
- *  would be drawn into the acting set or not, and a guest whose land was not
- *  drawn would sit through the whole game unable to play. */
+/** Deals once both humans have picked. What the deal itself does - the
+ *  reserved land, the stamped build - is `dealNetGame`; this is the screen's
+ *  half, which is knowing when both picks are in. */
 function tryDeal(): void {
   if (net.role !== "host" || net.session === null) return;
   const pick = net.session.guestPick();
   if (net.hostPick === null || pick === null) return;
   if (game.phase !== "pick-faction") return;
-  game = pickFaction(game, net.hostPick, rng, {
-    reservedFactionIds: [pick.factionId],
+  const dealt = dealNetGame(game, rng, {
+    hostFactionId: net.hostPick,
+    guestFactionId: pick.factionId,
+    guestBuild: pick.build,
   });
-  const guestSeat = seatOfFaction(game, pick.factionId);
-  net.guestSeat = guestSeat;
-  game = {
-    ...game,
-    players: game.players.map((p, i) =>
-      i === guestSeat ? { ...p, strategy: pick.build } : p,
-    ),
-  };
+  game = dealt.state;
+  net.guestSeat = dealt.guestSeat;
   net.session.markStarted(pick.factionId);
   netPanel.setVisible(false);
   refresh();

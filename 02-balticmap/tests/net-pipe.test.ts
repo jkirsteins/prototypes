@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  newGame, startGame, chooseBuild, pickFaction, advance, turnOpen,
+  newGame, startGame, chooseBuild, advance, turnOpen,
   type GameState,
 } from "../src/game";
 import { aiTakeTurn, chooseAction } from "../src/ai";
@@ -8,9 +8,10 @@ import type { Rng, Strategy } from "../src/cards";
 import { buildOffer } from "../src/harvest";
 import { seededRng } from "../src/rng";
 import {
-  cardSetHash, guestPhaseView, PROTOCOL_VERSION, seatOfFaction, wirePair,
+  cardSetHash, dealNetGame, guestPhaseView, PROTOCOL_VERSION, wirePair,
   type NetMessage,
 } from "../src/net-protocol";
+import { runAiSeats } from "../src/decisions";
 import { createHostSession, type HostDeps } from "../src/net-host";
 import { createGuestSession, type GuestDeps } from "../src/net-guest";
 
@@ -42,25 +43,19 @@ function makeHost(rng: Rng) {
   };
 }
 
-/** Deals exactly as main.ts's tryDeal: the guest's land is reserved so it is
- *  one of the factions that act, pickFaction rolls every AI seat a strategy
- *  (keeping the rng draw count a frozen contract), then the guest's chosen
- *  build is stamped over its seat. */
+/** The app's own deal, not a copy of it. main.ts's `tryDeal` calls the same
+ *  `dealNetGame`, so a change to how a guest is seated reaches this suite
+ *  instead of leaving it green against a deal the app stopped doing. */
 function deal(h: ReturnType<typeof makeHost>, rng: Rng): number {
   const pick = h.picks[0];
-  let g = pickFaction(h.game(), "alpha", rng, {
-    reservedFactionIds: [pick.factionId],
+  const dealt = dealNetGame(h.game(), rng, {
+    hostFactionId: "alpha",
+    guestFactionId: pick.factionId,
+    guestBuild: pick.build,
   });
-  const guestSeat = seatOfFaction(g, pick.factionId);
-  g = {
-    ...g,
-    players: g.players.map((p, i) =>
-      i === guestSeat ? { ...p, strategy: pick.build } : p,
-    ),
-  };
-  h.setGame(g);
+  h.setGame(dealt.state);
   h.session.markStarted(pick.factionId);
-  return guestSeat;
+  return dealt.guestSeat;
 }
 
 function collect(wire: { onMessage(fn: (m: NetMessage) => void): void }) {
@@ -215,19 +210,12 @@ describe("guest session", () => {
   });
 });
 
-/** main.ts's resumeChain, distilled: run AI seats until a human
- *  (host seat 0 or guest) is on turn or the run ends. */
-function runChain(
-  g: GameState, rng: Rng, guestSeat: number,
-): GameState {
-  let out = g;
-  while (
-    out.phase === "playing" && out.current !== 0 && out.current !== guestSeat
-  ) {
-    out = advance(aiTakeTurn(out, rng), rng);
-  }
-  return out;
-}
+/** The seats a host screen sees: its own, and the guest's. `runAiSeats` is
+ *  the app's own chain, so a change to which seats the AI plays reaches this
+ *  suite rather than only the app. */
+const hostSeats = (guestSeat: number) => ({
+  localSeat: 0, remoteSeat: guestSeat,
+});
 
 describe("a whole game over the pipe", () => {
   it("host and guest replicas agree for 15 rounds", () => {
@@ -251,7 +239,7 @@ describe("a whole game over the pipe", () => {
       if (h.game().current === 0) {
         h.setGame(advance(aiTakeTurn(h.game(), rng), rng));
       }
-      h.setGame(runChain(h.game(), rng, guestSeat));
+      h.setGame(runAiSeats(h.game(), rng, hostSeats(guestSeat)));
       h.session.pushUpdate();
       if (h.game().phase !== "playing") break;
 
@@ -286,7 +274,7 @@ describe("a whole game over the pipe", () => {
         expect(rejects).toEqual([]);
       }
       // Host continues the chain past the guest's committed turn.
-      h.setGame(runChain(advance(h.game(), rng), rng, guestSeat));
+      h.setGame(runAiSeats(advance(h.game(), rng), rng, hostSeats(guestSeat)));
       h.session.pushUpdate();
     }
 
@@ -312,7 +300,7 @@ describe("a whole game over the pipe", () => {
     const guestSeat = deal(h, rng);
     // Bring the world to the guest's turn, then stage the harvest: the card
     // in hand on the host, and the replica synced so the guest sees it too.
-    h.setGame(runChain(advance(aiTakeTurn(h.game(), rng), rng), rng, guestSeat));
+    h.setGame(runAiSeats(advance(aiTakeTurn(h.game(), rng), rng), rng, hostSeats(guestSeat)));
     expect(h.game().current).toBe(guestSeat);
     h.setGame({
       ...h.game(),
@@ -350,7 +338,7 @@ describe("a whole game over the pipe", () => {
     guest1.sendPick("warpath", "beta");
     const guestSeat = deal(h, rng);
     // Some turns pass, then the wire dies.
-    h.setGame(runChain(advance(aiTakeTurn(h.game(), rng), rng), rng, guestSeat));
+    h.setGame(runAiSeats(advance(aiTakeTurn(h.game(), rng), rng), rng, hostSeats(guestSeat)));
     h.guestWire.close();
 
     // main.ts re-wraps the guest's NEW connection into a NEW host
