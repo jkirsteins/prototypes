@@ -26,7 +26,21 @@ export interface InteractionHandle {
    *  in the active map's own coordinate space (`data.width`/`data.height`)
    *  while the pointer moves. */
   toMapPoint(clientX: number, clientY: number): { x: number; y: number };
+  /** Glides the view until `pt` (map units) sits at its center, clamped the
+   *  way every pan is, and reports through `onDone` exactly once. Pan only -
+   *  the zoom is the player's and a replay must not take it from them.
+   *
+   *  The player keeps the camera: any pointer or wheel input cancels the
+   *  glide where it stands (still reporting done, so a queue step waiting on
+   *  it releases). A target already under the center, or an environment with
+   *  no frame clock (happy-dom), jumps and reports - a caller cannot tell
+   *  which path ran, the `runAnimation` contract. */
+  focusOn(pt: { x: number; y: number }, onDone: () => void): void;
 }
+
+/** How long a camera glide takes. One number, owned by the rAF loop that
+ *  reports itself done - never copied into a second timer. */
+const FOCUS_MS = 450;
 
 /** The land at a screen point, looking THROUGH everything drawn on top of the
  *  map: the arrows, their strength labels, the badges, the settlement dots.
@@ -95,7 +109,17 @@ export function attachInteraction(
   }
   apply();
 
+  /** The running camera glide's cancel, or null. One at a time: a new glide,
+   *  a drag, a wheel tick or a resize ends the old one where it stands. */
+  let focusCancel: (() => void) | null = null;
+  function cancelFocus(): void {
+    const cancel = focusCancel;
+    focusCancel = null;
+    cancel?.();
+  }
+
   window.addEventListener("resize", () => {
+    cancelFocus();
     const wasAtHome =
       view.x === bounds.home.x && view.y === bounds.home.y &&
       view.w === bounds.home.w && view.h === bounds.home.h;
@@ -160,6 +184,7 @@ export function attachInteraction(
 
   svg.addEventListener("pointerdown", (e) => {
     if ((e as PointerEvent).button !== 0) return;
+    cancelFocus();
     const me = e as MouseEvent;
     const pe = e as PointerEvent;
     // A caller may take the press outright - aiming a raid by dragging. The
@@ -228,6 +253,7 @@ export function attachInteraction(
     "wheel",
     (e) => {
       e.preventDefault();
+      cancelFocus();
       const rect = svg.getBoundingClientRect();
       const factor = WHEEL_ZOOM_BASE ** -e.deltaY;
       view = zoomAt(
@@ -251,6 +277,71 @@ export function attachInteraction(
     deselect() {
       state = withClick(state, state.selected);
       applySelection();
+    },
+    focusOn(pt, onDone) {
+      cancelFocus();
+      const from = { ...view };
+      const target = clampView(
+        { x: pt.x - view.w / 2, y: pt.y - view.h / 2, w: view.w, h: view.h },
+        bounds,
+      );
+      const dx = target.x - from.x;
+      const dy = target.y - from.y;
+      let finished = false;
+      const finish = (): void => {
+        if (finished) return;
+        finished = true;
+        focusCancel = null;
+        onDone();
+      };
+      if (
+        Math.hypot(dx, dy) < 0.5 ||
+        typeof requestAnimationFrame !== "function" ||
+        typeof performance !== "object"
+      ) {
+        view = target;
+        apply();
+        finish();
+        return;
+      }
+      const startedAt = performance.now();
+      let raf = 0;
+      // rAF stops in a hidden tab, and a glide nobody is watching must not
+      // hold the queue - the same escape runAnimation keeps for WAAPI.
+      const onVisibility = (): void => {
+        if (document.visibilityState === "hidden") {
+          cancelAnimationFrame(raf);
+          cleanup();
+          view = target;
+          apply();
+          finish();
+        }
+      };
+      const cleanup = (): void =>
+        document.removeEventListener("visibilitychange", onVisibility);
+      document.addEventListener("visibilitychange", onVisibility);
+      const tick = (now: number): void => {
+        const u = Math.min(1, (now - startedAt) / FOCUS_MS);
+        // easeInOutQuad: gentle out of the gate, gentle into the stop.
+        const eased = u < 0.5 ? 2 * u * u : 1 - ((-2 * u + 2) ** 2) / 2;
+        view = {
+          x: from.x + dx * eased, y: from.y + dy * eased,
+          w: from.w, h: from.h,
+        };
+        apply();
+        if (u >= 1) {
+          cleanup();
+          finish();
+          return;
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      focusCancel = () => {
+        cancelAnimationFrame(raf);
+        cleanup();
+        finish();
+      };
     },
   };
 }

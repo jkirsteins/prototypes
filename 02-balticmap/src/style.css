@@ -1359,6 +1359,57 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
   fill: #a8352b;
 }
 
+/* The turn-start replay's label: one event at a time, camera on the land it
+   names, this pill above screen center saying what happened. A dark box, so
+   it states its own text colour (the AGENTS.md rule). Its card and faction
+   names are live segments - hoverable - so no pointer-events: none here; the
+   fade in/out is driven from showReplayLabel in main.ts, never a CSS
+   animation with a second copy of the duration. Below the notice overlay
+   (40): the summary is the round's epilogue and outranks any single line of
+   it. */
+.replay-label {
+  position: fixed;
+  left: 50%;
+  top: 36%;
+  transform: translate(-50%, 0);
+  z-index: 30;
+  background: rgba(27, 23, 16, 0.92);
+  color: #f2ead9;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-size: 17px;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 80vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* The suffix's own colours, stated here because this box is dark and the
+   log's .log-change.lead-* are tuned for a light panel - the same reasoning,
+   and the same shape, as .tooltip-value.lead-* above. Scoped through
+   .log-change rather than the bare .lead-* class on purpose: a bare
+   `.replay-label .lead-bad` only TIES with `.log-change.lead-bad` on
+   specificity and then loses on source order, which is how this shipped
+   reading light-panel red on a near-black pill. */
+.replay-label .log-change {
+  font-weight: 700;
+}
+
+.replay-label .log-change.lead-good {
+  color: #7fc36d;
+}
+
+.replay-label .log-change.lead-bad {
+  color: #e0705c;
+}
+
+.replay-label .log-change.lead-even {
+  color: #bfae8f;
+}
+
 /* What the arrow hits for, in the arrow's OWN colour - red into your realm,
    gold for yours, the actor's own for a quarrel between rivals - so strength
    belongs to the arrow it sits on. The landing order is the other number on

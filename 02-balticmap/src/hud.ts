@@ -36,6 +36,8 @@ import {
   type RichTextHooks, type Segment, type Speaker, type Verb,
 } from "./rich-text";
 import type { BuildOption } from "./harvest";
+import { EVENT_SOUNDS, type SoundName } from "./audio-manifest";
+import { REPLAY_RULES } from "./replay";
 
 export interface HudCallbacks {
   onNewGame(): void;
@@ -101,6 +103,26 @@ export interface HudCallbacks {
    *  beside the faction in the scoreboard. Plain text, not a segment -
    *  the rich-text rule covers card and faction names only. */
   playerNameOf?(factionId: string): string | null;
+  /** The turn-start replay: called on every animating update with the fresh
+   *  batch, its standings walk and the notice context, BETWEEN the local
+   *  seat's own animations and the round-summary decision. Returns how many
+   *  steps it queued - that count is what parks the summary behind the
+   *  queue, so an update that replays nothing raises its modal synchronously,
+   *  exactly as before the replay existed. Absent where there is no map to
+   *  replay on (tests). */
+  replayRound?(
+    fresh: GameEvent[],
+    changes: StandingChange[][],
+    ctx: NoticeCtx | null,
+  ): number;
+  /** Plays one sound now, if the player's ears are on. Absent in tests and
+   *  anywhere else without an audio engine; every call site is optional. */
+  cue?(name: SoundName): void;
+  /** The "Sound" checkbox beside the log filters: current state and the
+   *  toggle. Both present or both absent - the checkbox renders only when
+   *  `onToggleSound` exists. */
+  soundMuted?(): boolean;
+  onToggleSound?(muted: boolean): void;
 }
 
 export interface Hud {
@@ -1122,6 +1144,16 @@ export function createHud(
       saveLogPrefs(logStorage, logPrefs);
     }),
   );
+  // The sound preference lives with the other display toggles, but its state
+  // is the audio engine's (its own storage key - see AUDIO_PREFS_KEY), so the
+  // checkbox only reads and forwards.
+  if (cb.onToggleSound !== undefined) {
+    logFilters.append(
+      makeLogFilterToggle("Sound", !(cb.soundMuted?.() ?? false), (checked) => {
+        cb.onToggleSound?.(!checked);
+      }),
+    );
+  }
   /** Replaces the two checkboxes while a pin filters the log - the swap is
    *  the .filter-realm rules in style.css, the content applyRealmFilter's. */
   const logFiltered = document.createElement("span");
@@ -1563,9 +1595,15 @@ export function createHud(
     // with `playerId !== localPlayerId()` and the draw is deliberately
     // untracked, so this is the honest test for "the turn this summary
     // describes is not over yet" - read off the animation rather than from a
-    // predicate that re-guesses which events animate.
-    if (playPending()) {
+    // predicate that re-guesses which events animate. A replay that queued
+    // steps parks the summary the same way: the modal is the round's
+    // epilogue, and it must not cover the camera still visiting the events
+    // it describes. A queued DRAW alone still does not park it - unchanged.
+    if (playPending() || replayStepsQueued > 0) {
       pendingSummary = summary;
+      // A play flight's own onDone calls settleTurn when it lands; replay
+      // steps report only to the queue, so give the parked summary its waker.
+      if (!playPending()) settleTurn();
       return;
     }
     showRoundSummary(summary);
@@ -1598,6 +1636,9 @@ export function createHud(
   );
 
   let pendingPlayRect: DOMRect | null = null;
+  /** How many steps the replay queued on the most recent animating update -
+   *  the summary's reason to park behind the queue. See replayRound. */
+  let replayStepsQueued = 0;
   let renderedEvents = 0;
   let lastRenderedTurn = 0;
   /** The rendered entry for each log index, so a secret play several screens up
@@ -1772,7 +1813,17 @@ export function createHud(
     }
   }
 
-  function renderLog(state: GameState, animate: boolean): GameEvent[] {
+  /** Returns the fresh batch WITH its standings walk and notice context, so
+   *  `update` can hand all three to the replay without a second walk - the
+   *  replay quoting different numbers than the log would be the drift the
+   *  one-walk rule exists to prevent. */
+  function renderLog(
+    state: GameState, animate: boolean,
+  ): {
+    fresh: GameEvent[];
+    changes: StandingChange[][];
+    ctx: NoticeCtx | null;
+  } {
     if (state.log.length < renderedEvents) {
       logEntries.replaceChildren();
       renderedEvents = 0;
@@ -1877,7 +1928,7 @@ export function createHud(
     // the fresh entries and re-files the old ones after membership drift.
     applyRealmFilter(state);
     if (fresh.length > 0) logEntries.scrollTop = logEntries.scrollHeight;
-    return fresh;
+    return { fresh, changes, ctx: noticeCtx };
   }
 
   function renderPile(
@@ -2047,9 +2098,30 @@ export function createHud(
    *  already moved. */
   let pendingSummary: RoundSummary | null = null;
 
+  /** Guards the one onIdle re-arm below: settleTurn can be reached from a
+   *  flight's onDone, the queue draining and a phase change in the same
+   *  breath, and two armed waiters would raise the summary once and then let
+   *  the second waiter fall through to the continuation - the AI resuming
+   *  behind the very modal the first waiter raised. */
+  let idleSettleArmed = false;
+
   function settleTurn(): void {
     if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
     if (pendingSummary !== null) {
+      // The replay owns the screen while the queue is busy: the summary is
+      // the round's epilogue, and raising it over the camera still visiting
+      // the events it describes would cover them. Waits on the queue itself,
+      // never on a copied duration.
+      if (animations.busy()) {
+        if (!idleSettleArmed) {
+          idleSettleArmed = true;
+          animations.onIdle(() => {
+            idleSettleArmed = false;
+            settleTurn();
+          });
+        }
+        return;
+      }
       const summary = pendingSummary;
       pendingSummary = null;
       showRoundSummary(summary);
@@ -2082,7 +2154,14 @@ export function createHud(
     if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
     if (pendingContinuation === null || liveFlights.size === 0) return;
     const longestMs = Math.max(...[...liveFlights].map((f) => f.totalMs));
-    watchdog = setTimeout(settleTurn, longestMs + FLIGHT_WATCHDOG_SLACK_MS);
+    watchdog = setTimeout(() => {
+      // A flight past its deadline never reported itself done, so its queue
+      // step is wedged too - cancel it (which fires its onDone, releasing the
+      // step) rather than settling around it, or the summary's own wait on
+      // the queue below would never end.
+      for (const flight of [...liveFlights]) flight.cancel();
+      settleTurn();
+    }, longestMs + FLIGHT_WATCHDOG_SLACK_MS);
   }
 
   function animateDraw(): void {
@@ -2091,17 +2170,20 @@ export function createHud(
     newest?.classList.add("card-incoming");
     // Not tracked in liveFlights - the turn does not wait on a draw - but
     // queued like everything else, so it never plays over a card in flight.
-    animations.push((done) => flyCard(
-      container,
-      "back",
-      "",
-      { x: from.x, y: from.y, width: CARD_W, height: CARD_H },
-      [{ to: center(hand.getBoundingClientRect()), scale: 1, durationMs: DRAW_MS }],
-      () => {
-        newest?.classList.remove("card-incoming");
-        done();
-      },
-    ));
+    animations.push((done) => {
+      cb.cue?.("card-draw");
+      flyCard(
+        container,
+        "back",
+        "",
+        { x: from.x, y: from.y, width: CARD_W, height: CARD_H },
+        [{ to: center(hand.getBoundingClientRect()), scale: 1, durationMs: DRAW_MS }],
+        () => {
+          newest?.classList.remove("card-incoming");
+          done();
+        },
+      );
+    });
   }
 
   function animatePlay(cardId: string): void {
@@ -2122,6 +2204,7 @@ export function createHud(
     cardId: string, from: DOMRect | { x: number; y: number },
     done: () => void,
   ): void {
+    cb.cue?.("card-play");
     const flight = flyCard(
       container,
       "",
@@ -2151,6 +2234,7 @@ export function createHud(
 
   function pulseDeck(): void {
     animations.push((done) => {
+      cb.cue?.("shuffle");
       deckPile.root.classList.add("pulse");
       runAnimation(
         deckPile.stack,
@@ -2168,13 +2252,23 @@ export function createHud(
     });
   }
 
-  /** Human-only: AI actions surface as log entries, nothing moves on screen. */
+  /** Human-only: AI actions surface as log entries, nothing moves on screen.
+   *
+   *  Sounds: the flights and the pulse cue their own inside their queue step,
+   *  so the ear and the eye agree on when. The local seat's OTHER events -
+   *  the ones `REPLAY_RULES` passes over, a discard, a tribute, a harvest
+   *  tick - have no motion to ride, so they cue here, immediately. An event
+   *  the replay SHOWS is left alone or it would sound twice. */
   function animateEvents(fresh: GameEvent[]): void {
     for (const e of fresh) {
       if (e.playerId !== localPlayerId()) continue;
       if (e.type === "draw") animateDraw();
       else if (e.type === "play") animatePlay(e.cardId ?? "");
       else if (e.type === "reshuffle") pulseDeck();
+      else if (REPLAY_RULES[e.type].kind === "passed-over") {
+        const sound = EVENT_SOUNDS[e.type];
+        if (sound !== null) cb.cue?.(sound);
+      }
     }
   }
 
@@ -2667,13 +2761,16 @@ export function createHud(
         renderHand(state);
         renderScoreboard(state);
         renderMilestones(state);
-        const fresh = renderLog(state, animate);
-        // Animate first, decide second. `showRoundSummaryIfAny` asks whether a
-        // flight is in the air to know whether the turn it is describing has
-        // finished, and the flight this batch starts has to exist by then or
-        // the answer is stale by one update.
+        const { fresh, changes, ctx } = renderLog(state, animate);
+        // Animate first, replay second, decide third. `showRoundSummaryIfAny`
+        // asks whether a flight is in the air or the queue is busy to know
+        // whether the turn it is describing has finished, so everything this
+        // batch will show - the local seat's own flights AND the replay's
+        // steps - has to be queued by then or the answer is stale by one
+        // update.
         if (animate) {
           animateEvents(fresh);
+          replayStepsQueued = cb.replayRound?.(fresh, changes, ctx) ?? 0;
           showRoundSummaryIfAny(state, fresh);
         }
       } else if (ended) {

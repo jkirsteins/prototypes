@@ -594,7 +594,7 @@ somehow never reports itself finished.
 
 `animations` in `src/animate.ts` is a module singleton, and everything the
 player watches is pushed onto it: the turn-start draw, the played card's
-flight, the march-resolution flashes, the harvest reveal. One step at a time,
+flight, the turn-start replay's steps, the harvest reveal. One step at a time,
 in the order asked for, nothing overlapping - which is the whole point, because
 two sequences drawn at once are two sequences the player cannot read.
 
@@ -605,6 +605,50 @@ over a card still in the player's hand. Count what is QUEUED as well - see
 `playPending` in `src/hud.ts`. A step that throws releases the queue rather
 than wedging the game, and `clear()` drops what has not started while leaving
 the running step to clean up its own DOM.
+
+## The round replays itself at the player's turn start
+
+Everything that resolved while the player was not holding the map is SHOWN,
+one thing at a time, before the round-summary modal: the camera glides to the
+land (`focusOn` on `InteractionHandle` - pan only, cancelled by any pointer or
+wheel input), a label fades in and out, the event's sound plays. Each event is
+one step on the `animations` queue, so nothing overlaps and the modal - parked
+by `showRoundSummaryIfAny`, raised by `settleTurn` on the queue's idle - is
+the round's epilogue, never a cover over it.
+
+`REPLAY_RULES` in `src/replay.ts` is the classification, exhaustive over
+`GameEventType` in the `NOTICE_RULES` shape: a type is either `shown` (which
+land, what label, what sound) or `passed-over` with a sentence saying why and
+where its sound plays instead. Labels are segments, never template literals -
+the rich-text rule applies to this surface too, and `tests/replay.test.ts`
+checks it. The score suffix beside a label is `impactText` over the same walk
+the log uses, so the two cannot quote different numbers. What earns a step:
+marches touching the local human's full realm, and otherwise only events the
+local player did not cause themselves that are notice-worthy or move a score
+inside the realm-plus-`attackReach` interest set - the wild-lands regrowth
+next door replays, the one across the map stays a log line. An event that got
+a step is skipped by the score floats: one motion per fact.
+
+The 2026-08-10 resolution-replay doc in docs/superpowers has the full
+reasoning, including why the old concurrent clash flash became sequential.
+
+## Sound is one table, one gesture-gated engine
+
+`src/audio-manifest.ts` is pure data: `SOUNDS` (name -> file under
+`public/audio/`, all CC0, provenance in that directory's manifest.md, mp3
+because Safari decodes no Vorbis) and `EVENT_SOUNDS`, exhaustive over
+`GameEventType` - a null is a decision whose reason lives in `REPLAY_RULES`.
+`src/audio.ts` builds the `AudioContext` only inside `unlock()`, wired to the
+first pointerdown/keydown in `src/main.ts`; every other call no-ops without a
+context, which is why the test suite needs no audio mocks and why nothing
+audio may be constructed at module load or in `createHud`. A missing file
+degrades to silence with one console warning, never a throw. The mute
+checkbox rides `MetaStorage` under `AUDIO_PREFS_KEY` - its own key, not a
+`LogPrefs` field, because the boot path replaces the whole `LOG_PREFS_KEY`
+record. Where a sound cues from: a replay step cues its own; the local seat's
+flights and pulse cue inside their queue steps; the local seat's passed-over
+events cue in `animateEvents`; endings cue on the phase change in
+`cueEndingIfAny`, off the LOCAL seat's `guestPhaseView`-mapped phase.
 
 ## Never re-derive an animation's duration
 

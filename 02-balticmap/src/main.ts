@@ -19,8 +19,8 @@ import { fullRealmOf, isUnheld, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
 import { hasRuler, rulerNameOf } from "./rulers";
 import {
-  ability, abilityName, faction, plainText, t, term,
-  type NameLookup, type Segment,
+  ability, abilityName, faction, plainText, renderSegments, t, term,
+  type NameLookup, type RichTextHooks, type Segment,
 } from "./rich-text";
 import { termName } from "./glossary";
 import { abilitiesOf } from "./abilities";
@@ -29,8 +29,8 @@ import {
   handBlockReason, marchSourcesAgainst, marchSourcesFor, marchTargetsFrom,
   claimWouldLand, playableSet, respiteExpiry, validTargetsFor,
   targetEligibilityFor,
-  armyCapOn, attackDamageFor, attackImpactOn, freeArmiesFor, miasmaHeld,
-  omensHeld, freeSettlementsIn, settlementsIn,
+  armyCapOn, attackDamageFor, attackImpactOn, attackReach, freeArmiesFor,
+  miasmaHeld, omensHeld, freeSettlementsIn, settlementsIn,
 } from "./playability";
 import { armiesOn, axesOf, type Claim, type March } from "./marches";
 import {
@@ -51,7 +51,11 @@ import {
   ATTACK_CARDS, CARDS, isInwardCard, isMarchCard, type Strategy,
 } from "./cards";
 import { buildListing, destroyOffer, type HarvestChoice } from "./harvest";
-import { createHud, LOG_PREFS_KEY, type HudCallbacks } from "./hud";
+import { createHud, impactText, LOG_PREFS_KEY, type HudCallbacks } from "./hud";
+import { buildReplaySteps, type ReplayStep } from "./replay";
+import { createAudioEngine } from "./audio";
+import type { StandingChange } from "./standings";
+import type { NoticeCtx } from "./notices";
 import { createDeckScreen } from "./deck-screen";
 import { createRegionsScreen } from "./regions-screen";
 import { createHostSession, type HostSession } from "./net-host";
@@ -280,6 +284,14 @@ const factionAdjacency = factionAdjacencyOf(data);
 const factionEthnicities: Record<string, string> = Object.fromEntries(
   data.factions.map((f) => [f.id, f.ethnicity]),
 );
+
+/** The game's ears. Inert until the first real gesture (`unlock` - autoplay
+ *  policy and the test environments both require that), muted through its own
+ *  storage key so a `?popups=` boot cannot reset it. A booted run gets the
+ *  same memory storage as every other pref it touches. */
+const audio = createAudioEngine(storage);
+window.addEventListener("pointerdown", () => audio.unlock(), { once: true });
+window.addEventListener("keydown", () => audio.unlock(), { once: true });
 
 /** The build the last game confirmed, seeding the build screen. A
  *  preference, like the rules - the meta progression retired with the
@@ -984,12 +996,21 @@ function floatFor(e: GameEvent): { polygon: string; delta: number }[] {
  *  be visible. */
 function floatScoreMarks(): void {
   if (game.log.length < floatedEvents) floatedEvents = 0;
+  const base = floatedEvents;
   const fresh = game.log.slice(floatedEvents);
   floatedEvents = game.log.length;
+  // Consumed whether or not this paint floats anything, so a stale set can
+  // never skip a mark of some later game's coincidentally-numbered event.
+  const replayed = replayedIndices;
+  replayedIndices = new Set();
   if (!inPlay()) return;
   const marks: SVGTextElement[] = [];
   let lane = 0;
-  for (const e of fresh) {
+  fresh.forEach((e, i) => {
+    // An event the replay gave its own step already states this number on
+    // the label, camera on the land - a float on top would move one fact
+    // twice.
+    if (replayed.has(base + i)) return;
     for (const mark of floatFor(e)) {
       const centre = regionCenter(mark.polygon);
       if (centre === undefined) continue;
@@ -1007,7 +1028,7 @@ function floatScoreMarks(): void {
       // not six racing each other.
       marks.push(text);
     }
-  }
+  });
   queueFloats(marks);
 }
 
@@ -1811,10 +1832,34 @@ function armArrowAsCounter(g: SVGGElement, m: March, cardIndex: number): void {
  *  never copied into a second timer. */
 const CLASH_FLASH_MS = 1200;
 
-/** Log entries whose resolutions have already been flashed. Advanced whenever
- *  the flash runs, and jumped to the end for a state this screen did not play
- *  into - a boot, or a guest's snapshot - so history is never replayed. */
-let animatedLog = 0;
+/** Absolute log indices the replay gave a step of their own this refresh.
+ *  The score floats skip these - the label already states the number, and one
+ *  fact moving twice on screen reads as two facts. Rebuilt by `queueReplay`
+ *  and drained by `floatScoreMarks`, which run back to back inside one
+ *  `refresh`. */
+let replayedIndices = new Set<number>();
+
+/** How long a replay label holds the screen. One number, handed to
+ *  `runAnimation`, which reports back when it is actually over - never copied
+ *  into a second timer. */
+const REPLAY_LABEL_MS = 1700;
+
+const factionNameById = new Map(data.factions.map((f) => [f.id, f.name]));
+const placeNameFactionIds = new Set(
+  data.factions.filter((f) => f.placeName).map((f) => f.id),
+);
+
+/** The hooks a replay label's segments render through - the same tooltip the
+ *  HUD's prose uses, so a card name in a label tips its rules and a faction
+ *  name lights its realm, exactly as everywhere else. */
+const replayLabelHooks: RichTextHooks = {
+  factionName: (id) => factionNameById.get(id) ?? id,
+  isPlaceName: (id) => placeNameFactionIds.has(id),
+  showTip: (lines) => tooltip.showLines(lines),
+  hideTip: () => tooltip.hide(),
+  highlightFaction: (id) =>
+    applyHighlight(hoveredRegion, id ?? hoveredRegion?.faction ?? null),
+};
 
 /** Show one march landing: a ghost of the arrow fading out, and over it the
  *  damage that actually got through.
@@ -1901,35 +1946,112 @@ function flashMarchResolution(
   );
 }
 
-/** Flash every march that landed since the last time this ran and touched the
- *  human's realm, then call back. Concurrent, not queued: marches that resolve
- *  in the same turn start resolve at the same moment, and showing them one
- *  after another would say otherwise. */
-function flashResolutions(then: () => void): void {
-  const fresh = game.log.slice(animatedLog);
-  animatedLog = game.log.length;
+/** The turn-start replay: one queue step per resolved event that earns the
+ *  camera (see `REPLAY_RULES` in src/replay.ts) - glide to the land, label
+ *  in and out, the event's sound, then the next. Called by `hud.update`'s
+ *  animate branch (`HudCallbacks.replayRound`) BEFORE the round-summary
+ *  decision, so the summary parks behind the queue and rises as the round's
+ *  epilogue. Sequential where the old flash was concurrent, because the
+ *  camera can only be one place at a time - simultaneity was the old
+ *  design's claim, and it read as noise the moment three marches landed. */
+function queueReplay(
+  fresh: GameEvent[],
+  changes: StandingChange[][],
+  ctx: NoticeCtx | null,
+): number {
+  replayedIndices = new Set();
   const human = localHuman();
-  if (!human) {
-    then();
-    return;
-  }
+  if (!human || game.phase !== "playing") return 0;
   const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
-  const mine = fresh.filter(
-    (e) =>
-      e.type === "march-resolved" &&
-      ((e.targetFactionId !== undefined && realm.has(e.targetFactionId)) ||
-        (e.sourceFactionId !== undefined && realm.has(e.sourceFactionId))),
-  );
-  if (mine.length === 0) {
-    then();
+  const interest = new Set([
+    ...realm, ...attackReach(viewOf(game), human.factionId),
+  ]);
+  const steps = buildReplaySteps(fresh, {
+    localPlayerId: human.id, realm, interest, ctx,
+  });
+  const base = game.log.length - fresh.length;
+  for (const step of steps) {
+    replayedIndices.add(base + step.index);
+    animations.push((done) =>
+      runReplayStep(step, changes[step.index] ?? [], realm, done),
+    );
+  }
+  return steps.length;
+}
+
+/** One step: camera first, then label, ghost and sound together. `done` fires
+ *  when the slowest of them reports itself finished - never on a timer. */
+function runReplayStep(
+  step: ReplayStep,
+  changes: StandingChange[],
+  realm: ReadonlySet<string>,
+  done: () => void,
+): void {
+  // The run may have ended, or a new game begun, while this step waited its
+  // turn. The teardown paths clear the queue, but a step already running when
+  // they do must not draw over the wrong screen.
+  if (game.phase !== "playing") {
+    done();
     return;
   }
-  let pending = mine.length;
-  for (const e of mine) {
-    flashMarchResolution(e, realm, () => {
-      if (--pending === 0) then();
-    });
+  const centre = step.polygon !== undefined
+    ? regionCenter(step.polygon)
+    : undefined;
+  const show = (): void => {
+    if (step.sound !== null) audio.cue(step.sound);
+    let pending = step.event.type === "march-resolved" ? 2 : 1;
+    const one = (): void => {
+      pending -= 1;
+      if (pending === 0) done();
+    };
+    if (step.event.type === "march-resolved") {
+      flashMarchResolution(step.event, realm, one);
+    }
+    showReplayLabel(step, changes, one);
+  };
+  if (centre !== undefined) {
+    interaction.focusOn(centre, show);
+  } else {
+    show();
   }
+}
+
+/** The label itself: segments (a card name tips its rules, a faction lights
+ *  its realm - the rich-text rule, nothing here is a template literal) plus
+ *  the same walked suffix the log line and the summary carry. */
+function showReplayLabel(
+  step: ReplayStep,
+  changes: StandingChange[],
+  onDone: () => void,
+): void {
+  const label = document.createElement("div");
+  label.className = "replay-label";
+  const text = document.createElement("span");
+  text.className = "rl-text";
+  text.appendChild(renderSegments(step.label, replayLabelHooks));
+  label.appendChild(text);
+  const impact = impactText(step.event, changes);
+  if (impact !== null) {
+    const suffix = document.createElement("span");
+    suffix.className = `log-change lead-${impact.tone}`;
+    suffix.textContent = ` (${impact.text})`;
+    label.appendChild(suffix);
+  }
+  app.appendChild(label);
+  runAnimation(
+    label,
+    [
+      { opacity: 0, transform: "translate(-50%, 6px)" },
+      { opacity: 1, transform: "translate(-50%, 0)", offset: 0.12 },
+      { opacity: 1, transform: "translate(-50%, 0)", offset: 0.82 },
+      { opacity: 0, transform: "translate(-50%, -10px)" },
+    ],
+    REPLAY_LABEL_MS,
+    () => {
+      label.remove();
+      onDone();
+    },
+  );
 }
 
 /** What a hover says: what this land is, who holds it, whether a pact stands
@@ -2517,10 +2639,36 @@ function viewState(): GameState {
  *  Wanted for a state this screen did not play into - the boot path's first
  *  paint, and a guest's start or rejoin snapshot, which arrives as a whole
  *  game at once and would otherwise replay every card in its log. */
+/** The phase whose ending has already been given its jingle. Endings own the
+ *  whole screen, so their sound cues on the phase change here rather than on
+ *  an event replay step - see the `victory`/`defeat` rows of REPLAY_RULES. */
+let cuedEndingPhase: GameState["phase"] | null = null;
+
+function cueEndingIfAny(): void {
+  // The LOCAL seat's ending, not the host's: a guest whose realm was
+  // swallowed hears defeat while the host's screen plays victory -
+  // `guestPhaseView` is the one mapper of that difference.
+  const phase = viewState().phase;
+  if (phase === cuedEndingPhase) return;
+  if (phase === "victory") {
+    cuedEndingPhase = phase;
+    audio.cue(
+      game.log.some((e) => e.type === "unified") ? "fanfare-grand" : "victory",
+    );
+  } else if (phase === "defeat") {
+    cuedEndingPhase = phase;
+    audio.cue("defeat");
+  } else {
+    cuedEndingPhase = null;
+  }
+}
+
 function refresh(opts?: { animate?: boolean }): void {
   // First, before anything renders: the ending overlay this repaint may be
   // about to raise reads a total that has to have stopped moving.
   runClock.sample(game.phase);
+  // Then the ending's own sound, off the same settled phase.
+  cueEndingIfAny();
   applyOwnership();
   applyTargeting();
   revealFoundedSettlements();
@@ -2578,13 +2726,14 @@ function resumeChain(): void {
   if (net.role === "host") net.session?.pushUpdate();
   const remoteHolds =
     game.phase === "playing" && controllerOf(game.current) === "remote";
-  // Input stays locked through the clash flash. A march landing is the one
-  // thing that moved while the player was not being shown a play, so it gets
-  // its moment before the map is handed back - the same reason the AI chain
-  // waits out the played card's flight.
+  // Input stays locked through the replay. Everything that moved while the
+  // player was not being shown a play gets its moment before the map is
+  // handed back - the same reason the AI chain waits out the played card's
+  // flight. The wait is on the queue draining, never on a copied duration;
+  // `refresh` is what queues the replay steps (hud.update -> replayRound).
   resolving = true;
   refresh();
-  flashResolutions(() => {
+  animations.onIdle(() => {
     resolving = remoteHolds;
     refresh();
     updateWaitingStatus();
@@ -2597,12 +2746,12 @@ function afterHumanAction(): void {
   // every committed action rather than only from the ones that end a turn.
   game = advance(game, rng);
   if (net.role === "host") net.session?.pushUpdate();
-  refresh();
   if (game.phase !== "playing" || controllerOf(game.current) === "local") {
-    // No AI chain behind this, so the flash is the only thing left to wait
+    // No AI chain behind this, so the replay is the only thing left to wait
     // for - the next seat is the player's own and its marches just landed.
     resolving = true;
-    flashResolutions(() => {
+    refresh();
+    animations.onIdle(() => {
       resolving = false;
       refresh();
       updateWaitingStatus();
@@ -2610,6 +2759,7 @@ function afterHumanAction(): void {
     return;
   }
   resolving = true;
+  refresh();
   hud.afterPlayAnimation(() => {
     resumeChain();
   });
@@ -2922,6 +3072,18 @@ const hudCallbacks: HudCallbacks = {
     onHideTip() {
       tooltip.hide();
     },
+    replayRound(fresh, changes, ctx) {
+      return queueReplay(fresh, changes, ctx);
+    },
+    cue(name) {
+      audio.cue(name);
+    },
+    soundMuted() {
+      return audio.muted();
+    },
+    onToggleSound(muted) {
+      audio.setMuted(muted);
+    },
     regionSubtitle() {
       return regionDef.era;
     },
@@ -2949,8 +3111,8 @@ const hudCallbacks: HudCallbacks = {
 const hud = createHud(
   app,
   hudCallbacks,
-  new Map(data.factions.map((f) => [f.id, f.name])),
-  new Set(data.factions.filter((f) => f.placeName).map((f) => f.id)),
+  factionNameById,
+  placeNameFactionIds,
   storage,
 );
 
@@ -3269,12 +3431,12 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // shows it again and it must not be advertising the deck screen.
       netPanel.setStatus(`Playing with ${net.session?.hostName() ?? "the host"}.`);
       // A snapshot is a whole game arriving at once, so its log is history,
-      // not this screen's round: mark every march in it as already shown or
-      // the guest would watch twenty turns of arrows land.
-      if (source !== "update") animatedLog = game.log.length;
+      // not this screen's round: it paints with `animate: false`, which is
+      // also what keeps the replay quiet - `replayRound` only runs on an
+      // animating update, so a rejoining guest is never made to watch twenty
+      // turns of camera work.
       refresh(source === "update" ? undefined : { animate: false });
       if (source === "update") {
-        flashResolutions(() => refresh());
         // What a harvest gave arrives here rather than at the play, because
         // the play was resolved on the other machine. `revealHarvestGains`
         // reads the log for the LOCAL seat's gains, so an update carrying
