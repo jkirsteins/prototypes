@@ -1,0 +1,42 @@
+{
+  "galicians": [
+    "Vimara", "Sisnando", "Hermenegildo", "Gutier", "Lucidio", "Odoario",
+    "Alfonso", "Ordono", "Fruela", "Ramiro", "Bermudo", "Pelayo",
+    "Gonzalo", "Diego"
+  ],
+  "asturleonese": [
+    "Alfonso", "Ordono", "Fruela", "Ramiro", "Bermudo", "Garcia",
+    "Silo", "Mauregato", "Vermudo", "Pelayo", "Aurelio", "Favila",
+    "Nepociano", "Gonzalo"
+  ],
+  "basques": [
+    "Sancho", "Garcia", "Fortun", "Enneco", "Ximeno", "Velasco",
+    "Aznar", "Galindo", "Lope", "Otsoa", "Munio", "Semen",
+    "Orti", "Blasco"
+  ],
+  "castilians": [
+    "Rodrigo", "Diego", "Fernan", "Gonzalo", "Nuno", "Assur",
+    "Lain", "Alvaro", "Munio", "Vela", "Osorio", "Gustios",
+    "Sancho", "Garcia"
+  ],
+  "catalans": [
+    "Wifred", "Borrell", "Sunyer", "Miro", "Oliba", "Ramon",
+    "Berenguer", "Ermengol", "Guillem", "Bernat", "Sunifred", "Radulf",
+    "Guifre", "Arnau"
+  ],
+  "arabs": [
+    "Muhammad", "Abd Allah", "Abd al-Rahman", "al-Mundhir", "Hisham",
+    "Sulayman", "Ibrahim", "Yusuf", "Ahmad", "Uthman", "al-Hakam",
+    "Aban", "Qasim", "Ubayd Allah"
+  ],
+  "berbers": [
+    "Tariq", "Musa", "Zawi", "Habib", "Yahya", "Ayyub",
+    "Sawwar", "Kulayb", "Hamid", "Zayd", "Ilyas", "Badr",
+    "Salih", "Wansus"
+  ],
+  "muwallads": [
+    "Umar", "Musa", "Lubb", "Mutarrif", "Sulayman", "Marwan",
+    "Fortun", "Ismail", "Abd al-Malik", "Said", "Hafs", "Jafar",
+    "Khalaf", "Ubayd"
+  ]
+}

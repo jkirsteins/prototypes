@@ -1,9 +1,10 @@
 import type { MapData } from "./types";
 import balticMap from "./data/baltic.json";
 import balticRulerNames from "./data/ruler-names.json";
+import iberiaMap from "./data/iberia.json";
+import iberiaRulerNames from "./data/ruler-names-iberia.json";
 
-/** Widened to "baltic" | "iberia" when the Iberia bake lands (Task 4). */
-export type RegionId = "baltic";
+export type RegionId = "baltic" | "iberia";
 
 export interface RegionDef {
   id: RegionId;
@@ -25,6 +26,7 @@ export interface RegionDef {
 }
 
 const balticPools = balticRulerNames as Record<string, readonly string[]>;
+const iberiaPools = iberiaRulerNames as Record<string, readonly string[]>;
 
 /** Which lands could plausibly carry which ground, read off what the map
  *  already says about each region in its own flavour text: hills and uplands
@@ -60,6 +62,32 @@ const BALTIC_BUREAUCRACY_LANDS: readonly string[] = [
   "eastern-aukstaitian-confederacy", "samogitian-confederacy", "lietuva",
 ];
 
+/** The same two rules read off the Iberian map's own flavour text: hills for
+ *  the mountain north and the rebel sierras, the trade rivers - Douro, Ebro,
+ *  Guadiana, Guadalquivir, Turia - for the valley lands. */
+const IBERIA_TERRAIN_ELIGIBILITY: Readonly<Record<string, readonly string[]>> = {
+  // The Cantabrian wall, the Basque hills, the Pyrenean counties and the
+  // sierras of Bobastro.
+  "asturians": ["hill-country"],
+  "alavese": ["hill-country"],
+  "sobrarbians": ["hill-country"],
+  "pallaresans": ["hill-country"],
+  "hafsunids": ["hill-country"],
+  // The river-valley lords: the Ebro, the Guadalquivir, the Turia, the
+  // Douro and the Guadiana.
+  "banu-qasi": ["river-trade"],
+  "sevillans": ["river-trade"],
+  "valencians": ["river-trade"],
+  "leonese": ["river-trade"],
+  "banu-marwan": ["river-trade"],
+};
+
+/** The three largest baked populations - the emirate's core and the two
+ *  great rebel cities. Named rather than rolled, same as the Baltic three. */
+const IBERIA_BUREAUCRACY_LANDS: readonly string[] = [
+  "umayyads", "sevillans", "toledans",
+];
+
 export const DEFAULT_REGION: RegionId = "baltic";
 
 export const REGIONS: Record<RegionId, RegionDef> = {
@@ -76,6 +104,20 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     rulerNames: balticPools,
     terrainEligibility: BALTIC_TERRAIN_ELIGIBILITY,
     bureaucracyLands: BALTIC_BUREAUCRACY_LANDS,
+  },
+  iberia: {
+    id: "iberia",
+    name: "Iberia",
+    era: "Iberian Peninsula, c. 895",
+    blurb:
+      "The emirate has come apart in rebel marches and mountain kingdoms. " +
+      "Muwallad lords hold the river valleys against Cordoba, Asturias " +
+      "raids south past the Douro, and every count and wali on the map " +
+      "answers to himself. The fitna is a good time to be ambitious.",
+    map: iberiaMap as MapData,
+    rulerNames: iberiaPools,
+    terrainEligibility: IBERIA_TERRAIN_ELIGIBILITY,
+    bureaucracyLands: IBERIA_BUREAUCRACY_LANDS,
   },
 };
 
