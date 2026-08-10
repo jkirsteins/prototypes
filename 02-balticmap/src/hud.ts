@@ -59,6 +59,12 @@ export interface HudCallbacks {
   isResolving?(): boolean;
   /** Renders the main-menu Reset progress control when provided. */
   onResetProgress?(): void;
+  /** Renders the main-menu Regions button when provided; the click opens
+   *  the Regions page. */
+  onOpenRegions?(): void;
+  /** The era line shown under the menu title when provided - the active
+   *  region's own, so the menu says which map is about to load. */
+  regionSubtitle?(): string;
   /** Lights this faction's realm on the map, exactly as hovering its land
    *  does; null clears. Absent where there is no map (tests), in which case
    *  a hovered faction name in prose is inert. */
@@ -728,19 +734,42 @@ export function createHud(
   menu.className = "menu-overlay";
   const title = document.createElement("h1");
   title.className = "menu-title";
-  title.textContent = "Baltic Tribes";
+  title.textContent = "Petty Kingdoms";
+  menu.appendChild(title);
+  if (cb.regionSubtitle) {
+    const subtitle = document.createElement("p");
+    subtitle.className = "menu-subtitle";
+    subtitle.textContent = cb.regionSubtitle();
+    menu.appendChild(subtitle);
+  }
   const newGameBtn = document.createElement("button");
   newGameBtn.className = "menu-new-game";
   newGameBtn.textContent = "New game";
   newGameBtn.addEventListener("click", () => cb.onNewGame());
-  menu.append(title, newGameBtn);
+  menu.appendChild(newGameBtn);
+
+  // Disarming the reset confirm lives on both buttons below, so it is
+  // declared once here rather than duplicated - or omitted - into whichever
+  // callback happens to be present.
+  let disarmReset = () => {};
+
+  if (cb.onOpenRegions) {
+    const regions = document.createElement("button");
+    regions.className = "menu-regions";
+    regions.textContent = "Regions";
+    regions.addEventListener("click", () => {
+      disarmReset();
+      cb.onOpenRegions!();
+    });
+    menu.appendChild(regions);
+  }
 
   if (cb.onResetProgress) {
     const reset = document.createElement("button");
     reset.className = "menu-reset";
     reset.textContent = "Reset progress";
     let armedReset = false;
-    const disarmReset = () => {
+    disarmReset = () => {
       armedReset = false;
       reset.textContent = "Reset progress";
       reset.classList.remove("confirm");

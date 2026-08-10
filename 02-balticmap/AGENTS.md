@@ -1,6 +1,9 @@
 # AGENTS.md
 
-Baltic Tribes. Plain TypeScript + Vite, no framework, imperative DOM. `npm test`
+Petty Kingdoms. Plain TypeScript + Vite, no framework, imperative DOM. The map
+is switchable: the region registry is `src/regions.ts`, the active one is
+resolved at boot from the region pref (the Regions page) and the `region=`
+boot param (`baltic` or `iberia`). `npm test`
 and `npm run build` must both pass before committing. Verify in a browser
 through this prototype's own dev server (`npm run dev` from this directory) at
 `http://127.0.0.1:5173/prototypes/02/` - the `base` in `vite.config.ts`, not the
@@ -324,7 +327,7 @@ fall behind a rename in `src/cards.ts`.
 work - the same lesson `POLICY_COVERAGE` records in the repo `AGENTS.md`. It
 drives every event type through the log and the round summary and fails if any
 plain-text segment contains a card name from `CARDS` or a faction name from
-`src/data/map.json`.
+`src/data/baltic.json`.
 
 ## The AI's round is one modal, one line per event
 

@@ -53,6 +53,7 @@ import {
 import { buildListing, destroyOffer, type HarvestChoice } from "./harvest";
 import { createHud, LOG_PREFS_KEY, type HudCallbacks } from "./hud";
 import { createDeckScreen } from "./deck-screen";
+import { createRegionsScreen } from "./regions-screen";
 import { createHostSession, type HostSession } from "./net-host";
 import { createGuestSession, type GuestSession } from "./net-guest";
 import { hostPeer, joinPeer } from "./net";
@@ -67,7 +68,7 @@ import {
 } from "./decisions";
 import {
   loadBuildPref, loadRegionPref, memoryStorage, REGION_PREF_KEY,
-  saveBuildPref, type MetaStorage,
+  saveBuildPref, saveRegionPref, type MetaStorage,
 } from "./meta";
 import { applyBootParams, parseBootParams } from "./boot-params";
 import { REGIONS, setActiveRegion, type RegionId } from "./regions";
@@ -2789,6 +2790,28 @@ const hudCallbacks: HudCallbacks = {
     },
     onHideTip() {
       tooltip.hide();
+    },
+    regionSubtitle() {
+      return regionDef.era;
+    },
+    onOpenRegions() {
+      // The button lives on the menu overlay, which is only shown at
+      // `game.phase === "main-menu"` - so that phase is the guard, and the
+      // querySelector below only needs to stop a second click from stacking
+      // a second screen on top of the first.
+      if (app.querySelector(".regions-screen")) return;
+      const screen = createRegionsScreen(app, {
+        activeId: regionId,
+        onPick(id) {
+          saveRegionPref(storage, id);
+          // The whole app is wired to one map at module scope; a reload IS
+          // the rebuild, and the menu phase has no run to lose.
+          window.location.reload();
+        },
+        onClose() {
+          screen.remove();
+        },
+      });
     },
 };
 

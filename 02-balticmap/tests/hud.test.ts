@@ -62,6 +62,8 @@ function setup(opts?: {
   onEndTurn?: () => void;
   isResolving?: () => boolean;
   onResetProgress?: () => void;
+  onOpenRegions?: () => void;
+  regionSubtitle?: () => string;
   onSurrender?: () => void;
   onHighlightFaction?: (factionId: string | null) => void;
   localPlayerId?: () => number;
@@ -87,6 +89,8 @@ function setup(opts?: {
     ...(opts?.onEndTurn ? { onEndTurn: opts.onEndTurn } : {}),
     ...(opts?.isResolving ? { isResolving: opts.isResolving } : {}),
     ...(opts?.onResetProgress ? { onResetProgress: opts.onResetProgress } : {}),
+    ...(opts?.onOpenRegions ? { onOpenRegions: opts.onOpenRegions } : {}),
+    ...(opts?.regionSubtitle ? { regionSubtitle: opts.regionSubtitle } : {}),
     ...(opts?.onSurrender ? { onSurrender: opts.onSurrender } : {}),
     ...(opts?.onHighlightFaction
       ? { onHighlightFaction: opts.onHighlightFaction }
@@ -1616,6 +1620,45 @@ describe("hud v2", () => {
     expect(reset.textContent).toBe("Really reset?");
     reset.click();
     expect(onResetProgress).toHaveBeenCalledOnce();
+  });
+
+  it("titles the menu Petty Kingdoms", () => {
+    const { container, hud } = setup();
+    hud.update(newGame(FACTIONS));
+    expect(q(container, ".menu-title").textContent).toBe("Petty Kingdoms");
+  });
+
+  it("omits the Regions button and subtitle without their callbacks", () => {
+    const { container, hud } = setup();
+    hud.update(newGame(FACTIONS));
+    expect(container.querySelector(".menu-regions")).toBeNull();
+    expect(container.querySelector(".menu-subtitle")).toBeNull();
+  });
+
+  it("shows a Regions button that opens the page and disarms the reset", () => {
+    const onOpenRegions = vi.fn();
+    const onResetProgress = vi.fn();
+    const { container, hud } = setup({ onOpenRegions, onResetProgress });
+    hud.update(newGame(FACTIONS));
+    const reset = q(container, ".menu-reset");
+    reset.click();
+    expect(reset.textContent).toBe("Really reset?");
+    const regionsBtn = q(container, ".menu-regions");
+    expect(regionsBtn.textContent).toBe("Regions");
+    regionsBtn.click();
+    expect(onOpenRegions).toHaveBeenCalledOnce();
+    expect(reset.textContent).toBe("Reset progress");
+    expect(onResetProgress).not.toHaveBeenCalled();
+  });
+
+  it("shows the region subtitle under the title when provided", () => {
+    const { container, hud } = setup({
+      regionSubtitle: () => "Eastern Baltic, c. 1100",
+    });
+    hud.update(newGame(FACTIONS));
+    expect(q(container, ".menu-subtitle").textContent).toBe(
+      "Eastern Baltic, c. 1100",
+    );
   });
 });
 

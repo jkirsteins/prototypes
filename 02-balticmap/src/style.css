@@ -388,6 +388,31 @@ svg.map.dragging {
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
 }
 
+/* The active region's era, read right under the title so the menu says which
+   map is about to load before New game is even in reach. */
+.menu-subtitle {
+  margin-top: -16px;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: #d8cfc0;
+}
+
+/* A secondary nav action beside New game: outlined rather than filled, so it
+   reads as "go elsewhere" rather than "start". */
+.menu-regions {
+  font-size: 14px;
+  padding: 8px 24px;
+  border: 1px solid #7a6a55;
+  border-radius: 6px;
+  background: transparent;
+  color: #fdfaf4;
+  cursor: pointer;
+}
+
+.menu-regions:hover {
+  background: rgba(253, 250, 244, 0.1);
+}
+
 /* The two big overlay buttons share one look. Named as two selectors rather
    than one shared class: `.pm-view-map` used to BE a `.menu-new-game`, so a
    `.menu-new-game` lookup inside the postmortem answered with the wrong
@@ -717,6 +742,103 @@ svg.map.dragging {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* The Regions page: same dark-overlay/light-tile split as .deck-screen, and
+   the same reason - a container with a dark background states its own
+   `color`, or a tile's text falls through to UA black. */
+.regions-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(24, 32, 38, 0.88);
+  color: #fdfaf4;
+  z-index: 20;
+}
+
+/* The scroll region on a short window - the build-screen rule carried over:
+   the Back button below stays outside it and reachable. */
+.rs-tiles {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  align-items: flex-start;
+  width: min(1000px, 100% - 32px);
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+}
+
+.rs-tile {
+  flex: 1 1 0;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid #7a6a55;
+  border-radius: 8px;
+  background: #fdfaf4;
+  color: #3f3428;
+  font-family: inherit;
+  text-align: left;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.rs-tile.active {
+  cursor: default;
+  outline: 2px solid #7cb06a;
+  outline-offset: -2px;
+}
+
+.rs-name {
+  font-size: 16px;
+}
+
+.rs-era {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b5d49;
+}
+
+.rs-preview {
+  width: 100%;
+  max-height: 220px;
+}
+
+.rs-blurb {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #4a4030;
+}
+
+.rs-active-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: #7cb06a;
+  color: #fdfaf4;
+}
+
+.rs-back {
+  font-size: 15px;
+  padding: 10px 32px;
+  border: 1px solid #7a6a55;
+  border-radius: 6px;
+  background: #fdfaf4;
+  color: #3f3428;
+  cursor: pointer;
+}
+
+.rs-back:hover {
+  background: #f1e9da;
 }
 
 .card.discard-hint {
