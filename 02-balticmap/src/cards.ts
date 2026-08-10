@@ -1,4 +1,6 @@
-import { ATTACK_DAMAGE, SINGLE_LAND_HEAL } from "./defense";
+import {
+  ATTACK_DAMAGE, COMBAT_RULES, SINGLE_LAND_HEAL, type CombatRules,
+} from "./defense";
 import { card, keyword, t, type Segment } from "./segments";
 
 /** One pack draw tier. The meta progression retired with the defense-score
@@ -531,6 +533,11 @@ export interface CardRules {
   marchCards: ReadonlySet<string>;
   guards: Readonly<Record<string, string>>;
   tributeCards: readonly string[];
+  /** What a blow BUYS, as against what a card carries: the gates, and the rule
+   *  by which an arriving army takes a land. Not a card table, and here
+   *  anyway - a raid's damage means nothing without it, and two deploys that
+   *  disagree about it disagree about what every attack card does. */
+  combat: CombatRules;
 }
 
 export const CARD_RULES: CardRules = {
@@ -543,6 +550,7 @@ export const CARD_RULES: CardRules = {
   marchCards: MARCH_CARDS,
   guards: GUARDS,
   tributeCards: TRIBUTE_CARDS,
+  combat: COMBAT_RULES,
 };
 
 /** A stable string for everything two deploys must agree about. Sorted at
@@ -574,6 +582,7 @@ export function cardRulesHash(rules: CardRules = CARD_RULES): string {
     `march:${[...rules.marchCards].sort().join(",")}`,
     `guards:${stable(rules.guards)}`,
     `tribute:${[...rules.tributeCards].sort().join(",")}`,
+    `combat:${stable(rules.combat)}`,
   ].join(";");
 }
 

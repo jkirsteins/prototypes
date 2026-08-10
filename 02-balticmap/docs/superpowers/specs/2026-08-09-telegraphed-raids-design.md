@@ -38,10 +38,12 @@ ruler after drawing the arrow does not disarm it.
 
 Resolution is **per axis**, not per march. An axis is the unordered pair of
 lands two marches run between; both sides come off the board together and only
-the difference lands, on whichever side pushed less hard. Each side is summed,
-so two armies on one axis behave the obvious way and the uncontested case falls
-out for free (an axis with an empty side has a delta equal to its full
-strength).
+the difference lands, on whichever side pushed less hard. Armies **pair off one
+for one** in declaration order (`resolveAxis` in `src/marches.ts`), and a
+leftover on the longer side meets nobody and lands in full - so the uncontested
+case falls out for free, an axis with an empty side having a delta equal to its
+full strength. Summing each side was the first shape and is not what the code
+does; the pairing comment in `src/marches.ts` says why.
 
 A counter still in flight is pulled in even though its own expiry has not come
 round. That is what "resolves at the earlier of the two turns" means, and it is
@@ -56,6 +58,14 @@ Three outcomes, all of them reported:
   `march-resolved` with no `amount` says so. Silence here was a real hole found
   in the browser pass - you played a Raid, it was answered exactly, and nothing
   anywhere told you.
+
+And whichever side the difference lands on, it may not stop at damage: if what
+lands EXCEEDS what that land has standing, the army walks in and takes it
+(`capturesOnArrival` in `src/defense.ts`). Symmetric, because it is asked of
+the difference and not of the attacker - a counter-raid strong enough overruns
+the land the attack was launched from, which is what makes marching out with
+your last defenders a decision. Exactly equal is a flattening and not a
+conquest, so the two-raid timing game survives the rule.
 
 A march is dropped (`march-lapsed`) if the ground moved under it: its source
 left the actor's realm, its source was annexed away, or its target left the
@@ -93,7 +103,10 @@ registries exist to catch. Two types replace it:
 - `march-resolved` - `targetFactionId` is the land that took the damage (the
   attacker's own, on a won counter), `sourceFactionId` the other end, `amount`
   what actually moved, `clash` the two side totals when both sides had armies.
-  `amount` absent means a standoff.
+  No `amount` with a `clash` is a standoff; neither is `metNothing`, an arrow
+  arriving where there was nothing left to move - a demand coming due, or an
+  army walking into a land already flat. One line per arrival either way,
+  including the arrival that took the land.
 - `march-lapsed` - a fizzle, silent in `NOTICE_RULES` because it moves nothing.
 
 Both classify as **nobody's consequence** in `nestsUnderItsPlay`: they resolve

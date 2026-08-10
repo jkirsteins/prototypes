@@ -377,14 +377,45 @@ describe("targetImpactLines", () => {
       .toContain("-- Takes the land, if it is still undefended when this lands");
   });
 
-  it("keeps the capture row off a land that still has defenders", () => {
+  it("keeps the capture row off a land this card cannot overwhelm", () => {
     expect(shown(targetImpactLines(v(), "alpha", "raid", "beta")))
       .toEqual(["If Raid played here:", "-1 Defense (60 -> 59)"]);
-    // One point left is not none - the raid takes it to 0 and the land stays
-    // its own. Nothing walks in until the NEXT army arrives.
+    // Exactly equal is a flattening, not a conquest: one damage against one
+    // point standing takes it to 0 and the land stays its own. Nothing walks in
+    // until the NEXT army arrives.
     const nearly = v({ defense: { beta: 1 } });
     expect(shown(targetImpactLines(nearly, "alpha", "raid", "beta")))
       .toEqual(["If Raid played here:", "-1 Defense (1 -> 0)"]);
+  });
+
+  it("says a land the card overwhelms is taken outright", () => {
+    // One point more than it holds is the whole rule, and the row must say so
+    // before the card is spent - a `-2 Defense (1 -> 0)` on its own describes
+    // a conquest as a scratch.
+    const view = v({ defense: { beta: 1 } });
+    expect(shown(targetImpactLines(view, "alpha", "strong-raid", "beta")))
+      .toEqual([
+        "If Strong raid played here:",
+        "-2 Defense (1 -> 0)",
+        "-- Takes the land, if it is no better defended when this lands",
+      ]);
+  });
+
+  it("does not promise a conquest the ground shaves away", () => {
+    // Hill country cuts a 4 to 3, and 3 against 3 standing holds. The preview
+    // asks the same post-terrain question the resolution does, or it promises
+    // what the card will not do. A doubled Strong raid, so the blow is big
+    // enough for the ground to have something to take off it.
+    const TAKES = "-- Takes the land, if it is no better defended when this lands";
+    const open = v({ defense: { beta: 3 }, omens: { alpha: 1 } });
+    expect(shown(targetImpactLines(open, "alpha", "strong-raid", "beta")))
+      .toContain(TAKES);
+    const hills = v({
+      defense: { beta: 3 }, omens: { alpha: 1 },
+      passives: { beta: ["hill-country"] },
+    });
+    expect(shown(targetImpactLines(hills, "alpha", "strong-raid", "beta")))
+      .not.toContain(TAKES);
   });
 
   it("adds the ruler's leadership into the quoted damage", () => {

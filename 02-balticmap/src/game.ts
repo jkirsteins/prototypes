@@ -9,7 +9,8 @@ import {
   type Incorporated, type Overlords,
 } from "./relations";
 import {
-  addDisease, applyDamage, applyHeal, clearDiseaseOf, DEFAULT_DEFENSE_MAX,
+  addDisease, applyDamage, applyHeal, capturesOnArrival, clearDiseaseOf,
+  DEFAULT_DEFENSE_MAX,
   defenseMaxOf, defenseOf, HARVEST_FEAST_HEAL, independenceGateOpen,
   PLAGUE_DAMAGE_PER_STACK, LAND_GROWTH, SINGLE_LAND_HEAL,
   transferAllDiseaseTo, turnipThresholdFor, WAR_COUNCIL_LEADERSHIP,
@@ -889,13 +890,40 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   let passives = state.passives;
   const pendingTransfers = { ...state.pendingTransfers };
 
+  /** The line that says an arrow got where it was aimed. It is the cause the
+   *  submission below it indents under (`isAdjacentCause`), so it is pushed
+   *  immediately before, and by the CALLER rather than by `takeLand` - because
+   *  an arrival is not the same event as a conquest. It happens whether or not
+   *  the land changes hands: a blow the ruler gate then refuses still broke
+   *  defenders, and a player owed that line either way.
+   *
+   *  `amount` is what the same blow moved, absent when the land was already
+   *  flat. Absent with no `clash` is `metNothing`, the shape the log renders as
+   *  "reaches" and the round modal leaves to the submission to report. */
+  const arrival = (
+    playerId: number, cardId: string, land: string, from: string,
+    moved?: { amount: number; clash?: { incoming: number; counter: number } },
+  ): void => {
+    events.push({
+      turn: state.turn, playerId, type: "march-resolved",
+      cardId, targetFactionId: land, sourceFactionId: from,
+      ...(moved !== undefined
+        ? { amount: moved.amount, ...(moved.clash ? { clash: moved.clash } : {}) }
+        : {}),
+    });
+  };
+
   /** A land walked into by an army, or subjugated any other way outside a
    *  play. The same allegiance move `landSubjugation` makes inside `playCard`,
    *  and the same question afterwards: how much defense to send with it.
    *
    *  `cause` is required rather than defaulted, and that is the point: this is
    *  one of the two doors an allegiance change can come through, and a new way
-   *  to take a land does not compile until it says which. */
+   *  to take a land does not compile until it says which.
+   *
+   *  Both arriving causes owe an `arrival` line immediately before this call.
+   *  It is not pushed here because it is not conditional on the land changing
+   *  hands - see `applyCaptures`. */
   const takeLand = (
     land: string, by: string, from: string, cause: ArrivingCause,
   ): void => {
@@ -905,16 +933,6 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     players = updateFaction(players, land, (pl) => {
       const clean = stripTribute(pl);
       return { ...clean, deck: shuffle([...clean.deck, ...TRIBUTE_CARDS], rng) };
-    });
-    // The arrival, immediately before what it caused. A `beginTurn` batch opens
-    // with no play, so this line IS the cause `appendEvents` reads the
-    // indentation off - and without it the log said a land had submitted with
-    // nothing above it saying why. It carries no `amount` and no `clash`
-    // because an army arriving where there is nothing left to fight moves no
-    // score and met nobody; `metNothing` in src/hud.ts is that shape's name.
-    events.push({
-      turn: state.turn, playerId: p.id, type: "march-resolved",
-      cardId: cause.cardId, targetFactionId: land, sourceFactionId: from,
     });
     events.push({
       turn: state.turn, playerId: p.id, type: "subjugated",
@@ -971,6 +989,9 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
         });
         continue;
       }
+      // A demand coming due met no defenders and moved no score, so its
+      // arrival is the bare shape.
+      arrival(playerId, claim.cardId, claim.to, claim.from);
       takeLand(claim.to, claim.actor, claim.from, {
         via: "claim", cardId: claim.cardId,
       });
@@ -1016,21 +1037,45 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     }
   }
 
+  /** Armies that got through, one land at a time: the arrival is reported, and
+   *  then the two gates decide whether the land actually changes hands.
+   *
+   *  The line comes FIRST and unconditionally, because the blow landed
+   *  regardless. A raid out of the leaderless middle that breaks a land's last
+   *  defenders is a real thing that happened to that land, and reporting it
+   *  only when a conquest followed left the arrow vanishing off the map with
+   *  nothing in the log.
+   *
+   *  One function for both callers - this seat's own marches and the sweep over
+   *  the seats that never get a turn - because the two gates below were written
+   *  out twice and a third copy is how they start to differ. */
+  const applyCaptures = (captures: Capture[], playerId: number): void => {
+    for (const capture of captures) {
+      arrival(
+        playerId, capture.cardId, capture.land, capture.from,
+        capture.amount !== undefined
+          ? { amount: capture.amount, clash: capture.clash }
+          : undefined,
+      );
+      // Only a faction with a LEADER takes land. A restless raid out of a land
+      // nobody leads is a raid, not a conquest - without this the grey middle
+      // quietly ate itself, and lands with no chief to answer for them ended up
+      // holding vassals.
+      if (!hasRuler(state.rulers, capture.by)) continue;
+      if (
+        fullRealmOf(capture.by, overlords, state.incorporated).has(capture.land)
+      ) {
+        continue;
+      }
+      takeLand(capture.land, capture.by, capture.from, {
+        via: "conquest", cardId: capture.cardId,
+      });
+    }
+  };
+
   landClaims(p.factionId, p.id);
 
-  for (const capture of landed.captures) {
-    // Only a faction with a LEADER takes land. A restless raid out of a land
-    // nobody leads is a raid, not a conquest - without this the grey middle
-    // quietly ate itself, and lands with no chief to answer for them ended up
-    // holding vassals.
-    if (!hasRuler(state.rulers, capture.by)) continue;
-    if (fullRealmOf(capture.by, overlords, state.incorporated).has(capture.land)) {
-      continue;
-    }
-    takeLand(capture.land, capture.by, capture.from, {
-      via: "conquest", cardId: capture.cardId,
-    });
-  }
+  applyCaptures(landed.captures, p.id);
 
   // Wild lands: a land nobody tends grows its defenses back on its own. Rolled
   // once a ROUND - at the wrap onto the first seat - and not once a turn, so
@@ -1105,17 +1150,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       );
       marches = out.marches;
       defense = out.defense;
-      for (const capture of out.captures) {
-        if (!hasRuler(state.rulers, capture.by)) continue;
-        if (
-          fullRealmOf(capture.by, overlords, state.incorporated).has(capture.land)
-        ) {
-          continue;
-        }
-        takeLand(capture.land, capture.by, capture.from, {
-          via: "conquest", cardId: capture.cardId,
-        });
-      }
+      applyCaptures(out.captures, seat.id);
     }
     // The status IS the condition. A taken land loses it on capture, so
     // "unheld" needs no test of its own here - asking twice is how the two
@@ -1339,36 +1374,48 @@ function resolveMarches(
       const dealt = damageAfterTerrain(view, loser, eng.delta);
       const before = defenseOf({ defense, defenseMax: state.defenseMax }, loser);
       const moved = Math.min(before, dealt);
-      // An army arriving at a land with nothing left to fight takes it instead.
-      // This is what makes two raids on a broken land worth timing: the first
-      // flattens it and the second walks in, and neither needs a Subjugate.
-      if (before === 0) {
+      // `incoming` is always the strength aimed AT the loser and `counter`
+      // what the loser mustered against it, whichever end of the axis that
+      // turned out to be. The label the player reads is delta out of incoming.
+      const clash = loser === axis.a
+        ? { incoming: strengthB, counter: strengthA }
+        : { incoming: strengthA, counter: strengthB };
+      // The damage lands whatever else the blow does, and it lands HERE rather
+      // than at the capture site, because the next pairing on this axis reads
+      // the defense as this one left it.
+      if (moved > 0) {
+        defense = applyDamage(
+          { defense, defenseMax: state.defenseMax }, loser, dealt,
+        );
+      }
+      // An army that deals more than the land has standing walks in over what
+      // is left of it. A land already flat is the same rule and not a case of
+      // its own: anything that reaches it deals at least 1, and 1 exceeds
+      // nothing. Equal is a flattening - the land holds, at 0, and the next
+      // arrival takes it.
+      //
+      // The line for this arrival is pushed by `applyCaptures`, not here: it
+      // has to stand immediately before the submission it causes, and the
+      // captures of every axis are applied after all of them have landed.
+      if (capturesOnArrival(dealt, before)) {
         captures.push({
           land: loser, by: eng.spear.actor, from: eng.spear.from,
           cardId: eng.spear.cardId,
+          // What the same blow moved on its way in, so the arrival can carry
+          // it. Nothing moved on a land that was already flat, and that shape -
+          // no `amount`, and therefore no `clash` either - is `metNothing`.
+          ...(moved > 0 ? { amount: moved, ...(contested ? { clash } : {}) } : {}),
         });
         continue;
       }
       if (moved <= 0) continue;
-      defense = applyDamage(
-        { defense, defenseMax: state.defenseMax }, loser, dealt,
-      );
       events.push({
         turn: state.turn, playerId: p.id, type: "march-resolved",
         // The card of whichever side actually landed - the counter's, when a
         // counter won, since that is the play the damage came out of.
         cardId: eng.spear.cardId,
         targetFactionId: loser, sourceFactionId: winner, amount: moved,
-        // `incoming` is always the strength aimed AT the loser and `counter`
-        // what the loser mustered against it, whichever end of the axis that
-        // turned out to be. The label the player reads is delta out of incoming.
-        ...(contested
-          ? {
-              clash: loser === axis.a
-                ? { incoming: strengthB, counter: strengthA }
-                : { incoming: strengthA, counter: strengthB },
-            }
-          : {}),
+        ...(contested ? { clash } : {}),
       });
     }
   }
@@ -1386,6 +1433,15 @@ interface Capture {
    *  push already reads it off the same march; a capture that dropped it left
    *  the land changing hands with no way back to the raid that did it. */
   cardId: string;
+  /** What the blow moved on its way in, absent when the land was already flat
+   *  and there was nothing to move. The arrival line carries it, so an army
+   *  that broke the last defenders and walked in over them is ONE line with a
+   *  `(Defense -1 -> 0)` on it rather than a damage line and an arrival. */
+  amount?: number;
+  /** The two sides' strengths, when the blow got through a counter. Rides only
+   *  alongside `amount`: the log reads a clash with no amount as a standoff,
+   *  which is the one thing a conquest is not. */
+  clash?: { incoming: number; counter: number };
 }
 
 /** The player concedes. Terminal, and deliberately not reversible. Its own

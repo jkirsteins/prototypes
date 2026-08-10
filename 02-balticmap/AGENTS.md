@@ -257,12 +257,34 @@ does:
   else's army may break the claim, and the demand lapses. The same rule as a
   march arrow, for the same reason - an allegiance that changed the instant a
   card hit the table gave nobody a chance to see it coming.
-- A **capture** is an army arriving where there is nothing left to fight: a
-  raid that lands on a flattened land takes it. The taker is then asked how
-  much defense to send with the conquest (`pendingTransfers` /
-  `transferDefense`); a seat nobody is sitting at moves half on the spot. 0 is
-  a real answer. Keyed by FACTION, because every person is asked and one slot
-  would have let one of them hold the only question on the board.
+- A **capture** is an army arriving with more force than the land has left
+  standing: `capturesOnArrival` in `src/defense.ts`, and it is one predicate
+  read by the resolution and by the hover preview. Strictly more - a blow that
+  exactly flattens a land leaves it at 0 and its own, and the next arrival
+  walks in, which is what keeps two raids on one land worth timing. A land
+  already at 0 is the same rule and not a case beside it: anything that reaches
+  it deals at least 1, and 1 exceeds nothing.
+
+  The question is about the BLOW, not about how broken the land is, which is
+  what makes it a different door from `SUBJUGATION_GATE`. A Subjugate claim
+  asks the gate; an army asks whether it got through. Both gates still refuse a
+  conquest to a faction with no ruler, so a restless raid out of the grey
+  middle breaks a land without taking it.
+
+  The taker is then asked how much defense to send with the conquest
+  (`pendingTransfers` / `transferDefense`); a seat nobody is sitting at moves
+  half on the spot. 0 is a real answer. Keyed by FACTION, because every person
+  is asked and one slot would have let one of them hold the only question on
+  the board.
+
+  **The arrival is ONE line, and the caller pushes it** - `arrival` in
+  `beginTurn`, immediately before `takeLand`, never inside it. Two reasons, and
+  both bite: the line has to stand next to the submission it causes, which
+  `takeLand` cannot guarantee once captures are applied after every axis has
+  landed; and the blow lands whether or not the conquest is allowed, so a
+  capture the ruler gate refuses still owes the player its damage line. The
+  line carries `amount` when the same blow moved a score - no `amount` and no
+  `clash` is `metNothing`, the shape that reads "reaches".
 
 ## The harvest is five answers, and the milestones are a table
 
