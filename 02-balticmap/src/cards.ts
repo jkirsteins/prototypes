@@ -1,4 +1,6 @@
-import { ATTACK_DAMAGE, SINGLE_LAND_HEAL } from "./defense";
+import {
+  ATTACK_DAMAGE, COMBAT_RULES, SINGLE_LAND_HEAL, type CombatRules,
+} from "./defense";
 import { card, keyword, t, type Segment } from "./segments";
 
 /** One pack draw tier. The meta progression retired with the defense-score
@@ -109,8 +111,8 @@ export const CARDS: Record<string, CardDef> = {
     textSegments: [t("Your next "), keyword("raid"), t(" or "), keyword("fortify"), t(" card counts double. Stacks.")] },
   "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
   "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a bordering land. It lands next turn for 2 damage, less any counter-raid." },
-  "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 2 defense to one of your lands." },
-  "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 1 defense to one of your lands." },
+  "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 3 defense to one of your lands." },
+  "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 2 defense to one of your lands." },
   // Build B - Pestilence. Stacks are owned: each rival's disease on a land is
   // its own count, and only your own stacks feed your Plague.
   "spread-disease": { id: "spread-disease", name: "Spread disease", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["hostile"], text: "Put 1 disease on a land in reach. It does nothing until a Plague." ,
@@ -531,6 +533,11 @@ export interface CardRules {
   marchCards: ReadonlySet<string>;
   guards: Readonly<Record<string, string>>;
   tributeCards: readonly string[];
+  /** What a blow BUYS, as against what a card carries: the gates, and the rule
+   *  by which an arriving army takes a land. Not a card table, and here
+   *  anyway - a raid's damage means nothing without it, and two deploys that
+   *  disagree about it disagree about what every attack card does. */
+  combat: CombatRules;
 }
 
 export const CARD_RULES: CardRules = {
@@ -543,6 +550,7 @@ export const CARD_RULES: CardRules = {
   marchCards: MARCH_CARDS,
   guards: GUARDS,
   tributeCards: TRIBUTE_CARDS,
+  combat: COMBAT_RULES,
 };
 
 /** A stable string for everything two deploys must agree about. Sorted at
@@ -574,6 +582,7 @@ export function cardRulesHash(rules: CardRules = CARD_RULES): string {
     `march:${[...rules.marchCards].sort().join(",")}`,
     `guards:${stable(rules.guards)}`,
     `tribute:${[...rules.tributeCards].sort().join(",")}`,
+    `combat:${stable(rules.combat)}`,
   ].join(";");
 }
 

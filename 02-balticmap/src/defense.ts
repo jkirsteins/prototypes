@@ -15,14 +15,19 @@ export const DEFENSE_PER_POPULATION = 5000;
  *  passing a map in. The real map derives 2..18. */
 export const DEFAULT_DEFENSE_MAX = 6;
 
-/** The share of its ceiling a land's HOME polygon must be at or below before
- *  it can be taken.
+/** The share of its ceiling a land's HOME polygon must be at or below before a
+ *  DEMAND can be made of it - the Subjugate claim's gate, and the band the map
+ *  badge turns red at.
  *
- *  Zero: a land falls when its defenses are gone, and not a moment sooner. One
- *  number for one rule, so the badge that turns red, the band the map draws and
- *  the army that walks in all mean the same thing - the land is flattened. A
- *  fractional gate meant a land could be taken while it was still standing,
- *  which is a second way to lose a land and a second number to read.
+ *  Zero: a land submits to a demand when its defenses are gone, and not a
+ *  moment sooner. One number for one rule, so the badge that turns red and the
+ *  claim that lands mean the same thing. A fractional gate meant a land could
+ *  be demanded while it was still standing, which is a second way to lose a
+ *  land and a second number to read.
+ *
+ *  An ARMY is the other door and asks a different question - see
+ *  `capturesOnArrival`. A land still holding defenders is taken by force that
+ *  overwhelms them, without ever passing this line.
  *
  *  Kept as a share rather than folded away because it is the dial: the whole
  *  rule moves by changing this line. */
@@ -83,10 +88,16 @@ export const HARVEST_FEAST_HEAL = 1;
  *  of the plays in the game did nothing at all. A flat heal on a chosen land
  *  is what the card was always pretending to be.
  *
- *  Below `HILLFORT_HEAL` on purpose. Fortify is what every deck STARTS with,
- *  four copies of it; Hillfort is the same shape, three times as strong, and
- *  has to be harvested. */
-export const FORTIFY_HEAL = 1;
+ *  Two, because an arriving army takes a land it OVERWHELMS and not one it
+ *  merely flattens (`capturesOnArrival`): the point a heal puts back is the
+ *  point between holding and changing hands, and a one-point heal could not
+ *  answer the Strong raid every deck can build.
+ *
+ *  It reaches `HILLFORT_HEAL` in its strong form, and that is not a card made
+ *  redundant. What separates them is the cost, not the number: a fortify
+ *  spends one of the land's settlements and may repeat, while Hillfort spends
+ *  nothing, repeats nothing, and has to be harvested. */
+export const FORTIFY_HEAL = 2;
 
 /** What the "strong" version of a starting card adds. Flat, and one: on a
  *  board of 2..18 a single point is a quarter of a small land's ceiling, and
@@ -184,6 +195,55 @@ export function subjugationGateOpen(
     Math.floor(SUBJUGATION_GATE * defenseMaxOf(view, factionId))
   );
 }
+
+/** Whether an army arriving takes the land: what it deals must EXCEED what is
+ *  standing there. Equal is a flattening and not a conquest - the land is left
+ *  at 0, holding nothing, and the next arrival walks in.
+ *
+ *  Not a gate on a share of the ceiling like the two above, because this is not
+ *  a question about how broken a land is. It is a question about the blow: a
+ *  land holding one defender falls to two armies and holds against one,
+ *  whatever its size. That is what makes the ceiling worth having and a
+ *  fortify worth playing on the turn an arrow is already in the air.
+ *
+ *  Both readers pass POST-TERRAIN damage, the `SINGLE_LAND_HEAL` rule: the
+ *  resolution in `resolveMarches` and the hover preview in
+ *  src/target-explanations.ts. A preview reading the raw number would promise a
+ *  conquest that hill country shaves away.
+ *
+ *  A land at 0 is taken by anything that reaches it, since any blow that lands
+ *  is at least 1 - which is the whole of the old "walks into a flattened land"
+ *  rule, now a case of this one rather than a branch beside it. */
+export function capturesOnArrival(dealt: number, standing: number): boolean {
+  return dealt > standing;
+}
+
+/** What two deploys must agree about before a blow lands, gathered so the wire
+ *  can fingerprint it - `CARD_RULES` in src/cards.ts folds this in.
+ *
+ *  A card's damage table says what an arrow carries; these say what that
+ *  buys. Change either and two builds that shook hands play different games:
+ *  the host resolves the arrival its way while the guest's own hover already
+ *  promised the other, which is a click its map called a conquest coming back
+ *  as a scratch.
+ *
+ *  `capture` is a NAME rather than a number because the rule is a predicate,
+ *  and a name is the only thing a hash can hold of one. It is hand-kept, so
+ *  tests/cards.test.ts pins it to `capturesOnArrival` itself: the two cannot
+ *  move apart without a red test. */
+export interface CombatRules {
+  subjugationGate: number;
+  independenceGate: number;
+  /** The rule by which an arriving army takes a land, as `capturesOnArrival`
+   *  spells it. "excess": strictly more than what stands. */
+  capture: string;
+}
+
+export const COMBAT_RULES: CombatRules = {
+  subjugationGate: SUBJUGATION_GATE,
+  independenceGate: INDEPENDENCE_GATE,
+  capture: "excess",
+};
 
 export function independenceGateOpen(
   view: DefenseView, factionId: string,

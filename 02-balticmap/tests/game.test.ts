@@ -46,8 +46,8 @@ const LINE_ADJ = {
 };
 
 /** A roomy polygon for the fixtures, well above the shipped map's 2..18.
- *  The rules are scale-free and the heals are not: at a shipped max of 6 a
- *  Hillfort (15) fills anything and a Fortify (4) all but does, so every
+ *  The rules are scale-free and the heals are not: on a small shipped polygon
+ *  a Hillfort fills half of it and a Fortify a third, so every
  *  test about "how much did this move" would be a test about the cap. A 60
  *  polygon leaves both gates and both heals distinguishable, the same reason
  *  tests/playability.test.ts works at 600. */
@@ -682,7 +682,8 @@ describe("the counter-raid clash", () => {
   it("lets two armies down one axis break a land and then walk into it", () => {
     // The pairings resolve in order against the defense the one before left,
     // which is the same "first flattens it, second walks in" two armies down
-    // two axes already had.
+    // two axes already had. Two arrows because each carries exactly what the
+    // land has standing: one carrying two would take it on its own.
     const g = playingState(LINE_ADJ);
     const arrow = () => ({
       actor: "beta", from: "beta", to: "alpha", cardId: "raid",
@@ -2297,6 +2298,181 @@ describe("an army walking into a broken land", () => {
     expect(after.marches[`${raider}>${target}#0`]).toBeUndefined();
     expect(after.overlords.get(target)).toBeUndefined();
     expect(after.log.some((e) => e.type === "subjugated")).toBe(false);
+  });
+});
+
+describe("an army that overwhelms a land", () => {
+  /** One arrow of `damage` aimed at `to` out of the human's own seat, landing
+   *  at that seat's next turn start. The fixture the whole excess rule is read
+   *  against: what it deals, against what the land has standing. */
+  function oneArrow(damage: number, to: string, standing: number): GameState {
+    const base = playingSix();
+    return landMarches({
+      ...base,
+      defense: { [to]: standing },
+      marches: {
+        [`beta>${to}#0`]: {
+          actor: "beta", from: "beta", to, cardId: "raid",
+          damage, holdsArmy: true, expiry: base.turn + 1,
+        },
+      },
+    });
+  }
+
+  it("takes it in the same blow - one point more than it holds is enough", () => {
+    // The rule this whole file used to state the other way round: a 5 STR arrow
+    // landing on a land holding 1 flattened it and stopped, and the conquest
+    // wanted a second army a turn later.
+    const after = oneArrow(2, "alpha", 1);
+    expect(after.defense.alpha).toBe(0);
+    expect(after.overlords.get("alpha")).toBe("beta");
+    expect(after.log).toContainEqual(expect.objectContaining({
+      type: "subjugated", targetFactionId: "alpha", overlordFactionId: "beta",
+      via: "conquest",
+    }));
+  });
+
+  it("holds when the blow only equals what is standing", () => {
+    // Equal is a flattening and not a conquest. The land is left at 0, holding
+    // nothing, and the NEXT arrival walks in - which is the timing game the
+    // strict-excess line exists to keep.
+    const after = oneArrow(1, "alpha", 1);
+    expect(after.defense.alpha).toBe(0);
+    expect(after.overlords.get("alpha")).toBeUndefined();
+    expect(after.log.some((e) => e.type === "subjugated")).toBe(false);
+  });
+
+  it("reports the arrival ONCE, carrying what the blow moved", () => {
+    // Two lines for one arrow is the thing this design is shaped around: the
+    // damage the blow dealt and the arrival that took the land are one event,
+    // and the submission indents under it.
+    const base = playingSix();
+    const before = base.log.length;
+    const after = landMarches({
+      ...base,
+      defense: { alpha: 1 },
+      marches: {
+        "beta>alpha#0": {
+          actor: "beta", from: "beta", to: "alpha", cardId: "strong-raid",
+          damage: 2, holdsArmy: true, expiry: base.turn + 1,
+        },
+      },
+    });
+    const batch = fresh(after, before);
+    const landings = batch.filter(
+      (e) => e.type === "march-resolved" && e.targetFactionId === "alpha",
+    );
+    expect(landings).toHaveLength(1);
+    expect(landings[0]).toMatchObject({
+      cardId: "strong-raid", sourceFactionId: "beta", amount: 1,
+    });
+    // The submission stands immediately after it, and reads as its consequence.
+    const at = batch.indexOf(landings[0]);
+    expect(batch[at + 1]).toMatchObject({
+      type: "subjugated", targetFactionId: "alpha", consequence: true,
+    });
+  });
+
+  it("still reports nothing moved when the land was already flat", () => {
+    // The old walk-in is a case of the new rule, not a branch beside it, and
+    // its line keeps the `metNothing` shape: no amount, so no `(Defense ...)`
+    // suffix on a blow that moved no score.
+    const after = oneArrow(1, "alpha", 0);
+    expect(after.overlords.get("alpha")).toBe("beta");
+    const landing = after.log.find(
+      (e) => e.type === "march-resolved" && e.targetFactionId === "alpha",
+    );
+    expect(landing?.amount).toBeUndefined();
+    expect(landing?.clash).toBeUndefined();
+  });
+
+  it("takes the ATTACKER's land when the counter overruns it", () => {
+    // Symmetric, because it is one rule asked of whichever side the difference
+    // lands on. Marching out with your last defenders is a real risk: 1 out
+    // against 3 back leaves 2 walking into a land holding 1.
+    const base = playingSix();
+    const foe = base.factionIds.find(
+      (f) => f !== "beta" && hasRuler(base.rulers, f),
+    )!;
+    const after = landMarches({
+      ...base,
+      defense: { beta: 1 },
+      marches: {
+        [`beta>${foe}#0`]: {
+          actor: "beta", from: "beta", to: foe, cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+        },
+        [`${foe}>beta#0`]: {
+          actor: foe, from: foe, to: "beta", cardId: "raid",
+          damage: 3, holdsArmy: true, expiry: base.turn + 1,
+        },
+      },
+    });
+    expect(after.overlords.get("beta")).toBe(foe);
+    // The arrival names the attacker's OWN land, and the clash reads from that
+    // land's side: 3 came at it, 1 answered.
+    expect(after.log).toContainEqual(expect.objectContaining({
+      type: "march-resolved", targetFactionId: "beta", sourceFactionId: foe,
+      amount: 1, clash: { incoming: 3, counter: 1 },
+    }));
+  });
+
+  it("is shaved by the ground: hill country holds what open land loses", () => {
+    // The excess is asked of what actually LANDS. A 4 reduced to 3 against 3
+    // standing is exactly equal, and exactly equal holds.
+    const base = playingSix();
+    const armed: GameState = {
+      ...base,
+      passives: { alpha: ["hill-country"] },
+      defense: { alpha: 3 },
+      marches: {
+        "beta>alpha#0": {
+          actor: "beta", from: "beta", to: "alpha", cardId: "great-raid",
+          damage: 4, holdsArmy: true, expiry: base.turn + 1,
+        },
+      },
+    };
+    const after = landMarches(armed);
+    expect(after.defense.alpha).toBe(0);
+    expect(after.overlords.get("alpha")).toBeUndefined();
+    // On open ground the same arrow takes it.
+    const open = landMarches({ ...armed, passives: {} });
+    expect(open.overlords.get("alpha")).toBe("beta");
+  });
+
+  it("breaks a land for a leaderless raider without taking it", () => {
+    // A raid out of the grey middle is a raid, not a conquest, however hard it
+    // lands - and the blow it dealt is still a line, or an arrow would come off
+    // the map with nothing said about it.
+    const g = playingSix();
+    const raider = g.factionIds.filter((f) => !hasRuler(g.rulers, f))[0];
+    const target = g.factionIds.find(
+      (f) => f !== raider && hasRuler(g.rulers, f),
+    )!;
+    const before = g.log.length;
+    const after = beginTurn({
+      ...g,
+      current: 0,
+      defense: { [target]: 1 },
+      marches: {
+        [`${raider}>${target}#0`]: {
+          actor: raider, from: raider, to: target, cardId: "raid",
+          damage: 3, holdsArmy: true, expiry: g.turn,
+        },
+      },
+    }, rng());
+    expect(after.defense[target]).toBe(0);
+    expect(after.overlords.get(target)).toBeUndefined();
+    expect(fresh(after, before)).toContainEqual(expect.objectContaining({
+      type: "march-resolved", targetFactionId: target, amount: 1,
+    }));
+  });
+
+  it("asks the conquering person how many defenders follow it in", () => {
+    // The same question a walk-in raises, from a blow that had to break the
+    // land first: keyed by faction, from the land the army marched out of.
+    const after = oneArrow(2, "alpha", 1);
+    expect(after.pendingTransfers).toEqual({ beta: { from: "beta", to: "alpha" } });
   });
 });
 

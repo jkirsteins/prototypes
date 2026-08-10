@@ -13,16 +13,21 @@ import {
   defenseMaxOf, defenseOf, diseaseOn, subjugationGateOpen,
 } from "./defense";
 import { walkStandings, type StandingChange } from "./standings";
-import { turnipThresholdOn, wealthIncomeFor, wealthOf } from "./playability";
+import {
+  miasmaHeld, omensHeld, turnipThresholdOn, wealthIncomeFor, wealthOf,
+  type RulesView,
+} from "./playability";
+import { abilitiesOf, LEADER_ABILITIES } from "./abilities";
 import { milestonePoints, milestoneStandings } from "./milestones";
 import { count } from "./plural";
+import { TERMS } from "./glossary";
 import {
   multipliedWord, type TargetExplanation,
 } from "./target-explanations";
 import { fillTooltipLines, type TooltipLine } from "./panel";
 import { memoryStorage, type MetaStorage } from "./meta";
 import { standingChangeText, standingsFor } from "./view";
-import { hasRuler } from "./rulers";
+import { hasRuler, rulerNameOf } from "./rulers";
 import {
   card, cardName, cardTextSegments, faction, factionIds, keywordBlock,
   passive, possessive, priceSegments, renderSegments, t, theFaction, verb,
@@ -635,6 +640,37 @@ export function impactText(
   };
 }
 
+/** The status bar's leader tooltip: name, a stats block, then each ability
+ *  explained. The stats are amount rows alone - no term texts, because the
+ *  ability's own line already says what leadership does for THIS ruler, and
+ *  quoting the term beside it said the same rule twice. The term texts stay
+ *  a hover away on the land panel's Leader block. */
+function rulerTipLines(
+  name: string, view: RulesView, factionId: string,
+): TooltipLine[] {
+  const lines: TooltipLine[] = [{ text: name }];
+  lines.push({
+    text: TERMS.leadership.name,
+    amount: String(view.leadership[factionId] ?? 0),
+    blockStart: true,
+  });
+  const omens = omensHeld(view, factionId);
+  if (omens > 0) {
+    lines.push({ text: TERMS.omens.name, amount: String(omens) });
+  }
+  const miasma = miasmaHeld(view, factionId);
+  if (miasma > 0) {
+    lines.push({ text: TERMS.miasma.name, amount: String(miasma) });
+  }
+  for (const id of abilitiesOf(view.leaderAbilities, factionId)) {
+    const def = LEADER_ABILITIES[id];
+    if (def === undefined) continue;
+    lines.push({ text: def.name, blockStart: true });
+    lines.push({ text: def.text });
+  }
+  return lines;
+}
+
 export function createHud(
   container: HTMLElement,
   cb: HudCallbacks,
@@ -904,10 +940,17 @@ export function createHud(
   // promise and the tick cannot drift. Rivals' treasuries appear nowhere.
   const wealthChip = document.createElement("span");
   wealthChip.className = "status-wealth hidden";
-  // The player's own ruler's leadership, hidden until a War council play
-  // buys the first stack. Attack damage adds it, and it dies with the ruler.
-  const leadershipChip = document.createElement("span");
-  leadershipChip.className = "status-prowess hidden";
+  // The player's own ruler, by name; everything about them is the hover's
+  // job. The tip is the land hover's Leader block with every hoverable
+  // expanded: a floating tip cannot itself be hovered, so each term and
+  // ability it names carries its full text inline, stacked.
+  const rulerChip = document.createElement("span");
+  rulerChip.className = "status-ruler hidden";
+  let rulerTip: TooltipLine[] = [];
+  rulerChip.addEventListener("mousemove", (e) => {
+    if (rulerTip.length > 0) cb.onShowTip?.(rulerTip, e.clientX, e.clientY);
+  });
+  rulerChip.addEventListener("mouseleave", () => cb.onHideTip?.());
   // The turnip bar: how far the player's Grow turnips plays have filled
   // toward the next Turnip harvest. Count and fill both read the same stored
   // counter, so they cannot disagree; hidden entirely for a run that holds
@@ -937,7 +980,7 @@ export function createHud(
     );
   });
   turnipChip.addEventListener("mouseleave", () => cb.onHideTip?.());
-  status.append(statusText, wealthChip, leadershipChip, turnipChip);
+  status.append(statusText, wealthChip, rulerChip, turnipChip);
 
   function makePile(kind: string, label: string) {
     const root = document.createElement("div");
@@ -2084,11 +2127,13 @@ export function createHud(
       wealthChip.textContent =
         `Wealth ${wealthOf(view, humanFaction)} ` +
         `(+${wealthIncomeFor(view, humanFaction)}/turn)`;
-      const leadership = view.leadership[humanFaction] ?? 0;
-      leadershipChip.classList.toggle("hidden", leadership === 0);
-      if (leadership > 0) {
-        leadershipChip.textContent =
-          `Leadership ${leadership} (added to every attack)`;
+      const rulerName = rulerNameOf(state.rulers, humanFaction);
+      rulerChip.classList.toggle("hidden", rulerName === null);
+      if (rulerName !== null) {
+        rulerChip.textContent = rulerName;
+        rulerTip = rulerTipLines(rulerName, view, humanFaction);
+      } else {
+        rulerTip = [];
       }
       // Lowercase "turnips": the common noun, per the naming rule - the card
       // is named in the hover explanation, where it can be read in full.
@@ -2111,7 +2156,8 @@ export function createHud(
         turnipFill.style.width = `${Math.round((into / span) * 100)}%`;
       }
     } else {
-      leadershipChip.classList.add("hidden");
+      rulerChip.classList.add("hidden");
+      rulerTip = [];
       turnipChip.classList.add("hidden");
     }
     if (state.phase === "pick-faction") {

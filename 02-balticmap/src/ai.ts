@@ -1,7 +1,8 @@
 import { CARDS, isTributeCard, type Rng } from "./cards";
 import { fullRealmOf, incorporatedRealmOf, realmOf } from "./relations";
 import {
-  defenseMaxOf, defenseOf, HILLFORT_HEAL, independenceGateOpen,
+  capturesOnArrival, defenseMaxOf, defenseOf, HILLFORT_HEAL,
+  independenceGateOpen,
   INDEPENDENCE_GATE, PLAGUE_DAMAGE_PER_STACK, SUBJUGATION_GATE,
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
@@ -11,7 +12,7 @@ import {
   validTargetsFor, type RulesView,
 } from "./playability";
 import { axesOf } from "./marches";
-import { hasPassive } from "./passives";
+import { damageAfterTerrain, hasPassive } from "./passives";
 import {
   discardCard, endTurn, playCard, repeatOnlyOf, turnOpen, viewOf,
   type GameState,
@@ -59,15 +60,17 @@ export const POLICY_COVERAGE: Record<string, string> = {
     "since it is the same play for one settlement and one more point. " +
     "Repeats with Fortify: same keyword, so either may follow either",
   "raid":
-    "2A: walk into a bordering land whose defenses are gone, which takes it - " +
-    "the biggest realm first; " +
+    "2A: take a bordering land this raid overwhelms - one it deals more to " +
+    "than it has standing, its defenses gone included - the biggest realm " +
+    "first; " +
     "5A: counter a march that would break one of our lands, or that we out-" +
     "muscle; 6W: suppress a vassal nearing its gate or finish an opening; " +
     "11W: build toward the nearest gate. Source: the land the counter must " +
     "leave from, else the one whose own defenses best survive being counter-" +
     "raided back",
   "great-raid":
-    "6W: aim it where the arrows it musters flatten the land outright; 11W: " +
+    "6W: aim it where the arrows it musters flatten the land outright, which " +
+    "takes it where they carry one point more than it holds; 11W: " +
     "pressure the neighbourhood that musters most, 2 arrows or more. Target: " +
     "greatRaidPick, the bordering land its own neighbours can hit hardest",
   "prosperous-proliferation":
@@ -118,9 +121,9 @@ function gateGap(v: RulesView, polygon: string): number {
  *  The last filter is load-bearing: an open gate's gap is negative, so
  *  without it the "finishing hit" condition matched every already-broken
  *  polygon forever, every raid read as decisive, and a 150-turn all-warpath
- *  world starved its turnip loop to 13 plays and zero subjugations. An open
- *  gate wants Subjugate, not more damage. Sorted nearest-gate-first, ties by
- *  faction order. */
+ *  world starved its turnip loop to 13 plays and zero subjugations. A land
+ *  standing open wants an army walked into it, which is step 2A, not more
+ *  damage. Sorted nearest-gate-first, ties by faction order. */
 function gateCandidates(
   state: GameState, v: RulesView, actor: string, targets: string[],
 ): string[] {
@@ -258,21 +261,27 @@ export function chooseAction(state: GameState): AiAction {
     if (tribute !== undefined) return { type: "play", cardIndex: tribute };
   }
 
-  // 2A: walk into a land that is already down. An army arriving where nothing
-  // is left to fight TAKES the land, so a raid at a flattened neighbour is a
-  // conquest rather than an attack - and it is the only way a land changes
-  // hands now. It outranks everything voluntary for the same reason the old
-  // Subjugate branch did: a certain gain beats every plan.
+  // 2A: take a land outright. An army that deals more than the land has
+  // standing walks in over what is left of it, and one arriving where nothing
+  // is left to fight takes it for free - so a raid at a neighbour this card
+  // overwhelms is a conquest rather than an attack, and it is the only way a
+  // land changes hands now. It outranks everything voluntary for the same
+  // reason the old Subjugate branch did: a certain gain beats every plan.
   //
-  // Ahead of the gate-hunting branches on purpose. Those aim at lands still
-  // standing (`gateCandidates` drops a land whose gate is already open), so
-  // without this step a seat would flatten its neighbours one after another
+  // The same predicate the resolution asks, against the same post-terrain
+  // number, or the branch would claim lands that hill country hands back.
+  //
+  // Ahead of the gate-hunting branches on purpose. Those aim at lands this card
+  // cannot finish (`gateCandidates` drops a land whose gate is already open),
+  // so without this step a seat would flatten its neighbours one after another
   // and never move in.
   const walkIn = marchPick(idxOf);
   if (walkIn !== undefined) {
     const realm = fullRealmOf(p.factionId, state.overlords, state.incorporated);
-    const empty = validTargetsFor(v, p.factionId, walkIn.id)
-      .filter((t) => !realm.has(t) && defenseOf(v, t) <= 0)
+    const { damage } = attackDamageFor(v, p.factionId, walkIn.id);
+    const takeable = validTargetsFor(v, p.factionId, walkIn.id)
+      .filter((t) => !realm.has(t)
+        && capturesOnArrival(damageAfterTerrain(v, t, damage), defenseOf(v, t)))
       // The biggest pyramid first: taking a lord takes everything under it.
       .sort(
         (a, b) =>
@@ -280,8 +289,8 @@ export function chooseAction(state: GameState): AiAction {
             fullRealmOf(a, state.overlords, state.incorporated).size ||
           order(a) - order(b),
       );
-    if (empty.length > 0) {
-      return raidAt(state, v, p.factionId, walkIn.index, empty[0]);
+    if (takeable.length > 0) {
+      return raidAt(state, v, p.factionId, walkIn.index, takeable[0]);
     }
   }
 
@@ -622,6 +631,11 @@ function warpathDecisive(
   // will eat part of ours. Both are known a turn ahead now, so a "finisher"
   // that ignores them is the raid-status-rider bug again - a decisive branch
   // firing at a target it cannot actually finish.
+  //
+  // What is left for this branch after 2A is the land this raid flattens
+  // EXACTLY, or one it only finishes with help already in the air. Anything it
+  // overwhelms on its own was taken up there, which is why this stays a
+  // gap-not-excess test.
   if (raid !== undefined) {
     const finish = candidates.find(
       (t) => gateGap(v, t) - incomingAt(v, t) <= damage,

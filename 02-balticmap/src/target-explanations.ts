@@ -13,12 +13,15 @@ import {
   type TargetEligibility,
 } from "./playability";
 import {
-  defenseMaxOf, defenseOf, INDEPENDENCE_GATE, SINGLE_LAND_HEAL,
+  capturesOnArrival, defenseMaxOf, defenseOf, INDEPENDENCE_GATE,
+  SINGLE_LAND_HEAL,
 } from "./defense";
 import {
   ATTACK_CARDS, CARDS, isGuardCard, isInwardCard, isSingleLandHeal,
 } from "./cards";
-import { PASSIVES, passivesOn, type Passives } from "./passives";
+import {
+  damageAfterTerrain, PASSIVES, passivesOn, type Passives,
+} from "./passives";
 import { passive } from "./segments";
 import { count, plural } from "./plural";
 import { spanLine, type TooltipLine, type TooltipSpan } from "./panel";
@@ -238,10 +241,17 @@ function availableImpacts(
     const { damage, multiplier } = attackImpactOn(
       view, actorFactionId, cardId, targetFactionId,
     );
-    // A land with nothing left to fight is taken by the army that arrives, not
-    // damaged - so `defenseMove` alone renders `Defense (0 -> 0)` over the one
-    // play on the board that changes who holds a land. The AI has ranked this
-    // as a first-class move all along; only the player was not told.
+    // An army that deals more than the land has standing walks in over what is
+    // left of it, and a land with nothing left to fight is taken by anything
+    // that reaches it - so `defenseMove` alone describes the one play on the
+    // board that changes who holds a land as a scratch, or as nothing at all.
+    // The AI has ranked this as a first-class move all along; only the player
+    // was not told.
+    //
+    // Asked through `capturesOnArrival`, the rule the resolution itself asks,
+    // and against POST-TERRAIN damage: hill country shaving a 4 down to 3 is
+    // the difference between taking a 3-defense land and bouncing off it, and
+    // a preview reading the raw number would promise the conquest anyway.
     //
     // Conditional wording, and not hedging. The damage an arrow carries is
     // frozen at declaration, but the defense it lands against is read a turn
@@ -251,10 +261,14 @@ function availableImpacts(
     // Asked of `ATTACK_CARDS`, the class - every one of them sends an army,
     // Great raid through its own fan - so a new attack card is covered by
     // joining the set rather than by finding this line.
+    const standing = defenseOf(view, targetFactionId);
+    const dealt = damageAfterTerrain(view, targetFactionId, damage);
     return [
       defenseMove(view, targetFactionId, -damage, multiplier),
-      ...(defenseOf(view, targetFactionId) === 0
-        ? [prose("Takes the land, if it is still undefended when this lands")]
+      ...(capturesOnArrival(dealt, standing)
+        ? [prose(standing === 0
+            ? "Takes the land, if it is still undefended when this lands"
+            : "Takes the land, if it is no better defended when this lands")]
         : []),
     ];
   }
