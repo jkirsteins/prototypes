@@ -516,8 +516,10 @@ export function chooseAction(state: GameState): AiAction {
  *
  *  - the incoming would push one of our lands to or under its subjugation
  *    gate, which is the only damage that costs more than a card; or
- *  - our raid is at least as strong as theirs, so the clash cancels their
- *    attack outright and may throw the difference back.
+ *  - our raid is at least as strong as the ONE arrow it will meet, so the pair
+ *    cancels and may throw the difference back. One arrow, because armies pair
+ *    off one for one on an axis - a counter aimed at a bundle of three stops
+ *    the one it meets and lets the other two through.
  *
  *  Without the second condition a weak seat would trade its army for nothing;
  *  without the first, a seat about to be broken would sit and take it because
@@ -550,12 +552,18 @@ function counterRaid(
         marchSourcesAgainst(v, actor, x.from).includes(x.under),
     )
     .map((x) => {
-      const at = x.incoming.reduce((s, m) => s + m.damage, 0);
-      const back = x.ours.reduce((s, m) => s + m.damage, 0);
-      return { ...x, net: Math.max(0, at - back) };
+      // The armies pair off one for one, so a counter answers ONE arrow. Ours
+      // joins the end of our side of the axis and therefore meets the incoming
+      // sitting at that index; `net` is what still gets through if we do
+      // nothing - every incoming nobody is already meeting.
+      const answers = x.incoming[x.ours.length]?.damage ?? 0;
+      const net = x.incoming
+        .slice(x.ours.length)
+        .reduce((s, m) => s + m.damage, 0);
+      return { ...x, answers, net };
     })
     .filter(
-      (x) => x.net > 0 && (damage >= x.net || gateGap(v, x.under) <= x.net),
+      (x) => x.answers > 0 && (damage >= x.answers || gateGap(v, x.under) <= x.net),
     );
   if (answerable.length === 0) return null;
 

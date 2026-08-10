@@ -4,8 +4,9 @@
  *  out of one of the actor's lands, becomes a visible arrow on the map, and
  *  resolves at the start of that actor's next turn - which gives every other
  *  seat one turn to see it coming and answer. The answer is a Raid back down
- *  the same axis: the two forces meet in the middle and only the difference
- *  lands, on whichever side came second.
+ *  the same axis: the two armies meet in the middle and only the difference
+ *  lands, on whichever side pushed less hard. Armies pair off one for one, so
+ *  a counter answers ONE arrow and not the bundle - see `resolveAxis`.
  *
  *  Pure helpers over two sparse stores; GameState owns them. This module knows
  *  nothing about realms or reach - who may march where is a reach question and
@@ -157,7 +158,7 @@ export interface Axis {
   /** Which end opened the quarrel - the side that declared first. The other
    *  side is the answer to it.
    *
-   *  Nothing in the RULES cares: a clash is symmetric, and `resolveAxis` sums
+   *  Nothing in the RULES cares: a clash is symmetric, and `resolveAxis` pairs
    *  both sides the same way whoever moved first. The map cares. An attack and
    *  the counter-raid answering it drawn as two equal arrows nose to nose read
    *  as one confused shape, so the opening side is drawn full size on the axis
@@ -210,28 +211,54 @@ export function axesOf(marches: Marches): Axis[] {
     .map(([, axis]) => axis);
 }
 
-export interface AxisOutcome {
-  /** The polygon that takes the damage - the target of whichever side pushed
-   *  harder. Null when the two sides cancelled exactly. */
+/** One army meeting one coming the other way, or meeting nothing. */
+export interface Engagement {
+  /** The march out of the axis's `a` end, and the one out of its `b` end.
+   *  Either may be absent - an army with nobody to meet lands in full. */
+  fromA: March | null;
+  fromB: March | null;
+  /** The land the surviving army reaches - the target of whichever of the two
+   *  pushed harder. Null when they met exactly and neither got through. */
   loser: string | null;
-  /** What actually lands: the difference between the two sides. */
+  /** What lands on `loser`: the difference between the pair. 0 exactly when
+   *  `loser` is null. */
   delta: number;
-  totalA: number;
-  totalB: number;
+  /** The march whose army survived - the one that walks into a land with
+   *  nothing left to fight. Null exactly when `loser` is. */
+  spear: March | null;
 }
 
-/** The clash. Each side is summed rather than paired march by march, which is
- *  what makes two armies on one axis behave the obvious way and makes the
- *  uncontested case fall out for free - an axis with an empty side has a delta
- *  equal to its full strength. */
+/** The clash, paired march by march: the i-th army out of one end meets the
+ *  i-th out of the other, and each pair is its own little battle. Armies left
+ *  over on the longer side meet nobody and land in full.
+ *
+ *  Summing each side instead was simpler and wrong in the way that matters
+ *  most: two Raids answered by one Strong raid netted 2 against 2 and NOTHING
+ *  happened, so the defender's second army - which met no one - evaporated,
+ *  and the attacker's stronger army bought nothing for being stronger. Paired,
+ *  the same board reads the way the map draws it: the Strong raid beats the
+ *  Raid it meets and pushes 1 through, the unanswered Raid pushes 1 back, and
+ *  both lands lose a point.
+ *
+ *  Pairing is by position, which is declaration order within each side, so a
+ *  seeded run pairs the same armies every time. */
 export function resolveAxis(
   a: string, b: string, fromA: readonly March[], fromB: readonly March[],
-): AxisOutcome {
-  const totalA = fromA.reduce((sum, m) => sum + m.damage, 0);
-  const totalB = fromB.reduce((sum, m) => sum + m.damage, 0);
-  const delta = Math.abs(totalA - totalB);
-  if (delta === 0) return { loser: null, delta: 0, totalA, totalB };
-  return { loser: totalA > totalB ? b : a, delta, totalA, totalB };
+): Engagement[] {
+  const out: Engagement[] = [];
+  for (let i = 0; i < Math.max(fromA.length, fromB.length); i++) {
+    const mA = fromA[i] ?? null;
+    const mB = fromB[i] ?? null;
+    const dA = mA?.damage ?? 0;
+    const dB = mB?.damage ?? 0;
+    const delta = Math.abs(dA - dB);
+    out.push({
+      fromA: mA, fromB: mB, delta,
+      loser: delta === 0 ? null : dA > dB ? b : a,
+      spear: delta === 0 ? null : dA > dB ? mA : mB,
+    });
+  }
+  return out;
 }
 
 /** A SUBJUGATION in flight: a demand of fealty declared on one turn and

@@ -873,6 +873,17 @@ svg.map.dragging {
   pointer-events: auto;
 }
 
+/* While an aim is live the arrows stay on screen and stop taking clicks: what
+   is already flying at a land is half of what decides whether to send an army
+   there, so hiding them is not an option, and every click on the map belongs
+   to the land under it until the aim is answered. Slightly back, because the
+   thing being chosen is the map. */
+.march-arrows.aiming .march-arrow,
+.march-arrows.aiming .claim-arrow {
+  pointer-events: none;
+  opacity: 0.75;
+}
+
 /* Pointing at an arrow asks "which two lands is this about". Everything that
    is not one of the two steps back, the pin's own vocabulary at a lighter
    weight - this is a glance, not a decision.

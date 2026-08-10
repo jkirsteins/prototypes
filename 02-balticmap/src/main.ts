@@ -1207,16 +1207,26 @@ function landingOrder(): Map<string, { order: number; clash: boolean }> {
       at: c.expiry * 100 + turnsUntilActs(c.actor),
     });
   }
-  // A clash is two arrows on one axis pointing OPPOSITE ways. They do not
-  // take turns - `resolveAxis` takes both off the board together and lands
-  // only the difference - so they share a rank and say so.
-  const clashing = new Set(
-    pending
-      .filter((item) =>
-        pending.some((other) => other.to === item.from && other.from === item.to),
-      )
-      .map((item) => item.key),
+  // A clash is one arrow meeting one pointing the other way. They do not take
+  // turns - `resolveAxis` takes the pair off the board together and lands only
+  // its difference - so they share a rank and say so.
+  //
+  // PAIRED, not "any two arrows on the axis". The armies pair off one for one
+  // in declaration order, so on an axis carrying two arrows one way and one
+  // back, the leftover meets nobody and is not in a clash at all. Marking it
+  // as one promised the player an answer that was never going to arrive.
+  const keyOfMarch = new Map<March, string>(
+    Object.entries(game.marches).map(([key, m]) => [m, key]),
   );
+  const clashing = new Set<string>();
+  for (const axis of axesOf(game.marches)) {
+    for (let i = 0; i < Math.min(axis.fromA.length, axis.fromB.length); i++) {
+      for (const m of [axis.fromA[i], axis.fromB[i]]) {
+        const key = keyOfMarch.get(m);
+        if (key !== undefined) clashing.add(key);
+      }
+    }
+  }
   const out = new Map<string, { order: number; clash: boolean }>();
   const byTarget = new Map<string, typeof pending>();
   for (const item of pending) {
@@ -1321,7 +1331,19 @@ function renderAimArrow(): void {
 function renderMarchArrows(): void {
   arrowGroup.replaceChildren();
   const human = localHuman();
-  if (!inPlay() || !human || targetingLive()) return;
+  if (!inPlay() || !human) return;
+  // Aiming does NOT take the arrows away, for the same reason it does not take
+  // the badges away: what is already flying at a land is half of what decides
+  // whether to send an army there, and a map that hid it had the player choose
+  // a target against a board it was not showing them. An enemy raid a round
+  // from landing went invisible at exactly the moment it mattered, and the
+  // land it was about to take looked free.
+  //
+  // Inert rather than absent: no counter click, no hover focus, so while an
+  // aim is live the only thing a click on the map can mean is still "this
+  // land". `.aiming` in src/style.css is the pointer half.
+  const aiming = targetingLive();
+  arrowGroup.classList.toggle("aiming", aiming);
   const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
   const order = landingOrder();
   for (const axis of axesOf(game.marches)) {
@@ -1547,7 +1569,10 @@ function drawMarch(
     appendOrder(g, pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.82), rank);
   }
 
-  const counterIndex = counterFor(m);
+  // Never while an aim is live: the arrow is on screen to be READ then, and an
+  // arrow that is also a button would answer a click the player meant for the
+  // land under it.
+  const counterIndex = targetingLive() ? null : counterFor(m);
   if (counterIndex !== null) {
     g.classList.add("march-counterable");
     armArrowAsCounter(g, m, counterIndex);

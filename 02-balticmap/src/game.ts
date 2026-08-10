@@ -839,8 +839,11 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
         .filter((e) => e.type === "march-resolved" || e.type === "plagued")
         .map((e) => e.targetFactionId),
     );
+    // `passives`, never `state.passives`. The snapshot this turn began with
+    // still calls a land quiet that an army walked into twenty lines ago, and
+    // a conquest is supposed to stop repairing itself the moment it is taken.
     for (const polygon of state.factionIds) {
-      if (!hasPassive(state.passives, polygon, "wild-lands")) continue;
+      if (!hasPassive(passives, polygon, "wild-lands")) continue;
       if (struckThisRound.has(polygon)) continue;
       const v = { defense, defenseMax: state.defenseMax };
       if (defenseOf(v, polygon) >= defenseMaxOf(v, polygon)) continue;
@@ -872,12 +875,6 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // takes a turn would otherwise leave its arrow standing for the rest of
     // the game. Landing first and declaring second, so an arrow stands for
     // exactly one round and can be answered in it.
-    // The status IS the condition. A taken land loses it on capture, so
-    // "unheld" needs no test of its own here - asking twice is how the two
-    // answers start to differ.
-    const restless = state.factionIds.filter(
-      (land) => hasPassive(state.passives, land, "keeps-to-itself"),
-    );
     // Whose arrows land here: every seat that will never see a `beginTurn` of
     // its own, which is exactly what `advance` passes over. A march declared
     // by one would otherwise stand on the map for the rest of the game - never
@@ -908,6 +905,21 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
         takeLand(capture.land, capture.by, capture.from);
       }
     }
+    // The status IS the condition. A taken land loses it on capture, so
+    // "unheld" needs no test of its own here - asking twice is how the two
+    // answers start to differ.
+    //
+    // Asked of `passives`, the RUNNING copy, and never of `state.passives`, and
+    // asked HERE rather than above the sweep. Every route into `takeLand` runs
+    // earlier in this same function - a claim answering at this seat's turn
+    // start, an army walking into a land this seat's own marches flattened, the
+    // sweep just above - and the snapshot the turn began with knows about none
+    // of them. Read from the snapshot, a land taken moments ago sent one last
+    // raid at its brand-new lord, and the player watched an arrow leave a
+    // polygon inside their own outline.
+    const restless = state.factionIds.filter(
+      (land) => hasPassive(passives, land, "keeps-to-itself"),
+    );
     for (const land of restless) {
       if (rng() >= RESTLESS_RAID_CHANCE) continue;
       const seat = players.find((pl) => pl.factionId === land);
@@ -996,13 +1008,14 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
 /** Lands every march this seat declared a turn ago, and every counter standing
  *  against one of them.
  *
- *  Resolution is per AXIS, not per march: both directions of a clash come off
- *  the board together and only the difference between the two sides lands, on
- *  whichever side pushed less hard. That is why a counter still standing in
- *  flight is pulled in here even though its own expiry has not come round -
- *  "the earlier of the two turns" is what makes a counter-raid an answer
- *  rather than a trade, and leaving half a clash on the board would let the
- *  attacker's own resolution hit before the counter it provoked.
+ *  Resolution is per AXIS: both directions of a clash come off the board
+ *  together, and within the axis the armies pair off one for one, each pair
+ *  landing its own difference on whichever of the two pushed less hard. That
+ *  is why a counter still standing in flight is pulled in here even though its
+ *  own expiry has not come round - "the earlier of the two turns" is what
+ *  makes a counter-raid an answer rather than a trade, and leaving half a
+ *  clash on the board would let the attacker's own resolution hit before the
+ *  counter it provoked.
  *
  *  Pushes onto `events` and returns the moved stores; the caller owns the
  *  batch. Consumes no rng, deliberately - `tests/rng-isolation.test.ts` can
@@ -1060,64 +1073,68 @@ function resolveMarches(
   for (const axis of axesOf(marches)) {
     if (!landing.has(axisKeyOf(axis.a, axis.b))) continue;
     marches = clearMarches(marches, axis.keys);
-    const { loser, delta, totalA, totalB } = resolveAxis(
-      axis.a, axis.b, axis.fromA, axis.fromB,
-    );
-    const contested = axis.fromA.length > 0 && axis.fromB.length > 0;
-    // A standoff still gets a line. It moves no score, so it carries no
-    // `amount` - but two armies met and both are spent, and a player whose
-    // raid was answered exactly must not be left thinking their card did
-    // nothing. `a` and `b` are the axis's own sorted ends, since neither side
-    // is the winner and calling one of them the target would be a lie.
-    if (loser === null || delta <= 0) {
-      if (contested) {
-        events.push({
-          turn: state.turn, playerId: p.id, type: "march-resolved",
-          cardId: axis.fromA[0].cardId,
-          targetFactionId: axis.a, sourceFactionId: axis.b,
-          clash: { incoming: totalB, counter: totalA },
+    // One pairing at a time, against the defense as the pairing before it left
+    // it. That ordering is what lets two armies down one axis break a land and
+    // then walk into it, the same way two armies down two axes already could.
+    for (const eng of resolveAxis(axis.a, axis.b, axis.fromA, axis.fromB)) {
+      const contested = eng.fromA !== null && eng.fromB !== null;
+      const strengthA = eng.fromA?.damage ?? 0;
+      const strengthB = eng.fromB?.damage ?? 0;
+      // A standoff still gets a line. It moves no score, so it carries no
+      // `amount` - but two armies met and both are spent, and a player whose
+      // raid was answered exactly must not be left thinking their card did
+      // nothing. `a` and `b` are the axis's own sorted ends, since neither side
+      // is the winner and calling one of them the target would be a lie.
+      if (eng.loser === null || eng.spear === null || eng.delta <= 0) {
+        if (contested) {
+          events.push({
+            turn: state.turn, playerId: p.id, type: "march-resolved",
+            cardId: eng.fromA!.cardId,
+            targetFactionId: axis.a, sourceFactionId: axis.b,
+            clash: { incoming: strengthB, counter: strengthA },
+          });
+        }
+        continue;
+      }
+      const { loser } = eng;
+      const winner = loser === axis.a ? axis.b : axis.a;
+      // The ground has its say on the leftover that actually lands, not on what
+      // either side set out with: a counter-raid is answered by armies, a hill
+      // by whatever gets past them.
+      const dealt = damageAfterTerrain(view, loser, eng.delta);
+      const before = defenseOf({ defense, defenseMax: state.defenseMax }, loser);
+      const moved = Math.min(before, dealt);
+      // An army arriving at a land with nothing left to fight takes it instead.
+      // This is what makes two raids on a broken land worth timing: the first
+      // flattens it and the second walks in, and neither needs a Subjugate.
+      if (before === 0) {
+        captures.push({
+          land: loser, by: eng.spear.actor, from: eng.spear.from,
         });
+        continue;
       }
-      continue;
+      if (moved <= 0) continue;
+      defense = applyDamage(
+        { defense, defenseMax: state.defenseMax }, loser, dealt,
+      );
+      events.push({
+        turn: state.turn, playerId: p.id, type: "march-resolved",
+        // The card of whichever side actually landed - the counter's, when a
+        // counter won, since that is the play the damage came out of.
+        cardId: eng.spear.cardId,
+        targetFactionId: loser, sourceFactionId: winner, amount: moved,
+        // `incoming` is always the strength aimed AT the loser and `counter`
+        // what the loser mustered against it, whichever end of the axis that
+        // turned out to be. The label the player reads is delta out of incoming.
+        ...(contested
+          ? {
+              clash: loser === axis.a
+                ? { incoming: strengthB, counter: strengthA }
+                : { incoming: strengthA, counter: strengthB },
+            }
+          : {}),
+      });
     }
-    const winner = loser === axis.a ? axis.b : axis.a;
-    // The ground has its say on the leftover that actually lands, not on what
-    // either side set out with: a counter-raid is answered by armies, a hill
-    // by whatever gets past them.
-    const dealt = damageAfterTerrain(view, loser, delta);
-    const before = defenseOf({ defense, defenseMax: state.defenseMax }, loser);
-    const moved = Math.min(before, dealt);
-    // An army arriving at a land with nothing left to fight takes it instead.
-    // This is what makes two raids on a broken land worth timing: the first
-    // flattens it and the second walks in, and neither needs a Subjugate.
-    if (before === 0) {
-      const spear = (loser === axis.a ? axis.fromB : axis.fromA)[0];
-      if (spear !== undefined) {
-        captures.push({ land: loser, by: spear.actor, from: spear.from });
-      }
-      continue;
-    }
-    if (moved <= 0) continue;
-    defense = applyDamage(
-      { defense, defenseMax: state.defenseMax }, loser, dealt,
-    );
-    events.push({
-      turn: state.turn, playerId: p.id, type: "march-resolved",
-      // The card of whichever side actually landed - the counter's, when a
-      // counter won, since that is the play the damage came out of.
-      cardId: (loser === axis.a ? axis.fromB : axis.fromA)[0].cardId,
-      targetFactionId: loser, sourceFactionId: winner, amount: moved,
-      // `incoming` is always the strength aimed AT the loser and `counter`
-      // what the loser mustered against it, whichever end of the axis that
-      // turned out to be. The label the player reads is delta out of incoming.
-      ...(contested
-        ? {
-            clash: loser === axis.a
-              ? { incoming: totalB, counter: totalA }
-              : { incoming: totalA, counter: totalB },
-          }
-        : {}),
-    });
   }
   return { marches, defense, captures };
 }

@@ -611,6 +611,65 @@ describe("the counter-raid clash", () => {
     expect(line.amount).toBeUndefined();
   });
 
+  it("pairs the armies off, so two raids answered by one hit both lands", () => {
+    // Two Raids out of beta, one Strong raid back out of alpha. Summed, this
+    // was 2 against 2 and NOTHING happened: alpha's army bought nothing for
+    // being the stronger one, and beta's second army evaporated having met no
+    // one. Paired, the Strong raid beats the Raid it meets and pushes 1
+    // through, and the Raid nobody met pushes 1 back.
+    const g = playingState(LINE_ADJ);
+    const arrow = (
+      from: string, to: string, cardId: string, damage: number,
+    ) => ({
+      actor: from, from, to, cardId, damage,
+      holdsArmy: true, expiry: g.turn + 1,
+    });
+    const after = landMarches({
+      ...g,
+      marches: {
+        "beta>alpha#0": arrow("beta", "alpha", "raid", 1),
+        "beta>alpha#1": arrow("beta", "alpha", "raid", 1),
+        "alpha>beta#0": arrow("alpha", "beta", "strong-raid", 2),
+      },
+    });
+    expect(after.defense.alpha).toBe(FIXTURE_MAX - 1);
+    expect(after.defense.beta).toBe(FIXTURE_MAX - 1);
+    expect(after.marches).toEqual({});
+    // A line per pairing, each naming the land it landed on. The pair that met
+    // reports the clash it was; the arrow that met nobody reports no clash,
+    // because nothing answered it.
+    const landed = after.log.filter((e) => e.type === "march-resolved");
+    expect(landed).toMatchObject([
+      {
+        targetFactionId: "beta", sourceFactionId: "alpha",
+        cardId: "strong-raid", amount: 1, clash: { incoming: 2, counter: 1 },
+      },
+      {
+        targetFactionId: "alpha", sourceFactionId: "beta",
+        cardId: "raid", amount: 1,
+      },
+    ]);
+    expect(landed[1].clash).toBeUndefined();
+  });
+
+  it("lets two armies down one axis break a land and then walk into it", () => {
+    // The pairings resolve in order against the defense the one before left,
+    // which is the same "first flattens it, second walks in" two armies down
+    // two axes already had.
+    const g = playingState(LINE_ADJ);
+    const arrow = () => ({
+      actor: "beta", from: "beta", to: "alpha", cardId: "raid",
+      damage: 1, holdsArmy: true, expiry: g.turn + 1,
+    });
+    const after = landMarches({
+      ...g,
+      defense: { alpha: 1 },
+      marches: { "beta>alpha#0": arrow(), "beta>alpha#1": arrow() },
+    });
+    expect(after.defense.alpha).toBe(0);
+    expect(after.overlords.get("alpha")).toBe("beta");
+  });
+
   it("reports nothing for a march that met no counter and hit a dead land", () => {
     // The other zero: one side only, aimed at a polygon already at 0. Nothing
     // met it and nothing moved, so there is no clash to report - the standoff
@@ -2213,6 +2272,37 @@ describe("the restless middle of the map", () => {
       overlords: new Map([[quiet, "beta"]]),
     };
     const after = beginTurn({ ...taken, current: 0, turn: g.turn + 1 }, always);
+    expect(Object.values(after.marches).some((m) => m.actor === quiet))
+      .toBe(false);
+  });
+
+  it("never sends one out of a land taken moments earlier in this same wrap", () => {
+    // The capture and the declaration are twenty lines apart in one
+    // `beginTurn`: the seat's own marches land at its turn start, and the wrap
+    // follows. Read off the snapshot the turn began with, the land was still
+    // quiet and sent one last raid at its brand-new lord - an arrow leaving a
+    // polygon inside the player's own outline.
+    const g = playingSix();
+    const actor = g.players[0].factionId;
+    const quiet = quietLands(g).find((f) => f !== actor)!;
+    const turn = g.turn + 1;
+    const after = beginTurn(
+      {
+        ...g,
+        current: 0,
+        turn,
+        defense: { ...g.defense, [quiet]: 0 },
+        marches: {
+          [`${actor}>${quiet}#0`]: {
+            actor, from: actor, to: quiet, cardId: "raid",
+            damage: 1, holdsArmy: true, expiry: turn,
+          },
+        },
+      },
+      always,
+    );
+    expect(after.overlords.get(quiet)).toBe(actor);
+    expect(hasPassive(after.passives, quiet, "keeps-to-itself")).toBe(false);
     expect(Object.values(after.marches).some((m) => m.actor === quiet))
       .toBe(false);
   });

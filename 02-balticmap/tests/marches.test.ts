@@ -151,9 +151,14 @@ describe("axesOf", () => {
 });
 
 describe("resolveAxis", () => {
+  /** The two facts each pairing is judged on, without the marches themselves -
+   *  which land takes it, and how much. */
+  const hits = (out: ReturnType<typeof resolveAxis>) =>
+    out.map((e) => ({ loser: e.loser, delta: e.delta }));
+
   it("lands an uncontested march's full strength on its target", () => {
-    expect(resolveAxis("selija", "talava", [march({ damage: 4 })], []))
-      .toEqual({ loser: "talava", delta: 4, totalA: 4, totalB: 0 });
+    expect(hits(resolveAxis("selija", "talava", [march({ damage: 4 })], [])))
+      .toEqual([{ loser: "talava", delta: 4 }]);
   });
 
   it("deducts the weaker counter and lands only the leftover", () => {
@@ -162,7 +167,9 @@ describe("resolveAxis", () => {
       [march({ damage: 10 })],
       [march({ from: "talava", to: "selija", damage: 4 })],
     );
-    expect(out).toEqual({ loser: "talava", delta: 6, totalA: 10, totalB: 4 });
+    expect(hits(out)).toEqual([{ loser: "talava", delta: 6 }]);
+    // The army that got through is the one that walks in on a broken land.
+    expect(out[0].spear?.damage).toBe(10);
   });
 
   it("throws the stronger counter back at the attacker's own land", () => {
@@ -171,7 +178,7 @@ describe("resolveAxis", () => {
       [march({ damage: 4 })],
       [march({ from: "talava", to: "selija", damage: 10 })],
     );
-    expect(out).toEqual({ loser: "selija", delta: 6, totalA: 4, totalB: 10 });
+    expect(hits(out)).toEqual([{ loser: "selija", delta: 6 }]);
   });
 
   it("cancels an even clash without moving a score", () => {
@@ -180,16 +187,36 @@ describe("resolveAxis", () => {
       [march({ damage: 5 })],
       [march({ from: "talava", to: "selija", damage: 5 })],
     );
-    expect(out.delta).toBe(0);
-    expect(out.loser).toBeNull();
+    expect(hits(out)).toEqual([{ loser: null, delta: 0 }]);
+    expect(out[0].spear).toBeNull();
   });
 
-  it("sums each side, so two armies on one axis beat one", () => {
+  it("pairs the armies off one for one, so both ends can be hit at once", () => {
+    // Two Raids answered by one Strong raid. The Strong raid beats the Raid it
+    // meets and pushes 1 through; the Raid nobody met pushes 1 back. Summed,
+    // this was 2 against 2 and NOTHING happened - the defender's second army
+    // evaporated having met no one.
+    const out = resolveAxis(
+      "selija", "talava",
+      [march({ damage: 1 }), march({ damage: 1 })],
+      [march({ from: "talava", to: "selija", damage: 2 })],
+    );
+    expect(hits(out)).toEqual([
+      { loser: "selija", delta: 1 },
+      { loser: "talava", delta: 1 },
+    ]);
+  });
+
+  it("pairs in declaration order, and the leftover meets nobody", () => {
     const out = resolveAxis(
       "selija", "talava",
       [march({ damage: 3 }), march({ damage: 3 })],
       [march({ from: "talava", to: "selija", damage: 5 })],
     );
-    expect(out).toEqual({ loser: "talava", delta: 1, totalA: 6, totalB: 5 });
+    expect(hits(out)).toEqual([
+      { loser: "selija", delta: 2 },
+      { loser: "talava", delta: 3 },
+    ]);
+    expect(out[1].fromB).toBeNull();
   });
 });
