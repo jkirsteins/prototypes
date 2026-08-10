@@ -16,6 +16,7 @@ import { walkStandings, type StandingChange } from "./standings";
 import { turnipThresholdOn, wealthIncomeFor, wealthOf } from "./playability";
 import { milestonePoints, milestoneStandings } from "./milestones";
 import { count } from "./plural";
+import { TERMS } from "./glossary";
 import {
   multipliedWord, type TargetExplanation,
 } from "./target-explanations";
@@ -876,9 +877,20 @@ export function createHud(
   const wealthChip = document.createElement("span");
   wealthChip.className = "status-wealth hidden";
   // The player's own ruler's leadership, hidden until a War council play
-  // buys the first stack. Attack damage adds it, and it dies with the ruler.
+  // buys the first stack. The number alone; what it does is the hover's job,
+  // and the answer depends on the ruler's abilities - only a War leader
+  // turns it into raid damage. The tip quotes the glossary term, the same
+  // two lines the land hover's "Leadership" segment shows, so the two
+  // surfaces cannot drift apart.
   const leadershipChip = document.createElement("span");
   leadershipChip.className = "status-prowess hidden";
+  leadershipChip.addEventListener("mousemove", (e) => {
+    cb.onShowTip?.(
+      [{ text: TERMS.leadership.name }, { text: TERMS.leadership.text }],
+      e.clientX, e.clientY,
+    );
+  });
+  leadershipChip.addEventListener("mouseleave", () => cb.onHideTip?.());
   // The turnip bar: how far the player's Grow turnips plays have filled
   // toward the next Turnip harvest. Count and fill both read the same stored
   // counter, so they cannot disagree; hidden entirely for a run that holds
@@ -2058,8 +2070,7 @@ export function createHud(
       const leadership = view.leadership[humanFaction] ?? 0;
       leadershipChip.classList.toggle("hidden", leadership === 0);
       if (leadership > 0) {
-        leadershipChip.textContent =
-          `Leadership ${leadership} (added to every attack)`;
+        leadershipChip.textContent = `Leadership ${leadership}`;
       }
       // Lowercase "turnips": the common noun, per the naming rule - the card
       // is named in the hover explanation, where it can be read in full.

@@ -19,7 +19,7 @@ export interface TermDef {
 export const TERMS: Record<string, TermDef> = {
   leadership: {
     id: "leadership", name: "Leadership",
-    text: "This ruler's own worth in a fight. War council raises it by 1 and they stack; it dies with the ruler, and a successor starts at nothing. It does nothing by itself - it counts only where the leader holds an ability that spends it.",
+    text: "This ruler's own worth in a fight. War council raises it by 1 and they stack; it dies with the ruler, and a successor starts at nothing. By itself it moves nothing - an ability cashes it in: a War leader's raids each deal their leadership on top of the card's own damage.",
   },
   omens: {
     id: "omens", name: "Omens read",

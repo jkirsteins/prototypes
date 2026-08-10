@@ -64,6 +64,7 @@ function setup(opts?: {
   onResetProgress?: () => void;
   onSurrender?: () => void;
   onHighlightFaction?: (factionId: string | null) => void;
+  onShowTip?: HudCallbacks["onShowTip"];
   localPlayerId?: () => number;
   playerNameOf?: (factionId: string) => string | null;
   placeNameFactionIds?: Set<string>;
@@ -91,6 +92,7 @@ function setup(opts?: {
     ...(opts?.onHighlightFaction
       ? { onHighlightFaction: opts.onHighlightFaction }
       : {}),
+    ...(opts?.onShowTip ? { onShowTip: opts.onShowTip } : {}),
     ...(opts?.localPlayerId ? { localPlayerId: opts.localPlayerId } : {}),
     ...(opts?.playerNameOf ? { playerNameOf: opts.playerNameOf } : {}),
   };
@@ -355,7 +357,8 @@ describe("createHud", () => {
   });
 
   it("shows the leadership chip only once a War council has bought a stack", () => {
-    const { container, hud } = setup();
+    const onShowTip = vi.fn();
+    const { container, hud } = setup({ onShowTip });
     let g = playing();
     hud.update(g);
     expect(q(container, ".status-prowess").classList.contains("hidden")).toBe(true);
@@ -363,9 +366,15 @@ describe("createHud", () => {
     g = playCard(g, 0, seededRng(1));
     hud.update(g);
     expect(q(container, ".status-prowess").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".status-prowess").textContent).toBe(
-      "Leadership 1 (added to every attack)",
+    // The number alone; what leadership does is the hover's job.
+    expect(q(container, ".status-prowess").textContent).toBe("Leadership 1");
+    q(container, ".status-prowess").dispatchEvent(
+      new MouseEvent("mousemove", { bubbles: true }),
     );
+    expect(onShowTip).toHaveBeenCalled();
+    const lines = onShowTip.mock.calls[0][0] as { text: string }[];
+    expect(lines[0].text).toBe("Leadership");
+    expect(lines[1].text).toContain("War leader");
   });
 
   it("names the faction that unified the Balts", () => {
