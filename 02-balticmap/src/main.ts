@@ -1445,7 +1445,10 @@ function renderAimArrow(): void {
 function renderMarchArrows(): void {
   arrowGroup.replaceChildren();
   const human = localHuman();
-  if (!inPlay() || !human) return;
+  if (!inPlay() || !human) {
+    syncArrowFocus();
+    return;
+  }
   // Aiming does NOT take the arrows away, for the same reason it does not take
   // the badges away: what is already flying at a land is half of what decides
   // whether to send an army there, and a map that hid it had the player choose
@@ -1514,6 +1517,10 @@ function renderMarchArrows(): void {
   for (const [key, claim] of Object.entries(game.claims)) {
     drawClaim(claim, realm, order.get(`claim:${key}`));
   }
+  // Every arrow on the map is new, including the one the pointer is resting
+  // on. Nothing will announce that, so the focus is re-derived here rather
+  // than waiting for a pointer event that may never come.
+  syncArrowFocus();
 }
 
 /** One arrow, `lateral` user-units to the left of its own direction of travel,
@@ -1580,7 +1587,6 @@ function drawClaim(
   g.dataset.actor = claim.actor;
   g.dataset.target = claim.to;
   g.dataset.from = claim.from;
-  focusOnHover(g, claim.from, claim.to);
   const against = realm.has(claim.to);
   const ours = realm.has(claim.from);
   g.classList.add(against ? "march-hostile" : ours ? "march-ours" : "march-other");
@@ -1648,7 +1654,6 @@ function drawMarch(
   // `actor`: a lord marches out of a land its vassal holds, so who sent the
   // army and where it left from are different lands.
   g.dataset.from = m.from;
-  focusOnHover(g, m.from, m.to);
   // Against you first: an arrow between your own two lands cannot happen
   // (attackReach excludes what you hold outright, and a raid on your own
   // vassal IS aimed at your realm), so the order only decides how a lord's
@@ -2206,26 +2211,74 @@ function applyRealmHover(region: Region | null): void {
  *  and reading this off the realm root lit every arrow in an empire when a
  *  single vassal was pinned. */
 /** The two lands an arrow runs between, while the pointer is on it. Null when
- *  it is not, which is most of the time. */
+ *  it is not, which is most of the time.
+ *
+ *  DERIVED from where the pointer is, and never remembered from an arrow's own
+ *  enter and leave. `renderMarchArrows` destroys and rebuilds every arrow on
+ *  every refresh, and a detached element is never sent the leave that would
+ *  clear what its enter wrote - the fact src/deck-screen.ts dismisses its tip
+ *  by hand for. A redraw that put an arrow back under the same point survived,
+ *  because the browser hands the replacement an enter; a march that resolved
+ *  away, or a bundle that re-laid out around the pointer, did not. Nothing on
+ *  the map owned the focus any more, so moving the pointer anywhere fired
+ *  nothing and the whole map stayed greyed for the rest of the run. A value
+ *  re-read from the pointer cannot go stale, because nothing is holding it. */
 let arrowFocus: { from: string; to: string } | null = null;
 
-/** Lights the two ends of one arrow and dims everything else, for as long as
- *  the pointer is on it.
- *
- *  An arrow crosses several lands on its way and says which two it is about
- *  only by where it starts and stops - on a crowded frontier that is a lot of
- *  tracing. Pointing at it answers the question directly. Hover only: nothing
- *  is clicked, nothing is remembered, and the pin is the thing that persists. */
-function focusOnHover(g: SVGGElement, from: string, to: string): void {
-  g.addEventListener("pointerenter", () => {
-    arrowFocus = { from, to };
-    applyArrowFocus();
-  });
-  g.addEventListener("pointerleave", () => {
-    arrowFocus = null;
-    applyArrowFocus();
-  });
+/** Where the pointer last was, null once it has left the map. Read by the
+ *  rebuild, which has no event to ask: the svg is built once and never
+ *  replaced, so its own boundary events are the only ones here that hold. */
+let pointerAt: { x: number; y: number } | null = null;
+
+/** The arrow an element is part of, walking up from a strength label or a
+ *  claim's head. */
+function arrowIn(target: EventTarget | null): { from: string; to: string } | null {
+  const g = (target as Element | null)?.closest?.(".march-arrow, .claim-arrow") as
+    | SVGGElement
+    | null
+    | undefined;
+  const from = g?.dataset.from;
+  const to = g?.dataset.target;
+  return from !== undefined && to !== undefined ? { from, to } : null;
 }
+
+/** The arrow at a screen point - `landAtPoint`'s shape, for its reason: a
+ *  rebuild has no event to read, so the question must be answerable from a
+ *  point alone. Optional-chained because happy-dom hit-tests nothing, and "no
+ *  arrow" is the right answer where there is no layout to be over. */
+function arrowAt(x: number, y: number): { from: string; to: string } | null {
+  return arrowIn(document.elementFromPoint?.(x, y) ?? null);
+}
+
+/** The same pair is no news, and saying so costs the whole map: this runs off
+ *  every pointermove, and `applyArrowFocus` walks every region, arrow, badge
+ *  and settlement dot. */
+function setArrowFocus(next: { from: string; to: string } | null): void {
+  if (next?.from === arrowFocus?.from && next?.to === arrowFocus?.to) return;
+  arrowFocus = next;
+  applyArrowFocus();
+}
+
+/** Re-asks the question after the arrows have been rebuilt. Nothing moved, so
+ *  no pointer event is coming: the arrow the player was pointing at is now a
+ *  different element or no element at all, and only the point still means
+ *  anything. */
+function syncArrowFocus(): void {
+  setArrowFocus(pointerAt === null ? null : arrowAt(pointerAt.x, pointerAt.y));
+}
+
+// The move's own target, which the browser has already hit-tested - the order
+// `landUnder` in src/interaction.ts reads a press in. Aiming needs no case of
+// its own: `.aiming` takes the arrows out of hit-testing, so the answer under
+// the pointer is the land, and the focus derives as none.
+svg.addEventListener("pointermove", (e) => {
+  pointerAt = { x: e.clientX, y: e.clientY };
+  setArrowFocus(arrowIn(e.target));
+});
+svg.addEventListener("pointerleave", () => {
+  pointerAt = null;
+  setArrowFocus(null);
+});
 
 /** Paints the current arrow focus, or clears it. The pin owns the map when one
  *  is held and while a card is armed the targeting cues do, so this stands
