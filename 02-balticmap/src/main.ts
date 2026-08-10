@@ -447,11 +447,28 @@ function humanBlockReason(cardId: string) {
 
 /** Puts the conquest transfer question up when the state carries one for the
  *  local seat. Idempotent: the modal is only raised once per pending
- *  question, and answering clears it. */
+ *  question, and answering clears it.
+ *
+ *  Keyed by the LOCAL player's faction, which is the whole of the check: the
+ *  store replicates whole, so a screen reading it without asking whose
+ *  question it is raised the other human's conquest modal and answered it
+ *  into a copy the next update threw away. */
 let transferAsked: string | null = null;
+
+/** Whether the LOCAL player owes an answer about a conquest. Asked wherever
+ *  input has to wait on the modal, so the wait is the same question the modal
+ *  is raised on rather than a second reading of the same store. */
+function localTransferPending(): boolean {
+  const me = localHuman()?.factionId;
+  return me !== undefined && game.pendingTransfers[me] !== undefined;
+}
+
 function askTransferIfPending(): void {
-  const pending = game.pendingTransfer;
-  if (pending === null) {
+  const me = localHuman()?.factionId;
+  const pending = me === undefined
+    ? undefined
+    : game.pendingTransfers[me];
+  if (pending === undefined) {
     transferAsked = null;
     return;
   }
@@ -471,7 +488,14 @@ function askTransferIfPending(): void {
     {
       onConfirm(amount) {
         hud.hideHarvestUi();
-        game = transferDefense(game, amount);
+        if (net.role === "guest") {
+          sendGuestAction({ type: "transfer", amount });
+          return;
+        }
+        game = transferDefense(game, me, amount);
+        // The answer moves a defense score, so the other screen is owed it
+        // now rather than at whatever play happens to push next.
+        if (net.role === "host") net.session?.pushUpdate();
         refresh();
       },
     },
@@ -2565,7 +2589,7 @@ const hudCallbacks: HudCallbacks = {
       // `humanPlayableSet`'s answer rather than this gate's.
       if (
         !isLocalTurn() || !turnOpen(game) || resolving ||
-        pendingHarvest !== null
+        pendingHarvest !== null || localTransferPending()
       ) {
         return;
       }
@@ -2646,7 +2670,15 @@ const hudCallbacks: HudCallbacks = {
       afterHumanPlay();
     },
     onEndTurn() {
-      if (!isLocalTurn() || resolving || pendingHarvest !== null) return;
+      // The conquest question holds the turn the same way the harvest offer
+      // does, and for a harder reason: it is answered by the seat on turn, so
+      // a turn handed over with it open is a question nothing can answer.
+      if (
+        !isLocalTurn() || resolving || pendingHarvest !== null ||
+        localTransferPending()
+      ) {
+        return;
+      }
       disarm();
       // A turn with nothing left to close - a spent standard one - just HANDS
       // OVER: the round resolves on this click rather than the moment the card
@@ -3160,7 +3192,7 @@ window.addEventListener("keydown", (e) => {
   // would otherwise navigate back in some browsers, so it is taken outright.
   if (e.key === "e" || e.key === "E" || e.key === "Backspace") {
     e.preventDefault();
-    if (pendingHarvest !== null || game.pendingTransfer !== null) return;
+    if (pendingHarvest !== null || localTransferPending()) return;
     hudCallbacks.onEndTurn?.();
     return;
   }

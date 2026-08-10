@@ -2397,8 +2397,15 @@ export function createHud(
         pmDeltas.textContent = "";
         pmBuildup.replaceChildren();
       } else {
+        // The BOARD first, the log second. A second person annexed while the
+        // host plays on has a defeat their own screen worked out from
+        // `incorporated` (`guestPhaseView`), so there is no `defeat` event to
+        // read and this line rendered an empty faction name. The store holds
+        // the same answer for the host anyway; the event is the fallback for
+        // an ending whose annexation has since been undone.
         const defeatEvent = [...state.log].reverse().find((e) => e.type === "defeat");
-        const killer = defeatEvent?.overlordFactionId;
+        const killer =
+          state.incorporated[human.factionId] ?? defeatEvent?.overlordFactionId;
         setCause([t("Incorporated by "), faction(killer ?? "")]);
         if (killer !== undefined) {
           renderEnderComparison(state, killer);

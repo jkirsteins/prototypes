@@ -426,7 +426,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
   const rng = seededRng(opts.seed);
   const seeded: GameState = {
     ...newSimGame(),
-    humanSeat: null,
+    humanSeats: [],
   };
   let state = applyBuildArm(
     pickFaction(

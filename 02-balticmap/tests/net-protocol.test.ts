@@ -52,12 +52,13 @@ function smallHost(rng: Rng) {
 }
 
 describe("handshake", () => {
-  it("speaks protocol version 3 - the telegraphed-raid wire", () => {
+  it("speaks protocol version 4 - the two-humans wire", () => {
     // Bumped when the message set changes shape; v2 put `build` on
-    // lobby-guest and `harvest` on the play action, v3 puts `sourceId` there
-    // too - the land a Raid's army marches out of. Two deploys on different
-    // versions must refuse, not desync.
-    expect(PROTOCOL_VERSION).toBe(3);
+    // lobby-guest and `harvest` on the play action, v3 put `sourceId` there
+    // too, and v4 adds the `transfer` action and renames the state's
+    // `humanSeat` to a set of them. Two deploys on different versions must
+    // refuse, not desync.
+    expect(PROTOCOL_VERSION).toBe(4);
   });
 
   it("refuses a hello from a different protocol version at the lobby", () => {
@@ -200,9 +201,49 @@ describe("action validation", () => {
       type: "play", cardIndex: 0, cardId: "raid", targetId: "beta",
     })).toBeNull();
   });
+
+  it("refuses a transfer from a seat with no conquest waiting", () => {
+    // The structural half of the fix: the store replicates whole, so before
+    // this arm existed a screen could read the OTHER person's open question
+    // and answer it. Refusing it here makes that unrepresentable on the wire
+    // rather than merely avoided by a UI check.
+    const g = freshGame(seededRng(3));
+    expect(validateAction(g, 0, g.turn, { type: "transfer", amount: 3 }))
+      .toMatch(/conquest/);
+    const asked: GameState = {
+      ...g, pendingTransfers: { alpha: { from: "alpha", to: "beta" } },
+    };
+    expect(validateAction(asked, 0, asked.turn, { type: "transfer", amount: 3 }))
+      .toBeNull();
+    // 0 is a real answer. The UPPER bound is deliberately not checked here -
+    // transferDefense clamps at the moment it applies, and a second limit
+    // computed now would disagree the first time the board moved underneath.
+    expect(validateAction(asked, 0, asked.turn, { type: "transfer", amount: 0 }))
+      .toBeNull();
+    expect(validateAction(asked, 0, asked.turn, { type: "transfer", amount: -1 }))
+      .toMatch(/number/);
+    expect(
+      validateAction(asked, 0, asked.turn, { type: "transfer", amount: 1.5 }),
+    ).toMatch(/number/);
+  });
 });
 
 describe("applyNetAction", () => {
+  it("answers the sender's own conquest, off the state and not the message", () => {
+    const rng = seededRng(5);
+    const base = freshGame(rng);
+    const g: GameState = {
+      ...base,
+      defenseMax: { alpha: 40, beta: 40 },
+      defense: { alpha: 40, beta: 0 },
+      pendingTransfers: { alpha: { from: "alpha", to: "beta" } },
+    };
+    const after = applyNetAction(g, rng, { type: "transfer", amount: 10 });
+    expect(after.defense.alpha).toBe(30);
+    expect(after.defense.beta).toBe(10);
+    expect(after.pendingTransfers).toEqual({});
+  });
+
   it("routes end-turn to endTurn only under unlimited rules (standard refuses)", () => {
     const rng = seededRng(5);
     const g = freshGame(rng);
@@ -300,6 +341,20 @@ describe("guestPhaseView", () => {
     expect(guestPhaseView(g, "beta")).toBe("victory");
     // Somebody else took the host: both humans lost this one.
     expect(guestPhaseView(g, "gamma")).toBe("defeat");
+  });
+
+  // The one ending the engine cannot phrase: the run goes on for everybody
+  // else, so `phase` stays "playing" and the guest's own loss is written
+  // nowhere but the board. Without this the guest sat at a live screen, its
+  // seat skipped every round, and was never told why.
+  it("reads a guest's own annexation off the board while the host plays on", () => {
+    const rng = seededRng(5);
+    const base = freshGame(rng);
+    const g: GameState = { ...base, incorporated: { beta: "gamma" } };
+    expect(g.phase).toBe("playing");
+    expect(guestPhaseView(g, "beta")).toBe("defeat");
+    // Everybody still in the run sees the run.
+    expect(guestPhaseView(g, "delta")).toBe("playing");
   });
 });
 

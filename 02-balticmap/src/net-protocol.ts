@@ -1,6 +1,6 @@
 import { CARDS, type Rng, type Strategy } from "./cards";
 import {
-  discardCard, endTurn, pickFaction, playCard, viewOf,
+  discardCard, endTurn, pickFaction, playCard, transferDefense, viewOf,
   type GameEvent, type GamePhase, type GameState,
 } from "./game";
 import { marchSourcesAgainst } from "./playability";
@@ -10,7 +10,7 @@ import {
   deserializeGame, serializeGame, type SerializedGameState,
 } from "./net-codec";
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /** Fingerprint of the build's card set. Two deploys whose CARDS differ
  *  cannot share a game - hand indexes and rules text would disagree -
@@ -36,6 +36,12 @@ export type NetAction =
       sourceId?: string; harvest?: HarvestChoice;
     }
   | { type: "discard"; cardIndex: number; cardId: string }
+  /** The conquest question's answer: how many defenders march over with the
+   *  land. It rides the wire rather than resolving locally because a guest's
+   *  state is a replica - a `transferDefense` applied to it moves points on
+   *  one screen and nowhere else. No `from`/`to`: the host holds the
+   *  question, and naming it again is only a second chance to disagree. */
+  | { type: "transfer"; amount: number }
   | { type: "end-turn" };
 
 export type NetMessage =
@@ -108,6 +114,21 @@ export function validateAction(
   if (state.current !== seat) return "not this seat's turn";
   if (turn !== state.turn) return "stale turn stamp";
   if (action.type === "end-turn") return null;
+  if (action.type === "transfer") {
+    // The sender's OWN conquest, recomputed host-side: a seat answering a
+    // question it did not raise is exactly the bug this action exists to
+    // stop. The upper bound is deliberately NOT checked - `transferDefense`
+    // clamps through `transferLimit` at the moment it applies, and a second
+    // limit computed here would disagree with it the first time the board
+    // moved between the modal opening and the answer arriving.
+    if (state.pendingTransfers[state.players[seat].factionId] === undefined) {
+      return "no conquest of yours is waiting for defenders";
+    }
+    if (!Number.isInteger(action.amount) || action.amount < 0) {
+      return "that is not a number of defenders";
+    }
+    return null;
+  }
   if (state.players[seat].hand[action.cardIndex] !== action.cardId) {
     return "hand mismatch: card is not at that index";
   }
@@ -150,6 +171,12 @@ export function applyNetAction(
       });
     case "discard":
       return discardCard(state, action.cardIndex);
+    case "transfer":
+      // `validateAction` has already pinned the sender to the seat on turn,
+      // so the faction is read off the state rather than taken on trust.
+      return transferDefense(
+        state, state.players[state.current].factionId, action.amount,
+      );
     case "end-turn":
       return endTurn(state);
   }
@@ -173,20 +200,25 @@ export function applyUpdate(
   return { ...bare, log: [...(prev?.log ?? []), ...msg.newEvents] };
 }
 
-/** The engine's endings are host-centric (they pivot on humanSeat, the
- *  host's seat 0). The guest maps the phase for presentation: the
- *  host's victory is the guest's defeat, and a host `defeat` the guest
- *  itself brought about is the guest's victory. See the spec's
- *  host-seat privileges section.
+/** There is one `phase` field and it speaks for `humanSeats[0]`, the host.
+ *  The guest maps it for presentation: the host's victory is the guest's
+ *  defeat, and a host `defeat` the guest itself brought about is the guest's
+ *  victory.
  *
- *  Two ways the guest can be the cause, and both read off the same
- *  field. `unified` names the faction that swallowed the map. `defeat`
- *  names the faction that incorporated the host - and if that was the
- *  guest, telling it that it lost is telling it the opposite of what it
- *  just did. */
+ *  Two ways the guest can be the cause, and both read off the same field.
+ *  `unified` names the faction that swallowed the map. `defeat` names the
+ *  faction that incorporated the host - and if that was the guest, telling it
+ *  that it lost is telling it the opposite of what it just did.
+ *
+ *  And one ending the engine cannot phrase at all: a guest annexed while the
+ *  host plays on. The run legitimately continues for everybody else, so the
+ *  guest's screen reads the board instead of the phase - `incorporated` is
+ *  incorporated whoever is looking. It is checked FIRST, because a guest that
+ *  is out of the run is out of it whatever the host's phase later says. */
 export function guestPhaseView(
   state: GameState, guestFactionId: string,
 ): GamePhase {
+  if (state.incorporated[guestFactionId] !== undefined) return "defeat";
   if (state.phase === "victory") return "defeat";
   if (state.phase === "defeat") {
     const ending = state.log[state.log.length - 1];

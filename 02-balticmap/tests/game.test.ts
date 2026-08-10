@@ -9,7 +9,7 @@ import {
 import {
   hasPassive, passivesOn, playsTurns, QUIET_PASSIVES, stripOnCapture,
 } from "../src/passives";
-import { hasRuler } from "../src/rulers";
+import { hasRuler, vacateRulers } from "../src/rulers";
 import { DEFAULT_RULES } from "../src/rules";
 import { CARDS, isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
@@ -1866,13 +1866,32 @@ describe("advance", () => {
     expect(after.turn).toBe(2);
   });
 
-  it("never skips the human seat, incorporated or not", () => {
+  it("keeps a person's chair warm when their chief is killed", () => {
+    // A player skipped forever is not a rule, it is a hung game. The exemption
+    // is the PERSON's, not seat 0's: it has to hold at whichever seat they
+    // sit, or a second human loses their turns where the first would not.
+    const base = playingState();
     const g = {
-      ...playingState(),
-      current: 3, playedThisTurn: true,
-      incorporated: { beta: "alpha" },
+      ...base,
+      humanSeats: [0, 2],
+      current: 1, playedThisTurn: true,
+      rulers: vacateRulers(base.rulers, [base.players[0].factionId]),
     };
-    expect(advance(g, seededRng(3)).current).toBe(0);
+    expect(advance(g, seededRng(3)).current).toBe(2);
+  });
+
+  it("but passes over a person whose realm has been swallowed", () => {
+    // The other half, and the order matters: an annexed people has no seat to
+    // sit in whoever was playing them. Exempting them too would leave the rest
+    // of the table waiting on a turn that can never be taken.
+    const base = playingState();
+    const g = {
+      ...base,
+      humanSeats: [0, 2],
+      current: 1, playedThisTurn: true,
+      incorporated: { [base.players[2].factionId]: base.players[0].factionId },
+    };
+    expect(advance(g, seededRng(3)).current).not.toBe(2);
   });
 });
 
@@ -2298,17 +2317,17 @@ describe("the defense transfer", () => {
 
   it("asks the human, and answers nothing until they say", () => {
     const after = captured();
-    expect(after.pendingTransfer).toEqual({ from: "beta", to: "alpha" });
+    expect(after.pendingTransfers).toEqual({ beta: { from: "beta", to: "alpha" } });
     expect(after.defense.alpha).toBe(0);
     expect(after.defense.beta).toBe(40);
   });
 
   it("moves the points the player names and clears the question", () => {
     const g = captured();
-    const after = transferDefense(g, 10);
+    const after = transferDefense(g, "beta", 10);
     expect(after.defense.beta).toBe(30);
     expect(after.defense.alpha).toBe(10);
-    expect(after.pendingTransfer).toBeNull();
+    expect(after.pendingTransfers).toEqual({});
     expect(after.log.at(-1)).toMatchObject({
       type: "transferred", targetFactionId: "alpha", sourceFactionId: "beta",
       amount: 10,
@@ -2318,7 +2337,7 @@ describe("the defense transfer", () => {
   it("clamps to what the origin holds", () => {
     const g = captured();
     expect(transferLimit(g, "beta", "alpha")).toBe(40);
-    const after = transferDefense(g, 9999);
+    const after = transferDefense(g, "beta", 9999);
     expect(after.defense.beta).toBe(0);
     expect(after.defense.alpha).toBe(40);
     expect(after.log.at(-1)).toMatchObject({ type: "transferred", amount: 40 });
@@ -2327,7 +2346,7 @@ describe("the defense transfer", () => {
   it("clamps to the room the destination has - points past a ceiling would vanish", () => {
     const g = { ...captured(), defense: { alpha: FIXTURE_MAX - 5, beta: 40 } };
     expect(transferLimit(g, "beta", "alpha")).toBe(5);
-    const after = transferDefense(g, 40);
+    const after = transferDefense(g, "beta", 40);
     expect(after.defense.beta).toBe(35);
     // A land back at its ceiling drops its key, the pristine convention.
     expect(after.defense.alpha).toBeUndefined();
@@ -2336,15 +2355,15 @@ describe("the defense transfer", () => {
   it("0 is a real answer: the question closes and nothing moves", () => {
     const g = captured();
     const before = g.log.length;
-    const after = transferDefense(g, 0);
-    expect(after.pendingTransfer).toBeNull();
+    const after = transferDefense(g, "beta", 0);
+    expect(after.pendingTransfers).toEqual({});
     expect(after.defense.beta).toBe(40);
     expect(fresh(after, before)).toEqual([]);
   });
 
   it("does nothing at all when no capture is waiting on an answer", () => {
     const g = playingSix();
-    expect(transferDefense(g, 10)).toBe(g);
+    expect(transferDefense(g, "beta", 10)).toBe(g);
   });
 
   it("a seat nobody can ask moves half of what the origin holds", () => {
@@ -2377,9 +2396,63 @@ describe("the defense transfer", () => {
     };
     const after = beginTurn(g, rng());
     expect(after.overlords.get(target)).toBe(raider);
-    expect(after.pendingTransfer).toBeNull();
+    expect(after.pendingTransfers).toEqual({});
     expect(after.defense[raider]).toBe(20);
     expect(after.defense[target]).toBe(20);
+  });
+
+  it("asks EVERY person, not only the seat the phase speaks for", () => {
+    // The two humans of a net game must play the same rules. Spelled as a
+    // single `humanSeat`, this branch asked the host how many defenders to
+    // send and moved half out of the guest's land without asking at all.
+    const base = playingSix();
+    const raider = base.factionIds.find(
+      (f) => f !== "beta" && hasRuler(base.rulers, f),
+    )!;
+    const target = base.factionIds.find((f) => f !== "beta" && f !== raider)!;
+    const raiderSeat = base.players.findIndex((p) => p.factionId === raider);
+    const g: GameState = {
+      ...base,
+      humanSeats: [0, raiderSeat],
+      current: raiderSeat,
+      defense: { [target]: 0, [raider]: 40 },
+      marches: {
+        [`${raider}>${target}#0`]: {
+          actor: raider, from: raider, to: target, cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: base.turn,
+        },
+      },
+    };
+    const after = beginTurn(g, rng());
+    expect(after.overlords.get(target)).toBe(raider);
+    expect(after.pendingTransfers).toEqual({
+      [raider]: { from: raider, to: target },
+    });
+    // Nothing moved: the question is open, and the automatic half must not
+    // fire behind it.
+    expect(after.defense[raider]).toBe(40);
+    expect(after.defense[target]).toBe(0);
+  });
+
+  it("keeps the two people's questions apart", () => {
+    // One slot would have let whoever conquered first hold the only question
+    // on the board, and the other person's conquest fall through to the
+    // automatic half they were never asked about.
+    const base = playingSix();
+    const other = base.factionIds.find((f) => f !== "beta")!;
+    const g: GameState = {
+      ...base,
+      pendingTransfers: {
+        beta: { from: "beta", to: "alpha" },
+        [other]: { from: other, to: "alpha" },
+      },
+      defense: { alpha: 0, beta: 40, [other]: 40 },
+    };
+    const after = transferDefense(g, "beta", 10);
+    expect(after.pendingTransfers).toEqual({
+      [other]: { from: other, to: "alpha" },
+    });
+    expect(after.defense.beta).toBe(30);
   });
 });
 

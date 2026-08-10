@@ -292,24 +292,46 @@ export interface GameState {
    *  strips what said nobody held the land, and any future card that grants
    *  or removes one. */
   passives: Passives;
-  /** A subjugation the LOCAL player has just made and not yet answered for:
-   *  how many defense points to move from the land it was taken with into the
-   *  land taken. Null when there is nothing to answer.
+  /** Faction id -> a subjugation that faction has made and not yet answered
+   *  for: how many defense points to move from the land it was taken with
+   *  into the land taken. Absent means nothing to answer.
    *
    *  Held on the state rather than resolved inside the play because it is a
    *  question, and only a human is asked it - an AI seat moves its own points
    *  by `autoTransfer` on the spot. Nothing in the rules blocks on it: the
    *  points sit where they are until the player says, and `transferDefense`
    *  clamps at the moment it applies, so a board that moved underneath the
-   *  modal cannot produce an impossible transfer. */
-  pendingTransfer: { from: string; to: string } | null;
+   *  modal cannot produce an impossible transfer.
+   *
+   *  Keyed by faction, because "only a human is asked" is more than one
+   *  person now. It also decides WHO MAY ANSWER: a transfer crossing the
+   *  wire is refused unless it names a conquest the sender actually made.
+   *  A single slot would have let a guest that dropped with the modal open
+   *  hold the question the host was waiting to be asked.
+   *
+   *  Still at most one per faction: the modal answers about one pair of
+   *  lands, so a second conquest in the same batch keeps the first question
+   *  and sends no defenders at all. It must NOT fall through to the
+   *  automatic half - that would move points out of a land the player was
+   *  never asked about, the one thing this exists to prevent. */
+  pendingTransfers: Record<string, { from: string; to: string }>;
   /** Faction id -> ethnicity id, for the ruler name pools. Map-derived, like
    *  `adjacency`; empty in tests, which then draw from the generic pool. */
   ethnicities: Record<string, string>;
-  /** Index of the seat treated as the player, or null for a world simulation
-   *  with no privileged seat. Only the endings block and `advance` consult it;
-   *  the rest of the app still addresses the human as index 0 / player id 1. */
-  humanSeat: number | null;
+  /** The seats a PERSON plays. Empty for a world simulation with no
+   *  privileged seat.
+   *
+   *  Index 0 is the seat `phase` speaks for - seat 0, the host's, in every
+   *  dealt game. There is one phase field and two people cannot hold
+   *  different ones, so a second person's screen maps it for itself
+   *  (`guestPhaseView` in src/net-protocol.ts).
+   *
+   *  Two questions ride on this and they are not the same question. "Is a
+   *  person playing this faction" is `isHumanFaction`, and it is plural: it
+   *  decides who is ASKED rather than automated, and whose chair stays warm
+   *  without a chief. "Whose ending is on screen" is index 0 alone. Spelling
+   *  them the same way is what gave the two humans different rules. */
+  humanSeats: readonly number[];
   /** The build the human confirmed on the build screen; what `pickFaction`
    *  stamps on seat 0. */
   humanStrategy: Strategy;
@@ -414,9 +436,9 @@ export function newGame(
     respites: {},
     ethnicities,
     passives: {},
-    pendingTransfer: null,
+    pendingTransfers: {},
     rulers: initialRulers(factionIds, ethnicities),
-    humanSeat: 0,
+    humanSeats: [0],
     humanStrategy: "warpath",
     adjacency:
       adjacency ??
@@ -452,18 +474,23 @@ export function autoTransfer(
   return Math.min(Math.floor(held / 2), transferLimit(state, from, to));
 }
 
-/** Moves defense points between two lands and clears the pending question.
- *  Clamped through `transferLimit`, so an amount from a modal the board moved
- *  under is trimmed rather than trusted. An amount of 0 is a real answer: the
- *  player keeping their own defenses where they are. */
+/** Moves defense points between two lands and clears that faction's pending
+ *  question. Clamped through `transferLimit`, so an amount from a modal the
+ *  board moved under is trimmed rather than trusted. An amount of 0 is a real
+ *  answer: the player keeping their own defenses where they are.
+ *
+ *  Named by faction and not by seat, because the question outlives neither -
+ *  it is raised at a conquest and answered whenever the person gets to it,
+ *  and a faction is what both ends of the wire agree on. */
 export function transferDefense(
-  state: GameState, amount: number,
+  state: GameState, factionId: string, amount: number,
 ): GameState {
-  const pending = state.pendingTransfer;
-  if (pending === null) return state;
+  const pending = state.pendingTransfers[factionId];
+  if (pending === undefined) return state;
+  const { [factionId]: _answered, ...rest } = state.pendingTransfers;
   return {
-    ...applyTransfer(state, pending.from, pending.to, amount),
-    pendingTransfer: null,
+    ...applyTransfer(state, pending.from, pending.to, amount, factionId),
+    pendingTransfers: rest,
   };
 }
 
@@ -477,13 +504,20 @@ export function transferDefense(
  *  from. */
 function applyTransfer(
   state: GameState, from: string, to: string, amount: number,
+  /** The faction answering, when one is named. `transferDefense` knows it;
+   *  the automatic half inside a capture does not, and there the seat on
+   *  turn IS the taker. Naming it stops the two from being the same fact by
+   *  accident once a second person can be the one answering. */
+  byFactionId?: string,
 ): GameState {
   const moved = Math.max(0, Math.min(amount, transferLimit(state, from, to)));
   if (moved === 0) return state;
   const v = { defense: state.defense, defenseMax: state.defenseMax };
   let defense = applyDamage(v, from, moved);
   defense = applyHeal({ defense, defenseMax: state.defenseMax }, to, moved);
-  const actor = state.players[state.current];
+  const actor = byFactionId === undefined
+    ? state.players[state.current]
+    : state.players.find((p) => p.factionId === byFactionId);
   return {
     ...state,
     defense,
@@ -853,7 +887,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   let claims = state.claims;
   let defense = landed.defense;
   let passives = state.passives;
-  let pendingTransfer = state.pendingTransfer;
+  const pendingTransfers = { ...state.pendingTransfers };
 
   /** A land walked into by an army, or subjugated any other way outside a
    *  play. The same allegiance move `landSubjugation` makes inside `playCard`,
@@ -888,15 +922,15 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       ...cause,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
-    // The human is asked; everybody else moves half on the spot. Only one
-    // question can be pending at a time, because the modal answers about one
-    // pair of lands - so a second conquest in the same batch keeps the first
-    // question and sends no defenders at all. It must NOT fall through to the
-    // automatic half: that moved points out of a land the player was never
-    // asked about, which is the one thing `pendingTransfer` exists to prevent.
-    const seat = state.players.findIndex((pl) => pl.factionId === by);
-    if (seat === state.humanSeat) {
-      pendingTransfer ??= { from, to: land };
+    // A PERSON is asked, whichever seat they sit in; everybody else moves half
+    // on the spot. Only one question can be pending per faction, because the
+    // modal answers about one pair of lands - so a second conquest in the same
+    // batch keeps the first question and sends no defenders at all. It must
+    // NOT fall through to the automatic half: that moved points out of a land
+    // the player was never asked about, which is the one thing
+    // `pendingTransfers` exists to prevent.
+    if (isHumanFaction(state, by)) {
+      pendingTransfers[by] ??= { from, to: land };
       return;
     }
     const moved = autoTransfer(
@@ -1178,7 +1212,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     : state.wealth;
   return {
     ...state, players, overlords, wealth, marches, claims, defense, passives,
-    pendingTransfer,
+    pendingTransfers,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
@@ -1422,19 +1456,43 @@ export function turnOpen(state: GameState): boolean {
   return !state.playedThisTurn || state.repeatGroup !== null;
 }
 
-/** Whether this faction will never see a `beginTurn` of its own. Two reasons,
- *  and they must be asked together: nobody leads it, or it has been absorbed
- *  into somebody else's realm outright. A conquest does not wake up - taking a
+/** Whether a person plays this faction. The ONE spelling, and both readers
+ *  need the same answer: `takeLand` asks it to decide who is asked about a
+ *  conquest's defenders, and `takesNoTurn` asks it to decide whose chair
+ *  stays warm without a chief. Two answers that differed would be a person
+ *  asked a question at a seat the turn loop had already skipped. */
+export function isHumanFaction(state: GameState, factionId: string): boolean {
+  return state.humanSeats.some(
+    (seat) => state.players[seat]?.factionId === factionId,
+  );
+}
+
+/** Whether this faction will never see a `beginTurn` of its own. Three
+ *  reasons, and they must be asked together, IN THIS ORDER:
+ *
+ *  An annexed people no longer has a seat to sit in, and that holds whoever
+ *  was playing them - a person whose realm has been swallowed is out of the
+ *  run, and exempting them here would leave everybody else waiting on a turn
+ *  that can never be taken.
+ *
+ *  Otherwise nobody leads it. A conquest does not wake a land up - taking a
  *  land wins the land, not its people's allegiance to a chief who does not
- *  exist - and an annexed people no longer has a seat to sit in.
+ *  exist - UNLESS a person is sitting there, because a player skipped forever
+ *  is not a rule, it is a hung game. A leaderless person still takes no LAND;
+ *  that gate is `hasRuler` at the capture sites and is untouched.
  *
  *  ONE spelling, because two readers depend on the answer matching. `advance`
  *  passes over such a seat, and `beginTurn`'s round wrap lands the arrows it
  *  left behind; a sweep that covered less than the skip did left a march
  *  standing on the map for the rest of the run, holding an army out of a land
- *  somebody else now holds. */
+ *  somebody else now holds. The human arm belongs here for exactly that
+ *  reason: spelled in `advance` alone, it exempted the first seat from the
+ *  skip while the sweep still resolved a second person's marches at somebody
+ *  else's turn start. */
 export function takesNoTurn(state: GameState, factionId: string): boolean {
-  return factionId in state.incorporated || !hasRuler(state.rulers, factionId);
+  if (factionId in state.incorporated) return true;
+  if (hasRuler(state.rulers, factionId)) return false;
+  return !isHumanFaction(state, factionId);
 }
 
 export function playCard(
@@ -1994,8 +2052,12 @@ export function playCard(
   // Defeat is checked before victory; the two cannot coincide. A rival
   // unification is checked last, so a play that wins for the human is never
   // mistaken for one that loses to somebody else.
-  const seat = state.humanSeat;
-  const humanFaction = seat === null ? null : players[seat].factionId;
+  //
+  // `humanSeats[0]` and not every human seat: there is one `phase` field, so
+  // it can only speak for one person. That is the host's seat in a net game,
+  // and the second person's screen maps the phase for itself.
+  const seat = state.humanSeats[0];
+  const humanFaction = seat === undefined ? null : players[seat].factionId;
   const winSize = victoryRealmSize(state.factionIds.length);
   if (humanFaction !== null && incorporated[humanFaction] !== undefined) {
     phase = "defeat";
@@ -2138,7 +2200,11 @@ export function advance(rawState: GameState, rng: Rng): GameState {
   for (let tried = 0; tried < state.players.length; tried++) {
     current = (current + 1) % state.players.length;
     if (current === 0) turn += 1;
-    if (current === state.humanSeat || !takesNoTurn(state, state.players[current].factionId)) {
+    // No exemption for a person's seat here. `takesNoTurn` already keeps a
+    // leaderless person's chair warm and already gives up an annexed one, and
+    // it is the same call `beginTurn`'s round-wrap sweep makes - which is why
+    // the question is asked there rather than answered twice.
+    if (!takesNoTurn(state, state.players[current].factionId)) {
       return beginTurn({ ...state, current, turn }, rng);
     }
   }
@@ -2147,6 +2213,10 @@ export function advance(rawState: GameState, rng: Rng): GameState {
   throw new Error("advance: no living seat to move to");
 }
 
+/** Whether the SOLO human is on turn. Seat 0 by name, because the one caller
+ *  is the boot path's fast-forward, which stops when the player's own turn
+ *  comes back. A net screen asks a different question - whether the seat on
+ *  turn is the one THIS screen plays - and must not reach for this. */
 export function isHumanTurn(state: GameState): boolean {
   return state.phase === "playing" && state.current === 0;
 }
