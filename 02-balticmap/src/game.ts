@@ -16,7 +16,7 @@ import {
   type Defense, type Disease,
 } from "./defense";
 import {
-  attackDamageFor, omensMultiplier, attackReach,
+  aimsUpOwnChain, attackDamageFor, omensMultiplier, attackReach,
   ESCAPE_RESPITE_TURNS, freeArmiesFor, greatRaidMarches, marchSourcesAgainst,
   claimWouldLand, marchTargetsFrom, outbreakPolygons, plagueMultiplier,
   playableSet,
@@ -846,17 +846,30 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     }
   };
 
-  /** A land just taken cannot send its armies at its new lord: those raids are
-   *  called off, while anything it aimed elsewhere flies on. Wars have not
-   *  stopped, only this one. Every route into `takeLand` owes this, which is
-   *  why it is a function rather than a step of the claim path. */
+  /** A land just taken cannot send its armies at its new lord, nor at anyone
+   *  that lord answers to: those raids are called off, while anything it aimed
+   *  elsewhere flies on. Wars have not stopped, only this one. Every route into
+   *  `takeLand` owes this, which is why it is a function rather than a step of
+   *  the claim path.
+   *
+   *  The chain, not just the direct lord: this is the hostile keyword's rule
+   *  applied at the instant the pyramid changes shape, and `resolveMarches`
+   *  applies the identical test to whatever is still in flight afterwards.
+   *  Two spellings of one rule would be two rules within a week - which is
+   *  precisely how this function came to hold the whole of it and the rest of
+   *  the game held none. */
   function callOffMarchesAgainstLord(
-    land: string, lord: string, playerId: number,
+    land: string, _lord: string, playerId: number,
   ): void {
-    const lordRealm = fullRealmOf(lord, overlords, state.incorporated);
+    const view = { ...viewOf({ ...state, players }), overlords, marches, defense };
     for (const axis of axesOf(marches)) {
       for (const march of [...axis.fromA, ...axis.fromB]) {
-        if (march.actor !== land || !lordRealm.has(march.to)) continue;
+        if (
+          march.actor !== land ||
+          !aimsUpOwnChain(view, march.actor, march.cardId, march.to)
+        ) {
+          continue;
+        }
         marches = clearMarches(marches, [
           ...Object.entries(marches)
             .filter(([, m]) => m === march)
@@ -1103,15 +1116,22 @@ function resolveMarches(
   let defense = state.defense;
 
   // A march whose ground moved under it while it was in flight is dropped:
-  // the army has no land left to have marched out of, or the land it was
-  // aimed at is no longer something its actor may attack. Both are the
-  // ordinary consequence of somebody else's turn, so they are reported.
+  // the army has no land left to have marched out of, the land it was aimed at
+  // is no longer something its actor may attack, or the actor has knelt to
+  // whoever it was aimed at since. All three are the ordinary consequence of
+  // somebody else's turn, so they are reported.
   //
   // The source test is two questions, not one. A polygon stays in its own
   // `fullRealmOf` even after it is annexed - the id is the land's, and the
   // land is still there - so the second question is who HOLDS it now. An
   // annexed land answers to its annexer, and an army cannot march out of a
   // land its owner has lost.
+  //
+  // The third is the hostile keyword catching up with an arrow drawn before
+  // the pyramid changed shape. `callOffMarchesAgainstLord` answers the same
+  // question at the instant of a capture, for the one land being taken; this
+  // answers it for everybody else, every turn, which is what makes "never up
+  // your own chain" a rule rather than a check performed once.
   const alive: typeof lapsed = [];
   for (const entry of lapsed) {
     const realm = fullRealmOf(entry.march.actor, state.overlords, state.incorporated);
@@ -1119,7 +1139,8 @@ function resolveMarches(
     const holder = state.incorporated[entry.march.from] ?? entry.march.from;
     if (
       realm.has(entry.march.from) && realm.has(holder) &&
-      reach.has(entry.march.to)
+      reach.has(entry.march.to) &&
+      !aimsUpOwnChain(view, entry.march.actor, entry.march.cardId, entry.march.to)
     ) {
       alive.push(entry);
       continue;
@@ -1515,12 +1536,18 @@ export function playCard(
       targetFactionId: target, overlordFactionId: p.factionId,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
-    // A land just taken cannot send its armies at its new lord. The claim path
-    // in `beginTurn` says the same thing; both routes into a capture owe it,
-    // or which route took the land decides whether its raids fly on.
-    const lordRealm = fullRealmOf(p.factionId, overlords, incorporated);
+    // A land just taken cannot send its armies at its new lord, nor at anyone
+    // that lord answers to. The claim path in `beginTurn` says the same thing
+    // through the same predicate; both routes into a capture owe it, or which
+    // route took the land decides whether its raids fly on.
+    const chainView = { ...view, overlords, incorporated };
     for (const [key, march] of Object.entries(marches)) {
-      if (march.actor !== target || !lordRealm.has(march.to)) continue;
+      if (
+        march.actor !== target ||
+        !aimsUpOwnChain(chainView, march.actor, march.cardId, march.to)
+      ) {
+        continue;
+      }
       marches = clearMarches(marches, [key]);
       events.push({
         turn: state.turn, playerId: p.id, type: "march-lapsed",
@@ -1622,6 +1649,12 @@ export function playCard(
     for (const polygon of state.factionIds) {
       const stacks = disease[polygon]?.[p.factionId] ?? 0;
       if (stacks === 0) continue;
+      // Hostile, and a Plague has no aim of its own - it lands wherever the
+      // actor's stacks already sit, which may include a land seeded before the
+      // actor knelt to anybody. The stacks stay where they are and burn
+      // nothing: a card whose keyword says it cannot strike upward must not
+      // find a back door through a stack laid last week.
+      if (aimsUpOwnChain(view, p.factionId, cardId, polygon)) continue;
       const damage = damageAfterTerrain(
         view, polygon, stacks * PLAGUE_DAMAGE_PER_STACK * mult,
       );
@@ -1636,7 +1669,13 @@ export function playCard(
         targetFactionId: polygon, amount: moved, stacksSpent: stacks,
       });
     }
-    disease = clearDiseaseOf(disease, p.factionId);
+    // The same predicate the damage loop skipped on: a land the plague could
+    // not strike keeps its stacks, or the card would cost the actor its
+    // disease for nothing.
+    disease = clearDiseaseOf(
+      disease, p.factionId,
+      (polygon) => aimsUpOwnChain(view, p.factionId, cardId, polygon),
+    );
   } else if (cardId === "foul-winds") {
     // One event per polygon whose ownership moved: the stacks the actor
     // GAINED there (the total held by others before the shift), plus the
@@ -1644,6 +1683,10 @@ export function playCard(
     for (const polygon of state.factionIds) {
       const owners = disease[polygon];
       if (owners === undefined) continue;
+      // The same clause as the Plague above, for the same reason: claiming the
+      // stacks standing on a lord's land is how the NEXT plague would strike
+      // it, so a hostile card stops at the pyramid here too.
+      if (aimsUpOwnChain(view, p.factionId, cardId, polygon)) continue;
       const losses = Object.fromEntries(
         Object.entries(owners).filter(([owner]) => owner !== p.factionId),
       );
@@ -1654,7 +1697,12 @@ export function playCard(
         targetFactionId: polygon, amount: gained, losses,
       });
     }
-    disease = transferAllDiseaseTo(disease, p.factionId);
+    // The same predicate the event loop above skipped on, so the store and the
+    // log cannot disagree about which polygons the winds reached.
+    disease = transferAllDiseaseTo(
+      disease, p.factionId,
+      (polygon) => aimsUpOwnChain(view, p.factionId, cardId, polygon),
+    );
   } else if (isSingleLandHeal(cardId) && targetId !== undefined) {
     // One branch for the whole class: which card it is decides only how much,
     // and that number is the table the hover quoted before the click.

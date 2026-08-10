@@ -2425,3 +2425,60 @@ describe("a status that does something says so", () => {
     });
   });
 });
+
+describe("the hostile keyword, past the targeting pass", () => {
+  /** beta (the human) with alpha as its brand-new overlord - and held UNDER
+   *  its independence gate, or the turn-start clock frees it before any of
+   *  this is asked and the fixture quietly tests a free faction. */
+  const underAlpha = (g: GameState): GameState => ({
+    ...g,
+    overlords: new Map([["beta", "alpha"]]),
+    defense: { ...g.defense, beta: INDEPENDENCE_LINE - 1 },
+  });
+
+  it("lapses an arrow already in flight when its target becomes your lord", () => {
+    // The arrow was legal when it was drawn. Somebody's subjugation changed
+    // the shape of the pyramid under it, and a rule that only ran at the
+    // moment of aiming would let it land anyway.
+    let g = withHand(playingState(LINE_ADJ), 0, ["raid"]);
+    g = playCard(g, 0, rng(), "alpha");
+    expect(Object.values(g.marches).some((m) => m.to === "alpha")).toBe(true);
+    const after = landMarches(underAlpha(g));
+    expect(after.marches).toEqual({});
+    expect(after.defense.alpha).toBeUndefined(); // nothing landed
+    expect(after.log.find((e) => e.type === "march-lapsed")).toMatchObject({
+      cardId: "raid", targetFactionId: "alpha", sourceFactionId: "beta",
+    });
+  });
+
+  it("a Plague spares a lord's land, stacks and all", () => {
+    // Plague has no aim - it lands wherever the actor's stacks already sit,
+    // which may be a land seeded before the actor knelt to anybody.
+    const g = underAlpha({
+      ...withHand(playingState(LINE_ADJ), 0, ["plague"]),
+      disease: { alpha: { beta: 3 }, gamma: { beta: 2 } },
+    });
+    const after = playCard(g, 0, rng());
+    expect(after.defense.alpha).toBeUndefined();
+    expect(after.disease.alpha).toEqual({ beta: 3 }); // untouched, not burned
+    expect(after.defense.gamma).toBe(FIXTURE_MAX - 2 * PLAGUE_DAMAGE_PER_STACK);
+    expect(after.log.some(
+      (e) => e.type === "plagued" && e.targetFactionId === "alpha",
+    )).toBe(false);
+  });
+
+  it("Foul winds leaves a lord's stacks where they are", () => {
+    // Claiming the stacks on a lord's land is how the NEXT plague would strike
+    // it, so the store and the log must both stop at the pyramid.
+    const g = underAlpha({
+      ...withHand(playingState(LINE_ADJ), 0, ["foul-winds"]),
+      disease: { alpha: { gamma: 4 }, delta: { gamma: 1 } },
+    });
+    const after = playCard(g, 0, rng());
+    expect(after.disease.alpha).toEqual({ gamma: 4 });
+    expect(after.disease.delta).toEqual({ beta: 1 });
+    expect(after.log.some(
+      (e) => e.type === "winds-shifted" && e.targetFactionId === "alpha",
+    )).toBe(false);
+  });
+});

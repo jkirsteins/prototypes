@@ -767,3 +767,109 @@ describe("targetEligibilityFor on untargeted cards", () => {
     }
   });
 });
+
+describe("a hostile card may never be aimed up your own chain", () => {
+  /** alpha - beta - gamma - delta on a line, with alpha lord of beta, beta
+   *  lord of gamma. So gamma answers to beta AND, through beta, to alpha. */
+  const pyramid = (extra: Partial<RulesView> = {}) =>
+    view({
+      adjacency: FULL_ADJ,
+      overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+      ...extra,
+    });
+
+  const HOSTILE = [
+    "raid", "strong-raid", "great-raid", "spread-disease",
+    "localized-outbreak", "assassinate-ruler", "subjugate",
+  ];
+
+  it("blocks every hostile card of a vassal aimed at its direct lord", () => {
+    const v = pyramid();
+    for (const cardId of HOSTILE) {
+      expect(validTargetsFor(v, "beta", cardId)).not.toContain("alpha");
+    }
+  });
+
+  it("blocks a grand-vassal aimed at either lord above it", () => {
+    const v = pyramid();
+    for (const cardId of HOSTILE) {
+      expect(validTargetsFor(v, "gamma", cardId)).not.toContain("beta");
+      expect(validTargetsFor(v, "gamma", cardId)).not.toContain("alpha");
+    }
+  });
+
+  it("leaves sideways and downward alone - the pyramid is not a truce", () => {
+    // delta is nobody's vassal and borders everything on FULL_ADJ, so it
+    // stands in for a fellow vassal: gamma may still fight it. And a lord
+    // keeps its own vassals in reach, which is what holds them under the
+    // independence gate.
+    const v = pyramid();
+    expect(validTargetsFor(v, "gamma", "raid")).toContain("delta");
+    expect(validTargetsFor(v, "alpha", "raid")).toContain("beta");
+    expect(validTargetsFor(v, "alpha", "raid")).toContain("gamma");
+    expect(validTargetsFor(v, "beta", "raid")).toContain("gamma");
+  });
+
+  it("blocks a lord's ANNEXED land too - an annexation is its annexer", () => {
+    // delta is alpha's outright, so raiding delta is raiding alpha.
+    const v = pyramid({ incorporated: { delta: "alpha" } });
+    expect(validTargetsFor(v, "beta", "raid")).not.toContain("delta");
+    expect(validTargetsFor(v, "gamma", "raid")).not.toContain("delta");
+  });
+
+  it("says why, so the hover is not a silent refusal", () => {
+    const v = pyramid();
+    const blocked = targetEligibilityFor(v, "beta", "raid")
+      .find((e) => e.factionId === "alpha");
+    expect(blocked).toMatchObject({
+      state: "blocked", reasons: [{ code: "liege" }],
+    });
+  });
+
+  it("keeps a NON-hostile card aimed wherever it always was", () => {
+    // Incorporate and the heals are the control: the rule is the keyword, not
+    // "anything pointed at a lord". The heal needs a land under its ceiling to
+    // have anything to aim at at all.
+    const v = pyramid({ defense: { beta: 100 } });
+    expect(validTargetsFor(v, "beta", "fortify")).toContain("beta");
+    expect(validTargetsFor(v, "alpha", "incorporate")).toContain("beta");
+  });
+
+  it("narrows the two-step march aim, not just the one-step target list", () => {
+    // The source-then-target flow reads `marchTargetsFrom`, which is a second
+    // door into the same decision - a rule enforced at one door is no rule.
+    const v = pyramid({ armies: { gamma: 3 } });
+    expect(marchTargetsFrom(v, "gamma", "gamma", "raid")).not.toContain("beta");
+    expect(marchTargetsFrom(v, "gamma", "gamma", "raid")).toContain("delta");
+  });
+});
+
+describe("Localized outbreak's splash and the pyramid", () => {
+  it("skips a lord standing next to a legal target", () => {
+    // The card is aimed at ONE polygon and lands on its neighbours, so a legal
+    // aim at a fellow vassal can splash onto the lord beside it - the keyword
+    // defeated by geometry rather than by a rule.
+    const v = view({
+      adjacency: FULL_ADJ,
+      overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+    });
+    expect(outbreakPolygons(v, "gamma", "delta")).not.toContain("alpha");
+    expect(outbreakPolygons(v, "gamma", "delta")).not.toContain("beta");
+    // A free faction's splash is untouched: third parties are the card's text.
+    expect(outbreakPolygons(v, "delta", "gamma")).toContain("alpha");
+  });
+});
+
+describe("a card with nothing left to aim at says so", () => {
+  it("calls a vassal's raid no-target when its only neighbour is its lord", () => {
+    // On the LINE, alpha's only neighbour is beta. Made beta's vassal, alpha
+    // has nowhere its raid may go - and the card must SAY that rather than
+    // read as playable and then refuse every land on the map.
+    const v = view({ overlords: new Map([["alpha", "beta"]]) });
+    expect(validTargetsFor(v, "alpha", "raid")).toEqual([]);
+    expect(cardBlockReason(v, "alpha", "raid")).toEqual({ code: "no-target" });
+    expect(cardBlockReason(v, "alpha", "great-raid")).toEqual({ code: "no-target" });
+    expect(isCardPlayable(v, "alpha", "raid")).toBe(false);
+    expect(marchSourcesFor(v, "alpha")).toEqual([]);
+  });
+});

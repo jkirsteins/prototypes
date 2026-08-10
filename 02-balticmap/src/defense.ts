@@ -224,11 +224,19 @@ export function addDisease(
 }
 
 /** Plague's reset: the actor's stacks vanish everywhere, other owners'
- *  untouched. Polygons emptied by the removal drop their key. */
-export function clearDiseaseOf(disease: Disease, owner: string): Disease {
+ *  untouched. Polygons emptied by the removal drop their key.
+ *
+ *  `skip` is the polygons the Plague never reached, left exactly as they were
+ *  - stacks and all. It must be the SAME predicate the damage loop skipped on:
+ *  burning the stacks off a land the plague was forbidden to strike would take
+ *  the cost of the card without its effect, and the log would say nothing
+ *  happened there while the store quietly emptied. */
+export function clearDiseaseOf(
+  disease: Disease, owner: string, skip: (polygon: string) => boolean = () => false,
+): Disease {
   const out: Record<string, Readonly<Record<string, number>>> = {};
   for (const [polygon, owners] of Object.entries(disease)) {
-    if (!(owner in owners)) {
+    if (skip(polygon) || !(owner in owners)) {
       out[polygon] = owners;
       continue;
     }
@@ -239,10 +247,23 @@ export function clearDiseaseOf(disease: Disease, owner: string): Disease {
 }
 
 /** Foul winds: every stack on every polygon, whoever owns it, becomes
- *  `owner`'s - counts merged per polygon. */
-export function transferAllDiseaseTo(disease: Disease, owner: string): Disease {
+ *  `owner`'s - counts merged per polygon.
+ *
+ *  `skip` is the polygons the claim does not reach, left exactly as they were.
+ *  It takes a predicate rather than a set because the caller's reason is a
+ *  rule, not a list - see `aimsUpOwnChain` - and because the store and the
+ *  `winds-shifted` events must skip the SAME polygons or the walk that feeds
+ *  the log and the round summary drifts from the store for the rest of the
+ *  run. One argument, one answer, both callers reading it. */
+export function transferAllDiseaseTo(
+  disease: Disease, owner: string, skip: (polygon: string) => boolean = () => false,
+): Disease {
   const out: Record<string, Readonly<Record<string, number>>> = {};
   for (const [polygon, owners] of Object.entries(disease)) {
+    if (skip(polygon)) {
+      out[polygon] = owners;
+      continue;
+    }
     const total = Object.values(owners).reduce((a, b) => a + b, 0);
     if (total > 0) out[polygon] = { [owner]: total };
   }

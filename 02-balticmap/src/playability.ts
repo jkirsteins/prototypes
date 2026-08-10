@@ -1,6 +1,7 @@
 import {
-  ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isInwardCard, isMarchCard,
-  isSingleLandHeal, isTributeCard, keywordHas, keywordsOf, repeatGroupOf,
+  ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isHostileCard, isInwardCard,
+  isMarchCard, isSingleLandHeal, isTributeCard, keywordHas, keywordsOf,
+  repeatGroupOf,
 } from "./cards";
 import {
   fullRealmOf, incorporatedRealmOf, overlordChainOf,
@@ -246,7 +247,12 @@ export function borderPolygonsOf(view: RulesView, actor: string): Set<string> {
  *  raid or sicken its vassals to hold them under the independence gate, and
  *  without that exception vassalage could never be kept. The vassal half is
  *  the full realm less what the actor holds outright (its own home and
- *  annexations), so a grand-vassal and a vassal's annexed land ride along. */
+ *  annexations), so a grand-vassal and a vassal's annexed land ride along.
+ *
+ *  DOWNWARD and sideways only. What this set does not answer is whether the
+ *  actor may aim UP its own chain of lords, which it may not - see
+ *  `aimsUpOwnChain`, asked separately by every surface that aims, because it
+ *  is a fact about the CARD (the hostile keyword) and not about the map. */
 export function attackReach(view: RulesView, actor: string): Set<string> {
   const out = borderPolygonsOf(view, actor);
   const own = incorporatedRealmOf(actor, view.incorporated);
@@ -256,6 +262,30 @@ export function attackReach(view: RulesView, actor: string): Set<string> {
   return out;
 }
 
+/** Whether a HOSTILE card played by `actor` may not touch `polygon`, because
+ *  the polygon lies UP the actor's own pyramid of fealty: its overlord, that
+ *  overlord's overlord to the root, or any land one of those lords has
+ *  annexed. An annexed polygon is politically its annexer, which is why the
+ *  question is asked of the annexer and not of the land's own id.
+ *
+ *  Sideways and downward stay open, deliberately. A vassal may raid a fellow
+ *  vassal, a fellow vassal's vassals, and its own - the pyramid is a chain of
+ *  command, not a truce - and a lord keeps raiding its own vassals to hold
+ *  them under the independence gate, which `attackReach` exists to allow and
+ *  without which vassalage could not be kept at all.
+ *
+ *  The one spelling, asked by everything that aims: the targeting pass, the
+ *  two-step march aim, the plague resolution, and the arrows already in flight
+ *  when somebody's subjugation makes a rival into your lord. A rule enforced
+ *  at one of those is a rule with three ways around it. */
+export function aimsUpOwnChain(
+  view: RulesView, actor: string, cardId: string, polygon: string,
+): boolean {
+  if (!isHostileCard(cardId)) return false;
+  const political = view.incorporated[polygon] ?? polygon;
+  return overlordChainOf(actor, view.overlords).includes(political);
+}
+
 /** Lands the actor could march an army OUT of: full-realm members holding a
  *  free army that border something the actor may attack. The tail of every
  *  arrow the actor can draw.
@@ -263,14 +293,18 @@ export function attackReach(view: RulesView, actor: string): Set<string> {
  *  The realm half is `fullRealmOf`, not `incorporatedRealmOf` - a lord marches
  *  out of its vassals' lands too, the same pyramid rule `attackReach` follows
  *  on the other end. */
-export function marchSourcesFor(view: RulesView, actor: string): string[] {
+export function marchSourcesFor(
+  view: RulesView, actor: string, cardId = "raid",
+): string[] {
   const reach = attackReach(view, actor);
   const realm = fullRealmOf(actor, view.overlords, view.incorporated);
   return view.factionIds.filter(
     (land) =>
       realm.has(land) &&
       freeArmiesFor(view, land) > 0 &&
-      (view.adjacency[land] ?? []).some((adj) => reach.has(adj)),
+      (view.adjacency[land] ?? []).some(
+        (adj) => reach.has(adj) && !aimsUpOwnChain(view, actor, cardId, adj),
+      ),
   );
 }
 
@@ -278,11 +312,15 @@ export function marchSourcesFor(view: RulesView, actor: string): string[] {
  *  actor's attack reach that `source` borders. An army marches to a
  *  neighbouring land, so the arrow is always one step long. */
 export function marchTargetsFrom(
-  view: RulesView, actor: string, source: string,
+  view: RulesView, actor: string, source: string, cardId = "raid",
 ): string[] {
   const reach = attackReach(view, actor);
   const adjacent = new Set(view.adjacency[source] ?? []);
-  return view.factionIds.filter((land) => reach.has(land) && adjacent.has(land));
+  return view.factionIds.filter(
+    (land) =>
+      reach.has(land) && adjacent.has(land) &&
+      !aimsUpOwnChain(view, actor, cardId, land),
+  );
 }
 
 /** Every march Great raid would declare right now, in faction order: one arrow
@@ -427,15 +465,25 @@ export function plagueDamageOn(
 }
 
 /** Localized outbreak's splash: every neighbour of the target polygon except
- *  polygons of the actor's own full realm. Indiscriminate otherwise - third
- *  parties are hit, which is the card's text. */
+ *  polygons of the actor's own full realm, and except anything up the actor's
+ *  own chain of lords. Indiscriminate otherwise - third parties are hit, which
+ *  is the card's text.
+ *
+ *  The chain clause is not the same question the target check answers. The
+ *  card is aimed at ONE polygon and lands on its neighbours, so a legal aim at
+ *  a fellow vassal can splash onto the lord standing next to it - which is the
+ *  hostile keyword defeated by geometry rather than by a rule. */
 export function outbreakPolygons(
   view: RulesView,
   actorFactionId: string,
   targetPolygon: string,
 ): string[] {
   const realm = fullRealmOf(actorFactionId, view.overlords, view.incorporated);
-  return (view.adjacency[targetPolygon] ?? []).filter((p) => !realm.has(p));
+  return (view.adjacency[targetPolygon] ?? []).filter(
+    (p) =>
+      !realm.has(p) &&
+      !aimsUpOwnChain(view, actorFactionId, "localized-outbreak", p),
+  );
 }
 
 /** Lands the actor's FULL realm must hold before Incorporate is legal.
@@ -521,10 +569,6 @@ export function targetEligibilityFor(
     }));
   }
 
-  // The actor's whole chain of lords. A Subjugate aimed anywhere in it would
-  // close a cycle - `overlords[target] = actor` loops exactly when the target
-  // is an ancestor - so this one block is the entire cycle rule.
-  const lieges = new Set(overlordChainOf(actorFactionId, view.overlords));
   const factionReach = reachOf(view, actorFactionId);
   const polygonReach = attackReach(view, actorFactionId);
   const fullRealm = fullRealmOf(actorFactionId, view.overlords, view.incorporated);
@@ -571,8 +615,15 @@ export function targetEligibilityFor(
     if (cardId === "assassinate-ruler" && (view.leaders[factionId] !== true)) {
       reasons.push({ code: "no-ruler" });
     }
+    // Never up your own pyramid. The `hostile` keyword is the whole of the
+    // rule - see `aimsUpOwnChain` - and it subsumes the Subjugate cycle rule
+    // that used to stand here alone: a Subjugate aimed at a liege would set
+    // `overlords[target] = actor` and close a loop, and Subjugate is hostile,
+    // so the same block catches it.
+    if (aimsUpOwnChain(view, actorFactionId, cardId, factionId)) {
+      reasons.push({ code: "liege" });
+    }
     if (cardId === "subjugate") {
-      if (lieges.has(factionId)) reasons.push({ code: "liege" });
       if (view.overlords.get(factionId) === actorFactionId) {
         reasons.push({ code: "already-vassal" });
       }
@@ -740,16 +791,24 @@ export function cardBlockReason(
   // there anything to hit, and is there an army free to send at it. The border
   // question first, because a realm surrounded by its own lands has nothing to
   // raid however many armies it is sitting on.
+  // Both filter what a hostile card may not be aimed at before counting, or a
+  // vassal whose only neighbour is its own lord would be told its raid was
+  // playable and then offered nothing to aim it at.
   if (cardId === "great-raid") {
-    const border = borderPolygonsOf(view, factionId);
-    if (border.size === 0) return { code: "no-target" };
-    return [...border].some((t) => greatRaidMarches(view, factionId, t).length > 0)
+    const border = [...borderPolygonsOf(view, factionId)].filter(
+      (t) => !aimsUpOwnChain(view, factionId, cardId, t),
+    );
+    if (border.length === 0) return { code: "no-target" };
+    return border.some((t) => greatRaidMarches(view, factionId, t).length > 0)
       ? null
       : { code: "no-army" };
   }
   if (isMarchCard(cardId)) {
-    if (attackReach(view, factionId).size === 0) return { code: "no-target" };
-    return marchSourcesFor(view, factionId).length > 0
+    const reach = [...attackReach(view, factionId)].filter(
+      (t) => !aimsUpOwnChain(view, factionId, cardId, t),
+    );
+    if (reach.length === 0) return { code: "no-target" };
+    return marchSourcesFor(view, factionId, cardId).length > 0
       ? null
       : { code: "no-army" };
   }

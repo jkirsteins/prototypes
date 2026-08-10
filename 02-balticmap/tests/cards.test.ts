@@ -3,7 +3,8 @@ import {
   ATTACK_CARDS, BASE_RARITY, BUILDS, CARDS, CONSUMED_CARDS, GUARDS,
   INWARD_CARDS, LADDER_DEPTH, NEUTRAL_POOL, RARITY_TIERS, SINGLE_LAND_HEALS,
   TRIBUTE_CARDS, UPGRADES,
-  guardAgainst, isGuardCard, isInwardCard, isSingleLandHeal, isTributeCard,
+  guardAgainst, isGuardCard, isHostileCard, isInwardCard, isSingleLandHeal,
+  isTributeCard,
   repeatGroupOf, rarityForImpact, shuffle, startingDeck, upgradeCostOf,
   upgradesInto,
 } from "../src/cards";
@@ -299,8 +300,10 @@ describe("builds and the neutral pool", () => {
     const keyworded = Object.values(CARDS).filter((c) => c.keywords !== undefined)
       .map((c) => c.id).sort();
     expect(keyworded).toEqual([
-      "fortify", "great-raid", "prosperous-proliferation", "raid",
-      "strong-fortify", "strong-raid", "turnip-harvest",
+      "assassinate-ruler", "fortify", "foul-winds", "great-raid",
+      "localized-outbreak", "plague", "prosperous-proliferation", "raid",
+      "spread-disease", "strong-fortify", "strong-raid", "subjugate",
+      "turnip-harvest",
     ]);
     // All three raids share one group, so any of them re-opens the turn for
     // any other.
@@ -313,6 +316,22 @@ describe("builds and the neutral pool", () => {
       expect(repeatGroupOf(id) !== null).toBe(again.includes(id));
     }
     expect(repeatGroupOf("no-such-card")).toBeNull();
+  });
+
+  it("pins the hostile set - every card that may not be aimed up your chain", () => {
+    // A literal, so the set cannot grow or shrink without somebody reading the
+    // rule it turns on: a card that does harm and is left OUT of this set can
+    // still be aimed at the actor's own overlord, and nothing else in the tree
+    // would say so. Untargeted plagues are in it too - they resolve over a set
+    // of lands rather than at one, and `plagueTargets` skips the same chain.
+    const hostile = Object.keys(CARDS).filter(isHostileCard).sort();
+    expect(hostile).toEqual([
+      "assassinate-ruler", "foul-winds", "great-raid", "localized-outbreak",
+      "plague", "raid", "spread-disease", "strong-raid", "subjugate",
+    ]);
+    // Nothing that heals, builds or grows is hostile: a card aimed inward
+    // cannot be aimed up anything.
+    for (const id of INWARD_CARDS) expect(isHostileCard(id)).toBe(false);
   });
 
   it("pins the single-land heals to the amounts they restore", () => {

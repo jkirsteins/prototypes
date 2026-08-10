@@ -99,14 +99,17 @@ describe("renderSegments", () => {
     const frag = renderSegments([card("raid")], hooks);
     const span = frag.querySelector(".rt-card")!;
     move(span as HTMLElement);
-    // Name, rules text, and the keyword block the card carries - the rule is
-    // learned from the card that has it rather than from somewhere else.
+    // Name, rules text, and EVERY keyword block the card carries, in the order
+    // it declares them - the rule is learned from the card that has it rather
+    // than from somewhere else the player has to go looking.
     expect(showTip).toHaveBeenCalledWith(
       [
         { text: "Raid" },
         { text: expect.stringContaining("1 damage") },
         { text: "Keyword: Raid", blockStart: true },
         { text: expect.stringContaining("leaves your turn open") },
+        { text: "Keyword: Hostile", blockStart: true },
+        { text: expect.stringContaining("up your own chain of fealty") },
       ],
       10, 20,
     );

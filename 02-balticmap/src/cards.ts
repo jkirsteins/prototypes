@@ -110,24 +110,24 @@ export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Nothing happens. Enough of these earn a Turnip harvest.",
     textSegments: [t("Nothing happens. Enough of these earn a "), card("turnip-harvest"), t(".")] },
   // Build A - Warpath.
-  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid"], text: "Send an army at a bordering land. It lands next turn for 1 damage, less any counter-raid." },
-  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid"], text: "Every land of yours bordering one land raids it, one army each. Each lands next turn like a Raid, answered separately.",
+  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a bordering land. It lands next turn for 1 damage, less any counter-raid." },
+  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Every land of yours bordering one land raids it, one army each. Each lands next turn like a Raid, answered separately.",
     textSegments: [t("Every land of yours bordering one land raids it, one army each. Each lands next turn like a "), card("raid"), t(", answered separately.")] },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next raid or fortify card counts double. Stacks.",
     textSegments: [t("Your next "), keyword("raid"), t(" or "), keyword("fortify"), t(" card counts double. Stacks.")] },
   "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
-  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid"], text: "Send an army at a bordering land. It lands next turn for 2 damage, less any counter-raid." },
+  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a bordering land. It lands next turn for 2 damage, less any counter-raid." },
   "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 2 defense to one of your lands." },
   "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 1 defense to one of your lands." },
   // Build B - Pestilence. Stacks are owned: each rival's disease on a land is
   // its own count, and only your own stacks feed your Plague.
-  "spread-disease": { id: "spread-disease", name: "Spread disease", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Put 1 disease on a land in reach. It does nothing until a Plague." ,
+  "spread-disease": { id: "spread-disease", name: "Spread disease", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["hostile"], text: "Put 1 disease on a land in reach. It does nothing until a Plague." ,
     textSegments: [t("Put 1 disease on a land in reach. It does nothing until a "), card("plague"), t(".")] },
-  "localized-outbreak": { id: "localized-outbreak", name: "Localized outbreak", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Put 1 disease on every neighbour of a land in reach. Skips your own lands." },
+  "localized-outbreak": { id: "localized-outbreak", name: "Localized outbreak", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["hostile"], text: "Put 1 disease on every neighbour of a land in reach. Skips your own lands." },
   "miasma": { id: "miasma", name: "Miasma", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next Plague counts each of your stacks double. Stacks.",
     textSegments: [t("Your next "), card("plague"), t(" counts each of your stacks double. Stacks.")] },
-  "plague": { id: "plague", name: "Plague", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Every land holding your disease takes 1 damage per stack. Your stacks are spent." },
-  "foul-winds": { id: "foul-winds", name: "Foul winds", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Every disease stack on the map becomes yours." },
+  "plague": { id: "plague", name: "Plague", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["hostile"], text: "Every land holding your disease takes 1 damage per stack. Your stacks are spent." },
+  "foul-winds": { id: "foul-winds", name: "Foul winds", targeted: false, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", keywords: ["hostile"], text: "Every disease stack on the map becomes yours." },
   // Neutrals - reachable by every deck through the harvest pool.
   "hillfort": { id: "hillfort", name: "Hillfort", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 3 defense to one of your lands." },
   "harvest-feast": { id: "harvest-feast", name: "Harvest feast", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Restore 1 defense to every land you hold." },
@@ -136,9 +136,9 @@ export const CARDS: Record<string, CardDef> = {
   // walking into it once its defenses are gone. The definition and the claim
   // machinery stay because the card is meant to come back, and a card nobody
   // can obtain is the one shape the discovery rule allows to sit idle.
-  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", text: "Take a faction in reach as your vassal, once their defenses are gone. Vassals pay tribute." },
+  "subjugate": { id: "subjugate", name: "Subjugate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: false, forced: false, rarity: "common", keywords: ["hostile"], text: "Take a faction in reach as your vassal, once their defenses are gone. Vassals pay tribute." },
   "incorporate": { id: "incorporate", name: "Incorporate", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Absorb one of your vassals for good. Needs a realm of 4 lands." },
-  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", text: "Kill a ruler in reach. Their successor starts with no leadership." },
+  "assassinate-ruler": { id: "assassinate-ruler", name: "Assassinate ruler", targeted: true, secret: false, maxPerDeck: 1, deckBuildable: true, forced: false, rarity: "common", keywords: ["hostile"], text: "Kill a ruler in reach. Their successor starts with no leadership." },
   // Secret. The rules already treat a posted guard as hidden - `failureRiskOf`
   // in src/playability.ts refuses to read the guard lists so the Assassinate
   // ruler tooltip cannot become a detector - and a log line naming the card was
@@ -323,6 +323,19 @@ export interface KeywordDef {
    *  back. For a card whose effect is permanent, or one the game hands out
    *  again when it is earned again. */
   consumesSelf?: true;
+  /** The card does somebody harm, and therefore cannot be aimed UP the actor's
+   *  own pyramid of fealty: not at its overlord, not at that overlord's
+   *  overlord, not at any land those lords have annexed. Sideways and downward
+   *  stay open - a vassal may raid a fellow vassal, that vassal's vassals, and
+   *  its own.
+   *
+   *  A KEYWORD and not a list of ids, because the rule has to be asked by
+   *  everything that aims: the targeting pass, the two-step march aim, the
+   *  arrows already in flight when a subjugation changes who your lord is, and
+   *  the untargeted plagues that resolve over a set of lands. A list would
+   *  have been the eight-places problem `MARCH_CARDS` records, and the failure
+   *  is silent: a card left out is a card that can still stab upward. */
+  hostile?: true;
 }
 
 export const KEYWORDS: Readonly<Record<string, KeywordDef>> = {
@@ -333,6 +346,13 @@ export const KEYWORDS: Readonly<Record<string, KeywordDef>> = {
     text: "Playing a raid card leaves your turn open for another one - you may keep going while you hold one and a land can spare an army. Favourable omens doubles its damage.",
     repeats: true,
     doubledByOmens: true,
+  },
+  hostile: {
+    id: "hostile",
+    name: "Hostile",
+    noun: "hostile card",
+    text: "Cannot be aimed up your own chain of fealty: not at your overlord, nor at anyone they answer to, nor at land those lords have annexed. A fellow vassal, their vassals and your own are all fair game.",
+    hostile: true,
   },
   unique: {
     id: "unique",
@@ -363,8 +383,14 @@ export const keywordsOf = (cardId: string): KeywordDef[] =>
  *  the flags, so a rule keyed on a keyword is a lookup rather than a list of
  *  card ids kept somewhere else and forgotten. */
 export const keywordHas = (
-  cardId: string, flag: "repeats" | "doubledByOmens" | "consumesSelf",
+  cardId: string, flag: "repeats" | "doubledByOmens" | "consumesSelf" | "hostile",
 ): boolean => keywordsOf(cardId).some((def) => def[flag] === true);
+
+/** Whether this card does somebody harm, and so may never be aimed up the
+ *  actor's own chain of lords. Asked by every surface that aims - see the
+ *  `hostile` flag on `KeywordDef` for why it is a keyword and not a list. */
+export const isHostileCard = (cardId: string): boolean =>
+  keywordHas(cardId, "hostile");
 
 /** The keyword a spent turn is re-opened for by playing `cardId`, or null
  *  where the card's keyword does not repeat. What the turn-spent gate writes
