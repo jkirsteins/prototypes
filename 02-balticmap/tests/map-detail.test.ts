@@ -66,18 +66,46 @@ describe("detail ladder", () => {
   });
 
   it("drops the smallest text first and the largest last", () => {
-    const counts = [2, 1, 0.5, 0.4, 0.3, 0.2, 0.1]
+    const counts = [1, 0.5, 0.4, 0.3, 0.2, 0.1]
       .map((s) => detailClassesAt(s).length);
     expect(counts).toEqual([...counts].sort((a, b) => a - b));
-    expect(detailClassesAt(2)).toEqual([]);
+    expect(detailClassesAt(1)).toEqual([]);
   });
 
-  it("group labels are shown exactly when the people labels are gone", () => {
+  it("group labels are shown exactly when the people labels are too SMALL", () => {
     const people = DETAIL_LAYERS.find((l) => l.selector === ".label-people")!;
-    for (const scale of [2, 1, 0.5, 0.35, 0.26, 0.2, 0.1, 0.05]) {
+    const tooSmallBelow = people.minPx! / people.fontPx;
+    for (const scale of [1, 0.5, 0.41, 0.39, 0.26, 0.1, 0.05]) {
       const on = detailClassesAt(scale);
       expect(on.includes(GROUP_LABEL_CLASS), `scale ${scale}`)
-        .toBe(on.includes(people.hideClass));
+        .toBe(scale < tooSmallBelow);
+    }
+  });
+
+  /** Labels live in map space, so zooming in grows them without bound. An area
+   *  heading that has outgrown its territory names nothing, and answering that
+   *  by swapping in the 64px group labels would put the largest text on the
+   *  map exactly where the map is already closest. */
+  it("area labels go when zoomed far in, and the group labels do not return", () => {
+    const people = DETAIL_LAYERS.find((l) => l.selector === ".label-people")!;
+    const neighbor = DETAIL_LAYERS.find((l) => l.selector === ".label-neighbor")!;
+    for (const layer of [people, neighbor]) {
+      const at = layer.maxPx! / layer.fontPx;
+      expect(detailClassesAt(at * 0.999), layer.selector)
+        .not.toContain(layer.hideClass);
+      expect(detailClassesAt(at * 1.001), layer.selector)
+        .toContain(layer.hideClass);
+    }
+    // Well past the ceiling: the headings are gone and stay gone.
+    const deep = detailClassesAt(4);
+    expect(deep).toContain(people.hideClass);
+    expect(deep).not.toContain(GROUP_LABEL_CLASS);
+  });
+
+  it("point labels have no ceiling - they grow with the land they name", () => {
+    for (const layer of DETAIL_LAYERS) {
+      if (layer.maxPx !== undefined) continue;
+      expect(detailClassesAt(8), layer.selector).not.toContain(layer.hideClass);
     }
   });
 

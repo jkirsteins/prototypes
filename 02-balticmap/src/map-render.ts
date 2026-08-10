@@ -1,4 +1,5 @@
 import type { MapData, Settlement } from "./types";
+import { frameRectOf } from "./view";
 
 export interface RenderResult {
   svg: SVGSVGElement;
@@ -141,6 +142,55 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   }
   svg.appendChild(neighborsGroup);
 
+  // The mask has to cover everything the stroke can reach, and a realm on the
+  // map's edge strokes outward past it - so this is the sea rect's box, which
+  // already spans map plus margin, and nothing narrower.
+  const outsideMask = (
+    group: SVGGElement, maskId: string, paths: string[],
+  ): string => {
+    const mask = el("mask");
+    mask.setAttribute("id", maskId);
+    mask.setAttribute("maskUnits", "userSpaceOnUse");
+    mask.setAttribute("x", String(-data.margin));
+    mask.setAttribute("y", String(-data.margin));
+    mask.setAttribute("width", String(data.width + 2 * data.margin));
+    mask.setAttribute("height", String(data.height + 2 * data.margin));
+    const show = el("rect");
+    show.setAttribute("x", String(-data.margin));
+    show.setAttribute("y", String(-data.margin));
+    show.setAttribute("width", String(data.width + 2 * data.margin));
+    show.setAttribute("height", String(data.height + 2 * data.margin));
+    const hide = el("path");
+    hide.setAttribute("d", paths.join(" "));
+    // Inline, not `fill=` attributes. A mask lives inside the group it serves,
+    // so a descendant rule written for that group's own shapes reaches into it
+    // too: `.realm-union path { fill: none }` blanked this very path, the mask
+    // lost the shape it hides with, and every mask in that group silently
+    // became a no-op that showed everything. An inline style outranks any
+    // author rule, so the mask cannot be switched off from a stylesheet that
+    // has never heard of it. The `>` combinators in style.css are the second
+    // half of the same fix.
+    show.style.fill = "#fff";
+    hide.style.fill = "#000";
+    mask.appendChild(show);
+    mask.appendChild(hide);
+    // Inside the group rather than <defs>: the caller clears the group on every
+    // refresh, so the mask cannot outlive the shapes it belongs to.
+    group.appendChild(mask);
+    return `url(#${maskId})`;
+  };
+
+  const outerOutline = (
+    group: SVGGElement, maskId: string, paths: string[],
+  ): SVGPathElement => {
+    const mask = outsideMask(group, maskId, paths);
+    const p = el("path") as SVGPathElement;
+    p.setAttribute("d", paths.join(" "));
+    p.setAttribute("mask", mask);
+    group.appendChild(p);
+    return p;
+  };
+
   const realmOutlineGroup = el("g") as SVGGElement;
   realmOutlineGroup.classList.add("realm-outline");
   svg.appendChild(realmOutlineGroup);
@@ -277,56 +327,66 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   }
   svg.appendChild(labelsGroup);
 
+  // Everything the game bakes - the sea rect, the neighbour polygons, the
+  // group labels authored outside the canvas - stops short of the painted
+  // margin somewhere, and the sea rect behind all of it shows through as
+  // ocean, or a stray sliver of a neighbour's own coastline, where there is
+  // nothing worth showing: inland Europe under the Baltic bake, the Atlantic
+  // under the Iberia bake, and even a real inlet (the Vistula Lagoon, just
+  // past Pilsotas Curonians' southeast corner) reads as a rendering glitch at
+  // this scale rather than as geography. Rather than baking more coastline or
+  // patching one polygon, the hole this surround punches is the CANVAS itself
+  // - not `frameRectOf`'s wider ring - so the ring is matte, not a narrower
+  // peek at the same imperfect bake. The frame stroke below still marks its
+  // own edge a tenth further out, which is what keeps the "moved 10% out"
+  // read: a deliberate border with breathing room around the playable lands,
+  // not the lands' own ragged edge.
+  const outerX = -data.margin;
+  const outerY = -data.margin;
+  const outerW = data.width + 2 * data.margin;
+  const outerH = data.height + 2 * data.margin;
+  const surround = el("path") as SVGPathElement;
+  surround.classList.add("map-surround");
+  surround.setAttribute(
+    "d",
+    `M ${outerX} ${outerY} H ${outerX + outerW} V ${outerY + outerH} H ${outerX} Z ` +
+      `M 0 0 H ${data.width} V ${data.height} H 0 Z`,
+  );
+  surround.setAttribute("fill-rule", "evenodd");
+  svg.appendChild(surround);
+
+  const frame = frameRectOf(data);
+
+  // Everything past the frame, in a darker tone than the matte ring inside it.
+  // Two tones and not one: a single fill either side of the stroke read as a
+  // light band, a dark line and then the same light band again - three stripes
+  // that look like a rendering fault rather than an edge. Darkening only the
+  // outside makes the boundary a step from map to not-map, which is what a
+  // frame is.
+  const outside = el("path") as SVGPathElement;
+  outside.classList.add("map-outside");
+  outside.setAttribute(
+    "d",
+    `M ${outerX} ${outerY} H ${outerX + outerW} V ${outerY + outerH} H ${outerX} Z ` +
+      `M ${frame.x} ${frame.y} H ${frame.x + frame.w} ` +
+      `V ${frame.y + frame.h} H ${frame.x} Z`,
+  );
+  outside.setAttribute("fill-rule", "evenodd");
+  svg.appendChild(outside);
+
+  // The frame's own edge, `FRAME_RING` past the canvas - see the comment on
+  // `surround` above for why the matte between the two is not the baked ring
+  // itself. Stroked above both fills so the boundary stays a crisp line at any
+  // zoom rather than depending on two flat tones meeting exactly.
+  const frameStroke = el("rect") as SVGRectElement;
+  frameStroke.classList.add("map-frame");
+  frameStroke.setAttribute("x", String(frame.x));
+  frameStroke.setAttribute("y", String(frame.y));
+  frameStroke.setAttribute("width", String(frame.w));
+  frameStroke.setAttribute("height", String(frame.h));
+  svg.appendChild(frameStroke);
+
   container.appendChild(svg);
-
-  // The mask has to cover everything the stroke can reach, and a realm on the
-  // map's edge strokes outward past it - so this is the sea rect's box, which
-  // already spans map plus margin, and nothing narrower.
-  const outsideMask = (
-    group: SVGGElement, maskId: string, paths: string[],
-  ): string => {
-    const mask = el("mask");
-    mask.setAttribute("id", maskId);
-    mask.setAttribute("maskUnits", "userSpaceOnUse");
-    mask.setAttribute("x", String(-data.margin));
-    mask.setAttribute("y", String(-data.margin));
-    mask.setAttribute("width", String(data.width + 2 * data.margin));
-    mask.setAttribute("height", String(data.height + 2 * data.margin));
-    const show = el("rect");
-    show.setAttribute("x", String(-data.margin));
-    show.setAttribute("y", String(-data.margin));
-    show.setAttribute("width", String(data.width + 2 * data.margin));
-    show.setAttribute("height", String(data.height + 2 * data.margin));
-    const hide = el("path");
-    hide.setAttribute("d", paths.join(" "));
-    // Inline, not `fill=` attributes. A mask lives inside the group it serves,
-    // so a descendant rule written for that group's own shapes reaches into it
-    // too: `.realm-union path { fill: none }` blanked this very path, the mask
-    // lost the shape it hides with, and every mask in that group silently
-    // became a no-op that showed everything. An inline style outranks any
-    // author rule, so the mask cannot be switched off from a stylesheet that
-    // has never heard of it. The `>` combinators in style.css are the second
-    // half of the same fix.
-    show.style.fill = "#fff";
-    hide.style.fill = "#000";
-    mask.appendChild(show);
-    mask.appendChild(hide);
-    // Inside the group rather than <defs>: the caller clears the group on every
-    // refresh, so the mask cannot outlive the shapes it belongs to.
-    group.appendChild(mask);
-    return `url(#${maskId})`;
-  };
-
-  const outerOutline = (
-    group: SVGGElement, maskId: string, paths: string[],
-  ): SVGPathElement => {
-    const mask = outsideMask(group, maskId, paths);
-    const p = el("path") as SVGPathElement;
-    p.setAttribute("d", paths.join(" "));
-    p.setAttribute("mask", mask);
-    group.appendChild(p);
-    return p;
-  };
 
   return {
     svg, regionPaths, settlementDots, revealSettlement, clearFoundedSettlements,

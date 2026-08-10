@@ -1,10 +1,23 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { renderMap, darkenColor } from "../src/map-render";
+import { frameRectOf } from "../src/view";
 import type { MapData } from "../src/types";
 import raw from "../src/data/baltic.json";
 
 const data = raw as MapData;
+
+/** Whether `selector`'s block in style.css declares `property: value`.
+ *  jsdom/happy-dom never loads the stylesheet, so pointer-events - which is
+ *  set purely by class, not by attribute - can only be checked at the source. */
+function cssDeclares(selector: string, property: string, value: string): boolean {
+  const css = readFileSync("src/style.css", "utf8");
+  const at = css.indexOf(`${selector} {`);
+  if (at < 0) return false;
+  const block = css.slice(at, css.indexOf("}", at));
+  return new RegExp(`${property}:\\s*${value}\\b`).test(block);
+}
 
 describe("renderMap", () => {
   it("renders one path per land with data-id, faction color, and class", () => {
@@ -51,6 +64,52 @@ describe("renderMap", () => {
     const regionIdx = groups.findIndex((g) => g.classList.contains("regions"));
     expect(neighborIdx).toBeGreaterThanOrEqual(0);
     expect(neighborIdx).toBeLessThan(regionIdx);
+  });
+
+  // Zoomed far out, the baked neighbours and the sea rect behind them run out
+  // before the painted margin does, and what is left over reads as ocean and
+  // stray coastline where there is none - see the comment on `surround` in
+  // map-render.ts. The surround hides everything past the CANVAS - not just
+  // past the frame - under one fully opaque shape, so the ring `frameRectOf`
+  // describes is a matte rather than a narrower peek at the same bake, and
+  // the frame marks its own edge, a tenth further out, on top of that.
+  it("hides everything past the canvas with an opaque surround, frames the canvas plus a ring, and draws both above the labels, pointer-inert", () => {
+    const container = document.createElement("div");
+    const { svg } = renderMap(data, container);
+
+    const children = Array.from(svg.children);
+    const surround = children.find((c) => c.classList.contains("map-surround"));
+    const frame = children.find((c) => c.classList.contains("map-frame"));
+    expect(surround).toBeTruthy();
+    expect(frame).toBeTruthy();
+
+    // Two subpaths under evenodd - the painted rect and, punched through it,
+    // the CANVAS rect - or the surround would hide land it must not touch.
+    expect(surround!.getAttribute("fill-rule")).toBe("evenodd");
+    expect(surround!.getAttribute("d")).toContain(
+      `M 0 0 H ${data.width} V ${data.height} H 0 Z`,
+    );
+
+    // The frame sits a ring further out than the hole the surround punches -
+    // the matte between the two, not more of the bake.
+    const frameRect = frameRectOf(data);
+    expect(frame!.getAttribute("x")).toBe(String(frameRect.x));
+    expect(frame!.getAttribute("y")).toBe(String(frameRect.y));
+    expect(frame!.getAttribute("width")).toBe(String(frameRect.w));
+    expect(frame!.getAttribute("height")).toBe(String(frameRect.h));
+
+    // Neither element may take the pointer - jsdom/happy-dom never loads the
+    // stylesheet, so this is checked at the source rather than by computed style.
+    expect(cssDeclares(".map-surround", "pointer-events", "none")).toBe(true);
+    expect(cssDeclares(".map-frame", "pointer-events", "none")).toBe(true);
+
+    // Above every layer this render builds, the labels group included: a
+    // group label baked outside the frame (SCANDINAVIA, RUS' on this map)
+    // must be hidden by the surround rather than drawn over it.
+    const idx = (cls: string) => children.findIndex((c) => c.classList.contains(cls));
+    const labelsIdx = idx("labels");
+    expect(idx("map-surround")).toBeGreaterThan(labelsIdx);
+    expect(idx("map-frame")).toBeGreaterThan(idx("map-surround"));
   });
 
   it("renders rivers above regions and below settlements and labels", () => {

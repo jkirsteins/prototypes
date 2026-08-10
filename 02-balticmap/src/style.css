@@ -41,6 +41,41 @@ svg.map.dragging {
   stroke-width: 0.5;
 }
 
+/* The matte between the canvas and the frame - see the comment on `surround`
+   in map-render.ts. Fully opaque: this hides the sea rect, the baked
+   neighbour countries and their coastlines entirely, and not as a fainter
+   version of the map but as nothing at all, which is the whole point. The
+   geography out there is never accurate enough, or never at a scale that
+   reads as accurate, to show the player. A dark tone reads as the frame's
+   own material rather than as more page, which a pale tone close to `.sea`
+   invited a reader to mistake for water still showing through. */
+.map-surround {
+  fill: #4c4234;
+  pointer-events: none;
+}
+
+/* Past the frame, a step darker than the matte inside it. The step is what
+   makes the boundary read as an edge: one tone on both sides left a light
+   band, a dark line and the same light band again, three stripes that look
+   like a fault rather than a border. */
+.map-outside {
+  fill: #1b1710;
+  pointer-events: none;
+}
+
+/* The frame's own edge, stroked above both fills so the boundary stays a
+   crisp line at any zoom rather than depending on two flat tones meeting
+   exactly. It carries the outside's tone, so it thickens that edge rather
+   than adding a third colour to it. Wide enough to read as intentional even
+   at the zoomed-out floor, where a map unit is a fraction of a screen
+   pixel. */
+.map-frame {
+  fill: none;
+  stroke: #362f25;
+  stroke-width: 14;
+  pointer-events: none;
+}
+
 .region {
   stroke: #7a6a55;
   stroke-width: 0.8;

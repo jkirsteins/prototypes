@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  clampView, holderOf, leadClass, panBy,
+  clampView, frameRectOf, holderOf, leadClass, panBy,
   politicalFactionForPolygon, relationshipLine,
   standingChangeText, standingsFor,
   viewBoundsOf,
@@ -77,11 +77,17 @@ describe("panBy", () => {
     close(panned.y, zoomed.y);
   });
 
-  it("clamps at the painted rect's edges", () => {
+  it("clamps at the frame's edge plus the pan allowance, not the painted rect", () => {
+    // The pan bound used to be the painted rect (`outer`), which is exactly
+    // what the frame now exists to hide: a drag that reached it put blank
+    // margin on screen. It clamps against `frame` padded by `panAllowance`
+    // instead, a tighter box entirely inside `outer`.
     const zoomed = zoomAt(b.home, b, 400, 300, 4, 800, 600);
     const panned = panBy(zoomed, b, 1e9, 1e9, 800);
-    close(panned.x, b.outer.x);
-    close(panned.y, b.outer.y);
+    close(panned.x, b.frame.x - b.panAllowance);
+    close(panned.y, b.frame.y - b.panAllowance);
+    expect(panned.x).toBeGreaterThan(b.outer.x);
+    expect(panned.y).toBeGreaterThan(b.outer.y);
   });
 });
 
@@ -107,16 +113,18 @@ describe("view bounds", () => {
     }
   });
 
-  it("the floor fits inside the painted rect and touches it on one axis", () => {
+  it("the floor never exceeds the painted rect", () => {
+    // Retired: "and touches it on one axis" - that held under the OLD rule,
+    // where the painted rect was the only ceiling. Now the frame-derived cap
+    // (see the "capped floor" describe block below) can pull the floor in
+    // well short of the painted edge, on a viewport shape where the frame
+    // itself is the binding factor rather than `outer`.
     for (const map of [BALTIC, IBERIA]) {
       for (const [vpW, vpH] of VIEWPORTS) {
         const b = viewBoundsOf(map, vpW, vpH);
         const maxH = b.maxW * b.aspect;
         expect(b.maxW).toBeLessThanOrEqual(b.outer.w + 1e-9);
         expect(maxH).toBeLessThanOrEqual(b.outer.h + 1e-9);
-        const touches =
-          Math.abs(b.maxW - b.outer.w) < 1e-6 || Math.abs(maxH - b.outer.h) < 1e-6;
-        expect(touches, "floor must reach the painted edge on one axis").toBe(true);
       }
     }
   });
@@ -162,15 +170,100 @@ describe("view bounds", () => {
   });
 
   it("panning at the floor cannot move it past the edge on the binding axis", () => {
-    // The floor touches the painted rect on ONE axis, not necessarily both -
-    // the sibling test above pins that. For IBERIA at this viewport it is
-    // width that binds (maxW === outer.w), so a horizontal drag has nowhere
-    // to go; a vertical component would have real slack to move within and
-    // is deliberately left out here rather than folded into one "moves
-    // nothing at all" claim that only held by coincidence.
+    // At this viewport IBERIA's floor equals the painted-rect ceiling
+    // (maxW === outer.w), and that view is far wider than frame.w plus
+    // twice the pan allowance - so clampAxisToFrame centres the x axis
+    // rather than clamping it, and a centred axis answers every pan request
+    // with the same value regardless of the requested position.
     const b = viewBoundsOf(IBERIA, 1440, 749);
     const floor = clampView({ x: 0, y: 0, w: 1e9, h: 1e9 }, b);
     expect(panBy(floor, b, 200, 0, 1440)).toEqual(floor);
+  });
+});
+
+describe("frameRectOf", () => {
+  it("outsets the canvas by FRAME_RING on every side", () => {
+    const frame = frameRectOf(BALTIC);
+    expect(frame).toEqual({ x: -100, y: -140, w: 1200, h: 1680 });
+  });
+
+  it("scales with the canvas, not a fixed number of map units", () => {
+    const frame = frameRectOf(IBERIA);
+    expect(frame).toEqual({ x: -140, y: -115, w: 1680, h: 1380 });
+  });
+});
+
+describe("the capped floor", () => {
+  it("never exceeds the painted-rect floor, even where the frame-derived cap is looser", () => {
+    // At 1440x749 the painted rect is the tighter of the two for both maps -
+    // pinned by the numbers below - so this line only proves the clamp does
+    // not accidentally WIDEN the floor past `outer` when the frame-derived
+    // candidate comes out bigger.
+    for (const map of [BALTIC, IBERIA]) {
+      const b = viewBoundsOf(map, 1440, 749);
+      const paintedMaxW = Math.min(b.outer.w, b.outer.h / b.aspect);
+      expect(b.maxW).toBeLessThanOrEqual(paintedMaxW + 1e-9);
+    }
+  });
+
+  it("pulls the floor in on a viewport shape where the frame - not the painted rect - binds", () => {
+    // A squarer viewport than 1440x749 leaves the painted rect's own margin
+    // (2000 on every side) far looser than 200px of frame-relative surround,
+    // so here the frame-derived cap is the one that actually decides maxW.
+    for (const map of [BALTIC, IBERIA]) {
+      const b = viewBoundsOf(map, 1000, 1000);
+      const paintedMaxW = Math.min(b.outer.w, b.outer.h / b.aspect);
+      expect(b.maxW).toBeLessThan(paintedMaxW - 1);
+    }
+  });
+
+  it("pins the numbers for both maps at 1440x749", () => {
+    // A regression pin, not a re-derivation: if either the frame ring or the
+    // 200px surround budget moves, this is meant to catch it.
+    const baltic = viewBoundsOf(BALTIC, 1440, 749);
+    close(baltic.maxW, 5000);
+    const iberia = viewBoundsOf(IBERIA, 1440, 749);
+    close(iberia.maxW, 5400);
+  });
+
+  it("falls back to the painted-rect ceiling when the binding axis is too small for the surround budget", () => {
+    // vpH = 400 makes the divisor (vpH - 2*MAX_SURROUND_PX) exactly zero on
+    // the axis BALTIC's portrait frame binds on at this aspect; anything at
+    // or below that must fall back rather than divide by zero or go negative.
+    const atGuard = viewBoundsOf(BALTIC, 1440, 400);
+    const paintedMaxW = Math.min(atGuard.outer.w, atGuard.outer.h / atGuard.aspect);
+    close(atGuard.maxW, paintedMaxW);
+
+    const wellBelow = viewBoundsOf(BALTIC, 1440, 200);
+    const paintedMaxW2 = Math.min(wellBelow.outer.w, wellBelow.outer.h / wellBelow.aspect);
+    close(wellBelow.maxW, paintedMaxW2);
+  });
+});
+
+describe("the per-axis pan/centre rule", () => {
+  it("centres the axis the view is far wider than, and leaves the other clamped", () => {
+    // At 1440x749 BALTIC's floor (a portrait frame in a landscape viewport)
+    // is far wider than frame.w + 2*panAllowance horizontally - nothing out
+    // there to pan to, so x always answers with the centred value - while
+    // vertically the floor sits inside frame.h + 2*panAllowance, so y is a
+    // real clamp with room to move.
+    const b = viewBoundsOf(BALTIC, 1440, 749);
+    const floor = clampView({ x: 0, y: 0, w: 1e9, h: 1e9 }, b);
+    expect(floor.w).toBeGreaterThan(b.frame.w + 2 * b.panAllowance);
+    close(floor.x, b.frame.x + b.frame.w / 2 - floor.w / 2);
+
+    const pannedRight = panBy(floor, b, -99999, 0, 1440);
+    const pannedLeft = panBy(floor, b, 99999, 0, 1440);
+    close(pannedRight.x, floor.x);
+    close(pannedLeft.x, floor.x);
+
+    // The floor already sits at the top of its own y range (clamped there by
+    // `clampView` itself, since the oversized seed view this test starts
+    // from pins every axis to whichever bound it overshot) - so the axis
+    // having real slack shows up as a pan TOWARD the other bound moving it,
+    // not as an already-maxed-out direction refusing to move further.
+    const pannedUp = panBy(floor, b, 0, 99999, 1440);
+    expect(pannedUp.y).toBeLessThan(floor.y);
   });
 });
 
