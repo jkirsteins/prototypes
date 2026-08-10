@@ -1,8 +1,10 @@
-import { BUILDS, type Strategy } from "./cards";
+import {
+  BUILDS, NEUTRAL_POOL, startingDeck, upgradeCostOf, type Strategy,
+} from "./cards";
 import { BUILD_ABILITIES, LEADER_ABILITIES } from "./abilities";
 import {
-  cardName, cardTextSegments, keywordBlock, renderSegments,
-  type RichTextHooks,
+  card, cardName, cardTextSegments, keywordBlock, priceSegments,
+  renderSegments, t, type RichTextHooks,
 } from "./rich-text";
 import {
   DEFAULT_RULES, RULE_AXES, summarizeRules,
@@ -106,6 +108,18 @@ export function createDeckScreen(
       text.className = "ds-card-text";
       text.appendChild(renderSegments(cardTextSegments(id), rtHooks));
       line.append(cardTitle, text);
+      // What the card costs, where it is bought rather than given. The ladder
+      // decides which cards a warpath deck opens with - the plain ones are the
+      // currency - so it belongs on the screen where the build is chosen, not
+      // only in the harvest that spends it. No held count: nobody holds
+      // anything yet.
+      const cost = upgradeCostOf(id);
+      if (cost !== null) {
+        const price = document.createElement("span");
+        price.className = "ds-card-price";
+        price.appendChild(renderSegments(priceSegments(cost), rtHooks));
+        line.append(price);
+      }
       // The keyword the card carries, from the one builder every surface that
       // renders a card uses - so this screen and the hand's tip cannot come to
       // explain the same rule two different ways.
@@ -129,7 +143,10 @@ export function createDeckScreen(
       block.appendChild(heading);
       for (const def of abilities) {
         const line = document.createElement("span");
-        line.className = "ds-build-card";
+        // Its own class, not the card rows': an ability is not a card, and a
+        // `.ds-build-card` lookup that answered with one counted the build's
+        // deck wrong everywhere it was asked.
+        line.className = "ds-leader-line";
         const abilityTitle = document.createElement("strong");
         abilityTitle.textContent = def.name;
         const text = document.createElement("span");
@@ -149,6 +166,22 @@ export function createDeckScreen(
   });
   buildRow.append(...tiles.map((t) => t.tile));
 
+  // What every seat opens with and what every seat can reach whatever it
+  // picked. Neither is on a tile: the deck is the same size either way, and
+  // the neutrals belong to both builds, so a line under the tiles is where a
+  // fact about ALL of them goes. The neutral line is also the only place a
+  // player meets those cards before a harvest offers one.
+  const deckLabel = document.createElement("div");
+  deckLabel.className = "ds-label";
+  deckLabel.textContent =
+    `Every seat opens with the same ${startingDeck().length} cards.`;
+  const neutrals = document.createElement("div");
+  neutrals.className = "ds-neutrals";
+  neutrals.append(document.createTextNode("Shared by both builds: "));
+  neutrals.appendChild(renderSegments(
+    NEUTRAL_POOL.flatMap((id, i) => (i === 0 ? [card(id)] : [t(", "), card(id)])),
+    rtHooks,
+  ));
   const start = document.createElement("button");
   start.className = "menu-new-game ds-start";
   start.textContent = "Choose your lands";
@@ -217,7 +250,9 @@ export function createDeckScreen(
     rulesOverlay.classList.add("hidden"),
   );
 
-  root.append(title, buildRow, rulesRow, start, rulesOverlay);
+  root.append(
+    title, buildRow, deckLabel, neutrals, rulesRow, start, rulesOverlay,
+  );
   container.appendChild(root);
 
   start.addEventListener("click", () => cb.onStart(current));

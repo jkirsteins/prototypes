@@ -7,6 +7,7 @@ import {
 } from "../src/target-explanations";
 import { passive } from "../src/segments";
 import { CARDS, GUARDS } from "../src/cards";
+import { RAID_LEADERSHIP } from "../src/abilities";
 import type { TooltipLine } from "../src/panel";
 import {
   failureRiskOf,
@@ -263,14 +264,18 @@ describe("cardModifierLines", () => {
   });
 
   it("marks an attack card while a reading is held, at its real multiple", () => {
+    // "this", not "this attack": a reading doubles whatever carries a keyword
+    // it boosts, and a fortify is one of them.
     expect(cardModifierLines({ ...none, omens: { alpha: 1 } }, "alpha", "raid"))
-      .toEqual(["Favourable omens: this attack counts double."]);
+      .toEqual(["Favourable omens: this counts double."]);
     expect(cardModifierLines({ ...none, omens: { alpha: 1 } }, "alpha", "great-raid"))
-      .toEqual(["Favourable omens: this attack counts double."]);
+      .toEqual(["Favourable omens: this counts double."]);
+    expect(cardModifierLines({ ...none, omens: { alpha: 1 } }, "alpha", "fortify"))
+      .toEqual(["Favourable omens: this counts double."]);
     expect(cardModifierLines({ ...none, omens: { alpha: 2 } }, "alpha", "raid"))
-      .toEqual(["Favourable omens: this attack counts quadruple."]);
+      .toEqual(["Favourable omens: this counts quadruple."]);
     expect(cardModifierLines({ ...none, omens: { alpha: 3 } }, "alpha", "raid"))
-      .toEqual(["Favourable omens: this attack counts x8."]);
+      .toEqual(["Favourable omens: this counts x8."]);
   });
 
   it("leaves a card omens cannot double unmarked", () => {
@@ -328,8 +333,10 @@ describe("targetImpactLines", () => {
     lines.map((l) => (l.amount === undefined ? l.text : `${l.amount} ${l.text}`));
 
   it("says nothing for a card that takes no target", () => {
-    expect(targetImpactLines(v(), "alpha", "great-raid", "beta")).toEqual([]);
+    // Great raid is aimed now - it names the land its neighbours all raid -
+    // so the untargeted case is asked of cards that really take none.
     expect(targetImpactLines(v(), "alpha", "plague", "beta")).toEqual([]);
+    expect(targetImpactLines(v(), "alpha", "war-council", "beta")).toEqual([]);
   });
 
   it("heads the block with the card, then the defense move it would deal", () => {
@@ -351,9 +358,15 @@ describe("targetImpactLines", () => {
   });
 
   it("adds the ruler's leadership into the quoted damage", () => {
-    const view = v({ leadership: { alpha: 5 } });
+    // Leadership counts on a raid only where the ruler is a war leader.
+    const view = v({
+      leadership: { alpha: 5 }, leaderAbilities: { alpha: [RAID_LEADERSHIP] },
+    });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
       .toBe("-6 Defense (60 -> 54)");
+    // Without the ability the same leadership adds nothing.
+    expect(shown(targetImpactLines(v({ leadership: { alpha: 5 } }), "alpha", "raid", "beta"))[1])
+      .toBe("-1 Defense (60 -> 59)");
   });
 
   it("doubles a held reading, and says which word is the reading's", () => {
@@ -410,7 +423,7 @@ describe("targetImpactLines", () => {
   });
 
   it("marks an effect that is not a number rather than leaving the column blank", () => {
-    const open = v({ defense: { beta: 10 } });
+    const open = v({ defense: { beta: 0 } });
     expect(shown(targetImpactLines(open, "alpha", "subjugate", "beta")))
       .toEqual(["If Subjugate played here:", "-- Becomes your vassal."]);
     const vassal = v({
@@ -451,7 +464,7 @@ describe("targetImpactLines", () => {
   it("keeps a refusal one red line, with no block heading over it", () => {
     const view = v({ defense: { beta: 200 } });
     expect(targetImpactLines(view, "alpha", "subjugate", "beta")).toEqual([
-      { text: "Their home defenses stand at 60; subjugation opens at 15 or less.", tone: "bad" },
+      { text: "Their home defenses stand at 60; subjugation opens at 0 or less.", tone: "bad" },
     ]);
   });
 
@@ -510,14 +523,14 @@ describe("defenseBreakdown", () => {
     expect(defenseBreakdown(view, "beta", false)).toEqual([
       { text: "Defenses", blockStart: true },
       { amount: "48/60", text: "standing" },
-      { amount: "15", text: "or less opens subjugation" },
+      { amount: "0", text: "or less opens subjugation" },
     ]);
   });
 
   it("shouts when the gate stands open", () => {
-    const view = v({ defense: { beta: 15 } });
+    const view = v({ defense: { beta: 0 } });
     expect(defenseBreakdown(view, "beta", false)[1]).toEqual({
-      amount: "15/60", text: "standing - the gate is OPEN", tone: "bad",
+      amount: "0/60", text: "standing - the gate is OPEN", tone: "bad",
     });
   });
 
@@ -531,11 +544,13 @@ describe("defenseBreakdown", () => {
   });
 
   it("reads the polygon's own max, not the default", () => {
+    // The independence line is a share of the ceiling and moves with it; the
+    // subjugation line is a share of zero and does not.
     const view = v({ defenseMax: { beta: 200 }, defense: { beta: 50 } });
     expect(defenseBreakdown(view, "beta", true)).toEqual([
       { text: "Defenses", blockStart: true },
-      { amount: "50/200", text: "standing - the gate is OPEN", tone: "bad" },
-      { amount: "50", text: "or less opens subjugation" },
+      { amount: "50/200", text: "standing" },
+      { amount: "0", text: "or less opens subjugation" },
       { amount: "150", text: "or more regains independence at their turn" },
     ]);
   });
@@ -553,7 +568,7 @@ describe("landFactsLines", () => {
     })).toEqual([
       { text: "Defenses", blockStart: true },
       { amount: "60/60", text: "standing" },
-      { amount: "15", text: "or less opens subjugation" },
+      { amount: "0", text: "or less opens subjugation" },
       { amount: "20", text: "armies its defenses support" },
       { text: "Settlements", blockStart: true },
       { amount: "1/3", text: "on this land" },

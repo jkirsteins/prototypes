@@ -15,7 +15,7 @@ import {
 import { aiTakeTurn } from "./ai";
 import { fullRealmOf, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
-import { rulerNameOf } from "./rulers";
+import { hasRuler, rulerNameOf } from "./rulers";
 import {
   ability, abilityName, faction, plainText, t, term,
   type NameLookup, type Segment,
@@ -48,7 +48,7 @@ import {
 import {
   ATTACK_CARDS, CARDS, isInwardCard, isMarchCard, type Strategy,
 } from "./cards";
-import { buildOffer, destroyOffer, type HarvestChoice } from "./harvest";
+import { buildListing, destroyOffer, type HarvestChoice } from "./harvest";
 import { createHud, LOG_PREFS_KEY, type HudCallbacks } from "./hud";
 import { createDeckScreen } from "./deck-screen";
 import { createHostSession, type HostSession } from "./net-host";
@@ -503,6 +503,32 @@ function effectiveFaction(f: string): string {
   return game.incorporated[f] ?? f;
 }
 
+/** The faction whose COLOUR a land is painted in.
+ *
+ *  An annexed land is its annexer's outright - one hue, no stripes. A land
+ *  held as a vassal keeps its own hue and wears its lord's stripes, because
+ *  there is still a people and a chief there with a claim to be named.
+ *
+ *  Unless nobody leads it. A conquest takes the land, not its people's
+ *  allegiance to a chief who does not exist (`vacateRulers`), and a hue is
+ *  about somebody: a leaderless vassal has nobody left for its own colour to
+ *  be about, so it is painted its lord's. That is most conquests, which is why
+ *  a realm built out of them read as a patchwork rather than as one realm.
+ *
+ *  Walked UP the chain, so a leaderless land held by another leaderless land
+ *  reads as the nearest lord that still has a chief - resolving one link at a
+ *  time would have painted the middle land's hue onto the bottom one while the
+ *  middle itself was painted somebody else's. */
+function fillFactionFor(factionId: string): string {
+  let at = effectiveFaction(factionId);
+  for (let step = 0; step < game.players.length; step++) {
+    const lord = game.overlords.get(at);
+    if (lord === undefined || hasRuler(game.rulers, at)) break;
+    at = effectiveFaction(lord);
+  }
+  return at;
+}
+
 /** What a land nobody plays and nobody holds is painted. One flat grey for all
  *  of them: twenty-one peoples' hues, none of them playing, was the map
  *  describing a game that was not happening. Darker than the off-map neighbour
@@ -526,7 +552,7 @@ function applyOwnership(): void {
       : new Set<string>();
   for (const [id, el] of regionPaths) {
     const region = regionById.get(id)!;
-    const effective = inPlay() ? effectiveFaction(region.faction) : region.faction;
+    const effective = inPlay() ? fillFactionFor(region.faction) : region.faction;
     // Grey is "keeps to itself", and nothing else: the status comes off the
     // moment somebody takes the land, so a conquest turns its own hue under
     // the vassal stripes without this having to ask who holds it.
@@ -582,6 +608,10 @@ function renderVassalOverlay(): void {
   vassalStripes.length = 0;
   if (!inPlay()) return;
   for (const [vassal, lord] of game.overlords) {
+    // A leaderless vassal wears no stripes: `fillFactionFor` has already
+    // painted it its lord's colour outright, and striping a land that is
+    // already the lord's hue with the lord's hue says nothing.
+    if (!hasRuler(game.rulers, vassal)) continue;
     for (const factionId of realmOf(vassal, game.overlords, game.incorporated)) {
       const regionId = regionByFaction.get(factionId);
       const region = regionId !== undefined ? regionById.get(regionId) : undefined;
@@ -2136,7 +2166,7 @@ function openHarvestModal(index: number): void {
   const human = localHuman();
   pendingHarvest = { index };
   hud.showHarvestOffer(
-    { buildCards: buildOffer(human), heldCards: destroyOffer(human) },
+    { buildCards: buildListing(human), heldCards: destroyOffer(human) },
     {
       onGrowth() {
         commitHarvest(index, { kind: "growth" });

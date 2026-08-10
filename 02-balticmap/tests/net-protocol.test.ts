@@ -160,6 +160,28 @@ describe("action validation", () => {
     })).toBeNull();
   });
 
+  it("refuses an upgrade the guest cannot pay for", () => {
+    // The price is part of the offer, so the same recomputation that catches a
+    // fabricated card catches a fabricated purse. A guest holding no Strong
+    // raid cannot name a Great raid, and one holding the price can.
+    const rng = seededRng(3);
+    const g = withHand(freshGame(rng), 0, ["turnip-harvest"]);
+    expect(validateAction(g, 0, g.turn, {
+      type: "play", cardIndex: 0, cardId: "turnip-harvest",
+      harvest: { kind: "build", cardId: "great-raid" },
+    })).toMatch(/build/);
+    const rich = {
+      ...g,
+      players: g.players.map((pl, i) => (i === 0
+        ? { ...pl, deck: [...pl.deck, "strong-raid", "strong-raid"] }
+        : pl)),
+    };
+    expect(validateAction(rich, 0, rich.turn, {
+      type: "play", cardIndex: 0, cardId: "turnip-harvest",
+      harvest: { kind: "build", cardId: "great-raid" },
+    })).toBeNull();
+  });
+
   it("refuses a raid source no free army of the guest's borders", () => {
     // Refused, not redirected: silently marching out of another land would
     // expose a land the guest never chose to expose to the counter-raid.

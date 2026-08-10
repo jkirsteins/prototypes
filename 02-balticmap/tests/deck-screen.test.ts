@@ -42,6 +42,8 @@ describe("createDeckScreen", () => {
     const { container, screen } = setup();
     screen.update(view());
     const lines = tiles(container)[0].querySelectorAll(".ds-build-card");
+    // The leader block's rows carry `.ds-leader-line`, not this class: an
+    // ability is not a card, and counting one here counted the deck wrong.
     expect(lines).toHaveLength(BUILDS.warpath.length);
     expect([...lines].map((l) => l.querySelector("strong")?.textContent))
       .toEqual(BUILDS.warpath.map((id) => CARDS[id].name));
@@ -50,6 +52,26 @@ describe("createDeckScreen", () => {
       expect(line.querySelector(".ds-card-text")!.textContent!.length)
         .toBeGreaterThan(0);
     }
+  });
+
+  it("prices the cards the build makes you buy, and only those", () => {
+    // The ladder decides what the opening deck is FOR - the plain cards are
+    // the currency - so it has to be readable on the screen where the build is
+    // chosen, not only in the harvest that spends it.
+    const { container, screen } = setup();
+    screen.update(view());
+    const lines = [...tiles(container)[0].querySelectorAll(".ds-build-card")];
+    const priced = new Map(lines.map((l) => [
+      l.querySelector("strong")?.textContent,
+      l.querySelector(".ds-card-price")?.textContent ?? null,
+    ]));
+    expect(priced.get("Raid")).toBeNull();
+    expect(priced.get("Strong raid")).toContain("Costs Raid x2");
+    expect(priced.get("Great raid")).toContain("Costs Strong raid x2");
+    expect(priced.get("Fortify")).toBeNull();
+    expect(priced.get("Strong fortify")).toContain("Costs Fortify x2");
+    // No held count before a game starts: nobody holds anything yet.
+    for (const text of priced.values()) expect(text ?? "").not.toContain("hold");
   });
 
   it("carries no card heading of its own - the build is not a card", () => {
@@ -70,7 +92,10 @@ describe("createDeckScreen", () => {
     expect(NEUTRAL_POOL.length).toBeGreaterThan(0);
     // The neutral line names every neutral card - both builds harvest from it.
     expect(neutrals).toContain("Hillfort");
-    expect(neutrals).toContain("Subjugate");
+    expect(neutrals).toContain("Bodyguard");
+    // Raid and Fortify are NOT shared: they are the warpath ladder's bottom
+    // rungs and sit on its tile.
+    expect(neutrals).not.toContain("Raid");
   });
 
   it("marks the tile selected only while the view names its build", () => {

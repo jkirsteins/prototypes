@@ -9,6 +9,7 @@ import {
 import { handBlockReason } from "../src/playability";
 import { aiTakeTurn } from "../src/ai";
 import { CARDS, type Rng } from "../src/cards";
+import type { BuildOption } from "../src/harvest";
 import { DEFAULT_RULES } from "../src/rules";
 import { rulerOf } from "../src/rulers";
 import { turnipThresholdFor } from "../src/defense";
@@ -163,9 +164,9 @@ describe("createHud", () => {
     const g = withHand(playing(), 0, ["grow-crops"]);
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
-    // The 10-card starting deck (3 raid, 5 fortify, 1 grow-crops,
-    // 1 subjugate): 3 dealt to hand, 1 drawn at turn start.
-    expect(q(container, ".pile-deck .pile-count").textContent).toBe("6");
+    // The 9-card starting deck (4 raid, 4 fortify, 1 grow-crops): 3 dealt to
+    // hand, 1 drawn at turn start.
+    expect(q(container, ".pile-deck .pile-count").textContent).toBe("5");
     expect(q(container, ".pile-deck .pile-label").textContent).toBe("Deck");
     expect(q(container, ".pile-discard .pile-count").textContent).toBe("0");
     expect(q(container, ".pile-discard .pile-label").textContent).toBe("Discard");
@@ -926,7 +927,7 @@ describe("activity log filters", () => {
     let g = playing();
     g = {
       ...g,
-      defense: { beta: 10 }, // 10 <= floor(0.25 * 60): the gate stands open
+      defense: { beta: 0 }, // flattened: the gate stands open
       log: [
         ...g.log,
         { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 10 },
@@ -1270,7 +1271,7 @@ describe("targeted plays in the log and the hand tips", () => {
     const { container, hud } = setup();
     // The gate is on the target's HOME defense now: open it, then play the
     // explicit Subjugate card to declare the claim.
-    let g: GameState = { ...playing(), defense: { alpha: 10 } };
+    let g: GameState = { ...playing(), defense: { alpha: 0 } };
     g = withHand(g, 0, ["subjugate"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
@@ -1291,7 +1292,7 @@ describe("targeted plays in the log and the hand tips", () => {
   it("hovering a faction name in the log highlights that faction on the map", () => {
     const onHighlightFaction = vi.fn();
     const { container, hud } = setup({ onHighlightFaction });
-    let g: GameState = { ...playing(), defense: { alpha: 10 } };
+    let g: GameState = { ...playing(), defense: { alpha: 0 } };
     g = withHand(g, 0, ["subjugate"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
@@ -1477,7 +1478,7 @@ describe("hud v2", () => {
     hud.update(g);
     const pm = q(container, ".postmortem-overlay");
     expect(pm.classList.contains("hidden")).toBe(false);
-    expect(q(container, ".pm-title").textContent).toBe("Game over");
+    expect(q(container, ".pm-title").textContent).toBe("You lost");
     expect(q(container, ".pm-cause").textContent).toBe("Incorporated by Gamma");
     expect(q(container, ".pm-buildup").textContent).toContain("Raid");
     expect(q(container, ".pm-log .log-entry").textContent?.length).toBeGreaterThan(0);
@@ -1503,7 +1504,7 @@ describe("hud v2", () => {
     g = playCard(g, 0, seededRng(1));
     expect(g.phase).toBe("victory");
     hud.update(g);
-    expect(q(container, ".pm-title").textContent).toBe("Victory");
+    expect(q(container, ".pm-title").textContent).toBe("You won");
     expect(q(container, ".pm-cause").textContent).toBe(
       "You rule the Baltic - 11 of 20 lands",
     );
@@ -2357,6 +2358,12 @@ describe("the turnip bar chip and the harvest offer", () => {
       .toBe(`Turnips 0/${FIXTURE_TURNIP_THRESHOLD}`);
   });
 
+  /** Build rows with no price on them. Most of these tests are about the list
+   *  and the hooks rather than the ladder, and a free row is what every card
+   *  outside `UPGRADES` renders as anyway. */
+  const free = (...ids: string[]): BuildOption[] =>
+    ids.map((cardId) => ({ cardId, cost: null, held: 0, affordable: true }));
+
   /** Every hook `showHarvestOffer` takes, defaulted to a fresh spy - callers
    *  below override only the ones they mean to assert on. */
   function harvestHooks(overrides: Partial<{
@@ -2375,7 +2382,7 @@ describe("the turnip bar chip and the harvest offer", () => {
     hud.update(playing());
     const onBuild = vi.fn();
     hud.showHarvestOffer(
-      { buildCards: ["hillfort", "subjugate"], heldCards: [] },
+      { buildCards: free("hillfort", "subjugate"), heldCards: [] },
       harvestHooks({ onBuild }),
     );
     expect(q(container, ".harvest-overlay").classList.contains("hidden"))
@@ -2398,12 +2405,87 @@ describe("the turnip bar chip and the harvest offer", () => {
     expect(onBuild).toHaveBeenCalledWith("hillfort");
   });
 
+  it("prices a row it can pay for, and leaves it clickable", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onBuild = vi.fn();
+    hud.showHarvestOffer(
+      {
+        buildCards: [
+          { cardId: "strong-raid", cost: { from: "raid", count: 2 }, held: 4, affordable: true },
+        ],
+        heldCards: [],
+      },
+      harvestHooks({ onBuild }),
+    );
+    const build = [...container.querySelectorAll(".harvest-option")]
+      .find((el) => el.textContent?.includes("A card from your build"))!;
+    (build as HTMLButtonElement).click();
+    const row = container.querySelector(".harvest-option")!;
+    const price = row.querySelector(".harvest-option-price")!;
+    // The currency is a hoverable segment, not baked text: a price names a
+    // card, and a name in this game is a node the player can point at.
+    expect(price.querySelector(".rt-card")?.textContent).toBe("Raid");
+    expect(price.textContent).toContain("x2");
+    expect(price.textContent).toContain("you hold 4");
+    expect(row.classList.contains("harvest-locked")).toBe(false);
+    (row as HTMLButtonElement).click();
+    expect(onBuild).toHaveBeenCalledWith("strong-raid");
+  });
+
+  it("shows an unaffordable rung greyed and refuses the click", () => {
+    // Shown, not hidden: the harvest offer is the only place a card is learnt,
+    // so a Great raid nobody can afford yet is still a Great raid the player
+    // now knows to save for.
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onBuild = vi.fn();
+    hud.showHarvestOffer(
+      {
+        buildCards: [
+          { cardId: "great-raid", cost: { from: "strong-raid", count: 2 }, held: 0, affordable: false },
+        ],
+        heldCards: [],
+      },
+      harvestHooks({ onBuild }),
+    );
+    const build = [...container.querySelectorAll(".harvest-option")]
+      .find((el) => el.textContent?.includes("A card from your build"))!;
+    (build as HTMLButtonElement).click();
+    const row = container.querySelector(".harvest-option") as HTMLButtonElement;
+    expect(row.querySelector(".rt-card")?.textContent).toBe("Great raid");
+    expect(row.textContent).toContain(CARDS["great-raid"].text);
+    expect(row.classList.contains("harvest-locked")).toBe(true);
+    expect(row.disabled).toBe(true);
+    row.click();
+    expect(onBuild).not.toHaveBeenCalled();
+  });
+
+  it("keeps the build option live when nothing in it is affordable yet", () => {
+    // Disabled only when the list is EMPTY. A list the seat cannot buy from is
+    // still a list worth opening.
+    const { container, hud } = setup();
+    hud.update(playing());
+    hud.showHarvestOffer(
+      {
+        buildCards: [
+          { cardId: "great-raid", cost: { from: "strong-raid", count: 2 }, held: 0, affordable: false },
+        ],
+        heldCards: [],
+      },
+      harvestHooks(),
+    );
+    const build = [...container.querySelectorAll(".harvest-option")]
+      .find((el) => el.textContent?.includes("A card from your build")) as HTMLButtonElement;
+    expect(build.disabled).toBe(false);
+  });
+
   it("takes nothing straight off the top choices, and answers with a skip", () => {
     const { container, hud } = setup();
     hud.update(playing());
     const onSkip = vi.fn();
     hud.showHarvestOffer(
-      { buildCards: ["hillfort"], heldCards: [] },
+      { buildCards: free("hillfort"), heldCards: [] },
       harvestHooks({ onSkip }),
     );
     const skip = [...container.querySelectorAll(".harvest-option")]
@@ -2422,7 +2504,7 @@ describe("the turnip bar chip and the harvest offer", () => {
     const onCancel = vi.fn();
     const onSkip = vi.fn();
     hud.showHarvestOffer(
-      { buildCards: ["hillfort"], heldCards: [] },
+      { buildCards: free("hillfort"), heldCards: [] },
       harvestHooks({ onCancel, onSkip }),
     );
     (q(container, ".harvest-cancel") as HTMLButtonElement).click();
@@ -2439,7 +2521,7 @@ describe("the turnip bar chip and the harvest offer", () => {
     const onCancel = vi.fn();
     const onSkip = vi.fn();
     hud.showHarvestOffer(
-      { buildCards: ["hillfort"], heldCards: [] },
+      { buildCards: free("hillfort"), heldCards: [] },
       harvestHooks({ onCancel, onSkip }),
     );
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -2455,7 +2537,7 @@ describe("the turnip bar chip and the harvest offer", () => {
     hud.update(playing());
     const first = vi.fn();
     hud.showHarvestOffer(
-      { buildCards: ["hillfort"], heldCards: [] },
+      { buildCards: free("hillfort"), heldCards: [] },
       harvestHooks({ onCancel: first }),
     );
     hud.hideHarvestUi();
@@ -2464,7 +2546,7 @@ describe("the turnip bar chip and the harvest offer", () => {
 
     const second = vi.fn();
     hud.showHarvestOffer(
-      { buildCards: ["hillfort"], heldCards: [] },
+      { buildCards: free("hillfort"), heldCards: [] },
       harvestHooks({ onCancel: second }),
     );
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -2476,7 +2558,7 @@ describe("the turnip bar chip and the harvest offer", () => {
     const { container, hud } = setup();
     hud.update(playing());
     hud.showHarvestOffer(
-      { buildCards: ["hillfort"], heldCards: [] },
+      { buildCards: free("hillfort"), heldCards: [] },
       harvestHooks(),
     );
     hud.update(newGame(FACTIONS));
@@ -2586,7 +2668,7 @@ describe("surrender", () => {
       phase: "defeat",
       log: [...g.log, { turn: 4, playerId: 1, type: "surrendered" }],
     });
-    expect(q(container, ".pm-title").textContent).toBe("Surrendered");
+    expect(q(container, ".pm-title").textContent).toBe("You conceded");
     expect(q(container, ".pm-cause").textContent).toContain("You conceded");
     expect(q(container, ".pm-deltas").textContent).toBe("");
   });
@@ -2601,7 +2683,10 @@ describe("hand tips", () => {
     hud.update(g);
     const card = q(container, ".hand .card");
     expect(card.querySelector(".card-name")!.textContent).toBe("Great raid");
-    expect(card.querySelector(".card-tip")!.textContent).toBe(CARDS["great-raid"].text);
+    // The rules text, then the keyword block the card carries: the rule is
+    // learned from the card that has it rather than from somewhere else.
+    expect(card.querySelector(".card-tip")!.textContent)
+      .toContain(CARDS["great-raid"].text);
   });
 
   it("shows an active modifier above the card description", () => {

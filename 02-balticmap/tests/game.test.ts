@@ -14,7 +14,7 @@ import { DEFAULT_RULES } from "../src/rules";
 import { CARDS, isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
   DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, LAND_GROWTH, SUBJUGATION_GATE,
-  FORTIFY_HEAL, GREAT_RAID_DAMAGE, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
+  ATTACK_DAMAGE, FORTIFY_HEAL, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
   PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, turnipThresholdFor,
   WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
@@ -81,6 +81,18 @@ function unlimitedPlaying(adj?: Record<string, string[]>): GameState {
 
 function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
   const p = { ...g.players[playerIdx], hand };
+  return { ...g, players: g.players.map((pl, i) => (i === playerIdx ? p : pl)) };
+}
+
+/** Replaces a seat's deck and/or discard outright. The harvest ladder is
+ *  priced against what a seat HOLDS, so a test about a price has to say what
+ *  the piles are rather than inherit a dealt deck. */
+function withPiles(
+  g: GameState,
+  playerIdx: number,
+  piles: Partial<Pick<GameState["players"][number], "deck" | "hand" | "discard">>,
+): GameState {
+  const p = { ...g.players[playerIdx], ...piles };
   return { ...g, players: g.players.map((pl, i) => (i === playerIdx ? p : pl)) };
 }
 
@@ -620,14 +632,23 @@ describe("the counter-raid clash", () => {
 });
 
 describe("great-raid", () => {
-  it("fans one army out of each sallying land, one arrow per bordering polygon", () => {
-    const g = withHand(playingState(LINE_ADJ), 0, ["great-raid"]);
-    const after = playCard(g, 0, rng());
+  /** beta holds gamma as a vassal on the complete graph, so TWO lands of the
+   *  realm border delta and a Great raid aimed there musters both. The card
+   *  names one land and every neighbour of it that the realm holds piles on,
+   *  which takes a realm of more than one land to show at all. */
+  function pyramid(hand: string[] = ["great-raid"]): GameState {
+    const g = playingState(); // complete graph
+    return withHand(
+      { ...g, overlords: new Map([["gamma", "beta"]]) }, 0, hand,
+    );
+  }
+
+  it("musters one army from every land of the realm bordering the target", () => {
+    const after = playCard(pyramid(), 0, rng(), "delta");
     expect(Object.values(after.marches).map((m) => [m.from, m.to, m.holdsArmy]))
-      .toEqual([["beta", "alpha", true], ["beta", "gamma", false]]);
-    // One army for the sally, two arrows. beta's army is out either way, so
-    // nothing else may march from it until these land.
-    expect(after.defense).toEqual({}); // nothing lands yet
+      .toEqual([["beta", "delta", true], ["gamma", "delta", true]]);
+    // Each sallying land spends its OWN army, and nothing lands yet.
+    expect(after.defense).toEqual({});
   });
 
   it("cannot sally at all once the frontier's armies are already out", () => {
@@ -637,45 +658,46 @@ describe("great-raid", () => {
     // actually exhaust it.
     g = { ...g, defenseMax: { ...g.defenseMax, beta: 3 } };
     g = playCard(g, 0, rng(), "alpha");
-    const after = playCard({ ...g, playedThisTurn: false }, 0, rng());
+    const after = playCard({ ...g, playedThisTurn: false }, 0, rng(), "alpha");
     // beta is the realm's only land and its army is on the road to alpha.
     expect(after.marches).toEqual(g.marches);
   });
 
-  it("hits exactly the polygons bordering the full realm when they land", () => {
-    const g = withHand(playingState(LINE_ADJ), 0, ["great-raid"]);
-    const before = playCard(g, 0, rng());
+  it("lands each arrow separately on the one land it named", () => {
+    const before = playCard(pyramid(), 0, rng(), "delta");
     const after = landMarches(before);
     const landed = fresh(after, before.log.length)
       .filter((e) => e.type === "march-resolved");
-    expect(landed.map((e) => e.targetFactionId)).toEqual(["alpha", "gamma"]);
-    expect(landed.every((e) => e.amount === GREAT_RAID_DAMAGE)).toBe(true);
+    // Two arrows, answered one at a time - a Raid's worth each, not a card's.
+    expect(landed.map((e) => e.targetFactionId)).toEqual(["delta", "delta"]);
+    expect(landed.every((e) => e.amount === ATTACK_DAMAGE["great-raid"])).toBe(true);
+    expect(after.defense.delta).toBe(FIXTURE_MAX - 2 * ATTACK_DAMAGE["great-raid"]);
     expect(after.defense.beta).toBeUndefined(); // never hits itself
   });
 
-  it("spares the realm's own members and strikes what the pyramid borders", () => {
-    let g = playingState(); // complete graph
-    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
-    g = withHand(g, 0, ["great-raid"]);
-    const after = landMarches(playCard(g, 0, rng()));
+  it("spares the realm's own members - a vassal is not a target", () => {
+    // gamma is beta's vassal and borders it on the complete graph, so it would
+    // be a neighbour if the card asked the map instead of the realm.
+    const after = landMarches(playCard(pyramid(), 0, rng(), "alpha"));
     const landed = after.log.filter((e) => e.type === "march-resolved");
-    expect(landed.map((e) => e.targetFactionId)).toEqual(["alpha", "delta"]);
+    expect(landed.map((e) => e.targetFactionId)).toEqual(["alpha", "alpha"]);
+    expect(after.defense.gamma).toBeUndefined();
   });
 
-  it("stacks leadership and omens like a raid, one multiplier over every polygon", () => {
-    let g = withHand(playingState(LINE_ADJ), 0, ["great-raid"]);
+  it("stacks leadership and omens like a raid, one multiplier over every arrow", () => {
+    let g = pyramid();
     g = {
       ...g,
       omens: { beta: 1 },
       rulers: { ...g.rulers, beta: { ...g.rulers.beta, leadership: 5 } },
     };
-    const declared = playCard(g, 0, rng());
+    const declared = playCard(g, 0, rng(), "delta");
     expect(declared.log.find((e) => e.type === "play")?.readings).toBe(1);
     expect(declared.omens.beta).toBeUndefined();
     const after = landMarches(declared);
-    const each = (GREAT_RAID_DAMAGE + 5) * 2;
-    expect(after.defense.alpha).toBe(FIXTURE_MAX - each);
-    expect(after.defense.gamma).toBe(FIXTURE_MAX - each);
+    // The reading is spent once and doubles every arrow the play sent.
+    const each = (ATTACK_DAMAGE["great-raid"] + 5) * 2;
+    expect(after.defense.delta).toBe(FIXTURE_MAX - 2 * each);
   });
 });
 
@@ -1241,7 +1263,98 @@ describe("turnip-harvest", () => {
     });
     expect(after.players[0].deck.sort()).toEqual(g.players[0].deck.sort());
     expect(after.log.some((e) => e.type === "harvest-picked")).toBe(false);
-    expect(after.players[0].discard).toContain("turnip-harvest"); // still spent
+    // Spent AND gone: the harvest is unique, so it leaves the deck rather than
+    // discarding. The bar hands out a fresh one when it fills again, and one
+    // that also came round with the discard would cash a season nobody farmed.
+    expect(pilesOf(after, "beta")).not.toContain("turnip-harvest");
+  });
+
+  it("a priced pick is bought with copies that leave the game", () => {
+    let g = withHand(playingState(), 0, ["turnip-harvest"]);
+    g = withPiles(g, 0, { deck: ["raid", "raid", "fortify"], discard: [] });
+    const before = g.log.length;
+    const after = playCard(g, 0, rng(), undefined, {
+      harvest: { kind: "build", cardId: "strong-raid" },
+    });
+    // ONE copy, not one per card spent: the trade is two in, one out.
+    expect(pilesOf(after, "beta").filter((c) => c === "strong-raid"))
+      .toEqual(["strong-raid"]);
+    // Both Raids gone from every pile, not moved to the discard.
+    expect(pilesOf(after, "beta").filter((c) => c === "raid")).toEqual([]);
+    // Two Raids out, one Strong raid in, and the harvest itself consumed:
+    // two cards fewer than the seat held. Climbing THINS the deck.
+    expect(pilesOf(after, "beta")).toHaveLength(pilesOf(g, "beta").length - 2);
+    // Two out, one in: climbing thins the deck rather than padding it.
+    expect(fresh(after, before).filter((e) => e.type === "harvest-burned"))
+      .toMatchObject([{ cardId: "raid" }, { cardId: "raid" }]);
+    expect(after.log.at(-1)).toMatchObject({
+      type: "harvest-picked", cardId: "strong-raid",
+    });
+  });
+
+  it("spends the discard before the deck and the hand last", () => {
+    let g = withHand(playingState(), 0, ["turnip-harvest", "raid"]);
+    g = withPiles(g, 0, { deck: ["raid"], discard: ["raid"] });
+    const after = playCard(g, 0, rng(), undefined, {
+      harvest: { kind: "build", cardId: "strong-raid" },
+    });
+    const seat = after.players[0];
+    expect(seat.deck).not.toContain("raid");
+    // The discard also holds the spent Turnip harvest, so it is the Raid that
+    // has to be gone rather than the pile.
+    expect(seat.discard).not.toContain("raid");
+    expect(seat.hand).toContain("raid");
+  });
+
+  it("a pick the seat cannot pay for grants nothing and costs nothing", () => {
+    let g = withHand(playingState(), 0, ["turnip-harvest"]);
+    g = withPiles(g, 0, { deck: ["raid"], discard: [] });
+    const before = g.log.length;
+    const after = playCard(g, 0, rng(), undefined, {
+      harvest: { kind: "build", cardId: "strong-raid" },
+    });
+    expect(pilesOf(after, "beta")).not.toContain("strong-raid");
+    expect(pilesOf(after, "beta")).toContain("raid");
+    expect(fresh(after, before).some((e) => e.type === "harvest-burned"))
+      .toBe(false);
+    expect(after.log.some((e) => e.type === "harvest-picked")).toBe(false);
+  });
+
+  it("pays with the last two copies it holds - the pick is priced before the payment", () => {
+    // The payment must not be able to make its own pick unaffordable: a seat
+    // holding exactly the price handed both copies over and was then told it
+    // could not afford what it had just paid for.
+    let g = withHand(playingState(), 0, ["turnip-harvest"]);
+    g = withPiles(g, 0, { deck: ["raid", "raid"], discard: [] });
+    const after = playCard(g, 0, rng(), undefined, {
+      harvest: { kind: "build", cardId: "strong-raid" },
+    });
+    expect(pilesOf(after, "beta")).toContain("strong-raid");
+    expect(pilesOf(after, "beta").filter((c) => c === "raid")).toEqual([]);
+  });
+
+  it("charges nothing for a free build card", () => {
+    let g = withHand(playingState(), 0, ["turnip-harvest"]);
+    g = withPiles(g, 0, { deck: ["raid", "raid"], discard: [] });
+    const before = g.log.length;
+    const after = playCard(g, 0, rng(), undefined, {
+      harvest: { kind: "build", cardId: "raid" },
+    });
+    expect(pilesOf(after, "beta").filter((c) => c === "raid")).toHaveLength(3);
+    expect(fresh(after, before).some((e) => e.type === "harvest-burned"))
+      .toBe(false);
+  });
+
+  it("charges nothing for a card the random draw happened to land on", () => {
+    // "A card from anywhere" is a lucky break by decision - the ladder is what
+    // the named pick charges for, and a sight-unseen draw charges nothing.
+    let g = withHand(playingState(), 0, ["turnip-harvest"]);
+    g = withPiles(g, 0, { deck: ["raid", "raid"], discard: [] });
+    const before = g.log.length;
+    const after = playCard(g, 0, rng(), undefined, { harvest: { kind: "random" } });
+    expect(fresh(after, before).some((e) => e.type === "harvest-burned"))
+      .toBe(false);
+    expect(pilesOf(after, "beta").filter((c) => c === "raid")).toHaveLength(2);
   });
 
   it("a choiceless play never re-offers a build card already at its cap", () => {
@@ -1448,7 +1561,9 @@ describe("a card that plays again", () => {
         ["fortify", "fortify"],
       );
       const first = playCard(g, 0, rng(), "beta");
-      expect(first.repeatGroup).toBe("fortify");
+      // The group is the KEYWORD's id, not the card's: what re-opened the turn
+      // is the raid keyword this Fortify was handed for the test.
+      expect(first.repeatGroup).toBe("raid");
       expect(playCard(first, 0, rng(), "beta").defense.beta)
         .toBe(10 + 2 * FORTIFY_HEAL);
     } finally {
@@ -1953,12 +2068,18 @@ describe("an army walking into a broken land", () => {
 });
 
 describe("the defense transfer", () => {
-  /** The human's own capture leaves the question pending; an AI's does not. */
+  /** The human's own capture leaves the question pending; an AI's does not.
+   *
+   *  The round wrap that lands the march also lets the quiet lands take their
+   *  restless swings, and on this seed gamma takes a point off beta on the way
+   *  past. These tests are about what the TRANSFER moves, so the two numbers
+   *  are restated after the capture rather than left to the weather. */
   function captured(): GameState {
     const g = withHand(
       { ...playingSix(), defense: { alpha: 0, beta: 40 } }, 0, ["raid"],
     );
-    return landMarches(playCard(g, 0, rng(), "alpha", { sourceId: "beta" }));
+    const landed = landMarches(playCard(g, 0, rng(), "alpha", { sourceId: "beta" }));
+    return { ...landed, defense: { alpha: 0, beta: 40 } };
   }
 
   it("asks the human, and answers nothing until they say", () => {

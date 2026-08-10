@@ -44,15 +44,19 @@ describe("defense store", () => {
     expect("selija" in applyHeal(view({}, v.defenseMax), "selija", 50)).toBe(false);
   });
 
-  it("opens the subjugation gate at the floor of 25% of max", () => {
-    // A 6 polygon, which is what the shipped map deals: the ceilings are 2..18
-    // and 25% of one is almost never whole. Floor, so the boundary is a number
-    // the badge can print - a 6 opens at 1, not at 1.5.
+  it("opens the subjugation gate only when the defenses are gone", () => {
+    // The gate is zero: a land falls when it is flattened and not a moment
+    // sooner, so the badge that turns red, the band the map draws and the army
+    // that walks in all mean the same thing. A fractional gate was a second
+    // way to lose a land and a second number to read.
     const max = { selija: 6 };
-    expect(subjugationGateOpen(view({ selija: 1 }, max), "selija")).toBe(true);
-    expect(subjugationGateOpen(view({ selija: 2 }, max), "selija")).toBe(false);
     expect(subjugationGateOpen(view({ selija: 0 }, max), "selija")).toBe(true);
+    expect(subjugationGateOpen(view({ selija: 1 }, max), "selija")).toBe(false);
+    expect(subjugationGateOpen(view({ selija: 2 }, max), "selija")).toBe(false);
     expect(subjugationGateOpen(view({}, max), "selija")).toBe(false);
+    // Floored against the ceiling, so no size of land opens early.
+    expect(subjugationGateOpen(view({ selija: 1 }, { selija: 18 }), "selija"))
+      .toBe(false);
   });
 
   it("opens the independence gate at the ceiling of 75% of max", () => {
@@ -71,7 +75,9 @@ describe("defense store", () => {
     expect(gateBandOf(view({ selija: 5 }, max), "selija")).toBe("high");
     expect(gateBandOf(view({ selija: 4 }, max), "selija")).toBe("middle");
     expect(gateBandOf(view({ selija: 2 }, max), "selija")).toBe("middle");
-    expect(gateBandOf(view({ selija: 1 }, max), "selija")).toBe("open");
+    // Only a flattened land bands open - the gate is zero.
+    expect(gateBandOf(view({ selija: 1 }, max), "selija")).toBe("middle");
+    expect(gateBandOf(view({ selija: 0 }, max), "selija")).toBe("open");
   });
 
   it("keeps disease stacks per owner: two rivals on one polygon", () => {

@@ -388,7 +388,12 @@ svg.map.dragging {
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
 }
 
-.menu-new-game {
+/* The two big overlay buttons share one look. Named as two selectors rather
+   than one shared class: `.pm-view-map` used to BE a `.menu-new-game`, so a
+   `.menu-new-game` lookup inside the postmortem answered with the wrong
+   button - the curtain instead of the way out. */
+.menu-new-game,
+.pm-view-map {
   font-size: 18px;
   padding: 10px 32px;
   border: 1px solid #7a6a55;
@@ -398,7 +403,8 @@ svg.map.dragging {
   cursor: pointer;
 }
 
-.menu-new-game:hover {
+.menu-new-game:hover,
+.pm-view-map:hover {
   background: #f1e9da;
 }
 
@@ -597,6 +603,16 @@ svg.map.dragging {
   letter-spacing: 0.08em;
 }
 
+/* The cards both builds share, named on the dark ground under the tiles - so
+   the colour is stated here rather than inherited into the UA black. */
+.ds-neutrals {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #d8d0c2;
+  text-align: center;
+  max-width: min(1000px, 100% - 32px);
+}
+
 /* The build picker: two tiles, side by side, each stating its build's cards
    in full - the deck picker's read-at-a-glance rule carried over. The row
    scrolls on a short window so Choose your lands stays outside it and
@@ -605,6 +621,12 @@ svg.map.dragging {
   display: flex;
   gap: 14px;
   justify-content: center;
+  /* A tile is as tall as the cards it states, NOT as tall as the scroll box.
+     The default `stretch` sizes each item to the container's own height, which
+     here is a definite max-height - so a tile with more cards in it than fit
+     kept a box the size of the window and painted its background over exactly
+     that much, leaving everything scrolled past it as text on the bare map. */
+  align-items: flex-start;
   width: min(1000px, 100% - 32px);
   max-height: calc(100vh - 240px);
   overflow-y: auto;
@@ -691,9 +713,10 @@ svg.map.dragging {
 
 /* Inside the leader block the rows do not need the card rows' separator: the
    block's own edge already says where they begin. */
-.ds-build-leader .ds-build-card {
-  border-top: none;
-  padding-top: 2px;
+.ds-leader-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .card.discard-hint {
@@ -852,13 +875,34 @@ svg.map.dragging {
 
 /* Pointing at an arrow asks "which two lands is this about". Everything that
    is not one of the two steps back, the pin's own vocabulary at a lighter
-   weight - this is a glance, not a decision. */
+   weight - this is a glance, not a decision.
+
+   HUE is what the step back takes away, not brightness alone. A rival's
+   orange at 45% opacity was still the loudest thing on a mostly grey map, so
+   the two lands the arrow was about were not the two the eye went to. */
 svg.map.arrow-focused .region:not(.arrow-end) {
-  opacity: 0.45;
+  opacity: 0.4;
+  filter: saturate(0.12);
 }
 
+/* Both ends keep their colour and take the hover's own outline. The origin
+   used to get a 6% brightness lift and nothing else, which on a land already
+   dimmed as somebody else's was no mark at all. */
 svg.map.arrow-focused .region.arrow-end {
-  filter: brightness(1.06);
+  opacity: 1;
+  filter: saturate(1.15) brightness(1.04);
+  stroke: #3f3428;
+  stroke-width: 1.6;
+}
+
+/* The overlays that draw a REALM rather than a land are not `.region`s, so the
+   rule above never reached them - the same hole the pin had to close, for the
+   same reason: an outline still glowing around lands the arrow has nothing to
+   do with is a second thing competing for the glance. */
+svg.map.arrow-focused .realm-outline,
+svg.map.arrow-focused .realm-union,
+svg.map.arrow-focused .realm-hover-halo {
+  opacity: 0.3;
 }
 
 .march-arrow.arrow-faded,
@@ -1627,6 +1671,29 @@ svg.map.arrow-focused .region.arrow-end {
   margin-top: 2px;
 }
 
+/* What a card costs, under its rules text. Its own colour rather than the
+   rules text's: a price is the line the player scans the list for. */
+.harvest-option-price {
+  font-size: 12px;
+  color: #7a5c2e;
+  margin-top: 3px;
+  font-weight: 600;
+}
+
+/* A price the seat cannot pay yet. Dimmed and dashed, never hidden: the
+   harvest offer is the only place a card is learnt, so the top of a ladder has
+   to be readable from the bottom of it. */
+.harvest-option.harvest-locked {
+  background: #ece3d0;
+  border-style: dashed;
+  color: #7d7161;
+  cursor: default;
+}
+
+.harvest-option.harvest-locked .harvest-option-price {
+  color: #a8542f;
+}
+
 .log-entry.log-you {
   border-left: 3px solid #a8542f;
   background: #f7ecdc;
@@ -1664,6 +1731,16 @@ svg.map.arrow-focused .region.arrow-end {
   font-size: 11px;
   line-height: 1.35;
   color: #6b5d49;
+}
+
+/* What a card on the tile is bought with. Its own ink so the ladder can be
+   read down the tile without reading every rules line. */
+.ds-card-price {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #7a5c2e;
 }
 
 .card .card-tip {

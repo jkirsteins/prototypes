@@ -71,7 +71,6 @@ export function turnipThresholdFor(defenseMax: number): number {
 export const LAND_GROWTH = 1;
 
 export const RAID_DAMAGE = 1;
-export const GREAT_RAID_DAMAGE = 0.5;
 export const WAR_COUNCIL_LEADERSHIP = 1;
 export const PLAGUE_DAMAGE_PER_STACK = 1;
 export const HILLFORT_HEAL = 3;

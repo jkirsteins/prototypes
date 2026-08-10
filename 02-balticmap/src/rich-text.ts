@@ -1,8 +1,10 @@
-import { CARDS, KEYWORDS, keywordsOf, type KeywordDef } from "./cards";
+import {
+  CARDS, KEYWORDS, keywordsOf, type KeywordDef, type UpgradeCost,
+} from "./cards";
 import { PASSIVES } from "./passives";
 import { LEADER_ABILITIES } from "./abilities";
 import { TERMS, termName } from "./glossary";
-import { t, faction } from "./segments";
+import { t, card, faction } from "./segments";
 import { withArticle } from "./view";
 import type { Segment } from "./segments";
 import type { TooltipLine } from "./panel";
@@ -195,6 +197,21 @@ export const cardTextSegments = (id: string): Segment[] => {
   const def = CARDS[id];
   return def?.textSegments ?? [t(def?.text ?? "")];
 };
+
+/** What an upgrade costs, as prose the player can point at: "Costs Raid x2 -
+ *  you hold 4". `held` is omitted before a game starts, where nobody holds
+ *  anything yet and the price is the whole of what the build tile can say.
+ *
+ *  The currency is a `card()` segment and the count is a bare "x2" beside it,
+ *  not "2 Raids". Pluralising a card's name would put a word in the player's
+ *  prose that no rename in src/cards.ts could ever follow, and the segment rule
+ *  in AGENTS.md exists to stop exactly that. */
+export const priceSegments = (
+  cost: UpgradeCost, held?: number,
+): Segment[] => [
+  t("Costs "), card(cost.from), t(` x${cost.count}`),
+  ...(held === undefined ? [] : [t(` - you hold ${held}`)]),
+];
 
 export interface NameLookup {
   factionName(id: string): string;

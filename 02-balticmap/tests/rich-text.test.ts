@@ -99,8 +99,15 @@ describe("renderSegments", () => {
     const frag = renderSegments([card("raid")], hooks);
     const span = frag.querySelector(".rt-card")!;
     move(span as HTMLElement);
+    // Name, rules text, and the keyword block the card carries - the rule is
+    // learned from the card that has it rather than from somewhere else.
     expect(showTip).toHaveBeenCalledWith(
-      [{ text: "Raid" }, { text: expect.stringContaining("1 damage") }],
+      [
+        { text: "Raid" },
+        { text: expect.stringContaining("1 damage") },
+        { text: "Keyword: Raid", blockStart: true },
+        { text: expect.stringContaining("leaves your turn open") },
+      ],
       10, 20,
     );
     span.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));

@@ -1,6 +1,6 @@
 import {
   ATTACK_CARDS, CARDS, guardAgainst, isGuardCard, isInwardCard, isMarchCard,
-  isSingleLandHeal, isTributeCard, keywordHas, keywordsOf,
+  isSingleLandHeal, isTributeCard, keywordHas, keywordsOf, repeatGroupOf,
 } from "./cards";
 import {
   fullRealmOf, incorporatedRealmOf, overlordChainOf,
@@ -800,11 +800,12 @@ export interface PlayableSet {
 
 /** How far open the turn is, for the two hand-level questions below.
  *
- *  `repeatOnly` is a card id when the turn has already been spent by a play
- *  that re-opened it for another copy of itself, and null or absent when the
- *  turn is simply open. It is a card ID rather than a flag because the rule is
- *  "another copy of THAT card": the caller holds the id
- *  (`GameState.repeatCardId`), the rules never ask which card it is. */
+ *  `repeatOnly` is a KEYWORD id when the turn has already been spent by a play
+ *  that re-opened it, and null or absent when the turn is simply open. It is a
+ *  keyword rather than a card id because the rule is "another card of that
+ *  CLASS": the caller holds the group (`GameState.repeatGroup`), and matching
+ *  the card id instead let a Raid be followed only by another plain Raid while
+ *  the Strong raid in the same hand stayed greyed out. */
 export interface HandOptions {
   repeatOnly?: string | null;
 }
@@ -835,7 +836,9 @@ export function playableSet(
   if (repeat !== undefined && repeat !== null) {
     const again: number[] = [];
     hand.forEach((c, i) => {
-      if (c === repeat && isCardPlayable(view, factionId, c)) again.push(i);
+      if (repeatGroupOf(c) === repeat && isCardPlayable(view, factionId, c)) {
+        again.push(i);
+      }
     });
     return { mode: "play", cardIndexes: again };
   }

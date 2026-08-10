@@ -25,9 +25,10 @@ import { standingChangeText, standingsFor } from "./view";
 import { hasRuler } from "./rulers";
 import {
   card, cardName, cardTextSegments, faction, factionIds, keywordBlock,
-  possessive, renderSegments, t, theFaction, verb,
+  possessive, priceSegments, renderSegments, t, theFaction, verb,
   type RichTextHooks, type Segment, type Speaker, type Verb,
 } from "./rich-text";
+import type { BuildOption } from "./harvest";
 
 export interface HudCallbacks {
   onNewGame(): void;
@@ -142,9 +143,10 @@ export interface Hud {
    *  keeps nothing, cancelling backs out of playing the card at all. */
   /** The harvest's three ways to spend it. `buildCards` is what the "take a
    *  card from your build" option opens onto - the seat's own build, and
-   *  nothing else. */
+   *  nothing else - each row PRICED, including the rows the seat cannot pay
+   *  for yet. Those render greyed rather than absent: see `buildListing`. */
   showHarvestOffer(
-    offer: { buildCards: string[]; heldCards: string[] },
+    offer: { buildCards: BuildOption[]; heldCards: string[] },
     hooks: {
       onGrowth(): void;
       onBuild(cardId: string): void;
@@ -739,7 +741,7 @@ export function createHud(
    *  playable behind it - the phase is over and every control is already
    *  hidden by phase - so this is a curtain and not a mode. */
   const pmViewMap = document.createElement("button");
-  pmViewMap.className = "menu-new-game pm-view-map";
+  pmViewMap.className = "pm-view-map";
   pmViewMap.textContent = "View the map";
   pmViewMap.addEventListener("click", () => setPostmortemAside(true));
   pmSummary.append(pmTitle, pmCause, pmDeltas, pmBuildup, pmViewMap, pmNewGame);
@@ -1163,7 +1165,7 @@ export function createHud(
   }
 
   function showHarvestOffer(
-    offer: { buildCards: string[]; heldCards: string[] },
+    offer: { buildCards: BuildOption[]; heldCards: string[] },
     hooks: {
       onGrowth(): void;
       onBuild(cardId: string): void;
@@ -1196,14 +1198,21 @@ export function createHud(
     /** A second screen listing cards by name with their rules text - the same
      *  reading the build tile gives, since these are the same decisions made
      *  later. Shared by "take one from your build" and "burn one", which are
-     *  the same screen pointed at two different lists. */
+     *  the same screen pointed at two different lists.
+     *
+     *  A row may carry a PRICE, which is what the build list has that the burn
+     *  list does not: an option is priced, unaffordable, or free, and only the
+     *  second of those is unclickable. */
     const showCardPicker = (
-      title: string, cardIds: string[], onPick: (cardId: string) => void,
+      title: string,
+      rows: readonly { cardId: string; price?: BuildOption }[],
+      onPick: (cardId: string) => void,
     ): void => {
       harvestTitle.textContent = title;
-      const cards = cardIds.map((cardId) => {
+      const cards = rows.map(({ cardId, price }) => {
+        const locked = price !== undefined && !price.affordable;
         const btn = document.createElement("button");
-        btn.className = "harvest-option";
+        btn.className = locked ? "harvest-option harvest-locked" : "harvest-option";
         const label = document.createElement("div");
         label.className = "harvest-option-label";
         label.appendChild(renderSegments([card(cardId)], richTextHooks));
@@ -1211,7 +1220,18 @@ export function createHud(
         text.className = "harvest-option-text";
         text.appendChild(renderSegments(cardTextSegments(cardId), richTextHooks));
         btn.append(label, text);
-        btn.addEventListener("click", () => onPick(cardId));
+        if (price?.cost != null) {
+          const line = document.createElement("div");
+          line.className = "harvest-option-price";
+          line.appendChild(renderSegments(
+            priceSegments(price.cost, price.held), richTextHooks,
+          ));
+          btn.append(line);
+        }
+        btn.disabled = locked;
+        btn.addEventListener("click", () => {
+          if (!locked) onPick(cardId);
+        });
         return btn;
       });
       const back = document.createElement("button");
@@ -1232,9 +1252,14 @@ export function createHud(
         "A card from your build",
         offer.buildCards.length === 0
           ? "Nothing left to take - your build is already in your deck."
-          : "Choose one of your build's cards by name.",
+          : "Choose one of your build's cards by name. The stronger ones are bought with the plainer ones.",
+        // The whole build, priced - not only what is affordable. A rung the
+        // seat cannot pay for is the next thing it is playing towards, and a
+        // list that hid it would hide the reason to keep the plain cards.
         () => showCardPicker(
-          "Take a card from your build", offer.buildCards, hooks.onBuild,
+          "Take a card from your build",
+          offer.buildCards.map((o) => ({ cardId: o.cardId, price: o })),
+          hooks.onBuild,
         ),
       );
       (build as HTMLButtonElement).disabled = offer.buildCards.length === 0;
@@ -1249,7 +1274,9 @@ export function createHud(
           ? "Nothing to burn."
           : "Take a card out of your deck for good. A leaner deck draws its best cards sooner.",
         () => showCardPicker(
-          "Burn a card for good", offer.heldCards, hooks.onDestroy,
+          "Burn a card for good",
+          offer.heldCards.map((cardId) => ({ cardId })),
+          hooks.onDestroy,
         ),
       );
       (destroy as HTMLButtonElement).disabled = offer.heldCards.length === 0;

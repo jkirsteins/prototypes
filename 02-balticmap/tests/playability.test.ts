@@ -12,7 +12,8 @@ import {
   type RulesView,
 } from "../src/playability";
 import { TRIBUTE_CARDS } from "../src/cards";
-import { GREAT_RAID_DAMAGE, RAID_DAMAGE, SUBJUGATION_GATE } from "../src/defense";
+import { RAID_LEADERSHIP } from "../src/abilities";
+import { ATTACK_DAMAGE, RAID_DAMAGE, SUBJUGATION_GATE } from "../src/defense";
 
 const ORDER = ["alpha", "beta", "gamma", "delta"];
 const LINE_ADJ = {
@@ -56,7 +57,9 @@ function view(partial: Partial<RulesView> = {}): RulesView {
   };
 }
 
-/** The gate line on a 600 polygon: floor(0.25 * 600). */
+/** The gate line on a 600 polygon. The share is zero, so the line is zero:
+ *  a land falls when its defenses are gone and not a point sooner. Derived
+ *  rather than written out, so moving the dial moves the tests with it. */
 const GATE = Math.floor(SUBJUGATION_GATE * 600);
 
 describe("attackReach", () => {
@@ -188,28 +191,31 @@ describe("marching: sources, targets and armies", () => {
   });
 });
 
-describe("subjugationGateOn and the 25% boundary", () => {
-  it("quotes the current defense against the floored gate line", () => {
+describe("subjugationGateOn and the zero line", () => {
+  it("quotes the current defense against the gate line", () => {
     expect(subjugationGateOn(view(), "beta"))
       .toEqual({ defense: 600, required: GATE, open: false });
-    expect(subjugationGateOn(view({ defense: { beta: 90 } }), "beta"))
-      .toEqual({ defense: 90, required: GATE, open: true });
+    expect(subjugationGateOn(view({ defense: { beta: 0 } }), "beta"))
+      .toEqual({ defense: 0, required: GATE, open: true });
   });
 
-  it("opens at exactly 25% and stays shut one point above", () => {
+  it("opens only at the line and stays shut one point above", () => {
     expect(subjugationGateOn(view({ defense: { beta: GATE } }), "beta").open)
       .toBe(true);
     expect(subjugationGateOn(view({ defense: { beta: GATE + 1 } }), "beta").open)
       .toBe(false);
   });
 
-  it("floors an odd ceiling, so the printed line is the legal line", () => {
-    const v = (d: number) =>
-      view({ defenseMax: defenseMaxAll(ORDER, 610), defense: { beta: d } });
-    // floor(0.25 * 610) = 152
-    expect(subjugationGateOn(v(152), "beta"))
-      .toEqual({ defense: 152, required: 152, open: true });
-    expect(subjugationGateOn(v(153), "beta").open).toBe(false);
+  it("is the same line at every ceiling - a land falls when it is flattened", () => {
+    // The gate is a share of the ceiling, and the share is zero, so a big land
+    // is no easier to take standing than a small one.
+    const v = (max: number, d: number) =>
+      view({ defenseMax: defenseMaxAll(ORDER, max), defense: { beta: d } });
+    for (const max of [610, 600, 2]) {
+      expect(subjugationGateOn(v(max, 0), "beta"), `${max}`)
+        .toEqual({ defense: 0, required: 0, open: true });
+      expect(subjugationGateOn(v(max, 1), "beta").open, `${max}`).toBe(false);
+    }
   });
 
   it("is the same boundary Subjugate targeting answers to", () => {
@@ -248,7 +254,7 @@ describe("subjugate eligibility", () => {
 
   it("the respite alone blocks an open gate, and lifts at expiry", () => {
     const v = view({
-      defense: { gamma: 100 }, respites: { gamma: 5 }, turn: 2,
+      defense: { gamma: 0 }, respites: { gamma: 5 }, turn: 2,
     });
     expect(targetEligibilityFor(v, "beta", "subjugate")).toContainEqual({
       state: "blocked",
@@ -271,7 +277,7 @@ describe("subjugate eligibility", () => {
     const v = view({
       adjacency: FULL_ADJ,
       overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
-      defense: { alpha: 100, beta: 100 },
+      defense: { alpha: 0, beta: 0 },
     });
     for (const liege of ["beta", "alpha"]) {
       expect(targetEligibilityFor(v, "gamma", "subjugate")).toContainEqual({
@@ -283,7 +289,7 @@ describe("subjugate eligibility", () => {
   it("refuses the actor's own vassal as already held", () => {
     const v = view({
       overlords: new Map([["beta", "alpha"]]),
-      defense: { beta: 100 },
+      defense: { beta: 0 },
     });
     expect(targetEligibilityFor(v, "alpha", "subjugate")).toContainEqual({
       state: "blocked", factionId: "beta", reasons: [{ code: "already-vassal" }],
@@ -293,7 +299,7 @@ describe("subjugate eligibility", () => {
   it("allows poaching another lord's vassal through an open gate", () => {
     const v = view({
       overlords: new Map([["gamma", "delta"]]),
-      defense: { gamma: 100 },
+      defense: { gamma: 0 },
     });
     expect(validTargetsFor(v, "beta", "subjugate")).toContain("gamma");
   });
@@ -301,7 +307,7 @@ describe("subjugate eligibility", () => {
   it("marks the actor itself blocked as self when its own land is in reach", () => {
     // Annexing beta resolves alpha's border back to alpha, so the self rule
     // has to answer rather than the reach filter.
-    const v = view({ incorporated: { beta: "alpha" }, defense: { alpha: 100 } });
+    const v = view({ incorporated: { beta: "alpha" }, defense: { alpha: 0 } });
     expect(targetEligibilityFor(v, "alpha", "subjugate")).toContainEqual({
       state: "blocked", factionId: "alpha", reasons: [{ code: "self" }],
     });
@@ -310,7 +316,7 @@ describe("subjugate eligibility", () => {
   it("a vassal may Subjugate a free faction - only its liege is off-limits", () => {
     const v = view({
       overlords: new Map([["beta", "alpha"]]),
-      defense: { gamma: 100 },
+      defense: { gamma: 0 },
     });
     expect(validTargetsFor(v, "beta", "subjugate")).toContain("gamma");
   });
@@ -642,20 +648,32 @@ describe("handBlockReason", () => {
 });
 
 describe("attackDamageFor", () => {
-  it("is base plus leadership, doubled per held omens reading", () => {
+  // Leadership is not universal: it counts only where the ruler holds an
+  // ability that boosts the card's own keyword. A people who never learned to
+  // fight behind a chief get nothing from one, however hardened the chief is.
+  const warLeader = { alpha: [RAID_LEADERSHIP] };
+
+  it("is base plus a war leader's leadership, doubled per held omens reading", () => {
     expect(attackDamageFor(view(), "alpha", "raid"))
       .toEqual({ damage: RAID_DAMAGE, multiplier: 1 });
-    const led = view({ leadership: { alpha: 50 } });
+    // Leadership with no ability behind it moves nothing.
+    const unled = view({ leadership: { alpha: 50 } });
+    expect(attackDamageFor(unled, "alpha", "raid").damage).toBe(RAID_DAMAGE);
+    const led = view({ leadership: { alpha: 50 }, leaderAbilities: warLeader });
     expect(attackDamageFor(led, "alpha", "raid").damage).toBe(RAID_DAMAGE + 50);
-    const read = view({ leadership: { alpha: 50 }, omens: { alpha: 2 } });
+    const read = view({
+      leadership: { alpha: 50 }, leaderAbilities: warLeader, omens: { alpha: 2 },
+    });
     expect(attackDamageFor(read, "alpha", "raid"))
       .toEqual({ damage: (RAID_DAMAGE + 50) * 4, multiplier: 4 });
   });
 
   it("great raid uses its own base under the same formula", () => {
-    const v = view({ leadership: { alpha: 50 }, omens: { alpha: 1 } });
+    const v = view({
+      leadership: { alpha: 50 }, leaderAbilities: warLeader, omens: { alpha: 1 },
+    });
     expect(attackDamageFor(v, "alpha", "great-raid"))
-      .toEqual({ damage: (GREAT_RAID_DAMAGE + 50) * 2, multiplier: 2 });
+      .toEqual({ damage: (ATTACK_DAMAGE["great-raid"] + 50) * 2, multiplier: 2 });
   });
 
   it("omens multiply only attack cards", () => {
@@ -742,7 +760,9 @@ describe("wealth", () => {
 
 describe("targetEligibilityFor on untargeted cards", () => {
   it("marks every faction irrelevant", () => {
-    for (const entry of targetEligibilityFor(view(), "beta", "great-raid")) {
+    // A Great raid is aimed now - it names the land its neighbours all raid -
+    // so the untargeted case has to be asked of a card that really takes none.
+    for (const entry of targetEligibilityFor(view(), "beta", "war-council")) {
       expect(entry.state).toBe("irrelevant");
     }
   });

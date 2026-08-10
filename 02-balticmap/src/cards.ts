@@ -111,7 +111,8 @@ export const CARDS: Record<string, CardDef> = {
     textSegments: [t("Nothing happens. Enough of these earn a "), card("turnip-harvest"), t(".")] },
   // Build A - Warpath.
   "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid"], text: "Send an army at a bordering land. It lands next turn for 1 damage, less any counter-raid." },
-  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid"], text: "Every land of yours bordering one land raids it, one army each. Each lands next turn like a Raid, answered separately." },
+  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid"], text: "Every land of yours bordering one land raids it, one army each. Each lands next turn like a Raid, answered separately.",
+    textSegments: [t("Every land of yours bordering one land raids it, one army each. Each lands next turn like a "), card("raid"), t(", answered separately.")] },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next raid or fortify card counts double. Stacks.",
     textSegments: [t("Your next "), keyword("raid"), t(" or "), keyword("fortify"), t(" card counts double. Stacks.")] },
   "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
@@ -166,18 +167,72 @@ export const CARDS: Record<string, CardDef> = {
 export type Strategy = "warpath" | "pestilence";
 
 export const BUILDS: Record<Strategy, readonly string[]> = {
-  // The strong pair rather than the plain one: every deck already OPENS with
-  // four Raids and four Fortifies, so a harvest that offered them again was
-  // offering a card the seat was already holding four of. What the pool owes
-  // a warpath seat is a better version of what it already does.
+  // A ladder, listed bottom to top, and the plain cards are its bottom rung.
+  // Every deck OPENS with four Raids and four Fortifies, and those eight are
+  // what the strong cards are BOUGHT with - see `UPGRADES`. So a warpath seat
+  // deepens by trading up rather than by piling on, and the plain card belongs
+  // in the offer because it is the currency, not because it is a prize.
   warpath: [
-    "strong-raid", "great-raid", "favourable-omens", "war-council",
-    "strong-fortify",
+    "raid", "strong-raid", "great-raid",
+    "fortify", "strong-fortify",
+    "favourable-omens", "war-council",
   ],
+  // Flat and free: pestilence's five cards do five different jobs, so there is
+  // no lesser version of any of them to trade in.
   pestilence: [
     "spread-disease", "localized-outbreak", "miasma", "plague", "foul-winds",
   ],
 };
+
+/** What a card costs, paid in copies of a lesser card. */
+export interface UpgradeCost {
+  /** The card spent. */
+  readonly from: string;
+  /** How many copies of it leave the game.  */
+  readonly count: number;
+}
+
+/** The upgrade ladder: a card that must be BOUGHT, and what buys it.
+ *
+ *  The copies spent leave the game for good rather than going to the discard,
+ *  so climbing makes a deck smaller and sharper instead of bigger and more
+ *  diluted. Two into one, every rung, which is also why the opening four Raids
+ *  are exactly the price of one Great raid.
+ *
+ *  A card absent from this table is free. `NEUTRAL_POOL` and the random draw
+ *  never charge - only the named `build` pick does - so a rung reached by luck
+ *  is a lucky break rather than a hole in the ladder.
+ *
+ *  The table must stay ACYCLIC and every `from` must name a real card, or the
+ *  AI's ladder walk in src/harvest.ts has no bottom to reach.
+ *  tests/cards.test.ts pins both. */
+export const UPGRADES: Readonly<Record<string, UpgradeCost>> = {
+  "strong-raid": { from: "raid", count: 2 },
+  "great-raid": { from: "strong-raid", count: 2 },
+  "strong-fortify": { from: "fortify", count: 2 },
+};
+
+/** What `cardId` costs, or null where it is free. The one reader of the table,
+ *  so the offer, the payment, the UI and the AI all price a card alike. */
+export const upgradeCostOf = (cardId: string): UpgradeCost | null =>
+  UPGRADES[cardId] ?? null;
+
+const UPGRADE_INTO: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(UPGRADES).map(([into, cost]) => [cost.from, into]),
+);
+
+/** The card `cardId` is spent on, one rung up, or null at the top. The table
+ *  read backwards, which is how "is this card still worth wanting" is asked:
+ *  a seat that traded its Raids up for a Great raid has not lost the Raid, it
+ *  has SPENT it, and a policy that could not tell the difference would buy the
+ *  same rung back forever. Each card is spent on at most one thing, so the
+ *  inversion loses nothing - tests/cards.test.ts pins that. */
+export const upgradesInto = (cardId: string): string | null =>
+  UPGRADE_INTO[cardId] ?? null;
+
+/** Rungs on the longest ladder, plus one. The bound on any walk of the table,
+ *  so a cycle somebody adds by mistake is a wrong answer rather than a hang. */
+export const LADDER_DEPTH = Object.keys(UPGRADES).length + 1;
 
 /** Deck-buildable cards that fit neither build: every deck reaches them
  *  through the harvest pool. Derived so a new neutral cannot be forgotten -

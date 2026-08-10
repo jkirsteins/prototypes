@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   ATTACK_CARDS, BASE_RARITY, BUILDS, CARDS, CONSUMED_CARDS, GUARDS,
-  INWARD_CARDS, NEUTRAL_POOL, RARITY_TIERS, SINGLE_LAND_HEALS, TRIBUTE_CARDS,
+  INWARD_CARDS, LADDER_DEPTH, NEUTRAL_POOL, RARITY_TIERS, SINGLE_LAND_HEALS,
+  TRIBUTE_CARDS, UPGRADES,
   guardAgainst, isGuardCard, isInwardCard, isSingleLandHeal, isTributeCard,
-  repeatGroupOf, rarityForImpact, shuffle, startingDeck,
+  repeatGroupOf, rarityForImpact, shuffle, startingDeck, upgradeCostOf,
+  upgradesInto,
 } from "../src/cards";
 import { SINGLE_LAND_HEAL } from "../src/defense";
 import { cardTextSegments, plainText, t, type NameLookup } from "../src/rich-text";
@@ -38,27 +40,27 @@ describe("cards", () => {
     // Build A - Warpath.
     expectProps(
       "raid", "Raid", true, false, null, true, false,
-      "Send an army at a bordering land. It lands next turn for 1 damage " +
-        "plus your leadership, less any counter-raid.",
+      "Send an army at a bordering land. It lands next turn for 1 damage, " +
+        "less any counter-raid.",
     );
     expectProps(
-      "great-raid", "Great raid", false, false, null, true, false,
-      "Every land of yours that can spare an army raids all it borders. " +
-        "They land next turn for 0.5 damage plus your leadership.",
+      "great-raid", "Great raid", true, false, null, true, false,
+      "Every land of yours bordering one land raids it, one army each. Each " +
+        "lands next turn like a Raid, answered separately.",
     );
     expectProps(
       "favourable-omens", "Favourable omens", false, false, null, true, false,
-      "Your next Raid or Great raid deals double damage. Stacks.",
+      "Your next raid or fortify card counts double. Stacks.",
     );
     expectProps(
       "war-council", "War council", false, false, null, true, false,
-      "Your ruler gains 1 leadership, added to every attack. Stacks. Lost " +
-        "when the ruler dies.",
+      "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - " +
+        "what their leadership is worth is up to what they can do with it.",
     );
     expectProps(
       "strong-raid", "Strong raid", true, false, null, true, false,
-      "Send an army at a bordering land. It lands next turn for 2 damage " +
-        "plus your leadership, less any counter-raid.",
+      "Send an army at a bordering land. It lands next turn for 2 damage, " +
+        "less any counter-raid.",
     );
     expectProps(
       "strong-fortify", "Strong fortify", true, false, null, true, false,
@@ -101,9 +103,9 @@ describe("cards", () => {
       "Restore 1 defense to every land you hold.",
     );
     expectProps(
-      "subjugate", "Subjugate", true, false, 1, true, false,
-      "Take a faction in reach as your vassal. Only while their home " +
-        "defense is a quarter or less. Vassals pay tribute.",
+      "subjugate", "Subjugate", true, false, 1, false, false,
+      "Take a faction in reach as your vassal, once their defenses are " +
+        "gone. Vassals pay tribute.",
     );
     expectProps(
       "incorporate", "Incorporate", true, false, 1, true, false,
@@ -123,8 +125,7 @@ describe("cards", () => {
     expectProps(
       "prosperous-proliferation", "Prosperous proliferation", true, false,
       null, false, false,
-      "Good years: one of your lands grows by 1, ceiling and defense alike. " +
-        "Leaves your deck.",
+      "Good years: one of your lands grows by 1, ceiling and defense alike.",
     );
     expectProps(
       "found-settlement", "Found a settlement", true, false, 1, true, false,
@@ -161,13 +162,21 @@ describe("cards", () => {
   });
 
   it("does not pass vacuously - references are segments, plain text one run", () => {
-    const omens = cardTextSegments("favourable-omens")
+    // A card naming another card carries it as a `card` segment...
+    const bodyguard = cardTextSegments("bodyguard")
       .filter((s) => s.kind === "card")
       .map((s) => (s.kind === "card" ? s.cardId : ""));
-    expect(omens).toEqual(["raid", "great-raid"]);
+    expect(bodyguard).toEqual(["assassinate-ruler"]);
     const grow = cardTextSegments("grow-crops")
       .filter((s) => s.kind === "card" && s.cardId === "turnip-harvest");
     expect(grow).toHaveLength(1);
+    // ...and a card naming a CLASS of cards carries the keyword instead, which
+    // is why Favourable omens no longer lists the raids one by one.
+    const omens = cardTextSegments("favourable-omens")
+      .filter((s) => s.kind === "keyword")
+      .map((s) => (s.kind === "keyword" ? s.keywordId : ""));
+    expect(omens).toEqual(["raid", "fortify"]);
+    // A card naming nothing is one plain run, not a run per word.
     expect(cardTextSegments("raid")).toEqual([t(CARDS.raid.text)]);
   });
 
@@ -238,9 +247,12 @@ describe("builds and the neutral pool", () => {
   });
 
   it("pins the two build lists to literals", () => {
+    // Warpath is a ladder listed bottom to top: the plain cards are in the
+    // build because they are the currency the strong ones are bought with.
     expect(BUILDS.warpath).toEqual([
-      "strong-raid", "great-raid", "favourable-omens", "war-council",
-      "strong-fortify",
+      "raid", "strong-raid", "great-raid",
+      "fortify", "strong-fortify",
+      "favourable-omens", "war-council",
     ]);
     expect(BUILDS.pestilence).toEqual([
       "spread-disease", "localized-outbreak", "miasma", "plague", "foul-winds",
@@ -248,12 +260,12 @@ describe("builds and the neutral pool", () => {
   });
 
   it("derives the neutrals in declaration order", () => {
-    // Plain Raid and Fortify sit here, not in BUILDS.warpath: every deck
-    // already opens with four of each, so the harvest's own job is the
-    // stronger pair instead - see BUILDS.warpath's doc comment.
+    // Raid and Fortify are NOT here: they are the bottom rungs of the warpath
+    // ladder and belong to that build. Subjugate is not here either - it is
+    // withdrawn, which is to say not deck-buildable at all.
     expect(NEUTRAL_POOL).toEqual([
-      "raid", "fortify", "hillfort", "harvest-feast", "subjugate",
-      "incorporate", "assassinate-ruler", "bodyguard", "found-settlement",
+      "hillfort", "harvest-feast", "incorporate", "assassinate-ruler",
+      "bodyguard", "found-settlement",
     ]);
   });
 
@@ -261,15 +273,17 @@ describe("builds and the neutral pool", () => {
     expect([...ATTACK_CARDS].sort()).toEqual(["great-raid", "raid", "strong-raid"]);
     for (const id of ATTACK_CARDS) {
       expect(CARDS[id]).toBeDefined();
-      // Reachable by a warpath seat either way: strong-raid and great-raid
-      // through the build, plain raid through the neutral pool every seat
-      // shares (and the starting deck besides).
+      // Reachable by a warpath seat either way: all three raids are rungs of
+      // its own build's ladder, and the plain one opens the deck besides.
       expect([...BUILDS.warpath, ...NEUTRAL_POOL]).toContain(id);
     }
   });
 
   it("pins the consumed set - what leaves the deck instead of discarding", () => {
-    expect([...CONSUMED_CARDS].sort()).toEqual(["prosperous-proliferation"]);
+    // Both are handed out again when they are earned again, and both are
+    // permanent once played, so neither may come round with the discard.
+    expect([...CONSUMED_CARDS].sort())
+      .toEqual(["prosperous-proliferation", "turnip-harvest"]);
     for (const id of CONSUMED_CARDS) {
       expect(CARDS[id]).toBeDefined();
       // Uncapped: a card that already cannot repeat needs no belt-and-braces
@@ -280,11 +294,17 @@ describe("builds and the neutral pool", () => {
   });
 
   it("pins the repeat groups - what a spent turn still accepts", () => {
-    const again = Object.values(CARDS).filter((c) => c.keywords !== undefined)
+    // Carrying a keyword is not the same as repeating: the fortify and unique
+    // keywords carry rules of their own and re-open nothing.
+    const keyworded = Object.values(CARDS).filter((c) => c.keywords !== undefined)
       .map((c) => c.id).sort();
+    expect(keyworded).toEqual([
+      "fortify", "great-raid", "prosperous-proliferation", "raid",
+      "strong-fortify", "strong-raid", "turnip-harvest",
+    ]);
     // All three raids share one group, so any of them re-opens the turn for
     // any other.
-    expect(again).toEqual(["great-raid", "raid", "strong-raid"]);
+    const again = ["great-raid", "raid", "strong-raid"];
     for (const id of again) expect(repeatGroupOf(id)).toBe("raid");
     // The reader is the only reader of the field, so a card that declares
     // nothing must answer null through it rather than by being left out of a
@@ -339,13 +359,73 @@ describe("builds and the neutral pool", () => {
   });
 });
 
+describe("the upgrade ladder", () => {
+  it("pins what each priced card is bought with", () => {
+    expect(UPGRADES).toEqual({
+      "strong-raid": { from: "raid", count: 2 },
+      "great-raid": { from: "strong-raid", count: 2 },
+      "strong-fortify": { from: "fortify", count: 2 },
+    });
+    expect(upgradeCostOf("raid")).toBeNull();
+    expect(upgradeCostOf("plague")).toBeNull();
+  });
+
+  it("names only real cards, on both sides of the price", () => {
+    for (const [id, cost] of Object.entries(UPGRADES)) {
+      expect(CARDS[id], id).toBeDefined();
+      expect(CARDS[cost.from], cost.from).toBeDefined();
+      expect(cost.count, id).toBeGreaterThan(1);
+    }
+  });
+
+  it("prices only cards inside a build, and only where the currency is too", () => {
+    // A price on a card the harvest cannot offer by name is a price nothing
+    // charges, and a currency outside the build is a price the seat has no
+    // route to earn.
+    const inABuild = new Set([...BUILDS.warpath, ...BUILDS.pestilence]);
+    for (const [id, cost] of Object.entries(UPGRADES)) {
+      expect(inABuild.has(id), id).toBe(true);
+      expect(inABuild.has(cost.from), cost.from).toBe(true);
+    }
+  });
+
+  it("has a bottom: every ladder walks down to a free card", () => {
+    // The AI's pick drops a rung whenever it cannot pay, so a ladder with no
+    // free bottom rung is a policy with nothing to buy.
+    for (const id of Object.keys(UPGRADES)) {
+      let at: string = id;
+      let rungs = 0;
+      while (upgradeCostOf(at) !== null) {
+        at = (upgradeCostOf(at) as { from: string }).from;
+        rungs++;
+        expect(rungs, `${id} does not reach a free card`)
+          .toBeLessThanOrEqual(LADDER_DEPTH);
+      }
+    }
+  });
+
+  it("spends each card on at most one thing, so the table inverts cleanly", () => {
+    // `upgradesInto` is the table read backwards, and two cards sharing a
+    // currency would lose one of them - which is how the AI tells "I spent my
+    // Raids" from "I still want Raids".
+    const spent = Object.values(UPGRADES).map((c) => c.from);
+    expect(new Set(spent).size).toBe(spent.length);
+    expect(upgradesInto("raid")).toBe("strong-raid");
+    expect(upgradesInto("strong-raid")).toBe("great-raid");
+    expect(upgradesInto("great-raid")).toBeNull();
+  });
+
+  it("bounds any walk of the table", () => {
+    expect(LADDER_DEPTH).toBe(Object.keys(UPGRADES).length + 1);
+  });
+});
+
 describe("startingDeck", () => {
-  it("is 4 Raid, 4 Fortify, the turnip, and the one card that takes ground", () => {
+  it("is 4 Raid, 4 Fortify and the turnip that feeds the bar", () => {
     expect(startingDeck()).toEqual([
       "raid", "raid", "raid", "raid",
       "fortify", "fortify", "fortify", "fortify",
       "grow-crops",
-      "subjugate",
     ]);
   });
 
@@ -354,13 +434,27 @@ describe("startingDeck", () => {
       "spread-disease", "spread-disease", "spread-disease", "plague",
       "fortify", "fortify", "fortify", "fortify",
       "grow-crops",
-      "subjugate",
     ]);
   });
 
-  it("holds one Subjugate, the cap the harvest offer enforces", () => {
-    expect(startingDeck().filter((c) => c === "subjugate")).toHaveLength(1);
-    expect(CARDS.subjugate.maxPerDeck).toBe(1);
+  it("holds no card that takes ground - an army walking in does that now", () => {
+    // Subjugate is withdrawn, and a land changes hands by a raid landing on a
+    // flattened one. Nothing deals the card and nothing offers it.
+    expect(startingDeck()).not.toContain("subjugate");
+    expect(startingDeck("pestilence")).not.toContain("subjugate");
+    expect(CARDS.subjugate.deckBuildable).toBe(false);
+  });
+
+  it("opens with the whole price of the warpath ladder's first two rungs", () => {
+    // Four Raids buy two Strong raids, and those two buy the Great raid. The
+    // opening deck is the bankroll, which is why the plain cards are dealt in
+    // fours and not in twos.
+    const raids = startingDeck().filter((c) => c === "raid").length;
+    expect(raids).toBe(
+      (UPGRADES["strong-raid"].count) * (UPGRADES["great-raid"].count),
+    );
+    expect(startingDeck().filter((c) => c === "fortify").length)
+      .toBeGreaterThanOrEqual(UPGRADES["strong-fortify"].count);
   });
 
   it("returns a fresh array each call, so one seat's shuffle cannot leak", () => {
@@ -368,7 +462,7 @@ describe("startingDeck", () => {
     const b = startingDeck();
     expect(a).not.toBe(b);
     a.pop();
-    expect(startingDeck()).toHaveLength(10);
+    expect(startingDeck()).toHaveLength(9);
   });
 });
 
@@ -388,6 +482,14 @@ describe("every card is reachable by a player", () => {
   // AGENTS.md: a card a player can never learn of is, for them, not in the
   // game. Deck-buildable cards are reachable through the harvest offer; the
   // only exemption is injection-only cards, which must name what injects them.
+  //
+  // The one exception is a WITHDRAWN card: taken out of every pool while its
+  // definition, its AI branch and the machinery it drives stay in the tree,
+  // because it is meant to come back. A land changes hands by an army walking
+  // into it now, so Subjugate is out - and the tribute it injects goes dormant
+  // with it rather than becoming a card with no injector.
+  const WITHDRAWN = new Set(["subjugate"]);
+
   const INJECTED_BY: Record<string, string> = {
     ...Object.fromEntries(TRIBUTE_CARDS.map((id) => [id, "subjugate"])),
     // The turnip bar: enough grow-crops plays shuffle one into the deck
@@ -400,11 +502,30 @@ describe("every card is reachable by a player", () => {
 
   it("makes every non-deck-buildable card reachable by something that injects it", () => {
     for (const card of Object.values(CARDS)) {
-      if (card.deckBuildable) continue;
+      if (card.deckBuildable || WITHDRAWN.has(card.id)) continue;
       const source = INJECTED_BY[card.id];
       expect(source, `${card.id} is not deck-buildable and nothing injects it`)
         .toBeDefined();
       expect(CARDS[source]).toBeDefined();
+      // A card whose only injector is withdrawn is dormant, not reachable, and
+      // saying so here is what stops the exemption spreading by accident.
+      if (WITHDRAWN.has(source)) {
+        expect(TRIBUTE_CARDS, `${card.id} rides on a withdrawn card`)
+          .toContain(card.id);
+      }
+    }
+  });
+
+  it("keeps a withdrawn card out of every pool at once", () => {
+    // Withdrawn is all or nothing: half-withdrawn is a card the offer can hand
+    // out while nothing else in the game expects anybody to hold one.
+    for (const id of WITHDRAWN) {
+      expect(CARDS[id], id).toBeDefined();
+      expect(CARDS[id].deckBuildable, id).toBe(false);
+      expect(NEUTRAL_POOL, id).not.toContain(id);
+      expect([...BUILDS.warpath, ...BUILDS.pestilence], id).not.toContain(id);
+      expect(startingDeck(), id).not.toContain(id);
+      expect(startingDeck("pestilence"), id).not.toContain(id);
     }
   });
 });

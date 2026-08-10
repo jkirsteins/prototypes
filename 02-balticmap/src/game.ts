@@ -1,7 +1,7 @@
 import {
   CARDS, CONSUMED_CARDS, guardAgainst, isGuardCard, isMarchCard,
   isSingleLandHeal, isTributeCard, repeatGroupOf, startingDeck, shuffle,
-  TRIBUTE_CARDS, type Rng, type Strategy,
+  TRIBUTE_CARDS, upgradeCostOf, type Rng, type Strategy,
 } from "./cards";
 
 import {
@@ -30,7 +30,8 @@ import {
   type Armies, type Claims, type Marches,
 } from "./marches";
 import {
-  autoHarvestChoice, harvestCard, type HarvestChoice,
+  autoHarvestChoice, BURN_ORDER, harvestCard, removeCopies, SPEND_ORDER,
+  type HarvestChoice,
 } from "./harvest";
 import {
   damageAfterTerrain, hasPassive, quietPassives,
@@ -1172,9 +1173,16 @@ function updateFaction(
  *  All three raids share one group, so a Raid buys a Strong raid or a Great
  *  raid just as readily as another Raid. What stops
  *  the run is legality: the reopened turn hands the question straight back to
- *  `playableSet`, which answers it the same way it would on any other turn. */
+ *  `playableSet`, which answers it the same way it would on any other turn.
+ *
+ *  A turn spent by a card that re-opened NOTHING carries a null group, and
+ *  null is not a group a card can belong to. Comparing the two directly made
+ *  "this card repeats nothing" equal "the turn was re-opened for nothing", so
+ *  every card without a keyword could be played twice a turn. */
 export function turnAccepts(state: GameState, cardId: string): boolean {
-  return !state.playedThisTurn || repeatGroupOf(cardId) === state.repeatGroup;
+  if (!state.playedThisTurn) return true;
+  return state.repeatGroup !== null
+    && repeatGroupOf(cardId) === state.repeatGroup;
 }
 
 /** The card a spent turn is narrowed to, in the shape `playableSet` asks for:
@@ -1631,31 +1639,40 @@ export function playCard(
     // decide for themselves. The app asks the player first and hands the
     // answer in through `opts`.
     const choice = opts?.harvest ?? autoHarvestChoice(players[state.current]);
-    // Burning a card is the one harvest that takes something away. The first
-    // copy found, deck before hand before discard: they are the same card, and
-    // hunting for a particular copy would be a distinction the player cannot
-    // see.
+    // Burning a card is one of two harvests that take something away, and the
+    // only one the player asks for by itself.
     if (choice.kind === "destroy") {
-      players = updateFaction(players, p.factionId, (pl) => {
-        const fromDeck = pl.deck.indexOf(choice.cardId);
-        if (fromDeck >= 0) {
-          return { ...pl, deck: pl.deck.filter((_, i) => i !== fromDeck) };
-        }
-        const fromHand = pl.hand.indexOf(choice.cardId);
-        if (fromHand >= 0) {
-          return { ...pl, hand: pl.hand.filter((_, i) => i !== fromHand) };
-        }
-        const fromDiscard = pl.discard.indexOf(choice.cardId);
-        return fromDiscard < 0
-          ? pl
-          : { ...pl, discard: pl.discard.filter((_, i) => i !== fromDiscard) };
-      });
+      players = updateFaction(players, p.factionId, (pl) =>
+        removeCopies(pl, choice.cardId, 1, BURN_ORDER).player);
       events.push({
         turn: state.turn, playerId: p.id, type: "harvest-burned",
         cardId: choice.cardId,
       });
     }
     const gained = harvestCard(players[state.current], choice, rng);
+    // The other harvest that takes something away: a priced card is bought with
+    // copies of a lesser card, and they leave the game the way a burn does.
+    //
+    // Charged only against a grant that resolved, and only AFTER it resolved.
+    // `harvestCard` asks `buildOffer` whether the pick is affordable, and a
+    // payment taken first is a payment that can make its own pick unaffordable
+    // - a seat holding exactly two Raids would have handed both over and been
+    // told it could not afford the card it had just paid for.
+    if (choice.kind === "build" && gained !== null) {
+      const cost = upgradeCostOf(gained);
+      if (cost !== null) {
+        players = updateFaction(players, p.factionId, (pl) =>
+          removeCopies(pl, cost.from, cost.count, SPEND_ORDER).player);
+        // One line per copy. The log reads as the trade it is: two Raids burned
+        // under the play, then the Strong raid kept.
+        for (let i = 0; i < cost.count; i++) {
+          events.push({
+            turn: state.turn, playerId: p.id, type: "harvest-burned",
+            cardId: cost.from,
+          });
+        }
+      }
+    }
     if (gained !== null) {
       players = updateFaction(players, p.factionId, (pl) => ({
         ...pl, deck: shuffle([...pl.deck, gained], rng),

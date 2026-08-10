@@ -85,10 +85,24 @@ describe("the spine, steps 1..5", () => {
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
-  it("2: subjugates through an open gate, above every voluntary play", () => {
+  it("2A: walks an army into a flattened land, above every voluntary play", () => {
+    // An army arriving where nothing is left to fight TAKES the land, and it
+    // is the only way a land changes hands now - so the walk-in outranks the
+    // Subjugate branch it replaced, which is what a seat holding both shows.
     let g = base();
-    g = { ...g, defense: { beta: 15 } }; // exactly the 25% line of 60
+    g = { ...g, defense: { beta: SUBJUGATE_LINE } };
     g = withHand(g, ["raid", "subjugate"]);
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "beta", sourceId: "alpha",
+    });
+  });
+
+  it("2: subjugates through an open gate when no army can walk in", () => {
+    // The Subjugate machinery is withdrawn, not deleted: with no march card in
+    // hand the branch is still what answers an open gate.
+    let g = base();
+    g = { ...g, defense: { beta: SUBJUGATE_LINE } };
+    g = withHand(g, ["grow-crops", "subjugate"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta",
     });
@@ -99,23 +113,25 @@ describe("the spine, steps 1..5", () => {
     // beta's 1 even though beta sorts first.
     let g = base();
     g = { ...g, overlords: new Map([["delta", "gamma"]]) };
-    g = { ...g, defense: { beta: 10, gamma: 12 } };
+    g = { ...g, defense: { beta: SUBJUGATE_LINE, gamma: SUBJUGATE_LINE } };
     g = withHand(g, ["subjugate"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "gamma",
     });
   });
 
-  it("2: honours the respite - and never raids an already-open gate instead", () => {
-    // beta's gate is open but its escape respite runs: Subjugate has no legal
-    // target, and the build raid must not batter the open gate further - the
-    // gateCandidates filter sends it at a CLOSED gate (gamma, by tie order).
+  it("2: honours the respite - the Subjugate branch finds no target", () => {
+    // beta is flattened but its escape respite runs, so the claim is refused
+    // and the turn falls through to the harvest loop.
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 10 }, respites: { beta: 5 }, turn: 2 };
-    g = withHand(g, ["subjugate", "raid"]);
-    // alpha is the realm's only land, so the arrow's tail can only be alpha.
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 1, targetId: "gamma", sourceId: "alpha",
+    g = { ...g, defense: { beta: SUBJUGATE_LINE }, respites: { beta: 5 }, turn: 2 };
+    g = withHand(g, ["subjugate", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+    // An army is not refused: a respite is a rule about DECLARING fealty, and
+    // an army walking into an empty land answers to nothing but the map.
+    const armed = withHand(g, ["subjugate", "raid"]);
+    expect(chooseAction(armed)).toEqual({
+      type: "play", cardIndex: 1, targetId: "beta", sourceId: "alpha",
     });
   });
 
@@ -254,7 +270,7 @@ describe("5A: answering a march", () => {
     // alpha sits 2 above its gate and 6 damage is coming: our raid deals 1,
     // which loses the clash outright but keeps the gate shut.
     g = {
-      ...g, defense: { alpha: 17 },
+      ...g, defense: { alpha: SUBJUGATE_LINE + 6 },
       marches: incoming("beta", "alpha", 6), turn: 2,
     };
     g = withHand(g, ["raid", "grow-crops"]);
@@ -348,35 +364,42 @@ describe("6W: warpath decisive moves", () => {
 
   it("6W-2: finishes a gate one raid can open - above the council", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 16 } }; // gap 1 <= raid damage 1
+    g = { ...g, defense: { beta: SUBJUGATE_LINE + 1 } }; // gap 1 <= raid damage 1
     g = withHand(g, ["war-council", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta", sourceId: "alpha",
     });
   });
 
-  it("6W-3: fans a great raid when it would open two or more border gates", () => {
+  it("6W-3: aims a great raid where its arrows flatten the land outright", () => {
+    // One target, several arrows: the question is the finisher's question with
+    // a bigger number. alpha is the realm's only land, so it musters one arrow
+    // of a Raid's worth, and beta is exactly that far from falling.
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 15.4, gamma: 15.4 } }; // gaps 0.4 <= fan 0.5
+    g = { ...g, defense: { beta: SUBJUGATE_LINE + 1 } };
     g = withHand(g, ["great-raid", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-    // One gate is not worth the fan: the turn feeds the harvest loop instead.
-    const one = withHand(
-      { ...g, defense: { beta: 15.4 } }, ["great-raid", "grow-crops"],
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "beta",
+    });
+    // A land the arrows cannot flatten is not worth the card: the turn feeds
+    // the harvest loop instead.
+    const standing = withHand(
+      { ...g, defense: { beta: SUBJUGATE_LINE + 2 } },
+      ["great-raid", "grow-crops"],
     );
-    expect(chooseAction(one)).toEqual({ type: "play", cardIndex: 1 });
+    expect(chooseAction(standing)).toEqual({ type: "play", cardIndex: 1 });
   });
 
   it("6W-4: reads the omens when only the doubled raid opens a gate", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 16.5 } }; // gap 1.5: >1, <=2
+    g = { ...g, defense: { beta: SUBJUGATE_LINE + 1.5 } }; // gap 1.5: >1, <=2
     g = withHand(g, ["favourable-omens", "raid"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
 
   it("6W-4: never delays a finishing raid to stack a reading", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 16 } };
+    g = { ...g, defense: { beta: SUBJUGATE_LINE + 1 } };
     g = withHand(g, ["favourable-omens", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta", sourceId: "alpha",
@@ -625,16 +648,19 @@ describe("step 11: build moves", () => {
 
   it("11W-2: raids the polygon nearest its gate once one is within reach", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { gamma: 16.5 } }; // gap 1.5 <= 2 attacks (2)
+    g = { ...g, defense: { gamma: SUBJUGATE_LINE + 1.5 } }; // gap 1.5 <= 2 attacks (2)
     g = withHand(g, ["war-council", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "gamma", sourceId: "alpha",
     });
   });
 
-  it("11W-2: the build raid skips open gates - those want Subjugate", () => {
+  it("11W-2: the build raid never reaches a flattened land - 2A took it", () => {
+    // `gateCandidates` drops a land whose gate is already open, and step 2A
+    // above has already walked into it, so the build raid - when it fires at
+    // all - is aimed at something still standing.
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: 10, gamma: 40 } };
+    g = { ...g, defense: { gamma: SUBJUGATE_LINE + 2 } };
     g = withHand(g, ["raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "gamma", sourceId: "alpha",
@@ -690,7 +716,10 @@ describe("aiTakeTurn on a turn a card re-opened", () => {
     // rules, and the turn ends holding it.
     const before = { ...twoArmyRaider(), armies: { alpha: 1 } };
     const after = aiTakeTurn(before, seededRng(1));
-    expect(Object.values(after.marches)).toHaveLength(1);
+    // The ACTOR's arrows: the round wrap lets the quiet lands take their own
+    // restless swings, and those are not what this branch decides.
+    expect(Object.values(after.marches).filter((m) => m.actor === "alpha"))
+      .toHaveLength(1);
     expect(after.players[1].hand).toEqual(["raid"]);
     expect(after.playedThisTurn).toBe(true);
   });
