@@ -53,6 +53,16 @@ describe("region registry", () => {
       expect(b.home.x <= 0 && b.home.y <= 0, `${region.id} opens whole`).toBe(true);
       expect(b.home.x + b.home.w >= region.map.width).toBe(true);
       expect(b.home.y + b.home.h >= region.map.height).toBe(true);
+      // The default view is the whole canvas plus a ring of surrounding
+      // ground (DEFAULT_RING), not just the canvas exactly fit - a ring of
+      // zero would still satisfy the containment checks above, so this pins
+      // the ring itself: real margin on every side, both axes.
+      expect(b.home.x, `${region.id} ring on the west`).toBeLessThan(0);
+      expect(b.home.y, `${region.id} ring on the north`).toBeLessThan(0);
+      expect(b.home.x + b.home.w, `${region.id} ring on the east`)
+        .toBeGreaterThan(region.map.width);
+      expect(b.home.y + b.home.h, `${region.id} ring on the south`)
+        .toBeGreaterThan(region.map.height);
       const oldWidest = Math.max(region.map.width, region.map.height / (749 / 1440)) / 1.3;
       expect(b.maxW / oldWidest, `${region.id} zooms out 2x`).toBeGreaterThanOrEqual(2);
 

@@ -9,6 +9,14 @@ export interface DetailLayer {
    *  drift guard reads it back, so the size is declared once, in CSS. */
   selector: string;
   fontPx: number;
+  /** Legibility floor for this layer, in rendered px. Defaults to
+   *  MIN_LABEL_PX. A POINT label (a settlement name, a river name) is doing
+   *  its job as long as it can be read, so the shared floor is right for it.
+   *  An AREA label (a people's name, spanning its territory) is doing a
+   *  different job - naming a region, not a dot - and it has stopped doing
+   *  that job well before it becomes illegible letter by letter. Its floor
+   *  is therefore its own, set higher than the shared one. */
+  minPx?: number;
 }
 
 /** Ascending by font size, which IS the order they drop out in. */
@@ -16,7 +24,11 @@ export const DETAIL_LAYERS: readonly DetailLayer[] = [
   { hideClass: "hide-settlement-labels", selector: ".settlement-label", fontPx: 12 },
   { hideClass: "hide-river-labels", selector: ".label-river", fontPx: 16 },
   { hideClass: "hide-badges", selector: ".threat-badge .badge-text", fontPx: 18 },
-  { hideClass: "hide-people-labels", selector: ".label-people", fontPx: 30 },
+  { hideClass: "hide-neighbor-labels", selector: ".label-neighbor", fontPx: 22 },
+  // An area heading, not a place name: once it has shrunk to ordinary-label
+  // size it reads as cramped mush rather than a territory's name, well before
+  // MIN_LABEL_PX would call it illegible. See the field's doc comment above.
+  { hideClass: "hide-people-labels", selector: ".label-people", fontPx: 30, minPx: 12 },
 ];
 
 /** Shown exactly while the people labels are hidden, so the map is never
@@ -35,7 +47,7 @@ export function detailClassesAt(scale: number): string[] {
   const classes: string[] = [];
   let peopleHidden = false;
   for (const layer of DETAIL_LAYERS) {
-    if (layer.fontPx * scale < MIN_LABEL_PX) {
+    if (layer.fontPx * scale < (layer.minPx ?? MIN_LABEL_PX)) {
       classes.push(layer.hideClass);
       if (layer.selector === ".label-people") peopleHidden = true;
     }

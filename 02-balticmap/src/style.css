@@ -2680,14 +2680,18 @@ svg.map.pinning .realm-hover-halo {
 }
 
 /* The detail ladder (src/map-detail.ts): each layer drops out once its
-   authored size would render under MIN_LABEL_PX at the current scale.
-   Scoped to .map, the class map-render.ts puts on the <svg> root. Placed
-   after every layer's own font-size rule: the drift-guard test finds a
-   selector's font-size by its FIRST "selector {" in the file, and each hide
-   rule's text contains its layer's bare selector as a substring
-   (".map.hide-badges .threat-badge .badge-text {" contains
-   ".threat-badge .badge-text {"), so a hide rule ahead of the real
-   declaration would shadow it and the guard would read null. */
+   authored size would render under its legibility floor at the current
+   scale (MIN_LABEL_PX, or the layer's own `minPx`). Scoped to .map, the
+   class map-render.ts puts on the <svg> root. Placed after every layer's own
+   font-size rule: the drift-guard test finds a selector's font-size by its
+   FIRST "selector {" in the file, and each hide rule's text contains its
+   layer's bare selector as a substring (".map.hide-neighbor-labels
+   .label-neighbor {" contains ".label-neighbor {"), so a hide rule ahead of
+   the real declaration would shadow it and the guard would read null. The
+   badge layer is the one exception: its threshold selector is
+   ".threat-badge .badge-text", but the hide rule below reaches the whole
+   ".threat-badge" group (see its own comment), so no shadowing risk exists
+   there. */
 .map.hide-settlement-labels .settlement-label {
   display: none;
 }
@@ -2696,7 +2700,15 @@ svg.map.pinning .realm-hover-halo {
   display: none;
 }
 
-.map.hide-badges .threat-badge .badge-text {
+/* Hides the whole badge - background, pips and all - not just the text.
+   Hiding the text alone left blank white shells and empty disease pips
+   littering the map; the layer's threshold still keys off the text's own
+   font-size (18px), because legibility is what the ladder is about. */
+.map.hide-badges .threat-badge {
+  display: none;
+}
+
+.map.hide-neighbor-labels .label-neighbor {
   display: none;
 }
 

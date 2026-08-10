@@ -32,9 +32,36 @@ describe("detail ladder", () => {
 
   it("hides a layer exactly below its own legibility scale", () => {
     for (const layer of DETAIL_LAYERS) {
-      const at = MIN_LABEL_PX / layer.fontPx;
+      const at = (layer.minPx ?? MIN_LABEL_PX) / layer.fontPx;
       expect(detailClassesAt(at * 1.001)).not.toContain(layer.hideClass);
       expect(detailClassesAt(at * 0.999)).toContain(layer.hideClass);
+    }
+  });
+
+  it("gives the people layer its own, higher floor", () => {
+    // An area heading stops doing its job well before it becomes illegible,
+    // so its threshold cannot be the shared MIN_LABEL_PX - see the doc
+    // comment on DetailLayer.minPx.
+    const people = DETAIL_LAYERS.find((l) => l.selector === ".label-people")!;
+    expect(people.minPx).toBe(12);
+    expect(people.minPx).toBeGreaterThan(MIN_LABEL_PX);
+  });
+
+  it("swaps people labels for group labels at both maps' real scales", () => {
+    // Pinned to the numbers a Chrome pass actually measured (see the
+    // 2026-08-10 fix report): the default view of each map keeps people
+    // labels and hides the group heading; the zoom floor of each map does
+    // the opposite. A regression here is exactly "the swap went dead again".
+    const cases: Array<[name: string, scale: number, peopleVisible: boolean]> = [
+      ["baltic default", 0.478, true],
+      ["iberia default", 0.582, true],
+      ["baltic floor", 0.288, false],
+      ["iberia floor", 0.267, false],
+    ];
+    for (const [name, scale, peopleVisible] of cases) {
+      const on = detailClassesAt(scale);
+      expect(on.includes("hide-people-labels"), name).toBe(!peopleVisible);
+      expect(on.includes(GROUP_LABEL_CLASS), name).toBe(!peopleVisible);
     }
   });
 
