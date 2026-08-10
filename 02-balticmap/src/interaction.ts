@@ -1,5 +1,5 @@
 import type { MapData, Region, Settlement } from "./types";
-import { fitView, clampView, homeView, panBy, zoomAt, type View } from "./view";
+import { viewBoundsOf, clampView, panBy, zoomAt, type View } from "./view";
 import { initialState, withHover, withClick, type SelectionState } from "./state";
 
 export interface InteractionCallbacks {
@@ -80,10 +80,10 @@ export function attachInteraction(
   const vpW = () => svg.clientWidth || data.width;
   const vpH = () => svg.clientHeight || data.height;
 
-  let base: View = fitView(data.width, data.height, vpW(), vpH());
-  // The home view is the most zoomed-out the player may go, which is closer
-  // than the whole-map fit - see MIN_ZOOM - and centered on the map.
-  let view: View = homeView(base);
+  let bounds = viewBoundsOf(data, vpW(), vpH());
+  // The default view is the whole canvas plus a ring of surrounding ground -
+  // see viewBoundsOf - so every land is on screen from the first paint.
+  let view: View = bounds.home;
 
   function apply(): void {
     svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
@@ -91,12 +91,11 @@ export function attachInteraction(
   apply();
 
   window.addEventListener("resize", () => {
-    const home = homeView(base);
     const wasAtHome =
-      view.x === home.x && view.y === home.y &&
-      view.w === home.w && view.h === home.h;
-    base = fitView(data.width, data.height, vpW(), vpH());
-    view = wasAtHome ? homeView(base) : clampView(view, base);
+      view.x === bounds.home.x && view.y === bounds.home.y &&
+      view.w === bounds.home.w && view.h === bounds.home.h;
+    bounds = viewBoundsOf(data, vpW(), vpH());
+    view = wasAtHome ? bounds.home : clampView(view, bounds);
     apply();
   });
 
@@ -187,7 +186,7 @@ export function attachInteraction(
       }
     }
     svg.classList.add("dragging");
-    view = panBy(view, base, dx, dy, vpW());
+    view = panBy(view, bounds, dx, dy, vpW());
     down = { x: me.clientX, y: me.clientY, pointerId: down.pointerId };
     apply();
   });
@@ -227,7 +226,7 @@ export function attachInteraction(
       const rect = svg.getBoundingClientRect();
       const factor = WHEEL_ZOOM_BASE ** -e.deltaY;
       view = zoomAt(
-        view, base,
+        view, bounds,
         e.clientX - rect.left, e.clientY - rect.top,
         factor, vpW(), vpH(),
       );

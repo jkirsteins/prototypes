@@ -9,15 +9,10 @@ export interface View {
   h: number;
 }
 
+/** How far past the exact whole-map fit the default view sits, so every land
+ *  is on screen inside a band of the ground around it. */
+export const DEFAULT_RING = 0.12;
 export const MAX_ZOOM = 8;
-
-/** The most zoomed-out view allowed, as a factor of the whole-map fit.
- *  Above 1 the whole map never fits on screen and the player pans instead,
- *  so lands keep their size as the map grows. Measured against the map
- *  before the Prussian lands were added: extending it shrank every land to
- *  0.840 of its old canvas size, so 1.3 leaves them 9 percent larger than
- *  they were rather than 16 percent smaller. */
-export const MIN_ZOOM = 1.3;
 
 /** One row of the victory scoreboard. */
 export interface StandingRow {
@@ -210,58 +205,92 @@ export function leadClass(delta: number): string {
   return delta > 0 ? "lead-good" : delta < 0 ? "lead-bad" : "lead-even";
 }
 
-/** Smallest view that covers the whole map, centered, with the viewport's aspect. */
-export function fitView(mapW: number, mapH: number, vpW: number, vpH: number): View {
-  const unitsPerPx = Math.max(mapW / vpW, mapH / vpH);
-  const w = vpW * unitsPerPx;
-  const h = vpH * unitsPerPx;
-  return { x: (mapW - w) / 2, y: (mapH - h) / 2, w, h };
+/** Everything a view is allowed to be, for one map in one viewport.
+ *
+ *  `base` used to answer all three questions at once - what may be panned
+ *  over, how wide a view may get, how narrow. They have different answers
+ *  now: the widest view is bounded by the painted ground and the narrowest by
+ *  the map the player plays on, so a deeper floor must not silently deepen
+ *  the ceiling too. */
+export interface ViewBounds {
+  /** The painted rect: canvas plus margin. Pan bound and zoom-out bound. */
+  outer: View;
+  /** Widest allowed view width: the largest viewport-shaped rect that fits
+   *  INSIDE `outer`. Not the smallest that covers it - a view wider than the
+   *  painted ground shows unpainted page beside the sea. */
+  maxW: number;
+  /** Narrowest allowed view width: the default view over MAX_ZOOM. */
+  minW: number;
+  /** Viewport aspect as height over width. */
+  aspect: number;
+  /** What a fresh load shows: the whole canvas plus DEFAULT_RING, centered. */
+  home: View;
+}
+
+/** Clamp a view's origin into `outer`, leaving its size untouched. The
+ *  x and y clamps `clampView` runs on its own result, pulled out so the
+ *  default view's centering and the general clamp cannot disagree about
+ *  what "inside" means. */
+function clampInto(view: View, outer: View): View {
+  const x = Math.min(Math.max(view.x, outer.x), outer.x + outer.w - view.w);
+  const y = Math.min(Math.max(view.y, outer.y), outer.y + outer.h - view.h);
+  return { ...view, x, y };
+}
+
+/** The three view rules for one map in one viewport: the painted ground
+ *  (pan and zoom-out bound), the default view (whole canvas plus a ring,
+ *  centered), and the zoom-in ceiling (the default over MAX_ZOOM, not the
+ *  floor - see the doc comment on `ViewBounds`). */
+export function viewBoundsOf(
+  map: { width: number; height: number; margin: number },
+  vpW: number, vpH: number,
+): ViewBounds {
+  const aspect = vpH / vpW;
+  const outer: View = {
+    x: -map.margin, y: -map.margin,
+    w: map.width + 2 * map.margin, h: map.height + 2 * map.margin,
+  };
+  // Largest viewport-shaped rect that FITS INSIDE the painted ground.
+  const maxW = Math.min(outer.w, outer.h / aspect);
+  // Smallest viewport-shaped rect that COVERS the canvas, then the ring.
+  const fitW = Math.max(map.width, map.height / aspect);
+  const homeW = Math.min(fitW * (1 + DEFAULT_RING), maxW);
+  const homeH = homeW * aspect;
+  const home = clampInto(
+    {
+      x: map.width / 2 - homeW / 2, y: map.height / 2 - homeH / 2,
+      w: homeW, h: homeH,
+    },
+    outer,
+  );
+  return { outer, maxW, minW: homeW / MAX_ZOOM, aspect, home };
 }
 
 /** The one statement of the zoom bounds: a view width no narrower than
- *  MAX_ZOOM and no wider than MIN_ZOOM allows, relative to base. */
-function clampW(w: number, base: View): number {
-  return Math.min(Math.max(w, base.w / MAX_ZOOM), base.w / MIN_ZOOM);
+ *  `b.minW` and no wider than `b.maxW`. */
+function clampW(w: number, b: ViewBounds): number {
+  return Math.min(Math.max(w, b.minW), b.maxW);
 }
 
-/** Clamp zoom to [MIN_ZOOM, MAX_ZOOM] relative to base and keep the view
- *  inside base. */
-export function clampView(view: View, base: View): View {
-  const w = clampW(view.w, base);
-  const h = w * (base.h / base.w);
-  const x = Math.min(Math.max(view.x, base.x), base.x + base.w - w);
-  const y = Math.min(Math.max(view.y, base.y), base.y + base.h - h);
-  return { x, y, w, h };
+/** Clamp zoom to [minW, maxW] and keep the view inside the painted rect. */
+export function clampView(view: View, b: ViewBounds): View {
+  const w = clampW(view.w, b);
+  const h = w * b.aspect;
+  return clampInto({ x: view.x, y: view.y, w, h }, b.outer);
 }
 
-/** The starting view: the zoom floor, centered on the map.
- *
- *  Centering has to be explicit. `clampView(base, base)` shrinks the view to
- *  the floor but leaves its top-left pinned to base's, and base's top-left is
- *  the corner of the letterboxed fit - negative on the axis that does not
- *  bind. In a window wider than the map's aspect that pinned the view against
- *  the west sea and cut the eastern lands off screen. */
-export function homeView(base: View): View {
-  const w = base.w / MIN_ZOOM;
-  const h = base.h / MIN_ZOOM;
-  return clampView(
-    { x: base.x + (base.w - w) / 2, y: base.y + (base.h - h) / 2, w, h },
-    base,
-  );
-}
-
-export function panBy(view: View, base: View, dxPx: number, dyPx: number, vpW: number): View {
+export function panBy(view: View, b: ViewBounds, dxPx: number, dyPx: number, vpW: number): View {
   const unitsPerPx = view.w / vpW;
   return clampView(
     { ...view, x: view.x - dxPx * unitsPerPx, y: view.y - dyPx * unitsPerPx },
-    base,
+    b,
   );
 }
 
 /** factor > 1 zooms in; (px, py) is the cursor position in viewport pixels. */
 export function zoomAt(
   view: View,
-  base: View,
+  b: ViewBounds,
   px: number,
   py: number,
   factor: number,
@@ -273,10 +302,10 @@ export function zoomAt(
   // Clamp the width BEFORE deriving the origin. Derived from the unclamped
   // width, the origin keeps the cursor point fixed for a zoom the width clamp
   // then refuses - at the ceiling every wheel tick became a sideways pan.
-  const w = clampW(view.w / factor, base);
-  const h = w * (base.h / base.w);
+  const w = clampW(view.w / factor, b);
+  const h = w * b.aspect;
   return clampView(
     { x: cx - (px / vpW) * w, y: cy - (py / vpH) * h, w, h },
-    base,
+    b,
   );
 }

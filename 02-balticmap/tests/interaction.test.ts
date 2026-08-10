@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderMap } from "../src/map-render";
 import { attachInteraction, landAtPoint } from "../src/interaction";
-import { fitView, homeView } from "../src/view";
+import { viewBoundsOf } from "../src/view";
 import type { MapData } from "../src/types";
 import raw from "../src/data/baltic.json";
 
@@ -31,20 +31,19 @@ const mouse = (type: string, init: MouseEventInit = {}) =>
   new MouseEvent(type, { bubbles: true, ...init });
 
 describe("attachInteraction", () => {
-  it("sets the initial viewBox to the home view, not the whole-map fit", () => {
-    // The zoom floor (MIN_ZOOM) means the player starts closer than a full
-    // fit of the map, so lands keep their size as the map grows - see
-    // src/view.ts.
+  it("sets the initial viewBox to the home view: the whole map plus a ring", () => {
+    // The default view now shows the whole canvas plus DEFAULT_RING, wider
+    // than the exact fit - the opposite of the old MIN_ZOOM crop this test
+    // used to pin (see the zoom model in src/view.ts).
     const { svg } = setup();
     const [x, y, w, h] = svg.getAttribute("viewBox")!.split(" ").map(Number);
-    const base = fitView(data.width, data.height, data.width, data.height);
-    const home = homeView(base);
-    expect(w).toBeCloseTo(home.w, 6);
-    expect(h).toBeCloseTo(home.h, 6);
-    expect(x).toBeCloseTo(home.x, 6);
-    expect(y).toBeCloseTo(home.y, 6);
-    expect(w).toBeLessThan(data.width);
-    expect(h).toBeLessThan(data.height);
+    const bounds = viewBoundsOf(data, data.width, data.height);
+    expect(w).toBeCloseTo(bounds.home.w, 6);
+    expect(h).toBeCloseTo(bounds.home.h, 6);
+    expect(x).toBeCloseTo(bounds.home.x, 6);
+    expect(y).toBeCloseTo(bounds.home.y, 6);
+    expect(w).toBeGreaterThan(data.width);
+    expect(h).toBeGreaterThan(data.height);
   });
 
   it("hover toggles the hovered class and fires onHover", () => {

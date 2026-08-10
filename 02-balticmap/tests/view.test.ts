@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-  fitView, clampView, holderOf, homeView, leadClass, panBy,
+  clampView, holderOf, leadClass, panBy,
   politicalFactionForPolygon, relationshipLine,
   standingChangeText, standingsFor,
+  viewBoundsOf,
   withArticle,
-  zoomAt, MAX_ZOOM, MIN_ZOOM,
-  type View,
+  zoomAt, DEFAULT_RING, MAX_ZOOM,
 } from "../src/view";
 import { plainText, type NameLookup } from "../src/rich-text";
 
@@ -20,166 +20,157 @@ const nameLookup: NameLookup = {
 
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 6);
 
-describe("fitView", () => {
-  it("covers the whole map, centered, matching viewport aspect", () => {
-    // landscape viewport, portrait map: height binds
-    const v = fitView(1000, 1400, 800, 600);
-    close(v.h, 1400);
-    close(v.w, (800 / 600) * 1400);
-    close(v.y, 0);
-    close(v.x, (1000 - v.w) / 2);
-  });
-
-  it("binds on width for a tall narrow viewport", () => {
-    const v = fitView(1000, 1400, 500, 2000);
-    close(v.w, 1000);
-    close(v.h, (2000 / 500) * 1000);
-    close(v.x, 0);
-    close(v.y, (1400 - v.h) / 2);
-  });
-});
-
-describe("homeView", () => {
-  it("centers on the map, not on the near corner of the letterboxed fit", () => {
-    // Landscape viewport, portrait map: the fit letterboxes to the left and
-    // right, so base.x is negative. The home view must sit in the middle of
-    // that letterbox, or the east of the map is cut off on screen.
-    const base = fitView(1000, 1400, 800, 600);
-    const home = homeView(base);
-    close(home.x + home.w / 2, base.x + base.w / 2);
-    close(home.y + home.h / 2, base.y + base.h / 2);
-    close(home.x + home.w / 2, 500);
-    close(home.y + home.h / 2, 700);
-  });
-
-  it("centers a tall narrow viewport the same way", () => {
-    const base = fitView(1000, 1400, 500, 2000);
-    const home = homeView(base);
-    close(home.x + home.w / 2, 500);
-    close(home.y + home.h / 2, 700);
-  });
-
-  it("sits exactly at the zoom floor and inside the base", () => {
-    const base = fitView(1000, 1400, 800, 600);
-    const home = homeView(base);
-    close(base.w / home.w, MIN_ZOOM);
-    expect(home.x).toBeGreaterThanOrEqual(base.x);
-    expect(home.y).toBeGreaterThanOrEqual(base.y);
-    expect(home.x + home.w).toBeLessThanOrEqual(base.x + base.w + 1e-9);
-    expect(home.y + home.h).toBeLessThanOrEqual(base.y + base.h + 1e-9);
-  });
-
-  it("shows the whole map width when the viewport is wider than the map", () => {
-    // The regression this guards: a 1000x1400 map in a roughly square window
-    // used to clip everything east of x=856.
-    const base = fitView(1000, 1400, 945, 1000);
-    const home = homeView(base);
-    expect(home.x).toBeLessThanOrEqual(0);
-    expect(home.x + home.w).toBeGreaterThanOrEqual(1000);
-  });
-});
+// fitView, homeView and MIN_ZOOM are retired: viewBoundsOf answers the three
+// questions they used to blur together (see "view bounds" below), and every
+// zoomAt/panBy test now clamps against a ViewBounds rather than a bare View.
 
 describe("zoomAt", () => {
-  const base: View = fitView(1000, 1400, 800, 600);
+  const map = { width: 1000, height: 1400, margin: 2000 };
+  const b = viewBoundsOf(map, 800, 600);
 
   it("keeps the point under the cursor fixed", () => {
     const px = 200, py = 150;
     const before = {
-      x: base.x + (px / 800) * base.w,
-      y: base.y + (py / 600) * base.h,
+      x: b.home.x + (px / 800) * b.home.w,
+      y: b.home.y + (py / 600) * b.home.h,
     };
-    const v = zoomAt(base, base, px, py, 2, 800, 600);
+    const v = zoomAt(b.home, b, px, py, 2, 800, 600);
     close(v.x + (px / 800) * v.w, before.x);
     close(v.y + (py / 600) * v.h, before.y);
-    close(base.w / v.w, 2);
+    close(b.home.w / v.w, 2);
   });
 
   it("never zooms in past MAX_ZOOM", () => {
-    let v = base;
-    for (let i = 0; i < 20; i++) v = zoomAt(v, base, 400, 300, 2, 800, 600);
-    close(base.w / v.w, MAX_ZOOM);
-  });
-
-  it("never zooms out past the home view (the zoom floor, not the raw base fit)", () => {
-    const home = clampView(base, base);
-    const v = zoomAt(home, base, 400, 300, 0.5, 800, 600);
-    expect(v).toEqual(home);
+    let v = b.home;
+    for (let i = 0; i < 20; i++) v = zoomAt(v, b, 400, 300, 2, 800, 600);
+    close(v.w, b.minW);
   });
 
   it("at max zoom, a further zoom-in moves nothing", () => {
     // One exact jump to the ceiling: the view keeps clearance on every side,
     // so any spurious origin shift is visible rather than clamped away.
-    const v = zoomAt(base, base, 400, 300, MAX_ZOOM, 800, 600);
-    const again = zoomAt(v, base, 700, 500, 2, 800, 600);
+    const v = zoomAt(b.home, b, 400, 300, MAX_ZOOM, 800, 600);
+    close(v.w, b.minW);
+    const again = zoomAt(v, b, 700, 500, 2, 800, 600);
     close(again.x, v.x);
     close(again.y, v.y);
     close(again.w, v.w);
     close(again.h, v.h);
   });
 
-  it("at the zoom floor, a further zoom-out moves nothing", () => {
-    const home = homeView(base);
-    const v = zoomAt(home, base, 700, 100, 0.5, 800, 600);
-    close(v.x, home.x);
-    close(v.y, home.y);
-    close(v.w, home.w);
-    close(v.h, home.h);
+  it("at the floor, a further zoom-out moves nothing", () => {
+    const floor = clampView({ x: 0, y: 0, w: 1e9, h: 1e9 }, b);
+    const v = zoomAt(floor, b, 700, 100, 0.5, 800, 600);
+    expect(v).toEqual(floor);
   });
 });
 
 describe("panBy", () => {
-  const base: View = fitView(1000, 1400, 800, 600);
-
-  it("does nothing when already pinned at the base's near corner", () => {
-    // The zoom floor means the home view no longer covers the whole base
-    // rect, but its near (top-left) corner is still pinned to base's, since
-    // clamping only opens up room on the far corner as the view shrinks.
-    const home = clampView(base, base);
-    expect(panBy(home, base, 100, 100, 800)).toEqual(home);
-  });
+  const map = { width: 1000, height: 1400, margin: 2000 };
+  const b = viewBoundsOf(map, 800, 600);
 
   it("moves opposite to cursor delta when zoomed in", () => {
-    const zoomed = zoomAt(base, base, 400, 300, 4, 800, 600);
-    const panned = panBy(zoomed, base, -100, 0, 800);
+    const zoomed = zoomAt(b.home, b, 400, 300, 4, 800, 600);
+    const panned = panBy(zoomed, b, -100, 0, 800);
     const unitsPerPx = zoomed.w / 800;
     close(panned.x, zoomed.x + 100 * unitsPerPx);
     close(panned.y, zoomed.y);
   });
 
-  it("clamps at the base view edges", () => {
-    const zoomed = zoomAt(base, base, 400, 300, 4, 800, 600);
-    const panned = panBy(zoomed, base, 1e9, 1e9, 800);
-    close(panned.x, base.x);
-    close(panned.y, base.y);
+  it("clamps at the painted rect's edges", () => {
+    const zoomed = zoomAt(b.home, b, 400, 300, 4, 800, 600);
+    const panned = panBy(zoomed, b, 1e9, 1e9, 800);
+    close(panned.x, b.outer.x);
+    close(panned.y, b.outer.y);
   });
 });
 
-describe("zoom floor", () => {
-  const base: View = fitView(1000, 1400, 800, 600);
+const BALTIC = { width: 1000, height: 1400, margin: 2000 };
+const IBERIA = { width: 1400, height: 1150, margin: 2000 };
+const VIEWPORTS: [number, number][] = [[1440, 749], [800, 1200], [1000, 1000]];
 
-  it("never lets the view widen past base.w / MIN_ZOOM", () => {
-    const v = clampView({ ...base, w: base.w * 10, h: base.h * 10 }, base);
-    close(v.w, base.w / MIN_ZOOM);
-    close(v.h, (base.w / MIN_ZOOM) * (base.h / base.w));
+const covers = (v: { x: number; y: number; w: number; h: number },
+                m: { width: number; height: number }) =>
+  v.x <= 0 && v.y <= 0 && v.x + v.w >= m.width && v.y + v.h >= m.height;
+
+describe("view bounds", () => {
+  it("opens on the whole canvas plus a ring, on any viewport", () => {
+    for (const map of [BALTIC, IBERIA]) {
+      for (const [vpW, vpH] of VIEWPORTS) {
+        const b = viewBoundsOf(map, vpW, vpH);
+        expect(covers(b.home, map), `${map.width} @ ${vpW}x${vpH}`).toBe(true);
+        // The ring is real: the home view is wider than the exact fit.
+        const fitW = Math.max(map.width, map.height / (vpH / vpW));
+        expect(b.home.w).toBeGreaterThan(fitW * 1.05);
+        expect(b.home.w).toBeCloseTo(Math.min(fitW * (1 + DEFAULT_RING), b.maxW), 5);
+      }
+    }
   });
 
-  it("is a real floor above 1, so the whole map never fits", () => {
-    expect(MIN_ZOOM).toBeGreaterThan(1);
+  it("the floor fits inside the painted rect and touches it on one axis", () => {
+    for (const map of [BALTIC, IBERIA]) {
+      for (const [vpW, vpH] of VIEWPORTS) {
+        const b = viewBoundsOf(map, vpW, vpH);
+        const maxH = b.maxW * b.aspect;
+        expect(b.maxW).toBeLessThanOrEqual(b.outer.w + 1e-9);
+        expect(maxH).toBeLessThanOrEqual(b.outer.h + 1e-9);
+        const touches =
+          Math.abs(b.maxW - b.outer.w) < 1e-6 || Math.abs(maxH - b.outer.h) < 1e-6;
+        expect(touches, "floor must reach the painted edge on one axis").toBe(true);
+      }
+    }
   });
 
-  it("clampView(base, base) is the home view and sits inside base", () => {
-    const home = clampView(base, base);
-    close(home.w, base.w / MIN_ZOOM);
-    expect(home.x).toBeGreaterThanOrEqual(base.x);
-    expect(home.y).toBeGreaterThanOrEqual(base.y);
-    expect(home.x + home.w).toBeLessThanOrEqual(base.x + base.w + 1e-9);
-    expect(home.y + home.h).toBeLessThanOrEqual(base.y + base.h + 1e-9);
+  it("zooms out at least twice as far as the old 1.3 floor did", () => {
+    // The retired rule: widest view = (smallest rect COVERING the canvas) / 1.3.
+    for (const map of [BALTIC, IBERIA]) {
+      const [vpW, vpH] = [1440, 749];
+      const b = viewBoundsOf(map, vpW, vpH);
+      const oldWidest = Math.max(map.width, map.height / (vpH / vpW)) / 1.3;
+      expect(b.maxW / oldWidest).toBeGreaterThanOrEqual(2);
+    }
   });
 
-  it("pans at the home view, which the old fit-to-map behaviour could not", () => {
-    const home = clampView(base, base);
-    const panned = panBy(home, base, -50, 0, 800);
-    expect(panned.x).toBeGreaterThan(home.x);
+  it("the zoom-in ceiling is measured against the default, not the floor", () => {
+    const b = viewBoundsOf(BALTIC, 1440, 749);
+    expect(b.minW).toBeCloseTo(b.home.w / MAX_ZOOM, 5);
+  });
+
+  it("clamping keeps every view inside the painted rect", () => {
+    const b = viewBoundsOf(BALTIC, 1440, 749);
+    for (const v of [
+      { x: -99999, y: -99999, w: b.home.w, h: b.home.h },
+      { x: 99999, y: 99999, w: b.home.w, h: b.home.h },
+      { x: 0, y: 0, w: 1e9, h: 1e9 },
+      { x: 0, y: 0, w: 1e-9, h: 1e-9 },
+    ]) {
+      const c = clampView(v, b);
+      expect(c.w).toBeGreaterThanOrEqual(b.minW - 1e-9);
+      expect(c.w).toBeLessThanOrEqual(b.maxW + 1e-9);
+      expect(c.x).toBeGreaterThanOrEqual(b.outer.x - 1e-9);
+      expect(c.y).toBeGreaterThanOrEqual(b.outer.y - 1e-9);
+      expect(c.x + c.w).toBeLessThanOrEqual(b.outer.x + b.outer.w + 1e-9);
+      expect(c.y + c.h).toBeLessThanOrEqual(b.outer.y + b.outer.h + 1e-9);
+    }
+  });
+
+  it("a wheel tick at the floor pans nothing sideways", () => {
+    const b = viewBoundsOf(BALTIC, 1440, 749);
+    const floor = clampView({ x: 0, y: 0, w: 1e9, h: 1e9 }, b);
+    const out = zoomAt(floor, b, 700, 400, 0.9, 1440, 749);
+    expect(out).toEqual(floor);
+  });
+
+  it("panning at the floor cannot move it past the edge on the binding axis", () => {
+    // The floor touches the painted rect on ONE axis, not necessarily both -
+    // the sibling test above pins that. For IBERIA at this viewport it is
+    // width that binds (maxW === outer.w), so a horizontal drag has nowhere
+    // to go; a vertical component would have real slack to move within and
+    // is deliberately left out here rather than folded into one "moves
+    // nothing at all" claim that only held by coincidence.
+    const b = viewBoundsOf(IBERIA, 1440, 749);
+    const floor = clampView({ x: 0, y: 0, w: 1e9, h: 1e9 }, b);
+    expect(panBy(floor, b, 200, 0, 1440)).toEqual(floor);
   });
 });
 
