@@ -43,6 +43,10 @@ export interface BootParams {
   leadership: Record<string, number>;
   /** Polygon id -> armies stationed there. */
   armies: Record<string, number>;
+  /** Polygon id -> settlements FOUNDED there, clamped to what the map still
+   *  authors for that land. Not the standing count: the one every land begins
+   *  with is not in the store, so `settlements=x:1` is a land holding two. */
+  settlements: Record<string, number>;
   /** Marches to declare, source before target. Damage is not settable: it is
    *  whatever a Raid out of that land would actually deal, so a booted arrow
    *  promises the same number a played one would. */
@@ -108,6 +112,13 @@ function parseArmies(raw: string): Record<string, number> {
   return parseDefense(raw); // same shape, same clamp
 }
 
+/** `settlements=selonians:1` - one `polygon:founded` clause per polygon. The
+ *  count is settlements FOUNDED, matching the store, so 1 is a land standing
+ *  on two. Clamped again against the map's own site cap below. */
+function parseSettlements(raw: string): Record<string, number> {
+  return parseDefense(raw); // same shape, same clamp
+}
+
 /** `march=talava>selija;zemgale>selija` - one `from>to` clause per arrow, so
  *  a browser check can boot straight into an incoming attack or a live clash
  *  rather than playing four turns to reach one. */
@@ -166,7 +177,8 @@ function parseRules(raw: string): RuleSelections {
 
 const BOOT_KEYS = [
   "seed", "build", "screen", "faction", "hand", "turns", "defense", "disease",
-  "leadership", "armies", "march", "turnips", "wealth", "popups", "rules",
+  "leadership", "armies", "settlements", "march", "turnips", "wealth",
+  "popups", "rules",
 ];
 
 /** Null when the URL names no boot param at all, which is the ordinary case:
@@ -182,6 +194,7 @@ export function parseBootParams(search: string): BootParams | null {
   const disease = q.get("disease");
   const leadership = q.get("leadership");
   const armies = q.get("armies");
+  const settlements = q.get("settlements");
   const march = q.get("march");
   const turns = intOr(q.get("turns"), 0) ?? 0;
   const turnips = intOr(q.get("turnips"), null);
@@ -200,6 +213,7 @@ export function parseBootParams(search: string): BootParams | null {
     disease: disease === null ? {} : parseDisease(disease),
     leadership: leadership === null ? {} : parseLeadership(leadership),
     armies: armies === null ? {} : parseArmies(armies),
+    settlements: settlements === null ? {} : parseSettlements(settlements),
     marches: march === null ? [] : parseMarches(march),
     // Clamped UNDER the threshold: a counter at or past it is a state the
     // game never holds - the crossing play resets it and injects.
@@ -311,6 +325,19 @@ export function applyBootParams(
   for (const [polygon, value] of Object.entries(params.armies)) {
     if (!g.factionIds.includes(polygon)) continue;
     g = { ...g, armies: { ...g.armies, [polygon]: value } };
+  }
+  // Clamped against the map's own site cap rather than the play-time
+  // allowance: the cap is what the map authors dots for, and a settlement with
+  // no dot to stand on would be a count the map could not draw. Nothing is
+  // spent here - `settlementsSpent` stays empty, so a booted land begins its
+  // turn with every settlement free.
+  for (const [polygon, value] of Object.entries(params.settlements)) {
+    if (!g.factionIds.includes(polygon)) continue;
+    const cap = g.siteCaps[polygon] ?? 0;
+    g = {
+      ...g,
+      settlements: { ...g.settlements, [polygon]: Math.min(value, cap) },
+    };
   }
   // A booted march is declared through the same rules a played one is: the
   // source must be in the actor's realm with an army free and the target must

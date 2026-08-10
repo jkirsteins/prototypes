@@ -3,7 +3,8 @@ import { defenseMaxAll, siteCaps } from "./helpers";
 import {
   ESCAPE_RESPITE_TURNS, INCORPORATE_REALM_GATE, SETTLEMENT_BASE_CAP,
   attackDamageFor, omensMultiplier, attackReach, borderPolygonsOf,
-  cardBlockReason, failureRiskOf, freeSitesIn, greatRaidMarches,
+  cardBlockReason, failureRiskOf, freeSettlementsIn, freeSitesIn,
+  greatRaidMarches,
   handBlockReason, holdsGuard, incorporateRealmGate, isCardPlayable,
   marchSourcesAgainst, marchSourcesFor, marchTargetsFrom, miasmaHeld, omensHeld,
   outbreakPolygons, plagueDamageOn, plagueMultiplier, playableSet, reachOf,
@@ -38,6 +39,7 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     omens: {},
     siteCaps: siteCaps(ORDER),
     settlements: {},
+    settlementsSpent: {},
     wealth: {},
     respites: {},
     leadership: {},
@@ -467,6 +469,70 @@ describe("found a settlement", () => {
       factionId: "beta",
       reasons: [{ code: "needs-population", have: 2, allowance: 2 }],
     });
+  });
+});
+
+describe("a fortify's settlement bound", () => {
+  /** A damaged beta, so the heal has somewhere to land and the only question
+   *  left is whether a settlement is free to answer it. */
+  const damaged = (partial: Partial<RulesView> = {}): RulesView =>
+    view({ defense: { beta: 1 }, ...partial });
+
+  it("counts the settlements a land has not been fortified from", () => {
+    const v = damaged({ settlements: { beta: 1 } });
+    expect(settlementsIn(v, "beta")).toBe(2);
+    expect(freeSettlementsIn(v, "beta")).toBe(2);
+    expect(freeSettlementsIn(damaged({ settlementsSpent: { beta: 1 } }), "beta"))
+      .toBe(0);
+    // Floored, like `freeArmiesOn`: a land counted after its settlements were
+    // taken from under it reads as exhausted rather than negative.
+    expect(freeSettlementsIn(damaged({ settlementsSpent: { beta: 5 } }), "beta"))
+      .toBe(0);
+  });
+
+  it("blocks the target whose settlements have answered, and says which refusal", () => {
+    const v = damaged({ settlementsSpent: { beta: 1 } });
+    expect(targetEligibilityFor(v, "beta", "fortify")).toContainEqual({
+      state: "blocked", factionId: "beta", reasons: [{ code: "no-settlement" }],
+    });
+    // At the card level too, and NOT `no-target`: beta is still a land that
+    // wants the heal - it is the settlement that is out, and it comes back.
+    expect(cardBlockReason(v, "beta", "fortify"))
+      .toEqual({ code: "no-settlement" });
+    expect(cardBlockReason(v, "beta", "strong-fortify"))
+      .toEqual({ code: "no-settlement" });
+  });
+
+  it("still says no-target when the realm simply has nothing to heal", () => {
+    // Every land at its ceiling: the settlements are all free, and the card is
+    // dead for a different reason. The two refusals must not be confused - one
+    // is fixed by waiting a turn and the other by taking damage.
+    const v = view({ settlementsSpent: {} });
+    expect(cardBlockReason(v, "beta", "fortify")).toEqual({ code: "no-target" });
+  });
+
+  it("leaves Hillfort alone - it carries no keyword and costs no settlement", () => {
+    const v = damaged({ settlementsSpent: { beta: 9 } });
+    expect(cardBlockReason(v, "beta", "hillfort")).toBeNull();
+    expect(validTargetsFor(v, "beta", "hillfort")).toEqual(["beta"]);
+  });
+
+  it("narrows a re-opened turn to the fortifies still legal", () => {
+    // The repeat gate and the settlement bound meeting: the turn is open for
+    // the fortify keyword, and the hand is narrowed to the ones the board
+    // still allows. A spent land empties the set, which is what ends the run.
+    const open = damaged({ settlements: { beta: 1 } });
+    expect(
+      playableSet(open, "beta", ["fortify", "strong-fortify", "raid"], {
+        repeatOnly: "fortify",
+      }),
+    ).toEqual({ mode: "play", cardIndexes: [0, 1] });
+    const out = damaged({ settlementsSpent: { beta: 1 } });
+    expect(
+      playableSet(out, "beta", ["fortify", "strong-fortify", "raid"], {
+        repeatOnly: "fortify",
+      }),
+    ).toEqual({ mode: "play", cardIndexes: [] });
   });
 });
 

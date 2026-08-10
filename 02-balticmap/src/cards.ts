@@ -76,15 +76,7 @@ export interface CardDef {
    *  `playCard` deducts it at the moment of play, unconditionally. The costed
    *  set is pinned to a literal in tests/cards.test.ts. */
   wealthCost?: number;
-  /** Playing this card leaves the turn open for ANOTHER COPY OF IT.
-   *
-   *  The card still spends the turn's allowance the way every card does; what
-   *  it adds is that the spent turn will accept more of the same card, and
-   *  nothing else. What stops the run is ordinary legality - for the raids,
-   *  a land with a free army to march out of - so the limit is the board,
-   *  not a count kept here.
-   *
-   *  The keywords this card carries - the names of the CLASSES of cards it
+  /** The keywords this card carries - the names of the CLASSES of cards it
    *  belongs to. What each class means is the keyword's business, not the
    *  card's: see `KEYWORDS`. A card says which classes it is in and nothing
    *  more, so a rule added to a keyword reaches every card carrying it without
@@ -323,6 +315,11 @@ export interface KeywordDef {
    *  back. For a card whose effect is permanent, or one the game hands out
    *  again when it is earned again. */
   consumesSelf?: true;
+  /** Playing one calls on a settlement OF THE LAND IT IS AIMED AT for the rest
+   *  of the turn. What bounds a repeating class whose effect would otherwise
+   *  run out of nothing: `freeSettlementsIn` in src/playability.ts is the
+   *  reader, and `beginTurn` hands the settlements back. */
+  spendsSettlement?: true;
   /** The card does somebody harm, and therefore cannot be aimed UP the actor's
    *  own pyramid of fealty: not at its overlord, not at that overlord's
    *  overlord, not at any land those lords have annexed. Sideways and downward
@@ -365,9 +362,13 @@ export const KEYWORDS: Readonly<Record<string, KeywordDef>> = {
     id: "fortify",
     name: "Fortify",
     noun: "fortify",
-    // No `repeats`: a raid runs out of armies and a heal would run out of
-    // nothing, so a repeating fortify would be bounded only by the hand.
-    text: "A fortify card restores defense to one land of your own realm. Favourable omens doubles what it restores.",
+    // Repeats on the same terms a raid does, and is bounded the same way: a
+    // raid runs out of armies, a fortify runs out of settlements to call on.
+    // Without `spendsSettlement` a repeating heal would run out of nothing and
+    // be bounded only by the hand.
+    text: "A fortify card restores defense to one land of your own realm and calls on one of that land's settlements for the turn. Your turn stays open for another fortify while a land of yours still has a settlement to call on. Favourable omens doubles what it restores.",
+    repeats: true,
+    spendsSettlement: true,
     doubledByOmens: true,
   },
 };
@@ -383,7 +384,10 @@ export const keywordsOf = (cardId: string): KeywordDef[] =>
  *  the flags, so a rule keyed on a keyword is a lookup rather than a list of
  *  card ids kept somewhere else and forgotten. */
 export const keywordHas = (
-  cardId: string, flag: "repeats" | "doubledByOmens" | "consumesSelf" | "hostile",
+  cardId: string,
+  flag:
+    | "repeats" | "doubledByOmens" | "consumesSelf" | "hostile"
+    | "spendsSettlement",
 ): boolean => keywordsOf(cardId).some((def) => def[flag] === true);
 
 /** Whether this card does somebody harm, and so may never be aimed up the

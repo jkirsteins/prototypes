@@ -28,7 +28,7 @@ import {
   claimWouldLand, playableSet, respiteExpiry, validTargetsFor,
   targetEligibilityFor,
   armyCapOn, attackDamageFor, attackImpactOn, freeArmiesFor, miasmaHeld,
-  omensHeld,
+  omensHeld, freeSettlementsIn, settlementsIn,
 } from "./playability";
 import { armiesOn, axesOf, type Claim, type March } from "./marches";
 import {
@@ -1027,6 +1027,23 @@ function renderThreatBadges(): void {
         more.textContent = `x${stationed}`;
         g.appendChild(more);
       }
+    }
+    // The settlement pips, one row above the armies and read exactly the same
+    // way: filled is a settlement a fortify can still be called on, hollow is
+    // one already called on this turn. Wide where an army pip is tall, so the
+    // two rows are told apart at a glance - a settlement sits, an army stands.
+    // No overflow count: `settlementAllowance` caps a land at two.
+    const sites = settlementsIn(v, factionId);
+    const freeSites = freeSettlementsIn(v, factionId);
+    for (let i = 0; i < sites; i++) {
+      const pip = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      pip.classList.add("badge-site", i < freeSites ? "site-free" : "site-spent");
+      pip.setAttribute("width", "6");
+      pip.setAttribute("height", "4");
+      pip.setAttribute("rx", "1");
+      pip.setAttribute("x", String(i * 8 - (sites * 8 - 2) / 2));
+      pip.setAttribute("y", "-27");
+      g.appendChild(pip);
     }
     badgeGroup.appendChild(g);
 

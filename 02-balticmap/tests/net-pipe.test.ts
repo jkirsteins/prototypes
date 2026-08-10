@@ -276,7 +276,7 @@ describe("a whole game over the pipe", () => {
           : { type: "discard", cardIndex: a.cardIndex, cardId: hand[a.cardIndex] });
       }
       expect(rejects).toEqual([]); // every replica-derived action lands
-      // A card that re-opened the turn (`playsAgain`) leaves it open, and the
+      // A card whose keyword repeats leaves the turn open, and the
       // real client then offers the repeat or ends the turn. This guest always
       // declines, which keeps one round of the loop to one action - and is the
       // path that would hang if `endTurn` could not close a turn a card

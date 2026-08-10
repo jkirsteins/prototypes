@@ -1,5 +1,5 @@
 import {
-  CARDS, CONSUMED_CARDS, guardAgainst, isGuardCard, isMarchCard,
+  CARDS, CONSUMED_CARDS, guardAgainst, isGuardCard, isMarchCard, keywordHas,
   isSingleLandHeal, isTributeCard, repeatGroupOf, startingDeck, shuffle,
   TRIBUTE_CARDS, upgradeCostOf, type Rng, type Strategy,
 } from "./cards";
@@ -230,6 +230,15 @@ export interface GameState {
    *  The one settlement every land starts with is deliberately not counted;
    *  `settlementsIn` in src/playability.ts adds it back for the allowance. */
   settlements: Record<string, number>;
+  /** Faction id -> settlements of that land already called on THIS TURN.
+   *  Absent = 0, and `beginTurn` clears the whole map, so a commitment never
+   *  outlives the turn that made it.
+   *
+   *  The settlement half of `freeArmiesOn`: a fortify calls on one settlement
+   *  of the land it heals, which is what stops a repeating heal being bounded
+   *  only by the hand. Written by the one branch in `playCard` that asks the
+   *  card's class (`spendsSettlement`), never by a card literal. */
+  settlementsSpent: Record<string, number>;
   /** Polygon id -> current defense, present only while damaged (absent = at
    *  `defenseMax`). See src/defense.ts for the store's conventions. */
   defense: Defense;
@@ -342,6 +351,7 @@ export function viewOf(state: GameState): RulesView {
     omens: state.omens,
     siteCaps: state.siteCaps,
     settlements: state.settlements,
+    settlementsSpent: state.settlementsSpent,
     wealth: state.wealth,
     respites: state.respites,
     defense: state.defense,
@@ -389,6 +399,7 @@ export function newGame(
       siteCaps ??
       Object.fromEntries(factionIds.map((id) => [id, DEFAULT_SITE_CAP])),
     settlements: {},
+    settlementsSpent: {},
     defense: {},
     defenseMax:
       defenseMax ??
@@ -1172,7 +1183,11 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
     log: appendEvents(state, events),
-    playedThisTurn: false, repeatGroup: null,
+    // The three per-turn facts, cleared together at the START of a turn rather
+    // than the end of one. The settlements a fortify called on come back here
+    // and nowhere else, so a commitment cannot outlive the turn that made it
+    // however that turn ends.
+    playedThisTurn: false, repeatGroup: null, settlementsSpent: {},
   };
 }
 
@@ -1444,8 +1459,8 @@ export function playCard(
   if (cardId === undefined) return state;
   // The turn-spent gate. A spent turn is not simply closed: the play that
   // spent it may have re-opened it for more of its own kind, and this is the
-  // one question that decides which. It never names a card - `repeatCardId`
-  // carries whichever card declared itself repeatable.
+  // one question that decides which. It never names a card - `repeatGroup`
+  // carries the KEYWORD whose class was declared repeatable.
   if (!turnAccepts(state, cardId)) return state;
   const set = playableSet(
     viewOf(state), p.factionId, p.hand, { repeatOnly: repeatOnlyOf(state) },
@@ -1479,6 +1494,7 @@ export function playCard(
   let omens = state.omens;
   let miasma = state.miasma;
   let settlements = state.settlements;
+  let settlementsSpent = state.settlementsSpent;
   let defense = state.defense;
   let disease = state.disease;
   let turnips = state.turnips;
@@ -1812,6 +1828,17 @@ export function playCard(
       targetId,
       SINGLE_LAND_HEAL[cardId] * omensMultiplier(view, p.factionId, cardId),
     );
+    // What the heal is called on. Asked of the card's CLASS, so a Hillfort -
+    // which is a single-land heal and no fortify - costs nothing, and a future
+    // fortify card is bounded without touching this branch. One settlement
+    // whatever the card restores: the bound is a fortify per settlement per
+    // turn, not a settlement per point.
+    if (keywordHas(cardId, "spendsSettlement")) {
+      settlementsSpent = {
+        ...settlementsSpent,
+        [targetId]: (settlementsSpent[targetId] ?? 0) + 1,
+      };
+    }
   } else if (cardId === "harvest-feast") {
     const realm = fullRealmOf(p.factionId, overlords, incorporated);
     for (const polygon of state.factionIds.filter((f) => realm.has(f))) {
@@ -2005,17 +2032,17 @@ export function playCard(
 
   return {
     ...state, phase, players, overlords, incorporated, guards, omens, miasma,
-    settlements, defense, defenseMax, disease, turnips, wealth, respites,
-    rulers, marches, claims, armies, passives,
+    settlements, settlementsSpent, defense, defenseMax, disease, turnips,
+    wealth, respites, rulers, marches, claims, armies, passives,
     log: appendEvents(state, events),
     // A standard turn is spent by its one play. An unlimited turn stays open
     // until the player says otherwise, even with an empty hand: a turn that
     // ended itself the moment the last card left made the round hand over
     // while the player was still reading what their play had done.
     playedThisTurn: state.rules.turn !== "unlimited",
-    // And the played card says whether the spent turn accepts more of itself.
-    // Overwritten rather than accumulated: the run is a run of ONE card, so
-    // the last play is the whole of the answer.
+    // And the played card says whether the spent turn accepts more of its own
+    // CLASS. Overwritten rather than accumulated: the run is a run of one
+    // keyword, so the last play is the whole of the answer.
     repeatGroup: repeatGroupOf(cardId),
   };
 }

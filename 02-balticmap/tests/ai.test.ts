@@ -697,7 +697,7 @@ describe("fallthrough and dead hands", () => {
 
 describe("aiTakeTurn on a turn a card re-opened", () => {
   /** Two Raids and the armies to send them, under the standard one-card turn.
-   *  Raid declares `playsAgain`, so the first one leaves the turn open. */
+   *  The raid keyword repeats, so the first one leaves the turn open. */
   function twoArmyRaider(): GameState {
     const g = asStrategy(base(), "warpath");
     return { ...withHand(g, ["raid", "raid"]), armies: { alpha: 2 } };
@@ -721,6 +721,49 @@ describe("aiTakeTurn on a turn a card re-opened", () => {
     expect(Object.values(after.marches).filter((m) => m.actor === "alpha"))
       .toHaveLength(1);
     expect(after.players[1].hand).toEqual(["raid"]);
+    expect(after.playedThisTurn).toBe(true);
+  });
+
+  /** alpha holding beta as a vassal, both lands under the half-defense line
+   *  step 5 heals at, and two Fortifies in hand. */
+  function twoDamagedLands(): GameState {
+    const g = asStrategy(base(), "warpath");
+    return {
+      ...withHand(g, ["fortify", "fortify"]),
+      overlords: new Map([["beta", "alpha"]]),
+      defense: { alpha: 10, beta: 10 },
+    };
+  }
+
+  it("moves to the next damaged land when the worst one's settlement is out", () => {
+    // The worst land stays the worst after it has been healed once, so a step
+    // that only ever looked at `worst[0]` would keep re-aiming at a land that
+    // can no longer answer and end the run on its second play.
+    const g = twoDamagedLands();
+    expect(chooseAction(g)).toEqual({
+      type: "play", cardIndex: 0, targetId: "alpha",
+    });
+    expect(chooseAction({ ...g, settlementsSpent: { alpha: 1 } })).toEqual({
+      type: "play", cardIndex: 0, targetId: "beta",
+    });
+  });
+
+  it("keeps fortifying across the realm, under one-card-per-turn rules", () => {
+    const after = aiTakeTurn(twoDamagedLands(), seededRng(1));
+    expect(after.settlementsSpent).toEqual({ alpha: 1, beta: 1 });
+    expect(after.players[1].hand).toEqual([]);
+  });
+
+  it("stops when the settlements run out, not when the hand does", () => {
+    // One damaged land, two Fortifies: the second is legal by name and
+    // refused by the board, and the turn ends holding it.
+    const g = asStrategy(base(), "warpath");
+    const before = {
+      ...withHand(g, ["fortify", "fortify"]), defense: { alpha: 10 },
+    };
+    const after = aiTakeTurn(before, seededRng(1));
+    expect(after.settlementsSpent).toEqual({ alpha: 1 });
+    expect(after.players[1].hand).toEqual(["fortify"]);
     expect(after.playedThisTurn).toBe(true);
   });
 

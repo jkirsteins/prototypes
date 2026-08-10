@@ -855,6 +855,26 @@ svg.map.dragging {
   dominant-baseline: central;
 }
 
+/* Settlement pips, a row above the armies and the same convention: filled is a
+   settlement a fortify can still be called on, hollow is one already called on
+   this turn. Wide where an army pip is tall, so the two rows read apart even
+   at map scale. The same ink deliberately - one visual rule, two resources.
+   Not to be confused with `.settlement` on the map, where filled and hollow
+   mean authored and founded; that is a different surface and stays as it is. */
+.threat-badge .badge-site {
+  stroke: #3f3428;
+  stroke-width: 1;
+}
+
+.threat-badge .badge-site.site-free {
+  fill: #3f3428;
+}
+
+.threat-badge .badge-site.site-spent {
+  fill: #fdfaf4;
+  opacity: 0.75;
+}
+
 /* March arrows: one filled polygon per attack in flight, drawn under the
    badges so a shaft crossing a land never buries the defense number that
    decides whether the arrow matters. Non-interactive like every overlay

@@ -91,8 +91,8 @@ describe("parseBootParams", () => {
   it("defaults everything the URL does not name", () => {
     expect(params("?seed=7")).toEqual({
       seed: 7, build: null, screen: null, faction: null, hand: null, turns: 0,
-      defense: {}, disease: {}, leadership: {}, armies: {}, marches: [],
-      turnips: null, wealth: null, popups: null, rules: null,
+      defense: {}, disease: {}, leadership: {}, armies: {}, settlements: {},
+      marches: [], turnips: null, wealth: null, popups: null, rules: null,
     });
   });
 
@@ -165,6 +165,13 @@ describe("parseBootParams", () => {
     expect(params("?armies=alpha").armies).toEqual({});
   });
 
+  it("parses settlements as polygon:founded, on the same clamp", () => {
+    expect(params("?settlements=alpha:1;beta:0").settlements)
+      .toEqual({ alpha: 1, beta: 0 });
+    expect(params("?settlements=alpha:-2").settlements).toEqual({ alpha: 0 });
+    expect(params("?settlements=alpha").settlements).toEqual({});
+  });
+
   it("parses marches as from>to, dropping a clause missing either end", () => {
     expect(params("?march=alpha>beta;gamma>delta").marches)
       .toEqual([{ from: "alpha", to: "beta" }, { from: "gamma", to: "delta" }]);
@@ -234,6 +241,21 @@ describe("applyBootParams", () => {
       .toEqual([["beta", "alpha"], ["beta", "gamma"]]);
     // Damage is not settable: a booted arrow promises what a played one would.
     expect(Object.values(g.marches)[0].damage).toBe(RAID_DAMAGE);
+  });
+
+  it("founds settlements, clamped to the dots the map authors", () => {
+    // The count is what was FOUNDED, matching the store, so 1 is a land
+    // standing on two - the case a repeating fortify needs.
+    const g = boot("?faction=beta&settlements=beta:1");
+    expect(g.settlements.beta).toBe(1);
+    // Nothing is spent by booting: the land begins its turn with both free.
+    expect(g.settlementsSpent).toEqual({});
+    // Clamped at the site cap, because a settlement with no dot to stand on
+    // is a count the map cannot draw.
+    expect(boot("?faction=beta&settlements=beta:99").settlements.beta)
+      .toBe(fresh().siteCaps.beta);
+    // And an id naming no faction is dropped, like every other override.
+    expect(boot("?faction=beta&settlements=selija:1").settlements).toEqual({});
   });
 
   it("drops a march the rules would refuse, rather than conjuring one", () => {

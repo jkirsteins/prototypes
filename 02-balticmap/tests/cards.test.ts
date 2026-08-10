@@ -4,7 +4,7 @@ import {
   INWARD_CARDS, LADDER_DEPTH, NEUTRAL_POOL, RARITY_TIERS, SINGLE_LAND_HEALS,
   TRIBUTE_CARDS, UPGRADES,
   guardAgainst, isGuardCard, isHostileCard, isInwardCard, isSingleLandHeal,
-  isTributeCard,
+  isTributeCard, keywordHas,
   repeatGroupOf, rarityForImpact, shuffle, startingDeck, upgradeCostOf,
   upgradesInto,
 } from "../src/cards";
@@ -18,7 +18,7 @@ describe("cards", () => {
   it("defines each card's properties and rules text", () => {
     // Everything but `rarity` - the whole roster is common by design until the
     // balance pass re-measures it - `textSegments`, which is `text` in another
-    // shape, and `playsAgain`, which has its own pin below; the equivalence
+    // shape, and `keywords`, which has its own pins below; the equivalence
     // test further down pins text and segments to each other.
     const expectProps = (
       id: string, name: string, targeted: boolean, secret: boolean,
@@ -295,8 +295,8 @@ describe("builds and the neutral pool", () => {
   });
 
   it("pins the repeat groups - what a spent turn still accepts", () => {
-    // Carrying a keyword is not the same as repeating: the fortify and unique
-    // keywords carry rules of their own and re-open nothing.
+    // Carrying a keyword is not the same as repeating: the unique keyword
+    // carries a rule of its own and re-opens nothing.
     const keyworded = Object.values(CARDS).filter((c) => c.keywords !== undefined)
       .map((c) => c.id).sort();
     expect(keyworded).toEqual([
@@ -306,9 +306,17 @@ describe("builds and the neutral pool", () => {
       "turnip-harvest",
     ]);
     // All three raids share one group, so any of them re-opens the turn for
-    // any other.
-    const again = ["great-raid", "raid", "strong-raid"];
-    for (const id of again) expect(repeatGroupOf(id)).toBe("raid");
+    // any other; the two fortifies share theirs. The two groups are separate,
+    // which is the whole of "a raid may not be followed by a fortify".
+    const again = [
+      "fortify", "great-raid", "raid", "strong-fortify", "strong-raid",
+    ];
+    for (const id of ["great-raid", "raid", "strong-raid"]) {
+      expect(repeatGroupOf(id)).toBe("raid");
+    }
+    for (const id of ["fortify", "strong-fortify"]) {
+      expect(repeatGroupOf(id)).toBe("fortify");
+    }
     // The reader is the only reader of the field, so a card that declares
     // nothing must answer null through it rather than by being left out of a
     // list somewhere else.
@@ -316,6 +324,20 @@ describe("builds and the neutral pool", () => {
       expect(repeatGroupOf(id) !== null).toBe(again.includes(id));
     }
     expect(repeatGroupOf("no-such-card")).toBeNull();
+  });
+
+  it("pins which cards a play calls on a settlement for", () => {
+    // The bound on the fortify repeat, and the reason it is allowed to repeat
+    // at all. Hillfort is a single-land heal carrying no keyword: it costs no
+    // settlement and re-opens nothing, and this is the pin that says so.
+    const spends = Object.keys(CARDS)
+      .filter((id) => keywordHas(id, "spendsSettlement")).sort();
+    expect(spends).toEqual(["fortify", "strong-fortify"]);
+    expect(keywordHas("hillfort", "spendsSettlement")).toBe(false);
+    expect(keywordHas("raid", "spendsSettlement")).toBe(false);
+    // Every card that spends one also repeats: a cost with no run to bound is
+    // a tax, and that is not what the flag is for.
+    for (const id of spends) expect(repeatGroupOf(id)).not.toBeNull();
   });
 
   it("pins the hostile set - every card that may not be aimed up your chain", () => {

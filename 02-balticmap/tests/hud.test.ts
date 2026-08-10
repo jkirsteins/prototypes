@@ -237,7 +237,7 @@ describe("createHud", () => {
     ) === null;
   };
 
-  /** A turn spent by a Raid, which declares `playsAgain`. Grow turnips stands
+  /** A turn spent by a Raid, whose keyword repeats. Grow turnips stands
    *  in for "any other card": it is legal on any board, so a greyed one can
    *  only be the turn talking. `armies` caps how many raids the land can still
    *  send, which is what ends the run. */
@@ -302,6 +302,41 @@ describe("createHud", () => {
     expect(endTurn.disabled).toBe(false);
     endTurn.click();
     expect(onEndTurn).toHaveBeenCalledOnce();
+  });
+
+  /** A turn spent by a Fortify. The other repeating keyword, and the one whose
+   *  bound is settlements rather than armies - `settlementsSpent` is what ends
+   *  its run, so the line has to read off that instead. */
+  const afterFortifying = (settlementsSpent: Record<string, number>): GameState => {
+    const g = {
+      ...withHand(
+        playing(), 0, ["fortify", "fortify", "strong-fortify", "grow-crops"],
+      ),
+      defense: { beta: 1 },
+    };
+    return { ...playCard(g, 0, seededRng(1), "beta"), settlementsSpent };
+  };
+
+  it("names the keyword, not a card, when several of the class are legal", () => {
+    // Two fortify cards left and both playable: naming one of them would tell
+    // the player the wrong thing about what the turn will take.
+    const g = afterFortifying({});
+    const { container, hud } = setup({ canPlayCard: rulesGate(() => g) });
+    expect(g.repeatGroup).toBe("fortify");
+    hud.update(g);
+    expect(q(container, ".status-text").textContent)
+      .toBe("Turn 1 - another fortify, or end your turn");
+  });
+
+  it("a fortify run ends when the settlements do, not when the hand does", () => {
+    // The card is still in hand and still legal by name; the land it would
+    // heal has no settlement left to answer it.
+    const g = afterFortifying({ beta: 1 });
+    const { container, hud } = setup({ canPlayCard: rulesGate(() => g) });
+    hud.update(g);
+    expect(q(container, ".status-text").textContent).toBe("Turn 1 - end your turn");
+    const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
+    expect(cards.every((c) => c.classList.contains("unplayable"))).toBe(true);
   });
 
   it("a fresh turn is untouched by any of it", () => {

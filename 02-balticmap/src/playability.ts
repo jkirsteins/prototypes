@@ -66,6 +66,10 @@ export interface RulesView {
   /** Faction id -> settlements founded in that land this game, not counting the
    *  one every land starts with. Absent = 0. */
   settlements: Record<string, number>;
+  /** Faction id -> settlements of that land already called on this turn.
+   *  Absent = 0; cleared wholesale at every `beginTurn`. Read only through
+   *  `freeSettlementsIn`. */
+  settlementsSpent: Record<string, number>;
   /** Faction id -> treasury. Absent = 0, never negative, uncapped. Earned in
    *  `beginTurn`, spent on costed cards and on tribute. Read only through
    *  `wealthOf`. */
@@ -171,6 +175,22 @@ export function settlementsIn(
  *  has one spelling wherever it is asked. */
 export function settlementAllowance(): number {
   return SETTLEMENT_BASE_CAP;
+}
+
+/** Settlements standing in `land` that have not already been called on this
+ *  turn - what a fortify may still spend there.
+ *
+ *  The settlement half of `freeArmiesOn`, floored at 0 for the same reason: a
+ *  land whose settlements were counted before somebody else's play reads as
+ *  exhausted rather than negative. */
+export function freeSettlementsIn(
+  view: {
+    settlements: Record<string, number>;
+    settlementsSpent: Record<string, number>;
+  },
+  land: string,
+): number {
+  return Math.max(0, settlementsIn(view, land) - (view.settlementsSpent[land] ?? 0));
 }
 
 /** Further settlements the map still authors for `land`. */
@@ -529,6 +549,11 @@ export type TargetBlockReason =
    *  fact - and unlike the others here, the actor fixes it by waiting a turn
    *  for an army to come home, or by raising one. */
   | { code: "no-army" }
+  /** Fortify: the land is damaged and in reach, but every settlement standing
+   *  on it has already been called on this turn. Distinct from
+   *  `at-full-defense` because the land does still want the heal - it is the
+   *  settlement that is spent, and it comes back next turn. */
+  | { code: "no-settlement" }
   | { code: "liege" }
   | { code: "incorporated" }
   | { code: "self" }
@@ -668,6 +693,15 @@ export function targetEligibilityFor(
     ) {
       reasons.push({ code: "at-full-defense" });
     }
+    // A fortify is called on a settlement, so it needs one that has not
+    // answered already this turn. The class asks, not the card: this is what
+    // bounds the repeat, exactly as a free army bounds a raid's.
+    if (
+      keywordHas(cardId, "spendsSettlement") &&
+      freeSettlementsIn(view, factionId) === 0
+    ) {
+      reasons.push({ code: "no-settlement" });
+    }
     // Two different refusals, ordered: a land the map has no dot left for can
     // never be built in again, so quoting the allowance there would mislead.
     if (cardId === "found-settlement" && freeSitesIn(view, factionId) === 0) {
@@ -742,9 +776,15 @@ export type CardBlockReason =
    *  anything already has its army out on a march. Distinct from `no-target`
    *  because the fix is different - wait a turn, or raise one. */
   | { code: "no-army" }
+  /** A fortify with no settlement left to call on: every land of the realm
+   *  that wants the heal has already had its settlements answer this turn.
+   *  Distinct from `no-target` because the fix is the same shape as
+   *  `no-army`'s - wait for the turn to come round. */
+  | { code: "no-settlement" }
   /** The turn has been spent, and the play that spent it re-opened it for
-   *  more of its own kind only (`CardDef.playsAgain`). Says nothing about
-   *  this card: it is the turn that is out, not the card that is illegal. */
+   *  more of its own CLASS only (`KeywordDef.repeats`, held on the state as
+   *  `repeatGroup`). Says nothing about this card: it is the turn that is out,
+   *  not the card that is illegal. */
   | { code: "turn-spent" }
   | { code: "no-target" }
   | { code: "unavailable" };
@@ -835,6 +875,28 @@ export function cardBlockReason(
     // the actor that no target can change.
     const gate = incorporateRealmGate(view, factionId);
     if (gate.held < gate.required) return { code: "realm-too-small", ...gate };
+  }
+  // A fortify answers the same two questions a raid does, in the same order:
+  // is there a land that wants the heal, and is there a settlement free to
+  // call on for it. Without this branch a realm that had spent every
+  // settlement would be told there was nothing to aim at, when in fact the
+  // lands are there and it is the settlements that are out.
+  //
+  // Read off the per-target verdicts rather than re-derived, so the greyed
+  // card and the greyed map can never disagree about which lands are
+  // candidates. A land blocked SOLELY by `no-settlement` is one that wants the
+  // heal and cannot have it this turn; anything else blocking it is a
+  // different refusal and belongs to `no-target`.
+  if (card.targeted && keywordHas(cardId, "spendsSettlement")) {
+    const entries = targetEligibilityFor(view, factionId, cardId);
+    if (entries.some((e) => e.state === "available")) return null;
+    const spent = entries.some(
+      (e) =>
+        e.state === "blocked" &&
+        e.reasons.length === 1 &&
+        e.reasons[0]?.code === "no-settlement",
+    );
+    return spent ? { code: "no-settlement" } : { code: "no-target" };
   }
   if (card.targeted) {
     return validTargetsFor(view, factionId, cardId).length > 0

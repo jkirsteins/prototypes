@@ -39,6 +39,11 @@ navigation and the same URL gives the same run every time:
 - `leadership=selonians:100` - ruler leadership overrides.
 - `armies=selonians:3` - armies stationed per polygon, clamped at 0. Absent
   means the default of one.
+- `settlements=selonians:1` - settlements FOUNDED per polygon, clamped to the
+  dots the map still authors for that land. The count matches the store, not
+  the map: every land already stands on one, so `selonians:1` is a land
+  holding two - and two is what a land needs to take two fortifies in a turn.
+  Nothing is spent by booting; `settlementsSpent` starts empty.
 - `march=jersikans>selonians;semigallian-confederacy>selonians` - declare an
   attack already in flight, `from>to` per arrow. Declared through the real
   rules, so a source with no free army or a target it does not border is
@@ -119,13 +124,30 @@ A turn ends when the player says so, on both rule axes (`RULE_AXES` in
 or sweeps it). What a card leaves behind is a separate question from what it
 does:
 
-- **`playsAgain`** (`CardDef.playsAgain`) re-opens the spent turn for ANOTHER
-  COPY OF THE SAME CARD, and nothing else. The play spends the turn's allowance
-  the way every card does; `GameState.repeatCardId` carries which card, and
-  `turnAccepts` is the only reader. What stops the run is ordinary legality - a
-  raid needs a land with a free army - so the limit is the board, not a count.
-  Nothing outside those two knows the rule exists, and neither knows which card
-  is carrying it, so a new repeating card is one field.
+- **A repeating keyword** (`KeywordDef.repeats` in `src/cards.ts`) re-opens the
+  spent turn for another card of THAT CLASS, and nothing else. The play spends
+  the turn's allowance the way every card does; `GameState.repeatGroup` carries
+  which keyword, and `turnAccepts` is the only reader. A class, not a copy: a
+  Raid may be followed by a Strong raid or a Great raid, because all three
+  carry the `raid` keyword. Nothing outside those two knows the rule exists,
+  and neither knows which card is carrying it, so a new repeating card is one
+  keyword.
+
+  **What stops the run is ordinary legality, and a repeating class must
+  therefore have something to run out of.** A raid runs out of armies
+  (`freeArmiesFor` - a march holds one of its source's until it lands). A
+  fortify runs out of settlements: `KeywordDef.spendsSettlement` calls on one
+  settlement of the land it heals, counted by `freeSettlementsIn` against
+  `GameState.settlementsSpent` and handed back wholesale by `beginTurn`. The
+  limit is the board, not a count of plays - which is why a repeat with no such
+  bound must not ship. A heal that ran out of nothing would be bounded only by
+  the hand.
+
+  Two cards, one bound: Fortify and Strong fortify both spend exactly one
+  settlement, so a land holding one takes one fortify a turn whichever card it
+  was. Hillfort is a single-land heal carrying no keyword at all - it costs
+  nothing and repeats nothing, and that asymmetry is the point of keeping the
+  rule on the class rather than on `SINGLE_LAND_HEALS`.
 - A **claim** is a Subjugate in flight: the play declares it, and it answers at
   the ACTOR's next turn. The land may close its gate in the meantime, somebody
   else's army may break the claim, and the demand lapses. The same rule as a
@@ -378,7 +400,10 @@ disease stack, or the before/after suffixes silently drift.
 
 **A card that belongs to a class joins the class's set, and every surface asks
 what the card IS.** `ATTACK_CARDS`, `MARCH_CARDS`, `SINGLE_LAND_HEALS`,
-`INWARD_CARDS` and `CardDef.playsAgain` are those sets, in `src/cards.ts`. A
+`INWARD_CARDS` and `KEYWORDS` (with `keywordHas`) are those sets, in
+`src/cards.ts` - and a rule that reaches a class of cards belongs on a keyword
+flag rather than on a set of its own, so the card says which classes it is in
+and the class says what that means. A
 surface that names a card by literal answers for one member and not the class,
 and the failure is silent: Strong raid shipped never asking the player which
 land its army left from, and three of the four inward cards resolved a click

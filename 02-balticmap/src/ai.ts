@@ -46,13 +46,18 @@ export const POLICY_COVERAGE: Record<string, string> = {
     "it outright; else the highest leadership in reach, bodyguard risk unknown",
   "hillfort": "5: heal toward a gate - escape as a vassal, repair while free",
   "harvest-feast": "5: heal toward a gate, realm-wide arm",
-  "fortify": "5: heal toward a gate - the weaker of the two single-land heals, taken when no Hillfort is in hand",
+  "fortify":
+    "5: heal toward a gate - the weaker of the two single-land heals, taken " +
+    "when no Hillfort is in hand. Repeats: step 5 walks the damaged lands " +
+    "worst-first, so once a land's settlements are called on the re-opened " +
+    "turn aims the next fortify at the next land down",
   "strong-raid":
     "2A/5A/6W/11W: the same branches Raid uses - `marchPick` covers both, and " +
     "the AI reaches for whichever of the two is in hand",
   "strong-fortify":
     "5: heal toward a gate - preferred over Fortify where both are held, " +
-    "since it is the same play for one more point",
+    "since it is the same play for one settlement and one more point. " +
+    "Repeats with Fortify: same keyword, so either may follow either",
   "raid":
     "2A: walk into a bordering land whose defenses are gone, which takes it - " +
     "the biggest realm first; " +
@@ -401,17 +406,25 @@ export function chooseAction(state: GameState): AiAction {
     // that is about to be knocked straight back down.
     const braced = (m: string): number =>
       Math.max(0, defenseOf(v, m) - incomingAt(v, m));
+    // Worst first, and DOWN THE LIST rather than the worst alone. A fortify
+    // calls on a settlement of the land it heals, so the worst land runs out
+    // while it is still the worst - and a repeat that could only ever re-aim
+    // at the same land would end the run on its second play. The same walk
+    // also covers the older case of a land braced under half that is already
+    // standing at its ceiling.
     const worst = realmPolys
       .filter((m) => braced(m) < 0.5 * defenseMaxOf(v, m))
       .sort(
         (a, b) =>
           braced(a) / defenseMaxOf(v, a) - braced(b) / defenseMaxOf(v, b) ||
           order(a) - order(b),
-      )[0];
-    if (worst !== undefined) {
-      const heal = healAt(worst);
+      );
+    for (const land of worst) {
+      const heal = healAt(land);
       if (heal !== null) return heal;
-      if (feast !== undefined) return { type: "play", cardIndex: feast };
+    }
+    if (worst.length > 0 && feast !== undefined) {
+      return { type: "play", cardIndex: feast };
     }
   }
 

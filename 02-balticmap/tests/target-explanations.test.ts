@@ -34,7 +34,8 @@ const v = (partial: Partial<RulesView> = {}): RulesView => ({
     delta: ["gamma"],
   },
   factionIds: ORDER, passives: {}, turn: 1, guards: {}, omens: {},
-  siteCaps: {}, settlements: {}, wealth: {}, respites: {}, leadership: {},
+  siteCaps: {}, settlements: {}, settlementsSpent: {}, wealth: {},
+  respites: {}, leadership: {},
   leaderAbilities: {},
   leaders: Object.fromEntries(ORDER.map((id) => [id, true])),
   defense: {},
@@ -156,7 +157,9 @@ describe("cardBlockLine", () => {
     expect(cardBlockLine({ code: "unavailable" }))
       .toBe("Not playable now.");
     expect(cardBlockLine({ code: "turn-spent" }))
-      .toBe("Only another copy of the card you played may follow.");
+      .toBe("Only another card of the kind you played may follow.");
+    expect(cardBlockLine({ code: "no-settlement" }))
+      .toBe("Every settlement in your realm has already been called on this turn.");
   });
 
   it("quotes both numbers of the affordability block - income arrives every turn", () => {
@@ -700,5 +703,24 @@ describe("settlementBlock", () => {
       siteCaps: { alpha: 6, beta: 1 }, settlements: { alpha: 2 },
     });
     expect(settlementBlock(view, "beta")[1].amount).toBe("1/2");
+  });
+
+  it("says how many a fortify has called on, and only while any has", () => {
+    // The hover half of the badge pips. A land nobody fortified this turn
+    // says nothing at all: the line appearing IS the news.
+    expect(settlementBlock(v({ siteCaps: { alpha: 6 } }), "alpha"))
+      .toHaveLength(2);
+    const view = v({
+      siteCaps: { alpha: 6 }, settlements: { alpha: 2 },
+      settlementsSpent: { alpha: 2 },
+    });
+    expect(settlementBlock(view, "alpha")).toEqual([
+      { text: "Settlements", blockStart: true },
+      { amount: "3/7", text: "on this land" },
+      { amount: "2", text: "called on this turn" },
+    ]);
+    // Another land's spending is not this land's.
+    expect(settlementBlock({ ...view, settlementsSpent: { beta: 1 } }, "alpha"))
+      .toHaveLength(2);
   });
 });

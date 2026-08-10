@@ -444,8 +444,8 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     const p = state.players[state.current];
     const actor = p.factionId;
     // The seat's WHOLE turn, walked the way `aiTakeTurn` walks it: a card
-    // carrying `playsAgain` leaves the turn open for another of its own kind,
-    // and a harness that stopped after one play would count a seat's raids as
+    // carrying a repeating keyword leaves the turn open for another of that
+    // class, and a harness stopping after one play would count a seat's raids as
     // one raid. The loop is inlined rather than delegated because the
     // targeting metrics need the alternatives the policy had at decision
     // time, which the log does not record - so each action is inspected

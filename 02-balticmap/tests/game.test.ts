@@ -14,7 +14,7 @@ import { DEFAULT_RULES } from "../src/rules";
 import { CARDS, isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
   DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, LAND_GROWTH, SUBJUGATION_GATE,
-  ATTACK_DAMAGE, FORTIFY_HEAL, HARVEST_FEAST_HEAL, HILLFORT_HEAL,
+  ATTACK_DAMAGE, FORTIFY_HEAL, HARVEST_FEAST_HEAL, HILLFORT_HEAL, STRONG_BONUS,
   PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, turnipThresholdFor,
   WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
@@ -1628,9 +1628,11 @@ describe("a card that plays again", () => {
   });
 
   it("a card that declares nothing closes the turn, as every card always has", () => {
+    // Hillfort: a single-land heal carrying no keyword at all, so it is the
+    // heal that neither costs a settlement nor re-opens anything.
     const g = withHand(
       { ...playingState(LINE_ADJ), defense: { beta: 10 } }, 0,
-      ["fortify", "raid"],
+      ["hillfort", "raid"],
     );
     const after = playCard(g, 0, rng(), "beta");
     expect(after.playedThisTurn).toBe(true);
@@ -1674,6 +1676,122 @@ describe("a card that plays again", () => {
     const raided = playCard(open, 0, rng(), "alpha");
     expect(raided.repeatGroup).toBe("raid");
     expect(discardCard(raided, 0).repeatGroup).toBeNull();
+  });
+});
+
+describe("a fortify calls on a settlement", () => {
+  const rng = (): Rng => seededRng(4);
+
+  const SIX_ADJ: Record<string, string[]> = {
+    alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta", "delta"],
+    delta: ["gamma", "epsilon"], epsilon: ["delta", "zeta"], zeta: ["epsilon"],
+  };
+
+  /** beta with gamma as its vassal, both damaged, so the realm holds two
+   *  lands a fortify is legal on. Every land begins on the one settlement it
+   *  was drawn with (`settlements` stays empty), which is the case the bound
+   *  is about: one fortify each.
+   *
+   *  Six factions for the same reason the raid fixture above uses six: a realm
+   *  of two wins a four-land map outright, and the first fortify would end the
+   *  run by ending the game. */
+  function twoLands(settlements: Record<string, number> = {}): GameState {
+    const g = pickFaction(
+      chooseBuild(
+        startGame(newGame(SIX, SIX_ADJ, {}, undefined, maxes(SIX))),
+        "warpath", seededRng(1),
+      ),
+      "beta", seededRng(1),
+    );
+    return withHand(
+      {
+        ...g,
+        overlords: new Map([["gamma", "beta"]]),
+        defense: { beta: 10, gamma: 10 },
+        settlements,
+      },
+      0, ["fortify", "fortify", "strong-fortify"],
+    );
+  }
+
+  it("re-opens the turn and marks the settlement it called on", () => {
+    const after = playCard(twoLands(), 0, rng(), "beta");
+    expect(after.playedThisTurn).toBe(true);
+    expect(after.repeatGroup).toBe("fortify");
+    expect(after.settlementsSpent).toEqual({ beta: 1 });
+  });
+
+  it("refuses a second fortify on a land whose one settlement answered", () => {
+    const first = playCard(twoLands(), 0, rng(), "beta");
+    expect(validTargetsFor(viewOf(first), "beta", "fortify")).toEqual(["gamma"]);
+    expect(playCard(first, 0, rng(), "beta")).toBe(first);
+  });
+
+  it("takes the next land in the realm instead", () => {
+    const first = playCard(twoLands(), 0, rng(), "beta");
+    const second = playCard(first, 0, rng(), "gamma");
+    expect(second.defense.gamma).toBe(10 + FORTIFY_HEAL);
+    expect(second.settlementsSpent).toEqual({ beta: 1, gamma: 1 });
+  });
+
+  it("takes two on a land that founded its second settlement", () => {
+    // `settlements` counts what was FOUNDED, so beta: 1 is a land standing on
+    // two. The second fortify then has a settlement of its own to answer it.
+    const first = playCard(twoLands({ beta: 1 }), 0, rng(), "beta");
+    const second = playCard(first, 0, rng(), "beta");
+    expect(second.defense.beta).toBe(10 + 2 * FORTIFY_HEAL);
+    expect(second.settlementsSpent).toEqual({ beta: 2 });
+    expect(playCard(second, 0, rng(), "beta")).toBe(second);
+  });
+
+  it("lets a Strong fortify follow a Fortify - one keyword, one run", () => {
+    const first = playCard(twoLands(), 0, rng(), "beta");
+    const strong = first.players[0].hand.indexOf("strong-fortify");
+    const second = playCard(first, strong, rng(), "gamma");
+    expect(second.defense.gamma).toBe(10 + FORTIFY_HEAL + STRONG_BONUS);
+  });
+
+  it("does not let a raid follow a fortify, or a fortify follow a raid", () => {
+    const g = withHand(twoLands(), 0, ["fortify", "raid"]);
+    // By index found AFTER the play, never the index it had before: the played
+    // card leaves the hand, so a stale index refuses for want of a card rather
+    // than for want of the turn.
+    const fortified = playCard(g, 0, rng(), "beta");
+    const raidAfter = fortified.players[0].hand.indexOf("raid");
+    expect(raidAfter).toBeGreaterThanOrEqual(0);
+    expect(playCard(fortified, raidAfter, rng(), "alpha")).toBe(fortified);
+    const raided = playCard(g, 1, rng(), "alpha");
+    expect(raided.repeatGroup).toBe("raid");
+    const fortifyAfter = raided.players[0].hand.indexOf("fortify");
+    expect(fortifyAfter).toBeGreaterThanOrEqual(0);
+    expect(playCard(raided, fortifyAfter, rng(), "beta")).toBe(raided);
+  });
+
+  it("hands the settlements back at the next turn start", () => {
+    const first = playCard(twoLands(), 0, rng(), "beta");
+    expect(first.settlementsSpent).toEqual({ beta: 1 });
+    const next = beginTurn({ ...first, turn: first.turn + 1 }, rng());
+    expect(next.settlementsSpent).toEqual({});
+  });
+
+  it("stops the run when the realm's settlements are out, not at a count", () => {
+    // Both lands fortified, and the third card in hand is refused by the
+    // board rather than by anything counting plays.
+    const second = playCard(
+      playCard(twoLands(), 0, rng(), "beta"), 0, rng(), "gamma",
+    );
+    expect(validTargetsFor(viewOf(second), "beta", "fortify")).toEqual([]);
+    expect(cardBlockReason(viewOf(second), "beta", "strong-fortify"))
+      .toEqual({ code: "no-settlement" });
+  });
+
+  it("costs a Hillfort nothing - the class is asked, not the heal", () => {
+    const g = withHand(
+      { ...playingState(LINE_ADJ), defense: { beta: 10 } }, 0, ["hillfort"],
+    );
+    const after = playCard(g, 0, rng(), "beta");
+    expect(after.settlementsSpent).toEqual({});
+    expect(after.repeatGroup).toBeNull();
   });
 });
 

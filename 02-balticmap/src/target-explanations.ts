@@ -1,6 +1,6 @@
 import {
   armyCapOn, attackImpactOn, omensMultiplier,
-  failureRiskOf, freeSitesIn,
+  failureRiskOf, freeSettlementsIn, freeSitesIn,
   holdsGuard, miasmaHeld, omensHeld, outbreakPolygons, plagueDamageOn,
   plagueMultiplier, respiteExpiry, settlementsIn, subjugationGateOn,
   targetEligibilityFor,
@@ -90,6 +90,11 @@ function explainReason(reason: TargetBlockReason): string[] {
       return [
         "No free army borders this land. Your armies here are already out " +
           "on a march; one comes home when it lands.",
+      ];
+    case "no-settlement":
+      return [
+        "Every settlement on this land has already been called on this " +
+          "turn. They answer again next turn.",
       ];
     default: {
       const exhaustive: never = reason;
@@ -454,10 +459,17 @@ export function settlementBlock(
   landFactionId: string,
 ): TooltipLine[] {
   const standing = settlementsIn(view, landFactionId);
+  const spent = standing - freeSettlementsIn(view, landFactionId);
   return [
     { text: "Settlements", blockStart: true },
     { amount: `${standing}/${standing + freeSitesIn(view, landFactionId)}`,
       text: "on this land" },
+    // Only while it is true. A land nobody has fortified this turn says
+    // nothing, so the line appearing IS the news - the same reason the badge
+    // pips are the surface a player reads mid-turn.
+    ...(spent > 0
+      ? [{ amount: `${spent}`, text: "called on this turn" }]
+      : []),
   ];
 }
 
@@ -487,10 +499,14 @@ export function cardBlockLine(reason: CardBlockReason): string {
       return "Every land of your realm already stands at full defense.";
     case "no-army":
       return "Every army on your borders is already out on a march.";
+    case "no-settlement":
+      return "Every settlement in your realm has already been called on " +
+        "this turn.";
     case "turn-spent":
-      // Names no card: the card that re-opened the turn is the one still lit
-      // up in the hand, and this line is read on the greyed-out ones.
-      return "Only another copy of the card you played may follow.";
+      // Names no card: the cards that could follow are the ones still lit up
+      // in the hand, and this line is read on the greyed-out ones. A class,
+      // not a copy - a Raid may be followed by a Strong raid.
+      return "Only another card of the kind you played may follow.";
     case "no-target":
       return "Nothing in reach is a legal target.";
     case "unavailable":
