@@ -540,6 +540,15 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // the human. A vassal healing toward its gate is watched on the badge.
     reason: "visible on the map badge; never aimed at the human",
   },
+  "passive-fired": {
+    kind: "silent",
+    // A cause, never news on its own: it explains the line under it, and the
+    // modal already decides whether THAT is worth raising. Raising the status
+    // instead would either double the entry or announce a wild land mending
+    // itself on the far side of the map. The reason belongs where the player
+    // goes looking for it, which is the log.
+    reason: "explains the line it precedes; the caused event decides the modal",
+  },
   "disease-spread": {
     kind: "modal",
     appliesToHuman: (e, ctx, localPlayerId = 1) =>

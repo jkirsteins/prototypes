@@ -52,6 +52,7 @@ export type GameEventType =
   | "subjugated" | "released" | "incorporated" | "independence" | "tribute"
   | "settled"
   | "healed" | "transferred" | "disease-spread" | "plagued" | "winds-shifted"
+  | "passive-fired"
   | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked" | "harvest-burned"
   | "victory" | "defeat" | "unified" | "surrendered";
@@ -80,6 +81,11 @@ export interface GameEvent {
    *  landing, where the leftover is the whole strength. */
   clash?: { incoming: number; counter: number };
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
+  /** passive-fired: which status in `PASSIVES` acted. The line names it, and
+   *  the name is a `passive()` segment whose hover carries the rule - so a
+   *  status doing something is never a thing the player has to already know
+   *  about to make sense of. */
+  passiveId?: string;
   /** How far this event moved the counter it names, written at every site
    *  that moves one, so src/standings.ts can reconstruct a before -> after
    *  without re-deriving the rules from state that has already moved on:
@@ -264,9 +270,9 @@ export interface GameState {
 
 export const OPENING_HAND = 3;
 
-/** The hand the unlimited turn structure refills to at turn start: the hand a
- *  standard-rules player decides with, i.e. the opening hand plus the one
- *  turn-start draw. */
+/** The hand every turn refills to at its start, under both turn rules: the
+ *  opening hand plus one. The turn axis decides how many cards a turn accepts,
+ *  never how many the player holds - see the refill in `beginTurn`. */
 export const HAND_REFILL = OPENING_HAND + 1;
 
 /** Grow turnips plays that earn one Turnip harvest in a world nobody handed a
@@ -589,7 +595,7 @@ export function pickFaction(
   );
 }
 
-/** Whether this kind of event, when a play caused it, reads as that play's
+/** Whether this kind of event, when something caused it, reads as that cause's
  *  sub-item in the log. Endings are the exception: a play can win or lose the
  *  run, but the run's last line is a headline, not something indented under a
  *  card.
@@ -597,10 +603,14 @@ export function pickFaction(
  *  An exhaustive switch with no `default`, like `eventSegments` in src/hud.ts:
  *  a new `GameEventType` stops compiling here until somebody decides which it
  *  is. */
-function nestsUnderItsPlay(type: GameEventType): boolean {
+function nestsUnderItsCause(type: GameEventType): boolean {
   switch (type) {
     // Never a consequence: the play itself, and the pile bookkeeping that
     // begins or ends a turn rather than following from a card.
+    //
+    // `play` is qualified in `appendEvents`: a play never nests under another
+    // play, but the restless raid a quiet land sends IS its status acting and
+    // does nest under the `passive-fired` that announced it.
     case "play":
     case "draw":
     case "reshuffle":
@@ -621,6 +631,12 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
     case "defeat":
     case "unified":
     case "surrendered":
+    // A status firing is a CAUSE, and a cause states itself at the top level
+    // of its batch. It may follow the play that set it off - a No successor
+    // triggered by an assassination - but the line the player needs is "this
+    // status did something", and burying that under the card would put the
+    // reason a level below the thing it explains.
+    case "passive-fired":
       return false;
     case "subjugated":
     case "released":
@@ -642,27 +658,73 @@ function nestsUnderItsPlay(type: GameEventType): boolean {
 }
 
 /** The one place `actorRuler` is filled, and the one place a consequence is
- *  tied to the play that caused it. Every append to the log goes through here,
- *  so a new event type cannot ship unstamped.
+ *  tied to the cause that produced it. Every append to the log goes through
+ *  here, so a new event type cannot ship unstamped.
  *
- *  `playCard` builds one batch per play with the `play` event first and pushes
- *  everything that play caused onto it, and no other caller starts a batch with
- *  a `play`. So "caused by this play" is exactly "not first in a batch that
- *  starts with a play". */
+ *  There are two kinds of cause, and each has its own SHAPE rule - read off the
+ *  batch, never set in a branch, because fourteen branches restating the same
+ *  fact is exactly the drift the `amount` rule warns about:
+ *
+ *  - **A play.** `playCard` builds one batch per play with the `play` event
+ *    first and pushes everything that play caused onto it, and no other caller
+ *    starts a batch with a `play`. So "caused by this play" is exactly "not
+ *    first in a batch that starts with a play".
+ *
+ *  - **A status firing.** A `passive-fired` names what it did on THE LINE THAT
+ *    FOLLOWS IT, and that one line is the whole of its reach. It has to be a
+ *    reach of one, because a round wrap's batch is not one cause and its
+ *    fallout - it is a dozen independent chains in a row, wild lands mending
+ *    themselves and quiet lands picking fights and conquests changing hands,
+ *    and a cause left open to the end of the batch would adopt every one of
+ *    them. A status that does two things therefore says so twice, which is
+ *    also the better line to read. */
 function appendEvents(state: GameState, events: GameEvent[]): GameEvent[] {
   const causedByPlay = events[0]?.type === "play";
   return [
     ...state.log,
-    ...events.map((e, i) => ({
-      ...e,
-      actorRuler: actorRulerName(state, e.playerId),
-      // Omitted rather than set false, so an event that is nobody's consequence
-      // carries the shape it always did.
-      ...(causedByPlay && i > 0 && nestsUnderItsPlay(e.type)
-        ? { consequence: true }
-        : {}),
-    })),
+    ...events.map((e, i) => {
+      const afterPassive = events[i - 1]?.type === "passive-fired";
+      const nests = e.type === "play"
+        // A play never follows from another play; it does follow from the
+        // status that sent it, which is what a restless raid is.
+        ? afterPassive
+        : nestsUnderItsCause(e.type) && (afterPassive || (causedByPlay && i > 0));
+      return {
+        ...e,
+        actorRuler: actorRulerName(state, e.playerId),
+        // Omitted rather than set false, so an event that is nobody's
+        // consequence carries the shape it always did.
+        ...(nests ? { consequence: true } : {}),
+      };
+    }),
   ];
+}
+
+/** The line that says a STATUS did this. Pushed immediately before the event it
+ *  caused, which is the whole of the shape rule `appendEvents` reads back.
+ *
+ *  Every status that moves something on the board owes one. A land's defense
+ *  climbing on its own, or an army leaving a land that takes no turns, is the
+ *  game breaking its own stated rules as far as the player can tell - the rule
+ *  that permits it is real, is on the land's hover, and was nowhere near the
+ *  line that needed it. `PASSIVES[passiveId].name` is a hoverable segment on
+ *  the line, so the rule arrives with the event rather than being something
+ *  the player had to have looked up first.
+ *
+ *  A status that causes two logged events fires twice: `appendEvents` gives a
+ *  cause a reach of exactly one line, and two things worth logging are two
+ *  things worth saying. */
+function firePassive(
+  events: GameEvent[],
+  turn: number,
+  playerId: number,
+  passiveId: string,
+  polygon: string,
+): void {
+  events.push({
+    turn, playerId, type: "passive-fired",
+    targetFactionId: polygon, passiveId,
+  });
 }
 
 function actorRulerName(state: GameState, playerId: number): string {
@@ -864,6 +926,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       // land on the far side of the map read as something the player did, and
       // kept it on screen while the log was pinned to somebody else's realm.
       const owner = players.find((pl) => pl.factionId === polygon);
+      firePassive(events, state.turn, owner?.id ?? p.id, "wild-lands", polygon);
       events.push({
         turn: state.turn, playerId: owner?.id ?? p.id, type: "healed",
         targetFactionId: polygon, amount: moved,
@@ -943,7 +1006,11 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       });
       // Logged as the play it reads as on the map: an arrow with a strength on
       // it, answerable by a counter-raid like any other. No card leaves a deck
-      // - this is the land's own restlessness, not a hand being played.
+      // - this is the land's own restlessness, not a hand being played, and
+      // the status line above it is what says so. Without it the log showed a
+      // land with no ruler and no turn playing a card, which is the one thing
+      // the rules say it cannot do.
+      firePassive(events, state.turn, seat.id, "keeps-to-itself", land);
       events.push({
         turn: state.turn, playerId: seat.id, type: "play", cardId: "raid",
         targetFactionId: to, sourceFactionId: land,
@@ -959,27 +1026,27 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     events.push({ turn: state.turn, playerId: p.id, type: "reshuffle" });
   }
   let hand = self.hand;
-  if (state.rules.turn === "unlimited") {
-    // Refill rather than draw one. Each draw logs the same `draw` event the
-    // single-draw path logs, and a deck that runs dry mid-refill reshuffles
-    // exactly as it does between turns.
-    while (
-      hand.length < HAND_REFILL &&
-      (deck.length > 0 || discard.length > 0)
-    ) {
-      if (deck.length === 0) {
-        deck = shuffle(discard, rng);
-        discard = [];
-        events.push({ turn: state.turn, playerId: p.id, type: "reshuffle" });
-      }
-      events.push({
-        turn: state.turn, playerId: p.id, type: "draw", cardId: deck[0],
-      });
-      hand = [...hand, deck[0]];
-      deck = deck.slice(1);
+  // Refill to a full hand, under BOTH turn rules. Drawing exactly one was a
+  // rule written when a standard turn spent exactly one card, and the repeat
+  // keyword broke that arithmetic without anybody noticing: a Raid that
+  // re-opens the turn for more raids spends two, three, four cards for the one
+  // card drawn back, so the hand a player who used the keyword woke up with
+  // was smaller every round until they had nothing to play. What the `turn`
+  // axis decides is how many cards a turn ACCEPTS - it was never meant to
+  // decide the hand size, and a hand that refills is the only shape that
+  // survives a card spending more than its share.
+  //
+  // Each draw logs the same `draw` event the single-draw path logged, and a
+  // deck that runs dry mid-refill reshuffles exactly as it does between turns.
+  while (hand.length < HAND_REFILL && (deck.length > 0 || discard.length > 0)) {
+    if (deck.length === 0) {
+      deck = shuffle(discard, rng);
+      discard = [];
+      events.push({ turn: state.turn, playerId: p.id, type: "reshuffle" });
     }
-  } else if (deck.length > 0) {
-    events.push({ turn: state.turn, playerId: p.id, type: "draw", cardId: deck[0] });
+    events.push({
+      turn: state.turn, playerId: p.id, type: "draw", cardId: deck[0],
+    });
     hand = [...hand, deck[0]];
     deck = deck.slice(1);
   }
@@ -1618,6 +1685,7 @@ export function playCard(
       hasPassive(passives, targetId, "no-successor") &&
       !fullRealmOf(p.factionId, overlords, incorporated).has(targetId)
     ) {
+      firePassive(events, state.turn, p.id, "no-successor", targetId);
       landSubjugation(targetId);
     }
   } else if (cardId === "found-settlement" && targetId !== undefined) {

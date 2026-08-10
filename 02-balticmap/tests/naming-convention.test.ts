@@ -153,6 +153,11 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "healed", cardId: "hillfort", targetFactionId: H, amount: 150 },
     { turn: 1, playerId: 2, type: "healed", cardId: "harvest-feast", targetFactionId: RIVAL, amount: 50 },
   ],
+  "passive-fired": [
+    { turn: 1, playerId: 1, type: "passive-fired", targetFactionId: H, passiveId: "wild-lands" },
+    { turn: 1, playerId: 2, type: "passive-fired", targetFactionId: RIVAL, passiveId: "keeps-to-itself" },
+    { turn: 1, playerId: 2, type: "passive-fired", targetFactionId: RIVAL, passiveId: "no-successor" },
+  ],
   transferred: [
     { turn: 1, playerId: 1, type: "transferred", targetFactionId: H, sourceFactionId: RIVAL, amount: 1 },
     { turn: 1, playerId: 2, type: "transferred", targetFactionId: RIVAL, sourceFactionId: H, amount: 1 },

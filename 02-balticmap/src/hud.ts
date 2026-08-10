@@ -25,7 +25,7 @@ import { standingChangeText, standingsFor } from "./view";
 import { hasRuler } from "./rulers";
 import {
   card, cardName, cardTextSegments, faction, factionIds, keywordBlock,
-  possessive, priceSegments, renderSegments, t, theFaction, verb,
+  passive, possessive, priceSegments, renderSegments, t, theFaction, verb,
   type RichTextHooks, type Segment, type Speaker, type Verb,
 } from "./rich-text";
 import type { BuildOption } from "./harvest";
@@ -407,6 +407,15 @@ export function eventSegments(
       ]);
     case "settled":
       return clause(named(e.targetFactionId), "found", [t(" a new settlement")]);
+    case "passive-fired":
+      // "Status", the word the land hover's own heading uses - one word for
+      // one thing. The name is a node and the rule waits on its hover, the
+      // card pattern exactly, so the line that says a status acted is also the
+      // line that says what the status does.
+      return [
+        t("The "), passive(e.passiveId ?? ""), t(" status triggers on "),
+        faction(e.targetFactionId ?? ""),
+      ];
     case "healed":
       return [t("The defenses of "), faction(e.targetFactionId ?? ""), t(" are restored")];
     case "transferred":

@@ -248,13 +248,26 @@ describe("setup", () => {
 });
 
 describe("beginTurn", () => {
-  it("draws one card and logs it", () => {
-    const g = playingState();
+  it("refills the hand to a full four, and logs every draw", () => {
+    // Under BOTH turn rules. Drawing exactly one was arithmetic written when a
+    // standard turn spent exactly one card; a Raid re-opening the turn for
+    // more raids spends several, so the fixed draw shrank the hand of anybody
+    // who used the keyword, round after round.
+    const g = withHand(playingState(), 0, ["raid"]);
     const before = g.log.length;
     const after = beginTurn(g, seededRng(2));
-    expect(after.players[0].hand).toHaveLength(g.players[0].hand.length + 1);
+    expect(after.rules.turn).toBe("standard");
+    expect(after.players[0].hand).toHaveLength(HAND_REFILL);
     expect(fresh(after, before).filter((e) => e.type === "draw"))
-      .toHaveLength(1);
+      .toHaveLength(HAND_REFILL - 1);
+  });
+
+  it("draws nothing into a hand that is already full", () => {
+    const g = withHand(playingState(), 0, ["raid", "raid", "fortify", "fortify"]);
+    const before = g.log.length;
+    const after = beginTurn(g, seededRng(2));
+    expect(after.players[0].hand).toHaveLength(HAND_REFILL);
+    expect(fresh(after, before).some((e) => e.type === "draw")).toBe(false);
   });
 
   it("reshuffles the discard when the deck is empty", () => {
@@ -264,10 +277,14 @@ describe("beginTurn", () => {
       discard: ["grow-crops", "grow-crops", "grow-crops"],
     };
     g = { ...g, players: [p0, ...g.players.slice(1)] };
+    const before = g.log.length;
     const after = beginTurn(g, seededRng(2));
-    expect(after.players[0].hand).toHaveLength(1);
-    expect(after.players[0].deck).toHaveLength(2);
-    expect(after.log.at(-2)?.type).toBe("reshuffle");
+    // Three is all there was, and a refill takes what it can get rather than
+    // stalling on a short deck.
+    expect(after.players[0].hand).toHaveLength(3);
+    expect(after.players[0].deck).toHaveLength(0);
+    expect(fresh(after, before).filter((e) => e.type === "reshuffle"))
+      .toHaveLength(1);
   });
 
   it("pays settlement income: 1, plus 1 per settlement founded in the own realm", () => {
@@ -2276,6 +2293,27 @@ describe("the restless middle of the map", () => {
       .toBe(false);
   });
 
+  it("says which status sent it, and indents the raid under it", () => {
+    // A land with no ruler and no turn putting an arrow on the map is the game
+    // breaking its own stated rules as far as the player can tell. The status
+    // that permits it says so on its own line, and the raid is that line's
+    // consequence.
+    const g = playingSix();
+    const after = beginTurn({ ...g, current: 0, turn: g.turn + 1 }, always);
+    const raid = after.log.findIndex(
+      (e) => e.type === "play" && quietLands(g).includes(e.sourceFactionId ?? ""),
+    );
+    expect(raid).toBeGreaterThan(0);
+    expect(after.log[raid - 1]).toMatchObject({
+      type: "passive-fired", passiveId: "keeps-to-itself",
+      targetFactionId: after.log[raid].sourceFactionId,
+    });
+    expect(after.log[raid].consequence).toBe(true);
+    // The cause states itself at the top level - a reason indented under
+    // nothing is worse than no reason at all.
+    expect(after.log[raid - 1].consequence).toBeUndefined();
+  });
+
   it("never sends one out of a land taken moments earlier in this same wrap", () => {
     // The capture and the declaration are twenty lines apart in one
     // `beginTurn`: the seat's own marches land at its turn start, and the wrap
@@ -2330,5 +2368,60 @@ describe("the restless middle of the map", () => {
       expect(m.expiry).toBeGreaterThan(nextRound.turn);
     }
     expect(nextRound.log.some((e) => e.type === "march-resolved")).toBe(true);
+  });
+});
+
+describe("a status that does something says so", () => {
+  const always = () => 0;
+
+  it("names Wild lands above the heal, and indents the heal under it", () => {
+    // A defense score climbing on its own, with no line saying why, reads as a
+    // land playing a card it is not allowed to hold - which is exactly how it
+    // was read.
+    const g = playingSix();
+    const wild = g.factionIds.find(
+      (f) => hasPassive(g.passives, f, "wild-lands"),
+    )!;
+    const before = g.log.length;
+    const after = beginTurn(
+      { ...g, current: 0, turn: g.turn + 1, defense: { [wild]: 1 } }, always,
+    );
+    const batch = fresh(after, before);
+    const heal = batch.findIndex(
+      (e) => e.type === "healed" && e.targetFactionId === wild,
+    );
+    expect(heal).toBeGreaterThan(0);
+    expect(batch[heal - 1]).toMatchObject({
+      type: "passive-fired", passiveId: "wild-lands", targetFactionId: wild,
+    });
+    expect(batch[heal].consequence).toBe(true);
+    expect(batch[heal - 1].consequence).toBeUndefined();
+  });
+
+  it("names No successor above the land falling to the killer", () => {
+    // This one fires INSIDE a play's batch, so it has both a cause above it
+    // and a consequence below - and the status still states itself at the top
+    // level, because the reason must not sit a level under the thing it
+    // explains.
+    // `playingState`, not `playingSix`: the target needs a ruler to lose, and
+    // only an acting faction has one.
+    const g: GameState = {
+      ...playingState(),
+      passives: { alpha: ["no-successor"] },
+    };
+    const before = g.log.length;
+    const after = playCard(
+      withHand(g, 0, ["assassinate-ruler"]), 0, rng(), "alpha",
+    );
+    const batch = fresh(after, before);
+    const fired = batch.findIndex((e) => e.type === "passive-fired");
+    expect(fired).toBeGreaterThan(0);
+    expect(batch[fired]).toMatchObject({
+      passiveId: "no-successor", targetFactionId: "alpha",
+    });
+    expect(batch[fired].consequence).toBeUndefined();
+    expect(batch[fired + 1]).toMatchObject({
+      type: "subjugated", targetFactionId: "alpha", consequence: true,
+    });
   });
 });

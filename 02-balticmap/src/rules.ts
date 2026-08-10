@@ -38,15 +38,17 @@ export const RULE_AXES: RuleAxis[] = [
     name: "Turn structure",
     defaultOption: "standard",
     options: [
+      // The "4" in both lines restates HAND_REFILL (OPENING_HAND + 1) in
+      // src/game.ts, which cannot be imported here without a cycle (game.ts
+      // imports rules.ts) - change them together. The refill is the same under
+      // both options: this axis decides what a turn ACCEPTS, not what you
+      // hold.
       {
         id: "standard",
         name: "One card per turn",
-        text: "Play or discard one card each turn; draw one at turn start.",
+        text: "Play or discard one card each turn, plus any repeats it opens; your hand refills to 4 at turn start.",
       },
       {
-        // The "4" restates HAND_REFILL (OPENING_HAND + 1) in src/game.ts,
-        // which cannot be imported here without a cycle (game.ts imports
-        // rules.ts) - change both together.
         id: "unlimited",
         name: "Unlimited plays",
         text: "Play any number of cards each turn; your hand refills to 4 at turn start.",
