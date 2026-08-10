@@ -4,10 +4,18 @@
 WebRTC via PeerJS, host-authoritative. Trusted-friends threat model.
 Rejoin by link after a drop.
 
+**Revised 2026-08-10.** The architecture below is what shipped and still
+stands. Five sections described things that had already changed under it -
+the meta/collections era, the single `humanSeat`, and a set of "host-seat
+privileges" that turned out to be defects rather than simplifications. Those
+sections say what is true now, and the audit that found them is why the
+turn-loop and router rules are in AGENTS.md rather than only here.
+
 ## Scope
 
 - Exactly two humans: a host and one guest. Every other seat stays AI.
-  The shipped map seats 26 factions; nothing about seat count changes.
+  The map seats 26 factions, five of which act; nothing about seat count
+  changes.
 - Trusted friends. Full game state reaches both machines, as it does
   today within one machine. Secrecy (`CardDef.secret`, hidden hands)
   stays a rendering rule pivoted on the local player. A peer who opens
@@ -76,61 +84,86 @@ localStorage and banks progress normally. A URL mixing `join` with
 boot params is refused with a notice - a booted run is a synthetic
 state the host could not reproduce.
 
-Both players then use their own deck screen against their own
-collection - collections live per machine in localStorage, so the
-guest's deck and faction are transmitted, never re-derived on the
-host. The guest also picks a faction; factions already taken (the
-host's) are marked. The host's rule-variant picks apply to the game
-and are shown to the guest in the lobby. Dealing (`pickFaction`) runs
-only on the host, after both picks are in.
+Both players then use their own build screen. Decks and collections retired
+with the meta system, so the guest transmits its BUILD and its faction, and
+the host deals every seat the same starting deck. Factions already taken (the
+host's) are marked. The host's rule-variant picks apply to the game and are
+shown to the guest in the lobby. Dealing runs only on the host, after both
+picks are in, through `dealNetGame` - one spelling, called by the app and by
+the tests, because a guest seated one way in the app and another in a test is
+a guest whose bugs no test can see.
 
 ## Seating and control
 
-The host's faction sits at seat 0, as today. The guest's faction
-keeps its natural map-order seat. A per-seat controller notion
-(host / guest / ai) replaces the engine driver's hardcoded
-`isHumanTurn` check: the host's turn loop runs AI seats as usual and
-waits at a guest seat for a remote action instead of calling
-`chooseAction`. `sim.ts`'s pluggable `HUMAN_POLICIES` is the
-precedent for this shape.
+The host's faction sits at seat 0. The guest's faction keeps its natural
+map-order seat, and its land is RESERVED at the deal, because only the acting
+factions keep a leader and a land without one takes no turn.
+
+A per-seat controller notion (local / remote / ai) replaces the engine
+driver's hardcoded `isHumanTurn` check: the host's turn loop runs AI seats as
+usual and waits at a guest seat for a remote action instead of calling
+`chooseAction`. `controllerOf` and `runAiSeats` live in `src/decisions.ts`,
+not in `main.ts`, so the tests drive the app's own chain rather than a copy of
+it.
+
+The engine knows there is more than one person: `GameState.humanSeats` is the
+set, `isHumanFaction` is the question every rule that offers a CHOICE asks,
+and `humanSeats[0]` is the one seat `phase` speaks for. See the AGENTS.md
+section for which question a new reader is asking.
 
 ## Serialization
 
 `GameState` is plain data except `overlords: Map<string,string>`
 (src/relations.ts), which `JSON.stringify` silently drops to `{}`.
 A codec, `serializeGame`/`deserializeGame`, converts the Map to a
-`Record` and back; everything else round-trips as-is. The codec comes
-first in implementation order because snapshots (start and rejoin)
-depend on it, and it gets its own round-trip tests.
+`Record` and back; everything else round-trips as-is - and that is a claim
+with a compile-time guard behind it rather than a hope. `SerializedGameState`
+is checked field by field, recursing through arrays and objects, and a `Map`,
+`Set` or `Date` the codec does not repair is a build error naming the field.
+A value-level walk over a real mid-game state backs it up, because a type says
+nothing about what an `any`-typed field holds.
 
 ## Wire protocol
 
 JSON messages over one DataChannel, discriminated by `type`:
 
-- `hello` - both directions on connect: protocol version and the
-  build's card-set hash. Mismatched deploys refuse politely at the
-  lobby instead of desyncing mid-game.
-- `lobby` - guest sends `{deck, factionId}`; host sends the lobby
-  view: host faction, rule picks, taken factions.
+- `hello` - both directions on connect: protocol version and
+  `cardRulesHash`, the fingerprint of everything about a card two deploys
+  must agree on. Mismatched deploys refuse politely at the lobby instead
+  of desyncing mid-game. It is a fingerprint of BEHAVIOUR and not of card
+  ids: the state cannot fork while the host is authoritative, but a guest
+  whose damage table differs previews moves the host will refuse.
+- `refuse` - host's reply to a `hello` it cannot play with; the wire closes.
+- `lobby-host` - the lobby view: rule picks and the faction the host took.
+- `lobby-guest` - the guest's build and faction.
 - `start` - host sends a full snapshot once dealing is done.
-- `action` - guest, on its turn: the existing `AiAction` shape from
-  src/ai.ts plus an `end-turn` variant, stamped with `{turn, seat}`
-  so stale or duplicate messages are rejected. The message carries
-  `cardId` alongside `cardIndex`; the host validates they agree, which
-  guards against hand-order confusion.
+- `action` - guest, on its turn, stamped with `{turn, seat}` so a stale
+  message is rejected. Four kinds: `play` (carrying `targetId`, the march's
+  `sourceId` and the harvest pick where they apply), `discard`, `transfer` -
+  how many defenders march with a conquest - and `end-turn`. The message
+  carries `cardId` alongside `cardIndex`; the host validates they agree,
+  which guards against hand-order confusion.
 - `update` - host, after every state change the guest must see:
-  `{stateSansLog, newEvents}`. The guest appends `newEvents` to its
-  own copy of the log, so the unbounded log never re-crosses the wire
-  after the first snapshot. Event batches keep their shape, so log
-  indentation, notices and the round summary derive exactly as today.
+  `{stateSansLog, logFrom, newEvents}`. The guest SPLICES `newEvents` in at
+  `logFrom` rather than appending, so the unbounded log never re-crosses the
+  wire and a message delivered twice cannot leave two of each event behind -
+  the milestone drawer and the round summary are derived from the log, so a
+  doubled entry is a doubled count on one screen only. Event batches keep
+  their shape, so log indentation, notices and the round summary derive
+  exactly as today.
 - `snapshot` - full state including the whole log; sent on `start`
   and on rejoin.
 - `reject` - host's reply to an invalid `action`; the guest re-enables
   input.
+- `ping` / `pong` - the heartbeat, consumed inside the wire wrapper and
+  never seen by session code.
 
-Validation is against races and bugs, not malice: the host checks
-"is it this seat's turn" and "does cardIndex hold cardId" before
-applying an action.
+Validation is against races and bugs, not malice. The shared checks - in
+play, a real seat, this seat's turn, a live turn stamp - are one place;
+the per-kind checks are `NET_ACTION_RULES`, an exhaustive `Record` so a new
+action kind cannot ship unchecked. The guest runs the same validation against
+its own replica before sending, so it learns why a move is refused without a
+round trip.
 
 ## The localSeat refactor
 
@@ -167,24 +200,37 @@ The guest's round summary covers events since their last turn - the
 existing rule, unchanged, it just spans the host's turn and the AI
 seats between the guest's turns.
 
-## Host-seat engine privileges
+## What the host's seat still owns, and what it does not
 
-Three engine rules pivot on `humanSeat`, which in a multiplayer game
-is the host's seat. The design accepts them as prototype
-simplifications rather than generalizing the engine:
+This section listed three "host-seat privileges" as prototype
+simplifications. Two of them were defects: a rule that offers one person a
+choice and takes it away from the other is not a simplification, it is two
+people playing different games. They are gone.
 
-- The turnip bar's Turnip harvest injection (and with it the empower
-  boon) is earned only by the host in-run. A guest's Grow crops plays
-  still bank turnips into their own meta profile.
-- The endings block is host-centric. The guest client maps the phase
-  for presentation: the host's `victory` renders as the guest's
-  defeat, and a `unified` ending whose unifier is the guest's own
-  faction renders as the guest's victory. The "You"/actor voice in
-  the log and postmortem is already correct via the localSeat
-  refactor.
-- The `stranded` ending is checked for the host seat only; a guest
-  vassal with no escape gets no automatic ending. The Surrender
-  button is hidden on the guest, whose exit is closing the tab.
+- **The Turnip harvest belongs to whoever earned it.** Every seat counts
+  turnips and every seat is offered the boon. The screen that raises the
+  offer asks `decidedHere`, and the pick crosses the wire on the play.
+- **The conquest question belongs to whoever made the conquest.**
+  `pendingTransfers` is keyed by faction and `isHumanFaction` decides who is
+  asked; the answer crosses as its own action. A seat nobody is sitting at
+  still moves half on the spot.
+- **A person's chair stays warm without a chief, at whichever seat.**
+  `takesNoTurn` is the one spelling. An ANNEXED person is still passed over,
+  and that ordering is deliberate: exempting them too would hang the table on
+  a turn that can never come.
+
+What the host's seat does still own, because there is one `phase` field and
+two people cannot hold different ones:
+
+- The endings block pivots on `humanSeats[0]`. The guest maps the phase for
+  presentation - the host's `victory` is the guest's defeat, a `unified` or
+  `defeat` naming the guest's own faction is the guest's victory, and a guest
+  annexed while the host plays on reads its own defeat off `incorporated`,
+  which is the one ending the phase field cannot carry.
+- Surrender. It ends the run for both people, so a guest conceding would be
+  conceding somebody else's game; their exit is closing the tab. The reason is
+  written beside the route in `DECISION_ROUTES`, and `decidedHere` is what
+  hides the button, so the refusal and the documentation cannot disagree.
 
 ## Disconnects and rejoin
 
@@ -206,22 +252,24 @@ honest "the host left" ending notice. Accepted for the prototype.
 
 ## Progression
 
-Each player banks XP, packs and card-learning into their own
-machine's profile through the existing log-derived path
-(`bankRunProgress`, xp.ts) filtered to the local player id - one more
-site the localSeat refactor covers. Witnessing the other human's
-plays teaches cards through the normal learning loop. A finished
-multiplayer game counts toward `gamesCompleted`. No shared profile,
-no new storage.
+Retired with the meta system. Nothing is banked, no profile is written, and a
+run is a run. `src/meta.ts` keeps only the build preference.
 
 ## Testing
 
 1. Vitest.
-   - Codec round-trip: state -> JSON -> state, overlords included.
+   - Codec round-trip: state -> JSON -> state, overlords included, plus the
+     compile-time and value-level JSON-safety guards above.
    - Protocol: host and guest drivers over an in-memory pipe (the
      sim.ts pluggable-policy precedent). Cover a full short game, an
      out-of-turn `action` rejected, a `cardId`/`cardIndex` mismatch
-     rejected, and a mid-game snapshot rejoin resuming correctly.
+     rejected, a duplicate `update`, and a mid-game snapshot rejoin
+     resuming correctly.
+   - `tests/two-seat.test.ts`: both seats through the real sessions, the real
+     deal and the real router, asserting the two people are offered the same
+     decisions. A suite that keeps its own copy of what the app does is a
+     suite that passes while the app is broken, which is exactly how the
+     defects this section records stayed invisible.
    - The localSeat refactor guarded by the existing suites; the
      golden replay fixture must pass without re-freezing.
 2. Existing gates: `npm test` and `npm run build` green. No new

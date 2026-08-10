@@ -108,14 +108,118 @@ player cannot see is a rule that reads as the game cheating.
 ## A land with no leader takes no turn
 
 `pickFaction` seats a ruler on the acting factions alone (`vacateRulers`), and
-a vacant chair is what `advance` passes over. The gate is on ACTING, not on
-holding: a land somebody has taken still has no leader, and a leaderless
-faction takes no land - a restless raid out of the grey middle is a raid, not
-a conquest.
+a vacant chair nobody sits in is what `advance` passes over. The gate is on
+ACTING, not on holding: a land somebody has taken still has no leader, and a
+leaderless faction takes no land - a restless raid out of the grey middle is a
+raid, not a conquest.
 
 Because a leaderless actor never gets a `beginTurn` of its own, anything that
 resolves at the actor's turn start is swept at the round wrap instead, or its
 arrow would stand on the map for the rest of the game.
+
+**Unless a PERSON is sitting there.** `takesNoTurn` in `src/game.ts` asks
+three questions in an order that is load-bearing. An annexed people is passed
+over whoever was playing them - a person whose realm has been swallowed is out
+of the run, and exempting them would leave the table waiting on a turn that
+can never come. Otherwise a leaderless faction is passed over UNLESS
+`isHumanFaction` says somebody is playing it, because a player skipped forever
+is not a rule, it is a hung game. A leaderless person still takes no land;
+that gate is `hasRuler` at the capture sites and is untouched.
+
+The human arm belongs in `takesNoTurn` and not in `advance`, because the sweep
+above reads the same predicate. Spelled in `advance` alone it exempted the
+first seat from the skip while the sweep still resolved a second person's
+marches at somebody else's turn start.
+
+## The player is a set of seats, and only one of them owns the phase
+
+`GameState.humanSeats` is the seats a PERSON plays. Two questions ride on it
+and they are not the same question, the `realmOf` / `fullRealmOf` split one
+level down:
+
+- **"Is a person playing this faction"** is `isHumanFaction`, and it is
+  plural. It decides who is ASKED rather than automated - the conquest
+  question in `takeLand` - and whose chair stays warm without a chief.
+- **"Whose ending is on screen"** is `humanSeats[0]` alone. There is one
+  `phase` field and two people cannot hold different ones, so it speaks for
+  the host's seat and a second person's screen maps it for itself
+  (`guestPhaseView` in `src/net-protocol.ts`).
+
+Spelling both as one `humanSeat` is what gave the two humans different rules.
+A conquest asked the host how many defenders to send and moved half out of the
+guest's land without asking; an assassinated guest was passed over for the
+rest of the run; an annexed one was given no ending at all, no turn and
+nothing on screen to say why.
+
+So the test to apply to a new reader is which question it is asking. If the
+answer decides what a PERSON is offered, it is `isHumanFaction`. If it decides
+what `phase` says, it is `humanSeats[0]`.
+
+## The guest is never a branch at the call site
+
+Every decision the local player makes while a game is in play - a card played,
+a card discarded, a turn handed over, a harvest boon picked, defenders sent
+with a conquest, a run given up - is a `Decision` in `src/decisions.ts`, and
+`commitDecision` is the only thing in the app that knows whether this screen
+is the host, the guest or alone. A handler builds the decision and hands it
+over. It does not ask what `net.role` is, and it cannot: the root `biome.json`
+forbids `src/main.ts` from importing `playCard`, `discardCard`, `endTurn`,
+`transferDefense` or `surrender` at all, so there is no local path around the
+router for a new decision to forget the guest on.
+
+`DECISION_ROUTES` is an exhaustive `Record<DecisionKind, Route>`, the
+`NOTICE_RULES` shape: a new decision does not compile until it either names
+the `NetAction` it crosses the wire as, or says in a sentence why it is the
+host's alone. `decidedHere` is the only reader of that second answer, so the
+surface that RAISES a question - the harvest modal, the transfer modal, the
+Surrender button - is gated by the same table that routes the answer, and a
+person is never shown a question whose answer has nowhere to go.
+
+The host's own play goes through `applyNetAction`, the same call the guest's
+action arrives at. One engine call, two transports: a `sourceId` or a harvest
+pick cannot reach one seat's play and not the other's.
+
+This is a router and not a convention because the convention rotted with every
+test green. The shape was `if (net.role === "guest") { send(...); return; }
+game = playCard(...)`, at seven call sites, and it drifted in both directions
+at once. `openHarvestModal` sat one line below a guest's early return, so a
+guest holding a Turnip harvest never chose its boon - the host picked for them
+and the log named a card they had not asked for, on the strength of a comment
+claiming a guest holds no harvest, which the turnip bar had stopped being true
+of. `autoAimIfOnlyOne` carried a guest branch nothing could reach, because its
+only caller was inside the host half. And `askTransferIfPending` was in
+neither branch: it read the conquest question off replicated state without
+asking whose it was, so the guest raised the host's modal and answered it into
+a copy the next update threw away.
+
+The scope is decisions IN PLAY. The lobby's faction pick is three-way at its
+call site on purpose - the host holds a pick, the guest sends one, a solo game
+deals on the click - and that is the one role branch left in `src/main.ts`
+that changes state. Everything else that reads the role there is presentation:
+who the other human is, whose rules the picker shows, what `.net-guest` hides.
+
+Two things the router cannot do for you, so each is its own guard:
+
+- **A replica is the host's state, field for field.** `src/net-codec.ts` is a
+  spread and one `Map` repair, so a new field crosses for free - unless it is
+  a `Map`, a `Set` or a `Date`, which stringify to `{}` and take a rule with
+  them. `SerializedGameState` is checked at COMPILE time and the error names
+  the field; `tests/net-codec.test.ts` walks a real mid-game state as well,
+  for the nested case and the `any` a type says nothing about.
+- **A card's BEHAVIOUR is the handshake, not its name.** `cardRulesHash` folds
+  in every field of `CardDef` that `CARD_FIELD_KIND` calls behaviour, plus the
+  tables a card's rules are spread across, gathered in `CARD_RULES`. Prose is
+  left out deliberately: refusing a lobby over a reworded sentence teaches the
+  player nothing. The hash used to be `Object.keys(CARDS)`, and three commits
+  changed damage, a price and legality without changing one id - two builds
+  shook hands and then disagreed about what the player's own card was about to
+  do.
+
+`tests/two-seat.test.ts` drives both seats through the real sessions, the real
+deal and the real router. A test that keeps its own copy of what the app does
+is a test that passes while the app is broken: `tests/net-pipe.test.ts` kept
+copies of the deal and the AI chain, and both went on passing across forty
+commits during which the app's wiring quietly stopped matching them.
 
 ## Nothing ends itself
 
@@ -155,8 +259,10 @@ does:
   card hit the table gave nobody a chance to see it coming.
 - A **capture** is an army arriving where there is nothing left to fight: a
   raid that lands on a flattened land takes it. The taker is then asked how
-  much defense to send with the conquest (`pendingTransfer` /
-  `transferDefense`); an AI seat moves half on the spot. 0 is a real answer.
+  much defense to send with the conquest (`pendingTransfers` /
+  `transferDefense`); a seat nobody is sitting at moves half on the spot. 0 is
+  a real answer. Keyed by FACTION, because every person is asked and one slot
+  would have let one of them hold the only question on the board.
 
 ## The harvest is five answers, and the milestones are a table
 
@@ -397,6 +503,12 @@ Also add a `NOTICE_RULES` entry for any new `GameEventType` - the exhaustive
 `Record` will refuse to compile until you decide modal or silent and write
 down why - and record `amount` on any event that moves a defense score or a
 disease stack, or the before/after suffixes silently drift.
+
+A card-behaviour change also moves the wire fingerprint, which is the point:
+two deploys whose damage tables differ must not shake hands. A new field on
+`CardDef` is classified by `CARD_FIELD_KIND`, and a new TABLE a card's
+behaviour is read out of joins `CARD_RULES` in the same change - `cardRulesHash`
+covers exactly what those two name.
 
 **A card that belongs to a class joins the class's set, and every surface asks
 what the card IS.** `ATTACK_CARDS`, `MARCH_CARDS`, `SINGLE_LAND_HEALS`,

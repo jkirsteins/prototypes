@@ -3051,13 +3051,6 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // line up. Correct it now: the panel is hidden here, but a later drop
       // shows it again and it must not be advertising the deck screen.
       netPanel.setStatus(`Playing with ${net.session?.hostName() ?? "the host"}.`);
-      // The guest's run ends the same way its every other turn arrives - as a
-      // message - so this is the ONLY route by which a finished game reaches
-      // this screen. Without banking here a guest that closed the tab after a
-      // full game kept none of its XP or turnips, and the postmortem's bar
-      // derived the run's start from a lifetime total this run was missing
-      // from. `runBanked` is still the once-per-run guard, so the several
-      // updates an ending can arrive in bank once between them.
       // A snapshot is a whole game arriving at once, so its log is history,
       // not this screen's round: mark every march in it as already shown or
       // the guest would watch twenty turns of arrows land.
