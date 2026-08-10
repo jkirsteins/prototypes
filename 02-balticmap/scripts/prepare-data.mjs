@@ -1257,6 +1257,11 @@ const AUTHORED_LINKS = [
   ["nadrawa", "pilsotas"],
   ["nadrawa", "zemaitija"],
   ["nadrawa", "suduva"],
+  // Suduva mixes NUTS-3 (LT024) with geoBoundaries Polish powiats for its
+  // Suwalki corner; Zemaitija is NUTS-3 only. The two sources generalize
+  // their shared Nemunas border differently, so neither an arc nor a raw
+  // vertex coincides there and the derivation cannot see it.
+  ["suduva", "zemaitija"],
 ];
 
 function arcIdsOf(geometry) {

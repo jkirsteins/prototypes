@@ -392,6 +392,19 @@ describe("baltic.json (anno 1100)", () => {
     expect(adj("dainava")).toContain("suduva");
   });
 
+  // Suduva and Zemaitija share a real border along the Nemunas, but their
+  // members are drawn from different sources (Suduva mixes in geoBoundaries
+  // for its Suwalki corner; Zemaitija is NUTS-3 only), so neither an arc nor
+  // a raw vertex coincides there for the derivation to find. AUTHORED_LINKS
+  // carries it instead - pinned here both ways so a future re-bake cannot
+  // drop it silently the way an earlier one did.
+  it("suduva and zemaitija are adjacent along the Nemunas", () => {
+    const adj = (id: string) =>
+      data.regions.find((r) => r.id === id)!.adjacent;
+    expect(adj("suduva")).toContain("zemaitija");
+    expect(adj("zemaitija")).toContain("suduva");
+  });
+
   it("known non-adjacent pairs stay non-adjacent", () => {
     // Guards the point-sharing fallback: these pairs are geographically far
     // apart and must never be linked, even if a future cache refresh
