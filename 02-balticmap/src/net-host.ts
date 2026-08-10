@@ -2,6 +2,7 @@ import type { GameState } from "./game";
 import type { Rng, Strategy } from "./cards";
 import type { RuleSelections } from "./rules";
 import { serializeGame } from "./net-codec";
+import { regionFingerprint } from "./regions";
 import {
   applyNetAction, buildUpdate, cardRulesHash, PROTOCOL_VERSION,
   seatOfFaction, validateAction, type NetMessage, type Wire,
@@ -63,10 +64,18 @@ export function createHostSession(
           wire.close();
           return;
         }
+        if (msg.region !== regionFingerprint()) {
+          wire.send({
+            type: "refuse",
+            reason: "the two screens are on different regions - pick the same region on both and reload",
+          });
+          wire.close();
+          return;
+        }
         guestName = msg.name;
         wire.send({
           type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
-          name: deps.name,
+          region: regionFingerprint(), name: deps.name,
         });
         deps.onGuestHello(msg.name);
         if (g.phase === "playing" && guestFactionId !== null) {

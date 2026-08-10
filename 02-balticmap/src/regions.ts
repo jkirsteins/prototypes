@@ -136,3 +136,26 @@ export function setActiveRegion(id: RegionId): void {
 export function activeRegion(): RegionDef {
   return REGIONS[active];
 }
+
+/** One fingerprint per region, computed once. The map JSON is the expensive
+ *  part to hash and never changes at runtime, so a second call for the same
+ *  region answers from the cache rather than re-stringifying it. */
+const fingerprintCache = new Map<RegionId, string>();
+
+/** What two screens must agree on before sharing a lobby: which region, and
+ *  that their baked maps are byte-identical. FNV-1a over the id and the
+ *  map JSON, cached per region - the hello sends it, both ends compare. */
+export function regionFingerprint(): string {
+  const region = activeRegion();
+  const cached = fingerprintCache.get(region.id);
+  if (cached !== undefined) return cached;
+  const text = `${region.id}:${JSON.stringify(region.map)}`;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  const fingerprint = `${region.id}@${h.toString(16)}`;
+  fingerprintCache.set(region.id, fingerprint);
+  return fingerprint;
+}

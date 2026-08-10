@@ -2,6 +2,7 @@ import type { GameState } from "./game";
 import type { Strategy } from "./cards";
 import type { RuleSelections } from "./rules";
 import { deserializeGame } from "./net-codec";
+import { regionFingerprint } from "./regions";
 import {
   applyUpdate, cardRulesHash, PROTOCOL_VERSION, seatOfFaction,
   type NetAction, type NetMessage, type Wire,
@@ -43,6 +44,17 @@ export function createGuestSession(wire: Wire, deps: GuestDeps): GuestSession {
   const handle = (msg: NetMessage): void => {
     switch (msg.type) {
       case "hello":
+        // The host is authoritative and already refused a mismatch on its
+        // own hello, but checking here too means a host that got that
+        // wrong leaves this screen closing the wire rather than silently
+        // rendering the other region's map.
+        if (msg.region !== regionFingerprint()) {
+          deps.onRefused(
+            "the two screens are on different regions - pick the same region on both and reload",
+          );
+          wire.close();
+          return;
+        }
         hostName = msg.name;
         deps.onHostHello(msg.name);
         return;
@@ -76,7 +88,7 @@ export function createGuestSession(wire: Wire, deps: GuestDeps): GuestSession {
   wire.onClose(deps.onClosed);
   wire.send({
     type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
-    name: deps.name,
+    region: regionFingerprint(), name: deps.name,
   });
 
   return {

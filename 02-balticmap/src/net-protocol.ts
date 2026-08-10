@@ -10,7 +10,7 @@ import {
   deserializeGame, serializeGame, type SerializedGameState,
 } from "./net-codec";
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 /** Fingerprint of everything two deploys must agree about a card. The hello
  *  handshake compares this and refuses politely on a mismatch.
@@ -47,8 +47,13 @@ export type NetAction =
 
 export type NetMessage =
   /** Both directions on connect: refuse politely at the lobby, never
-   *  desync mid-game. `name` is the sender's display name. */
-  | { type: "hello"; version: number; cards: string; name: string }
+   *  desync mid-game. `name` is the sender's display name. `region` is the
+   *  sender's `regionFingerprint()` - two screens on different maps must
+   *  never be allowed to think they are sharing one. */
+  | {
+      type: "hello"; version: number; cards: string; region: string;
+      name: string;
+    }
   | { type: "refuse"; reason: string }
   /** Host -> guest, on connect and whenever the host's pick changes. */
   | { type: "lobby-host"; rules: RuleSelections; takenFactionId: string | null }

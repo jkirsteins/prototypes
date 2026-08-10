@@ -14,6 +14,7 @@ import {
 import { runAiSeats } from "../src/decisions";
 import { createHostSession, type HostDeps } from "../src/net-host";
 import { createGuestSession, type GuestDeps } from "../src/net-guest";
+import { regionFingerprint } from "../src/regions";
 
 const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
@@ -70,7 +71,7 @@ describe("host session", () => {
     const got = collect(h.guestWire);
     h.guestWire.send({
       type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
-      name: "Gusta",
+      region: regionFingerprint(), name: "Gusta",
     });
     expect(got.map((m) => m.type)).toEqual(["hello", "lobby-host"]);
     const lobby = got[1];
@@ -87,7 +88,7 @@ describe("host session", () => {
     const got = collect(h.guestWire);
     h.guestWire.send({
       type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
-      name: "Gusta",
+      region: regionFingerprint(), name: "Gusta",
     });
     h.guestWire.send({
       type: "lobby-guest", build: "pestilence", factionId: "gamma",
@@ -109,7 +110,7 @@ describe("host session", () => {
     const got = collect(h.guestWire);
     h.guestWire.send({
       type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
-      name: "Gusta",
+      region: regionFingerprint(), name: "Gusta",
     });
     h.guestWire.send({
       type: "lobby-guest", build: "warpath", factionId: "gamma",
@@ -153,7 +154,7 @@ describe("host session", () => {
     const h = makeHost(rng);
     h.guestWire.send({
       type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
-      name: "Gusta",
+      region: regionFingerprint(), name: "Gusta",
     });
     h.guestWire.send({
       type: "lobby-guest", build: "warpath", factionId: "beta",
@@ -163,7 +164,7 @@ describe("host session", () => {
     const got = collect(h.guestWire);
     h.guestWire.send({
       type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
-      name: "Gusta",
+      region: regionFingerprint(), name: "Gusta",
     });
     const snap = got.find((m) => m.type === "snapshot");
     expect(snap).toBeDefined();

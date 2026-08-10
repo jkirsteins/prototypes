@@ -13,6 +13,8 @@ import {
   type NetAction, type NetMessage,
 } from "../src/net-protocol";
 import { createHostSession, type HostDeps } from "../src/net-host";
+import { createGuestSession, type GuestDeps } from "../src/net-guest";
+import { regionFingerprint } from "../src/regions";
 
 const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
@@ -55,23 +57,72 @@ function smallHost(rng: Rng) {
 }
 
 describe("handshake", () => {
-  it("speaks protocol version 4 - the two-humans wire", () => {
+  it("speaks protocol version 5 - the two-humans wire", () => {
     // Bumped when the message set changes shape; v2 put `build` on
     // lobby-guest and `harvest` on the play action, v3 put `sourceId` there
-    // too, and v4 adds the `transfer` action and renames the state's
-    // `humanSeat` to a set of them. Two deploys on different versions must
-    // refuse, not desync.
-    expect(PROTOCOL_VERSION).toBe(4);
+    // too, v4 adds the `transfer` action and renames the state's
+    // `humanSeat` to a set of them, and v5 adds `region` to hello. Two
+    // deploys on different versions must refuse, not desync.
+    expect(PROTOCOL_VERSION).toBe(5);
   });
 
   it("refuses a hello from a different protocol version at the lobby", () => {
     const h = smallHost(seededRng(1));
     h.guestWire.send({
       type: "hello", version: PROTOCOL_VERSION + 1, cards: cardRulesHash(),
-      name: "Gusta",
+      region: regionFingerprint(), name: "Gusta",
     });
     expect(h.got.map((m) => m.type)).toEqual(["refuse"]);
     expect(h.isClosed()).toBe(true);
+  });
+
+  it("refuses a hello whose region does not match the host's", () => {
+    const h = smallHost(seededRng(1));
+    h.guestWire.send({
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
+      region: "iberia@0", name: "x",
+    });
+    expect(h.got).toHaveLength(1);
+    expect(h.got[0]).toMatchObject({ type: "refuse" });
+    if (h.got[0].type === "refuse") {
+      expect(h.got[0].reason).toMatch(/region/);
+    }
+    expect(h.isClosed()).toBe(true);
+  });
+
+  it("shakes hands when both ends agree on the real region fingerprint", () => {
+    const h = smallHost(seededRng(1));
+    h.guestWire.send({
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
+      region: regionFingerprint(), name: "Gusta",
+    });
+    expect(h.got.map((m) => m.type)).toContain("hello");
+    expect(h.isClosed()).toBe(false);
+  });
+
+  it("has the guest refuse a host hello on the wrong region too - a host bug must not leave a guest silently rendering the wrong map", () => {
+    const [hostWire, guestWire] = wirePair();
+    let refused: string | null = null;
+    let closed = false;
+    guestWire.onClose(() => { closed = true; });
+    const deps: GuestDeps = {
+      name: "Gusta",
+      onHostHello: () => {},
+      onLobby: () => {},
+      onState: () => {},
+      onReject: () => {},
+      onRefused: (reason) => { refused = reason; },
+      onClosed: () => {},
+    };
+    createGuestSession(guestWire, deps);
+    // Stand in for the host: a hello whose region disagrees with this
+    // process's own, the same shape a buggy or stale host might send.
+    hostWire.send({
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
+      region: "iberia@0", name: "Hosta",
+    });
+    expect(refused).toMatch(/region/);
+    expect(closed).toBe(true);
   });
 });
 
@@ -80,7 +131,7 @@ describe("lobby-guest", () => {
     const h = smallHost(seededRng(1));
     h.guestWire.send({
       type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
-      name: "Gusta",
+      region: regionFingerprint(), name: "Gusta",
     });
     h.guestWire.send({
       type: "lobby-guest", build: "pestilence", factionId: "gamma",
@@ -93,7 +144,7 @@ describe("lobby-guest", () => {
     const h = smallHost(seededRng(1));
     h.guestWire.send({
       type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
-      name: "Gusta",
+      region: regionFingerprint(), name: "Gusta",
     });
     h.guestWire.send({
       type: "lobby-guest", build: "warpath", factionId: "atlantis",
