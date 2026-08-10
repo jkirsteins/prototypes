@@ -4,7 +4,7 @@ import {
   type GameEvent, type GamePhase, type GameState,
 } from "./game";
 import { marchSourcesAgainst } from "./playability";
-import { buildOffer, type HarvestChoice } from "./harvest";
+import { buildOffer, destroyOffer, type HarvestChoice } from "./harvest";
 import type { RuleSelections } from "./rules";
 import {
   deserializeGame, serializeGame, type SerializedGameState,
@@ -56,9 +56,14 @@ export type NetMessage =
   | { type: "lobby-guest"; build: Strategy; factionId: string }
   | { type: "start"; state: SerializedGameState; guestFactionId: string }
   | { type: "action"; turn: number; seat: number; action: NetAction }
-  /** The log never re-crosses the wire: `state.log` is empty and the
-   *  guest appends `newEvents` to its own copy. */
-  | { type: "update"; state: SerializedGameState; newEvents: GameEvent[] }
+  /** The log never re-crosses the wire: `state.log` is empty and the guest
+   *  splices `newEvents` into its own copy at `logFrom`, which is where they
+   *  sat in the host's. The index rather than a bare append, so a message
+   *  delivered twice cannot leave the guest holding two of each event. */
+  | {
+      type: "update"; state: SerializedGameState;
+      logFrom: number; newEvents: GameEvent[];
+    }
   /** Full state including the whole log: on start and on rejoin. */
   | { type: "snapshot"; state: SerializedGameState; guestFactionId: string }
   | { type: "reject"; reason: string }
@@ -102,10 +107,107 @@ export function dealNetGame(
   };
 }
 
-/** Races and bugs, not malice (trusted friends): is it this seat's
- *  turn, and is the named card really at that index. Card legality
- *  itself stays with playCard/discardCard, which return the state
- *  unchanged on a refused move. */
+/** Every action kind says how it is checked and how it is applied.
+ *
+ *  An exhaustive `Record`, the `NOTICE_RULES` shape: a new kind does not
+ *  compile until both halves are written. `validateAction` used to be an
+ *  if-chain that returned `null` for anything it did not recognise, so a new
+ *  kind was checked by nobody and found that out on somebody's board.
+ *
+ *  The SHARED checks - in play, a real seat, this seat's turn, a live turn
+ *  stamp - stay in `validateAction`. This is the per-kind half. */
+export const NET_ACTION_RULES: {
+  [K in NetAction["type"]]: {
+    validate(
+      state: GameState, seat: number, action: Extract<NetAction, { type: K }>,
+    ): string | null;
+    apply(
+      state: GameState, rng: Rng, action: Extract<NetAction, { type: K }>,
+    ): GameState;
+  };
+} = {
+  play: {
+    validate(state, seat, action) {
+      const held = state.players[seat].hand[action.cardIndex];
+      if (held !== action.cardId) {
+        return "hand mismatch: card is not at that index";
+      }
+      // Every pick must come from the chooser's own offer - the host can
+      // recompute both, so a stale or fabricated one is refused rather than
+      // shuffled in or burned. Same trust model as the rest of the protocol:
+      // races and bugs, not malice.
+      //
+      // BOTH arms that name a card, not only the build one. `destroyOffer`
+      // holds back the cards a seat may not burn - a forced tribute among
+      // them - and it was consulted by the screen alone, so the rule about
+      // what may be destroyed lived nowhere the wire could see it.
+      const pick = action.harvest;
+      if (pick?.kind === "build" &&
+          !buildOffer(state.players[seat]).includes(pick.cardId)) {
+        return "harvest pick is not in your build";
+      }
+      if (pick?.kind === "destroy" &&
+          !destroyOffer(state.players[seat]).includes(pick.cardId)) {
+        return "that card cannot be burned";
+      }
+      // The source is checked on the same footing, and for the same reason.
+      // Refusing beats redirecting here - a redirect would expose a land the
+      // sender never chose to expose to the counter-raid.
+      if (
+        action.sourceId !== undefined && action.targetId !== undefined &&
+        !marchSourcesAgainst(
+          viewOf(state), state.players[seat].factionId, action.targetId,
+        ).includes(action.sourceId)
+      ) {
+        return "no free army of yours borders that land";
+      }
+      return null;
+    },
+    apply: (state, rng, action) =>
+      playCard(state, action.cardIndex, rng, action.targetId, {
+        ...(action.harvest !== undefined ? { harvest: action.harvest } : {}),
+        ...(action.sourceId !== undefined ? { sourceId: action.sourceId } : {}),
+      }),
+  },
+  discard: {
+    validate: (state, seat, action) =>
+      state.players[seat].hand[action.cardIndex] === action.cardId
+        ? null
+        : "hand mismatch: card is not at that index",
+    apply: (state, _rng, action) => discardCard(state, action.cardIndex),
+  },
+  transfer: {
+    validate(state, seat, action) {
+      // The sender's OWN conquest, recomputed here: a seat answering a
+      // question it did not raise is exactly the bug this action exists to
+      // stop. The upper bound is deliberately NOT checked - `transferDefense`
+      // clamps through `transferLimit` at the moment it applies, and a second
+      // limit computed now would disagree with it the first time the board
+      // moved between the modal opening and the answer arriving.
+      if (state.pendingTransfers[state.players[seat].factionId] === undefined) {
+        return "no conquest of yours is waiting for defenders";
+      }
+      if (!Number.isInteger(action.amount) || action.amount < 0) {
+        return "that is not a number of defenders";
+      }
+      return null;
+    },
+    // The faction is read off the state rather than taken on trust: the
+    // shared checks have already pinned the sender to the seat on turn.
+    apply: (state, _rng, action) => transferDefense(
+      state, state.players[state.current].factionId, action.amount,
+    ),
+  },
+  "end-turn": {
+    validate: () => null,
+    apply: (state) => endTurn(state),
+  },
+};
+
+/** Races and bugs, not malice (trusted friends): is it this seat's turn, and
+ *  is the named card really at that index. Card legality itself stays with
+ *  playCard/discardCard, which return the state unchanged on a refused
+ *  move. The per-kind half is `NET_ACTION_RULES`. */
 export function validateAction(
   state: GameState, seat: number, turn: number, action: NetAction,
 ): string | null {
@@ -113,73 +215,19 @@ export function validateAction(
   if (seat < 0 || seat >= state.players.length) return "no such seat";
   if (state.current !== seat) return "not this seat's turn";
   if (turn !== state.turn) return "stale turn stamp";
-  if (action.type === "end-turn") return null;
-  if (action.type === "transfer") {
-    // The sender's OWN conquest, recomputed host-side: a seat answering a
-    // question it did not raise is exactly the bug this action exists to
-    // stop. The upper bound is deliberately NOT checked - `transferDefense`
-    // clamps through `transferLimit` at the moment it applies, and a second
-    // limit computed here would disagree with it the first time the board
-    // moved between the modal opening and the answer arriving.
-    if (state.pendingTransfers[state.players[seat].factionId] === undefined) {
-      return "no conquest of yours is waiting for defenders";
-    }
-    if (!Number.isInteger(action.amount) || action.amount < 0) {
-      return "that is not a number of defenders";
-    }
-    return null;
-  }
-  if (state.players[seat].hand[action.cardIndex] !== action.cardId) {
-    return "hand mismatch: card is not at that index";
-  }
-  // The harvest pick must come from the chooser's own pool - the host can
-  // recompute it, so a stale or fabricated pick is refused rather than
-  // shuffled in. Same trust model as the rest of the protocol: races and
-  // bugs, not malice.
-  if (
-    action.type === "play" && action.harvest !== undefined &&
-    action.harvest.kind === "build" &&
-    !buildOffer(state.players[seat]).includes(action.harvest.cardId)
-  ) {
-    return "harvest pick is not in your build";
-  }
-  // The source is checked on the same footing as the harvest pick, and for
-  // the same reason: the host can recompute what is legal, so a stale tail is
-  // refused rather than quietly redirected. Redirecting would be worse than
-  // refusing here - it would expose a land the guest never chose to expose to
-  // the counter-raid.
-  if (
-    action.type === "play" && action.sourceId !== undefined &&
-    action.targetId !== undefined &&
-    !marchSourcesAgainst(
-      viewOf(state), state.players[seat].factionId, action.targetId,
-    ).includes(action.sourceId)
-  ) {
-    return "no free army of yours borders that land";
-  }
-  return null;
+  const rule = NET_ACTION_RULES[action.type] as {
+    validate(s: GameState, seat: number, a: NetAction): string | null;
+  };
+  return rule.validate(state, seat, action);
 }
 
 export function applyNetAction(
   state: GameState, rng: Rng, action: NetAction,
 ): GameState {
-  switch (action.type) {
-    case "play":
-      return playCard(state, action.cardIndex, rng, action.targetId, {
-        ...(action.harvest !== undefined ? { harvest: action.harvest } : {}),
-        ...(action.sourceId !== undefined ? { sourceId: action.sourceId } : {}),
-      });
-    case "discard":
-      return discardCard(state, action.cardIndex);
-    case "transfer":
-      // `validateAction` has already pinned the sender to the seat on turn,
-      // so the faction is read off the state rather than taken on trust.
-      return transferDefense(
-        state, state.players[state.current].factionId, action.amount,
-      );
-    case "end-turn":
-      return endTurn(state);
-  }
+  const rule = NET_ACTION_RULES[action.type] as {
+    apply(s: GameState, rng: Rng, a: NetAction): GameState;
+  };
+  return rule.apply(state, rng, action);
 }
 
 export function buildUpdate(
@@ -188,16 +236,26 @@ export function buildUpdate(
   return {
     type: "update",
     state: serializeGame({ ...state, log: [] }),
+    logFrom: sentLog,
     newEvents: state.log.slice(sentLog),
   };
 }
 
+/** The state arrives whole; only the log is a delta, and `logFrom` is where
+ *  the delta belongs. Spliced at that index rather than appended, which makes
+ *  a re-delivered update idempotent: it overwrites the entries it carried the
+ *  first time instead of adding a second copy of them.
+ *
+ *  That matters beyond a tidy log. The milestone drawer and the round
+ *  summary are DERIVED from the log rather than stored, so a doubled entry is
+ *  a doubled plague count on one screen and not the other. */
 export function applyUpdate(
   prev: GameState | null,
   msg: Extract<NetMessage, { type: "update" }>,
 ): GameState {
   const bare = deserializeGame(msg.state);
-  return { ...bare, log: [...(prev?.log ?? []), ...msg.newEvents] };
+  const kept = (prev?.log ?? []).slice(0, msg.logFrom);
+  return { ...bare, log: [...kept, ...msg.newEvents] };
 }
 
 /** There is one `phase` field and it speaks for `humanSeats[0]`, the host.

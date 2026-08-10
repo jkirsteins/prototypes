@@ -3,11 +3,14 @@ import {
   newGame, startGame, chooseBuild, pickFaction, advance, type GameState,
 } from "../src/game";
 import { aiTakeTurn } from "../src/ai";
+import { CARDS } from "../src/cards";
+import { destroyOffer } from "../src/harvest";
 import type { Rng } from "../src/cards";
 import { seededRng } from "../src/rng";
 import {
   applyNetAction, applyUpdate, buildUpdate, cardSetHash, guestPhaseView,
-  PROTOCOL_VERSION, seatOfFaction, validateAction, wirePair, type NetMessage,
+  NET_ACTION_RULES, PROTOCOL_VERSION, seatOfFaction, validateAction, wirePair,
+  type NetAction, type NetMessage,
 } from "../src/net-protocol";
 import { createHostSession, type HostDeps } from "../src/net-host";
 
@@ -228,7 +231,87 @@ describe("action validation", () => {
   });
 });
 
+describe("every action kind", () => {
+  /** One sample per kind, as an exhaustive Record: a new NetAction fails to
+   *  compile here until it is sampled, so the shared checks below cannot be
+   *  the ones nobody thought to apply to it. */
+  const SAMPLES: Record<NetAction["type"], (g: GameState) => NetAction> = {
+    play: (g) => ({
+      type: "play", cardIndex: 0, cardId: g.players[0].hand[0],
+    }),
+    discard: (g) => ({
+      type: "discard", cardIndex: 0, cardId: g.players[0].hand[0],
+    }),
+    transfer: () => ({ type: "transfer", amount: 1 }),
+    "end-turn": () => ({ type: "end-turn" }),
+  };
+
+  const kinds = Object.keys(SAMPLES) as NetAction["type"][];
+
+  it("names the same kinds the rules table does", () => {
+    expect(kinds.sort()).toEqual(Object.keys(NET_ACTION_RULES).sort());
+  });
+
+  it("is refused when the game is not in play", () => {
+    const g = { ...freshGame(seededRng(7)), phase: "victory" as const };
+    for (const kind of kinds) {
+      expect(validateAction(g, 0, g.turn, SAMPLES[kind](g))).toMatch(/not in play/);
+    }
+  });
+
+  it("is refused out of turn", () => {
+    const g = { ...freshGame(seededRng(7)), current: 1 };
+    for (const kind of kinds) {
+      expect(validateAction(g, 0, g.turn, SAMPLES[kind](g))).toMatch(/seat's turn/);
+    }
+  });
+
+  it("is refused on a stale turn stamp", () => {
+    const g = freshGame(seededRng(7));
+    for (const kind of kinds) {
+      expect(validateAction(g, 0, g.turn - 1, SAMPLES[kind](g)))
+        .toMatch(/stale/);
+    }
+  });
+
+  it("is refused from a seat that does not exist", () => {
+    const g = freshGame(seededRng(7));
+    for (const kind of kinds) {
+      expect(validateAction(g, 99, g.turn, SAMPLES[kind](g)))
+        .toMatch(/no such seat/);
+    }
+  });
+});
+
 describe("applyNetAction", () => {
+  it("refuses a harvest that burns a card the seat may not burn", () => {
+    // `destroyOffer` holds back the forced cards - a tribute among them, and
+    // burning one is how a vassal would duck a demand the rules mean to be
+    // forced. That rule was consulted by the screen alone, so it was written
+    // nowhere the wire could see it.
+    const rng = seededRng(3);
+    const base = withHand(freshGame(rng), 0, ["turnip-harvest"]);
+    const forced = Object.values(CARDS).find((c) => c.forced === true);
+    expect(forced).toBeDefined();
+    const g: GameState = {
+      ...base,
+      players: base.players.map((p, i) =>
+        i === 0 ? { ...p, deck: [...p.deck, forced!.id] } : p,
+      ),
+    };
+    expect(validateAction(g, 0, g.turn, {
+      type: "play", cardIndex: 0, cardId: "turnip-harvest",
+      harvest: { kind: "destroy", cardId: forced!.id },
+    })).toMatch(/burned/);
+    // A card the seat really holds and really may burn is fine.
+    const burnable = destroyOffer(g.players[0])[0];
+    expect(burnable).toBeDefined();
+    expect(validateAction(g, 0, g.turn, {
+      type: "play", cardIndex: 0, cardId: "turnip-harvest",
+      harvest: { kind: "destroy", cardId: burnable },
+    })).toBeNull();
+  });
+
   it("answers the sender's own conquest, off the state and not the message", () => {
     const rng = seededRng(5);
     const base = freshGame(rng);
@@ -299,6 +382,33 @@ describe("updates", () => {
       }
     }
     expect(guest).toEqual(host);
+  });
+
+  it("is idempotent: an update delivered twice leaves one of each event", () => {
+    // The spec asked for this case and it was never written. A bare append
+    // doubled the log, and the milestone drawer and the round summary are
+    // DERIVED from the log - so one screen counted a plague twice.
+    const rng = seededRng(9);
+    const host = advance(aiTakeTurn(freshGame(rng), rng), rng);
+    const msg = buildUpdate(host, 0);
+    const once = applyUpdate(null, msg);
+    const twice = applyUpdate(once, msg);
+    expect(twice.log).toEqual(once.log);
+    expect(twice).toEqual(once);
+  });
+
+  it("splices at the index the events came from, not at the end", () => {
+    const rng = seededRng(9);
+    const first = advance(aiTakeTurn(freshGame(rng), rng), rng);
+    const guest = applyUpdate(null, buildUpdate(first, 0));
+    const second = advance(aiTakeTurn(first, rng), rng);
+    const msg = buildUpdate(second, first.log.length);
+    expect(msg.type === "update" && msg.logFrom).toBe(first.log.length);
+    expect(applyUpdate(guest, msg).log).toEqual(second.log);
+    // And out of order twice over: replaying the FIRST message after the
+    // second rewinds the log rather than corrupting it.
+    const rewound = applyUpdate(applyUpdate(guest, msg), buildUpdate(first, 0));
+    expect(rewound.log).toEqual(first.log);
   });
 });
 
