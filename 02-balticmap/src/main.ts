@@ -3442,6 +3442,20 @@ function attachGuestWire(wire: Wire, hostId: string): void {
         // reads the log for the LOCAL seat's gains, so an update carrying
         // none shows nothing and this costs a filter.
         revealHarvestGains(before);
+        // Input stays locked through the replay, the same as `resumeChain`
+        // does on the host. An update can hand the turn over in the same
+        // breath as the round it is replaying, and without this the guest
+        // could play a card into the middle of watching what happened -
+        // which also cancels the camera mid-glide, since a press is the
+        // player taking the map back.
+        if (animations.busy()) {
+          resolving = true;
+          animations.onIdle(() => {
+            resolving = false;
+            refresh();
+            updateWaitingStatus();
+          });
+        }
       }
       updateWaitingStatus();
     },
