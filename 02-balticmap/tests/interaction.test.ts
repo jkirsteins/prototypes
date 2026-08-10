@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import { renderMap } from "../src/map-render";
-import { attachInteraction } from "../src/interaction";
+import { attachInteraction, landAtPoint } from "../src/interaction";
 import { fitView, homeView } from "../src/view";
 import type { MapData } from "../src/types";
 import raw from "../src/data/map.json";
@@ -55,9 +55,13 @@ describe("attachInteraction", () => {
     expect(onHover).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: "kursa", name: "Kursa" }), 5, 7,
     );
-    el.dispatchEvent(mouse("pointerleave"));
+    // A leave carries the pointer's real position too. The aim preview
+    // resolves the land from the POINT, looking through the arrows and dots
+    // the per-path hover cannot see, so a leave reporting (0, 0) had it
+    // answering for the top-left corner of the window.
+    el.dispatchEvent(mouse("pointerleave", { clientX: 11, clientY: 13 }));
     expect(el.classList.contains("hovered")).toBe(false);
-    expect(onHover).toHaveBeenLastCalledWith(null, 0, 0);
+    expect(onHover).toHaveBeenLastCalledWith(null, 11, 13);
   });
 
   it("click on a region selects it; clicking again deselects", () => {
@@ -181,5 +185,82 @@ describe("attachInteraction", () => {
     el.dispatchEvent(mouse("pointerup", { clientX: 10, clientY: 10 }));
     expect(el.classList.contains("selected")).toBe(true);
     expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ id: "kursa" }));
+  });
+
+  /** The press still resolves through the event's own target, which is the hit
+   *  test the browser already did. Only a press that landed on something drawn
+   *  OVER the map - an arrow, its strength label, a badge - reaches the
+   *  coordinate lookup, and that one is the browser pass's to assert. */
+  it("resolves a press from the event target, without a second hit test", () => {
+    const elementFromPoint = vi.fn();
+    const elementsFromPoint = vi.fn(() => []);
+    Object.assign(document, { elementFromPoint, elementsFromPoint });
+    try {
+      const intercept = vi.fn(() => true);
+      const { regionPaths } = setup(intercept);
+      const el = regionPaths.get("kursa")!;
+      el.dispatchEvent(mouse("pointerdown", { clientX: 10, clientY: 10 }));
+      el.dispatchEvent(mouse("pointerup", { clientX: 10, clientY: 10 }));
+      expect(intercept).toHaveBeenCalledWith("kursa");
+      expect(elementFromPoint).not.toHaveBeenCalled();
+      expect(elementsFromPoint).not.toHaveBeenCalled();
+    } finally {
+      Object.assign(document, {
+        elementFromPoint: undefined, elementsFromPoint: undefined,
+      });
+    }
+  });
+});
+
+describe("landAtPoint", () => {
+  /** happy-dom implements neither hit-testing API, and answering "no land" is
+   *  the right degradation: there is no layout here to hit-test against. What
+   *  must NOT happen is a throw, which would take the whole click path with
+   *  it - the browser is not the only place this runs. */
+  it("answers no land where the environment cannot hit-test", () => {
+    expect(landAtPoint(10, 10)).toBeNull();
+  });
+
+  it("looks through what is drawn over a land to the land itself", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const { regionPaths } = renderMap(data, container);
+    const land = regionPaths.get("kursa")!;
+    // An arrow, standing in for everything the map draws on top: it takes the
+    // pointer and carries no id, so the direct answer is "no land".
+    const arrow = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    Object.assign(document, {
+      elementFromPoint: () => arrow,
+      elementsFromPoint: () => [arrow, land],
+    });
+    try {
+      expect(landAtPoint(10, 10)).toBe("kursa");
+    } finally {
+      Object.assign(document, {
+        elementFromPoint: undefined, elementsFromPoint: undefined,
+      });
+    }
+  });
+
+  it("skips a realm-edge copy, which is an outline OF a land and not the land", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const { regionPaths } = renderMap(data, container);
+    const land = regionPaths.get("kursa")!;
+    // The edge copies carry `.region` and no id - matching on the class alone
+    // found one of those and answered "no land".
+    const edge = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    edge.classList.add("region", "realm-edge");
+    Object.assign(document, {
+      elementFromPoint: () => edge,
+      elementsFromPoint: () => [edge, land],
+    });
+    try {
+      expect(landAtPoint(10, 10)).toBe("kursa");
+    } finally {
+      Object.assign(document, {
+        elementFromPoint: undefined, elementsFromPoint: undefined,
+      });
+    }
   });
 });

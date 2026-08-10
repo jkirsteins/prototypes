@@ -26,6 +26,40 @@ export interface InteractionHandle {
   toMapPoint(clientX: number, clientY: number): { x: number; y: number };
 }
 
+/** The land at a screen point, looking THROUGH everything drawn on top of the
+ *  map: the arrows, their strength labels, the badges, the settlement dots.
+ *
+ *  Those layers are drawn OVER the lands, not instead of them, and none of
+ *  them is a land - so asking what the pointer is literally on top of answers
+ *  "no land" for a wide band of every polygon, while the player is plainly
+ *  pointing at one.
+ *
+ *  **The one spelling, and it takes a POINT rather than an event on purpose.**
+ *  Every surface that has to answer "which land is the player indicating"
+ *  reads it here - the click that plays a card, the press that pins a land,
+ *  and the aim preview that promises where the arrow will go. Those three
+ *  disagreeing is not a cosmetic bug: the preview marked one land and the
+ *  click played at another, so a raid landed somewhere the player was never
+ *  shown. A resolver that only worked on an event could not be reached by the
+ *  hover, which is exactly how the two drifted apart. */
+export function landAtPoint(clientX: number, clientY: number): string | null {
+  // Optional calls throughout: happy-dom implements neither hit-testing API,
+  // and this resolving to "no land" under the test environment is correct -
+  // there is no layout there to hit-test against. The browser pass is what
+  // asserts the looking-through, per the rule in AGENTS.md.
+  const top = document.elementFromPoint?.(clientX, clientY) ?? null;
+  const direct = top?.closest?.("[data-id]") ?? null;
+  if (direct !== null) return direct.getAttribute("data-id");
+  // The first thing under the pointer that is a land AND says which one. The
+  // realm-edge copies carry `.region` too and carry no id - they are an
+  // outline OF a land, not the land - so matching on the class alone found
+  // one of those and answered "no land".
+  const beneath = document
+    .elementsFromPoint?.(clientX, clientY)
+    ?.find((el) => el.classList.contains("region") && el.hasAttribute("data-id"));
+  return beneath?.getAttribute("data-id") ?? null;
+}
+
 /** Pointer travel past which a press is a pan rather than a click. Exported
  *  so anything that swallows a click on top of the map - the counterable
  *  march arrows in src/main.ts - reads "was that a drag?" the same way this
@@ -79,10 +113,15 @@ export function attachInteraction(
       const me = e as MouseEvent;
       cb.onHover(byId.get(id)!, me.clientX, me.clientY);
     });
-    el.addEventListener("pointerleave", () => {
+    // The pointer's real position, even on the way OUT. A leave still says
+    // where the pointer is, and a listener that resolves the land itself -
+    // the aim preview, which looks through the arrows the hover cannot -
+    // would otherwise be handed (0, 0) and answer for the top-left corner.
+    el.addEventListener("pointerleave", (e) => {
       state = withHover(state, null);
       el.classList.remove("hovered");
-      cb.onHover(null, 0, 0);
+      const me = e as MouseEvent;
+      cb.onHover(null, me.clientX, me.clientY);
     });
   }
 
@@ -167,24 +206,15 @@ export function attachInteraction(
     applySelection();
   });
 
-  /** The land a press lands on, looking THROUGH the arrow layer.
-   *
-   *  An arrow takes pointer events so it can be hovered, and it carries no
-   *  `data-id` - so asking the event target alone answers "no land" for a
-   *  press anywhere along an arrow, and a click over one cleared the pin
-   *  instead of pinning the land beneath it. The arrows are drawn over the
-   *  map, not instead of it. */
+  /** The land a press lands on. The event's own target FIRST - the browser has
+   *  already hit-tested it, and asking for a second one at the same point is
+   *  both redundant and a different question in a test environment with no
+   *  layout. Falls through to `landAtPoint` for the press that landed on
+   *  something drawn over the map: an arrow, its strength label, a badge. */
   const landUnder = (e: PointerEvent): string | null => {
     const direct = (e.target as Element).closest?.("[data-id]") ?? null;
     if (direct !== null) return direct.getAttribute("data-id");
-    // The first thing under the pointer that is a land AND says which one.
-    // The realm-edge copies carry `.region` too and carry no id - they are an
-    // outline OF a land, not the land - so matching on the class alone found
-    // one of those and answered "no land".
-    const beneath = document
-      .elementsFromPoint(e.clientX, e.clientY)
-      .find((el) => el.classList.contains("region") && el.hasAttribute("data-id"));
-    return beneath?.getAttribute("data-id") ?? null;
+    return landAtPoint(e.clientX, e.clientY);
   };
 
   svg.addEventListener("pointercancel", endDrag);

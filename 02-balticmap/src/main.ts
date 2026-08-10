@@ -5,7 +5,7 @@ import {
   createTooltip, settlementTooltipText,
   type TooltipLine,
 } from "./panel";
-import { attachInteraction, DRAG_THRESHOLD_PX } from "./interaction";
+import { attachInteraction, DRAG_THRESHOLD_PX, landAtPoint } from "./interaction";
 // No playCard, discardCard, endTurn, transferDefense or surrender here, and
 // the root biome.json refuses them: what the LOCAL player decides goes
 // through `commitDecision`, which is the only thing in the app that knows
@@ -846,21 +846,65 @@ const BAND_CLASS: Record<GateBand, string> = {
  *  While a card is armed the board narrows to what the card can be aimed at:
  *  badges survive only on the legal targets, so a number floating over an
  *  excluded polygon never reads as a live option. */
-/** A polygon's drawing anchor: the centre of its bounding box, in the map's
- *  own 1000x1400 user space.
+/** A polygon's drawing anchor, in the map's own 1000x1400 user space: the
+ *  centre of its bounding box where that lands ON the polygon, and otherwise
+ *  the land's own town nearest to it.
  *
- *  Shared by the badge and the march arrows deliberately. Two anchors computed
- *  two ways would drift, and an arrow whose head lands somewhere other than
- *  the badge it is about is an arrow the player has to guess at. Undefined for
- *  a faction with no region, and zeros under happy-dom, where `getBBox` is a
- *  stub - which is why arrow GEOMETRY is tested against src/arrows.ts with
- *  injected points rather than through this. */
+ *  Shared by the badge, the floating marks and the march arrows deliberately.
+ *  Two anchors computed two ways would drift, and an arrow whose head lands
+ *  somewhere other than the badge it is about is an arrow the player has to
+ *  guess at. Undefined for a faction with no region, and zeros under
+ *  happy-dom, where `getBBox` is a stub - which is why arrow GEOMETRY is
+ *  tested against src/arrows.ts with injected points rather than through this.
+ *
+ *  **A bounding-box centre is not a place**, the lesson `marchAnchors` already
+ *  records: these polygons are long and bent around coastline, so the centre
+ *  of the box around one sits outside it often enough to matter. A town is
+ *  guaranteed to be inside its own land because the map drew it there.
+ *
+ *  The box centre is still preferred where it lands on the polygon, and that
+ *  is not timidity about churn. A town sits where a town sits - often against
+ *  a coast or a border - and moving every badge onto one pushed anchors that
+ *  were already central out to the edges, where a badge overhangs its
+ *  neighbour and buys back the very problem this fixes. Only the lands the
+ *  box actually fails get moved.
+ *
+ *  This is a hit-testing rule, not decoration. Nothing on the badge layer
+ *  takes the pointer - `.threat-badges` is `pointer-events: none` - so a click
+ *  on a badge passes straight through to whatever land lies under it. A badge
+ *  drawn outside its own land therefore aims at a land the player is not
+ *  pointing at, and says nothing: the Warmians' number sat over Pamede, so
+ *  clicking it answered for the Pomesanians. */
 function regionCenter(factionId: string): { x: number; y: number } | undefined {
   const regionId = regionByFaction.get(factionId);
   const pathEl = regionId !== undefined ? regionPaths.get(regionId) : undefined;
   if (!pathEl) return undefined;
   const bbox = pathEl.getBBox();
-  return { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
+  const box = { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
+  const towns = townsByFaction.get(factionId) ?? [];
+  // No towns to fall back on, or no way to ask - happy-dom implements neither
+  // `isPointInFill` nor `DOMPoint`, and there is no layout there to ask about.
+  if (
+    towns.length === 0 ||
+    typeof pathEl.isPointInFill !== "function" ||
+    typeof DOMPoint !== "function"
+  ) {
+    return box;
+  }
+  if (pathEl.isPointInFill(new DOMPoint(box.x, box.y))) return box;
+  // Nearest the box centre, so a moved anchor lands as close as it can to
+  // where the eye already looks. In map order, so a tie picks the same town on
+  // every redraw.
+  let best = towns[0];
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const t of towns) {
+    const d = (t.x - box.x) ** 2 + (t.y - box.y) ** 2;
+    if (d < bestDist) {
+      bestDist = d;
+      best = t;
+    }
+  }
+  return { x: best.x, y: best.y };
 }
 
 /** How far through the log the floating marks have been shown. Every batch is
@@ -1329,9 +1373,7 @@ let aimDragging = false;
  *  the drag shows, driven by the pointer instead of by a held button - after
  *  the first click the game is asking "at what", and an answer with no arrow
  *  in it makes the player aim at a status line. */
-function updateAimPreview(
-  region: Region | null, clientX: number, clientY: number,
-): void {
+function updateAimPreview(clientX: number, clientY: number): void {
   if (aimDragging) return;
   const human = localHuman();
   if (armed === null || armedSource === null || !human) {
@@ -1341,7 +1383,14 @@ function updateAimPreview(
     }
     return;
   }
-  const faction = region === null ? undefined : factionByRegion.get(region.id);
+  // The point, not the hovered region. A land is still the land being aimed at
+  // when an arrow, a strength label or a settlement dot is drawn on top of it,
+  // and the click resolves it exactly that way - but the hover is bound per
+  // region path, so those elements took the pointer and the preview read "no
+  // land". The marker went dark over a band of the target while the click
+  // underneath stayed live, which is the whole disagreement.
+  const regionId = landAtPoint(clientX, clientY);
+  const faction = regionId === null ? undefined : factionByRegion.get(regionId);
   const legal =
     faction !== undefined &&
     marchTargetsFrom(viewOf(game), human.factionId, armedSource).includes(faction)
@@ -3236,8 +3285,12 @@ function cancelAim(): void {
 svg.addEventListener("pointermove", (e) => {
   if (aiming === null) return;
   const at = interaction.toMapPoint(e.clientX, e.clientY);
-  const under = (e.target as Element | null)?.closest?.("[data-id]");
-  const regionId = under?.getAttribute("data-id") ?? null;
+  // Through `landAtPoint`, the resolver the click itself uses. Asking what the
+  // pointer is literally over answered "no land" across every arrow, strength
+  // label and settlement dot lying on the target - so the marker went dark on
+  // a wide band of the very land being aimed at, while the click underneath
+  // stayed live.
+  const regionId = landAtPoint(e.clientX, e.clientY);
   const faction = regionId === null ? null : factionByRegion.get(regionId) ?? null;
   // The targets of the land being dragged FROM, not `armedTargets()`: with no
   // source committed that still answers the first question - which lands an
@@ -3255,10 +3308,21 @@ svg.addEventListener("pointermove", (e) => {
 
 svg.addEventListener("pointerup", (e) => {
   if (aiming === null) return;
+  // ONLY a drag plays from here. An aim is live in the two-click flow too -
+  // `updateAimPreview` sets it the moment a source is picked, so the arrow can
+  // follow the pointer - and this listener is registered before
+  // `attachInteraction`, so without the gate it ran FIRST on the second click
+  // and played the card itself, at the land the aim happened to be holding
+  // rather than the land under the click. Two committers reading two answers
+  // to "which land": the click resolved the release point, the aim held
+  // whatever the pointer last hovered, and a raid could land on a neighbour
+  // the player never pointed at. The click path owns that play; this one owns
+  // the drag, where there is no click to own it.
+  const wasDrag = aimDragging;
   const target = aiming.over;
   const from = aiming.from;
   cancelAim();
-  if (e.button === 0 && target !== null) commitRaid(from, target);
+  if (wasDrag && e.button === 0 && target !== null) commitRaid(from, target);
 });
 
 // Right click gives the aim up, wherever the pointer is and whichever way it
@@ -3275,7 +3339,7 @@ svg.addEventListener("contextmenu", (e) => {
 
 const interaction = attachInteraction(svg, regionPaths, data, {
   onHover(region, clientX, clientY) {
-    updateAimPreview(region, clientX, clientY);
+    updateAimPreview(clientX, clientY);
     if (region) tooltip.showLines(hoverLines(region));
     else tooltip.hide();
     hoveredRegion = region;
