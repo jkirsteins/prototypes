@@ -2300,6 +2300,61 @@ describe("an army walking into a broken land", () => {
   });
 });
 
+describe("a run that ends at turn start", () => {
+  /** A board where one more land wins it, and an arrow about to land on a
+   *  flattened neighbour is what takes that land. */
+  function oneLandShort(actor: string, current: number): GameState {
+    const base = playingSix();
+    expect(victoryRealmSize(base.factionIds.length)).toBe(3);
+    const target = base.factionIds.find(
+      (f) => f !== actor && f !== "gamma",
+    )!;
+    return {
+      ...base,
+      current,
+      // Two lands already: itself and a vassal. The capture is the third.
+      overlords: new Map([...base.overlords, ["gamma", actor]]),
+      defense: { [target]: 0, [actor]: 40 },
+      marches: {
+        [`${actor}>${target}#0`]: {
+          actor, from: actor, to: target, cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: base.turn,
+        },
+      },
+    };
+  }
+
+  it("ends it THEN, not at somebody's next play", () => {
+    // A claim answering, an army walking into a flattened land and a dormant
+    // land's raid all resolve here. Only playCard used to compute an ending,
+    // so a run won at turn start sat unnoticed for a whole round with the
+    // board saying one thing and the screen another.
+    const g = oneLandShort("beta", 0); // seat 0 is the human's
+    const after = beginTurn(g, rng());
+    expect(after.phase).toBe("victory");
+    expect(after.log.at(-1)).toMatchObject({ type: "victory" });
+  });
+
+  it("and names a rival's unification the same way", () => {
+    const base = playingSix();
+    const rival = base.factionIds.find(
+      (f) => f !== "beta" && f !== "gamma" && hasRuler(base.rulers, f),
+    )!;
+    const seat = base.players.findIndex((p) => p.factionId === rival);
+    const g = { ...oneLandShort(rival, seat), current: seat };
+    const after = beginTurn(g, rng());
+    expect(after.phase).toBe("defeat");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "unified", overlordFactionId: rival,
+    });
+  });
+
+  it("leaves an ordinary turn's phase alone", () => {
+    const g = { ...playingSix(), current: 0 };
+    expect(beginTurn(g, rng()).phase).toBe("playing");
+  });
+});
+
 describe("the defense transfer", () => {
   /** The human's own capture leaves the question pending; an AI's does not.
    *

@@ -1210,9 +1210,16 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
         [p.factionId]: (state.wealth[p.factionId] ?? 0) + income,
       }
     : state.wealth;
+  // A land can change hands here - a claim answering, an army walking into a
+  // flattened land, a dormant land's raid - so the run can END here, and this
+  // is the one place `beginTurn` may set the phase. Last, after every store
+  // above it has settled, because it reads the board rather than the play.
+  const phase = endingFor(
+    { ...state, players, overlords }, p.id, events,
+  ) ?? state.phase;
   return {
-    ...state, players, overlords, wealth, marches, claims, defense, passives,
-    pendingTransfers,
+    ...state, phase, players, overlords, wealth, marches, claims, defense,
+    passives, pendingTransfers,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
@@ -1493,6 +1500,69 @@ export function takesNoTurn(state: GameState, factionId: string): boolean {
   if (factionId in state.incorporated) return true;
   if (hasRuler(state.rulers, factionId)) return false;
   return !isHumanFaction(state, factionId);
+}
+
+/** Whether this board ends the run, and how. Pushes the ending event onto
+ *  `events` and returns the phase, or null when the run goes on.
+ *
+ *  Shared, because a land changes hands in BOTH halves of a turn now: a claim
+ *  answering, an army walking into a flattened land and a dormant land's raid
+ *  all resolve in `beginTurn`, and a run won there sat unnoticed until
+ *  somebody's next play - the board saying one thing and the screen another
+ *  for a whole round.
+ *
+ *  Defeat before victory; the two cannot coincide. A rival unification last,
+ *  so a turn that wins for the human is never mistaken for one that loses to
+ *  somebody else. No rng: an ending is READ off the board, never rolled. */
+function endingFor(
+  board: Pick<
+    GameState, "factionIds" | "overlords" | "incorporated" | "players" |
+    "humanSeats" | "turn"
+  >,
+  playerId: number,
+  events: GameEvent[],
+): GamePhase | null {
+  const { overlords, incorporated } = board;
+  // `humanSeats[0]` and not every human seat: there is one `phase` field, so
+  // it can only speak for one person. That is the host's seat in a net game,
+  // and the second person's screen maps the phase for itself.
+  const seat = board.humanSeats[0];
+  const humanFaction = seat === undefined
+    ? null
+    : board.players[seat]?.factionId ?? null;
+  const winSize = victoryRealmSize(board.factionIds.length);
+  if (humanFaction !== null && incorporated[humanFaction] !== undefined) {
+    events.push({
+      turn: board.turn, playerId, type: "defeat",
+      targetFactionId: humanFaction,
+      overlordFactionId: incorporated[humanFaction],
+    });
+    return "defeat";
+  }
+  if (
+    humanFaction !== null &&
+    // Only a free faction wins: a vassal's realm is a strict subset of its
+    // root's, so victory belongs to roots.
+    !overlords.has(humanFaction) &&
+    fullRealmOf(humanFaction, overlords, incorporated).size >= winSize
+  ) {
+    events.push({ turn: board.turn, playerId, type: "victory" });
+    return "victory";
+  }
+  const unifier = board.factionIds.find(
+    (f) =>
+      f !== humanFaction &&
+      !(f in incorporated) &&
+      !overlords.has(f) &&
+      fullRealmOf(f, overlords, incorporated).size >= winSize,
+  );
+  if (unifier !== undefined) {
+    events.push({
+      turn: board.turn, playerId, type: "unified", overlordFactionId: unifier,
+    });
+    return "defeat";
+  }
+  return null;
 }
 
 export function playCard(
@@ -2048,49 +2118,9 @@ export function playCard(
   if (prevented) events[0] = { ...events[0], prevented: true };
   if (readings > 0 && !prevented) events[0] = { ...events[0], readings };
 
-  // endings
-  // Defeat is checked before victory; the two cannot coincide. A rival
-  // unification is checked last, so a play that wins for the human is never
-  // mistaken for one that loses to somebody else.
-  //
-  // `humanSeats[0]` and not every human seat: there is one `phase` field, so
-  // it can only speak for one person. That is the host's seat in a net game,
-  // and the second person's screen maps the phase for itself.
-  const seat = state.humanSeats[0];
-  const humanFaction = seat === undefined ? null : players[seat].factionId;
-  const winSize = victoryRealmSize(state.factionIds.length);
-  if (humanFaction !== null && incorporated[humanFaction] !== undefined) {
-    phase = "defeat";
-    events.push({
-      turn: state.turn, playerId: p.id, type: "defeat",
-      targetFactionId: humanFaction,
-      overlordFactionId: incorporated[humanFaction],
-    });
-  } else if (
-    humanFaction !== null &&
-    // Only a free faction wins: a vassal's realm is a strict subset of its
-    // root's, so victory belongs to roots.
-    !overlords.has(humanFaction) &&
-    fullRealmOf(humanFaction, overlords, incorporated).size >= winSize
-  ) {
-    phase = "victory";
-    events.push({ turn: state.turn, playerId: p.id, type: "victory" });
-  } else {
-    const unifier = state.factionIds.find(
-      (f) =>
-        f !== humanFaction &&
-        !(f in incorporated) &&
-        !overlords.has(f) &&
-        fullRealmOf(f, overlords, incorporated).size >= winSize,
-    );
-    if (unifier !== undefined) {
-      phase = "defeat";
-      events.push({
-        turn: state.turn, playerId: p.id, type: "unified",
-        overlordFactionId: unifier,
-      });
-    }
-  }
+  phase = endingFor(
+    { ...state, players, overlords, incorporated }, p.id, events,
+  ) ?? phase;
 
   return {
     ...state, phase, players, overlords, incorporated, guards, omens, miasma,
