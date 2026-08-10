@@ -97,6 +97,29 @@ describe("the spine, steps 1..5", () => {
     });
   });
 
+  it("2A: takes a land its raid overwhelms without flattening it first", () => {
+    // Two lands one point above the line, gamma holding delta. 2A ranks by the
+    // pyramid a conquest wins and takes gamma; the gate-hunting branches rank
+    // by nearest gate and would take beta on faction order. So the target
+    // names the branch, which is what a shared action shape cannot.
+    let g = base();
+    g = {
+      ...g,
+      overlords: new Map([["delta", "gamma"]]),
+      defense: { beta: SUBJUGATE_LINE + 1, gamma: SUBJUGATE_LINE + 1 },
+    };
+    // Strong raid deals 2 into 1 standing: both are conquests, so the bigger
+    // realm wins the pick.
+    expect(chooseAction(withHand(g, ["strong-raid"]))).toEqual({
+      type: "play", cardIndex: 0, targetId: "gamma", sourceId: "alpha",
+    });
+    // Raid deals exactly what is standing - a flattening, not a conquest - so
+    // 2A passes and the finisher takes the nearest gate instead.
+    expect(chooseAction(withHand(g, ["raid"]))).toMatchObject({
+      type: "play", cardIndex: 0, targetId: "beta",
+    });
+  });
+
   it("2: subjugates through an open gate when no army can walk in", () => {
     // The Subjugate machinery is withdrawn, not deleted: with no march card in
     // hand the branch is still what answers an open gate.

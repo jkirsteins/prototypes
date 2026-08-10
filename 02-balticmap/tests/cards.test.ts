@@ -9,7 +9,9 @@ import {
   upgradesInto,
   type CardDef, type CardRules,
 } from "../src/cards";
-import { ATTACK_DAMAGE, SINGLE_LAND_HEAL } from "../src/defense";
+import {
+  ATTACK_DAMAGE, COMBAT_RULES, capturesOnArrival, SINGLE_LAND_HEAL,
+} from "../src/defense";
 import { cardTextSegments, plainText, t, type NameLookup } from "../src/rich-text";
 import { seededRng } from "../src/rng";
 
@@ -689,6 +691,30 @@ describe("the wire's card fingerprint", () => {
     }))).not.toBe(base);
     expect(cardRulesHash(tweaked({ tributeCards: [] }))).not.toBe(base);
     expect(cardRulesHash(tweaked({ guards: {} }))).not.toBe(base);
+  });
+
+  it("moves when a gate or the rule an arrival takes a land by moves", () => {
+    // What a blow BUYS is as much a card's behaviour as what it carries: two
+    // deploys that disagree about it disagree about what every attack card
+    // does, down to the conquest the guest's own hover promised.
+    const base = cardRulesHash();
+    expect(cardRulesHash(tweaked({
+      combat: { ...COMBAT_RULES, capture: "reaches" },
+    }))).not.toBe(base);
+    expect(cardRulesHash(tweaked({
+      combat: { ...COMBAT_RULES, subjugationGate: 0.25 },
+    }))).not.toBe(base);
+  });
+
+  it("keeps the hashed capture rule and the predicate saying one thing", () => {
+    // `capture` is a NAME - the only thing a hash can hold of a predicate - so
+    // it is hand-kept, and this is what stops the two drifting apart. "excess"
+    // means strictly more than what stands: equal is a flattening, and a land
+    // holding nothing falls to anything that reaches it.
+    expect(COMBAT_RULES.capture).toBe("excess");
+    expect(capturesOnArrival(2, 1)).toBe(true);
+    expect(capturesOnArrival(1, 1)).toBe(false);
+    expect(capturesOnArrival(1, 0)).toBe(true);
   });
 
   it("moves when a card is added or removed", () => {
