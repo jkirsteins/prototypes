@@ -1,5 +1,4 @@
-import rawData from "./data/baltic.json";
-import type { MapData, Region } from "./types";
+import type { Region } from "./types";
 import { renderMap, darkenColor, brightenColor } from "./map-render";
 import {
   createTooltip, settlementTooltipText,
@@ -67,9 +66,11 @@ import {
   type Controller, type Decision, type DecisionResult, type Seats,
 } from "./decisions";
 import {
-  loadBuildPref, memoryStorage, saveBuildPref, type MetaStorage,
+  loadBuildPref, loadRegionPref, memoryStorage, REGION_PREF_KEY,
+  saveBuildPref, type MetaStorage,
 } from "./meta";
 import { applyBootParams, parseBootParams } from "./boot-params";
+import { REGIONS, setActiveRegion, type RegionId } from "./regions";
 import {
   forcesDiscardWhenStuck, RULES_PREFS_KEY, loadRulesPrefs,
   saveRulesPrefs, type RuleSelections,
@@ -81,7 +82,6 @@ import {
 import { defenseMaxOf as mapDefenseMax, factionAdjacencyOf, siteCapsOf, siteListsOf } from "./adjacency";
 import "./style.css";
 
-const data = rawData as MapData;
 const app = document.getElementById("app")!;
 
 // No browser context menu anywhere, and no text selection anywhere. Right
@@ -93,6 +93,86 @@ const app = document.getElementById("app")!;
 // itself.
 document.addEventListener("contextmenu", (e) => e.preventDefault());
 document.addEventListener("selectstart", (e) => e.preventDefault());
+
+/** Null unless the URL names a boot param, in which case every branch below
+ *  reading it takes the testing path. See src/boot-params.ts. */
+const boot = parseBootParams(window.location.search);
+
+/** The host id an invite link carries, or null. Read here beside `boot`
+ *  because the two are mutually exclusive: a join link must not also boot a
+ *  rigged state, or the guest's staging screens would disagree with the
+ *  snapshot the host is about to send. */
+const joinId = new URLSearchParams(window.location.search).get("join");
+
+const rng = boot?.seed != null ? seededRng(boot.seed) : Math.random;
+const storage: MetaStorage = ((): MetaStorage => {
+  // A booted run is sealed off from the player's real preferences in both
+  // directions: it must not overwrite them, and it must not inherit them, or
+  // the same URL would boot differently on a different machine. The probe
+  // below is skipped rather than run-and-discarded because the probe itself
+  // writes.
+  if (boot !== null) {
+    const mem = memoryStorage();
+    if (boot.popups !== null) {
+      mem.setItem(LOG_PREFS_KEY, JSON.stringify({ showPopups: boot.popups }));
+    }
+    if (boot.rules !== null) {
+      mem.setItem(RULES_PREFS_KEY, JSON.stringify(boot.rules));
+    }
+    if (boot.build !== null) {
+      mem.setItem("balticmap-build-pref-v1", boot.build);
+    }
+    if (boot.region !== null) {
+      mem.setItem(REGION_PREF_KEY, boot.region);
+    }
+    return mem;
+  }
+  try {
+    const probe = "balticmap-meta-probe";
+    window.localStorage.setItem(probe, "1");
+    window.localStorage.removeItem(probe);
+    return window.localStorage;
+  } catch {
+    return memoryStorage();
+  }
+})();
+/** Where the net panel keeps the player's display name - session storage,
+ *  deliberately NOT the profile storage above.
+ *
+ *  A name is who is at THIS screen, not progress: it belongs beside the seat,
+ *  not beside the XP and the unlocked cards. And localStorage is shared by
+ *  every tab on the origin, so two tabs of one browser - how this is tested,
+ *  and how two people at one machine would play - each read back the name the
+ *  other typed. That is not a hypothetical: it made both seats of a live
+ *  two-tab run read "Bela".
+ *
+ *  Session storage rather than nothing at all, because it survives a reload of
+ *  the same tab: a guest that refreshes mid-game rejoins under the name the
+ *  host has been labelling that seat with all along, instead of silently
+ *  becoming somebody else in the log and the scoreboard.
+ *
+ *  A booted page gets memory storage, like everything else it touches. */
+const netStorage: MetaStorage = ((): MetaStorage => {
+  if (boot !== null) return memoryStorage();
+  try {
+    const probe = "balticmap-net-probe";
+    window.sessionStorage.setItem(probe, "1");
+    window.sessionStorage.removeItem(probe);
+    return window.sessionStorage;
+  } catch {
+    return memoryStorage();
+  }
+})();
+
+/** Resolved before the map renders: which region's data every reader below -
+ *  `renderMap`, the faction/region lookups, `newGame` - is built from.
+ *  Named `regionDef` rather than `region`: this file already spells `region`
+ *  for a map POLYGON (the `Region` type) at every hover and click site, and
+ *  the two must not collide. */
+const regionId: RegionId = loadRegionPref(storage);
+setActiveRegion(regionId);
+const regionDef = REGIONS[regionId];
+const data = regionDef.map;
 
 const {
   svg, regionPaths, revealSettlement, clearFoundedSettlements,
@@ -192,72 +272,6 @@ const factionEthnicities: Record<string, string> = Object.fromEntries(
   data.factions.map((f) => [f.id, f.ethnicity]),
 );
 
-/** Null unless the URL names a boot param, in which case every branch below
- *  reading it takes the testing path. See src/boot-params.ts. */
-const boot = parseBootParams(window.location.search);
-
-/** The host id an invite link carries, or null. Read here beside `boot`
- *  because the two are mutually exclusive: a join link must not also boot a
- *  rigged state, or the guest's staging screens would disagree with the
- *  snapshot the host is about to send. */
-const joinId = new URLSearchParams(window.location.search).get("join");
-
-const rng = boot?.seed != null ? seededRng(boot.seed) : Math.random;
-const storage: MetaStorage = ((): MetaStorage => {
-  // A booted run is sealed off from the player's real preferences in both
-  // directions: it must not overwrite them, and it must not inherit them, or
-  // the same URL would boot differently on a different machine. The probe
-  // below is skipped rather than run-and-discarded because the probe itself
-  // writes.
-  if (boot !== null) {
-    const mem = memoryStorage();
-    if (boot.popups !== null) {
-      mem.setItem(LOG_PREFS_KEY, JSON.stringify({ showPopups: boot.popups }));
-    }
-    if (boot.rules !== null) {
-      mem.setItem(RULES_PREFS_KEY, JSON.stringify(boot.rules));
-    }
-    if (boot.build !== null) {
-      mem.setItem("balticmap-build-pref-v1", boot.build);
-    }
-    return mem;
-  }
-  try {
-    const probe = "balticmap-meta-probe";
-    window.localStorage.setItem(probe, "1");
-    window.localStorage.removeItem(probe);
-    return window.localStorage;
-  } catch {
-    return memoryStorage();
-  }
-})();
-/** Where the net panel keeps the player's display name - session storage,
- *  deliberately NOT the profile storage above.
- *
- *  A name is who is at THIS screen, not progress: it belongs beside the seat,
- *  not beside the XP and the unlocked cards. And localStorage is shared by
- *  every tab on the origin, so two tabs of one browser - how this is tested,
- *  and how two people at one machine would play - each read back the name the
- *  other typed. That is not a hypothetical: it made both seats of a live
- *  two-tab run read "Bela".
- *
- *  Session storage rather than nothing at all, because it survives a reload of
- *  the same tab: a guest that refreshes mid-game rejoins under the name the
- *  host has been labelling that seat with all along, instead of silently
- *  becoming somebody else in the log and the scoreboard.
- *
- *  A booted page gets memory storage, like everything else it touches. */
-const netStorage: MetaStorage = ((): MetaStorage => {
-  if (boot !== null) return memoryStorage();
-  try {
-    const probe = "balticmap-net-probe";
-    window.sessionStorage.setItem(probe, "1");
-    window.sessionStorage.removeItem(probe);
-    return window.sessionStorage;
-  } catch {
-    return memoryStorage();
-  }
-})();
 /** The build the last game confirmed, seeding the build screen. A
  *  preference, like the rules - the meta progression retired with the
  *  defense-score design. */

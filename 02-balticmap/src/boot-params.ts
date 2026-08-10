@@ -1,4 +1,5 @@
 import { CARDS, type Rng, type Strategy } from "./cards";
+import { REGIONS, type RegionId } from "./regions";
 import {
   advance, chooseBuild, chooseRules, isHumanTurn, pickFaction, startGame,
   TURNIP_HARVEST_THRESHOLD, viewOf,
@@ -63,6 +64,12 @@ export interface BootParams {
    *  axes and options are dropped by `mergeRules`, so a URL from before an
    *  axis existed - or after one is removed - still boots. */
   rules: RuleSelections | null;
+  /** `region=iberia` - which map the booted page plays on; seeds the booted
+   *  page's region preference the way `rules=` seeds the rules. An unknown
+   *  value drops to null rather than a default, since main.ts must tell "no
+   *  region named" apart from "the player's own preference" to know whether
+   *  to seed the boot storage at all. */
+  region: RegionId | null;
 }
 
 /** Rounds a `turns=` fast-forward will run. Above the 150-turn cap the baseline
@@ -178,7 +185,7 @@ function parseRules(raw: string): RuleSelections {
 const BOOT_KEYS = [
   "seed", "build", "screen", "faction", "hand", "turns", "defense", "disease",
   "leadership", "armies", "settlements", "march", "turnips", "wealth",
-  "popups", "rules",
+  "popups", "rules", "region",
 ];
 
 /** Null when the URL names no boot param at all, which is the ordinary case:
@@ -200,6 +207,7 @@ export function parseBootParams(search: string): BootParams | null {
   const turnips = intOr(q.get("turnips"), null);
   const wealth = intOr(q.get("wealth"), null);
   const build = q.get("build");
+  const region = q.get("region");
   return {
     seed: intOr(q.get("seed"), null),
     // Normalised here rather than compared downstream, so an unrecognised
@@ -225,6 +233,7 @@ export function parseBootParams(search: string): BootParams | null {
     popups:
       popups === null ? null : !["off", "false", "0"].includes(popups.trim()),
     rules: rules === null ? null : parseRules(rules),
+    region: region !== null && region in REGIONS ? (region as RegionId) : null,
   };
 }
 

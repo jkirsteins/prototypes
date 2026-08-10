@@ -93,6 +93,7 @@ describe("parseBootParams", () => {
       seed: 7, build: null, screen: null, faction: null, hand: null, turns: 0,
       defense: {}, disease: {}, leadership: {}, armies: {}, settlements: {},
       marches: [], turnips: null, wealth: null, popups: null, rules: null,
+      region: null,
     });
   });
 
@@ -204,6 +205,14 @@ describe("parseBootParams", () => {
     expect(params("?popups=false").popups).toBe(false);
     expect(params("?popups=0").popups).toBe(false);
     expect(params("?popups=on").popups).toBe(true);
+  });
+
+  it("parses region=, dropping unknown values", () => {
+    expect(parseBootParams("?region=baltic")?.region).toBe("baltic");
+    expect(parseBootParams("?region=atlantis")?.region).toBeNull();
+    // region alone is a boot param: the page must seal itself off from the
+    // player's storage exactly as seed= does.
+    expect(parseBootParams("?region=baltic")).not.toBeNull();
   });
 
   it("a URL naming only join is not a boot param - the player's page stays untouched", () => {
