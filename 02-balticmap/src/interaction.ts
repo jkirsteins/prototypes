@@ -26,21 +26,35 @@ export interface InteractionHandle {
    *  in the active map's own coordinate space (`data.width`/`data.height`)
    *  while the pointer moves. */
   toMapPoint(clientX: number, clientY: number): { x: number; y: number };
-  /** Glides the view until `pt` (map units) sits at its center, clamped the
-   *  way every pan is, and reports through `onDone` exactly once. Pan only -
-   *  the zoom is the player's and a replay must not take it from them.
+  /** Brings `pt` (map units) on screen, clamped the way every pan is, and
+   *  reports through `onDone` exactly once. Pan only - the zoom is the
+   *  player's and a replay must not take it from them.
+   *
+   *  **A point already comfortably on screen does not move the camera at
+   *  all.** The default view is the whole canvas plus a ring (`viewBoundsOf`),
+   *  so at that zoom every land is visible and centering each one in turn
+   *  would be drift with nothing to show for it - and the pan clamp would
+   *  refuse most of it anyway, which made "does it move?" a question about
+   *  the bounds rather than about the point. Zoomed in, where a land really
+   *  can be off screen, it glides.
    *
    *  The player keeps the camera: any pointer or wheel input cancels the
    *  glide where it stands (still reporting done, so a queue step waiting on
-   *  it releases). A target already under the center, or an environment with
-   *  no frame clock (happy-dom), jumps and reports - a caller cannot tell
-   *  which path ran, the `runAnimation` contract. */
+   *  it releases). An environment with no frame clock (happy-dom) jumps and
+   *  reports - a caller cannot tell which path ran, the `runAnimation`
+   *  contract. */
   focusOn(pt: { x: number; y: number }, onDone: () => void): void;
 }
 
 /** How long a camera glide takes. One number, owned by the rAF loop that
  *  reports itself done - never copied into a second timer. */
 const FOCUS_MS = 450;
+
+/** How far inside the view's own edge a point counts as comfortably on
+ *  screen, as a share of the view. A land just inside the frame is one the
+ *  player's eye has to hunt along the border for, so the margin is generous:
+ *  the camera stays put for the middle two thirds and moves for the rest. */
+const FOCUS_MARGIN = 1 / 6;
 
 /** The land at a screen point, looking THROUGH everything drawn on top of the
  *  map: the arrows, their strength labels, the badges, the settlement dots.
@@ -281,6 +295,18 @@ export function attachInteraction(
     focusOn(pt, onDone) {
       cancelFocus();
       const from = { ...view };
+      // Already well inside the frame: nothing to bring on screen, so the
+      // camera holds still. This is the whole-map view's answer, and it is
+      // the point rather than the clamp that decides it.
+      const insetX = view.w * FOCUS_MARGIN;
+      const insetY = view.h * FOCUS_MARGIN;
+      if (
+        pt.x >= view.x + insetX && pt.x <= view.x + view.w - insetX &&
+        pt.y >= view.y + insetY && pt.y <= view.y + view.h - insetY
+      ) {
+        onDone();
+        return;
+      }
       const target = clampView(
         { x: pt.x - view.w / 2, y: pt.y - view.h / 2, w: view.w, h: view.h },
         bounds,

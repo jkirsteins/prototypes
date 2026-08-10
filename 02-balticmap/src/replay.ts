@@ -19,7 +19,7 @@
  *  are about to walk into growing a defense back must be seen, while the same
  *  regrowth across the map is the log's business. */
 
-import type { GameEvent, GameEventType } from "./game";
+import { metNothing, type GameEvent, type GameEventType } from "./game";
 import type { NoticeCtx } from "./notices";
 import { isNoticeWorthy } from "./notices";
 import { card, faction, passive, t, type Segment } from "./rich-text";
@@ -217,13 +217,23 @@ export const REPLAY_RULES: Record<GameEventType, ReplayRule> = {
     kind: "shown",
     // The old concurrent flash's gate, kept: either end in the realm. Your
     // own marches land at YOUR turn start, so playerId means nothing here.
+    //
+    // `metNothing` is left out for the reason NOTICE_RULES leaves it out of
+    // the modal: an arrival that found nothing to fight is answered by the
+    // `subjugated` it caused, which names the same card and says what became
+    // of the land. Two steps would be one arrival shown twice - and the
+    // camera would visit the same polygon twice in a row to do it.
     applies: (e, view) =>
-      (e.targetFactionId !== undefined && view.realm.has(e.targetFactionId)) ||
-      (e.sourceFactionId !== undefined && view.realm.has(e.sourceFactionId)),
+      !metNothing(e) &&
+      ((e.targetFactionId !== undefined && view.realm.has(e.targetFactionId)) ||
+        (e.sourceFactionId !== undefined && view.realm.has(e.sourceFactionId))),
     polygon: (e) => e.targetFactionId,
     label: (e) => {
       const name = e.cardId === undefined ? [t("The army")] : [card(e.cardId)];
-      // A standoff carries no `amount`: both sides spent, nothing landed.
+      // A standoff is the one landing with a `clash` and no `amount`: both
+      // sides spent and nothing got through. Asked as "no amount" alone this
+      // also caught the arrival that met nothing, and called an army walking
+      // into an empty land a raid that had been answered.
       return e.amount === undefined
         ? [...name, t(" was answered in the field")]
         : [...name, t(" lands here")];

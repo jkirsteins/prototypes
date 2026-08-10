@@ -77,6 +77,35 @@ describe("buildReplaySteps", () => {
     expect(out).toHaveLength(0);
   });
 
+  it("leaves an arrival that met nothing to the subjugation it caused", () => {
+    // `metNothing`: no amount and no clash. The subjugated step names the same
+    // card and says what became of the land, so replaying both would visit one
+    // polygon twice for one arrival - the modal draws the same line.
+    const fresh: GameEvent[] = [
+      march({ amount: undefined, clash: undefined }),
+      {
+        turn: 4, playerId: 1, type: "subjugated", targetFactionId: "beta",
+        overlordFactionId: "alpha", via: "conquest", cardId: "raid",
+        consequence: true,
+      },
+    ];
+    const steps = buildReplaySteps(fresh, view({ localPlayerId: 2 }));
+    expect(steps.map((s) => s.event.type)).toEqual(["subjugated"]);
+  });
+
+  it("still calls a standoff answered in the field", () => {
+    // A standoff keeps its clash - that is what separates it from an arrival
+    // that met nothing, and the two must not read alike.
+    const steps = buildReplaySteps(
+      [march({ amount: undefined, clash: { incoming: 2, counter: 2 } })],
+      view(),
+    );
+    expect(steps).toHaveLength(1);
+    expect(steps[0].label).toContainEqual({
+      kind: "text", text: " was answered in the field",
+    });
+  });
+
   it("gives the wild-lands regrowth its passive cause, its rustle and its land", () => {
     const fresh: GameEvent[] = [
       {

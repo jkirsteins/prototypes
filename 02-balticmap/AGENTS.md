@@ -629,6 +629,14 @@ inside the realm-plus-`attackReach` interest set - the wild-lands regrowth
 next door replays, the one across the map stays a log line. An event that got
 a step is skipped by the score floats: one motion per fact.
 
+An arrival that `metNothing` is passed over here for the reason
+`NOTICE_RULES` passes it over: the `subjugated` it caused names the same card
+and says what became of the land, so replaying both would send the camera to
+one polygon twice for one arrival. Which is also why a standoff is asked as
+"a `clash` and no `amount`" rather than "no `amount`" - the two shapes differ
+only in the `clash`, and conflating them called an army that walked into an
+empty land a raid that had been answered.
+
 The 2026-08-10 resolution-replay doc in docs/superpowers has the full
 reasoning, including why the old concurrent clash flash became sequential.
 
