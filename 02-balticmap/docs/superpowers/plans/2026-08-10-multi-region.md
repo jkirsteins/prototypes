@@ -528,7 +528,7 @@ Madrid-as-city - Mayrit the fort is acceptable), notes >20 chars valid for
 same as the Baltic bake.
 
 **Labels:** people labels (kind `people`, uppercase people names), the three
-major-river labels, `FRANKIA` and `MAGHREB` as `neighbor` labels. All label
+major-river labels, `FRANCIA` and `MAGHREB` as `neighbor` labels. All label
 coordinates inside the 1400x1150 canvas.
 
 **Ruler pools** (`src/data/ruler-names-iberia.json`, keyed by people id,

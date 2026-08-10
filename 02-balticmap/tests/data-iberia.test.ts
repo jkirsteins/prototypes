@@ -224,7 +224,7 @@ describe("iberia.json (anno 895)", () => {
       "CATALANS", "GALICIANS", "MUWALLADS",
     ]);
     expect(byKind("people-minor")).toEqual([]);
-    expect(byKind("neighbor").sort()).toEqual(["FRANKIA", "MAGHREB"]);
+    expect(byKind("neighbor").sort()).toEqual(["FRANCIA", "MAGHREB"]);
     for (const l of data.labels) {
       expect(l.x).toBeGreaterThan(0);
       expect(l.x).toBeLessThan(1400);

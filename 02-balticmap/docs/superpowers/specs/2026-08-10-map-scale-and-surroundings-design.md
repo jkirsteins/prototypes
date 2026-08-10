@@ -111,9 +111,9 @@ Authored per region, in the bake beside the existing labels:
 - **Baltic**: `FINNIC PEOPLES` across the north, `THE BALTS` across the
   south; `SCANDINAVIA`, `RUS'`, `POLAND` in the surrounding ground.
 - **Iberia**: `AL-ANDALUS` across the south, `THE CHRISTIAN NORTH` across the
-  top; `FRANKIA`, `THE MAGHREB` outside.
+  top; `FRANCIA`, `THE MAGHREB` outside.
 
-The existing `neighbor` labels (Lands of Rus', Mazovians, FRANKIA, MAGHREB)
+The existing `neighbor` labels (Lands of Rus', Mazovians, FRANCIA, MAGHREB)
 keep their present size and mid-zoom role.
 
 **A `group` label may sit outside the canvas**, which nothing does today:

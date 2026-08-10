@@ -535,7 +535,7 @@ git commit -m "feat(balticmap): the baltic map gets the sea and the neighbours i
 - [ ] **Step 1: Write the failing tests**
 
 Mirror Task 3 in `tests/data-iberia.test.ts`: `margin` 2000; group labels
-containing `THE CHRISTIAN NORTH`, `AL-ANDALUS`, `FRANKIA`, `THE MAGHREB`;
+containing `THE CHRISTIAN NORTH`, `AL-ANDALUS`, `FRANCIA`, `THE MAGHREB`;
 neighbours containing at least `FR`, `MA`, `DZ`; and the same
 settlements-in-canvas / labels-in-painted-rect split - the existing bounds
 assertions are at `tests/data-iberia.test.ts:228-232` (labels, which widen)
@@ -555,9 +555,9 @@ Read `scripts/prepare-iberia.mjs` whole first. Then:
    enters the box - the "contributes no path" guard is the arbiter, and the
    bake must not list a code that draws nothing. Corsica arrives with `FR`.
 3. Add the four `group` labels, kind `"group"`. Starting positions: THE
-   CHRISTIAN NORTH lon -4.0 lat 43.4; AL-ANDALUS lon -4.5 lat 37.4; FRANKIA
+   CHRISTIAN NORTH lon -4.0 lat 43.4; AL-ANDALUS lon -4.5 lat 37.4; FRANCIA
    lon 2.5 lat 45.5; THE MAGHREB lon -4.0 lat 32.8. The existing 22px
-   `neighbor` FRANKIA and MAGHREB stay where they are.
+   `neighbor` FRANCIA and MAGHREB stay where they are.
 4. `npm run prepare-iberia`; read the printed stats.
 
 **Size budget: `src/data/iberia.json` under 2.5 MB** (464 KB today), same rule

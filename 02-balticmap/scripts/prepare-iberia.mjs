@@ -520,7 +520,7 @@ const LABELS = [
   { text: "MUWALLADS", lon: -3.5, lat: 39.5, kind: "people" },
   { text: "ARABS", lon: -4.7, lat: 37.3, kind: "people" },
   { text: "BERBERS", lon: -6.1, lat: 39.6, kind: "people" },
-  { text: "FRANKIA", lon: 0.8, lat: 43.55, kind: "neighbor" },
+  { text: "FRANCIA", lon: 0.8, lat: 43.55, kind: "neighbor" },
   { text: "MAGHREB", lon: -5.2, lat: 35.55, kind: "neighbor" },
   { text: "Douro", lon: -4.95, lat: 41.52, kind: "river" },
   { text: "Ebro", lon: -1.35, lat: 41.82, kind: "river" },
