@@ -1323,22 +1323,14 @@ export function createHud(
         "The harvest is spent and the deck is left exactly as it is.",
         hooks.onSkip,
       );
-      harvestOptions.replaceChildren(
-        growth, build, random, destroy, skip, harvestCancelBtn(),
-      );
+      // No Cancel among the options: `harvestCancel` sits in the box below
+      // them and is on screen at both steps, so appending one here drew the
+      // word twice, one above the other.
+      harvestOptions.replaceChildren(growth, build, random, destroy, skip);
     }
 
     showChoices();
     harvestOverlay.classList.remove("hidden");
-  }
-
-  /** The one control that backs out of the whole play. */
-  function harvestCancelBtn(): HTMLElement {
-    const cancel = document.createElement("button");
-    cancel.className = "harvest-cancel";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => harvestOnCancel?.());
-    return cancel;
   }
 
   function showRoundSummary(summary: RoundSummary): void {

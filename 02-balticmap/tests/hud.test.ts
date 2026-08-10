@@ -2500,6 +2500,35 @@ describe("the turnip bar chip and the harvest offer", () => {
     expect(onBuild).toHaveBeenCalledWith("hillfort");
   });
 
+  it("draws ONE way out, at both steps", () => {
+    // The offer shipped with two Cancels stacked one above the other: the box
+    // holds one permanently and the option list appended a second. The
+    // options count above did not see it - the cancel is not a
+    // `.harvest-option` - so this counts the word instead.
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onCancel = vi.fn();
+    hud.showHarvestOffer(
+      { buildCards: free("hillfort"), heldCards: ["raid"] },
+      harvestHooks({ onCancel }),
+    );
+    const cancels = () => [...container.querySelectorAll(".harvest-overlay button")]
+      .filter((b) => b.textContent?.trim() === "Cancel");
+    expect(cancels()).toHaveLength(1);
+
+    // And still exactly one a step in, where "Back" returns to the choices
+    // and Cancel drops the whole play.
+    const build = [...container.querySelectorAll(".harvest-option")]
+      .find((el) => el.textContent?.includes("A card from your build"))!;
+    (build as HTMLButtonElement).click();
+    expect(cancels()).toHaveLength(1);
+    expect([...container.querySelectorAll(".harvest-option")]
+      .filter((b) => b.textContent?.trim() === "Back")).toHaveLength(1);
+
+    (cancels()[0] as HTMLButtonElement).click();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
   it("prices a row it can pay for, and leaves it clickable", () => {
     const { container, hud } = setup();
     hud.update(playing());
