@@ -238,7 +238,25 @@ function availableImpacts(
     const { damage, multiplier } = attackImpactOn(
       view, actorFactionId, cardId, targetFactionId,
     );
-    return [defenseMove(view, targetFactionId, -damage, multiplier)];
+    // A land with nothing left to fight is taken by the army that arrives, not
+    // damaged - so `defenseMove` alone renders `Defense (0 -> 0)` over the one
+    // play on the board that changes who holds a land. The AI has ranked this
+    // as a first-class move all along; only the player was not told.
+    //
+    // Conditional wording, and not hedging. The damage an arrow carries is
+    // frozen at declaration, but the defense it lands against is read a turn
+    // later, so a fortify in between is a real escape and this row must not
+    // promise past it.
+    //
+    // Asked of `ATTACK_CARDS`, the class - every one of them sends an army,
+    // Great raid through its own fan - so a new attack card is covered by
+    // joining the set rather than by finding this line.
+    return [
+      defenseMove(view, targetFactionId, -damage, multiplier),
+      ...(defenseOf(view, targetFactionId) === 0
+        ? [prose("Takes the land, if it is still undefended when this lands")]
+        : []),
+    ];
   }
   if (isSingleLandHeal(cardId)) {
     const multiplier = omensMultiplier(view, actorFactionId, cardId);

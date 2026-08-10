@@ -42,6 +42,14 @@ for (const c of Object.values(CARDS)) {
     ...base, playerId: 2, type: "play",
     ...(c.targeted ? { targetFactionId: H } : {}),
   });
+  // The tail of an arrow. Only a march play carries one, but the sample is
+  // built for every card so the rule is checked on the FIELD rather than on
+  // the two ids that happen to set it today - a new card that sends an army
+  // is covered without touching this file.
+  playEvents.push({
+    ...base, playerId: 2, type: "play", sourceFactionId: RIVAL,
+    ...(c.targeted ? { targetFactionId: H } : {}),
+  });
   if (c.id === "assassinate-ruler") {
     playEvents.push({
       ...base, playerId: 2, type: "play", targetFactionId: H,

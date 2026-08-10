@@ -360,6 +360,33 @@ describe("targetImpactLines", () => {
       .toBe("-1 Defense (0 -> 0)");
   });
 
+  it("says a flattened land is taken, not that the raid does nothing", () => {
+    // `Defense (0 -> 0)` on its own describes the one play that changes who
+    // holds a land as a no-op. The row that follows it is the whole of the
+    // difference, and it is conditional because the arrow lands a turn later
+    // against a defense that may have been fortified in between.
+    const view = v({ defense: { beta: 0 } });
+    expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))).toEqual([
+      "If Raid played here:",
+      "-1 Defense (0 -> 0)",
+      "-- Takes the land, if it is still undefended when this lands",
+    ]);
+    // The class, not the two ids: Great raid sends armies through its own fan
+    // and takes a land exactly as the other two do.
+    expect(shown(targetImpactLines(view, "alpha", "great-raid", "beta")))
+      .toContain("-- Takes the land, if it is still undefended when this lands");
+  });
+
+  it("keeps the capture row off a land that still has defenders", () => {
+    expect(shown(targetImpactLines(v(), "alpha", "raid", "beta")))
+      .toEqual(["If Raid played here:", "-1 Defense (60 -> 59)"]);
+    // One point left is not none - the raid takes it to 0 and the land stays
+    // its own. Nothing walks in until the NEXT army arrives.
+    const nearly = v({ defense: { beta: 1 } });
+    expect(shown(targetImpactLines(nearly, "alpha", "raid", "beta")))
+      .toEqual(["If Raid played here:", "-1 Defense (1 -> 0)"]);
+  });
+
   it("adds the ruler's leadership into the quoted damage", () => {
     // Leadership counts on a raid only where the ruler is a war leader.
     const view = v({

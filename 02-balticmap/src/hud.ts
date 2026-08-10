@@ -334,6 +334,8 @@ export function eventSegments(
   const actor = actorOf(e, state, localPlayerId);
   const humanFactionId =
     state.players.find((pl) => pl.id === localPlayerId)?.factionId;
+  const actorFactionId =
+    state.players.find((pl) => pl.id === e.playerId)?.factionId;
   switch (e.type) {
     case "draw":
       // Content differs, not agreement: you see WHICH card you drew and they
@@ -367,8 +369,26 @@ export function eventSegments(
       // else, but the human already knows which faction they are.
       const targetedYou = !you && e.targetFactionId !== undefined
         && e.targetFactionId === humanFactionId;
+      // "out of X", the same words the landing says a turn later, so a
+      // declaration and the `march-resolved` it becomes read as one arrow
+      // rather than two unrelated lines about the same land. Only a march
+      // carries a source, so its presence IS the question and no card is
+      // named here.
+      //
+      // Unless it would print the sentence's own subject twice. A third-person
+      // line opens with the faction's name, so an army out of that faction's
+      // home reads "Semigallians played Raid out of Semigallians" - and a
+      // restless raid is ALWAYS out of the land that declared it, so every one
+      // of them read that way. Your own line opens with "You", a different
+      // word, so it keeps the tail and always says which land the army left.
+      const source = !you && e.sourceFactionId === actorFactionId
+        ? undefined
+        : e.sourceFactionId;
       return clause(actor, "play", [
         t(" "), card(e.cardId ?? ""),
+        ...(source !== undefined
+          ? [t(" out of "), faction(source)]
+          : []),
         ...(targetedYou
           ? [t(" on you")]
           : e.targetFactionId !== undefined

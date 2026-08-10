@@ -529,11 +529,18 @@ describe("activity log", () => {
     hud.update(g);
     // The declaration moves no score, so it carries no suffix: an arrow is a
     // promise about next turn, and the log does not quote it as a number.
+    //
+    // It names both ends, in the same words the landing will use a turn later.
+    // Which land the army left from is the player's own decision in the
+    // two-step aim, and the log is the only place it can be read back - so a
+    // declaration that named the target alone left nothing to pair the
+    // landing with.
     expect([...container.querySelectorAll(".log-entry")].map((el) => el.textContent))
-      .toContain("You played Raid on Alpha");
+      .toContain("You played Raid out of Beta on Alpha");
     expect(g.defense.alpha).toBeUndefined();
 
-    // A turn on, the march lands and the number arrives with it.
+    // A turn on, the march lands and the number arrives with it - "out of
+    // Beta" both times, which is the thread from one line to the other.
     g = beginTurn({ ...g, turn: g.turn + 1 }, seededRng(1));
     hud.update(g);
     const entries = [...container.querySelectorAll(".log-entry")] as HTMLElement[];
@@ -547,6 +554,33 @@ describe("activity log", () => {
     // The number the log quotes is the number on the map, not a second
     // reckoning of its own.
     expect(g.defense.alpha).toBe(59);
+  });
+
+  it("keeps a rival's source off the line when it repeats their own name", () => {
+    const { container, hud } = setup();
+    const g = playing();
+    hud.update({
+      ...g,
+      log: [...g.log, {
+        // Out of their own home: the sentence already opens with "Alpha", and
+        // a restless raid is always out of the land that declared it - so
+        // every one of those lines said the name twice.
+        turn: 1, playerId: 2, type: "play", cardId: "raid",
+        sourceFactionId: "alpha", targetFactionId: "gamma",
+      }, {
+        // Out of a land that is not the subject: now the tail is the only
+        // place the arrow's other end is named, so it stays.
+        turn: 1, playerId: 2, type: "play", cardId: "raid",
+        sourceFactionId: "gamma", targetFactionId: "beta",
+      }],
+    });
+    const texts = [...container.querySelectorAll(".log-entry")]
+      .map((el) => el.textContent);
+    expect(texts).toContain("Alpha played Raid on Gamma");
+    expect(texts).not.toContain("Alpha played Raid out of Alpha on Gamma");
+    // "on you" and the tail are independent: the target collapses to the
+    // second person, the source is still a land that needs naming.
+    expect(texts).toContain("Alpha played Raid out of Gamma on you");
   });
 
   it("indents a land submitting under the arrow that took it", () => {
@@ -754,7 +788,7 @@ describe("activity log filters", () => {
     g = playCard(g, 0, seededRng(1), "alpha");
     hud.update(g);
     const mine = [...container.querySelectorAll(".activity-log .log-entry")].find(
-      (el) => el.textContent?.startsWith("You played Raid on Alpha"),
+      (el) => el.textContent?.startsWith("You played Raid out of Beta on Alpha"),
     )!;
     // Nothing you play is ever notice-worthy: .log-mine is the only thing
     // keeping this on screen under the filter.
