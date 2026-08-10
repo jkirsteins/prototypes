@@ -68,11 +68,11 @@ describe("cards", () => {
     );
     expectProps(
       "strong-fortify", "Strong fortify", true, false, null, true, false,
-      "Restore 2 defense to one of your lands.",
+      "Restore 3 defense to one of your lands.",
     );
     expectProps(
       "fortify", "Fortify", true, false, null, true, false,
-      "Restore 1 defense to one of your lands.",
+      "Restore 2 defense to one of your lands.",
     );
     // Build B - Pestilence.
     expectProps(

@@ -459,8 +459,10 @@ describe("targetImpactLines", () => {
     // about what it would do.
     const view = v({ defense: { alpha: 40 } });
     for (const [cardId, line] of [
-      ["fortify", "+1 Defense (40 -> 41)"],
-      ["strong-fortify", "+2 Defense (40 -> 42)"],
+      ["fortify", "+2 Defense (40 -> 42)"],
+      // Strong fortify reaches Hillfort's number. The two are still different
+      // cards: this one spends a settlement of the land and may repeat.
+      ["strong-fortify", "+3 Defense (40 -> 43)"],
       ["hillfort", "+3 Defense (40 -> 43)"],
     ] as const) {
       expect(shown(targetImpactLines(view, "alpha", cardId, "alpha"))[1], cardId)

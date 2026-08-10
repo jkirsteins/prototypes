@@ -46,8 +46,8 @@ const LINE_ADJ = {
 };
 
 /** A roomy polygon for the fixtures, well above the shipped map's 2..18.
- *  The rules are scale-free and the heals are not: at a shipped max of 6 a
- *  Hillfort (15) fills anything and a Fortify (4) all but does, so every
+ *  The rules are scale-free and the heals are not: on a small shipped polygon
+ *  a Hillfort fills half of it and a Fortify a third, so every
  *  test about "how much did this move" would be a test about the cap. A 60
  *  polygon leaves both gates and both heals distinguishable, the same reason
  *  tests/playability.test.ts works at 600. */

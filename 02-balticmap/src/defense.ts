@@ -88,10 +88,16 @@ export const HARVEST_FEAST_HEAL = 1;
  *  of the plays in the game did nothing at all. A flat heal on a chosen land
  *  is what the card was always pretending to be.
  *
- *  Below `HILLFORT_HEAL` on purpose. Fortify is what every deck STARTS with,
- *  four copies of it; Hillfort is the same shape, three times as strong, and
- *  has to be harvested. */
-export const FORTIFY_HEAL = 1;
+ *  Two, because an arriving army takes a land it OVERWHELMS and not one it
+ *  merely flattens (`capturesOnArrival`): the point a heal puts back is the
+ *  point between holding and changing hands, and a one-point heal could not
+ *  answer the Strong raid every deck can build.
+ *
+ *  It reaches `HILLFORT_HEAL` in its strong form, and that is not a card made
+ *  redundant. What separates them is the cost, not the number: a fortify
+ *  spends one of the land's settlements and may repeat, while Hillfort spends
+ *  nothing, repeats nothing, and has to be harvested. */
+export const FORTIFY_HEAL = 2;
 
 /** What the "strong" version of a starting card adds. Flat, and one: on a
  *  board of 2..18 a single point is a quarter of a small land's ceiling, and
