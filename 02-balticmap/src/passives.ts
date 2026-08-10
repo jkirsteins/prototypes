@@ -88,11 +88,11 @@ export const HILL_COUNTRY_REDUCTION = 0.25;
 
 /** Defense per army on a land that carries `burden-of-bureaucracy`.
  *
- *  The three biggest polygons on the map are all Lithuanian, and at the map's
- *  own divisor the largest fields six armies to a small land's one - enough
- *  standing force to raid every neighbour every round and still hold. Raising
- *  the divisor on those three leaves them the strongest lands in the game
- *  (four, three and three) without letting one polygon out-muster a realm. */
+ *  A land's ceiling grows with its population, but the game needs no single
+ *  polygon out-mustering a whole realm. Raising the divisor on the region's
+ *  own biggest lands (`bureaucracyLands`) keeps them strong without letting
+ *  size alone field enough standing force to raid every neighbour every round
+ *  and still hold. */
 export const BUREAUCRACY_PER_ARMY = 4;
 
 /** polygon id -> the statuses it carries. Absent key means none, the sparse

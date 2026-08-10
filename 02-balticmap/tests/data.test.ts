@@ -27,7 +27,7 @@ const FACTION_TYPES = [
   "chiefdom", "allied-lands",
 ];
 
-describe("map.json (anno 1100)", () => {
+describe("baltic.json (anno 1100)", () => {
   it("has canvas bounds, year, and attribution", () => {
     expect(data.width).toBe(1000);
     expect(data.height).toBe(1400);

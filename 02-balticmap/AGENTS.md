@@ -72,6 +72,11 @@ id boots a perfectly ordinary game and says nothing.
   it, and `rel=`, `deck=`, `known=` and `xp=` are simply not boot keys any
   more.
 - `popups=off` - sets the existing "Show popups" log pref.
+- `region=baltic|iberia` - which map the booted page plays on; it seeds the
+  booted page's region preference the way `rules=` seeds the rules pick. An
+  unknown value is dropped rather than defaulted, same as everything else in
+  this list - a wrong id here must not silently boot a perfectly ordinary game
+  on the wrong map.
 
 `src/boot-params.ts` owns them, with the ordering rules and their
 consequences in its doc comments; `tests/boot-params.test.ts` pins the
@@ -88,25 +93,28 @@ is a clean start - the run is not persisted, and the way back is the URL.
 
 ## A status is the only difference between a land that plays and one that does not
 
-Every one of the 26 factions has a seat, a deck and a ruler's chair. Five of
-them act; the rest carry the passive status `keeps-to-itself`, and that status
-is the entire difference. `playsTurns` in `src/passives.ts` is the one question
-the turn loop asks, so a quiet land can be raided, subjugated, poached, healed
-and incorporated by the rules that already exist, and taking it strips the
-status - its people wake up as their new lord's vassal, holding the deck they
-were dealt.
+Every faction on the active region's map has a seat, a deck and a ruler's
+chair. Five of them act; the rest carry the passive status `keeps-to-itself`,
+and that status is the entire difference. `playsTurns` in `src/passives.ts` is
+the one question the turn loop asks, so a quiet land can be raided, subjugated,
+poached, healed and incorporated by the rules that already exist, and taking
+it strips the status - its people wake up as their new lord's vassal, holding
+the deck they were dealt.
 
 Two things ride on the same fact rather than on conditions written down twice:
 a quiet land raids a neighbour about one round in four (`RESTLESS_RAID_CHANCE`,
 resolved at the round wrap), and it stops the moment somebody takes it, because
 the raid asks for the status and capture takes the status off.
 
-Passive statuses are a table in `src/passives.ts` - the quiet set, the two
-terrain rows rolled onto lands their own flavour text supports, and the burden
-the three biggest polygons carry - plus one hook each. `strippedOnCapture` is
-the axis that keeps "describes the ground" apart from "describes a land nobody
-holds". **A status does not ship until the land hover names it**: a rule the
-player cannot see is a rule that reads as the game cheating.
+Passive statuses are defined once, region-agnostic, as a table in
+`src/passives.ts` - the quiet set, the two terrain statuses and the burden -
+plus one hook each. Which lands can roll which terrain, and which carry the
+burden from turn 1, is region data instead: `terrainEligibility` and
+`bureaucracyLands` on each entry of `REGIONS` in `src/regions.ts`.
+`strippedOnCapture` is the axis that keeps "describes the ground" apart from
+"describes a land nobody holds". **A status does not ship until the land hover
+names it**: a rule the player cannot see is a rule that reads as the game
+cheating.
 
 ## A land with no leader takes no turn
 

@@ -22,7 +22,8 @@ export interface InteractionCallbacks {
 export interface InteractionHandle {
   deselect(): void;
   /** Map coordinates for a screen point: what a drag needs to draw anything
-   *  in the map's own 1000x1400 space while the pointer moves. */
+   *  in the active map's own coordinate space (`data.width`/`data.height`)
+   *  while the pointer moves. */
   toMapPoint(clientX: number, clientY: number): { x: number; y: number };
 }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   addPassive, BUREAUCRACY_PER_ARMY, damageAfterTerrain,
   hasPassive, PASSIVES, passivesOn, perArmyOn, playsTurns, QUIET_PASSIVES,
@@ -8,8 +8,11 @@ import {
 import { armyCapFor, DEFENSE_PER_ARMY, turnipThresholdFor } from "../src/defense";
 import { seededRng, SIM_DEFENSE_MAX } from "../src/sim";
 import data from "../src/data/baltic.json";
-import { activeRegion } from "../src/regions";
+import iberiaData from "../src/data/iberia.json";
+import { activeRegion, DEFAULT_REGION, setActiveRegion } from "../src/regions";
 import type { MapData } from "../src/types";
+
+afterEach(() => setActiveRegion(DEFAULT_REGION));
 
 describe("the passive table", () => {
   it("gives every status a name, a line of text and a capture rule", () => {
@@ -146,6 +149,14 @@ describe("seedTerrain", () => {
     for (const carried of Object.values(ground)) {
       for (const id of QUIET_PASSIVES) expect(carried).not.toContain(id);
     }
+  });
+
+  it("reads the burden off the ACTIVE region, not the Baltic table", () => {
+    setActiveRegion("iberia");
+    const iberiaFactionIds = (iberiaData as MapData).factions.map((f) => f.id);
+    const ground = seedTerrain(iberiaFactionIds, seededRng(1));
+    expect(hasPassive(ground, "umayyads", "burden-of-bureaucracy")).toBe(true);
+    expect(hasPassive(ground, "selonians", "burden-of-bureaucracy")).toBe(false);
   });
 });
 

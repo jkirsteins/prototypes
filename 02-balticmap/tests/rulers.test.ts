@@ -4,6 +4,7 @@ import {
 } from "../src/rulers";
 import raw from "../src/data/baltic.json";
 import pools from "../src/data/ruler-names.json";
+import iberiaPools from "../src/data/ruler-names-iberia.json";
 import genericNames from "../src/data/ruler-names-generic.json";
 import type { MapData } from "../src/types";
 import {
@@ -17,6 +18,7 @@ import { DEFAULT_REGION, setActiveRegion } from "../src/regions";
 
 const data = raw as MapData;
 const POOLS = pools as Record<string, string[]>;
+const IBERIA_POOLS = iberiaPools as Record<string, string[]>;
 const GENERIC = genericNames as string[];
 
 afterEach(() => setActiveRegion(DEFAULT_REGION));
@@ -27,17 +29,6 @@ describe("ruler name pools", () => {
       expect(POOLS[faction.ethnicity], `pool for ${faction.ethnicity}`).toBeDefined();
     }
     expect(GENERIC.length).toBeGreaterThan(0);
-  });
-
-  it("holds at least twice as many names as the ethnicity has factions", () => {
-    // Setup must never start near exhaustion. The Estonians bind, with eight.
-    const counts = new Map<string, number>();
-    for (const f of data.factions) {
-      counts.set(f.ethnicity, (counts.get(f.ethnicity) ?? 0) + 1);
-    }
-    for (const [ethnicity, count] of counts) {
-      expect(POOLS[ethnicity].length, `pool for ${ethnicity}`).toBeGreaterThanOrEqual(count * 2);
-    }
   });
 
   it("has no duplicate names inside a pool", () => {
@@ -165,12 +156,11 @@ describe("rulerNameFor", () => {
   });
 
   it("draws names from the ACTIVE region's pools", () => {
-    // Baltic pools hold no name from the generic pool's spelling space that
-    // this asserts on; the point is only that switching regions switches the
-    // answer. Until Iberia lands (Task 4) this pins the plumbing with baltic.
-    const name = rulerNameFor("selonians", "selonians", 0, new Set());
-    setActiveRegion("baltic");
-    expect(rulerNameFor("selonians", "selonians", 0, new Set())).toBe(name);
+    setActiveRegion("iberia");
+    const name = rulerNameFor("umayyads", "arabs", 0, new Set());
+    expect(IBERIA_POOLS.arabs).toContain(name);
+    const balticNames = new Set(Object.values(POOLS).flat());
+    expect(balticNames.has(name)).toBe(false);
   });
 
   it("falls back to the generic pool for an unknown ethnicity", () => {

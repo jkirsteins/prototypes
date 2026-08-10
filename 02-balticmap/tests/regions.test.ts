@@ -20,10 +20,22 @@ describe("region registry", () => {
       expect(region.blurb.length).toBeGreaterThan(40);
       const factionIds = new Set(region.map.factions.map((f) => f.id));
       const peopleIds = new Set(region.map.peoples.map((p) => p.id));
+      // Setup must never start near exhaustion, on any region's own map: a
+      // pool holds at least twice as many names as its people has factions.
+      const counts = new Map<string, number>();
+      for (const f of region.map.factions) {
+        counts.set(f.ethnicity, (counts.get(f.ethnicity) ?? 0) + 1);
+      }
       // Ruler pools cover every people of the map.
       for (const p of peopleIds) {
         expect(region.rulerNames[p], `${region.id} pool for ${p}`).toBeDefined();
         expect(region.rulerNames[p].length).toBeGreaterThanOrEqual(10);
+      }
+      for (const [ethnicity, count] of counts) {
+        expect(
+          region.rulerNames[ethnicity].length,
+          `${region.id} pool for ${ethnicity}`,
+        ).toBeGreaterThanOrEqual(count * 2);
       }
       // Passive placements name real factions.
       for (const id of Object.keys(region.terrainEligibility)) {
@@ -37,8 +49,9 @@ describe("region registry", () => {
   });
 
   it("setActiveRegion switches what activeRegion answers", () => {
-    setActiveRegion("baltic");
-    expect(activeRegion().id).toBe("baltic");
+    setActiveRegion("iberia");
+    expect(activeRegion().id).toBe("iberia");
+    expect(activeRegion().map.regions.length).toBe(24);
   });
 });
 

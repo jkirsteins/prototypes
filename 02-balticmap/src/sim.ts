@@ -1,4 +1,3 @@
-import rawData from "./data/baltic.json";
 import type { MapData } from "./types";
 import { defenseMaxOf, factionAdjacencyOf, siteCapsOf } from "./adjacency";
 import { CARDS, GUARDS, guardAgainst, type Rng, type Strategy } from "./cards";
@@ -10,8 +9,15 @@ import { playableSet, validTargetsFor } from "./playability";
 import { seededRng } from "./rng";
 import { aiTakeTurn, chooseAction, MAX_AI_PLAYS } from "./ai";
 import { fullRealmOf } from "./relations";
+import { REGIONS, setActiveRegion } from "./regions";
 
-const data = rawData as MapData;
+// Balance evidence is Baltic evidence: every scenario band and rarity number
+// this module has ever produced was measured on that map. Pinning the active
+// region here - rather than reading whatever `DEFAULT_REGION` happens to be -
+// makes that an explicit fact a balance run depends on, not one it silently
+// inherits and could lose the day the default region changes.
+setActiveRegion("baltic");
+const data: MapData = REGIONS.baltic.map;
 
 /** The map every simulated game is played on: the shipped 26 lands. */
 export const SIM_FACTION_IDS: string[] = data.factions.map((f) => f.id);

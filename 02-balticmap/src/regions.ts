@@ -55,9 +55,14 @@ const BALTIC_TERRAIN_ELIGIBILITY: Readonly<Record<string, readonly string[]>> = 
   "pomesanians": ["river-trade"],
 };
 
-/** The lands that carry it from the first turn. Named rather than rolled: it
- *  is a fact about how big these three are, so a run where they muster freely
- *  is not a different map but the same imbalance back. */
+/** The three largest baked populations - the two Lithuanian confederacies and
+ *  Lietuva itself. Named rather than rolled: it is a fact about how big these
+ *  three are, so a run where they muster freely is not a different map but
+ *  the same imbalance back. At the map's own divisor the largest of the three
+ *  would otherwise field six armies to a small land's one - enough standing
+ *  force to raid every neighbour every round and still hold; the burden
+ *  leaves them the strongest lands in the game (four, three and three)
+ *  without letting one polygon out-muster a realm. */
 const BALTIC_BUREAUCRACY_LANDS: readonly string[] = [
   "eastern-aukstaitian-confederacy", "samogitian-confederacy", "lietuva",
 ];
