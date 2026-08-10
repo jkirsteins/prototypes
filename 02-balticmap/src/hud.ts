@@ -634,12 +634,11 @@ export function impactText(
   };
 }
 
-/** The status bar's leader tooltip: the land hover's Leader block, expanded.
- *  That hover offers the leadership term, each ability and any omens or
- *  miasma as hoverables of their own; a floating tip cannot be hovered into,
- *  so here every one of them carries its full text inline, one stacked block
- *  per item. Same tables - TERMS and LEADER_ABILITIES - so the two surfaces
- *  cannot disagree. */
+/** The status bar's leader tooltip: name, a stats block, then each ability
+ *  explained. The stats are amount rows alone - no term texts, because the
+ *  ability's own line already says what leadership does for THIS ruler, and
+ *  quoting the term beside it said the same rule twice. The term texts stay
+ *  a hover away on the land panel's Leader block. */
 function rulerTipLines(
   name: string, view: RulesView, factionId: string,
 ): TooltipLine[] {
@@ -649,26 +648,19 @@ function rulerTipLines(
     amount: String(view.leadership[factionId] ?? 0),
     blockStart: true,
   });
-  lines.push({ text: TERMS.leadership.text });
+  const omens = omensHeld(view, factionId);
+  if (omens > 0) {
+    lines.push({ text: TERMS.omens.name, amount: String(omens) });
+  }
+  const miasma = miasmaHeld(view, factionId);
+  if (miasma > 0) {
+    lines.push({ text: TERMS.miasma.name, amount: String(miasma) });
+  }
   for (const id of abilitiesOf(view.leaderAbilities, factionId)) {
     const def = LEADER_ABILITIES[id];
     if (def === undefined) continue;
     lines.push({ text: def.name, blockStart: true });
     lines.push({ text: def.text });
-  }
-  const omens = omensHeld(view, factionId);
-  if (omens > 0) {
-    lines.push({
-      text: TERMS.omens.name, amount: String(omens), blockStart: true,
-    });
-    lines.push({ text: TERMS.omens.text });
-  }
-  const miasma = miasmaHeld(view, factionId);
-  if (miasma > 0) {
-    lines.push({
-      text: TERMS.miasma.name, amount: String(miasma), blockStart: true,
-    });
-    lines.push({ text: TERMS.miasma.text });
   }
   return lines;
 }

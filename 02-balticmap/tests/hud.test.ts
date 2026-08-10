@@ -373,13 +373,13 @@ describe("createHud", () => {
     const lines = onShowTip.mock.calls[0][0] as {
       text: string; amount?: string;
     }[];
-    // The land hover's Leader block, expanded: name first, then the
-    // leadership term with its amount and full text, then the warpath
-    // build's ability with its full text - nothing left to a nested hover.
+    // Name first, then the stats as amount rows alone, then the warpath
+    // build's ability with its full text - the one explanation of what
+    // this ruler's leadership does, stated once.
     expect(lines[0].text).toBe(name);
     const leadership = lines.find((l) => l.text === "Leadership");
     expect(leadership?.amount).toBe("1");
-    expect(lines.some((l) => l.text.includes("cashes it in"))).toBe(true);
+    expect(lines.some((l) => l.text.includes("cashes it in"))).toBe(false);
     expect(lines.some((l) => l.text === "War leader")).toBe(true);
     expect(lines.some((l) => l.text.includes("ride behind"))).toBe(true);
   });
