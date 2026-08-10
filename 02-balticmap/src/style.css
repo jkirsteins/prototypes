@@ -436,9 +436,9 @@ svg.map.dragging {
   white-space: nowrap;
 }
 
-/* The ruler's leadership, same chip shape as the treasury; the iron grey
-   marks it as martial rather than monetary. */
-.status-prowess {
+/* The player's own ruler, by name - same chip shape as the treasury; the
+   iron grey marks it as martial rather than monetary. */
+.status-ruler {
   border-left: 1px solid #d0d0d0;
   padding-left: 12px;
   color: #4a4f57;

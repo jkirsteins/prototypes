@@ -11,7 +11,7 @@ import { aiTakeTurn } from "../src/ai";
 import { CARDS, type Rng } from "../src/cards";
 import type { BuildOption } from "../src/harvest";
 import { DEFAULT_RULES } from "../src/rules";
-import { rulerOf } from "../src/rulers";
+import { rulerNameOf, rulerOf } from "../src/rulers";
 import { turnipThresholdFor } from "../src/defense";
 import type { TargetExplanation } from "../src/target-explanations";
 import { memoryStorage, type MetaStorage } from "../src/meta";
@@ -356,25 +356,32 @@ describe("createHud", () => {
     expect(q(container, ".status-wealth").textContent).toBe("Wealth 1 (+1/turn)");
   });
 
-  it("shows the leadership chip only once a War council has bought a stack", () => {
+  it("names the ruler in the bar, and the hover is the leader tooltip", () => {
     const onShowTip = vi.fn();
     const { container, hud } = setup({ onShowTip });
     let g = playing();
     hud.update(g);
-    expect(q(container, ".status-prowess").classList.contains("hidden")).toBe(true);
+    const chip = q(container, ".status-ruler");
+    expect(chip.classList.contains("hidden")).toBe(false);
+    const name = rulerNameOf(g.rulers, "beta");
+    expect(chip.textContent).toBe(name);
     g = withHand(g, 0, ["war-council"]);
     g = playCard(g, 0, seededRng(1));
     hud.update(g);
-    expect(q(container, ".status-prowess").classList.contains("hidden")).toBe(false);
-    // The number alone; what leadership does is the hover's job.
-    expect(q(container, ".status-prowess").textContent).toBe("Leadership 1");
-    q(container, ".status-prowess").dispatchEvent(
-      new MouseEvent("mousemove", { bubbles: true }),
-    );
+    chip.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
     expect(onShowTip).toHaveBeenCalled();
-    const lines = onShowTip.mock.calls[0][0] as { text: string }[];
-    expect(lines[0].text).toBe("Leadership");
-    expect(lines[1].text).toContain("War leader");
+    const lines = onShowTip.mock.calls[0][0] as {
+      text: string; amount?: string;
+    }[];
+    // The land hover's Leader block, expanded: name first, then the
+    // leadership term with its amount and full text, then the warpath
+    // build's ability with its full text - nothing left to a nested hover.
+    expect(lines[0].text).toBe(name);
+    const leadership = lines.find((l) => l.text === "Leadership");
+    expect(leadership?.amount).toBe("1");
+    expect(lines.some((l) => l.text.includes("cashes it in"))).toBe(true);
+    expect(lines.some((l) => l.text === "War leader")).toBe(true);
+    expect(lines.some((l) => l.text.includes("ride behind"))).toBe(true);
   });
 
   it("names the faction that unified the Balts", () => {
