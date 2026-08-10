@@ -1,6 +1,6 @@
 import { CARDS, guardAgainst, KEYWORDS, repeatGroupOf } from "./cards";
 import {
-  turnOpen, victoryRealmSize, viewOf,
+  metNothing, turnOpen, victoryRealmSize, viewOf,
   type GameEvent, type GameState,
 } from "./game";
 import { animations, flyCard, runAnimation, type Flight } from "./animate";
@@ -441,6 +441,15 @@ export function eventSegments(
       // which on a won counter is the land that was being attacked - so the
       // sentence stays true whichever way the clash went. The numbers ride in
       // the impactText suffix as always.
+      //
+      // "reaches", not "falls on": this one met nobody and broke nothing, and
+      // the line under it says what became of the land.
+      if (metNothing(e)) {
+        return [
+          card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
+          t(" reaches "), faction(e.targetFactionId ?? ""),
+        ];
+      }
       if (e.clash === undefined) {
         return [
           card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),

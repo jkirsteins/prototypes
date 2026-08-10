@@ -439,7 +439,10 @@ describe("the assassination modal", () => {
       // But a batch that also carries a rival's doing is a round summary again.
       const mixed = [
         fizzle,
-        ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+        ev({
+        type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika",
+        via: "claim", cardId: "subjugate",
+      }),
       ];
       expect(buildRoundSummary(mixed, ctx)!.title).toBe(ROUND_SUMMARY_TITLE);
     });
@@ -477,7 +480,10 @@ describe("subjugation, release and independence roles", () => {
 
   it("builds a fealty line when a rival subjugates the human", () => {
     const s = oneSummary(
-      ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+      ev({
+        type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika",
+        via: "claim", cardId: "subjugate",
+      }),
     )!;
     expect(lineText(s)).toBe("Subjugate by Jersikans - you owe fealty to them");
     expect(footnoteTexts(s)).toEqual([
@@ -490,6 +496,7 @@ describe("subjugation, release and independence roles", () => {
       ev({
         type: "subjugated", targetFactionId: "livs",
         overlordFactionId: "jersika", formerOverlordFactionId: "latgale",
+        via: "claim", cardId: "subjugate",
       }),
     )!;
     expect(lineText(s)).toBe(
@@ -502,11 +509,70 @@ describe("subjugation, release and independence roles", () => {
       ev({
         type: "subjugated", playerId: 3, targetFactionId: "curonia",
         overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+        via: "claim", cardId: "subjugate",
       }),
     )!;
     expect(lineText(s)).toBe("Subjugate by Latgalians took your vassal Curonians");
     // The tribute injection is the vassal's problem, not the old lord's.
     expect(s.footnotes).toEqual([]);
+  });
+
+  // The bug this set exists for: every one of these used to say "Subjugate",
+  // a card withdrawn from every pool, whatever had actually taken the land.
+  describe("names what actually took the land", () => {
+    const lostVassal = (cause: Partial<GameEvent>): string => lineText(oneSummary(
+      ev({
+        type: "subjugated", playerId: 3, targetFactionId: "curonia",
+        overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+        ...cause,
+      }),
+    )!);
+
+    it("names the card that walked the army in", () => {
+      expect(lostVassal({ via: "conquest", cardId: "great-raid" })).toBe(
+        "Great raid by Latgalians took your vassal Curonians",
+      );
+    });
+
+    it("names the card that made the demand", () => {
+      expect(lostVassal({ via: "claim", cardId: "subjugate" })).toBe(
+        "Subjugate by Latgalians took your vassal Curonians",
+      );
+    });
+
+    it("names the status when a status handed the land over", () => {
+      // The killing IS the taking, and the rule that says so is the status -
+      // which is the segment the player can point at to read it.
+      expect(lostVassal({ via: "passive", passiveId: "no-successor" })).toBe(
+        "No successor by Latgalians took your vassal Curonians",
+      );
+    });
+
+    it("names no card at all when the route was not recorded", () => {
+      expect(lostVassal({})).toBe(
+        "A conquest by Latgalians took your vassal Curonians",
+      );
+    });
+
+    it("splits two routes in one round into two lines", () => {
+      const s = buildRoundSummary([
+        ev({
+          type: "subjugated", playerId: 3, targetFactionId: "curonia",
+          overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+          via: "conquest", cardId: "raid",
+        }),
+        ev({
+          type: "subjugated", playerId: 3, targetFactionId: "jersika",
+          overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+          via: "claim", cardId: "subjugate",
+        }),
+      ], ctx)!;
+      expect(s.lines).toHaveLength(2);
+      expect(lineText(s, 0)).toBe("Raid by Latgalians took your vassal Curonians");
+      expect(lineText(s, 1)).toBe(
+        "Subjugate by Latgalians took your vassal Jersikans",
+      );
+    });
   });
 
   it("is null when the human subjugates someone, and for AI-vs-AI", () => {
@@ -520,10 +586,14 @@ describe("subjugation, release and independence roles", () => {
 
   it("keeps your own subjugation separate from a vassal poached in the same round", () => {
     const s = buildRoundSummary([
-      ev({ type: "subjugated", playerId: 2, targetFactionId: "livs", overlordFactionId: "jersika" }),
+      ev({
+        type: "subjugated", playerId: 2, targetFactionId: "livs",
+        overlordFactionId: "jersika", via: "claim", cardId: "subjugate",
+      }),
       ev({
         type: "subjugated", playerId: 3, targetFactionId: "curonia",
         overlordFactionId: "latgale", formerOverlordFactionId: "livs",
+        via: "claim", cardId: "subjugate",
       }),
     ], ctx)!;
     expect(s.lines).toHaveLength(2);
@@ -618,7 +688,10 @@ describe("subjugation, release and independence roles", () => {
       const rule = NOTICE_RULES.subjugated;
       if (rule.kind !== "modal") throw new Error("subjugated must be modal");
       expect(rule.critical!(
-        ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }), ctx,
+        ev({
+        type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika",
+        via: "claim", cardId: "subjugate",
+      }), ctx,
       )).toBe("You were subjugated");
       expect(resolveTitle(rule.critical!(
         ev({
@@ -680,7 +753,10 @@ describe("subjugation, release and independence roles", () => {
           type: "independence", playerId: 2,
           targetFactionId: "jersika", overlordFactionId: "livs",
         }),
-        ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+        ev({
+        type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika",
+        via: "claim", cardId: "subjugate",
+      }),
       ];
       expect(buildRoundSummary(events, ctx, { criticalOnly: true })!.title)
         .toBe("You were subjugated");
@@ -707,7 +783,10 @@ describe("subjugation, release and independence roles", () => {
      *  that they had nothing left. */
     it("keeps the scattered vassals beside your own subjugation when muted", () => {
       const events: GameEvent[] = [
-        ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+        ev({
+        type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika",
+        via: "claim", cardId: "subjugate",
+      }),
         ev({ type: "released", targetFactionId: "latgale", overlordFactionId: "livs" }),
         ev({ type: "released", targetFactionId: "curonia", overlordFactionId: "livs" }),
       ];
@@ -722,7 +801,10 @@ describe("subjugation, release and independence roles", () => {
     it("criticalOnly keeps the subjugation and drops the round's other news", () => {
       const events: GameEvent[] = [
         ev({ type: "march-resolved", cardId: "raid", targetFactionId: "livs", amount: 150 }),
-        ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" }),
+        ev({
+        type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika",
+        via: "claim", cardId: "subjugate",
+      }),
       ];
       const full = buildRoundSummary(events, ctx)!;
       const muted = buildRoundSummary(events, ctx, { criticalOnly: true })!;
@@ -734,7 +816,10 @@ describe("subjugation, release and independence roles", () => {
 
     it("keeps the round heading when popups are on, subjugation or not", () => {
       const full = buildRoundSummary(
-        [ev({ type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika" })],
+        [ev({
+        type: "subjugated", targetFactionId: "livs", overlordFactionId: "jersika",
+        via: "claim", cardId: "subjugate",
+      })],
         ctx,
       )!;
       expect(full.title).toBe(ROUND_SUMMARY_TITLE);
@@ -796,7 +881,10 @@ describe("actor fallbacks", () => {
 
   it("falls back to a blank actor when the faction cannot be resolved", () => {
     const s = oneSummary(
-      ev({ type: "subjugated", playerId: 9, targetFactionId: "livs", overlordFactionId: "mystery" }),
+      ev({
+        type: "subjugated", playerId: 9, targetFactionId: "livs",
+        overlordFactionId: "mystery", via: "claim", cardId: "subjugate",
+      }),
     )!;
     // playerId 9 has no faction: factionOf returns undefined -> faction("")
     expect(lineText(s)).toBe("Subjugate by  - you owe fealty to them");

@@ -22,6 +22,12 @@ import {
   cardBlockReason, ESCAPE_RESPITE_TURNS, playableSet, validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
+import { aiTakeTurn } from "../src/ai";
+import {
+  SIM_ADJACENCY, SIM_DEFENSE_MAX, SIM_ETHNICITIES, SIM_FACTION_IDS,
+  SIM_SITE_CAPS, naiveHumanTurn,
+} from "../src/sim";
+import { BASELINE_FACTION } from "./baseline-config";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -533,8 +539,12 @@ describe("raid", () => {
     const dead = landMarches(
       playCard({ ...g, defense: { alpha: 0 } }, 0, rng(), "alpha"),
     );
-    // Nothing special happens at 0: the march comes home, nothing to record.
-    expect(dead.log.some((e) => e.type === "march-resolved")).toBe(false);
+    // At 0 there is nothing left to damage, so the landing moves no score.
+    // It is still a landing, and still gets its line - the land changing
+    // hands is indented under it.
+    const landing = dead.log.find((e) => e.type === "march-resolved");
+    expect(landing).toBeDefined();
+    expect(landing?.amount).toBeUndefined();
     expect(dead.marches).toEqual({});
   });
 
@@ -687,16 +697,19 @@ describe("the counter-raid clash", () => {
     expect(after.overlords.get("alpha")).toBe("beta");
   });
 
-  it("reports nothing for a march that met no counter and hit a dead land", () => {
+  it("reports no clash for a march that met no counter and hit a dead land", () => {
     // The other zero: one side only, aimed at a polygon already at 0. Nothing
     // met it and nothing moved, so there is no clash to report - the standoff
     // line above exists because two armies were spent, and here only one was.
+    // The arrival itself is still reported: it took the land.
     const declared = playCard(
       withHand(playingState(LINE_ADJ), 0, ["raid"]), 0, rng(), "alpha",
     );
     const after = landMarches({ ...declared, defense: { alpha: 0 } });
     expect(after.marches).toEqual({});
-    expect(after.log.some((e) => e.type === "march-resolved")).toBe(false);
+    const landing = after.log.find((e) => e.type === "march-resolved");
+    expect(landing?.clash).toBeUndefined();
+    expect(landing?.amount).toBeUndefined();
   });
 
   it("spends the counter even though its own turn has not come round", () => {
@@ -2047,7 +2060,8 @@ describe("a claim in flight", () => {
       defense: { alpha: 0 },
       claims: {
         "gamma>alpha": {
-          actor: "gamma", from: "gamma", to: "alpha", expiry: g.turn + 1,
+          actor: "gamma", from: "gamma", to: "alpha", cardId: "subjugate",
+          expiry: g.turn + 1,
         },
       },
     };
@@ -2070,7 +2084,8 @@ describe("a claim in flight", () => {
       defense: { alpha: 0 },
       claims: {
         "beta>alpha": {
-          actor: "beta", from: "beta", to: "alpha", expiry: g.turn + 1,
+          actor: "beta", from: "beta", to: "alpha", cardId: "subjugate",
+          expiry: g.turn + 1,
         },
       },
     };
@@ -2089,13 +2104,18 @@ describe("an army walking into a broken land", () => {
     const before = declaredRaid.log.length;
     const after = landMarches(declaredRaid);
     expect(after.overlords.get("alpha")).toBe("beta");
+    // The card that walked the army in, so the line cannot say Subjugate.
     expect(fresh(after, before)).toContainEqual(expect.objectContaining({
       type: "subjugated", targetFactionId: "alpha", overlordFactionId: "beta",
+      via: "conquest", cardId: "raid", consequence: true,
     }));
-    // Nothing was damaged: there was nothing left to damage.
-    expect(after.log.some(
+    // Nothing was damaged: there was nothing left to damage. The arrival is
+    // still a line, and it is the one the submission indents under.
+    const landing = fresh(after, before).find(
       (e) => e.type === "march-resolved" && e.targetFactionId === "alpha",
-    )).toBe(false);
+    );
+    expect(landing).toMatchObject({ cardId: "raid", sourceFactionId: "beta" });
+    expect(landing?.amount).toBeUndefined();
   });
 
   it("wakes the land up - a conquest is a vassal with turns and a deck", () => {
@@ -2480,5 +2500,48 @@ describe("the hostile keyword, past the targeting pass", () => {
     expect(after.log.some(
       (e) => e.type === "winds-shifted" && e.targetFactionId === "alpha",
     )).toBe(false);
+  });
+});
+
+describe("every allegiance change names the route that took the land", () => {
+  // The drift guard. Four routes reach a `subjugated` today and the notice
+  // renders whichever one the event names; a fifth that forgot to name its
+  // route would fall back to "A conquest" on the one surface the player reads,
+  // silently, exactly as the hardcoded `card("subjugate")` did before it. The
+  // required `cause` argument makes that hard to do and this makes it loud.
+  it("holds across a seeded game", () => {
+    const rng = seededRng(1);
+    let state: GameState = pickFaction(
+      chooseBuild(
+        startGame(newGame(
+          SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS,
+          SIM_DEFENSE_MAX,
+        )),
+        "warpath", seededRng(1),
+      ),
+      BASELINE_FACTION,
+      rng,
+    );
+    while (state.phase === "playing" && state.turn <= 120) {
+      const next = state.current === 0
+        ? naiveHumanTurn(state, rng)
+        : aiTakeTurn(state, rng);
+      if (!next.playedThisTurn) throw new Error(`stuck turn ${state.turn}`);
+      state = next.phase === "playing" ? advance(next, rng) : next;
+    }
+    const taken = state.log.filter((e) => e.type === "subjugated");
+    // Not vacuous: lands did change hands, and every one of them by an army
+    // walking in. Subjugate is withdrawn from every pool, so `conquest` is what
+    // an ordinary game is made of - which is the whole of the bug this guards.
+    expect(taken.length).toBeGreaterThan(0);
+    expect(taken.map((e) => e.via)).toContain("conquest");
+    for (const e of taken) {
+      expect(e.via, `turn ${e.turn}, ${e.targetFactionId}`).toBeDefined();
+      // And the route's own half of the cause came with it.
+      expect(
+        e.via === "passive" ? e.passiveId : e.cardId,
+        `turn ${e.turn}, ${e.targetFactionId}`,
+      ).toBeDefined();
+    }
   });
 });

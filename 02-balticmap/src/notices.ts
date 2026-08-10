@@ -1,9 +1,9 @@
-import type { GameEvent, GameEventType } from "./game";
+import { metNothing, type GameEvent, type GameEventType } from "./game";
 import { ESCAPE_RESPITE_TURNS } from "./playability";
 import { TRIBUTE_CARDS } from "./cards";
 import { count, plural } from "./plural";
 import {
-  card, faction, joinSegments, t, type Segment,
+  card, faction, joinSegments, passive, t, type Segment,
 } from "./rich-text";
 import { walkStandings, type StandingChange, type WalkCtx } from "./standings";
 import { untilTurn } from "./timed";
@@ -288,6 +288,34 @@ function assassinateLines(
   });
 }
 
+/** What took the land: the opening segment of every vassal-loss line.
+ *
+ *  This used to be a literal `card("subjugate")`, which made a raid walking
+ *  into a flattened land - and an assassination a status answered for - read as
+ *  a card that is withdrawn from every pool. So it reads the route off the
+ *  event, exhaustively and with no `default`: a new `SubjugationVia` stops
+ *  compiling here until somebody has decided what it says. */
+function subjugationCauseSegment(e: GameEvent): Segment[] {
+  switch (e.via) {
+    // Which card sent the army, or which card made the demand. The two read
+    // the same because the sentence they open already says what happened to
+    // the land; what differs is the name, and the name is the whole point.
+    case "conquest":
+    case "claim":
+      return [card(e.cardId ?? "")];
+    // The status, not the card that set it off - that one is named on the
+    // `passive-fired` line above, and the rule the player needs to be able to
+    // point at is the status's.
+    case "passive":
+      return [passive(e.passiveId ?? "")];
+    // An allegiance change from before the route was recorded. The same
+    // shape `damagedLines` and `marchResolvedLines` fall back to rather than
+    // naming a card they were not told about.
+    case undefined:
+      return [t("A conquest")];
+  }
+}
+
 function subjugatedLines(
   events: GameEvent[],
   changes: StandingChange[][],
@@ -297,7 +325,7 @@ function subjugatedLines(
   if (role === "lord") {
     return events.map((e, i) => ({
       text: [
-        card("subjugate"), t(" by "), faction(actorId(e, ctx) ?? ""),
+        ...subjugationCauseSegment(e), t(" by "), faction(actorId(e, ctx) ?? ""),
         t(" took your vassal "), faction(e.targetFactionId ?? ""),
       ],
       changes: changesFor(i, changes),
@@ -306,7 +334,7 @@ function subjugatedLines(
   }
   return events.map((e, i) => ({
     text: [
-      card("subjugate"), t(" by "), faction(actorId(e, ctx) ?? ""),
+      ...subjugationCauseSegment(e), t(" by "), faction(actorId(e, ctx) ?? ""),
       ...(e.formerOverlordFactionId !== undefined
         ? [t(" - your allegiance shifts from "), faction(e.formerOverlordFactionId), t(" to them")]
         : [t(" - you owe fealty to them")]),
@@ -505,9 +533,15 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     // and the human's own counter winning both arrive under somebody's turn
     // start rather than under a play the human just made. A turn has passed
     // since the card; if this is silent the player never learns how it went.
+    //
+    // The one exception is an arrival that met nothing: the `subjugated` line
+    // it caused names the same card and says what became of the land, so a
+    // line here would be the same news twice. The log still carries it - that
+    // is the surface where the submission indents under its cause.
     appliesToHuman: (e, ctx) =>
-      (e.targetFactionId !== undefined && ctx.inHumanRealm(e.targetFactionId)) ||
-      (e.sourceFactionId !== undefined && ctx.inHumanRealm(e.sourceFactionId)),
+      !metNothing(e) &&
+      ((e.targetFactionId !== undefined && ctx.inHumanRealm(e.targetFactionId)) ||
+        (e.sourceFactionId !== undefined && ctx.inHumanRealm(e.sourceFactionId))),
     // The `damaged` rule, for the same reason: waking up with the home gate
     // open is a different game, and a march is the one attack that can open it
     // while the player is not being shown a play.

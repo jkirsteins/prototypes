@@ -57,6 +57,39 @@ export type GameEventType =
   | "harvest-earned" | "harvest-picked" | "harvest-burned"
   | "victory" | "defeat" | "unified" | "surrendered";
 
+/** How a land changed hands.
+ *
+ *  One `subjugated` event covers every allegiance change, and for a long while
+ *  it carried no trace of which one: the notice opened every line with a
+ *  literal `card("subjugate")`, so a land taken by a raid was reported as a
+ *  Subjugate - a card that is withdrawn from every pool and cannot be in
+ *  anybody's hand.
+ *
+ *  So the cause is an ARGUMENT to the two functions that move an allegiance,
+ *  not a field a branch may forget, and the notice renders it through a switch
+ *  with no `default`. A new way to take a land therefore stops the build twice
+ *  over: once where it must name its cause, and once where somebody must write
+ *  the sentence for it. Neither gate can be passed by borrowing another
+ *  route's. */
+export type SubjugationCause =
+  /** An army walked into a land with nothing left to fight. */
+  | { via: "conquest"; cardId: string }
+  /** A demand declared a turn ago came due and found the gate still open. */
+  | { via: "claim"; cardId: string }
+  /** A status handed the land over - `no-successor`, when the ruler is
+   *  killed. The card that set it off is on the `passive-fired` line above,
+   *  and the status is what the player needs named here. */
+  | { via: "passive"; passiveId: string };
+
+export type SubjugationVia = SubjugationCause["via"];
+
+/** The causes that ARRIVE: an army or a demand crossing a border, a turn after
+ *  the card that sent it. They own a landing line of their own, which is what
+ *  `takeLand` pushes and what the submission indents under. A status handing a
+ *  land over is not one of them - the `passive-fired` above it is already its
+ *  cause line, so it takes the other door. */
+type ArrivingCause = Extract<SubjugationCause, { via: "conquest" | "claim" }>;
+
 export interface GameEvent {
   turn: number;
   playerId: number; // 1 = human
@@ -81,8 +114,14 @@ export interface GameEvent {
    *  landing, where the leftover is the whole strength. */
   clash?: { incoming: number; counter: number };
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
-  /** passive-fired: which status in `PASSIVES` acted. The line names it, and
-   *  the name is a `passive()` segment whose hover carries the rule - so a
+  /** subjugated: which route took the land, the discriminant of
+   *  `SubjugationCause`. The rest of the cause rides in fields that already
+   *  exist - `cardId` for the card it came out of, `passiveId` for the status,
+   *  `sourceFactionId` for the land the army or the demand set out from. */
+  via?: SubjugationVia;
+  /** passive-fired: which status in `PASSIVES` acted, and on a `subjugated`
+   *  taken `via: "passive"`, which status took the land. The line names it,
+   *  and the name is a `passive()` segment whose hover carries the rule - so a
    *  status doing something is never a thing the player has to already know
    *  about to make sense of. */
   passiveId?: string;
@@ -657,6 +696,30 @@ function nestsUnderItsCause(type: GameEventType): boolean {
   }
 }
 
+/** An arrow that arrived and found nothing: no defenders to break and no
+ *  counter to meet, which is what an army walking into a flattened land is and
+ *  what a demand coming due is. It is the only `march-resolved` with neither an
+ *  `amount` nor a `clash` - a standoff always carries the `clash` it was - so
+ *  the shape names itself and needs no field of its own.
+ *
+ *  One shape, two readers, the `SINGLE_LAND_HEAL` rule: the log gives it its
+ *  own line ("reaches", not "falls on") and the round modal leaves it out,
+ *  because the `subjugated` it caused names the same card and says what became
+ *  of the land. Two lines for one arrival is the three-paragraph notice format
+ *  coming back a line at a time. */
+export function metNothing(e: GameEvent): boolean {
+  return e.type === "march-resolved"
+    && e.amount === undefined && e.clash === undefined;
+}
+
+/** A cause whose reach is the single line after it, the other half of the shape
+ *  rule `appendEvents` reads. A status firing, and an arrow arriving: both are
+ *  a thing that happened, and both can be followed by what it did to the map in
+ *  a batch that opens with no play at all. */
+function isAdjacentCause(type: GameEventType | undefined): boolean {
+  return type === "passive-fired" || type === "march-resolved";
+}
+
 /** The one place `actorRuler` is filled, and the one place a consequence is
  *  tied to the cause that produced it. Every append to the log goes through
  *  here, so a new event type cannot ship unstamped.
@@ -670,8 +733,10 @@ function nestsUnderItsCause(type: GameEventType): boolean {
  *    starts a batch with a `play`. So "caused by this play" is exactly "not
  *    first in a batch that starts with a play".
  *
- *  - **A status firing.** A `passive-fired` names what it did on THE LINE THAT
- *    FOLLOWS IT, and that one line is the whole of its reach. It has to be a
+ *  - **A line standing immediately before it.** A `passive-fired` names what it
+ *    did on THE LINE THAT FOLLOWS IT, and an arrow landing is followed by what
+ *    the landing did - a land submitting, when the army found nothing left to
+ *    fight. That one line is the whole of either one's reach. It has to be a
  *    reach of one, because a round wrap's batch is not one cause and its
  *    fallout - it is a dozen independent chains in a row, wild lands mending
  *    themselves and quiet lands picking fights and conquests changing hands,
@@ -683,12 +748,15 @@ function appendEvents(state: GameState, events: GameEvent[]): GameEvent[] {
   return [
     ...state.log,
     ...events.map((e, i) => {
-      const afterPassive = events[i - 1]?.type === "passive-fired";
+      const prev = events[i - 1]?.type;
+      const afterPassive = prev === "passive-fired";
       const nests = e.type === "play"
-        // A play never follows from another play; it does follow from the
-        // status that sent it, which is what a restless raid is.
+        // A play never follows from another play, nor from an arrow landing; it
+        // does follow from the status that sent it, which is what a restless
+        // raid is.
         ? afterPassive
-        : nestsUnderItsCause(e.type) && (afterPassive || (causedByPlay && i > 0));
+        : nestsUnderItsCause(e.type)
+          && (isAdjacentCause(prev) || (causedByPlay && i > 0));
       return {
         ...e,
         actorRuler: actorRulerName(state, e.playerId),
@@ -778,8 +846,14 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
 
   /** A land walked into by an army, or subjugated any other way outside a
    *  play. The same allegiance move `landSubjugation` makes inside `playCard`,
-   *  and the same question afterwards: how much defense to send with it. */
-  const takeLand = (land: string, by: string, from: string): void => {
+   *  and the same question afterwards: how much defense to send with it.
+   *
+   *  `cause` is required rather than defaulted, and that is the point: this is
+   *  one of the two doors an allegiance change can come through, and a new way
+   *  to take a land does not compile until it says which. */
+  const takeLand = (
+    land: string, by: string, from: string, cause: ArrivingCause,
+  ): void => {
     const formerLord = overlords.get(land);
     overlords.set(land, by);
     passives = stripOnCapture(passives, land);
@@ -787,9 +861,20 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       const clean = stripTribute(pl);
       return { ...clean, deck: shuffle([...clean.deck, ...TRIBUTE_CARDS], rng) };
     });
+    // The arrival, immediately before what it caused. A `beginTurn` batch opens
+    // with no play, so this line IS the cause `appendEvents` reads the
+    // indentation off - and without it the log said a land had submitted with
+    // nothing above it saying why. It carries no `amount` and no `clash`
+    // because an army arriving where there is nothing left to fight moves no
+    // score and met nobody; `metNothing` in src/hud.ts is that shape's name.
+    events.push({
+      turn: state.turn, playerId: p.id, type: "march-resolved",
+      cardId: cause.cardId, targetFactionId: land, sourceFactionId: from,
+    });
     events.push({
       turn: state.turn, playerId: p.id, type: "subjugated",
-      targetFactionId: land, overlordFactionId: by,
+      targetFactionId: land, overlordFactionId: by, sourceFactionId: from,
+      ...cause,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
     // The human is asked; everybody else moves half on the spot. Only one
@@ -836,12 +921,14 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
         // it is no longer anybody the actor can reach.
         events.push({
           turn: state.turn, playerId, type: "march-lapsed",
-          cardId: "subjugate",
+          cardId: claim.cardId,
           targetFactionId: claim.to, sourceFactionId: claim.from,
         });
         continue;
       }
-      takeLand(claim.to, claim.actor, claim.from);
+      takeLand(claim.to, claim.actor, claim.from, {
+        via: "claim", cardId: claim.cardId,
+      });
       callOffMarchesAgainstLord(claim.to, claim.actor, playerId);
     }
   };
@@ -895,7 +982,9 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     if (fullRealmOf(capture.by, overlords, state.incorporated).has(capture.land)) {
       continue;
     }
-    takeLand(capture.land, capture.by, capture.from);
+    takeLand(capture.land, capture.by, capture.from, {
+      via: "conquest", cardId: capture.cardId,
+    });
   }
 
   // Wild lands: a land nobody tends grows its defenses back on its own. Rolled
@@ -978,7 +1067,9 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
         ) {
           continue;
         }
-        takeLand(capture.land, capture.by, capture.from);
+        takeLand(capture.land, capture.by, capture.from, {
+          via: "conquest", cardId: capture.cardId,
+        });
       }
     }
     // The status IS the condition. A taken land loses it on capture, so
@@ -1198,6 +1289,7 @@ function resolveMarches(
       if (before === 0) {
         captures.push({
           land: loser, by: eng.spear.actor, from: eng.spear.from,
+          cardId: eng.spear.cardId,
         });
         continue;
       }
@@ -1234,6 +1326,10 @@ interface Capture {
   land: string;
   by: string;
   from: string;
+  /** The card the winning march was sent by. The `march-resolved` beside the
+   *  push already reads it off the same march; a capture that dropped it left
+   *  the land changing hands with no way back to the raid that did it. */
+  cardId: string;
 }
 
 /** The player concedes. Terminal, and deliberately not reversible. Its own
@@ -1494,7 +1590,7 @@ export function playCard(
       claims = clearClaims(claims, [key]);
       events.push({
         turn: state.turn, playerId: p.id, type: "march-lapsed",
-        cardId: "subjugate",
+        cardId: claim.cardId,
         targetFactionId: claim.to, sourceFactionId: claim.from,
       });
     }
@@ -1516,7 +1612,10 @@ export function playCard(
     });
   };
 
-  const landSubjugation = (target: string): void => {
+  /** The other door an allegiance change comes through: one that resolves on
+   *  the table rather than arriving. `cause` is required here for the same
+   *  reason it is on `takeLand`. */
+  const landSubjugation = (target: string, cause: SubjugationCause): void => {
     const formerLord = overlords.get(target);
     // The target's own vassals come along: taking a lord takes its pyramid.
     overlords.set(target, p.factionId);
@@ -1534,6 +1633,7 @@ export function playCard(
     events.push({
       turn: state.turn, playerId: p.id, type: "subjugated",
       targetFactionId: target, overlordFactionId: p.factionId,
+      ...cause,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
     // A land just taken cannot send its armies at its new lord, nor at anyone
@@ -1734,7 +1834,7 @@ export function playCard(
       !fullRealmOf(p.factionId, overlords, incorporated).has(targetId)
     ) {
       firePassive(events, state.turn, p.id, "no-successor", targetId);
-      landSubjugation(targetId);
+      landSubjugation(targetId, { via: "passive", passiveId: "no-successor" });
     }
   } else if (cardId === "found-settlement" && targetId !== undefined) {
     // The settlement belongs to the land, not to whoever founded it: a
@@ -1762,7 +1862,7 @@ export function playCard(
     // It is made out of the actor's HOME, which is the land whose defenders
     // can march over with it when it lands.
     claims = addClaim(claims, {
-      actor: p.factionId, from: p.factionId, to: targetId,
+      actor: p.factionId, from: p.factionId, to: targetId, cardId,
       expiry: state.turn + 1,
     });
   } else if (cardId === "incorporate" && targetId !== undefined) {

@@ -514,6 +514,28 @@ describe("activity log", () => {
     expect(g.defense.alpha).toBe(59);
   });
 
+  it("indents a land submitting under the arrow that took it", () => {
+    const { container, hud } = setup();
+    // Alpha is already flat, so the army arrives to find nothing to fight and
+    // takes the land instead. Without a line for the arrival the submission
+    // stood indented under nothing, with no way back to the raid that did it.
+    let g = withHand({ ...playing(), defense: { alpha: 0 } }, 0, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    g = beginTurn({ ...g, turn: g.turn + 1 }, seededRng(1));
+    hud.update(g);
+    const entries = [...container.querySelectorAll(".log-entry")] as HTMLElement[];
+    const texts = entries.map((el) => el.textContent);
+    // "reaches", not "falls on": it broke nothing, and the line under it says
+    // what became of the land.
+    expect(texts).toContain("Raid out of Beta reaches Alpha");
+    expect(texts).toContain("Alpha submits to Beta");
+    const arrival = entries.findIndex((el) => el.textContent === "Raid out of Beta reaches Alpha");
+    const submission = entries.findIndex((el) => el.textContent === "Alpha submits to Beta");
+    expect(submission).toBe(arrival + 1);
+    expect(entries[arrival]!.classList.contains("log-consequence")).toBe(false);
+    expect(entries[submission]!.classList.contains("log-consequence")).toBe(true);
+  });
+
   it("colours a hit red and a heal green, by the polygon's own movement", () => {
     const { container, hud } = setup();
     let g: GameState = { ...playing(), defense: { beta: 40 } };
@@ -1596,6 +1618,7 @@ describe("notice modal", () => {
   const subjugatedYou: GameEvent = {
     turn: 1, playerId: 2, type: "subjugated",
     targetFactionId: "beta", overlordFactionId: "alpha",
+    via: "claim", cardId: "subjugate",
   };
   const releasedYou: GameEvent = {
     turn: 1, playerId: 3, type: "released", targetFactionId: "beta",
@@ -1603,14 +1626,17 @@ describe("notice modal", () => {
 
   it("shows a modal when a rival poaches one of your vassals", () => {
     const { container, hud } = setup();
+    // An army walked in, so the line names the raid: this is the case that
+    // used to be reported as a Subjugate on the surface the player reads.
     hud.update(withEvents(playing(), [{
       turn: 1, playerId: 2, type: "subjugated", targetFactionId: "gamma",
       overlordFactionId: "alpha", formerOverlordFactionId: "beta",
+      via: "conquest", cardId: "raid",
     }]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe(ROUND_SUMMARY_TITLE);
     expect(lineTexts(container)).toEqual([
-      "Subjugate by Alpha took your vassal Gamma",
+      "Raid by Alpha took your vassal Gamma",
     ]);
     // A poach carries no footnote of its own - the tribute injection is the
     // vassal's problem now, not the old lord's.

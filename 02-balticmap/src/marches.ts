@@ -276,6 +276,12 @@ export interface Claim {
   actor: string;
   from: string;
   to: string;
+  /** The card that declared the demand, carried for the same reason
+   *  `March.cardId` is: the line that reports the answer names what asked the
+   *  question, and a second lookup would be a second answer waiting to differ.
+   *  Subjugate is the only declarer today, and writing that down here is what
+   *  keeps a second one from inheriting its name. */
+  cardId: string;
   expiry: number;
 }
 

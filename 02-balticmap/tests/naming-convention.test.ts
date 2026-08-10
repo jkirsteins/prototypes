@@ -76,13 +76,23 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "discard", cardId: "raid" },
     { turn: 1, playerId: 2, type: "discard", cardId: "raid" },
   ],
+  // One per route, because the route decides the segment the line opens with:
+  // a card for the two that arrive, a status for the one that does not.
   subjugated: [
-    { turn: 1, playerId: 2, type: "subjugated", targetFactionId: H, overlordFactionId: RIVAL },
-    { turn: 1, playerId: 1, type: "subjugated", targetFactionId: RIVAL, overlordFactionId: H },
+    {
+      turn: 1, playerId: 2, type: "subjugated", targetFactionId: H,
+      overlordFactionId: RIVAL, via: "conquest", cardId: "raid",
+    },
+    {
+      turn: 1, playerId: 1, type: "subjugated", targetFactionId: RIVAL,
+      overlordFactionId: H, via: "claim", cardId: "subjugate",
+    },
     {
       turn: 1, playerId: 2, type: "subjugated", targetFactionId: H,
       overlordFactionId: RIVAL, formerOverlordFactionId: H,
+      via: "passive", passiveId: "no-successor",
     },
+    { turn: 1, playerId: 2, type: "subjugated", targetFactionId: H, overlordFactionId: RIVAL },
   ],
   released: [
     { turn: 1, playerId: 2, type: "released", targetFactionId: H, overlordFactionId: RIVAL },
