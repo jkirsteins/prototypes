@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   hasRuler, initialRulers, replaceRuler, rulerNameFor, rulerOf, vacateRulers,
 } from "../src/rulers";
 import raw from "../src/data/baltic.json";
 import pools from "../src/data/ruler-names.json";
+import genericNames from "../src/data/ruler-names-generic.json";
 import type { MapData } from "../src/types";
 import {
   newGame, startGame, chooseBuild, pickFaction, advance, beginTurn, MAX_ACTIVE,
@@ -12,16 +13,20 @@ import {
 import { playsTurns } from "../src/passives";
 import { aiTakeTurn } from "../src/ai";
 import { SIM_FACTION_IDS, SIM_ADJACENCY, seededRng } from "../src/sim";
+import { DEFAULT_REGION, setActiveRegion } from "../src/regions";
 
 const data = raw as MapData;
 const POOLS = pools as Record<string, string[]>;
+const GENERIC = genericNames as string[];
+
+afterEach(() => setActiveRegion(DEFAULT_REGION));
 
 describe("ruler name pools", () => {
   it("covers every ethnicity on the map", () => {
     for (const faction of data.factions) {
       expect(POOLS[faction.ethnicity], `pool for ${faction.ethnicity}`).toBeDefined();
     }
-    expect(POOLS.generic).toBeDefined();
+    expect(GENERIC.length).toBeGreaterThan(0);
   });
 
   it("holds at least twice as many names as the ethnicity has factions", () => {
@@ -76,7 +81,7 @@ describe("initialRulers", () => {
 
   it("falls back to the generic pool for a faction with no ethnicity", () => {
     const rulers = initialRulers(["alpha", "beta"]);
-    expect(POOLS.generic).toContain(rulerOf(rulers, "alpha").name);
+    expect(GENERIC).toContain(rulerOf(rulers, "alpha").name);
     expect(rulerOf(rulers, "alpha").name).not.toBe(rulerOf(rulers, "beta").name);
   });
 });
@@ -157,6 +162,20 @@ describe("rulerNameFor", () => {
     const a = rulerNameFor("alpha", "livs", 0, taken);
     taken.add(a);
     expect(rulerNameFor("beta", "livs", 0, taken)).not.toBe(a);
+  });
+
+  it("draws names from the ACTIVE region's pools", () => {
+    // Baltic pools hold no name from the generic pool's spelling space that
+    // this asserts on; the point is only that switching regions switches the
+    // answer. Until Iberia lands (Task 4) this pins the plumbing with baltic.
+    const name = rulerNameFor("selonians", "selonians", 0, new Set());
+    setActiveRegion("baltic");
+    expect(rulerNameFor("selonians", "selonians", 0, new Set())).toBe(name);
+  });
+
+  it("falls back to the generic pool for an unknown ethnicity", () => {
+    const name = rulerNameFor("x", undefined, 0, new Set());
+    expect(name.length).toBeGreaterThan(0);
   });
 });
 

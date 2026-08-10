@@ -1,7 +1,6 @@
 import type { MapData } from "./types";
 import balticMap from "./data/baltic.json";
 import balticRulerNames from "./data/ruler-names.json";
-import { BUREAUCRACY_LANDS, TERRAIN_ELIGIBILITY } from "./passives";
 
 /** Widened to "baltic" | "iberia" when the Iberia bake lands (Task 4). */
 export type RegionId = "baltic";
@@ -25,12 +24,41 @@ export interface RegionDef {
   bureaucracyLands: readonly string[];
 }
 
-// The "generic" pool is a fallback for a people with no pool of its own, not
-// a people in the map - keeping it out of rulerNames means every key here
-// really does answer to a people the map defines, which is what the
-// self-consistency test checks.
-const { generic: _generic, ...balticPools } = balticRulerNames as
-  Record<string, string[]>;
+const balticPools = balticRulerNames as Record<string, readonly string[]>;
+
+/** Which lands could plausibly carry which ground, read off what the map
+ *  already says about each region in its own flavour text: hills and uplands
+ *  for `hill-country`, the trade rivers for `river-trade`. Random placement
+ *  that ignored this put hills on the Semigallian plain, which the map calls
+ *  flat and fertile two lines away.
+ *
+ *  A land absent from the table gets no terrain status, which is the honest
+ *  answer for the plains and the islands. */
+const BALTIC_TERRAIN_ELIGIBILITY: Readonly<Record<string, readonly string[]>> = {
+  // Highlands, uplands and wooded hills.
+  "eastern-aukstaitian-confederacy": ["hill-country"],
+  "sakalans": ["hill-country"],
+  "selonians": ["hill-country"],
+  "ugandians": ["hill-country"],
+  "samogitian-confederacy": ["hill-country"],
+  // The trade rivers: the Daugava, the Gauja, the Nemunas, the Lielupe, the
+  // Vistula.
+  "jersikans": ["river-trade"],
+  "lower-daugava-livs": ["river-trade"],
+  "talavians": ["river-trade"],
+  "lietuva": ["river-trade"],
+  "dainavians": ["river-trade"],
+  "nadruvians": ["river-trade"],
+  "semigallian-confederacy": ["river-trade"],
+  "pomesanians": ["river-trade"],
+};
+
+/** The lands that carry it from the first turn. Named rather than rolled: it
+ *  is a fact about how big these three are, so a run where they muster freely
+ *  is not a different map but the same imbalance back. */
+const BALTIC_BUREAUCRACY_LANDS: readonly string[] = [
+  "eastern-aukstaitian-confederacy", "samogitian-confederacy", "lietuva",
+];
 
 export const DEFAULT_REGION: RegionId = "baltic";
 
@@ -46,8 +74,8 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       "whoever three neighbours fear at once.",
     map: balticMap as MapData,
     rulerNames: balticPools,
-    terrainEligibility: TERRAIN_ELIGIBILITY,
-    bureaucracyLands: BUREAUCRACY_LANDS,
+    terrainEligibility: BALTIC_TERRAIN_ELIGIBILITY,
+    bureaucracyLands: BALTIC_BUREAUCRACY_LANDS,
   },
 };
 

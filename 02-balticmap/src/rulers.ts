@@ -1,5 +1,6 @@
-import pools from "./data/ruler-names.json";
+import genericNames from "./data/ruler-names-generic.json";
 import type { LeaderAbilities } from "./abilities";
+import { activeRegion } from "./regions";
 
 export interface Ruler {
   name: string;
@@ -28,11 +29,17 @@ export interface Ruler {
  *  cannot become vacant, because `replaceRuler` always seats a successor. */
 export type Rulers = Record<string, Ruler>;
 
-const POOLS = pools as Record<string, string[]>;
-const GENERIC = "generic";
+const GENERIC: readonly string[] = genericNames as string[];
 
-function poolFor(ethnicity: string | undefined): string[] {
-  return POOLS[ethnicity ?? GENERIC] ?? POOLS[GENERIC];
+/** The active region's pool for this people, or the shared fallback for a
+ *  people the region names no pool for - a faction with no ethnicity at all,
+ *  or one the region simply has not authored names for yet. */
+function poolFor(ethnicity: string | undefined): readonly string[] {
+  if (ethnicity !== undefined) {
+    const pool = activeRegion().rulerNames[ethnicity];
+    if (pool !== undefined && pool.length > 0) return pool;
+  }
+  return GENERIC;
 }
 
 /** FNV-1a, so a faction's place in its pool is stable across runs and

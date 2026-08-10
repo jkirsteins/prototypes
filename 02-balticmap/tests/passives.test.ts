@@ -1,13 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
-  addPassive, BUREAUCRACY_LANDS, BUREAUCRACY_PER_ARMY, damageAfterTerrain,
+  addPassive, BUREAUCRACY_PER_ARMY, damageAfterTerrain,
   hasPassive, PASSIVES, passivesOn, perArmyOn, playsTurns, QUIET_PASSIVES,
-  quietPassives, rollTerrain, seedTerrain, stripOnCapture, TERRAIN_ELIGIBILITY,
+  quietPassives, rollTerrain, seedTerrain, stripOnCapture,
   type Passives,
 } from "../src/passives";
 import { armyCapFor, DEFENSE_PER_ARMY, turnipThresholdFor } from "../src/defense";
 import { seededRng, SIM_DEFENSE_MAX } from "../src/sim";
 import data from "../src/data/baltic.json";
+import { activeRegion } from "../src/regions";
+import type { MapData } from "../src/types";
 
 describe("the passive table", () => {
   it("gives every status a name, a line of text and a capture rule", () => {
@@ -93,7 +95,7 @@ describe("playsTurns", () => {
 describe("terrain eligibility", () => {
   it("names only real lands and only statuses that survive capture", () => {
     const lands = new Set(data.factions.map((f) => f.id));
-    for (const [land, ids] of Object.entries(TERRAIN_ELIGIBILITY)) {
+    for (const [land, ids] of Object.entries(activeRegion().terrainEligibility)) {
       expect(lands.has(land), land).toBe(true);
       expect(ids.length, land).toBeGreaterThan(0);
       for (const id of ids) {
@@ -104,7 +106,7 @@ describe("terrain eligibility", () => {
   });
 
   it("rolls the same terrain twice from the same seed", () => {
-    const ids = Object.keys(TERRAIN_ELIGIBILITY);
+    const ids = Object.keys(activeRegion().terrainEligibility);
     expect(rollTerrain(ids, seededRng(3))).toEqual(rollTerrain(ids, seededRng(3)));
   });
 
@@ -112,17 +114,28 @@ describe("terrain eligibility", () => {
     const rolled = rollTerrain(["selonians", "osilians", "jersikans"], seededRng(9));
     for (const [land, carried] of Object.entries(rolled)) {
       for (const id of carried) {
-        expect(TERRAIN_ELIGIBILITY[land] ?? [], land).toContain(id);
+        expect(activeRegion().terrainEligibility[land] ?? [], land).toContain(id);
       }
     }
+  });
+
+  it("terrain tables live on the region and name real factions", () => {
+    const region = activeRegion();
+    const factionIds = new Set((data as MapData).factions.map((f) => f.id));
+    for (const id of Object.keys(region.terrainEligibility)) {
+      expect(factionIds.has(id)).toBe(true);
+    }
+    expect(region.bureaucracyLands).toEqual([
+      "eastern-aukstaitian-confederacy", "samogitian-confederacy", "lietuva",
+    ]);
   });
 });
 
 describe("seedTerrain", () => {
   it("carries the named burden as well as the roll", () => {
-    const lands = [...BUREAUCRACY_LANDS, "selonians"];
+    const lands = [...activeRegion().bureaucracyLands, "selonians"];
     const ground = seedTerrain(lands, seededRng(1));
-    for (const land of BUREAUCRACY_LANDS) {
+    for (const land of activeRegion().bureaucracyLands) {
       expect(hasPassive(ground, land, "burden-of-bureaucracy"), land).toBe(true);
     }
     expect(hasPassive(ground, "selonians", "burden-of-bureaucracy")).toBe(false);
@@ -166,8 +179,8 @@ describe("perArmyOn", () => {
     // The point of the burden: at the map's own divisor these three out-muster
     // a realm, so the test is that the divisor actually removes an army from
     // each of them rather than that the constant reads what it reads.
-    const ground = seedTerrain([...BUREAUCRACY_LANDS], seededRng(1));
-    for (const land of BUREAUCRACY_LANDS) {
+    const ground = seedTerrain([...activeRegion().bureaucracyLands], seededRng(1));
+    for (const land of activeRegion().bureaucracyLands) {
       const max = SIM_DEFENSE_MAX[land];
       expect(max, land).toBeGreaterThan(0);
       expect(armyCapFor(max, perArmyOn(ground, land)), land)

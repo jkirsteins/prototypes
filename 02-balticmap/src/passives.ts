@@ -18,6 +18,7 @@
 
 import type { Rng } from "./cards";
 import { DEFENSE_PER_ARMY } from "./defense";
+import { activeRegion } from "./regions";
 
 export interface PassiveDef {
   id: string;
@@ -94,13 +95,6 @@ export const HILL_COUNTRY_REDUCTION = 0.25;
  *  (four, three and three) without letting one polygon out-muster a realm. */
 export const BUREAUCRACY_PER_ARMY = 4;
 
-/** The lands that carry it from the first turn. Named rather than rolled: it
- *  is a fact about how big these three are, so a run where they muster freely
- *  is not a different map but the same imbalance back. */
-export const BUREAUCRACY_LANDS: readonly string[] = [
-  "eastern-aukstaitian-confederacy", "samogitian-confederacy", "lietuva",
-];
-
 /** polygon id -> the statuses it carries. Absent key means none, the sparse
  *  convention `defense` and `armies` already keep. */
 export type Passives = Readonly<Record<string, readonly string[]>>;
@@ -148,33 +142,6 @@ export function perArmyOn(p: Passives, polygon: string): number {
     : DEFENSE_PER_ARMY;
 }
 
-/** Which lands could plausibly carry which ground, read off what the map
- *  already says about each region in its own flavour text: hills and uplands
- *  for `hill-country`, the trade rivers for `river-trade`. Random placement
- *  that ignored this put hills on the Semigallian plain, which the map calls
- *  flat and fertile two lines away.
- *
- *  A land absent from the table gets no terrain status, which is the honest
- *  answer for the plains and the islands. */
-export const TERRAIN_ELIGIBILITY: Readonly<Record<string, readonly string[]>> = {
-  // Highlands, uplands and wooded hills.
-  "eastern-aukstaitian-confederacy": ["hill-country"],
-  "sakalans": ["hill-country"],
-  "selonians": ["hill-country"],
-  "ugandians": ["hill-country"],
-  "samogitian-confederacy": ["hill-country"],
-  // The trade rivers: the Daugava, the Gauja, the Nemunas, the Lielupe, the
-  // Vistula.
-  "jersikans": ["river-trade"],
-  "lower-daugava-livs": ["river-trade"],
-  "talavians": ["river-trade"],
-  "lietuva": ["river-trade"],
-  "dainavians": ["river-trade"],
-  "nadruvians": ["river-trade"],
-  "semigallian-confederacy": ["river-trade"],
-  "pomesanians": ["river-trade"],
-};
-
 /** How often an eligible land actually carries its ground. Half, so two runs
  *  of the same map are different maps to fight over. */
 export const TERRAIN_CHANCE = 0.5;
@@ -185,9 +152,10 @@ export const TERRAIN_CHANCE = 0.5;
  *  holds one id - and is kept because a land with two plausible grounds is a
  *  row in the table, not a change to this function. */
 export function rollTerrain(factionIds: string[], rng: Rng): Passives {
+  const eligibility = activeRegion().terrainEligibility;
   let out: Passives = {};
   for (const land of factionIds) {
-    const eligible = TERRAIN_ELIGIBILITY[land];
+    const eligible = eligibility[land];
     if (eligible === undefined || eligible.length === 0) continue;
     if (rng() >= TERRAIN_CHANCE) continue;
     out = addPassive(out, land, eligible[Math.floor(rng() * eligible.length)]);
@@ -201,7 +169,7 @@ export function rollTerrain(factionIds: string[], rng: Rng): Passives {
 export function seedTerrain(factionIds: string[], rng: Rng): Passives {
   let out = rollTerrain(factionIds, rng);
   // After the roll, so adding a named status never shifts a draw.
-  for (const land of BUREAUCRACY_LANDS) {
+  for (const land of activeRegion().bureaucracyLands) {
     if (factionIds.includes(land)) out = addPassive(out, land, "burden-of-bureaucracy");
   }
   return out;
