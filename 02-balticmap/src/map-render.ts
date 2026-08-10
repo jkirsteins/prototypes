@@ -211,6 +211,10 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     c.setAttribute("cy", String(s.y));
     c.setAttribute("r", "3.5");
     c.setAttribute("data-settlement-id", s.id);
+    // The land it stands in, so a surface that narrows the map to one or two
+    // lands can take the rest of the towns with them. A REGION id, not a
+    // faction id - `Settlement.land` indexes MapData.regions.
+    c.setAttribute("data-land", s.land);
     settlementsGroup.appendChild(c);
     settlementDots.set(s.id, c);
     drawn.push(c);
@@ -220,6 +224,7 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     t.classList.add("settlement-label");
     t.setAttribute("x", String(s.x));
     t.setAttribute("y", String(s.y + (s.labelDy ?? -7)));
+    t.setAttribute("data-land", s.land);
     t.textContent = s.name;
     settlementsGroup.appendChild(t);
     drawn.push(t);

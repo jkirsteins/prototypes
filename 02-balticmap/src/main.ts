@@ -638,15 +638,24 @@ function renderVassalOverlay(): void {
  *  interacting - dimmed, realm-hover, holder-hover, target-invalid - and this
  *  wants the result, not a second copy of the reasoning. */
 function syncVassalStripes(): void {
+  // While a pin holds or an arrow hover narrows the map, a stripe follows the
+  // LAND it is drawn on rather than its lord: the land the map has narrowed to
+  // is the one thing that must stay legible, and taking its lord's opacity
+  // would strip it of the very marking that says whose it is.
+  const focused = svg.classList.contains("arrow-focused");
+  const narrowed = svg.classList.contains("pinning") || focused;
   for (const { path, lord, land } of vassalStripes) {
-    // While a pin holds, a stripe follows the LAND it is drawn on rather than
-    // its lord: the pinned land is the one thing on the map that must stay
-    // legible, and taking its lord's opacity would strip the pinned vassal of
-    // the very marking that says whose it is.
-    const source = svg.classList.contains("pinning") ? land : lord;
+    const source = narrowed ? land : lord;
     const regionId = regionByFaction.get(source);
     const el = regionId !== undefined ? regionPaths.get(regionId) : undefined;
-    if (el) path.style.opacity = getComputedStyle(el).opacity;
+    if (!el) continue;
+    // An arrow hover REPAINTS the lands it is not about instead of fading
+    // them, so there is no opacity left to read: a stripe would keep its
+    // overlord's colour on a land that has gone off the map. It comes off
+    // explicitly, and only there.
+    path.style.opacity = focused && !el.classList.contains("arrow-end")
+      ? "0"
+      : getComputedStyle(el).opacity;
   }
 }
 
@@ -943,6 +952,9 @@ function renderThreatBadges(): void {
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     g.classList.add("threat-badge");
+    // Which land's number this is, for the surfaces that narrow the map to a
+    // land or two and have to take the rest of the numbers away.
+    g.dataset.faction = factionId;
     const band = gateBandOf(v, factionId);
     g.classList.add(BAND_CLASS[band]);
     g.setAttribute("transform", `translate(${cx}, ${cy})`);
@@ -1025,6 +1037,10 @@ function renderThreatBadges(): void {
     rect.setAttribute("width", String(textBox.width + pad * 2));
     rect.setAttribute("height", String(textBox.height + pad * 2));
   }
+  // The group was rebuilt from nothing, so whatever an arrow hover had taken
+  // away is back. Re-asked here rather than at every caller: a refresh landing
+  // mid-hover would otherwise restore every number on the map.
+  applyArrowFocus();
 }
 
 /** Army pips drawn before the badge falls back to a count. Five is what fits
@@ -2121,17 +2137,20 @@ function focusOnHover(g: SVGGElement, from: string, to: string): void {
 
 /** Paints the current arrow focus, or clears it. The pin owns the map when one
  *  is held and while a card is armed the targeting cues do, so this stands
- *  down for both rather than adding a third voice. */
+ *  down for both rather than adding a third voice.
+ *
+ *  Everything drawn ON a land is asked the same question the land is, because a
+ *  land repainted to the off-map grey with its defense number still crisp above
+ *  it is not off the map - the numbers were the loudest thing on the board, and
+ *  fading only the fills left them in sole possession of the eye. */
 function applyArrowFocus(): void {
   const focus = pinnedRegion !== null || targetingLive() ? null : arrowFocus;
   svg.classList.toggle("arrow-focused", focus !== null);
+  const isEnd = (factionId: string | undefined): boolean =>
+    focus !== null &&
+    (factionId === focus.from || factionId === focus.to);
   for (const [id, el] of regionPaths) {
-    const region = regionById.get(id);
-    el.classList.toggle(
-      "arrow-end",
-      focus !== null && region !== undefined &&
-        (region.faction === focus.from || region.faction === focus.to),
-    );
+    el.classList.toggle("arrow-end", isEnd(regionById.get(id)?.faction));
   }
   for (const g of arrowGroup.children) {
     if (!(g instanceof SVGGElement)) continue;
@@ -2139,6 +2158,23 @@ function applyArrowFocus(): void {
       "arrow-faded",
       focus !== null &&
         !(g.dataset.from === focus.from && g.dataset.target === focus.to),
+    );
+  }
+  for (const g of badgeGroup.children) {
+    if (!(g instanceof SVGGElement)) continue;
+    g.classList.toggle("focus-faded", focus !== null && !isEnd(g.dataset.faction));
+  }
+  // A settlement names its land by REGION id, and a queried list rather than a
+  // cached one because founding one in play adds to this group.
+  const ends = new Set(
+    focus === null
+      ? []
+      : [regionByFaction.get(focus.from), regionByFaction.get(focus.to)],
+  );
+  for (const el of svg.querySelectorAll("[data-land]")) {
+    el.classList.toggle(
+      "focus-faded",
+      focus !== null && !ends.has((el as SVGElement).dataset.land),
     );
   }
 }

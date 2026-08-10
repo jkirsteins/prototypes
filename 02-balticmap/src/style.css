@@ -884,16 +884,35 @@ svg.map.dragging {
   opacity: 0.75;
 }
 
-/* Pointing at an arrow asks "which two lands is this about". Everything that
-   is not one of the two steps back, the pin's own vocabulary at a lighter
-   weight - this is a glance, not a decision.
+/* Pointing at an arrow asks "which two lands is this about". A land that is
+   not one of the two stops being a land in play for as long as the pointer
+   rests there: it takes the off-map neighbour's own grey, the same flat fill
+   the landmass behind "Lands of Rus'" carries.
 
-   HUE is what the step back takes away, not brightness alone. A rival's
-   orange at 45% opacity was still the loudest thing on a mostly grey map, so
-   the two lands the arrow was about were not the two the eye went to. */
+   REPAINTED, not faded, and that is the whole rule. Fading leaves the hue in -
+   a rival's orange at 40% opacity was still the loudest thing on a mostly grey
+   map - and fading far enough to kill the hue composites the land against the
+   sea rect beneath it, which dissolves the coastline and stops the map being a
+   map. Repainting keeps the silhouette and takes the identity.
+
+   `.realm-edge` is excluded from the fill alone: the stroke-only copies must
+   keep `fill: none` or they paint their whole polygon. They do want the grey
+   stroke, because the copy is what draws a realm member's outline. */
+svg.map.arrow-focused .region:not(.arrow-end):not(.realm-edge) {
+  fill: #d9d9d9;
+}
+
+/* !important against `.region.realm-member`, which declares the pale realm
+   seam !important of its own, and against every threat, ownership and hover
+   stroke in this file. A land that is off the map for the moment says nothing
+   about itself, and one surviving coloured outline is enough to draw the eye
+   back. */
 svg.map.arrow-focused .region:not(.arrow-end) {
-  opacity: 0.4;
-  filter: saturate(0.12);
+  opacity: 1;
+  filter: none;
+  stroke: #c0c0c0 !important;
+  stroke-width: 0.5 !important;
+  stroke-dasharray: none !important;
 }
 
 /* Both ends keep their colour and take the hover's own outline. The origin
@@ -909,16 +928,63 @@ svg.map.arrow-focused .region.arrow-end {
 /* The overlays that draw a REALM rather than a land are not `.region`s, so the
    rule above never reached them - the same hole the pin had to close, for the
    same reason: an outline still glowing around lands the arrow has nothing to
-   do with is a second thing competing for the glance. */
+   do with is a second thing competing for the glance. Gone outright rather
+   than dimmed, because on a repainted map these bands would be the only colour
+   left standing. */
 svg.map.arrow-focused .realm-outline,
 svg.map.arrow-focused .realm-union,
 svg.map.arrow-focused .realm-hover-halo {
+  opacity: 0;
+}
+
+/* A defense score on a land that is off the map has no quiet version - it is
+   read or it is not - so the badges the arrow is not about go, and the two it
+   is about stay at full strength. `.focus-faded` is toggled in
+   `applyArrowFocus`; the badge group is rebuilt wholesale on every refresh,
+   which is why that function is called at the end of `renderThreatBadges`. */
+svg.map.arrow-focused .threat-badge.focus-faded {
+  opacity: 0;
+}
+
+/* The names, though, DO have a quiet version, and the map already shows what
+   it looks like: `.label-neighbor` prints "Lands of Rus'" over ground nobody
+   plays. So a city on a greyed land keeps a trace of itself rather than
+   blinking out, and the two ends keep their names outright.
+
+   People labels fade whatever the arrow is about: an ethnonym spans several
+   lands and is the name of neither end. */
+svg.map.arrow-focused .label-people,
+svg.map.arrow-focused .label-people-minor,
+svg.map.arrow-focused .settlement.focus-faded,
+svg.map.arrow-focused .settlement-label.focus-faded {
+  opacity: 0.25;
+}
+
+/* The rivers are the only colour the repaint leaves standing, and on a map
+   gone grey they became the loudest thing on it. They stay - the Daugava is
+   how half these lands are located - but they stay as landmarks, behind the
+   two the arrow is about. */
+svg.map.arrow-focused .river {
   opacity: 0.3;
 }
 
-.march-arrow.arrow-faded,
-.claim-arrow.arrow-faded {
-  opacity: 0.25;
+/* Scoped under the state rather than written flat, because
+   `.march-arrow.march-other` further down this file sets a rival's arrow to
+   0.45 and would win the tie on source order - a "faded" rival arrow came out
+   BRIGHTER than an unfaded one. */
+svg.map.arrow-focused .march-arrow.arrow-faded,
+svg.map.arrow-focused .claim-arrow.arrow-faded {
+  opacity: 0.12;
+  filter: saturate(0);
+}
+
+/* And the one being pointed at comes to full. A rival's quarrel rests at 0.45
+   because it is information rather than a decision - but the moment it is the
+   thing under the pointer it IS the decision, and on a map that has just gone
+   grey around it, 45% was the faintest mark left. */
+svg.map.arrow-focused .march-arrow:not(.arrow-faded),
+svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
+  opacity: 1;
 }
 
 .march-arrow polygon {
