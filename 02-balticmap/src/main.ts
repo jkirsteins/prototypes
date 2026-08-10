@@ -1,4 +1,4 @@
-import rawData from "./data/map.json";
+import rawData from "./data/baltic.json";
 import type { MapData, Region } from "./types";
 import { renderMap, darkenColor, brightenColor } from "./map-render";
 import {

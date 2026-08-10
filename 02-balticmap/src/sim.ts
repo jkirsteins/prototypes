@@ -1,4 +1,4 @@
-import rawData from "./data/map.json";
+import rawData from "./data/baltic.json";
 import type { MapData } from "./types";
 import { defenseMaxOf, factionAdjacencyOf, siteCapsOf } from "./adjacency";
 import { CARDS, GUARDS, guardAgainst, type Rng, type Strategy } from "./cards";

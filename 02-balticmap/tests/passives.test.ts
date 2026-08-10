@@ -7,7 +7,7 @@ import {
 } from "../src/passives";
 import { armyCapFor, DEFENSE_PER_ARMY, turnipThresholdFor } from "../src/defense";
 import { seededRng, SIM_DEFENSE_MAX } from "../src/sim";
-import data from "../src/data/map.json";
+import data from "../src/data/baltic.json";
 
 describe("the passive table", () => {
   it("gives every status a name, a line of text and a capture rule", () => {

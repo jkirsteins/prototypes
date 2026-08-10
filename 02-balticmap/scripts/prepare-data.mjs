@@ -1739,9 +1739,9 @@ for (const r of data.regions) {
 }
 
 mkdirSync("src/data", { recursive: true });
-writeFileSync("src/data/map.json", JSON.stringify(data));
+writeFileSync("src/data/baltic.json", JSON.stringify(data));
 console.log(
-  `Wrote src/data/map.json: ${data.regions.length} lands, ` +
+  `Wrote src/data/baltic.json: ${data.regions.length} lands, ` +
     `${data.factions.length} factions, ${data.peoples.length} peoples, ` +
     `${data.neighbors.length} neighbors, ${data.rivers.length} rivers, ` +
     `${data.settlements.length} settlements, ${data.labels.length} labels`,

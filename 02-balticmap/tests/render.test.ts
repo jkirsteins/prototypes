@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { renderMap, darkenColor } from "../src/map-render";
 import type { MapData } from "../src/types";
-import raw from "../src/data/map.json";
+import raw from "../src/data/baltic.json";
 
 const data = raw as MapData;
 

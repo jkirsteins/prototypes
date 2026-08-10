@@ -4,7 +4,7 @@ import { buildRoundSummary, type NoticeCtx } from "../src/notices";
 import { cardTextSegments, plainText, type NameLookup, type Segment } from "../src/rich-text";
 import type { GameEvent, GameEventType, GameState } from "../src/game";
 import { CARDS } from "../src/cards";
-import rawData from "../src/data/map.json";
+import rawData from "../src/data/baltic.json";
 import type { MapData } from "../src/types";
 
 /** The naming rule in AGENTS.md, enforced. Prose did not work: `cardName`

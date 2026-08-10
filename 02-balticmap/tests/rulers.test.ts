@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   hasRuler, initialRulers, replaceRuler, rulerNameFor, rulerOf, vacateRulers,
 } from "../src/rulers";
-import raw from "../src/data/map.json";
+import raw from "../src/data/baltic.json";
 import pools from "../src/data/ruler-names.json";
 import type { MapData } from "../src/types";
 import {
