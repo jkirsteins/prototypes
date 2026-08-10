@@ -11,6 +11,12 @@ const EXPECTED_IDS = [
   "sobrarbe", "todmir", "toledo", "upper-march", "urgell", "valencia",
 ];
 
+// Pinned to what the bake derives, so a neighbor cannot silently vanish or
+// reappear unnoticed: the 2000 margin brings DZ, TN and IT into view (the
+// Maghreb coast the emirate looked across, and Sardinia), alongside FR
+// (which now also carries Corsica) and MA.
+const EXPECTED_NEIGHBOR_IDS = ["DZ", "FR", "IT", "MA", "TN"];
+
 const EXPECTED_PEOPLE_IDS = [
   "arabs", "asturleonese", "basques", "berbers", "castilians",
   "catalans", "galicians", "muwallads",
@@ -29,7 +35,7 @@ describe("iberia.json (anno 895)", () => {
   it("has canvas bounds, year, and attribution", () => {
     expect(data.width).toBe(1400);
     expect(data.height).toBe(1150);
-    expect(data.margin).toBe(1200);
+    expect(data.margin).toBe(2000);
     expect(data.year).toBe(895);
     expect(data.attribution).toBe(
       "(c) EuroGeographics for the administrative boundaries; " +
@@ -214,7 +220,7 @@ describe("iberia.json (anno 895)", () => {
   });
 
   it("has neighbor geometry and the full label set inside bounds", () => {
-    expect(data.neighbors.map((n) => n.id)).toEqual(["FR", "MA"]);
+    expect(data.neighbors.map((n) => n.id)).toEqual(EXPECTED_NEIGHBOR_IDS);
     for (const n of data.neighbors) expect(n.path.startsWith("M")).toBe(true);
     const byKind = (k: string) =>
       data.labels.filter((l) => l.kind === k).map((l) => l.text);
@@ -225,12 +231,32 @@ describe("iberia.json (anno 895)", () => {
     ]);
     expect(byKind("people-minor")).toEqual([]);
     expect(byKind("neighbor").sort()).toEqual(["FRANCIA", "MAGHREB"]);
+    // Labels take the painted rect, not the canvas: a `group` label naming
+    // Francia or the Maghreb sits out in the surrounding geography by
+    // design, and the painted rect (canvas plus margin) is what a pan can
+    // ever reach.
     for (const l of data.labels) {
-      expect(l.x).toBeGreaterThan(0);
-      expect(l.x).toBeLessThan(1400);
-      expect(l.y).toBeGreaterThan(0);
-      expect(l.y).toBeLessThan(1150);
+      expect(l.x).toBeGreaterThan(-data.margin);
+      expect(l.x).toBeLessThan(data.width + data.margin);
+      expect(l.y).toBeGreaterThan(-data.margin);
+      expect(l.y).toBeLessThan(data.height + data.margin);
     }
+  });
+
+  it("names the ground beyond the lands, for the zoomed-out view", () => {
+    const group = data.labels.filter((l) => l.kind === "group").map((l) => l.text);
+    expect(group).toContain("THE CHRISTIAN NORTH");
+    expect(group).toContain("AL-ANDALUS");
+    expect(group).toContain("FRANCIA");
+    expect(group).toContain("THE MAGHREB");
+  });
+
+  it("carries the surrounding countries, not only the bordering ones", () => {
+    const ids = data.neighbors.map((n) => n.id);
+    for (const id of ["FR", "MA", "DZ", "TN", "IT"]) {
+      expect(ids, `neighbor ${id}`).toContain(id);
+    }
+    for (const n of data.neighbors) expect(n.path.startsWith("M")).toBe(true);
   });
 
   it("has settlements: one unlocked per land, locked fill the slots", () => {
