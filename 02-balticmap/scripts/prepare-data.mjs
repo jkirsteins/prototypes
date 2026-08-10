@@ -33,10 +33,12 @@ const WIDTH = 1000;
 const HEIGHT = 1400;
 const PAD = 40;
 const YEAR = 1100;
-// DK is gone: even with the frame extended west for the Prussian lands it
-// stays off-canvas (the bake warns on any entry that contributes no path).
-// SE stays - Gotland and Oland came into view with the wider frame.
-const NEIGHBORS = ["FI", "SE", "RU", "BY", "PL"];
+// DK was dropped once for being off-canvas at the old frame; the 2000-margin
+// clip below brings it back into view, and NO and DE join it so the
+// zoomed-out view has real ground under its group labels rather than a
+// straight cut into bare sea (the bake warns on any entry that contributes no
+// path, which is what would catch a code that still earns no place here).
+const NEIGHBORS = ["FI", "SE", "RU", "BY", "PL", "DK", "NO", "DE"];
 
 // Peoples of the eastern Baltic, ca. 1100. Colors are each family's base
 // hue; faction fills are shades within the family (see FACTIONS).
@@ -720,8 +722,17 @@ const LANDS = [
 ];
 
 // Label positions are hand-tuned lon/lat, projected below.
-// kinds: people | people-minor | neighbor | river | title | subtitle
+// kinds: people | people-minor | neighbor | river | title | subtitle | group
 const LABELS = [
+  // Group labels take over from the people labels at the zoom floor (the
+  // inverse-visibility swap in map-detail.ts), so they name the same ground
+  // at a coarser grain: two span the playable lands themselves, the rest
+  // stand in the surrounding geography that opens up around them.
+  { text: "FINNIC PEOPLES", lon: 24.5, lat: 58.8, kind: "group" },
+  { text: "THE BALTS", lon: 24.0, lat: 55.4, kind: "group" },
+  { text: "SCANDINAVIA", lon: 16.0, lat: 59.0, kind: "group" },
+  { text: "RUS'", lon: 31.0, lat: 56.5, kind: "group" },
+  { text: "POLAND", lon: 20.0, lat: 52.2, kind: "group" },
   { text: "ESTONIANS", lon: 25.3, lat: 58.8, kind: "people" },
   { text: "LIVS", lon: 24.35, lat: 57.05, kind: "people" },
   { text: "LATGALIANS", lon: 26.6, lat: 56.95, kind: "people" },
@@ -1500,13 +1511,16 @@ const projection = geoAzimuthalEqualArea()
     [[PAD, PAD], [WIDTH - PAD, HEIGHT - PAD]],
     { type: "FeatureCollection", features: landFeatures },
   );
-// Geometry is baked well past the canvas: at the zoom floor a wide viewport
-// letterboxes far beyond the 1000x1400 frame, and a neighbor clipped at the
-// canvas edge shows as a straight cut through land with bare sea beyond it.
-// 1200 covers viewport aspects up to ~3.4:1 at the floor; anything wider
-// falls back to the sea-colored page background. Lands, settlements and
-// labels are all inside the canvas, so only neighbors and rivers grow.
-const CLIP_MARGIN = 1200;
+// Geometry is baked well past the canvas: the painted rect (canvas plus this
+// margin) IS the pan and zoom bound now, not a guess at a viewport shape, so
+// whatever is baked here is exactly what a player can ever pan or zoom to
+// reach - nothing past the margin is ever asked to render, and nothing this
+// side of it is ever left unpainted. A neighbor clipped short of the margin
+// shows as a straight cut through land with bare sea beyond it, which is the
+// thing the margin exists to prevent. Lands, settlements and people/neighbor
+// labels stay inside the canvas; group labels alone may sit out in that
+// margin, over the surrounding geography it now bakes.
+const CLIP_MARGIN = 2000;
 projection.clipExtent([
   [-CLIP_MARGIN, -CLIP_MARGIN],
   [WIDTH + CLIP_MARGIN, HEIGHT + CLIP_MARGIN],
@@ -1668,6 +1682,21 @@ if (collisions.length > 0) {
 
 const labels = LABELS.flatMap((l) => {
   const projected = projection([l.lon, l.lat]);
+  if (l.kind === "group") {
+    // A group label names ground out in the surrounding geography by
+    // design - the painted rect is its bound, not the canvas.
+    const inPaintedRect =
+      projected &&
+      projected[0] > -CLIP_MARGIN && projected[0] < WIDTH + CLIP_MARGIN &&
+      projected[1] > -CLIP_MARGIN && projected[1] < HEIGHT + CLIP_MARGIN;
+    if (!inPaintedRect) throw new Error(`Group label outside painted rect: ${l.text}`);
+    return [{
+      text: l.text,
+      x: Math.round(projected[0]),
+      y: Math.round(projected[1]),
+      kind: l.kind,
+    }];
+  }
   const inBounds =
     projected &&
     projected[0] > 0 && projected[0] < WIDTH &&

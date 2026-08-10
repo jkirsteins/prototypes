@@ -13,9 +13,10 @@ const EXPECTED_IDS = [
 ];
 
 // Pinned to what the bake derives, so a neighbor cannot silently vanish the
-// way SE and DK once did. DK is gone (off-canvas even on the wider frame);
-// SE joined when the frame moved west and Gotland came into view.
-const EXPECTED_NEIGHBOR_IDS = ["BY", "FI", "PL", "RU", "SE"];
+// way SE once did (it joined when the frame moved west and Gotland came into
+// view) or reappear silently the way DK now has: the 2000 margin puts it back
+// in view, and NO and DE join it for the zoomed-out surroundings.
+const EXPECTED_NEIGHBOR_IDS = ["BY", "DE", "DK", "FI", "NO", "PL", "RU", "SE"];
 
 const EXPECTED_PEOPLE_IDS = [
   "aukstaitians", "curonians", "estonians", "latgalians", "livs",
@@ -31,7 +32,7 @@ describe("baltic.json (anno 1100)", () => {
   it("has canvas bounds, year, and attribution", () => {
     expect(data.width).toBe(1000);
     expect(data.height).toBe(1400);
-    expect(data.margin).toBe(1200);
+    expect(data.margin).toBe(2000);
     expect(data.year).toBe(1100);
     expect(data.attribution).toBe(
       "(c) EuroGeographics for the administrative boundaries; " +
@@ -203,12 +204,32 @@ describe("baltic.json (anno 1100)", () => {
     expect(byKind("title")).toEqual([]);
     expect(byKind("subtitle")).toEqual([]);
     expect(byKind("neighbor").length).toBeGreaterThanOrEqual(2);
+    // Labels take the painted rect, not the canvas: a `group` label naming
+    // Scandinavia or Rus' sits out in the surrounding geography by design,
+    // and the painted rect (canvas plus margin) is what a pan can ever reach.
     for (const l of data.labels) {
-      expect(l.x).toBeGreaterThan(0);
-      expect(l.x).toBeLessThan(1000);
-      expect(l.y).toBeGreaterThan(0);
-      expect(l.y).toBeLessThan(1400);
+      expect(l.x).toBeGreaterThan(-data.margin);
+      expect(l.x).toBeLessThan(data.width + data.margin);
+      expect(l.y).toBeGreaterThan(-data.margin);
+      expect(l.y).toBeLessThan(data.height + data.margin);
     }
+  });
+
+  it("names the ground beyond the lands, for the zoomed-out view", () => {
+    const group = data.labels.filter((l) => l.kind === "group").map((l) => l.text);
+    expect(group).toContain("FINNIC PEOPLES");
+    expect(group).toContain("THE BALTS");
+    expect(group).toContain("SCANDINAVIA");
+    expect(group).toContain("RUS'");
+    expect(group).toContain("POLAND");
+  });
+
+  it("carries the surrounding countries, not only the bordering ones", () => {
+    const ids = data.neighbors.map((n) => n.id);
+    for (const id of ["DK", "NO", "DE", "PL", "RU", "SE", "FI", "BY"]) {
+      expect(ids, `neighbor ${id}`).toContain(id);
+    }
+    for (const n of data.neighbors) expect(n.path.startsWith("M")).toBe(true);
   });
 
   it("has 91 authored settlements, exactly one unlocked per land", () => {
