@@ -5,9 +5,10 @@ import {
 } from "./cards";
 
 import {
-  fullRealmOf, incorporatedRealmOf,
+  fullRealmOf, incorporatedRealmOf, isUnheld,
   type Incorporated, type Overlords,
 } from "./relations";
+import { activeRegion } from "./regions";
 import {
   addDisease, applyDamage, applyHeal, capturesOnArrival, clearDiseaseOf,
   DEFAULT_DEFENSE_MAX,
@@ -392,6 +393,41 @@ export function viewOf(state: GameState): RulesView {
   };
 }
 
+/** The realms the active region says already stand, as the two stores hold
+ *  them. A land seeded here is in every respect a land taken mid-game: it gets
+ *  an `overlords` or `incorporated` entry and nothing else, so `quietPassives`
+ *  passes it over (no `keeps-to-itself`, therefore no restless raid) and
+ *  `vacateRulers` leaves its chair empty (therefore no turn, ever). That is
+ *  exactly what `takeLand` leaves behind, which is why seeding a realm needed
+ *  no rule of its own.
+ *
+ *  Both halves skip an entry naming a land or a holder this roster does not
+ *  have - the filter `seedTerrain` already applies, and what lets `sim.ts` and
+ *  every three-land test map read the shipped table and get nothing from it.
+ *
+ *  No rng: this is data, not a roll, so it consumes no draw and cannot shift
+ *  the seeded contract tests/rng-isolation.test.ts pins. And no `TRIBUTE_CARDS`
+ *  injection, unlike `takeLand`: a seeded vassal never gains a ruler, so it
+ *  never takes the turn on which it could draw one, and a conqueror taking it
+ *  later injects then. */
+function seedRealms(
+  factionIds: string[],
+): { overlords: Overlords; incorporated: Incorporated } {
+  const realms = activeRegion().startingRealms;
+  const overlords: Overlords = new Map();
+  const incorporated: Incorporated = {};
+  if (realms === undefined) return { overlords, incorporated };
+  const known = (land: string, holder: string): boolean =>
+    factionIds.includes(land) && factionIds.includes(holder);
+  for (const [land, holder] of Object.entries(realms.vassals)) {
+    if (known(land, holder)) overlords.set(land, holder);
+  }
+  for (const [land, holder] of Object.entries(realms.incorporated)) {
+    if (known(land, holder)) incorporated[land] = holder;
+  }
+  return { overlords, incorporated };
+}
+
 export function newGame(
   factionIds: string[],
   adjacency?: Record<string, string[]>,
@@ -405,6 +441,7 @@ export function newGame(
    *  polygons both gates are reachable on. */
   defenseMax?: Record<string, number>,
 ): GameState {
+  const realms = seedRealms(factionIds);
   return {
     phase: "main-menu",
     turn: 1,
@@ -414,8 +451,8 @@ export function newGame(
     repeatGroup: null,
     rules: { ...DEFAULT_RULES },
     factionIds,
-    overlords: new Map(),
-    incorporated: {},
+    overlords: realms.overlords,
+    incorporated: realms.incorporated,
     guards: {},
     omens: {},
     siteCaps:
@@ -590,9 +627,31 @@ function makePlayer(
  *  Clamped to the land count, so a three-land test map has everybody acting. */
 export const MAX_ACTIVE = 5;
 
+/** Whether this land may hold a seat at all: it must answer to nobody.
+ *
+ *  A region may open with realms already standing (`seedRealms`), and a land
+ *  inside one cannot act. Two reasons, and both are the rules already written
+ *  down rather than a preference about seats: `endingFor` reads a human
+ *  faction's own `incorporated` entry as DEFEAT, so an annexed land would end
+ *  the run on the click that picked it; and defense starts at its ceiling, so
+ *  `independenceGateOpen` is true of every seeded vassal and one given a turn
+ *  would walk out of its lord's realm at its first turn start.
+ *
+ *  So a held land is a conquest target, never a seat - which is what it
+ *  already is when a conquest makes one mid-game. */
+function seatable(state: GameState, factionId: string): boolean {
+  return (
+    state.factionIds.includes(factionId) &&
+    isUnheld(factionId, state.overlords, state.incorporated)
+  );
+}
+
 /** Which factions take turns: the human's pick, any reserved pick (a
  *  multiplayer guest), then lands drawn from a seeded shuffle of the rest,
  *  skipping any that borders one already chosen.
+ *
+ *  Every candidate is `seatable`, so a map that opens with realms on it offers
+ *  seats to the realm roots and the free lands and to nothing else.
  *
  *  The spacing pass can run out of room - a small or a chain-shaped map - so a
  *  second pass fills what is left without the test. Placement never fails, and
@@ -602,12 +661,13 @@ function actingFactions(
 ): string[] {
   const out = [humanFactionId];
   for (const id of reserved) {
-    if (id !== humanFactionId && state.factionIds.includes(id) && !out.includes(id)) {
+    if (id !== humanFactionId && seatable(state, id) && !out.includes(id)) {
       out.push(id);
     }
   }
-  const cap = Math.max(out.length, Math.min(MAX_ACTIVE, state.factionIds.length));
-  const pool = shuffle(state.factionIds.filter((id) => !out.includes(id)), rng);
+  const seats = state.factionIds.filter((id) => seatable(state, id));
+  const cap = Math.max(out.length, Math.min(MAX_ACTIVE, seats.length));
+  const pool = shuffle(seats.filter((id) => !out.includes(id)), rng);
   const spaced = (id: string): boolean =>
     out.every((placed) => !(state.adjacency[placed] ?? []).includes(id));
   for (const id of pool) {
@@ -637,7 +697,12 @@ export function pickFaction(
   opts?: { reservedFactionIds?: string[] },
 ): GameState {
   if (state.phase !== "pick-faction") return state;
-  if (!state.factionIds.includes(factionId)) return state;
+  // The one door every pick comes through - the solo click, both of
+  // `dealNetGame`'s picks and `faction=` in src/boot-params.ts - so `seatable`
+  // is enforced once rather than at three call sites that could drift. A
+  // refusal leaves the state at the faction prompt, which is the coherent
+  // stop boot-params.ts already documents for a `faction=` it cannot honour.
+  if (!seatable(state, factionId)) return state;
   const acting = actingFactions(
     state, factionId, opts?.reservedFactionIds ?? [], rng,
   );
@@ -661,7 +726,10 @@ export function pickFaction(
   // On top of the ground `chooseBuild` already rolled, never a re-roll: the
   // player picked their land off what the map said, and the map must not
   // change under the pick.
-  const passives = quietPassives(state.passives, state.factionIds, acting);
+  const passives = quietPassives(
+    state.passives, state.factionIds, acting,
+    (land) => !isUnheld(land, state.overlords, state.incorporated),
+  );
   // Only the factions that act keep a leader. Everything else about a quiet
   // land follows from the vacancy: no ruler, no turn, and no turn even after
   // somebody takes it.

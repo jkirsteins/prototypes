@@ -2161,7 +2161,14 @@ export function createHud(
       turnipChip.classList.add("hidden");
     }
     if (state.phase === "pick-faction") {
-      statusText.textContent = "Choose your faction";
+      // On a map that opens with realms already standing, the greyed lands
+      // need a reason before the player hovers one - a prompt that asks for
+      // any faction while half the map refuses the click is the prompt lying.
+      // Asked of the board, so a region with no seeded realms is unchanged.
+      statusText.textContent = state.overlords.size > 0 ||
+        Object.keys(state.incorporated).length > 0
+        ? "Choose a faction that answers to nobody"
+        : "Choose your faction";
     } else if (state.phase === "playing") {
       // A remote seat holding the turn outranks everything else here: while
       // it is up, nothing the player does locally (a pin, a target) changes

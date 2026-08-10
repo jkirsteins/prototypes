@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   clampView, frameRectOf, holderOf, leadClass, panBy,
-  politicalFactionForPolygon, relationshipLine,
+  politicalFactionForPolygon, realmHoldingLine, relationshipLine,
   standingChangeText, standingsFor,
   viewBoundsOf, visibleRectOf,
   withArticle,
@@ -499,6 +499,57 @@ describe("relationshipLine", () => {
   it("prefers absorption over a stale vassal entry", () => {
     expect(line("zemgale", [["zemgale", "lietuva"]], { zemgale: "lietuva" }))
       .toBe("Incorporated into LIETUVA");
+  });
+
+  /** The faction picker has no seat behind it - a region may open with realms
+   *  already standing, and nobody has been dealt anything yet. Null spells the
+   *  same fealty in the third person rather than needing a second function. */
+  it("spells fealty impersonally when there is no human seat", () => {
+    const impersonal = (
+      polygonFaction: string,
+      overlords: [string, string][] = [],
+      incorporated: Record<string, string> = {},
+    ) => {
+      const segs = relationshipLine(
+        polygonFaction, null, new Map(overlords), incorporated,
+      );
+      return segs === null ? null : plainText(segs, nameLookup);
+    };
+    // The three shapes that would otherwise have said "your": a vassal, an
+    // overlord, and the land the (absent) human would have answered to.
+    expect(impersonal("zemgale", [["zemgale", "me"]])).toBe("Vassal of ME");
+    expect(impersonal("lietuva", [["me", "lietuva"]])).toBe("Overlord of ME");
+    expect(impersonal("zemgale", [], { zemgale: "me" }))
+      .toBe("Incorporated into ME");
+    expect(impersonal("zemgale")).toBeNull();
+  });
+});
+
+describe("realmHoldingLine", () => {
+  const holds = (
+    factionId: string,
+    overlords: [string, string][] = [],
+    incorporated: Record<string, string> = {},
+  ) => {
+    const segs = realmHoldingLine(factionId, new Map(overlords), incorporated);
+    return segs === null ? null : plainText(segs, nameLookup);
+  };
+
+  it("says nothing for a land that holds nothing", () => {
+    expect(holds("lietuva")).toBeNull();
+    expect(holds("lietuva", [["lietuva", "zemgale"]])).toBeNull();
+  });
+
+  it("names every land under it, both kinds and to any depth", () => {
+    // `fullRealmOf`, not `realmOf`: the picker is answering "how much of the
+    // map comes with this", which is the count the scoreboard and the win
+    // condition will apply - so a vassal's vassal and a vassal's annexation
+    // both belong in the sentence.
+    expect(holds("lietuva", [["zemgale", "lietuva"]], { kursa: "lietuva" }))
+      .toBe("Brings with it KURSA and ZEMGALE");
+    expect(
+      holds("lietuva", [["zemgale", "lietuva"], ["kursa", "zemgale"]]),
+    ).toBe("Brings with it KURSA and ZEMGALE");
   });
 });
 
