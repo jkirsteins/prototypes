@@ -8,7 +8,11 @@
  */
 import { aiTakeTurn } from "./ai";
 import type { Rng } from "./cards";
-import { advance, type GameState } from "./game";
+import { advance, surrender, type GameState } from "./game";
+import type { HarvestChoice } from "./harvest";
+import {
+  applyNetAction, validateAction, type NetAction,
+} from "./net-protocol";
 
 /** The seats a screen can tell apart. `remoteSeat` is the other human's, and
  *  it is null in a solo game and on a guest - a guest runs no seat but its
@@ -51,4 +55,150 @@ export function runAiSeats(
     out = advance(aiTakeTurn(out, rng), rng);
   }
   return out;
+}
+
+/** Everything the local player can decide while a game is in play. One
+ *  variant per QUESTION the screen asks, not one per call site: a raid aimed
+ *  by dragging and one aimed by two clicks are the same decision, and they
+ *  must not be able to reach the rules by two different routes. */
+export type Decision =
+  | {
+      kind: "play"; cardIndex: number; cardId: string;
+      targetId?: string; sourceId?: string;
+    }
+  /** Its own kind and not a field on `play`, because the boon is settled
+   *  BEFORE the card is committed - and because a question that is not a row
+   *  in the table below is a question a second person never gets asked. */
+  | { kind: "harvest"; cardIndex: number; cardId: string; choice: HarvestChoice }
+  | { kind: "discard"; cardIndex: number; cardId: string }
+  | { kind: "end-turn" }
+  | { kind: "transfer"; amount: number }
+  | { kind: "surrender" };
+
+export type DecisionKind = Decision["kind"];
+
+/** What the screen owes once the decision has landed. Per KIND rather than
+ *  per call site: a play flies a card and then lets the world move behind it,
+ *  an action just lets the world move, and an answer only repaints. */
+export type Settle = "play" | "action" | "repaint";
+
+/** A decision either names the `NetAction` it crosses the wire as, or says in
+ *  a sentence why it is the host's alone. There is no third option, which is
+ *  the point: a new decision does not compile until somebody has decided. */
+export type Route<D> =
+  | { settle: Settle; wire(d: D): NetAction }
+  | {
+      settle: Settle;
+      hostOnly: string;
+      apply(state: GameState, rng: Rng, d: D): GameState;
+    };
+
+/** The table. Exhaustive `Record`, the `NOTICE_RULES` shape. */
+export const DECISION_ROUTES: {
+  [K in DecisionKind]: Route<Extract<Decision, { kind: K }>>;
+} = {
+  play: {
+    settle: "play",
+    wire: (d) => ({
+      type: "play", cardIndex: d.cardIndex, cardId: d.cardId,
+      ...(d.targetId !== undefined ? { targetId: d.targetId } : {}),
+      ...(d.sourceId !== undefined ? { sourceId: d.sourceId } : {}),
+    }),
+  },
+  harvest: {
+    settle: "play",
+    wire: (d) => ({
+      type: "play", cardIndex: d.cardIndex, cardId: d.cardId,
+      harvest: d.choice,
+    }),
+  },
+  discard: {
+    settle: "action",
+    wire: (d) => ({
+      type: "discard", cardIndex: d.cardIndex, cardId: d.cardId,
+    }),
+  },
+  "end-turn": { settle: "action", wire: () => ({ type: "end-turn" }) },
+  transfer: {
+    settle: "repaint",
+    wire: (d) => ({ type: "transfer", amount: d.amount }),
+  },
+  surrender: {
+    settle: "repaint",
+    hostOnly:
+      "Giving up ends the run for both people, and `phase` speaks for the " +
+      "host's seat: a second person conceding would be conceding somebody " +
+      "else's game. Their way out is closing the tab.",
+    apply: (state) => surrender(state),
+  },
+};
+
+/** Whether this screen's player answers this question at all. The ONE reader
+ *  of the host-only half, so the surface that RAISES a question is gated by
+ *  the same table that routes the answer - and a person is never shown a
+ *  question whose answer has nowhere to go. */
+export function decidedHere(kind: DecisionKind, role: Role): boolean {
+  return role !== "guest" || "wire" in DECISION_ROUTES[kind];
+}
+
+export type Role = "solo" | "host" | "guest";
+
+export interface DecisionDeps {
+  role: Role;
+  localSeat: number;
+  state: GameState;
+  rng: Rng;
+  /** Guest -> host. */
+  send(action: NetAction): void;
+  /** Host and solo: the state the decision produced. */
+  apply(next: GameState): void;
+  /** Host: the other screen is owed this now. Called from here, in order,
+   *  right after `apply`, so a call site cannot forget it. */
+  pushUpdate(): void;
+}
+
+export type DecisionResult =
+  | { outcome: "sent" }
+  | { outcome: "applied"; settle: Settle }
+  | { outcome: "refused"; reason: string };
+
+const RULES_REFUSED = "the rules refused that move";
+
+/** The one place a decision turns into a state change.
+ *
+ *  Every seat's play goes through `applyNetAction` - the same call a guest's
+ *  action arrives at on the host. One engine call, two transports, so an opt
+ *  a play carries cannot reach one person's route and not the other's.
+ *
+ *  A guest checks the move against its own replica before sending. The host
+ *  would refuse the same move for the same reason, so asking here costs a
+ *  round trip and tells the player why on the spot. */
+export function commitDecision(
+  deps: DecisionDeps, d: Decision,
+): DecisionResult {
+  const route = DECISION_ROUTES[d.kind] as Route<Decision>;
+  if (!("wire" in route)) {
+    if (deps.role === "guest") {
+      return { outcome: "refused", reason: route.hostOnly };
+    }
+    const next = route.apply(deps.state, deps.rng, d);
+    if (next === deps.state) return { outcome: "refused", reason: RULES_REFUSED };
+    deps.apply(next);
+    deps.pushUpdate();
+    return { outcome: "applied", settle: route.settle };
+  }
+  const action = route.wire(d);
+  if (deps.role === "guest") {
+    const err = validateAction(
+      deps.state, deps.localSeat, deps.state.turn, action,
+    );
+    if (err !== null) return { outcome: "refused", reason: err };
+    deps.send(action);
+    return { outcome: "sent" };
+  }
+  const next = applyNetAction(deps.state, deps.rng, action);
+  if (next === deps.state) return { outcome: "refused", reason: RULES_REFUSED };
+  deps.apply(next);
+  deps.pushUpdate();
+  return { outcome: "applied", settle: route.settle };
 }

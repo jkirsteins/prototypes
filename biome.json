@@ -39,6 +39,32 @@
           "suspicious": { "noConsole": "off" }
         }
       }
+    },
+    {
+      "includes": ["02-balticmap/src/main.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "./game": {
+                    "importNames": [
+                      "playCard",
+                      "discardCard",
+                      "endTurn",
+                      "transferDefense",
+                      "surrender"
+                    ],
+                    "message": "A decision the local player makes goes through commitDecision in src/decisions.ts, the only place that knows whether this screen is the host, the guest or alone. A branch here is a branch a new decision can forget the guest on - see 02-balticmap/AGENTS.md."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

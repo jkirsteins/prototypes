@@ -6,10 +6,14 @@ import {
   type TooltipLine,
 } from "./panel";
 import { attachInteraction, DRAG_THRESHOLD_PX } from "./interaction";
+// No playCard, discardCard, endTurn, transferDefense or surrender here, and
+// the root biome.json refuses them: what the LOCAL player decides goes
+// through `commitDecision`, which is the only thing in the app that knows
+// whether this screen is the host, the guest or alone. The boot and lobby
+// transitions below are not decisions and stay importable.
 import {
-  newGame, startGame, chooseBuild, chooseRules, pickFaction, playCard,
-  discardCard, advance, surrender, viewOf, endTurn, repeatOnlyOf, turnOpen,
-  transferDefense, transferLimit,
+  newGame, startGame, chooseBuild, chooseRules, pickFaction, advance, viewOf,
+  repeatOnlyOf, turnOpen, transferLimit,
   type GameEvent, type GameState,
 } from "./game";
 import { fullRealmOf, realmOf, realmRootOf } from "./relations";
@@ -59,8 +63,8 @@ import {
   type NetAction, type Wire,
 } from "./net-protocol";
 import {
-  controllerOf as controllerOfSeat, runAiSeats,
-  type Controller, type Seats,
+  commitDecision, controllerOf as controllerOfSeat, decidedHere, runAiSeats,
+  type Controller, type Decision, type DecisionResult, type Seats,
 } from "./decisions";
 import {
   loadBuildPref, memoryStorage, saveBuildPref, type MetaStorage,
@@ -488,15 +492,7 @@ function askTransferIfPending(): void {
     {
       onConfirm(amount) {
         hud.hideHarvestUi();
-        if (net.role === "guest") {
-          sendGuestAction({ type: "transfer", amount });
-          return;
-        }
-        game = transferDefense(game, me, amount);
-        // The answer moves a defense score, so the other screen is owed it
-        // now rather than at whatever play happens to push next.
-        if (net.role === "host") net.session?.pushUpdate();
-        refresh();
+        decide({ kind: "transfer", amount });
       },
     },
   );
@@ -1709,19 +1705,13 @@ function armArrowAsCounter(g: SVGGElement, m: March, cardIndex: number): void {
     // the board may have moved since - a guest's update, an AI round.
     if (counterFor(m) === null) return;
     disarm();
-    if (net.role === "guest") {
-      // The card at that index, not a name: the host validates the pair, and
-      // a hand holding Strong raid was being announced as a Raid.
-      const cardId = localHuman()?.hand[cardIndex];
-      if (cardId === undefined) return;
-      sendGuestAction({
-        type: "play", cardIndex, cardId,
-        targetId: m.from, sourceId: m.to,
-      });
-      return;
-    }
-    game = playCard(game, cardIndex, rng, m.from, { sourceId: m.to });
-    afterHumanPlay();
+    // The card at that index, not a name: the pair is what gets validated,
+    // and a hand holding Strong raid was being announced as a Raid.
+    const cardId = localHuman()?.hand[cardIndex];
+    if (cardId === undefined) return;
+    decide({
+      kind: "play", cardIndex, cardId, targetId: m.from, sourceId: m.to,
+    });
   });
 }
 
@@ -2308,20 +2298,16 @@ function openHarvestModal(index: number): void {
 function commitHarvest(index: number, choice: HarvestChoice): void {
   hud.hideHarvestUi();
   pendingHarvest = null;
-  if (net.role === "guest") {
-    sendGuestAction({
-      type: "play", cardIndex: index,
-      cardId: localHuman().hand[index], harvest: choice,
-    });
-    return;
-  }
   const before = game.log.length;
-  game = playCard(game, index, rng, undefined, { harvest: choice });
-  // The play first, then what it gave: `afterHumanPlay` refreshes, which is
-  // what queues the card's flight to the discard, and the reveal goes on the
-  // same queue behind it.
-  afterHumanPlay();
-  revealHarvestGains(before);
+  const result = decide({
+    kind: "harvest", cardIndex: index,
+    cardId: localHuman().hand[index], choice,
+  });
+  // The play first, then what it gave: `decide` refreshes, which is what
+  // queues the card's flight to the discard, and the reveal goes on the same
+  // queue behind it. A sent decision has given nothing yet - the cards arrive
+  // with the host's update, and `onState` reveals them there.
+  if (result.outcome === "applied") revealHarvestGains(before);
 }
 
 /** Draws the dot for every settlement founded so far, from state, on every
@@ -2493,9 +2479,9 @@ function revealHarvestGains(since: number): void {
  *  directly; this function's whole job is the animation and the repaint. */
 function afterHumanPlay(): void {
   resolving = true;
-  // The guest sees the host's card now rather than when the turn finally
-  // ends: nothing else is going to push this play.
-  if (net.role === "host") net.session?.pushUpdate();
+  // No push here: `commitDecision` made it the moment the play landed, which
+  // is the earliest the other screen could have been told - and doing it from
+  // one place is what stops a route forgetting.
   refresh();
   hud.afterPlayAnimation(() => {
     resolving = false;
@@ -2568,20 +2554,17 @@ const hudCallbacks: HudCallbacks = {
       startStagingRun();
     },
     onSurrender() {
-      // Ending the run is a host-seat privilege: the engine's endings pivot
-      // on that seat, and a guest surrendering would have to end the host's
-      // game too. The button is hidden from the guest as well (`.net-guest`
-      // in style.css); this is the gate that does not depend on CSS.
-      if (net.role === "guest") return;
+      // Host-only, and `DECISION_ROUTES` is where the reason is written down.
+      // The button is hidden from a guest as well (`.net-guest` in
+      // style.css); this is the gate that does not depend on CSS.
+      if (!decidedHere("surrender", net.role)) return;
       if (game.phase !== "playing" || resolving || pendingHarvest !== null) {
         return;
       }
       disarm();
-      game = surrender(game);
-      // The run is over for both of them, and this is the only push that
-      // will ever carry that - nothing advances behind a surrender.
-      if (net.role === "host") net.session?.pushUpdate();
-      refresh();
+      // The run is over for both of them, and the push `decide` makes is the
+      // only one that will ever carry that - nothing advances behind it.
+      decide({ kind: "surrender" });
     },
     onPlayCard(index) {
       // `turnOpen`, not `playedThisTurn`: a play that re-opened the turn leaves
@@ -2593,58 +2576,27 @@ const hudCallbacks: HudCallbacks = {
       ) {
         return;
       }
-      // Ahead of the harvest branch below, and gated on the role so it can
-      // never swallow it: a guest holds no turnip-harvest (the injection is
-      // humanSeat-gated, the same host-seat privilege the spec describes), and
-      // this ordering makes that structural rather than incidental.
-      if (net.role === "guest") {
-        if (discardMode()) {
-          disarm();
-          sendGuestAction({
-            type: "discard", cardIndex: index,
-            cardId: localHuman().hand[index],
-          });
-          return;
-        }
-        const guestCard = CARDS[localHuman().hand[index]];
-        if (guestCard?.targeted) {
-          // Arming stays local - it is a question about this screen's map,
-          // and only the answer, the commit, has to cross the wire.
-          if (armed === index) {
-            disarm();
-            return;
-          }
-          armed = index;
-          if (armedTargets().length === 0) {
-            disarm();
-            return;
-          }
-          applyTargeting();
-          hud.setArmed(index, guestCard.name, armPrompt(guestCard.id));
-          return;
-        }
-        disarm();
-        sendGuestAction({
-          type: "play", cardIndex: index, cardId: localHuman().hand[index],
-        });
-        return;
-      }
+      const human = localHuman();
+      const cardId = human.hand[index];
       if (discardMode()) {
         disarm();
-        game = discardCard(game, index);
-        afterHumanAction();
+        decide({ kind: "discard", cardIndex: index, cardId });
         return;
       }
-      const human = localHuman();
-      if (human.hand[index] === "turnip-harvest") {
-        // The harvest's pre-play choice, the targeting flow's shape: nothing
-        // is committed until a boon (and its sub-pick) is settled.
+      // The harvest's pre-play choice, the targeting flow's shape: nothing is
+      // committed until a boon (and its sub-pick) is settled. Every seat
+      // earns harvests, so every seat is asked - and `decidedHere` is what
+      // says so, rather than an ordering that once put a role check above
+      // this line and made a second person's boon the host's to guess.
+      if (cardId === "turnip-harvest" && decidedHere("harvest", net.role)) {
         disarm();
         openHarvestModal(index);
         return;
       }
-      const card = CARDS[human.hand[index]];
+      const card = CARDS[cardId];
       if (card?.targeted) {
+        // Arming stays local whoever is playing - it is a question about this
+        // screen's map, and only the answer, the commit, is routed.
         if (armed === index) {
           disarm();
           return;
@@ -2666,8 +2618,7 @@ const hudCallbacks: HudCallbacks = {
         return;
       }
       disarm();
-      game = playCard(game, index, rng);
-      afterHumanPlay();
+      decide({ kind: "play", cardIndex: index, cardId });
     },
     onEndTurn() {
       // The conquest question holds the turn the same way the harvest offer
@@ -2690,12 +2641,7 @@ const hudCallbacks: HudCallbacks = {
         afterHumanAction();
         return;
       }
-      if (net.role === "guest") {
-        sendGuestAction({ type: "end-turn" });
-        return;
-      }
-      game = endTurn(game);
-      afterHumanAction();
+      decide({ kind: "end-turn" });
     },
     isResolving() {
       return resolving;
@@ -2983,6 +2929,46 @@ function sendGuestAction(a: NetAction): void {
   net.session.sendAction(a);
 }
 
+/** The ONE place this screen turns a decision into a state change. Every
+ *  handler builds a `Decision` and hands it here; none of them knows what
+ *  `net.role` is, and none of them can reach the rules on its own - the root
+ *  biome.json refuses main.ts the engine's mutators outright, so there is no
+ *  local path around this for a new decision to forget the guest on.
+ *
+ *  Returns whether the decision landed here, which is what a caller with
+ *  something to do afterwards asks: a harvest's reveal happens on this screen
+ *  when this screen played it, and arrives with the update when it did not. */
+function decide(d: Decision): DecisionResult {
+  const result = commitDecision(
+    {
+      role: net.role, localSeat, state: game, rng,
+      send: sendGuestAction,
+      apply: (next) => { game = next; },
+      pushUpdate: () => {
+        if (net.role === "host") net.session?.pushUpdate();
+      },
+    },
+    d,
+  );
+  if (result.outcome === "refused") {
+    // A refused move leaves the board exactly where it was, so the only thing
+    // to undo is this screen's own arming. The panel is where a network game
+    // already says why anything was refused.
+    if (net.role !== "solo") netPanel.setStatus(result.reason);
+    refresh();
+    return result;
+  }
+  // A sent move already locked the screen in `sendGuestAction`; there is
+  // nothing else to settle until the host answers.
+  if (result.outcome === "sent") return result;
+  switch (result.settle) {
+    case "play": afterHumanPlay(); break;
+    case "action": afterHumanAction(); break;
+    case "repaint": refresh(); break;
+  }
+  return result;
+}
+
 function guestPickFaction(fid: string): void {
   if (net.role !== "guest" || net.session === null) return;
   if (net.build === null) return;
@@ -3049,6 +3035,7 @@ function attachGuestWire(wire: Wire, hostId: string): void {
     },
     onState(g, fid, source) {
       if (net.role !== "guest" || net.session !== session) return;
+      const before = game.log.length;
       game = g;
       net.faction = fid;
       localSeat = Math.max(0, seatOfFaction(g, fid));
@@ -3076,7 +3063,14 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // the guest would watch twenty turns of arrows land.
       if (source !== "update") animatedLog = game.log.length;
       refresh(source === "update" ? undefined : { animate: false });
-      if (source === "update") flashResolutions(() => refresh());
+      if (source === "update") {
+        flashResolutions(() => refresh());
+        // What a harvest gave arrives here rather than at the play, because
+        // the play was resolved on the other machine. `revealHarvestGains`
+        // reads the log for the LOCAL seat's gains, so an update carrying
+        // none shows nothing and this costs a filter.
+        revealHarvestGains(before);
+      }
       updateWaitingStatus();
     },
     onReject(reason) {
@@ -3218,14 +3212,7 @@ function autoAimIfOnlyOne(index: number): boolean {
   if (!CARDS[cardId]?.targeted || needsSource(cardId)) return false;
   const targets = validTargetsFor(viewOf(game), human.factionId, cardId);
   if (targets.length !== 1) return false;
-  if (net.role === "guest") {
-    sendGuestAction({
-      type: "play", cardIndex: index, cardId, targetId: targets[0],
-    });
-    return true;
-  }
-  game = playCard(game, index, rng, targets[0]);
-  afterHumanPlay();
+  decide({ kind: "play", cardIndex: index, cardId, targetId: targets[0] });
   return true;
 }
 
@@ -3237,14 +3224,9 @@ function commitRaid(from: string, to: string): void {
   const idx = armed;
   const cardId = human.hand[idx];
   disarm();
-  if (net.role === "guest") {
-    sendGuestAction({
-      type: "play", cardIndex: idx, cardId, targetId: to, sourceId: from,
-    });
-    return;
-  }
-  game = playCard(game, idx, rng, to, { sourceId: from });
-  afterHumanPlay();
+  decide({
+    kind: "play", cardIndex: idx, cardId, targetId: to, sourceId: from,
+  });
 }
 
 /** Ends an aim-drag without playing anything. */
@@ -3400,18 +3382,10 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       const sourceId = armedSource;
       disarm();
       if (valid) {
-        if (net.role === "guest") {
-          sendGuestAction({
-            type: "play", cardIndex: idx,
-            cardId, targetId: faction,
-            ...(sourceId !== null ? { sourceId } : {}),
-          });
-        } else {
-          game = playCard(game, idx, rng, faction, {
-            ...(sourceId !== null ? { sourceId } : {}),
-          });
-          afterHumanPlay();
-        }
+        decide({
+          kind: "play", cardIndex: idx, cardId, targetId: faction,
+          ...(sourceId !== null ? { sourceId } : {}),
+        });
       }
       return true;
     }
