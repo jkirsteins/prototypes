@@ -12,10 +12,10 @@ import { attachInteraction, DRAG_THRESHOLD_PX, landAtPoint } from "./interaction
 // transitions below are not decisions and stay importable.
 import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, advance, viewOf,
-  repeatOnlyOf, turnOpen, transferLimit,
+  repeatOnlyOf, takesNoTurn, turnOpen, transferLimit,
   type GameEvent, type GameState,
 } from "./game";
-import { fullRealmOf, realmOf, realmRootOf } from "./relations";
+import { fullRealmOf, isUnheld, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
 import { hasRuler, rulerNameOf } from "./rulers";
 import {
@@ -78,7 +78,7 @@ import {
 } from "./rules";
 import { seededRng } from "./rng";
 import {
-  holderOf, politicalFactionForPolygon, relationshipLine,
+  holderOf, politicalFactionForPolygon, realmHoldingLine, relationshipLine,
 } from "./view";
 import { defenseMaxOf as mapDefenseMax, factionAdjacencyOf, siteCapsOf, siteListsOf } from "./adjacency";
 import "./style.css";
@@ -528,10 +528,12 @@ function discardMode(): boolean {
 }
 
 /** `polygonFaction` is the land's OWN faction, not the resolved one - see
- *  relationshipLine in view.ts. */
+ *  relationshipLine in view.ts. `humanFaction` is null on the faction picker,
+ *  where no seat has been dealt yet and the fealty is spelled in the third
+ *  person. */
 function allegianceOf(
   polygonFaction: string,
-  humanFaction: string,
+  humanFaction: string | null,
 ): Segment[] | null {
   return relationshipLine(
     polygonFaction, humanFaction, game.overlords, game.incorporated,
@@ -600,10 +602,22 @@ function applyOwnership(): void {
   for (const [id, el] of regionPaths) {
     const region = regionById.get(id)!;
     const effective = inPlay() ? fillFactionFor(region.faction) : region.faction;
-    // Grey is "keeps to itself", and nothing else: the status comes off the
-    // moment somebody takes the land, so a conquest turns its own hue under
-    // the vassal stripes without this having to ask who holds it.
-    const grey = inPlay() && !playsTurns(game.passives, region.faction);
+    // Grey is "keeps to itself, and nothing answers to it". The first half is
+    // the status, and it comes off the moment somebody takes the land, so a
+    // conquest turns its own hue under the vassal stripes without this having
+    // to ask who holds it.
+    //
+    // The second half is for a region that opens with realms already standing
+    // (`seedRealms` in src/game.ts). A realm's root may perfectly well keep to
+    // itself - the status is about answering to nobody, and holding vassals is
+    // not answering to anybody - but its lands are held, so they are painted
+    // its hue while it took the flat grey, and a kingdom read as four counties
+    // around a hole where its capital sits. Grey means unclaimed ground, and a
+    // land four others answer to is not that.
+    const realmSize =
+      fullRealmOf(region.faction, game.overlords, game.incorporated).size;
+    const grey =
+      inPlay() && !playsTurns(game.passives, region.faction) && realmSize === 1;
     el.setAttribute(
       "fill", grey ? UNOWNED_FILL : factionById.get(effective)!.color,
     );
@@ -1972,6 +1986,26 @@ function hoverLines(region: Region): TooltipLine[] {
   // and nothing that needs a human player to exist. Everything below this
   // point does.
   if (game.phase === "pick-faction") {
+    // What this land already stands in, on a map that may open with realms on
+    // it. Two different sentences and they are not interchangeable: who holds
+    // this land, which is why the map greys it and the click does nothing; and
+    // what it would bring with it, which is the whole difference between
+    // beginning as a kingdom and beginning as one polygon. Every name in both
+    // is a `faction()` segment - the naming rule holds on the one screen where
+    // nobody has a seat yet.
+    const segLine = (segs: Segment[]): void => {
+      lines.push({ text: plainText(segs, richTextNames), segments: segs });
+    };
+    if (isUnheld(region.faction, game.overlords, game.incorporated)) {
+      const holds = realmHoldingLine(
+        region.faction, game.overlords, game.incorporated,
+      );
+      if (holds !== null) segLine(holds);
+    } else {
+      const sworn = allegianceOf(region.faction, null);
+      if (sworn !== null) segLine(sworn);
+      lines.push({ text: "Begin only in a land that answers to nobody" });
+    }
     lines.push(...landFactsLines(viewOf(game), region.faction));
   }
   if (!inPlay() || !human) return lines;
@@ -2003,8 +2037,17 @@ function hoverLines(region: Region): TooltipLine[] {
   }
   // The badge's numbers itemised: the score over its max and the two gate
   // lines. The polygon's own, like the settlements.
+  //
+  // The independence line reads "regains independence AT THEIR TURN", so it is
+  // owed a land that gets one. `takesNoTurn` is the predicate the turn loop
+  // itself asks, human arm and all - so an assassinated player still sees the
+  // line they can act on, and a leaderless vassal does not see a freedom that
+  // has no moment to arrive in. Without it the same tooltip promised a land
+  // its independence three lines above "Nobody leads this land", on every land
+  // a conquest had ever taken.
   lines.push(...defenseBreakdown(
-    viewOf(game), region.faction, game.overlords.has(region.faction),
+    viewOf(game), region.faction,
+    game.overlords.has(region.faction) && !takesNoTurn(game, region.faction),
   ));
   lines.push(...diseaseBreakdown(
     viewOf(game), region.faction, (id) => factionById.get(id)?.name ?? id,
@@ -2106,20 +2149,26 @@ function applyTargeting(): void {
   const polygonAim =
     live && armed !== null && human !== undefined &&
     aimsAtPolygons(human.hand[armed]);
-  // The one land a guest may not pick. Reuses the armed-card "you cannot aim
+  // The lands a pick may not land on. Reuses the armed-card "you cannot aim
   // here" treatment rather than inventing a second vocabulary for the same
-  // sentence - both mean "this click will do nothing".
-  const takenByHost =
-    net.role === "guest" && game.phase === "pick-faction" ? net.taken : null;
+  // sentence - all of them mean "this click will do nothing".
+  const picking = game.phase === "pick-faction";
+  const takenByHost = picking && net.role === "guest" ? net.taken : null;
   for (const [id, el] of regionPaths) {
     const f = factionByRegion.get(id)!;
     // A polygon card lights the polygon itself; a faction card lights every
     // land of the target's realm through the political resolution.
     const aim = polygonAim ? f : politicalFactionForPolygon(f, game.incorporated);
     const valid = live && targets.has(aim);
+    // A land already inside a realm has no seat to offer: `pickFaction` refuses
+    // it, and a refusal the map did not telegraph reads as the map being
+    // broken. The same predicate the engine uses, so the grey and the refusal
+    // cannot disagree about which lands they mean.
+    const sworn =
+      picking && !isUnheld(f, game.overlords, game.incorporated);
     el.classList.toggle("target-valid", valid);
     el.classList.toggle(
-      "target-invalid", (live && !valid) || f === takenByHost,
+      "target-invalid", (live && !valid) || f === takenByHost || sworn,
     );
   }
   // Targeting cues win the map while armed - applyHighlight suppresses itself
@@ -3470,6 +3519,12 @@ const interaction = attachInteraction(svg, regionPaths, data, {
     if (game.phase === "pick-faction") {
       if (regionId === null) return true;
       const picked = regionById.get(regionId)!.faction;
+      // Before the role branches, because it is true in all three: a land
+      // already sworn to a realm is refused by `pickFaction` whichever seat is
+      // asking. The map has greyed it and the hover has said why, so the click
+      // is dropped here rather than reaching an engine call that would return
+      // the same state and look like nothing happened.
+      if (!isUnheld(picked, game.overlords, game.incorporated)) return true;
       if (net.role === "host") {
         // A host cannot deal on the click: the other seat has not been
         // chosen yet. The pick is held, announced to the lobby, and the deal

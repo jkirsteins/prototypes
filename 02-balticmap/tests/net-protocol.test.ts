@@ -53,7 +53,12 @@ function smallHost(rng: Rng) {
   let closed = false;
   guestWire.onMessage((m) => got.push(m));
   guestWire.onClose(() => { closed = true; });
-  return { session, guestWire, got, isClosed: () => closed };
+  return {
+    session, guestWire, got, isClosed: () => closed,
+    // The board the host is answering from, for a test that needs it to be
+    // something other than a fresh deal - a map with realms already on it.
+    getGame: () => game, setGame: (g: GameState) => { game = g; },
+  };
 }
 
 describe("handshake", () => {
@@ -154,6 +159,32 @@ describe("lobby-guest", () => {
     });
     expect(h.got.filter((m) => m.type === "reject")).toHaveLength(2);
     expect(h.session.guestPick()).toBeNull();
+  });
+
+  /** A region may open with realms already standing, and the guest's own
+   *  screen greys those lands and drops the click - but a pick crosses the
+   *  wire, so the host checks it too. Silently dropping it is the bad
+   *  outcome: `actingFactions` would leave the reservation out, and the guest
+   *  would be dealt a seat with no ruler and skipped for the whole run. */
+  it("rejects a faction that already answers to another", () => {
+    const rng = seededRng(1);
+    const h = smallHost(rng);
+    h.setGame({ ...h.getGame(), overlords: new Map([["gamma", "delta"]]) });
+    h.guestWire.send({
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
+      region: regionFingerprint(), name: "Gusta",
+    });
+    h.guestWire.send({
+      type: "lobby-guest", build: "warpath", factionId: "gamma",
+    });
+    expect(h.got.filter((m) => m.type === "reject")).toHaveLength(1);
+    expect(h.session.guestPick()).toBeNull();
+    // A free land is still a perfectly good pick.
+    h.guestWire.send({
+      type: "lobby-guest", build: "warpath", factionId: "beta",
+    });
+    expect(h.session.guestPick())
+      .toEqual({ build: "warpath", factionId: "beta" });
   });
 });
 

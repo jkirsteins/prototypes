@@ -1,4 +1,6 @@
-import { realmRootOf, type Incorporated, type Overlords } from "./relations";
+import {
+  fullRealmOf, realmRootOf, type Incorporated, type Overlords,
+} from "./relations";
 import { faction, t, type Segment } from "./segments";
 import type { StandingChange } from "./standings";
 
@@ -119,6 +121,31 @@ function andFactions(ids: string[]): Segment[] {
   });
 }
 
+/** Every land under this one, named - vassals to any depth and everything
+ *  anyone in the pyramid has annexed. Null when it holds nothing.
+ *
+ *  `fullRealmOf`, because this answers "how much of the map comes with it",
+ *  which is the `fullRealmOf` question the AGENTS.md rule names: the scoreboard
+ *  and the win condition will count exactly this set.
+ *
+ *  For the faction picker, where a region may open with realms already standing
+ *  and nothing else on that screen says so - the ownership fills, the union
+ *  outlines and the vassal stripes are all gated on the game being in play, so
+ *  a map showing twenty-four separate colours would let somebody choose between
+ *  a realm of five and a land of one without being told which was which. The
+ *  in-play hover needs no such line: by then the realm is drawn. */
+export function realmHoldingLine(
+  factionId: string,
+  overlords: Overlords,
+  incorporated: Incorporated,
+): Segment[] | null {
+  const under = [...fullRealmOf(factionId, overlords, incorporated)]
+    .filter((id) => id !== factionId)
+    .sort();
+  if (under.length === 0) return null;
+  return [t("Brings with it "), ...andFactions(under)];
+}
+
 /** How a polygon stands to the human, from the polygon's OWN faction id.
  *
  *  Pass the polygon's own faction, never the politically resolved one: an
@@ -127,12 +154,18 @@ function andFactions(ids: string[]): Segment[] {
  *  reads as independent. Leads still come from the resolved faction - an
  *  absorbed land has no relations of its own - but its allegiance does not.
  *
+ *  `humanFactionId` is null for a hover with no seat behind it - the faction
+ *  picker's, on a map that opens with realms already standing. Every "yours"
+ *  branch below is an equality against it, so null simply spells the same
+ *  fealty in the third person, which is the one thing the picker can honestly
+ *  say. A second function for it would be the same sentences twice.
+ *
  *  Null when the land answers to nobody. The map hover shows this line only
  *  when somebody holds the land, so it needs the absence as a value rather
  *  than as a string it would have to compare against. */
 export function relationshipLine(
   polygonFactionId: string,
-  humanFactionId: string,
+  humanFactionId: string | null,
   overlords: Overlords,
   incorporated: Incorporated,
 ): Segment[] | null {
@@ -181,7 +214,10 @@ export function relationshipLine(
   if (lord === humanFactionId) {
     return holds === null ? [t("Your vassal")] : [t("Your vassal, "), ...holds];
   }
-  if (overlords.get(humanFactionId) === polygonFactionId) {
+  if (
+    humanFactionId !== null &&
+    overlords.get(humanFactionId) === polygonFactionId
+  ) {
     // The human is deliberately absent from `held`, so this reads as "yours and
     // theirs" rather than repeating you back at yourself.
     return holds === null

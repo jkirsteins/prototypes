@@ -3,6 +3,7 @@ import type { Rng, Strategy } from "./cards";
 import type { RuleSelections } from "./rules";
 import { serializeGame } from "./net-codec";
 import { regionFingerprint } from "./regions";
+import { isUnheld } from "./relations";
 import {
   applyNetAction, buildUpdate, cardRulesHash, PROTOCOL_VERSION,
   seatOfFaction, validateAction, type NetMessage, type Wire,
@@ -96,6 +97,16 @@ export function createHostSession(
         }
         if (msg.factionId === deps.hostFactionId()) {
           wire.send({ type: "reject", reason: "faction already taken" });
+          return;
+        }
+        // A land already inside a realm on a map that opened with realms
+        // standing. The guest's own screen greys it and drops the click, but a
+        // pick crosses the wire and the host trusts nothing that arrives on it:
+        // `actingFactions` would quietly drop such a reservation and deal the
+        // guest a seat with no ruler, which is a person skipped for the rest of
+        // the run - a stall, where a reject is a sentence they can act on.
+        if (!isUnheld(msg.factionId, g.overlords, g.incorporated)) {
+          wire.send({ type: "reject", reason: "faction answers to another" });
           return;
         }
         guestPick = { build: msg.build, factionId: msg.factionId };

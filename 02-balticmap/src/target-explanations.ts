@@ -428,7 +428,13 @@ export function landFactsLines(
 ): TooltipLine[] {
   const cap = armyCapOn(view, polygon);
   return [
-    // Never a vassal home: nobody owes fealty to anybody before the deal.
+    // Never the independence line, even where a region opens with realms
+    // already standing and the hovered land is somebody's vassal. That line
+    // reads "regains independence at their turn", and the only vassals on this
+    // screen are the seeded ones - which have no ruler, so no turn, so no
+    // moment at which the gate is asked. Printing it would promise a land its
+    // freedom on a screen where the player cannot even pick it. Who holds the
+    // land is said once, by the allegiance line above this block.
     ...defenseBreakdown(view, polygon, false),
     // Inside the defense block rather than under a heading of its own, because
     // the cap is that ceiling divided: it belongs beside the number it is read

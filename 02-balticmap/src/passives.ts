@@ -175,15 +175,26 @@ export function seedTerrain(factionIds: string[], rng: Rng): Passives {
   return out;
 }
 
-/** The quiet set on every faction that does not act, on top of the ground.
- *  Separate from `seedTerrain` because it answers a question the ground does
- *  not: which lands take turns is not known until somebody has picked one. */
+/** The quiet set on every faction that neither acts nor is already held, on
+ *  top of the ground. Separate from `seedTerrain` because it answers a question
+ *  the ground does not: which lands take turns is not known until somebody has
+ *  picked one.
+ *
+ *  `held` is the lands a region opened with inside a realm (`seedRealms` in
+ *  src/game.ts). Every one of these statuses is `strippedOnCapture`, so a land
+ *  somebody holds carries none of them - a seeded vassal that took the set here
+ *  would be a land raiding its own lord's neighbours on turn 1, which is
+ *  precisely the state `stripOnCapture` exists to prevent for a land taken
+ *  mid-game. */
 export function quietPassives(
-  passives: Passives, factionIds: string[], acting: readonly string[],
+  passives: Passives,
+  factionIds: string[],
+  acting: readonly string[],
+  held: (factionId: string) => boolean = () => false,
 ): Passives {
   let out = passives;
   for (const land of factionIds) {
-    if (acting.includes(land)) continue;
+    if (acting.includes(land) || held(land)) continue;
     for (const id of QUIET_PASSIVES) out = addPassive(out, land, id);
   }
   return out;
