@@ -8,7 +8,7 @@ import type { Rng, Strategy } from "../src/cards";
 import { buildOffer } from "../src/harvest";
 import { seededRng } from "../src/rng";
 import {
-  cardSetHash, dealNetGame, guestPhaseView, PROTOCOL_VERSION, wirePair,
+  cardRulesHash, dealNetGame, guestPhaseView, PROTOCOL_VERSION, wirePair,
   type NetMessage,
 } from "../src/net-protocol";
 import { runAiSeats } from "../src/decisions";
@@ -69,7 +69,7 @@ describe("host session", () => {
     const h = makeHost(seededRng(1));
     const got = collect(h.guestWire);
     h.guestWire.send({
-      type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
       name: "Gusta",
     });
     expect(got.map((m) => m.type)).toEqual(["hello", "lobby-host"]);
@@ -86,7 +86,7 @@ describe("host session", () => {
     const h = makeHost(rng);
     const got = collect(h.guestWire);
     h.guestWire.send({
-      type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
       name: "Gusta",
     });
     h.guestWire.send({
@@ -108,7 +108,7 @@ describe("host session", () => {
     const h = makeHost(rng);
     const got = collect(h.guestWire);
     h.guestWire.send({
-      type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
       name: "Gusta",
     });
     h.guestWire.send({
@@ -152,7 +152,7 @@ describe("host session", () => {
     const rng = seededRng(3);
     const h = makeHost(rng);
     h.guestWire.send({
-      type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
       name: "Gusta",
     });
     h.guestWire.send({
@@ -162,7 +162,7 @@ describe("host session", () => {
     // A second hello mid-game is the guest coming back.
     const got = collect(h.guestWire);
     h.guestWire.send({
-      type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
       name: "Gusta",
     });
     const snap = got.find((m) => m.type === "snapshot");

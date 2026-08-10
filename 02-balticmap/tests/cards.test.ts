@@ -1,14 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
-  ATTACK_CARDS, BASE_RARITY, BUILDS, CARDS, CONSUMED_CARDS, GUARDS,
-  INWARD_CARDS, LADDER_DEPTH, NEUTRAL_POOL, RARITY_TIERS, SINGLE_LAND_HEALS,
-  TRIBUTE_CARDS, UPGRADES,
-  guardAgainst, isGuardCard, isHostileCard, isInwardCard, isSingleLandHeal,
-  isTributeCard, keywordHas,
+  ATTACK_CARDS, BASE_RARITY, BUILDS, CARD_FIELD_KIND, CARD_RULES, CARDS,
+  CONSUMED_CARDS, GUARDS, INWARD_CARDS, KEYWORDS, LADDER_DEPTH, NEUTRAL_POOL,
+  RARITY_TIERS, SINGLE_LAND_HEALS, TRIBUTE_CARDS, UPGRADES,
+  cardRulesHash, guardAgainst, isGuardCard, isHostileCard, isInwardCard,
+  isSingleLandHeal, isTributeCard, keywordHas,
   repeatGroupOf, rarityForImpact, shuffle, startingDeck, upgradeCostOf,
   upgradesInto,
+  type CardDef, type CardRules,
 } from "../src/cards";
-import { SINGLE_LAND_HEAL } from "../src/defense";
+import { ATTACK_DAMAGE, SINGLE_LAND_HEAL } from "../src/defense";
 import { cardTextSegments, plainText, t, type NameLookup } from "../src/rich-text";
 import { seededRng } from "../src/rng";
 
@@ -625,5 +626,97 @@ describe("shuffle", () => {
   it("actually reorders (seed chosen to produce a change)", () => {
     const input = ["a", "b", "c", "d", "e", "f", "g"];
     expect(shuffle(input, seededRng(1))).not.toEqual(input);
+  });
+});
+
+describe("the wire's card fingerprint", () => {
+  /** A CARD_RULES with one thing changed. */
+  function tweaked(over: Partial<CardRules>): CardRules {
+    return { ...CARD_RULES, ...over };
+  }
+
+  it("names every behaviour field of a CardDef", () => {
+    // Exhaustive Record, so this cannot silently miss one - but the split
+    // itself is a judgement, and the list is here to be read.
+    const behaviour = Object.entries(CARD_FIELD_KIND)
+      .filter(([, kind]) => kind === "behaviour").map(([f]) => f).sort();
+    expect(behaviour).toEqual([
+      "deckBuildable", "forced", "id", "keywords", "maxPerDeck", "secret",
+      "targeted", "wealthCost",
+    ]);
+  });
+
+  it("moves when any behaviour field of any card moves", () => {
+    // The test that fails when a field is added to CardDef, classified as
+    // behaviour, and left out of the hash.
+    const base = cardRulesHash();
+    for (const [field, kind] of Object.entries(CARD_FIELD_KIND)) {
+      if (kind !== "behaviour" || field === "id") continue;
+      const id = Object.keys(CARDS)[0];
+      const cards = {
+        ...CARDS,
+        [id]: { ...CARDS[id], [field]: "a-value-no-card-has" },
+      } as Record<string, CardDef>;
+      expect(cardRulesHash(tweaked({ cards })), `field ${field}`)
+        .not.toBe(base);
+    }
+  });
+
+  it("moves when a damage number, a heal amount or a keyword flag moves", () => {
+    // The three commits that got through the old handshake unchanged: a
+    // damage table, an upgrade price, and a keyword's legality.
+    const base = cardRulesHash();
+    expect(cardRulesHash(tweaked({
+      attackDamage: { ...ATTACK_DAMAGE, raid: 99 },
+    }))).not.toBe(base);
+    expect(cardRulesHash(tweaked({
+      singleLandHeal: { ...SINGLE_LAND_HEAL, fortify: 99 },
+    }))).not.toBe(base);
+    expect(cardRulesHash(tweaked({
+      keywords: {
+        ...KEYWORDS,
+        raid: { ...KEYWORDS.raid, repeats: undefined },
+      },
+    }))).not.toBe(base);
+    expect(cardRulesHash(tweaked({
+      upgrades: { ...UPGRADES, "strong-raid": { from: "raid", count: 9 } },
+    }))).not.toBe(base);
+    expect(cardRulesHash(tweaked({
+      builds: { ...BUILDS, warpath: ["raid"] },
+    }))).not.toBe(base);
+    expect(cardRulesHash(tweaked({
+      marchCards: new Set(["raid"]),
+    }))).not.toBe(base);
+    expect(cardRulesHash(tweaked({ tributeCards: [] }))).not.toBe(base);
+    expect(cardRulesHash(tweaked({ guards: {} }))).not.toBe(base);
+  });
+
+  it("moves when a card is added or removed", () => {
+    const base = cardRulesHash();
+    const { "grow-crops": _gone, ...fewer } = CARDS;
+    expect(cardRulesHash(tweaked({ cards: fewer }))).not.toBe(base);
+    expect(cardRulesHash(tweaked({
+      cards: { ...CARDS, invented: { ...CARDS.raid, id: "invented" } },
+    }))).not.toBe(base);
+  });
+
+  it("does not move when rules text or a card name is reworded", () => {
+    // Refusing a lobby over a reworded sentence teaches the player nothing,
+    // and the two screens are still playing the same game.
+    const base = cardRulesHash();
+    const cards = {
+      ...CARDS,
+      raid: { ...CARDS.raid, name: "Reworded", text: "Different words." },
+    };
+    expect(cardRulesHash(tweaked({ cards }))).toBe(base);
+  });
+
+  it("does not depend on key order", () => {
+    const reversed = Object.fromEntries(Object.entries(CARDS).reverse());
+    expect(cardRulesHash(tweaked({ cards: reversed }))).toBe(cardRulesHash());
+  });
+
+  it("is not Object.keys(CARDS) - the shape three balance commits walked through", () => {
+    expect(cardRulesHash()).not.toBe(Object.keys(CARDS).sort().join(","));
   });
 });

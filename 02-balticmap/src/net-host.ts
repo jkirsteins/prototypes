@@ -3,7 +3,7 @@ import type { Rng, Strategy } from "./cards";
 import type { RuleSelections } from "./rules";
 import { serializeGame } from "./net-codec";
 import {
-  applyNetAction, buildUpdate, cardSetHash, PROTOCOL_VERSION,
+  applyNetAction, buildUpdate, cardRulesHash, PROTOCOL_VERSION,
   seatOfFaction, validateAction, type NetMessage, type Wire,
 } from "./net-protocol";
 
@@ -55,7 +55,7 @@ export function createHostSession(
     const g = deps.getGame();
     switch (msg.type) {
       case "hello": {
-        if (msg.version !== PROTOCOL_VERSION || msg.cards !== cardSetHash()) {
+        if (msg.version !== PROTOCOL_VERSION || msg.cards !== cardRulesHash()) {
           wire.send({
             type: "refuse",
             reason: "the two builds differ - reload both pages on the same version",
@@ -65,7 +65,7 @@ export function createHostSession(
         }
         guestName = msg.name;
         wire.send({
-          type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+          type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
           name: deps.name,
         });
         deps.onGuestHello(msg.name);

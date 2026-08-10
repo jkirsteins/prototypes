@@ -482,3 +482,111 @@ export function shuffle(cards: string[], rng: Rng): string[] {
   }
   return out;
 }
+
+/** Every field of a `CardDef` is either BEHAVIOUR - something two deploys
+ *  must agree on or their boards diverge - or PROSE, which they may differ on
+ *  harmlessly. Exhaustive `Record`: a new field does not compile until
+ *  somebody decides which, and `cardRulesHash` folds in exactly the behaviour
+ *  ones.
+ *
+ *  Prose is excluded deliberately. Refusing a lobby over a reworded sentence
+ *  teaches the player nothing, and the two screens would still be playing the
+ *  same game. */
+export const CARD_FIELD_KIND: Record<keyof Required<CardDef>, "behaviour" | "prose"> = {
+  id: "behaviour",
+  targeted: "behaviour",
+  secret: "behaviour",
+  maxPerDeck: "behaviour",
+  deckBuildable: "behaviour",
+  forced: "behaviour",
+  wealthCost: "behaviour",
+  keywords: "behaviour",
+  name: "prose",
+  text: "prose",
+  textSegments: "prose",
+  rarity: "prose",
+};
+
+/** Every table a card's behaviour is spread across, gathered so the wire can
+ *  fingerprint the lot. A card's rules are not all ON the card: what a raid
+ *  does for damage, what a fortify heals, what a keyword turns on, what a
+ *  build offers and what an upgrade costs all live in tables of their own.
+ *
+ *  The interface is what makes a MISSING table a compile error at
+ *  `CARD_RULES`. Nothing can make a newly invented table join it, so a new
+ *  behaviour table joins this in the same change - the rule is written in
+ *  AGENTS.md beside the rest of the card rules, which is the page a card
+ *  author already reads.
+ *
+ *  The derived sets - `ATTACK_CARDS`, `SINGLE_LAND_HEALS`, `INWARD_CARDS` -
+ *  are deliberately absent: they are computed from tables already here, so
+ *  including them would be fingerprinting the same fact twice. */
+export interface CardRules {
+  cards: Record<string, CardDef>;
+  attackDamage: Readonly<Record<string, number>>;
+  singleLandHeal: Readonly<Record<string, number>>;
+  keywords: Readonly<Record<string, KeywordDef>>;
+  builds: Record<Strategy, readonly string[]>;
+  upgrades: Readonly<Record<string, UpgradeCost>>;
+  marchCards: ReadonlySet<string>;
+  guards: Readonly<Record<string, string>>;
+  tributeCards: readonly string[];
+}
+
+export const CARD_RULES: CardRules = {
+  cards: CARDS,
+  attackDamage: ATTACK_DAMAGE,
+  singleLandHeal: SINGLE_LAND_HEAL,
+  keywords: KEYWORDS,
+  builds: BUILDS,
+  upgrades: UPGRADES,
+  marchCards: MARCH_CARDS,
+  guards: GUARDS,
+  tributeCards: TRIBUTE_CARDS,
+};
+
+/** A stable string for everything two deploys must agree about. Sorted at
+ *  every level, so key order cannot move it and a real change always does.
+ *
+ *  This is the handshake. It used to be `Object.keys(CARDS)` - the card IDS -
+ *  and three commits changed damage, cost and legality without touching one
+ *  id, so two builds shook hands and then disagreed about what the player's
+ *  own card was about to do. The state could not desync, because the host is
+ *  authoritative; what diverged was the guest's PREVIEW - its armed targets,
+ *  its block reasons, the damage its arrow promised - so a click its own map
+ *  called legal came back refused. */
+export function cardRulesHash(rules: CardRules = CARD_RULES): string {
+  const cards = Object.keys(rules.cards).sort().map((id) => {
+    const def = rules.cards[id] as unknown as Record<string, unknown>;
+    const behaviour = (Object.keys(CARD_FIELD_KIND) as (keyof CardDef)[])
+      .filter((f) => CARD_FIELD_KIND[f] === "behaviour")
+      .sort()
+      .map((f) => `${f}=${stable(def[f])}`);
+    return `${id}{${behaviour.join(",")}}`;
+  });
+  return [
+    `cards:${cards.join("|")}`,
+    `damage:${stable(rules.attackDamage)}`,
+    `heal:${stable(rules.singleLandHeal)}`,
+    `keywords:${stable(rules.keywords)}`,
+    `builds:${stable(rules.builds)}`,
+    `upgrades:${stable(rules.upgrades)}`,
+    `march:${[...rules.marchCards].sort().join(",")}`,
+    `guards:${stable(rules.guards)}`,
+    `tribute:${[...rules.tributeCards].sort().join(",")}`,
+  ].join(";");
+}
+
+/** JSON with object keys sorted, so an unchanged table always renders the
+ *  same string. A KeywordDef's prose rides along here; a keyword's text
+ *  states what its flags turn on, so two deploys whose keyword text differs
+ *  have almost certainly changed what it does. */
+function stable(value: unknown): string {
+  if (value === undefined) return "-";
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>).sort(
+    ([a], [b]) => (a < b ? -1 : a > b ? 1 : 0),
+  );
+  return `{${entries.map(([k, v]) => `${k}:${stable(v)}`).join(",")}}`;
+}

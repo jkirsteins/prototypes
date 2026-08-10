@@ -3,7 +3,7 @@ import type { Strategy } from "./cards";
 import type { RuleSelections } from "./rules";
 import { deserializeGame } from "./net-codec";
 import {
-  applyUpdate, cardSetHash, PROTOCOL_VERSION, seatOfFaction,
+  applyUpdate, cardRulesHash, PROTOCOL_VERSION, seatOfFaction,
   type NetAction, type NetMessage, type Wire,
 } from "./net-protocol";
 
@@ -75,7 +75,7 @@ export function createGuestSession(wire: Wire, deps: GuestDeps): GuestSession {
   wire.onMessage(handle);
   wire.onClose(deps.onClosed);
   wire.send({
-    type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+    type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
     name: deps.name,
   });
 

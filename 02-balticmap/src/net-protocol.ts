@@ -1,4 +1,4 @@
-import { CARDS, type Rng, type Strategy } from "./cards";
+import type { Rng, Strategy } from "./cards";
 import {
   discardCard, endTurn, pickFaction, playCard, transferDefense, viewOf,
   type GameEvent, type GamePhase, type GameState,
@@ -12,12 +12,13 @@ import {
 
 export const PROTOCOL_VERSION = 4;
 
-/** Fingerprint of the build's card set. Two deploys whose CARDS differ
- *  cannot share a game - hand indexes and rules text would disagree -
- *  so the hello handshake compares this and refuses politely. */
-export function cardSetHash(): string {
-  return Object.keys(CARDS).sort().join(",");
-}
+/** Fingerprint of everything two deploys must agree about a card. The hello
+ *  handshake compares this and refuses politely on a mismatch.
+ *
+ *  Re-exported rather than defined here: `cardRulesHash` lives with the cards
+ *  it fingerprints, so a card author adding a behaviour table sees the rule
+ *  beside the tables rather than in a network module. */
+export { cardRulesHash } from "./cards";
 
 /** The guest's move, the AiAction shape plus end-turn. `cardId` rides
  *  beside `cardIndex` so the host can refuse a hand-order mismatch

@@ -55,4 +55,40 @@ describe("net codec", () => {
     // may be deletable - revisit, do not just fix the test.
     expect(raw.overlords).toEqual({});
   });
+
+  it("carries nothing anywhere that JSON would quietly change", () => {
+    // The value half of the compile-time guard in src/net-codec.ts. A type
+    // says nothing about what a value actually holds - a field typed `any`,
+    // or a store built at runtime - so this walks a real serialized state and
+    // reports the dotted PATHS it objects to. The failure message names
+    // `players[2].something`, not `false`.
+    const offenders = notJsonSafe(serializeGame(midGame(seededRng(7))));
+    expect(offenders).toEqual([]);
+  });
+
+  it("and the walk really does object to one", () => {
+    // The guard's own guard: a walk that never fires is a walk nobody would
+    // notice had stopped working.
+    const planted = {
+      ...serializeGame(midGame(seededRng(7))),
+      players: [{ hand: [new Set(["a"])] }],
+    };
+    expect(notJsonSafe(planted)).toEqual(["players[0].hand[0]"]);
+  });
 });
+
+/** Every path in `value` holding something a JSON round-trip would change. */
+function notJsonSafe(value: unknown, path = ""): string[] {
+  if (value === null || typeof value !== "object") {
+    return typeof value === "function" ? [path] : [];
+  }
+  if (value instanceof Map || value instanceof Set || value instanceof Date) {
+    return [path];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((v, i) => notJsonSafe(v, `${path}[${i}]`));
+  }
+  return Object.entries(value).flatMap(([k, v]) =>
+    notJsonSafe(v, path === "" ? k : `${path}.${k}`),
+  );
+}

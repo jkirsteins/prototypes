@@ -8,7 +8,7 @@ import { destroyOffer } from "../src/harvest";
 import type { Rng } from "../src/cards";
 import { seededRng } from "../src/rng";
 import {
-  applyNetAction, applyUpdate, buildUpdate, cardSetHash, guestPhaseView,
+  applyNetAction, applyUpdate, buildUpdate, cardRulesHash, guestPhaseView,
   NET_ACTION_RULES, PROTOCOL_VERSION, seatOfFaction, validateAction, wirePair,
   type NetAction, type NetMessage,
 } from "../src/net-protocol";
@@ -67,7 +67,7 @@ describe("handshake", () => {
   it("refuses a hello from a different protocol version at the lobby", () => {
     const h = smallHost(seededRng(1));
     h.guestWire.send({
-      type: "hello", version: PROTOCOL_VERSION + 1, cards: cardSetHash(),
+      type: "hello", version: PROTOCOL_VERSION + 1, cards: cardRulesHash(),
       name: "Gusta",
     });
     expect(h.got.map((m) => m.type)).toEqual(["refuse"]);
@@ -79,7 +79,7 @@ describe("lobby-guest", () => {
   it("carries the guest's BUILD and faction - the deck retired with the meta system", () => {
     const h = smallHost(seededRng(1));
     h.guestWire.send({
-      type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
       name: "Gusta",
     });
     h.guestWire.send({
@@ -92,7 +92,7 @@ describe("lobby-guest", () => {
   it("rejects an unknown faction and the host's own faction", () => {
     const h = smallHost(seededRng(1));
     h.guestWire.send({
-      type: "hello", version: PROTOCOL_VERSION, cards: cardSetHash(),
+      type: "hello", version: PROTOCOL_VERSION, cards: cardRulesHash(),
       name: "Gusta",
     });
     h.guestWire.send({
