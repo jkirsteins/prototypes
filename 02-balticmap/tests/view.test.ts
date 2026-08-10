@@ -105,6 +105,26 @@ describe("zoomAt", () => {
     const v = zoomAt(home, base, 400, 300, 0.5, 800, 600);
     expect(v).toEqual(home);
   });
+
+  it("at max zoom, a further zoom-in moves nothing", () => {
+    // One exact jump to the ceiling: the view keeps clearance on every side,
+    // so any spurious origin shift is visible rather than clamped away.
+    const v = zoomAt(base, base, 400, 300, MAX_ZOOM, 800, 600);
+    const again = zoomAt(v, base, 700, 500, 2, 800, 600);
+    close(again.x, v.x);
+    close(again.y, v.y);
+    close(again.w, v.w);
+    close(again.h, v.h);
+  });
+
+  it("at the zoom floor, a further zoom-out moves nothing", () => {
+    const home = homeView(base);
+    const v = zoomAt(home, base, 700, 100, 0.5, 800, 600);
+    close(v.x, home.x);
+    close(v.y, home.y);
+    close(v.w, home.w);
+    close(v.h, home.h);
+  });
 });
 
 describe("panBy", () => {

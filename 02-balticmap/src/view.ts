@@ -218,10 +218,16 @@ export function fitView(mapW: number, mapH: number, vpW: number, vpH: number): V
   return { x: (mapW - w) / 2, y: (mapH - h) / 2, w, h };
 }
 
+/** The one statement of the zoom bounds: a view width no narrower than
+ *  MAX_ZOOM and no wider than MIN_ZOOM allows, relative to base. */
+function clampW(w: number, base: View): number {
+  return Math.min(Math.max(w, base.w / MAX_ZOOM), base.w / MIN_ZOOM);
+}
+
 /** Clamp zoom to [MIN_ZOOM, MAX_ZOOM] relative to base and keep the view
  *  inside base. */
 export function clampView(view: View, base: View): View {
-  const w = Math.min(Math.max(view.w, base.w / MAX_ZOOM), base.w / MIN_ZOOM);
+  const w = clampW(view.w, base);
   const h = w * (base.h / base.w);
   const x = Math.min(Math.max(view.x, base.x), base.x + base.w - w);
   const y = Math.min(Math.max(view.y, base.y), base.y + base.h - h);
@@ -264,8 +270,11 @@ export function zoomAt(
 ): View {
   const cx = view.x + (px / vpW) * view.w;
   const cy = view.y + (py / vpH) * view.h;
-  const w = view.w / factor;
-  const h = view.h / factor;
+  // Clamp the width BEFORE deriving the origin. Derived from the unclamped
+  // width, the origin keeps the cursor point fixed for a zoom the width clamp
+  // then refuses - at the ceiling every wheel tick became a sideways pan.
+  const w = clampW(view.w / factor, base);
+  const h = w * (base.h / base.w);
   return clampView(
     { x: cx - (px / vpW) * w, y: cy - (py / vpH) * h, w, h },
     base,
