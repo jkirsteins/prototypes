@@ -12,10 +12,12 @@ const EXPECTED_IDS = [
 ];
 
 // Pinned to what the bake derives, so a neighbor cannot silently vanish or
-// reappear unnoticed: the 2000 margin brings DZ, TN and IT into view (the
-// Maghreb coast the emirate looked across, and Sardinia), alongside FR
-// (which now also carries Corsica) and MA.
-const EXPECTED_NEIGHBOR_IDS = ["DZ", "FR", "IT", "MA", "TN"];
+// reappear unnoticed: DZ, TN and IT are the Maghreb coast the emirate looked
+// across, and Sardinia, alongside FR (which now also carries Corsica) and MA.
+// CH and DE close the northeast corner that used to fall past France's own
+// polygon and show through as a phantom sea; both are measured against
+// NEIGHBOR_CLIP_RING, same as the Baltic bake's tighter neighbour set.
+const EXPECTED_NEIGHBOR_IDS = ["CH", "DE", "DZ", "FR", "IT", "MA", "TN"];
 
 const EXPECTED_PEOPLE_IDS = [
   "arabs", "asturleonese", "basques", "berbers", "castilians",

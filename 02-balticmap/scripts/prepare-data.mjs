@@ -737,8 +737,13 @@ const LABELS = [
   // stand in the surrounding geography that opens up around them.
   { text: "FINNIC PEOPLES", lon: 24.5, lat: 58.8, kind: "group" },
   { text: "THE BALTS", lon: 24.0, lat: 55.4, kind: "group" },
-  { text: "SCANDINAVIA", lon: 16.0, lat: 59.0, kind: "group" },
-  { text: "RUS'", lon: 31.0, lat: 56.5, kind: "group" },
+  // SCANDINAVIA's and RUS''s anchors sit well inside VISIBLE_RING, not just
+  // the painted rect: at 64px with the group label's 0.45em letter-spacing
+  // (src/style.css) the rendered word runs thirteen-plus characters wide, so
+  // an anchor merely on-canvas still let the matte band or the frame itself
+  // clip a word down to "NAVIA" or trim the trailing apostrophe off "RUS'".
+  { text: "SCANDINAVIA", lon: 21.0, lat: 57.5, kind: "group" },
+  { text: "RUS'", lon: 30.0, lat: 56.5, kind: "group" },
   { text: "POLAND", lon: 20.0, lat: 52.2, kind: "group" },
   { text: "ESTONIANS", lon: 25.3, lat: 58.8, kind: "people" },
   { text: "LIVS", lon: 24.35, lat: 57.05, kind: "people" },

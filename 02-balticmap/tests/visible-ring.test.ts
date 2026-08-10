@@ -114,13 +114,38 @@ function uncoveredCount(
 // close to 0% uncovered at every ring once the bake reaches Ukraine, Czechia
 // and Slovakia (its north and west stay open because those are the real
 // Baltic and North Sea). Iberia has no edge that clean: it is a peninsula, so
-// every edge carries a real stretch of open sea, even the one - north - that
-// also borders France. Iberia therefore carries no entry here; its own
-// north-edge check is a narrower, regression-shaped assertion below rather
-// than a whole-edge one.
+// every edge carries a real stretch of open sea - which is why its own checks
+// live in LAND_SPANS below, a sub-range of an edge rather than the whole of
+// it.
 const LAND_EDGES: Readonly<Record<RegionId, readonly Edge[]>> = {
   baltic: ["south", "east"],
   iberia: [],
+};
+
+// A LAND-side stretch of one edge, [from, to] in the same 0..1 t used to walk
+// the edge elsewhere in this file. Asserted covered ABSOLUTELY (0 uncovered
+// samples), the same standard LAND_EDGES holds a whole edge to - a regression
+// check ("still whatever ring 0 already showed") is what this file used to
+// run for Iberia, and it passed clean through the northeast-corner phantom
+// sea this fault report is about: ring 0 was ALSO uncovered out there, so
+// "no new gap versus ring 0" proved nothing. The spans below sit a few
+// samples in from the true land/sea line on both ends (see the comment by
+// each region), so the margin does not itself become the flaky edge.
+interface LandSpan { edge: Edge; from: number; to: number; }
+const LAND_SPANS: Readonly<Record<RegionId, readonly LandSpan[]>> = {
+  baltic: [],
+  // France, Switzerland and Germany close the top of the canvas from about
+  // 51% along the north edge to the northeast corner, and continue down the
+  // east edge for the first 15% or so before the Mediterranean opens up -
+  // together the exact stretch that used to read as a phantom sea (France's
+  // baked polygon ended around x=1809 of the 1400-wide canvas, well short of
+  // the ring). The small gap earlier on the north edge (around t=0.48) is a
+  // real bay in the French Atlantic coast, not a border - left out on
+  // purpose, so this span starts past it.
+  iberia: [
+    { edge: "north", from: 0.55, to: 1.0 },
+    { edge: "east", from: 0.0, to: 0.15 },
+  ],
 };
 
 describe("the visible ring shows real geography, not a phantom sea", () => {
@@ -137,31 +162,27 @@ describe("the visible ring shows real geography, not a phantom sea", () => {
     }
   }
 
-  // Iberia's north edge mixes the open Atlantic (west of France) with the
-  // French border itself (east of it), so it cannot pin 0% uncovered the way
-  // the Baltic map's south and east do - a fair chunk of it is genuinely sea
-  // at every ring. What the bake promises instead is that the STRETCH which
-  // already read as land at the canvas edge (ring 0, the old surround's own
-  // hole) still reads as land once the surround's hole opens out to
-  // VISIBLE_RING - the underlying bake is untouched by this change, so
-  // nothing at that stretch should regress into a gap.
-  it("iberia: the land stretch of the north edge does not regress at VISIBLE_RING", () => {
-    const data = REGIONS.iberia.map;
+  for (const [id, spans] of Object.entries(LAND_SPANS) as [
+    RegionId, readonly LandSpan[],
+  ][]) {
+    const data = REGIONS[id].map;
     const shapes = shapesOf(data);
-    const coveredAtCanvas: number[] = [];
-    for (let i = 0; i < SAMPLES; i++) {
-      const t = i / (SAMPLES - 1);
-      const px = t * data.width;
-      if (covered(px, 0, shapes)) coveredAtCanvas.push(i);
-    }
-    // Sanity: there IS a land stretch to protect - a regression test that
-    // silently passed over an empty set would prove nothing.
-    expect(coveredAtCanvas.length).toBeGreaterThan(0);
     const rect = ringRectOf(data, VISIBLE_RING);
-    for (const i of coveredAtCanvas) {
-      const t = i / (SAMPLES - 1);
-      const px = t * data.width; // same x as the ring-0 sample, just further north
-      expect(covered(px, rect.y, shapes), `x=${px.toFixed(0)}`).toBe(true);
+    for (const span of spans) {
+      it(
+        `${id}: the ${span.edge} edge is fully covered from t=${span.from} to ` +
+          `t=${span.to} at VISIBLE_RING`,
+        () => {
+          const SPAN_SAMPLES = 100;
+          let uncovered = 0;
+          for (let i = 0; i < SPAN_SAMPLES; i++) {
+            const t = span.from + (i / (SPAN_SAMPLES - 1)) * (span.to - span.from);
+            const [px, py] = edgePoint(span.edge, rect, t);
+            if (!covered(px, py, shapes)) uncovered++;
+          }
+          expect(uncovered).toBe(0);
+        },
+      );
     }
-  });
+  }
 });
