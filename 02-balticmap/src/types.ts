@@ -71,7 +71,8 @@ export type LabelKind =
   | "people"
   | "people-minor"
   | "neighbor"
-  | "river";
+  | "river"
+  | "group";
 
 export interface MapLabel {
   text: string;

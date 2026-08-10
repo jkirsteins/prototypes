@@ -2657,3 +2657,49 @@ svg.map.pinning .realm-hover-halo {
   stroke-width: 4.5 !important;
   stroke-dasharray: none !important;
 }
+
+/* The zoomed-out swap for .label-people: shown exactly while the per-people
+   names are hidden (see src/map-detail.ts), so the map is never wordless.
+   Hidden by default and turned on by .show-group-labels, the inverse of the
+   hide-* rules below. Dark-box rule applies, so colour is stated here rather
+   than inherited. */
+.label-group {
+  font-size: 64px;
+  font-weight: 600;
+  letter-spacing: 0.45em;
+  fill: #6f6250;
+  text-anchor: middle;
+  pointer-events: none;
+  text-transform: uppercase;
+  opacity: 0.75;
+  display: none;
+}
+
+.map.show-group-labels .label-group {
+  display: block;
+}
+
+/* The detail ladder (src/map-detail.ts): each layer drops out once its
+   authored size would render under MIN_LABEL_PX at the current scale.
+   Scoped to .map, the class map-render.ts puts on the <svg> root. Placed
+   after every layer's own font-size rule: the drift-guard test finds a
+   selector's font-size by its FIRST "selector {" in the file, and each hide
+   rule's text contains its layer's bare selector as a substring
+   (".map.hide-badges .threat-badge .badge-text {" contains
+   ".threat-badge .badge-text {"), so a hide rule ahead of the real
+   declaration would shadow it and the guard would read null. */
+.map.hide-settlement-labels .settlement-label {
+  display: none;
+}
+
+.map.hide-river-labels .label-river {
+  display: none;
+}
+
+.map.hide-badges .threat-badge .badge-text {
+  display: none;
+}
+
+.map.hide-people-labels .label-people {
+  display: none;
+}

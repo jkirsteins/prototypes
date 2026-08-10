@@ -1,6 +1,7 @@
 import type { MapData, Region, Settlement } from "./types";
 import { viewBoundsOf, clampView, panBy, zoomAt, type View } from "./view";
 import { initialState, withHover, withClick, type SelectionState } from "./state";
+import { detailClassesAt, ALL_DETAIL_CLASSES } from "./map-detail";
 
 export interface InteractionCallbacks {
   onHover(region: Region | null, clientX: number, clientY: number): void;
@@ -87,6 +88,10 @@ export function attachInteraction(
 
   function apply(): void {
     svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+    // scale is viewport pixels per map unit - what a label's authored size
+    // renders at, which is the whole rule the detail ladder rests on.
+    const want = new Set(detailClassesAt(vpW() / view.w));
+    for (const c of ALL_DETAIL_CLASSES) svg.classList.toggle(c, want.has(c));
   }
   apply();
 
