@@ -1073,6 +1073,14 @@ svg.map.dragging {
   pointer-events: auto;
 }
 
+/* The ghosts of marches that have already landed, in their own layer so a live
+   rebuild cannot wipe one mid-fade. Inert throughout, unlike the live arrows:
+   a ghost is a picture of something that is over, and it must not answer a
+   click meant for the land it is fading across. */
+.march-ghosts {
+  pointer-events: none;
+}
+
 /* While an aim is live the arrows stay on screen and stop taking clicks: what
    is already flying at a land is half of what decides whether to send an army
    there, so hiding them is not an option, and every click on the map belongs

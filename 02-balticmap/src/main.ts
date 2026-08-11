@@ -32,11 +32,12 @@ import {
   armyCapOn, attackDamageFor, attackImpactOn, freeArmiesFor,
   miasmaHeld, omensHeld, freeSettlementsIn, settlementsIn,
 } from "./playability";
-import { armiesOn, axesOf, type Claim, type March } from "./marches";
+import { armiesOn, axesOf, type March } from "./marches";
+import { clashFraction, pointAlong } from "./arrows";
+import { crossingBetween, ringsOf, type Crossing, type Pt } from "./borders";
 import {
-  clashFraction, insetSegment, offsetSegment, pointAlong, scaleSpear,
-  spearPolygon, SPEAR,
-} from "./arrows";
+  layoutLanes, renderArrowScene, type ArrowSpec, type SceneCtx,
+} from "./arrow-scene";
 import { animations, runAnimation } from "./animate";
 import {
   defenseMaxOf, defenseOf, gateBandOf, type GateBand,
@@ -233,6 +234,16 @@ const arrowGroup = document.createElementNS(
 ) as SVGGElement;
 arrowGroup.classList.add("march-arrows");
 svg.appendChild(arrowGroup);
+
+// The ghosts of marches that have already landed, fading. Their own group and
+// not `arrowGroup`, because the two have different lifetimes: a ghost outlives
+// the state it was drawn from, and a live rebuild landing mid-fade would wipe
+// it off the screen halfway through the one thing the replay is showing.
+const ghostGroup = document.createElementNS(
+  "http://www.w3.org/2000/svg", "g",
+) as SVGGElement;
+ghostGroup.classList.add("march-ghosts");
+svg.appendChild(ghostGroup);
 
 // The arrow being dragged out while a Raid is aimed. Its own group above the
 // declared ones: a preview must never be mistaken for something the game has
@@ -926,17 +937,19 @@ const BAND_CLASS: Record<GateBand, string> = {
  *  centre of its bounding box where that lands ON the polygon, and otherwise
  *  the land's own town nearest to it.
  *
- *  Shared by the badge, the floating marks and the march arrows deliberately.
- *  Two anchors computed two ways would drift, and an arrow whose head lands
- *  somewhere other than the badge it is about is an arrow the player has to
- *  guess at. Undefined for a faction with no region, and zeros under
- *  happy-dom, where `getBBox` is a stub - which is why arrow GEOMETRY is
- *  tested against src/arrows.ts with injected points rather than through this.
+ *  Shared by the badge, the floating marks and the camera deliberately. Two
+ *  anchors computed two ways would drift, and a label that lands somewhere
+ *  other than the badge it is about is a label the player has to guess at.
+ *  Undefined for a faction with no region, and zeros under happy-dom, where
+ *  `getBBox` is a stub - which is why arrow GEOMETRY is tested against
+ *  src/arrows.ts and src/borders.ts with injected points rather than through
+ *  this.
  *
- *  **A bounding-box centre is not a place**, the lesson `marchAnchors` already
- *  records: these polygons are long and bent around coastline, so the centre
- *  of the box around one sits outside it often enough to matter. A town is
- *  guaranteed to be inside its own land because the map drew it there.
+ *  **A bounding-box centre is not a place**: these polygons are long and bent
+ *  around coastline, so the centre of the box around one sits outside it often
+ *  enough to matter - arrows anchored on box centres were starting out at sea.
+ *  A town is guaranteed to be inside its own land because the map drew it
+ *  there, which is why `sceneCtx.freeAnchor` prefers one.
  *
  *  The box centre is still preferred where it lands on the polygon, and that
  *  is not timidity about churn. A town sits where a town sits - often against
@@ -1225,31 +1238,6 @@ function renderThreatBadges(): void {
  *  beside the widest defense number without overhanging its box. */
 const ARMY_PIPS_SHOWN = 5;
 
-/** How far an arrow's ends stop short of the two TOWNS it runs between.
- *
- *  The anchors are towns (`marchAnchors`), so the only thing an end has to
- *  clear is the dot itself and the name under it. The insets these replaced
- *  were sized for region centres - 34 units off the tail and a further share
- *  off the head - which on a town anchor meant an arrow that began well past
- *  the town it left and gave up well short of the one it was aimed at.
- *
- *  The tail clears the dot AND the label below it; the head only has to not
- *  cover the dot it bites. Scaled down together on a short axis, because two
- *  neighbouring towns can be 90 units apart and a clearance longer than the
- *  axis turns the segment inside out. */
-const TOWN_CLEARANCE_TAIL = 12;
-const TOWN_CLEARANCE_HEAD = 6;
-const CLEARANCE_MAX_SHARE = 0.35;
-
-/** Both clearances at the size this axis can afford. */
-function clearancesFor(length: number): { pull: number; head: number } {
-  const fit = Math.min(
-    1,
-    (length * CLEARANCE_MAX_SHARE) / (TOWN_CLEARANCE_TAIL + TOWN_CLEARANCE_HEAD),
-  );
-  return { pull: TOWN_CLEARANCE_TAIL * fit, head: TOWN_CLEARANCE_HEAD * fit };
-}
-
 /** Every town the map actually DRAWS in each land, by faction id.
  *
  *  Unlocked only. A locked site is authored but never rendered, and an arrow
@@ -1272,92 +1260,50 @@ const townsByFaction = ((): Map<string, { x: number; y: number }[]> => {
   return out;
 })();
 
-/** Where an arrow between two lands starts and ends: the closest pair of towns
- *  across the border, one in each land.
- *
- *  A bounding-box centre is not a place. These polygons are long and bent
- *  around coastline, so the centre of the box around one can sit in a bay -
- *  arrows were starting out at sea. A town is guaranteed to be inside its own
- *  land because the map drew it there, and taking the closest pair points the
- *  arrow along the border the two lands actually share instead of across
- *  whatever the boxes happened to line up.
- *
- *  Purely presentational: nothing in the rules knows about it. Falls back to
- *  the box centre for a land the map gave no town, and for the test
- *  environment, where `getBBox` is a stub anyway. */
-function marchAnchors(
-  from: string, to: string,
-): { from: { x: number; y: number }; to: { x: number; y: number } } | null {
-  const fallbackFrom = regionCenter(from);
-  const fallbackTo = regionCenter(to);
-  if (fallbackFrom === undefined || fallbackTo === undefined) return null;
-  const a = townsByFaction.get(from) ?? [];
-  const b = townsByFaction.get(to) ?? [];
-  if (a.length === 0 || b.length === 0) {
-    return { from: fallbackFrom, to: fallbackTo };
+/** The rings of every land on this map, parsed once. `crossingBetween` is
+ *  cached per border because the walk is over a thousand vertices a side. */
+const ringsByFaction = new Map<string, Pt[][]>(
+  data.regions.map((r) => [r.faction, ringsOf(r.path)]),
+);
+const crossings = new Map<string, Crossing | null>();
+
+/** The border between two lands, from the first's side. Cached both ways round
+ *  off one computation: the reverse is the same crossing with its normal
+ *  flipped, and a normal pointing the wrong way draws every arrow on that
+ *  border backwards. */
+function crossingFor(from: string, to: string): Crossing | null {
+  const key = `${from}>${to}`;
+  const hit = crossings.get(key);
+  if (hit !== undefined) return hit;
+  const a = ringsByFaction.get(from);
+  const b = ringsByFaction.get(to);
+  const value = a === undefined || b === undefined
+    ? null
+    : crossingBetween(a, b);
+  crossings.set(key, value);
+  if (value !== null) {
+    crossings.set(`${to}>${from}`, {
+      ...value, normal: { x: -value.normal.x, y: -value.normal.y },
+    });
   }
-  let best = { from: a[0], to: b[0] };
-  let bestDist = Number.POSITIVE_INFINITY;
-  // In map order both ways, so a tie picks the same pair on every redraw.
-  for (const p of a) {
-    for (const q of b) {
-      const d = Math.hypot(q.x - p.x, q.y - p.y);
-      if (d < bestDist) {
-        bestDist = d;
-        best = { from: p, to: q };
-      }
-    }
-  }
-  return best;
+  return value;
 }
 
-/** Gap between two arrows of the same bundle, wide enough that their barbs
- *  clear each other: a side may field several armies at once, and stacking
- *  them on one line would say "one attack" when there are three. */
-const MAIN_GAP = 30;
-const COUNTER_GAP = 20;
+/** What the arrow scene needs from the map to place a spec: where a border is,
+ *  and where an arrow that crosses none starts.
+ *
+ *  The free anchor is a TOWN, not a bounding-box centre. These polygons are
+ *  long and bent around coastline, so the centre of the box around one can sit
+ *  in a bay - arrows were starting out at sea. A town is guaranteed to be
+ *  inside its own land because the map drew it there. The box centre is only
+ *  the fallback for a land the map gave no town, and for the test environment,
+ *  where `getBBox` is a stub anyway. */
+const sceneCtx: SceneCtx = {
+  crossingFor,
+  freeAnchor: (from) =>
+    townsByFaction.get(from)?.[0] ?? regionCenter(from) ?? null,
+};
 
-/** How much smaller the answering side is drawn, and the clear air between
- *  the two bundles. The counter is a reply to the attack, so it reads as the
- *  smaller shape beside it rather than an equal one nose to nose.
- *
- *  Length as well as width. Scaling only the widths made no visible
- *  difference: a spear's size on this map is mostly its LENGTH, which is the
- *  axis, and the axis is the same for both sides. The counter therefore runs
- *  only the last stretch toward its target - shorter, thinner, and plainly
- *  the answer to the arrow beside it. */
-const COUNTER_SCALE = 0.62;
-const COUNTER_LENGTH_SHARE = 0.62;
-const COUNTER_CLEARANCE = 8;
-
-/** The axis length at which a crowded bundle gets its full spacing. Shorter
- *  axes shrink toward `MIN_FIT`.
- *
- *  Neighbouring lands can have their towns 90 units apart, and a counter
- *  pushed 40 units sideways off a 90-unit axis stops reading as "beside that
- *  arrow" and starts reading as "aimed at whatever is over there" - which is
- *  exactly how it was misread. A lone arrow is never shrunk: it has nothing to
- *  clear, and thinning it would cost legibility for nothing. */
-const ARROW_FIT_LENGTH = 200;
-const MIN_FIT = 0.45;
-
-/** One tapered spear per march in flight, plus the strength it carries.
- *
- *  Laid out per AXIS, not per march, because a quarrel has two sides and
- *  several armies may be on each. The side that opened is drawn full size
- *  centred on the line between the two lands; the side answering it is drawn
- *  smaller and clear of it, so which is the attack and which the counter is
- *  readable at a glance. Within each side the arrows fan out side by side -
- *  three armies marching the same way are three arrows, not one dark smear.
- *
- *  Rebuilt whole on every refresh, the `renderThreatBadges` shape: a march
- *  store this small is cheaper to redraw than to diff, and a stale arrow is a
- *  lie about what is coming. Colour says whose it is at a glance - red for one
- *  aimed into your realm, gold for one of yours, the attacker's own colour
- *  faded for a quarrel between two rivals.
- *
- *  Hidden entirely while a card is armed: targeting cues own the map then, the
- *  same rule `renderThreatBadges` and `renderRealmUnions` already follow. */
 /** How many turns until this faction acts again, from where the round stands.
  *  A seat whose turn is happening NOW is a full lap away from its next one,
  *  which is why 0 reads as `players.length` rather than as "immediately". */
@@ -1493,7 +1439,6 @@ function updateAimPreview(clientX: number, clientY: number): void {
  *  with everything else. Its own group, cleared and rebuilt per move: this is
  *  a preview, and a stale one is a promise the game has not made. */
 function renderAimArrow(): void {
-  aimGroup.replaceChildren();
   // The land the arrow would land on, marked on the map itself. An arrow
   // ending near a border is ambiguous at any zoom, and the answer to "which
   // land is this aimed at" must not be the player's guess.
@@ -1504,33 +1449,40 @@ function renderAimArrow(): void {
         factionByRegion.get(id) === aiming.over,
     );
   }
-  if (aiming === null) return;
-  const towns = townsByFaction.get(aiming.from) ?? [];
-  const start = aiming.over !== null
-    ? marchAnchors(aiming.from, aiming.over)?.from
-    : towns[0];
-  const end = aiming.over !== null
-    ? marchAnchors(aiming.from, aiming.over)?.to
-    : aiming.at;
-  if (start === undefined || end === undefined) return;
-  const length = Math.hypot(end.x - start.x, end.y - start.y);
-  const { pull, head } = clearancesFor(length);
-  const seg = insetSegment(start.x, start.y, end.x, end.y, pull, head);
-  const points = spearPolygon(seg.ax, seg.ay, seg.bx, seg.by);
-  if (points === "") return;
-  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  g.classList.add("aim-arrow");
-  g.classList.toggle("aim-valid", aiming.over !== null);
-  const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-  poly.setAttribute("points", points);
-  g.appendChild(poly);
-  aimGroup.appendChild(g);
+  if (aiming === null) {
+    aimGroup.replaceChildren();
+    return;
+  }
+  const human = localHuman();
+  const armedCard = armed === null || !human ? undefined : human.hand[armed];
+  // The strength the card would really send, so the preview is the width the
+  // declared arrow will have rather than a shape of its own.
+  const strength = armedCard === undefined
+    ? 1
+    : attackDamageFor(viewOf(game), human.factionId, armedCard).damage;
+  const drawn = renderArrowScene(aimGroup, [{
+    id: "aim",
+    kind: "aim",
+    from: aiming.from,
+    // A legal target crosses the real border; a drag over open map runs to the
+    // pointer, which is the one arrow in the game with no border to cross.
+    to: aiming.over ?? "",
+    at: aiming.over === null ? aiming.at : undefined,
+    strength,
+    tone: "ours",
+  }], sceneCtx);
+  drawn.get("aim")?.classList.toggle("aim-valid", aiming.over !== null);
 }
 
+/** Everything in flight, described rather than drawn: one spec per march and
+ *  per claim, handed to the arrow scene, which owns where each one goes and how
+ *  wide it is. What is left here is what an arrow MEANS - whose it is, what it
+ *  carries, when it lands - and the behaviour bound to the group the scene
+ *  gives back. */
 function renderMarchArrows(): void {
-  arrowGroup.replaceChildren();
   const human = localHuman();
   if (!inPlay() || !human) {
+    arrowGroup.replaceChildren();
     syncArrowFocus();
     return;
   }
@@ -1548,240 +1500,82 @@ function renderMarchArrows(): void {
   arrowGroup.classList.toggle("aiming", aiming);
   const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
   const order = landingOrder();
-  for (const axis of axesOf(game.marches)) {
-    const opening = axis.opening === "a" ? axis.fromA : axis.fromB;
-    const answer = axis.opening === "a" ? axis.fromB : axis.fromA;
-    const span = marchAnchors(axis.a, axis.b);
-    if (span === null) continue;
-    // Everything the layout spends sideways is scaled to the room the axis
-    // has, and only when the axis is actually crowded - a lone arrow has
-    // nothing to clear and loses legibility for nothing if it is thinned.
-    const length = Math.hypot(span.to.x - span.from.x, span.to.y - span.from.y);
-    const fit = opening.length + answer.length <= 1
-      ? 1
-      : Math.max(MIN_FIT, Math.min(1, length / ARROW_FIT_LENGTH));
-    const mainGap = MAIN_GAP * fit;
-    const headHalf = SPEAR.headHalf * fit;
-    // Half the width the opening bundle occupies, so the answer clears ALL of
-    // it rather than just one arrow.
-    const openingHalf = ((opening.length - 1) / 2) * mainGap + headHalf;
-    const answerBase =
-      openingHalf + headHalf * COUNTER_SCALE + COUNTER_CLEARANCE * fit;
-
-    // Every offset in ONE frame - the opening side's - so the two bundles can
-    // then be centred against each other. An arrangement whose middle sits off
-    // the line between the two lands is an arrangement pointing at neither of
-    // them, which is exactly how a counter beside two attacks was misread.
-    const keyOfMarch = (march: March): string =>
-      Object.entries(game.marches).find(([, m]) => m === march)?.[0] ?? "";
-    const plan = [
-      ...opening.map((m, i) => ({
-        m, key: keyOfMarch(m), offset: (i - (opening.length - 1) / 2) * mainGap,
-        scale: fit, lengthShare: 1, forward: true,
-      })),
-      ...answer.map((m, i) => ({
-        m, key: keyOfMarch(m),
-        offset: answerBase + (i - (answer.length - 1) / 2) * COUNTER_GAP * fit,
-        scale: COUNTER_SCALE * fit, lengthShare: COUNTER_LENGTH_SHARE,
-        forward: false,
-      })),
-    ];
-    const offsets = plan.map((p) => p.offset);
-    const centre = (Math.min(...offsets) + Math.max(...offsets)) / 2;
-    for (const p of plan) {
-      // Negated for the answer: it runs the other way, so its own "left" is
-      // the opening side's "right", and one world direction is what keeps the
-      // counter consistently on one side of the pair.
-      const lateral = (p.offset - centre) * (p.forward ? 1 : -1);
-      drawMarch(p.m, lateral, realm, p.scale, p.lengthShare, order.get(p.key));
-    }
+  const specs: ArrowSpec[] = [];
+  for (const [key, m] of Object.entries(game.marches)) {
+    const against = realm.has(m.to);
+    const ours = realm.has(m.from);
+    specs.push({
+      id: key, kind: "march", from: m.from, to: m.to, strength: m.damage,
+      // Against you first: an arrow between your own two lands cannot happen
+      // (attackReach excludes what you hold outright, and a raid on your own
+      // vassal IS aimed at your realm), so the order only decides how a lord's
+      // raid on its own vassal reads - and that is an attack on your realm.
+      tone: against ? "hostile" : ours ? "ours" : "other",
+      // A quarrel between two rivals is drawn in the attacker's own colour, so
+      // whose army it is can be read off the map without hovering it.
+      fill: against || ours
+        ? undefined
+        : factionById.get(m.actor)?.color ?? "#7a6a55",
+      // "1 STR", not a bare number, wherever the lane has room for it. Two
+      // numbers ride on one arrow - what it hits for and when it lands - and a
+      // digit alone cannot say which it is.
+      label: `${m.damage} STR`,
+      chip: order.get(key),
+      dataset: {
+        actor: m.actor, target: m.to,
+        // The two ENDS, which is what the hover lights. Not the same question
+        // as `actor`: a lord marches out of a land its vassal holds, so who
+        // sent the army and where it left from are different lands.
+        from: m.from,
+      },
+    });
   }
-  // Claims LAST, so they sit above the spears. A demand of fealty decides who
-  // owns a land; a raid decides a number on it, and the more consequential of
-  // the two must not end up under the other.
+  // Claims LAST, so on a border carrying both the demand takes its lane after
+  // the spears and is drawn over them wherever they meet. A demand of fealty
+  // decides who owns a land; a raid decides a number on it, and the more
+  // consequential of the two must not end up under the other.
   for (const [key, claim] of Object.entries(game.claims)) {
-    drawClaim(claim, realm, order.get(`claim:${key}`));
+    const against = realm.has(claim.to);
+    const ours = realm.has(claim.from);
+    // Says so when it is already going to come to nothing. The demand rides
+    // for a whole turn and the board moves under it - a heal past the gate is
+    // the ordinary answer to one - so an arrow that still reads as a threat
+    // after it has been answered is the map lying about the one thing it is
+    // for.
+    const doomed = !claimWouldLand(viewOf(game), claim.actor, claim.to);
+    specs.push({
+      id: `claim:${key}`, kind: "claim", from: claim.from, to: claim.to,
+      // A claim has no strength of its own: it is one declared thing, and the
+      // lane split is only dividing the border between the arrows on it.
+      strength: 1,
+      tone: against ? "hostile" : ours ? "ours" : "other",
+      label: doomed ? "SUBJUGATE (will fail)" : "SUBJUGATE",
+      doomed,
+      chip: order.get(`claim:${key}`),
+      dataset: { actor: claim.actor, target: claim.to, from: claim.from },
+    });
+  }
+  const drawn = renderArrowScene(arrowGroup, specs, sceneCtx);
+  // An arrow you could answer right now is a button. Picking a source and a
+  // target by hand to aim a counter back down an arrow already on the screen
+  // is the game asking the player to restate something it can see, so the
+  // arrow takes the click itself.
+  //
+  // Never while an aim is live: the arrow is on screen to be READ then, and an
+  // arrow that is also a button would answer a click the player meant for the
+  // land under it.
+  for (const [key, m] of Object.entries(game.marches)) {
+    const g = drawn.get(key);
+    if (g === undefined) continue;
+    const counterIndex = aiming ? null : counterFor(m);
+    if (counterIndex === null) continue;
+    g.classList.add("march-counterable");
+    armArrowAsCounter(g, m, counterIndex);
   }
   // Every arrow on the map is new, including the one the pointer is resting
   // on. Nothing will announce that, so the focus is re-derived here rather
   // than waiting for a pointer event that may never come.
   syncArrowFocus();
-}
-
-/** One arrow, `lateral` user-units to the left of its own direction of travel,
- *  at `scale` of full width and covering `lengthShare` of the axis - measured
- *  back from the head, so a shortened arrow still bites the same land. */
-/** "1st", "2nd", "3rd", "4th" - the landing order in words, so the number can
- *  never be read as a strength. */
-function ordinal(n: number): string {
-  const tens = n % 100;
-  if (tens >= 11 && tens <= 13) return `${n}th`;
-  const suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th";
-  return `${n}${suffix}`;
-}
-
-/** The landing order an arrow carries when more than one thing is aimed at its
- *  land, or when two things share an axis: 1st lands first.
- *
- *  A chip, and an ordinal rather than a bare digit. The arrow's STRENGTH is
- *  already a bare number on the same arrow, and two bare numbers cannot be told
- *  apart - a "2" beside a "1" read as a second strength rather than as the
- *  order the two resolve in. */
-function appendOrder(
-  g: SVGGElement, at: { x: number; y: number },
-  rank: { order: number; clash: boolean },
-): void {
-  // "1st", or "1st - clash" where the arrow is answered head-on. One label,
-  // not a second marker on the map: the two facts are about the same arrow.
-  const label = rank.clash ? `${ordinal(rank.order)} - clash` : ordinal(rank.order);
-  const width = 12 + label.length * 5.6;
-  const chip = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  chip.classList.add("march-order");
-  const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  bg.classList.add("march-order-bg");
-  bg.setAttribute("x", String(at.x - width / 2));
-  bg.setAttribute("y", String(at.y - 9));
-  bg.setAttribute("width", String(width));
-  bg.setAttribute("height", "15");
-  bg.setAttribute("rx", "7.5");
-  const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  text.classList.add("march-order-text");
-  text.setAttribute("x", String(at.x));
-  text.setAttribute("y", String(at.y + 2));
-  text.textContent = label;
-  chip.append(bg, text);
-  g.appendChild(chip);
-}
-
-/** A subjugation in flight, drawn from the demanding land to the land
- *  demanded. Thin and dashed rather than a spear: nobody is marching, and a
- *  claim that reads as an army would have the player counting strength that
- *  does not exist. */
-function drawClaim(
-  claim: Claim, realm: ReadonlySet<string>,
-  rank: { order: number; clash: boolean } | undefined,
-): void {
-  const anchors = marchAnchors(claim.from, claim.to);
-  if (anchors === null) return;
-  const { from, to } = anchors;
-  const length = Math.hypot(to.x - from.x, to.y - from.y);
-  const { pull, head } = clearancesFor(length);
-  const seg = insetSegment(from.x, from.y, to.x, to.y, pull, head);
-  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  g.classList.add("claim-arrow");
-  g.dataset.actor = claim.actor;
-  g.dataset.target = claim.to;
-  g.dataset.from = claim.from;
-  const against = realm.has(claim.to);
-  const ours = realm.has(claim.from);
-  g.classList.add(against ? "march-hostile" : ours ? "march-ours" : "march-other");
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  line.setAttribute("x1", String(seg.ax));
-  line.setAttribute("y1", String(seg.ay));
-  line.setAttribute("x2", String(seg.bx));
-  line.setAttribute("y2", String(seg.by));
-  g.appendChild(line);
-  // A ring at the head rather than a barb: a claim arrives and demands, it
-  // does not strike, and the two must not be told apart by squinting at a
-  // dash pattern.
-  const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-  ring.classList.add("claim-head");
-  ring.setAttribute("cx", String(seg.bx));
-  ring.setAttribute("cy", String(seg.by));
-  ring.setAttribute("r", "7");
-  g.appendChild(ring);
-  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  label.classList.add("claim-label");
-  const mid = pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.5);
-  label.setAttribute("x", String(mid.x));
-  label.setAttribute("y", String(mid.y));
-  // Says so when it is already going to come to nothing. The demand rides for
-  // a whole turn and the board moves under it - a heal past the gate is the
-  // ordinary answer to one - so an arrow that still reads as a threat after it
-  // has been answered is the map lying about the one thing it is for.
-  const doomed = !claimWouldLand(viewOf(game), claim.actor, claim.to);
-  g.classList.toggle("claim-doomed", doomed);
-  label.textContent = doomed ? "SUBJUGATE (will fail)" : "SUBJUGATE";
-  g.appendChild(label);
-  if (rank !== undefined) {
-    appendOrder(g, pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.85), rank);
-  }
-  arrowGroup.appendChild(g);
-}
-
-function drawMarch(
-  m: March, lateral: number, realm: ReadonlySet<string>,
-  scale: number, lengthShare: number,
-  rank?: { order: number; clash: boolean },
-): void {
-  const anchors = marchAnchors(m.from, m.to);
-  if (anchors === null) return;
-  const { from, to } = anchors;
-  const length = Math.hypot(to.x - from.x, to.y - from.y);
-  const { pull, head } = clearancesFor(length);
-  const usable = length - pull - head;
-  const inset = insetSegment(
-    from.x, from.y, to.x, to.y,
-    pull + Math.max(0, usable) * (1 - lengthShare), head,
-  );
-  const seg = offsetSegment(inset.ax, inset.ay, inset.bx, inset.by, lateral);
-  const opts = scale === 1 ? SPEAR : scaleSpear(SPEAR, scale);
-  const points = spearPolygon(seg.ax, seg.ay, seg.bx, seg.by, opts);
-  if (points === "") return;
-
-  const against = realm.has(m.to);
-  const ours = realm.has(m.from);
-  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  g.classList.add("march-arrow");
-  g.dataset.actor = m.actor;
-  g.dataset.target = m.to;
-  // The two ENDS, which is what the hover lights. Not the same question as
-  // `actor`: a lord marches out of a land its vassal holds, so who sent the
-  // army and where it left from are different lands.
-  g.dataset.from = m.from;
-  // Against you first: an arrow between your own two lands cannot happen
-  // (attackReach excludes what you hold outright, and a raid on your own
-  // vassal IS aimed at your realm), so the order only decides how a lord's
-  // raid on its own vassal reads - and that is an attack on your realm.
-  g.classList.add(against ? "march-hostile" : ours ? "march-ours" : "march-other");
-  const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-  poly.setAttribute("points", points);
-  if (!against && !ours) {
-    poly.setAttribute("fill", factionById.get(m.actor)?.color ?? "#7a6a55");
-  }
-  g.appendChild(poly);
-
-  // The strength, on the arrow. The player was promised source, target and
-  // number when the arrow appeared; the number is the half they cannot read
-  // off the map. On the shaft rather than above it, so a bundle's labels sit
-  // apart exactly as far as its arrows do.
-  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  label.classList.add("march-strength");
-  const mid = pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.5);
-  label.setAttribute("x", String(mid.x));
-  label.setAttribute("y", String(mid.y));
-  // "1 STR", not a bare "1". Two numbers ride on one arrow - what it hits for
-  // and when it lands - and a digit alone cannot say which it is.
-  label.textContent = `${m.damage} STR`;
-  g.appendChild(label);
-
-  // An arrow you could answer right now is a button. Picking a source and a
-  // target by hand to aim a counter back down an arrow already on the screen
-  // is the game asking the player to restate something it can see, so the
-  // arrow takes the click itself.
-  if (rank !== undefined) {
-    appendOrder(g, pointAlong(seg.ax, seg.ay, seg.bx, seg.by, 0.82), rank);
-  }
-
-  // Never while an aim is live: the arrow is on screen to be READ then, and an
-  // arrow that is also a button would answer a click the player meant for the
-  // land under it.
-  const counterIndex = targetingLive() ? null : counterFor(m);
-  if (counterIndex !== null) {
-    g.classList.add("march-counterable");
-    armArrowAsCounter(g, m, counterIndex);
-  }
-  arrowGroup.appendChild(g);
 }
 
 /** The hand index of a Raid that could answer this march right now, or null.
@@ -1908,47 +1702,49 @@ const replayLabelHooks: RichTextHooks = {
 function flashMarchResolution(
   e: GameEvent, realm: ReadonlySet<string>, onDone: () => void,
 ): void {
-  // The same anchors the live arrow used, so the ghost fades out where the
-  // arrow actually was rather than jumping to the middle of the two lands.
-  const anchors = e.sourceFactionId !== undefined && e.targetFactionId !== undefined
-    ? marchAnchors(e.sourceFactionId, e.targetFactionId)
-    : null;
-  if (anchors === null) {
+  const from = e.sourceFactionId;
+  const to = e.targetFactionId;
+  // The border the arrow crossed, so the ghost fades out where the arrow
+  // actually stood rather than jumping to the middle of the two lands.
+  const cross = from === undefined || to === undefined
+    ? null
+    : crossingFor(from, to);
+  if (from === undefined || to === undefined || cross === null) {
     onDone();
     return;
   }
-  const { from, to } = anchors;
-  // The same clearances the live arrow used, so the ghost fades out exactly
-  // where the arrow stood rather than jumping as it goes.
-  const { pull, head } = clearancesFor(Math.hypot(to.x - from.x, to.y - from.y));
-  const seg = insetSegment(from.x, from.y, to.x, to.y, pull, head);
   // A standoff has no loser, so it is neither your bad news nor your good.
   const standoff = e.amount === undefined;
-  const struckUs = e.targetFactionId !== undefined && realm.has(e.targetFactionId);
-  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  g.classList.add(
-    "clash-flash",
-    standoff ? "clash-even" : struckUs ? "clash-bad" : "clash-good",
-  );
-
-  const points = spearPolygon(seg.ax, seg.ay, seg.bx, seg.by);
-  if (points !== "") {
-    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-    poly.setAttribute("points", points);
-    poly.setAttribute(
-      "fill", standoff ? "#6b5d49" : struckUs ? "#992f27" : "#d4af37",
-    );
-    poly.setAttribute("stroke", "#fdfaf4");
-    poly.setAttribute("stroke-width", "1.2");
-    g.appendChild(poly);
-    runAnimation(poly, [{ opacity: 1 }, { opacity: 0 }], CLASH_FLASH_MS);
+  const struckUs = realm.has(to);
+  const strength = e.clash?.incoming ?? 1;
+  const drawn = renderArrowScene(ghostGroup, [{
+    id: "ghost", kind: "ghost", from, to, strength,
+    tone: standoff ? "other" : struckUs ? "hostile" : "ours",
+    fill: standoff ? "#6b5d49" : struckUs ? "#992f27" : "#d4af37",
+  }], sceneCtx);
+  const g = drawn.get("ghost");
+  const poly = g?.querySelector("polygon") ?? null;
+  if (g === undefined || poly === null) {
+    ghostGroup.replaceChildren();
+    onDone();
+    return;
   }
+  g.classList.add(standoff ? "clash-even" : struckUs ? "clash-bad" : "clash-good");
+  poly.setAttribute("stroke", "#fdfaf4");
+  poly.setAttribute("stroke-width", "1.2");
+  runAnimation(poly, [{ opacity: 1 }, { opacity: 0 }], CLASH_FLASH_MS);
 
   const amount = e.amount ?? 0;
   // Where the two forces met, biased toward the side that gave ground. With no
   // counter there is no meeting point, so the label sits near the head.
-  const t = clashFraction(e.clash?.incoming ?? 1, e.clash?.counter ?? 0);
-  const at = pointAlong(seg.ax, seg.ay, seg.bx, seg.by, t);
+  //
+  // Along the ghost's OWN lane, which is the scene's to decide: asked for again
+  // here rather than measured off the drawn shape, since one spec in a scene
+  // means one lane and `layoutLanes` is pure. Placing it on the border itself
+  // would put every clash label in the same spot whoever gave ground.
+  const lane = layoutLanes(cross, [{ strength, forward: true }])[0];
+  const t = clashFraction(strength, e.clash?.counter ?? 0);
+  const at = pointAlong(lane.ax, lane.ay, lane.bx, lane.by, t);
   const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
   label.classList.add("clash-label");
   label.setAttribute("x", String(at.x));
@@ -1961,7 +1757,6 @@ function flashMarchResolution(
       ? `${struckUs ? "-" : "+"}${amount}`
       : `${struckUs ? "-" : "+"}${amount}/${e.clash.incoming}`;
   g.appendChild(label);
-  arrowGroup.appendChild(g);
   runAnimation(
     label,
     [
