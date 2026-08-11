@@ -61,8 +61,10 @@ export interface March {
    *  Allocated from `GameState.nextMarchId` at declaration and never reused,
    *  so an id names exactly one army for the length of the run. The store is
    *  keyed on it, the arrow on the map is keyed on it, and the events that
-   *  retire a march name it, so a departure can be matched to the thing that
-   *  explains it. */
+   *  put it on the board or take it off both name it - `march-declared`
+   *  through its singular `marchId`, `march-resolved` and `march-lapsed`
+   *  through the plural `marchIds` - so an arrow's whole life, appearing and
+   *  departing alike, can be matched to the event that explains it. */
   id: number;
 }
 
@@ -75,7 +77,14 @@ export interface March {
  *  number keyed by faction and a march is a record keyed by its own id, so a
  *  shared registry would have to be generic over both the payload and the key
  *  to buy anything, and there would still be exactly two of them. The shared
- *  primitives are doing their job. */
+ *  primitives are doing their job.
+ *
+ *  Iteration order is ascending id: the keys are integer-like strings, and a
+ *  `Record`'s own keys enumerate that way regardless of insertion order. It
+ *  coincides with insertion order here only because ids are monotonic and
+ *  never reused - a march is always added holding the highest id the store
+ *  has yet seen. `axesOf` and `resolveAxis` read that order to pair armies
+ *  deterministically, so a seeded run resolves every clash the same way. */
 export type Marches = Readonly<Record<string, March>>;
 
 /** Polygon id -> armies stationed there. Sparse with a default, the

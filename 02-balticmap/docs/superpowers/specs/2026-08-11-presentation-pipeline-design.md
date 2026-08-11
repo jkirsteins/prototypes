@@ -359,8 +359,12 @@ at `src/game.ts:1072`, `1222`, `1577` and `1650`. The four readers in
 `src/main.ts` are inside `flashMarchResolution`, which this work deletes.
 
 **The invariant, and it is a test:** across a **non-settled** transition, the
-set of march ids that left the store equals the union of the ids named by that
-transition's events. An arrow vanishing with nothing to explain it becomes a
+set of march ids that left the store is a SUBSET of the ids named by that
+transition's `march-resolved` and `march-lapsed` events. Not equality: a
+`march-declared` in the same batch names an id of its own, through the
+singular `marchId`, for an arrow that just arrived rather than one that left,
+and unioning it in would let a declaration stand in for a departure it has
+nothing to do with. An arrow vanishing with nothing to explain it becomes a
 failing test rather than a silent hole. If the engine today drops an arrow
 without an event, this invariant is what will surface it, and fixing that is
 part of the work.

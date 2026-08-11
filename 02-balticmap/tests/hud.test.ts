@@ -582,7 +582,7 @@ describe("activity log", () => {
     expect(g.defense.alpha).toBe(59);
   });
 
-  it("declares nothing twice: the event is logged, its line is not", () => {
+  it("declares nothing twice in the activity log: the event is logged, its line is not", () => {
     const { container, hud } = setup();
     let g = playing();
     g = withHand(g, 0, ["raid"]);
@@ -594,7 +594,8 @@ describe("activity log", () => {
     // But the play line above it already named both ends of the same arrow,
     // so a rendered line for the declaration would say it twice - and for a
     // restless raid, worse: it would reprint the source the `play` case
-    // deliberately drops. Nothing in the log names the arrow "sets out".
+    // deliberately drops. The ACTIVITY log names none of this - the
+    // postmortem log is a separate surface and prints it deliberately.
     const texts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
     expect(texts.some((t) => t?.includes("sets out for"))).toBe(false);
   });

@@ -170,11 +170,11 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
   "march-declared": [
     {
       turn: 1, playerId: 1, type: "march-declared", cardId: "raid",
-      targetFactionId: RIVAL, sourceFactionId: H, marchIds: [1], amount: 4,
+      targetFactionId: RIVAL, sourceFactionId: H, marchId: 1, amount: 4,
     },
     {
       turn: 1, playerId: 2, type: "march-declared", cardId: "great-raid",
-      targetFactionId: H, sourceFactionId: RIVAL, marchIds: [2], amount: 6,
+      targetFactionId: H, sourceFactionId: RIVAL, marchId: 2, amount: 6,
     },
   ],
   healed: [

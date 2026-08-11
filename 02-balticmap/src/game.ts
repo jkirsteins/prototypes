@@ -110,13 +110,28 @@ export interface GameEvent {
    *  event that declares a march, so the arrow's tail survives a reload of the
    *  log alone. */
   sourceFactionId?: string;
-  /** march-resolved, march-lapsed: which marches this event took off the
+  /** march-resolved, march-lapsed: which marches this event took OFF the
    *  board. Plural because a clash retires both sides and reports once, and
    *  because several arrows down one axis can resolve into a single landing.
    *  This is what lets a departed arrow be matched to the thing that explains
    *  it; without it, an arrow vanishing and an event arriving are two facts
-   *  with nothing joining them. */
+   *  with nothing joining them.
+   *
+   *  Absent on two of `march-lapsed`'s five emitters, because those two lapse
+   *  a CLAIM rather than a march - a Subjugate demand that broke before
+   *  landing, or one broken by somebody else's declared march - and a claim
+   *  has no `March.id` to name.
+   *
+   *  Never present on `march-declared` - a declaration puts an arrow ON the
+   *  board, the opposite event, and names it through the singular `marchId`
+   *  below. The two fields exist so "retired" and "declared" cannot be read
+   *  off the same shape by accident. */
   marchIds?: number[];
+  /** march-declared: the id this declaration just allocated - the arrow
+   *  arriving on the board, matched against `marchIds` above (arrows leaving
+   *  it) by a reader building one presentation timeline out of both. Singular
+   *  because a declaration commits exactly one army, whichever card sent it. */
+  marchId?: number;
   /** march-resolved: the strength aimed AT the loser, whichever end of the
    *  axis that turned out to be. Present on every `march-resolved` an ARMY
    *  caused - which is every one carrying `marchIds`, uncontested landings
@@ -1433,7 +1448,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       events.push({
         turn: state.turn, playerId: seat.id, type: "march-declared",
         cardId: "raid", targetFactionId: to, sourceFactionId: land,
-        marchIds: [id], amount: damage,
+        marchId: id, amount: damage,
       });
     }
   }
@@ -1622,6 +1637,14 @@ function resolveMarches(
       // raid was answered exactly must not be left thinking their card did
       // nothing. `a` and `b` are the axis's own sorted ends, since neither side
       // is the winner and calling one of them the target would be a lie.
+      //
+      // The uncontested arm below - an even delta with only one side actually
+      // in the field - is unreachable while every attack card's damage is
+      // positive: an unanswered march always has `delta` equal to its own
+      // damage, never 0. A future zero-damage attack would clear this march
+      // with no `march-resolved` for it, and the departure invariant test in
+      // tests/game.test.ts is what would catch an arrow retired with nothing
+      // to explain it.
       if (eng.loser === null || eng.spear === null || eng.delta <= 0) {
         if (contested) {
           events.push({
@@ -1707,6 +1730,13 @@ function resolveMarches(
         if (landed.taken) takenHere.set(loser, eng.spear.actor);
         continue;
       }
+      // Unreachable while `damageAfterTerrain` floors its output at 1 for any
+      // positive `delta`: `moved` is `min(before, dealt)`, and having missed
+      // the capture branch above already means `before` is at least 1. A
+      // future zero-damage attack, or a terrain rule that let `damageAfterTerrain`
+      // return 0, would clear this march with no `march-resolved` for it, and
+      // the departure invariant test in tests/game.test.ts is what would
+      // catch an arrow retired with nothing to explain it.
       if (moved <= 0) continue;
       events.push({
         turn: state.turn, playerId: p.id, type: "march-resolved",
@@ -2121,7 +2151,7 @@ export function playCard(
     events.push({
       turn: state.turn, playerId: p.id, type: "march-declared",
       cardId, targetFactionId: to, sourceFactionId: from,
-      marchIds: [id], amount: damage,
+      marchId: id, amount: damage,
     });
     // An army on the road breaks somebody else's demand of fealty. A land
     // being fought over is a land not submitting to anybody, and this is what

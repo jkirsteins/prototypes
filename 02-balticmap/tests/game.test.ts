@@ -478,7 +478,7 @@ describe("raid", () => {
     });
     expect(events[1]).toMatchObject({
       type: "march-declared", cardId: "raid", targetFactionId: "alpha",
-      sourceFactionId: "beta", marchIds: [g.nextMarchId], amount: RAID_DAMAGE,
+      sourceFactionId: "beta", marchId: g.nextMarchId, amount: RAID_DAMAGE,
     });
     expect(Object.values(after.marches)).toEqual([{
       id: g.nextMarchId,
@@ -493,7 +493,7 @@ describe("raid", () => {
     const declared = after.log.filter((e) => e.type === "march-declared");
     expect(declared).toHaveLength(1);
     const id = Object.values(after.marches)[0].id;
-    expect(declared[0].marchIds).toEqual([id]);
+    expect(declared[0].marchId).toBe(id);
     expect(declared[0].sourceFactionId).toBe("beta");
     expect(declared[0].targetFactionId).toBe("alpha");
     // The strength the arrow will print, frozen at declaration.
@@ -3496,7 +3496,16 @@ describe("every march that leaves the store is named by an event", () => {
       const after = new Set(Object.values(g.marches).map((m) => m.id));
       const departed = [...beforeIds].filter((id) => !after.has(id));
       const batch = g.log.slice(logAt);
-      const named = new Set(batch.flatMap((e) => e.marchIds ?? []));
+      // Scoped to the RETIRING event types, not to every event carrying the
+      // field: `march-declared` carries its own id too, through the singular
+      // `marchId`, and that id names an arrow arriving rather than one that
+      // left - unioning it in here would let a declaration stand in for a
+      // departure it has nothing to do with.
+      const named = new Set(
+        batch
+          .filter((e) => e.type === "march-resolved" || e.type === "march-lapsed")
+          .flatMap((e) => e.marchIds ?? []),
+      );
       expect(departed.filter((id) => !named.has(id))).toEqual([]);
       // Scoped to `marchIds`, not to every `march-resolved` - the
       // demand-coming-due arrival out of `landClaims` clears no march and
