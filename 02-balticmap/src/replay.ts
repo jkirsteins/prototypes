@@ -14,10 +14,12 @@
  *  flash's gate, kept. Anything else is shown only when the local player did
  *  not cause it themselves (they watched their own play live, card in
  *  flight), and it either passes `isNoticeWorthy` - the modal's own gate - or
- *  moves a score inside the INTEREST set: the full realm plus `attackReach`.
- *  That last arm is the wild-lands lesson this feature exists for: a land you
- *  are about to walk into growing a defense back must be seen, while the same
- *  regrowth across the map is the log's business. */
+ *  moves a score on a land the player has a LINE to: their realm, plus
+ *  whatever stands at the far end of an arrow or a demand between them and it
+ *  (`ReplayView.linked`). That last arm is the wild-lands lesson this feature
+ *  exists for: a land you have an arrow in the air toward, growing a defense
+ *  back, must be seen - while the same regrowth with nothing between you is
+ *  the log's business. */
 
 import { metNothing, type GameEvent, type GameEventType } from "./game";
 import type { NoticeCtx } from "./notices";
