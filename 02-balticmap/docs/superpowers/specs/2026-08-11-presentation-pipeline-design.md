@@ -506,13 +506,40 @@ per-call-site opinion and becomes `Transition.settled`, threaded to the readers
 that still need it - the log's `log-new` highlight and the reveal flash. The
 bug was never the flag, it was that only some surfaces consulted it.
 
+## Carried out of step 1
+
+Step 1 is done. Three things it deliberately left for a later step, recorded
+here because this document is what the next plan is written from:
+
+- **The postmortem log prints what the activity log suppresses.** `pmLog` in
+  `src/hud.ts` filters `state.log` with its own `e.type !== "draw"` test rather
+  than through `isObservable`, so a finished run's postmortem still prints the
+  `march-declared` line under the play that caused it. Defensible - the
+  postmortem is deliberately more revealing, and it un-hides secret cards on
+  the same call - but it is a second observability rule, and the next surface
+  that wants "a real event with no line" has to remember both. Whoever touches
+  the postmortem next should either give it its own exhaustive table or write
+  down that its filter is a permanent rule of its own.
+- **Two branches in `resolveMarches` clear a march and emit no event**, and are
+  unreachable only by arithmetic: the uncontested arm of the guard at the top
+  of the engagement loop, and `if (moved <= 0) continue;` below it. Both need a
+  march of damage 0 or a `damageAfterTerrain` of 0, and neither can happen with
+  the current attack cards. A zero-damage or fully-absorbed attack would drop
+  an arrow with nothing to explain it. No guard was added - the departure
+  invariant test is what would catch it, and speculative code for an
+  unreachable case was explicitly rejected during step 1.
+- **Arrow keys are already free of collisions.** Marches key as `"1"`, `"2"`,
+  claims as `claim:...`, plus `aim` and `ghost`, so the `march:<id>` namespacing
+  section 6 wants is a rename and nothing more.
+
 ## Order of work
 
 The dependencies are real and not obvious, so the plan should follow them:
 
-1. March identity, the `march-declared` event, the `clash` split into
-   `incoming` and `counter`, and the protocol bump. Every later piece names
-   march ids, and the resolution arrow needs `incoming` before it can be drawn.
+1. ~~March identity, the `march-declared` event, the `clash` split into
+   `incoming` and `counter`, and the protocol bump.~~ **Done.** Every later
+   piece names march ids, and the resolution arrow needs `incoming` before it
+   can be drawn. See "Carried out of step 1" above.
 2. `src/transitions.ts`: the queue, the owned state, the generation token and
    the three intakes, with the deferred commit and the full six-stage
    lifecycle - questions, summary and ending included, so `settleTurn` is
