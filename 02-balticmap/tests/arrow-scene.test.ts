@@ -136,6 +136,7 @@ describe("ARROW_KINDS", () => {
   it("classifies every kind and says why", () => {
     for (const def of Object.values(ARROW_KINDS)) {
       expect(def.className.length).toBeGreaterThan(0);
+      expect(def.labelClass.length).toBeGreaterThan(0);
       expect(def.why.length).toBeGreaterThan(20);
     }
   });
@@ -235,6 +236,47 @@ describe("renderArrowScene", () => {
       strength: 2, tone: "ours",
     }], ctx);
     expect(drawn.get("aim")?.querySelector("polygon")).not.toBeNull();
+  });
+
+  /** The label's x, which is what `labelAt` moves: `ctx`'s normal runs along
+   *  x, so a fraction from tail to tip reads straight off that coordinate. */
+  const labelX = (g: SVGGElement | undefined): number =>
+    Number(g?.querySelector("text")?.getAttribute("x") ?? NaN);
+
+  it("puts a label at the fraction the spec asks for", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const at = (labelAt: number): number => {
+      const drawn = renderArrowScene(host, [{
+        ...march("m1", "a", "b", 1), label: "+1", labelAt,
+      }], ctx);
+      return labelX(drawn.get("m1"));
+    };
+    // Nearer the tail against nearer the tip, on an arrow running along +x.
+    expect(at(0.15)).toBeLessThan(at(0.85));
+  });
+
+  it("keeps the kind's own station when no fraction is asked for", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const plain = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx);
+    const station = labelX(plain.get("m1"));
+    const moved = renderArrowScene(host, [{
+      ...march("m1", "a", "b", 1), labelAt: 0.95,
+    }], ctx);
+    expect(Number.isNaN(station)).toBe(false);
+    expect(labelX(moved.get("m1"))).not.toBeCloseTo(station, 6);
+  });
+
+  it("labels each kind in its own class, so a clash is not styled as a strength", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      { ...march("m1", "a", "b", 1) },
+      { id: "g1", kind: "ghost", from: "a", to: "b", strength: 1,
+        tone: "ours", label: "+1", labelAt: 0.5 },
+    ], ctx);
+    expect(drawn.get("m1")?.querySelector("text")?.getAttribute("class"))
+      .toBe(ARROW_KINDS.march.labelClass);
+    expect(drawn.get("g1")?.querySelector("text")?.getAttribute("class"))
+      .toBe(ARROW_KINDS.ghost.labelClass);
   });
 
   it("skips a spec whose lands have no crossing rather than drawing NaN", () => {

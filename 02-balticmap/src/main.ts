@@ -33,11 +33,9 @@ import {
   miasmaHeld, omensHeld, freeSettlementsIn, settlementsIn,
 } from "./playability";
 import { armiesOn, axesOf, type March } from "./marches";
-import { clashFraction, pointAlong } from "./arrows";
+import { clashFraction } from "./arrows";
 import { crossingBetween, ringsOf, type Crossing, type Pt } from "./borders";
-import {
-  layoutLanes, renderArrowScene, type ArrowSpec, type SceneCtx,
-} from "./arrow-scene";
+import { renderArrowScene, type ArrowSpec, type SceneCtx } from "./arrow-scene";
 import { animations, runAnimation } from "./animate";
 import {
   defenseMaxOf, defenseOf, gateBandOf, type GateBand,
@@ -1483,6 +1481,9 @@ function renderMarchArrows(): void {
   const human = localHuman();
   if (!inPlay() || !human) {
     arrowGroup.replaceChildren();
+    // The ghosts go with them. A run that has ended is not a run with a march
+    // still landing on it, and a fade left running paints over the postmortem.
+    ghostGroup.replaceChildren();
     syncArrowFocus();
     return;
   }
@@ -1516,9 +1517,6 @@ function renderMarchArrows(): void {
       fill: against || ours
         ? undefined
         : factionById.get(m.actor)?.color ?? "#7a6a55",
-      // "1 STR", not a bare number, wherever the lane has room for it. Two
-      // numbers ride on one arrow - what it hits for and when it lands - and a
-      // digit alone cannot say which it is.
       label: `${m.damage} STR`,
       chip: order.get(key),
       dataset: {
@@ -1704,12 +1702,7 @@ function flashMarchResolution(
 ): void {
   const from = e.sourceFactionId;
   const to = e.targetFactionId;
-  // The border the arrow crossed, so the ghost fades out where the arrow
-  // actually stood rather than jumping to the middle of the two lands.
-  const cross = from === undefined || to === undefined
-    ? null
-    : crossingFor(from, to);
-  if (from === undefined || to === undefined || cross === null) {
+  if (from === undefined || to === undefined) {
     onDone();
     return;
   }
@@ -1717,14 +1710,31 @@ function flashMarchResolution(
   const standoff = e.amount === undefined;
   const struckUs = realm.has(to);
   const strength = e.clash?.incoming ?? 1;
+  const amount = e.amount ?? 0;
+  // Redrawn on the border it crossed, alone in a layer of its own: a live
+  // rebuild landing mid-fade would take it off the screen halfway through the
+  // one thing the replay is showing. It takes the border's middle lane rather
+  // than the lane the arrow itself stood in, and that reads as the same arrow
+  // because the replay hides the living ones while it runs.
   const drawn = renderArrowScene(ghostGroup, [{
     id: "ghost", kind: "ghost", from, to, strength,
     tone: standoff ? "other" : struckUs ? "hostile" : "ours",
     fill: standoff ? "#6b5d49" : struckUs ? "#992f27" : "#d4af37",
+    // The denominator is what a counter took off the top, so an uncontested
+    // landing has none: there is nothing for the number to be a fraction OF.
+    label: standoff
+      ? `0/${e.clash?.incoming ?? 0}`
+      : e.clash === undefined
+        ? `${struckUs ? "-" : "+"}${amount}`
+        : `${struckUs ? "-" : "+"}${amount}/${e.clash.incoming}`,
+    // Where the two forces met, biased toward the side that gave ground. With
+    // no counter there is no meeting point, so the label sits near the head.
+    labelAt: clashFraction(strength, e.clash?.counter ?? 0),
   }], sceneCtx);
   const g = drawn.get("ghost");
   const poly = g?.querySelector("polygon") ?? null;
-  if (g === undefined || poly === null) {
+  const label = g?.querySelector("text") ?? null;
+  if (g === undefined || poly === null || label === null) {
     ghostGroup.replaceChildren();
     onDone();
     return;
@@ -1733,30 +1743,6 @@ function flashMarchResolution(
   poly.setAttribute("stroke", "#fdfaf4");
   poly.setAttribute("stroke-width", "1.2");
   runAnimation(poly, [{ opacity: 1 }, { opacity: 0 }], CLASH_FLASH_MS);
-
-  const amount = e.amount ?? 0;
-  // Where the two forces met, biased toward the side that gave ground. With no
-  // counter there is no meeting point, so the label sits near the head.
-  //
-  // Along the ghost's OWN lane, which is the scene's to decide: asked for again
-  // here rather than measured off the drawn shape, since one spec in a scene
-  // means one lane and `layoutLanes` is pure. Placing it on the border itself
-  // would put every clash label in the same spot whoever gave ground.
-  const lane = layoutLanes(cross, [{ strength, forward: true }])[0];
-  const t = clashFraction(strength, e.clash?.counter ?? 0);
-  const at = pointAlong(lane.ax, lane.ay, lane.bx, lane.by, t);
-  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  label.classList.add("clash-label");
-  label.setAttribute("x", String(at.x));
-  label.setAttribute("y", String(at.y));
-  // The denominator is what a counter took off the top, so an uncontested
-  // landing has none: there is nothing for the number to be a fraction OF.
-  label.textContent = standoff
-    ? `0/${e.clash?.incoming ?? 0}`
-    : e.clash === undefined
-      ? `${struckUs ? "-" : "+"}${amount}`
-      : `${struckUs ? "-" : "+"}${amount}/${e.clash.incoming}`;
-  g.appendChild(label);
   runAnimation(
     label,
     [

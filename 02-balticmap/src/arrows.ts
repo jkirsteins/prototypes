@@ -40,66 +40,12 @@ export function pointAlong(
   return { x: ax + (bx - ax) * t, y: ay + (by - ay) * t };
 }
 
-/** Pull both ends of an axis in along its own direction, so an arrow starts at
- *  the edge of the source land and bites the edge of the target rather than
- *  both ends sitting on region centres. Overrunning insets collapse to the
- *  midpoint instead of turning the segment inside out. */
-export function insetSegment(
-  ax: number, ay: number, bx: number, by: number,
-  fromInset: number, toInset: number,
-): { ax: number; ay: number; bx: number; by: number } {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len = Math.hypot(dx, dy);
-  if (len === 0) return { ax, ay, bx, by };
-  if (fromInset + toInset >= len) {
-    const mid = pointAlong(ax, ay, bx, by, 0.5);
-    return { ax: mid.x, ay: mid.y, bx: mid.x, by: mid.y };
-  }
-  const ux = dx / len;
-  const uy = dy / len;
-  return {
-    ax: ax + ux * fromInset, ay: ay + uy * fromInset,
-    bx: bx - ux * toInset, by: by - uy * toInset,
-  };
-}
-
-/** Slide a segment sideways, perpendicular to its own direction. What keeps a
- *  counter-raid beside the attack it answers rather than drawn straight
- *  through it: two spears nose to nose on the same line read as one confused
- *  shape, and which of them is the attack is exactly what the player needs to
- *  see. Positive `d` is to the left of the direction of travel. */
-export function offsetSegment(
-  ax: number, ay: number, bx: number, by: number, d: number,
-): { ax: number; ay: number; bx: number; by: number } {
-  const len = Math.hypot(bx - ax, by - ay);
-  if (len === 0 || d === 0) return { ax, ay, bx, by };
-  const nx = -(by - ay) / len;
-  const ny = (bx - ax) / len;
-  return {
-    ax: ax + nx * d, ay: ay + ny * d,
-    bx: bx + nx * d, by: by + ny * d,
-  };
-}
-
-/** A spear of the same proportions at a different size, for the answering
- *  half of a clash. Scaling every width by one factor is what keeps the
- *  smaller arrow recognisably the same object rather than a different one. */
-export function scaleSpear(opts: SpearOptions, k: number): SpearOptions {
-  return {
-    baseHalf: opts.baseHalf * k,
-    waistHalf: opts.waistHalf * k,
-    headHalf: opts.headHalf * k,
-    headLen: opts.headLen * k,
-  };
-}
-
 /** A spear that fills the lane it was given.
  *
  *  The proportions rather than the sizes are the constant here: a lane is how
  *  much of a shared border this arrow is entitled to, and the barbs filling it
- *  is what makes strength readable as width. `SPEAR` stays as it is for the
- *  callers that size an arrow by hand. */
+ *  is what makes strength readable as width. `SPEAR` is what a spear asked for
+ *  at no particular width comes out as. */
 export function spearFor(width: number): SpearOptions {
   const half = width / 2;
   return {

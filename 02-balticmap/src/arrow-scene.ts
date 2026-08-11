@@ -109,6 +109,10 @@ export interface ArrowKindDef {
   /** A filled spear, or the dashed demand a claim is drawn as. */
   shape: "spear" | "demand";
   className: string;
+  /** The class its label carries. Per kind rather than per caller: a label's
+   *  size and colour are part of what the arrow IS, and a literal at the draw
+   *  site answers for one kind and silently mis-styles the next one added. */
+  labelClass: string;
   /** Why this kind is drawn the way it is. */
   why: string;
 }
@@ -117,20 +121,20 @@ export interface ArrowKindDef {
  *  until somebody says what it looks like and why. */
 export const ARROW_KINDS: Record<ArrowKind, ArrowKindDef> = {
   march: {
-    shape: "spear", className: "march-arrow",
+    shape: "spear", className: "march-arrow", labelClass: "march-strength",
     why: "An army in flight. The widest thing on its border if it is the strongest.",
   },
   claim: {
-    shape: "demand", className: "claim-arrow",
+    shape: "demand", className: "claim-arrow", labelClass: "claim-label",
     why: "Nobody is marching, so it is dashed with a ring for a head - but it is a real declared thing on the board, so it takes a lane like everything else.",
   },
   aim: {
-    shape: "spear", className: "aim-arrow",
-    why: "The arrow a play would declare, at the width it would really have, so aiming shows the board it is about to make.",
+    shape: "spear", className: "aim-arrow", labelClass: "march-strength",
+    why: "The arrow a play would declare, on the border it would cross and in the shape it would have - at the width it would take were it alone there. A border already carrying arrows packs it narrower once it is really declared, which is the one thing the preview cannot promise: sharing the block means re-laying out every live arrow on that border on every pointer move, for a shape that is gone the moment the player lets go.",
   },
   ghost: {
-    shape: "spear", className: "clash-flash",
-    why: "A march that has already landed, fading where it stood - laid out with the living so a fade is never drawn across a live spear.",
+    shape: "spear", className: "clash-flash", labelClass: "clash-label",
+    why: "A march that has already landed, fading on the border it crossed. Drawn alone in a layer of its own, so a live rebuild cannot wipe it halfway through the one thing the replay is showing; what keeps it from being read against the living is that the replay hides them while it runs.",
   },
 };
 
@@ -151,6 +155,12 @@ export interface ArrowSpec {
   /** A rival's own colour, for tone "other". */
   fill?: string;
   label?: string;
+  /** Where the label sits along the arrow, as a fraction from tail to tip,
+   *  overriding the kind's own station. For the one label whose POSITION is
+   *  information: a clash's leftover damage sits where the two forces met, and
+   *  a fixed station would put every clash label in the same place whoever gave
+   *  ground. */
+  labelAt?: number;
   chip?: { order: number; clash: boolean };
   /** A claim already answered, drawn faded. */
   doomed?: boolean;
@@ -176,6 +186,10 @@ const NS = "http://www.w3.org/2000/svg";
  *  two neighbours never sit level with each other: an arrow is short, and two
  *  labels at the same height across adjacent lanes overlap. */
 const LABEL_STATIONS = [0.26, 0.5, 0.74];
+
+/** Past the head, where a claim's one-word label goes. Over 1 on purpose: the
+ *  word is wider than the arrow, so it stands in the land being demanded. */
+const CLAIM_LABEL_STATION = 1.18;
 
 /** Below this the shaft carries the bare number. Safe only because the ordinal
  *  chip sits behind the tail: the shaft carries exactly one number, so there
@@ -282,14 +296,16 @@ function drawArrow(spec: ArrowSpec, lane: Lane): SVGGElement | null {
   }
 
   if (spec.label !== undefined) {
-    const station = LABEL_STATIONS[lane.index % LABEL_STATIONS.length];
-    const at = spec.kind === "claim"
+    const station = spec.kind === "claim"
       // The one label that is a word rather than a number, and wider than the
       // arrow it belongs to: past the head, in the land being demanded.
-      ? pointAlong(lane.ax, lane.ay, lane.bx, lane.by, 1.18)
-      : pointAlong(lane.ax, lane.ay, lane.bx, lane.by, station);
+      ? CLAIM_LABEL_STATION
+      : LABEL_STATIONS[lane.index % LABEL_STATIONS.length];
+    const at = pointAlong(
+      lane.ax, lane.ay, lane.bx, lane.by, spec.labelAt ?? station,
+    );
     const text = svgEl("text", { x: at.x, y: at.y });
-    text.classList.add(spec.kind === "claim" ? "claim-label" : "march-strength");
+    text.classList.add(def.labelClass);
     if (spec.kind !== "claim") text.setAttribute("dominant-baseline", "middle");
     text.textContent = spec.kind !== "claim" && lane.width < BARE_NUMBER_WIDTH
       ? spec.label.replace(/ STR$/, "")
