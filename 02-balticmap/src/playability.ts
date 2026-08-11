@@ -233,6 +233,39 @@ export function wealthIncomeFor(
   return 1 + founded + trade;
 }
 
+/** The smallest hand any realm refills to, and the largest. `OPENING_HAND` in
+ *  src/game.ts is dealt at `MIN_HAND`, which is why a first turn draws
+ *  nothing; `tests/playability.test.ts` pins the two together. */
+export const MIN_HAND = 3;
+export const MAX_HAND = 7;
+
+/** How many cards `factionId` refills to when its turn begins: one more card
+ *  per 1.5 lands it holds, floored at `MIN_HAND` and capped at `MAX_HAND`.
+ *
+ *      lands  1  2  3  4  5  6  7  8  9+
+ *      hand   3  3  4  4  5  6  6  7  7
+ *
+ *  Written as `2 * lands / 3` rather than `lands / 1.5` so no float lands on a
+ *  game rule. A wide realm buys reach, armies, income and settlements; this is
+ *  what it buys at the hand, and the floor is what keeps a broken realm still
+ *  able to play.
+ *
+ *  Lands are the FULL realm - vassals of vassals, and each member's
+ *  annexations - because this is a number the player can check against the map
+ *  and against the scoreboard beside it.
+ *
+ *  It is a refill TARGET, not a cap. Nothing discards down to it, so a realm
+ *  that shrinks keeps the cards it is holding and simply draws nothing until it
+ *  has played back under the new number. See the refill in `beginTurn`. */
+export function handLimitFor(
+  view: { overlords: Overlords; incorporated: Incorporated },
+  factionId: string,
+): number {
+  const lands = fullRealmOf(factionId, view.overlords, view.incorporated).size;
+  const scaled = Math.floor((2 * lands) / 3) + 2;
+  return Math.max(MIN_HAND, Math.min(MAX_HAND, scaled));
+}
+
 /** Every faction the actor's FULL realm borders, each land resolved to
  *  whoever annexed it. This is what "in reach" means for a FACTION-targeted
  *  card (Subjugate, Assassinate ruler): a grand-vassal's border is the

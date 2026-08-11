@@ -296,8 +296,9 @@ describe("applyBootParams", () => {
     expect(g.players[0].strategy).toBe("pestilence");
     expect(g.current).toBe(0);
     expect(g.playedThisTurn).toBe(false);
-    // pickFaction ends in beginTurn, which draws: the opening hand plus one.
-    expect(g.players[0].hand).toHaveLength(OPENING_HAND + 1);
+    // pickFaction ends in beginTurn, which finds a one-land seat already at
+    // its refill target (`handLimitFor`) and draws nothing.
+    expect(g.players[0].hand).toHaveLength(OPENING_HAND);
   });
 
   it("stops short - it does not half-build a run - on an unknown faction id", () => {

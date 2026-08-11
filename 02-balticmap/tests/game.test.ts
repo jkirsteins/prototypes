@@ -3,7 +3,7 @@ import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, beginTurn,
   playCard, discardCard, endTurn, advance, surrender, viewOf,
   autoTransfer, transferDefense, transferLimit,
-  OPENING_HAND, HAND_REFILL, MAX_ACTIVE, TURNIP_HARVEST_THRESHOLD,
+  OPENING_HAND, MAX_ACTIVE, TURNIP_HARVEST_THRESHOLD,
   victoryRealmSize, type GameState,
 } from "../src/game";
 import {
@@ -19,7 +19,8 @@ import {
   WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
 import {
-  cardBlockReason, ESCAPE_RESPITE_TURNS, playableSet, validTargetsFor,
+  cardBlockReason, ESCAPE_RESPITE_TURNS, handLimitFor, MIN_HAND, playableSet,
+  validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
 import { aiTakeTurn } from "../src/ai";
@@ -218,11 +219,12 @@ describe("setup", () => {
       expect([...p.hand, ...p.deck, ...p.discard].sort())
         .toEqual(startingDeck(p.strategy).sort());
     }
-    expect(g.players[0].hand).toHaveLength(OPENING_HAND + 1); // +1 = turn draw
-    expect(g.players.slice(1).every((p) => p.hand.length === OPENING_HAND))
-      .toBe(true);
-    // opening hands are dealt silently: only the turn draw is logged
-    expect(g.log.filter((e) => e.type === "draw")).toHaveLength(1);
+    // Every seat opens on one land, and one land refills to OPENING_HAND, so
+    // the human's first beginTurn draws nothing on top of the deal - the 4th
+    // card arrives with the 3rd land. See `handLimitFor`.
+    expect(g.players.every((p) => p.hand.length === OPENING_HAND)).toBe(true);
+    // opening hands are dealt silently, and there was no turn draw to log
+    expect(g.log.filter((e) => e.type === "draw")).toHaveLength(0);
   });
 
   it("pickFaction refuses a faction id off the roster", () => {
@@ -254,7 +256,7 @@ describe("setup", () => {
 });
 
 describe("beginTurn", () => {
-  it("refills the hand to a full four, and logs every draw", () => {
+  it("refills the hand to the realm's limit, and logs every draw", () => {
     // Under BOTH turn rules. Drawing exactly one was arithmetic written when a
     // standard turn spent exactly one card; a Raid re-opening the turn for
     // more raids spends several, so the fixed draw shrank the hand of anybody
@@ -263,17 +265,36 @@ describe("beginTurn", () => {
     const before = g.log.length;
     const after = beginTurn(g, seededRng(2));
     expect(after.rules.turn).toBe("standard");
-    expect(after.players[0].hand).toHaveLength(HAND_REFILL);
+    expect(after.players[0].hand).toHaveLength(MIN_HAND);
     expect(fresh(after, before).filter((e) => e.type === "draw"))
-      .toHaveLength(HAND_REFILL - 1);
+      .toHaveLength(MIN_HAND - 1);
   });
 
-  it("draws nothing into a hand that is already full", () => {
+  it("refills to the bigger limit a wider realm earns", () => {
+    // Four lands under beta: itself, one annexation, a vassal, and the land
+    // that vassal annexed. The hand counts the FULL realm walked to depth, so
+    // the last of those four has to count or the number would read 3.
+    const g = withHand(
+      {
+        ...playingState(),
+        incorporated: { gamma: "beta", delta: "alpha" },
+        overlords: new Map([["alpha", "beta"]]),
+      },
+      0, ["raid"],
+    );
+    expect(handLimitFor(g, "beta")).toBe(4);
+    expect(beginTurn(g, seededRng(2)).players[0].hand).toHaveLength(4);
+  });
+
+  it("draws nothing into a hand already at or over the limit", () => {
+    // Over, in fact: four cards against a one-land limit of three. The refill
+    // is a target and not a cap, so nothing is discarded either.
     const g = withHand(playingState(), 0, ["raid", "raid", "fortify", "fortify"]);
     const before = g.log.length;
     const after = beginTurn(g, seededRng(2));
-    expect(after.players[0].hand).toHaveLength(HAND_REFILL);
+    expect(after.players[0].hand).toHaveLength(4);
     expect(fresh(after, before).some((e) => e.type === "draw")).toBe(false);
+    expect(after.players[0].discard).toEqual(g.players[0].discard);
   });
 
   it("reshuffles the discard when the deck is empty", () => {
@@ -370,7 +391,7 @@ describe("the independence gate at turn start", () => {
 });
 
 describe("beginTurn under unlimited rules", () => {
-  it("refills the hand to HAND_REFILL, reshuffling a dry deck mid-refill", () => {
+  it("refills the hand to its limit, reshuffling a dry deck mid-refill", () => {
     let g = unlimitedPlaying();
     // Strand the player on an empty hand and a one-card deck; the rest of
     // their cards sit in the discard, so the refill must reshuffle mid-loop.
@@ -389,9 +410,9 @@ describe("beginTurn under unlimited rules", () => {
     };
     const before = g.log.length;
     const after = beginTurn(g, seededRng(2));
-    expect(after.players[0].hand).toHaveLength(HAND_REFILL);
+    expect(after.players[0].hand).toHaveLength(MIN_HAND);
     const events = fresh(after, before);
-    expect(events.filter((e) => e.type === "draw")).toHaveLength(HAND_REFILL);
+    expect(events.filter((e) => e.type === "draw")).toHaveLength(MIN_HAND);
     expect(events.some((e) => e.type === "reshuffle")).toBe(true);
   });
 
@@ -408,11 +429,12 @@ describe("beginTurn under unlimited rules", () => {
 
   it("draws nothing when the hand is already full", () => {
     const g = unlimitedPlaying();
-    // pickFaction's beginTurn already refilled to HAND_REFILL.
-    expect(g.players[0].hand).toHaveLength(HAND_REFILL);
+    // The deal already put the one-land seat at its limit; pickFaction's
+    // beginTurn had nothing left to draw.
+    expect(g.players[0].hand).toHaveLength(MIN_HAND);
     const before = g.log.length;
     const again = beginTurn(g, seededRng(3));
-    expect(again.players[0].hand).toHaveLength(HAND_REFILL);
+    expect(again.players[0].hand).toHaveLength(MIN_HAND);
     expect(fresh(again, before).some((e) => e.type === "draw")).toBe(false);
   });
 });

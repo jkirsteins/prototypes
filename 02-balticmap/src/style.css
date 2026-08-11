@@ -496,6 +496,16 @@ svg.map.dragging {
   white-space: nowrap;
 }
 
+/* How many cards the turn refills to - same chip shape as the treasury; the
+   ink brown marks it as a fact about the deck rather than about the map. */
+.status-hand {
+  border-left: 1px solid #d0d0d0;
+  padding-left: 12px;
+  color: #6b4a2f;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* The player's own ruler, by name - same chip shape as the treasury; the
    iron grey marks it as martial rather than monetary. */
 .status-ruler {

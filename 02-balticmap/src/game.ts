@@ -20,7 +20,8 @@ import {
 import {
   aimsUpOwnChain, attackDamageFor, omensMultiplier, attackReach,
   ESCAPE_RESPITE_TURNS, freeArmiesFor, greatRaidMarches, marchSourcesAgainst,
-  claimWouldLand, marchTargetsFrom, outbreakPolygons, plagueMultiplier,
+  claimWouldLand, handLimitFor, marchTargetsFrom, outbreakPolygons,
+  MIN_HAND, plagueMultiplier,
   playableSet,
   turnipThresholdOn, validTargetsFor, wealthIncomeFor,
   type Guards, type Omens, type RulesView,
@@ -340,12 +341,10 @@ export interface GameState {
   log: GameEvent[];
 }
 
-export const OPENING_HAND = 3;
-
-/** The hand every turn refills to at its start, under both turn rules: the
- *  opening hand plus one. The turn axis decides how many cards a turn accepts,
- *  never how many the player holds - see the refill in `beginTurn`. */
-export const HAND_REFILL = OPENING_HAND + 1;
+/** What a seat is dealt on the way in. `MIN_HAND` in src/playability.ts, so a
+ *  faction on its first land opens at its refill target and draws nothing on
+ *  turn 1; the 4th card arrives with the 3rd land. */
+export const OPENING_HAND = MIN_HAND;
 
 /** Grow turnips plays that earn one Turnip harvest in a world nobody handed a
  *  map to. The real threshold is a land's own, `turnipThresholdOn` in
@@ -1288,9 +1287,21 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // decide the hand size, and a hand that refills is the only shape that
   // survives a card spending more than its share.
   //
+  // What it refills TO is the realm's, `handLimitFor`. Read off the LOCAL
+  // `overlords` and not off the snapshot, because the escape at the top of
+  // this turn and the marches that landed below it have both already moved it:
+  // a land taken moments ago is a land the hand it deals with should count. It
+  // is a target and not a cap - a realm that has just been carved up holds
+  // whatever it was holding and draws nothing until it has played back under
+  // the new number. Hoisted, since nothing between one drawn card and the next
+  // touches the realm.
+  //
   // Each draw logs the same `draw` event the single-draw path logged, and a
   // deck that runs dry mid-refill reshuffles exactly as it does between turns.
-  while (hand.length < HAND_REFILL && (deck.length > 0 || discard.length > 0)) {
+  const handLimit = handLimitFor(
+    { overlords, incorporated: state.incorporated }, p.factionId,
+  );
+  while (hand.length < handLimit && (deck.length > 0 || discard.length > 0)) {
     if (deck.length === 0) {
       deck = shuffle(discard, rng);
       discard = [];

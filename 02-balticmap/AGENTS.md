@@ -232,6 +232,45 @@ is a test that passes while the app is broken: `tests/net-pipe.test.ts` kept
 copies of the deal and the AI chain, and both went on passing across forty
 commits during which the app's wiring quietly stopped matching them.
 
+## The hand is the realm's, and it is a floor rather than a ceiling
+
+`handLimitFor` in `src/playability.ts` is how many cards a turn refills to: one
+more card per 1.5 lands held, from `MIN_HAND` (3) up to `MAX_HAND` (7), written
+as `2 * lands / 3` so no float lands on a game rule.
+
+    lands  1  2  3  4  5  6  7  8  9+
+    hand   3  3  4  4  5  6  6  7  7
+
+It lives beside `wealthIncomeFor` and `freeArmiesFor` because it is the same
+kind of number - what the realm is worth at one of the game's dials - and it
+counts `fullRealmOf`, per the realm-sizes rule below: this is a number the
+player can read off the scoreboard one chip over.
+
+Three things about it are load-bearing:
+
+- **It is a refill TARGET, not a cap.** Nothing in the game discards down, so a
+  realm carved back to two lands holds whatever it was holding and simply draws
+  nothing until it has played back under the number. Adding a discard-down
+  would mean asking the player WHICH cards, which is a decision and a modal;
+  the `hand: "sweep"` rule already corrects a fat hand at turn's end for anyone
+  who wants that.
+- **`OPENING_HAND` is `MIN_HAND`.** A seat on its first land is dealt exactly
+  its target, so turn 1 draws nothing and logs no `draw`. Several tests read
+  that way round - if the two constants are ever pulled apart, the opening
+  animation tests are the ones that notice, and `tests/playability.test.ts`
+  pins the tie deliberately.
+- **`beginTurn` reads the LOCAL `overlords`, not the snapshot.** The escape at
+  the top of the turn and the marches that land below it both move the realm
+  before the refill runs, and a land taken moments ago is a land the hand it
+  deals with should count.
+
+The number is written down in exactly one place the player can see: the
+`status-hand` chip in the HUD, with the rule in its hover. The rules picker
+deliberately promises NO hand size on either turn option, and a test holds it
+to that - it used to say "refills to 4", pinned against the old constant, and
+any number written there now would be a promise the game breaks by the third
+land.
+
 ## Nothing ends itself
 
 A turn ends when the player says so, on both rule axes (`RULE_AXES` in
@@ -444,9 +483,9 @@ interchangeable:
   member's own annexations. This is the answer to "how much of the map is
   theirs", so it is what the scoreboard, the win condition, the postmortem,
   the ownership shading and the hover halo count. It is also what every rule
-  that scales with "the realm" uses: `reachOf`, `attackReach` and
-  `borderPolygonsOf` in `src/playability.ts` - taking a lord takes its whole
-  pyramid, and a grand-vassal's border is the pyramid's border.
+  that scales with "the realm" uses: `reachOf`, `attackReach`,
+  `borderPolygonsOf` and `handLimitFor` in `src/playability.ts` - taking a lord
+  takes its whole pyramid, and a grand-vassal's border is the pyramid's border.
 
 The flat version shipped and rotted exactly where you would expect. At turn 35
 the scoreboard read `You 3/15 lands` while four polygons sat inside the player's

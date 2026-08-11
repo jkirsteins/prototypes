@@ -171,8 +171,8 @@ describe("createHud", () => {
     hud.update(g);
     expect(q(container, ".status-text").textContent).toBe("Turn 1 - play a card");
     // The 9-card starting deck (4 raid, 4 fortify, 1 grow-crops): 3 dealt to
-    // hand, 1 drawn at turn start.
-    expect(q(container, ".pile-deck .pile-count").textContent).toBe("5");
+    // hand, and nothing drawn at turn start - one land refills to three.
+    expect(q(container, ".pile-deck .pile-count").textContent).toBe("6");
     expect(q(container, ".pile-deck .pile-label").textContent).toBe("Deck");
     expect(q(container, ".pile-discard .pile-count").textContent).toBe("0");
     expect(q(container, ".pile-discard .pile-label").textContent).toBe("Discard");
@@ -1055,11 +1055,21 @@ describe("activity log filters", () => {
 describe("card animations", () => {
   const playing = () => newPlaying();
 
+  /** A state whose newest log entries hold exactly one draw by the human.
+   *  The opening deal is silent, and a seat on its first land is dealt its
+   *  whole refill target (`handLimitFor`), so the opening turn draws nothing -
+   *  a draw has to be made to happen. Two cards against a limit of three is
+   *  one drawn card, which is what these tests are counting. */
+  const drewOne = () =>
+    beginTurn(
+      withHand(playing(), 0, ["grow-crops", "grow-crops"]), seededRng(1),
+    );
+
   it("flies a card back from the deck on your draw, exactly once", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
-    const g = playing();
-    hud.update(g); // log contains your opening draw
+    const g = drewOne();
+    hud.update(g);
     expect(container.querySelectorAll(".flying-card.back")).toHaveLength(1);
     hud.update(g); // same state again: no duplicate animation
     expect(container.querySelectorAll(".flying-card.back")).toHaveLength(1);
@@ -1071,8 +1081,8 @@ describe("card animations", () => {
   it("hides the newest hand card while the draw flight is in progress", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
-    hud.update(playing());
-    // opening hand is 3 + a turn draw = 4; the newest (drawn) card renders last
+    hud.update(drewOne());
+    // the newest (drawn) card renders last
     const cards = container.querySelectorAll(".card");
     const card = cards[cards.length - 1] as HTMLElement;
     expect(card.classList.contains("card-incoming")).toBe(true);

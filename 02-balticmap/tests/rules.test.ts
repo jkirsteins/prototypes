@@ -4,7 +4,6 @@ import {
   mergeRules, saveRulesPrefs, summarizeRules, sweepsHandAtTurnEnd,
 } from "../src/rules";
 import { memoryStorage } from "../src/meta";
-import { HAND_REFILL } from "../src/game";
 
 describe("RULE_AXES", () => {
   it("every axis's default is one of its options, and ids are unique", () => {
@@ -24,12 +23,17 @@ describe("RULE_AXES", () => {
   });
 });
 
-describe("unlimited option text", () => {
-  it("states the same refill count as HAND_REFILL in src/game.ts", () => {
-    const unlimited = RULE_AXES
-      .find((a) => a.id === "turn")!
-      .options.find((o) => o.id === "unlimited")!;
-    expect(unlimited.text).toContain(String(HAND_REFILL));
+describe("turn option text", () => {
+  // The old version of this pinned the "4" in the unlimited option against
+  // HAND_REFILL, so the prose could not drift from the constant. The hand size
+  // is `handLimitFor` now and moves with the realm, so no number written here
+  // could be true for long - the guard is therefore that BOTH options name no
+  // number at all. It also closes the hole the old one left: the identical 4
+  // in the standard option was never covered.
+  it("promises no hand size, on either option", () => {
+    for (const option of RULE_AXES.find((a) => a.id === "turn")!.options) {
+      expect(option.text).not.toMatch(/\d/);
+    }
   });
 });
 

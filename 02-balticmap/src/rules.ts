@@ -38,20 +38,21 @@ export const RULE_AXES: RuleAxis[] = [
     name: "Turn structure",
     defaultOption: "standard",
     options: [
-      // The "4" in both lines restates HAND_REFILL (OPENING_HAND + 1) in
-      // src/game.ts, which cannot be imported here without a cycle (game.ts
-      // imports rules.ts) - change them together. The refill is the same under
-      // both options: this axis decides what a turn ACCEPTS, not what you
-      // hold.
+      // Neither line names a hand size, and a test holds them to it. The size
+      // is `handLimitFor` in src/playability.ts and grows with the realm, so
+      // any number written here would be a promise the game breaks by the
+      // third land - the live number belongs on the HUD's hand chip, which is
+      // free to read the constants. The refill is the same under both options:
+      // this axis decides what a turn ACCEPTS, not what you hold.
       {
         id: "standard",
         name: "One card per turn",
-        text: "Play or discard one card each turn, plus any repeats it opens; your hand refills to 4 at turn start.",
+        text: "Play or discard one card each turn, plus any repeats it opens; your hand refills at turn start, to a size that grows with your realm.",
       },
       {
         id: "unlimited",
         name: "Unlimited plays",
-        text: "Play any number of cards each turn; your hand refills to 4 at turn start.",
+        text: "Play any number of cards each turn; your hand refills at turn start, to a size that grows with your realm.",
       },
     ],
   },

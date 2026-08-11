@@ -5,13 +5,15 @@ import {
   attackDamageFor, omensMultiplier, attackReach, borderPolygonsOf,
   cardBlockReason, failureRiskOf, freeSettlementsIn, freeSitesIn,
   greatRaidMarches,
-  handBlockReason, holdsGuard, incorporateRealmGate, isCardPlayable,
+  handBlockReason, handLimitFor, holdsGuard, incorporateRealmGate,
+  isCardPlayable, MAX_HAND, MIN_HAND,
   marchSourcesAgainst, marchSourcesFor, marchTargetsFrom, miasmaHeld, omensHeld,
   outbreakPolygons, plagueDamageOn, plagueMultiplier, playableSet, reachOf,
   respiteExpiry, settlementAllowance, settlementsIn, subjugationGateOn,
   targetEligibilityFor, validTargetsFor, wealthIncomeFor, wealthOf,
   type RulesView,
 } from "../src/playability";
+import { OPENING_HAND } from "../src/game";
 import { TRIBUTE_CARDS } from "../src/cards";
 import { RAID_LEADERSHIP } from "../src/abilities";
 import { ATTACK_DAMAGE, RAID_DAMAGE, SUBJUGATION_GATE } from "../src/defense";
@@ -821,6 +823,46 @@ describe("wealth", () => {
       settlements: { gamma: 5 },
     });
     expect(wealthIncomeFor(v, "alpha")).toBe(1);
+  });
+});
+
+describe("handLimitFor", () => {
+  /** A realm of exactly `n` lands under alpha, built out of annexations so the
+   *  walk has something to count past the four ids the fixture ships with. */
+  function realmOf(n: number) {
+    const incorporated: Record<string, string> = {};
+    for (let i = 1; i < n; i++) incorporated[`land-${i}`] = "alpha";
+    return { overlords: new Map(), incorporated };
+  }
+
+  it("walks the curve: one more card per 1.5 lands, floored and capped", () => {
+    const expected = [3, 3, 4, 4, 5, 6, 6, 7, 7, 7, 7, 7];
+    expected.forEach((hand, i) => {
+      expect(handLimitFor(realmOf(i + 1), "alpha")).toBe(hand);
+    });
+  });
+
+  it("clamps at both ends", () => {
+    // Nothing held at all is still a playable hand, and a realm that has eaten
+    // the map still stops at MAX_HAND.
+    expect(handLimitFor({ overlords: new Map(), incorporated: {} }, "nobody"))
+      .toBe(MIN_HAND);
+    expect(handLimitFor(realmOf(40), "alpha")).toBe(MAX_HAND);
+  });
+
+  it("counts the FULL realm - a vassal's own vassals and annexations", () => {
+    // beta answers to alpha, gamma answers to beta, and gamma annexed delta.
+    // Walked one level alpha holds 2 lands and a hand of 3; walked to depth it
+    // holds 4 and a hand of 4, which is the number beside its score.
+    const deep = {
+      overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+      incorporated: { delta: "gamma" },
+    };
+    expect(handLimitFor(deep, "alpha")).toBe(4);
+  });
+
+  it("is the size the deal opens on, so a first turn draws nothing", () => {
+    expect(OPENING_HAND).toBe(MIN_HAND);
   });
 });
 
