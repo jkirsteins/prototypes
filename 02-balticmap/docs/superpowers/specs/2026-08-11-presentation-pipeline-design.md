@@ -79,13 +79,53 @@ are no tests touching `floatScoreMarks`, `floatFor`, `floatedEvents` or
       next: GameState;
       /** Exactly the events this transition appended, in order. */
       events: GameEvent[];
-      /** History: apply it, present nothing. A boot, a deal, a rejoin. */
+      /** History: commit it, present nothing. A boot, a deal, a rejoin. */
       settled: boolean;
     }
 
-`src/transitions.ts` owns a queue of these. It applies one, presents its
-beats, waits for the animation queue to drain, then applies the next. Nothing
-else in the app assigns `game`.
+`src/transitions.ts` owns the queue AND the state. Nothing else holds an
+assignable binding to `game` - see section 2.
+
+#### The displayed state lags the transition
+
+**The state on screen stays `previous` for the whole of a transition, and
+`next` is committed when its beats have finished.** Classification receives
+both, so a beat knows what moved without the map having shown it.
+
+This is the rule that makes "a beat that has not run has drawn nothing" true.
+Committing first and presenting afterwards is precisely today's bug: the badge
+opens showing the outcome of an event the player has not been shown, which is
+why `walkBadgeScore` has to step the number backwards before walking it
+forwards. With the commit deferred, the badge is already showing `before` and
+the beat simply walks it to `after`. The backwards step goes away.
+
+The transition's lifecycle, in order, and this is the whole contract:
+
+1. Run the transient beats, one at a time, on the animation queue.
+2. Commit `next` to the displayed state and repaint every persistent layer.
+3. Build any round summary from `NOTICE_RULES` over this transition's events
+   and show it. It describes the board as it now stands, which is why it comes
+   after the commit and not before.
+4. If the summary blocks continuation, wait for its dismissal.
+5. The transition is complete. The next one may start.
+
+Step 3 is what folds the round summary into this queue instead of leaving it
+owned by a second scheduler. The "AI behind the modal" problem stops being a
+rule `settleTurn` has to remember and becomes a step nothing can run past.
+
+**One consequence worth naming: `submit` never blocks.** A beat may itself
+produce a transition - an `ask` beat raises the conquest question, the answer
+commits a `transferDefense` decision - and that transition is simply enqueued
+behind the current one. The ask beat then releases and the round carries on.
+Nothing waits on anything a later transition will produce, so an `ask` cannot
+deadlock the transition that raised it. The defenders arrive as their own beat
+in their own transition, which is also the honest picture of what happened.
+
+**And the arrow layer is why the commit does not pop.** The retained scene is
+keyed by march id (section 6), so a `march-declared` beat inserts the arrow
+under the key `march:<id>` and fades it in; when step 2 repaints from `next`,
+that key is already present and is re-laid-out rather than re-created. The
+commit stops the state disagreeing with the screen; it does not redraw it.
 
 **The host's AI chain and the guest's update stream become the same loop.** On
 the host, entries are produced by `oneAiSeat`; on a guest, by arriving `update`
@@ -113,10 +153,15 @@ intake takes all three explicitly:
   the cursor jumps, which is what `animate: false` was reaching for and
   failing to hold.
 
-The root `biome.json` already forbids `src/main.ts` from importing the engine
-mutators. The same mechanism forbids any assignment to `game` outside the
-transition queue, so there is no path that appends events without presenting
-them.
+**The enforcement is ownership, not lint.** Biome's `noRestrictedImports` can
+forbid `src/main.ts` from importing the engine mutators, and it already does -
+but it cannot forbid an assignment to a local `let game`. So `main.ts` stops
+holding one. `src/transitions.ts` owns the state and exposes exactly three
+things: a read accessor for the displayed state, `submit(transition)`, and
+`replaceSettled(state)` for the snapshot and boot paths. With no assignable
+binding in `main.ts`, there is no path that appends events without presenting
+them, and that is a fact about the module boundary rather than a rule somebody
+has to keep.
 
 ### 3. The classifier answers one question and returns a list
 
@@ -129,7 +174,13 @@ in the `NOTICE_RULES` shape:
 
     type Beat =
       | { kind: "map"; polygon: string; label: Segment[]; sound: SoundName | null;
-          badges: BadgeWalk[]; ghosts: GhostArrow[] }
+          badges: BadgeWalk[];
+          /** Arrows this beat takes off the board. They exit plain: a fade
+           *  out and no label. See "retiring is not resolving" below. */
+          retires: number[];
+          /** The one arrow that SHOWS the outcome, when there is an outcome
+           *  to show. Derived from the event, not from any march. */
+          resolution?: ResolutionArrow }
       | { kind: "hud"; motion: "draw" | "play" | "pulse" | "reveal";
           cardId?: string; sound: SoundName | null }
       | { kind: "ask"; question: TransferQuestion };
@@ -137,9 +188,22 @@ in the `NOTICE_RULES` shape:
     /** One badge stepping from the score it HAD to the score it has. */
     interface BadgeWalk { polygon: string; track: "defense" | "disease";
                           before: number; after: number }
-    /** One arrow retiring, and what its exit says. */
-    interface GhostArrow { marchId: number; label: string;
-                           tone: "ours" | "hostile" | "other" }
+
+    /** The resultant force of one resolution, drawn for the length of the
+     *  beat and then gone. Its own key in the retained scene, so it is packed
+     *  along the border beside whatever else is still standing there. */
+    interface ResolutionArrow {
+      /** Transition and event, never a march id: this arrow is not any of the
+       *  marches that produced it. */
+      key: string;
+      /** Winner at loser, which may be the opposite of either arrow that
+       *  retired. */
+      from: string; to: string;
+      /** What actually got through, which is neither side's declared damage. */
+      strength: number;
+      label: string;
+      tone: "ours" | "hostile" | "other";
+    }
 
 **A list, not a category.** One event can owe both a HUD beat and a map beat -
 your own Raid flies its card *and* puts an arrow on a border. `beats()`
@@ -198,9 +262,8 @@ and emits one `march-resolved`.
 
 **The invariant, and it is a test:** the set of march ids that left the store
 across a transition equals the union of the ids named by that transition's
-events. The presenter can then draw a ghost for exactly the arrows an event
-retired, and an arrow vanishing with nothing to explain it becomes a failing
-test rather than a silent hole. If the engine today drops an arrow without an
+events. An arrow vanishing with nothing to explain it becomes a failing test
+rather than a silent hole. If the engine today drops an arrow without an
 event, this invariant is what will surface it, and fixing that is part of the
 work.
 
@@ -218,28 +281,56 @@ work.
 The aim preview opts out of the transition: it re-packs on every pointer move
 and must track the cursor.
 
-A resolved march is then an arrow whose key departed, so **its exit is the
-ghost** - driven by the beat, which knows which ids retired and what to say
-about them. This deletes `flashMarchResolution`'s manual rebuild, the separate
-`ghostGroup` layer, and the `svg.replaying { display: none }` rule, all three
-of which existed only because a live rebuild used to wipe a mid-fade ghost.
-With identity, a rebuild wipes nothing.
+#### Retiring is not resolving
 
-Per the decision on screen: the ghost's label is neutral ink and reads
-`1/3 DMG` - what got through out of what was thrown, with the word so the
-number is not mistaken for a score. No green, no red, no leading sign.
+A departed arrow is **not** the resolution ghost, and conflating the two is
+wrong for the case the whole march-identity work exists for. A clash retires
+two arrows and produces one resolution whose strength is neither side's
+declared damage and whose direction - winner at loser - may be the opposite of
+either arrow that left. Three departures on one axis can produce one event.
+There is no arrow on the board whose exit tells that story.
 
-### 7. The continuation gate
+So the beat drives two separate things:
+
+- **`retires: number[]`** takes those keys out of the scene. They exit plain:
+  a fade out, no result label, nothing claiming to be the outcome.
+- **`resolution?: ResolutionArrow`** puts ONE transient arrow into the same
+  retained scene, keyed by transition and event rather than by any march,
+  derived entirely from the `march-resolved` event. It is packed along the
+  border beside whatever else still stands there, exactly as a live arrow is,
+  and it leaves when the beat ends.
+
+Because it lives in the same retained scene, this still deletes
+`flashMarchResolution`'s manual rebuild, the separate `ghostGroup` layer, and
+the `svg.replaying { display: none }` rule - all three existed only because a
+live rebuild used to wipe a mid-fade ghost, and with identity a rebuild wipes
+nothing.
+
+Per the decision on screen: the resolution arrow's label is neutral ink and
+reads `1/3 DMG` - what got through out of what was thrown, with the word so
+the number is not mistaken for a score. No green, no red, no leading sign.
+
+### 7. The continuation gate becomes the lifecycle
 
 **Invariant: no continuation may mutate the next state while any presentation
-beat from the current transition is pending.** `afterPlayAnimation` is
-broadened and renamed to `afterPresentation`, waiting on the animation queue
-draining as well as on live flights, rather than only when a summary is parked.
+beat from the current transition is pending.**
+
+This is not a repair to `settleTurn`; it is what the lifecycle in section 1
+already says, so the invariant is held by the shape rather than by a flag. A
+continuation is just "the next transition may start", which is step 5, and
+nothing can reach step 5 without passing steps 1 through 4.
+
+`afterPlayAnimation` therefore does not survive as a mechanism. Its ONE
+remaining job is the flight watchdog - the last-resort deadline derived from
+`Flight.totalMs` that stops a dropped `onfinish` wedging the game forever -
+and that moves onto the queue's own step, where it guards every beat rather
+than only a card flight. `hud.ts` stops owning turn control.
 
 `tests/hud-animation-gate.test.ts:150` ("fires at once when nothing flew") is
-not wrong and stays: it queues no beat. The regression to add is the case it
-never covered - no card flies, but a non-play beat is on the queue, and the
-continuation must wait.
+not wrong and its behaviour is preserved: a transition with no beats runs its
+lifecycle straight through. The regression to add is the case it never
+covered - no card flies, but a non-play beat is on the queue, and the next
+transition must wait.
 
 ### 8. Multiplayer: same sequence, never overlapped, never skipped
 
@@ -261,10 +352,13 @@ Two rules keep the buffer honest:
 - A `start` or `snapshot` message **clears the buffer** and jumps. It is
   settled history by definition, and a rejoining guest must not be made to
   watch what it missed.
-- The buffer is **capped**. Past the cap it collapses to the newest transition
-  and presents nothing, exactly as a snapshot does. A player who was not
-  looking gets the current board rather than a five-minute replay, and the lag
-  cannot grow without bound.
+- The buffer is **capped at 12 transitions**, and past the cap it collapses to
+  the newest and presents nothing, exactly as a snapshot does. Twelve because a
+  transition is roughly one seat's turn and five factions act, so a round is
+  about six: the cap is two rounds behind, which is as far as a player can drift
+  and still recognise the board when the animation catches up. A player who was
+  not looking gets the current board rather than a five-minute replay, and the
+  lag cannot grow without bound.
 
   This is the one place the "never skipped" rule is deliberately given up, and
   it is given up wholesale rather than piecemeal: the buffer collapses to a
@@ -280,7 +374,17 @@ Two rules keep the buffer honest:
 `flashMarchResolution` and `ghostGroup`; `svg.replaying`'s arrow-hiding rule
 and the `clash-good`/`clash-bad` colours; `askTransferIfPending`'s duplicate
 path and the `replayActive` flag it needs; `REPLAY_RULES` (folded into
-`PRESENTATION_RULES`).
+`PRESENTATION_RULES`); `walkBadgeScore`'s backwards step, which the deferred
+commit makes unnecessary.
+
+**`settleTurn`, `pendingSummary` and `idleSettleArmed` go too.** They are the
+second scheduler: a hand-rolled state machine that parks the summary, re-arms
+on `animations.onIdle`, and guards against two waiters racing. Every one of
+those jobs is a numbered step of the transition lifecycle in section 1, and
+the bug in section "What is actually broken" is precisely a case that state
+machine does not cover. Replacing it rather than repairing it is the point -
+the three variables exist to coordinate two schedulers, and after this there
+is one.
 
 `hud.update`'s `animate` flag is not deleted but re-sourced: it stops being a
 per-call-site opinion and becomes `Transition.settled`, threaded to the readers
@@ -293,15 +397,20 @@ The dependencies are real and not obvious, so the plan should follow them:
 
 1. March identity and the `march-declared` event, with the protocol bump. Every
    later piece names march ids.
-2. `src/transitions.ts`: the queue and the three intakes, with the host chain
-   and local decisions moved onto it. Guest intake still presents nothing.
+2. `src/transitions.ts`: the queue, the owned state and the three intakes, with
+   the deferred commit and the full five-step lifecycle - summary and dismissal
+   included, so `settleTurn` is retired here rather than left to be repaired
+   twice. The host chain and local decisions move onto it; the guest intake
+   still presents nothing. `main.ts` loses its assignable `game`.
 3. `src/presentation.ts`: the classifier and the audience gate, replacing
    `REPLAY_RULES` and deleting the float subsystem.
-4. Keyed arrow rendering with enter and exit, and the ghost as an exit.
-5. The continuation gate, broadened and renamed.
-6. Guest buffering and the cap.
+4. Keyed arrow rendering with enter and exit, plus the transient resolution
+   arrow.
+5. Guest buffering and the cap.
 
 Steps 1 and 2 are each shippable on their own and leave the game working.
+Step 2 is the largest and is where the behaviour actually changes; it is worth
+its own browser pass before step 3 goes on top of it.
 
 ## What must not change
 
@@ -323,12 +432,21 @@ so these can be written, since `src/main.ts` cannot be tested today.
 - `PRESENTATION_RULES` exhaustive, every `never` carrying a reason, every label
   built from segments (the `tests/replay.test.ts` shape, carried over).
 - The audience gate from both seats of a two-seat game.
-- The queue never applies transition N+1 while any beat of N is pending, on
-  the host chain and on the guest buffer.
+- **The displayed state lags:** while a transition's beats are pending, the
+  read accessor still answers `previous` - the badge, the ownership and the
+  arrow set all still read the board the player was last shown. This is the
+  test that would have caught the bug this whole spec exists to fix.
+- The lifecycle runs in order and nothing skips: beats, then commit, then
+  summary, then dismissal, then the next transition. Including the case that
+  has no summary, which is where `settleTurn` fails today.
+- An `ask` beat whose answer submits a transition releases, and that
+  transition lands after the current one rather than deadlocking it.
 - The march-identity invariant of section 5.
+- A clash retires two arrows and draws one resolution arrow, pointing winner
+  at loser, with a strength that is neither declared damage.
 - The continuation regression of section 7.
-- A guest `snapshot` clears the buffer and presents nothing; the cap collapses
-  rather than backing up.
+- A guest `snapshot` clears the buffer and presents nothing; a buffer past 12
+  collapses rather than backing up.
 
 ## What would look wrong in play
 
