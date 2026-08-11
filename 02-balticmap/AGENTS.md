@@ -386,19 +386,41 @@ does:
   fell; one slot per faction asked about the first and dropped the other two,
   which then sent no defenders and said nothing about it.
 
-  **A second arrow of your own is SPENT, and lands nothing.** When the actor
-  already holds the land - its own earlier arrival this same turn took it -
-  the conquest is refused and so is the blow: an army does not sack the land
-  its own side has just moved defenders into. The arrow still gets its
-  arrival line, so the player can see where it went, and no damage rides on
-  it. `COMBAT_RULES.spentArrival` names the rule, so two deploys cannot
-  disagree about it silently.
+  **Arrivals resolve ONE AT A TIME, each against the board the last one
+  left.** `resolveMarches` takes an `onArrival` sink and calls it at the
+  moment a capture is decided, so the conquest - and the defenders it moves
+  in - are on the board before the next arrow is judged. They used to be
+  collected and applied in a second pass, which meant every blow landed
+  before any land changed hands: the log read as all the damage and then all
+  the conquests, and the replay walked the round twice.
+
+  **A second arrow of your own is SPENT, and lands nothing.** When this
+  actor's own earlier arrow took the land moments ago, the arrow is spent: an
+  army does not sack what its own side has just moved defenders into. It
+  still gets its arrival line, so the player can see where it went, and no
+  damage rides on it. `COMBAT_RULES.spentArrival` names the rule so two
+  deploys cannot disagree about it silently.
+
+  Asked of `takenHere` - the lands THIS resolution changed hands - and never
+  of the actor's realm, because **a raid at a vassal you already held is a
+  real play**: keeping its defenses under the independence gate is what
+  vassal upkeep is. Only the land that changed hands between the arrow
+  leaving and arriving is exempt.
 
   This one was tried the other way first - the surplus spending what it had
   left on the defenders the conquest moved in - and the reason it is not that
   is worth keeping: it made over-committing arrows at one land actively
   self-harming rather than merely wasteful, which is a punishment for a
   misjudgement the player cannot see coming when they declare.
+
+  **The window to reinforce a conquest is between turns, and it is real.**
+  A capture at your turn start raises its transfer question inside that
+  turn's replay, so the defenders are in before you play a card - and long
+  before a rival's arrow, which resolves at that rival's own turn start. Two
+  factions' arrivals never both land in one pass with a conquest among them:
+  the round-wrap sweep covers only the seats that take no turn, and those are
+  the leaderless ones, which `applyArrival`'s ruler gate refuses a conquest
+  to anyway.
 
   **The arrival is ONE line, and the caller pushes it** - `arrival` in
   `beginTurn`, immediately before `takeLand`, never inside it. Two reasons, and

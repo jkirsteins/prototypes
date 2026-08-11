@@ -2463,6 +2463,94 @@ describe("an army that overwhelms a land", () => {
     expect(arrivals.every((e) => e.amount === undefined)).toBe(true);
   });
 
+  it("resolves arrivals one at a time, each against the board the last one left", () => {
+    // The whole point of one-at-a-time: a rival's arrow arriving after a
+    // conquest meets the land under its NEW holder, with the defenders that
+    // conquest moved in - and can take it straight back off them. Resolved in
+    // one pass, both arrows read the same pre-conquest board and the second
+    // one answered a question that was already out of date.
+    const base = playingTen();
+    const taker = base.factionIds.find(
+      (f) => hasRuler(base.rulers, f) &&
+        f !== "beta" && f !== "alpha" && f !== "gamma",
+    )!;
+    // Both arrows resolve in the same pass: the sweep over the seats that
+    // never take a turn runs every one of them inside a single beginTurn.
+    const after = landMarches({
+      ...base,
+      current: base.players.findIndex((pl) => pl.factionId === taker),
+      overlords: new Map([["gamma", taker]]),
+      defense: { alpha: 0, [taker]: 6, gamma: 6 },
+      marches: {
+        [`${taker}>alpha#0`]: {
+          actor: taker, from: taker, to: "alpha", cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+        },
+      },
+    });
+    // The conquest moved defenders in, and they are all still standing - the
+    // taker's own second arrow is the case that must NOT touch them, and
+    // there is no second arrow of the taker's here.
+    const moved = after.log.find(
+      (e) => e.type === "transferred" && e.targetFactionId === "alpha",
+    );
+    expect(after.overlords.get("alpha")).toBe(taker);
+    expect(after.defense.alpha).toBe(moved?.amount);
+    expect(after.defense.alpha).toBeGreaterThan(0);
+  });
+
+  it("finishes one land before starting the next, in the log as on the board", () => {
+    // What "one at a time" means where the player can see it. Two arrows at
+    // two lands used to resolve in two passes - every blow, then every
+    // arrival - so the log read as two damage lines followed by two conquests
+    // and the replay walked the round twice. Each land is now finished before
+    // the next one starts.
+    const base = playingTen();
+    const taker = base.factionIds.find(
+      (f) => hasRuler(base.rulers, f) &&
+        f !== "beta" && f !== "alpha" && f !== "gamma",
+    )!;
+    const before = base.log.length;
+    const after = landMarches({
+      ...base,
+      current: base.players.findIndex((pl) => pl.factionId === taker),
+      overlords: new Map([["gamma", taker]]),
+      defense: { alpha: 0, delta: 0, [taker]: 8, gamma: 8 },
+      marches: {
+        [`${taker}>alpha#0`]: {
+          actor: taker, from: taker, to: "alpha", cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+        },
+        "gamma>delta#0": {
+          actor: taker, from: "gamma", to: "delta", cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+        },
+      },
+    });
+    expect(after.overlords.get("alpha")).toBe(taker);
+    expect(after.overlords.get("delta")).toBe(taker);
+    // The lands each own a contiguous run: no line about the second land
+    // appears between the first land's arrival and its submission.
+    const lands = fresh(after, before)
+      .filter((e) => e.type === "march-resolved" || e.type === "subjugated")
+      .map((e) => e.targetFactionId);
+    const firstLand = lands[0];
+    const runEnds = lands.findIndex((l) => l !== firstLand);
+    expect(lands.slice(0, runEnds).every((l) => l === firstLand)).toBe(true);
+    expect(lands.slice(runEnds).every((l) => l !== firstLand)).toBe(true);
+  });
+
+  it("never takes a land below zero, however hard the blow", () => {
+    const after = oneArrow(99, "alpha", 2);
+    expect(after.defense.alpha).toBe(0);
+    expect(after.defense.alpha).toBeGreaterThanOrEqual(0);
+    // And the line quotes what actually moved, not what was thrown.
+    const landing = after.log.find(
+      (e) => e.type === "march-resolved" && e.targetFactionId === "alpha",
+    );
+    expect(landing?.amount).toBe(2);
+  });
+
   it("takes the ATTACKER's land when the counter overruns it", () => {
     // Symmetric, because it is one rule asked of whichever side the difference
     // lands on. Marching out with your last defenders is a real risk: 1 out

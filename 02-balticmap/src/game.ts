@@ -1040,10 +1040,14 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // turn came round - letting its overlord's own pending raid land first would
   // retroactively deny an escape that had already been earned. Before the
   // draw, so the hand this seat decides with reflects the damage.
-  const landed = resolveMarches({ ...state, overlords }, p, events);
-  let marches = landed.marches;
+  //
+  // Resolved BELOW rather than here, once `applyArrival` exists to be handed
+  // to it: arrivals land one at a time, each against the board the one before
+  // it left, ownership included. Nothing between this comment and that call
+  // executes - it is all declarations - so the move costs no ordering.
+  let marches = state.marches;
   let claims = state.claims;
-  let defense = landed.defense;
+  let defense = state.defense;
   let passives = state.passives;
   const pendingTransfers = { ...state.pendingTransfers };
 
@@ -1205,38 +1209,56 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
    *  One function for both callers - this seat's own marches and the sweep over
    *  the seats that never get a turn - because the two gates below were written
    *  out twice and a third copy is how they start to differ. */
-  const applyCaptures = (captures: Capture[], playerId: number): void => {
-    for (const capture of captures) {
-      arrival(
-        playerId, capture.cardId, capture.land, capture.from,
-        capture.amount !== undefined
-          ? { amount: capture.amount, clash: capture.clash }
-          : undefined,
-      );
-      // Only a faction with a LEADER takes land. A restless raid out of a land
-      // nobody leads is a raid, not a conquest - without this the grey middle
-      // quietly ate itself, and lands with no chief to answer for them ended up
-      // holding vassals.
-      if (!hasRuler(state.rulers, capture.by)) continue;
-      // The actor already holds this land, because an earlier arrival of its
-      // own took it this same turn. The arrow is SPENT and lands nothing: an
-      // army does not sack the land its own side has just moved defenders
-      // into. It gets its arrival line above - the arrow is accounted for on
-      // the surface the player reads - and no damage.
-      if (
-        fullRealmOf(capture.by, overlords, state.incorporated).has(capture.land)
-      ) {
-        continue;
-      }
-      takeLand(capture.land, capture.by, capture.from, {
-        via: "conquest", cardId: capture.cardId,
-      });
+  const applyArrival = (
+    capture: Capture, playerId: number, current: Defense,
+  ): { defense: Defense; taken: boolean } => {
+    // The running board is handed over for the length of this call: `takeLand`
+    // and its automatic transfer read and write the closure's `defense`, and
+    // the resolution that called in here holds its own copy.
+    defense = current;
+    arrival(
+      playerId, capture.cardId, capture.land, capture.from,
+      capture.amount !== undefined
+        ? { amount: capture.amount, clash: capture.clash }
+        : undefined,
+    );
+    // Only a faction with a LEADER takes land. A restless raid out of a land
+    // nobody leads is a raid, not a conquest - without this the grey middle
+    // quietly ate itself, and lands with no chief to answer for them ended up
+    // holding vassals.
+    if (!hasRuler(state.rulers, capture.by)) return { defense, taken: false };
+    // The actor already holds this land, because an earlier arrival of its
+    // own took it this same turn. The arrow is SPENT and lands nothing: an
+    // army does not sack the land its own side has just moved defenders
+    // into. It gets its arrival line above - the arrow is accounted for on
+    // the surface the player reads - and no damage.
+    if (
+      fullRealmOf(capture.by, overlords, state.incorporated).has(capture.land)
+    ) {
+      return { defense, taken: false };
     }
+    takeLand(capture.land, capture.by, capture.from, {
+      via: "conquest", cardId: capture.cardId,
+    });
+    return { defense, taken: true };
   };
 
-  landClaims(p.factionId, p.id);
+  // Marches land here - see the comment above the stores this fills. Arrivals
+  // resolve ONE AT A TIME through `applyArrival`, so the second arrow down a
+  // second axis meets the land as the first one left it: its defenses, and
+  // its holder.
+  {
+    const landed = resolveMarches(
+      { ...state, overlords, marches, defense }, p, events,
+      (capture, current) => applyArrival(capture, p.id, current),
+    );
+    marches = landed.marches;
+    defense = landed.defense;
+  }
 
-  applyCaptures(landed.captures, p.id);
+  // Claims answer AFTER the arrows, so a raid that flattens a land without
+  // taking it still opens the gate a demand of the same turn walks through.
+  landClaims(p.factionId, p.id);
 
   // Wild lands: a land nobody tends grows its defenses back on its own. Rolled
   // once a ROUND - at the wrap onto the first seat - and not once a turn, so
@@ -1308,10 +1330,10 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       landClaims(land, seat.id);
       const out = resolveMarches(
         { ...state, overlords, marches, defense }, seat, events,
+        (capture, current) => applyArrival(capture, seat.id, current),
       );
       marches = out.marches;
       defense = out.defense;
-      applyCaptures(out.captures, seat.id);
     }
     // The status IS the condition. A taken land loses it on capture, so
     // "unheld" needs no test of its own here - asking twice is how the two
@@ -1453,22 +1475,40 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
  *  counter it provoked.
  *
  *  Pushes onto `events` and returns the moved stores; the caller owns the
- *  batch. Consumes no rng, deliberately - `tests/rng-isolation.test.ts` can
- *  only catch nondeterminism, not an added draw, so the discipline has to be
- *  structural. */
+ *  batch.
+ *
+ *  **Arrivals are applied ONE AT A TIME, through `onArrival`, at the moment
+ *  each is decided.** They used to be collected and applied after every axis
+ *  had landed, which meant a second arrow down a second axis was judged
+ *  against a board where the first one had dealt its damage but not taken the
+ *  land - so it read an enemy land that was already its own actor's, and a
+ *  land whose new defenders had not arrived yet. Handing the running defense
+ *  in and taking it back is what lets the caller's `takeLand` sit between two
+ *  arrivals.
+ *
+ *  Consumes no rng of its own - `tests/rng-isolation.test.ts` can only catch
+ *  nondeterminism, not an added draw, so the discipline has to be structural.
+ *  `onArrival` may consume some (a conquest shuffles tribute into the taken
+ *  land's deck), and it does so in the same order the old two-pass shape did:
+ *  arrivals were collected in axis order and applied in that same order. */
 function resolveMarches(
   state: GameState,
   p: PlayerState,
   events: GameEvent[],
-): { marches: Marches; defense: Defense; captures: Capture[] } {
-  const captures: Capture[] = [];
+  onArrival: (
+    capture: Capture, defense: Defense,
+  ) => { defense: Defense; taken: boolean },
+): { marches: Marches; defense: Defense } {
   const lapsed = lapsedMarchesOf(state.marches, p.factionId, state.turn);
   if (lapsed.length === 0) {
-    return { marches: state.marches, defense: state.defense, captures };
+    return { marches: state.marches, defense: state.defense };
   }
   const view = viewOf(state);
   let marches = state.marches;
   let defense = state.defense;
+  /** Land -> the actor whose arrow took it during THIS resolution. What makes
+   *  a second arrow of the same actor spent rather than a raid on a vassal. */
+  const takenHere = new Map<string, string>();
 
   // A march whose ground moved under it while it was in flight is dropped:
   // the army has no land left to have marched out of, the land it was aimed at
@@ -1507,7 +1547,7 @@ function resolveMarches(
       targetFactionId: entry.march.to, sourceFactionId: entry.march.from,
     });
   }
-  if (alive.length === 0) return { marches, defense, captures };
+  if (alive.length === 0) return { marches, defense };
 
   // Only the axes the landing marches run along, but each taken WHOLE, so a
   // counter still in flight is spent answering the attack it was declared
@@ -1541,6 +1581,23 @@ function resolveMarches(
       }
       const { loser } = eng;
       const winner = loser === axis.a ? axis.b : axis.a;
+      // This actor took this land moments ago, with an earlier arrow of this
+      // same resolution. An army does not sack what its own side has just
+      // moved defenders into, so this arrow is spent: it gets its arrival
+      // line, and lands nothing.
+      //
+      // Asked of what was taken HERE and not of the actor's realm, because a
+      // raid at a vassal you already held is a real play - keeping its
+      // defenses under the independence gate is what vassal upkeep IS. Only
+      // the land that changed hands between this arrow leaving and arriving
+      // is exempt.
+      if (takenHere.get(loser) === eng.spear.actor) {
+        defense = onArrival({
+          land: loser, by: eng.spear.actor, from: eng.spear.from,
+          cardId: eng.spear.cardId,
+        }, defense).defense;
+        continue;
+      }
       // The ground has its say on the leftover that actually lands, not on what
       // either side set out with: a counter-raid is answered by armies, a hill
       // by whatever gets past them.
@@ -1567,18 +1624,20 @@ function resolveMarches(
       // nothing. Equal is a flattening - the land holds, at 0, and the next
       // arrival takes it.
       //
-      // The line for this arrival is pushed by `applyCaptures`, not here: it
-      // has to stand immediately before the submission it causes, and the
-      // captures of every axis are applied after all of them have landed.
+      // The line for this arrival is pushed by `onArrival`, not here: it has
+      // to stand immediately before the submission it causes, and the caller
+      // is what knows whether the land actually changes hands.
       if (capturesOnArrival(dealt, before)) {
-        captures.push({
+        const landed = onArrival({
           land: loser, by: eng.spear.actor, from: eng.spear.from,
           cardId: eng.spear.cardId,
           // What the same blow moved on its way in, so the arrival can carry
           // it. Nothing moved on a land that was already flat, and that shape -
           // no `amount`, and therefore no `clash` either - is `metNothing`.
           ...(moved > 0 ? { amount: moved, ...(contested ? { clash } : {}) } : {}),
-        });
+        }, defense);
+        defense = landed.defense;
+        if (landed.taken) takenHere.set(loser, eng.spear.actor);
         continue;
       }
       if (moved <= 0) continue;
@@ -1592,7 +1651,7 @@ function resolveMarches(
       });
     }
   }
-  return { marches, defense, captures };
+  return { marches, defense };
 }
 
 /** A land taken by an army walking into it: which land, whose army, and the
