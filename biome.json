@@ -59,6 +59,10 @@
                       "keepPlaying"
                     ],
                     "message": "A decision the local player makes goes through commitDecision in src/decisions.ts, the only place that knows whether this screen is the host, the guest or alone. A branch here is a branch a new decision can forget the guest on - see 02-balticmap/AGENTS.md."
+                  },
+                  "./arrows": {
+                    "importNames": ["spearPolygon", "spearFor", "SPEAR"],
+                    "message": "Every arrow on the map goes through renderArrowScene in src/arrow-scene.ts, which is the only thing that knows about borders and lanes. Geometry here is a fifth kind of arrow with its own rules - see 02-balticmap/CLAUDE.md."
                   }
                 }
               }
