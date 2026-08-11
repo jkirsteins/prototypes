@@ -39,7 +39,8 @@ vi.mock("../src/animate", async (importOriginal) => ({
 import { animations } from "../src/animate";
 import { createHud, type HudCallbacks } from "../src/hud";
 import {
-  newGame, startGame, chooseBuild, pickFaction, playCard, type GameState,
+  newGame, startGame, chooseBuild, pickFaction, playCard, beginTurn,
+  type GameState,
 } from "../src/game";
 import type { Rng } from "../src/cards";
 
@@ -79,8 +80,12 @@ function ready(): GameState {
     chooseBuild(startGame(newGame(FACTIONS)), "warpath", seededRng(1)),
     "beta", seededRng(1),
   );
-  const p0 = { ...g.players[0], hand: ["grow-crops"] };
-  return { ...g, players: [p0, ...g.players.slice(1)] };
+  // Two cards against a one-land refill target of three (`handLimitFor`), so
+  // the beginTurn below logs exactly one draw and the tests have a single
+  // flight to queue a play behind. The deal itself is silent, and a seat that
+  // opens already at its target would draw nothing at all.
+  const p0 = { ...g.players[0], hand: ["grow-crops", "grow-crops"] };
+  return beginTurn({ ...g, players: [p0, ...g.players.slice(1)] }, seededRng(1));
 }
 
 beforeEach(() => {

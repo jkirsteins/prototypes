@@ -14,7 +14,8 @@ import {
 } from "./defense";
 import { walkStandings, type StandingChange } from "./standings";
 import {
-  miasmaHeld, omensHeld, turnipThresholdOn, wealthIncomeFor, wealthOf,
+  handLimitFor, MAX_HAND, miasmaHeld, MIN_HAND, omensHeld, turnipThresholdOn,
+  wealthIncomeFor, wealthOf,
   type RulesView,
 } from "./playability";
 import { abilitiesOf, LEADER_ABILITIES } from "./abilities";
@@ -940,6 +941,33 @@ export function createHud(
   // promise and the tick cannot drift. Rivals' treasuries appear nowhere.
   const wealthChip = document.createElement("span");
   wealthChip.className = "status-wealth hidden";
+  // How many cards this seat's turn refills to. It is the only place in the
+  // game the number is written down: the rules picker deliberately promises no
+  // size, because the size grows with the realm and a static sentence would be
+  // a lie by the third land. A rule the player cannot see reads as the game
+  // cheating, and this one moves under them mid-run.
+  const handChip = document.createElement("span");
+  handChip.className = "status-hand hidden";
+  handChip.addEventListener("mousemove", (e) => {
+    cb.onShowTip?.(
+      [
+        { text: "Hand size" },
+        {
+          text:
+            "How many cards your hand refills to when your turn begins. It " +
+            `grows with your realm - one more card per 1.5 lands you hold, ` +
+            `from ${MIN_HAND} up to ${MAX_HAND}.`,
+        },
+        {
+          text:
+            "Losing land never makes you discard: you keep what you are " +
+            "holding, and simply draw nothing until you are back under it.",
+        },
+      ],
+      e.clientX, e.clientY,
+    );
+  });
+  handChip.addEventListener("mouseleave", () => cb.onHideTip?.());
   // The player's own ruler, by name; everything about them is the hover's
   // job. The tip is the land hover's Leader block with every hoverable
   // expanded: a floating tip cannot itself be hovered, so each term and
@@ -980,7 +1008,7 @@ export function createHud(
     );
   });
   turnipChip.addEventListener("mouseleave", () => cb.onHideTip?.());
-  status.append(statusText, wealthChip, rulerChip, turnipChip);
+  status.append(statusText, wealthChip, handChip, rulerChip, turnipChip);
 
   function makePile(kind: string, label: string) {
     const root = document.createElement("div");
@@ -2127,6 +2155,10 @@ export function createHud(
       wealthChip.textContent =
         `Wealth ${wealthOf(view, humanFaction)} ` +
         `(+${wealthIncomeFor(view, humanFaction)}/turn)`;
+      // The same call `beginTurn` refills against, so the chip and the draw
+      // cannot quote different numbers - the turnip bar's rule one chip over.
+      handChip.classList.remove("hidden");
+      handChip.textContent = `Hand ${handLimitFor(state, humanFaction)}`;
       const rulerName = rulerNameOf(state.rulers, humanFaction);
       rulerChip.classList.toggle("hidden", rulerName === null);
       if (rulerName !== null) {
@@ -2156,6 +2188,7 @@ export function createHud(
         turnipFill.style.width = `${Math.round((into / span) * 100)}%`;
       }
     } else {
+      handChip.classList.add("hidden");
       rulerChip.classList.add("hidden");
       rulerTip = [];
       turnipChip.classList.add("hidden");
