@@ -1,0 +1,319 @@
+// @vitest-environment happy-dom
+import { describe, it, expect } from "vitest";
+import {
+  ARROW_KINDS, LAYOUT, blockWidthFor, borderKeyOf, laneWidths, layoutLanes,
+  renderArrowScene,
+  type ArrowSpec, type SceneCtx,
+} from "../src/arrow-scene";
+import type { Crossing } from "../src/borders";
+
+/** A border running up the y axis at x=0, with "across" pointing at +x. */
+const FLAT: Crossing = {
+  at: { x: 0, y: 0 },
+  tangent: { x: 0, y: 1 },
+  normal: { x: 1, y: 0 },
+  span: 200,
+  sea: false,
+  gap: 0,
+};
+
+describe("blockWidthFor", () => {
+  it("takes its share of the border", () => {
+    expect(blockWidthFor(100)).toBeCloseTo(55, 6);
+  });
+
+  it("caps a wide border and floors a tiny one", () => {
+    expect(blockWidthFor(1000)).toBe(LAYOUT.blockMax);
+    expect(blockWidthFor(4)).toBe(LAYOUT.blockMin);
+  });
+});
+
+describe("laneWidths", () => {
+  it("gives one arrow the whole block whatever its strength", () => {
+    expect(laneWidths([1], 90)).toEqual([90]);
+    expect(laneWidths([7], 90)).toEqual([90]);
+  });
+
+  it("splits by strength share", () => {
+    const [a, b] = laneWidths([2, 1], 90);
+    expect(a).toBeCloseTo(60, 6);
+    expect(b).toBeCloseTo(30, 6);
+  });
+
+  it("raises a lane to the floor and shrinks the others to pay for it", () => {
+    const widths = laneWidths([9, 1], 60);
+    expect(widths[1]).toBeCloseTo(LAYOUT.laneMin, 6);
+    expect(widths[0] + widths[1]).toBeCloseTo(60, 6);
+    expect(widths[0]).toBeGreaterThan(widths[1]);
+  });
+
+  it("shares evenly when the block is narrow", () => {
+    const widths = laneWidths([1, 1, 1, 1, 1, 1], 30);
+    expect(widths.every((w) => Math.abs(w - 5) < 1e-6)).toBe(true);
+  });
+
+  it("never returns a negative width", () => {
+    for (const w of laneWidths([50, 1, 1, 1], 30)) expect(w).toBeGreaterThan(0);
+  });
+
+  it("returns an empty array for no lanes", () => {
+    expect(laneWidths([], 90)).toEqual([]);
+  });
+
+  it("splits evenly when all strengths are zero", () => {
+    const [a, b] = laneWidths([0, 0], 90);
+    expect(a).toBeCloseTo(45, 6);
+    expect(b).toBeCloseTo(45, 6);
+  });
+});
+
+describe("layoutLanes", () => {
+  it("packs lanes edge to edge, centred on the crossing", () => {
+    const lanes = layoutLanes(FLAT, [
+      { strength: 1, forward: true }, { strength: 1, forward: true },
+    ]);
+    const total = blockWidthFor(FLAT.span);
+    expect(lanes[0].width + lanes[1].width).toBeCloseTo(total, 6);
+    // Centres are symmetric about the crossing point on the tangent axis.
+    expect(lanes[0].ay + lanes[1].ay).toBeCloseTo(0, 6);
+  });
+
+  it("runs a forward lane along the normal and a backward one against it", () => {
+    const [fwd, back] = layoutLanes(FLAT, [
+      { strength: 1, forward: true }, { strength: 1, forward: false },
+    ]);
+    expect(fwd.bx).toBeGreaterThan(fwd.ax);
+    expect(back.bx).toBeLessThan(back.ax);
+  });
+
+  it("starts inside the origin and ends inside the target", () => {
+    const [lane] = layoutLanes(FLAT, [{ strength: 1, forward: true }]);
+    expect(lane.ax).toBeCloseTo(-LAYOUT.tailDepth, 6);
+    expect(lane.bx).toBeCloseTo(LAYOUT.headDepth, 6);
+  });
+
+  it("spans the water on a sea crossing instead of standing in it", () => {
+    const strait: Crossing = { ...FLAT, sea: true, gap: 100 };
+    const [lane] = layoutLanes(strait, [{ strength: 1, forward: true }]);
+    expect(lane.bx - lane.ax).toBeCloseTo(100 + LAYOUT.seaClearance * 2, 6);
+  });
+
+  it("keeps the caller's order", () => {
+    const lanes = layoutLanes(FLAT, [
+      { strength: 3, forward: true }, { strength: 1, forward: false },
+      { strength: 2, forward: true },
+    ]);
+    expect(lanes.map((l) => l.index)).toEqual([0, 1, 2]);
+    expect(lanes[0].width).toBeGreaterThan(lanes[2].width);
+  });
+});
+
+const NS = "http://www.w3.org/2000/svg";
+
+const ctx: SceneCtx = {
+  crossingFor: (from, to) => ({
+    at: { x: 0, y: 0 },
+    tangent: { x: 0, y: 1 },
+    // Every pair in these tests crosses west to east, and back the other way
+    // when the caller names them the other way round.
+    normal: from < to ? { x: 1, y: 0 } : { x: -1, y: 0 },
+    span: 200, sea: false, gap: 0,
+  }),
+  freeAnchor: () => ({ x: -100, y: 0 }),
+};
+
+const march = (id: string, from: string, to: string, strength: number): ArrowSpec => ({
+  id, kind: "march", from, to, strength, tone: "hostile", label: `${strength} STR`,
+});
+
+describe("borderKeyOf", () => {
+  it("names one border whichever way it is crossed", () => {
+    expect(borderKeyOf("a", "b")).toBe(borderKeyOf("b", "a"));
+  });
+});
+
+describe("ARROW_KINDS", () => {
+  it("classifies every kind and says why", () => {
+    for (const def of Object.values(ARROW_KINDS)) {
+      expect(def.className.length).toBeGreaterThan(0);
+      expect(def.labelClass.length).toBeGreaterThan(0);
+      expect(def.why.length).toBeGreaterThan(20);
+    }
+  });
+});
+
+describe("renderArrowScene", () => {
+  it("draws one group per spec, keyed by id", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      march("m1", "a", "b", 2), march("m2", "b", "a", 1),
+    ], ctx);
+    expect(drawn.size).toBe(2);
+    expect(drawn.get("m1")?.querySelector("polygon")).not.toBeNull();
+    expect(host.children).toHaveLength(2);
+  });
+
+  it("keeps each arrow's own direction whichever spec the border's group lists first", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    // The b->a spec is listed FIRST here on purpose: a frame anchored to
+    // whichever spec happens to be array-first, rather than to the border's
+    // own canonical pair, hands every arrow on this border a normal facing
+    // the wrong way the moment the higher-sorting land is named first.
+    const drawn = renderArrowScene(host, [
+      march("m2", "b", "a", 1), march("m1", "a", "b", 1),
+    ], ctx);
+    const pointAt = (id: string, i: number): number =>
+      Number((drawn.get(id)?.querySelector("polygon")
+        ?.getAttribute("points") ?? "").split(" ")[i]?.split(",")[0]);
+    const tail = (id: string): number => pointAt(id, 0);
+    const tip = (id: string): number => pointAt(id, 3);
+    // ctx's normal runs a->b, so the a->b arrow's tip sits further along it
+    // (a higher x) than its tail, and the b->a arrow's tip sits further
+    // against it (a lower x) than its tail.
+    expect(tip("m1")).toBeGreaterThan(tail("m1"));
+    expect(tip("m2")).toBeLessThan(tail("m2"));
+  });
+
+  it("gives the stronger arrow the wider lane on the same border", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      march("m1", "a", "b", 3), march("m2", "b", "a", 1),
+    ], ctx);
+    const spread = (id: string): number => {
+      const pts = (drawn.get(id)?.querySelector("polygon")
+        ?.getAttribute("points") ?? "")
+        .split(" ").map((p) => Number(p.split(",")[1]));
+      return Math.max(...pts) - Math.min(...pts);
+    };
+    expect(spread("m1")).toBeGreaterThan(spread("m2"));
+  });
+
+  it("rebuilds from nothing, so a stale arrow cannot survive", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    renderArrowScene(host, [march("m1", "a", "b", 1)], ctx);
+    renderArrowScene(host, [march("m2", "a", "b", 1)], ctx);
+    expect(host.children).toHaveLength(1);
+  });
+
+  it("carries the caller's dataset onto the group", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [{
+      ...march("m1", "a", "b", 1), dataset: { actor: "a", target: "b", from: "a" },
+    }], ctx);
+    expect(drawn.get("m1")?.dataset.actor).toBe("a");
+  });
+
+  it("draws a claim as a demand, with no polygon and no strength", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [{
+      id: "c1", kind: "claim", from: "a", to: "b", strength: 1,
+      tone: "other", label: "SUBJUGATE",
+    }], ctx);
+    const g = drawn.get("c1");
+    expect(g?.querySelector("polygon")).toBeNull();
+    expect(g?.querySelector("line")).not.toBeNull();
+    expect(g?.querySelector("circle")).not.toBeNull();
+  });
+
+  it("packs a claim into the same block as the raids beside it", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      march("m1", "a", "b", 1),
+      { id: "c1", kind: "claim", from: "a", to: "b", strength: 1, tone: "other" },
+    ], ctx);
+    const y = (id: string): number =>
+      Number(drawn.get(id)?.querySelector("line, polygon")
+        ?.getAttribute("y1") ?? NaN);
+    // Two lanes on one border sit at different offsets along the tangent.
+    expect(host.children).toHaveLength(2);
+    expect(y("c1")).not.toBe(0);
+  });
+
+  /** Every y a polygon touches. `ctx` lays its lanes out along y, so the span
+   *  between these is the width of the lane the arrow was given. */
+  const ys = (g: SVGGElement | undefined): number[] =>
+    (g?.querySelector("polygon")?.getAttribute("points") ?? "")
+      .split(" ").filter(Boolean).map((p) => Number(p.split(",")[1]));
+
+  it("packs an aim preview into the block beside the arrow it answers", () => {
+    // The commonest aim there is: answering an incoming raid back down the
+    // border it came over. Drawn in a scene of its own the preview took the
+    // whole block and was painted on top of that raid.
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const alone = renderArrowScene(host, [{
+      id: "aim", kind: "aim", from: "b", to: "a", strength: 1, tone: "ours",
+    }], ctx);
+    const wholeBlock = ys(alone.get("aim"));
+    const drawn = renderArrowScene(host, [
+      march("m1", "a", "b", 1),
+      { id: "aim", kind: "aim", from: "b", to: "a", strength: 1, tone: "ours" },
+    ], ctx);
+    const raid = ys(drawn.get("m1"));
+    const aim = ys(drawn.get("aim"));
+    expect(raid).not.toHaveLength(0);
+    expect(aim).not.toHaveLength(0);
+    // Beside, not over: neither polygon reaches into the other's lane.
+    expect(Math.max(...raid)).toBeLessThanOrEqual(Math.min(...aim));
+    // And narrower than the same preview drawn with the border to itself.
+    const span = (v: number[]): number => Math.max(...v) - Math.min(...v);
+    expect(span(aim)).toBeLessThan(span(wholeBlock));
+  });
+
+  it("draws a free-aimed spec to its own point", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [{
+      id: "aim", kind: "aim", from: "a", to: "", at: { x: 40, y: 40 },
+      strength: 2, tone: "ours",
+    }], ctx);
+    expect(drawn.get("aim")?.querySelector("polygon")).not.toBeNull();
+  });
+
+  /** The label's x, which is what `labelAt` moves: `ctx`'s normal runs along
+   *  x, so a fraction from tail to tip reads straight off that coordinate. */
+  const labelX = (g: SVGGElement | undefined): number =>
+    Number(g?.querySelector("text")?.getAttribute("x") ?? NaN);
+
+  it("puts a label at the fraction the spec asks for", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const at = (labelAt: number): number => {
+      const drawn = renderArrowScene(host, [{
+        ...march("m1", "a", "b", 1), label: "+1", labelAt,
+      }], ctx);
+      return labelX(drawn.get("m1"));
+    };
+    // Nearer the tail against nearer the tip, on an arrow running along +x.
+    expect(at(0.15)).toBeLessThan(at(0.85));
+  });
+
+  it("keeps the kind's own station when no fraction is asked for", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const plain = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx);
+    const station = labelX(plain.get("m1"));
+    const moved = renderArrowScene(host, [{
+      ...march("m1", "a", "b", 1), labelAt: 0.95,
+    }], ctx);
+    expect(Number.isNaN(station)).toBe(false);
+    expect(labelX(moved.get("m1"))).not.toBeCloseTo(station, 6);
+  });
+
+  it("labels each kind in its own class, so a clash is not styled as a strength", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      { ...march("m1", "a", "b", 1) },
+      { id: "g1", kind: "ghost", from: "a", to: "b", strength: 1,
+        tone: "ours", label: "+1", labelAt: 0.5 },
+    ], ctx);
+    expect(drawn.get("m1")?.querySelector("text")?.getAttribute("class"))
+      .toBe(ARROW_KINDS.march.labelClass);
+    expect(drawn.get("g1")?.querySelector("text")?.getAttribute("class"))
+      .toBe(ARROW_KINDS.ghost.labelClass);
+  });
+
+  it("skips a spec whose lands have no crossing rather than drawing NaN", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const none: SceneCtx = { crossingFor: () => null, freeAnchor: () => null };
+    const drawn = renderArrowScene(host, [march("m1", "a", "b", 1)], none);
+    expect(drawn.size).toBe(0);
+    expect(host.children).toHaveLength(0);
+  });
+});

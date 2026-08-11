@@ -243,6 +243,71 @@ is a test that passes while the app is broken: `tests/net-pipe.test.ts` kept
 copies of the deal and the AI chain, and both went on passing across forty
 commits during which the app's wiring quietly stopped matching them.
 
+## An arrow crosses the border, and there is one thing that draws it
+
+Every arrow on the map - a march in flight, a subjugation demanded, the
+preview under an armed card, the ghost of a march that just landed - is an
+`ArrowSpec` handed to `renderArrowScene` in `src/arrow-scene.ts`. There is no
+march-arrow code and aim-preview code; there is one scene with four kinds in
+it, and `ARROW_KINDS` is exhaustive, so a fifth does not compile until
+somebody says what it looks like and why.
+
+The root `biome.json` forbids `src/main.ts` from importing `spearPolygon`,
+`spearFor` and `SPEAR` from `src/arrows.ts` at all, the same way it forbids
+the engine's mutators: there is no local path to put an arrow on the map that
+could forget the border, the lane or the ghost beside it.
+
+**The border is in the map data already.** Adjacent regions share EXACT
+vertices, so `crossingBetween` in `src/borders.ts` is a set intersection, not
+a geometry search. Three things about it are load-bearing:
+
+- **The crossing is a real border vertex**, the shared one nearest their
+  centroid, never a computed point. The centroid of a bent border sits up to
+  33 units off the border itself at the worst pair on this map.
+- **The normal's direction is decided by a vote**, four probe distances in
+  and out of both lands. The tangent is a global fit to the whole border and
+  the border is locally bent under it, so one probe is ambiguous on 7 of the
+  103 adjacencies these two maps have. `tests/borders.test.ts` walks every
+  pair on both maps, which is the test that would notice.
+- **A strait is not a border.** Two lands that share no vertex face each
+  other across water - Saaremaa and the Balearics, four ordered pairs per
+  map - and their arrows SPAN the water instead of standing in the middle of
+  it.
+
+Width is strength and position is declaration order. Every arrow crossing one
+border splits `clamp(span * 0.55, 30, 96)` between them by strength share,
+with a floor at whichever is smaller of 14 and an even share of the block -
+three arrows on a minimum 30-unit block floor at 10, four at 7.5 - so the
+floor never outruns what the lanes above it have to pay it with, packed edge
+to edge. One arrow takes the whole block whatever its strength; two out and
+one back is 66% and 33%. Direction does not sort them - an answering raid
+stands beside the attack it answers, in the order the two were declared.
+
+The strength is "1 STR" wherever the lane has room for it, and the bare
+number below `BARE_NUMBER_WIDTH`. The bare number is safe only because the
+landing-order chip sits BEHIND the tail rather than on the shaft: the shaft
+carries exactly one number, and there is nothing left for a digit to be
+confused with. Put an ordinal back on the shaft and the "1 STR" form has to
+come back with it.
+
+**The ghost is not laid out with the living.** A resolved march's fading
+label is drawn alone, in a layer of its own (`ghostGroup`, never
+`arrowGroup`), because a live rebuild lands the moment the state under it
+moves and would wipe a mid-fade ghost off the screen halfway through the one
+thing the turn-start replay is showing. What actually keeps it from being
+read against the arrows still standing is that the replay hides them
+(`svg.replaying .march-arrow, .claim-arrow` in `src/style.css`) for as long
+as it runs - the ghost's own layer only protects it from being erased, not
+from being confused with what is still live.
+
+**The aim preview shares the block with the arrows already crossing it.**
+`kind: "aim"` is a spec in the same scene as every live arrow (`src/main.ts`,
+in the list handed to `renderArrowScene`), so it is packed and re-packed on
+every pointer move exactly the way a real declare would be. The commonest aim
+in the game is a counter back down a border that already carries the arrow it
+answers, and a preview laid out as if it stood alone took the whole block and
+was drawn on top of that arrow, with only its barbs showing.
+
 ## The hand is the realm's, and it is a floor rather than a ceiling
 
 `handLimitFor` in `src/playability.ts` is how many cards a turn refills to: one

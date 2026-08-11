@@ -1073,6 +1073,14 @@ svg.map.dragging {
   pointer-events: auto;
 }
 
+/* The ghosts of marches that have already landed, in their own layer so a live
+   rebuild cannot wipe one mid-fade. Inert throughout, unlike the live arrows:
+   a ghost is a picture of something that is over, and it must not answer a
+   click meant for the land it is fading across. */
+.march-ghosts {
+  pointer-events: none;
+}
+
 /* While an aim is live the arrows stay on screen and stop taking clicks: what
    is already flying at a land is half of what decides whether to send an army
    there, so hiding them is not an option, and every click on the map belongs
@@ -1316,11 +1324,12 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
 
 /* The arrow being dragged out. Hollow while it points at nothing legal, solid
    the moment it finds a land the raid may actually be aimed at - so the answer
-   is in the shape rather than in a message somewhere else. */
-.aim-arrows {
-  pointer-events: none;
-}
+   is in the shape rather than in a message somewhere else.
 
+   No layer of its own: it is drawn among the live arrows so the border's lanes
+   pack around it, which means `.march-arrows` already holds it and already
+   makes it inert. It is deliberately left out of the `.aiming` fade below -
+   the arrows step back while the preview is the thing being decided. */
 .aim-arrow polygon {
   fill: none;
   stroke: #8a7f6f;
@@ -1360,11 +1369,17 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
 }
 
 /* While the replay is showing one event, the map shows THAT event and no
-   other arrow. The ghost the flash draws is a `.clash-flash`, not a
-   `.march-arrow`, so it is untouched - which is the whole distinction: one is
-   the thing being shown, the others are business from turns the player has
-   not been shown yet. */
-svg.replaying .march-arrow {
+   other arrow. The ghost the flash draws is a `.clash-flash`, not one of
+   these, so it is untouched - which is the whole distinction: one is the thing
+   being shown, the others are business from turns the player has not been
+   shown yet.
+
+   Demands as well as spears. A claim standing on the border a ghost is fading
+   across is the same confusion this rule exists to prevent, and it is also
+   what lets the ghost take the border's middle lane: with the living hidden
+   there is no lane for it to disagree with. */
+svg.replaying .march-arrow,
+svg.replaying .claim-arrow {
   display: none;
 }
 
