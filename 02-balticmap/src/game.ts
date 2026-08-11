@@ -118,11 +118,14 @@ export interface GameEvent {
    *  with nothing joining them. */
   marchIds?: number[];
   /** march-resolved: the strength aimed AT the loser, whichever end of the
-   *  axis that turned out to be. ALWAYS present on this type, including an
-   *  uncontested landing and an arrival that moved nothing - the arrow the
-   *  presentation draws is reconstructed from this event alone, and `amount`
+   *  axis that turned out to be. Present on every `march-resolved` an ARMY
+   *  caused - which is every one carrying `marchIds`, uncontested landings
+   *  and arrivals that moved nothing included, since the arrow the
+   *  presentation draws is reconstructed from this event alone and `amount`
    *  cannot stand in for it: `amount` is floored at what the land had
-   *  standing, so a 3-strength blow on a 1-defense land reports 1. */
+   *  standing, so a 3-strength blow on a 1-defense land reports 1. Absent
+   *  exactly where `marchIds` is: the demand-coming-due arrival out of
+   *  `landClaims` throws no strength and draws no resolution arrow. */
   incoming?: number;
   /** march-resolved: what the loser mustered against it. Present exactly when
    *  the landing was contested, which makes it the contested discriminant -
@@ -1680,19 +1683,7 @@ function resolveMarches(
         if (landed.taken) takenHere.set(loser, eng.spear.actor);
         continue;
       }
-      // Terrain absorbed the blow whole - `dealt` reached 0 or the land was
-      // already flat with nothing arriving to take it. The march still
-      // retires and the force it threw is still named, or the arrow vanishes
-      // off the board with nothing in the log to say where it went.
-      if (moved <= 0) {
-        events.push({
-          turn: state.turn, playerId: p.id, type: "march-resolved",
-          cardId: eng.spear.cardId,
-          targetFactionId: loser, sourceFactionId: winner, marchIds,
-          incoming: clash.incoming, ...(contested ? { counter: clash.counter } : {}),
-        });
-        continue;
-      }
+      if (moved <= 0) continue;
       events.push({
         turn: state.turn, playerId: p.id, type: "march-resolved",
         // The card of whichever side actually landed - the counter's, when a

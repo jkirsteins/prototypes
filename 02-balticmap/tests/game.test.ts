@@ -3401,10 +3401,19 @@ describe("every march that leaves the store is named by an event", () => {
       g = next.phase === "playing" ? advance(next, rng) : next;
       const after = new Set(Object.values(g.marches).map((m) => m.id));
       const departed = [...before].filter((id) => !after.has(id));
-      const named = new Set(
-        g.log.slice(logAt).flatMap((e) => e.marchIds ?? []),
-      );
+      const batch = g.log.slice(logAt);
+      const named = new Set(batch.flatMap((e) => e.marchIds ?? []));
       expect(departed.filter((id) => !named.has(id))).toEqual([]);
+      // The other half of the correlation: every event that names a march
+      // also names the force that march threw, whether or not anything got
+      // through. Scoped to `marchIds`, not to every `march-resolved` - the
+      // demand-coming-due arrival out of `landClaims` clears no march and
+      // throws no strength, so it is exempt by carrying no `marchIds` at all.
+      for (const e of batch) {
+        if (e.type === "march-resolved" && (e.marchIds?.length ?? 0) > 0) {
+          expect(e.incoming).not.toBeUndefined();
+        }
+      }
     }
   });
 });
