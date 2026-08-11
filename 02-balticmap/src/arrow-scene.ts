@@ -130,7 +130,7 @@ export const ARROW_KINDS: Record<ArrowKind, ArrowKindDef> = {
   },
   aim: {
     shape: "spear", className: "aim-arrow", labelClass: "march-strength",
-    why: "The arrow a play would declare, on the border it would cross and in the shape it would have - at the width it would take were it alone there. A border already carrying arrows packs it narrower once it is really declared, which is the one thing the preview cannot promise: sharing the block means re-laying out every live arrow on that border on every pointer move, for a shape that is gone the moment the player lets go.",
+    why: "The arrow a play would declare, at the width it will really have: it is packed into its border's block with the arrows already crossing it, so the preview IS the board the play is about to make. Laid out on its own it took the whole block and was drawn over the raid it was answering, which is the commonest aim there is.",
   },
   ghost: {
     shape: "spear", className: "clash-flash", labelClass: "clash-label",

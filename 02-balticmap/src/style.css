@@ -1324,11 +1324,12 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
 
 /* The arrow being dragged out. Hollow while it points at nothing legal, solid
    the moment it finds a land the raid may actually be aimed at - so the answer
-   is in the shape rather than in a message somewhere else. */
-.aim-arrows {
-  pointer-events: none;
-}
+   is in the shape rather than in a message somewhere else.
 
+   No layer of its own: it is drawn among the live arrows so the border's lanes
+   pack around it, which means `.march-arrows` already holds it and already
+   makes it inert. It is deliberately left out of the `.aiming` fade below -
+   the arrows step back while the preview is the thing being decided. */
 .aim-arrow polygon {
   fill: none;
   stroke: #8a7f6f;

@@ -243,14 +243,11 @@ const ghostGroup = document.createElementNS(
 ghostGroup.classList.add("march-ghosts");
 svg.appendChild(ghostGroup);
 
-// The arrow being dragged out while a Raid is aimed. Its own group above the
-// declared ones: a preview must never be mistaken for something the game has
-// promised.
-const aimGroup = document.createElementNS(
-  "http://www.w3.org/2000/svg", "g",
-) as SVGGElement;
-aimGroup.classList.add("aim-arrows");
-svg.appendChild(aimGroup);
+// The arrow being aimed has no group of its own. It is a lane in `arrowGroup`
+// beside the arrows already crossing that border, because a preview laid out
+// on its own takes the whole border and covers them - and what a preview is
+// FOR is the board the play would make. The dashed outline is what keeps it
+// from being read as something the game has promised.
 
 // The rising "+1"/"-1" marks. Above everything, and inert to the pointer.
 const floatGroup = document.createElementNS(
@@ -1408,7 +1405,7 @@ function updateAimPreview(clientX: number, clientY: number): void {
   if (armed === null || armedSource === null || !human) {
     if (aiming !== null) {
       aiming = null;
-      renderAimArrow();
+      refreshAim();
     }
     return;
   }
@@ -1430,13 +1427,43 @@ function updateAimPreview(clientX: number, clientY: number): void {
     at: interaction.toMapPoint(clientX, clientY),
     over: legal,
   };
-  renderAimArrow();
+  refreshAim();
 }
 
-/** The arrow being dragged, drawn in the map's own space so it pans and zooms
- *  with everything else. Its own group, cleared and rebuilt per move: this is
- *  a preview, and a stale one is a promise the game has not made. */
-function renderAimArrow(): void {
+/** The arrow an armed card would declare, or null while nothing is aimed.
+ *
+ *  Its strength is the card's own, because the preview's WIDTH is a promise:
+ *  it goes into the same lane packing as the arrows already on that border, so
+ *  what the player sees is the block the play is about to make. */
+function aimSpec(): ArrowSpec | null {
+  if (aiming === null) return null;
+  const human = localHuman();
+  const armedCard = armed === null || !human ? undefined : human.hand[armed];
+  const strength = armedCard === undefined
+    ? 1
+    : attackDamageFor(viewOf(game), human.factionId, armedCard).damage;
+  return {
+    id: "aim",
+    kind: "aim",
+    from: aiming.from,
+    // A legal target crosses the real border; a drag over open map runs to the
+    // pointer, which is the one arrow in the game with no border to cross.
+    to: aiming.over ?? "",
+    at: aiming.over === null ? aiming.at : undefined,
+    strength,
+    tone: "ours",
+  };
+}
+
+/** The aim, repainted for where the pointer now is: the land it would land on,
+ *  and the whole arrow layer under it.
+ *
+ *  The layer and not a preview of its own, and that is the point. The preview
+ *  is a lane in the same scene as the live arrows, so pointing back down a
+ *  border re-packs the block and the preview stands BESIDE the arrow it
+ *  answers. Drawn alone it took the whole block and was painted straight over
+ *  that arrow, which is the commonest aim there is - a counter-raid. */
+function refreshAim(): void {
   // The land the arrow would land on, marked on the map itself. An arrow
   // ending near a border is ambiguous at any zoom, and the answer to "which
   // land is this aimed at" must not be the player's guess.
@@ -1447,29 +1474,7 @@ function renderAimArrow(): void {
         factionByRegion.get(id) === aiming.over,
     );
   }
-  if (aiming === null) {
-    aimGroup.replaceChildren();
-    return;
-  }
-  const human = localHuman();
-  const armedCard = armed === null || !human ? undefined : human.hand[armed];
-  // The strength the card would really send, so the preview is the width the
-  // declared arrow will have rather than a shape of its own.
-  const strength = armedCard === undefined
-    ? 1
-    : attackDamageFor(viewOf(game), human.factionId, armedCard).damage;
-  const drawn = renderArrowScene(aimGroup, [{
-    id: "aim",
-    kind: "aim",
-    from: aiming.from,
-    // A legal target crosses the real border; a drag over open map runs to the
-    // pointer, which is the one arrow in the game with no border to cross.
-    to: aiming.over ?? "",
-    at: aiming.over === null ? aiming.at : undefined,
-    strength,
-    tone: "ours",
-  }], sceneCtx);
-  drawn.get("aim")?.classList.toggle("aim-valid", aiming.over !== null);
+  renderMarchArrows();
 }
 
 /** Everything in flight, described rather than drawn: one spec per march and
@@ -1497,8 +1502,8 @@ function renderMarchArrows(): void {
   // Inert rather than absent: no counter click, no hover focus, so while an
   // aim is live the only thing a click on the map can mean is still "this
   // land". `.aiming` in src/style.css is the pointer half.
-  const aiming = targetingLive();
-  arrowGroup.classList.toggle("aiming", aiming);
+  const targeting = targetingLive();
+  arrowGroup.classList.toggle("aiming", targeting);
   const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
   const order = landingOrder();
   const specs: ArrowSpec[] = [];
@@ -1553,7 +1558,17 @@ function renderMarchArrows(): void {
       dataset: { actor: claim.actor, target: claim.to, from: claim.from },
     });
   }
+  // The aim preview LAST of all, so it is appended over whatever it shares a
+  // border with - and in THIS scene rather than a layer of its own, so the
+  // block re-packs around it as the player aims. That re-pack is the preview's
+  // whole job: an arrow drawn alone takes the full block, and pointing back
+  // down a border painted the preview straight over the raid it was answering.
+  const preview = aimSpec();
+  if (preview !== null) specs.push(preview);
   const drawn = renderArrowScene(arrowGroup, specs, sceneCtx);
+  drawn.get("aim")?.classList.toggle(
+    "aim-valid", aiming !== null && aiming.over !== null,
+  );
   // An arrow you could answer right now is a button. Picking a source and a
   // target by hand to aim a counter back down an arrow already on the screen
   // is the game asking the player to restate something it can see, so the
@@ -1565,7 +1580,7 @@ function renderMarchArrows(): void {
   for (const [key, m] of Object.entries(game.marches)) {
     const g = drawn.get(key);
     if (g === undefined) continue;
-    const counterIndex = aiming ? null : counterFor(m);
+    const counterIndex = targeting ? null : counterFor(m);
     if (counterIndex === null) continue;
     g.classList.add("march-counterable");
     armArrowAsCounter(g, m, counterIndex);
@@ -2489,7 +2504,7 @@ function disarm(): void {
   armedSource = null;
   aimDragging = false;
   aiming = null;
-  renderAimArrow();
+  refreshAim();
   applyTargeting();
   hud.setArmed(null);
 }
@@ -3581,7 +3596,7 @@ function commitRaid(from: string, to: string): void {
 function cancelAim(): void {
   aimDragging = false;
   aiming = null;
-  renderAimArrow();
+  refreshAim();
 }
 
 // Aiming a raid by dragging: press a land your army can leave from, pull the
@@ -3609,7 +3624,7 @@ svg.addEventListener("pointermove", (e) => {
       ? faction
       : null;
   aiming = { ...aiming, at, over: legal };
-  renderAimArrow();
+  refreshAim();
 });
 
 svg.addEventListener("pointerup", (e) => {
@@ -3672,7 +3687,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       at: interaction.toMapPoint(e.clientX, e.clientY),
       over: null,
     };
-    renderAimArrow();
+    refreshAim();
     return true;
   },
   onSelect(region) {

@@ -229,6 +229,36 @@ describe("renderArrowScene", () => {
     expect(y("c1")).not.toBe(0);
   });
 
+  /** Every y a polygon touches. `ctx` lays its lanes out along y, so the span
+   *  between these is the width of the lane the arrow was given. */
+  const ys = (g: SVGGElement | undefined): number[] =>
+    (g?.querySelector("polygon")?.getAttribute("points") ?? "")
+      .split(" ").filter(Boolean).map((p) => Number(p.split(",")[1]));
+
+  it("packs an aim preview into the block beside the arrow it answers", () => {
+    // The commonest aim there is: answering an incoming raid back down the
+    // border it came over. Drawn in a scene of its own the preview took the
+    // whole block and was painted on top of that raid.
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const alone = renderArrowScene(host, [{
+      id: "aim", kind: "aim", from: "b", to: "a", strength: 1, tone: "ours",
+    }], ctx);
+    const wholeBlock = ys(alone.get("aim"));
+    const drawn = renderArrowScene(host, [
+      march("m1", "a", "b", 1),
+      { id: "aim", kind: "aim", from: "b", to: "a", strength: 1, tone: "ours" },
+    ], ctx);
+    const raid = ys(drawn.get("m1"));
+    const aim = ys(drawn.get("aim"));
+    expect(raid).not.toHaveLength(0);
+    expect(aim).not.toHaveLength(0);
+    // Beside, not over: neither polygon reaches into the other's lane.
+    expect(Math.max(...raid)).toBeLessThanOrEqual(Math.min(...aim));
+    // And narrower than the same preview drawn with the border to itself.
+    const span = (v: number[]): number => Math.max(...v) - Math.min(...v);
+    expect(span(aim)).toBeLessThan(span(wholeBlock));
+  });
+
   it("draws a free-aimed spec to its own point", () => {
     const host = document.createElementNS(NS, "g") as SVGGElement;
     const drawn = renderArrowScene(host, [{
