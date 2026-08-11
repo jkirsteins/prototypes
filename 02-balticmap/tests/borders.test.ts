@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ringsOf, sharedVertices } from "../src/borders";
+import { ringsOf, sharedVertices, crossingBetween, pointInRings } from "../src/borders";
 
 describe("ringsOf", () => {
   it("reads one subpath as one ring", () => {
@@ -42,5 +42,60 @@ describe("sharedVertices", () => {
                [{ x: 90, y: 90 }, { x: 91, y: 90 }, { x: 91, y: 91 }]];
     const b = [[{ x: 91, y: 90 }, { x: 95, y: 90 }, { x: 95, y: 95 }]];
     expect(sharedVertices(a, b)).toEqual([{ x: 91, y: 90 }]);
+  });
+});
+
+/** Two unit squares side by side, sharing the x=10 edge. */
+const LEFT = [[
+  { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 20 }, { x: 0, y: 20 },
+]];
+const RIGHT = [[
+  { x: 10, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 10, y: 20 },
+]];
+
+describe("pointInRings", () => {
+  it("is true inside and false outside", () => {
+    expect(pointInRings({ x: 5, y: 10 }, LEFT)).toBe(true);
+    expect(pointInRings({ x: 15, y: 10 }, LEFT)).toBe(false);
+  });
+});
+
+describe("crossingBetween", () => {
+  it("puts the crossing on a real border vertex", () => {
+    const c = crossingBetween(LEFT, RIGHT);
+    expect(c.at.x).toBe(10);
+    expect([0, 20]).toContain(c.at.y);
+  });
+
+  it("runs the tangent along the border", () => {
+    const c = crossingBetween(LEFT, RIGHT);
+    expect(Math.abs(c.tangent.x)).toBeCloseTo(0, 6);
+    expect(Math.abs(c.tangent.y)).toBeCloseTo(1, 6);
+  });
+
+  it("points the normal from the first land into the second", () => {
+    const c = crossingBetween(LEFT, RIGHT);
+    expect(c.normal.x).toBeCloseTo(1, 6);
+    expect(c.normal.y).toBeCloseTo(0, 6);
+  });
+
+  it("flips the normal when the lands are given the other way round", () => {
+    const c = crossingBetween(RIGHT, LEFT);
+    expect(c.normal.x).toBeCloseTo(-1, 6);
+  });
+
+  it("measures the span as the border's extent", () => {
+    expect(crossingBetween(LEFT, RIGHT).span).toBeCloseTo(20, 6);
+  });
+
+  it("crosses the water where two lands share no vertex", () => {
+    const far = [[
+      { x: 40, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 20 }, { x: 40, y: 20 },
+    ]];
+    const c = crossingBetween(LEFT, far);
+    expect(c.sea).toBe(true);
+    expect(c.gap).toBeCloseTo(30, 6);
+    expect(c.at.x).toBeCloseTo(25, 6);
+    expect(c.normal.x).toBeCloseTo(1, 6);
   });
 });

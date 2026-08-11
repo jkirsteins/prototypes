@@ -48,3 +48,137 @@ export function sharedVertices(a: Pt[][], b: Pt[][]): Pt[] {
   }
   return out;
 }
+
+export interface Crossing {
+  /** A vertex OF the border, never a computed point: the centroid of a bent
+   *  border sits off it by up to 33 units on this map, so the nearest shared
+   *  vertex to that centroid is what an arrow is placed on. */
+  at: Pt;
+  /** Unit vector along the border, the axis lanes are laid out on. */
+  tangent: Pt;
+  /** Unit vector from the first land into the second. */
+  normal: Pt;
+  /** How much border there is along `tangent`. 11 to 308 units on this map. */
+  span: number;
+  /** True where the two lands share no vertex at all. */
+  sea: boolean;
+  /** The width of the water on a sea crossing, 0 otherwise. */
+  gap: number;
+}
+
+/** Ray casting, counting every ring: a region drawn as several subpaths is
+ *  inside any of them. */
+export function pointInRings(p: Pt, rings: Pt[][]): boolean {
+  let inside = false;
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      if ((a.y > p.y) !== (b.y > p.y)) {
+        const x = a.x + ((p.y - a.y) * (b.x - a.x)) / (b.y - a.y);
+        if (p.x < x) inside = !inside;
+      }
+    }
+  }
+  return inside;
+}
+
+/** How far out the orientation vote probes. Four distances rather than one,
+ *  and this is load-bearing: `tangent` is a GLOBAL fit to the whole border and
+ *  the border is locally bent under it, so a single probe is ambiguous on 7 of
+ *  the 103 adjacencies these maps have. The vote resolves all 103. */
+const PROBES = [6, 12, 24, 40];
+
+/** The span a sea crossing lays its lanes along. There is no border to
+ *  measure, so this is a constant rather than a number read off the map. */
+const SEA_SPAN = 70;
+
+export function crossingBetween(a: Pt[][], b: Pt[][]): Crossing {
+  const shared = sharedVertices(a, b);
+  if (shared.length >= 2) return borderCrossing(shared, a, b);
+  return straitCrossing(a, b);
+}
+
+function borderCrossing(shared: Pt[], a: Pt[][], b: Pt[][]): Crossing {
+  const n = shared.length;
+  const cx = shared.reduce((s, p) => s + p.x, 0) / n;
+  const cy = shared.reduce((s, p) => s + p.y, 0) / n;
+  let sxx = 0;
+  let syy = 0;
+  let sxy = 0;
+  for (const p of shared) {
+    sxx += (p.x - cx) ** 2;
+    syy += (p.y - cy) ** 2;
+    sxy += (p.x - cx) * (p.y - cy);
+  }
+  // The principal axis of the shared set. Robust where a strict walk of
+  // contiguous vertices is not: a border can be broken into many short runs
+  // and still be one frontier.
+  const th = 0.5 * Math.atan2((2 * sxy) / n, (sxx - syy) / n);
+  const tangent = { x: Math.cos(th), y: Math.sin(th) };
+  let lo = Number.POSITIVE_INFINITY;
+  let hi = Number.NEGATIVE_INFINITY;
+  let at = shared[0];
+  let best = Number.POSITIVE_INFINITY;
+  for (const p of shared) {
+    const t = (p.x - cx) * tangent.x + (p.y - cy) * tangent.y;
+    lo = Math.min(lo, t);
+    hi = Math.max(hi, t);
+    const d = (p.x - cx) ** 2 + (p.y - cy) ** 2;
+    if (d < best) {
+      best = d;
+      at = p;
+    }
+  }
+  const nx = -tangent.y;
+  const ny = tangent.x;
+  const score = (sign: 1 | -1): number => {
+    let s = 0;
+    for (const d of PROBES) {
+      if (pointInRings({ x: at.x + nx * d * sign, y: at.y + ny * d * sign }, b)) s++;
+      if (pointInRings({ x: at.x - nx * d * sign, y: at.y - ny * d * sign }, a)) s++;
+    }
+    return s;
+  };
+  const sign: 1 | -1 = score(1) >= score(-1) ? 1 : -1;
+  return {
+    at,
+    tangent,
+    normal: { x: nx * sign, y: ny * sign },
+    span: hi - lo,
+    sea: false,
+    gap: 0,
+  };
+}
+
+/** No shared vertex means no border: these two lands face each other across
+ *  water. The narrowest part of the strait is where a crossing goes. */
+function straitCrossing(a: Pt[][], b: Pt[][]): Crossing {
+  let pa = a[0][0];
+  let pb = b[0][0];
+  let best = Number.POSITIVE_INFINITY;
+  for (const ringA of a) {
+    for (const p of ringA) {
+      for (const ringB of b) {
+        for (const q of ringB) {
+          const d = (p.x - q.x) ** 2 + (p.y - q.y) ** 2;
+          if (d < best) {
+            best = d;
+            pa = p;
+            pb = q;
+          }
+        }
+      }
+    }
+  }
+  const gap = Math.hypot(pb.x - pa.x, pb.y - pa.y) || 1;
+  const normal = { x: (pb.x - pa.x) / gap, y: (pb.y - pa.y) / gap };
+  return {
+    at: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 },
+    tangent: { x: -normal.y, y: normal.x },
+    normal,
+    span: SEA_SPAN,
+    sea: true,
+    gap,
+  };
+}
