@@ -101,9 +101,10 @@ export interface RulesView {
   miasma: Readonly<Record<string, number>>;
   /** Faction id -> Grow turnips plays since the last harvest was earned. */
   turnips: Record<string, number>;
-  /** Declared-but-unlanded attacks, keyed by direction (src/marches.ts). Read
-   *  here because an army already out on a march cannot be spent on a second
-   *  one, which makes reach an army question as well as an adjacency one. */
+  /** Declared-but-unlanded attacks, keyed by the march's own id
+   *  (src/marches.ts). Read here because an army already out on a march
+   *  cannot be spent on a second one, which makes reach an army question as
+   *  well as an adjacency one. */
   marches: Marches;
   /** Subjugations declared but not yet answered (src/marches.ts). Read by the
    *  map, which draws one as an arrow like any other pending thing, and by the

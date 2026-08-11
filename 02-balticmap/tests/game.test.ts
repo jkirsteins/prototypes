@@ -3089,6 +3089,18 @@ describe("the restless middle of the map", () => {
     expect(declaredBy).toHaveLength(quiet.length);
   });
 
+  it("moves its own counter forward when a restless raid draws an id", () => {
+    // beginTurn stages `nextMarchId` locally the same way it stages
+    // `marches`, and has to return both - a raid declared here that never
+    // advanced the counter in the returned state would hand its id straight
+    // back out to whatever declares next.
+    const g = playingSix();
+    const quiet = quietLands(g);
+    expect(quiet.length).toBeGreaterThan(0);
+    const after = beginTurn({ ...g, current: 0, turn: g.turn + 1 }, always);
+    expect(after.nextMarchId).toBeGreaterThan(g.nextMarchId);
+  });
+
   it("never sends one out of a land somebody has taken", () => {
     // The status IS the condition: capture strips it, so there is no second
     // rule anywhere saying an unheld land is the one that raids.
@@ -3174,7 +3186,7 @@ describe("the restless middle of the map", () => {
     );
     // Nothing declared before this round is still on the map - the arrows on
     // it are the ones this wrap just drew. Asserted on the expiry rather than
-    // the key, because a freed slot is reused by the next declaration.
+    // the key, because an id says nothing about when its march landed.
     for (const m of Object.values(nextRound.marches)) {
       expect(m.expiry).toBeGreaterThan(nextRound.turn);
     }

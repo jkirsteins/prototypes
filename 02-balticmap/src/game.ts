@@ -286,8 +286,8 @@ export interface GameState {
    *  earned. Stored rather than log-derived because EVERY seat counts now.
    *  Reset to 0 at the threshold. */
   turnips: Record<string, number>;
-  /** Attacks declared but not yet landed, keyed by direction. A Raid played on
-   *  turn T lands at the start of the actor's turn T+1, resolved in
+  /** Attacks declared but not yet landed, keyed by the march's own id. A Raid
+   *  played on turn T lands at the start of the actor's turn T+1, resolved in
    *  `beginTurn`; until then it is an arrow on the map that anyone may answer.
    *  See src/marches.ts. */
   marches: Marches;

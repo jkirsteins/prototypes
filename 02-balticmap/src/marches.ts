@@ -59,11 +59,10 @@ export interface March {
   /** This march's identity, for as long as it exists and never again.
    *
    *  Allocated from `GameState.nextMarchId` at declaration and never reused,
-   *  which is the whole difference from the slot scheme this replaced: that
-   *  handed a cleared march's key to the next one on the same axis, so a key
-   *  meant two different armies at two different times. The arrow on the map
-   *  is keyed on this, and the events that retire a march name it, so a
-   *  departure can be matched to the thing that explains it. */
+   *  so an id names exactly one army for the length of the run. The store is
+   *  keyed on it, the arrow on the map is keyed on it, and the events that
+   *  retire a march name it, so a departure can be matched to the thing that
+   *  explains it. */
   id: number;
 }
 
@@ -73,7 +72,7 @@ export interface March {
  *  This is the third consumer of src/timed.ts after the post-escape respite,
  *  which is the point that module's doc names for weighing a declarative
  *  registry of timed statuses. Weighed and declined: a respite is a bare
- *  number keyed by faction and a march is a record keyed by direction, so a
+ *  number keyed by faction and a march is a record keyed by its own id, so a
  *  shared registry would have to be generic over both the payload and the key
  *  to buy anything, and there would still be exactly two of them. The shared
  *  primitives are doing their job. */
@@ -290,9 +289,10 @@ export interface Claim {
   expiry: number;
 }
 
-/** Key -> claim, keyed by direction like `Marches`: one claim per actor per
- *  target, so playing a second Subjugate at the same land replaces the first
- *  rather than queueing two answers to one question. */
+/** Key -> claim, keyed by direction (unlike `Marches`, which is keyed by the
+ *  march's own id): one claim per actor per target, so playing a second
+ *  Subjugate at the same land replaces the first rather than queueing two
+ *  answers to one question. */
 export type Claims = Readonly<Record<string, Claim>>;
 
 export const claimKeyOf = (actor: string, to: string): string =>
