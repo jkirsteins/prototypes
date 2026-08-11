@@ -1262,10 +1262,11 @@ const ringsByFaction = new Map<string, Pt[][]>(
 );
 const crossings = new Map<string, Crossing | null>();
 
-/** The border between two lands, from the first's side. Cached both ways round
- *  off one computation: the reverse is the same crossing with its normal
- *  flipped, and a normal pointing the wrong way draws every arrow on that
- *  border backwards. */
+/** The border between two lands, from the first's side. `renderArrowScene`
+ *  always asks for it in the sorted pair's order and reads direction off
+ *  `forward: s.from === a`, so one entry per unordered pair is what gets
+ *  read; caching it saves recomputing `crossingBetween`, which is a walk
+ *  over a thousand vertices a side. */
 function crossingFor(from: string, to: string): Crossing | null {
   const key = `${from}>${to}`;
   const hit = crossings.get(key);
@@ -1276,11 +1277,6 @@ function crossingFor(from: string, to: string): Crossing | null {
     ? null
     : crossingBetween(a, b);
   crossings.set(key, value);
-  if (value !== null) {
-    crossings.set(`${to}>${from}`, {
-      ...value, normal: { x: -value.normal.x, y: -value.normal.y },
-    });
-  }
   return value;
 }
 

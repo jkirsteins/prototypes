@@ -276,10 +276,12 @@ a geometry search. Three things about it are load-bearing:
 
 Width is strength and position is declaration order. Every arrow crossing one
 border splits `clamp(span * 0.55, 30, 96)` between them by strength share,
-with a floor of 14 that the lanes above it pay for, packed edge to edge. One
-arrow takes the whole block whatever its strength; two out and one back is 66%
-and 33%. Direction does not sort them - an answering raid stands beside the
-attack it answers, in the order the two were declared.
+with a floor at whichever is smaller of 14 and an even share of the block -
+three arrows on a minimum 30-unit block floor at 10, four at 7.5 - so the
+floor never outruns what the lanes above it have to pay it with, packed edge
+to edge. One arrow takes the whole block whatever its strength; two out and
+one back is 66% and 33%. Direction does not sort them - an answering raid
+stands beside the attack it answers, in the order the two were declared.
 
 The strength is "1 STR" wherever the lane has room for it, and the bare
 number below `BARE_NUMBER_WIDTH`. The bare number is safe only because the
@@ -298,13 +300,13 @@ read against the arrows still standing is that the replay hides them
 as it runs - the ghost's own layer only protects it from being erased, not
 from being confused with what is still live.
 
-**The aim preview is drawn as if it stood alone.** `kind: "aim"` lays out its
-border at the width it would take were it the ONLY arrow crossing that
-border - the shape a real declare would have. A border already carrying
-arrows packs a real one narrower once it joins them, which is the one thing
-the preview cannot promise: matching the shared width on every pointer move
-would mean re-laying every live arrow on that border, for a shape that is
-gone the moment the player lets go.
+**The aim preview shares the block with the arrows already crossing it.**
+`kind: "aim"` is a spec in the same scene as every live arrow (`src/main.ts`,
+in the list handed to `renderArrowScene`), so it is packed and re-packed on
+every pointer move exactly the way a real declare would be. The commonest aim
+in the game is a counter back down a border that already carries the arrow it
+answers, and a preview laid out as if it stood alone took the whole block and
+was drawn on top of that arrow, with only its barbs showing.
 
 ## The hand is the realm's, and it is a floor rather than a ceiling
 

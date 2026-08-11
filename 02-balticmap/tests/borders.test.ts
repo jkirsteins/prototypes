@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ringsOf, sharedVertices, crossingBetween, pointInRings } from "../src/borders";
+import { REGIONS } from "../src/regions";
 
 describe("ringsOf", () => {
   it("reads one subpath as one ring", () => {
@@ -129,8 +130,6 @@ describe("crossingBetween", () => {
     expect(c2.normal.y).toBeCloseTo(-c1.normal.y, 6);
   });
 });
-
-import { REGIONS } from "../src/regions";
 
 describe("every adjacency on every map", () => {
   for (const region of Object.values(REGIONS)) {

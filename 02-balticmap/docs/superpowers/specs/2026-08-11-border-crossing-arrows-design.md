@@ -23,7 +23,7 @@ written. The measurements below are from that pass.
 
 Adjacent regions in `src/data/baltic.json` and `src/data/iberia.json` share
 exact vertices: the paths were cut from one topology, so the shared border is a
-set intersection rather than a geometry search. Jersika and Talava share 207
+set intersection rather than a geometry search. Jersika and Talava share 183
 vertices to three decimal places.
 
 `src/borders.ts` is the new pure module.
@@ -40,8 +40,9 @@ vertices to three decimal places.
     pair measured (Jersika | Talava), which is why the vertex is taken and the
     centroid is only used to find it;
   - **`tangent`** is the principal axis of the shared set, and **`span`** its
-    extent along that axis. Measured across every adjacency: 11 to 308 units,
-    median 109;
+    extent along that axis. Measured across every land adjacency on the
+    Baltic map: 11 to 308 units, median 109. Iberia runs wider: 10.2 to 351.4,
+    median 123.4 across its 50 pairs;
   - **`normal`** is the tangent's perpendicular, its sign chosen by probing
     `at + n*d` for d in {6, 12, 24, 40} and counting how many probes land inside
     b, against the same count for the other sign inside a. **This vote is
@@ -79,16 +80,16 @@ interface ArrowSpec {
 ```
 
 `ARROW_KINDS` is an exhaustive `Record<ArrowKind, ArrowKindDef>` in the
-`NOTICE_RULES` shape: shape (spear or dashed demand), class, whether the kind
-takes a lane, and a sentence saying why. A new kind does not compile until
-somebody classifies it.
+`NOTICE_RULES` shape: shape (spear or dashed demand), class, label class, and
+a sentence saying why. A new kind does not compile until somebody classifies
+it.
 
 **Enforced the way the decision router is enforced.** `biome.json` already
 forbids `src/main.ts` from importing the engine's mutators; a second
 `noRestrictedImports` entry forbids it from importing `spearPolygon`,
-`insetSegment`, `offsetSegment` and `scaleSpear` from `./arrows`. There is then
-no path to put an arrow on the map except through the scene, and a fifth kind
-of arrow cannot quietly grow its own geometry beside the other four.
+`spearFor` and `SPEAR` from `./arrows`. There is then no path to put an arrow
+on the map except through the scene, and a fifth kind of arrow cannot quietly
+grow its own geometry beside the other four.
 
 The primitives stay in `src/arrows.ts` and stay pure. The scene is what knows
 about borders, lanes and the DOM.
@@ -105,9 +106,12 @@ Per border, over every spec crossing it in BOTH directions:
    it crosses.
 2. Each lane takes `abs(strength) / sum(strengths)` of W. Two out and one back
    is 66% and 33%. One arrow of any strength takes all of W.
-3. A lane below `LANE_MIN` (14) is raised to it and the surplus taken
-   proportionally from the lanes above the floor. Strength share stops being
-   exact once anything hits the floor, and the block stays inside W.
+3. A lane below `LANE_MIN` (14), or the even share of W if that is smaller, is
+   raised to that floor and the surplus taken proportionally from the lanes
+   above it. The floor can never outrun the even share, so there is always a
+   lane above it to pay the surplus from: three arrows on a minimum 30-unit
+   block floor at 10, four at 7.5. Strength share stops being exact once
+   anything hits the floor, and the block stays inside W.
 4. Lanes are packed edge to edge in declaration order along `tangent`, centred
    on `at`. Direction does not sort them: an answering raid stands beside the
    attack it answers, in the order the two were declared.
@@ -154,21 +158,25 @@ collide as soon as a border carries three arrows.
 The map's colours are untouched: red for an arrow into your realm, gold for
 yours, the rival's own colour faded for a quarrel that is neither.
 
-## The ghost is laid out with the living
+## The ghost gets its own layer
 
-`flashMarchResolution` currently rebuilds its fading arrow from the event with
-its own anchors, laid out independently of whatever else is on the map. As a
-spec in the same scene it is packed into the same block, so a fade can no
-longer be drawn across a live spear.
+`flashMarchResolution`'s fading arrow is a spec like any other kind, but it
+renders through its own `renderArrowScene` call into a layer of its own
+(`ghostGroup`, never `arrowGroup`) rather than joining the block the live
+arrows pack into. A live rebuild lands the moment the state under it moves,
+and packing the ghost into that block would mean a rebuild triggered
+mid-fade wipes it off the screen before the one thing the turn-start replay
+is showing has finished.
 
-A ghost group is kept across a live rebuild rather than restarted: it is a
-picture of what was, and moving it mid-fade would be a lie told twice. In
-practice the two rarely coexist, since `svg.replaying` already hides live
-arrows while the turn-start replay runs.
+The ghost's own layer only keeps it from being erased, not from being read
+against a live arrow standing on the same border - what does that is the
+replay itself: `svg.replaying` in `src/style.css` hides `.march-arrow` and
+`.claim-arrow` for as long as it runs, so nothing live is on screen to
+confuse the ghost with while it fades.
 
-`marchAnchors` and the town anchors survive for exactly one caller: the
-free-drag aim preview toward a pointer that is not over a legal land. That is
-the only arrow in the game with no border to cross.
+`sceneCtx.freeAnchor` survives for exactly one caller: the free-drag aim
+preview toward a pointer that is not over a legal land. That is the only
+arrow in the game with no border to cross.
 
 ## Tests
 
@@ -179,7 +187,7 @@ the only arrow in the game with no border to cross.
   its orientation is unambiguous. This pins the assumption the whole design
   rests on, and it is the test that would have caught the single-probe
   orientation being ambiguous on seven pairs.
-- `tests/arrow-layout.test.ts` - the strength split, the floor and the shrink
+- `tests/arrow-scene.test.ts` - the strength split, the floor and the shrink
   it takes out of the lanes above it, edge-to-edge packing, declaration order,
   and one arrow taking all of W.
 - `tests/arrows.test.ts` keeps the spear and segment primitives as they are.
@@ -192,7 +200,7 @@ Opening values, all tuned by eye in a browser pass rather than derived:
 | --- | --- | --- |
 | `BLOCK_SHARE` | 0.55 | share of the border extent the block may use |
 | `BLOCK_MIN` / `BLOCK_MAX` | 30 / 96 | the clamp on that share |
-| `LANE_MIN` | 14 | narrowest a single arrow may be drawn |
+| `LANE_MIN` | 14 | the floor a lane is raised to, capped at the block's even share |
 | `TAIL_DEPTH` | 30 | how far the arrow starts inside its origin |
 | `HEAD_DEPTH` | 34 | how far the head reaches inside its target |
 | `SEA_CLEARANCE` | 16 | how far past the coast a sea crossing reaches |

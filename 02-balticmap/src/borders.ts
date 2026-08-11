@@ -2,7 +2,7 @@
  *
  *  Adjacent regions in the map data share EXACT vertices - the paths were cut
  *  from one topology - so a shared border is a set intersection rather than a
- *  geometry search. Jersika and Talava share 207 of them.
+ *  geometry search. Jersika and Talava share 183 of them.
  *
  *  Pure numbers, no DOM, for the reason `src/arrows.ts` is: `getBBox()` is a
  *  stub under happy-dom, so this is where the shape can actually be checked. */
@@ -58,7 +58,8 @@ export interface Crossing {
   tangent: Pt;
   /** Unit vector from the first land into the second. */
   normal: Pt;
-  /** How much border there is along `tangent`. 11 to 308 units on this map. */
+  /** How much border there is along `tangent`. 11 to 308 units on the Baltic
+   *  map, 10.2 to 351.4 on Iberia. */
   span: number;
   /** True where the two lands share no vertex at all. */
   sea: boolean;
