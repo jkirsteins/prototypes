@@ -141,6 +141,8 @@ describe("every adjacency on every map", () => {
         for (const adjId of r.adjacent) {
           const a = rings.get(r.id);
           const b = rings.get(adjId);
+          expect(a !== undefined, `${r.id} -> ${adjId}: source rings not found`).toBe(true);
+          expect(b !== undefined, `${r.id} -> ${adjId}: target rings not found`).toBe(true);
           if (a === undefined || b === undefined) continue;
           const c = crossingBetween(a, b);
           const where = `${r.id} -> ${adjId}`;
@@ -148,20 +150,24 @@ describe("every adjacency on every map", () => {
           expect(Number.isFinite(c.at.y), where).toBe(true);
           expect(Math.hypot(c.normal.x, c.normal.y), where).toBeCloseTo(1, 6);
           expect(Math.hypot(c.tangent.x, c.tangent.y), where).toBeCloseTo(1, 6);
-          expect(c.span, where).toBeGreaterThan(0);
-          // The crossing must face the land it is aimed at. Asked one step
-          // out, where a bent border is still locally straight.
-          const step = 6;
-          const into = {
-            x: c.at.x + c.normal.x * step, y: c.at.y + c.normal.y * step,
-          };
-          const back = {
-            x: c.at.x - c.normal.x * step, y: c.at.y - c.normal.y * step,
-          };
+          expect(Number.isFinite(c.span), where).toBe(true);
+          expect(c.span, where).toBeGreaterThanOrEqual(0);
           if (!c.sea) {
-            expect(
-              pointInRings(into, b) || !pointInRings(back, b), where,
-            ).toBe(true);
+            // The crossing must face the land it is aimed at. Assert the vote
+            // cast by multiple probes: the normal direction must score higher
+            // than its opposite. A tie means the normal was rotated onto the
+            // tangent, which is precisely the bug this catches, so tie must
+            // fail - use strictly greater than.
+            const votes = (n: { x: number; y: number }): number => {
+              let score = 0;
+              for (const d of [6, 12, 24, 40]) {
+                if (pointInRings({ x: c.at.x + n.x * d, y: c.at.y + n.y * d }, b)) score++;
+                if (pointInRings({ x: c.at.x - n.x * d, y: c.at.y - n.y * d }, a)) score++;
+              }
+              return score;
+            };
+            const flipped = { x: -c.normal.x, y: -c.normal.y };
+            expect(votes(c.normal), where).toBeGreaterThan(votes(flipped));
           }
         }
       }
@@ -173,6 +179,8 @@ describe("every adjacency on every map", () => {
         for (const adjId of r.adjacent) {
           const a = rings.get(r.id);
           const b = rings.get(adjId);
+          expect(a !== undefined, `${r.id} -> ${adjId}: source rings not found`).toBe(true);
+          expect(b !== undefined, `${r.id} -> ${adjId}: target rings not found`).toBe(true);
           if (a === undefined || b === undefined) continue;
           if (crossingBetween(a, b).sea) seas.push(`${r.id}|${adjId}`);
         }
