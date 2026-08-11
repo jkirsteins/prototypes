@@ -3313,6 +3313,31 @@ describe("a status that does something says so", () => {
       type: "subjugated", targetFactionId: "alpha", consequence: true,
     });
   });
+
+  it("names the march it clears when a passive-taken land had one aimed at its new lord", () => {
+    // landSubjugation is the peer of callOffMarchesAgainstLord, reached
+    // through a play rather than a turn start: alpha already has a raid
+    // aimed at beta, no-successor hands alpha to beta on the same play, and
+    // the raid - now aimed up alpha's own new chain - is cleared with it.
+    const g: GameState = {
+      ...playingState(),
+      passives: { alpha: ["no-successor"] },
+      marches: {
+        "1": {
+          id: 1, actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: 99,
+        },
+      },
+    };
+    const before = g.log.length;
+    const after = playCard(
+      withHand(g, 0, ["assassinate-ruler"]), 0, rng(), "alpha",
+    );
+    expect(after.overlords.get("alpha")).toBe("beta");
+    expect(after.marches).toEqual({});
+    const lapsed = fresh(after, before).find((e) => e.type === "march-lapsed");
+    expect(lapsed).toMatchObject({ marchIds: [1] });
+  });
 });
 
 describe("the hostile keyword, past the targeting pass", () => {
@@ -3473,29 +3498,39 @@ describe("every march that leaves the store is named by an event", () => {
     // longer holds, so the ground-moved check drops it rather than resolving
     // it, fast-forwarded to the actor's own next turn the way `landMarches`
     // does for the smaller fixtures above.
-    if (g.phase === "playing") {
-      const actor = g.players[g.current].factionId;
-      const foreignLand = g.factionIds.find(
-        (f) => f !== actor && g.overlords.get(f) !== actor,
-      )!;
-      const staleId = g.nextMarchId;
-      // The injected march has to be IN the store the `before` snapshot
-      // reads, or its own departure is invisible to `checkBatch` and the
-      // very correlation this round exists to exercise goes unchecked.
-      const staleMarches = {
-        ...g.marches,
-        [String(staleId)]: {
-          id: staleId, actor, from: foreignLand, to: actor, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: g.turn + 1,
-        },
-      };
-      const before = new Set(Object.values(staleMarches).map((m) => m.id));
-      const logAt = g.log.length;
-      g = beginTurn({
-        ...g, turn: g.turn + 1, nextMarchId: staleId + 1, marches: staleMarches,
-      }, rng);
-      const batch = checkBatch(before, logAt);
-      expect(batch.some((e) => e.type === "march-lapsed")).toBe(true);
-    }
+    //
+    // Asserted rather than gated: a phase check here that skipped the forced
+    // round in silence would let this whole guard go unexercised the moment
+    // this seed ever ends the run early, which is exactly how the sixth
+    // clearing site went unnoticed the first time.
+    expect(g.phase).toBe("playing");
+    const actor = g.players[g.current].factionId;
+    const foreignLand = g.factionIds.find(
+      (f) => f !== actor && g.overlords.get(f) !== actor,
+    )!;
+    const staleId = g.nextMarchId;
+    // The injected march has to be IN the store the `before` snapshot
+    // reads, or its own departure is invisible to `checkBatch` and the
+    // very correlation this round exists to exercise goes unchecked.
+    const staleMarches = {
+      ...g.marches,
+      [String(staleId)]: {
+        id: staleId, actor, from: foreignLand, to: actor, cardId: "raid",
+        damage: 1, holdsArmy: true, expiry: g.turn + 1,
+      },
+    };
+    const before = new Set(Object.values(staleMarches).map((m) => m.id));
+    const logAt = g.log.length;
+    g = beginTurn({
+      ...g, turn: g.turn + 1, nextMarchId: staleId + 1, marches: staleMarches,
+    }, rng);
+    const batch = checkBatch(before, logAt);
+    // Pinned to the injected id, not to the event type alone: a claim-lapse
+    // (a different site entirely, carrying no `marchIds`) also pushes
+    // `march-lapsed`, and a bare `.some(type === "march-lapsed")` would be
+    // satisfied by one of those without this march ever having lapsed.
+    expect(batch.some(
+      (e) => e.type === "march-lapsed" && e.marchIds?.includes(staleId),
+    )).toBe(true);
   });
 });

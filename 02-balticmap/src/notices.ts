@@ -409,8 +409,11 @@ function marchResolvedLines(
       };
     }
     // "A counter out of X threw it back onto Y" only when the human's own
-    // counter is what won: `counter` is present exactly when both sides had
-    // armies on the axis, and it carries the loser's total beside `incoming`.
+    // counter is what won: every event reaching this line already cleared
+    // `appliesToHuman`'s `!metNothing(e)`, the one shape where two armies
+    // meet and `counter` is absent - so here, `counter`'s presence is
+    // exactly "both sides had armies," and it carries the loser's total
+    // beside `incoming`.
     const text: Segment[] = struckUs
       ? [
           ...cardSeg, t(" out of "), faction(e.sourceFactionId ?? ""),
