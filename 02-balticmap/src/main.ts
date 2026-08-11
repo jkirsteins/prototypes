@@ -498,15 +498,20 @@ let transferAsked: string | null = null;
  *  input has to wait on the modal, so the wait is the same question the modal
  *  is raised on rather than a second reading of the same store. */
 function localTransferPending(): boolean {
+  return (localPendingTransfers()?.length ?? 0) > 0;
+}
+
+/** The local player's unanswered conquests, oldest first. A queue because a
+ *  turn can take more than one land - see GameState.pendingTransfers. */
+function localPendingTransfers(): { from: string; to: string }[] | undefined {
   const me = localHuman()?.factionId;
-  return me !== undefined && game.pendingTransfers[me] !== undefined;
+  return me === undefined ? undefined : game.pendingTransfers[me];
 }
 
 function askTransferIfPending(): void {
-  const me = localHuman()?.factionId;
-  const pending = me === undefined
-    ? undefined
-    : game.pendingTransfers[me];
+  // The front of the queue: one pair of lands per modal, in the order the
+  // lands fell. Answering pops it and the next conquest raises its own.
+  const pending = localPendingTransfers()?.[0];
   if (pending === undefined) {
     transferAsked = null;
     return;

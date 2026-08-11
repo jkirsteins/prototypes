@@ -338,12 +338,18 @@ export interface GameState {
    *  A single slot would have let a guest that dropped with the modal open
    *  hold the question the host was waiting to be asked.
    *
-   *  Still at most one per faction: the modal answers about one pair of
-   *  lands, so a second conquest in the same batch keeps the first question
-   *  and sends no defenders at all. It must NOT fall through to the
-   *  automatic half - that would move points out of a land the player was
-   *  never asked about, the one thing this exists to prevent. */
-  pendingTransfers: Record<string, { from: string; to: string }>;
+   *  A QUEUE per faction, in the order the conquests landed, because a turn
+   *  can take more than one land: three subjugations owe three questions, and
+   *  the modal answers about one pair of lands at a time. A single slot kept
+   *  the first question and dropped the rest, so two of the three conquests
+   *  sent no defenders and the player was never told why. Answering pops the
+   *  front (`transferDefense`), so the questions come in the order the lands
+   *  were taken.
+   *
+   *  A dropped question must NOT fall through to the automatic half - that
+   *  would move points out of a land the player was never asked about, the
+   *  one thing this exists to prevent. */
+  pendingTransfers: Record<string, { from: string; to: string }[]>;
   /** Faction id -> ethnicity id, for the ruler name pools. Map-derived, like
    *  `adjacency`; empty in tests, which then draw from the generic pool. */
   ethnicities: Record<string, string>;
@@ -599,12 +605,16 @@ export function autoTransfer(
 export function transferDefense(
   state: GameState, factionId: string, amount: number,
 ): GameState {
-  const pending = state.pendingTransfers[factionId];
+  const queue = state.pendingTransfers[factionId];
+  const pending = queue?.[0];
   if (pending === undefined) return state;
+  // The front of the queue only. A turn that took three lands owes three
+  // answers, and the next one is raised as soon as this one is applied.
+  const left = queue.slice(1);
   const { [factionId]: _answered, ...rest } = state.pendingTransfers;
   return {
     ...applyTransfer(state, pending.from, pending.to, amount, factionId),
-    pendingTransfers: rest,
+    pendingTransfers: left.length > 0 ? { ...rest, [factionId]: left } : rest,
   };
 }
 
@@ -1088,14 +1098,13 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
     // A PERSON is asked, whichever seat they sit in; everybody else moves half
-    // on the spot. Only one question can be pending per faction, because the
-    // modal answers about one pair of lands - so a second conquest in the same
-    // batch keeps the first question and sends no defenders at all. It must
-    // NOT fall through to the automatic half: that moved points out of a land
-    // the player was never asked about, which is the one thing
+    // on the spot. Every conquest asks: a turn that takes three lands queues
+    // three questions and they are answered in the order the lands fell. It
+    // must NOT fall through to the automatic half - that moved points out of a
+    // land the player was never asked about, which is the one thing
     // `pendingTransfers` exists to prevent.
     if (isHumanFaction(state, by)) {
-      pendingTransfers[by] ??= { from, to: land };
+      pendingTransfers[by] = [...(pendingTransfers[by] ?? []), { from, to: land }];
       return;
     }
     const moved = autoTransfer(

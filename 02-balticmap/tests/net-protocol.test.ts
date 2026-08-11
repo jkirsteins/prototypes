@@ -296,7 +296,7 @@ describe("action validation", () => {
     expect(validateAction(g, 0, g.turn, { type: "transfer", amount: 3 }))
       .toMatch(/conquest/);
     const asked: GameState = {
-      ...g, pendingTransfers: { alpha: { from: "alpha", to: "beta" } },
+      ...g, pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
     };
     expect(validateAction(asked, 0, asked.turn, { type: "transfer", amount: 3 }))
       .toBeNull();
@@ -401,7 +401,7 @@ describe("applyNetAction", () => {
       ...base,
       defenseMax: { alpha: 40, beta: 40 },
       defense: { alpha: 40, beta: 0 },
-      pendingTransfers: { alpha: { from: "alpha", to: "beta" } },
+      pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
     };
     const after = applyNetAction(g, rng, { type: "transfer", amount: 10 });
     expect(after.defense.alpha).toBe(30);

@@ -330,9 +330,9 @@ describe("the conquest question", () => {
       ...t.state(),
       defenseMax: { ...t.state().defenseMax, [me]: 40, beta: 40 },
       defense: { ...t.state().defense, [me]: 40, beta: 0 },
-      pendingTransfers: { [me]: { from: me, to: "beta" } },
+      pendingTransfers: { [me]: [{ from: me, to: "beta" }] },
     });
-    expect(t.replica().pendingTransfers[me]).toEqual({ from: me, to: "beta" });
+    expect(t.replica().pendingTransfers[me]).toEqual([{ from: me, to: "beta" }]);
 
     const r = t.guest.decide({ kind: "transfer", amount: 10 });
     expect(r.outcome).toBe("sent");
@@ -348,7 +348,7 @@ describe("the conquest question", () => {
     until(t, t.guestSeat);
     t.setState({
       ...t.state(),
-      pendingTransfers: { alpha: { from: "alpha", to: "beta" } },
+      pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
     });
     const r = t.guest.decide({ kind: "transfer", amount: 10 });
     expect(r).toMatchObject({ outcome: "refused" });

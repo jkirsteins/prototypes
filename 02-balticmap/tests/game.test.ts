@@ -2578,7 +2578,7 @@ describe("an army that overwhelms a land", () => {
     // The same question a walk-in raises, from a blow that had to break the
     // land first: keyed by faction, from the land the army marched out of.
     const after = oneArrow(2, "alpha", 1);
-    expect(after.pendingTransfers).toEqual({ beta: { from: "beta", to: "alpha" } });
+    expect(after.pendingTransfers).toEqual({ beta: [{ from: "beta", to: "alpha" }] });
   });
 });
 
@@ -2800,7 +2800,7 @@ describe("the defense transfer", () => {
 
   it("asks the human, and answers nothing until they say", () => {
     const after = captured();
-    expect(after.pendingTransfers).toEqual({ beta: { from: "beta", to: "alpha" } });
+    expect(after.pendingTransfers).toEqual({ beta: [{ from: "beta", to: "alpha" }] });
     expect(after.defense.alpha).toBe(0);
     expect(after.defense.beta).toBe(40);
   });
@@ -2909,7 +2909,7 @@ describe("the defense transfer", () => {
     const after = beginTurn(g, rng());
     expect(after.overlords.get(target)).toBe(raider);
     expect(after.pendingTransfers).toEqual({
-      [raider]: { from: raider, to: target },
+      [raider]: [{ from: raider, to: target }],
     });
     // Nothing moved: the question is open, and the automatic half must not
     // fire behind it.
@@ -2926,16 +2926,73 @@ describe("the defense transfer", () => {
     const g: GameState = {
       ...base,
       pendingTransfers: {
-        beta: { from: "beta", to: "alpha" },
-        [other]: { from: other, to: "alpha" },
+        beta: [{ from: "beta", to: "alpha" }],
+        [other]: [{ from: other, to: "alpha" }],
       },
       defense: { alpha: 0, beta: 40, [other]: 40 },
     };
     const after = transferDefense(g, "beta", 10);
     expect(after.pendingTransfers).toEqual({
-      [other]: { from: other, to: "alpha" },
+      [other]: [{ from: other, to: "alpha" }],
     });
     expect(after.defense.beta).toBe(30);
+  });
+
+  it("asks once per conquest, in the order the lands fell", () => {
+    // A turn that takes three lands owes three answers. One slot per faction
+    // kept the first question and dropped the other two, so two conquests
+    // sent no defenders at all and the player was never told why.
+    const base = playingSix();
+    const g: GameState = {
+      ...base,
+      pendingTransfers: {
+        beta: [
+          { from: "beta", to: "alpha" },
+          { from: "beta", to: "gamma" },
+          { from: "beta", to: "delta" },
+        ],
+      },
+      defense: { alpha: 0, gamma: 0, delta: 0, beta: 40 },
+    };
+    // Each answer pops the front and leaves the rest standing.
+    const first = transferDefense(g, "beta", 4);
+    expect(first.pendingTransfers.beta).toEqual([
+      { from: "beta", to: "gamma" }, { from: "beta", to: "delta" },
+    ]);
+    expect(first.defense.alpha).toBe(4);
+    const second = transferDefense(first, "beta", 3);
+    expect(second.pendingTransfers.beta).toEqual([{ from: "beta", to: "delta" }]);
+    expect(second.defense.gamma).toBe(3);
+    // The last answer clears the key rather than leaving an empty queue - an
+    // empty one reads as "a question is waiting" to anything asking by key.
+    const third = transferDefense(second, "beta", 2);
+    expect(third.pendingTransfers).toEqual({});
+    expect(third.defense.delta).toBe(2);
+  });
+
+  it("queues a question per land when one turn takes several", () => {
+    // Through the real conquest path rather than a hand-built store: three
+    // arrows, three lands, three questions.
+    const base = playingTen();
+    const targets = ["alpha", "gamma", "delta"];
+    const after = landMarches({
+      ...base,
+      defense: Object.fromEntries([
+        ...targets.map((t) => [t, 0]), ["beta", 40],
+      ]),
+      marches: Object.fromEntries(targets.map((t, i) => [
+        `beta>${t}#${i}`,
+        {
+          actor: "beta", from: "beta", to: t, cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+        },
+      ])),
+    });
+    expect(after.pendingTransfers.beta).toHaveLength(3);
+    expect(after.pendingTransfers.beta.map((q) => q.to).sort())
+      .toEqual([...targets].sort());
+    // Nothing moved yet: every question is still open.
+    expect(after.defense.beta).toBe(40);
   });
 });
 

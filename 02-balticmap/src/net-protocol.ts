@@ -190,7 +190,10 @@ export const NET_ACTION_RULES: {
       // clamps through `transferLimit` at the moment it applies, and a second
       // limit computed now would disagree with it the first time the board
       // moved between the modal opening and the answer arriving.
-      if (state.pendingTransfers[state.players[seat].factionId] === undefined) {
+      // An empty queue is the same answer as no queue: the sender has no
+      // conquest waiting, whichever way the record got that way.
+      const waiting = state.pendingTransfers[state.players[seat].factionId];
+      if (waiting === undefined || waiting.length === 0) {
         return "no conquest of yours is waiting for defenders";
       }
       if (!Number.isInteger(action.amount) || action.amount < 0) {
