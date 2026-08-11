@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clashFraction, insetSegment, offsetSegment, pointAlong, scaleSpear,
-  spearPolygon, SPEAR,
+  spearPolygon, spearFor, SPEAR,
 } from "../src/arrows";
 
 /** "x,y x,y ..." back into numbers, so a test can talk about the shape rather
@@ -130,5 +130,26 @@ describe("pointAlong", () => {
     expect(pointAlong(0, 0, 100, 50, 0)).toEqual({ x: 0, y: 0 });
     expect(pointAlong(0, 0, 100, 50, 1)).toEqual({ x: 100, y: 50 });
     expect(pointAlong(0, 0, 100, 50, 0.5)).toEqual({ x: 50, y: 25 });
+  });
+});
+
+describe("spearFor", () => {
+  it("fills its lane with the barbs and nothing wider", () => {
+    const opts = spearFor(40);
+    expect(opts.headHalf).toBeLessThanOrEqual(20);
+    expect(opts.headHalf).toBeGreaterThan(17);
+  });
+
+  it("keeps the taper: base wider than waist, head widest", () => {
+    const opts = spearFor(40);
+    expect(opts.headHalf).toBeGreaterThan(opts.baseHalf);
+    expect(opts.baseHalf).toBeGreaterThan(opts.waistHalf);
+  });
+
+  it("scales every width together, so a narrow lane is the same object", () => {
+    const big = spearFor(40);
+    const small = spearFor(20);
+    expect(small.headHalf / big.headHalf).toBeCloseTo(0.5, 6);
+    expect(small.baseHalf / big.baseHalf).toBeCloseTo(0.5, 6);
   });
 });

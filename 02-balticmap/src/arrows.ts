@@ -94,6 +94,25 @@ export function scaleSpear(opts: SpearOptions, k: number): SpearOptions {
   };
 }
 
+/** A spear that fills the lane it was given.
+ *
+ *  The proportions rather than the sizes are the constant here: a lane is how
+ *  much of a shared border this arrow is entitled to, and the barbs filling it
+ *  is what makes strength readable as width. `SPEAR` stays as it is for the
+ *  callers that size an arrow by hand. */
+export function spearFor(width: number): SpearOptions {
+  const half = width / 2;
+  return {
+    baseHalf: half * 0.6,
+    waistHalf: half * 0.42,
+    headHalf: half * 0.95,
+    // Long enough to read as a head at every lane width. The share of the
+    // AXIS is clamped inside `spearPolygon`, so a short arrow is still mostly
+    // shaft.
+    headLen: Math.max(12, half * 1.15),
+  };
+}
+
 /** The `points` attribute of one spear, tip exactly on (bx, by).
  *
  *  Seven points, walked around the outline from the base's left shoulder:
