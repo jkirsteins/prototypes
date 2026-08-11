@@ -762,6 +762,52 @@ describe("the counter-raid clash", () => {
     expect(e.incoming).toBe(3);
     expect(e.counter).toBeUndefined();
   });
+
+  it("a contested capture onto a flattened land is metNothing, not a standoff", () => {
+    // Two raids facing, alpha already at 0: the capture moves nothing - there
+    // is nothing left to move - but two real armies still met on the axis.
+    // `counter` must not ride here without `amount`, or this reads as the
+    // standoff shape, which it plainly is not: the land changes hands.
+    const after = landMarches({ ...facingRaids(3, 1), defense: { alpha: 0 } });
+    expect(after.overlords.get("alpha")).toBe("beta");
+    const e = after.log.find((x) => x.type === "march-resolved")!;
+    expect(e.amount).toBeUndefined();
+    expect(e.counter).toBeUndefined();
+    expect(e.incoming).toBe(3);
+  });
+
+  it("a spent second arrow that was itself contested still carries no counter", () => {
+    // Two beta raids down the same axis at alpha, each answered by an alpha
+    // counter. The first pairing captures alpha; the second pairing is beta's
+    // OWN arrow arriving at a land it just took, so it lands nothing and is
+    // spent - even though it, too, met a counter on the way in.
+    const g = playingState(LINE_ADJ);
+    const arrow = (
+      id: number, from: string, to: string, cardId: string, damage: number,
+    ) => ({
+      id, actor: from, from, to, cardId, damage,
+      holdsArmy: true, expiry: g.turn + 1,
+    });
+    const after = landMarches({
+      ...g,
+      defense: { alpha: 1 },
+      marches: {
+        "1": arrow(1, "beta", "alpha", "raid", 5),
+        "2": arrow(2, "alpha", "beta", "raid", 1),
+        "3": arrow(3, "beta", "alpha", "raid", 5),
+        "4": arrow(4, "alpha", "beta", "raid", 1),
+      },
+    });
+    expect(after.overlords.get("alpha")).toBe("beta");
+    const landed = after.log.filter(
+      (e) => e.type === "march-resolved" && e.targetFactionId === "alpha",
+    );
+    expect(landed).toHaveLength(2);
+    const spent = landed[1];
+    expect(spent.amount).toBeUndefined();
+    expect(spent.counter).toBeUndefined();
+    expect(spent.incoming).toBe(5);
+  });
 });
 
 describe("great-raid", () => {
@@ -3393,20 +3439,17 @@ describe("every march that leaves the store is named by an event", () => {
       if (!next.playedThisTurn) throw new Error(`stuck turn ${g.turn}`);
       g = next.phase === "playing" ? advance(next, rng) : next;
     }
-    for (let round = 0; round < 12 && g.phase === "playing"; round++) {
-      const before = new Set(Object.values(g.marches).map((m) => m.id));
-      const logAt = g.log.length;
-      const next = g.current === 0 ? naiveHumanTurn(g, rng) : aiTakeTurn(g, rng);
-      if (!next.playedThisTurn) throw new Error(`stuck turn ${g.turn}`);
-      g = next.phase === "playing" ? advance(next, rng) : next;
+    // Checks one batch against the marches that left the store across it:
+    // every departed id is named by something in the batch, and every event
+    // that names a march also names the force it threw. Reads the CURRENT
+    // `g` at call time, always called right after `g` is reassigned.
+    const checkBatch = (beforeIds: Set<number>, logAt: number) => {
       const after = new Set(Object.values(g.marches).map((m) => m.id));
-      const departed = [...before].filter((id) => !after.has(id));
+      const departed = [...beforeIds].filter((id) => !after.has(id));
       const batch = g.log.slice(logAt);
       const named = new Set(batch.flatMap((e) => e.marchIds ?? []));
       expect(departed.filter((id) => !named.has(id))).toEqual([]);
-      // The other half of the correlation: every event that names a march
-      // also names the force that march threw, whether or not anything got
-      // through. Scoped to `marchIds`, not to every `march-resolved` - the
+      // Scoped to `marchIds`, not to every `march-resolved` - the
       // demand-coming-due arrival out of `landClaims` clears no march and
       // throws no strength, so it is exempt by carrying no `marchIds` at all.
       for (const e of batch) {
@@ -3414,6 +3457,45 @@ describe("every march that leaves the store is named by an event", () => {
           expect(e.incoming).not.toBeUndefined();
         }
       }
+      return batch;
+    };
+    for (let round = 0; round < 12 && g.phase === "playing"; round++) {
+      const before = new Set(Object.values(g.marches).map((m) => m.id));
+      const logAt = g.log.length;
+      const next = g.current === 0 ? naiveHumanTurn(g, rng) : aiTakeTurn(g, rng);
+      if (!next.playedThisTurn) throw new Error(`stuck turn ${g.turn}`);
+      g = next.phase === "playing" ? advance(next, rng) : next;
+      checkBatch(before, logAt);
+    }
+    // The walk above never happens to lapse a march on its own - AI play
+    // resolves a march about as fast as it declares one. Force the other
+    // lapse site into the same walk: a stale march whose source the actor no
+    // longer holds, so the ground-moved check drops it rather than resolving
+    // it, fast-forwarded to the actor's own next turn the way `landMarches`
+    // does for the smaller fixtures above.
+    if (g.phase === "playing") {
+      const actor = g.players[g.current].factionId;
+      const foreignLand = g.factionIds.find(
+        (f) => f !== actor && g.overlords.get(f) !== actor,
+      )!;
+      const staleId = g.nextMarchId;
+      // The injected march has to be IN the store the `before` snapshot
+      // reads, or its own departure is invisible to `checkBatch` and the
+      // very correlation this round exists to exercise goes unchecked.
+      const staleMarches = {
+        ...g.marches,
+        [String(staleId)]: {
+          id: staleId, actor, from: foreignLand, to: actor, cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: g.turn + 1,
+        },
+      };
+      const before = new Set(Object.values(staleMarches).map((m) => m.id));
+      const logAt = g.log.length;
+      g = beginTurn({
+        ...g, turn: g.turn + 1, nextMarchId: staleId + 1, marches: staleMarches,
+      }, rng);
+      const batch = checkBatch(before, logAt);
+      expect(batch.some((e) => e.type === "march-lapsed")).toBe(true);
     }
   });
 });

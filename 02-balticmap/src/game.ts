@@ -127,9 +127,11 @@ export interface GameEvent {
    *  exactly where `marchIds` is: the demand-coming-due arrival out of
    *  `landClaims` throws no strength and draws no resolution arrow. */
   incoming?: number;
-  /** march-resolved: what the loser mustered against it. Present exactly when
-   *  the landing was contested, which makes it the contested discriminant -
-   *  the job `clash`'s presence used to do. */
+  /** march-resolved: what the loser mustered against it. Present on a
+   *  standoff, which carries no `amount` at all, and alongside `amount` on a
+   *  contested landing that moved something. Absent on a `metNothing`
+   *  arrival even when two armies met: a capture or spent arrow that landed
+   *  nothing carries neither `amount` nor `counter`. */
   counter?: number;
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
   /** subjugated: which route took the land, the discriminant of
@@ -1639,10 +1641,12 @@ function resolveMarches(
       // the land that changed hands between this arrow leaving and arriving
       // is exempt.
       if (takenHere.get(loser) === eng.spear.actor) {
+        // Never an `amount` on a spent arrow, so never a `counter` either:
+        // `counter` rides only alongside `amount`, or this reads as the
+        // standoff it was not.
         defense = onArrival({
           land: loser, by: eng.spear.actor, from: eng.spear.from,
-          cardId: eng.spear.cardId, marchIds,
-          incoming: clash.incoming, ...(contested ? { counter: clash.counter } : {}),
+          cardId: eng.spear.cardId, marchIds, incoming: clash.incoming,
         }, defense).defense;
         continue;
       }
@@ -1672,12 +1676,16 @@ function resolveMarches(
       if (capturesOnArrival(dealt, before)) {
         const landed = onArrival({
           land: loser, by: eng.spear.actor, from: eng.spear.from,
-          cardId: eng.spear.cardId, marchIds,
-          incoming: clash.incoming, ...(contested ? { counter: clash.counter } : {}),
+          cardId: eng.spear.cardId, marchIds, incoming: clash.incoming,
           // What the same blow moved on its way in, so the arrival can carry
-          // it. Nothing moved on a land that was already flat, and that shape -
-          // no `amount`, and therefore no `counter` either - is `metNothing`.
-          ...(moved > 0 ? { amount: moved } : {}),
+          // it, and the loser's own mustered strength alongside it - `counter`
+          // rides only inside this same spread, or a capture onto a land
+          // already flat reads as the standoff it was not. Nothing moved on a
+          // land that was already flat, and that shape - no `amount`, and
+          // therefore no `counter` either - is `metNothing`.
+          ...(moved > 0
+            ? { amount: moved, ...(contested ? { counter: clash.counter } : {}) }
+            : {}),
         }, defense);
         defense = landed.defense;
         if (landed.taken) takenHere.set(loser, eng.spear.actor);
@@ -2167,6 +2175,7 @@ export function playCard(
         turn: state.turn, playerId: p.id, type: "march-lapsed",
         cardId: march.cardId,
         targetFactionId: march.to, sourceFactionId: march.from,
+        marchIds: [march.id],
       });
     }
   };
