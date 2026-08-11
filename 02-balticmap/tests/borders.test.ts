@@ -129,3 +129,58 @@ describe("crossingBetween", () => {
     expect(c2.normal.y).toBeCloseTo(-c1.normal.y, 6);
   });
 });
+
+import { REGIONS } from "../src/regions";
+
+describe("every adjacency on every map", () => {
+  for (const region of Object.values(REGIONS)) {
+    const rings = new Map(region.map.regions.map((r) => [r.id, ringsOf(r.path)]));
+
+    it(`${region.id}: crosses at a point on the border, aimed into the target`, () => {
+      for (const r of region.map.regions) {
+        for (const adjId of r.adjacent) {
+          const a = rings.get(r.id);
+          const b = rings.get(adjId);
+          if (a === undefined || b === undefined) continue;
+          const c = crossingBetween(a, b);
+          const where = `${r.id} -> ${adjId}`;
+          expect(Number.isFinite(c.at.x), where).toBe(true);
+          expect(Number.isFinite(c.at.y), where).toBe(true);
+          expect(Math.hypot(c.normal.x, c.normal.y), where).toBeCloseTo(1, 6);
+          expect(Math.hypot(c.tangent.x, c.tangent.y), where).toBeCloseTo(1, 6);
+          expect(c.span, where).toBeGreaterThan(0);
+          // The crossing must face the land it is aimed at. Asked one step
+          // out, where a bent border is still locally straight.
+          const step = 6;
+          const into = {
+            x: c.at.x + c.normal.x * step, y: c.at.y + c.normal.y * step,
+          };
+          const back = {
+            x: c.at.x - c.normal.x * step, y: c.at.y - c.normal.y * step,
+          };
+          if (!c.sea) {
+            expect(
+              pointInRings(into, b) || !pointInRings(back, b), where,
+            ).toBe(true);
+          }
+        }
+      }
+    });
+
+    it(`${region.id}: only sea neighbours fall back to a strait`, () => {
+      const seas: string[] = [];
+      for (const r of region.map.regions) {
+        for (const adjId of r.adjacent) {
+          const a = rings.get(r.id);
+          const b = rings.get(adjId);
+          if (a === undefined || b === undefined) continue;
+          if (crossingBetween(a, b).sea) seas.push(`${r.id}|${adjId}`);
+        }
+      }
+      // Four ORDERED pairs per map, which is two lands facing each other
+      // across water in each direction: Saaremaa in the Baltic, the Balearics
+      // in Iberia. A fifth would mean the map data lost its shared topology.
+      expect(seas.length, seas.join(", ")).toBe(4);
+    });
+  }
+});
