@@ -714,6 +714,12 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     reason: "the player picked it in the harvest modal; the log carries it",
   },
   victory: { kind: "silent", reason: "postmortem overlay covers it" },
+  "played-on": {
+    kind: "silent",
+    reason:
+      "the player clicked it - a modal telling them what they just chose is " +
+      "the three-paragraph notice format coming back",
+  },
   defeat: { kind: "silent", reason: "postmortem overlay covers it" },
   surrendered: { kind: "silent", reason: "postmortem overlay covers it" },
   // hud.ts renders unification in the activity log and the post-mortem

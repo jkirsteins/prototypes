@@ -86,19 +86,22 @@ export function standingsFor(args: {
   humanFactionId: string | undefined;
   realmSize(factionId: string): number;
   incorporated: Incorporated;
-  needed: number;
+  /** Per faction, and shaped like `realmSize` beside it for the same reason:
+   *  one number cannot serve a board where a player holding out for the whole
+   *  map is ranked against rivals who still need only half. */
+  needed(factionId: string): number;
 }): StandingRow[] {
   const { acting, humanFactionId, realmSize, incorporated, needed } = args;
-  const pct = (lands: number): number =>
-    Math.min(100, Math.floor((lands / needed) * 100));
+  const pct = (lands: number, bar: number): number =>
+    Math.min(100, Math.floor((lands / bar) * 100));
   return acting
     .filter((f) => !(f in incorporated))
     .sort((a, b) => realmSize(b) - realmSize(a))
     .map((factionId) => ({
       factionId,
       lands: realmSize(factionId),
-      needed,
-      percent: pct(realmSize(factionId)),
+      needed: needed(factionId),
+      percent: pct(realmSize(factionId), needed(factionId)),
       isHuman: factionId === humanFactionId,
     }));
 }

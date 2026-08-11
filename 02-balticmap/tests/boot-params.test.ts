@@ -8,6 +8,7 @@ import {
 } from "../src/game";
 import { defenseOf, RAID_DAMAGE } from "../src/defense";
 import { rulerOf } from "../src/rulers";
+import { fullRealmOf as walkRealm } from "../src/relations";
 import { seededRng } from "../src/rng";
 import { DEFAULT_RULES } from "../src/rules";
 
@@ -53,6 +54,17 @@ const params = (search: string): BootParams => {
 const boot = (search: string, seed = 1): GameState =>
   applyBootParams(fresh(), params(search), seededRng(seed));
 
+/** The human's realm, by the same walk the win condition uses. */
+const realmOfIds = (factionId: string, g: GameState): Set<string> =>
+  walkRealm(factionId, g.overlords, g.incorporated);
+const fullRealmOf = (
+  overlords: GameState["overlords"], incorporated: GameState["incorporated"],
+): Set<string> => walkRealm("beta", overlords, incorporated);
+const realm = (search: string): [GameState["overlords"], GameState["incorporated"]] => {
+  const g = boot(search);
+  return [g.overlords, g.incorporated];
+};
+
 describe("parseBootParams", () => {
   it("returns null when the URL names no boot param", () => {
     expect(parseBootParams("")).toBeNull();
@@ -92,8 +104,8 @@ describe("parseBootParams", () => {
     expect(params("?seed=7")).toEqual({
       seed: 7, build: null, screen: null, faction: null, hand: null, turns: 0,
       defense: {}, disease: {}, leadership: {}, armies: {}, settlements: {},
-      marches: [], turnips: null, wealth: null, popups: null, rules: null,
-      region: null,
+      marches: [], realm: null, turnips: null, wealth: null, popups: null,
+      rules: null, region: null,
     });
   });
 
@@ -433,6 +445,68 @@ describe("applyBootParams", () => {
       for (const id of FACTIONS) {
         expect(rulerOf(g.rulers, id).leadership).toBe(0);
       }
+    });
+  });
+
+  describe("?realm", () => {
+    it("grows the human's realm to the count, in map order", () => {
+      // Four lands, human on beta. realm=3 takes the first two others in map
+      // order - alpha and gamma - and leaves delta alone.
+      const g = boot("?faction=beta&realm=3");
+      expect(fullRealmOf(g.overlords, g.incorporated)).toEqual(
+        new Set(["beta", "alpha", "gamma"]),
+      );
+      expect(g.incorporated.delta).toBeUndefined();
+    });
+
+    it("annexes rather than swearing, so nothing can walk back out", () => {
+      // A vassal wins its independence at its own turn start; an annexation
+      // is permanent, which is the only way the count survives a round.
+      const g = boot("?faction=beta&realm=3");
+      expect([...g.overlords]).toEqual([]);
+      expect(g.incorporated).toMatchObject({ alpha: "beta", gamma: "beta" });
+    });
+
+    it("reaches the whole map, which is what a played-on ending needs", () => {
+      const g = boot("?faction=beta&realm=4");
+      expect(fullRealmOf(g.overlords, g.incorporated).size).toBe(4);
+    });
+
+    it("clamps at both ends", () => {
+      expect(fullRealmOf(...realm("?faction=beta&realm=0")).size).toBe(1);
+      expect(fullRealmOf(...realm("?faction=beta&realm=-9")).size).toBe(1);
+      expect(fullRealmOf(...realm("?faction=beta&realm=99")).size).toBe(4);
+      // Not a number at all is no clause, the way every other override reads.
+      expect(fullRealmOf(...realm("?faction=beta&realm=banana")).size).toBe(1);
+    });
+
+    it("moves a land out of the realm it already answered to", () => {
+      // A land counted under two roots would let a RIVAL cross the bar and end
+      // the booted run before the state under test was ever on screen.
+      //
+      // Six lands, not the four the rest of this file uses: two of four is
+      // already a win, so a pre-seeded lord with one vassal would unify the
+      // map at the deal and there would be no run left to override.
+      const six = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
+      const g = applyBootParams(
+        {
+          ...newGame(
+            six, undefined, {}, undefined,
+            Object.fromEntries(six.map((id) => [id, FIXTURE_MAX])),
+          ),
+          overlords: new Map([["alpha", "delta"]]),
+        },
+        params("?faction=beta&realm=3"),
+        seededRng(1),
+      );
+      expect(realmOfIds("delta", g)).toEqual(new Set(["delta"]));
+      expect(realmOfIds("beta", g)).toEqual(new Set(["beta", "alpha", "gamma"]));
+    });
+
+    it("is dropped when no faction was picked", () => {
+      const g = boot("?realm=4");
+      expect(g.phase).toBe("pick-faction");
+      expect(g.incorporated).toEqual({});
     });
   });
 

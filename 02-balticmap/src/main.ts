@@ -70,6 +70,7 @@ import {
   loadBuildPref, loadRegionPref, memoryStorage, REGION_PREF_KEY,
   saveBuildPref, saveRegionPref, type MetaStorage,
 } from "./meta";
+import { createRunClock } from "./run-clock";
 import { applyBootParams, parseBootParams } from "./boot-params";
 import { REGIONS, setActiveRegion, type RegionId } from "./regions";
 import {
@@ -104,6 +105,13 @@ const boot = parseBootParams(window.location.search);
  *  rigged state, or the guest's staging screens would disagree with the
  *  snapshot the host is about to send. */
 const joinId = new URLSearchParams(window.location.search).get("join");
+
+/** How long this run has been played, for the line under the result on the
+ *  ending overlay. Driven off the phase alone by `refresh`, which is why
+ *  nothing else here has to remember to start or stop it - a guest's run and a
+ *  booted run come in by doors the New game click never passes through. See
+ *  src/run-clock.ts for why this is not on the state. */
+const runClock = createRunClock();
 
 const rng = boot?.seed != null ? seededRng(boot.seed) : Math.random;
 const storage: MetaStorage = ((): MetaStorage => {
@@ -2510,6 +2518,9 @@ function viewState(): GameState {
  *  paint, and a guest's start or rejoin snapshot, which arrives as a whole
  *  game at once and would otherwise replay every card in its log. */
 function refresh(opts?: { animate?: boolean }): void {
+  // First, before anything renders: the ending overlay this repaint may be
+  // about to raise reads a total that has to have stopped moving.
+  runClock.sample(game.phase);
   applyOwnership();
   applyTargeting();
   revealFoundedSettlements();
@@ -2719,6 +2730,23 @@ const hudCallbacks: HudCallbacks = {
       }
       startStagingRun();
     },
+    onKeepPlaying() {
+      // Host-only for the reason DECISION_ROUTES writes down, gated here as
+      // well as in CSS - the same pair Surrender uses.
+      if (!decidedHere("keep-playing", net.role)) return;
+      if (game.phase !== "victory" || resolving || pendingHarvest !== null) {
+        return;
+      }
+      disarm();
+      // A conquest that WON the run can leave a defender transfer unanswered:
+      // the modal was raised on the victory repaint and then hidden by the
+      // phase change one line later, with the key still stamped. Clearing it
+      // is what lets `askTransferIfPending` raise the question again now that
+      // there is a board to answer it on - otherwise the player silently
+      // loses the defenders they were about to move.
+      transferAsked = null;
+      decide({ kind: "keep-playing" });
+    },
     onSurrender() {
       // Host-only, and `DECISION_ROUTES` is where the reason is written down.
       // The button is hidden from a guest as well (`.net-guest` in
@@ -2732,6 +2760,7 @@ const hudCallbacks: HudCallbacks = {
       // only one that will ever carry that - nothing advances behind it.
       decide({ kind: "surrender" });
     },
+    elapsedMs: () => runClock.elapsedMs(),
     onPlayCard(index) {
       // `turnOpen`, not `playedThisTurn`: a play that re-opened the turn leaves
       // a live hand behind it, and which card that hand still accepts is
