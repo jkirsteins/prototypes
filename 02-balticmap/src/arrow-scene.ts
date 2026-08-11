@@ -1,4 +1,5 @@
-import type { Crossing } from "./borders";
+import type { Crossing, Pt } from "./borders";
+import { pointAlong, spearFor, spearPolygon } from "./arrows";
 
 /** How an arrow is sized and placed on the border it crosses.
  *
@@ -97,4 +98,235 @@ export function layoutLanes(
     });
   }
   return out;
+}
+
+/** What kind of thing an arrow IS. Not a per-caller distinction: the scene
+ *  draws marches, claims, aim previews and the ghosts of resolved marches
+ *  through one path, and a kind is the only place their differences live. */
+export type ArrowKind = "march" | "claim" | "aim" | "ghost";
+
+export interface ArrowKindDef {
+  /** A filled spear, or the dashed demand a claim is drawn as. */
+  shape: "spear" | "demand";
+  className: string;
+  /** Whether this kind takes a lane of the border's width. */
+  takesLane: boolean;
+  /** Why this kind is drawn the way it is. */
+  why: string;
+}
+
+/** Exhaustive, the `NOTICE_RULES` shape: a new kind of arrow does not compile
+ *  until somebody says what it looks like and why. */
+export const ARROW_KINDS: Record<ArrowKind, ArrowKindDef> = {
+  march: {
+    shape: "spear", className: "march-arrow", takesLane: true,
+    why: "An army in flight. The widest thing on its border if it is the strongest.",
+  },
+  claim: {
+    shape: "demand", className: "claim-arrow", takesLane: true,
+    why: "Nobody is marching, so it is dashed with a ring for a head - but it is a real declared thing on the board, so it takes a lane like everything else.",
+  },
+  aim: {
+    shape: "spear", className: "aim-arrow", takesLane: true,
+    why: "The arrow a play would declare, at the width it would really have, so aiming shows the board it is about to make.",
+  },
+  ghost: {
+    shape: "spear", className: "clash-flash", takesLane: true,
+    why: "A march that has already landed, fading where it stood - laid out with the living so a fade is never drawn across a live spear.",
+  },
+};
+
+export interface ArrowSpec {
+  /** The caller's handle. Behaviour is bound to the group this returns, so an
+   *  id has to be stable for as long as the arrow is. */
+  id: string;
+  kind: ArrowKind;
+  /** Faction ids. `to` may be empty where `at` is given. */
+  from: string;
+  to: string;
+  /** A point to aim at instead of a land, for a drag over open map. */
+  at?: Pt;
+  /** What the lane split divides. A claim carries 1: it has no strength of
+   *  its own and is one declared thing. */
+  strength: number;
+  tone: "hostile" | "ours" | "other";
+  /** A rival's own colour, for tone "other". */
+  fill?: string;
+  label?: string;
+  chip?: { order: number; clash: boolean };
+  /** A claim already answered, drawn faded. */
+  doomed?: boolean;
+  /** Written onto the group, for the hover, the pin and the counter click. */
+  dataset?: Record<string, string>;
+}
+
+export interface SceneCtx {
+  /** The border between two lands, or null where there is none to draw on. */
+  crossingFor(from: string, to: string): Crossing | null;
+  /** Where an arrow with no target starts. */
+  freeAnchor(from: string): Pt | null;
+}
+
+/** One border, whichever way it is crossed. */
+export function borderKeyOf(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+const NS = "http://www.w3.org/2000/svg";
+
+/** Where the strength sits along the shaft. Three stations cycled by lane, so
+ *  two neighbours never sit level with each other: an arrow is short, and two
+ *  labels at the same height across adjacent lanes overlap. */
+const LABEL_STATIONS = [0.26, 0.5, 0.74];
+
+/** Below this the shaft carries the bare number. Safe only because the ordinal
+ *  chip sits behind the tail: the shaft carries exactly one number, so there
+ *  is nothing for a bare number to be confused with. */
+const BARE_NUMBER_WIDTH = 24;
+
+const svgEl = <K extends keyof SVGElementTagNameMap>(
+  name: K, attrs: Record<string, string | number> = {},
+): SVGElementTagNameMap[K] => {
+  const el = document.createElementNS(NS, name);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  return el;
+};
+
+/** Every arrow on the map, drawn from a description of what is happening.
+ *
+ *  Rebuilt whole: a march store this small is cheaper to redraw than to diff,
+ *  and a stale arrow is a lie about what is coming. */
+export function renderArrowScene(
+  host: SVGGElement, specs: readonly ArrowSpec[], ctx: SceneCtx,
+): Map<string, SVGGElement> {
+  host.replaceChildren();
+  const drawn = new Map<string, SVGGElement>();
+  const byBorder = new Map<string, ArrowSpec[]>();
+  const free: ArrowSpec[] = [];
+  for (const spec of specs) {
+    if (spec.to === "" || spec.at !== undefined) {
+      free.push(spec);
+      continue;
+    }
+    const key = borderKeyOf(spec.from, spec.to);
+    byBorder.set(key, [...(byBorder.get(key) ?? []), spec]);
+  }
+  for (const group of byBorder.values()) {
+    const first = group[0];
+    const cross = ctx.crossingFor(first.from, first.to);
+    if (cross === null) continue;
+    // One frame for the whole border: the crossing's own normal runs from the
+    // land that sorts first, so every spec is measured against the same axis.
+    const [a] = borderKeyOf(first.from, first.to).split("|");
+    const lanes = layoutLanes(
+      cross,
+      group.map((s) => ({ strength: s.strength, forward: s.from === a })),
+    );
+    for (const lane of lanes) {
+      const g = drawArrow(group[lane.index], lane);
+      if (g === null) continue;
+      host.appendChild(g);
+      drawn.set(group[lane.index].id, g);
+    }
+  }
+  for (const spec of free) {
+    // `at` and `freeAnchor` are read the same way whether the caller aimed a
+    // point or is only naming a land - the anchor is the one thing a free
+    // arrow always needs, so there is nothing for a second arm to branch on.
+    const start = ctx.freeAnchor(spec.from);
+    const end = spec.at;
+    if (start === null || end === undefined) continue;
+    const lane = {
+      index: 0, width: blockWidthFor(0),
+      ax: start.x, ay: start.y, bx: end.x, by: end.y,
+    };
+    const g = drawArrow(spec, lane);
+    if (g === null) continue;
+    host.appendChild(g);
+    drawn.set(spec.id, g);
+  }
+  return drawn;
+}
+
+function drawArrow(spec: ArrowSpec, lane: Lane): SVGGElement | null {
+  const def = ARROW_KINDS[spec.kind];
+  const g = svgEl("g");
+  g.classList.add(def.className, `march-${spec.tone}`);
+  if (spec.doomed === true) g.classList.add("claim-doomed");
+  for (const [k, v] of Object.entries(spec.dataset ?? {})) g.dataset[k] = v;
+
+  if (def.shape === "spear") {
+    const points = spearPolygon(
+      lane.ax, lane.ay, lane.bx, lane.by, spearFor(lane.width),
+    );
+    if (points === "") return null;
+    const poly = svgEl("polygon", { points });
+    if (spec.fill !== undefined) poly.setAttribute("fill", spec.fill);
+    g.appendChild(poly);
+  } else {
+    const len = Math.hypot(lane.bx - lane.ax, lane.by - lane.ay);
+    if (len === 0) return null;
+    const ux = (lane.bx - lane.ax) / len;
+    const uy = (lane.by - lane.ay) / len;
+    g.appendChild(svgEl("line", {
+      x1: lane.ax, y1: lane.ay, x2: lane.bx - ux * 8, y2: lane.by - uy * 8,
+    }));
+    // A ring rather than a barb: a claim arrives and demands, it does not
+    // strike, and the two must not be told apart by squinting at a dash.
+    const ring = svgEl("circle", {
+      cx: lane.bx - ux * 4, cy: lane.by - uy * 4, r: 6,
+    });
+    ring.classList.add("claim-head");
+    g.appendChild(ring);
+  }
+
+  if (spec.label !== undefined) {
+    const station = LABEL_STATIONS[lane.index % LABEL_STATIONS.length];
+    const at = spec.kind === "claim"
+      // The one label that is a word rather than a number, and wider than the
+      // arrow it belongs to: past the head, in the land being demanded.
+      ? pointAlong(lane.ax, lane.ay, lane.bx, lane.by, 1.18)
+      : pointAlong(lane.ax, lane.ay, lane.bx, lane.by, station);
+    const text = svgEl("text", { x: at.x, y: at.y });
+    text.classList.add(spec.kind === "claim" ? "claim-label" : "march-strength");
+    if (spec.kind !== "claim") text.setAttribute("dominant-baseline", "middle");
+    text.textContent = spec.kind !== "claim" && lane.width < BARE_NUMBER_WIDTH
+      ? spec.label.replace(/ STR$/, "")
+      : spec.label;
+    g.appendChild(text);
+  }
+
+  if (spec.chip !== undefined) {
+    // Behind the tail, outside the block. On the shaft the chips collide as
+    // soon as a border carries three arrows, and a chip over the head reads
+    // as part of the arrowhead.
+    const at = pointAlong(
+      lane.ax, lane.ay, lane.bx, lane.by,
+      -0.18 - (lane.index % LABEL_STATIONS.length) * 0.14,
+    );
+    const label = spec.chip.clash
+      ? `${ordinal(spec.chip.order)} - clash` : ordinal(spec.chip.order);
+    const width = 12 + label.length * 5.6;
+    const chip = svgEl("g");
+    chip.classList.add("march-order");
+    const bg = svgEl("rect", {
+      x: at.x - width / 2, y: at.y - 9, width, height: 15, rx: 7.5,
+    });
+    bg.classList.add("march-order-bg");
+    const text = svgEl("text", { x: at.x, y: at.y + 2 });
+    text.classList.add("march-order-text");
+    text.textContent = label;
+    chip.append(bg, text);
+    g.appendChild(chip);
+  }
+  return g;
+}
+
+/** "1st", "2nd", "3rd", "4th" - the landing order in words, so the number can
+ *  never be read as a strength. */
+function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  const suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th";
+  return `${n}${suffix}`;
 }
