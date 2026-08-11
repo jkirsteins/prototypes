@@ -229,7 +229,8 @@ export const REPLAY_RULES: Record<GameEventType, ReplayRule> = {
     kind: "passed-over",
     reason: "the arrow appearing is its moment, and until the presentation " +
       "pipeline owns the arrow layer there is nothing here to show that the " +
-      "map does not already draw",
+      "map does not already draw; the card that drew it carries its own " +
+      "flight and its own sound, so this fires none",
   },
   "march-resolved": {
     kind: "shown",

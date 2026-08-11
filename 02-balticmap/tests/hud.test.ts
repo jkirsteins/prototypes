@@ -558,7 +558,9 @@ describe("activity log", () => {
     // Which land the army left from is the player's own decision in the
     // two-step aim, and the log is the only place it can be read back - so a
     // declaration that named the target alone left nothing to pair the
-    // landing with.
+    // landing with. The `march-declared` event carries the same two ends, but
+    // renders no line of its own - see the "declares nothing twice" test
+    // below - so the play line is the only place this turn says it.
     expect([...container.querySelectorAll(".log-entry")].map((el) => el.textContent))
       .toContain("You played Raid out of Beta on Alpha");
     expect(g.defense.alpha).toBeUndefined();
@@ -571,16 +573,30 @@ describe("activity log", () => {
     expect(entries.map((el) => el.textContent))
       .toContain("Raid out of Beta falls on Alpha (Defense 60 -> 59 (-1))");
     // Not a consequence: the play that caused it was a turn ago, in another
-    // batch, so there is nothing above it to indent under. Matched on "falls
-    // on" and not merely the shared "Raid out of Beta" opening, because the
-    // declaration line from turn 1 - itself a consequence of the play above
-    // it - shares that opening and sorts first.
+    // batch, so there is nothing above it to indent under.
     const landed = entries.find((el) =>
       el.textContent?.startsWith("Raid out of Beta falls on"))!;
     expect(landed.classList.contains("log-consequence")).toBe(false);
     // The number the log quotes is the number on the map, not a second
     // reckoning of its own.
     expect(g.defense.alpha).toBe(59);
+  });
+
+  it("declares nothing twice: the event is logged, its line is not", () => {
+    const { container, hud } = setup();
+    let g = playing();
+    g = withHand(g, 0, ["raid"]);
+    g = playCard(g, 0, seededRng(1), "alpha");
+    hud.update(g);
+    // The event is real and carries the arrow's own id - a later phase reads
+    // it for the moment the arrow appears.
+    expect(g.log.some((e) => e.type === "march-declared")).toBe(true);
+    // But the play line above it already named both ends of the same arrow,
+    // so a rendered line for the declaration would say it twice - and for a
+    // restless raid, worse: it would reprint the source the `play` case
+    // deliberately drops. Nothing in the log names the arrow "sets out".
+    const texts = [...container.querySelectorAll(".log-entry")].map((el) => el.textContent);
+    expect(texts.some((t) => t?.includes("sets out for"))).toBe(false);
   });
 
   it("keeps a rival's source off the line when it repeats their own name", () => {

@@ -62,12 +62,13 @@ function smallHost(rng: Rng) {
 }
 
 describe("handshake", () => {
-  it("speaks protocol version 5 - the two-humans wire", () => {
+  it("speaks protocol version 6 - the two-humans wire", () => {
     // Bumped when the message set changes shape; v2 put `build` on
     // lobby-guest and `harvest` on the play action, v3 put `sourceId` there
     // too, v4 adds the `transfer` action and renames the state's
-    // `humanSeat` to a set of them, and v5 adds `region` to hello. Two
-    // deploys on different versions must refuse, not desync.
+    // `humanSeat` to a set of them, v5 adds `region` to hello, and v6 adds
+    // the `march-declared` event type to the log. Two deploys on different
+    // versions must refuse, not desync.
     expect(PROTOCOL_VERSION).toBe(6);
   });
 

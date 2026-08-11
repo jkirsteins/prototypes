@@ -792,7 +792,13 @@ export function createHud(
     // never news, only noise, so it never reaches the log regardless of whose
     // turn it was. Everything else in this roster is a public fact about the
     // map, harvest picks included (a public draft - see NOTICE_RULES).
-    return e.type !== "draw";
+    //
+    // A declaration says nothing the play line above it did not already say -
+    // both ends of the arrow, in the same words - and for a restless raid it
+    // would say more, reprinting the source that the `play` case deliberately
+    // drops. The event stays in `state.log` for the presentation pipeline to
+    // read; only its own line is suppressed.
+    return e.type !== "draw" && e.type !== "march-declared";
   }
 
   /** What you played or discarded, and the events your own play caused. Never

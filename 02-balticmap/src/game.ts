@@ -913,9 +913,13 @@ function nestsUnderItsCause(type: GameEventType): boolean {
     case "disease-spread":
     case "plagued":
     case "winds-shifted":
-    // The arrow appearing is caused by the card that drew it, whether that
-    // card is on the table above it or the restless status announced beside
-    // it - both push into a batch that does not open with this event.
+    // The arrow appearing is caused by the card that drew it. `isAdjacentCause`
+    // admits only `passive-fired` and `march-resolved`, not `play`, so this
+    // only actually nests on the card path, where `appendEvents` reads the
+    // whole batch as opened by a play. The restless raid's declaration sits
+    // right after that same status's own `play` line, not after the
+    // `passive-fired` beside it, so it never meets either rule and stands
+    // unindented next to it.
     case "march-declared":
     // The bar crossing follows the turnip play that crossed it; the pick
     // follows the harvest play it was made on.
