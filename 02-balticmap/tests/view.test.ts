@@ -563,7 +563,7 @@ describe("standingsFor", () => {
   const base = {
     acting: ["a", "b", "c"],
     incorporated: {} as Record<string, string>,
-    needed: 15,
+    needed: () => 15,
   };
 
   it("ranks every acting faction, biggest realm first", () => {
@@ -642,6 +642,23 @@ describe("standingsFor", () => {
     };
     expect(standingsFor(args).map((r) => r.factionId)).toEqual(["a", "b", "d", "c"]);
     expect(standingsFor(args).map((r) => r.factionId)).toEqual(["a", "b", "d", "c"]);
+  });
+
+  it("gives each faction its own bar, so one row can be held to a harder one", () => {
+    // What a run played on looks like on the scoreboard: the player is out
+    // for the whole map while every rival still needs half, and the row that
+    // was at 100% drops back rather than staying pinned there.
+    const rows = standingsFor({
+      ...base,
+      humanFactionId: "a",
+      realmSize: (f) => ({ a: 15, b: 6, c: 3 })[f] ?? 0,
+      needed: (f) => (f === "a" ? 30 : 15),
+    });
+    expect(rows.map((r) => [r.factionId, r.lands, r.needed, r.percent])).toEqual([
+      ["a", 15, 30, 50],
+      ["b", 6, 15, 40],
+      ["c", 3, 15, 20],
+    ]);
   });
 
   it("returns nothing when every faction has been absorbed", () => {

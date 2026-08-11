@@ -206,7 +206,16 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "harvest-burned", cardId: "hillfort" },
     { turn: 1, playerId: 2, type: "harvest-burned", cardId: "subjugate" },
   ],
-  victory: [{ turn: 1, playerId: 1, type: "victory" }],
+  // Both bars, because the whole-map wording is a second line and the naming
+  // rules apply to it exactly as they do to the first.
+  victory: [
+    { turn: 1, playerId: 1, type: "victory" },
+    { turn: 1, playerId: 1, type: "victory", playOn: true },
+  ],
+  "played-on": [
+    { turn: 1, playerId: 1, type: "played-on" },
+    { turn: 1, playerId: 2, type: "played-on" },
+  ],
   defeat: [{ turn: 1, playerId: 1, type: "defeat", targetFactionId: H, overlordFactionId: RIVAL }],
   unified: [{ turn: 1, playerId: 1, type: "unified", overlordFactionId: RIVAL }],
   surrendered: [{ turn: 1, playerId: 1, type: "surrendered" }],

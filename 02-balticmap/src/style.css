@@ -448,11 +448,12 @@ svg.map.dragging {
   background: rgba(253, 250, 244, 0.1);
 }
 
-/* The two big overlay buttons share one look. Named as two selectors rather
-   than one shared class: `.pm-view-map` used to BE a `.menu-new-game`, so a
-   `.menu-new-game` lookup inside the postmortem answered with the wrong
+/* The three big overlay buttons share one look. Named as three selectors
+   rather than one shared class: `.pm-view-map` used to BE a `.menu-new-game`,
+   so a `.menu-new-game` lookup inside the postmortem answered with the wrong
    button - the curtain instead of the way out. */
 .menu-new-game,
+.pm-keep-playing,
 .pm-view-map {
   font-size: 18px;
   padding: 10px 32px;
@@ -464,8 +465,13 @@ svg.map.dragging {
 }
 
 .menu-new-game:hover,
+.pm-keep-playing:hover,
 .pm-view-map:hover {
   background: #f1e9da;
+}
+
+.pm-keep-playing.hidden {
+  display: none;
 }
 
 .status-bar {
@@ -615,6 +621,13 @@ svg.map.dragging {
 }
 
 .pm-deltas {
+  font-size: 13px;
+  color: #d8cfc0;
+}
+
+/* Its own colour, stated: the overlay is dark, and a line that declares none
+   inherits the browser's black. */
+.pm-elapsed {
   font-size: 13px;
   color: #d8cfc0;
 }
@@ -2508,6 +2521,14 @@ svg.map.pinning .realm-hover-halo {
    guest too; this only stops a button nothing behind it would honour from
    being on screen at all. */
 .net-guest .surrender-btn {
+  display: none;
+}
+
+/* Same privilege, same pair. It matters more here: `guestPhaseView` can hand
+   a GUEST a mapped "victory" - the one it caused by incorporating the host -
+   so the HUD would otherwise draw this button off a phase that exists only as
+   a view, while `onKeepPlaying` reads the raw phase and refuses. */
+.net-guest .pm-keep-playing {
   display: none;
 }
 

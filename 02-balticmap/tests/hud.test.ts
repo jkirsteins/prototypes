@@ -65,6 +65,8 @@ function setup(opts?: {
   onOpenRegions?: () => void;
   regionSubtitle?: () => string;
   onSurrender?: () => void;
+  onKeepPlaying?: () => void;
+  elapsedMs?: () => number;
   onHighlightFaction?: (factionId: string | null) => void;
   onShowTip?: HudCallbacks["onShowTip"];
   localPlayerId?: () => number;
@@ -93,6 +95,8 @@ function setup(opts?: {
     ...(opts?.onOpenRegions ? { onOpenRegions: opts.onOpenRegions } : {}),
     ...(opts?.regionSubtitle ? { regionSubtitle: opts.regionSubtitle } : {}),
     ...(opts?.onSurrender ? { onSurrender: opts.onSurrender } : {}),
+    ...(opts?.onKeepPlaying ? { onKeepPlaying: opts.onKeepPlaying } : {}),
+    ...(opts?.elapsedMs ? { elapsedMs: opts.elapsedMs } : {}),
     ...(opts?.onHighlightFaction
       ? { onHighlightFaction: opts.onHighlightFaction }
       : {}),
@@ -1626,6 +1630,105 @@ describe("hud v2", () => {
     expect(g.phase).toBe("victory");
     hud.update(g);
     expect(q(container, ".pm-title").textContent).toBe("You won");
+    expect(q(container, ".pm-cause").textContent).toBe(
+      "You rule the Baltic - 11 of 20 lands",
+    );
+  });
+
+  /** A won board of 20 lands: f0 holds itself plus ten annexations, and 10 of
+   *  20 wins. The same shape the realm-size test above uses. */
+  function wonBoard(): GameState {
+    const many = Array.from({ length: 20 }, (_, i) => `f${i}`);
+    let g = pickFaction(
+      chooseBuild(startGame(newGame(many)), "warpath", seededRng(1)),
+      "f0", seededRng(1),
+    );
+    const inc: Record<string, string> = {};
+    for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
+    g = { ...g, incorporated: inc };
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(g.phase).toBe("victory");
+    return g;
+  }
+
+  const keepBtn = (c: HTMLElement) =>
+    c.querySelector(".pm-keep-playing") as HTMLElement;
+
+  it("offers Keep playing on a won run, and the click is the callback", () => {
+    const onKeepPlaying = vi.fn();
+    const { container, hud } = setup({ onKeepPlaying });
+    hud.update(wonBoard());
+    expect(keepBtn(container).classList.contains("hidden")).toBe(false);
+    keepBtn(container).click();
+    expect(onKeepPlaying).toHaveBeenCalledOnce();
+  });
+
+  it("offers it to nobody who cannot take it", () => {
+    // No callback: a guest's screen, and every test that passes none.
+    const bare = setup();
+    bare.hud.update(wonBoard());
+    expect(keepBtn(bare.container).classList.contains("hidden")).toBe(true);
+
+    // A lost run has nothing to resume.
+    const lost = setup({ onKeepPlaying: vi.fn() });
+    let g = playing();
+    g = { ...g, incorporated: { beta: "gamma" } };
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(g.phase).toBe("defeat");
+    lost.hud.update(g);
+    expect(keepBtn(lost.container).classList.contains("hidden")).toBe(true);
+  });
+
+  it("does not offer it twice: the bar moves once", () => {
+    const { container, hud } = setup({ onKeepPlaying: vi.fn() });
+    const ended = { ...wonBoard(), playingOn: true };
+    hud.update(ended);
+    expect(q(container, ".pm-title").textContent).toBe("You won");
+    expect(keepBtn(container).classList.contains("hidden")).toBe(true);
+    // And the whole-map wording, which is the other half of the same fact.
+    expect(q(container, ".pm-cause").textContent).toBe(
+      "The whole of the Baltic is yours - 11 of 20 lands",
+    );
+  });
+
+  it("offers nothing over a conceded run the title calls a win", () => {
+    // The concede branch prints "You won" over a `defeat` phase - the other
+    // person gave up - and that run is over for both of them.
+    const { container, hud } = setup({
+      onKeepPlaying: vi.fn(), localPlayerId: () => 2,
+    });
+    const base = playing();
+    const g: GameState = {
+      ...base,
+      phase: "defeat",
+      log: [...base.log, { turn: 3, playerId: 1, type: "surrendered" }],
+    };
+    hud.update(g);
+    expect(q(container, ".pm-title").textContent).toBe("You won");
+    expect(keepBtn(container).classList.contains("hidden")).toBe(true);
+  });
+
+  it("says how long the run took, on a win and on a loss alike", () => {
+    const { container, hud } = setup({ elapsedMs: () => 192_000 });
+    hud.update(wonBoard());
+    expect(q(container, ".pm-elapsed").textContent).toBe("Run time - 3m 12s");
+
+    let g = playing();
+    g = { ...g, incorporated: { beta: "gamma" } };
+    g = withHand(g, 0, ["grow-crops"]);
+    g = playCard(g, 0, seededRng(1));
+    expect(g.phase).toBe("defeat");
+    hud.update(g);
+    expect(q(container, ".pm-elapsed").textContent).toBe("Run time - 3m 12s");
+  });
+
+  it("says nothing about time where nothing is timing it", () => {
+    const { container, hud } = setup();
+    hud.update(wonBoard());
+    expect(q(container, ".pm-elapsed").textContent).toBe("");
+    // And the cause line is untouched by any of it - they are two elements.
     expect(q(container, ".pm-cause").textContent).toBe(
       "You rule the Baltic - 11 of 20 lands",
     );

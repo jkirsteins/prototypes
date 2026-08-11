@@ -4,7 +4,7 @@ import {
   playCard, discardCard, endTurn, advance, surrender, viewOf,
   autoTransfer, transferDefense, transferLimit,
   OPENING_HAND, MAX_ACTIVE, TURNIP_HARVEST_THRESHOLD,
-  victoryRealmSize, type GameState,
+  victoryRealmSize, winSizeFor, keepPlaying, type GameState,
 } from "../src/game";
 import {
   hasPassive, passivesOn, playsTurns, QUIET_PASSIVES, stripOnCapture,
@@ -2550,6 +2550,152 @@ describe("a run that ends at turn start", () => {
   it("leaves an ordinary turn's phase alone", () => {
     const g = { ...playingSix(), current: 0 };
     expect(beginTurn(g, rng()).phase).toBe("playing");
+  });
+});
+
+describe("playing on past a won run", () => {
+  /** A won board: beta holds itself plus a vassal, and 2 of 4 wins. */
+  function won(): GameState {
+    let g = playingState();
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["grow-crops"]);
+    const after = playCard(g, 0, rng());
+    expect(after.phase).toBe("victory");
+    return after;
+  }
+
+  it("keepPlaying refuses anything but a victory, by identity", () => {
+    // Identity and not a thrown error: `commitDecision` reads an unchanged
+    // state as refused, which is how the router reports it to the player.
+    const playing = playingState();
+    expect(keepPlaying(playing)).toBe(playing);
+    const conceded = surrender(playing);
+    expect(keepPlaying(conceded)).toBe(conceded);
+    const menu = startGame(newGame(FACTIONS, undefined, {}, undefined, maxes(FACTIONS)));
+    expect(keepPlaying(menu)).toBe(menu);
+  });
+
+  it("hands the run back and says so in the log", () => {
+    const after = keepPlaying(won());
+    expect(after.phase).toBe("playing");
+    expect(after.playingOn).toBe(true);
+    expect(after.log.at(-1)).toMatchObject({ type: "played-on" });
+    // A verdict, not a turn boundary: whoever's turn it was still has it.
+    expect(after.current).toBe(won().current);
+    expect(after.playedThisTurn).toBe(won().playedThisTurn);
+  });
+
+  it("moves the human's bar to the whole map and nobody else's", () => {
+    const g = playingState();
+    const half = victoryRealmSize(g.factionIds.length);
+    for (const f of g.factionIds) expect(winSizeFor(g, f)).toBe(half);
+    const on = { ...g, playingOn: true };
+    expect(winSizeFor(on, "beta")).toBe(g.factionIds.length);
+    for (const f of g.factionIds.filter((f) => f !== "beta")) {
+      expect(winSizeFor(on, f)).toBe(half);
+    }
+  });
+
+  /** A resumed run with a turn to play. The card that won it spent the turn
+   *  it was played on, and the next one arrives through `advance` at the top
+   *  of the round; these skip straight to it. */
+  function playedOn(): GameState {
+    return { ...keepPlaying(won()), playedThisTurn: false };
+  }
+
+  it("does not re-fire the victory it was resumed out of", () => {
+    let g = playedOn();
+    // Still holding exactly what won it, and a whole turn to play.
+    g = withHand(g, 0, ["grow-crops"]);
+    const after = playCard(g, 0, rng());
+    expect(after.phase).toBe("playing");
+    expect(after.log.filter((e) => e.type === "victory")).toHaveLength(1);
+  });
+
+  it("ends for real at the whole map, and the line says which bar", () => {
+    let g = playedOn();
+    g = {
+      ...g,
+      overlords: new Map([["gamma", "beta"], ["alpha", "beta"], ["delta", "beta"]]),
+    };
+    g = withHand(g, 0, ["grow-crops"]);
+    const after = playCard(g, 0, rng());
+    expect(after.phase).toBe("victory");
+    expect(after.log.at(-1)).toMatchObject({ type: "victory", playOn: true });
+  });
+
+  it("can still be lost to a rival crossing the half it never left", () => {
+    // The whole point of the offer being a decision: the rival's bar did not
+    // move, so the run the player declined to end can still end against them.
+    let g = playedOn();
+    g = { ...g, overlords: new Map([["alpha", "delta"]]) };
+    g = withHand(g, 0, ["grow-crops"]);
+    const after = playCard(g, 0, rng());
+    expect(after.phase).toBe("defeat");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "unified", overlordFactionId: "delta",
+    });
+  });
+
+  it("can still be lost by being incorporated", () => {
+    let g = playedOn();
+    g = { ...g, incorporated: { ...g.incorporated, beta: "delta" } };
+    g = withHand(g, 0, ["grow-crops"]);
+    const after = playCard(g, 0, rng());
+    expect(after.phase).toBe("defeat");
+    expect(after.log.at(-1)).toMatchObject({
+      type: "defeat", targetFactionId: "beta", overlordFactionId: "delta",
+    });
+  });
+
+  it("resumes a victory read at an AI seat's turn start without hanging", () => {
+    // The reason `keep-playing` settles as an action. The ending was read in
+    // `beginTurn` for a seat whose turn is still open, so nothing has spent
+    // it: the chain has to be able to carry that seat's turn from here.
+    const base = playingSix();
+    const vassals = ["gamma", "delta"];
+    // Not one of the vassals: the independence gate is checked at a vassal's
+    // OWN turn start, so seating the turn there would free it and take the
+    // board back below the bar before the ending was ever read.
+    const rival = base.factionIds.find(
+      (f) => f !== "beta" && !vassals.includes(f) && hasRuler(base.rulers, f),
+    )!;
+    const seat = base.players.findIndex((p) => p.factionId === rival);
+    const ended = beginTurn(
+      {
+        ...base,
+        current: seat,
+        overlords: new Map([
+          ...base.overlords, ...vassals.map((v) => [v, "beta"] as const),
+        ]),
+      },
+      rng(),
+    );
+    expect(ended.phase).toBe("victory");
+    const resumed = keepPlaying(ended);
+    expect(resumed.current).toBe(seat);
+    expect(resumed.playedThisTurn).toBe(false);
+    // `advance` no-ops on an open turn, so the AI chain is what moves it.
+    expect(advance(resumed, rng()).current).toBe(seat);
+    const played = advance(aiTakeTurn(resumed, rng()), rng());
+    expect(played.current).not.toBe(seat);
+  });
+
+  it("advances a play-on board on which every rival has been swallowed", () => {
+    // `advance` throws when no seat will take a turn, and its comment says a
+    // unification ends the run before that can happen. Playing on is the case
+    // that tests it: the human's own seat is never skipped.
+    let g = playedOn();
+    g = {
+      ...g,
+      incorporated: Object.fromEntries(
+        g.factionIds.filter((f) => f !== "beta").map((f) => [f, "beta"]),
+      ),
+      playedThisTurn: true,
+    };
+    // Still one land short of the whole map is impossible here - swallowing
+    // every rival IS the whole map - so this is the last turn either way.
+    expect(() => advance(g, rng())).not.toThrow();
   });
 });
 

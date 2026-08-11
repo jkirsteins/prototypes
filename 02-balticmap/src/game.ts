@@ -58,7 +58,7 @@ export type GameEventType =
   | "passive-fired"
   | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked" | "harvest-burned"
-  | "victory" | "defeat" | "unified" | "surrendered";
+  | "victory" | "played-on" | "defeat" | "unified" | "surrendered";
 
 /** How a land changed hands.
  *
@@ -165,6 +165,17 @@ export interface GameEvent {
    *  src/cards.ts) and did nothing. Also what `revealedSecrets` reads to decide
    *  that the guard which stopped it is no longer a secret. */
   prevented?: boolean;
+  /** victory: this ending was taken with the bar raised to the WHOLE map,
+   *  after the player chose to play on past a won run. Read by the log line
+   *  and by nothing else.
+   *
+   *  On the EVENT and not off `GameState.playingOn`, though both are true by
+   *  the time the second victory lands: the flag describes the run as it now
+   *  stands, so a line reading it would retroactively relabel the FIRST
+   *  victory - the one that was honestly won at half the map - as a
+   *  whole-map conquest the moment the player carried on. Omitted rather
+   *  than set false, the `consequence` convention. */
+  playOn?: boolean;
   /** play: how many reserve readings this play cashed - Favourable omens on
    *  an attack, Miasma on a Plague - so the log can say by how much. A count
    *  because readings stack: two quadruple, and "doubled" could not tell
@@ -197,6 +208,21 @@ export interface PlayerState {
 
 export interface GameState {
   phase: GamePhase;
+  /** The player took the offer to play on past a won run, so their own bar is
+   *  the whole map now. `winSizeFor` is the only reader.
+   *
+   *  A boolean and NOT a seventh `GamePhase`, because the phase genuinely is
+   *  "playing" again: a second playing-phase would have to be answered by
+   *  every reader of `phase` in the app, and every one of them would be
+   *  answering it the same way.
+   *
+   *  On the state and not in src/main.ts because a guest holds a replica, and
+   *  its scoreboard must quote the bar the host's win condition is actually
+   *  applying.
+   *
+   *  One-way. Nothing clears it: the bar it raised is the run's now, and a
+   *  player who could put it back would be choosing when to win. */
+  playingOn: boolean;
   turn: number; // 1-based
   players: PlayerState[]; // index 0 = human
   current: number;
@@ -357,10 +383,59 @@ export const TURNIP_HARVEST_THRESHOLD = turnipThresholdFor(DEFAULT_DEFENSE_MAX);
 /** Further settlements a land gets in a world nobody handed a map to. */
 export const DEFAULT_SITE_CAP = 3;
 
-/** Lands needed to win: half the roster, rounded up. Derived rather than
- *  hardcoded so it cannot rot when the map changes. */
+/** The OPENING bar: half the roster, rounded up. Derived rather than hardcoded
+ *  so it cannot rot when the map changes.
+ *
+ *  This is where every faction starts and not what any faction necessarily
+ *  needs - a player who chose to play on past a won run is holding out for the
+ *  whole map. `winSizeFor` is what applies to a faction, and nothing outside it
+ *  may call this: a second caller is a second bar, and the two would disagree
+ *  the moment somebody played on. */
 export function victoryRealmSize(factionCount: number): number {
   return Math.ceil(0.5 * factionCount);
+}
+
+/** The faction whose ending `phase` speaks for - `humanSeats[0]`, the host's
+ *  seat in every dealt game - or null in a world simulation with no
+ *  privileged seat.
+ *
+ *  There is one `phase` field and two people cannot hold different ones, so
+ *  index 0 alone answers "whose ending is on screen"; a second person's screen
+ *  maps it for itself (`guestPhaseView` in src/net-protocol.ts). Spelled once
+ *  because the ending and the bar are the same question about the same seat -
+ *  see the seats rule in AGENTS.md. */
+export function humanFactionOf(
+  board: Pick<GameState, "players" | "humanSeats">,
+): string | null {
+  const seat = board.humanSeats[0];
+  return seat === undefined ? null : board.players[seat]?.factionId ?? null;
+}
+
+/** Lands this faction's realm must hold to end the run.
+ *
+ *  The bar, stated once: the win condition, the scoreboard and the concede
+ *  line all read it, so the number the player is shown and the number the
+ *  engine applies cannot drift.
+ *
+ *  The whole map is the HUMAN'S OWN bar. Every rival's stays at the opening
+ *  half, so a rival can still unify at 13 of 26 and end a play-on run in
+ *  defeat - and that risk is the whole reason playing on is a decision rather
+ *  than a formality.
+ *
+ *  It derives the human from the board rather than taking one, because the
+ *  one caller that would get it wrong is the scoreboard: `renderScoreboard`
+ *  reads its human from `localPlayerId`, which on a GUEST screen is the
+ *  guest's seat and not the seat the raised bar belongs to. */
+export function winSizeFor(
+  board: Pick<
+    GameState, "factionIds" | "players" | "humanSeats" | "playingOn"
+  >,
+  factionId: string,
+): number {
+  if (board.playingOn && factionId === humanFactionOf(board)) {
+    return board.factionIds.length;
+  }
+  return victoryRealmSize(board.factionIds.length);
 }
 
 export function viewOf(state: GameState): RulesView {
@@ -443,6 +518,8 @@ export function newGame(
   const realms = seedRealms(factionIds);
   return {
     phase: "main-menu",
+    // A run nobody has won yet, so nobody has declined to stop.
+    playingOn: false,
     turn: 1,
     players: [],
     current: 0,
@@ -783,6 +860,9 @@ function nestsUnderItsCause(type: GameEventType): boolean {
     case "defeat":
     case "unified":
     case "surrendered":
+    // And the one line that says it is NOT over: the player answering their
+    // own ending, which no card caused and which nothing indents under.
+    case "played-on":
     // A status firing is a CAUSE, and a cause states itself at the top level
     // of its batch. It may follow the play that set it off - a No successor
     // triggered by an assassination - but the line the player needs is "this
@@ -1539,6 +1619,34 @@ export function surrender(state: GameState): GameState {
   };
 }
 
+/** The player declines their own ending and holds out for the whole map. The
+ *  mirror of `surrender`, and shaped like it: an identity return is what
+ *  `commitDecision` reads as refused, so a run cannot be resumed out of a
+ *  defeat or conjured off the main menu.
+ *
+ *  It touches `phase`, `playingOn` and the log, and NOTHING else - not
+ *  `current`, not `playedThisTurn`. The ending was a verdict read off the
+ *  board rather than a turn boundary, so the turn it interrupted is exactly
+ *  the turn that resumes: a victory read in `playCard` goes back to a spent
+ *  turn that `advance` will move on from, and one read in `beginTurn` goes
+ *  back to a fresh open turn belonging to whoever's it already was. Resetting
+ *  either field would hand out a second play or double-spend somebody's turn.
+ *
+ *  It logs, because a postmortem log reading `victory` -> twelve more turns ->
+ *  `victory` with nothing in between says the game repeated itself. */
+export function keepPlaying(state: GameState): GameState {
+  if (state.phase !== "victory") return state;
+  const p = state.players[state.current];
+  return {
+    ...state,
+    phase: "playing",
+    playingOn: true,
+    log: appendEvents(state, [
+      { turn: state.turn, playerId: p?.id ?? 1, type: "played-on" },
+    ]),
+  };
+}
+
 /** The injected tribute cards leave on every exit from vassalage, so a freed
  *  or poached faction never carries a stale demand into its next life. */
 const stripTribute = (p: PlayerState): PlayerState => ({
@@ -1648,24 +1756,22 @@ export function takesNoTurn(state: GameState, factionId: string): boolean {
  *
  *  Defeat before victory; the two cannot coincide. A rival unification last,
  *  so a turn that wins for the human is never mistaken for one that loses to
- *  somebody else. No rng: an ending is READ off the board, never rolled. */
+ *  somebody else. No rng: an ending is READ off the board, never rolled.
+ *
+ *  Every threshold here is `winSizeFor`, per faction, because the human's own
+ *  bar moves when they play on and nobody else's does. The defeat arm is
+ *  deliberately outside all of that: a player who has already won and carried
+ *  on is incorporated on the same terms as anyone else. */
 function endingFor(
   board: Pick<
     GameState, "factionIds" | "overlords" | "incorporated" | "players" |
-    "humanSeats" | "turn"
+    "humanSeats" | "turn" | "playingOn"
   >,
   playerId: number,
   events: GameEvent[],
 ): GamePhase | null {
   const { overlords, incorporated } = board;
-  // `humanSeats[0]` and not every human seat: there is one `phase` field, so
-  // it can only speak for one person. That is the host's seat in a net game,
-  // and the second person's screen maps the phase for itself.
-  const seat = board.humanSeats[0];
-  const humanFaction = seat === undefined
-    ? null
-    : board.players[seat]?.factionId ?? null;
-  const winSize = victoryRealmSize(board.factionIds.length);
+  const humanFaction = humanFactionOf(board);
   if (humanFaction !== null && incorporated[humanFaction] !== undefined) {
     events.push({
       turn: board.turn, playerId, type: "defeat",
@@ -1679,9 +1785,13 @@ function endingFor(
     // Only a free faction wins: a vassal's realm is a strict subset of its
     // root's, so victory belongs to roots.
     !overlords.has(humanFaction) &&
-    fullRealmOf(humanFaction, overlords, incorporated).size >= winSize
+    fullRealmOf(humanFaction, overlords, incorporated).size >=
+      winSizeFor(board, humanFaction)
   ) {
-    events.push({ turn: board.turn, playerId, type: "victory" });
+    events.push({
+      turn: board.turn, playerId, type: "victory",
+      ...(board.playingOn ? { playOn: true } : {}),
+    });
     return "victory";
   }
   const unifier = board.factionIds.find(
@@ -1689,7 +1799,7 @@ function endingFor(
       f !== humanFaction &&
       !(f in incorporated) &&
       !overlords.has(f) &&
-      fullRealmOf(f, overlords, incorporated).size >= winSize,
+      fullRealmOf(f, overlords, incorporated).size >= winSizeFor(board, f),
   );
   if (unifier !== undefined) {
     events.push({

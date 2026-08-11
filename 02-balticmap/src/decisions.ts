@@ -8,7 +8,7 @@
  */
 import { aiTakeTurn } from "./ai";
 import type { Rng } from "./cards";
-import { advance, surrender, type GameState } from "./game";
+import { advance, keepPlaying, surrender, type GameState } from "./game";
 import type { HarvestChoice } from "./harvest";
 import {
   applyNetAction, validateAction, type NetAction,
@@ -73,7 +73,11 @@ export type Decision =
   | { kind: "discard"; cardIndex: number; cardId: string }
   | { kind: "end-turn" }
   | { kind: "transfer"; amount: number }
-  | { kind: "surrender" };
+  | { kind: "surrender" }
+  /** Its own kind and not a variant of anything: it is the one decision taken
+   *  after an ending rather than in play, and the only one that puts a phase
+   *  BACK. */
+  | { kind: "keep-playing" };
 
 export type DecisionKind = Decision["kind"];
 
@@ -130,6 +134,21 @@ export const DECISION_ROUTES: {
       "host's seat: a second person conceding would be conceding somebody " +
       "else's game. Their way out is closing the tab.",
     apply: (state) => surrender(state),
+  },
+  "keep-playing": {
+    // `action` and not `repaint`, and this is load-bearing rather than tidy.
+    // The ending may have been read at a turn START - a claim answering, an
+    // arrival, a restless raid at the round wrap - so the seat on turn can be
+    // an AI's with its turn still open. `advance` no-ops on an open turn, so
+    // settling as an action falls through to the AI chain and that seat
+    // plays; a repaint would hand the board back with nobody to move it.
+    settle: "action",
+    hostOnly:
+      "The victory being withdrawn is the host's, and `phase` speaks for the " +
+      "host's seat. Unlike conceding this takes nothing from the second " +
+      "person - it hands back a run they were still standing in - but it is " +
+      "not theirs to decide.",
+    apply: (state) => keepPlaying(state),
   },
 };
 

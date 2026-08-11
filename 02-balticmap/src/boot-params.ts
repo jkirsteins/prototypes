@@ -52,6 +52,11 @@ export interface BootParams {
    *  whatever a Raid out of that land would actually deal, so a booted arrow
    *  promises the same number a played one would. */
   marches: { from: string; to: string }[];
+  /** How many lands the human's realm holds, or null to leave the deal
+   *  alone. The one boot param that names no ids: the states it exists to
+   *  reach are "half the map" and "all of it", and a twenty-five-id URL is
+   *  not a check anybody writes. */
+  realm: number | null;
   /** The human faction's turnip counter, clamped under the threshold. */
   turnips: number | null;
   /** The human faction's treasury, own faction only - rivals' treasuries are
@@ -184,7 +189,7 @@ function parseRules(raw: string): RuleSelections {
 
 const BOOT_KEYS = [
   "seed", "build", "screen", "faction", "hand", "turns", "defense", "disease",
-  "leadership", "armies", "settlements", "march", "turnips", "wealth",
+  "leadership", "armies", "settlements", "march", "realm", "turnips", "wealth",
   "popups", "rules", "region",
 ];
 
@@ -204,6 +209,7 @@ export function parseBootParams(search: string): BootParams | null {
   const settlements = q.get("settlements");
   const march = q.get("march");
   const turns = intOr(q.get("turns"), 0) ?? 0;
+  const realm = intOr(q.get("realm"), null);
   const turnips = intOr(q.get("turnips"), null);
   const wealth = intOr(q.get("wealth"), null);
   const build = q.get("build");
@@ -223,6 +229,10 @@ export function parseBootParams(search: string): BootParams | null {
     armies: armies === null ? {} : parseArmies(armies),
     settlements: settlements === null ? {} : parseSettlements(settlements),
     marches: march === null ? [] : parseMarches(march),
+    // Floored at 1 - the land the player already stands on - and ceilinged
+    // against the roster where it is applied, since the roster is the region's
+    // and this file does not have one yet.
+    realm: realm === null ? null : Math.max(1, Math.min(MAX_BOOT_NUMBER, realm)),
     // Clamped UNDER the threshold: a counter at or past it is a state the
     // game never holds - the crossing play resets it and injects.
     turnips:
@@ -347,6 +357,42 @@ export function applyBootParams(
       ...g,
       settlements: { ...g.settlements, [polygon]: Math.min(value, cap) },
     };
+  }
+  // The realm, before the marches for the same reason the armies are: an
+  // arrow declared below may set out from a land this just took.
+  //
+  // ANNEXED and not sworn. Vassals would read the same on the scoreboard and
+  // then come apart while you watched - a booted vassal can win its
+  // independence at its own turn start, and the count the param exists to
+  // reach would be gone by the second round. Incorporation is permanent, and
+  // it also takes those seats out of the turn order (`takesNoTurn`), so
+  // `realm=25` is a check that runs rather than twenty-four AI turns a round.
+  //
+  // Each land is taken OUT of wherever it answered before. `seedRealms` deals
+  // pre-existing realms from region data, so a land left under its old lord as
+  // well would be counted under two roots by `fullRealmOf` - and a rival
+  // crossing the bar would end the booted run with `unified` before the state
+  // under test was ever on screen.
+  if (params.realm !== null && me !== undefined) {
+    const want = Math.min(params.realm, g.factionIds.length);
+    // In map order, skipping the human's own land: it is already the realm's
+    // first member, which is why the count starts at 1 rather than 0.
+    const take = g.factionIds.filter((f) => f !== me).slice(0, want - 1);
+    const overlords = new Map(g.overlords);
+    let incorporated = { ...g.incorporated };
+    for (const land of take) {
+      overlords.delete(land);
+      incorporated = { ...incorporated, [land]: me };
+    }
+    // And nothing may answer to a land the human just swallowed, or that
+    // land's own former vassals would still be counted under it.
+    for (const [vassal, lord] of [...overlords]) {
+      if (take.includes(lord)) overlords.delete(vassal);
+    }
+    for (const [land, owner] of Object.entries(incorporated)) {
+      if (take.includes(owner)) incorporated[land] = me;
+    }
+    g = { ...g, overlords, incorporated };
   }
   // A booted march is declared through the same rules a played one is: the
   // source must be in the actor's realm with an army free and the target must

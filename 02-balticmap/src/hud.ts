@@ -1,6 +1,6 @@
 import { CARDS, guardAgainst, KEYWORDS, repeatGroupOf } from "./cards";
 import {
-  metNothing, turnOpen, victoryRealmSize, viewOf,
+  metNothing, turnOpen, viewOf, winSizeFor,
   type GameEvent, type GameState,
 } from "./game";
 import { animations, flyCard, runAnimation, type Flight } from "./animate";
@@ -27,6 +27,7 @@ import {
 } from "./target-explanations";
 import { fillTooltipLines, type TooltipLine } from "./panel";
 import { memoryStorage, type MetaStorage } from "./meta";
+import { formatElapsed } from "./run-clock";
 import { standingChangeText, standingsFor } from "./view";
 import { hasRuler, rulerNameOf } from "./rulers";
 import {
@@ -41,6 +42,15 @@ export interface HudCallbacks {
   onPlayCard(index: number): void;
   /** Concede the run. Absent in contexts with no seat to concede (tests). */
   onSurrender?(): void;
+  /** Decline a won ending and hold out for the whole map. Absent where nobody
+   *  may take it - a guest's screen, and tests - and the button then never
+   *  renders, the same gating `onSurrender` uses. */
+  onKeepPlaying?(): void;
+  /** How long this run has been played, for the line under the result. A
+   *  callback and not a field on the state: wall-clock has no business in the
+   *  reducer or on the wire, and src/run-clock.ts says why at length. Absent
+   *  where nothing is timing (tests), and the line then does not render. */
+  elapsedMs?(): number;
   /** Optional gate for cards that need a valid target; default: playable. */
   canPlayCard?(cardId: string): boolean;
   targetExplanations?(cardId: string): TargetExplanation[];
@@ -532,7 +542,17 @@ export function eventSegments(
     case "surrendered":
       return clause(actor, "concede", [t(" the Baltic")], "past");
     case "victory":
-      return clause(actor, "rule", [t(" the Baltic")]);
+      // `e.playOn` and never `state.playingOn`: the flag on the state
+      // describes the run as it stands, so reading it here would go back and
+      // relabel the FIRST victory - honestly won at half the map - as a
+      // whole-map conquest, on the strength of a decision taken after it.
+      return clause(
+        actor, "rule", [t(e.playOn === true ? " every Baltic land" : " the Baltic")],
+      );
+    case "played-on":
+      // No new verb: the player played ON, which is the existing lemma doing
+      // the work the adverb needs.
+      return clause(actor, "play", [t(" on for the whole map")]);
     case "defeat":
       return [t("Your realm has been incorporated by "), faction(e.overlordFactionId ?? "")];
     case "unified":
@@ -833,10 +853,24 @@ export function createHud(
   pmTitle.className = "menu-title pm-title";
   const pmCause = document.createElement("p");
   pmCause.className = "pm-cause";
+  /** How long the run took, its own element rather than a clause on the cause
+   *  line: the cause says how the run ended and this says how long it ran, and
+   *  a test asserting one has no business reading the other. */
+  const pmElapsed = document.createElement("p");
+  pmElapsed.className = "pm-elapsed";
   const pmDeltas = document.createElement("p");
   pmDeltas.className = "pm-deltas";
   const pmBuildup = document.createElement("div");
   pmBuildup.className = "pm-buildup";
+  /** Declines the ending and holds out for the whole map. No two-click
+   *  confirm, unlike Surrender: that one is armed twice because it is
+   *  terminal, and this is the opposite - it is how a player refuses to be
+   *  finished, and the run it resumes can still be won or lost the ordinary
+   *  ways. */
+  const pmKeepPlaying = document.createElement("button");
+  pmKeepPlaying.className = "pm-keep-playing";
+  pmKeepPlaying.textContent = "Keep playing";
+  pmKeepPlaying.addEventListener("click", () => cb.onKeepPlaying?.());
   const pmNewGame = document.createElement("button");
   pmNewGame.className = "menu-new-game";
   pmNewGame.textContent = "New game";
@@ -848,7 +882,10 @@ export function createHud(
   pmViewMap.className = "pm-view-map";
   pmViewMap.textContent = "View the map";
   pmViewMap.addEventListener("click", () => setPostmortemAside(true));
-  pmSummary.append(pmTitle, pmCause, pmDeltas, pmBuildup, pmViewMap, pmNewGame);
+  pmSummary.append(
+    pmTitle, pmCause, pmElapsed, pmDeltas, pmBuildup,
+    pmKeepPlaying, pmViewMap, pmNewGame,
+  );
   const pmLog = document.createElement("div");
   pmLog.className = "pm-log";
   postmortem.append(pmSummary, pmLog);
@@ -2297,7 +2334,9 @@ export function createHud(
       // one the player could see.
       realmSize: (f) => fullRealmOf(f, state.overlords, state.incorporated).size,
       incorporated: state.incorporated,
-      needed: victoryRealmSize(state.factionIds.length),
+      // Per faction, because a player holding out for the whole map is
+      // ranked here against rivals who still need only half.
+      needed: (f) => winSizeFor(state, f),
     });
     scoreboard.replaceChildren(
       ...rows.map((r) => {
@@ -2451,12 +2490,25 @@ export function createHud(
     // this screen first, and it says nothing about which way it went - the
     // verdict was left to be inferred from a sentence naming somebody else.
     pmTitle.textContent = won ? "You won" : "You lost";
+    // How long they have been at it, under the result on every ending. The
+    // clock is the caller's - see `HudCallbacks.elapsedMs`.
+    const elapsed = cb.elapsedMs?.();
+    pmElapsed.textContent =
+      elapsed === undefined ? "" : `Run time - ${formatElapsed(elapsed)}`;
     if (won) {
       const size = fullRealmOf(
         human.factionId, state.overlords, state.incorporated,
       ).size;
       setCause([
-        t(`You rule the Baltic - ${size} of ${state.factionIds.length} lands`),
+        t(state.playingOn
+          // The whole map, which is what a run played on was held out for.
+          // Off `playingOn` and not off the size: a first victory that
+          // happened to sweep the board is still a run the player never
+          // chose to extend, and saying otherwise would credit them with a
+          // decision they were never offered.
+          ? `The whole of the Baltic is yours - ${size} of ` +
+            `${state.factionIds.length} lands`
+          : `You rule the Baltic - ${size} of ${state.factionIds.length} lands`),
       ]);
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();
@@ -2481,9 +2533,9 @@ export function createHud(
       setCause([
         t(mine
           ? `You conceded with ${size} of the ` +
-            `${victoryRealmSize(state.factionIds.length)} lands needed`
+            `${winSizeFor(state, human.factionId)} lands needed`
           : `Your opponent conceded, ending the game. You held ${size} of ` +
-            `the ${victoryRealmSize(state.factionIds.length)} lands needed`),
+            `the ${winSizeFor(state, human.factionId)} lands needed`),
       ]);
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();
@@ -2577,6 +2629,15 @@ export function createHud(
         state.phase !== "playing" || cb.onSurrender === undefined,
       );
       if (state.phase !== "playing") disarmSurrender();
+      // The gate is the PHASE and not the title: the concede branch prints
+      // "You won" over a `defeat` phase, and that run has nothing to resume.
+      // `playingOn` is what makes the whole-map ending offer nothing - the
+      // bar moves once.
+      pmKeepPlaying.classList.toggle(
+        "hidden",
+        state.phase !== "victory" || state.playingOn ||
+          cb.onKeepPlaying === undefined,
+      );
       // Shown under EVERY rule set now: a turn never ends itself, so this is
       // the only way a round is handed over and it cannot be a control that
       // appears only for one turn structure.

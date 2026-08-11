@@ -18,7 +18,7 @@ import type { Rng } from "../src/cards";
 import { autoHarvestChoice, buildOffer } from "../src/harvest";
 import { seededRng } from "../src/rng";
 import {
-  dealNetGame, wirePair, type NetAction,
+  dealNetGame, guestPhaseView, wirePair, type NetAction,
 } from "../src/net-protocol";
 import { createHostSession } from "../src/net-host";
 import { createGuestSession } from "../src/net-guest";
@@ -248,6 +248,49 @@ describe("what only the host answers", () => {
     expect(t.guest.sent).toEqual([]);
   });
 
+  it("refuses a guest the host's own second thoughts about winning", () => {
+    const t = twoSeats(11);
+    until(t, t.guestSeat);
+    const r = t.guest.decide({ kind: "keep-playing" });
+    expect(r).toMatchObject({ outcome: "refused" });
+    if (r.outcome === "refused") {
+      expect(r.reason.length).toBeGreaterThan(40);
+      expect(r.reason).not.toMatch(/net\.role/);
+    }
+    expect(t.guest.sent).toEqual([]);
+  });
+
+  it("hands the guest back a run the host declined to end", () => {
+    // The host's victory is the guest's defeat, and the guest's screen reads
+    // that off the phase. Playing on has to put BOTH of them back in the run:
+    // pinning the guest at an ending would leave the chain waiting on a seat
+    // whose screen has no controls left.
+    const t = twoSeats(11);
+    const host = t.state().players[0].factionId;
+    t.setState({
+      ...t.state(),
+      phase: "victory",
+      incorporated: Object.fromEntries(
+        t.state().factionIds
+          .filter((f) => f !== host && f !== t.state().players[t.guestSeat].factionId)
+          .map((f) => [f, host]),
+      ),
+    });
+    expect(guestPhaseView(
+      t.replica(), t.state().players[t.guestSeat].factionId,
+    )).toBe("defeat");
+
+    const r = t.host.decide({ kind: "keep-playing" });
+    expect(r).toMatchObject({ outcome: "applied" });
+    expect(t.state().playingOn).toBe(true);
+    // The replica followed, field for field, and the guest's own view with it.
+    expect(t.replica().phase).toBe("playing");
+    expect(t.replica().playingOn).toBe(true);
+    expect(guestPhaseView(
+      t.replica(), t.state().players[t.guestSeat].factionId,
+    )).toBe("playing");
+  });
+
   it("agrees with decidedHere about which decisions those are", () => {
     // The table and the gate are the same fact. A decision routed to the wire
     // but hidden from a guest, or offered to a guest with nowhere to send it,
@@ -267,6 +310,7 @@ describe("what only the host answers", () => {
     const named: Record<DecisionKind, true> = {
       play: true, harvest: true, discard: true,
       "end-turn": true, transfer: true, surrender: true,
+      "keep-playing": true,
     };
     expect(Object.keys(DECISION_ROUTES).sort()).toEqual(
       Object.keys(named).sort(),

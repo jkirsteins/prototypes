@@ -60,6 +60,17 @@ what `factionIds`, `defense`, `armies` and `marches` are keyed by. This
 section used to show `defense=selija:100`, which silently parsed and then
 dropped: `applyBootParams` skips a clause naming no known faction, so a wrong
 id boots a perfectly ordinary game and says nothing.
+- `realm=N` - how many lands the human's realm holds, clamped into
+  `[1, the roster]`. The lands are ANNEXED, in map order, skipping your own:
+  vassals would read the same on the scoreboard and then come apart while you
+  watched, since a booted vassal wins its independence at its own turn start,
+  and an annexed land is also out of the turn order so `realm=25` is a check
+  that runs rather than twenty-four AI turns a round. Each land is taken out of
+  whatever realm it already answered to - a land counted under two roots lets a
+  RIVAL cross the bar and end the booted run before the state under test is on
+  screen. **The one boot param that names no ids**: the states it exists to
+  reach are "half the map" and "all of it", and a twenty-five-id URL is not a
+  check anybody writes.
 - `turnips=N` - the human's turnip counter, clamped under the threshold. The
   threshold is the land's own (`turnipThresholdFor`, the army divisor rounded
   the other way), so it is 1 on Pilsotas and 6 on Eastern Aukstaitija rather
@@ -270,6 +281,51 @@ deliberately promises NO hand size on either turn option, and a test holds it
 to that - it used to say "refills to 4", pinned against the old constant, and
 any number written there now would be a promise the game breaks by the third
 land.
+
+## A won run can be played on, and the bar moves once
+
+Winning at half the map is an offer, not a full stop. The postmortem's third
+button (`keep-playing` in `DECISION_ROUTES`) hands the run back with the
+player's own bar raised to the whole map; reaching that ends it for real, and
+the offer is not made twice.
+
+- **`winSizeFor` is the bar, and it is the only one.** `victoryRealmSize` is
+  where every faction STARTS, and nothing outside `winSizeFor` may call it - a
+  second caller is a second bar, and the two disagree the moment somebody
+  plays on. The win condition, the scoreboard and the concede line all read
+  `winSizeFor`, so the number the player is shown and the number the engine
+  applies cannot drift. It derives the human from the board rather than taking
+  one, because the caller that would get that wrong is the scoreboard: its
+  human is `localPlayerId`, which on a GUEST screen is the guest's seat and not
+  the seat the raised bar belongs to.
+- **`GameState.playingOn` is state, not a screen flag**, because a guest holds
+  a replica and its scoreboard has to quote the bar the host's engine is
+  applying. A boolean and not a seventh `GamePhase`: the phase genuinely is
+  "playing" again, and a second playing-phase would have to be answered by
+  every reader of `phase` in the app, all of them the same way. One-way -
+  nothing clears it, or a player could choose when to win.
+- **Playing on is a real risk.** Every rival's bar stays at half, so at exactly
+  half the map a rival can still unify and end the run in defeat, and being
+  incorporated still loses - the defeat arm of `endingFor` is deliberately not
+  conditioned on any of this. The log then holds the first `victory` above the
+  loss, which is the honest record of a run the player chose to extend. That
+  risk is the whole reason the offer is a decision rather than a formality.
+- **The second victory is the same ending, not a new one.** It reuses the
+  `victory` type with `GameEvent.playOn` set, so nothing that asks "did the
+  human win" has to learn two answers. The flag is read off the EVENT and never
+  off `GameState.playingOn`: the state describes the run as it now stands, so a
+  line reading it would go back and relabel the first victory - honestly won at
+  half the map - as a whole-map conquest.
+- **The run clock is deliberately not in the state.** `src/run-clock.ts` sums
+  the stretches the phase spent in play and `HudCallbacks.elapsedMs` carries the
+  total to the overlay. A `Date` field is a compile error in `src/net-codec.ts`;
+  an epoch number would cross the wire and show the guest the HOST's stopwatch;
+  and a wall-clock read inside the reducer is the nondeterminism
+  `tests/rng-isolation.test.ts` exists to keep out. It is keyed off the phase
+  and not off the New game click because that click is not the only door into a
+  run - a guest's starts at the host's snapshot and a `?turns=` boot on the boot
+  path - and summing stretches is also what makes a played-on run come out
+  right: both halves counted, the postmortem read in between left out.
 
 ## Nothing ends itself
 
