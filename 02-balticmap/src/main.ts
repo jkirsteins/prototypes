@@ -1720,7 +1720,7 @@ function flashMarchResolution(
   // A standoff has no loser, so it is neither your bad news nor your good.
   const standoff = e.amount === undefined;
   const struckUs = realm.has(to);
-  const strength = e.clash?.incoming ?? 1;
+  const strength = e.incoming ?? 1;
   const amount = e.amount ?? 0;
   // Redrawn on the border it crossed, alone in a layer of its own: a live
   // rebuild landing mid-fade would take it off the screen halfway through the
@@ -1734,13 +1734,13 @@ function flashMarchResolution(
     // The denominator is what a counter took off the top, so an uncontested
     // landing has none: there is nothing for the number to be a fraction OF.
     label: standoff
-      ? `0/${e.clash?.incoming ?? 0}`
-      : e.clash === undefined
+      ? `0/${e.incoming ?? 0}`
+      : e.counter === undefined
         ? `${struckUs ? "-" : "+"}${amount}`
-        : `${struckUs ? "-" : "+"}${amount}/${e.clash.incoming}`,
+        : `${struckUs ? "-" : "+"}${amount}/${e.incoming}`,
     // Where the two forces met, biased toward the side that gave ground. With
     // no counter there is no meeting point, so the label sits near the head.
-    labelAt: clashFraction(strength, e.clash?.counter ?? 0),
+    labelAt: clashFraction(strength, e.counter ?? 0),
   }], sceneCtx);
   const g = drawn.get("ghost");
   const poly = g?.querySelector("polygon") ?? null;

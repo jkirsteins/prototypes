@@ -110,12 +110,24 @@ export interface GameEvent {
    *  event that declares a march, so the arrow's tail survives a reload of the
    *  log alone. */
   sourceFactionId?: string;
-  /** march-resolved: what the two sides of the clash were worth, attacker
-   *  first. `amount` is only the leftover that landed; these are what it was
-   *  the leftover OF, which is the whole story of a counter-raid and cannot be
-   *  reconstructed once the marches are gone. Absent on an uncontested
-   *  landing, where the leftover is the whole strength. */
-  clash?: { incoming: number; counter: number };
+  /** march-resolved, march-lapsed: which marches this event took off the
+   *  board. Plural because a clash retires both sides and reports once, and
+   *  because several arrows down one axis can resolve into a single landing.
+   *  This is what lets a departed arrow be matched to the thing that explains
+   *  it; without it, an arrow vanishing and an event arriving are two facts
+   *  with nothing joining them. */
+  marchIds?: number[];
+  /** march-resolved: the strength aimed AT the loser, whichever end of the
+   *  axis that turned out to be. ALWAYS present on this type, including an
+   *  uncontested landing and an arrival that moved nothing - the arrow the
+   *  presentation draws is reconstructed from this event alone, and `amount`
+   *  cannot stand in for it: `amount` is floored at what the land had
+   *  standing, so a 3-strength blow on a 1-defense land reports 1. */
+  incoming?: number;
+  /** march-resolved: what the loser mustered against it. Present exactly when
+   *  the landing was contested, which makes it the contested discriminant -
+   *  the job `clash`'s presence used to do. */
+  counter?: number;
   formerOverlordFactionId?: string; // subjugated: prior lord of the target
   /** subjugated: which route took the land, the discriminant of
    *  `SubjugationCause`. The rest of the cause rides in fields that already
@@ -908,8 +920,8 @@ function nestsUnderItsCause(type: GameEventType): boolean {
 /** An arrow that arrived and found nothing: no defenders to break and no
  *  counter to meet, which is what an army walking into a flattened land is and
  *  what a demand coming due is. It is the only `march-resolved` with neither an
- *  `amount` nor a `clash` - a standoff always carries the `clash` it was - so
- *  the shape names itself and needs no field of its own.
+ *  `amount` nor a `counter` - a standoff always carries the `counter` it was -
+ *  so the shape names itself and needs no field of its own.
  *
  *  One shape, two readers, the `SINGLE_LAND_HEAL` rule: the log gives it its
  *  own line ("reaches", not "falls on") and the round modal leaves it out,
@@ -918,7 +930,7 @@ function nestsUnderItsCause(type: GameEventType): boolean {
  *  coming back a line at a time. */
 export function metNothing(e: GameEvent): boolean {
   return e.type === "march-resolved"
-    && e.amount === undefined && e.clash === undefined;
+    && e.amount === undefined && e.counter === undefined;
 }
 
 /** A cause whose reach is the single line after it, the other half of the shape
@@ -1066,17 +1078,26 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
    *  defenders, and a player owed that line either way.
    *
    *  `amount` is what the same blow moved, absent when the land was already
-   *  flat. Absent with no `clash` is `metNothing`, the shape the log renders as
-   *  "reaches" and the round modal leaves to the submission to report. */
+   *  flat. Absent with no `counter` is `metNothing`, the shape the log renders
+   *  as "reaches" and the round modal leaves to the submission to report.
+   *  `incoming` and `marchIds` ride along whenever a real march did the
+   *  arriving - the claim-driven call out of `landClaims` passes neither,
+   *  since a demand is not an army and clears no march. */
   const arrival = (
     playerId: number, cardId: string, land: string, from: string,
-    moved?: { amount: number; clash?: { incoming: number; counter: number } },
+    moved?: {
+      incoming: number; marchIds: number[]; amount?: number; counter?: number;
+    },
   ): void => {
     events.push({
       turn: state.turn, playerId, type: "march-resolved",
       cardId, targetFactionId: land, sourceFactionId: from,
       ...(moved !== undefined
-        ? { amount: moved.amount, ...(moved.clash ? { clash: moved.clash } : {}) }
+        ? {
+            incoming: moved.incoming, marchIds: moved.marchIds,
+            ...(moved.amount !== undefined ? { amount: moved.amount } : {}),
+            ...(moved.counter !== undefined ? { counter: moved.counter } : {}),
+          }
         : {}),
     });
   };
@@ -1199,6 +1220,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
           turn: state.turn, playerId, type: "march-lapsed",
           cardId: march.cardId,
           targetFactionId: march.to, sourceFactionId: march.from,
+          marchIds: [march.id],
         });
       }
     }
@@ -1225,9 +1247,11 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     defense = current;
     arrival(
       playerId, capture.cardId, capture.land, capture.from,
-      capture.amount !== undefined
-        ? { amount: capture.amount, clash: capture.clash }
-        : undefined,
+      {
+        incoming: capture.incoming, marchIds: capture.marchIds,
+        ...(capture.amount !== undefined ? { amount: capture.amount } : {}),
+        ...(capture.counter !== undefined ? { counter: capture.counter } : {}),
+      },
     );
     // Only a faction with a LEADER takes land. A restless raid out of a land
     // nobody leads is a raid, not a conquest - without this the grey middle
@@ -1553,6 +1577,7 @@ function resolveMarches(
       turn: state.turn, playerId: p.id, type: "march-lapsed",
       cardId: entry.march.cardId,
       targetFactionId: entry.march.to, sourceFactionId: entry.march.from,
+      marchIds: [entry.march.id],
     });
   }
   if (alive.length === 0) return { marches, defense };
@@ -1582,13 +1607,24 @@ function resolveMarches(
             turn: state.turn, playerId: p.id, type: "march-resolved",
             cardId: eng.fromA!.cardId,
             targetFactionId: axis.a, sourceFactionId: axis.b,
-            clash: { incoming: strengthB, counter: strengthA },
+            incoming: strengthB, counter: strengthA,
+            marchIds: [eng.fromA!.id, eng.fromB!.id],
           });
         }
         continue;
       }
       const { loser } = eng;
       const winner = loser === axis.a ? axis.b : axis.a;
+      // Whichever ends actually threw an army: filtered rather than the raw
+      // pair, because an uncontested landing has only one.
+      const marchIds = [eng.fromA?.id, eng.fromB?.id]
+        .filter((id): id is number => id !== undefined);
+      // `incoming` is always the strength aimed AT the loser and `counter`
+      // what the loser mustered against it, whichever end of the axis that
+      // turned out to be. The label the player reads is delta out of incoming.
+      const clash = loser === axis.a
+        ? { incoming: strengthB, counter: strengthA }
+        : { incoming: strengthA, counter: strengthB };
       // This actor took this land moments ago, with an earlier arrow of this
       // same resolution. An army does not sack what its own side has just
       // moved defenders into, so this arrow is spent: it gets its arrival
@@ -1602,7 +1638,8 @@ function resolveMarches(
       if (takenHere.get(loser) === eng.spear.actor) {
         defense = onArrival({
           land: loser, by: eng.spear.actor, from: eng.spear.from,
-          cardId: eng.spear.cardId,
+          cardId: eng.spear.cardId, marchIds,
+          incoming: clash.incoming, ...(contested ? { counter: clash.counter } : {}),
         }, defense).defense;
         continue;
       }
@@ -1612,12 +1649,6 @@ function resolveMarches(
       const dealt = damageAfterTerrain(view, loser, eng.delta);
       const before = defenseOf({ defense, defenseMax: state.defenseMax }, loser);
       const moved = Math.min(before, dealt);
-      // `incoming` is always the strength aimed AT the loser and `counter`
-      // what the loser mustered against it, whichever end of the axis that
-      // turned out to be. The label the player reads is delta out of incoming.
-      const clash = loser === axis.a
-        ? { incoming: strengthB, counter: strengthA }
-        : { incoming: strengthA, counter: strengthB };
       // The damage lands whatever else the blow does, and it lands HERE rather
       // than at the capture site, because the next pairing on this axis reads
       // the defense as this one left it.
@@ -1638,24 +1669,37 @@ function resolveMarches(
       if (capturesOnArrival(dealt, before)) {
         const landed = onArrival({
           land: loser, by: eng.spear.actor, from: eng.spear.from,
-          cardId: eng.spear.cardId,
+          cardId: eng.spear.cardId, marchIds,
+          incoming: clash.incoming, ...(contested ? { counter: clash.counter } : {}),
           // What the same blow moved on its way in, so the arrival can carry
           // it. Nothing moved on a land that was already flat, and that shape -
-          // no `amount`, and therefore no `clash` either - is `metNothing`.
-          ...(moved > 0 ? { amount: moved, ...(contested ? { clash } : {}) } : {}),
+          // no `amount`, and therefore no `counter` either - is `metNothing`.
+          ...(moved > 0 ? { amount: moved } : {}),
         }, defense);
         defense = landed.defense;
         if (landed.taken) takenHere.set(loser, eng.spear.actor);
         continue;
       }
-      if (moved <= 0) continue;
+      // Terrain absorbed the blow whole - `dealt` reached 0 or the land was
+      // already flat with nothing arriving to take it. The march still
+      // retires and the force it threw is still named, or the arrow vanishes
+      // off the board with nothing in the log to say where it went.
+      if (moved <= 0) {
+        events.push({
+          turn: state.turn, playerId: p.id, type: "march-resolved",
+          cardId: eng.spear.cardId,
+          targetFactionId: loser, sourceFactionId: winner, marchIds,
+          incoming: clash.incoming, ...(contested ? { counter: clash.counter } : {}),
+        });
+        continue;
+      }
       events.push({
         turn: state.turn, playerId: p.id, type: "march-resolved",
         // The card of whichever side actually landed - the counter's, when a
         // counter won, since that is the play the damage came out of.
         cardId: eng.spear.cardId,
-        targetFactionId: loser, sourceFactionId: winner, amount: moved,
-        ...(contested ? { clash } : {}),
+        targetFactionId: loser, sourceFactionId: winner, amount: moved, marchIds,
+        incoming: clash.incoming, ...(contested ? { counter: clash.counter } : {}),
       });
     }
   }
@@ -1673,15 +1717,22 @@ interface Capture {
    *  push already reads it off the same march; a capture that dropped it left
    *  the land changing hands with no way back to the raid that did it. */
   cardId: string;
+  /** Which marches this arrival retires - both ends of the axis when
+   *  contested, filtered to whichever side actually threw an army when not. */
+  marchIds: number[];
   /** What the blow moved on its way in, absent when the land was already flat
    *  and there was nothing to move. The arrival line carries it, so an army
    *  that broke the last defenders and walked in over them is ONE line with a
    *  `(Defense -1 -> 0)` on it rather than a damage line and an arrival. */
   amount?: number;
-  /** The two sides' strengths, when the blow got through a counter. Rides only
-   *  alongside `amount`: the log reads a clash with no amount as a standoff,
-   *  which is the one thing a conquest is not. */
-  clash?: { incoming: number; counter: number };
+  /** The strength aimed at the loser. Present whether or not anything moved -
+   *  mirrors `GameEvent.incoming` and rides along even into a `metNothing`
+   *  arrival, because that is the only place the force thrown is recorded. */
+  incoming: number;
+  /** What the loser mustered against it, when the blow got through a counter.
+   *  Rides only alongside `amount` on a real conquest: a counter with no
+   *  amount is a standoff, which is the one thing a conquest is not. */
+  counter?: number;
 }
 
 /** The player concedes. Terminal, and deliberately not reversible. Its own

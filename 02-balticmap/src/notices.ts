@@ -397,7 +397,7 @@ function marchResolvedLines(
     // end is the loser, so it is neither good news nor bad, and the line
     // names the two as equals - but it is still a line, because a player
     // whose raid was answered exactly must not think the card did nothing.
-    if (e.clash !== undefined && e.amount === undefined) {
+    if (e.counter !== undefined && e.amount === undefined) {
       return {
         text: [
           ...cardSeg, t(" out of "), faction(e.sourceFactionId ?? ""),
@@ -409,12 +409,12 @@ function marchResolvedLines(
       };
     }
     // "A counter out of X threw it back onto Y" only when the human's own
-    // counter is what won: `clash` is present exactly when both sides had
-    // armies on the axis, and it carries the two totals the arrow promised.
+    // counter is what won: `counter` is present exactly when both sides had
+    // armies on the axis, and it carries the loser's total beside `incoming`.
     const text: Segment[] = struckUs
       ? [
           ...cardSeg, t(" out of "), faction(e.sourceFactionId ?? ""),
-          ...(e.clash !== undefined
+          ...(e.counter !== undefined
             ? [t(" broke through the counter from ")]
             : [t(" fell on ")]),
           // "your home defenses" for the home polygon, the land's own name
@@ -427,7 +427,7 @@ function marchResolvedLines(
         ]
       : [
           ...cardSeg, t(" out of "), faction(e.sourceFactionId ?? ""),
-          ...(e.clash !== undefined
+          ...(e.counter !== undefined
             ? [t(" met their attack and threw it back onto ")]
             : [t(" fell on ")]),
           faction(e.targetFactionId ?? ""),

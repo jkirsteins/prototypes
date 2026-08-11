@@ -60,7 +60,7 @@ describe("buildReplaySteps", () => {
   const march = (over?: Partial<GameEvent>): GameEvent => ({
     turn: 4, playerId: 1, type: "march-resolved", cardId: "raid",
     targetFactionId: "beta", sourceFactionId: "alpha", amount: 2,
-    clash: { incoming: 2, counter: 0 },
+    incoming: 2, counter: 0,
     ...over,
   });
 
@@ -78,11 +78,11 @@ describe("buildReplaySteps", () => {
   });
 
   it("leaves an arrival that met nothing to the subjugation it caused", () => {
-    // `metNothing`: no amount and no clash. The subjugated step names the same
-    // card and says what became of the land, so replaying both would visit one
-    // polygon twice for one arrival - the modal draws the same line.
+    // `metNothing`: no amount and no counter. The subjugated step names the
+    // same card and says what became of the land, so replaying both would
+    // visit one polygon twice for one arrival - the modal draws the same line.
     const fresh: GameEvent[] = [
-      march({ amount: undefined, clash: undefined }),
+      march({ amount: undefined, counter: undefined }),
       {
         turn: 4, playerId: 1, type: "subjugated", targetFactionId: "beta",
         overlordFactionId: "alpha", via: "conquest", cardId: "raid",
@@ -94,10 +94,10 @@ describe("buildReplaySteps", () => {
   });
 
   it("still calls a standoff answered in the field", () => {
-    // A standoff keeps its clash - that is what separates it from an arrival
-    // that met nothing, and the two must not read alike.
+    // A standoff keeps its counter - that is what separates it from an
+    // arrival that met nothing, and the two must not read alike.
     const steps = buildReplaySteps(
-      [march({ amount: undefined, clash: { incoming: 2, counter: 2 } })],
+      [march({ amount: undefined, incoming: 2, counter: 2 })],
       view(),
     );
     expect(steps).toHaveLength(1);

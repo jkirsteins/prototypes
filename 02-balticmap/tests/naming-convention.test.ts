@@ -144,12 +144,12 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     {
       turn: 2, playerId: 2, type: "march-resolved", cardId: "great-raid",
       targetFactionId: H, sourceFactionId: RIVAL, amount: 2,
-      clash: { incoming: 6, counter: 4 },
+      incoming: 6, counter: 4,
     },
     {
       turn: 2, playerId: 2, type: "march-resolved", cardId: "raid",
       targetFactionId: RIVAL, sourceFactionId: H, amount: 2,
-      clash: { incoming: 4, counter: 6 },
+      incoming: 4, counter: 6,
     },
     // No cardId: the "An attack" fallback line has to sweep too.
     {

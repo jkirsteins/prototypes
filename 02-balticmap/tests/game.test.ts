@@ -635,7 +635,7 @@ describe("the counter-raid clash", () => {
     expect(after.defense.beta).toBeUndefined();
     expect(after.log.find((e) => e.type === "march-resolved")).toMatchObject({
       type: "march-resolved", targetFactionId: "alpha", sourceFactionId: "beta",
-      amount: 6, clash: { incoming: 10, counter: 4 },
+      amount: 6, incoming: 10, counter: 4,
     });
   });
 
@@ -645,7 +645,7 @@ describe("the counter-raid clash", () => {
     expect(after.defense.alpha).toBeUndefined();
     expect(after.log.find((e) => e.type === "march-resolved")).toMatchObject({
       type: "march-resolved", targetFactionId: "beta", sourceFactionId: "alpha",
-      amount: 6, clash: { incoming: 10, counter: 4 },
+      amount: 6, incoming: 10, counter: 4,
     });
   });
 
@@ -657,7 +657,7 @@ describe("the counter-raid clash", () => {
     // are spent, and a player whose raid was answered exactly must not be
     // left thinking their card did nothing.
     const line = after.log.find((e) => e.type === "march-resolved")!;
-    expect(line).toMatchObject({ clash: { incoming: 5, counter: 5 } });
+    expect(line).toMatchObject({ incoming: 5, counter: 5 });
     expect(line.amount).toBeUndefined();
   });
 
@@ -692,14 +692,14 @@ describe("the counter-raid clash", () => {
     expect(landed).toMatchObject([
       {
         targetFactionId: "beta", sourceFactionId: "alpha",
-        cardId: "strong-raid", amount: 1, clash: { incoming: 2, counter: 1 },
+        cardId: "strong-raid", amount: 1, incoming: 2, counter: 1,
       },
       {
         targetFactionId: "alpha", sourceFactionId: "beta",
         cardId: "raid", amount: 1,
       },
     ]);
-    expect(landed[1].clash).toBeUndefined();
+    expect(landed[1].counter).toBeUndefined();
   });
 
   it("lets two armies down one axis break a land and then walk into it", () => {
@@ -732,7 +732,7 @@ describe("the counter-raid clash", () => {
     const after = landMarches({ ...declared, defense: { alpha: 0 } });
     expect(after.marches).toEqual({});
     const landing = after.log.find((e) => e.type === "march-resolved");
-    expect(landing?.clash).toBeUndefined();
+    expect(landing?.counter).toBeUndefined();
     expect(landing?.amount).toBeUndefined();
   });
 
@@ -741,6 +741,26 @@ describe("the counter-raid clash", () => {
     // the earlier of the two - otherwise the attack would land first and the
     // counter would survive to strike an already-battered land.
     expect(landMarches(facingRaids(4, 10)).marches).toEqual({});
+  });
+
+  it("a landing states the force aimed at it, not just what got through", () => {
+    // A 3-strength raid onto a land holding 1. `amount` is floored at the
+    // defense that was there; `incoming` is what was thrown.
+    const g = playingState(LINE_ADJ);
+    const after = landMarches({
+      ...g,
+      defense: { alpha: 1 },
+      marches: {
+        "1": {
+          id: 1, actor: "beta", from: "beta", to: "alpha", cardId: "raid",
+          damage: 3, holdsArmy: true, expiry: g.turn + 1,
+        },
+      },
+    });
+    const e = after.log.find((x) => x.type === "march-resolved")!;
+    expect(e.amount).toBe(1);
+    expect(e.incoming).toBe(3);
+    expect(e.counter).toBeUndefined();
   });
 });
 
@@ -2406,7 +2426,7 @@ describe("an army that overwhelms a land", () => {
       (e) => e.type === "march-resolved" && e.targetFactionId === "alpha",
     );
     expect(landing?.amount).toBeUndefined();
-    expect(landing?.clash).toBeUndefined();
+    expect(landing?.counter).toBeUndefined();
   });
 
   it("spends a second arrow of your own WITHOUT sacking the land it took", () => {
@@ -2579,7 +2599,7 @@ describe("an army that overwhelms a land", () => {
     // land's side: 3 came at it, 1 answered.
     expect(after.log).toContainEqual(expect.objectContaining({
       type: "march-resolved", targetFactionId: "beta", sourceFactionId: foe,
-      amount: 1, clash: { incoming: 3, counter: 1 },
+      amount: 1, incoming: 3, counter: 1,
     }));
   });
 
@@ -3345,6 +3365,46 @@ describe("every allegiance change names the route that took the land", () => {
         e.via === "passive" ? e.passiveId : e.cardId,
         `turn ${e.turn}, ${e.targetFactionId}`,
       ).toBeDefined();
+    }
+  });
+});
+
+describe("every march that leaves the store is named by an event", () => {
+  it("holds across a dozen rounds of a seeded game", () => {
+    // The correlation the presentation layer needs. A clash retires two
+    // arrows and emits one event, so this cannot be checked one for one - it
+    // is a set difference against the union of what the batch names.
+    const rng = seededRng(2);
+    let g: GameState = pickFaction(
+      chooseBuild(
+        startGame(newGame(
+          SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS,
+          SIM_DEFENSE_MAX,
+        )),
+        "warpath", seededRng(2),
+      ),
+      BASELINE_FACTION,
+      rng,
+    );
+    // Walk turns until several seats have marches in flight at once, the
+    // same seeded-game loop this file already drives above.
+    while (g.phase === "playing" && Object.keys(g.marches).length < 4) {
+      const next = g.current === 0 ? naiveHumanTurn(g, rng) : aiTakeTurn(g, rng);
+      if (!next.playedThisTurn) throw new Error(`stuck turn ${g.turn}`);
+      g = next.phase === "playing" ? advance(next, rng) : next;
+    }
+    for (let round = 0; round < 12 && g.phase === "playing"; round++) {
+      const before = new Set(Object.values(g.marches).map((m) => m.id));
+      const logAt = g.log.length;
+      const next = g.current === 0 ? naiveHumanTurn(g, rng) : aiTakeTurn(g, rng);
+      if (!next.playedThisTurn) throw new Error(`stuck turn ${g.turn}`);
+      g = next.phase === "playing" ? advance(next, rng) : next;
+      const after = new Set(Object.values(g.marches).map((m) => m.id));
+      const departed = [...before].filter((id) => !after.has(id));
+      const named = new Set(
+        g.log.slice(logAt).flatMap((e) => e.marchIds ?? []),
+      );
+      expect(departed.filter((id) => !named.has(id))).toEqual([]);
     }
   });
 });

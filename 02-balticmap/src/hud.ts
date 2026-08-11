@@ -514,7 +514,7 @@ export function eventSegments(
           t(" reaches "), faction(e.targetFactionId ?? ""),
         ];
       }
-      if (e.clash === undefined) {
+      if (e.counter === undefined) {
         return [
           card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
           t(" falls on "), faction(e.targetFactionId ?? ""),

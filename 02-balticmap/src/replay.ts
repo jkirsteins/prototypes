@@ -242,7 +242,7 @@ export const REPLAY_RULES: Record<GameEventType, ReplayRule> = {
     polygon: (e) => e.targetFactionId,
     label: (e) => {
       const name = e.cardId === undefined ? [t("The army")] : [card(e.cardId)];
-      // A standoff is the one landing with a `clash` and no `amount`: both
+      // A standoff is the one landing with a `counter` and no `amount`: both
       // sides spent and nothing got through. Asked as "no amount" alone this
       // also caught the arrival that met nothing, and called an army walking
       // into an empty land a raid that had been answered.
