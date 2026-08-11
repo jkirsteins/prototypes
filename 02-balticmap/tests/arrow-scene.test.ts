@@ -44,13 +44,23 @@ describe("laneWidths", () => {
     expect(widths[0]).toBeGreaterThan(widths[1]);
   });
 
-  it("shares evenly when even the floor will not fit", () => {
+  it("shares evenly when the block is narrow", () => {
     const widths = laneWidths([1, 1, 1, 1, 1, 1], 30);
     expect(widths.every((w) => Math.abs(w - 5) < 1e-6)).toBe(true);
   });
 
   it("never returns a negative width", () => {
     for (const w of laneWidths([50, 1, 1, 1], 30)) expect(w).toBeGreaterThan(0);
+  });
+
+  it("returns an empty array for no lanes", () => {
+    expect(laneWidths([], 90)).toEqual([]);
+  });
+
+  it("splits evenly when all strengths are zero", () => {
+    const [a, b] = laneWidths([0, 0], 90);
+    expect(a).toBeCloseTo(45, 6);
+    expect(b).toBeCloseTo(45, 6);
   });
 });
 

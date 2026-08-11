@@ -34,10 +34,9 @@ export function blockWidthFor(span: number): number {
 /** Each arrow's width, as its share of the block by strength.
  *
  *  A lane below the floor is raised to it and the surplus taken proportionally
- *  from the lanes above the floor, so the block stays inside `total` and the
- *  share stops being exact only once something would be unreadable. Where even
- *  an even split is under the floor there is nothing to take from, and the
- *  block is shared evenly instead. */
+ *  from the lanes above the floor. The floor never exceeds the even share
+ *  (floor = Math.min(laneMin, even)), so there is always a pool above the floor
+ *  to draw the surplus from and the block stays inside `total`. */
 export function laneWidths(strengths: readonly number[], total: number): number[] {
   if (strengths.length === 0) return [];
   const even = total / strengths.length;
@@ -52,7 +51,6 @@ export function laneWidths(strengths: readonly number[], total: number): number[
     if (!short.some(Boolean)) break;
     const owed = widths.reduce((s, w, i) => s + (short[i] ? floor - w : 0), 0);
     const pool = widths.reduce((s, w, i) => s + (short[i] ? 0 : w - floor), 0);
-    if (pool <= 0) return strengths.map(() => even);
     widths = widths.map((w, i) =>
       short[i] ? floor : w - ((w - floor) / pool) * owed,
     );
