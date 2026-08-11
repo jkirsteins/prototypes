@@ -237,12 +237,20 @@ export interface CombatRules {
   /** The rule by which an arriving army takes a land, as `capturesOnArrival`
    *  spells it. "excess": strictly more than what stands. */
   capture: string;
+  /** What an arrival does when its conquest is refused because its actor
+   *  already took this land earlier in the same turn. "leftover": the blow
+   *  spends what it has left on the land as it now stands, which is the
+   *  defenders the first conquest moved in. A name for the same reason
+   *  `capture` is one - the rule is a behaviour, not a number, and two builds
+   *  that disagree about it disagree about damage the player can see. */
+  spentArrival: string;
 }
 
 export const COMBAT_RULES: CombatRules = {
   subjugationGate: SUBJUGATION_GATE,
   independenceGate: INDEPENDENCE_GATE,
   capture: "excess",
+  spentArrival: "leftover",
 };
 
 export function independenceGateOpen(

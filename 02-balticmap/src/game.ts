@@ -1198,26 +1198,52 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
    *  out twice and a third copy is how they start to differ. */
   const applyCaptures = (captures: Capture[], playerId: number): void => {
     for (const capture of captures) {
+      // The conquest is refused when the actor already holds this land,
+      // because an earlier arrival this same turn took it. The BLOW is not
+      // refused with it: an army that marched still swings, and what it has
+      // left after breaking whatever stood here lands on whatever stands here
+      // now - the defenders the conquest just moved in.
+      //
+      // Spent BEFORE the arrival line is pushed, so the one line carries the
+      // whole of what this blow did to this land. A second line would be two
+      // lines for one arrival, which is the shape `metNothing`'s own comment
+      // warns about.
+      const alreadyHeld =
+        fullRealmOf(capture.by, overlords, state.incorporated).has(capture.land);
+      const extra = alreadyHeld ? spendLeftoverBlow(capture) : 0;
+      const amount = (capture.amount ?? 0) + extra;
       arrival(
         playerId, capture.cardId, capture.land, capture.from,
-        capture.amount !== undefined
-          ? { amount: capture.amount, clash: capture.clash }
-          : undefined,
+        amount > 0 ? { amount, clash: capture.clash } : undefined,
       );
       // Only a faction with a LEADER takes land. A restless raid out of a land
       // nobody leads is a raid, not a conquest - without this the grey middle
       // quietly ate itself, and lands with no chief to answer for them ended up
       // holding vassals.
       if (!hasRuler(state.rulers, capture.by)) continue;
-      if (
-        fullRealmOf(capture.by, overlords, state.incorporated).has(capture.land)
-      ) {
-        continue;
-      }
+      if (alreadyHeld) continue;
       takeLand(capture.land, capture.by, capture.from, {
         via: "conquest", cardId: capture.cardId,
       });
     }
+  };
+
+  /** Lands what an arrival still has in hand on the land as it NOW stands, and
+   *  answers how much that moved. Measured against the board rather than
+   *  against the standing the blow was aimed at, so a second arrow of your own
+   *  is spent on the land your first one took rather than evaporating.
+   *
+   *  Zero when the blow was fully spent breaking what was there, or when the
+   *  land has nothing left to lose - and zero is what keeps the arrival line
+   *  in its `metNothing` shape rather than claiming a landing for 0. */
+  const spendLeftoverBlow = (capture: Capture): number => {
+    const left = capture.dealt - capture.spent;
+    if (left <= 0) return 0;
+    const v = { defense, defenseMax: state.defenseMax };
+    const moved = Math.min(defenseOf(v, capture.land), left);
+    if (moved <= 0) return 0;
+    defense = applyDamage(v, capture.land, moved);
+    return moved;
   };
 
   landClaims(p.factionId, p.id);
@@ -1560,6 +1586,7 @@ function resolveMarches(
         captures.push({
           land: loser, by: eng.spear.actor, from: eng.spear.from,
           cardId: eng.spear.cardId,
+          dealt, spent: moved,
           // What the same blow moved on its way in, so the arrival can carry
           // it. Nothing moved on a land that was already flat, and that shape -
           // no `amount`, and therefore no `clash` either - is `metNothing`.
@@ -1601,6 +1628,18 @@ interface Capture {
    *  alongside `amount`: the log reads a clash with no amount as a standoff,
    *  which is the one thing a conquest is not. */
   clash?: { incoming: number; counter: number };
+  /** The blow's full strength after the ground has had its say, and how much
+   *  of it the land it arrived at could absorb. The difference is what the
+   *  army still has in hand when the conquest is refused because the actor
+   *  already holds the land - a second raid of your own, arriving at a land
+   *  your first one took a moment ago. See `applyCaptures`, which spends it.
+   *
+   *  Carried rather than recomputed because the ground's say (`hill-country`)
+   *  belongs to the blow, and a capture strips only the statuses that describe
+   *  a land nobody holds - so the number is still true after the land changes
+   *  hands, while the standing it was measured against is not. */
+  dealt: number;
+  spent: number;
 }
 
 /** The player concedes. Terminal, and deliberately not reversible. Its own
