@@ -96,6 +96,7 @@ const SEA_SPAN = 70;
 export function crossingBetween(a: Pt[][], b: Pt[][]): Crossing {
   const shared = sharedVertices(a, b);
   if (shared.length >= 2) return borderCrossing(shared, a, b);
+  if (shared.length === 1) return singleVertexCrossing(shared[0], a, b);
   return straitCrossing(a, b);
 }
 
@@ -151,6 +152,48 @@ function borderCrossing(shared: Pt[], a: Pt[][], b: Pt[][]): Crossing {
   };
 }
 
+/** A single shared vertex is a real border touch, not water. The normal is the
+ *  direction from one land's centroid to the other's, since there is no border
+ *  chain to fit a tangent to. */
+function singleVertexCrossing(at: Pt, a: Pt[][], b: Pt[][]): Crossing {
+  let ax = 0;
+  let ay = 0;
+  let aCount = 0;
+  for (const ring of a) {
+    for (const p of ring) {
+      ax += p.x;
+      ay += p.y;
+      aCount++;
+    }
+  }
+  ax /= aCount;
+  ay /= aCount;
+  let bx = 0;
+  let by = 0;
+  let bCount = 0;
+  for (const ring of b) {
+    for (const p of ring) {
+      bx += p.x;
+      by += p.y;
+      bCount++;
+    }
+  }
+  bx /= bCount;
+  by /= bCount;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const d = Math.hypot(dx, dy) || 1;
+  const normal = { x: dx / d, y: dy / d };
+  return {
+    at,
+    tangent: { x: -normal.y, y: normal.x },
+    normal,
+    span: 0,
+    sea: false,
+    gap: 0,
+  };
+}
+
 /** No shared vertex means no border: these two lands face each other across
  *  water. The narrowest part of the strait is where a crossing goes. */
 function straitCrossing(a: Pt[][], b: Pt[][]): Crossing {
@@ -171,14 +214,45 @@ function straitCrossing(a: Pt[][], b: Pt[][]): Crossing {
       }
     }
   }
-  const gap = Math.hypot(pb.x - pa.x, pb.y - pa.y) || 1;
-  const normal = { x: (pb.x - pa.x) / gap, y: (pb.y - pa.y) / gap };
+  let dx = pb.x - pa.x;
+  let dy = pb.y - pa.y;
+  const gap = Math.hypot(dx, dy);
+  if (gap === 0) {
+    let ax = 0;
+    let ay = 0;
+    let aCount = 0;
+    for (const ring of a) {
+      for (const p of ring) {
+        ax += p.x;
+        ay += p.y;
+        aCount++;
+      }
+    }
+    ax /= aCount;
+    ay /= aCount;
+    let bx = 0;
+    let by = 0;
+    let bCount = 0;
+    for (const ring of b) {
+      for (const p of ring) {
+        bx += p.x;
+        by += p.y;
+        bCount++;
+      }
+    }
+    bx /= bCount;
+    by /= bCount;
+    dx = bx - ax;
+    dy = by - ay;
+  }
+  const d = Math.hypot(dx, dy) || 1;
+  const normal = { x: dx / d, y: dy / d };
   return {
     at: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 },
     tangent: { x: -normal.y, y: normal.x },
     normal,
     span: SEA_SPAN,
     sea: true,
-    gap,
+    gap: gap || 1,
   };
 }

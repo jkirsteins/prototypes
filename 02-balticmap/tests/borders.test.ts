@@ -98,4 +98,34 @@ describe("crossingBetween", () => {
     expect(c.at.x).toBeCloseTo(25, 6);
     expect(c.normal.x).toBeCloseTo(1, 6);
   });
+
+  it("touches at a corner with a single shared vertex", () => {
+    const corner = [[
+      { x: 10, y: 20 }, { x: 20, y: 20 }, { x: 20, y: 30 }, { x: 10, y: 30 },
+    ]];
+    const c = crossingBetween(LEFT, corner);
+    expect(c.sea).toBe(false);
+    expect(c.span).toBeCloseTo(0, 6);
+    expect(Math.hypot(c.normal.x, c.normal.y)).toBeCloseTo(1, 6);
+    expect(c.gap).toBe(0);
+  });
+
+  it("points the single-vertex normal from the first land toward the second", () => {
+    const corner = [[
+      { x: 10, y: 20 }, { x: 20, y: 20 }, { x: 20, y: 30 }, { x: 10, y: 30 },
+    ]];
+    const c = crossingBetween(LEFT, corner);
+    expect(c.normal.x).toBeGreaterThan(0);
+    expect(c.normal.y).toBeGreaterThan(0);
+  });
+
+  it("flips the single-vertex normal when the lands are given the other way round", () => {
+    const corner = [[
+      { x: 10, y: 20 }, { x: 20, y: 20 }, { x: 20, y: 30 }, { x: 10, y: 30 },
+    ]];
+    const c1 = crossingBetween(LEFT, corner);
+    const c2 = crossingBetween(corner, LEFT);
+    expect(c2.normal.x).toBeCloseTo(-c1.normal.x, 6);
+    expect(c2.normal.y).toBeCloseTo(-c1.normal.y, 6);
+  });
 });
