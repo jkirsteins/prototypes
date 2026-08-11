@@ -2408,18 +2408,16 @@ describe("an army that overwhelms a land", () => {
     expect(landing?.clash).toBeUndefined();
   });
 
-  it("spends a second arrow of your own on the land the first one took", () => {
-    // Two arrows sent, two arrows accounted for. The first takes the land and
-    // moves defenders in; the second cannot take what its own actor now holds,
-    // but it still swings - at the defenders that just arrived. Without this
-    // the surplus arrow evaporated and the player was shown nothing for it.
+  it("spends a second arrow of your own WITHOUT sacking the land it took", () => {
+    // An army does not sack the land its own side has just moved defenders
+    // into. The surplus arrow gets its arrival line - so the player can see
+    // where the arrow went - and lands nothing on top of the conquest.
     // TEN, because the taker ends the turn holding three lands and a conquest
     // that wins the run would end it before the second arrow is accounted for.
     const base = playingTen();
     // The conqueror is a seat NOBODY plays, so the conquest moves half of
-    // `from`'s defense across on the spot rather than waiting on a modal -
-    // which is what the second arrow then hits. A human taker is asked first,
-    // and its land is still at 0 when the second arrow arrives.
+    // `from`'s defense across on the spot rather than waiting on a modal.
+    // Those defenders are exactly what a second arrow must NOT take back off.
     const taker = base.factionIds.find(
       (f) => hasRuler(base.rulers, f) &&
         f !== "beta" && f !== "alpha" && f !== "gamma",
@@ -2449,47 +2447,20 @@ describe("an army that overwhelms a land", () => {
     expect(
       after.log.filter((e) => e.type === "subjugated" && e.targetFactionId === "alpha"),
     ).toHaveLength(1);
-    // The defenders the conquest moved in took the second blow.
+    // The defenders the conquest moved in are all still standing: the second
+    // arrow took nothing off them.
     const moved = after.log.find(
       (e) => e.type === "transferred" && e.targetFactionId === "alpha",
     );
     expect(moved?.amount).toBeGreaterThan(0);
-    const second = after.log.filter(
-      (e) => e.type === "march-resolved" &&
-        e.targetFactionId === "alpha" && e.amount !== undefined,
+    expect(after.defense.alpha).toBe(moved?.amount);
+    // Both arrows are accounted for on the surface the player reads, and
+    // neither claims damage on the land that changed hands.
+    const arrivals = after.log.filter(
+      (e) => e.type === "march-resolved" && e.targetFactionId === "alpha",
     );
-    expect(second).toHaveLength(1);
-    expect(after.defense.alpha).toBe((moved?.amount ?? 0) - (second[0].amount ?? 0));
-  });
-
-  it("says nothing for a second arrow with nothing left to spend", () => {
-    // The blow that was fully spent breaking what stood there has nothing in
-    // hand, and a line claiming it landed for 0 is the drift the `amount` rule
-    // warns about.
-    const base = playingSix();
-    const before = base.log.length;
-    const after = landMarches({
-      ...base,
-      defense: { alpha: 1, beta: 0, gamma: 0 },
-      marches: {
-        "beta>alpha#0": {
-          actor: "beta", from: "beta", to: "alpha", cardId: "raid",
-          damage: 2, holdsArmy: true, expiry: base.turn + 1,
-        },
-        "gamma>alpha#0": {
-          actor: "beta", from: "gamma", to: "alpha", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
-        },
-      },
-    });
-    // Nothing was moved in with the conquest, so the second arrow finds a land
-    // at 0 and reports no damage line of its own.
-    const damaging = fresh(after, before).filter(
-      (e) => e.type === "march-resolved" &&
-        e.targetFactionId === "alpha" && e.amount !== undefined,
-    );
-    expect(damaging).toHaveLength(1);
-    expect(damaging[0].amount).toBe(1);
+    expect(arrivals).toHaveLength(2);
+    expect(arrivals.every((e) => e.amount === undefined)).toBe(true);
   });
 
   it("takes the ATTACKER's land when the counter overruns it", () => {

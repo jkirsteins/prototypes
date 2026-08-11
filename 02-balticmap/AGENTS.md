@@ -386,14 +386,19 @@ does:
   fell; one slot per faction asked about the first and dropped the other two,
   which then sent no defenders and said nothing about it.
 
-  **An arrival whose conquest is refused still swings.** When the actor
+  **A second arrow of your own is SPENT, and lands nothing.** When the actor
   already holds the land - its own earlier arrival this same turn took it -
-  the blow spends what it has left on the land as it NOW stands, which is the
-  defenders that conquest just moved in (`spendLeftoverBlow`). Measured
-  against the board rather than against the standing it was aimed at, because
-  between the two the land changed hands. `Capture` carries `dealt` and
-  `spent` to make that subtraction possible, and `COMBAT_RULES.spentArrival`
-  names the rule so two deploys cannot disagree about it silently.
+  the conquest is refused and so is the blow: an army does not sack the land
+  its own side has just moved defenders into. The arrow still gets its
+  arrival line, so the player can see where it went, and no damage rides on
+  it. `COMBAT_RULES.spentArrival` names the rule, so two deploys cannot
+  disagree about it silently.
+
+  This one was tried the other way first - the surplus spending what it had
+  left on the defenders the conquest moved in - and the reason it is not that
+  is worth keeping: it made over-committing arrows at one land actively
+  self-harming rather than merely wasteful, which is a punishment for a
+  misjudgement the player cannot see coming when they declare.
 
   **The arrival is ONE line, and the caller pushes it** - `arrival` in
   `beginTurn`, immediately before `takeLand`, never inside it. Two reasons, and
