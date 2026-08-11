@@ -337,10 +337,18 @@ adding a second field beside `clash.incoming` and pinning the two together with
 a test - which is the duplication this whole spec exists to remove - `clash` is
 replaced by two fields:
 
-- `incoming: number` - the strength aimed at the loser. **Always present** on
-  `march-resolved`.
+- `incoming: number` - the strength aimed at the loser. Present on every
+  `march-resolved` **that an army caused**, which is every one carrying
+  `marchIds`, including uncontested landings and arrivals that moved nothing.
 - `counter?: number` - what the loser mustered against it. Present exactly when
   the landing was contested, so it is now the contested discriminant.
+
+The one `march-resolved` with no `incoming` is a Subjugate demand coming due:
+`landClaims` reports through the same event type, and a demand is not an army -
+it clears no march and throws no strength. That event is `metNothing` by
+construction, and `metNothing` draws no resolution arrow, so nothing is left
+unreconstructible. The invariant to hold is therefore "every `march-resolved`
+carrying `marchIds` carries `incoming`", and that is what the test pins.
 
 The two shapes that were read off `clash`'s presence are re-expressed against
 `counter`, and both get clearer for it: `metNothing` becomes "no `amount` and
