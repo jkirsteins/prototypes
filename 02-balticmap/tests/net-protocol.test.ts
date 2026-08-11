@@ -68,7 +68,7 @@ describe("handshake", () => {
     // too, v4 adds the `transfer` action and renames the state's
     // `humanSeat` to a set of them, and v5 adds `region` to hello. Two
     // deploys on different versions must refuse, not desync.
-    expect(PROTOCOL_VERSION).toBe(5);
+    expect(PROTOCOL_VERSION).toBe(6);
   });
 
   it("refuses a hello from a different protocol version at the lobby", () => {

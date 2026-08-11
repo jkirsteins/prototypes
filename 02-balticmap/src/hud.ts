@@ -498,6 +498,14 @@ export function eventSegments(
         t("The disease on "), faction(e.targetFactionId ?? ""),
         t(" changes hands"),
       ];
+    case "march-declared":
+      // Same "out of X" shape the play line above prints for its own arrow,
+      // so a declaration and the play that caused it read as one arrow named
+      // twice rather than two unrelated lines about the same land.
+      return [
+        card(e.cardId ?? ""), t(" out of "), faction(e.sourceFactionId ?? ""),
+        t(" sets out for "), faction(e.targetFactionId ?? ""),
+      ];
     case "march-resolved":
       // Invariant subject like `damaged`, and for a stronger reason: this line
       // does not nest under a play, so it has to name both ends of the arrow

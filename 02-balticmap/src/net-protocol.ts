@@ -10,7 +10,7 @@ import {
   deserializeGame, serializeGame, type SerializedGameState,
 } from "./net-codec";
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 /** Fingerprint of everything two deploys must agree about a card. The hello
  *  handshake compares this and refuses politely on a mismatch.

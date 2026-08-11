@@ -56,7 +56,7 @@ export type GameEventType =
   | "settled"
   | "healed" | "transferred" | "disease-spread" | "plagued" | "winds-shifted"
   | "passive-fired"
-  | "march-resolved" | "march-lapsed"
+  | "march-declared" | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked" | "harvest-burned"
   | "victory" | "played-on" | "defeat" | "unified" | "surrendered";
 
@@ -913,6 +913,10 @@ function nestsUnderItsCause(type: GameEventType): boolean {
     case "disease-spread":
     case "plagued":
     case "winds-shifted":
+    // The arrow appearing is caused by the card that drew it, whether that
+    // card is on the table above it or the restless status announced beside
+    // it - both push into a batch that does not open with this event.
+    case "march-declared":
     // The bar crossing follows the turnip play that crossed it; the pick
     // follows the harvest play it was made on.
     case "harvest-earned":
@@ -1402,10 +1406,11 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       );
       if (targets.length === 0) continue;
       const to = targets[Math.floor(rng() * targets.length)];
+      const id = nextMarchId++;
+      const damage = attackDamageFor(view, land, "raid").damage;
       marches = addMarch(marches, {
-        id: nextMarchId++,
-        actor: land, from: land, to, cardId: "raid",
-        damage: attackDamageFor(view, land, "raid").damage,
+        id,
+        actor: land, from: land, to, cardId: "raid", damage,
         holdsArmy: true, expiry: state.turn + 1,
       });
       // Logged as the play it reads as on the map: an arrow with a strength on
@@ -1418,6 +1423,13 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       events.push({
         turn: state.turn, playerId: seat.id, type: "play", cardId: "raid",
         targetFactionId: to, sourceFactionId: land,
+      });
+      // Pushed after the play above, so the declaration reads as something
+      // that play did rather than as a line standing before its own cause.
+      events.push({
+        turn: state.turn, playerId: seat.id, type: "march-declared",
+        cardId: "raid", targetFactionId: to, sourceFactionId: land,
+        marchIds: [id], amount: damage,
       });
     }
   }
@@ -2087,18 +2099,25 @@ export function playCard(
     }
   };
 
-  /** One attack card committing one army. No event: the `play` event carries
-   *  both ends of the arrow already, and the damage is a promise about next
-   *  turn, not a score that moved - `march-resolved` is where the numbers go.
-   *  Expiry is the src/timed.ts convention, one turn out, which is this seat's
-   *  next `beginTurn` whichever seat it is. */
+  /** One attack card committing one army. Emits `march-declared`, marking the
+   *  moment the arrow appears and carrying the id the arrow is keyed on - the
+   *  damage on it is a promise about next turn, not a score that moved;
+   *  `march-resolved` is where the numbers go. Expiry is the src/timed.ts
+   *  convention, one turn out, which is this seat's next `beginTurn` whichever
+   *  seat it is. */
   const declareMarch = (
     from: string, to: string, damage: number, holdsArmy = true,
   ): void => {
+    const id = nextMarchId++;
     marches = addMarch(marches, {
-      id: nextMarchId++,
+      id,
       actor: p.factionId, from, to, cardId, damage, holdsArmy,
       expiry: state.turn + 1,
+    });
+    events.push({
+      turn: state.turn, playerId: p.id, type: "march-declared",
+      cardId, targetFactionId: to, sourceFactionId: from,
+      marchIds: [id], amount: damage,
     });
     // An army on the road breaks somebody else's demand of fealty. A land
     // being fought over is a land not submitting to anybody, and this is what

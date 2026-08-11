@@ -571,9 +571,12 @@ describe("activity log", () => {
     expect(entries.map((el) => el.textContent))
       .toContain("Raid out of Beta falls on Alpha (Defense 60 -> 59 (-1))");
     // Not a consequence: the play that caused it was a turn ago, in another
-    // batch, so there is nothing above it to indent under.
+    // batch, so there is nothing above it to indent under. Matched on "falls
+    // on" and not merely the shared "Raid out of Beta" opening, because the
+    // declaration line from turn 1 - itself a consequence of the play above
+    // it - shares that opening and sorts first.
     const landed = entries.find((el) =>
-      el.textContent?.startsWith("Raid out of Beta"))!;
+      el.textContent?.startsWith("Raid out of Beta falls on"))!;
     expect(landed.classList.contains("log-consequence")).toBe(false);
     // The number the log quotes is the number on the map, not a second
     // reckoning of its own.

@@ -471,16 +471,40 @@ describe("raid", () => {
     const after = playCard(g, 0, rng(), "alpha");
     expect(after.defense.alpha).toBeUndefined(); // untouched, still at max
     const events = fresh(after, before);
-    expect(events).toHaveLength(1);
+    expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({
       type: "play", cardId: "raid", targetFactionId: "alpha",
       sourceFactionId: "beta",
+    });
+    expect(events[1]).toMatchObject({
+      type: "march-declared", cardId: "raid", targetFactionId: "alpha",
+      sourceFactionId: "beta", marchIds: [g.nextMarchId], amount: RAID_DAMAGE,
     });
     expect(Object.values(after.marches)).toEqual([{
       id: g.nextMarchId,
       actor: "beta", from: "beta", to: "alpha", cardId: "raid",
       damage: RAID_DAMAGE, holdsArmy: true, expiry: g.turn + 1,
     }]);
+  });
+
+  it("declaring a raid says so, naming the arrow it drew", () => {
+    const g = withHand(playingState(), 0, ["raid"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    const declared = after.log.filter((e) => e.type === "march-declared");
+    expect(declared).toHaveLength(1);
+    const id = Object.values(after.marches)[0].id;
+    expect(declared[0].marchIds).toEqual([id]);
+    expect(declared[0].sourceFactionId).toBe("beta");
+    expect(declared[0].targetFactionId).toBe("alpha");
+    // The strength the arrow will print, frozen at declaration.
+    expect(declared[0].amount).toBe(RAID_DAMAGE);
+  });
+
+  it("a declaration is indented under the play that made it", () => {
+    const g = withHand(playingState(), 0, ["raid"]);
+    const after = playCard(g, 0, rng(), "alpha");
+    const declared = after.log.find((e) => e.type === "march-declared")!;
+    expect(declared.consequence).toBe(true);
   });
 
   it("lands at the start of the actor's next turn and logs the movement", () => {

@@ -561,6 +561,12 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
         ? [GATE_OPEN_FOOTNOTE()]
         : [],
   },
+  "march-declared": {
+    kind: "silent",
+    reason: "the arrow is on the map for a whole turn and the play's own " +
+      "line names both ends; a modal for a threat the player can see " +
+      "coming and answer is the round summary shouting",
+  },
   "march-lapsed": {
     kind: "silent",
     // The ground moved under a march in flight - its source left the realm, or

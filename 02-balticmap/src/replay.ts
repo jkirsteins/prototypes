@@ -225,6 +225,12 @@ export const REPLAY_RULES: Record<GameEventType, ReplayRule> = {
     reason: "it explains the line under it; that line carries the camera and " +
       "the sound, and two steps for one moment would say two things happened",
   },
+  "march-declared": {
+    kind: "passed-over",
+    reason: "the arrow appearing is its moment, and until the presentation " +
+      "pipeline owns the arrow layer there is nothing here to show that the " +
+      "map does not already draw",
+  },
   "march-resolved": {
     kind: "shown",
     // The old concurrent flash's gate, kept: either end in the realm. Your

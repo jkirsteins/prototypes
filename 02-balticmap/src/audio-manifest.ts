@@ -71,6 +71,8 @@ export const EVENT_SOUNDS: Record<GameEventType, SoundName | null> = {
   // The consequence line under it carries the sound; two sounds for one
   // moment would stack.
   "passive-fired": null,
+  // An army setting out, which is a different moment from one arriving.
+  "march-declared": "march",
   "march-resolved": "clash",
   // Nothing landed and no score moved - an arrow evaporating is the log's
   // news, not the ear's.
