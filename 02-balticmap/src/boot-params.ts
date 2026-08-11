@@ -407,11 +407,13 @@ export function applyBootParams(
     g = {
       ...g,
       marches: addMarch(g.marches, {
+        id: g.nextMarchId,
         actor, from, to, cardId: "raid",
         damage: attackDamageFor(v, actor, "raid").damage,
         holdsArmy: true,
         expiry: g.turn + 1,
       }),
+      nextMarchId: g.nextMarchId + 1,
     };
   }
   return g;

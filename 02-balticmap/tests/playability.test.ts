@@ -122,8 +122,8 @@ describe("borderPolygonsOf", () => {
 describe("marching: sources, targets and armies", () => {
   /** One march out of `from`, holding that land's army. */
   const outFrom = (from: string, to: string, over = {}) => ({
-    [`${from}>${to}#0`]: {
-      actor: from, from, to, cardId: "raid", damage: 4,
+    "1": {
+      id: 1, actor: from, from, to, cardId: "raid", damage: 4,
       holdsArmy: true, expiry: 2, ...over,
     },
   });
@@ -654,8 +654,8 @@ describe("playableSet", () => {
   it("repeatOnly still asks ordinary legality of the repeat card", () => {
     // No free army anywhere: the copy in hand is the right card and still
     // cannot be played, which is what ends the run.
-    const stuck = view({ marches: { "beta>alpha#0": {
-      actor: "beta", from: "beta", to: "alpha", cardId: "raid",
+    const stuck = view({ marches: { "1": {
+      id: 1, actor: "beta", from: "beta", to: "alpha", cardId: "raid",
       damage: 1, holdsArmy: true, expiry: 2,
     } }, armies: { beta: 1 } });
     expect(playableSet(stuck, "beta", ["raid", "grow-crops"],

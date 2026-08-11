@@ -270,9 +270,9 @@ describe("the spine, steps 1..5", () => {
 
 describe("5A: answering a march", () => {
   /** One march aimed at `at`, out of `from`, by whoever holds `from`. */
-  const incoming = (from: string, at: string, damage: number) => ({
-    [`${from}>${at}#0`]: {
-      actor: from, from, to: at, cardId: "raid", damage,
+  const incoming = (from: string, at: string, damage: number, id = 1) => ({
+    [String(id)]: {
+      id, actor: from, from, to: at, cardId: "raid", damage,
       holdsArmy: true, expiry: 3,
     },
   });
@@ -320,8 +320,8 @@ describe("5A: answering a march", () => {
       ...g, turn: 2,
       marches: {
         ...incoming("beta", "alpha", 4),
-        "alpha>beta#0": {
-          actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
+        "2": {
+          id: 2, actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
           damage: 4, holdsArmy: true, expiry: 3,
         },
       },

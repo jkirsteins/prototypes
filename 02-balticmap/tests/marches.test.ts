@@ -5,8 +5,13 @@ import {
   type March, type Marches,
 } from "../src/marches";
 
+/** Autoincrementing so two calls with no explicit `id` still get distinct
+ *  keys - the same "never reused" property `GameState.nextMarchId` gives the
+ *  real game, kept here so a test that does not care about ids does not have
+ *  to name one. */
+let nextTestMarchId = 1;
 const march = (over: Partial<March> = {}): March => ({
-  actor: "selonians", from: "selija", to: "talava",
+  id: nextTestMarchId++, actor: "selonians", from: "selija", to: "talava",
   cardId: "raid", damage: 4, holdsArmy: true, expiry: 3, ...over,
 });
 
@@ -61,23 +66,19 @@ describe("free armies", () => {
 });
 
 describe("addMarch", () => {
-  it("keys a second march on the same axis apart from the first", () => {
-    let marches: Marches = {};
-    marches = addMarch(marches, march());
-    marches = addMarch(marches, march({ damage: 9 }));
-    expect(Object.keys(marches)).toEqual(["selija>talava#0", "selija>talava#1"]);
+  it("keys a march by its own id", () => {
+    const marches = addMarch(addMarch({}, march({ id: 7 })), march({ id: 8 }));
+    expect(Object.keys(marches).sort()).toEqual(["7", "8"]);
   });
 
-  it("reuses a freed slot so keys stay dense and deterministic", () => {
-    let marches: Marches = {};
-    marches = addMarch(marches, march());
-    marches = addMarch(marches, march({ damage: 9 }));
-    marches = clearMarches(marches, ["selija>talava#0"]);
-    marches = addMarch(marches, march({ damage: 7 }));
-    expect(Object.keys(marches).sort()).toEqual([
-      "selija>talava#0", "selija>talava#1",
-    ]);
-    expect(marches["selija>talava#0"].damage).toBe(7);
+  it("never hands a cleared march's key to a later one", () => {
+    // The whole point of the id. The old scheme allocated the lowest FREE
+    // slot, so this sequence produced the same key twice for two different
+    // armies, and anything keyed on it followed the wrong arrow.
+    const first = addMarch({}, march({ id: 1 }));
+    const afterClear = clearMarches(first, ["1"]);
+    const second = addMarch(afterClear, march({ id: 2 }));
+    expect(Object.keys(second)).toEqual(["2"]);
   });
 });
 

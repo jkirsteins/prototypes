@@ -56,11 +56,19 @@ export interface March {
    *  bumps on the wrap to seat 0, so T + 1 is the declaring seat's next turn
    *  whichever seat it is, and resolution runs in that seat's `beginTurn`. */
   expiry: number;
+  /** This march's identity, for as long as it exists and never again.
+   *
+   *  Allocated from `GameState.nextMarchId` at declaration and never reused,
+   *  which is the whole difference from the slot scheme this replaced: that
+   *  handed a cleared march's key to the next one on the same axis, so a key
+   *  meant two different armies at two different times. The arrow on the map
+   *  is keyed on this, and the events that retire a march name it, so a
+   *  departure can be matched to the thing that explains it. */
+  id: number;
 }
 
-/** Key -> march. The key is `${from}>${to}#${slot}`, with `slot` the lowest
- *  free integer for that direction, so two armies marching the same way get
- *  distinct keys and a seeded run inserts them in the same order every time.
+/** Key -> march. The key is the march's own `id`, as a string - nothing may
+ *  parse it, so this is purely a `Record` key, not an encoding.
  *
  *  This is the third consumer of src/timed.ts after the post-escape respite,
  *  which is the point that module's doc names for weighing a declarative
@@ -109,13 +117,10 @@ export function freeArmiesOn(
   return Math.max(0, armiesOn(armies, polygon, cap) - out);
 }
 
-/** Declare a march, taking the lowest free slot for its direction. Reusing a
- *  freed slot rather than counting up forever keeps the keys short and keeps a
- *  replayed game's key set identical to the original's. */
+/** Declare a march, keyed by its own id. The caller allocates the id - this
+ *  module knows nothing of `GameState.nextMarchId` and stays a leaf. */
 export function addMarch(marches: Marches, m: March): Marches {
-  let slot = 0;
-  while (`${m.from}>${m.to}#${slot}` in marches) slot++;
-  return { ...marches, [`${m.from}>${m.to}#${slot}`]: m };
+  return { ...marches, [String(m.id)]: m };
 }
 
 export function clearMarches(marches: Marches, keys: readonly string[]): Marches {

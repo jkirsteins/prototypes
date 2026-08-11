@@ -291,6 +291,11 @@ export interface GameState {
    *  `beginTurn`; until then it is an arrow on the map that anyone may answer.
    *  See src/marches.ts. */
   marches: Marches;
+  /** The id the next declared march takes, then one more. Monotonic and
+   *  never reused, so an id identifies one army for the length of the run.
+   *  On the state rather than in a module because it must be deterministic
+   *  and must cross the wire with everything else. */
+  nextMarchId: number;
   /** Subjugations declared but not yet answered (src/marches.ts). A Subjugate
    *  is a demand made a turn ahead, like a raid: everyone sees it coming and
    *  the target has a turn to put its defenses back above the gate. */
@@ -550,6 +555,7 @@ export function newGame(
     miasma: {},
     turnips: {},
     marches: {},
+    nextMarchId: 1,
     claims: {},
     armies: {},
     wealth: {},
@@ -1046,6 +1052,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // it left, ownership included. Nothing between this comment and that call
   // executes - it is all declarations - so the move costs no ordering.
   let marches = state.marches;
+  let nextMarchId = state.nextMarchId;
   let claims = state.claims;
   let defense = state.defense;
   let passives = state.passives;
@@ -1367,6 +1374,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       if (targets.length === 0) continue;
       const to = targets[Math.floor(rng() * targets.length)];
       marches = addMarch(marches, {
+        id: nextMarchId++,
         actor: land, from: land, to, cardId: "raid",
         damage: attackDamageFor(view, land, "raid").damage,
         holdsArmy: true, expiry: state.turn + 1,
@@ -1448,8 +1456,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     { ...state, players, overlords }, p.id, events,
   ) ?? state.phase;
   return {
-    ...state, phase, players, overlords, wealth, marches, claims, defense,
-    passives, pendingTransfers,
+    ...state, phase, players, overlords, wealth, marches, nextMarchId, claims,
+    defense, passives, pendingTransfers,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
@@ -1948,6 +1956,7 @@ export function playCard(
   let rulers = state.rulers;
   let wealth = state.wealth;
   let marches = state.marches;
+  let nextMarchId = state.nextMarchId;
   let claims = state.claims;
   const armies = state.armies;
   let passives = state.passives;
@@ -2037,6 +2046,7 @@ export function playCard(
     from: string, to: string, damage: number, holdsArmy = true,
   ): void => {
     marches = addMarch(marches, {
+      id: nextMarchId++,
       actor: p.factionId, from, to, cardId, damage, holdsArmy,
       expiry: state.turn + 1,
     });
@@ -2443,7 +2453,7 @@ export function playCard(
   return {
     ...state, phase, players, overlords, incorporated, guards, omens, miasma,
     settlements, settlementsSpent, defense, defenseMax, disease, turnips,
-    wealth, respites, rulers, marches, claims, armies, passives,
+    wealth, respites, rulers, marches, nextMarchId, claims, armies, passives,
     log: appendEvents(state, events),
     // A standard turn is spent by its one play. An unlimited turn stays open
     // until the player says otherwise, even with an empty hand: a turn that

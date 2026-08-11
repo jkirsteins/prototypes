@@ -243,7 +243,7 @@ describe("the leader gate", () => {
     // on the map for the rest of the game.
     const g = dealt();
     const quiet = leaderless(g)[0];
-    const key = `${quiet}>alpha#0`;
+    const key = "1";
     const armed: GameState = {
       ...g,
       current: 0,
@@ -251,7 +251,7 @@ describe("the leader gate", () => {
       defenseMax: Object.fromEntries(SIX.map((id) => [id, 60])),
       marches: {
         [key]: {
-          actor: quiet, from: quiet, to: "alpha", cardId: "raid",
+          id: 1, actor: quiet, from: quiet, to: "alpha", cardId: "raid",
           damage: 6, holdsArmy: true, expiry: g.turn,
         },
       },
