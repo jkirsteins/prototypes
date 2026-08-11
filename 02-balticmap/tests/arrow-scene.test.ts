@@ -152,6 +152,27 @@ describe("renderArrowScene", () => {
     expect(host.children).toHaveLength(2);
   });
 
+  it("keeps each arrow's own direction whichever spec the border's group lists first", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    // The b->a spec is listed FIRST here on purpose: a frame anchored to
+    // whichever spec happens to be array-first, rather than to the border's
+    // own canonical pair, hands every arrow on this border a normal facing
+    // the wrong way the moment the higher-sorting land is named first.
+    const drawn = renderArrowScene(host, [
+      march("m2", "b", "a", 1), march("m1", "a", "b", 1),
+    ], ctx);
+    const pointAt = (id: string, i: number): number =>
+      Number((drawn.get(id)?.querySelector("polygon")
+        ?.getAttribute("points") ?? "").split(" ")[i]?.split(",")[0]);
+    const tail = (id: string): number => pointAt(id, 0);
+    const tip = (id: string): number => pointAt(id, 3);
+    // ctx's normal runs a->b, so the a->b arrow's tip sits further along it
+    // (a higher x) than its tail, and the b->a arrow's tip sits further
+    // against it (a lower x) than its tail.
+    expect(tip("m1")).toBeGreaterThan(tail("m1"));
+    expect(tip("m2")).toBeLessThan(tail("m2"));
+  });
+
   it("gives the stronger arrow the wider lane on the same border", () => {
     const host = document.createElementNS(NS, "g") as SVGGElement;
     const drawn = renderArrowScene(host, [

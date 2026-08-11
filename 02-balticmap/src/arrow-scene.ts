@@ -109,8 +109,6 @@ export interface ArrowKindDef {
   /** A filled spear, or the dashed demand a claim is drawn as. */
   shape: "spear" | "demand";
   className: string;
-  /** Whether this kind takes a lane of the border's width. */
-  takesLane: boolean;
   /** Why this kind is drawn the way it is. */
   why: string;
 }
@@ -119,19 +117,19 @@ export interface ArrowKindDef {
  *  until somebody says what it looks like and why. */
 export const ARROW_KINDS: Record<ArrowKind, ArrowKindDef> = {
   march: {
-    shape: "spear", className: "march-arrow", takesLane: true,
+    shape: "spear", className: "march-arrow",
     why: "An army in flight. The widest thing on its border if it is the strongest.",
   },
   claim: {
-    shape: "demand", className: "claim-arrow", takesLane: true,
+    shape: "demand", className: "claim-arrow",
     why: "Nobody is marching, so it is dashed with a ring for a head - but it is a real declared thing on the board, so it takes a lane like everything else.",
   },
   aim: {
-    shape: "spear", className: "aim-arrow", takesLane: true,
+    shape: "spear", className: "aim-arrow",
     why: "The arrow a play would declare, at the width it would really have, so aiming shows the board it is about to make.",
   },
   ghost: {
-    shape: "spear", className: "clash-flash", takesLane: true,
+    shape: "spear", className: "clash-flash",
     why: "A march that has already landed, fading where it stood - laid out with the living so a fade is never drawn across a live spear.",
   },
 };
@@ -213,11 +211,14 @@ export function renderArrowScene(
   }
   for (const group of byBorder.values()) {
     const first = group[0];
-    const cross = ctx.crossingFor(first.from, first.to);
+    // The crossing is fetched in the border key's own canonical order, not in
+    // whichever order the group's specs happened to arrive - `crossingFor`'s
+    // normal is directional in the order it is called with, so a frame
+    // anchored to the array-first spec would flip for every arrow on this
+    // border the moment the higher-sorting land was named first.
+    const [a, b] = borderKeyOf(first.from, first.to).split("|");
+    const cross = ctx.crossingFor(a, b);
     if (cross === null) continue;
-    // One frame for the whole border: the crossing's own normal runs from the
-    // land that sorts first, so every spec is measured against the same axis.
-    const [a] = borderKeyOf(first.from, first.to).split("|");
     const lanes = layoutLanes(
       cross,
       group.map((s) => ({ strength: s.strength, forward: s.from === a })),
