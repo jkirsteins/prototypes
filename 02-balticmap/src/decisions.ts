@@ -36,25 +36,47 @@ export function controllerOf(seat: number, seats: Seats): Controller {
 /** A stalled chain is a hung game, and a hung game says nothing about why.
  *  The bound is far above any real turn order - it exists so a rule that
  *  stopped advancing shows up in the console instead of freezing the tab. */
-const MAX_AI_TURNS = 1000;
+export const MAX_AI_TURNS = 1000;
+
+/** Plays the ONE seat nobody is sitting at that holds the turn, or answers
+ *  null when a person holds it or the run has ended.
+ *
+ *  The unit the screen steps through. A round used to resolve in a single
+ *  statement and then be replayed out of a state that had already run to the
+ *  end of it, which put arrows on the map that belonged to turns after the
+ *  one being shown. Stepping seat by seat means what is drawn while a seat's
+ *  turn is animated is the board as that seat left it. */
+export function oneAiSeat(
+  state: GameState, rng: Rng, seats: Seats,
+): GameState | null {
+  if (state.phase !== "playing" || controllerOf(state.current, seats) !== "ai") {
+    return null;
+  }
+  return advance(aiTakeTurn(state, rng), rng);
+}
 
 /** Plays every seat nobody is sitting at, until a human is on turn or the
  *  run ends. Handed the state rather than reading one, so the screen's
  *  animation and status work stays in `src/main.ts` and the turn-order half
- *  is testable on its own. */
+ *  is testable on its own.
+ *
+ *  Built on `oneAiSeat` rather than beside it: the screen walks the chain one
+ *  seat at a time so it can animate between them, and two spellings of "whose
+ *  turn is it and what does a turn do" is how those two start to differ. */
 export function runAiSeats(
   state: GameState, rng: Rng, seats: Seats,
 ): GameState {
   let out = state;
   let turns = 0;
-  while (out.phase === "playing" && controllerOf(out.current, seats) === "ai") {
+  for (;;) {
+    const next = oneAiSeat(out, rng, seats);
+    if (next === null) return out;
+    out = next;
     if (++turns > MAX_AI_TURNS) {
       console.error("AI chain stalled - breaking");
-      break;
+      return out;
     }
-    out = advance(aiTakeTurn(out, rng), rng);
   }
-  return out;
 }
 
 /** Everything the local player can decide while a game is in play. One

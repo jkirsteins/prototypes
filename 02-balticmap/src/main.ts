@@ -29,7 +29,7 @@ import {
   handBlockReason, marchSourcesAgainst, marchSourcesFor, marchTargetsFrom,
   claimWouldLand, playableSet, respiteExpiry, validTargetsFor,
   targetEligibilityFor,
-  armyCapOn, attackDamageFor, attackImpactOn, attackReach, freeArmiesFor,
+  armyCapOn, attackDamageFor, attackImpactOn, freeArmiesFor,
   miasmaHeld, omensHeld, freeSettlementsIn, settlementsIn,
 } from "./playability";
 import { armiesOn, axesOf, type Claim, type March } from "./marches";
@@ -67,7 +67,8 @@ import {
   type NetAction, type Wire,
 } from "./net-protocol";
 import {
-  commitDecision, controllerOf as controllerOfSeat, decidedHere, runAiSeats,
+  commitDecision, controllerOf as controllerOfSeat, decidedHere, oneAiSeat,
+  MAX_AI_TURNS,
   type Controller, type Decision, type DecisionResult, type Seats,
 } from "./decisions";
 import {
@@ -494,6 +495,11 @@ function humanBlockReason(cardId: string) {
  *  into a copy the next update threw away. */
 let transferAsked: string | null = null;
 
+/** True from the moment a batch's replay steps are queued until the queue
+ *  drains. While it holds, the conquest question belongs to the replay - see
+ *  `askTransferIfPending`. */
+let replayActive = false;
+
 /** Whether the LOCAL player owes an answer about a conquest. Asked wherever
  *  input has to wait on the modal, so the wait is the same question the modal
  *  is raised on rather than a second reading of the same store. */
@@ -509,6 +515,12 @@ function localPendingTransfers(): { from: string; to: string }[] | undefined {
 }
 
 function askTransferIfPending(): void {
+  // While a replay is running the questions belong to it: each one is raised
+  // by the step that shows the land being taken, and the replay waits on the
+  // answer. Raising one here as well would put the modal over the animation
+  // that is explaining it - which is what it used to do, appearing before the
+  // player had been shown the conquest at all.
+  if (replayActive) return;
   // The front of the queue: one pair of lands per modal, in the order the
   // lands fell. Answering pops it and the next conquest raises its own.
   const pending = localPendingTransfers()?.[0];
@@ -519,6 +531,15 @@ function askTransferIfPending(): void {
   const key = `${pending.from}>${pending.to}`;
   if (transferAsked === key) return;
   transferAsked = key;
+  raiseTransferModal(pending);
+}
+
+/** Puts one conquest's question on screen. `onAnswered` fires once the answer
+ *  has been committed, which is what a replay step waits on before moving the
+ *  camera to the next thing that happened. */
+function raiseTransferModal(
+  pending: { from: string; to: string }, onAnswered?: () => void,
+): void {
   const v = viewOf(game);
   hud.showTransferOffer(
     {
@@ -533,6 +554,7 @@ function askTransferIfPending(): void {
       onConfirm(amount) {
         hud.hideHarvestUi();
         decide({ kind: "transfer", amount });
+        onAnswered?.();
       },
     },
   );
@@ -1849,6 +1871,11 @@ let replayedIndices = new Set<number>();
  *  into a second timer. */
 const REPLAY_LABEL_MS = 1700;
 
+/** Half of a badge's number swap - out on the old, in on the new. Short
+ *  against the label it happens under, so the number has settled by the time
+ *  the player has finished reading what moved it. */
+const BADGE_WALK_MS = 220;
+
 const factionNameById = new Map(data.factions.map((f) => [f.id, f.name]));
 const placeNameFactionIds = new Set(
   data.factions.filter((f) => f.placeName).map((f) => f.id),
@@ -1959,6 +1986,25 @@ function flashMarchResolution(
  *  epilogue. Sequential where the old flash was concurrent, because the
  *  camera can only be one place at a time - simultaneity was the old
  *  design's claim, and it read as noise the moment three marches landed. */
+/** The realm, plus every land at the far end of an arrow or a demand standing
+ *  between it and them - see `ReplayView.linked`.
+ *
+ *  Read off the arrows STILL IN FLIGHT, which is the honest reading of "there
+ *  is something between us": an arrow that has already landed is the event
+ *  being replayed, and it comes in through the realm gate on its own. */
+function linkedLands(realm: ReadonlySet<string>): Set<string> {
+  const linked = new Set(realm);
+  for (const march of Object.values(game.marches)) {
+    if (realm.has(march.from) || realm.has(march.actor)) linked.add(march.to);
+    if (realm.has(march.to)) linked.add(march.from);
+  }
+  for (const claim of Object.values(game.claims)) {
+    if (realm.has(claim.actor)) linked.add(claim.to);
+    if (realm.has(claim.to)) linked.add(claim.actor);
+  }
+  return linked;
+}
+
 function queueReplay(
   fresh: GameEvent[],
   changes: StandingChange[][],
@@ -1968,20 +2014,73 @@ function queueReplay(
   const human = localHuman();
   if (!human || game.phase !== "playing") return 0;
   const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
-  const interest = new Set([
-    ...realm, ...attackReach(viewOf(game), human.factionId),
-  ]);
   const steps = buildReplaySteps(fresh, {
-    localPlayerId: human.id, realm, interest, ctx,
+    localPlayerId: human.id, realm, linked: linkedLands(realm), ctx,
   });
   const base = game.log.length - fresh.length;
+  // The conquests this player still owes an answer about, in the order the
+  // lands fell. Each is raised by the step that shows its land being taken,
+  // so the question follows the picture of the thing it is asking about.
+  const owed = [...(localPendingTransfers() ?? [])];
+  const asked = new Set<string>();
   for (const step of steps) {
     replayedIndices.add(base + step.index);
     animations.push((done) =>
       runReplayStep(step, changes[step.index] ?? [], realm, done),
     );
+    const taken = step.event.type === "subjugated"
+      ? owed.find((q) => q.to === step.event.targetFactionId)
+      : undefined;
+    if (taken !== undefined && !asked.has(taken.to)) {
+      asked.add(taken.to);
+      queueTransferQuestion(taken);
+    }
+  }
+  // A conquest whose own step the gate left out still owes its question, and
+  // it is still the replay's to ask - anything raised outside it would land
+  // over an animation in progress.
+  for (const q of owed) {
+    if (asked.has(q.to)) continue;
+    asked.add(q.to);
+    queueTransferQuestion(q);
+  }
+  if (steps.length > 0 || asked.size > 0) {
+    // While the replay runs, the map shows the event being replayed and no
+    // other arrow. Stepping the AI chain keeps a LATER seat's declarations off
+    // the board, but a seat declares its own march in the same breath as it
+    // resolves the one before - so the arrow it just drew would stand over the
+    // landing of the arrow it drew last turn. One event at a time means one
+    // arrow at a time.
+    svg.classList.add("replaying");
+    replayActive = true;
+    animations.onIdle(() => {
+      svg.classList.remove("replaying");
+      replayActive = false;
+      // Anything the replay could not ask about - a question raised after it
+      // had already drained - falls back to the ordinary path.
+      askTransferIfPending();
+    });
   }
   return steps.length;
+}
+
+/** One queue step that stops the replay on a conquest question and does not
+ *  release it until the player has answered. The camera is already on the
+ *  land, the label has just said it was taken, and the rest of the round
+ *  waits - rather than resolving behind the modal, which is what it did when
+ *  the question was raised from `refresh`. */
+function queueTransferQuestion(pending: { from: string; to: string }): void {
+  animations.push((done) => {
+    // The board may have moved since this was queued: the run ended, or the
+    // question was answered by the other seat's copy arriving. Nothing owed.
+    const still = localPendingTransfers()?.some((q) => q.to === pending.to);
+    if (still !== true || game.phase !== "playing") {
+      done();
+      return;
+    }
+    transferAsked = `${pending.from}>${pending.to}`;
+    raiseTransferModal(pending, done);
+  });
 }
 
 /** One step: camera first, then label, ghost and sound together. `done` fires
@@ -2004,10 +2103,17 @@ function runReplayStep(
     : undefined;
   const show = (): void => {
     if (step.sound !== null) audio.cue(step.sound);
+    // Lit for the whole step, so the label always has a land to belong to
+    // even when the camera holds still - which, on the whole-map view, is
+    // most of the time.
+    const unmark = markReplayLand(step.polygon);
+    walkBadgeScore(step.polygon, changes);
     let pending = step.event.type === "march-resolved" ? 2 : 1;
     const one = (): void => {
       pending -= 1;
-      if (pending === 0) done();
+      if (pending > 0) return;
+      unmark();
+      done();
     };
     if (step.event.type === "march-resolved") {
       flashMarchResolution(step.event, realm, one);
@@ -2019,6 +2125,51 @@ function runReplayStep(
   } else {
     show();
   }
+}
+
+/** Lights the land a step is about, and answers how to put it out.
+ *
+ *  This is what keeps a label attached to a place. The camera holds still for
+ *  anything already comfortably on screen (see `focusOn`), which on the
+ *  default whole-map view is every land there is - so without a mark, a
+ *  wild-lands regrowth read as a sentence about nowhere. */
+function markReplayLand(polygon: string | undefined): () => void {
+  const regionId = polygon === undefined
+    ? undefined
+    : regionByFaction.get(polygon);
+  const el = regionId === undefined ? undefined : regionPaths.get(regionId);
+  if (el === undefined) return () => {};
+  el.classList.add("replay-focus");
+  return () => el.classList.remove("replay-focus");
+}
+
+/** Walks the land's badge from the score it HAD to the score it has: the old
+ *  number fades out, the new one fades in behind it.
+ *
+ *  The badge is drawn from the state, and by replay time the state has moved
+ *  on - so it opens showing the outcome of an event the player has not been
+ *  shown yet. Stepping it back and walking it forward is the difference
+ *  between a number that changed and a number that was always that.
+ *
+ *  The defense score only. Disease is drawn as pips rather than a number, and
+ *  a pip appearing is already a change the eye catches. */
+function walkBadgeScore(
+  polygon: string | undefined, changes: StandingChange[],
+): void {
+  if (polygon === undefined) return;
+  const change = changes.find((c) => c.track === "defense");
+  if (change === undefined || change.before === change.after) return;
+  const el = badgeGroup.querySelector(
+    `.threat-badge[data-faction="${polygon}"] .badge-defense`,
+  );
+  if (el === null) return;
+  // The ceiling off the badge as drawn, so this states only what it knows.
+  const max = (el.textContent ?? "").split("/")[1] ?? "";
+  el.textContent = `${change.before}/${max}`;
+  runAnimation(el, [{ opacity: 1 }, { opacity: 0 }], BADGE_WALK_MS, () => {
+    el.textContent = `${change.after}/${max}`;
+    runAnimation(el, [{ opacity: 0 }, { opacity: 1 }], BADGE_WALK_MS);
+  });
 }
 
 /** The label itself: segments (a card name tips its rules, a faction lights
@@ -2687,12 +2838,17 @@ function refresh(opts?: { animate?: boolean }): void {
   // The pinned land's own tooltip, refreshed with the board: a panel quoting a
   // defense score from three plays ago is worse than no panel.
   showPinnedLand(pinnedRegion);
+  hud.update(viewState(), opts);
   // A conquest the local player made and has not answered for: how many
   // defenders march over with it. Raised here rather than at the play, because
   // a land can also be walked into by a raid landing at turn start - one
   // question, however the land was taken.
+  //
+  // AFTER `hud.update`, which is what queues the replay: this same refresh is
+  // the one that first sees the conquest, and asked before the replay exists
+  // it put the modal on screen ahead of the animation that explains it. The
+  // replay takes the question over from here (`replayActive`).
   askTransferIfPending();
-  hud.update(viewState(), opts);
   floatScoreMarks();
   // The menu carries the panel; so does a network game that has lost its
   // session, or one whose lobby is still being filled in - the status line
@@ -2721,28 +2877,48 @@ function refresh(opts?: { animate?: boolean }): void {
  *  just changed, and the "before" of every summary line is then the number
  *  the player was looking at while it flew. Revealing the AI round early
  *  would make that "before" a lie. */
-/** Runs AI seats back to back until a human-controlled seat - this screen's
- *  or the remote one's - is on turn or the run ends, then settles the
- *  screen. The host also pushes the settled state to the guest and says who
- *  it is waiting for; a remote seat holding the turn keeps input locked
- *  here, because the round has not finished, it has moved elsewhere. */
+/** Walks the AI seats ONE AT A TIME, animating what each did before the next
+ *  one moves, until a human-controlled seat - this screen's or the remote
+ *  one's - is on turn or the run ends. The host pushes after every seat, so a
+ *  guest watches the round unfold rather than receiving it finished.
+ *
+ *  A seat at a time and not the whole round, because the round used to be
+ *  resolved in one statement and replayed afterwards out of a state that had
+ *  already run to the end of it. What the player watched was the right
+ *  sequence of events drawn over the wrong board: arrows declared two turns
+ *  later stood on the map while a raid from before them was still landing.
+ *
+ *  Input stays locked the whole way. The wait between seats is the animation
+ *  queue draining, never a copied duration; `refresh` is what queues a seat's
+ *  replay steps (hud.update -> replayRound). */
 function resumeChain(): void {
-  game = runAiSeats(game, rng, seats());
-  if (net.role === "host") net.session?.pushUpdate();
-  const remoteHolds =
-    game.phase === "playing" && controllerOf(game.current) === "remote";
-  // Input stays locked through the replay. Everything that moved while the
-  // player was not being shown a play gets its moment before the map is
-  // handed back - the same reason the AI chain waits out the played card's
-  // flight. The wait is on the queue draining, never on a copied duration;
-  // `refresh` is what queues the replay steps (hud.update -> replayRound).
   resolving = true;
+  stepAiChain(0);
+}
+
+function stepAiChain(taken: number): void {
+  const next = taken > MAX_AI_TURNS ? null : oneAiSeat(game, rng, seats());
+  if (next === null) {
+    if (taken > MAX_AI_TURNS) console.error("AI chain stalled - breaking");
+    finishChain();
+    return;
+  }
+  game = next;
+  if (net.role === "host") net.session?.pushUpdate();
   refresh();
-  animations.onIdle(() => {
-    resolving = remoteHolds;
-    refresh();
-    updateWaitingStatus();
-  });
+  // Through a macrotask, so a seat whose turn animated nothing does not
+  // recurse into the next one on the same stack - a long chain of quiet
+  // seats would otherwise nest as deep as it is long.
+  animations.onIdle(() => setTimeout(() => stepAiChain(taken + 1), 0));
+}
+
+function finishChain(): void {
+  // A remote seat holding the turn keeps input locked here, because the round
+  // has not finished - it has moved elsewhere.
+  resolving =
+    game.phase === "playing" && controllerOf(game.current) === "remote";
+  refresh();
+  updateWaitingStatus();
 }
 
 function afterHumanAction(): void {

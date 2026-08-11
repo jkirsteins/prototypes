@@ -1359,6 +1359,45 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
   fill: #a8352b;
 }
 
+/* While the replay is showing one event, the map shows THAT event and no
+   other arrow. The ghost the flash draws is a `.clash-flash`, not a
+   `.march-arrow`, so it is untouched - which is the whole distinction: one is
+   the thing being shown, the others are business from turns the player has
+   not been shown yet. */
+svg.replaying .march-arrow {
+  display: none;
+}
+
+/* The land a replay step is about, lit for as long as the step runs.
+
+   A glow rather than a stroke, deliberately: `.region.realm-member` declares
+   its seam stroke !important against every other rule in this file, so a
+   marker painted in stroke would be invisible on exactly the lands inside a
+   realm - which is most of the ones a replay talks about. Filter is the one
+   channel that rule leaves alone, and it is what `.hovered` already uses.
+
+   The pulse lives here and nowhere else: the class goes on when the step
+   starts and comes off when it ends, so no JavaScript holds a copy of this
+   duration (see the rule in AGENTS.md). */
+.region.replay-focus {
+  animation: replay-focus-pulse 900ms ease-in-out infinite;
+}
+
+@keyframes replay-focus-pulse {
+  0%, 100% {
+    filter: brightness(1.1) drop-shadow(0 0 3px rgba(212, 175, 55, 0.55));
+  }
+  50% {
+    filter: brightness(1.18) drop-shadow(0 0 9px rgba(212, 175, 55, 0.95));
+  }
+}
+
+/* The badge's number while it is being walked from the score the land had to
+   the score it has. Opacity is animated from TS, so nothing here times it. */
+.threat-badge .badge-defense {
+  transition: none;
+}
+
 /* The turn-start replay's label: one event at a time, camera on the land it
    names, this pill above screen center saying what happened. A dark box, so
    it states its own text colour (the AGENTS.md rule). Its card and faction

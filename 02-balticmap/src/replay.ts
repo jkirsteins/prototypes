@@ -39,8 +39,18 @@ export interface ReplayView {
   localPlayerId: number;
   /** The local human's full realm - the march gate. */
   realm: ReadonlySet<string>;
-  /** Realm plus attack reach - the "worth the camera" set for score moves. */
-  interest: ReadonlySet<string>;
+  /** The lands this player has a LINE to right now: their realm, plus every
+   *  land at the far end of an arrow or a demand between them and it, either
+   *  way round. The "worth the camera" set for a score move.
+   *
+   *  A line, not a reach. This was realm-plus-`attackReach` and it showed the
+   *  player every regrowth and every seeded plague on every land they could
+   *  theoretically hit - a wide ring of business that was none of theirs, one
+   *  camera move at a time. A wild land mending itself matters when there is
+   *  an arrow of yours in the air toward it, because it changes what that
+   *  arrow will do; the same land mending itself with nothing between you is
+   *  a log line. */
+  linked: ReadonlySet<string>;
   ctx: NoticeCtx | null;
 }
 
@@ -71,13 +81,13 @@ type ReplayRule =
 const ownCause = (view: ReplayView, cause: ReplayCause | null): boolean =>
   cause !== null && cause.kind === "card" && cause.playerId === view.localPlayerId;
 
-/** Notice-worthy, or a visible move inside the interest set. The shared
- *  second half of every non-march `applies`. */
+/** Notice-worthy, or a visible move on a land this player has a line to. The
+ *  shared second half of every non-march `applies`. */
 function worthTheCamera(e: GameEvent, view: ReplayView): boolean {
   if (view.ctx !== null && isNoticeWorthy(e, view.ctx, view.localPlayerId)) {
     return true;
   }
-  return e.targetFactionId !== undefined && view.interest.has(e.targetFactionId);
+  return e.targetFactionId !== undefined && view.linked.has(e.targetFactionId);
 }
 
 export const REPLAY_RULES: Record<GameEventType, ReplayRule> = {

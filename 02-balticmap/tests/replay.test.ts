@@ -10,7 +10,7 @@ const data = raw as MapData;
 const view = (over?: Partial<ReplayView>): ReplayView => ({
   localPlayerId: 1,
   realm: new Set(["beta"]),
-  interest: new Set(["beta", "gamma"]),
+  linked: new Set(["beta", "gamma"]),
   ctx: null,
   ...over,
 });
@@ -122,6 +122,28 @@ describe("buildReplaySteps", () => {
     expect(steps[0].polygon).toBe("gamma");
     expect(steps[0].sound).toBe("rustle");
     expect(steps[0].label).toContainEqual({ kind: "passive", passiveId: "wild-lands" });
+  });
+
+  it("shows a neighbour's regrowth only while a line runs between us", () => {
+    // The example this gate exists for: a wild land mending itself matters
+    // when an arrow of yours is in the air toward it, because it changes what
+    // that arrow will do. The same land mending itself with nothing between
+    // you is a log line, not a camera move.
+    const fresh: GameEvent[] = [
+      {
+        turn: 4, playerId: 7, type: "passive-fired",
+        passiveId: "wild-lands", targetFactionId: "gamma",
+      },
+      { turn: 4, playerId: 7, type: "healed", targetFactionId: "gamma", amount: 1 },
+    ];
+    const withArrow = buildReplaySteps(fresh, view({
+      realm: new Set(["beta"]), linked: new Set(["beta", "gamma"]),
+    }));
+    expect(withArrow).toHaveLength(1);
+    const noArrow = buildReplaySteps(fresh, view({
+      realm: new Set(["beta"]), linked: new Set(["beta"]),
+    }));
+    expect(noArrow).toHaveLength(0);
   });
 
   it("skips a regrowth outside the interest set", () => {

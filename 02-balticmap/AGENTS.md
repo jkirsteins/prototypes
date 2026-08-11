@@ -381,7 +381,19 @@ does:
   (`pendingTransfers` / `transferDefense`); a seat nobody is sitting at moves
   half on the spot. 0 is a real answer. Keyed by FACTION, because every person
   is asked and one slot would have let one of them hold the only question on
-  the board.
+  the board - and a QUEUE per faction, because a turn can take more than one
+  land. Three conquests owe three questions, answered in the order the lands
+  fell; one slot per faction asked about the first and dropped the other two,
+  which then sent no defenders and said nothing about it.
+
+  **An arrival whose conquest is refused still swings.** When the actor
+  already holds the land - its own earlier arrival this same turn took it -
+  the blow spends what it has left on the land as it NOW stands, which is the
+  defenders that conquest just moved in (`spendLeftoverBlow`). Measured
+  against the board rather than against the standing it was aimed at, because
+  between the two the land changed hands. `Capture` carries `dealt` and
+  `spent` to make that subtraction possible, and `COMBAT_RULES.spentArrival`
+  names the rule so two deploys cannot disagree about it silently.
 
   **The arrival is ONE line, and the caller pushes it** - `arrival` in
   `beginTurn`, immediately before `takeLand`, never inside it. Two reasons, and
@@ -625,9 +637,40 @@ checks it. The score suffix beside a label is `impactText` over the same walk
 the log uses, so the two cannot quote different numbers. What earns a step:
 marches touching the local human's full realm, and otherwise only events the
 local player did not cause themselves that are notice-worthy or move a score
-inside the realm-plus-`attackReach` interest set - the wild-lands regrowth
-next door replays, the one across the map stays a log line. An event that got
-a step is skipped by the score floats: one motion per fact.
+on a land they have a LINE to - their realm, plus whatever stands at the far
+end of an arrow or a demand between them and it (`linkedLands`). A line, not a
+reach: this was realm-plus-`attackReach` and it walked the camera around a
+wide ring of business that was none of the player's. A wild land mending
+itself matters while an arrow of yours is in the air toward it, because it
+changes what that arrow will do; the same land mending itself with nothing
+between you is a log line. An event that got a step is skipped by the score
+floats: one motion per fact.
+
+**The step shows one event, and the map shows nothing else that moves.** The
+land is lit for the length of the step (`.replay-focus`, a filter glow rather
+than a stroke, because `.region.realm-member` declares its seam !important),
+its badge is walked from the score it HAD to the score it has, and every live
+`.march-arrow` is hidden (`svg.replaying`) so the only arrow on screen is the
+ghost of the one landing. Without the mark a label was a sentence about
+nowhere, since the camera holds still for anything already on screen; without
+the badge walk the number had been showing the outcome since before the
+player was shown the event.
+
+**The AI chain is walked a seat at a time.** `oneAiSeat` plays exactly one
+seat and `stepAiChain` in `src/main.ts` animates what it did before the next
+one moves - `runAiSeats` is the same loop for callers that want the whole
+round at once, built on the same function so the two cannot drift. A round
+resolved in one statement and replayed afterwards was the right sequence of
+events drawn over the wrong board: arrows declared two turns later stood on
+the map while a raid from before them was still landing.
+
+**A conquest question is asked by the replay, not around it.** The step that
+shows a land being taken is followed by one that raises that conquest's
+transfer modal and does not release the queue until it is answered, so the
+rest of the round waits rather than resolving behind it. `askTransferIfPending`
+stands down while `replayActive` holds, and it is called AFTER `hud.update` in
+`refresh` - before it, the same refresh that first sees the conquest put the
+modal up ahead of the animation explaining it.
 
 An arrival that `metNothing` is passed over here for the reason
 `NOTICE_RULES` passes it over: the `subjugated` it caused names the same card
