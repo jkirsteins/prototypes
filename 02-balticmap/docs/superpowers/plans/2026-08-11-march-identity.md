@@ -45,7 +45,10 @@ written once its predecessor has landed.
 | File | Responsibility | Change |
 |---|---|---|
 | `src/marches.ts` | The `March` record and pure helpers over the two stores | `March.id`; `addMarch` keys by id; doc comment on `Marches` |
-| `src/game.ts` | `GameState`, the reducer, `beginTurn`, `resolveMarches` | `nextMarchId`; id allocation at both `addMarch` sites; `marchIds` on three event kinds; `march-declared`; `GameEventType`; `nestsUnderItsCause` |
+| `src/game.ts` | `GameState`, the reducer, `beginTurn`, `resolveMarches` | `nextMarchId`; id allocation at both `addMarch` sites; `marchIds` on three event kinds; `clash` split into `incoming`/`counter`; `march-declared`; `GameEventType`; `nestsUnderItsCause` |
+| `src/notices.ts` (readers) | Round-summary lines for a landing | Three `clash` readers move to `counter`/`incoming` |
+| `src/hud.ts` (reader) | Log line for a landing | One `clash` reader moves |
+| `src/main.ts` (readers) | `flashMarchResolution`, deleted in step 4 | Five `clash` readers move; the `?? 1` width bug goes with them |
 | `src/boot-params.ts` | `?march=` boot override | Allocate an id when declaring |
 | `src/audio-manifest.ts` | `EVENT_SOUNDS`, exhaustive | Entry for `march-declared` |
 | `src/notices.ts` | `NOTICE_RULES`, exhaustive | Entry for `march-declared` |
@@ -221,28 +224,40 @@ the state, never reused, and the store is keyed by it."
 
 ---
 
-### Task 2: The events name the marches they retire
+### Task 2: The events name the marches they retire, and what was thrown
 
 A clash retires two arrows and emits one `march-resolved`. Three arrows on one
 axis can produce one event. There is no way to match a departure to its
-explanation without the events saying so.
+explanation without the events saying so. And the resolution arrow the
+presentation will draw is reconstructed from the event alone, so the event has
+to state the force aimed at the loser even when nobody answered it.
 
 **Files:**
 - Modify: `src/game.ts:96-160` (the `GameEvent` interface),
   `src/game.ts:1064-1075` (`arrival`), `src/game.ts:1191-1196` and
   `src/game.ts:1544-1549` (`march-lapsed`), `src/game.ts:1573-1579` (the
-  standoff), `src/game.ts:1644` (the ordinary landing)
+  standoff), `src/game.ts:1644` (the ordinary landing), `src/game.ts:915`
+  (`metNothing`), `src/game.ts:1610` (the `clash` arithmetic)
+- Modify: `src/notices.ts:400,417,430`, `src/hud.ts:517`,
+  `src/main.ts:1723,1737,1738,1740,1743`
 - Test: `tests/game.test.ts`
 
 **Interfaces:**
 - Consumes: `March.id` from Task 1.
 - Produces: `GameEvent.marchIds?: number[]` on `march-resolved` and
-  `march-lapsed`.
+  `march-lapsed`; `GameEvent.incoming?: number` (always present on
+  `march-resolved`) and `GameEvent.counter?: number` (present iff contested),
+  replacing `GameEvent.clash`.
 
 - [ ] **Step 1: Write the failing invariant test**
 
 Add to `tests/game.test.ts`. This is the test the whole task exists for: it
 says every arrow that left is accounted for by something in the log.
+
+It walks `advance` calls only, which are all non-settled transitions - the
+spec scopes the invariant to those deliberately, because a snapshot replaces
+`marches` wholesale and carries no departure events. There is no settled path
+through the reducer, so nothing here has to exclude one.
 
 ```ts
 it("every march that leaves the store is named by an event of the same batch", () => {
@@ -306,7 +321,69 @@ There are five. Each already has the march or marches in hand:
    call sites (`src/game.ts:1595` and `src/game.ts:1631`) have the engagement
    in scope and pass the same filtered pair as case 4.
 
-- [ ] **Step 5: Run the invariant test**
+- [ ] **Step 5: Split `clash` into `incoming` and `counter`**
+
+A resolution arrow is reconstructed from its event alone, so the event must
+carry the force aimed at the loser whether or not anybody answered it. Today
+`clash` is present only when contested (`src/game.ts:1650`), and `amount` is
+the defense actually moved, floored at what the land had - so a 3-strength raid
+onto a land holding 1 records `amount: 1` and nothing about the 3.
+
+Adding a field beside `clash.incoming` would duplicate it. Replace `clash`
+instead. In `GameEvent`, delete the `clash` field and add:
+
+```ts
+  /** march-resolved: the strength aimed AT the loser, whichever end of the
+   *  axis that turned out to be. ALWAYS present on this type, including an
+   *  uncontested landing and an arrival that moved nothing - the arrow the
+   *  presentation draws is reconstructed from this event alone, and `amount`
+   *  cannot stand in for it: `amount` is floored at what the land had
+   *  standing, so a 3-strength blow on a 1-defense land reports 1. */
+  incoming?: number;
+  /** march-resolved: what the loser mustered against it. Present exactly when
+   *  the landing was contested, which makes it the contested discriminant -
+   *  the job `clash`'s presence used to do. */
+  counter?: number;
+```
+
+Then move every reader and writer:
+
+- `src/game.ts:915` (`metNothing`): `e.amount === undefined && e.counter === undefined`.
+- `src/game.ts:1577` (the standoff): `incoming: strengthB, counter: strengthA`.
+- `src/game.ts:1650` (the ordinary landing): `incoming: clash.incoming` always,
+  and `...(contested ? { counter: clash.counter } : {})`. The local `clash`
+  object computed at `src/game.ts:1610` stays - it is the right arithmetic, it
+  just stops being stored as one field.
+- `src/game.ts:1072` and `src/game.ts:1222`: thread `incoming` and `counter`
+  through `arrival` and `Capture` in place of `clash`. **`incoming` must be
+  passed even on the `metNothing` path**, where `amount` is absent - that is
+  the whole point of the change.
+- `src/notices.ts:400, 417, 430` and `src/hud.ts:517`: replace
+  `e.clash !== undefined` with `e.counter !== undefined`, and
+  `e.clash.incoming` / `e.clash.counter` with `e.incoming` / `e.counter`.
+- `src/main.ts:1723, 1737, 1738, 1740, 1743`: these are inside
+  `flashMarchResolution`, which a later step of this spec deletes. For now make
+  them compile against the new fields and take the free bug fix: line 1723's
+  `e.clash?.incoming ?? 1` becomes `e.incoming ?? 1`, which is why an
+  uncontested landing has been drawn one unit wide whatever its strength.
+- `tests/game.test.ts:637, 647`: update the two literals.
+
+Add the test that pins the point:
+
+```ts
+it("a landing states the force aimed at it, not just what got through", () => {
+  // A 3-strength raid onto a land holding 1. `amount` is floored at the
+  // defense that was there; `incoming` is what was thrown.
+  const g = /* declare a 3-damage march at a land at 1 defense, then advance
+               to the actor's turn - this file's defense and march helpers */;
+  const e = g.log.find((x) => x.type === "march-resolved")!;
+  expect(e.amount).toBe(1);
+  expect(e.incoming).toBe(3);
+  expect(e.counter).toBeUndefined();
+});
+```
+
+- [ ] **Step 6: Run the invariant test**
 
 Run: `npx vitest run tests/game.test.ts -t "leaves the store"`
 Expected: PASS.
@@ -319,23 +396,32 @@ this invariant exists to find. Fix it by emitting the landing event with
 nothing is exactly the `metNothing` shape the log already renders as
 "reaches".
 
-- [ ] **Step 6: Run the full suite**
+- [ ] **Step 7: Run the full suite**
 
 Run: `npm test && npm run build`
 Expected: PASS. Watch `tests/standings.test.ts` in particular: it replays a
-full game and checks the walk against the real stores, so if step 5's fix
-added an event carrying an `amount` it will say so.
+full game and checks the walk against the real stores, so if step 6's fix
+added an event carrying an `amount` it will say so. `tests/notices.test.ts`
+and `tests/hud.test.ts` cover the `clash` readers moved in step 5.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add 02-balticmap/src/game.ts 02-balticmap/tests/game.test.ts
-git commit -m "feat(balticmap): an event says which arrows it took off the board
+git add 02-balticmap/src/game.ts 02-balticmap/src/notices.ts \
+        02-balticmap/src/hud.ts 02-balticmap/src/main.ts \
+        02-balticmap/tests/game.test.ts
+git commit -m "feat(balticmap): an event says which arrows it took, and what was thrown
 
 A clash retires two marches and reports once, so a departure and an event
 could not be matched one for one - and a map that keys arrows on identity
 needs them matched. march-resolved and march-lapsed now carry marchIds,
-and a test walks a dozen rounds asserting nothing leaves unaccounted for."
+and a test walks a dozen rounds asserting nothing leaves unaccounted for.
+
+clash splits into incoming and counter so a landing states the force aimed
+at it even when nobody answered: amount is floored at the defense that was
+standing, so a 3-strength blow on a 1-defense land reported 1 and nothing
+about the 3. The ghost has been drawing every uncontested landing one unit
+wide for exactly this reason."
 ```
 
 ---
@@ -531,6 +617,12 @@ literal.
 `src/boot-params.ts` as `g.nextMarchId` (Task 1) and allocated in
 `declareMarch` (Tasks 1 and 3). `GameEvent.marchIds?: number[]` is written in
 Task 2 and read in Task 2's invariant test and Task 3's assertions.
+`GameEvent.clash` is deleted in Task 2 step 5 and replaced by `incoming` and
+`counter`; no later task refers to `clash`.
+
+**Spec sections covered.** Section 5 in full, including the reconstructibility
+requirement and the invariant's non-settled scoping. Sections 1 to 4 and 6 to 8
+are steps 2 to 5 of the order of work.
 
 **Known risk.** Task 2 step 5 may find a real hole at `src/game.ts:1643`. The
 step says what to do about it rather than leaving the implementer to decide,

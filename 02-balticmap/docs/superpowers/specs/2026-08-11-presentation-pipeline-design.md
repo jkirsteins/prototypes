@@ -99,27 +99,57 @@ why `walkBadgeScore` has to step the number backwards before walking it
 forwards. With the commit deferred, the badge is already showing `before` and
 the beat simply walks it to `after`. The backwards step goes away.
 
-The transition's lifecycle, in order, and this is the whole contract:
+The transition's lifecycle, in order, and this is the whole contract. The
+classifier returns every beat in one `Beat[]`; the lifecycle partitions them by
+kind and runs each kind at its own stage.
 
-1. Run the transient beats, one at a time, on the animation queue.
-2. Commit `next` to the displayed state and repaint every persistent layer.
-3. Build any round summary from `NOTICE_RULES` over this transition's events
-   and show it. It describes the board as it now stands, which is why it comes
-   after the commit and not before.
-4. If the summary blocks continuation, wait for its dismissal.
-5. The transition is complete. The next one may start.
+1. **Transient beats.** The `map` and `hud` beats, one at a time, on the
+   animation queue, against the board as it stood.
+2. **Commit.** `next` becomes the displayed state; every persistent layer
+   repaints.
+3. **Questions.** Each `ask` beat re-frames its land, raises its modal, and
+   waits for the answer.
+4. **Summary.** Build any round summary from `NOTICE_RULES` over this
+   transition's events and show it; wait for dismissal if it blocks.
+5. **Ending.** If this transition ended the run, cue its jingle and raise the
+   postmortem.
+6. **Complete.** The next transition may start.
 
-Step 3 is what folds the round summary into this queue instead of leaving it
-owned by a second scheduler. The "AI behind the modal" problem stops being a
-rule `settleTurn` has to remember and becomes a step nothing can run past.
+**Questions are after the commit, and that is a correctness requirement rather
+than a matter of taste.** A conquest question is *about* state that exists only
+in `next` - `pendingTransfers` is written by `takeLand` - and its answer is a
+`transferDefense` decision that `commitDecision` validates against the state
+accessor. Raised at stage 1, the modal would ask about a conquest the accessor
+still says has not happened, and the answer would be refused. The camera
+property today's `queueTransferQuestion` has is kept by the beat carrying its
+polygon and stage 3 re-framing it, so the question still follows the picture of
+the thing it is asking about.
+
+Stages 4 and 5 are what fold the round summary and the ending into this queue
+instead of leaving them owned by a second scheduler and by a repaint. The "AI
+behind the modal" problem stops being a rule `settleTurn` has to remember and
+becomes a stage nothing can run past.
+
+**The ending is a stage and not a phase reader.** Today `cueEndingIfAny` fires
+from `refresh` off the committed phase, and `hud.update` shows the postmortem
+whenever the phase is `victory` or `defeat` - so with the commit at stage 2 the
+ending screen would rise over questions and beats still to come, and "View the
+map" behind it would show a board with raids still standing on it. So the
+postmortem stops being derived from `phase` in `hud.update` and is raised by
+stage 5, and `cueEndingIfAny` moves off `refresh` to the same place. A run that
+ended is shown its ending once everything that ended it has been seen.
+
+A `settled` transition skips stages 1, 3 and 4 and runs 2, 5, 6 - so a guest
+rejoining a finished game is shown the ending immediately, with no history
+re-enacted.
 
 **One consequence worth naming: `submit` never blocks.** A beat may itself
-produce a transition - an `ask` beat raises the conquest question, the answer
-commits a `transferDefense` decision - and that transition is simply enqueued
-behind the current one. The ask beat then releases and the round carries on.
-Nothing waits on anything a later transition will produce, so an `ask` cannot
-deadlock the transition that raised it. The defenders arrive as their own beat
-in their own transition, which is also the honest picture of what happened.
+produce a transition - an `ask` beat's answer commits a `transferDefense`
+decision - and that transition is simply enqueued behind the current one. The
+ask beat then releases and the round carries on. Nothing waits on anything a
+later transition will produce, so an `ask` cannot deadlock the transition that
+raised it. The defenders arrive as their own beat in their own transition,
+which is also the honest picture of what happened.
 
 **And the arrow layer is why the commit does not pop.** The retained scene is
 keyed by march id (section 6), so a `march-declared` beat inserts the arrow
@@ -162,6 +192,35 @@ things: a read accessor for the displayed state, `submit(transition)`, and
 binding in `main.ts`, there is no path that appends events without presenting
 them, and that is a fact about the module boundary rather than a rule somebody
 has to keep.
+
+#### `replaceSettled` cancels, it does not merely clear
+
+A snapshot can arrive while a beat is mid-flight, and that beat's completion
+callback still holds the `next` it was going to commit. Clearing the pending
+queue is not enough: the running beat finishes half a second later and commits
+a state from before the snapshot, over the snapshot. The buffer cap's collapse
+(section 8) has exactly the same shape and the same risk.
+
+So `replaceSettled(state)`, in order:
+
+1. Bumps a **generation token**. Every transition captures the generation it
+   started under and every callback checks it, so a completion from a
+   superseded generation is inert - it neither commits nor advances the queue.
+2. Cancels the running animation through the queue's own `clear()` and the
+   `cancel()` the flight already exposes, so the DOM it owns is cleaned up by
+   its own path rather than abandoned.
+3. Drops every pending transition and tears down presentation UI that outlives
+   a step: a raised question, a parked summary, any transient arrow.
+4. Commits `state` immediately and repaints.
+
+The generation token is the load-bearing half. Cancellation is best-effort -
+an animation can report finished a tick after being cancelled - so correctness
+has to come from the callback checking whether it still speaks for the current
+run, not from having successfully stopped it.
+
+**The test:** a snapshot arrives while a beat is stalled; release the stalled
+beat afterwards and assert the displayed state is the snapshot's and never the
+superseded transition's `next`.
 
 ### 3. The classifier answers one question and returns a list
 
@@ -260,12 +319,48 @@ and emits one `march-resolved`.
 - `march-resolved` and `march-lapsed` carry `marchIds: number[]`, plural
   because a standoff spends both sides.
 
-**The invariant, and it is a test:** the set of march ids that left the store
-across a transition equals the union of the ids named by that transition's
-events. An arrow vanishing with nothing to explain it becomes a failing test
-rather than a silent hole. If the engine today drops an arrow without an
-event, this invariant is what will surface it, and fixing that is part of the
-work.
+#### A resolution must be reconstructible from its own event
+
+`ResolutionArrow` is derived entirely from the `march-resolved` event, so the
+event has to carry everything the arrow needs - and today it does not. `clash`
+is present only when the landing was contested (`src/game.ts:1650`), and
+`amount` is the defense actually moved, floored at what the land had standing.
+A 3-strength raid onto a land holding 1 records `amount: 1` and nothing about
+the 3, so the label would read `1/1 DMG` for a blow that was three times that.
+The existing ghost already gets this wrong in a way nobody has noticed: it
+falls back to `e.clash?.incoming ?? 1` (`src/main.ts:1723`), so **every**
+uncontested landing is drawn one unit wide whatever its strength.
+
+So `march-resolved` states the force aimed at the loser unconditionally,
+including uncontested landings and arrivals that moved nothing. Rather than
+adding a second field beside `clash.incoming` and pinning the two together with
+a test - which is the duplication this whole spec exists to remove - `clash` is
+replaced by two fields:
+
+- `incoming: number` - the strength aimed at the loser. **Always present** on
+  `march-resolved`.
+- `counter?: number` - what the loser mustered against it. Present exactly when
+  the landing was contested, so it is now the contested discriminant.
+
+The two shapes that were read off `clash`'s presence are re-expressed against
+`counter`, and both get clearer for it: `metNothing` becomes "no `amount` and
+no `counter`", and a standoff becomes "`counter` present and no `amount`". The
+readers to move are `metNothing` (`src/game.ts:915`), the three arms in
+`src/notices.ts` (400, 417, 430), `src/hud.ts:517`, and the construction sites
+at `src/game.ts:1072`, `1222`, `1577` and `1650`. The four readers in
+`src/main.ts` are inside `flashMarchResolution`, which this work deletes.
+
+**The invariant, and it is a test:** across a **non-settled** transition, the
+set of march ids that left the store equals the union of the ids named by that
+transition's events. An arrow vanishing with nothing to explain it becomes a
+failing test rather than a silent hole. If the engine today drops an arrow
+without an event, this invariant is what will surface it, and fixing that is
+part of the work.
+
+Scoped to non-settled deliberately. A snapshot replaces the whole board,
+`marches` included, and carries no departure events because nothing departed -
+the board was exchanged. Holding settled transitions to this invariant would
+make every rejoin a failure, and the presenter draws nothing for them anyway.
 
 ### 6. Arrows are rendered by key with enter and exit
 
@@ -349,9 +444,11 @@ during its own chain.
 
 Two rules keep the buffer honest:
 
-- A `start` or `snapshot` message **clears the buffer** and jumps. It is
-  settled history by definition, and a rejoining guest must not be made to
-  watch what it missed.
+- A `start` or `snapshot` message goes through `replaceSettled` and therefore
+  **cancels rather than clears** - generation token, running beat made inert,
+  presentation UI torn down. It is settled history by definition, and a
+  rejoining guest must not be made to watch what it missed, nor have a beat
+  from before the snapshot commit over it a moment later.
 - The buffer is **capped at 12 transitions**, and past the cap it collapses to
   the newest and presents nothing, exactly as a snapshot does. Twelve because a
   transition is roughly one seat's turn and five factions act, so a round is
@@ -361,11 +458,12 @@ Two rules keep the buffer honest:
   lag cannot grow without bound.
 
   This is the one place the "never skipped" rule is deliberately given up, and
-  it is given up wholesale rather than piecemeal: the buffer collapses to a
-  settled state, so the guest is never shown a partial or out-of-order
-  sequence. Skipping some of a round while presenting the rest would be worse
-  than skipping all of it. The cap is a number in `src/transitions.ts` with
-  this reasoning beside it.
+  it is given up wholesale rather than piecemeal: the collapse goes through
+  `replaceSettled`, cancellation and all, so the guest is never shown a partial
+  or out-of-order sequence and no superseded beat can commit behind it.
+  Skipping some of a round while presenting the rest would be worse than
+  skipping all of it. The cap is a number in `src/transitions.ts` with this
+  reasoning beside it.
 
 ## What this deletes
 
@@ -376,6 +474,11 @@ and the `clash-good`/`clash-bad` colours; `askTransferIfPending`'s duplicate
 path and the `replayActive` flag it needs; `REPLAY_RULES` (folded into
 `PRESENTATION_RULES`); `walkBadgeScore`'s backwards step, which the deferred
 commit makes unnecessary.
+
+`cueEndingIfAny` and the postmortem's `phase` derivation in `hud.update` are
+not deleted but move: both become stage 5 of the lifecycle, so an ending is
+raised by the transition that caused it rather than by whichever repaint first
+notices the phase.
 
 **`settleTurn`, `pendingSummary` and `idleSettleArmed` go too.** They are the
 second scheduler: a hand-rolled state machine that parks the summary, re-arms
@@ -395,13 +498,16 @@ bug was never the flag, it was that only some surfaces consulted it.
 
 The dependencies are real and not obvious, so the plan should follow them:
 
-1. March identity and the `march-declared` event, with the protocol bump. Every
-   later piece names march ids.
-2. `src/transitions.ts`: the queue, the owned state and the three intakes, with
-   the deferred commit and the full five-step lifecycle - summary and dismissal
-   included, so `settleTurn` is retired here rather than left to be repaired
-   twice. The host chain and local decisions move onto it; the guest intake
-   still presents nothing. `main.ts` loses its assignable `game`.
+1. March identity, the `march-declared` event, the `clash` split into
+   `incoming` and `counter`, and the protocol bump. Every later piece names
+   march ids, and the resolution arrow needs `incoming` before it can be drawn.
+2. `src/transitions.ts`: the queue, the owned state, the generation token and
+   the three intakes, with the deferred commit and the full six-stage
+   lifecycle - questions, summary and ending included, so `settleTurn` is
+   retired here rather than left to be repaired twice. The host chain and local
+   decisions move onto it; the guest intake still presents nothing. `main.ts`
+   loses its assignable `game`, and the postmortem stops being derived from
+   `phase`.
 3. `src/presentation.ts`: the classifier and the audience gate, replacing
    `REPLAY_RULES` and deleting the float subsystem.
 4. Keyed arrow rendering with enter and exit, plus the transient resolution
@@ -436,11 +542,23 @@ so these can be written, since `src/main.ts` cannot be tested today.
   read accessor still answers `previous` - the badge, the ownership and the
   arrow set all still read the board the player was last shown. This is the
   test that would have caught the bug this whole spec exists to fix.
-- The lifecycle runs in order and nothing skips: beats, then commit, then
-  summary, then dismissal, then the next transition. Including the case that
-  has no summary, which is where `settleTurn` fails today.
+- The lifecycle runs in order and nothing skips: beats, commit, questions,
+  summary, ending, complete. Including the case that has no summary, which is
+  where `settleTurn` fails today.
+- **A question sees the committed state.** An `ask` beat raised for a conquest
+  can have its `transferDefense` answer accepted - the regression for the
+  stage-1 ordering, which `commitDecision` would have refused.
 - An `ask` beat whose answer submits a transition releases, and that
   transition lands after the current one rather than deadlocking it.
+- **The ending comes last.** A transition that ends the run raises no
+  postmortem until its beats, questions and summary are done, and the board
+  behind "View the map" has no march still standing on it.
+- **A snapshot during a stalled beat wins.** Release the stalled beat after the
+  snapshot lands and assert the displayed state is the snapshot's, never the
+  superseded transition's `next`. The same for a buffer-cap collapse.
+- `march-resolved` always carries `incoming`, including an uncontested landing
+  and one that moved nothing, so a `ResolutionArrow` is reconstructible from
+  the event alone. A 3-strength raid onto a land holding 1 reads `1/3 DMG`.
 - The march-identity invariant of section 5.
 - A clash retires two arrows and draws one resolution arrow, pointing winner
   at loser, with a strength that is neither declared damage.
@@ -455,4 +573,7 @@ anywhere on a polygon. A badge showing an outcome before the beat that
 explains it. A rival's raid arriving at your land with no camera, no sound and
 no arrow you saw fly. The AI taking its turn behind an animation of the turn
 before it. A guest watching a round arrive already finished, or watching five
-minutes of history after a tab-out.
+minutes of history after a tab-out. A postmortem rising over a raid still
+landing, or "View the map" behind one showing arrows that never resolved. A
+conquest question that refuses the answer you give it. An uncontested raid
+drawn one unit wide whatever its strength.
