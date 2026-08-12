@@ -11,6 +11,16 @@ export interface Transition {
   events: GameEvent[];
   /** History. Commit it, present nothing: a boot, a deal, a rejoin. */
   settled: boolean;
+  /** How the commit paints this move. Absent is the ordinary animating
+   *  paint; `{ animate: false }` renders the state as already-settled - no
+   *  card flies and no round summary rises - which is what a whole game
+   *  arriving at once needs.
+   *
+   *  It rides on the transition rather than in a binding beside the queue
+   *  because a binding is inherited: a live transition submitted from inside
+   *  a settled commit would drain while the flag was still set and be painted
+   *  in silence. A field cannot leak from one transition to another. */
+  paint?: { animate?: boolean };
 }
 
 /** What a transition does to the screen, injected so the queue can be tested
@@ -19,8 +29,10 @@ export interface Transition {
 export interface Stages {
   /** Stage 1. The transient beats, against the board as it stood. */
   present(t: Transition, done: () => void): void;
-  /** Stage 2. Commit has happened; repaint every persistent layer. */
-  commit(state: GameState): void;
+  /** Stage 2. Commit has happened; repaint every persistent layer. Handed
+   *  the whole transition, not just the state, because how a move is painted
+   *  is the transition's own (`Transition.paint`). */
+  commit(t: Transition): void;
   /** Stage 3. Questions this transition raised, if any. */
   ask(t: Transition, done: () => void): void;
   /** Stage 4. The round summary, and its dismissal if it blocks. */
@@ -37,11 +49,24 @@ export interface TransitionQueue {
    *  simply lands behind the current one. */
   submit(t: Transition): void;
   /** History arriving whole. Cancels anything in flight under a new
-   *  generation, drops the pending queue, and commits immediately. */
-  replaceSettled(state: GameState): void;
+   *  generation, drops the pending queue and every idle waiter, and commits
+   *  immediately. */
+  replaceSettled(state: GameState, paint?: { animate?: boolean }): void;
   /** True while a transition is running or waiting to. Input gating asks
    *  this rather than tracking flights of its own. */
   busy(): boolean;
+  /** Runs `fn` once every transition submitted so far has finished all six
+   *  stages. Fires immediately when the queue is already empty, so a caller
+   *  that has to read the committed state after submitting always waits on
+   *  the same call whether or not the move had anything to show.
+   *
+   *  This is what a continuation is: the host's AI chain steps a seat here,
+   *  and a decision's aftermath repaints here, rather than either of them
+   *  watching the animation queue for a beat it does not own. A waiter that
+   *  submits is fine - it lands behind nothing and starts at once - but a
+   *  waiter that unconditionally re-arms never returns, the same as
+   *  `AnimationQueue.onIdle`. */
+  onIdle(fn: () => void): void;
   /** How many transitions are waiting, the buffer the guest cap reads. */
   pending(): number;
 }
@@ -85,6 +110,9 @@ export function createTransitionQueue(
   let generation = 0;
   let running: Transition | null = null;
   const queue: Transition[] = [];
+  /** Waiters armed by `onIdle`, fired and emptied the moment nothing is
+   *  running and nothing is queued. */
+  const idle: (() => void)[] = [];
   // True only while `drain`'s own loop is on the call stack. It is what lets
   // a transition that finishes every stage synchronously hand off to the
   // next queued transition by looping rather than recursing - see `drain`.
@@ -114,7 +142,7 @@ export function createTransitionQueue(
       // in flight - the same doctrine as the stage hooks below, applied to
       // the one stage with no `done` of its own to fall back on.
       try {
-        stages.commit(t.next);
+        stages.commit(t);
       } catch {
         // no recovery to attempt: the state is already committed, and the
         // lifecycle simply carries on to the next stage.
@@ -142,7 +170,8 @@ export function createTransitionQueue(
   }
 
   /** Starts the front of the queue when nothing is running, as a loop rather
-   *  than recursion. A transition whose every stage completes synchronously
+   *  than recursion, and fires the idle waiters when there is nothing left to
+   *  start. A transition whose every stage completes synchronously
    *  (present, ask, summary and ending all calling `done` immediately - the
    *  normal shape of a transition with no beats, no question, no summary and
    *  no ending) reaches `i >= names.length` from deep inside `runStage`'s own
@@ -158,7 +187,17 @@ export function createTransitionQueue(
     try {
       while (running === null) {
         const next = queue.shift();
-        if (next === undefined) return;
+        if (next === undefined) {
+          // Nothing left to start: the queue is idle, which is what a waiter
+          // asked to be told. Taken as a batch and looped rather than
+          // returned from, because a waiter may submit - the AI chain's next
+          // seat does exactly that - and that transition must start here, as
+          // a sibling iteration, rather than one frame deeper.
+          const waiting = idle.splice(0, idle.length);
+          if (waiting.length === 0) return;
+          for (const fn of waiting) fn();
+          continue;
+        }
         running = next;
         const names = next.settled ? SETTLED_STAGES : LIVE_STAGES;
         runStage(next, generation, names, 0);
@@ -176,7 +215,7 @@ export function createTransitionQueue(
       queue.push(t);
       drain();
     },
-    replaceSettled(state) {
+    replaceSettled(state, paint) {
       // Bumping the generation first is what makes a `done` still held by
       // the transition this replaces inert: it captured the old generation,
       // so it fails the check at the top of `runStage` and neither commits
@@ -184,12 +223,20 @@ export function createTransitionQueue(
       // longer runs.
       generation += 1;
       queue.length = 0;
-      const t: Transition = { next: state, events: [], settled: true };
+      // The waiters go with the queue. A continuation armed against the run
+      // this snapshot replaces - the next AI seat, a repaint of a board that
+      // no longer exists - would otherwise fire against the new world.
+      idle.length = 0;
+      const t: Transition = { next: state, events: [], settled: true, paint };
       running = t;
       runStage(t, generation, SETTLED_STAGES, 0);
     },
     busy() {
       return running !== null || queue.length > 0;
+    },
+    onIdle(fn) {
+      idle.push(fn);
+      drain();
     },
     pending() {
       return queue.length;

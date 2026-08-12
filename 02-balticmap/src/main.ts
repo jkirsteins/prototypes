@@ -54,7 +54,6 @@ import { createHud, impactText, LOG_PREFS_KEY, type HudCallbacks } from "./hud";
 import { buildReplaySteps, type ReplayStep } from "./replay";
 import { createAudioEngine } from "./audio";
 import type { StandingChange } from "./standings";
-import type { NoticeCtx } from "./notices";
 import { createDeckScreen } from "./deck-screen";
 import { createRegionsScreen } from "./regions-screen";
 import { createHostSession, type HostSession } from "./net-host";
@@ -75,7 +74,9 @@ import {
   saveBuildPref, saveRegionPref, type MetaStorage,
 } from "./meta";
 import { createRunClock } from "./run-clock";
-import { createTransitionQueue, type Stages } from "./transitions";
+import {
+  createTransitionQueue, type Stages, type Transition,
+} from "./transitions";
 import { applyBootParams, parseBootParams } from "./boot-params";
 import { REGIONS, setActiveRegion, type RegionId } from "./regions";
 import {
@@ -333,29 +334,35 @@ const initialGame: GameState = (() => {
   }
 })();
 
-/** The paint the next commit uses; undefined is the ordinary animating one.
- *  `{ animate: false }` renders a state as already-settled - no card flies
- *  and no round summary rises - which is what a whole game arriving at once
- *  needs, or a rejoining guest is made to watch twenty turns of history.
- *  Held in a binding because the queue hands `commit` the state alone;
- *  `adoptSnapshot` is its only writer and clears it inside the same call. */
-let paintOpts: { animate?: boolean } | undefined;
-
 /** What a transition does to this screen.
  *
- *  `commit` is the whole of `refresh`, and every beat a transition owes the
- *  player - the replay's steps, the round summary, the conquest question - is
- *  queued from inside it, by `hud.update`. So `present` has nothing of its own
- *  to run and reports itself finished at once: the beats are not separable
- *  from the repaint while the HUD is what queues them, and a `present` that
- *  waited on the animation queue would hold the commit back behind callers
- *  that read the state the moment they have submitted it. */
+ *  `present` is the turn-start replay: the camera, the labels, the badge walks
+ *  and the sounds for the events THIS transition appended, run against the
+ *  board as it stood, and finished before the commit repaints it. It reports
+ *  itself done when the animation queue drains, so a transition with nothing
+ *  to show completes inside `submit` and one with a round to show holds the
+ *  next one off for as long as it takes - which is the whole of the gate that
+ *  used to be spelled out at every call site that resumed the AI.
+ *
+ *  `commit` is the whole of `refresh`. The round summary and the conquest
+ *  question are still raised from inside it - `hud.update` and
+ *  `askTransferIfPending` - so `ask`, `summary` and `ending` have nothing of
+ *  their own yet. */
 const stages: Stages = {
-  present(_t, done) {
-    done();
+  present(t, done) {
+    // The board this stage draws over is the one already on screen, so this
+    // repaint moves nothing on the map. What it moves is the HUD: `inputLocked`
+    // has answered true since the move was submitted, and until something
+    // repaints, a hand that is about to sit through a round of animation still
+    // looks live enough to click. Before the steps are queued, because
+    // `floatScoreMarks` runs on every repaint and drains what the replay
+    // claims.
+    refresh();
+    queueReplay(t);
+    animations.onIdle(done);
   },
-  commit() {
-    refresh(paintOpts);
+  commit(t) {
+    refresh(t.paint);
   },
   ask(_t, done) {
     done();
@@ -386,23 +393,34 @@ const game = (): GameState => transitions.state();
 function apply(mutate: (g: GameState) => GameState): void {
   const before = game();
   const next = mutate(before);
-  transitions.submit({
-    next, events: next.log.slice(before.log.length), settled: false,
-  });
+  submitUpdate(next, next.log.slice(before.log.length));
+}
+
+/** A move to watch whose events are already known - the host's `update`
+ *  message carries them. The slice `apply` takes is the right answer only
+ *  while the log grows by exactly what the move appended, and a spliced
+ *  update is the case where it does not.
+ *
+ *  Every live move ends with `refreshWhenSettled`, and that is here rather
+ *  than at the call sites because it is owed by ALL of them: `inputLocked` is
+ *  derived, every paint made inside a move draws a locked screen, and a move
+ *  whose caller had nothing else to do afterwards - the faction pick, a state
+ *  the host pushed - would otherwise leave the hand greyed with nothing left
+ *  to repaint it. */
+function submitUpdate(next: GameState, events: GameEvent[]): void {
+  transitions.submit({ next, events, settled: false });
+  refreshWhenSettled();
 }
 
 /** Takes on a whole game that arrived at once, painted as already-settled.
  *  The silence is the point: an animating paint flies every card in the log,
  *  so a guest rejoining a run twenty turns old would watch all of it. */
 function adoptSnapshot(state: GameState): void {
-  paintOpts = { animate: false };
-  try {
-    transitions.replaceSettled(state);
-  } finally {
-    // `replaceSettled` commits inside that call, so the flag has done its
-    // work by here and no later commit may inherit it.
-    paintOpts = undefined;
-  }
+  transitions.replaceSettled(state, { animate: false });
+  // The commit inside that call painted whatever the screen was still busy
+  // with; this is the paint that hands the board back. Same debt every live
+  // move owes - see `submitUpdate`.
+  refreshWhenSettled();
 }
 let armed: number | null = null; // hand index of the armed targeted card
 /** The land an armed march card will send its army out of, once the player
@@ -425,12 +443,57 @@ let hoveredRegion: Region | null = null; // region under the cursor, for hover r
  *  the highlight back. Suppressed, not cleared, while a card is armed -
  *  targeting cues own the map, and disarming brings the pin back. */
 let pinnedRegion: Region | null = null;
-// True from a committed human action until the AI chain has resolved and the
-// round summary (if any) is on screen. The hand is already inert in this
-// window (renderHand disables it whenever it is not the human's turn), so
-// this exists for the map and the menu buttons: nothing must act while the
-// human's card is still flying or the AI is still resolving behind it.
-let resolving = false;
+/** True while this screen must not act for a reason no queue can see: a
+ *  guest's move gone to the host and not yet answered, and either side of a
+ *  session that has dropped, where the two can no longer agree on what
+ *  happened. Everything else `inputLocked` asks about is derived - see there.
+ *  Set only by the network callbacks, and cleared by the answer they were
+ *  waiting for. */
+let awaitingWire = false;
+
+/** Whether the local player may act right now.
+ *
+ *  One question with three sources, and none of them is a flag somebody has to
+ *  remember to clear: the transition queue is showing a move (so the board is
+ *  mid-explanation, or about to be), an animation of this screen's own is
+ *  still running (the played card is in the air), the other human holds the
+ *  turn, or the wire owes this screen an answer. The hand is already inert
+ *  whenever it is not the human's turn - `renderHand` sees to that - so this
+ *  is what the map, the arrows and the menu buttons ask.
+ *
+ *  Every paint made while this is true draws a locked screen, so every path
+ *  that leaves the locked window repaints on its way out: `finishChain` and
+ *  `afterHumanPlay` wait for the animation queue and then refresh. */
+function inputLocked(): boolean {
+  return (
+    transitions.busy() || animations.busy() || awaitingWire || remoteHoldsTurn()
+  );
+}
+
+/** True while the OTHER human's seat is on turn. A different fact from the
+ *  queue being busy: nothing is in flight here, and nothing will be until
+ *  they play. */
+function remoteHoldsTurn(): boolean {
+  return game().phase === "playing" && controllerOf(game().current) === "remote";
+}
+
+/** Repaints once the screen is the player's again: after the queue has
+ *  finished showing whatever it was showing, and after the animation under it
+ *  has ended.
+ *
+ *  This is the counterpart every path out of the locked window owes.
+ *  `inputLocked` is derived rather than stored, so nothing repaints when it
+ *  goes false on its own - and the paint that drew the hand greyed is the one
+ *  that would stay on screen. Fires on the spot when neither queue is busy,
+ *  which is most calls. */
+function refreshWhenSettled(): void {
+  transitions.onIdle(() => {
+    animations.onIdle(() => {
+      refresh();
+      updateWaitingStatus();
+    });
+  });
+}
 
 /** The seat this screen plays. 0 for solo and host; the guest learns its
  *  seat from the start snapshot. Presentation only - the engine's humanSeat
@@ -582,11 +645,6 @@ function humanBlockReason(cardId: string) {
  *  into a copy the next update threw away. */
 let transferAsked: string | null = null;
 
-/** True from the moment a batch's replay steps are queued until the queue
- *  drains. While it holds, the conquest question belongs to the replay - see
- *  `askTransferIfPending`. */
-let replayActive = false;
-
 /** Whether the LOCAL player owes an answer about a conquest. Asked wherever
  *  input has to wait on the modal, so the wait is the same question the modal
  *  is raised on rather than a second reading of the same store. */
@@ -602,12 +660,6 @@ function localPendingTransfers(): { from: string; to: string }[] | undefined {
 }
 
 function askTransferIfPending(): void {
-  // While a replay is running the questions belong to it: each one is raised
-  // by the step that shows the land being taken, and the replay waits on the
-  // answer. Raising one here as well would put the modal over the animation
-  // that is explaining it - which is what it used to do, appearing before the
-  // player had been shown the conquest at all.
-  if (replayActive) return;
   // The front of the queue: one pair of lands per modal, in the order the
   // lands fell. Answering pops it and the next conquest raises its own.
   const pending = localPendingTransfers()?.[0];
@@ -621,12 +673,12 @@ function askTransferIfPending(): void {
   raiseTransferModal(pending);
 }
 
-/** Puts one conquest's question on screen. `onAnswered` fires once the answer
- *  has been committed, which is what a replay step waits on before moving the
- *  camera to the next thing that happened. */
-function raiseTransferModal(
-  pending: { from: string; to: string }, onAnswered?: () => void,
-): void {
+/** Puts one conquest's question on screen. Raised by the commit that first
+ *  carries the conquest, which is AFTER the transition's own present stage has
+ *  shown the land being taken - the question follows the picture of the thing
+ *  it is asking about, and the answer is committed against a state that has
+ *  the conquest in it. */
+function raiseTransferModal(pending: { from: string; to: string }): void {
   const v = viewOf(game());
   hud.showTransferOffer(
     {
@@ -641,7 +693,6 @@ function raiseTransferModal(
       onConfirm(amount) {
         hud.hideHarvestUi();
         decide({ kind: "transfer", amount });
-        onAnswered?.();
       },
     },
   );
@@ -1678,7 +1729,7 @@ function renderMarchArrows(): void {
  *  and would not meet this one at all. */
 function counterFor(m: March): number | null {
   const human = localHuman();
-  if (!human || !isLocalTurn() || !turnOpen(game()) || resolving) return null;
+  if (!human || !isLocalTurn() || !turnOpen(game()) || inputLocked()) return null;
   if (pendingHarvest !== null || discardMode()) return null;
   const realm = fullRealmOf(human.factionId, game().overlords, game().incorporated);
   if (!realm.has(m.to) || realm.has(m.from)) return null;
@@ -1851,109 +1902,68 @@ function flashMarchResolution(
   );
 }
 
-/** The turn-start replay: one queue step per resolved event that earns the
- *  camera (see `REPLAY_RULES` in src/replay.ts) - glide to the land, label
- *  in and out, the event's sound, then the next. Called by `hud.update`'s
- *  animate branch (`HudCallbacks.replayRound`) BEFORE the round-summary
- *  decision, so the summary parks behind the queue and rises as the round's
- *  epilogue. Sequential where the old flash was concurrent, because the
- *  camera can only be one place at a time - simultaneity was the old
- *  design's claim, and it read as noise the moment three marches landed. */
 /** The realm, plus every land at the far end of an arrow or a demand standing
  *  between it and them - see `ReplayView.linked`.
  *
- *  Read off the arrows STILL IN FLIGHT, which is the honest reading of "there
- *  is something between us": an arrow that has already landed is the event
- *  being replayed, and it comes in through the realm gate on its own. */
-function linkedLands(realm: ReadonlySet<string>): Set<string> {
+ *  Read off the arrows STILL IN FLIGHT in the state the batch landed in, which
+ *  is the honest reading of "there is something between us": an arrow that has
+ *  already landed is the event being replayed, and it comes in through the
+ *  realm gate on its own. */
+function linkedLands(
+  state: GameState, realm: ReadonlySet<string>,
+): Set<string> {
   const linked = new Set(realm);
-  for (const march of Object.values(game().marches)) {
+  for (const march of Object.values(state.marches)) {
     if (realm.has(march.from) || realm.has(march.actor)) linked.add(march.to);
     if (realm.has(march.to)) linked.add(march.from);
   }
-  for (const claim of Object.values(game().claims)) {
+  for (const claim of Object.values(state.claims)) {
     if (realm.has(claim.actor)) linked.add(claim.to);
     if (realm.has(claim.to)) linked.add(claim.actor);
   }
   return linked;
 }
 
-function queueReplay(
-  fresh: GameEvent[],
-  changes: StandingChange[][],
-  ctx: NoticeCtx | null,
-): number {
+/** The turn-start replay: one queue step per resolved event that earns the
+ *  camera (see `REPLAY_RULES` in src/replay.ts) - glide to the land, label in
+ *  and out, the event's sound, then the next. Sequential where the old flash
+ *  was concurrent, because the camera can only be one place at a time -
+ *  simultaneity was the old design's claim, and it read as noise the moment
+ *  three marches landed.
+ *
+ *  This is stage 1 of a transition, so it queues its steps against the board
+ *  the player was last shown and the commit that repaints it waits behind
+ *  them. Everything it needs comes off the transition rather than off the
+ *  displayed state: the events are the ones this move appended, and the realm,
+ *  the arrows still standing and the standings walk are all read from the
+ *  state those events land in - which is not the one under the map yet. */
+function queueReplay(t: Transition): void {
   replayedIndices = new Set();
-  const human = localHuman();
-  if (!human || game().phase !== "playing") return 0;
-  const realm = fullRealmOf(human.factionId, game().overlords, game().incorporated);
-  const steps = buildReplaySteps(fresh, {
-    localPlayerId: human.id, realm, linked: linkedLands(realm), ctx,
+  const state = t.next;
+  const human = state.players[localSeat];
+  if (human === undefined || state.phase !== "playing") return;
+  const { changes, ctx } = hud.noticeWalk(state, t.events);
+  const realm = fullRealmOf(human.factionId, state.overlords, state.incorporated);
+  const steps = buildReplaySteps(t.events, {
+    localPlayerId: human.id, realm, linked: linkedLands(state, realm), ctx,
   });
-  const base = game().log.length - fresh.length;
-  // The conquests this player still owes an answer about, in the order the
-  // lands fell. Each is raised by the step that shows its land being taken,
-  // so the question follows the picture of the thing it is asking about.
-  const owed = [...(localPendingTransfers() ?? [])];
-  const asked = new Set<string>();
+  if (steps.length === 0) return;
+  const base = state.log.length - t.events.length;
   for (const step of steps) {
     replayedIndices.add(base + step.index);
     animations.push((done) =>
       runReplayStep(step, changes[step.index] ?? [], realm, done),
     );
-    const taken = step.event.type === "subjugated"
-      ? owed.find((q) => q.to === step.event.targetFactionId)
-      : undefined;
-    if (taken !== undefined && !asked.has(taken.to)) {
-      asked.add(taken.to);
-      queueTransferQuestion(taken);
-    }
   }
-  // A conquest whose own step the gate left out still owes its question, and
-  // it is still the replay's to ask - anything raised outside it would land
-  // over an animation in progress.
-  for (const q of owed) {
-    if (asked.has(q.to)) continue;
-    asked.add(q.to);
-    queueTransferQuestion(q);
-  }
-  if (steps.length > 0 || asked.size > 0) {
-    // While the replay runs, the map shows the event being replayed and no
-    // other arrow. Stepping the AI chain keeps a LATER seat's declarations off
-    // the board, but a seat declares its own march in the same breath as it
-    // resolves the one before - so the arrow it just drew would stand over the
-    // landing of the arrow it drew last turn. One event at a time means one
-    // arrow at a time.
-    svg.classList.add("replaying");
-    replayActive = true;
-    animations.onIdle(() => {
-      svg.classList.remove("replaying");
-      replayActive = false;
-      // Anything the replay could not ask about - a question raised after it
-      // had already drained - falls back to the ordinary path.
-      askTransferIfPending();
-    });
-  }
-  return steps.length;
-}
-
-/** One queue step that stops the replay on a conquest question and does not
- *  release it until the player has answered. The camera is already on the
- *  land, the label has just said it was taken, and the rest of the round
- *  waits - rather than resolving behind the modal, which is what it did when
- *  the question was raised from `refresh`. */
-function queueTransferQuestion(pending: { from: string; to: string }): void {
-  animations.push((done) => {
-    // The board may have moved since this was queued: the run ended, or the
-    // question was answered by the other seat's copy arriving. Nothing owed.
-    const still = localPendingTransfers()?.some((q) => q.to === pending.to);
-    if (still !== true || game().phase !== "playing") {
-      done();
-      return;
-    }
-    transferAsked = `${pending.from}>${pending.to}`;
-    raiseTransferModal(pending, done);
-  });
+  // While the replay runs, the map shows the event being replayed and no
+  // other arrow. A transition at a time keeps a LATER seat's declarations off
+  // the board, but a seat declares its own march in the same breath as it
+  // resolves the one before - so the arrow it just drew would stand over the
+  // landing of the arrow it drew last turn. One event at a time means one
+  // arrow at a time. Armed before the stage's own waiter, so the class is off
+  // by the time the commit repaints the arrows.
+  svg.classList.add("replaying");
+  animations.onIdle(() => svg.classList.remove("replaying"));
 }
 
 /** One step: camera first, then label, ghost and sound together. `done` fires
@@ -2628,11 +2638,14 @@ function commitHarvest(index: number, choice: HarvestChoice): void {
     kind: "harvest", cardIndex: index,
     cardId: localHuman().hand[index], choice,
   });
-  // The play first, then what it gave: `decide` refreshes, which is what
-  // queues the card's flight to the discard, and the reveal goes on the same
-  // queue behind it. A sent decision has given nothing yet - the cards arrive
-  // with the host's update, and `onState` reveals them there.
-  if (result.outcome === "applied") revealHarvestGains(before);
+  // The play first, then what it gave: the commit is what queues the card's
+  // flight to the discard, and the reveal goes on the same queue behind it -
+  // which is why this waits for the transition rather than reading the log
+  // the moment the decision is made. A sent decision has given nothing yet:
+  // the cards arrive with the host's update, and `onState` reveals them.
+  if (result.outcome === "applied") {
+    transitions.onIdle(() => revealHarvestGains(before));
+  }
 }
 
 /** Draws the dot for every settlement founded so far, from state, on every
@@ -2717,10 +2730,10 @@ function refresh(opts?: { animate?: boolean }): void {
   // a land can also be walked into by a raid landing at turn start - one
   // question, however the land was taken.
   //
-  // AFTER `hud.update`, which is what queues the replay: this same refresh is
-  // the one that first sees the conquest, and asked before the replay exists
-  // it put the modal on screen ahead of the animation that explains it. The
-  // replay takes the question over from here (`replayActive`).
+  // The transition that carried the conquest showed it before this repaint
+  // ran, so the modal follows the animation explaining it rather than landing
+  // over it. Answering commits against the state under the map, which is why
+  // the question belongs to the commit and not to the beats before it.
   askTransferIfPending();
   floatScoreMarks();
   // The menu carries the panel; so does a network game that has lost its
@@ -2739,21 +2752,10 @@ function refresh(opts?: { animate?: boolean }): void {
   if (hoveredRegion !== null) tooltip.redraw(hoverLines(hoveredRegion));
 }
 
-/** After a completed human action: advance, then run every AI turn back to
- *  back (each AI plays or discards; the loop stops on an ending phase).
- *
- *  The AI chain does not start until the human's played card has finished
- *  flying (`hud.afterPlayAnimation`) - resolving it on a bare `setTimeout(0)`
- *  used to put the round-summary modal over a card the player was still
- *  watching move. The human's own effect is revealed immediately below,
- *  while their card is still in the air: the card flies over the board it
- *  just changed, and the "before" of every summary line is then the number
- *  the player was looking at while it flew. Revealing the AI round early
- *  would make that "before" a lie. */
-/** Walks the AI seats ONE AT A TIME, animating what each did before the next
- *  one moves, until a human-controlled seat - this screen's or the remote
- *  one's - is on turn or the run ends. The host pushes after every seat, so a
- *  guest watches the round unfold rather than receiving it finished.
+/** Walks the AI seats ONE AT A TIME, until a human-controlled seat - this
+ *  screen's or the remote one's - is on turn or the run ends. The host pushes
+ *  after every seat, so a guest watches the round unfold rather than receiving
+ *  it finished.
  *
  *  A seat at a time and not the whole round, because the round used to be
  *  resolved in one statement and replayed afterwards out of a state that had
@@ -2761,11 +2763,14 @@ function refresh(opts?: { animate?: boolean }): void {
  *  sequence of events drawn over the wrong board: arrows declared two turns
  *  later stood on the map while a raid from before them was still landing.
  *
- *  Input stays locked the whole way. The wait between seats is the animation
- *  queue draining, never a copied duration; `refresh` is what queues a seat's
- *  replay steps (hud.update -> replayRound). */
+ *  Input stays locked the whole way, and the wait between seats is the
+ *  TRANSITION queue draining: a seat is one `submit`, that transition shows
+ *  what the seat did before it commits, and the seat after it is submitted by
+ *  the waiter this one arms. Nothing here waits on an animation callback or a
+ *  timer - the queue starts a waiter's own transition as a sibling iteration
+ *  of its drain loop, so a round of seats that animate nothing is a loop
+ *  rather than a stack. */
 function resumeChain(): void {
-  resolving = true;
   stepAiChain(0);
 }
 
@@ -2777,48 +2782,49 @@ function stepAiChain(taken: number): void {
     return;
   }
   // One seat's whole turn, so the transition carries exactly what that seat
-  // appended. The push follows the commit because the wire is fed from the
-  // committed state, which is the same state this screen has just painted.
+  // appended.
   apply(() => next);
-  if (net.role === "host") net.session?.pushUpdate();
-  // Through a macrotask, so a seat whose turn animated nothing does not
-  // recurse into the next one on the same stack - a long chain of quiet
-  // seats would otherwise nest as deep as it is long.
-  animations.onIdle(() => setTimeout(() => stepAiChain(taken + 1), 0));
+  transitions.onIdle(() => {
+    // The push follows the commit because the wire is fed from the committed
+    // state, which is the same state this screen has just painted.
+    if (net.role === "host") net.session?.pushUpdate();
+    stepAiChain(taken + 1);
+  });
 }
 
+/** The round has come back to a human. Nothing left to lock the screen with,
+ *  so the only job is the repaint that says so. A remote seat holding the turn
+ *  keeps input locked all the same, because the round has not finished; it has
+ *  moved elsewhere, and `inputLocked` reads that off the turn order rather
+ *  than off a flag. */
 function finishChain(): void {
-  // A remote seat holding the turn keeps input locked here, because the round
-  // has not finished - it has moved elsewhere.
-  resolving =
-    game().phase === "playing" && controllerOf(game().current) === "remote";
-  refresh();
-  updateWaitingStatus();
+  refreshWhenSettled();
 }
 
+/** After a completed human action: advance, then run every AI turn back to
+ *  back (each AI plays or discards; the loop stops on an ending phase).
+ *
+ *  The AI chain does not start until the human's played card has finished
+ *  flying and any modal about the turn before has been read
+ *  (`hud.afterPlayAnimation`) - resolving it on a bare `setTimeout(0)` used to
+ *  put the round-summary modal over a card the player was still watching
+ *  move. */
 function afterHumanAction(): void {
   // `advance` refuses while the turn is still open - a card that re-opened it
   // for another copy of itself has not finished - so this is safe to call from
   // every committed action rather than only from the ones that end a turn.
-  //
-  // Input locks BEFORE the world moves, because the commit is a repaint: a
-  // paint that still reported the turn open would draw a live hand over a
-  // turn that has already been handed on.
-  resolving = true;
   apply((g) => advance(g, rng));
-  if (net.role === "host") net.session?.pushUpdate();
-  if (game().phase !== "playing" || controllerOf(game().current) === "local") {
-    // No AI chain behind this, so the replay is the only thing left to wait
-    // for - the next seat is the player's own and its marches just landed.
-    animations.onIdle(() => {
-      resolving = false;
-      refresh();
-      updateWaitingStatus();
+  transitions.onIdle(() => {
+    if (net.role === "host") net.session?.pushUpdate();
+    if (game().phase !== "playing" || controllerOf(game().current) === "local") {
+      // No AI chain behind this: the next seat is the player's own and its
+      // marches have just been shown landing.
+      finishChain();
+      return;
+    }
+    hud.afterPlayAnimation(() => {
+      resumeChain();
     });
-    return;
-  }
-  hud.afterPlayAnimation(() => {
-    resumeChain();
   });
 }
 
@@ -2862,15 +2868,14 @@ function revealHarvestGains(since: number): void {
  *  itself refuses a spent standard turn, so the button's handler advances
  *  directly; this function's whole job is the animation and the repaint. */
 function afterHumanPlay(): void {
-  resolving = true;
   // No push here: `commitDecision` made it the moment the play landed, which
   // is the earliest the other screen could have been told - and doing it from
   // one place is what stops a route forgetting.
-  refresh();
-  hud.afterPlayAnimation(() => {
-    resolving = false;
-    refresh();
-  });
+  //
+  // The repaint waits for the card to land and for the queue behind it to
+  // empty: `inputLocked` counts a flight in the air, so a paint made under
+  // one would draw a live hand over a card the player is still watching.
+  hud.afterPlayAnimation(refreshWhenSettled);
 }
 
 /** A fresh world on the deck screen: everything the New game click does once
@@ -2885,12 +2890,12 @@ function afterHumanPlay(): void {
 function startStagingRun(): void {
   // Belt-and-braces: onNewGame is unreachable mid-resolution in practice
   // (the menu is hidden while playing, and the postmortem appears only
-  // once the run has ended), but a stray call must not leave a stale
-  // continuation armed against the fresh game that follows.
-  resolving = false;
+  // once the run has ended), but a stray call must not leave the screen
+  // frozen against a session the fresh game does not have.
+  awaitingWire = false;
   // A whole new world rather than a move played into the old one. Nobody
   // watched it happen, so it commits with nothing presented - and it drops
-  // whatever the run being abandoned still had in flight.
+  // whatever the run being abandoned still had in flight, waiters and all.
   transitions.replaceSettled(startGame(newGame(
     data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
     SITE_CAPS, DEFENSE_MAX,
@@ -2904,7 +2909,7 @@ function startStagingRun(): void {
   // every polygon, and the held highlight would describe the last one.
   interaction.deselect();
   deckScreen.update(deckScreenView(true));
-  refresh();
+  refreshWhenSettled();
 }
 
 /** The HUD's callbacks, held in a name so a keyboard shortcut can invoke the
@@ -2944,7 +2949,7 @@ const hudCallbacks: HudCallbacks = {
       // Host-only for the reason DECISION_ROUTES writes down, gated here as
       // well as in CSS - the same pair Surrender uses.
       if (!decidedHere("keep-playing", net.role)) return;
-      if (game().phase !== "victory" || resolving || pendingHarvest !== null) {
+      if (game().phase !== "victory" || inputLocked() || pendingHarvest !== null) {
         return;
       }
       disarm();
@@ -2962,7 +2967,7 @@ const hudCallbacks: HudCallbacks = {
       // The button is hidden from a guest as well (`.net-guest` in
       // style.css); this is the gate that does not depend on CSS.
       if (!decidedHere("surrender", net.role)) return;
-      if (game().phase !== "playing" || resolving || pendingHarvest !== null) {
+      if (game().phase !== "playing" || inputLocked() || pendingHarvest !== null) {
         return;
       }
       disarm();
@@ -2976,7 +2981,7 @@ const hudCallbacks: HudCallbacks = {
       // a live hand behind it, and which card that hand still accepts is
       // `humanPlayableSet`'s answer rather than this gate's.
       if (
-        !isLocalTurn() || !turnOpen(game()) || resolving ||
+        !isLocalTurn() || !turnOpen(game()) || inputLocked() ||
         pendingHarvest !== null || localTransferPending()
       ) {
         return;
@@ -3030,7 +3035,7 @@ const hudCallbacks: HudCallbacks = {
       // does, and for a harder reason: it is answered by the seat on turn, so
       // a turn handed over with it open is a question nothing can answer.
       if (
-        !isLocalTurn() || resolving || pendingHarvest !== null ||
+        !isLocalTurn() || inputLocked() || pendingHarvest !== null ||
         localTransferPending()
       ) {
         return;
@@ -3049,7 +3054,7 @@ const hudCallbacks: HudCallbacks = {
       decide({ kind: "end-turn" });
     },
     isResolving() {
-      return resolving;
+      return inputLocked();
     },
     canPlayCard(cardId) {
       return humanBlockReason(cardId) === null;
@@ -3131,9 +3136,6 @@ const hudCallbacks: HudCallbacks = {
     },
     onHideTip() {
       tooltip.hide();
-    },
-    replayRound(fresh, changes, ctx) {
-      return queueReplay(fresh, changes, ctx);
     },
     cue(name) {
       audio.cue(name);
@@ -3291,12 +3293,10 @@ function attachHostWire(wire: Wire): void {
         // one seat that has to pick before either of them can start.
         if (!netStarted() && game().phase === "main-menu") startStagingRun();
         // A drop froze this screen (see onClosed); the rejoin thaws it back
-        // to whatever the turn order actually says, which is the same rule
-        // resumeChain settles on.
-        resolving =
-          game().phase === "playing" && controllerOf(game().current) === "remote";
-        refresh();
-        updateWaitingStatus();
+        // to whatever the turn order actually says, which `inputLocked` reads
+        // for itself.
+        awaitingWire = false;
+        refreshWhenSettled();
       },
       onGuestPick() {
         if (net.role !== "host" || net.session !== session) return;
@@ -3314,8 +3314,15 @@ function attachHostWire(wire: Wire): void {
         // The guest's play is already committed and pushed; this runs the
         // world on past it. `advance` no-ops while an unlimited turn is
         // still open, so a guest playing twice is not cut short here.
-        apply((g) => advance(g, rng));
-        resumeChain();
+        //
+        // Both halves wait for the queue, and each for its own reason: the
+        // advance is made from the state the guest's play produced, which is
+        // the one still being shown, and the chain's first question is whose
+        // turn the advance handed it to.
+        transitions.onIdle(() => {
+          apply((g) => advance(g, rng));
+          transitions.onIdle(() => resumeChain());
+        });
       },
       onClosed() {
         // Not `net.role !== "host"` alone: a wire that died after its
@@ -3323,7 +3330,7 @@ function attachHostWire(wire: Wire): void {
         if (net.role !== "host" || net.session !== session) return;
         net.session = null;
         // Nothing may act while the two sides cannot agree on what happened.
-        resolving = game().phase === "playing";
+        awaitingWire = game().phase === "playing";
         hud.setWaiting(null);
         netPanel.setVisible(true);
         // The join controls come back with the drop: this is a lobby again
@@ -3353,16 +3360,20 @@ function tryDeal(): void {
     guestFactionId: pick.factionId,
     guestBuild: pick.build,
   });
+  // The seat BEFORE the commit, which repaints inside that call: the deal's
+  // own log lines are rendered by it, and `playerNameOfFaction` answers null
+  // for every faction until the host knows which seat the guest took - so a
+  // seat set afterwards leaves the guest's name off those lines for good,
+  // since `renderedEvents` has caught up and no later paint rewrites them.
+  net.guestSeat = dealt.guestSeat;
   // A dealt game is a world arriving whole rather than a move played into
   // the one before it, so it commits with nothing presented. Before
   // `markStarted`, which builds the start snapshot out of the committed
   // state: the guest must be sent the game, not the lobby it replaced.
   transitions.replaceSettled(dealt.state);
-  net.guestSeat = dealt.guestSeat;
   net.session.markStarted(pick.factionId);
   netPanel.setVisible(false);
-  refresh();
-  updateWaitingStatus();
+  refreshWhenSettled();
 }
 
 /** The guest's move goes to the host, which is the only place a card is
@@ -3370,7 +3381,7 @@ function tryDeal(): void {
  *  state that followed - or refuses it, which unlocks without moving. */
 function sendGuestAction(a: NetAction): void {
   if (net.role !== "guest" || net.session === null) return;
-  resolving = true;
+  awaitingWire = true;
   refresh();
   net.session.sendAction(a);
 }
@@ -3393,8 +3404,15 @@ function decide(d: Decision): DecisionResult {
       // gets there, so a decision presents itself exactly like every other
       // move this screen makes.
       apply: (next) => { apply(() => next); },
+      // Behind the queue, because the wire is fed from the COMMITTED state:
+      // a push made while the move it carries is still being presented would
+      // send the board as it stood before it. Fires on the spot whenever the
+      // move had nothing to show, which is every play the local seat makes.
       pushUpdate: () => {
-        if (net.role === "host") net.session?.pushUpdate();
+        if (net.role !== "host") return;
+        transitions.onIdle(() => {
+          if (net.role === "host") net.session?.pushUpdate();
+        });
       },
     },
     d,
@@ -3404,7 +3422,7 @@ function decide(d: Decision): DecisionResult {
     // to undo is this screen's own arming. The panel is where a network game
     // already says why anything was refused.
     if (net.role !== "solo") netPanel.setStatus(result.reason);
-    refresh();
+    refreshWhenSettled();
     return result;
   }
   // A sent move already locked the screen in `sendGuestAction`; there is
@@ -3413,7 +3431,10 @@ function decide(d: Decision): DecisionResult {
   switch (result.settle) {
     case "play": afterHumanPlay(); break;
     case "action": afterHumanAction(); break;
-    case "repaint": refresh(); break;
+    // The repaint is owed AFTER the move has been presented and committed:
+    // this one settles a question the player was asked, and the answer's own
+    // transition is still in front of it.
+    case "repaint": refreshWhenSettled(); break;
   }
   return result;
 }
@@ -3457,7 +3478,7 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // a lobby has no state coming at all, and leaving THAT locked stranded
       // the guest on the faction pick with every map click swallowed and no
       // menu at that phase to escape by.
-      resolving = netStarted() && game().phase === "playing";
+      awaitingWire = netStarted() && game().phase === "playing";
       // The staging screens are for a guest that arrived before the deal.
       // A rejoin mid-game must not walk them: the snapshot is the game, and
       // starting a local one here put the deck picker over the top of it.
@@ -3465,7 +3486,7 @@ function attachGuestWire(wire: Wire, hostId: string): void {
         deckScreen.update(deckScreenView(true));
         apply((g) => startGame(g));
       }
-      refresh();
+      refreshWhenSettled();
     },
     onLobby(info) {
       if (net.role !== "guest" || net.session !== session) return;
@@ -3482,12 +3503,12 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // toggle per polygon, and it reads `game.phase` itself.
       applyTargeting();
     },
-    onState(g, fid, source) {
+    onState(g, fid, source, newEvents) {
       if (net.role !== "guest" || net.session !== session) return;
       const before = game().log.length;
       net.faction = fid;
       localSeat = Math.max(0, seatOfFaction(g, fid));
-      resolving = false;
+      awaitingWire = false;
       netPanel.setVisible(false);
       // A whole game arriving at once - the deal, or a rejoin - is not a
       // state this screen played into. The local staging screens go with it;
@@ -3506,26 +3527,27 @@ function attachGuestWire(wire: Wire, hostId: string): void {
         // An update is the host's world moving under this screen while the
         // player watches, so it presents: the events it carries are the ones
         // the replay walks and the round summary is built from.
-        apply(() => g);
+        //
+        // The events come off the MESSAGE and are not sliced out of the log
+        // afterwards. `applyUpdate` splices at the host's own `logFrom`, so a
+        // re-delivered or overlapping update grows this guest's log by less
+        // than it carried - or by nothing at all - and a slice against the
+        // previous length would hand the presenter a short tail of a round it
+        // is about to show.
+        submitUpdate(g, newEvents ?? g.log.slice(before));
         // What a harvest gave arrives here rather than at the play, because
         // the play was resolved on the other machine. `revealHarvestGains`
         // reads the log for the LOCAL seat's gains, so an update carrying
-        // none shows nothing and this costs a filter.
-        revealHarvestGains(before);
-        // Input stays locked through the replay, the same as `resumeChain`
-        // does on the host. An update can hand the turn over in the same
-        // breath as the round it is replaying, and without this the guest
-        // could play a card into the middle of watching what happened -
-        // which also cancels the camera mid-glide, since a press is the
-        // player taking the map back.
-        if (animations.busy()) {
-          resolving = true;
-          animations.onIdle(() => {
-            resolving = false;
-            refresh();
-            updateWaitingStatus();
-          });
-        }
+        // none shows nothing and this costs a filter. After the queue, since
+        // it reads the log the update is still in the middle of showing.
+        //
+        // Input stays locked through the replay, the same as the host's own
+        // chain: an update can hand the turn over in the same breath as the
+        // round it is replaying, and without the wait the guest could play a
+        // card into the middle of watching what happened - which also cancels
+        // the camera mid-glide, since a press is the player taking the map
+        // back.
+        transitions.onIdle(() => revealHarvestGains(before));
       }
       updateWaitingStatus();
     },
@@ -3539,8 +3561,8 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // and the panel is on screen for exactly that phase.
       console.error("host rejected the action:", reason);
       netPanel.setStatus(`That did not go through: ${reason}.`);
-      resolving = false;
-      refresh();
+      awaitingWire = false;
+      refreshWhenSettled();
     },
     onRefused(reason) {
       if (net.role !== "guest" || net.session !== session) return;
@@ -3550,7 +3572,7 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // Not `net.role !== "guest"` alone - see attachHostWire's onClosed.
       if (net.role !== "guest" || net.session !== session) return;
       net.session = null;
-      resolving = true; // nothing can act until the host is back
+      awaitingWire = true; // nothing can act until the host is back
       hud.setWaiting(null);
       netPanel.setVisible(true);
       // The join controls come back with the drop - the Join field is the
@@ -3790,7 +3812,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
     applyHighlight(region, region?.faction ?? null);
   },
   interceptClick(regionId) {
-    if (resolving) return true; // swallow: no selection while the round resolves
+    if (inputLocked()) return true; // swallow: no selection while the round resolves
     if (game().phase === "pick-faction") {
       if (regionId === null) return true;
       const picked = regionById.get(regionId)!.faction;

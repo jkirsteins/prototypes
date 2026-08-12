@@ -1,4 +1,4 @@
-import type { GameState } from "./game";
+import type { GameEvent, GameState } from "./game";
 import type { Strategy } from "./cards";
 import type { RuleSelections } from "./rules";
 import { deserializeGame } from "./net-codec";
@@ -17,10 +17,18 @@ export interface GuestDeps {
    *  step the guest can watch land, while a `start` or a `snapshot` is a
    *  whole game arriving at once - flying every card of a rejoined game's
    *  log, and raising a round summary over it, is not a replay anybody
-   *  asked for. */
+   *  asked for.
+   *
+   *  `newEvents` is what an `update` appended, straight off the message, and
+   *  is absent for the two that arrive whole. The screen must not re-derive
+   *  it by slicing the log: `applyUpdate` splices at the host's `logFrom`, so
+   *  an update delivered twice, or one overlapping what this guest already
+   *  holds, grows the log by less than it carried - and the tail a slice
+   *  produces is then short by exactly the events it must not skip. */
   onState(
     g: GameState, guestFactionId: string,
     source: "start" | "snapshot" | "update",
+    newEvents?: GameEvent[],
   ): void;
   onReject(reason: string): void;
   onRefused(reason: string): void;
@@ -73,7 +81,7 @@ export function createGuestSession(wire: Wire, deps: GuestDeps): GuestSession {
       case "update":
         if (guestFactionId === null) return; // update before start: drop
         game = applyUpdate(game, msg);
-        deps.onState(game, guestFactionId, "update");
+        deps.onState(game, guestFactionId, "update", msg.newEvents);
         return;
       case "reject":
         deps.onReject(msg.reason);

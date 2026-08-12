@@ -7,7 +7,6 @@ import {
 } from "../src/game";
 import type { Rng } from "../src/cards";
 import { memoryStorage } from "../src/meta";
-import { animations } from "../src/animate";
 
 function seededRng(seed: number): Rng {
   let s = seed >>> 0;
@@ -46,22 +45,16 @@ const subjugatedYou: GameEvent = {
   via: "claim", cardId: "subjugate",
 };
 
-describe("the summary parks behind the replay", () => {
-  it("holds the modal while replay steps run, and raises it when the queue drains", () => {
+/** The presentation the transition queue runs BEFORE this repaint is not the
+ *  HUD's any more, so a summary raised here is by construction the round's
+ *  epilogue. What the HUD still owes is the other half of that gate: nothing
+ *  may resolve the next round while the modal about the last one is on
+ *  screen. */
+describe("the round summary and the continuation behind it", () => {
+  it("raises the modal on the repaint that carries the round", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
-    let release: (() => void) | null = null;
-    const cb: HudCallbacks = {
-      onNewGame: vi.fn(),
-      onPlayCard: vi.fn(),
-      replayRound(fresh) {
-        if (!fresh.some((e) => e.type === "subjugated")) return 0;
-        animations.push((done) => {
-          release = done;
-        });
-        return 1;
-      },
-    };
+    const cb: HudCallbacks = { onNewGame: vi.fn(), onPlayCard: vi.fn() };
     const hud = createHud(container, cb, new Map([
       ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
     ]), undefined, memoryStorage());
@@ -69,27 +62,20 @@ describe("the summary parks behind the replay", () => {
     const g = playing();
     hud.update(g);
     vi.runAllTimers(); // settle the deal's own draw flights
-
     hud.update({ ...g, log: [...g.log, subjugatedYou] });
-    vi.runAllTimers(); // drains everything except the held replay step
     const overlay = container.querySelector(".notice-overlay") as HTMLElement;
-    expect(release).not.toBeNull();
-    expect(overlay.classList.contains("hidden")).toBe(true);
-
-    release!();
-    // The queue drained: settleTurn's idle waiter raises the parked summary.
     expect(overlay.classList.contains("hidden")).toBe(false);
     expect(overlay.textContent).toContain("Subjugate");
   });
 
-  it("raises the modal synchronously when the replay queued nothing", () => {
+  it("holds a continuation while the modal is up and releases it on dismiss", () => {
+    // The AI must not take its turns behind a modal about the turn before it.
+    // The summary here is raised straight from the repaint rather than parked,
+    // which is the shape every round has now that the replay runs before the
+    // commit - so the hold cannot be a property of parking alone.
     const container = document.createElement("div");
     document.body.appendChild(container);
-    const cb: HudCallbacks = {
-      onNewGame: vi.fn(),
-      onPlayCard: vi.fn(),
-      replayRound: () => 0,
-    };
+    const cb: HudCallbacks = { onNewGame: vi.fn(), onPlayCard: vi.fn() };
     const hud = createHud(container, cb, new Map([
       ["alpha", "Alpha"], ["beta", "Beta"], ["gamma", "Gamma"],
     ]), undefined, memoryStorage());
@@ -100,5 +86,16 @@ describe("the summary parks behind the replay", () => {
     hud.update({ ...g, log: [...g.log, subjugatedYou] });
     const overlay = container.querySelector(".notice-overlay") as HTMLElement;
     expect(overlay.classList.contains("hidden")).toBe(false);
+
+    const fn = vi.fn();
+    hud.afterPlayAnimation(fn);
+    vi.runAllTimers();
+    expect(fn).not.toHaveBeenCalled();
+
+    // Scoped to the summary's own overlay: the harvest offer's Cancel button
+    // wears the same class.
+    (overlay.querySelector(".notice-continue") as HTMLElement).click();
+    expect(overlay.classList.contains("hidden")).toBe(true);
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });

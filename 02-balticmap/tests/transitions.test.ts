@@ -34,7 +34,7 @@ function recorder() {
   };
   const stages: Stages = {
     present: hook("present"),
-    commit: (s) => { order.push(`commit:${(s as unknown as {turn: number}).turn}`); },
+    commit: (t) => { order.push(`commit:${(t.next as unknown as {turn: number}).turn}`); },
     ask: hook("ask"),
     summary: hook("summary"),
     ending: hook("ending"),
@@ -83,6 +83,23 @@ describe("the transition queue", () => {
     expect(q.state().turn).toBe(9);
     // Stages 1, 3 and 4 are skipped; the ending still gets its chance.
     expect(order).toEqual(["commit:9", "ending"]);
+  });
+
+  it("hands the commit the paint intent its own transition carried", () => {
+    // The intent rides on the transition and not in a binding beside the
+    // queue, so a silent paint cannot be inherited by the move after it.
+    const painted: (boolean | undefined)[] = [];
+    const stages: Stages = {
+      present: (_t, done) => done(),
+      commit: (t) => { painted.push(t.paint?.animate); },
+      ask: (_t, done) => done(),
+      summary: (_t, done) => done(),
+      ending: (_t, done) => done(),
+    };
+    const q = createTransitionQueue(st(1), stages);
+    q.replaceSettled(st(2), { animate: false });
+    q.submit(tr(3));
+    expect(painted).toEqual([false, undefined]);
   });
 
   it("lets a stage submit a transition without deadlocking", () => {
@@ -182,13 +199,77 @@ describe("the transition queue", () => {
   });
 });
 
+describe("waiting for the queue to drain", () => {
+  it("fires an idle waiter at once when nothing is running", () => {
+    const { stages } = recorder();
+    const q = createTransitionQueue(st(1), stages);
+    let fired = 0;
+    q.onIdle(() => { fired++; });
+    expect(fired).toBe(1);
+  });
+
+  it("holds an idle waiter until every queued transition has finished", () => {
+    const { stages, release } = recorder();
+    const q = createTransitionQueue(st(1), stages);
+    q.submit(tr(2));
+    q.submit(tr(3));
+    let fired = 0;
+    q.onIdle(() => { fired++; });
+    release("present"); release("ask"); release("summary"); release("ending");
+    expect(fired).toBe(0); // transition 3 has begun
+    release("present"); release("ask"); release("summary"); release("ending");
+    expect(fired).toBe(1);
+  });
+
+  it("starts a waiter's own transition as a sibling rather than nesting it", () => {
+    // The AI chain's shape: each seat is submitted by the waiter the seat
+    // before it armed. Every stage here finishes synchronously, so a chain
+    // that nested one frame per seat would grow the stack for the length of
+    // the round.
+    const { order, stages } = recorder();
+    const sync: Stages = {
+      ...stages,
+      present: (_t, done) => { order.push("present"); done(); },
+      ask: (_t, done) => done(),
+      summary: (_t, done) => done(),
+      ending: (_t, done) => done(),
+    };
+    const q = createTransitionQueue(st(0), sync);
+    let seat = 0;
+    const step = (): void => {
+      seat += 1;
+      if (seat > 3) return;
+      q.submit(tr(seat));
+      q.onIdle(step);
+    };
+    step();
+    expect(q.state().turn).toBe(3);
+    expect(q.busy()).toBe(false);
+  });
+
+  it("drops the waiters a settled replacement supersedes", () => {
+    // A continuation armed against the run being replaced - the next AI seat,
+    // a repaint of a board that no longer exists - must not fire against the
+    // world that replaced it.
+    const { stages, release } = recorder();
+    const q = createTransitionQueue(st(1), stages);
+    q.submit(tr(2));
+    let fired = 0;
+    q.onIdle(() => { fired++; });
+    q.replaceSettled(st(99));
+    release("present"); release("ask"); release("summary"); release("ending");
+    expect(fired).toBe(0);
+    expect(q.state().turn).toBe(99);
+  });
+});
+
 describe("the safety properties a superseded or double-fired callback must not break", () => {
   it("a stale present done fired twice after replaceSettled never commits the superseded state", () => {
     const commits: number[] = [];
     const staleDone = box<() => void>();
     const stages: Stages = {
       present: (_t, done) => { staleDone.value = done; }, // held - never fires on its own
-      commit: (s) => { commits.push((s as unknown as { turn: number }).turn); },
+      commit: (t) => { commits.push((t.next as unknown as { turn: number }).turn); },
       ask: (_t, done) => done(),
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
@@ -209,7 +290,7 @@ describe("the safety properties a superseded or double-fired callback must not b
     const staleDone = box<() => void>();
     const stages: Stages = {
       present: (_t, done) => done(),
-      commit: (s) => { commits.push((s as unknown as { turn: number }).turn); },
+      commit: (t) => { commits.push((t.next as unknown as { turn: number }).turn); },
       ask: (_t, done) => { staleDone.value = done; }, // held - never fires on its own
       // A settled transition never reaches `summary` (SETTLED_STAGES skips
       // it) - so ANY call here can only mean the stale `ask` above escaped
@@ -243,8 +324,8 @@ describe("the safety properties a superseded or double-fired callback must not b
     const queueRef = box<TransitionQueue>();
     const stages: Stages = {
       present: (_t, done) => done(),
-      commit: (s) => {
-        if ((s as unknown as { turn: number }).turn === 2) {
+      commit: (t) => {
+        if ((t.next as unknown as { turn: number }).turn === 2) {
           queueRef.value?.replaceSettled(st(99));
         }
       },
@@ -270,7 +351,7 @@ describe("the safety properties a superseded or double-fired callback must not b
         if (presentCalls === 1) { staleDone.value = done; return; } // transition 2
         laterDone.value = done; // transition 3
       },
-      commit: (s) => { commits.push((s as unknown as { turn: number }).turn); },
+      commit: (t) => { commits.push((t.next as unknown as { turn: number }).turn); },
       ask: (_t, done) => done(),
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),

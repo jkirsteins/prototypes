@@ -103,18 +103,6 @@ export interface HudCallbacks {
    *  beside the faction in the scoreboard. Plain text, not a segment -
    *  the rich-text rule covers card and faction names only. */
   playerNameOf?(factionId: string): string | null;
-  /** The turn-start replay: called on every animating update with the fresh
-   *  batch, its standings walk and the notice context, BETWEEN the local
-   *  seat's own animations and the round-summary decision. Returns how many
-   *  steps it queued - that count is what parks the summary behind the
-   *  queue, so an update that replays nothing raises its modal synchronously,
-   *  exactly as before the replay existed. Absent where there is no map to
-   *  replay on (tests). */
-  replayRound?(
-    fresh: GameEvent[],
-    changes: StandingChange[][],
-    ctx: NoticeCtx | null,
-  ): number;
   /** Plays one sound now, if the player's ears are on. Absent in tests and
    *  anywhere else without an audio engine; every call site is optional. */
   cue?(name: SoundName): void;
@@ -134,6 +122,18 @@ export interface Hud {
    *  board a second after load, unasked. Every later update animates normally,
    *  because `renderedEvents` has caught up by then. */
   update(state: GameState, opts?: { animate?: boolean }): void;
+  /** The standings walk and the notice context for one batch of events.
+   *
+   *  Exists so the surface that PRESENTS a batch - the transition's present
+   *  stage, which runs before the commit this batch will be logged by - reads
+   *  its numbers off the same walk, through the same context, that the log
+   *  renders its `(Defense -1 -> 5)` suffixes from. Two spellings of the walk
+   *  is two answers to "what did this event move", which is the drift the
+   *  one-walk rule exists to prevent. */
+  noticeWalk(state: GameState, events: GameEvent[]): {
+    changes: StandingChange[][];
+    ctx: NoticeCtx | null;
+  };
   /** `prompt` overrides the "Choose a target for X" line. Raid is aimed
    *  twice - the land the army leaves from, then the land it is sent at - and
    *  a first click labelled "target" would send the player at the enemy. */
@@ -1613,15 +1613,14 @@ export function createHud(
     // with `playerId !== localPlayerId()` and the draw is deliberately
     // untracked, so this is the honest test for "the turn this summary
     // describes is not over yet" - read off the animation rather than from a
-    // predicate that re-guesses which events animate. A replay that queued
-    // steps parks the summary the same way: the modal is the round's
-    // epilogue, and it must not cover the camera still visiting the events
-    // it describes. A queued DRAW alone still does not park it - unchanged.
-    if (playPending() || replayStepsQueued > 0) {
+    // predicate that re-guesses which events animate. A queued DRAW alone
+    // still does not park it.
+    //
+    // Nothing else parks it: the transition that carried these events showed
+    // everything it owed the player before this repaint ran, so the modal is
+    // already the round's epilogue rather than a cover over it.
+    if (playPending()) {
       pendingSummary = summary;
-      // A play flight's own onDone calls settleTurn when it lands; replay
-      // steps report only to the queue, so give the parked summary its waker.
-      if (!playPending()) settleTurn();
       return;
     }
     showRoundSummary(summary);
@@ -1654,9 +1653,6 @@ export function createHud(
   );
 
   let pendingPlayRect: DOMRect | null = null;
-  /** How many steps the replay queued on the most recent animating update -
-   *  the summary's reason to park behind the queue. See replayRound. */
-  let replayStepsQueued = 0;
   let renderedEvents = 0;
   let lastRenderedTurn = 0;
   /** The rendered entry for each log index, so a secret play several screens up
@@ -1831,17 +1827,25 @@ export function createHud(
     }
   }
 
-  /** Returns the fresh batch WITH its standings walk and notice context, so
-   *  `update` can hand all three to the replay without a second walk - the
-   *  replay quoting different numbers than the log would be the drift the
-   *  one-walk rule exists to prevent. */
-  function renderLog(
-    state: GameState, animate: boolean,
-  ): {
-    fresh: GameEvent[];
+  /** One batch's standings walk, through the notice context of the state it
+   *  lands in. The log renders its suffixes from this and the presenter reads
+   *  its labels from it, so the two cannot quote different numbers. */
+  function noticeWalk(state: GameState, events: GameEvent[]): {
     changes: StandingChange[][];
     ctx: NoticeCtx | null;
   } {
+    const ctx = buildNoticeCtx(state);
+    return {
+      ctx,
+      changes: ctx === null ? [] : walkStandings(events, walkCtxOf(ctx)),
+    };
+  }
+
+  /** Draws every log line this state has appended since the last render, and
+   *  returns that batch - what `update` animates and decides the round
+   *  summary from. The suffix beside each line comes from `noticeWalk`, the
+   *  same call the presenter reads its labels off. */
+  function renderLog(state: GameState, animate: boolean): GameEvent[] {
     if (state.log.length < renderedEvents) {
       logEntries.replaceChildren();
       renderedEvents = 0;
@@ -1853,19 +1857,17 @@ export function createHud(
     const base = renderedEvents;
     const fresh = state.log.slice(base);
     const humanFactionId = humanPlayer(state)?.factionId;
-    const noticeCtx = buildNoticeCtx(state);
+    const { ctx: noticeCtx, changes } = noticeWalk(state, fresh);
     // Over the WHOLE log, not just `fresh`: the play a reveal makes public is
     // by definition an older one, and the event that reveals it is the fresh
     // one. Cheap - one pass over an append-only array, once per render.
     const revealed = revealedSecrets(state, localPlayerId());
-    // Index-parallel to `fresh`, INCLUDING the events isObservable drops: the
-    // walk runs backwards from the leads as they stand now, so a hidden event
-    // that moved a counter (a rival's garrison, a draw's reshuffle) has to be
-    // stepped back over or every line above it is out by its amount. Which is
-    // also why this is indexed by the loop's position in `fresh` and not by
-    // how many entries have been appended.
-    const changes =
-      noticeCtx === null ? [] : walkStandings(fresh, walkCtxOf(noticeCtx));
+    // `changes` above is index-parallel to `fresh`, INCLUDING the events
+    // isObservable drops: the walk runs backwards from the leads as they
+    // stand now, so a hidden event that moved a counter (a rival's garrison,
+    // a draw's reshuffle) has to be stepped back over or every line above it
+    // is out by its amount. Which is also why it is indexed by the loop's
+    // position in `fresh` and not by how many entries have been appended.
     // The entry a consequence indents under. A local is enough: the log only
     // ever grows by a whole `appendEvents` batch and `renderedEvents` is set to
     // the full length after every render, so a play and the events it caused are
@@ -1946,7 +1948,7 @@ export function createHud(
     // the fresh entries and re-files the old ones after membership drift.
     applyRealmFilter(state);
     if (fresh.length > 0) logEntries.scrollTop = logEntries.scrollHeight;
-    return { fresh, changes, ctx: noticeCtx };
+    return fresh;
   }
 
   function renderPile(
@@ -2148,6 +2150,11 @@ export function createHud(
       // in here once the player has read it, and that is what releases them.
       return;
     }
+    // The same rule for a summary that never had to park: one raised straight
+    // from the repaint is still a modal about the turn before, and a
+    // continuation released under it is the AI moving behind it. Held rather
+    // than dropped - `dismissSummary` calls back in here.
+    if (!noticeOverlay.classList.contains("hidden")) return;
     const fn = pendingContinuation;
     pendingContinuation = null;
     fn?.();
@@ -2779,22 +2786,20 @@ export function createHud(
         renderHand(state);
         renderScoreboard(state);
         renderMilestones(state);
-        const { fresh, changes, ctx } = renderLog(state, animate);
-        // Animate first, replay second, decide third. `showRoundSummaryIfAny`
-        // asks whether a flight is in the air or the queue is busy to know
-        // whether the turn it is describing has finished, so everything this
-        // batch will show - the local seat's own flights AND the replay's
-        // steps - has to be queued by then or the answer is stale by one
-        // update.
+        const fresh = renderLog(state, animate);
+        // Animate first, decide second. `showRoundSummaryIfAny` asks whether a
+        // flight is in the air to know whether the turn it is describing has
+        // finished, so the local seat's own flights have to be queued by then
+        // or the answer is stale by one update.
         if (animate) {
           animateEvents(fresh);
-          replayStepsQueued = cb.replayRound?.(fresh, changes, ctx) ?? 0;
           showRoundSummaryIfAny(state, fresh);
         }
       } else if (ended) {
         renderPostmortem(state);
       }
     },
+    noticeWalk,
     setArmed(index, cardNameText, prompt) {
       armedIndex = index;
       [...hand.children].forEach((el, i) => {

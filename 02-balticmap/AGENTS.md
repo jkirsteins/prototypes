@@ -694,6 +694,23 @@ clicks. `Hud.afterPlayAnimation` owns the timing and always fires - once - even
 when nothing flew (a forced discard animates nothing) and even if the flight
 somehow never reports itself finished.
 
+**"May the player act" is one predicate and not a flag.** `inputLocked` in
+`src/main.ts` is the whole of it: the transition queue is showing a move, an
+animation of this screen's own is still running, the other human holds the
+turn, or the wire owes this screen an answer (`awaitingWire`, which the network
+callbacks set and the answer clears - the one arm nothing else can see). Every
+surface that gates on it asks the same call, so the map, the arrows, the menu
+buttons and the End turn button cannot disagree about whether the round is
+still resolving.
+
+The one thing a derived answer costs, and it is a real cost: a paint made
+while it is true draws a locked screen, and nothing repaints when it goes
+false on its own. So every path out of the locked window repaints on its way
+out - `finishChain` and `afterHumanPlay` both wait for the animation queue to
+drain and then `refresh`. A stage of the lifecycle that leaves the screen
+locked with no repaint behind it is a hand that stays greyed until the player
+hovers something.
+
 ## Every visible sequence goes through one queue
 
 `animations` in `src/animate.ts` is a module singleton, and everything the
@@ -716,9 +733,20 @@ Everything that resolved while the player was not holding the map is SHOWN,
 one thing at a time, before the round-summary modal: the camera glides to the
 land (`focusOn` on `InteractionHandle` - pan only, cancelled by any pointer or
 wheel input), a label fades in and out, the event's sound plays. Each event is
-one step on the `animations` queue, so nothing overlaps and the modal - parked
-by `showRoundSummaryIfAny`, raised by `settleTurn` on the queue's idle - is
-the round's epilogue, never a cover over it.
+one step on the `animations` queue, so nothing overlaps.
+
+**The replay is stage 1 of the transition that carried the events**
+(`present` in `src/main.ts`'s `stages`, and `queueReplay` below it), so it runs
+against the board the player was last shown and the commit that repaints that
+board waits behind it. Everything it reads comes off the transition rather than
+off the displayed state - the events, the realm, the arrows still standing, the
+standings walk - because the state those events land in is not the one under
+the map yet. That ordering is what makes the round summary the round's
+epilogue rather than a cover over it: `showRoundSummaryIfAny` runs inside the
+repaint, by which time the camera has finished visiting everything the modal is
+about. It parks only behind the local seat's own card flight, and `settleTurn`
+holds any continuation - the AI chain's - for as long as the modal is on
+screen.
 
 `REPLAY_RULES` in `src/replay.ts` is the classification, exhaustive over
 `GameEventType` in the `NOTICE_RULES` shape: a type is either `shown` (which
@@ -749,20 +777,30 @@ the badge walk the number had been showing the outcome since before the
 player was shown the event.
 
 **The AI chain is walked a seat at a time.** `oneAiSeat` plays exactly one
-seat and `stepAiChain` in `src/main.ts` animates what it did before the next
-one moves - `runAiSeats` is the same loop for callers that want the whole
-round at once, built on the same function so the two cannot drift. A round
-resolved in one statement and replayed afterwards was the right sequence of
-events drawn over the wrong board: arrows declared two turns later stood on
-the map while a raid from before them was still landing.
+seat and `stepAiChain` in `src/main.ts` submits what it did as one transition
+- `runAiSeats` is the same loop for callers that want the whole round at once,
+built on the same function so the two cannot drift. A round resolved in one
+statement and replayed afterwards was the right sequence of events drawn over
+the wrong board: arrows declared two turns later stood on the map while a raid
+from before them was still landing.
 
-**A conquest question is asked by the replay, not around it.** The step that
-shows a land being taken is followed by one that raises that conquest's
-transfer modal and does not release the queue until it is answered, so the
-rest of the round waits rather than resolving behind it. `askTransferIfPending`
-stands down while `replayActive` holds, and it is called AFTER `hud.update` in
-`refresh` - before it, the same refresh that first sees the conquest put the
-modal up ahead of the animation explaining it.
+**The seat after this one is submitted by the waiter this one arms**
+(`transitions.onIdle`), never by an animation callback and never by a timer.
+One seat is one transition, and a transition does not finish until everything
+it owed the player has been shown - so "the next seat may move" is exactly
+"the queue has drained", and nothing has to remember to hold it back. The
+queue starts a waiter's own transition as a sibling iteration of its drain
+loop, which is what keeps a round of seats that animate nothing a loop rather
+than a stack as deep as the round is long.
+
+**A conquest question is asked by the commit, after the beats.**
+`askTransferIfPending` runs at the end of `refresh`, and by then the
+transition's present stage has already shown the land being taken - so the
+modal follows the picture of the thing it asks about rather than landing over
+it. It cannot be raised any earlier than the commit: the answer is a
+`transferDefense` decision validated against the state accessor, and before
+the commit that accessor still says the conquest has not happened, so the
+defenders would silently never move.
 
 An arrival that `metNothing` is passed over here for the reason
 `NOTICE_RULES` passes it over: the `subjugated` it caused names the same card
