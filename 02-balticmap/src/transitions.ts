@@ -48,9 +48,13 @@ export interface TransitionQueue {
 
 /** The stages a non-settled transition runs, in order. A settled transition
  *  (history arriving whole - a boot, a deal, a rejoin) skips straight to
- *  `commit`, since there is nothing to present: it was never watched happen. */
-const LIVE_STAGES = ["present", "commit", "ask", "summary", "ending"] as const;
-const SETTLED_STAGES = ["commit", "ending"] as const;
+ *  `commit`, since there is nothing to present: it was never watched happen.
+ *  Typed against `keyof Stages` rather than `string` so indexing `stages` by
+ *  a name drawn from this list needs no cast - a typo here is a compile
+ *  error instead of a runtime "undefined is not a function" five tasks away. */
+const LIVE_STAGES: readonly (keyof Stages)[] =
+  ["present", "commit", "ask", "summary", "ending"];
+const SETTLED_STAGES: readonly (keyof Stages)[] = ["commit", "ending"];
 
 /** `createTransitionQueue` runs each submitted transition through six stages
  *  - present, commit, ask, summary, ending, complete - never starting one
@@ -62,11 +66,19 @@ const SETTLED_STAGES = ["commit", "ending"] as const;
  *
  *  Cancellation (`replaceSettled`) is best-effort on the DOM side and
  *  authoritative on the bookkeeping side: a stage can report `done` a tick
- *  after being superseded, so every stage's `done` closes over the
- *  generation it was handed out under and is a no-op once that generation
- *  has moved on. Nothing here reads a clock or an rng; ordering is entirely
- *  driven by the `done` calls a caller chooses to make, which is what keeps
- *  this module testable with no timers and no DOM. */
+ *  after being superseded, so every recursive step into the next stage is
+ *  gated on `gen === generation` at the top of `runStage` - the ONE check
+ *  that matters, since it runs on every entry regardless of which edge got
+ *  there: a `done` callback firing late, or the synchronous fall-through out
+ *  of `commit`. A second copy of this check used to live inside `done` as
+ *  well; it was dead weight; `commit`'s own fall-through never passed
+ *  through a `done` at all, so the copy inside `done` could never be the
+ *  thing standing between a stale generation and a stale commit - the check
+ *  at the top of `runStage` already was, on every path, unconditionally.
+ *
+ *  Nothing here reads a clock or an rng; ordering is entirely driven by the
+ *  `done` calls a caller chooses to make, which is what keeps this module
+ *  testable with no timers and no DOM. */
 export function createTransitionQueue(
   initial: GameState, stages: Stages,
 ): TransitionQueue {
@@ -74,24 +86,40 @@ export function createTransitionQueue(
   let generation = 0;
   let running: Transition | null = null;
   const queue: Transition[] = [];
+  // True only while `drain`'s own loop is on the call stack. It is what lets
+  // a transition that finishes every stage synchronously hand off to the
+  // next queued transition by looping rather than recursing - see `drain`.
+  let draining = false;
 
   /** Runs `names[i]` for `t` and, once it reports itself finished, recurses
-   *  onto `i + 1` - `commit` has no `done` of its own and simply falls
-   *  through in the same call, every other stage falls through from inside
-   *  the `done` it was handed. That `done` is guarded on two axes: it must
-   *  speak for the generation it was minted under, or a stage superseded by
-   *  `replaceSettled` reporting in late must do nothing at all; and it must
-   *  fire at most once, or a stage calling it twice would run the stage
-   *  after it twice as well. */
+   *  onto `i + 1` - `commit` has no `done` of its own and falls through in
+   *  the same call; every other stage falls through from inside the `done`
+   *  it was handed, guarded so a stage calling it twice cannot run the stage
+   *  after it twice as well. Reaching the end hands control back to `drain`
+   *  rather than starting the next transition itself, which is what keeps a
+   *  long run of synchronously-finishing transitions from nesting one stack
+   *  frame per transition. */
   function runStage(
-    t: Transition, gen: number, names: readonly string[], i: number,
+    t: Transition, gen: number, names: readonly (keyof Stages)[], i: number,
   ): void {
     if (gen !== generation) return;
-    if (i >= names.length) { complete(gen); return; }
+    if (i >= names.length) {
+      running = null;
+      drain();
+      return;
+    }
     const name = names[i];
     if (name === "commit") {
       committed = t.next;
-      stages.commit(t.next);
+      // A repaint must not leave the queue believing a transition is still
+      // in flight - the same doctrine as the stage hooks below, applied to
+      // the one stage with no `done` of its own to fall back on.
+      try {
+        stages.commit(t.next);
+      } catch {
+        // no recovery to attempt: the state is already committed, and the
+        // lifecycle simply carries on to the next stage.
+      }
       runStage(t, gen, names, i + 1);
       return;
     }
@@ -99,30 +127,47 @@ export function createTransitionQueue(
     const done = (): void => {
       if (fired) return;
       fired = true;
-      if (gen !== generation) return;
       runStage(t, gen, names, i + 1);
     };
-    const hook = stages[name as "present" | "ask" | "summary" | "ending"];
-    hook(t, done);
+    const hook = stages[name];
+    // A stage that throws must release the queue rather than wedging it -
+    // the same rule `createAnimationQueue` already keeps in src/animate.ts.
+    // `busy()` is the whole app's input gate, so a hook that throws and
+    // leaves `running` set would lock input with no way back short of a
+    // reload.
+    try {
+      hook(t, done);
+    } catch {
+      done();
+    }
   }
 
-  function complete(gen: number): void {
-    if (gen !== generation) return;
-    running = null;
-    drain();
-  }
-
-  /** Starts the front of the queue when nothing is running. Called only from
-   *  `submit` (when the queue was idle) and from `complete` (a stage's own
-   *  `done`, never from inside a stage that is still open) - never
-   *  re-entrantly out of a hook that has not yet released. */
+  /** Starts the front of the queue when nothing is running, as a loop rather
+   *  than recursion: a transition whose every stage completes synchronously
+   *  (present, ask, summary and ending all calling `done` immediately - the
+   *  normal shape of a transition with no beats, no question, no summary and
+   *  no ending) reaches `i >= names.length` from deep inside `runStage`'s own
+   *  recursion for THAT transition, and used to call `drain` again from
+   *  there to start the next one - nesting one more stack frame per
+   *  transition, without bound, for as many transitions as complete in a
+   *  row. `draining` turns that into a loop instead: the nested call made
+   *  from inside `runStage` sees `draining` already true and returns at
+   *  once, unwinding back to the `while` below - which is a sibling
+   *  iteration, not a deeper frame - to pick up the next transition. */
   function drain(): void {
-    if (running !== null) return;
-    const next = queue.shift();
-    if (next === undefined) return;
-    running = next;
-    const names: readonly string[] = next.settled ? SETTLED_STAGES : LIVE_STAGES;
-    runStage(next, generation, names, 0);
+    if (draining) return;
+    draining = true;
+    try {
+      while (running === null) {
+        const next = queue.shift();
+        if (next === undefined) return;
+        running = next;
+        const names = next.settled ? SETTLED_STAGES : LIVE_STAGES;
+        runStage(next, generation, names, 0);
+      }
+    } finally {
+      draining = false;
+    }
   }
 
   return {
@@ -136,8 +181,9 @@ export function createTransitionQueue(
     replaceSettled(state) {
       // Bumping the generation first is what makes a `done` still held by
       // the transition this replaces inert: it captured the old generation,
-      // so it fails the check in `runStage` and neither commits its stale
-      // `next` over this snapshot nor advances a queue that no longer runs.
+      // so it fails the check at the top of `runStage` and neither commits
+      // its stale `next` over this snapshot nor advances a queue that no
+      // longer runs.
       generation += 1;
       queue.length = 0;
       const t: Transition = { next: state, events: [], settled: true };
