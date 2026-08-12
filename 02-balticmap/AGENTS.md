@@ -749,7 +749,7 @@ wheel input), a label fades in and out, the event's sound plays. Each event is
 one step on the `animations` queue, so nothing overlaps.
 
 **The replay is stage 1 of the transition that carried the events**
-(`present` in `src/main.ts`'s `stages`, and `queueReplay` below it), so it runs
+(`present` in `src/main.ts`'s `stages`, and `queueBeats` below it), so it runs
 against the board the player was last shown and the commit that repaints that
 board waits behind it. Everything it reads comes off the transition rather than
 off the displayed state - the events, the realm, the arrows still standing, the
@@ -762,30 +762,43 @@ local seat's own card flight (`hud.afterPlayAnimation`), and its `done` does
 not fire until the player dismisses it - which holds `ending` and every
 transition queued behind this one for as long as the modal is on screen.
 
-`REPLAY_RULES` in `src/replay.ts` is the classification, exhaustive over
-`GameEventType` in the `NOTICE_RULES` shape: a type is either `shown` (which
-land, what label, what sound) or `passed-over` with a sentence saying why and
-where its sound plays instead. Labels are segments, never template literals -
-the rich-text rule applies to this surface too, and `tests/replay.test.ts`
-checks it. The score suffix beside a label is `impactText` over the same walk
-the log uses, so the two cannot quote different numbers. What earns a step:
-marches touching the local human's full realm, and otherwise only events the
-local player did not cause themselves that are notice-worthy or move a score
-on a land they have a LINE to - their realm, plus whatever stands at the far
-end of an arrow or a demand between them and it (`linkedLands`). A line, not a
-reach: this was realm-plus-`attackReach` and it walked the camera around a
-wide ring of business that was none of the player's. A wild land mending
-itself matters while an arrow of yours is in the air toward it, because it
-changes what that arrow will do; the same land mending itself with nothing
-between you is a log line. An event that got a step is skipped by the score
-floats: one motion per fact.
+`PRESENTATION_RULES` in `src/presentation.ts` is the classification,
+exhaustive over `GameEventType` in the `NOTICE_RULES` shape: a type is either
+`presented` (returning the beats one of its events earns) or `never` with a
+sentence saying why and where its sound plays instead. Labels are segments,
+never template literals - the rich-text rule applies to this surface too, and
+`tests/presentation.test.ts` checks it. The score suffix beside a label is
+`changeImpact` over the beat's own badge walks, which are one event's slice of
+the same walk the log renders its suffixes from, so the two cannot quote
+different numbers. Who earns a beat is ONE audience gate,
+`involvesLocalSeats`: a seat this screen plays did it or stands at either end
+of it, it lands on a land the screen has a LINE to - the realm, plus whatever
+stands at the far end of an arrow or a demand between them and it
+(`linkedLands`) - or the screen owes an answer about it. A line, not a reach:
+this was realm-plus-`attackReach` and it walked the camera around a wide ring
+of business that was none of the player's. A wild land mending itself matters
+while an arrow of yours is in the air toward it, because it changes what that
+arrow will do; the same land mending itself with nothing between you is a log
+line.
+
+**A score change is shown by the badge walk and by nothing else.** There is no
+coloured number rising off a polygon anywhere in the game: `floatScoreMarks`
+and its half of the bookkeeping are deleted, because two ways of showing one
+fact is two gates, and the one that got skipped was the one with a gate on
+it - the floats had none, and on a paint that presents nothing 74 of them
+appeared at once. A beat that moved a score carries `BadgeWalk`s and walks
+them; a consequence of the player's OWN play is framed when it moved a score
+and passed over when it did not (`causedHere`), because a badge is drawn as
+though it had always been that number.
 
 **The step shows one event, and the map shows nothing else that moves.** The
 land is lit for the length of the step (`.replay-focus`, a filter glow rather
 than a stroke, because `.region.realm-member` declares its seam !important),
 its badge is walked from the score it HAD to the score it has, and every live
 `.march-arrow` is hidden (`svg.replaying`) so the only arrow on screen is the
-ghost of the one landing. Without the mark a label was a sentence about
+ghost of the one landing. The hiding is armed by a MAP beat and by nothing
+else: a card of the player's own flying to the discard pile has no business
+taking the arrows off the board underneath it. Without the mark a label was a sentence about
 nowhere, since the camera holds still for anything already on screen; without
 the badge walk the number had been showing the outcome since before the
 player was shown the event.
@@ -844,7 +857,9 @@ reasoning, including why the old concurrent clash flash became sequential.
 `src/audio-manifest.ts` is pure data: `SOUNDS` (name -> file under
 `public/audio/`, all CC0, provenance in that directory's manifest.md, mp3
 because Safari decodes no Vorbis) and `EVENT_SOUNDS`, exhaustive over
-`GameEventType` - a null is a decision whose reason lives in `REPLAY_RULES`.
+`GameEventType` - a null is a decision whose reason lives in
+`PRESENTATION_RULES`, either as a `never` reason or as a rule that names its
+own sound.
 `src/audio.ts` builds the `AudioContext` only inside `unlock()`, wired to the
 first pointerdown/keydown in `src/main.ts`; every other call no-ops without a
 context, which is why the test suite needs no audio mocks and why nothing
@@ -852,9 +867,9 @@ audio may be constructed at module load or in `createHud`. A missing file
 degrades to silence with one console warning, never a throw. The mute
 checkbox rides `MetaStorage` under `AUDIO_PREFS_KEY` - its own key, not a
 `LogPrefs` field, because the boot path replaces the whole `LOG_PREFS_KEY`
-record. Where a sound cues from: a replay step cues its own; the local seat's
-flights and pulse cue inside their queue steps; the local seat's passed-over
-events cue in `animateEvents`; endings cue on the phase change in
+record. Where a sound cues from: every beat cues its own inside its queue step, the
+map beats and the card motions alike; the local seat's events that earn NO
+beat cue in `cueUnpresented` at the commit; endings cue on the phase change in
 `cueEndingIfAny`, off the LOCAL seat's `guestPhaseView`-mapped phase.
 
 ## Never re-derive an animation's duration

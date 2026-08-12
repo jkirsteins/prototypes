@@ -3,8 +3,9 @@
  *
  *  `EVENT_SOUNDS` is exhaustive over `GameEventType` - the `NOTICE_RULES`
  *  shape - so a new event type does not compile until somebody decides what
- *  it sounds like, or writes down (in `REPLAY_RULES`, which classifies the
- *  same types) why it is silent. A null here is a decision, not a default.
+ *  it sounds like, or writes down (in `PRESENTATION_RULES`, which classifies
+ *  the same types) why it is silent. A null here is a decision, not a
+ *  default.
  *
  *  Files live in `public/audio/`, CC0, provenance in that directory's
  *  manifest.md. Mp3 rather than ogg: Safari decodes no Vorbis, and a silent
@@ -45,13 +46,13 @@ export const SOUNDS: Record<SoundName, string> = {
   "fanfare-grand": "fanfare-grand.mp3",
 };
 
-/** What each event sounds like, wherever it is played from - a replay step,
- *  the HUD's own draw/play animations, or the ending screens. One table, so a
- *  raid cannot clang in the replay and thud in a future surface.
+/** What each event sounds like, wherever it is played from - a map beat, the
+ *  card motions on the piles, or the ending screens. One table, so a raid
+ *  cannot clang in one surface and thud in the next.
  *
  *  A null names an event whose moment on screen is owned by ANOTHER line of
- *  this table or by no moment at all; `REPLAY_RULES` carries the sentence
- *  saying which. */
+ *  this table, by a rule that names its own sound, or by no moment at all;
+ *  `PRESENTATION_RULES` carries the sentence saying which. */
 export const EVENT_SOUNDS: Record<GameEventType, SoundName | null> = {
   draw: "card-draw",
   play: "card-play",

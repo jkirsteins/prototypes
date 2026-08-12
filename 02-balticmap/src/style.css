@@ -1345,30 +1345,12 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
 
 /* The land an aim-drag is currently pointing at. Brighter and outlined, so
    the arrow's destination is never a matter of reading where its tip fell. */
-/* A score that just moved, rising off the land it moved on. The badge says
-   where the number ended; this is the only thing that says it changed. */
-.score-floats {
-  pointer-events: none;
-}
+/* A score that moved is walked on the badge it belongs to, and nowhere else.
+   There is deliberately no rising mark: the badge walk is the one way a score
+   change is shown, so a land's number moves in the place the player already
+   reads it from. */
 
-.score-float {
-  font-size: 15px;
-  font-weight: 700;
-  text-anchor: middle;
-  paint-order: stroke;
-  stroke: rgba(253, 250, 244, 0.9);
-  stroke-width: 3.5px;
-}
-
-.score-float.float-good {
-  fill: #3f7a2e;
-}
-
-.score-float.float-bad {
-  fill: #a8352b;
-}
-
-/* While the replay is showing one event, the map shows THAT event and no
+/* While a beat is showing one event, the map shows THAT event and no
    other arrow. The ghost the flash draws is a `.clash-flash`, not one of
    these, so it is untouched - which is the whole distinction: one is the thing
    being shown, the others are business from turns the player has not been
@@ -1493,32 +1475,25 @@ svg.replaying .claim-arrow {
   color: #5b4f3d;
 }
 
-/* The clash flash: a ghost of the arrow that just resolved, fading out under
-   a label saying what actually landed. Both are removed the moment the
-   animation reports itself finished - see flashMarchResolution in main.ts,
-   and the rule in AGENTS.md about never re-deriving a duration. */
+/* The resolution flash: a ghost of the resultant force, fading out under a
+   label saying what got through out of what was thrown. Both are removed the
+   moment the animation reports itself finished - see flashResolution in
+   main.ts, and the rule in AGENTS.md about never re-deriving a duration.
+
+   Neutral ink, one colour for every outcome. The label reads "1/3 DMG" and it
+   is arithmetic, not a score: green and red belong to the numbers a player
+   reads off the badges, and a signed coloured number beside a spear was read
+   as one of those - it was the second thing on screen claiming to say what a
+   raid did to a land, and it disagreed with the first about the sign. */
 .clash-flash .clash-label {
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 800;
   text-anchor: middle;
   paint-order: stroke;
+  fill: #4a3f33;
   stroke: #fdfaf4;
   stroke-width: 5;
   stroke-linejoin: round;
-}
-
-.clash-flash.clash-bad .clash-label {
-  fill: #992f27;
-}
-
-.clash-flash.clash-good .clash-label {
-  fill: #2e7d32;
-}
-
-/* A standoff: both armies spent, no score moved, so neither the bad red nor
-   the good green - the same neutral ink `lead-even` uses. */
-.clash-flash.clash-even .clash-label {
-  fill: #6b5d49;
 }
 
 .lead-good {
@@ -1838,7 +1813,11 @@ svg.replaying .claim-arrow {
     #f1e9da;
 }
 
-.card-incoming {
+/* The slot a played card left, for as long as its flight is in the air. The
+   commit behind the flight repaints the hand without the card; until then the
+   hand on screen is still the one the player clicked in, and the card must not
+   be in two places at once. */
+.card-outgoing {
   visibility: hidden;
 }
 

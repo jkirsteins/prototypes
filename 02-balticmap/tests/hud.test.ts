@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createHud, type Hud, type HudCallbacks } from "../src/hud";
+import { presentHudBeats } from "./helpers";
 import {
   newGame, startGame, chooseBuild, pickFaction, advance, playCard, beginTurn,
   chooseRules, repeatOnlyOf, viewOf,
@@ -163,6 +164,17 @@ function newPlaying(factionIds = FACTIONS): GameState {
     "beta", seededRng(1),
   );
   return { ...g, passives: {} };
+}
+
+/** A move being SHOWN, the way `src/main.ts` shows one: the beats its batch
+ *  earns and then the paint that commits it. `from` is the log length before
+ *  the move, so the batch is exactly what the move appended.
+ *
+ *  A bare `hud.update` is a settled paint - the board arrives and nothing
+ *  flies - so any test about a card in the air goes through here. */
+function show(hud: Hud, g: GameState, from: number): void {
+  presentHudBeats(hud, g, g.log.slice(from));
+  hud.update(g);
 }
 
 describe("createHud", () => {
@@ -1112,25 +1124,35 @@ describe("card animations", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
     const g = drewOne();
-    hud.update(g);
+    show(hud, g, 0);
     expect(container.querySelectorAll(".flying-card.back")).toHaveLength(1);
-    hud.update(g); // same state again: no duplicate animation
+    // A repaint of the same board, which every move makes twice - once at the
+    // present stage and once at the commit - and neither may fly anything.
+    hud.update(g);
     expect(container.querySelectorAll(".flying-card.back")).toHaveLength(1);
     vi.runAllTimers();
     expect(container.querySelectorAll(".flying-card")).toHaveLength(0);
     vi.useRealTimers();
   });
 
-  it("hides the newest hand card while the draw flight is in progress", () => {
+  it("does not show the drawn card in the hand until its flight has landed", () => {
+    // The whole sequence, in the order the transition lifecycle runs it: the
+    // board as it stood is painted, the beat flies the card, and only then
+    // does the commit repaint the hand holding it. Nothing has to be hidden
+    // for that to read right, which is why no card is marked any more.
     vi.useFakeTimers();
     const { container, hud } = setup();
-    hud.update(drewOne());
-    // the newest (drawn) card renders last
-    const cards = container.querySelectorAll(".card");
-    const card = cards[cards.length - 1] as HTMLElement;
-    expect(card.classList.contains("card-incoming")).toBe(true);
+    const before = withHand(playing(), 0, ["grow-crops", "grow-crops"]);
+    const g = beginTurn(before, seededRng(1));
+    hud.update(before);
+    const held = container.querySelectorAll(".hand .card").length;
+    presentHudBeats(hud, g, g.log.slice(before.log.length));
+    expect(container.querySelectorAll(".flying-card.back")).toHaveLength(1);
+    expect(container.querySelectorAll(".hand .card")).toHaveLength(held);
     vi.runAllTimers();
-    expect(card.classList.contains("card-incoming")).toBe(false);
+    hud.update(g);
+    expect(container.querySelectorAll(".hand .card").length)
+      .toBeGreaterThan(held);
     vi.useRealTimers();
   });
 
@@ -1138,11 +1160,12 @@ describe("card animations", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
     let g = playing();
-    hud.update(g);
+    show(hud, g, 0);
     vi.runAllTimers();
+    const before = g.log.length;
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
-    hud.update(g);
+    show(hud, g, before);
     const flying = container.querySelectorAll(".flying-card");
     expect(flying).toHaveLength(1);
     expect(flying[0].classList.contains("back")).toBe(false);
@@ -1218,9 +1241,10 @@ describe("card animations", () => {
     let g = playing();
     hud.update(g, { animate: false });
     vi.runAllTimers();
+    const before = g.log.length;
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
-    hud.update(g);
+    show(hud, g, before);
     expect(container.querySelectorAll(".flying-card")).toHaveLength(1);
     vi.runAllTimers();
     vi.useRealTimers();
@@ -1232,10 +1256,11 @@ describe("card animations", () => {
     let g = playing();
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
-    hud.update(g); // consumes your draw + play events
+    show(hud, g, 0); // consumes your draw + play events
     vi.runAllTimers();
+    const beforeAi = g.log.length;
     g = advance(g, seededRng(2)); // AI draw event
-    hud.update(g);
+    show(hud, g, beforeAi);
     expect(container.querySelectorAll(".flying-card")).toHaveLength(0);
 
     // force a human reshuffle: empty deck, cards in discard
@@ -1245,8 +1270,9 @@ describe("card animations", () => {
       discard: ["grow-crops", "grow-crops"],
     };
     let g2 = { ...g, players: [p0, ...g.players.slice(1)], current: 0 };
+    const beforeShuffle = g2.log.length;
     g2 = beginTurn(g2, seededRng(3));
-    hud.update(g2);
+    show(hud, g2, beforeShuffle);
     expect(q(container, ".pile-deck").classList.contains("pulse")).toBe(true);
     vi.runAllTimers();
     expect(q(container, ".pile-deck").classList.contains("pulse")).toBe(false);
@@ -1261,11 +1287,12 @@ describe("afterPlayAnimation", () => {
     vi.useFakeTimers();
     const { hud } = setup();
     let g = playing();
-    hud.update(g);
+    show(hud, g, 0);
     vi.runAllTimers(); // clear the opening draw's flight
+    const before = g.log.length;
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
-    hud.update(g);
+    show(hud, g, before);
 
     const fn = vi.fn();
     hud.afterPlayAnimation(fn);
@@ -1314,11 +1341,12 @@ describe("afterPlayAnimation", () => {
     vi.useFakeTimers();
     const { hud } = setup();
     let g = playing();
-    hud.update(g);
+    show(hud, g, 0);
     vi.runAllTimers();
+    const before = g.log.length;
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
-    hud.update(g); // the card is now mid-flight
+    show(hud, g, before); // the card is now mid-flight
 
     const fn = vi.fn();
     hud.afterPlayAnimation(fn);
@@ -1330,11 +1358,11 @@ describe("afterPlayAnimation", () => {
   /** A play whose card flew and which a guard then turned aside. Rewrites the
    *  just-played event in place rather than driving a real guard-protected
    *  target through the rules, which would make the test about deck
-   *  construction instead. In place, and not appended: `animateEvents` queues
-   *  one flight per own `play` event in the fresh batch now, and a SECOND,
-   *  fabricated play event would queue a second flight the AI-round gate
-   *  never sees in real play - a human gets one play a turn - and its landing
-   *  would release the stage the modal is meant to hold. */
+   *  construction instead. In place, and not appended: the classifier gives
+   *  one flight per own `play` event in the batch, and a SECOND, fabricated
+   *  play event would queue a second flight the AI-round gate never sees in
+   *  real play - a human gets one play a turn - and its landing would release
+   *  the stage the modal is meant to hold. */
   function withOwnFizzle(g: GameState): GameState {
     const last = g.log.length - 1;
     return {
@@ -1349,11 +1377,12 @@ describe("afterPlayAnimation", () => {
   function playedWithFizzle() {
     let g = newPlaying();
     return (hud: Hud) => {
-      hud.update(g);
+      show(hud, g, 0);
       vi.runAllTimers(); // clear the opening draw's flight
+      const before = g.log.length;
       g = withHand(g, 0, ["grow-crops"]);
       g = withOwnFizzle(playCard(g, 0, seededRng(1)));
-      hud.update(g);
+      show(hud, g, before);
       return g;
     };
   }

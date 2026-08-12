@@ -50,10 +50,12 @@ import {
   ATTACK_CARDS, CARDS, isInwardCard, isMarchCard, type Strategy,
 } from "./cards";
 import { buildListing, destroyOffer, type HarvestChoice } from "./harvest";
-import { createHud, impactText, LOG_PREFS_KEY, type HudCallbacks } from "./hud";
-import { buildReplaySteps, type ReplayStep } from "./replay";
+import { changeImpact, createHud, LOG_PREFS_KEY, type HudCallbacks } from "./hud";
+import {
+  presentCtxOf, presentEvents,
+  type BadgeWalk, type Beat, type ResolutionArrow,
+} from "./presentation";
 import { createAudioEngine } from "./audio";
-import type { StandingChange } from "./standings";
 import { createDeckScreen } from "./deck-screen";
 import { createRegionsScreen } from "./regions-screen";
 import { createHostSession, type HostSession } from "./net-host";
@@ -241,7 +243,7 @@ svg.appendChild(arrowGroup);
 // The ghosts of marches that have already landed, fading. Their own group and
 // not `arrowGroup`, because the two have different lifetimes: a ghost outlives
 // the state it was drawn from, and a live rebuild landing mid-fade would wipe
-// it off the screen halfway through the one thing the replay is showing.
+// it off the screen halfway through the one thing the beat is showing.
 const ghostGroup = document.createElementNS(
   "http://www.w3.org/2000/svg", "g",
 ) as SVGGElement;
@@ -253,13 +255,6 @@ svg.appendChild(ghostGroup);
 // on its own takes the whole border and covers them - and what a preview is
 // FOR is the board the play would make. The dashed outline is what keeps it
 // from being read as something the game has promised.
-
-// The rising "+1"/"-1" marks. Above everything, and inert to the pointer.
-const floatGroup = document.createElementNS(
-  "http://www.w3.org/2000/svg", "g",
-) as SVGGElement;
-floatGroup.classList.add("score-floats");
-svg.appendChild(floatGroup);
 
 const badgeGroup = document.createElementNS(
   "http://www.w3.org/2000/svg", "g",
@@ -339,9 +334,10 @@ const initialGame: GameState = (() => {
 
 /** What a transition does to this screen.
  *
- *  `present` is the turn-start replay: the camera, the labels, the badge walks
- *  and the sounds for the events THIS transition appended, run against the
- *  board as it stood, and finished before the commit repaints it. It reports
+ *  `present` is the beats: the camera, the labels, the badge walks, the card
+ *  flights and the sounds `PRESENTATION_RULES` gives the events THIS
+ *  transition appended, run against the board as it stood, and finished
+ *  before the commit repaints it. It reports
  *  itself done when the animation queue drains, so a transition with nothing
  *  to show completes inside `submit` and one with a round to show holds the
  *  next one off for as long as it takes.
@@ -358,12 +354,11 @@ const stages: Stages = {
     // the move was submitted, and until something repaints, a hand about to
     // sit through a round of animation still looks live enough to click.
     //
-    // It runs BEFORE `queueReplay` because `floatScoreMarks` drains the set of
-    // indices the replay claims on every repaint it runs in, and the set has
-    // to survive until the COMMIT's own repaint - which is the one that floats
-    // this batch, and must skip whatever the camera has just visited.
+    // It runs BEFORE the beats because a badge walk starts from the number
+    // the badge is already showing, and this is the paint that guarantees
+    // what that number is.
     refresh();
-    queueReplay(t);
+    queueBeats(t);
     animations.onIdle(done);
   },
   commit(t) {
@@ -1218,108 +1213,6 @@ function regionCenter(factionId: string): { x: number; y: number } | undefined {
   return { x: best.x, y: best.y };
 }
 
-/** How far through the log the floating marks have been shown. Every batch is
- *  floated once, on the refresh that first sees it. */
-let floatedEvents = 0;
-
-/** How long a floating "+1" lives. One number, used for the animation and
- *  nothing else - the mark removes itself when the animation reports itself
- *  finished, never on a second timer (see the rule in AGENTS.md). */
-const FLOAT_MS = 1100;
-
-/** The defense a single event moved on the land it names, or null. Read off
- *  `amount` at the same sites `standingChangeText` reads, so a mark and its
- *  log line cannot disagree about what happened. */
-function floatFor(e: GameEvent): { polygon: string; delta: number }[] {
-  if (e.amount === undefined || e.amount === 0) return [];
-  const to = e.targetFactionId;
-  if (to === undefined) return [];
-  switch (e.type) {
-    case "healed":
-      return [{ polygon: to, delta: e.amount }];
-    case "march-resolved":
-    case "plagued":
-      return [{ polygon: to, delta: -e.amount }];
-    case "transferred":
-      return [
-        { polygon: to, delta: e.amount },
-        ...(e.sourceFactionId === undefined
-          ? []
-          : [{ polygon: e.sourceFactionId, delta: -e.amount }]),
-      ];
-    default:
-      return [];
-  }
-}
-
-/** Floats every defense change in the newest log entries over the land it
- *  happened to. The badge shows where a score ENDED; this is the only thing
- *  on the map that says it moved at all, which is what a heal for 1 needs to
- *  be visible. */
-function floatScoreMarks(): void {
-  if (game().log.length < floatedEvents) floatedEvents = 0;
-  const base = floatedEvents;
-  const fresh = game().log.slice(floatedEvents);
-  floatedEvents = game().log.length;
-  // Consumed whether or not this paint floats anything, so a stale set can
-  // never skip a mark of some later game's coincidentally-numbered event.
-  const replayed = replayedIndices;
-  replayedIndices = new Set();
-  if (!inPlay()) return;
-  const marks: SVGTextElement[] = [];
-  let lane = 0;
-  fresh.forEach((e, i) => {
-    // An event the replay gave its own step already states this number on
-    // the label, camera on the land - a float on top would move one fact
-    // twice.
-    if (replayed.has(base + i)) return;
-    for (const mark of floatFor(e)) {
-      const centre = regionCenter(mark.polygon);
-      if (centre === undefined) continue;
-      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      text.classList.add("score-float", mark.delta > 0 ? "float-good" : "float-bad");
-      text.setAttribute("x", String(centre.x));
-      // Stacked, so two changes on one land in a batch do not print on top of
-      // each other.
-      text.setAttribute("y", String(centre.y - 22 - (lane % 3) * 14));
-      text.textContent = mark.delta > 0 ? `+${mark.delta}` : String(mark.delta);
-      floatGroup.appendChild(text);
-      lane++;
-      // Queued like everything else, and as ONE step for the whole batch:
-      // the marks of a single round rise together, which is one animation,
-      // not six racing each other.
-      marks.push(text);
-    }
-  });
-  queueFloats(marks);
-}
-
-/** Enqueues the batch's marks as one step. */
-function queueFloats(marks: SVGTextElement[]): void {
-  if (marks.length === 0) return;
-  animations.push((done) => {
-    let left = marks.length;
-    const one = (): void => {
-      left -= 1;
-      if (left === 0) done();
-    };
-    for (const text of marks) {
-      runAnimation(
-        text,
-        [
-          { transform: "translateY(0)", opacity: 1 },
-          { transform: "translateY(-18px)", opacity: 0 },
-        ],
-        FLOAT_MS,
-        () => {
-          text.remove();
-          one();
-        },
-      );
-    }
-  });
-}
-
 function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
   const human = localHuman();
@@ -1377,21 +1270,18 @@ function renderThreatBadges(): void {
     // The disease pips: one circle per stack, in the owner's colour, in
     // faction order so a seeded run draws deterministically. Public state,
     // per the design - counts live in the hover's disease block.
+    //
+    // Each pip says WHOSE it is, because a badge walk is per owner: one
+    // `winds-shifted` moves two owners' stacks on one polygon in opposite
+    // directions, and a walk that could not tell the pips apart would be one
+    // number for two facts - see `walkBadgePips`.
     const owners = game().disease[factionId];
     if (owners !== undefined) {
       let pip = 0;
       for (const owner of game().factionIds) {
         const stacks = owners[owner] ?? 0;
         for (let s = 0; s < stacks; s++) {
-          const dot = document.createElementNS(
-            "http://www.w3.org/2000/svg", "circle",
-          );
-          dot.classList.add("badge-pip");
-          dot.setAttribute("r", "3.5");
-          dot.setAttribute("cx", String(pip * 9));
-          dot.setAttribute("cy", "14");
-          dot.setAttribute("fill", factionById.get(owner)?.color ?? "#000");
-          g.appendChild(dot);
+          g.appendChild(diseasePip(owner, pip));
           pip++;
         }
       }
@@ -1454,6 +1344,21 @@ function renderThreatBadges(): void {
   // away is back. Re-asked here rather than at every caller: a refresh landing
   // mid-hover would otherwise restore every number on the map.
   applyArrowFocus();
+}
+
+/** One disease stack on a badge: a dot in its owner's colour, at the `index`th
+ *  slot of the pip row. The row runs left to right across every owner in
+ *  faction order, so the slot is a position in the whole row rather than in
+ *  one owner's share of it. */
+function diseasePip(owner: string, index: number): SVGCircleElement {
+  const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  dot.classList.add("badge-pip");
+  dot.dataset.owner = owner;
+  dot.setAttribute("r", "3.5");
+  dot.setAttribute("cx", String(index * 9));
+  dot.setAttribute("cy", "14");
+  dot.setAttribute("fill", factionById.get(owner)?.color ?? "#000");
+  return dot;
 }
 
 /** Army pips drawn before the badge falls back to a count. Five is what fits
@@ -1889,20 +1794,10 @@ function armArrowAsCounter(g: SVGGElement, m: March, cardIndex: number): void {
  *  never copied into a second timer. */
 const CLASH_FLASH_MS = 1200;
 
-/** Absolute log indices the replay gave a step of their own. The score floats
- *  skip these - the label already states the number, and one fact moving twice
- *  on screen reads as two facts.
- *
- *  It is a handoff between two stages of one transition: `queueReplay` fills
- *  it at `present` and `floatScoreMarks` drains it at the `commit` that floats
- *  the same batch. Every repaint in between drains it as well, which is why
- *  `present` repaints before it fills the set rather than after. */
-let replayedIndices = new Set<number>();
-
-/** How long a replay label holds the screen. One number, handed to
+/** How long a beat's label holds the screen. One number, handed to
  *  `runAnimation`, which reports back when it is actually over - never copied
  *  into a second timer. */
-const REPLAY_LABEL_MS = 1700;
+const BEAT_LABEL_MS = 1700;
 
 /** Half of a badge's number swap - out on the old, in on the new. Short
  *  against the label it happens under, so the number has settled by the time
@@ -1914,10 +1809,10 @@ const placeNameFactionIds = new Set(
   data.factions.filter((f) => f.placeName).map((f) => f.id),
 );
 
-/** The hooks a replay label's segments render through - the same tooltip the
+/** The hooks a beat label's segments render through - the same tooltip the
  *  HUD's prose uses, so a card name in a label tips its rules and a faction
  *  name lights its realm, exactly as everywhere else. */
-const replayLabelHooks: RichTextHooks = {
+const beatLabelHooks: RichTextHooks = {
   factionName: (id) => factionNameById.get(id) ?? id,
   isPlaceName: (id) => placeNameFactionIds.has(id),
   showTip: (lines) => tooltip.showLines(lines),
@@ -1926,51 +1821,37 @@ const replayLabelHooks: RichTextHooks = {
     applyHighlight(hoveredRegion, id ?? hoveredRegion?.faction ?? null),
 };
 
-/** Show one march landing: a ghost of the arrow fading out, and over it the
- *  damage that actually got through.
+/** The resultant force of one landing, drawn for the length of the beat and
+ *  then gone: an arrow across the border it crossed, and over it what actually
+ *  got through out of what was thrown.
  *
- *  The ghost is rebuilt from the event rather than kept alive from
- *  `game.marches`, which is already empty by the time this runs - the event
- *  carries both ends of the axis precisely so the picture can be redrawn from
- *  the log alone.
+ *  Every number and every end of it comes off the beat's `ResolutionArrow`,
+ *  which the classifier built from the event - never from `game.marches`,
+ *  which the landing has already emptied, and never from the arrows on the
+ *  board, which a clash retires two of to produce this one.
  *
- *  The arrow points from the winner's land at the loser's, so a counter that
- *  won is drawn pointing BACK - which is the whole story of the clash in one
- *  shape. The label reads what landed out of what was thrown: "-3/10" in red
- *  when it was your land, "+7/10" in green when it was theirs. */
-function flashMarchResolution(
-  e: GameEvent, realm: ReadonlySet<string>, onDone: () => void,
-): void {
-  const from = e.sourceFactionId;
-  const to = e.targetFactionId;
-  if (from === undefined || to === undefined) {
-    onDone();
-    return;
-  }
-  // A standoff has no loser, so it is neither your bad news nor your good.
-  const standoff = e.amount === undefined;
-  const struckUs = realm.has(to);
-  const strength = e.incoming ?? 1;
-  const amount = e.amount ?? 0;
+ *  It points winner at loser, so a counter that won is drawn pointing BACK,
+ *  which is the whole story of the clash in one shape. The label is neutral
+ *  ink and reads as arithmetic - "1/3 DMG", no sign and no colour - because a
+ *  signed green number beside a spear is read as a score, and the scores on
+ *  this map are the badges'. */
+function flashResolution(res: ResolutionArrow, onDone: () => void): void {
   // Redrawn on the border it crossed, alone in a layer of its own: a live
   // rebuild landing mid-fade would take it off the screen halfway through the
-  // one thing the replay is showing. It takes the border's middle lane rather
+  // one thing the beat is showing. It takes the border's middle lane rather
   // than the lane the arrow itself stood in, and that reads as the same arrow
-  // because the replay hides the living ones while it runs.
+  // because the beat hides the living ones while it runs.
   const drawn = renderArrowScene(ghostGroup, [{
-    id: "ghost", kind: "ghost", from, to, strength,
-    tone: standoff ? "other" : struckUs ? "hostile" : "ours",
-    fill: standoff ? "#6b5d49" : struckUs ? "#992f27" : "#d4af37",
-    // The denominator is what a counter took off the top, so an uncontested
-    // landing has none: there is nothing for the number to be a fraction OF.
-    label: standoff
-      ? `0/${e.incoming ?? 0}`
-      : e.counter === undefined
-        ? `${struckUs ? "-" : "+"}${amount}`
-        : `${struckUs ? "-" : "+"}${amount}/${e.incoming}`,
-    // Where the two forces met, biased toward the side that gave ground. With
-    // no counter there is no meeting point, so the label sits near the head.
-    labelAt: clashFraction(strength, e.counter ?? 0),
+    id: "ghost", kind: "ghost",
+    from: res.from, to: res.to, strength: res.strength,
+    tone: res.tone === "ours" ? "ours" : res.tone === "hostile" ? "hostile" : "other",
+    fill: res.tone === "ours"
+      ? "#d4af37"
+      : res.tone === "hostile" ? "#992f27" : "#6b5d49",
+    label: res.label,
+    // Near the head. What a counter took off the top is in the label's own
+    // denominator, so the shaft has no second place to say it from.
+    labelAt: clashFraction(res.strength, 0),
   }], sceneCtx);
   const g = drawn.get("ghost");
   const poly = g?.querySelector("polygon") ?? null;
@@ -1980,7 +1861,6 @@ function flashMarchResolution(
     onDone();
     return;
   }
-  g.classList.add(standoff ? "clash-even" : struckUs ? "clash-bad" : "clash-good");
   poly.setAttribute("stroke", "#fdfaf4");
   poly.setAttribute("stroke-width", "1.2");
   runAnimation(poly, [{ opacity: 1 }, { opacity: 0 }], CLASH_FLASH_MS);
@@ -2001,11 +1881,11 @@ function flashMarchResolution(
 }
 
 /** The realm, plus every land at the far end of an arrow or a demand standing
- *  between it and them - see `ReplayView.linked`.
+ *  between it and them - see `PresentView.linked`.
  *
  *  Read off the arrows STILL IN FLIGHT in the state the batch landed in, which
  *  is the honest reading of "there is something between us": an arrow that has
- *  already landed is the event being replayed, and it comes in through the
+ *  already landed is the event being presented, and it comes in through the
  *  realm gate on its own. */
 function linkedLands(
   state: GameState, realm: ReadonlySet<string>,
@@ -2022,87 +1902,106 @@ function linkedLands(
   return linked;
 }
 
-/** The turn-start replay: one queue step per resolved event that earns the
- *  camera (see `REPLAY_RULES` in src/replay.ts) - glide to the land, label in
- *  and out, the event's sound, then the next. Sequential where the old flash
- *  was concurrent, because the camera can only be one place at a time -
- *  simultaneity was the old design's claim, and it read as noise the moment
- *  three marches landed.
+/** Stage 1 of a transition: everything this move earns on screen, one beat at
+ *  a time, against the board the player was last shown - the camera glides to
+ *  the land, a label says what happened, the badges walk from the scores they
+ *  had, the card leaves the hand. The commit that repaints the board waits
+ *  behind all of it.
  *
- *  This is stage 1 of a transition, so it queues its steps against the board
- *  the player was last shown and the commit that repaints it waits behind
- *  them. Everything it needs comes off the transition rather than off the
- *  displayed state: the events are the ones this move appended, and the realm,
- *  the arrows still standing and the standings walk are all read from the
- *  state those events land in - which is not the one under the map yet. */
-function queueReplay(t: Transition): void {
-  replayedIndices = new Set();
+ *  What earns a beat is `PRESENTATION_RULES` and nothing here. There is one
+ *  table and one audience gate, so a fact cannot be shown twice by two
+ *  surfaces that each thought the other had passed on it - which is what the
+ *  floats and the replay were doing to each other.
+ *
+ *  Everything it reads comes off the transition rather than off the displayed
+ *  state: the events are the ones this move appended, and the realm, the
+ *  arrows still standing and the standings walk are all read from the state
+ *  those events land in - which is not the one under the map yet. */
+function queueBeats(t: Transition): void {
   const state = t.next;
   const human = state.players[localSeat];
   if (human === undefined || state.phase !== "playing") return;
-  const { changes, ctx } = hud.noticeWalk(state, t.events);
+  const { ctx } = hud.noticeWalk(state, t.events);
+  if (ctx === null) return;
   const realm = fullRealmOf(human.factionId, state.overlords, state.incorporated);
-  const steps = buildReplaySteps(t.events, {
-    localPlayerId: human.id, realm, linked: linkedLands(state, realm), ctx,
-  });
-  if (steps.length === 0) return;
-  const base = state.log.length - t.events.length;
-  for (const step of steps) {
-    replayedIndices.add(base + step.index);
-    animations.push((done) =>
-      runReplayStep(step, changes[step.index] ?? [], realm, done),
-    );
+  const beats = presentEvents(t.events, presentCtxOf(t.events, {
+    // The seat THIS SCREEN plays, which on a guest's screen is not the
+    // host's - the audience gate asks whether this screen has business with
+    // the event, never whether some person somewhere does.
+    seats: new Set([human.id]),
+    realm,
+    linked: linkedLands(state, realm),
+    notice: ctx,
+  }));
+  let framesALand = false;
+  for (const beat of beats) {
+    // The questions are stage 3's, raised after the commit that makes them
+    // answerable. A beat list is flat on purpose and the lifecycle partitions
+    // it - see `presentEvents`.
+    if (beat.kind === "ask") continue;
+    if (beat.kind === "hud") {
+      hud.runHudBeat(beat);
+      continue;
+    }
+    framesALand = true;
+    animations.push((done) => runMapBeat(beat, done));
   }
-  // While the replay runs, the map shows the event being replayed and no
+  // While a land is being framed, the map shows THAT land's business and no
   // other arrow. A transition at a time keeps a LATER seat's declarations off
   // the board, but a seat declares its own march in the same breath as it
   // resolves the one before - so the arrow it just drew would stand over the
   // landing of the arrow it drew last turn. One event at a time means one
   // arrow at a time. Armed before the stage's own waiter, so the class is off
   // by the time the commit repaints the arrows.
+  //
+  // Only for a map beat: a card of the player's own flying to the discard pile
+  // has no business taking the arrows off the board underneath it, and a batch
+  // whose only beat is that flight would otherwise clear the map for as long
+  // as the card was in the air.
+  if (!framesALand) return;
   svg.classList.add("replaying");
   animations.onIdle(() => svg.classList.remove("replaying"));
 }
 
-/** One step: camera first, then label, ghost and sound together. `done` fires
- *  when the slowest of them reports itself finished - never on a timer. */
-function runReplayStep(
-  step: ReplayStep,
-  changes: StandingChange[],
-  realm: ReadonlySet<string>,
+/** One map beat: camera first, then the label, the badge walks, the
+ *  resolution arrow and the sound together. `done` fires when the slowest of
+ *  them reports itself finished - never on a timer. */
+function runMapBeat(
+  beat: Extract<Beat, { kind: "map" }>,
   done: () => void,
 ): void {
-  // A new game, or the menu, replaced the board while this step waited its
-  // turn. The teardown paths clear the queue, but a step already running when
+  // A new game, or the menu, replaced the board while this beat waited its
+  // turn. The teardown paths clear the queue, but a beat already running when
   // they do must not draw over the wrong screen. Asked of the SCREEN and not
   // of the transition, because that is the question: whether there is still a
-  // run under this label. Whether the step's own batch was worth showing was
-  // settled in `queueReplay`, against the state those events land in.
+  // run under this label. Whether the beat was owed at all was settled by the
+  // classifier, against the state those events land in.
   if (!inPlay()) {
     done();
     return;
   }
-  const centre = step.polygon !== undefined
-    ? regionCenter(step.polygon)
-    : undefined;
+  const centre = regionCenter(beat.polygon);
   const show = (): void => {
-    if (step.sound !== null) audio.cue(step.sound);
-    // Lit for the whole step, so the label always has a land to belong to
+    if (beat.sound !== null) audio.cue(beat.sound);
+    // Lit for the whole beat, so the label always has a land to belong to
     // even when the camera holds still - which, on the whole-map view, is
     // most of the time.
-    const unmark = markReplayLand(step.polygon);
-    walkBadgeScore(step.polygon, changes);
-    let pending = step.event.type === "march-resolved" ? 2 : 1;
+    const unmark = markBeatLand(beat.polygon);
+    walkBadges(beat.badges);
+    // `beat.retires` is not read here: the arrow layer is rebuilt wholesale on
+    // every paint, so an arrow leaves at the commit behind this beat rather
+    // than fading under it. It is unread rather than absent because the beat
+    // states what a keyed scene will act on, and the classifier is where that
+    // is decided either way.
+    let pending = beat.resolution === undefined ? 1 : 2;
     const one = (): void => {
       pending -= 1;
       if (pending > 0) return;
       unmark();
       done();
     };
-    if (step.event.type === "march-resolved") {
-      flashMarchResolution(step.event, realm, one);
-    }
-    showReplayLabel(step, changes, one);
+    if (beat.resolution !== undefined) flashResolution(beat.resolution, one);
+    showBeatLabel(beat, one);
   };
   if (centre !== undefined) {
     interaction.focusOn(centre, show);
@@ -2111,69 +2010,107 @@ function runReplayStep(
   }
 }
 
-/** Lights the land a step is about, and answers how to put it out.
+/** Lights the land a beat is about, and answers how to put it out.
  *
  *  This is what keeps a label attached to a place. The camera holds still for
  *  anything already comfortably on screen (see `focusOn`), which on the
  *  default whole-map view is every land there is - so without a mark, a
  *  wild-lands regrowth read as a sentence about nowhere. */
-function markReplayLand(polygon: string | undefined): () => void {
-  const regionId = polygon === undefined
-    ? undefined
-    : regionByFaction.get(polygon);
+function markBeatLand(polygon: string): () => void {
+  const regionId = regionByFaction.get(polygon);
   const el = regionId === undefined ? undefined : regionPaths.get(regionId);
   if (el === undefined) return () => {};
   el.classList.add("replay-focus");
   return () => el.classList.remove("replay-focus");
 }
 
-/** Walks the land's badge from the score it HAD to the score it has: the old
- *  number fades out, the new one fades in behind it. A number that changed
- *  while the player was looking at it, rather than one that was always that.
+/** Walks every score this beat moved from what it was to what it is: the
+ *  badge's number, and the disease pips under it.
  *
- *  The badge is drawn from the displayed state, which is still the board
- *  before this event - the commit is waiting on this step - so the walk starts
+ *  The badges are drawn from the displayed state, which is still the board
+ *  before this event - the commit is waiting on this beat - so a walk starts
  *  where the number already stands and ends where the commit will repaint it.
- *  It is set explicitly all the same: the start of the walk is the `before`
- *  the walk was computed from, and the badge under it must not be showing
- *  anything else.
+ *  Each walk states its own start all the same: the `before` is what the walk
+ *  was computed from, and what the badge shows must not be anything else.
  *
- *  The defense score only. Disease is drawn as pips rather than a number, and
- *  a pip appearing is already a change the eye catches. */
-function walkBadgeScore(
-  polygon: string | undefined, changes: StandingChange[],
-): void {
-  if (polygon === undefined) return;
-  const change = changes.find((c) => c.track === "defense");
-  if (change === undefined || change.before === change.after) return;
+ *  This is the ONLY way a score change is shown on the map. There is no second
+ *  mark rising off the polygon for the moves the camera did not visit: two
+ *  ways of saying one thing is two gates, and the one that gets skipped is
+ *  always the one with the gate on it. */
+function walkBadges(badges: BadgeWalk[]): void {
+  for (const walk of badges) {
+    if (walk.before === walk.after) continue;
+    if (walk.track === "defense") walkBadgeScore(walk);
+    else walkBadgePips(walk);
+  }
+}
+
+function walkBadgeScore(walk: BadgeWalk): void {
   const el = badgeGroup.querySelector(
-    `.threat-badge[data-faction="${polygon}"] .badge-defense`,
+    `.threat-badge[data-faction="${walk.polygon}"] .badge-defense`,
   );
   if (el === null) return;
   // The ceiling off the badge as drawn, so this states only what it knows.
   const max = (el.textContent ?? "").split("/")[1] ?? "";
-  el.textContent = `${change.before}/${max}`;
+  el.textContent = `${walk.before}/${max}`;
   runAnimation(el, [{ opacity: 1 }, { opacity: 0 }], BADGE_WALK_MS, () => {
-    el.textContent = `${change.after}/${max}`;
+    el.textContent = `${walk.after}/${max}`;
     runAnimation(el, [{ opacity: 0 }, { opacity: 1 }], BADGE_WALK_MS);
   });
+}
+
+/** One owner's stacks on one land, as pips arriving or leaving.
+ *
+ *  Per OWNER, because that is what the walk is about: a single
+ *  `winds-shifted` hands one faction's stacks to another and produces two
+ *  walks on the same polygon in opposite directions. Drawn as one track they
+ *  would be one row of dots twitching by the difference, which says the
+ *  sickness eased when what happened is that it changed hands.
+ *
+ *  Stacks that leave fade out where they stand; stacks that arrive fade in at
+ *  the end of the row, whichever owner they belong to, because the row is
+ *  packed left to right and inserting mid-row would shove every pip after it
+ *  sideways mid-fade. The commit behind this beat redraws the row in faction
+ *  order, which is where a new pip takes its place for good. */
+function walkBadgePips(walk: BadgeWalk): void {
+  const badge = badgeGroup.querySelector(
+    `.threat-badge[data-faction="${walk.polygon}"]`,
+  );
+  if (badge === null || walk.owner === undefined) return;
+  const all = badge.querySelectorAll(".badge-pip");
+  if (walk.after < walk.before) {
+    const theirs = [...badge.querySelectorAll(
+      `.badge-pip[data-owner="${walk.owner}"]`,
+    )];
+    for (const pip of theirs.slice(walk.after)) {
+      runAnimation(pip, [{ opacity: 1 }, { opacity: 0 }], BADGE_WALK_MS);
+    }
+    return;
+  }
+  for (let i = walk.before; i < walk.after; i++) {
+    const pip = diseasePip(walk.owner, all.length + i - walk.before);
+    badge.appendChild(pip);
+    runAnimation(pip, [{ opacity: 0 }, { opacity: 1 }], BADGE_WALK_MS);
+  }
 }
 
 /** The label itself: segments (a card name tips its rules, a faction lights
  *  its realm - the rich-text rule, nothing here is a template literal) plus
  *  the same walked suffix the log line and the summary carry. */
-function showReplayLabel(
-  step: ReplayStep,
-  changes: StandingChange[],
+function showBeatLabel(
+  beat: Extract<Beat, { kind: "map" }>,
   onDone: () => void,
 ): void {
   const label = document.createElement("div");
   label.className = "replay-label";
   const text = document.createElement("span");
   text.className = "rl-text";
-  text.appendChild(renderSegments(step.label, replayLabelHooks));
+  text.appendChild(renderSegments(beat.label, beatLabelHooks));
   label.appendChild(text);
-  const impact = impactText(step.event, changes);
+  // The walked half alone: the two suffixes that come off an event rather
+  // than off the walk - a tribute's coins, a war council's leadership - belong
+  // to events with no map beat to carry them.
+  const impact = changeImpact(beat.badges);
   if (impact !== null) {
     const suffix = document.createElement("span");
     suffix.className = `log-change lead-${impact.tone}`;
@@ -2189,7 +2126,7 @@ function showReplayLabel(
       { opacity: 1, transform: "translate(-50%, 0)", offset: 0.82 },
       { opacity: 0, transform: "translate(-50%, -10px)" },
     ],
-    REPLAY_LABEL_MS,
+    BEAT_LABEL_MS,
     () => {
       label.remove();
       onDone();
@@ -2785,7 +2722,7 @@ function viewState(): GameState {
 
 /** The phase whose ending has already been given its jingle. Endings own the
  *  whole screen, so their sound cues on the phase change here rather than on
- *  an event replay step - see the `victory`/`defeat` rows of REPLAY_RULES. */
+ *  a beat - see the `victory`/`defeat` rows of `PRESENTATION_RULES`. */
 let cuedEndingPhase: GameState["phase"] | null = null;
 
 /** Stage 5: the run's ending, sounded and put on screen, or nothing when the
@@ -2852,7 +2789,6 @@ function refresh(opts?: { animate?: boolean }): void {
   // defense score from three plays ago is worse than no panel.
   showPinnedLand(pinnedRegion);
   hud.update(viewState(), opts);
-  floatScoreMarks();
   // The menu carries the panel; so does a network game that has lost its
   // session, or one whose lobby is still being filled in - the status line
   // is the only place either of those speaks.

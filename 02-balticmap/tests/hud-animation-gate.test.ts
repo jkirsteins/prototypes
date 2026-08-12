@@ -40,7 +40,8 @@ vi.mock("../src/animate", async (importOriginal) => ({
 
 import { animations } from "../src/animate";
 import { createTransitionQueue, type Transition } from "../src/transitions";
-import { createHud, type HudCallbacks } from "../src/hud";
+import { createHud, type Hud, type HudCallbacks } from "../src/hud";
+import { presentHudBeats } from "./helpers";
 import {
   newGame, startGame, chooseBuild, pickFaction, playCard, beginTurn,
   type GameState,
@@ -75,6 +76,14 @@ function hosted() {
   const container = document.createElement("div");
   document.body.appendChild(container);
   return { container, hud: hudOn(container) };
+}
+
+/** A move being SHOWN, the way `src/main.ts` shows one: the beats its batch
+ *  earns and then the paint that commits it. `from` is the log length before
+ *  the move. A bare `hud.update` flies nothing - a card in the air is a beat. */
+function show(hud: Hud, g: GameState, from: number): void {
+  presentHudBeats(hud, g, g.log.slice(from));
+  hud.update(g);
 }
 
 /** A game with the human seat holding one harmless card, ready to play it. */
@@ -113,8 +122,9 @@ describe("afterPlayAnimation watchdog", () => {
     // queue and the play behind it is not what this test is about. The queued
     // case has a test of its own below.
     hud.update(g, { animate: false });
+    const before = g.log.length;
     g = playCard(g, 0, seededRng(1));
-    hud.update(g); // the mocked play flight is now in the air forever
+    show(hud, g, before); // the mocked play flight is now in the air forever
 
     const fn = vi.fn();
     hud.afterPlayAnimation(fn);
@@ -131,10 +141,11 @@ describe("afterPlayAnimation watchdog", () => {
     // reads as "the card has landed".
     const { hud } = hosted();
     let g = ready();
-    hud.update(g); // opening draw: started, and it does not finish
+    show(hud, g, 0); // opening draw: started, and it does not finish
     const queuedBefore = stalled.length;
+    const before = g.log.length;
     g = playCard(g, 0, seededRng(1));
-    hud.update(g); // the play queues BEHIND the stalled draw
+    show(hud, g, before); // the play queues BEHIND the stalled draw
     expect(stalled).toHaveLength(queuedBefore); // it has not started
 
     const fn = vi.fn();
@@ -188,7 +199,8 @@ describe("afterPlayAnimation watchdog", () => {
     const tr = (turn: number): Transition =>
       ({ next: { turn } as unknown as GameState, events: [], settled: false });
 
-    hud.update(ready()); // the opening draw: a beat, and no play in the air
+    const opening = ready();
+    show(hud, opening, 0); // the opening draw: a beat, and no play in the air
     q.submit(tr(2));
     q.submit(tr(3));
     vi.advanceTimersByTime(10 * (STALLED_FLIGHT_MS + WATCHDOG_SLACK_MS));
@@ -210,10 +222,11 @@ describe("afterPlayAnimation watchdog", () => {
     // locked with nothing on it saying why.
     const { hud } = hosted();
     let g = ready();
-    hud.update(g); // the opening draw: started, and it does not finish
+    show(hud, g, 0); // the opening draw: started, and it does not finish
     const queuedBefore = stalled.length;
+    const before = g.log.length;
     g = playCard(g, 0, seededRng(1));
-    hud.update(g); // the play queues BEHIND the draw
+    show(hud, g, before); // the play queues BEHIND the draw
     expect(stalled).toHaveLength(queuedBefore); // it has not started
 
     const fn = vi.fn();
@@ -244,9 +257,10 @@ describe("afterPlayAnimation watchdog", () => {
     // now never be drawn.
     const { hud } = hosted();
     let g = ready();
-    hud.update(g);
+    show(hud, g, 0);
+    const before = g.log.length;
     g = playCard(g, 0, seededRng(1));
-    hud.update(g);
+    show(hud, g, before);
     const fn = vi.fn();
     hud.afterPlayAnimation(fn);
 

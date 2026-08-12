@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { EVENT_SOUNDS, SOUNDS } from "../src/audio-manifest";
-import { REPLAY_RULES } from "../src/replay";
+import { SOUNDS } from "../src/audio-manifest";
 
 // Vite's glob import rather than node:fs - this project ships no node types,
 // and the transform runs identically under vitest. `?raw` decodes the file as
@@ -21,18 +20,9 @@ describe("audio manifest", () => {
     }
   });
 
-  it("a silent event is one the replay passes over", () => {
-    // The exhaustive Records already refuse to compile on a new event type;
-    // this pins the runtime relationship between the two tables: an event
-    // with no sound must be one whose passed-over reason says where its
-    // moment went - a shown step with nothing to play is a decision nobody
-    // made.
-    for (const [type, sound] of Object.entries(EVENT_SOUNDS)) {
-      if (sound !== null) continue;
-      const rule = REPLAY_RULES[type as keyof typeof REPLAY_RULES];
-      expect(rule.kind, `${type} is silent but not passed over`).toBe(
-        "passed-over",
-      );
-    }
-  });
+  // What a null in `EVENT_SOUNDS` has to answer for - either no moment on
+  // screen at all, or a beat that names its own sound - is pinned in
+  // tests/presentation.test.ts, where the classifier's context is already
+  // built. The two tables are exhaustive over the same type, so the
+  // relationship between them belongs to whichever test can build a beat.
 });

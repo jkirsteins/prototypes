@@ -68,6 +68,29 @@ describe("PRESENTATION_RULES", () => {
     }
   });
 
+  it("a silent event type is never presented, or its rule names a sound", () => {
+    // A null in `EVENT_SOUNDS` is a decision about where that event's moment
+    // went, and there are two honest answers: it has no moment on screen at
+    // all, or the beat that draws it names a sound of its own because the
+    // table's default would be silence. A presented type with neither is an
+    // event the player watches happen in silence, which is a decision nobody
+    // wrote down.
+    for (const [type, sound] of Object.entries(EVENT_SOUNDS)) {
+      if (sound !== null) continue;
+      const rule = PRESENTATION_RULES[type as GameEventType];
+      if (rule.kind === "never") continue;
+      const e = sample(type as GameEventType);
+      const beats = presentEvents([e], ctxFor([e]));
+      expect(beats.length, `${type} is silent and shows nothing`)
+        .toBeGreaterThan(0);
+      for (const beat of beats) {
+        if (beat.kind === "ask") continue;
+        expect(beat.sound, `${type} is silent and its beat plays nothing`)
+          .not.toBeNull();
+      }
+    }
+  });
+
   it("a never rule earns no beat for any event of its type", () => {
     for (const [type, rule] of Object.entries(PRESENTATION_RULES)) {
       if (rule.kind !== "never") continue;

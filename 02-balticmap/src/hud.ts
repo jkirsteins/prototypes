@@ -37,7 +37,7 @@ import {
 } from "./rich-text";
 import type { BuildOption } from "./harvest";
 import { EVENT_SOUNDS, type SoundName } from "./audio-manifest";
-import { REPLAY_RULES } from "./replay";
+import { PRESENTATION_RULES, type Beat } from "./presentation";
 
 export interface HudCallbacks {
   onNewGame(): void;
@@ -158,6 +158,14 @@ export interface Hud {
    *  nothing on screen says why. The phase check inside `update` is no safety
    *  net for it - a world arriving whole is usually still "playing". */
   dropFlights(): void;
+  /** One `hud` beat of a transition's presentation: a motion that belongs to
+   *  the hand and the piles rather than to the map. Each takes a step on the
+   *  animation queue, so a card never flies over a land being framed.
+   *
+   *  The beat carries its own sound, from the one table that says what an
+   *  event sounds like, and the motion cues it inside its step. A duration is
+   *  never handed over: what the caller waits on is the queue draining. */
+  runHudBeat(beat: Extract<Beat, { kind: "hud" }>): void;
   /** Draws the run's ending and puts it on screen. Asked for explicitly rather
    *  than derived from `state.phase` inside `update`, so an ending rises when
    *  the move that ended the run has finished being shown - not on whichever
@@ -714,6 +722,15 @@ export function impactText(
   e: GameEvent,
   changes: StandingChange[],
 ): { text: string; tone: "good" | "bad" | "even" } | null {
+  return eventImpact(e) ?? changeImpact(changes);
+}
+
+/** The two suffixes that come off the EVENT rather than off the walk, because
+ *  neither number is a walked score: a tribute's coins, and the leadership a
+ *  war council puts on the ruler. */
+function eventImpact(
+  e: GameEvent,
+): { text: string; tone: "good" | "bad" | "even" } | null {
   // The tribute's coins moved no score, so the walk has no line for them and
   // the amount comes off the event. Coins leaving a vassal are the neutral
   // cost of the card.
@@ -725,6 +742,18 @@ export function impactText(
   if (e.type === "play" && e.cardId === "war-council" && e.amount !== undefined) {
     return { text: `Leadership +${e.amount}`, tone: "good" };
   }
+  return null;
+}
+
+/** The walked half of a suffix, over one event's slice of `walkStandings`.
+ *
+ *  Split out because a presentation beat carries the walk and not the event it
+ *  came from: the label beside a badge walk quotes this, and the log line for
+ *  the same event quotes `impactText`, so the two cannot state different
+ *  numbers for one move. */
+export function changeImpact(
+  changes: StandingChange[],
+): { text: string; tone: "good" | "bad" | "even" } | null {
   if (changes.length === 0) return null;
   const net = changes.reduce((sum, c) => sum + (c.after - c.before), 0);
   const tone =
@@ -1731,7 +1760,13 @@ export function createHud(
     harvestOverlay,
   );
 
-  let pendingPlayRect: DOMRect | null = null;
+  /** The card the player last clicked to play: where it sat, so the flight
+   *  starts from the layout the click happened in, and WHICH slot of the hand
+   *  it was, so that slot can be emptied for as long as the card is in the
+   *  air. Both are needed because the beat runs BEFORE the commit that
+   *  repaints the hand without the card - without the slot, the card flies out
+   *  of a hand that is still holding it. */
+  let pendingPlay: { rect: DOMRect; index: number } | null = null;
   let renderedEvents = 0;
   let lastRenderedTurn = 0;
   /** The rendered entry for each log index, so a secret play several screens up
@@ -2156,7 +2191,7 @@ export function createHud(
       );
       if (playable)
         card.addEventListener("click", () => {
-          pendingPlayRect = card.getBoundingClientRect();
+          pendingPlay = { rect: card.getBoundingClientRect(), index: i };
           cb.onPlayCard(i);
         });
       hand.appendChild(card);
@@ -2224,47 +2259,57 @@ export function createHud(
     }, longestMs + FLIGHT_WATCHDOG_SLACK_MS);
   }
 
-  function animateDraw(): void {
+  /** The card flying out of the deck and into the hand.
+   *
+   *  Nothing in the hand is hidden while it flies, and nothing needs to be:
+   *  the beat runs before the commit that repaints the hand, so the card this
+   *  flight is about is not on screen until it has landed. The hand it flies
+   *  INTO is the one the player was already looking at. */
+  function animateDraw(sound: SoundName | null): void {
     const from = deckPile.root.getBoundingClientRect();
-    const newest = hand.lastElementChild;
-    newest?.classList.add("card-incoming");
     // Not tracked in liveFlights - the turn does not wait on a draw - but
     // queued like everything else, so it never plays over a card in flight.
     animations.push((done) => {
-      cb.cue?.("card-draw");
+      cue(sound);
       flyCard(
         container,
         "back",
         "",
         { x: from.x, y: from.y, width: CARD_W, height: CARD_H },
         [{ to: center(hand.getBoundingClientRect()), scale: 1, durationMs: DRAW_MS }],
-        () => {
-          newest?.classList.remove("card-incoming");
-          done();
-        },
+        done,
       );
     });
   }
 
-  function animatePlay(cardId: string): void {
+  function animatePlay(cardId: string, sound: SoundName | null): void {
     // The rect is read NOW, while the card is still where the player left it -
     // the queue may not reach this step until the hand has been re-rendered,
     // and a flight starting from a stale layout would jump.
-    const from = pendingPlayRect ?? hand.getBoundingClientRect();
-    pendingPlayRect = null;
+    const from = pendingPlay?.rect ?? hand.getBoundingClientRect();
+    const slot = pendingPlay?.index;
+    pendingPlay = null;
     queuedPlayFlights += 1;
     animations.push((done) => {
       queuedPlayFlights -= 1;
-      runPlayFlight(cardId, from, done);
+      runPlayFlight(cardId, from, slot, sound, done);
       armFlightWatchdog();
     });
   }
 
   function runPlayFlight(
     cardId: string, from: DOMRect | { x: number; y: number },
+    slot: number | undefined,
+    sound: SoundName | null,
     done: () => void,
   ): void {
-    cb.cue?.("card-play");
+    cue(sound);
+    // The slot the card left, emptied for the length of the flight. The commit
+    // behind this beat renders the hand without the card for good; until then
+    // the hand on screen is the one the player clicked in, and a card cannot
+    // be both in it and flying out of it.
+    const left = slot === undefined ? null : hand.children[slot] ?? null;
+    left?.classList.add("card-outgoing");
     const flight = flyCard(
       container,
       "",
@@ -2284,6 +2329,7 @@ export function createHud(
         },
       ],
       () => {
+        left?.classList.remove("card-outgoing");
         liveFlights.delete(flight);
         if (!playPending()) releasePlayWaiters();
         done();
@@ -2292,9 +2338,9 @@ export function createHud(
     liveFlights.add(flight);
   }
 
-  function pulseDeck(): void {
+  function pulseDeck(sound: SoundName | null): void {
     animations.push((done) => {
-      cb.cue?.("shuffle");
+      cue(sound);
       deckPile.root.classList.add("pulse");
       runAnimation(
         deckPile.stack,
@@ -2312,23 +2358,25 @@ export function createHud(
     });
   }
 
-  /** Human-only: AI actions surface as log entries, nothing moves on screen.
+  const cue = (sound: SoundName | null): void => {
+    if (sound !== null) cb.cue?.(sound);
+  };
+
+  /** The local seat's events that earn NO beat at all: a discard, a tribute,
+   *  a turnip earned, a card burned out of the piles. `PRESENTATION_RULES`
+   *  calls each of them `never` because the hand or the turnip bar is its
+   *  surface and there is no land to frame - so nothing on the queue carries
+   *  their sound, and they cue here, immediately.
    *
-   *  Sounds: the flights and the pulse cue their own inside their queue step,
-   *  so the ear and the eye agree on when. The local seat's OTHER events -
-   *  the ones `REPLAY_RULES` passes over, a discard, a tribute, a harvest
-   *  tick - have no motion to ride, so they cue here, immediately. An event
-   *  the replay SHOWS is left alone or it would sound twice. */
-  function animateEvents(fresh: GameEvent[]): void {
+   *  Every other sound rides the beat that draws its moment, so the ear and
+   *  the eye agree on when. Asked of the table rather than listed here: a
+   *  type that stops being presented must not go silent for the sake of a
+   *  list somebody forgot. */
+  function cueUnpresented(fresh: GameEvent[]): void {
     for (const e of fresh) {
       if (e.playerId !== localPlayerId()) continue;
-      if (e.type === "draw") animateDraw();
-      else if (e.type === "play") animatePlay(e.cardId ?? "");
-      else if (e.type === "reshuffle") pulseDeck();
-      else if (REPLAY_RULES[e.type].kind === "passed-over") {
-        const sound = EVENT_SOUNDS[e.type];
-        if (sound !== null) cb.cue?.(sound);
-      }
+      if (PRESENTATION_RULES[e.type].kind !== "never") continue;
+      cue(EVENT_SOUNDS[e.type]);
     }
   }
 
@@ -2829,7 +2877,7 @@ export function createHud(
         renderMilestones(state);
         const fresh = renderLog(state, animate);
         if (animate) {
-          animateEvents(fresh);
+          cueUnpresented(fresh);
           // Folded in, never shown here: which move the player is owed an
           // interruption for is the caller's question, and it asks it through
           // `raiseRoundSummary`. A silent paint is history arriving whole and
@@ -2846,6 +2894,31 @@ export function createHud(
     dropFlights() {
       cancelLiveFlights();
       releasePlayWaiters();
+    },
+    runHudBeat(beat) {
+      switch (beat.motion) {
+        case "draw":
+          animateDraw(beat.sound);
+          return;
+        case "play":
+          animatePlay(beat.cardId ?? "", beat.sound);
+          return;
+        case "pulse":
+          pulseDeck(beat.sound);
+          return;
+        // The gained card's own reveal is raised by the harvest flow that
+        // asked for it (`revealGainedCards`), which is a longer sequence than
+        // one beat and outlives the transition that earned it. What the beat
+        // owes is the moment in the round where the pick registers, and that
+        // is its sound - queued rather than cued on the spot, so it lands in
+        // the order the batch put it in.
+        case "reveal":
+          animations.push((done) => {
+            cue(beat.sound);
+            done();
+          });
+          return;
+      }
     },
     showPostmortem(state) {
       renderPostmortem(state);
