@@ -536,6 +536,29 @@ here because this document is what the next plan is written from:
   claims as `claim:...`, plus `aim` and `ghost`, so the `march:<id>` namespacing
   section 6 wants is a rename and nothing more.
 
+## Where this landed
+
+All five steps are merged on `main`. What the player sees now, measured in a
+browser rather than asserted:
+
+- No coloured number appears anywhere over a polygon. A score change is shown
+  by the badge walking and a sound, and by nothing else.
+- A `?turns=8` boot paints no floats at all. It painted 74 at once before.
+- Arrows fade in when declared and out when spent. One End turn produced 190
+  add/remove mutations before this work and 18 after - the floor for the
+  arrows actually arriving and leaving - and a repaint that changes nothing
+  produces none. Worst single-frame opacity change for a visible arrow, over
+  a whole round with a land pinned: 0.012.
+- A resolution reads `N/M DMG` in neutral ink. A standoff draws two arrows,
+  one each way, packed side by side rather than one arrow pointing whichever
+  way the two land names happened to sort.
+- The player's own play hands the input back in 1920ms where it took 3161ms
+  mid-refactor and about 2400ms before it.
+
+The one score change shown by nothing is a rival-versus-rival move on a land
+the player has no line to. That is deliberate: the floats had no audience gate
+at all, and giving them one was the point.
+
 ## Order of work
 
 The dependencies are real and not obvious, so the plan should follow them:

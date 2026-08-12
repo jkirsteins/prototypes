@@ -332,8 +332,12 @@ states an arrow's whole class attribute, which is what stops a stale cue
 surviving a render - so the hover's fade and the pin's dim are `ArrowSpec`
 fields (`faded`, `dimmed`), decided in `paintArrows` from the same dataset the
 hover and the pin were always answered from, and the surfaces that own those
-two questions repaint rather than write on the elements. There is no pass
-after the paint, which is what makes the ordering impossible to get wrong.
+two questions repaint rather than write on the elements. No pass after the
+paint touches an arrow's OPACITY, which is what makes the ordering impossible
+to get wrong. Two classes are still written afterwards - `march-counterable`
+on an answerable arrow and `aim-valid` on the preview - and both are safe only
+because neither declares an opacity. Give either one and it must move onto the
+spec with the other two.
 
 It was a pass after the paint twice, and it failed differently each time.
 Written by the surfaces themselves, a repaint while a land was pinned
@@ -344,6 +348,14 @@ opacity was: an arrow declared while a land was pinned faded up to full over
 220ms and then dropped to 0.16 in one frame. **An arrow's fade rises to the
 opacity the stylesheet gives it, so anything that changes that opacity has to
 be on the element before the fade is started.**
+
+That closes the cues KNOWN AT CREATION and not the ones that change under a
+running fade. `enter` bakes the resting opacity into a keyframe and nothing
+re-aims a fade already in flight, so taking a pin or moving the pointer onto
+another arrow during those 220ms still steps the opacity when the fade ends -
+up to 0.84 in the pin case. The window is small and the fix, if it is ever
+worth it, is to re-aim a live `held.fade` in `place` when a kept arrow's
+`faded` or `dimmed` has changed.
 
 **The aim preview shares the block with the arrows already crossing it.**
 `kind: "aim"` is a spec in the same scene as every live arrow (`src/main.ts`,
