@@ -64,7 +64,9 @@ const MASTER_GAIN = 0.6;
 /** +-6% playback rate, so repeats of one sample read as events, not a loop. */
 const RATE_JITTER = 0.06;
 /** Two cues of the same sound inside this window collapse into one - the
- *  simultaneous-batch case, e.g. one queue step raising several score floats. */
+ *  simultaneous-batch case, e.g. `cueUnpresented` in src/hud.ts cueing the
+ *  same sound for two same-type events (two forced discards, say) that land
+ *  in one paint. */
 const DEDUPE_MS = 90;
 
 export function createAudioEngine(storage: MetaStorage): AudioEngine {

@@ -33,7 +33,6 @@ import {
   miasmaHeld, omensHeld, freeSettlementsIn, settlementsIn,
 } from "./playability";
 import { armiesOn, axesOf, type March } from "./marches";
-import { clashFraction } from "./arrows";
 import { crossingBetween, ringsOf, type Crossing, type Pt } from "./borders";
 import { renderArrowScene, type ArrowSpec, type SceneCtx } from "./arrow-scene";
 import { animations, runAnimation } from "./animate";
@@ -1853,9 +1852,14 @@ function flashResolutions(
       ? "#d4af37"
       : res.tone === "hostile" ? "#992f27" : "#6b5d49",
     label: res.label,
-    // Near the head. What a counter took off the top is in the label's own
-    // denominator, so the shaft has no second place to say it from.
-    labelAt: clashFraction(res.strength, 0),
+    // Pinned at the head, not weighed by `clashFraction`: a `ResolutionArrow`
+    // carries only its own side's strength, never the other's, so calling
+    // that function here with a fake 0 opposite always clamps to its 0.85
+    // ceiling - a fixed number dressed as a computed one. What a counter took
+    // off the top is in the label's own denominator, so the shaft has no
+    // second place to say it from, and the head is where a spear's own
+    // number already sits.
+    labelAt: 0.85,
   })), sceneCtx);
   let pending = 1;
   const one = (): void => {
@@ -1939,7 +1943,7 @@ function queueBeats(t: Transition): void {
   const state = t.next;
   const human = state.players[localSeat];
   if (human === undefined) return;
-  const { ctx } = hud.noticeWalk(state, t.events);
+  const { ctx, changes } = hud.noticeWalk(state, t.events);
   if (ctx === null) return;
   const realm = fullRealmOf(human.factionId, state.overlords, state.incorporated);
   const beats = presentEvents(t.events, presentCtxOf(t.events, {
@@ -1950,7 +1954,7 @@ function queueBeats(t: Transition): void {
     realm,
     linked: linkedLands(state, realm),
     notice: ctx,
-  }));
+  }, changes));
   let framesALand = false;
   for (const beat of beats) {
     // The questions are stage 3's, raised after the commit that makes them

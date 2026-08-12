@@ -1343,13 +1343,6 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
   stroke-dasharray: none;
 }
 
-/* The land an aim-drag is currently pointing at. Brighter and outlined, so
-   the arrow's destination is never a matter of reading where its tip fell. */
-/* A score that moved is walked on the badge it belongs to, and nowhere else.
-   There is deliberately no rising mark: the badge walk is the one way a score
-   change is shown, so a land's number moves in the place the player already
-   reads it from. */
-
 /* While a beat is showing one event, the map shows THAT event and no
    other arrow. The ghost the flash draws is a `.clash-flash`, not one of
    these, so it is untouched - which is the whole distinction: one is the thing
@@ -1365,15 +1358,15 @@ svg.replaying .claim-arrow {
   display: none;
 }
 
-/* The land a replay step is about, lit for as long as the step runs.
+/* The land a map beat is about, lit for as long as the beat runs.
 
    A glow rather than a stroke, deliberately: `.region.realm-member` declares
    its seam stroke !important against every other rule in this file, so a
    marker painted in stroke would be invisible on exactly the lands inside a
-   realm - which is most of the ones a replay talks about. Filter is the one
+   realm - which is most of the ones a beat talks about. Filter is the one
    channel that rule leaves alone, and it is what `.hovered` already uses.
 
-   The pulse lives here and nowhere else: the class goes on when the step
+   The pulse lives here and nowhere else: the class goes on when the beat
    starts and comes off when it ends, so no JavaScript holds a copy of this
    duration (see the rule in AGENTS.md). */
 .region.replay-focus {
@@ -1395,11 +1388,11 @@ svg.replaying .claim-arrow {
   transition: none;
 }
 
-/* The turn-start replay's label: one event at a time, camera on the land it
+/* The turn-start beat's label: one event at a time, camera on the land it
    names, this pill above screen center saying what happened. A dark box, so
    it states its own text colour (the AGENTS.md rule). Its card and faction
    names are live segments - hoverable - so no pointer-events: none here; the
-   fade in/out is driven from showReplayLabel in main.ts, never a CSS
+   fade in/out is driven from showBeatLabel in main.ts, never a CSS
    animation with a second copy of the duration. Below the notice overlay
    (40): the summary is the round's epilogue and outranks any single line of
    it. */

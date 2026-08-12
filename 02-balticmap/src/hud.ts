@@ -176,11 +176,14 @@ export interface Hud {
   /** The standings walk and the notice context for one batch of events.
    *
    *  Exists so the surface that PRESENTS a batch - the transition's present
-   *  stage, which runs before the commit this batch will be logged by - reads
-   *  its numbers off the same walk, through the same context, that the log
-   *  renders its `(Defense -1 -> 5)` suffixes from. Two spellings of the walk
-   *  is two answers to "what did this event move", which is the drift the
-   *  one-walk rule exists to prevent. */
+   *  stage, which runs before the commit this batch will be logged by - can
+   *  read its numbers off the same walk, through the same context, that the
+   *  log renders its `(Defense -1 -> 5)` suffixes from. `queueBeats` threads
+   *  `changes` straight into `presentCtxOf`, so the two are not merely two
+   *  calls that happen to agree - they are one walk read twice. Two separate
+   *  walks over the same batch would still agree, since `walkStandings` is
+   *  pure, but a second call is a second computation for a number this one
+   *  has already produced. */
   noticeWalk(state: GameState, events: GameEvent[]): {
     changes: StandingChange[][];
     ctx: NoticeCtx | null;
@@ -1942,8 +1945,10 @@ export function createHud(
   }
 
   /** One batch's standings walk, through the notice context of the state it
-   *  lands in. The log renders its suffixes from this and the presenter reads
-   *  its labels from it, so the two cannot quote different numbers. */
+   *  lands in. The log renders its suffixes from this, and `queueBeats` hands
+   *  `changes` straight to `presentCtxOf` rather than asking it to walk the
+   *  same batch again - one walk, read by both surfaces, so they cannot quote
+   *  different numbers. */
   function noticeWalk(state: GameState, events: GameEvent[]): {
     changes: StandingChange[][];
     ctx: NoticeCtx | null;
@@ -2191,7 +2196,17 @@ export function createHud(
       );
       if (playable)
         card.addEventListener("click", () => {
-          pendingPlay = { rect: card.getBoundingClientRect(), index: i };
+          // A discard commits through this same listener, and earns no play
+          // beat to consume what gets set here - `discard` is `never` in
+          // `PRESENTATION_RULES`, cued beside the piles instead. Left set, a
+          // discard's rect and slot would sit stale until the next play
+          // overwrites them, which costs nothing while nothing else reads
+          // `pendingPlay` - but the field is a hand INDEX now, not just a
+          // flight origin, so a stale one would point a later flight at the
+          // wrong card for as long as it took the next play to overwrite it.
+          pendingPlay = discardMode
+            ? null
+            : { rect: card.getBoundingClientRect(), index: i };
           cb.onPlayCard(i);
         });
       hand.appendChild(card);

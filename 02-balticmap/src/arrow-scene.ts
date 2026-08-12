@@ -134,7 +134,7 @@ export const ARROW_KINDS: Record<ArrowKind, ArrowKindDef> = {
   },
   ghost: {
     shape: "spear", className: "clash-flash", labelClass: "clash-label",
-    why: "A march that has already landed, fading on the border it crossed. Drawn alone in a layer of its own, so a live rebuild cannot wipe it halfway through the one thing the replay is showing; what keeps it from being read against the living is that the replay hides them while it runs.",
+    why: "A march that has already landed, fading on the border it crossed. Drawn alone in a layer of its own, so a live rebuild cannot wipe it halfway through the one thing the beat is showing; what keeps it from being read against the living is that the beat hides them while it runs.",
   },
 };
 

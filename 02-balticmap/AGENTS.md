@@ -787,9 +787,17 @@ and its half of the bookkeeping are deleted, because two ways of showing one
 fact is two gates, and the one that got skipped was the one with a gate on
 it - the floats had none, and on a paint that presents nothing 74 of them
 appeared at once. A beat that moved a score carries `BadgeWalk`s and walks
-them; a consequence of the player's OWN play is framed when it moved a score
-and passed over when it did not (`causedHere`), because a badge is drawn as
-though it had always been that number.
+them. A consequence of the player's OWN play (`causedHere`) earns no beat at
+all when it moved no score - nothing to walk and nothing to say - and earns
+the badge walk alone when it did: no camera, no glow, no label, because the
+player is already looking at the land they aimed at and a badge is drawn as
+though it had always been that number. The one gap is a caused beat on a land
+`renderThreatBadges` draws no badge for at all (annexed, full defense,
+disease-free): the number has nowhere to move there, so the sentence that
+would otherwise have been dropped is raised instead, as `causedLabel` -
+`effectiveBeatLabel` is the one reader, asked once in `src/main.ts` at the
+moment the beat runs, because whether the badge exists is a DOM fact the
+classifier itself does not have.
 
 **The step shows one event, and the map shows nothing else that moves.** The
 land is lit for the length of the step (`.replay-focus`, a filter glow rather

@@ -549,6 +549,13 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
       const label = e.amount === undefined
         ? [...name, t(" was answered in the field")]
         : [...name, t(" lands here")];
+      // Built by hand rather than through `framedBeats`, so the caused-and
+      // -no-badges drop it applies is not applied here: `retires` and
+      // `resolutions` still have to leave the board and land on it however
+      // the badges come out. Unreachable divergence rather than a live one -
+      // `resolveMarches` runs only from `beginTurn`, never under a play, so
+      // `causedHere` is never true for this type and the drop it would have
+      // applied never would have fired anyway.
       return [{
         kind: "map",
         polygon,
@@ -615,12 +622,21 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
  *  `events` must be the WHOLE batch a transition appended, in order.
  *  Consequences resolve their cause from the events above them, and a
  *  before -> after runs backwards from the scores the batch left behind, so
- *  half a batch produces wrong numbers rather than fewer of them. */
-export function presentCtxOf(events: GameEvent[], view: PresentView): PresentCtx {
-  const walked = walkStandings(events, walkCtxOf(view.notice));
+ *  half a batch produces wrong numbers rather than fewer of them.
+ *
+ *  `walked` is the same batch's walk when the caller already has one -
+ *  `queueBeats` gets it from `hud.noticeWalk`, the call that also feeds the
+ *  log, so the two read one walk instead of two that happen to agree. Index
+ *  -parallel to `events`, the shape `walkStandings` itself returns. Left
+ *  undefined, this walks the batch itself, which is what every test caller
+ *  wants. */
+export function presentCtxOf(
+  events: GameEvent[], view: PresentView, walked?: StandingChange[][],
+): PresentCtx {
+  const walk = walked ?? walkStandings(events, walkCtxOf(view.notice));
   const changes = new Map<GameEvent, StandingChange[]>();
   events.forEach((e, i) => {
-    changes.set(e, walked[i] ?? []);
+    changes.set(e, walk[i] ?? []);
   });
 
   // Two causes with two lifetimes, both read off the batch's shape. A play's
