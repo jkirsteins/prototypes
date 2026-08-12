@@ -6,6 +6,7 @@ import type { GameState } from "../src/game";
 
 /** A state distinguishable by one field. The queue never looks inside. */
 const st = (turn: number) => ({ turn } as unknown as GameState);
+const turnOf = (g: GameState) => (g as unknown as { turn: number }).turn;
 const tr = (turn: number, over: Partial<Transition> = {}): Transition =>
   ({ next: st(turn), events: [], settled: false, ...over });
 
@@ -100,6 +101,35 @@ describe("the transition queue", () => {
     release("ending");
     expect(order.filter((o) => o === "present")).toHaveLength(2);
     release("present"); release("ask"); release("summary"); release("ending");
+  });
+
+  it("runs the ask stage against the COMMITTED state, and the present beat against the previous one", () => {
+    // The ordering the conquest question rides on. A question raised before
+    // the commit asks about a `pendingTransfers` entry the state accessor
+    // says is not there, and the answer is refused by the very check that
+    // exists to keep a stale decision out. Stage 2 is the commit and stage 3
+    // is the question for exactly that reason, and the beats before it draw
+    // against the board the player was last shown.
+    const seen: Record<string, number> = {};
+    const qRef = box<TransitionQueue>();
+    const stages: Stages = {
+      present: (_t, done) => {
+        seen.present = turnOf(qRef.value?.state() ?? st(-1));
+        done();
+      },
+      commit: () => {},
+      ask: (_t, done) => {
+        seen.ask = turnOf(qRef.value?.state() ?? st(-1));
+        seen.askLatest = turnOf(qRef.value?.latest() ?? st(-1));
+        done();
+      },
+      summary: (_t, done) => done(),
+      ending: (_t, done) => done(),
+    };
+    const q = createTransitionQueue(st(1), stages);
+    qRef.value = q;
+    q.submit(tr(2));
+    expect(seen).toEqual({ present: 1, ask: 2, askLatest: 2 });
   });
 
   it("commits a settled transition and presents nothing", () => {
@@ -231,32 +261,112 @@ describe("the transition queue", () => {
     // A transition with no beats, no question, no summary and no ending is
     // the NORMAL shape of one, not an exotic case - and every one of those
     // stages calling `done` immediately is exactly what such a transition
-    // looks like here. Queue thousands behind one held transition, then
-    // release it: the whole cascade must run as sibling loop iterations, not
-    // as one transition's completion nested inside the last, or this throws
-    // a RangeError long before reaching the count a real guest buffer catch-up
-    // could plausibly produce.
+    // looks like here. The cap bounds what may WAIT, so the shape that can
+    // still run long is the one the AI chain has: each move submitted by the
+    // waiter the move before it armed. The whole cascade must run as sibling
+    // iterations of the drain loop, not as one transition's completion nested
+    // inside the last, or this throws a RangeError over a round of seats that
+    // animate nothing.
     const COUNT = 5000;
-    const firstDone = box<() => void>();
-    let started = 0;
     const stages: Stages = {
-      present: (_t, done) => {
-        started++;
-        if (started === 1) { firstDone.value = done; return; } // held; released below
-        done(); // every later transition completes immediately
-      },
+      present: (_t, done) => done(),
       commit: () => {},
       ask: (_t, done) => done(),
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
     };
     const q = createTransitionQueue(st(0), stages);
-    for (let turn = 1; turn <= COUNT; turn++) q.submit(tr(turn));
-    expect(q.pending()).toBe(COUNT - 1);
-    expect(() => firstDone.value?.()).not.toThrow();
+    let turn = 0;
+    const step = (): void => {
+      turn += 1;
+      if (turn > COUNT) return;
+      q.submit(tr(turn));
+      q.onIdle(step);
+    };
+    expect(() => step()).not.toThrow();
     expect(q.state().turn).toBe(COUNT);
     expect(q.pending()).toBe(0);
     expect(q.busy()).toBe(false);
+  });
+});
+
+describe("the buffer cap", () => {
+  it("collapses to the newest state and presents nothing once the buffer is past the cap", () => {
+    // The screen that overflows is the one being pushed to: a whole round of
+    // updates arrives while the first is still showing itself. Twelve may
+    // wait; the thirteenth is the point at which watching the backlog would
+    // put the board further behind than a player can still recognise, so the
+    // backlog is abandoned for the board as it stands.
+    const commits: { turn: number; animate: boolean | undefined }[] = [];
+    let presents = 0;
+    const held = box<() => void>();
+    const stages: Stages = {
+      present: (_t, done) => {
+        presents++;
+        if (presents === 1) { held.value = done; return; } // held: the move being shown
+        done();
+      },
+      commit: (t) => { commits.push({ turn: turnOf(t.next), animate: t.paint?.animate }); },
+      ask: (_t, done) => done(),
+      summary: (_t, done) => done(),
+      ending: (_t, done) => done(),
+    };
+    const q = createTransitionQueue(st(0), stages);
+    q.submit(tr(1));
+    for (let turn = 2; turn <= 13; turn++) q.submit(tr(turn));
+    // Exactly the cap: still a buffer to drain, and the screen still shows
+    // the board it was last shown.
+    expect(q.pending()).toBe(12);
+    expect(q.state().turn).toBe(0);
+    expect(commits).toEqual([]);
+    q.submit(tr(14));
+    expect(q.state().turn).toBe(14);
+    expect(q.latest().turn).toBe(14);
+    expect(q.pending()).toBe(0);
+    // Wholesale, not piecemeal: nothing between the move being shown and the
+    // newest one was presented or committed, and the newest is painted as
+    // history rather than flown.
+    expect(presents).toBe(1);
+    expect(commits).toEqual([{ turn: 14, animate: false }]);
+    expect(q.busy()).toBe(false);
+  });
+
+  it("no beat superseded by the collapse can commit behind it", () => {
+    // The generation property the snapshot tests pin, asked of the cap: the
+    // collapse is `replaceSettled` and therefore cancels, so the beat that
+    // was mid-flight when the buffer overflowed can neither commit its own
+    // state over the newest one nor run on into the stage after it.
+    const commits: number[] = [];
+    let summaryCalls = 0;
+    let fired = 0;
+    const staleDone = box<() => void>();
+    const stages: Stages = {
+      present: (_t, done) => {
+        if (staleDone.value === null) { staleDone.value = done; return; }
+        done();
+      },
+      commit: (t) => { commits.push(turnOf(t.next)); },
+      ask: (_t, done) => done(),
+      // A settled transition never reaches `summary`, so any call here can
+      // only be the superseded beat escaping past its own dead transition.
+      summary: (_t, done) => { summaryCalls++; done(); },
+      ending: (_t, done) => done(),
+    };
+    const q = createTransitionQueue(st(0), stages);
+    q.submit(tr(1));
+    // A continuation armed against the run the collapse drops - the harvest
+    // reveal of an update that is about to be skipped - must not fire against
+    // the world that replaced it.
+    q.onIdle(() => { fired++; });
+    for (let turn = 2; turn <= 14; turn++) q.submit(tr(turn));
+    expect(commits).toEqual([14]);
+    staleDone.value?.();
+    staleDone.value?.();
+    expect(commits).toEqual([14]);
+    expect(summaryCalls).toBe(0);
+    expect(fired).toBe(0);
+    expect(q.state().turn).toBe(14);
+    expect(q.latest().turn).toBe(14);
   });
 });
 

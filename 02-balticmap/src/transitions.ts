@@ -85,9 +85,31 @@ export interface TransitionQueue {
    *  waiter that unconditionally re-arms never returns, the same as
    *  `AnimationQueue.onIdle`. */
   onIdle(fn: () => void): void;
-  /** How many transitions are waiting, the buffer the guest cap reads. */
+  /** How many transitions are waiting behind the running one - the buffer the
+   *  cap is measured against. */
   pending(): number;
 }
+
+/** How many transitions may wait behind the running one before the buffer
+ *  collapses to the newest state and presents nothing.
+ *
+ *  Twelve because a transition is roughly one seat's turn and five factions
+ *  act, so a round is about six: the cap is two rounds behind, which is as far
+ *  as a screen can drift and still recognise the board when the animation
+ *  catches up. A player who was not looking gets the board as it stands rather
+ *  than a five-minute replay, and the lag cannot grow without bound.
+ *
+ *  The screen that overflows is the one being pushed to: the host walks its
+ *  AI seats one at a time and waits for each to finish showing itself, while
+ *  the far end receives a whole round's updates as fast as the wire delivers
+ *  them.
+ *
+ *  The collapse goes through `replaceSettled`, cancellation and all, so a
+ *  screen is never shown a partial or out-of-order sequence and no superseded
+ *  beat can commit behind it. Skipping part of a round while presenting the
+ *  rest would be worse than skipping all of it: this is the one place "never
+ *  skipped" is deliberately given up, and it is given up wholesale. */
+const BUFFER_CAP = 12;
 
 /** The stages a non-settled transition runs, in order. A settled transition
  *  (history arriving whole - a boot, a deal, a rejoin) skips straight to
@@ -230,6 +252,33 @@ export function createTransitionQueue(
     }
   }
 
+  /** Cancels everything in flight and everything waiting, then commits
+   *  `state` as history. The public `replaceSettled` and the buffer cap are
+   *  the same act for the same reason, so they are the same code: a board
+   *  nobody watched arrive is presented in silence, and nothing from before
+   *  it may still land on top of it. */
+  function replaceWith(
+    state: GameState, paint?: { animate?: boolean },
+  ): void {
+    // Bumping the generation first is what makes a `done` still held by
+    // the transition this replaces inert: it captured the old generation,
+    // so it fails the check at the top of `runStage` and neither commits
+    // its stale `next` over this snapshot nor advances a queue that no
+    // longer runs.
+    generation += 1;
+    queue.length = 0;
+    // The waiters go with the queue. A continuation armed against the run
+    // this snapshot replaces - the next AI seat, a repaint of a board that
+    // no longer exists - would otherwise fire against the new world.
+    idle.length = 0;
+    // History arriving whole IS the authoritative world: everything
+    // submitted before it has been dropped, so nothing may be made from it.
+    latest = state;
+    const t: Transition = { next: state, events: [], settled: true, paint };
+    running = t;
+    runStage(t, generation, SETTLED_STAGES, 0);
+  }
+
   return {
     state() {
       return committed;
@@ -240,26 +289,19 @@ export function createTransitionQueue(
     submit(t) {
       latest = t.next;
       queue.push(t);
+      // Past the cap the buffer is not drained but abandoned: everything
+      // waiting is dropped and the newest state is committed in silence. A
+      // caller that owes itself a continuation therefore arms it AFTER the
+      // submit that could collapse, since the collapse drops the idle waiters
+      // along with the queue.
+      if (queue.length > BUFFER_CAP) {
+        replaceWith(t.next, { animate: false });
+        return;
+      }
       drain();
     },
     replaceSettled(state, paint) {
-      // Bumping the generation first is what makes a `done` still held by
-      // the transition this replaces inert: it captured the old generation,
-      // so it fails the check at the top of `runStage` and neither commits
-      // its stale `next` over this snapshot nor advances a queue that no
-      // longer runs.
-      generation += 1;
-      queue.length = 0;
-      // The waiters go with the queue. A continuation armed against the run
-      // this snapshot replaces - the next AI seat, a repaint of a board that
-      // no longer exists - would otherwise fire against the new world.
-      idle.length = 0;
-      // History arriving whole IS the authoritative world: everything
-      // submitted before it has been dropped, so nothing may be made from it.
-      latest = state;
-      const t: Transition = { next: state, events: [], settled: true, paint };
-      running = t;
-      runStage(t, generation, SETTLED_STAGES, 0);
+      replaceWith(state, paint);
     },
     busy() {
       return running !== null || queue.length > 0;
