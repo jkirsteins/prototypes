@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  PRESENTATION_RULES, presentCtxOf, presentEvents, involvesLocalSeats,
+  effectiveBeatLabel, PRESENTATION_RULES, presentCtxOf, presentEvents,
+  involvesLocalSeats,
   type Beat, type PresentCtx, type PresentView,
 } from "../src/presentation";
 import type { GameEvent, GameEventType } from "../src/game";
@@ -382,12 +383,51 @@ describe("presentEvents", () => {
     // halves of "your card did something", and the label is the only part
     // being dropped.
     expect(map[0].sound).toBe("hammer");
+    // The sentence is not gone - it is kept in reserve for the land that has
+    // no badge to walk at all, and it reads exactly as it would if this had
+    // not been the player's own play.
+    expect(map[0].causedLabel).toContainEqual({ kind: "card", cardId: "fortify" });
     // The same heal at the other screen is business it did not do, so it gets
     // the whole frame.
     const theirs = mapBeats(presentEvents(fresh, ctxFor(fresh, {
       seats: new Set([2]), realm: new Set(["alpha", "beta"]),
     })));
     expect(theirs[0].label).toContainEqual({ kind: "card", cardId: "fortify" });
+    // Nothing held in reserve for a beat that was never suppressed - there is
+    // no gap for it to fall into.
+    expect(theirs[0].causedLabel).toBeNull();
+  });
+
+  it("falls back to the caused label when there is no badge to walk", () => {
+    // The case `effectiveBeatLabel` exists for: your own play damages a
+    // rival's land that `renderThreatBadges` draws no badge for (annexed, at
+    // full defense, disease-free before this hit). The badge walk settles
+    // without moving a pixel, so the label is the only news left - and
+    // `runMapBeat` is the only caller with the DOM fact to ask for.
+    const healed: GameEvent[] = [
+      { turn: 4, playerId: 1, type: "play", cardId: "raid", targetFactionId: "beta" },
+      {
+        turn: 4, playerId: 1, type: "plagued", targetFactionId: "beta",
+        amount: 3, consequence: true,
+      },
+    ];
+    const beat = mapBeats(presentEvents(healed, ctxFor(healed)))[0];
+    expect(beat.label).toBeNull();
+    expect(beat.causedLabel).not.toBeNull();
+    // A badge to walk: nothing falls back, the number is the whole story.
+    expect(effectiveBeatLabel(beat, true)).toBeNull();
+    // No badge to walk: the sentence held in reserve is what carries the
+    // news, so the beat presents something rather than nothing.
+    expect(effectiveBeatLabel(beat, false)).toEqual(beat.causedLabel);
+    expect(effectiveBeatLabel(beat, false)).not.toBeNull();
+
+    // A beat that was never suppressed ignores badgeExists entirely - its own
+    // label is always what shows.
+    const theirs = mapBeats(presentEvents(healed, ctxFor(healed, {
+      seats: new Set([2]), realm: new Set(["alpha", "beta"]),
+    })))[0];
+    expect(effectiveBeatLabel(theirs, false)).toEqual(theirs.label);
+    expect(effectiveBeatLabel(theirs, true)).toEqual(theirs.label);
   });
 
   it("says whose pips each disease walk is about", () => {

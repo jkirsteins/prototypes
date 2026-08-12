@@ -79,10 +79,18 @@ export type Beat =
       kind: "map";
       polygon: string;
       /** What the label says, or null when this screen is owed no sentence -
-       *  see `labelUnlessCaused`. A beat with no label is not framed at all:
-       *  no camera, no glow and no hold, only the badges walking where they
+       *  see `beatLabels`. A beat with no label is not framed at all: no
+       *  camera, no glow and no hold, only the badges walking where they
        *  stand. */
       label: Segment[] | null;
+      /** The label held in reserve for exactly one gap: a caused beat whose
+       *  news would otherwise ride the badge alone, on a land that carries no
+       *  badge at all (annexed, full defense, disease-free -
+       *  `renderThreatBadges` draws it nothing). Null whenever `label` is not
+       *  null - there is nothing to fall back FROM. `effectiveBeatLabel` is
+       *  the one reader, because knowing whether the badge exists is a DOM
+       *  fact this module does not have. */
+      causedLabel: Segment[] | null;
       sound: SoundName | null;
       badges: BadgeWalk[];
       /** Arrows this beat takes off the board. They exit plain: a fade out
@@ -207,12 +215,12 @@ function owesAnswer(e: GameEvent, ctx: PresentCtx): boolean {
  *  arms stay on all four ends, because a land of your own at any end of an
  *  event is your business whichever end it is.
  *
- *  **A seat's own event passes on the seat alone**, which is wider than the
- *  surface this replaced: it asked `playerId !== localPlayerId` and showed the
- *  player nothing they had done themselves. So a regrowth on your own land at
- *  your own turn start now earns a beat where it earned none. Deliberate - it
- *  moves a score, and a score moves on its badge or it moves invisibly - and
- *  a play of your OWN is separately kept quiet by `labelUnlessCaused`. */
+ *  **A seat's own event passes on the seat alone.** An event this screen's
+ *  own seat caused is this screen's business exactly as much as one done to
+ *  it - a regrowth on your own land at your own turn start earns a beat, the
+ *  same as any other move of a score, because a score moves on its badge or
+ *  it moves invisibly. A play of your OWN is kept quiet separately, by
+ *  `beatLabels`. */
 export function involvesLocalSeats(e: GameEvent, ctx: PresentCtx): boolean {
   if (ctx.seats.has(e.playerId)) return true;
   const ends = [
@@ -241,21 +249,40 @@ function causedHere(e: GameEvent, ctx: PresentCtx): boolean {
   return cause !== null && cause.kind === "card" && ctx.seats.has(cause.playerId);
 }
 
-/** The label a beat shows, or none - the second half of `causedHere`.
+/** The label a beat shows up front, and the one it holds in reserve - the
+ *  second half of `causedHere`.
  *
  *  A consequence of this screen's own card keeps its badge walk and loses
  *  everything else: the camera is already on the land the player aimed at,
  *  the label would name the card still under their cursor, and the hold
  *  behind it is a hand they cannot play out of while being told what they
  *  just did. The number is the whole of the news, and it moves where it
- *  stands.
+ *  stands - unless there is no badge for it to move on, which is a fact only
+ *  the map knows. So a caused beat's sentence is not thrown away: it is kept
+ *  as `causedLabel`, for `effectiveBeatLabel` to raise if the badge walk
+ *  turns out to have nothing to walk.
  *
  *  One helper and not a flag per rule, because the rules that build a label
  *  are twelve and the question is the same for every one of them. */
-function labelUnlessCaused(
+function beatLabels(
   e: GameEvent, ctx: PresentCtx, label: Segment[],
+): { label: Segment[] | null; causedLabel: Segment[] | null } {
+  return causedHere(e, ctx)
+    ? { label: null, causedLabel: label }
+    : { label, causedLabel: null };
+}
+
+/** What a map beat actually shows: its own label, or - only when that label
+ *  was withheld for being caused - the one held in reserve, but only again
+ *  when `badgeExists` says false. A caused beat with a badge to walk still
+ *  shows nothing: the number is the whole of the news there, per
+ *  `beatLabels`. `badgeExists` is a DOM fact and the one thing this function
+ *  takes as given rather than computes - see the caller in src/main.ts. */
+export function effectiveBeatLabel(
+  beat: Extract<Beat, { kind: "map" }>, badgeExists: boolean,
 ): Segment[] | null {
-  return causedHere(e, ctx) ? null : label;
+  if (beat.label !== null) return beat.label;
+  return badgeExists ? null : beat.causedLabel;
 }
 
 /** This event's slice of the batch's walk, as badge walks. A change that
@@ -296,7 +323,7 @@ function framedBeats(e: GameEvent, ctx: PresentCtx, frame: MapFrame): Beat[] {
   return [{
     kind: "map",
     polygon,
-    label: labelUnlessCaused(e, ctx, frame.label(e, cause)),
+    ...beatLabels(e, ctx, frame.label(e, cause)),
     sound: frame.sound === undefined
       ? EVENT_SOUNDS[e.type]
       : frame.sound(e, cause),
@@ -525,7 +552,7 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
       return [{
         kind: "map",
         polygon,
-        label: labelUnlessCaused(e, ctx, label),
+        ...beatLabels(e, ctx, label),
         sound: EVENT_SOUNDS[e.type],
         badges: badgeWalks(e, ctx),
         // The arrows this landing spent, taken off the board while the beat

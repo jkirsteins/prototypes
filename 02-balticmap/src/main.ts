@@ -52,7 +52,7 @@ import {
 import { buildListing, destroyOffer, type HarvestChoice } from "./harvest";
 import { changeImpact, createHud, LOG_PREFS_KEY, type HudCallbacks } from "./hud";
 import {
-  presentCtxOf, presentEvents,
+  effectiveBeatLabel, presentCtxOf, presentEvents,
   type BadgeWalk, type Beat, type ResolutionArrow,
 } from "./presentation";
 import { createAudioEngine } from "./audio";
@@ -1929,12 +1929,12 @@ function linkedLands(
  *  arrows still standing and the standings walk are all read from the state
  *  those events land in - which is not the one under the map yet.
  *
- *  It asks nothing about the phase the move ENDS in. The play that wins or
- *  loses the run is the most dramatic card in it, and a phase gate here was
- *  swallowing that one card's flight, its sound and the score moves beside
- *  it: the card vanished from the hand and the postmortem rose over a board
- *  nobody had been shown. Whether a beat still has a board to draw on is
- *  `inPlay()`'s question, asked in `runMapBeat` at the moment the step runs. */
+ *  It asks nothing about the phase the move ENDS in. The card that wins or
+ *  loses the run is the one the player most needs to see fly, with its sound
+ *  and its score moves beside it, so a run-ending transition's beats still
+ *  run in full rather than being swallowed ahead of the postmortem. Whether a
+ *  beat still has a board to draw on is `inPlay()`'s question, asked in
+ *  `runMapBeat` at the moment the step runs. */
 function queueBeats(t: Transition): void {
   const state = t.next;
   const human = state.players[localSeat];
@@ -1962,8 +1962,14 @@ function queueBeats(t: Transition): void {
       continue;
     }
     // A beat with no label frames nothing: it walks a badge where it stands
-    // and never takes the screen, so it has no claim on the arrows either.
-    if (beat.label !== null) framesALand = true;
+    // and never takes the screen, so it has no claim on the arrows either -
+    // unless there is no badge either, in which case `runMapBeat` is about to
+    // frame it on the fallback label, and the arrows have to stand down for
+    // that exactly as they would for any other framed beat.
+    const badgeExists = badgeGroup.querySelector(
+      `.threat-badge[data-faction="${beat.polygon}"]`,
+    ) !== null;
+    if (effectiveBeatLabel(beat, badgeExists) !== null) framesALand = true;
     animations.push((done) => runMapBeat(beat, done));
   }
   // While a land is being framed, the map shows THAT land's business and no
@@ -1987,12 +1993,20 @@ function queueBeats(t: Transition): void {
  *  resolution arrows and the sound together. `done` fires when the slowest of
  *  them reports itself finished - never on a timer.
  *
- *  A beat with NO label is the player's own play landing (`labelUnlessCaused`
- *  in src/presentation.ts). They are already looking at the land they clicked,
- *  so nothing frames it: no camera, no glow and no sentence, and the step is
- *  over as soon as the badges have settled. What that buys is the hand: the
- *  input gate waits on this queue, and a card the player aimed themselves must
- *  not cost them the length of a label to read about it afterwards. */
+ *  A beat with NO label is ordinarily the player's own play landing
+ *  (`beatLabels` in src/presentation.ts). They are already looking at the
+ *  land they clicked, so nothing frames it: no camera, no glow and no
+ *  sentence, and the step is over as soon as the badges have settled. What
+ *  that buys is the hand: the input gate waits on this queue, and a card the
+ *  player aimed themselves must not cost them the length of a label to read
+ *  about it afterwards.
+ *
+ *  The one exception is a caused beat whose land carries no badge at all
+ *  (annexed, full defense, disease-free - `renderThreatBadges` draws it
+ *  nothing): the badge walk below would settle without moving a single pixel,
+ *  and a sound with nothing on the map to go with it is not a beat. Whether
+ *  the badge exists is asked here, once, before `effectiveBeatLabel` decides
+ *  - it is the one DOM fact `src/presentation.ts` cannot know for itself. */
 function runMapBeat(
   beat: Extract<Beat, { kind: "map" }>,
   done: () => void,
@@ -2007,7 +2021,11 @@ function runMapBeat(
     done();
     return;
   }
-  const framed = beat.label !== null;
+  const badgeExists = badgeGroup.querySelector(
+    `.threat-badge[data-faction="${beat.polygon}"]`,
+  ) !== null;
+  const label = effectiveBeatLabel(beat, badgeExists);
+  const framed = label !== null;
   const centre = regionCenter(beat.polygon);
   const show = (): void => {
     if (beat.sound !== null) audio.cue(beat.sound);
@@ -2039,7 +2057,7 @@ function runMapBeat(
     };
     walkBadges(beat.badges, waitFor());
     if (beat.resolutions.length > 0) flashResolutions(beat.resolutions, waitFor());
-    if (beat.label !== null) showBeatLabel(beat.label, beat.badges, waitFor());
+    if (label !== null) showBeatLabel(label, beat.badges, waitFor());
     one();
   };
   if (framed && centre !== undefined) {

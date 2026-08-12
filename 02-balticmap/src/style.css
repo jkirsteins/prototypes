@@ -1475,10 +1475,13 @@ svg.replaying .claim-arrow {
   color: #5b4f3d;
 }
 
-/* The resolution flash: a ghost of the resultant force, fading out under a
-   label saying what got through out of what was thrown. Both are removed the
-   moment the animation reports itself finished - see flashResolution in
-   main.ts, and the rule in AGENTS.md about never re-deriving a duration.
+/* The resolution flash: a ghost of the force one side threw at the border,
+   fading out under a label saying what got through out of what was thrown.
+   One ghost per landing where a side got through, two - one each way - for a
+   standoff where neither did; neither ghost is ever a resultant of the two.
+   Both are removed the moment the animation reports itself finished - see
+   flashResolutions in main.ts, and the rule in AGENTS.md about never
+   re-deriving a duration.
 
    Neutral ink, one colour for every outcome. The label reads "1/3 DMG" and it
    is arithmetic, not a score: green and red belong to the numbers a player
