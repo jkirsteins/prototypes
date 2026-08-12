@@ -40,15 +40,17 @@ import { EVENT_SOUNDS, type SoundName } from "./audio-manifest";
 /** One badge stepping from the score it HAD to the score it has.
  *
  *  The defense track is one walk per polygon per event, which is what the
- *  badge's number shows. The disease track can be several on one polygon -
- *  one per owner whose stacks moved, since that is what the walk produces and
- *  what the pip row is drawn from - and their deltas sum to the polygon's
- *  change. Whose stacks moved is deliberately not carried: a walk states how
- *  a number on a land moved, and the owner colours are repainted by the
- *  commit behind it. */
+ *  badge's number shows. The disease track can be SEVERAL on one polygon in
+ *  one beat - a claim on the sickness moves the actor's stacks up and every
+ *  other owner's down - so `owner` is what says whose pips each walk is
+ *  about. Without it two walks on one polygon are two contradictory numbers
+ *  for one badge. Defense belongs to the polygon alone and carries none,
+ *  which is `StandingChange`'s own rule, kept. */
 export interface BadgeWalk {
   polygon: string;
   track: "defense" | "disease";
+  /** disease only: whose stacks. */
+  owner?: string;
   before: number;
   after: number;
 }
@@ -225,15 +227,19 @@ function badgeWalks(e: GameEvent, ctx: PresentCtx): BadgeWalk[] {
   return ctx.changes(e)
     .filter((c) => c.before !== c.after)
     .map((c) => ({
-      polygon: c.polygon, track: c.track, before: c.before, after: c.after,
+      polygon: c.polygon,
+      track: c.track,
+      ...(c.owner === undefined ? {} : { owner: c.owner }),
+      before: c.before,
+      after: c.after,
     }));
 }
 
-/** The shape shared by every rule that frames a land: which land, what the
- *  label says, and what it sounds like. */
+/** The shape shared by every rule that frames a land: what the label says and
+ *  what it sounds like. The land itself is the one the event names, for every
+ *  rule there is - a beat about a land the event does not name would be a
+ *  label the log could not be checked against. */
 interface MapFrame {
-  /** Which land the camera frames. Defaults to the land the event names. */
-  polygon?(e: GameEvent): string | undefined;
   label(e: GameEvent, cause: PresentCause | null): Segment[];
   /** Absent means `EVENT_SOUNDS[e.type]`. */
   sound?(e: GameEvent, cause: PresentCause | null): SoundName | null;
@@ -243,9 +249,7 @@ interface MapFrame {
  *  as a function rather than folded into `framed` because a rule can owe a
  *  map beat AND something else - a conquest owes its question beside it. */
 function framedBeats(e: GameEvent, ctx: PresentCtx, frame: MapFrame): Beat[] {
-  const polygon = frame.polygon === undefined
-    ? e.targetFactionId
-    : frame.polygon(e);
+  const polygon = e.targetFactionId;
   if (polygon === undefined) return [];
   if (!involvesLocalSeats(e, ctx)) return [];
   const badges = badgeWalks(e, ctx);
@@ -294,6 +298,15 @@ function resolutionOf(e: GameEvent, ctx: PresentCtx): ResolutionArrow | undefine
   const winner = e.sourceFactionId;
   const loser = e.targetFactionId;
   const ids = e.marchIds;
+  // A resultant force is what one side had LEFT, so a landing that moved no
+  // score has none to draw. That is the standoff: both armies spent, nothing
+  // through, and the event's two ends are the axis's own sorted ends rather
+  // than a winner and a loser - the engine says so where it pushes the line,
+  // because naming one of them the target would be a lie. An arrow built off
+  // them points wherever the ids happen to sort, which on the player's own
+  // border is an attack on themselves. The label says it was answered in the
+  // field, and both arrows leave through `retires`.
+  if (e.amount === undefined) return undefined;
   // `incoming` rides on every `march-resolved` an army caused, and an event
   // without one is a demand coming due - which throws no strength and draws
   // no arrow.
@@ -309,7 +322,7 @@ function resolutionOf(e: GameEvent, ctx: PresentCtx): ResolutionArrow | undefine
     from: winner,
     to: loser,
     strength: e.incoming,
-    label: `${e.amount ?? 0}/${e.incoming} DMG`,
+    label: `${e.amount}/${e.incoming} DMG`,
     tone: ctx.realm.has(winner)
       ? "ours"
       : ctx.realm.has(loser)
@@ -483,8 +496,9 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
   },
   victory: {
     kind: "never",
-    reason: "the ending owns the whole screen, and it is raised by the " +
-      "transition that ended the run rather than by a beat inside it",
+    reason: "the ending owns the whole screen; its jingle cues where the " +
+      "ending is raised, which is the transition that ended the run rather " +
+      "than any beat inside it",
   },
   "played-on": {
     kind: "never",
@@ -493,18 +507,21 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
   },
   defeat: {
     kind: "never",
-    reason: "the ending owns the whole screen, and it is raised by the " +
-      "transition that ended the run rather than by a beat inside it",
+    reason: "the ending owns the whole screen; its jingle cues where the " +
+      "ending is raised, which is the transition that ended the run rather " +
+      "than any beat inside it",
   },
   unified: {
     kind: "never",
-    reason: "the ending owns the whole screen, and it is raised by the " +
-      "transition that ended the run rather than by a beat inside it",
+    reason: "the ending owns the whole screen; its jingle cues where the " +
+      "ending is raised, which is the transition that ended the run rather " +
+      "than any beat inside it",
   },
   surrendered: {
     kind: "never",
-    reason: "the ending owns the whole screen, and it is raised by the " +
-      "transition that ended the run rather than by a beat inside it",
+    reason: "the ending owns the whole screen; its jingle cues where the " +
+      "ending is raised, which is the transition that ended the run rather " +
+      "than any beat inside it",
   },
 };
 

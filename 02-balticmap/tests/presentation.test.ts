@@ -42,9 +42,11 @@ const mapBeats = (beats: Beat[]): Extract<Beat, { kind: "map" }>[] =>
   beats.filter((b): b is Extract<Beat, { kind: "map" }> => b.kind === "map");
 
 /** One event of every type, filled wide enough that any rule can build its
- *  label and any score move can be walked. */
+ *  label and any score move can be walked. Seat 2 does it: the disease tracks
+ *  move the ACTOR's stacks, so an event out of a seat with no faction walks
+ *  no disease and would take two rules out of the badge test's reach. */
 const sample = (type: GameEventType, over?: Partial<GameEvent>): GameEvent => ({
-  turn: 3, playerId: 7, type,
+  turn: 3, playerId: 2, type,
   targetFactionId: "beta", sourceFactionId: "gamma",
   overlordFactionId: "alpha", cardId: "raid", via: "conquest",
   amount: 1, incoming: 2, counter: 1, stacksSpent: 1, marchIds: [4],
@@ -80,6 +82,7 @@ describe("PRESENTATION_RULES", () => {
     // tests/naming-convention.test.ts runs over the log.
     const cardNames = Object.values(CARDS).map((c) => c.name);
     const factionNames = data.factions.map((f) => f.name);
+    let read = 0;
     for (const [type, rule] of Object.entries(PRESENTATION_RULES)) {
       if (rule.kind !== "presented") continue;
       const e = sample(type as GameEventType);
@@ -91,6 +94,7 @@ describe("PRESENTATION_RULES", () => {
         const base = ctxFor([e]);
         const beats = rule.beats(e, { ...base, causeOf: () => cause });
         for (const beat of mapBeats(beats)) {
+          read += 1;
           expect(beat.label.length).toBeGreaterThan(0);
           for (const seg of beat.label) {
             if (seg.kind !== "text") continue;
@@ -101,6 +105,12 @@ describe("PRESENTATION_RULES", () => {
         }
       }
     }
+    // A label is only checked on a beat that was returned, so a rule that
+    // stops framing anything would take its labels out of this test's reach
+    // rather than fail it. Twelve framed rules times the three cause shapes
+    // above: a new one only ever raises this, and a rule that dries up is
+    // what the number is here to catch.
+    expect(read).toBeGreaterThanOrEqual(36);
   });
 
   it("walks a badge for every score its rules can move", () => {
@@ -116,15 +126,16 @@ describe("PRESENTATION_RULES", () => {
       const beats = mapBeats(presentEvents([e], ctxFor([e])));
       expect(beats.length, `${type} moves a score and earns no map beat`)
         .toBeGreaterThan(0);
-      for (const c of expected) {
-        expect(beats[0].badges).toContainEqual({
-          polygon: c.polygon, track: c.track, before: c.before, after: c.after,
-        });
-      }
+      // Field for field, `owner` included: a `StandingChange` and a
+      // `BadgeWalk` are the same shape, and the walk is the badge's only
+      // source for whose pips moved.
+      for (const c of expected) expect(beats[0].badges).toContainEqual(c);
     }
-    // Guards the loop itself: a sample that stopped moving any score would
-    // otherwise pass this test by checking nothing.
-    expect(walked).toBeGreaterThan(3);
+    // Guards the loop itself: a sample that stopped moving a score would
+    // otherwise pass this test by checking nothing. Six types move one -
+    // march-resolved, healed, transferred, plagued and the two disease
+    // tracks - and the count is what would notice a sample going quiet.
+    expect(walked).toBeGreaterThanOrEqual(6);
   });
 });
 
@@ -174,6 +185,21 @@ describe("presentEvents", () => {
     expect(beats[0].label).toContainEqual({
       kind: "text", text: " was answered in the field",
     });
+  });
+
+  it("draws no resultant force for a standoff, and still retires both arrows", () => {
+    // Nothing got through, so there is no force left to point anywhere. The
+    // event's two ends are the axis's own sorted ends rather than a winner
+    // and a loser, so an arrow built off them would be aimed by an alphabetic
+    // accident - at the player's own land as often as not, and labelled with
+    // whichever side's strength happened to land in `incoming`.
+    const e = march({
+      targetFactionId: "alpha", sourceFactionId: "beta",
+      amount: undefined, incoming: 2, counter: 5, marchIds: [4, 9],
+    });
+    const beat = mapBeats(presentEvents([e], ctxFor([e])))[0];
+    expect(beat.resolution).toBeUndefined();
+    expect(beat.retires).toEqual([4, 9]);
   });
 
   it("retires the arrows the landing spent and draws one resolution at the loser", () => {
@@ -306,6 +332,21 @@ describe("presentEvents", () => {
       { polygon: "beta", track: "defense", before: 3, after: 5 },
     ]);
     expect(map[0].label).toContainEqual({ kind: "card", cardId: "fortify" });
+  });
+
+  it("says whose pips each disease walk is about", () => {
+    // A claim on the sickness moves two owners' stacks on ONE polygon in one
+    // beat. Without the owner the badge is handed two contradictory numbers
+    // and has to guess which is its own.
+    const e: GameEvent = {
+      turn: 8, playerId: 2, type: "winds-shifted", cardId: "shifting-winds",
+      targetFactionId: "beta", amount: 2, losses: { gamma: 2 },
+    };
+    const beat = mapBeats(presentEvents([e], ctxFor([e])))[0];
+    expect(beat.badges).toEqual([
+      { polygon: "beta", track: "disease", owner: "alpha", before: 1, after: 3 },
+      { polygon: "beta", track: "disease", owner: "gamma", before: 5, after: 3 },
+    ]);
   });
 
   it("a cause does not leak past the batch that carried it", () => {
