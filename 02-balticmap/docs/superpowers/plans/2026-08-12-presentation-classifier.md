@@ -175,6 +175,15 @@ Also boot `?seed=11&faction=selonians&build=warpath&turns=8` and confirm no
 floats appear at all on a paint that presents nothing (74 of them did before
 step 2).
 
+**And check the input lock, because deleting the floats is what fixes it.**
+Step 2's review recorded a real regression it could not fix: `inputLocked()`
+includes `animations.busy()`, and the commit queues a 1100ms float step, so
+after a score-moving play the map and the hand stay dead about a second longer
+than they used to. Deleting the float subsystem removes that step. So the gate
+is: **play a card that moves a score, and confirm the map and the hand are live
+the moment the card lands** rather than a second later. If this is not checked
+here the fix ships unverified, because nothing else in the plan touches it.
+
 Quote what you saw. Port-scoped kill of the dev server, never a broad
 `pkill -f vite`.
 
