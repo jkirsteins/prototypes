@@ -67,14 +67,13 @@ const SETTLED_STAGES: readonly (keyof Stages)[] = ["commit", "ending"];
  *  Cancellation (`replaceSettled`) is best-effort on the DOM side and
  *  authoritative on the bookkeeping side: a stage can report `done` a tick
  *  after being superseded, so every recursive step into the next stage is
- *  gated on `gen === generation` at the top of `runStage` - the ONE check
- *  that matters, since it runs on every entry regardless of which edge got
- *  there: a `done` callback firing late, or the synchronous fall-through out
- *  of `commit`. A second copy of this check used to live inside `done` as
- *  well; it was dead weight; `commit`'s own fall-through never passed
- *  through a `done` at all, so the copy inside `done` could never be the
- *  thing standing between a stale generation and a stale commit - the check
- *  at the top of `runStage` already was, on every path, unconditionally.
+ *  gated on `gen === generation` at the top of `runStage`. That is the ONE
+ *  place the check belongs, and it belongs there rather than inside `done`
+ *  because `commit` has no `done` of its own: it falls through to the next
+ *  stage in the same call, so a check written into `done` alone would not
+ *  stand between a stale generation and a stale commit. At `runStage`'s
+ *  entry it guards every edge unconditionally - a late `done`, and the
+ *  fall-through out of `commit` alike.
  *
  *  Nothing here reads a clock or an rng; ordering is entirely driven by the
  *  `done` calls a caller chooses to make, which is what keeps this module
@@ -143,17 +142,16 @@ export function createTransitionQueue(
   }
 
   /** Starts the front of the queue when nothing is running, as a loop rather
-   *  than recursion: a transition whose every stage completes synchronously
+   *  than recursion. A transition whose every stage completes synchronously
    *  (present, ask, summary and ending all calling `done` immediately - the
    *  normal shape of a transition with no beats, no question, no summary and
    *  no ending) reaches `i >= names.length` from deep inside `runStage`'s own
-   *  recursion for THAT transition, and used to call `drain` again from
-   *  there to start the next one - nesting one more stack frame per
-   *  transition, without bound, for as many transitions as complete in a
-   *  row. `draining` turns that into a loop instead: the nested call made
-   *  from inside `runStage` sees `draining` already true and returns at
-   *  once, unwinding back to the `while` below - which is a sibling
-   *  iteration, not a deeper frame - to pick up the next transition. */
+   *  recursion for THAT transition, and hands back here to start the next
+   *  one. `draining` is what makes that handover a sibling iteration rather
+   *  than a deeper stack frame: the nested call sees the flag already set and
+   *  returns at once, unwinding to the `while` below, which picks the next
+   *  transition up. Without it a run of synchronously-finishing transitions
+   *  nests one frame per transition, without bound. */
   function drain(): void {
     if (draining) return;
     draining = true;
