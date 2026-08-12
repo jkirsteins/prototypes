@@ -1073,14 +1073,6 @@ svg.map.dragging {
   pointer-events: auto;
 }
 
-/* The ghosts of marches that have already landed, in their own layer so a live
-   rebuild cannot wipe one mid-fade. Inert throughout, unlike the live arrows:
-   a ghost is a picture of something that is over, and it must not answer a
-   click meant for the land it is fading across. */
-.march-ghosts {
-  pointer-events: none;
-}
-
 /* While an aim is live the arrows stay on screen and stop taking clicks: what
    is already flying at a land is half of what decides whether to send an army
    there, so hiding them is not an option, and every click on the map belongs
@@ -1343,21 +1335,6 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
   stroke-dasharray: none;
 }
 
-/* While a beat is showing one event, the map shows THAT event and no
-   other arrow. The ghost the flash draws is a `.clash-flash`, not one of
-   these, so it is untouched - which is the whole distinction: one is the thing
-   being shown, the others are business from turns the player has not been
-   shown yet.
-
-   Demands as well as spears. A claim standing on the border a ghost is fading
-   across is the same confusion this rule exists to prevent, and it is also
-   what lets the ghost take the border's middle lane: with the living hidden
-   there is no lane for it to disagree with. */
-svg.replaying .march-arrow,
-svg.replaying .claim-arrow {
-  display: none;
-}
-
 /* The land a map beat is about, lit for as long as the beat runs.
 
    A glow rather than a stroke, deliberately: `.region.realm-member` declares
@@ -1468,15 +1445,23 @@ svg.replaying .claim-arrow {
   color: #5b4f3d;
 }
 
-/* The resolution flash: a ghost of the force one side threw at the border,
-   fading out under a label saying what got through out of what was thrown.
-   One ghost per landing where a side got through, two - one each way - for a
-   standoff where neither did; neither ghost is ever a resultant of the two.
-   Both are removed the moment the animation reports itself finished - see
-   flashResolutions in main.ts, and the rule in AGENTS.md about never
-   re-deriving a duration.
+/* What a landing left on the border: the force one side threw at it, standing
+   for the length of the beat under a label saying what got through out of what
+   was thrown. One where a side got through, two - one each way - for a standoff
+   where neither did; neither is ever a resultant of the two.
 
-   Neutral ink, one colour for every outcome. The label reads "1/3 DMG" and it
+   A lane in the live arrow layer rather than a layer of its own, so it packs
+   beside whatever else is crossing there. It takes the pointer from nobody:
+   `.march-arrows` is inert and this claims none of it back, because a picture
+   of something that is over must not answer a click meant for the land under
+   it. */
+.clash-flash polygon {
+  stroke: #fdfaf4;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+/* Neutral ink, one colour for every outcome. The label reads "1/3 DMG" and it
    is arithmetic, not a score: green and red belong to the numbers a player
    reads off the badges, and a signed coloured number beside a spear was read
    as one of those - it was the second thing on screen claiming to say what a

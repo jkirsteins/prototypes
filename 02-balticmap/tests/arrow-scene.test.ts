@@ -309,6 +309,40 @@ describe("renderArrowScene", () => {
       .toBe(ARROW_KINDS.ghost.labelClass);
   });
 
+  it("packs what a landing left beside the arrows still crossing there", () => {
+    // The resolution is a lane in the same block, not a layer over it: a
+    // border carrying a demand while a march lands on it shows both, side by
+    // side, and neither is drawn on top of the other.
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      march("m1", "a", "b", 1),
+      { id: "resolution:3:7:b", kind: "ghost", from: "b", to: "a",
+        strength: 2, tone: "hostile", label: "2/2 DMG", labelAt: 0.85 },
+    ], ctx);
+    const live = ys(drawn.get("m1"));
+    const left = ys(drawn.get("resolution:3:7:b"));
+    expect(live).not.toHaveLength(0);
+    expect(left).not.toHaveLength(0);
+    expect(Math.max(...live)).toBeLessThanOrEqual(Math.min(...left));
+  });
+
+  it("draws one arrow for a key however many specs claim it", () => {
+    vi.useFakeTimers();
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      march("m1", "a", "b", 1), march("m1", "a", "b", 2),
+    ], ctx);
+    expect(drawn.size).toBe(1);
+    expect(host.children).toHaveLength(1);
+    // And the one drawn is the one the scene is holding. A second element for
+    // the same key would be in neither the retained map nor the leaving set,
+    // so nothing would ever take it off the map again.
+    renderArrowScene(host, [], ctx);
+    vi.advanceTimersByTime(ARROW_MOTION_MS.exit + 1);
+    expect(host.children).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
   it("skips a spec whose lands have no crossing rather than drawing NaN", () => {
     const host = document.createElementNS(NS, "g") as SVGGElement;
     const none: SceneCtx = { crossingFor: () => null, freeAnchor: () => null };
@@ -343,8 +377,12 @@ describe("renderArrowScene identity", () => {
       { id: "c1", kind: "claim", from: "a", to: "c", strength: 1,
         tone: "other", label: "SUBJUGATE" },
     ], ctx);
+    // Attributes as well as children. Watching the child list alone, this
+    // passes while every attribute on every arrow is rewritten every frame -
+    // which is most of what an arrow is, and exactly what retaining the
+    // element was for.
     const seen = new MutationObserver(() => {});
-    seen.observe(host, { childList: true, subtree: true });
+    seen.observe(host, { childList: true, subtree: true, attributes: true });
     renderArrowScene(host, [
       march("m1", "a", "b", 2), march("m2", "b", "a", 1),
       { id: "c1", kind: "claim", from: "a", to: "c", strength: 1,

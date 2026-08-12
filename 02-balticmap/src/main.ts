@@ -239,15 +239,13 @@ const arrowGroup = document.createElementNS(
 arrowGroup.classList.add("march-arrows");
 svg.appendChild(arrowGroup);
 
-// The ghosts of marches that have already landed, fading. Their own group and
-// not `arrowGroup`, because the two have different lifetimes: a ghost outlives
-// the state it was drawn from, and a live rebuild landing mid-fade would wipe
-// it off the screen halfway through the one thing the beat is showing.
-const ghostGroup = document.createElementNS(
-  "http://www.w3.org/2000/svg", "g",
-) as SVGGElement;
-ghostGroup.classList.add("march-ghosts");
-svg.appendChild(ghostGroup);
+// What a landing left on the border has no layer of its own: it is a lane in
+// `arrowGroup` beside the arrows still crossing there, so the block re-packs
+// around it exactly as it does around a live one. A layer apart could not be
+// packed with them, and was drawn on top of them instead - which is why the
+// live arrows had to be hidden for as long as a beat ran. It survives the
+// repaints under it because the scene retains its arrows by key: a rebuild
+// wipes nothing.
 
 /** The counter click armed on each arrow, so the next render can take it off
  *  again. The scene RETAINS its arrows, so an arming outlives the render that
@@ -367,6 +365,13 @@ const stages: Stages = {
     animations.onIdle(done);
   },
   commit(t) {
+    // The state being painted is the one the beats were about, so whatever
+    // they were holding off the board is gone from it and whatever they stood
+    // on a border is over. Dropped BEFORE the paint: held across it, a retired
+    // march would be subtracted from a state that no longer has it, which
+    // costs nothing, and a resolution would be re-drawn from a beat that has
+    // finished, which does not.
+    clearBeatArrows();
     refresh(t.paint);
   },
   ask(t, done) {
@@ -419,6 +424,10 @@ const stages: Stages = {
     // half the fact: the HUD counts the plays waiting on it, and a step
     // dropped without its count is a turn gate that never opens.
     hud.dropFlights();
+    // What those beats had taken off the board or stood on a border goes with
+    // them: both are read against a state this exchange has replaced, and a
+    // step dropped before it ran will never put them back itself.
+    clearBeatArrows();
     // Then the questions. Each of these is a modal about the discarded world:
     // news the player can neither check nor act on, a boon offered for a play
     // resolved in a world that is gone, a conquest whose two lands may not be
@@ -1610,6 +1619,31 @@ function refreshAim(): void {
   renderMarchArrows();
 }
 
+/** The arrows a beat has taken off the board, by march key, and what that
+ *  landing left on the border in their place.
+ *
+ *  Here rather than in the scene because they are a fact about the STATE being
+ *  drawn, not about the drawing: a landing's beat runs before the commit that
+ *  empties `game().marches`, so without this the arrow that just landed would
+ *  stand on the map through the whole of the beat explaining it and leave at
+ *  the repaint behind it. Read by `renderMarchArrows`, so every repaint that
+ *  happens while the beat is up agrees with it.
+ *
+ *  The retirements outlive the beat and the resolutions do not. A retired
+ *  march is gone from the state the commit is about to paint, so holding it
+ *  past the beat costs nothing and dropping it early would bring the arrow
+ *  back for the length of one repaint; a resolution is the beat's own picture
+ *  and leaves with it. */
+const beatRetired = new Set<string>();
+let beatResolutions: readonly ResolutionArrow[] = [];
+
+/** Everything a beat is holding off the board or standing on it, dropped
+ *  together: the commit behind the beat is painting a state that has neither. */
+function clearBeatArrows(): void {
+  beatRetired.clear();
+  beatResolutions = [];
+}
+
 /** Everything in flight, described rather than drawn: one spec per march and
  *  per claim, handed to the arrow scene, which owns where each one goes and how
  *  wide it is. What is left here is what an arrow MEANS - whose it is, what it
@@ -1619,9 +1653,9 @@ function renderMarchArrows(): void {
   const human = localHuman();
   if (!inPlay() || !human) {
     arrowGroup.replaceChildren();
-    // The ghosts go with them. A run that has ended is not a run with a march
-    // still landing on it, and a fade left running paints over the postmortem.
-    ghostGroup.replaceChildren();
+    // A run that has ended is not a run with a march still landing on it, and
+    // a beat's leavings must not paint over the postmortem.
+    clearBeatArrows();
     syncArrowFocus();
     return;
   }
@@ -1641,6 +1675,10 @@ function renderMarchArrows(): void {
   const order = landingOrder();
   const specs: ArrowSpec[] = [];
   for (const [key, m] of Object.entries(game().marches)) {
+    // Already taken off the board by the beat that is showing it land. The
+    // state still holds it - the commit is waiting on that beat - so this is
+    // the one place the two answers differ.
+    if (beatRetired.has(key)) continue;
     const against = realm.has(m.to);
     const ours = realm.has(m.from);
     specs.push({
@@ -1691,6 +1729,44 @@ function renderMarchArrows(): void {
       dataset: { actor: claim.actor, target: claim.to, from: claim.from },
     });
   }
+  // What the landing left on the border, for as long as its beat is up. Every
+  // number and every end of them comes off the beat's `ResolutionArrow`s,
+  // which the classifier built from the event - never from `game().marches`,
+  // which the landing has already emptied, and never from the arrows on the
+  // board, which a clash retires two of to produce these.
+  //
+  // A landing somebody won points winner at loser, so a counter that won is
+  // drawn pointing BACK, which is the whole story of the clash in one shape. A
+  // standoff hands over two, and the border's own lane packing puts them side
+  // by side exactly as the live arrows stood.
+  for (const res of beatResolutions) {
+    specs.push({
+      id: res.key, kind: "ghost", from: res.from, to: res.to,
+      strength: res.strength,
+      tone: res.tone,
+      // Stated rather than left to the stylesheet: the fills there are
+      // `.march-arrow`'s, and this is not one - a ghost that inherited them
+      // would also inherit a rival arrow's 0.45, which is the wrong thing for
+      // the only arrow on the map the beat is actually about.
+      fill: res.tone === "ours"
+        ? "#d4af37"
+        : res.tone === "hostile" ? "#992f27" : "#6b5d49",
+      label: res.label,
+      // Its own key, written onto the group: the beat holds the screen on its
+      // resolutions' labels, and the previous beat's may still be fading in
+      // the same layer. A corpse answers to a key of its own, so naming them
+      // is what tells the two apart.
+      dataset: { res: res.key },
+      // Pinned at the head, not weighed by `clashFraction`: a `ResolutionArrow`
+      // carries only its own side's strength, never the other's, so calling
+      // that function here with a fake 0 opposite always clamps to its 0.85
+      // ceiling - a fixed number dressed as a computed one. What a counter took
+      // off the top is in the label's own denominator, so the shaft has no
+      // second place to say it from, and the head is where a spear's own
+      // number already sits.
+      labelAt: 0.85,
+    });
+  }
   // The aim preview LAST of all, so it is appended over whatever it shares a
   // border with - and in THIS scene rather than a layer of its own, so the
   // block re-packs around it as the player aims. That re-pack is the preview's
@@ -1730,6 +1806,11 @@ function renderMarchArrows(): void {
   // nothing moving, and no pointer event is coming to say so. The focus is
   // re-derived here rather than waited for.
   syncArrowFocus();
+  // And whatever the hover and the pin have to say is written onto the arrows
+  // as they now stand. Not covered by the line above: it says nothing at all
+  // when the focus has not moved, and this paint has just restated every class
+  // attribute in the layer.
+  markArrows();
 }
 
 /** The hand index of a Raid that could answer this march right now, or null.
@@ -1795,10 +1876,14 @@ function armArrowAsCounter(g: SVGGElement, m: March, cardIndex: number): void {
     if (Math.hypot(e.clientX - from.x, e.clientY - from.y) >= DRAG_THRESHOLD_PX) {
       return; // a pan that happened to begin here; let the map have it
     }
-    e.stopPropagation();
     // Re-asked, not trusted: this listener was attached on the last render and
-    // the board may have moved since - a guest's update, an AI round.
+    // the board may have moved since - a guest's update, an AI round. Asked
+    // BEFORE the click is taken: an arrow that has stopped being answerable
+    // must let the click through to the land under it, and swallowing it first
+    // and declining second is exactly the dead zone the unarming above exists
+    // to prevent.
     if (counterFor(m) === null) return;
+    e.stopPropagation();
     disarm();
     // The card at that index, not a name: the pair is what gets validated,
     // and a hand holding Strong raid was being announced as a Raid.
@@ -1842,80 +1927,68 @@ const beatLabelHooks: RichTextHooks = {
     applyHighlight(hoveredRegion, id ?? hoveredRegion?.faction ?? null),
 };
 
-/** What a landing left on the border, drawn for the length of the beat and
- *  then gone: an arrow for each force that crossed it, and over each one what
- *  actually got through out of what was thrown.
+/** What one beat does to the arrows: takes the ones its landing spent off the
+ *  board, and stands what got through on the border in their place.
  *
- *  Every number and every end of them comes off the beat's `ResolutionArrow`s,
- *  which the classifier built from the event - never from `game.marches`,
- *  which the landing has already emptied, and never from the arrows on the
- *  board, which a clash retires two of to produce these.
+ *  Both go through the ordinary repaint, so the arrows that leave fade where
+ *  they stood and the ones that arrive fade in and take their lanes beside
+ *  whatever else is crossing there. The departures are plain - no label, no
+ *  colour, nothing claiming to be the outcome - because the outcome is what
+ *  the resolutions say: "1/3 DMG" in neutral ink, arithmetic rather than a
+ *  score, since the scores on this map are the badges'.
  *
- *  A landing somebody won points winner at loser, so a counter that won is
- *  drawn pointing BACK, which is the whole story of the clash in one shape. A
- *  standoff hands over two, and they are drawn in ONE scene so the border's
- *  lane packing puts them side by side exactly as the live arrows stood. The
- *  labels are neutral ink and read as arithmetic - "1/3 DMG", no sign and no
- *  colour - because a signed green number beside a spear is read as a score,
- *  and the scores on this map are the badges'. */
-function flashResolutions(
-  list: readonly ResolutionArrow[], onDone: () => void,
+ *  `onDone` fires when the label has finished its own animation, which is what
+ *  holds the resolution on screen - never a second timer set to the same
+ *  length. The arrows are then dropped and fade out under whatever comes
+ *  next. */
+function showResolution(
+  beat: Extract<Beat, { kind: "map" }>, onDone: () => void,
 ): void {
-  // Redrawn on the border they crossed, alone in a layer of their own: these
-  // outlive the state they were drawn from, which the live arrows never do.
-  // One `renderArrowScene` call for the whole list, because the scene holds
-  // exactly what the last call named - a second call would send the first
-  // call's arrows away again.
-  const drawn = renderArrowScene(ghostGroup, list.map((res) => ({
-    id: res.key, kind: "ghost" as const,
-    from: res.from, to: res.to, strength: res.strength,
-    tone: res.tone === "ours" ? "ours" : res.tone === "hostile" ? "hostile" : "other",
-    fill: res.tone === "ours"
-      ? "#d4af37"
-      : res.tone === "hostile" ? "#992f27" : "#6b5d49",
-    label: res.label,
-    // Pinned at the head, not weighed by `clashFraction`: a `ResolutionArrow`
-    // carries only its own side's strength, never the other's, so calling
-    // that function here with a fake 0 opposite always clamps to its 0.85
-    // ceiling - a fixed number dressed as a computed one. What a counter took
-    // off the top is in the label's own denominator, so the shaft has no
-    // second place to say it from, and the head is where a spear's own
-    // number already sits.
-    labelAt: 0.85,
-  })), sceneCtx);
-  let pending = 1;
-  const one = (): void => {
-    pending -= 1;
-    if (pending === 0) onDone();
-  };
-  for (const res of list) {
-    const g = drawn.get(res.key);
-    const poly = g?.querySelector("polygon") ?? null;
-    const label = g?.querySelector("text") ?? null;
-    if (g === undefined || poly === null || label === null) continue;
-    poly.setAttribute("stroke", "#fdfaf4");
-    poly.setAttribute("stroke-width", "1.2");
-    pending += 1;
-    runAnimation(poly, [{ opacity: 1 }, { opacity: 0 }], CLASH_FLASH_MS);
+  for (const id of beat.retires) beatRetired.add(String(id));
+  beatResolutions = beat.resolutions;
+  renderMarchArrows();
+  // This beat's own, by key. Asked of the layer rather than kept from the
+  // render because the previous beat's resolution may still be fading in it,
+  // and a corpse must neither be re-animated nor counted as something this
+  // beat is waiting on.
+  const keys = new Set(beat.resolutions.map((res) => res.key));
+  const labels: Element[] = [];
+  for (const g of arrowGroup.children) {
+    const key = (g as SVGGElement).dataset?.res;
+    const label = key !== undefined && keys.has(key)
+      ? g.querySelector(".clash-label") : null;
+    if (label !== null) labels.push(label);
+  }
+  // Nothing to hold the screen: either the landing left no force to draw, or
+  // the scene found no border to draw one on. The arrows it retired have
+  // already gone.
+  if (labels.length === 0) {
+    beatResolutions = [];
+    onDone();
+    return;
+  }
+  let pending = labels.length;
+  for (const label of labels) {
+    // The label rises into place and stays there; its opacity is the arrow's
+    // own, faded in by the scene and faded out when this drops it, so nothing
+    // here touches opacity and fights that.
     runAnimation(
       label,
       [
-        { opacity: 0, transform: "translateY(6px)" },
-        { opacity: 1, transform: "translateY(0)", offset: 0.2 },
-        { opacity: 1, transform: "translateY(0)", offset: 0.7 },
-        { opacity: 0, transform: "translateY(-8px)" },
+        { transform: "translateY(6px)" },
+        { transform: "translateY(0)", offset: 0.18 },
+        { transform: "translateY(0)" },
       ],
       CLASH_FLASH_MS,
       () => {
-        g.remove();
-        one();
+        pending -= 1;
+        if (pending > 0) return;
+        beatResolutions = [];
+        renderMarchArrows();
+        onDone();
       },
     );
   }
-  // Nothing drawn - a border the scene could not find a crossing for. The
-  // layer is cleared rather than left holding a half-built arrow.
-  if (pending === 1) ghostGroup.replaceChildren();
-  one();
 }
 
 /** The realm, plus every land at the far end of an arrow or a demand standing
@@ -1977,7 +2050,6 @@ function queueBeats(t: Transition): void {
     linked: linkedLands(state, realm),
     notice: ctx,
   }, changes));
-  let framesALand = false;
   for (const beat of beats) {
     // The questions are stage 3's, raised after the commit that makes them
     // answerable. A beat list is flat on purpose and the lifecycle partitions
@@ -1987,32 +2059,16 @@ function queueBeats(t: Transition): void {
       hud.runHudBeat(beat);
       continue;
     }
-    // A beat with no label frames nothing: it walks a badge where it stands
-    // and never takes the screen, so it has no claim on the arrows either -
-    // unless there is no badge either, in which case `runMapBeat` is about to
-    // frame it on the fallback label, and the arrows have to stand down for
-    // that exactly as they would for any other framed beat.
-    const badgeExists = badgeGroup.querySelector(
-      `.threat-badge[data-faction="${beat.polygon}"]`,
-    ) !== null;
-    if (effectiveBeatLabel(beat, badgeExists) !== null) framesALand = true;
     animations.push((done) => runMapBeat(beat, done));
   }
-  // While a land is being framed, the map shows THAT land's business and no
-  // other arrow. A transition at a time keeps a LATER seat's declarations off
-  // the board, but a seat declares its own march in the same breath as it
-  // resolves the one before - so the arrow it just drew would stand over the
-  // landing of the arrow it drew last turn. One event at a time means one
-  // arrow at a time. Armed before the stage's own waiter, so the class is off
-  // by the time the commit repaints the arrows.
-  //
-  // Only for a map beat: a card of the player's own flying to the discard pile
-  // has no business taking the arrows off the board underneath it, and a batch
-  // whose only beat is that flight would otherwise clear the map for as long
-  // as the card was in the air.
-  if (!framesALand) return;
-  svg.classList.add("replaying");
-  animations.onIdle(() => svg.classList.remove("replaying"));
+  // Nothing is hidden while a beat runs, and that is deliberate. The arrows a
+  // beat leaves standing are the board as the player was last shown it - the
+  // state under the map lags the whole transition, so a march this move
+  // declared is not drawn yet and cannot stand over the landing of the one
+  // before it. What the beat's own landing spent is named by `Beat.retires`
+  // and fades out under the beat that explains it, and what it left behind
+  // takes a lane in the same block, so the two are told apart by where they
+  // stand rather than by everything else being taken away.
 }
 
 /** One map beat: camera first, then the label, the badge walks, the
@@ -2060,12 +2116,6 @@ function runMapBeat(
     // most of the time. An unframed beat lights nothing: there is no sentence
     // for the glow to attach to.
     const unmark = framed ? markBeatLand(beat.polygon) : () => {};
-    // `beat.retires` is not read here: the arrow layer is rebuilt wholesale on
-    // every paint, so an arrow leaves at the commit behind this beat rather
-    // than fading under it. It is unread rather than absent because the beat
-    // states what a keyed scene will act on, and the classifier is where that
-    // is decided either way.
-    //
     // Everything below is started together and the beat hands back when the
     // slowest of them reports itself finished. The count starts at one for the
     // starter's own hold, released at the bottom, so a part that finishes
@@ -2082,7 +2132,9 @@ function runMapBeat(
       return one;
     };
     walkBadges(beat.badges, waitFor());
-    if (beat.resolutions.length > 0) flashResolutions(beat.resolutions, waitFor());
+    if (beat.retires.length > 0 || beat.resolutions.length > 0) {
+      showResolution(beat, waitFor());
+    }
     if (label !== null) showBeatLabel(label, beat.badges, waitFor());
     one();
   };
@@ -2598,15 +2650,15 @@ function applyRealmHover(region: Region | null): void {
  *  it is not, which is most of the time.
  *
  *  DERIVED from where the pointer is, and never remembered from an arrow's own
- *  enter and leave. `renderMarchArrows` destroys and rebuilds every arrow on
- *  every refresh, and a detached element is never sent the leave that would
- *  clear what its enter wrote - the fact src/deck-screen.ts dismisses its tip
- *  by hand for. A redraw that put an arrow back under the same point survived,
- *  because the browser hands the replacement an enter; a march that resolved
- *  away, or a bundle that re-laid out around the pointer, did not. Nothing on
- *  the map owned the focus any more, so moving the pointer anywhere fired
- *  nothing and the whole map stayed greyed for the rest of the run. A value
- *  re-read from the pointer cannot go stale, because nothing is holding it. */
+ *  enter and leave. An arrow leaves the map when its march lands, and a
+ *  detached element is never sent the leave that would clear what its enter
+ *  wrote - the fact src/deck-screen.ts dismisses its tip by hand for. The
+ *  arrow that re-packed around the pointer survived, because the browser hands
+ *  an element left under the cursor an enter of its own; the march that
+ *  resolved away did not. Nothing on the map owned the focus any more, so
+ *  moving the pointer anywhere fired nothing and the whole map stayed greyed
+ *  for the rest of the run. A value re-read from the pointer cannot go stale,
+ *  because nothing is holding it. */
 let arrowFocus: { from: string; to: string } | null = null;
 
 /** Where the pointer last was, null once it has left the map. Read by the
@@ -2673,7 +2725,7 @@ svg.addEventListener("pointerleave", () => {
  *  it is not off the map - the numbers were the loudest thing on the board, and
  *  fading only the fills left them in sole possession of the eye. */
 function applyArrowFocus(): void {
-  const focus = pinnedRegion !== null || targetingLive() ? null : arrowFocus;
+  const focus = effectiveArrowFocus();
   svg.classList.toggle("arrow-focused", focus !== null);
   const isEnd = (factionId: string | undefined): boolean =>
     focus !== null &&
@@ -2681,14 +2733,7 @@ function applyArrowFocus(): void {
   for (const [id, el] of regionPaths) {
     el.classList.toggle("arrow-end", isEnd(regionById.get(id)?.faction));
   }
-  for (const g of arrowGroup.children) {
-    if (!(g instanceof SVGGElement)) continue;
-    g.classList.toggle(
-      "arrow-faded",
-      focus !== null &&
-        !(g.dataset.from === focus.from && g.dataset.target === focus.to),
-    );
-  }
+  markArrows();
   for (const g of badgeGroup.children) {
     if (!(g instanceof SVGGElement)) continue;
     g.classList.toggle("focus-faded", focus !== null && !isEnd(g.dataset.faction));
@@ -2709,12 +2754,44 @@ function applyArrowFocus(): void {
 }
 
 function syncArrowDimming(pinnedOn: Region | null): void {
-  const land = pinnedOn?.faction ?? null;
+  arrowDimLand = pinnedOn?.faction ?? null;
+  markArrows();
+}
+
+/** The land the pin is dimming the other arrows around, or null for no pin.
+ *  Held rather than left on the elements it was written to: an arrow is
+ *  redressed on every repaint and states its whole class attribute as it does,
+ *  so the pin has to be able to say again what it said. */
+let arrowDimLand: string | null = null;
+
+/** The arrow hover, unless something outranks it: the pin owns the map while
+ *  one is held, and the targeting cues own it while a card is armed. */
+function effectiveArrowFocus(): { from: string; to: string } | null {
+  return pinnedRegion !== null || targetingLive() ? null : arrowFocus;
+}
+
+/** What another surface has to say about each arrow - the hover's fade and the
+ *  pin's dim - written onto the arrows as they now stand.
+ *
+ *  Called after every repaint of the arrows and not only when the hover or the
+ *  pin moves. `dressArrow` states an arrow's whole class attribute, which is
+ *  what keeps a stale cue from surviving a render - and it means these two
+ *  have to be said again afterwards or they are simply gone. A repaint while a
+ *  land was pinned un-dimmed the entire map, and the hover's own early return
+ *  on an unchanged focus meant nothing put it back. */
+function markArrows(): void {
+  const focus = effectiveArrowFocus();
   for (const g of arrowGroup.children) {
     if (!(g instanceof SVGGElement)) continue;
     g.classList.toggle(
+      "arrow-faded",
+      focus !== null &&
+        !(g.dataset.from === focus.from && g.dataset.target === focus.to),
+    );
+    g.classList.toggle(
       "arrow-dim",
-      land !== null && g.dataset.actor !== land && g.dataset.target !== land,
+      arrowDimLand !== null &&
+        g.dataset.actor !== arrowDimLand && g.dataset.target !== arrowDimLand,
     );
   }
 }

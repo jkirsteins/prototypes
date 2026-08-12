@@ -86,3 +86,47 @@ describe("the arrow hover", () => {
   });
 
 });
+
+/** The pin's dim, which is written onto the arrows by a different surface from
+ *  the one that draws them. An arrow states its whole class attribute every
+ *  time it is drawn, so anything another surface put there has to be said
+ *  again afterwards - and the hover's own "nothing has changed" early return
+ *  means nothing else will say it. */
+describe("the pin's dim", () => {
+  const clickOn = (el: Element): void => {
+    el.dispatchEvent(new MouseEvent(
+      "pointerdown", { bubbles: true, clientX: 10, clientY: 10 },
+    ));
+    el.dispatchEvent(new MouseEvent(
+      "pointerup", { bubbles: true, clientX: 10, clientY: 10 },
+    ));
+  };
+
+  /** A land the arrow runs between neither of - so the pin is about somebody
+   *  else's business and the arrow recedes with everything else. */
+  const elsewhere = (): Element =>
+    [...svg.querySelectorAll("path.region[data-id]")].find((el) => {
+      const id = (el as SVGElement).dataset.id ?? "";
+      return id !== "ravala" && id !== "harjumaa";
+    })!;
+
+  it("survives a repaint of the arrows", () => {
+    const land = elsewhere();
+    clickOn(land);
+    expect(marchArrow()?.classList.contains("arrow-dim")).toBe(true);
+
+    // Arming takes the dim off on purpose - the targeting cues own the map
+    // while a card is armed - and disarming repaints with the pin still held.
+    // That repaint is the one that used to un-dim the whole board.
+    const raid = [...document.querySelectorAll(".card")].find(
+      (c) => c.querySelector(".card-name")?.textContent === "Raid",
+    );
+    (raid as HTMLElement).click();
+    expect(arrows.classList.contains("aiming")).toBe(true);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    expect(marchArrow()?.classList.contains("arrow-dim")).toBe(true);
+    clickOn(land);
+    expect(marchArrow()?.classList.contains("arrow-dim")).toBe(false);
+  });
+});

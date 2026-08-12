@@ -290,15 +290,42 @@ carries exactly one number, and there is nothing left for a digit to be
 confused with. Put an ordinal back on the shaft and the "1 STR" form has to
 come back with it.
 
-**The ghost is not laid out with the living.** A resolved march's fading
-label is drawn alone, in a layer of its own (`ghostGroup`, never
-`arrowGroup`), because a live rebuild lands the moment the state under it
-moves and would wipe a mid-fade ghost off the screen halfway through the one
-thing the turn-start replay is showing. What actually keeps it from being
-read against the arrows still standing is that the replay hides them
-(`svg.replaying .march-arrow, .claim-arrow` in `src/style.css`) for as long
-as it runs - the ghost's own layer only protects it from being erased, not
-from being confused with what is still live.
+**The scene is retained, so nothing on it appears or vanishes.** An arrow is
+the SAME element from one render to the next, keyed by the caller's id
+(`march:<id>`, `claim:<key>`, `resolution:<turn>:<ids>:<from>`, `aim`): it
+fades in when it is declared, slides to its new lane when the border it
+crosses gets busier, and fades out where it stood when it goes. The aim
+preview is the one opt-out - it re-packs on every pointer move and has to
+track the cursor. The lane slides are ADDITIVE and are never cancelled: one
+slide carries one lane change down to zero, so a second lane change composes
+with the first instead of snapping the arrow back to where it started.
+
+**The ghost is laid out with the living, and that is what a beat needs.**
+What a landing left on the border is a `kind: "ghost"` spec in the same scene
+as every live arrow, so it takes a lane in the same block. A beat drives two
+separate things and they are not the same thing: `Beat.retires` names the
+marches whose arrows this beat takes off the board, and they exit PLAIN - a
+fade, no label, nothing claiming to be the outcome - while `Beat.resolutions`
+are what say what got through. A clash retires two arrows and leaves a force
+that is neither of theirs, so no arrow's own exit could have told that story.
+`beatRetired` in `src/main.ts` is why the two agree with every repaint in
+between: the beat runs before the commit that empties `game().marches`, so a
+retired march is subtracted from the arrows the state still holds.
+
+Nothing is hidden while a beat runs. The rule that hid every live arrow for
+the length of one, a separate ghost layer, and a hand-built ghost scene all
+existed because a live rebuild used to wipe a mid-fade ghost - and with
+identity a rebuild wipes nothing. The state under the map lags the whole
+transition, so a march declared by the move being shown is not drawn yet and
+cannot stand over the landing of the one before it.
+
+**Another surface's classes have to be said again after every paint.**
+`dressArrow` states an arrow's whole class attribute, which is what stops a
+stale cue surviving a render - and it means the hover's fade and the pin's dim
+are gone unless `markArrows` re-applies them, which `renderMarchArrows` calls
+at the end of every paint. Left to the surfaces that own them, a repaint while
+a land was pinned un-dimmed the entire map, because the hover's early return
+on an unchanged focus meant nothing put it back.
 
 **The aim preview shares the block with the arrows already crossing it.**
 `kind: "aim"` is a spec in the same scene as every live arrow (`src/main.ts`,
