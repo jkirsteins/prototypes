@@ -139,9 +139,13 @@ postmortem stops being derived from `phase` in `hud.update` and is raised by
 stage 5, and `cueEndingIfAny` moves off `refresh` to the same place. A run that
 ended is shown its ending once everything that ended it has been seen.
 
-A `settled` transition skips stages 1, 3 and 4 and runs 2, 5, 6 - so a guest
+A `settled` transition skips stages 1 and 4 and runs 2, 3, 5, 6 - it presents
+nothing and shows no round summary, since it was never watched happen, but it
+still runs `ask`: a state nobody watched happen still owes its questions, and a
+seat owing an unasked one can neither play a card nor end its turn. So a guest
 rejoining a finished game is shown the ending immediately, with no history
-re-enacted.
+re-enacted, but a guest rejoining mid-conquest is asked the question the
+connection dropped before it landed.
 
 **One consequence worth naming: `submit` never blocks.** A beat may itself
 produce a transition - an `ask` beat's answer commits a `transferDefense`

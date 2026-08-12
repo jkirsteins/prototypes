@@ -1959,7 +1959,8 @@ describe("notice modal", () => {
   it("dismisses on Continue and stays dismissed on re-render", () => {
     const { container, hud } = setup();
     const g = withEvents(playing(), [subjugatedYou]);
-    hud.update(g);
+    showRound(hud, g);
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     q(container, ".notice-continue").click();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
     hud.update(g); // same state: no new events, no re-show
@@ -2030,11 +2031,22 @@ describe("notice modal", () => {
     expect(onHighlightFaction).toHaveBeenCalledWith("alpha");
   });
 
-  it("dismisses on Escape", () => {
+  it("dismisses on Escape, releasing the stage that raised it", () => {
     const { container, hud } = setup();
-    hud.update(withEvents(playing(), [subjugatedYou]));
+    let released = false;
+    showRound(hud, withEvents(playing(), [subjugatedYou]), () => { released = true; });
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    expect(released).toBe(true);
+  });
+
+  it("dismisses on Enter, releasing the stage that raised it", () => {
+    const { container, hud } = setup();
+    let released = false;
+    showRound(hud, withEvents(playing(), [subjugatedYou]), () => { released = true; });
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
+    expect(released).toBe(true);
   });
 
   it("clears a hover's tip and map halo on dismiss", () => {
@@ -2050,11 +2062,12 @@ describe("notice modal", () => {
 
   it("shows nothing for your own plays or AI-vs-AI events", () => {
     const { container, hud } = setup();
-    hud.update(withEvents(playing(), [
+    const raised = showRound(hud, withEvents(playing(), [
       { turn: 1, playerId: 1, type: "subjugated", targetFactionId: "alpha", overlordFactionId: "beta" },
       { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "gamma", overlordFactionId: "alpha" },
       { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "gamma", sourceFactionId: "alpha", amount: 150 },
     ]));
+    expect(raised).toBe(false);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
 
@@ -2073,7 +2086,8 @@ describe("notice modal", () => {
     const { container, hud } = setup();
     let g = withEvents(playing(), [subjugatedYou]);
     g = { ...g, phase: "defeat" };
-    hud.update(g);
+    const raised = showRound(hud, g);
+    expect(raised).toBe(false);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
   });
 });

@@ -755,11 +755,12 @@ board waits behind it. Everything it reads comes off the transition rather than
 off the displayed state - the events, the realm, the arrows still standing, the
 standings walk - because the state those events land in is not the one under
 the map yet. That ordering is what makes the round summary the round's
-epilogue rather than a cover over it: `showRoundSummaryIfAny` runs inside the
-repaint, by which time the camera has finished visiting everything the modal is
-about. It parks only behind the local seat's own card flight, and `settleTurn`
-holds any continuation - the AI chain's - for as long as the modal is on
-screen.
+epilogue rather than a cover over it: the summary is stage 4, raised after
+`commit` and `ask` have both run, so by the time it rises the camera has
+already finished visiting everything it is about. It parks only behind the
+local seat's own card flight (`hud.afterPlayAnimation`), and its `done` does
+not fire until the player dismisses it - which holds `ending` and every
+transition queued behind this one for as long as the modal is on screen.
 
 `REPLAY_RULES` in `src/replay.ts` is the classification, exhaustive over
 `GameEventType` in the `NOTICE_RULES` shape: a type is either `shown` (which
@@ -806,24 +807,26 @@ queue starts a waiter's own transition as a sibling iteration of its drain
 loop, which is what keeps a round of seats that animate nothing a loop rather
 than a stack as deep as the round is long.
 
-**A conquest question is asked by the commit, after the beats.**
-`askTransferIfPending` runs at the end of `refresh`, and by then the
-transition's present stage has already shown the land being taken - so the
-modal follows the picture of the thing it asks about rather than landing over
-it. It cannot be raised any earlier than the commit: the answer is a
-`transferDefense` decision validated against the state it is applied to, and
+**A conquest question is stage 3, ask, raised after the commit.** By the time
+it runs, the transition's `present` stage has already shown the land being
+taken, so the modal follows the picture of the thing it asks about rather than
+landing over it. It cannot be raised any earlier than the commit: the answer is
+a `transferDefense` decision validated against the state it is applied to, and
 before the commit that state still says the conquest has not happened, so the
 defenders would silently never move.
 
-**Nothing resolves behind that modal, and it is worth knowing why, because
-the modal itself no longer holds anything back.** Two unrelated facts do. A
-conquest can only owe the LOCAL seat an answer at that seat's own turn start
-or on its own play - `pendingTransfers` is keyed by the taker - and the AI
-chain stops at any human seat, so a question of yours is never raised with
-seats still to play. And while one is owed, `localTransferPending()` refuses
-`onEndTurn` and `onPlayCard`, so the turn cannot be handed on with the
-question open. Take either away and the round resolves behind the modal
-again.
+**Nothing resolves behind that modal because the stage itself will not finish
+without an answer.** `ask`'s `done` is the callback `askTransfer` hands to
+`hud.showTransferOffer`'s `onConfirm` - it does not fire on its own, so
+`summary` and `ending` cannot run and the queue cannot start the next
+transition until the local seat answers, `transitions.busy()` (folded into
+`inputLocked`) staying true across the whole wait. The one arrival the stage
+cannot cover is the state a page BOOTS on: it is folded into the queue's
+initial state ahead of any transition, `?turns=` included, so it owes an `ask`
+nobody has run for it. `localTransferPending()` is that same rule spelled out
+explicitly at `onPlayCard` and `onEndTurn`, and at the boot path itself, which
+calls `askTransfer` by hand once the page has painted - because there, for
+once, there is no stage to ask it.
 
 An arrival that `metNothing` is passed over here for the reason
 `NOTICE_RULES` passes it over: the `subjugated` it caused names the same card

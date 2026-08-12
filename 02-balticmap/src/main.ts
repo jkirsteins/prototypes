@@ -344,15 +344,13 @@ const initialGame: GameState = (() => {
  *  board as it stood, and finished before the commit repaints it. It reports
  *  itself done when the animation queue drains, so a transition with nothing
  *  to show completes inside `submit` and one with a round to show holds the
- *  next one off for as long as it takes - which is the whole of the gate that
- *  used to be spelled out at every call site that resumed the AI.
+ *  next one off for as long as it takes.
  *
  *  `commit` is the whole of `refresh`, and it raises nothing: the question
  *  this move asked is `ask`, the round's news is `summary` and the run's
  *  ending is `ending`, each held open until the player has answered or read
  *  it. A repaint happens several times per move and cannot say which of them
- *  the player is owed an interruption for, which is why none of the three is
- *  derived from a repainted phase any more. */
+ *  the player is owed an interruption for. */
 const stages: Stages = {
   present(t, done) {
     // This repaint moves nothing on the map - it draws the state already on
@@ -431,6 +429,14 @@ const stages: Stages = {
     hud.hideHarvestUi();
     pendingHarvest = null;
     transferAsked = null;
+    // An armed card and a held map selection are handles into the old world
+    // too - `armed`/`armedSource` index into the hand this exchange is about
+    // to replace, and `interceptClick` reads `localHuman().hand[idx]` out of
+    // whichever hand is current. A pin must not outlive the run it was set in
+    // either: the new world re-colours every polygon, and a held highlight
+    // would describe the last one.
+    disarm();
+    interaction.deselect();
   },
 };
 
@@ -2777,11 +2783,6 @@ function viewState(): GameState {
   return game();
 }
 
-/** `opts` is handed straight to `hud.update`, so `{ animate: false }` paints
- *  a state as already-settled: no card flies and no round summary rises.
- *  Wanted for a state this screen did not play into - the boot path's first
- *  paint, and a guest's start or rejoin snapshot, which arrives as a whole
- *  game at once and would otherwise replay every card in its log. */
 /** The phase whose ending has already been given its jingle. Endings own the
  *  whole screen, so their sound cues on the phase change here rather than on
  *  an event replay step - see the `victory`/`defeat` rows of REPLAY_RULES. */
@@ -2822,6 +2823,16 @@ function cueEndingIfAny(): void {
   }
 }
 
+/** `opts` is handed straight to `hud.update`: `{ animate: false }` paints a
+ *  state as already-settled - no card flies. Wanted for a state this screen
+ *  did not play into - the boot path's first paint, and a guest's start or
+ *  rejoin snapshot, which arrives as a whole game at once and would otherwise
+ *  replay every card in its log.
+ *
+ *  It says nothing about whether a round summary rises. That is stage 4's
+ *  business, and a settled transition never reaches it - `SETTLED_STAGES` in
+ *  `src/transitions.ts` leaves `summary` out of the list, whatever `opts`
+ *  says here. */
 function refresh(opts?: { animate?: boolean }): void {
   // First, before anything renders: the ending stage this move may be about to
   // reach reads a total that has to have stopped moving, and it reads it
@@ -3022,12 +3033,8 @@ function startStagingRun(): void {
   transitions.replaceSettled(startGameMove(newGame(
     data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
     SITE_CAPS, DEFENSE_MAX,
-  )));
+  )), { animate: false });
   clearFoundedSettlements();
-  disarm();
-  // A pin must not outlive the run it was set in: the fresh game re-colours
-  // every polygon, and the held highlight would describe the last one.
-  interaction.deselect();
   deckScreen.update(deckScreenView(true));
   refreshWhenSettled();
 }

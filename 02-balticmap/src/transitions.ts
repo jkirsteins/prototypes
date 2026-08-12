@@ -270,7 +270,15 @@ export function createTransitionQueue(
           // a sibling iteration, rather than one frame deeper.
           const waiting = idle.splice(0, idle.length);
           if (waiting.length === 0) return;
-          for (const fn of waiting) fn();
+          // Same rule the stages keep at the top of `runStage`: a waiter that
+          // replaces the world bumps the generation, and a sibling still
+          // waiting to fire in this batch must not run against the world
+          // that replaced the one it was armed against.
+          const gen = generation;
+          for (const fn of waiting) {
+            if (generation !== gen) break;
+            fn();
+          }
           continue;
         }
         running = next;

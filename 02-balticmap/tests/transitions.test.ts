@@ -498,11 +498,11 @@ describe("waiting for the queue to drain", () => {
     expect(fired).toBe(1);
   });
 
-  it("starts a waiter's own transition as a sibling rather than nesting it", () => {
+  it("runs a waiter-armed chain of transitions through to its last seat", () => {
     // The AI chain's shape: each seat is submitted by the waiter the seat
-    // before it armed. Every stage here finishes synchronously, so a chain
-    // that nested one frame per seat would grow the stack for the length of
-    // the round.
+    // before it armed. The sibling-not-nesting property this shape depends on
+    // is the one the 5000-deep cascade above actually exercises; what this
+    // test pins is the chain itself reaching its end with the queue idle.
     const { order, stages } = recorder();
     const sync: Stages = {
       ...stages,
