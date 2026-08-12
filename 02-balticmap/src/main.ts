@@ -413,7 +413,11 @@ const stages: Stages = {
     // over a board that has nothing to do with them, and with the live arrows
     // hidden until they drain. A step already RUNNING is left alone, because
     // it owns DOM that its own `done` has to take back down.
-    animations.clear();
+    //
+    // Asked of the HUD rather than of the queue directly, because the queue is
+    // half the fact: the HUD counts the plays waiting on it, and a step
+    // dropped without its count is a turn gate that never opens.
+    hud.dropFlights();
     // Then the questions. Each of these is a modal about the discarded world:
     // news the player can neither check nor act on, a boon offered for a play
     // resolved in a world that is gone, a conquest whose two lands may not be

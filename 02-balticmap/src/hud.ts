@@ -143,6 +143,21 @@ export interface Hud {
    *  whole: a snapshot exchanges the board, and news about the board it
    *  replaced is a modal the player can neither check nor act on. */
   dropRoundNews(): void;
+  /** Throws away every flight this HUD has in the air or queued behind one,
+   *  empties the animation queue under them, and releases whoever was waiting
+   *  on the play to land. The same errand as `dropRoundNews`, one layer down:
+   *  a card flown into a board that no longer exists is owed nothing, and a
+   *  waiter still holding for it holds the transition it belongs to open for
+   *  good.
+   *
+   *  It is one call and not three because the queue and the count of plays
+   *  waiting on it are halves of one fact, and only this module holds the
+   *  count. Clearing the queue alone drops a play step that had not started
+   *  while the count goes on remembering it, and `afterPlayAnimation` is then
+   *  a callback that never fires: no card can be played, no turn ended, and
+   *  nothing on screen says why. The phase check inside `update` is no safety
+   *  net for it - a world arriving whole is usually still "playing". */
+  dropFlights(): void;
   /** Draws the run's ending and puts it on screen. Asked for explicitly rather
    *  than derived from `state.phase` inside `update`, so an ending rises when
    *  the move that ended the run has finished being shown - not on whichever
@@ -2828,6 +2843,10 @@ export function createHud(
     },
     raiseRoundSummary,
     dropRoundNews: hideSummary,
+    dropFlights() {
+      cancelLiveFlights();
+      releasePlayWaiters();
+    },
     showPostmortem(state) {
       renderPostmortem(state);
       postmortem.classList.remove("hidden");

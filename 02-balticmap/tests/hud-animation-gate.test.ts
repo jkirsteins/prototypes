@@ -199,6 +199,46 @@ describe("afterPlayAnimation watchdog", () => {
     expect(started).toEqual([2, 3]);
   });
 
+  it("releases a play still queued when a world arrives whole and the run goes on", () => {
+    // The exchange path - a snapshot, a rejoin, a buffer past the cap - throws
+    // the animation queue away while the state it commits is still "playing",
+    // so nothing about the phase releases the waiter the way an ending does.
+    // A play QUEUED and not yet started is the case that bites: its step goes
+    // with the queue, and if the count of plays waiting on that queue does not
+    // go with it, `afterPlayAnimation` is a callback that never fires - the
+    // turn gate stays shut, `busy()` stays true, and the whole screen is
+    // locked with nothing on it saying why.
+    const { hud } = hosted();
+    let g = ready();
+    hud.update(g); // the opening draw: started, and it does not finish
+    const queuedBefore = stalled.length;
+    g = playCard(g, 0, seededRng(1));
+    hud.update(g); // the play queues BEHIND the draw
+    expect(stalled).toHaveLength(queuedBefore); // it has not started
+
+    const fn = vi.fn();
+    hud.afterPlayAnimation(fn);
+    const q = createTransitionQueue(g, {
+      present: (_t, done) => done(),
+      commit: () => {},
+      ask: (_t, done) => done(),
+      summary: (_t, done) => hud.afterPlayAnimation(done),
+      ending: (_t, done) => done(),
+      teardown: () => hud.dropFlights(),
+    });
+    q.replaceSettled(g); // history arriving whole, and the run goes on
+
+    expect(fn).toHaveBeenCalledOnce();
+    // And the world that replaced it can be shown: a move submitted after the
+    // exchange must not be held open by the play the exchange threw away.
+    const shown = vi.fn();
+    q.submit({ next: g, events: [], settled: false });
+    q.onIdle(shown);
+    vi.advanceTimersByTime(1); // afterPlayAnimation's own macrotask
+    expect(shown).toHaveBeenCalledOnce();
+    expect(q.busy()).toBe(false);
+  });
+
   it("releases a run that ended while a play was still queued", () => {
     // A run that ended must not leave the caller waiting on a card that will
     // now never be drawn.

@@ -238,9 +238,10 @@ describe("the transition queue", () => {
   it("a settled replacement tears down the same presentation the cap does", () => {
     // One hook, three doors: a snapshot, a rejoin and a buffer past the cap
     // are the same act, so the screen throws away the same things on all of
-    // them. Written down here as an ordering because the doors used to
-    // compensate one at a time at their own call sites, and the one that
-    // forgot a step left a question stranded.
+    // them. Written down here as an ordering because each door compensating at
+    // its own call site is what strands a question - three lists of the same
+    // four things, and the one that is short by one locks a seat out of its
+    // own turn.
     const { order, stages, release } = recorder();
     const q = createTransitionQueue(st(1), stages);
     q.submit(tr(2));
