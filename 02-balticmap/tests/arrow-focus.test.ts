@@ -2,18 +2,18 @@
 // @vitest-environment-options {"url": "http://localhost/?seed=1&faction=ravalans&armies=ravalans:3&march=ravalans>harjuans&hand=raid,grow-crops"}
 /** The arrow hover, which is DERIVED from where the pointer is rather than
  *  remembered from an arrow's own enter and leave - see `arrowFocus` in
- *  src/main.ts. The whole arrow layer is destroyed and rebuilt on every
- *  refresh, and an element that dies under a stationary pointer never fires
- *  pointerleave, so a remembered focus survived both the arrow and the pointer
- *  and narrowed the map for the rest of the run.
+ *  src/main.ts. An arrow that resolves away under a stationary pointer fires
+ *  no pointerleave, and the scene takes it out of hit-testing the moment it
+ *  starts to fade, so a remembered focus survived both the arrow and the
+ *  pointer and narrowed the map for the rest of the run.
  *
  *  What this file can and cannot see: happy-dom hit-tests nothing, so `arrowAt`
- *  answers "no arrow" here and a rebuild always derives to none. That pins the
- *  regression that mattered - a rebuild REACHES the derivation at all - and not
- *  the in-flight case where the rebuilt arrow is still under the pointer. Nor
- *  the march that resolves away: an end-turn click does not carry the AI round
+ *  answers "no arrow" here and a repaint always derives to none. That pins the
+ *  regression that mattered - a repaint REACHES the derivation at all - and not
+ *  the in-flight case where the arrow is still under the pointer. Nor the
+ *  march that resolves away: an end-turn click does not carry the AI round
  *  through under happy-dom. Both of those are the browser pass's, per the rule
- *  in AGENTS.md, and the arming case below is the same rebuild reached by a
+ *  in AGENTS.md, and the arming case below is the same repaint reached by a
  *  path this environment can actually drive. */
 import { describe, it, expect, beforeAll } from "vitest";
 
@@ -66,8 +66,8 @@ describe("the arrow hover", () => {
     expect(narrowed()).toBe(0);
   });
 
-  it("does not survive a rebuild the pointer never hears about", () => {
-    // Arming a card rebuilds the arrows and takes them out of hit-testing, so
+  it("does not survive a repaint the pointer never hears about", () => {
+    // Arming a card repaints the arrows and takes them out of hit-testing, so
     // no pointerleave can arrive. Read AFTER disarming, because the paint is
     // suppressed for as long as the targeting cues own the map.
     moveOnto(marchArrow()!);
@@ -87,11 +87,13 @@ describe("the arrow hover", () => {
 
 });
 
-/** The pin's dim, which is written onto the arrows by a different surface from
- *  the one that draws them. An arrow states its whole class attribute every
- *  time it is drawn, so anything another surface put there has to be said
- *  again afterwards - and the hover's own "nothing has changed" early return
- *  means nothing else will say it. */
+/** The pin's dim, which is decided by a different surface from the one that
+ *  draws the arrows. An arrow states its whole class attribute every time it is
+ *  drawn, so the pin is a standing answer every paint asks for rather than a
+ *  mark some other pass makes afterwards - written on after the fact it went
+ *  wrong in both directions at once, wiped by the next repaint and, once that
+ *  was fixed, arriving too late for the fade that was still bringing a new
+ *  arrow in. */
 describe("the pin's dim", () => {
   const clickOn = (el: Element): void => {
     el.dispatchEvent(new MouseEvent(

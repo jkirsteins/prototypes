@@ -195,6 +195,27 @@ describe("renderArrowScene", () => {
     expect([...drawn.keys()]).toEqual(["m2"]);
   });
 
+  it("dresses a brand new arrow with the cues that decide how faint it is", () => {
+    // The class has to be on the element the render that CREATES it, because
+    // the enter fade rises to the opacity that element has once it is in the
+    // tree. A dim applied by a later pass is a dim the fade was never told
+    // about, and the arrow drops to it in the one frame the fade ends on.
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      { ...march("m1", "a", "b", 1), dimmed: true },
+      { ...march("m2", "b", "a", 1), faded: true },
+    ], ctx);
+    expect(drawn.get("m1")?.classList.contains("arrow-dim")).toBe(true);
+    expect(drawn.get("m2")?.classList.contains("arrow-faded")).toBe(true);
+    // And off again with the spec that stops asking for it, the same way every
+    // other class in the whole-attribute write goes.
+    const again = renderArrowScene(host, [
+      march("m1", "a", "b", 1), march("m2", "b", "a", 1),
+    ], ctx);
+    expect(again.get("m1")?.classList.contains("arrow-dim")).toBe(false);
+    expect(again.get("m2")?.classList.contains("arrow-faded")).toBe(false);
+  });
+
   it("carries the caller's dataset onto the group", () => {
     const host = document.createElementNS(NS, "g") as SVGGElement;
     const drawn = renderArrowScene(host, [{

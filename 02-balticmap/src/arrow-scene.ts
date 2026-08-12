@@ -165,6 +165,19 @@ export interface ArrowSpec {
   chip?: { order: number; clash: boolean };
   /** A claim already answered, drawn faded. */
   doomed?: boolean;
+  /** Receding because the pointer is resting on another arrow, and receding
+   *  because a pin has narrowed the map to a land this arrow is no business
+   *  of. Two cues another surface owns the meaning of, carried HERE rather
+   *  than written onto the element afterwards.
+   *
+   *  `dressArrow` states an arrow's whole class attribute, and `enter` fades a
+   *  new arrow up to the opacity the stylesheet gives it once it is in the
+   *  tree. A cue applied after the paint is therefore a cue the fade did not
+   *  know about: the arrow rose to its undimmed resting value and dropped to
+   *  the dim in the single frame the fade ended on. What an arrow looks like
+   *  is part of what it IS, so it is stated with everything else about it. */
+  faded?: boolean;
+  dimmed?: boolean;
   /** Written onto the group, for the hover, the pin and the counter click. */
   dataset?: Record<string, string>;
 }
@@ -640,9 +653,14 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
 
   // Set whole rather than toggled, so a class another surface put on the arrow
   // - the counter cue, the aim's own validity - is gone by the time that
-  // surface is asked again. An arrow's classes say what it IS this render.
+  // surface is asked again. An arrow's classes say what it IS this render,
+  // which is why every cue that decides how the arrow LOOKS is on the spec:
+  // there is nothing left for a later pass to add, and so nothing the enter
+  // fade can be aimed past.
   const classes = [def.className, `march-${spec.tone}`];
   if (spec.doomed === true) classes.push("claim-doomed");
+  if (spec.faded === true) classes.push("arrow-faded");
+  if (spec.dimmed === true) classes.push("arrow-dim");
   setAttr(g, "class", classes.join(" "));
   applyDataset(g, spec.dataset ?? {});
   return true;

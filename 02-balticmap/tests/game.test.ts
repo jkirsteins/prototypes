@@ -3507,6 +3507,13 @@ describe("every march that leaves the store is named by an event", () => {
           .flatMap((e) => e.marchIds ?? []),
       );
       expect(departed.filter((id) => !named.has(id))).toEqual([]);
+      // And the converse, which is the direction the presentation actually
+      // consumes: `beatRetired` takes every id a `march-resolved` names off
+      // the arrows drawn for the state, and the state behind a beat still
+      // holds the marches the commit is about to clear. An id named by an
+      // event that did NOT leave the store would hide a live arrow for the
+      // length of the beat and fade it back in at the commit behind it.
+      expect([...named].filter((id) => !departed.includes(id))).toEqual([]);
       // Scoped to `marchIds`, not to every `march-resolved` - the
       // demand-coming-due arrival out of `landClaims` clears no march and
       // throws no strength, so it is exempt by carrying no `marchIds` at all.

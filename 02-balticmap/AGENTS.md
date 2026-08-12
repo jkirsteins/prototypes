@@ -300,6 +300,14 @@ track the cursor. The lane slides are ADDITIVE and are never cancelled: one
 slide carries one lane change down to zero, so a second lane change composes
 with the first instead of snapping the arrow back to where it started.
 
+**Including the end of the run**, which is the one path that used to cut them
+off the map: a victory, a defeat, a unification, a surrender and New game all
+reach `paintArrows` with no run in play, and it hands the scene an EMPTY SPEC
+LIST rather than emptying the layer, so the arrows fade out under whatever is
+rising over the map. Emptying the layer instead is a blink the player sees -
+the postmortem is two stages behind the commit that ends the run, and the map
+is visible around both.
+
 **The ghost is laid out with the living, and that is what a beat needs.**
 What a landing left on the border is a `kind: "ghost"` spec in the same scene
 as every live arrow, so it takes a lane in the same block. A beat drives two
@@ -319,13 +327,23 @@ identity a rebuild wipes nothing. The state under the map lags the whole
 transition, so a march declared by the move being shown is not drawn yet and
 cannot stand over the landing of the one before it.
 
-**Another surface's classes have to be said again after every paint.**
-`dressArrow` states an arrow's whole class attribute, which is what stops a
-stale cue surviving a render - and it means the hover's fade and the pin's dim
-are gone unless `markArrows` re-applies them, which `renderMarchArrows` calls
-at the end of every paint. Left to the surfaces that own them, a repaint while
-a land was pinned un-dimmed the entire map, because the hover's early return
-on an unchanged focus meant nothing put it back.
+**Everything that decides how an arrow LOOKS is on its spec.** `dressArrow`
+states an arrow's whole class attribute, which is what stops a stale cue
+surviving a render - so the hover's fade and the pin's dim are `ArrowSpec`
+fields (`faded`, `dimmed`), decided in `paintArrows` from the same dataset the
+hover and the pin were always answered from, and the surfaces that own those
+two questions repaint rather than write on the elements. There is no pass
+after the paint, which is what makes the ordering impossible to get wrong.
+
+It was a pass after the paint twice, and it failed differently each time.
+Written by the surfaces themselves, a repaint while a land was pinned
+un-dimmed the entire map, because the hover's early return on an unchanged
+focus meant nothing put it back. Re-applied at the end of the paint instead,
+the dim landed AFTER `enter` had already read what the new arrow's resting
+opacity was: an arrow declared while a land was pinned faded up to full over
+220ms and then dropped to 0.16 in one frame. **An arrow's fade rises to the
+opacity the stylesheet gives it, so anything that changes that opacity has to
+be on the element before the fade is started.**
 
 **The aim preview shares the block with the arrows already crossing it.**
 `kind: "aim"` is a spec in the same scene as every live arrow (`src/main.ts`,
@@ -826,17 +844,24 @@ would otherwise have been dropped is raised instead, as `causedLabel` -
 moment the beat runs, because whether the badge exists is a DOM fact the
 classifier itself does not have.
 
-**The step shows one event, and the map shows nothing else that moves.** The
-land is lit for the length of the step (`.replay-focus`, a filter glow rather
+**The beat shows one event, and the map shows nothing else that moves.** The
+land is lit for the length of the beat (`.replay-focus`, a filter glow rather
 than a stroke, because `.region.realm-member` declares its seam !important),
-its badge is walked from the score it HAD to the score it has, and every live
-`.march-arrow` is hidden (`svg.replaying`) so the only arrow on screen is the
-ghost of the one landing. The hiding is armed by a MAP beat and by nothing
-else: a card of the player's own flying to the discard pile has no business
-taking the arrows off the board underneath it. Without the mark a label was a sentence about
-nowhere, since the camera holds still for anything already on screen; without
-the badge walk the number had been showing the outcome since before the
-player was shown the event.
+and its badge is walked from the score it HAD to the score it has. Without the
+mark a label was a sentence about nowhere, since the camera holds still for
+anything already on screen; without the badge walk the number had been showing
+the outcome since before the player was shown the event.
+
+The arrows are the one thing on the map a beat does NOT quieten: nothing is
+hidden while one runs. What the beat takes off the board is exactly the
+marches it retires (`Beat.retires`, subtracted from the drawn arrows by
+`beatRetired` in `src/main.ts`), and what it stands on the border in their
+place is a lane in the same block as the arrows still crossing there - so the
+landing is told apart from the board around it by where it stands rather than
+by everything else being taken away. The board the player was last shown stays
+on screen under the explanation of what just happened to it, which is the
+arrow rule five hundred lines above: an arrow fades in when it is declared and
+out when it goes, and never blinks.
 
 **The AI chain is walked a seat at a time.** `oneAiSeat` plays exactly one
 seat and `stepAiChain` in `src/main.ts` submits what it did as one transition

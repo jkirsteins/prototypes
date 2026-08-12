@@ -241,11 +241,10 @@ svg.appendChild(arrowGroup);
 
 // What a landing left on the border has no layer of its own: it is a lane in
 // `arrowGroup` beside the arrows still crossing there, so the block re-packs
-// around it exactly as it does around a live one. A layer apart could not be
-// packed with them, and was drawn on top of them instead - which is why the
-// live arrows had to be hidden for as long as a beat ran. It survives the
-// repaints under it because the scene retains its arrows by key: a rebuild
-// wipes nothing.
+// around it exactly as it does around a live one, and the two are told apart
+// by where they stand rather than by everything else being taken away. It
+// survives the repaints under it because the scene retains its arrows by key:
+// a rebuild wipes nothing.
 
 /** The counter click armed on each arrow, so the next render can take it off
  *  again. The scene RETAINS its arrows, so an arming outlives the render that
@@ -416,9 +415,9 @@ const stages: Stages = {
     // The beats first: the steps of the superseded move are already on the
     // animation queue and would otherwise go on gliding the camera, fading
     // labels in and walking badges from scores this commit has just replaced -
-    // over a board that has nothing to do with them, and with the live arrows
-    // hidden until they drain. A step already RUNNING is left alone, because
-    // it owns DOM that its own `done` has to take back down.
+    // over a board that has nothing to do with them. A step already RUNNING is
+    // left alone, because it owns DOM that its own `done` has to take back
+    // down.
     //
     // Asked of the HUD rather than of the queue directly, because the queue is
     // half the fact: the HUD counts the plays waiting on it, and a step
@@ -1644,19 +1643,35 @@ function clearBeatArrows(): void {
   beatResolutions = [];
 }
 
+/** Paints the arrows, then re-asks where the pointer is.
+ *
+ *  The arrow under the pointer may have arrived, left or changed hands with
+ *  nothing the pointer did causing it, and no pointer event is coming to say
+ *  so. When the answer has moved, `applyArrowFocus` paints the arrows once
+ *  more - the hover's fade is part of what an arrow is drawn AS, so it cannot
+ *  be written on afterwards. That second paint moves no arrow, so it is the
+ *  last one: everything it could re-derive it has already been told. */
+function renderMarchArrows(): void {
+  paintArrows();
+  syncArrowFocus();
+}
+
 /** Everything in flight, described rather than drawn: one spec per march and
  *  per claim, handed to the arrow scene, which owns where each one goes and how
  *  wide it is. What is left here is what an arrow MEANS - whose it is, what it
  *  carries, when it lands - and the behaviour bound to the group the scene
  *  gives back. */
-function renderMarchArrows(): void {
+function paintArrows(): void {
   const human = localHuman();
   if (!inPlay() || !human) {
-    arrowGroup.replaceChildren();
-    // A run that has ended is not a run with a march still landing on it, and
-    // a beat's leavings must not paint over the postmortem.
+    // An EMPTY scene rather than an emptied layer: a run that has ended is a
+    // run with nothing in flight, and the arrows that were flying fade out
+    // under whatever is rising over the map instead of being cut off it in one
+    // frame. The postmortem is two stages behind this and the map is visible
+    // around it, so that cut was on screen.
+    renderArrowScene(arrowGroup, [], sceneCtx);
+    // A run that has ended is not a run with a march still landing on it.
     clearBeatArrows();
-    syncArrowFocus();
     return;
   }
   // Aiming does NOT take the arrows away, for the same reason it does not take
@@ -1682,7 +1697,12 @@ function renderMarchArrows(): void {
     const against = realm.has(m.to);
     const ours = realm.has(m.from);
     specs.push({
-      id: key, kind: "march", from: m.from, to: m.to, strength: m.damage,
+      // Namespaced, like every other key in this scene: a march's store key is
+      // a bare number and would sit in the same space as `aim` and as the
+      // resolution keys the presentation builds, where one collision is one
+      // arrow wearing another's element.
+      id: `march:${key}`, kind: "march", from: m.from, to: m.to,
+      strength: m.damage,
       // Against you first: an arrow between your own two lands cannot happen
       // (attackReach excludes what you hold outright, and a raid on your own
       // vassal IS aimed at your realm), so the order only decides how a lord's
@@ -1774,6 +1794,25 @@ function renderMarchArrows(): void {
   // down a border painted the preview straight over the raid it was answering.
   const preview = aimSpec();
   if (preview !== null) specs.push(preview);
+  // What the hover and the pin have to say about each arrow, said as part of
+  // what the arrow IS. Asked of the spec's own dataset, which is where both
+  // questions were always answered from - the ends of the arrow and whose army
+  // it is - so every kind on the board is asked the same question, resolutions
+  // and the preview included.
+  //
+  // Stated here and never written on afterwards, because a new arrow fades up
+  // to the opacity it has the moment it enters the tree: applied after the
+  // paint, the dim was a value the fade had not been told about, and every
+  // arrow declared while a land was pinned rose to full over 220ms and then
+  // dropped to 0.16 in the one frame the fade ended on.
+  const focus = effectiveArrowFocus();
+  for (const spec of specs) {
+    const ends = spec.dataset ?? {};
+    spec.faded = focus !== null
+      && !(ends.from === focus.from && ends.target === focus.to);
+    spec.dimmed = arrowDimLand !== null
+      && ends.actor !== arrowDimLand && ends.target !== arrowDimLand;
+  }
   const drawn = renderArrowScene(arrowGroup, specs, sceneCtx);
   drawn.get("aim")?.classList.toggle(
     "aim-valid", aiming !== null && aiming.over !== null,
@@ -1787,7 +1826,7 @@ function renderMarchArrows(): void {
   // arrow that is also a button would answer a click the player meant for the
   // land under it.
   for (const [key, m] of Object.entries(game().marches)) {
-    const g = drawn.get(key);
+    const g = drawn.get(`march:${key}`);
     if (g === undefined) continue;
     const counterIndex = targeting ? null : counterFor(m);
     // Asked of every arrow, not only of the ones that answer yes. The scene
@@ -1802,15 +1841,6 @@ function renderMarchArrows(): void {
     g.classList.add("march-counterable");
     armArrowAsCounter(g, m, counterIndex);
   }
-  // The arrow under the pointer may have arrived, left or changed hands with
-  // nothing moving, and no pointer event is coming to say so. The focus is
-  // re-derived here rather than waited for.
-  syncArrowFocus();
-  // And whatever the hover and the pin have to say is written onto the arrows
-  // as they now stand. Not covered by the line above: it says nothing at all
-  // when the focus has not moved, and this paint has just restated every class
-  // attribute in the layer.
-  markArrows();
 }
 
 /** The hand index of a Raid that could answer this march right now, or null.
@@ -2733,7 +2763,6 @@ function applyArrowFocus(): void {
   for (const [id, el] of regionPaths) {
     el.classList.toggle("arrow-end", isEnd(regionById.get(id)?.faction));
   }
-  markArrows();
   for (const g of badgeGroup.children) {
     if (!(g instanceof SVGGElement)) continue;
     g.classList.toggle("focus-faded", focus !== null && !isEnd(g.dataset.faction));
@@ -2751,49 +2780,34 @@ function applyArrowFocus(): void {
       focus !== null && !ends.has((el as SVGElement).dataset.land),
     );
   }
+  // And the arrows themselves, by repainting them: the fade is one of the cues
+  // an arrow is DRESSED with, not one written onto it afterwards. `paintArrows`
+  // rather than `renderMarchArrows`, because the pointer is the one thing that
+  // needs no re-deriving here - the focus this is painting is the answer that
+  // was just derived.
+  paintArrows();
 }
 
+/** The pin has moved, so every arrow's dim has. Nothing happens where it has
+ *  not: the same land is no news, and a repaint here rides on every hover the
+ *  map takes. */
 function syncArrowDimming(pinnedOn: Region | null): void {
-  arrowDimLand = pinnedOn?.faction ?? null;
-  markArrows();
+  const next = pinnedOn?.faction ?? null;
+  if (next === arrowDimLand) return;
+  arrowDimLand = next;
+  paintArrows();
 }
 
 /** The land the pin is dimming the other arrows around, or null for no pin.
- *  Held rather than left on the elements it was written to: an arrow is
- *  redressed on every repaint and states its whole class attribute as it does,
- *  so the pin has to be able to say again what it said. */
+ *  Held rather than left on the elements it was written to: an arrow states its
+ *  whole class attribute every time it is drawn, so the pin has to be a
+ *  standing answer the next paint can ask for rather than a mark it made once. */
 let arrowDimLand: string | null = null;
 
 /** The arrow hover, unless something outranks it: the pin owns the map while
  *  one is held, and the targeting cues own it while a card is armed. */
 function effectiveArrowFocus(): { from: string; to: string } | null {
   return pinnedRegion !== null || targetingLive() ? null : arrowFocus;
-}
-
-/** What another surface has to say about each arrow - the hover's fade and the
- *  pin's dim - written onto the arrows as they now stand.
- *
- *  Called after every repaint of the arrows and not only when the hover or the
- *  pin moves. `dressArrow` states an arrow's whole class attribute, which is
- *  what keeps a stale cue from surviving a render - and it means these two
- *  have to be said again afterwards or they are simply gone. A repaint while a
- *  land was pinned un-dimmed the entire map, and the hover's own early return
- *  on an unchanged focus meant nothing put it back. */
-function markArrows(): void {
-  const focus = effectiveArrowFocus();
-  for (const g of arrowGroup.children) {
-    if (!(g instanceof SVGGElement)) continue;
-    g.classList.toggle(
-      "arrow-faded",
-      focus !== null &&
-        !(g.dataset.from === focus.from && g.dataset.target === focus.to),
-    );
-    g.classList.toggle(
-      "arrow-dim",
-      arrowDimLand !== null &&
-        g.dataset.actor !== arrowDimLand && g.dataset.target !== arrowDimLand,
-    );
-  }
 }
 
 /** One outline around the hovered realm: `outerOutline` masks away everything

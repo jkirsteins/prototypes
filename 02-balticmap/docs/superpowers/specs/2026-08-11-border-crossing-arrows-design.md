@@ -158,21 +158,21 @@ collide as soon as a border carries three arrows.
 The map's colours are untouched: red for an arrow into your realm, gold for
 yours, the rival's own colour faded for a quarrel that is neither.
 
-## The ghost gets its own layer
+## The ghost has no layer of its own
 
-`flashMarchResolution`'s fading arrow is a spec like any other kind, but it
-renders through its own `renderArrowScene` call into a layer of its own
-(`ghostGroup`, never `arrowGroup`) rather than joining the block the live
-arrows pack into. A live rebuild lands the moment the state under it moves,
-and packing the ghost into that block would mean a rebuild triggered
-mid-fade wipes it off the screen before the one thing the turn-start replay
-is showing has finished.
+What a landing left on the border is a `kind: "ghost"` spec in the same
+`renderArrowScene` call as every live arrow, so it takes a lane in the block
+it crosses beside whatever else is standing there. Nothing is hidden while a
+beat runs.
 
-The ghost's own layer only keeps it from being erased, not from being read
-against a live arrow standing on the same border - what does that is the
-replay itself: `svg.replaying` in `src/style.css` hides `.march-arrow` and
-`.claim-arrow` for as long as it runs, so nothing live is on screen to
-confuse the ghost with while it fades.
+This was a separate layer (`ghostGroup`) with the whole live arrow layer
+hidden under it (`svg.replaying` in `src/style.css`), and both existed for one
+reason: a rebuild of the live layer landing mid-fade wiped the ghost off the
+screen, so it had to be drawn somewhere a rebuild could not reach, and then it
+had to be told apart from arrows it could no longer be packed with. The scene
+retains its arrows by key now, so a repaint wipes nothing, and the two are
+told apart by where they stand - which is what the packing was for. Both the
+layer and the hiding rule are gone.
 
 `sceneCtx.freeAnchor` survives for exactly one caller: the free-drag aim
 preview toward a pointer that is not over a legal land. That is the only
