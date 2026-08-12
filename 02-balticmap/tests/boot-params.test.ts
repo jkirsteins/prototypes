@@ -11,6 +11,9 @@ import { rulerOf } from "../src/rulers";
 import { fullRealmOf as walkRealm } from "../src/relations";
 import { seededRng } from "../src/rng";
 import { DEFAULT_RULES } from "../src/rules";
+import {
+  SIM_ADJACENCY, SIM_DEFENSE_MAX, SIM_ETHNICITIES, SIM_FACTION_IDS, SIM_SITE_CAPS,
+} from "../src/sim";
 
 const FACTIONS = ["alpha", "beta", "gamma", "delta"];
 
@@ -337,6 +340,34 @@ describe("applyBootParams", () => {
 
     it("leaves the run untouched at turns=0", () => {
       expect(boot("?faction=beta&turns=0").turn).toBe(1);
+    });
+
+    it("hands back runs that still owe the player a conquest answer", () => {
+      // Not a property of the parser: it is the fact the BOOT PATH's own
+      // `askTransfer` exists for. A booted state runs no transition, so no
+      // stage 3 ever asks - and `localTransferPending` gates the card click,
+      // End turn and the hand-over key, all of which return in silence. A
+      // fast-forward that lands on an unanswered conquest is therefore a page
+      // that looks perfectly normal and cannot be played, and the only way out
+      // is a reload. It is far from rare, which is what this measures.
+      //
+      // On the shipped roster rather than the four-land fixture: a map that
+      // small ends the run at the first conquest, and "victory" is not the
+      // state a player is stuck in.
+      const map = (): GameState => newGame(
+        SIM_FACTION_IDS, SIM_ADJACENCY, SIM_ETHNICITIES, SIM_SITE_CAPS,
+        SIM_DEFENSE_MAX,
+      );
+      const stuck: number[] = [];
+      for (let seed = 1; seed <= 6; seed++) {
+        const g = applyBootParams(
+          map(), params(`?seed=${seed}&faction=selonians&turns=12`),
+          seededRng(seed),
+        );
+        const owed = g.pendingTransfers.selonians ?? [];
+        if (g.phase === "playing" && owed.length > 0) stuck.push(seed);
+      }
+      expect(stuck.length).toBeGreaterThan(0);
     });
 
     it("is deterministic under the same seed", () => {

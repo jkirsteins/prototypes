@@ -1608,10 +1608,13 @@ export function createHud(
     noticeOverlay.classList.add("hidden");
     // Torn down rather than shown later. Both callers are ends - the run
     // finishing, and a new game shrinking the log - and news about the
-    // previous run has nothing to say about either. The stage still gets its
-    // release: a torn-down modal owes its caller an answer as much as a read
-    // one does.
+    // previous run has nothing to say about either.
     roundEvents = [];
+    // Belt and braces rather than a live case: every path that reaches here
+    // with a modal up has replaced the whole world, which bumps the queue's
+    // generation and makes the held `done` inert anyway. It stays because the
+    // cost of a lost `done` is a queue that never runs again, and the cost of
+    // an inert one is nothing.
     releaseSummaryStage();
   }
 

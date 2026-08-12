@@ -231,14 +231,19 @@ describe("walkStandings matches the real stores across a seeded game", () => {
       if (!next.playedThisTurn) {
         throw new Error(`stuck turn ${state.turn}`);
       }
-      state = next.phase === "playing" ? advance(next, rng) : next;
       if (isHuman) {
-        // The human's own action is revealed on its own, separately from the
-        // AI round that follows - see afterHumanAction in main.ts.
-        cursor = state.log.length;
-        preBatch = state;
-        continue;
+        // The human's own action is shown on its own, and the round the
+        // summary speaks for opens at the ADVANCE behind it: `afterHumanAction`
+        // in main.ts submits that advance as a transition of its own, and
+        // every batch from there until the turn comes back is folded into the
+        // one modal. So the cursor moves BEFORE the advance, and the marches,
+        // draws and turn-start business it resolves are the head of the batch -
+        // which is the walk production actually runs.
+        cursor = next.log.length;
+        preBatch = next;
       }
+      state = next.phase === "playing" ? advance(next, rng) : next;
+      if (isHuman) continue;
       if (state.phase !== "playing" || isHumanTurn(state)) {
         verifyBatch();
         cursor = state.log.length;

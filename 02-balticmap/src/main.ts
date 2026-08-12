@@ -703,6 +703,19 @@ function localPendingTransfers(): { from: string; to: string }[] | undefined {
   return me === undefined ? undefined : game().pendingTransfers[me];
 }
 
+/** The conquest already asked about, `from>to`, or null when the local seat
+ *  owes nothing. Cleared the moment the queue's front is a different pair or
+ *  the queue is empty, so a land taken twice in one run is asked about twice.
+ *
+ *  The guard is for the GUEST, where "a stage runs once per transition" is not
+ *  enough. A guest's answer crosses the wire while its own replica still
+ *  carries the question, and the host pushes on every decision - so an update
+ *  built before that answer was processed still says a conquest is pending,
+ *  and its stage 3 would raise the same modal a second time. The host has by
+ *  then popped its queue, so the second answer would move defenders into the
+ *  NEXT conquest, whose numbers the player was never shown. */
+let transferAsked: string | null = null;
+
 /** Stage 3: the conquest question, if this move left the local seat owing
  *  one. `done` fires on the answer, so nothing resolves - and no summary
  *  rises - over a question the player has not answered.
@@ -710,19 +723,25 @@ function localPendingTransfers(): { from: string; to: string }[] | undefined {
  *  Keyed by the LOCAL player's faction, which is the whole of the check: the
  *  store replicates whole, so a screen reading it without asking whose
  *  question it is raised the other human's conquest modal and answered it
- *  into a copy the next update threw away.
- *
- *  One stage, one question, and no guard against asking twice: a stage runs
- *  once per transition, and each answer is a move of its own whose stage asks
- *  the next conquest in the queue. */
+ *  into a copy the next update threw away. */
 function askTransfer(done: () => void): void {
   // The front of the queue: one pair of lands per modal, in the order the
   // lands fell. Answering pops it and the next conquest raises its own.
   const pending = localPendingTransfers()?.[0];
   if (pending === undefined) {
+    transferAsked = null;
     done();
     return;
   }
+  const key = `${pending.from}>${pending.to}`;
+  if (transferAsked === key) {
+    // Already asked, and answered as far as this screen knows - see the key's
+    // own comment. Releasing rather than holding: the stage owes its `done`
+    // whether or not it had anything to put on screen.
+    done();
+    return;
+  }
+  transferAsked = key;
   const v = viewOf(game());
   hud.showTransferOffer(
     {
@@ -3445,10 +3464,14 @@ function tryDeal(): void {
   // since `renderedEvents` has caught up and no later paint rewrites them.
   net.guestSeat = dealt.guestSeat;
   // A dealt game is a world arriving whole rather than a move played into
-  // the one before it, so it commits with nothing presented. Before
-  // `markStarted`, which builds the start snapshot out of the committed
-  // state: the guest must be sent the game, not the lobby it replaced.
-  transitions.replaceSettled(dealt.state);
+  // the one before it, so it commits with nothing presented AND paints as
+  // already-settled - the `adoptSnapshot` intent, and for the same reason:
+  // the deal's own log lines are not this screen's round, so they neither
+  // flash as new nor go into the news the first real modal speaks for.
+  // Before `markStarted`, which builds the start snapshot out of the
+  // committed state: the guest must be sent the game, not the lobby it
+  // replaced.
+  transitions.replaceSettled(dealt.state, { animate: false });
   net.session.markStarted(pick.factionId);
   netPanel.setVisible(false);
   refreshWhenSettled();
@@ -3980,4 +4003,12 @@ const interaction = attachInteraction(svg, regionPaths, data, {
 if (boot !== null) {
   refresh();
   showEndingIfAny();
+  // A booted state runs NO transition - it is folded into `initialGame` - so
+  // no stage 3 ever asks, and a `?turns=` fast-forward lands on an unanswered
+  // conquest about a third of the time. Every gate that reads
+  // `localTransferPending` then returns in silence: no card can be played, no
+  // turn ended, and nothing on screen says why. The `adoptSnapshot`
+  // precedent, for the same reason - a state nobody watched happen still owes
+  // its questions.
+  askTransfer(() => {});
 }
