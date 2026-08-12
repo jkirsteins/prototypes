@@ -117,6 +117,9 @@ describe("PRESENTATION_RULES", () => {
         const base = ctxFor([e]);
         const beats = rule.beats(e, { ...base, causeOf: () => cause });
         for (const beat of mapBeats(beats)) {
+          // A beat this screen caused itself carries no label at all, and
+          // there is nothing in it to bake a name into.
+          if (beat.label === null) continue;
           read += 1;
           expect(beat.label.length).toBeGreaterThan(0);
           for (const seg of beat.label) {
@@ -210,19 +213,37 @@ describe("presentEvents", () => {
     });
   });
 
-  it("draws no resultant force for a standoff, and still retires both arrows", () => {
-    // Nothing got through, so there is no force left to point anywhere. The
-    // event's two ends are the axis's own sorted ends rather than a winner
-    // and a loser, so an arrow built off them would be aimed by an alphabetic
-    // accident - at the player's own land as often as not, and labelled with
-    // whichever side's strength happened to land in `incoming`.
+  it("draws a standoff as both armies spent, one arrow each way", () => {
+    // The border must not be empty while a label talks about a fight that
+    // happened on it. Nobody won, so neither arrow may be built as the
+    // winner: the event's two ends are the axis's own SORTED ends, and one
+    // arrow off them would be aimed by an alphabetic accident and labelled
+    // with whichever side's strength happened to land in `incoming`. What is
+    // not sorted is the pair of numbers, so each side is drawn with its own.
     const e = march({
       targetFactionId: "alpha", sourceFactionId: "beta",
       amount: undefined, incoming: 2, counter: 5, marchIds: [4, 9],
     });
     const beat = mapBeats(presentEvents([e], ctxFor([e])))[0];
-    expect(beat.resolution).toBeUndefined();
     expect(beat.retires).toEqual([4, 9]);
+    expect(beat.resolutions).toHaveLength(2);
+    // `incoming` is what was thrown AT the target, `counter` what it threw
+    // back, and nothing got through either way.
+    expect(beat.resolutions.map((r) => [r.from, r.to, r.strength, r.label]))
+      .toEqual([
+        ["beta", "alpha", 2, "0/2 DMG"],
+        ["alpha", "beta", 5, "0/5 DMG"],
+      ]);
+    // Ours going out, theirs coming in: the two arrows of one standoff are
+    // not the same tone, which is the whole reason they are drawn as two.
+    expect(beat.resolutions.map((r) => r.tone)).toEqual(["ours", "hostile"]);
+    // Two arrows off one event, so the keys the scene draws them under have
+    // to differ - and both are namespaced away from the `march:<id>` keys of
+    // the arrows still standing.
+    expect(new Set(beat.resolutions.map((r) => r.key)).size).toBe(2);
+    for (const r of beat.resolutions) {
+      expect(r.key.startsWith("march:")).toBe(false);
+    }
   });
 
   it("retires the arrows the landing spent and draws one resolution at the loser", () => {
@@ -235,16 +256,16 @@ describe("presentEvents", () => {
     });
     const beat = mapBeats(presentEvents([e], ctxFor([e])))[0];
     expect(beat.retires).toEqual([4, 9]);
-    expect(beat.resolution).toBeDefined();
-    expect(beat.resolution?.from).toBe("alpha");
-    expect(beat.resolution?.to).toBe("beta");
-    expect(beat.resolution?.strength).toBe(3);
-    expect(beat.resolution?.label).toBe("1/3 DMG");
+    expect(beat.resolutions).toHaveLength(1);
+    expect(beat.resolutions[0].from).toBe("alpha");
+    expect(beat.resolutions[0].to).toBe("beta");
+    expect(beat.resolutions[0].strength).toBe(3);
+    expect(beat.resolutions[0].label).toBe("1/3 DMG");
     // The loser is ours, so the force is aimed at us.
-    expect(beat.resolution?.tone).toBe("hostile");
+    expect(beat.resolutions[0].tone).toBe("hostile");
     // Namespaced away from the `march:<id>` keys of the arrows still
     // standing: this arrow is none of them.
-    expect(beat.resolution?.key.startsWith("march:")).toBe(false);
+    expect(beat.resolutions[0].key.startsWith("march:")).toBe(false);
   });
 
   it("presents nothing for a demand coming due, which has no arrow to draw", () => {
@@ -336,10 +357,12 @@ describe("presentEvents", () => {
     });
   });
 
-  it("still walks the badge for a score this screen's own play moved", () => {
+  it("walks the badge for a score this screen's own play moved, and says nothing", () => {
     // The one thing the player did NOT watch is a number moving: a badge is
     // drawn as though it had always been that. So the own-play suppression
-    // above stops exactly where a walk begins.
+    // above stops exactly where a walk begins - and stops THERE. A label
+    // naming the card still under their cursor is the turn told back to them,
+    // and the input gate waits on it while it is read.
     const fresh: GameEvent[] = [
       { turn: 4, playerId: 1, type: "play", cardId: "fortify", targetFactionId: "beta" },
       {
@@ -354,7 +377,17 @@ describe("presentEvents", () => {
     expect(map[0].badges).toEqual([
       { polygon: "beta", track: "defense", before: 3, after: 5 },
     ]);
-    expect(map[0].label).toContainEqual({ kind: "card", cardId: "fortify" });
+    expect(map[0].label).toBeNull();
+    // Silent it is not: the badge moving and the sound beside it are the two
+    // halves of "your card did something", and the label is the only part
+    // being dropped.
+    expect(map[0].sound).toBe("hammer");
+    // The same heal at the other screen is business it did not do, so it gets
+    // the whole frame.
+    const theirs = mapBeats(presentEvents(fresh, ctxFor(fresh, {
+      seats: new Set([2]), realm: new Set(["alpha", "beta"]),
+    })));
+    expect(theirs[0].label).toContainEqual({ kind: "card", cardId: "fortify" });
   });
 
   it("says whose pips each disease walk is about", () => {
@@ -449,6 +482,26 @@ describe("involvesLocalSeats", () => {
     };
     expect(involvesLocalSeats(linked, presentCtxOf([linked], host))).toBe(true);
     expect(involvesLocalSeats(linked, presentCtxOf([linked], guest))).toBe(false);
+  });
+
+  it("frames a linked land itself, and not what that land then does elsewhere", () => {
+    // `linked` holds gamma because gamma's arrow is aimed at us. Gamma's own
+    // land is our business - what happens there changes what that arrow will
+    // do. A raid gamma makes on a THIRD party is not: the beat would be drawn
+    // on the land it names, which is one we have no relationship with at all,
+    // and the camera would glide to a grey polygon for a fight between two
+    // rivals.
+    const atLinked: GameEvent = {
+      turn: 5, playerId: 7, type: "healed", targetFactionId: "gamma", amount: 1,
+    };
+    expect(mapBeats(presentEvents([atLinked], ctxFor([atLinked])))).toHaveLength(1);
+
+    const elsewhere: GameEvent = {
+      turn: 5, playerId: 7, type: "march-resolved", cardId: "raid",
+      targetFactionId: "delta", sourceFactionId: "gamma",
+      amount: 1, incoming: 1, marchIds: [3],
+    };
+    expect(presentEvents([elsewhere], ctxFor([elsewhere]))).toEqual([]);
   });
 
   it("tells the lord that lost a vassal, whose land is no longer theirs", () => {

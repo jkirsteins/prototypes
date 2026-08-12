@@ -1,7 +1,7 @@
 /** What one event is SHOWN as, on THIS screen, and nothing else: the camera
  *  and the label a land gets, the badge stepping from the score it had to the
  *  score it has, the card flying out of the hand, the arrows a landing takes
- *  off the board and the one arrow that says what got through.
+ *  off the board and what it leaves on the border to say what got through.
  *
  *  Pure data out - no DOM, no rng, no clock - so the executor only spends
  *  queue steps on what this hands back, and the whole classification is
@@ -55,16 +55,16 @@ export interface BadgeWalk {
   after: number;
 }
 
-/** The resultant force of one resolution, drawn for the length of the beat
- *  and then gone.
+/** The force one resolution leaves on the border, drawn for the length of the
+ *  beat and then gone.
  *
  *  Keyed by transition and event rather than by any march, because a clash
- *  retires two arrows and produces one force whose strength is neither side's
+ *  retires two arrows and produces a force whose strength is neither side's
  *  and whose direction may be the opposite of either. The key is built from
- *  the ids the landing retired, which are allocated once and never reissued,
- *  so it is unique for the run - and it is namespaced away from the
- *  `march:<id>` keys of the arrows still standing, because this arrow is none
- *  of them. */
+ *  the ids the landing retired plus the land it leaves, which are allocated
+ *  once and never reissued, so it is unique for the run - and it is
+ *  namespaced away from the `march:<id>` keys of the arrows still standing,
+ *  because this arrow is none of them. */
 export interface ResolutionArrow {
   key: string;
   from: string;
@@ -78,14 +78,22 @@ export type Beat =
   | {
       kind: "map";
       polygon: string;
-      label: Segment[];
+      /** What the label says, or null when this screen is owed no sentence -
+       *  see `labelUnlessCaused`. A beat with no label is not framed at all:
+       *  no camera, no glow and no hold, only the badges walking where they
+       *  stand. */
+      label: Segment[] | null;
       sound: SoundName | null;
       badges: BadgeWalk[];
       /** Arrows this beat takes off the board. They exit plain: a fade out
        *  and no label. A departed arrow is not the outcome - see
        *  `ResolutionArrow`. */
       retires: number[];
-      resolution?: ResolutionArrow;
+      /** What the landing left on the border, drawn together so they take
+       *  their lanes side by side the way they stood while they were live.
+       *  One arrow where one side got through, TWO where neither did, and
+       *  none at all for a landing no army caused. */
+      resolutions: ResolutionArrow[];
     }
   | {
       kind: "hud";
@@ -188,7 +196,23 @@ function owesAnswer(e: GameEvent, ctx: PresentCtx): boolean {
  *
  *  "Either end" is read off every faction an event names, not only the land
  *  it happened to: a vassal winning its independence names the lord it left,
- *  and the lord losing it is exactly who has to be told. */
+ *  and the lord losing it is exactly who has to be told.
+ *
+ *  **A LINE is asked about the land that will be framed, and nothing else.**
+ *  `linked` holds the far end of every arrow standing between this screen and
+ *  its realm, so a rival aiming at you puts THEIR land in the set - and a
+ *  framed beat is drawn on `targetFactionId` whatever matched. Asked of the
+ *  source as well, a raid that rival then made on a third party sent the
+ *  camera to a land this screen has no relationship with at all. The realm
+ *  arms stay on all four ends, because a land of your own at any end of an
+ *  event is your business whichever end it is.
+ *
+ *  **A seat's own event passes on the seat alone**, which is wider than the
+ *  surface this replaced: it asked `playerId !== localPlayerId` and showed the
+ *  player nothing they had done themselves. So a regrowth on your own land at
+ *  your own turn start now earns a beat where it earned none. Deliberate - it
+ *  moves a score, and a score moves on its badge or it moves invisibly - and
+ *  a play of your OWN is separately kept quiet by `labelUnlessCaused`. */
 export function involvesLocalSeats(e: GameEvent, ctx: PresentCtx): boolean {
   if (ctx.seats.has(e.playerId)) return true;
   const ends = [
@@ -199,9 +223,6 @@ export function involvesLocalSeats(e: GameEvent, ctx: PresentCtx): boolean {
     if (id !== undefined && ctx.realm.has(id)) return true;
   }
   if (e.targetFactionId !== undefined && ctx.linked.has(e.targetFactionId)) {
-    return true;
-  }
-  if (e.sourceFactionId !== undefined && ctx.linked.has(e.sourceFactionId)) {
     return true;
   }
   return owesAnswer(e, ctx);
@@ -218,6 +239,23 @@ export function involvesLocalSeats(e: GameEvent, ctx: PresentCtx): boolean {
 function causedHere(e: GameEvent, ctx: PresentCtx): boolean {
   const cause = ctx.causeOf(e);
   return cause !== null && cause.kind === "card" && ctx.seats.has(cause.playerId);
+}
+
+/** The label a beat shows, or none - the second half of `causedHere`.
+ *
+ *  A consequence of this screen's own card keeps its badge walk and loses
+ *  everything else: the camera is already on the land the player aimed at,
+ *  the label would name the card still under their cursor, and the hold
+ *  behind it is a hand they cannot play out of while being told what they
+ *  just did. The number is the whole of the news, and it moves where it
+ *  stands.
+ *
+ *  One helper and not a flag per rule, because the rules that build a label
+ *  are twelve and the question is the same for every one of them. */
+function labelUnlessCaused(
+  e: GameEvent, ctx: PresentCtx, label: Segment[],
+): Segment[] | null {
+  return causedHere(e, ctx) ? null : label;
 }
 
 /** This event's slice of the batch's walk, as badge walks. A change that
@@ -258,12 +296,13 @@ function framedBeats(e: GameEvent, ctx: PresentCtx, frame: MapFrame): Beat[] {
   return [{
     kind: "map",
     polygon,
-    label: frame.label(e, cause),
+    label: labelUnlessCaused(e, ctx, frame.label(e, cause)),
     sound: frame.sound === undefined
       ? EVENT_SOUNDS[e.type]
       : frame.sound(e, cause),
     badges,
     retires: [],
+    resolutions: [],
   }];
 }
 
@@ -290,45 +329,64 @@ const handMotion = (
   },
 });
 
-/** What a resolution's arrow says, on the border it crossed: what got through
- *  out of what was thrown, with the word so the number is not read as a
- *  score. Neutral ink, no leading sign, no colour - the tone is the arrow's
- *  and the label is arithmetic. */
-function resolutionOf(e: GameEvent, ctx: PresentCtx): ResolutionArrow | undefined {
-  const winner = e.sourceFactionId;
-  const loser = e.targetFactionId;
+/** What a resolution leaves on the border it crossed: what got through out of
+ *  what was thrown, with the word so the number is not read as a score.
+ *  Neutral ink, no leading sign, no colour - the tone is the arrow's and the
+ *  label is arithmetic.
+ *
+ *  A standoff draws TWO, one each way, because that is what a standoff is:
+ *  both armies in the field and neither of them through. It is drawn off the
+ *  strengths and not off the ends, which is the trap here - the event's
+ *  `targetFactionId` and `sourceFactionId` are the axis's own SORTED ends
+ *  when nobody won, so one arrow built from them is aimed by an alphabetic
+ *  accident and carries one side's strength as if it were the whole story.
+ *  What is not sorted is the pair of numbers: `incoming` is always the
+ *  strength thrown at the target and `counter` what the target threw back, so
+ *  each arrow is drawn with its own, and neither is called the winner. The
+ *  alternative is a border with nothing on it while a label talks about a
+ *  fight that happened there. */
+function resolutionsOf(e: GameEvent, ctx: PresentCtx): ResolutionArrow[] {
+  const target = e.targetFactionId;
+  const source = e.sourceFactionId;
   const ids = e.marchIds;
-  // A resultant force is what one side had LEFT, so a landing that moved no
-  // score has none to draw. That is the standoff: both armies spent, nothing
-  // through, and the event's two ends are the axis's own sorted ends rather
-  // than a winner and a loser - the engine says so where it pushes the line,
-  // because naming one of them the target would be a lie. An arrow built off
-  // them points wherever the ids happen to sort, which on the player's own
-  // border is an attack on themselves. The label says it was answered in the
-  // field, and both arrows leave through `retires`.
-  if (e.amount === undefined) return undefined;
   // `incoming` rides on every `march-resolved` an army caused, and an event
   // without one is a demand coming due - which throws no strength and draws
   // no arrow.
-  if (winner === undefined || loser === undefined) return undefined;
+  if (target === undefined || source === undefined) return [];
   if (e.incoming === undefined || ids === undefined || ids.length === 0) {
-    return undefined;
+    return [];
   }
-  return {
-    key: `resolution:${e.turn}:${ids.join("-")}`,
-    // Winner at loser, which the engine already decided: it names the land
-    // that gave ground as the target, so a counter that won points BACK down
-    // the border the attack came along.
-    from: winner,
-    to: loser,
-    strength: e.incoming,
-    label: `${e.amount}/${e.incoming} DMG`,
-    tone: ctx.realm.has(winner)
+  const arrow = (
+    from: string, to: string, strength: number, through: number,
+  ): ResolutionArrow => ({
+    // The land it leaves is part of the key: a standoff draws two arrows off
+    // one event, and they retired the same pair of ids between them.
+    key: `resolution:${e.turn}:${ids.join("-")}:${from}`,
+    from,
+    to,
+    strength,
+    label: `${through}/${strength} DMG`,
+    tone: ctx.realm.has(from)
       ? "ours"
-      : ctx.realm.has(loser)
+      : ctx.realm.has(to)
         ? "hostile"
         : "other",
-  };
+  });
+  if (e.amount === undefined) {
+    // Nothing moved a score, so nothing got through: both arrows are drawn
+    // spent, each at the strength its own side threw. `counter` rides only
+    // alongside a contested landing, and an arrival that met nothing never
+    // reaches here - its beat is the subjugation it caused.
+    if (e.counter === undefined) return [];
+    return [
+      arrow(source, target, e.incoming, 0),
+      arrow(target, source, e.counter, 0),
+    ];
+  }
+  // Winner at loser, which the engine already decided: it names the land
+  // that gave ground as the target, so a counter that won points BACK down
+  // the border the attack came along.
+  return [arrow(source, target, e.incoming, e.amount)];
 }
 
 export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
@@ -464,18 +522,17 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
       const label = e.amount === undefined
         ? [...name, t(" was answered in the field")]
         : [...name, t(" lands here")];
-      const resolution = resolutionOf(e, ctx);
       return [{
         kind: "map",
         polygon,
-        label,
+        label: labelUnlessCaused(e, ctx, label),
         sound: EVENT_SOUNDS[e.type],
         badges: badgeWalks(e, ctx),
         // The arrows this landing spent, taken off the board while the beat
         // that explains them is on screen rather than at the repaint behind
-        // it. They exit plain: the outcome is the resolution arrow's to say.
+        // it. They exit plain: the outcome is the resolution arrows' to say.
         retires: e.marchIds ?? [],
-        ...(resolution === undefined ? {} : { resolution }),
+        resolutions: resolutionsOf(e, ctx),
       }];
     },
   },

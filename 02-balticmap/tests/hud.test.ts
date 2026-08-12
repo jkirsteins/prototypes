@@ -1138,8 +1138,8 @@ describe("card animations", () => {
   it("does not show the drawn card in the hand until its flight has landed", () => {
     // The whole sequence, in the order the transition lifecycle runs it: the
     // board as it stood is painted, the beat flies the card, and only then
-    // does the commit repaint the hand holding it. Nothing has to be hidden
-    // for that to read right, which is why no card is marked any more.
+    // does the commit repaint the hand holding it. In that order nothing in
+    // the hand has to be hidden: the card is not on screen until it lands.
     vi.useFakeTimers();
     const { container, hud } = setup();
     const before = withHand(playing(), 0, ["grow-crops", "grow-crops"]);
@@ -1172,6 +1172,32 @@ describe("card animations", () => {
     expect(flying[0].textContent).toBe("Grow turnips");
     vi.runAllTimers();
     expect(container.querySelectorAll(".flying-card")).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  it("empties the slot the played card left for as long as it is in the air", () => {
+    // The flight is a BEAT, so it runs while the hand on screen is still the
+    // one the player clicked in - the commit that re-renders it without the
+    // card is waiting behind this step. A card cannot be both sitting in the
+    // hand and flying out of it, so the slot it left is emptied for the
+    // length of the flight and filled again when it lands.
+    vi.useFakeTimers();
+    const { container, hud } = setup();
+    let g = withHand(playing(), 0, ["grow-crops", "grow-crops"]);
+    hud.update(g);
+    const slots = [...container.querySelectorAll(".hand .card")] as HTMLElement[];
+    expect(slots).toHaveLength(2);
+    // The click is what records which slot the card left, beside the rect the
+    // flight starts from.
+    slots[1].click();
+    const before = g.log.length;
+    g = playCard(g, 1, seededRng(1));
+    presentHudBeats(hud, g, g.log.slice(before));
+    expect(container.querySelectorAll(".flying-card")).toHaveLength(1);
+    expect(slots[1].classList.contains("card-outgoing")).toBe(true);
+    expect(slots[0].classList.contains("card-outgoing")).toBe(false);
+    vi.runAllTimers();
+    expect(container.querySelectorAll(".card-outgoing")).toHaveLength(0);
     vi.useRealTimers();
   });
 

@@ -1821,28 +1821,32 @@ const beatLabelHooks: RichTextHooks = {
     applyHighlight(hoveredRegion, id ?? hoveredRegion?.faction ?? null),
 };
 
-/** The resultant force of one landing, drawn for the length of the beat and
- *  then gone: an arrow across the border it crossed, and over it what actually
- *  got through out of what was thrown.
+/** What a landing left on the border, drawn for the length of the beat and
+ *  then gone: an arrow for each force that crossed it, and over each one what
+ *  actually got through out of what was thrown.
  *
- *  Every number and every end of it comes off the beat's `ResolutionArrow`,
+ *  Every number and every end of them comes off the beat's `ResolutionArrow`s,
  *  which the classifier built from the event - never from `game.marches`,
  *  which the landing has already emptied, and never from the arrows on the
- *  board, which a clash retires two of to produce this one.
+ *  board, which a clash retires two of to produce these.
  *
- *  It points winner at loser, so a counter that won is drawn pointing BACK,
- *  which is the whole story of the clash in one shape. The label is neutral
- *  ink and reads as arithmetic - "1/3 DMG", no sign and no colour - because a
- *  signed green number beside a spear is read as a score, and the scores on
- *  this map are the badges'. */
-function flashResolution(res: ResolutionArrow, onDone: () => void): void {
-  // Redrawn on the border it crossed, alone in a layer of its own: a live
-  // rebuild landing mid-fade would take it off the screen halfway through the
-  // one thing the beat is showing. It takes the border's middle lane rather
-  // than the lane the arrow itself stood in, and that reads as the same arrow
-  // because the beat hides the living ones while it runs.
-  const drawn = renderArrowScene(ghostGroup, [{
-    id: "ghost", kind: "ghost",
+ *  A landing somebody won points winner at loser, so a counter that won is
+ *  drawn pointing BACK, which is the whole story of the clash in one shape. A
+ *  standoff hands over two, and they are drawn in ONE scene so the border's
+ *  lane packing puts them side by side exactly as the live arrows stood. The
+ *  labels are neutral ink and read as arithmetic - "1/3 DMG", no sign and no
+ *  colour - because a signed green number beside a spear is read as a score,
+ *  and the scores on this map are the badges'. */
+function flashResolutions(
+  list: readonly ResolutionArrow[], onDone: () => void,
+): void {
+  // Redrawn on the border they crossed, alone in a layer of their own: a live
+  // rebuild landing mid-fade would take them off the screen halfway through
+  // the one thing the beat is showing. One `renderArrowScene` call for the
+  // whole list, because the scene replaces the layer's children - a second
+  // call would wipe the arrow the first one drew.
+  const drawn = renderArrowScene(ghostGroup, list.map((res) => ({
+    id: res.key, kind: "ghost" as const,
     from: res.from, to: res.to, strength: res.strength,
     tone: res.tone === "ours" ? "ours" : res.tone === "hostile" ? "hostile" : "other",
     fill: res.tone === "ours"
@@ -1852,32 +1856,40 @@ function flashResolution(res: ResolutionArrow, onDone: () => void): void {
     // Near the head. What a counter took off the top is in the label's own
     // denominator, so the shaft has no second place to say it from.
     labelAt: clashFraction(res.strength, 0),
-  }], sceneCtx);
-  const g = drawn.get("ghost");
-  const poly = g?.querySelector("polygon") ?? null;
-  const label = g?.querySelector("text") ?? null;
-  if (g === undefined || poly === null || label === null) {
-    ghostGroup.replaceChildren();
-    onDone();
-    return;
+  })), sceneCtx);
+  let pending = 1;
+  const one = (): void => {
+    pending -= 1;
+    if (pending === 0) onDone();
+  };
+  for (const res of list) {
+    const g = drawn.get(res.key);
+    const poly = g?.querySelector("polygon") ?? null;
+    const label = g?.querySelector("text") ?? null;
+    if (g === undefined || poly === null || label === null) continue;
+    poly.setAttribute("stroke", "#fdfaf4");
+    poly.setAttribute("stroke-width", "1.2");
+    pending += 1;
+    runAnimation(poly, [{ opacity: 1 }, { opacity: 0 }], CLASH_FLASH_MS);
+    runAnimation(
+      label,
+      [
+        { opacity: 0, transform: "translateY(6px)" },
+        { opacity: 1, transform: "translateY(0)", offset: 0.2 },
+        { opacity: 1, transform: "translateY(0)", offset: 0.7 },
+        { opacity: 0, transform: "translateY(-8px)" },
+      ],
+      CLASH_FLASH_MS,
+      () => {
+        g.remove();
+        one();
+      },
+    );
   }
-  poly.setAttribute("stroke", "#fdfaf4");
-  poly.setAttribute("stroke-width", "1.2");
-  runAnimation(poly, [{ opacity: 1 }, { opacity: 0 }], CLASH_FLASH_MS);
-  runAnimation(
-    label,
-    [
-      { opacity: 0, transform: "translateY(6px)" },
-      { opacity: 1, transform: "translateY(0)", offset: 0.2 },
-      { opacity: 1, transform: "translateY(0)", offset: 0.7 },
-      { opacity: 0, transform: "translateY(-8px)" },
-    ],
-    CLASH_FLASH_MS,
-    () => {
-      g.remove();
-      onDone();
-    },
-  );
+  // Nothing drawn - a border the scene could not find a crossing for. The
+  // layer is cleared rather than left holding a half-built arrow.
+  if (pending === 1) ghostGroup.replaceChildren();
+  one();
 }
 
 /** The realm, plus every land at the far end of an arrow or a demand standing
@@ -1910,17 +1922,23 @@ function linkedLands(
  *
  *  What earns a beat is `PRESENTATION_RULES` and nothing here. There is one
  *  table and one audience gate, so a fact cannot be shown twice by two
- *  surfaces that each thought the other had passed on it - which is what the
- *  floats and the replay were doing to each other.
+ *  surfaces that each thought the other had passed on it.
  *
  *  Everything it reads comes off the transition rather than off the displayed
  *  state: the events are the ones this move appended, and the realm, the
  *  arrows still standing and the standings walk are all read from the state
- *  those events land in - which is not the one under the map yet. */
+ *  those events land in - which is not the one under the map yet.
+ *
+ *  It asks nothing about the phase the move ENDS in. The play that wins or
+ *  loses the run is the most dramatic card in it, and a phase gate here was
+ *  swallowing that one card's flight, its sound and the score moves beside
+ *  it: the card vanished from the hand and the postmortem rose over a board
+ *  nobody had been shown. Whether a beat still has a board to draw on is
+ *  `inPlay()`'s question, asked in `runMapBeat` at the moment the step runs. */
 function queueBeats(t: Transition): void {
   const state = t.next;
   const human = state.players[localSeat];
-  if (human === undefined || state.phase !== "playing") return;
+  if (human === undefined) return;
   const { ctx } = hud.noticeWalk(state, t.events);
   if (ctx === null) return;
   const realm = fullRealmOf(human.factionId, state.overlords, state.incorporated);
@@ -1943,7 +1961,9 @@ function queueBeats(t: Transition): void {
       hud.runHudBeat(beat);
       continue;
     }
-    framesALand = true;
+    // A beat with no label frames nothing: it walks a badge where it stands
+    // and never takes the screen, so it has no claim on the arrows either.
+    if (beat.label !== null) framesALand = true;
     animations.push((done) => runMapBeat(beat, done));
   }
   // While a land is being framed, the map shows THAT land's business and no
@@ -1964,8 +1984,15 @@ function queueBeats(t: Transition): void {
 }
 
 /** One map beat: camera first, then the label, the badge walks, the
- *  resolution arrow and the sound together. `done` fires when the slowest of
- *  them reports itself finished - never on a timer. */
+ *  resolution arrows and the sound together. `done` fires when the slowest of
+ *  them reports itself finished - never on a timer.
+ *
+ *  A beat with NO label is the player's own play landing (`labelUnlessCaused`
+ *  in src/presentation.ts). They are already looking at the land they clicked,
+ *  so nothing frames it: no camera, no glow and no sentence, and the step is
+ *  over as soon as the badges have settled. What that buys is the hand: the
+ *  input gate waits on this queue, and a card the player aimed themselves must
+ *  not cost them the length of a label to read about it afterwards. */
 function runMapBeat(
   beat: Extract<Beat, { kind: "map" }>,
   done: () => void,
@@ -1980,30 +2007,42 @@ function runMapBeat(
     done();
     return;
   }
+  const framed = beat.label !== null;
   const centre = regionCenter(beat.polygon);
   const show = (): void => {
     if (beat.sound !== null) audio.cue(beat.sound);
     // Lit for the whole beat, so the label always has a land to belong to
     // even when the camera holds still - which, on the whole-map view, is
-    // most of the time.
-    const unmark = markBeatLand(beat.polygon);
-    walkBadges(beat.badges);
+    // most of the time. An unframed beat lights nothing: there is no sentence
+    // for the glow to attach to.
+    const unmark = framed ? markBeatLand(beat.polygon) : () => {};
     // `beat.retires` is not read here: the arrow layer is rebuilt wholesale on
     // every paint, so an arrow leaves at the commit behind this beat rather
     // than fading under it. It is unread rather than absent because the beat
     // states what a keyed scene will act on, and the classifier is where that
     // is decided either way.
-    let pending = beat.resolution === undefined ? 1 : 2;
+    //
+    // Everything below is started together and the beat hands back when the
+    // slowest of them reports itself finished. The count starts at one for the
+    // starter's own hold, released at the bottom, so a part that finishes
+    // synchronously cannot end the beat before the rest have begun.
+    let pending = 1;
     const one = (): void => {
       pending -= 1;
       if (pending > 0) return;
       unmark();
       done();
     };
-    if (beat.resolution !== undefined) flashResolution(beat.resolution, one);
-    showBeatLabel(beat, one);
+    const waitFor = (): (() => void) => {
+      pending += 1;
+      return one;
+    };
+    walkBadges(beat.badges, waitFor());
+    if (beat.resolutions.length > 0) flashResolutions(beat.resolutions, waitFor());
+    if (beat.label !== null) showBeatLabel(beat.label, beat.badges, waitFor());
+    one();
   };
-  if (centre !== undefined) {
+  if (framed && centre !== undefined) {
     interaction.focusOn(centre, show);
   } else {
     show();
@@ -2036,26 +2075,40 @@ function markBeatLand(polygon: string): () => void {
  *  This is the ONLY way a score change is shown on the map. There is no second
  *  mark rising off the polygon for the moves the camera did not visit: two
  *  ways of saying one thing is two gates, and the one that gets skipped is
- *  always the one with the gate on it. */
-function walkBadges(badges: BadgeWalk[]): void {
+ *  always the one with the gate on it.
+ *
+ *  `onDone` fires when every walk has settled, and it is what an unframed beat
+ *  hands back on - a badge nobody drew (a land inside a realm's outline has no
+ *  badge of its own) reports at once rather than holding the queue. */
+function walkBadges(badges: BadgeWalk[], onDone: () => void): void {
+  let pending = 1;
+  const one = (): void => {
+    pending -= 1;
+    if (pending === 0) onDone();
+  };
   for (const walk of badges) {
     if (walk.before === walk.after) continue;
-    if (walk.track === "defense") walkBadgeScore(walk);
-    else walkBadgePips(walk);
+    pending += 1;
+    if (walk.track === "defense") walkBadgeScore(walk, one);
+    else walkBadgePips(walk, one);
   }
+  one();
 }
 
-function walkBadgeScore(walk: BadgeWalk): void {
+function walkBadgeScore(walk: BadgeWalk, onDone: () => void): void {
   const el = badgeGroup.querySelector(
     `.threat-badge[data-faction="${walk.polygon}"] .badge-defense`,
   );
-  if (el === null) return;
+  if (el === null) {
+    onDone();
+    return;
+  }
   // The ceiling off the badge as drawn, so this states only what it knows.
   const max = (el.textContent ?? "").split("/")[1] ?? "";
   el.textContent = `${walk.before}/${max}`;
   runAnimation(el, [{ opacity: 1 }, { opacity: 0 }], BADGE_WALK_MS, () => {
     el.textContent = `${walk.after}/${max}`;
-    runAnimation(el, [{ opacity: 0 }, { opacity: 1 }], BADGE_WALK_MS);
+    runAnimation(el, [{ opacity: 0 }, { opacity: 1 }], BADGE_WALK_MS, onDone);
   });
 }
 
@@ -2072,45 +2125,58 @@ function walkBadgeScore(walk: BadgeWalk): void {
  *  packed left to right and inserting mid-row would shove every pip after it
  *  sideways mid-fade. The commit behind this beat redraws the row in faction
  *  order, which is where a new pip takes its place for good. */
-function walkBadgePips(walk: BadgeWalk): void {
+function walkBadgePips(walk: BadgeWalk, onDone: () => void): void {
   const badge = badgeGroup.querySelector(
     `.threat-badge[data-faction="${walk.polygon}"]`,
   );
-  if (badge === null || walk.owner === undefined) return;
+  if (badge === null || walk.owner === undefined) {
+    onDone();
+    return;
+  }
+  let pending = 1;
+  const one = (): void => {
+    pending -= 1;
+    if (pending === 0) onDone();
+  };
   const all = badge.querySelectorAll(".badge-pip");
   if (walk.after < walk.before) {
     const theirs = [...badge.querySelectorAll(
       `.badge-pip[data-owner="${walk.owner}"]`,
     )];
     for (const pip of theirs.slice(walk.after)) {
-      runAnimation(pip, [{ opacity: 1 }, { opacity: 0 }], BADGE_WALK_MS);
+      pending += 1;
+      runAnimation(pip, [{ opacity: 1 }, { opacity: 0 }], BADGE_WALK_MS, one);
     }
+    one();
     return;
   }
   for (let i = walk.before; i < walk.after; i++) {
     const pip = diseasePip(walk.owner, all.length + i - walk.before);
     badge.appendChild(pip);
-    runAnimation(pip, [{ opacity: 0 }, { opacity: 1 }], BADGE_WALK_MS);
+    pending += 1;
+    runAnimation(pip, [{ opacity: 0 }, { opacity: 1 }], BADGE_WALK_MS, one);
   }
+  one();
 }
 
 /** The label itself: segments (a card name tips its rules, a faction lights
  *  its realm - the rich-text rule, nothing here is a template literal) plus
  *  the same walked suffix the log line and the summary carry. */
 function showBeatLabel(
-  beat: Extract<Beat, { kind: "map" }>,
+  segments: Segment[],
+  badges: BadgeWalk[],
   onDone: () => void,
 ): void {
   const label = document.createElement("div");
   label.className = "replay-label";
   const text = document.createElement("span");
   text.className = "rl-text";
-  text.appendChild(renderSegments(beat.label, beatLabelHooks));
+  text.appendChild(renderSegments(segments, beatLabelHooks));
   label.appendChild(text);
   // The walked half alone: the two suffixes that come off an event rather
   // than off the walk - a tribute's coins, a war council's leadership - belong
   // to events with no map beat to carry them.
-  const impact = changeImpact(beat.badges);
+  const impact = changeImpact(badges);
   if (impact !== null) {
     const suffix = document.createElement("span");
     suffix.className = `log-change lead-${impact.tone}`;
