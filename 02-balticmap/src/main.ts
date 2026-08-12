@@ -6,13 +6,13 @@ import {
 } from "./panel";
 import { attachInteraction, DRAG_THRESHOLD_PX, landAtPoint } from "./interaction";
 // No playCard, discardCard, endTurn, transferDefense or surrender here, and
-// the root biome.json refuses them: what the LOCAL player decides goes
-// through `commitDecision`, which is the only thing in the app that knows
-// whether this screen is the host, the guest or alone. The boot and lobby
-// transitions below are not decisions and stay importable.
+// no advance, startGame, chooseBuild, chooseRules, pickFaction or
+// applyBootParams either - the root biome.json refuses all of them. What the
+// LOCAL player decides goes through `commitDecision`; every other move that
+// appends events to a `GameState` goes through `./moves`, whose wrappers are
+// shaped for `apply` so there is no local path around either door.
 import {
-  newGame, startGame, chooseBuild, chooseRules, pickFaction, advance, viewOf,
-  repeatOnlyOf, takesNoTurn, turnOpen, transferLimit,
+  newGame, viewOf, repeatOnlyOf, takesNoTurn, turnOpen, transferLimit,
   type GameEvent, type GameState,
 } from "./game";
 import { fullRealmOf, isUnheld, realmOf, realmRootOf } from "./relations";
@@ -77,7 +77,10 @@ import { createRunClock } from "./run-clock";
 import {
   createTransitionQueue, type Stages, type Transition,
 } from "./transitions";
-import { applyBootParams, parseBootParams } from "./boot-params";
+import { parseBootParams } from "./boot-params";
+import {
+  advanceMove, bootGame, chooseBuildMove, pickFactionMove, startGameMove,
+} from "./moves";
 import { REGIONS, setActiveRegion, type RegionId } from "./regions";
 import {
   forcesDiscardWhenStuck, RULES_PREFS_KEY, loadRulesPrefs,
@@ -327,7 +330,7 @@ const initialGame: GameState = (() => {
   );
   if (boot === null) return fresh;
   try {
-    return applyBootParams(fresh, boot, rng);
+    return bootGame(fresh, boot, rng);
   } catch (err) {
     console.error("boot params ignored:", err);
     return fresh;
@@ -2923,7 +2926,7 @@ function afterHumanAction(): void {
   // while the play it follows is still being shown: read off the screen it
   // would advance the board as it stood BEFORE the card, and committing that
   // would take the card back.
-  apply((g) => advance(g, rng));
+  apply(advanceMove(rng));
   if (net.role === "host") net.session?.pushUpdate();
   transitions.onIdle(() => {
     if (game().phase !== "playing" || controllerOf(game().current) === "local") {
@@ -3016,7 +3019,7 @@ function startStagingRun(): void {
   // A whole new world rather than a move played into the old one. Nobody
   // watched it happen, so it commits with nothing presented - and it drops
   // whatever the run being abandoned still had in flight, waiters and all.
-  transitions.replaceSettled(startGame(newGame(
+  transitions.replaceSettled(startGameMove(newGame(
     data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
     SITE_CAPS, DEFENSE_MAX,
   )));
@@ -3346,12 +3349,12 @@ const deckScreen = createDeckScreen(app, {
       // rivers that the start snapshot then moves, so the staged state carries
       // none and the picker's hover simply says nothing about the ground here.
       apply((g) => ({
-        ...chooseBuild(chooseRules(g, rulesPrefs), build, rng), passives: {},
+        ...chooseBuildMove(rulesPrefs, build, rng)(g), passives: {},
       }));
       return;
     }
     deckScreen.update(deckScreenView(false));
-    apply((g) => chooseBuild(chooseRules(g, rulesPrefs), build, rng));
+    apply(chooseBuildMove(rulesPrefs, build, rng));
   },
 });
 
@@ -3437,7 +3440,7 @@ function attachHostWire(wire: Wire): void {
         // The advance is made from the authoritative world, so it needs no
         // wait; the CHAIN does, because a seat may not be played until the
         // one before it has been shown.
-        apply((g) => advance(g, rng));
+        apply(advanceMove(rng));
         transitions.onIdle(() => resumeChain());
       },
       onClosed() {
@@ -3604,7 +3607,7 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // starting a local one here put the deck picker over the top of it.
       if (!netStarted() && game().phase === "main-menu") {
         deckScreen.update(deckScreenView(true));
-        apply((g) => startGame(g));
+        apply(startGameMove);
       }
       refreshWhenSettled();
     },
@@ -3971,7 +3974,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
         guestPickFaction(picked);
         return true;
       }
-      apply((g) => pickFaction(g, picked, rng));
+      apply(pickFactionMove(picked, rng));
       return true;
     }
     if (game().phase === "playing" && armed !== null) {
