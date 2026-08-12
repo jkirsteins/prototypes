@@ -202,8 +202,7 @@ has to keep.
 A snapshot can arrive while a beat is mid-flight, and that beat's completion
 callback still holds the `next` it was going to commit. Clearing the pending
 queue is not enough: the running beat finishes half a second later and commits
-a state from before the snapshot, over the snapshot. The buffer cap's collapse
-(section 8) has exactly the same shape and the same risk.
+a state from before the snapshot, over the snapshot.
 
 So `replaceSettled(state)`, in order:
 
@@ -465,21 +464,18 @@ Two rules keep the buffer honest:
   presentation UI torn down. It is settled history by definition, and a
   rejoining guest must not be made to watch what it missed, nor have a beat
   from before the snapshot commit over it a moment later.
-- The buffer is **capped at 12 transitions**, and past the cap it collapses to
-  the newest and presents nothing, exactly as a snapshot does. Twelve because a
-  transition is roughly one seat's turn and five factions act, so a round is
-  about six: the cap is two rounds behind, which is as far as a player can drift
-  and still recognise the board when the animation catches up. A player who was
-  not looking gets the current board rather than a five-minute replay, and the
-  lag cannot grow without bound.
+- **The buffer is deliberately not capped**, because the turn structure
+  already bounds it. `stepAiChain` submits a seat only from the waiter the seat
+  before it armed, and the chain stops at a human seat, so a screen is handed at
+  most one round's worth of moves before the world waits for it - about eight
+  with five acting factions. A cap was written and then deleted: at any
+  threshold above that natural bound it could not execute, and a threshold below
+  it would throw away rounds a player was entitled to watch.
 
-  This is the one place the "never skipped" rule is deliberately given up, and
-  it is given up wholesale rather than piecemeal: the collapse goes through
-  `replaceSettled`, cancellation and all, so the guest is never shown a partial
-  or out-of-order sequence and no superseded beat can commit behind it.
-  Skipping some of a round while presenting the rest would be worse than
-  skipping all of it. The cap is a number in `src/transitions.ts` with this
-  reasoning beside it.
+  If a screen ever does fall further behind than that - a stalled main thread,
+  or a turn structure that stops pacing itself - the symptom is a long input
+  lock that resolves itself rather than a correctness failure, and the remedy is
+  `replaceSettled`, which already exists and is what a rejoin uses.
 
 ## What this deletes
 
@@ -578,7 +574,7 @@ The dependencies are real and not obvious, so the plan should follow them:
    `REPLAY_RULES` and deleting the float subsystem.
 4. Keyed arrow rendering with enter and exit, plus the transient resolution
    arrow.
-5. Guest buffering and the cap.
+5. Guest buffering.
 
 Steps 1 and 2 are each shippable on their own and leave the game working.
 Step 2 is the largest and is where the behaviour actually changes; it is worth
@@ -621,7 +617,7 @@ so these can be written, since `src/main.ts` cannot be tested today.
   behind "View the map" has no march still standing on it.
 - **A snapshot during a stalled beat wins.** Release the stalled beat after the
   snapshot lands and assert the displayed state is the snapshot's, never the
-  superseded transition's `next`. The same for a buffer-cap collapse.
+  superseded transition's `next`.
 - `march-resolved` always carries `incoming`, including an uncontested landing
   and one that moved nothing, so a `ResolutionArrow` is reconstructible from
   the event alone. A 3-strength raid onto a land holding 1 reads `1/3 DMG`.
@@ -629,8 +625,7 @@ so these can be written, since `src/main.ts` cannot be tested today.
 - A clash retires two arrows and draws one resolution arrow, pointing winner
   at loser, with a strength that is neither declared damage.
 - The continuation regression of section 7.
-- A guest `snapshot` clears the buffer and presents nothing; a buffer past 12
-  collapses rather than backing up.
+- A guest `snapshot` clears the buffer and presents nothing.
 
 ## What would look wrong in play
 

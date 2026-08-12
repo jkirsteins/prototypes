@@ -40,8 +40,8 @@ export interface Stages {
   /** Stage 5. The ending, if this transition ended the run. */
   ending(t: Transition, done: () => void): void;
   /** Not a stage: what the screen must throw away when a world is REPLACED
-   *  rather than moved on from - a snapshot, a boot's history, a buffer past
-   *  the cap. Everything the superseded move put in motion or put on screen:
+   *  rather than moved on from - a snapshot, a deal, a new game. Everything
+   *  the superseded move put in motion or put on screen:
    *  the beats it queued, the modals it raised, and any key remembering which
    *  question it had already asked.
    *
@@ -106,38 +106,19 @@ export interface TransitionQueue {
    *  waiter that unconditionally re-arms never returns, the same as
    *  `AnimationQueue.onIdle`. */
   onIdle(fn: () => void): void;
-  /** How many transitions are waiting behind the running one. The cap below
-   *  measures the queue directly rather than through this, so nothing in the
+  /** How many transitions are waiting behind the running one. Nothing in the
    *  app reads it: it is here for tests, which is the only place the depth of
-   *  the backlog is a fact anybody checks. */
+   *  the backlog is a fact anybody checks.
+   *
+   *  There is deliberately no bound on that depth. What bounds it is the turn
+   *  structure: `stepAiChain` submits a seat only from the waiter the seat
+   *  before it armed, and the chain stops at a human seat, so a screen is
+   *  handed at most one round's worth of moves before the world waits for it. */
   pending(): number;
 }
 
-/** How many transitions may wait behind the running one before the buffer
- *  collapses to the newest state and presents nothing.
- *
- *  Twelve because a transition is roughly one seat's turn and five factions
- *  act, so a round is about six: the cap is two rounds behind, which is as far
- *  as a screen can drift and still recognise the board when the animation
- *  catches up. A player who was not looking gets the board as it stands rather
- *  than a five-minute replay, and the lag cannot grow without bound.
- *
- *  Every screen is capped, because every screen can be given moves faster than
- *  it can show them. The AI chain paces itself - a seat is submitted by the
- *  waiter the seat before it armed - but nothing else does: a guest receives a
- *  whole round of updates as fast as the wire delivers them, and each action a
- *  guest sends costs the HOST two submits, driven by that guest's clicks
- *  rather than by the host's own presentation.
- *
- *  The collapse goes through `replaceSettled`, cancellation and all, so a
- *  screen is never shown a partial or out-of-order sequence and no superseded
- *  beat can commit behind it. Skipping part of a round while presenting the
- *  rest would be worse than skipping all of it: this is the one place "never
- *  skipped" is deliberately given up, and it is given up wholesale. */
-const BUFFER_CAP = 12;
-
 /** The stages a non-settled transition runs, in order. A settled transition
- *  (history arriving whole - a boot, a deal, a rejoin, a buffer past the cap)
+ *  (history arriving whole - a boot, a deal, a rejoin)
  *  presents nothing and shows no round summary, since it was never watched
  *  happen - but it still runs `ask`, because a state nobody watched happen
  *  still owes its questions. A conquest carried in on a snapshot is answered
@@ -291,10 +272,8 @@ export function createTransitionQueue(
   }
 
   /** Cancels everything in flight and everything waiting, then commits
-   *  `state` as history. The public `replaceSettled` and the buffer cap are
-   *  the same act for the same reason, so they are the same code: a board
-   *  nobody watched arrive is presented in silence, and nothing from before
-   *  it may still land on top of it. */
+   *  `state` as history: a board nobody watched arrive is presented in
+   *  silence, and nothing from before it may still land on top of it. */
   function replaceWith(
     state: GameState, paint?: { animate?: boolean },
   ): void {
@@ -338,15 +317,6 @@ export function createTransitionQueue(
     submit(t) {
       latest = t.next;
       queue.push(t);
-      // Past the cap the buffer is not drained but abandoned: everything
-      // waiting is dropped and the newest state is committed in silence. A
-      // caller that owes itself a continuation therefore arms it AFTER the
-      // submit that could collapse, since the collapse drops the idle waiters
-      // along with the queue.
-      if (queue.length > BUFFER_CAP) {
-        replaceWith(t.next, { animate: false });
-        return;
-      }
       drain();
     },
     replaceSettled(state, paint) {
