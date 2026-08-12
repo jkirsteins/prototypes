@@ -470,6 +470,13 @@ function adoptSnapshot(state: GameState): void {
   // has to raise it here or nobody would, and the seat would sit locked
   // behind a question with no modal. Nothing waits on the answer: the
   // question outlived the move that asked it.
+  //
+  // The key goes first: a snapshot is a world EXCHANGE, so a key describing
+  // the world it replaced is stale by definition. It is a rejoin that makes
+  // this bite - an answer lost with the connection leaves the host still
+  // owing the same pair, and a key held over from before the drop would
+  // suppress the one question the rejoin exists to bring back.
+  transferAsked = null;
   askTransfer(() => {});
   // The commit inside that call painted whatever the screen was still busy
   // with; this is the paint that hands the board back. Same debt every live
@@ -4010,5 +4017,10 @@ if (boot !== null) {
   // turn ended, and nothing on screen says why. The `adoptSnapshot`
   // precedent, for the same reason - a state nobody watched happen still owes
   // its questions.
-  askTransfer(() => {});
+  //
+  // On the SAME condition stage 3 stands down on: a run that has ended has no
+  // board to move defenders on, and the question would be a slider reading
+  // `0 of 0` over the postmortem raised one line above - the overlay it sits
+  // on outranks the result screen.
+  if (game().phase === "playing") askTransfer(() => {});
 }
