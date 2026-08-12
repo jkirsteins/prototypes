@@ -75,6 +75,7 @@ import {
   saveBuildPref, saveRegionPref, type MetaStorage,
 } from "./meta";
 import { createRunClock } from "./run-clock";
+import { createTransitionQueue, type Stages } from "./transitions";
 import { applyBootParams, parseBootParams } from "./boot-params";
 import { REGIONS, setActiveRegion, type RegionId } from "./regions";
 import {
@@ -308,19 +309,99 @@ let buildPref: Strategy = loadBuildPref(storage);
  *  with storage on every change; a booted page's memory storage was seeded
  *  from `rules=` above, so this needs no boot special case. */
 let rulesPrefs: RuleSelections = loadRulesPrefs(storage);
-let game: GameState = newGame(
-  data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
-  SITE_CAPS, DEFENSE_MAX,
-);
-if (boot !== null) {
-  // Nothing here may render: `hud` does not exist yet, and a throw at module
-  // scope would abort evaluation and leave a blank page with no menu and no
-  // map - the one failure a test hook must not be able to cause. So the boot
-  // is state-only, and a bad param falls back to the ordinary main menu.
+/** The world this page opens on, boot params and all.
+ *
+ *  A rigged state is folded in HERE rather than submitted to the queue below,
+ *  for two reasons that both stand on their own. Nothing at module scope may
+ *  render: `hud` is declared much further down, and a throw here would abort
+ *  evaluation and leave a blank page with no menu and no map - the one
+ *  failure a test hook must not be able to cause, which is why a bad param
+ *  falls back to the ordinary main menu. And a booted state is HISTORY, never
+ *  a move this screen played into: presenting it would replay every round the
+ *  URL fast-forwarded through. */
+const initialGame: GameState = (() => {
+  const fresh = newGame(
+    data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
+    SITE_CAPS, DEFENSE_MAX,
+  );
+  if (boot === null) return fresh;
   try {
-    game = applyBootParams(game, boot, rng);
+    return applyBootParams(fresh, boot, rng);
   } catch (err) {
     console.error("boot params ignored:", err);
+    return fresh;
+  }
+})();
+
+/** The paint the next commit uses; undefined is the ordinary animating one.
+ *  `{ animate: false }` renders a state as already-settled - no card flies
+ *  and no round summary rises - which is what a whole game arriving at once
+ *  needs, or a rejoining guest is made to watch twenty turns of history.
+ *  Held in a binding because the queue hands `commit` the state alone;
+ *  `adoptSnapshot` is its only writer and clears it inside the same call. */
+let paintOpts: { animate?: boolean } | undefined;
+
+/** What a transition does to this screen.
+ *
+ *  `commit` is the whole of `refresh`, and every beat a transition owes the
+ *  player - the replay's steps, the round summary, the conquest question - is
+ *  queued from inside it, by `hud.update`. So `present` has nothing of its own
+ *  to run and reports itself finished at once: the beats are not separable
+ *  from the repaint while the HUD is what queues them, and a `present` that
+ *  waited on the animation queue would hold the commit back behind callers
+ *  that read the state the moment they have submitted it. */
+const stages: Stages = {
+  present(_t, done) {
+    done();
+  },
+  commit() {
+    refresh(paintOpts);
+  },
+  ask(_t, done) {
+    done();
+  },
+  summary(_t, done) {
+    done();
+  },
+  ending(_t, done) {
+    done();
+  },
+};
+
+const transitions = createTransitionQueue(initialGame, stages);
+
+/** The state on screen. Every reader in this file goes through here, and
+ *  nothing in this file may assign it - `src/transitions.ts` owns it, so
+ *  there is no local path that appends events without presenting them. */
+const game = (): GameState => transitions.state();
+
+/** The one way this file moves the world. `events` is the slice this call
+ *  appended, so nothing downstream has to diff cursors to learn what
+ *  happened.
+ *
+ *  For a state this screen PLAYED INTO. A state that arrived WHOLE - a deal,
+ *  a fresh run, a rejoin snapshot - is history: it goes through
+ *  `transitions.replaceSettled` (or `adoptSnapshot`), which presents nothing,
+ *  because nobody watched it happen. */
+function apply(mutate: (g: GameState) => GameState): void {
+  const before = game();
+  const next = mutate(before);
+  transitions.submit({
+    next, events: next.log.slice(before.log.length), settled: false,
+  });
+}
+
+/** Takes on a whole game that arrived at once, painted as already-settled.
+ *  The silence is the point: an animating paint flies every card in the log,
+ *  so a guest rejoining a run twenty turns old would watch all of it. */
+function adoptSnapshot(state: GameState): void {
+  paintOpts = { animate: false };
+  try {
+    transitions.replaceSettled(state);
+  } finally {
+    // `replaceSettled` commits inside that call, so the flag has done its
+    // work by here and no later commit may inherit it.
+    paintOpts = undefined;
   }
 }
 let armed: number | null = null; // hand index of the armed targeted card
@@ -439,12 +520,12 @@ function netStarted(): boolean {
  *  at. The faction beside it stays a segment wherever it is drawn. */
 function playerNameOfFaction(factionId: string): string | null {
   if (net.role === "host" && net.guestSeat !== null) {
-    return game.players[net.guestSeat]?.factionId === factionId
+    return game().players[net.guestSeat]?.factionId === factionId
       ? (net.session?.guestName() ?? "Guest")
       : null;
   }
   if (net.role === "guest") {
-    return game.players[HOST_SEAT]?.factionId === factionId
+    return game().players[HOST_SEAT]?.factionId === factionId
       ? (net.session?.hostName() ?? "Host")
       : null;
   }
@@ -452,18 +533,18 @@ function playerNameOfFaction(factionId: string): string | null {
 }
 
 function localHuman() {
-  return game.players[localSeat];
+  return game().players[localSeat];
 }
 
 function isLocalTurn(): boolean {
-  return game.phase === "playing" && game.current === localSeat;
+  return game().phase === "playing" && game().current === localSeat;
 }
 
 function inPlay(): boolean {
   return (
-    game.phase === "playing" ||
-    game.phase === "victory" ||
-    game.phase === "defeat"
+    game().phase === "playing" ||
+    game().phase === "victory" ||
+    game().phase === "defeat"
   );
 }
 
@@ -476,7 +557,7 @@ function inPlay(): boolean {
 function humanPlayableSet() {
   const human = localHuman();
   return playableSet(
-    viewOf(game), human.factionId, human.hand, { repeatOnly: repeatOnlyOf(game) },
+    viewOf(game()), human.factionId, human.hand, { repeatOnly: repeatOnlyOf(game()) },
   );
 }
 
@@ -486,8 +567,8 @@ function humanBlockReason(cardId: string) {
   const human = localHuman();
   if (!human) return null;
   return handBlockReason(
-    viewOf(game), human.factionId, human.hand, cardId,
-    { repeatOnly: repeatOnlyOf(game) },
+    viewOf(game()), human.factionId, human.hand, cardId,
+    { repeatOnly: repeatOnlyOf(game()) },
   );
 }
 
@@ -517,7 +598,7 @@ function localTransferPending(): boolean {
  *  turn can take more than one land - see GameState.pendingTransfers. */
 function localPendingTransfers(): { from: string; to: string }[] | undefined {
   const me = localHuman()?.factionId;
-  return me === undefined ? undefined : game.pendingTransfers[me];
+  return me === undefined ? undefined : game().pendingTransfers[me];
 }
 
 function askTransferIfPending(): void {
@@ -546,11 +627,11 @@ function askTransferIfPending(): void {
 function raiseTransferModal(
   pending: { from: string; to: string }, onAnswered?: () => void,
 ): void {
-  const v = viewOf(game);
+  const v = viewOf(game());
   hud.showTransferOffer(
     {
       ...pending,
-      max: transferLimit(game, pending.from, pending.to),
+      max: transferLimit(game(), pending.from, pending.to),
       fromHas: defenseOf(v, pending.from),
       fromMax: defenseMaxOf(v, pending.from),
       toHas: defenseOf(v, pending.to),
@@ -574,8 +655,8 @@ function raiseTransferModal(
 function discardMode(): boolean {
   return (
     isLocalTurn() &&
-    !game.playedThisTurn &&
-    forcesDiscardWhenStuck(game.rules) &&
+    !game().playedThisTurn &&
+    forcesDiscardWhenStuck(game().rules) &&
     humanPlayableSet().mode === "discard"
   );
 }
@@ -589,7 +670,7 @@ function allegianceOf(
   humanFaction: string | null,
 ): Segment[] | null {
   return relationshipLine(
-    polygonFaction, humanFaction, game.overlords, game.incorporated,
+    polygonFaction, humanFaction, game().overlords, game().incorporated,
   );
 }
 
@@ -602,7 +683,7 @@ const richTextNames: NameLookup = {
 };
 
 function effectiveFaction(f: string): string {
-  return game.incorporated[f] ?? f;
+  return game().incorporated[f] ?? f;
 }
 
 /** The faction whose COLOUR a land is painted in.
@@ -623,9 +704,9 @@ function effectiveFaction(f: string): string {
  *  middle itself was painted somebody else's. */
 function fillFactionFor(factionId: string): string {
   let at = effectiveFaction(factionId);
-  for (let step = 0; step < game.players.length; step++) {
-    const lord = game.overlords.get(at);
-    if (lord === undefined || hasRuler(game.rulers, at)) break;
+  for (let step = 0; step < game().players.length; step++) {
+    const lord = game().overlords.get(at);
+    if (lord === undefined || hasRuler(game().rulers, at)) break;
     at = effectiveFaction(lord);
   }
   return at;
@@ -639,18 +720,18 @@ const UNOWNED_FILL = "#c3bfb6";
 
 function applyOwnership(): void {
   const human = localHuman();
-  const humanOverlord = human ? game.overlords.get(human.factionId) : undefined;
+  const humanOverlord = human ? game().overlords.get(human.factionId) : undefined;
   // `fullRealmOf`, the same count the scoreboard and the win condition apply. A
   // land a vassal annexed already sits inside the realm outline and wears the
   // stripes; shading it as somebody else's left one land of your own total
   // greyed out and outside the halo.
   const humanRealm =
     inPlay() && human
-      ? fullRealmOf(human.factionId, game.overlords, game.incorporated)
+      ? fullRealmOf(human.factionId, game().overlords, game().incorporated)
       : new Set<string>();
   const overlordRealm =
     inPlay() && humanOverlord !== undefined
-      ? fullRealmOf(humanOverlord, game.overlords, game.incorporated)
+      ? fullRealmOf(humanOverlord, game().overlords, game().incorporated)
       : new Set<string>();
   for (const [id, el] of regionPaths) {
     const region = regionById.get(id)!;
@@ -668,9 +749,9 @@ function applyOwnership(): void {
     // around a hole where its capital sits. Grey means unclaimed ground, and a
     // land four others answer to is not that.
     const realmSize =
-      fullRealmOf(region.faction, game.overlords, game.incorporated).size;
+      fullRealmOf(region.faction, game().overlords, game().incorporated).size;
     const grey =
-      inPlay() && !playsTurns(game.passives, region.faction) && realmSize === 1;
+      inPlay() && !playsTurns(game().passives, region.faction) && realmSize === 1;
     el.setAttribute(
       "fill", grey ? UNOWNED_FILL : factionById.get(effective)!.color,
     );
@@ -687,8 +768,8 @@ function applyOwnership(): void {
       "in-play",
       inPlay() &&
         playsTurns(
-          game.passives,
-          realmRootOf(region.faction, game.overlords, game.incorporated),
+          game().passives,
+          realmRootOf(region.faction, game().overlords, game().incorporated),
         ),
     );
     el.classList.toggle("owned", owned);
@@ -701,7 +782,7 @@ function applyOwnership(): void {
         "--owned-stroke",
         darkenColor(
           factionById.get(
-            realmRootOf(region.faction, game.overlords, game.incorporated),
+            realmRootOf(region.faction, game().overlords, game().incorporated),
           )!.color,
           0.55,
         ),
@@ -721,12 +802,12 @@ function renderVassalOverlay(): void {
   vassalOverlayGroup.replaceChildren();
   vassalStripes.length = 0;
   if (!inPlay()) return;
-  for (const [vassal, lord] of game.overlords) {
+  for (const [vassal, lord] of game().overlords) {
     // A leaderless vassal wears no stripes: `fillFactionFor` has already
     // painted it its lord's colour outright, and striping a land that is
     // already the lord's hue with the lord's hue says nothing.
-    if (!hasRuler(game.rulers, vassal)) continue;
-    for (const factionId of realmOf(vassal, game.overlords, game.incorporated)) {
+    if (!hasRuler(game().rulers, vassal)) continue;
+    for (const factionId of realmOf(vassal, game().overlords, game().incorporated)) {
       const regionId = regionByFaction.get(factionId);
       const region = regionId !== undefined ? regionById.get(regionId) : undefined;
       if (!region) continue;
@@ -782,7 +863,7 @@ function applyPeopleLabels(): void {
       inPlay() &&
       data.factions
         .filter((f) => f.ethnicity === peopleId)
-        .every((f) => f.id in game.incorporated);
+        .every((f) => f.id in game().incorporated);
     for (const label of labels) label.classList.toggle("hidden", hidden);
   }
 }
@@ -823,8 +904,8 @@ function renderRealmUnions(): void {
   const live = inPlay() && armed === null;
   const byRoot = new Map<string, string[]>();
   if (live) {
-    for (const factionId of game.factionIds) {
-      const root = realmRootOf(factionId, game.overlords, game.incorporated);
+    for (const factionId of game().factionIds) {
+      const root = realmRootOf(factionId, game().overlords, game().incorporated);
       const members = byRoot.get(root) ?? [];
       members.push(factionId);
       byRoot.set(root, members);
@@ -1030,10 +1111,10 @@ function floatFor(e: GameEvent): { polygon: string; delta: number }[] {
  *  on the map that says it moved at all, which is what a heal for 1 needs to
  *  be visible. */
 function floatScoreMarks(): void {
-  if (game.log.length < floatedEvents) floatedEvents = 0;
+  if (game().log.length < floatedEvents) floatedEvents = 0;
   const base = floatedEvents;
-  const fresh = game.log.slice(floatedEvents);
-  floatedEvents = game.log.length;
+  const fresh = game().log.slice(floatedEvents);
+  floatedEvents = game().log.length;
   // Consumed whether or not this paint floats anything, so a stale set can
   // never skip a mark of some later game's coincidentally-numbered event.
   const replayed = replayedIndices;
@@ -1097,17 +1178,17 @@ function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
   const human = localHuman();
   if (!inPlay() || !human) return;
-  const v = viewOf(game);
+  const v = viewOf(game());
   const targets = targetingLive() ? new Set(armedTargets()) : null;
-  for (const factionId of game.factionIds) {
+  for (const factionId of game().factionIds) {
     // An annexed polygon still has a defense score a card can hit, so it keeps
     // its badge while targeting narrows the map to it - but at rest it is part
     // of a realm, and a full-strength badge on every dead land buries the live
     // ones.
     const annexedAndWhole =
-      factionId in game.incorporated &&
+      factionId in game().incorporated &&
       defenseOf(v, factionId) >= defenseMaxOf(v, factionId) &&
-      game.disease[factionId] === undefined;
+      game().disease[factionId] === undefined;
     // Aiming does NOT take the numbers away. The badges used to narrow to the
     // legal targets, which meant that while picking the land a raid marches
     // OUT of, every land it could be sent AT lost the one number that decides
@@ -1141,19 +1222,19 @@ function renderThreatBadges(): void {
     text.appendChild(score);
     // A faction under its post-escape respite cannot be subjugated even at an
     // open gate: the countdown says for how long.
-    const respite = respiteExpiry(game, factionId);
+    const respite = respiteExpiry(game(), factionId);
     if (respite !== undefined) {
-      appendCountdown(text, "R", respite - game.turn, "lead-respite");
+      appendCountdown(text, "R", respite - game().turn, "lead-respite");
     }
     g.appendChild(text);
 
     // The disease pips: one circle per stack, in the owner's colour, in
     // faction order so a seeded run draws deterministically. Public state,
     // per the design - counts live in the hover's disease block.
-    const owners = game.disease[factionId];
+    const owners = game().disease[factionId];
     if (owners !== undefined) {
       let pip = 0;
-      for (const owner of game.factionIds) {
+      for (const owner of game().factionIds) {
         const stacks = owners[owner] ?? 0;
         for (let s = 0; s < stacks; s++) {
           const dot = document.createElementNS(
@@ -1174,7 +1255,7 @@ function renderThreatBadges(): void {
     // that can still be sent. Capped at ARMY_PIPS_SHOWN and then counted,
     // because Create army is uncapped and a land holding six would otherwise
     // grow a badge wider than the land it sits on.
-    const stationed = armiesOn(game.armies, factionId, armyCapOn(v, factionId));
+    const stationed = armiesOn(game().armies, factionId, armyCapOn(v, factionId));
     const free = freeArmiesFor(v, factionId);
     if (stationed > 0) {
       const shown = Math.min(stationed, ARMY_PIPS_SHOWN);
@@ -1299,10 +1380,10 @@ const sceneCtx: SceneCtx = {
  *  A seat whose turn is happening NOW is a full lap away from its next one,
  *  which is why 0 reads as `players.length` rather than as "immediately". */
 function turnsUntilActs(factionId: string): number {
-  const n = game.players.length;
-  const seat = game.players.findIndex((p) => p.factionId === factionId);
+  const n = game().players.length;
+  const seat = game().players.findIndex((p) => p.factionId === factionId);
   if (seat < 0) return Number.POSITIVE_INFINITY;
-  const steps = (seat - game.current + n) % n;
+  const steps = (seat - game().current + n) % n;
   return steps === 0 ? n : steps;
 }
 
@@ -1326,13 +1407,13 @@ function landingOrder(): Map<string, { order: number; clash: boolean }> {
   const pending: {
     key: string; to: string; from: string; axis: string; at: number;
   }[] = [];
-  for (const [key, m] of Object.entries(game.marches)) {
+  for (const [key, m] of Object.entries(game().marches)) {
     pending.push({
       key, to: m.to, from: m.from, axis: axisOf(m.from, m.to),
       at: m.expiry * 100 + turnsUntilActs(m.actor),
     });
   }
-  for (const [key, c] of Object.entries(game.claims)) {
+  for (const [key, c] of Object.entries(game().claims)) {
     pending.push({
       key: `claim:${key}`, to: c.to, from: c.from, axis: axisOf(c.from, c.to),
       at: c.expiry * 100 + turnsUntilActs(c.actor),
@@ -1347,10 +1428,10 @@ function landingOrder(): Map<string, { order: number; clash: boolean }> {
   // back, the leftover meets nobody and is not in a clash at all. Marking it
   // as one promised the player an answer that was never going to arrive.
   const keyOfMarch = new Map<March, string>(
-    Object.entries(game.marches).map(([key, m]) => [m, key]),
+    Object.entries(game().marches).map(([key, m]) => [m, key]),
   );
   const clashing = new Set<string>();
-  for (const axis of axesOf(game.marches)) {
+  for (const axis of axesOf(game().marches)) {
     for (let i = 0; i < Math.min(axis.fromA.length, axis.fromB.length); i++) {
       for (const m of [axis.fromA[i], axis.fromB[i]]) {
         const key = keyOfMarch.get(m);
@@ -1415,7 +1496,7 @@ function updateAimPreview(clientX: number, clientY: number): void {
   const faction = regionId === null ? undefined : factionByRegion.get(regionId);
   const legal =
     faction !== undefined &&
-    marchTargetsFrom(viewOf(game), human.factionId, armedSource).includes(faction)
+    marchTargetsFrom(viewOf(game()), human.factionId, armedSource).includes(faction)
       ? faction
       : null;
   aiming = {
@@ -1437,7 +1518,7 @@ function aimSpec(): ArrowSpec | null {
   const armedCard = armed === null || !human ? undefined : human.hand[armed];
   const strength = armedCard === undefined
     ? 1
-    : attackDamageFor(viewOf(game), human.factionId, armedCard).damage;
+    : attackDamageFor(viewOf(game()), human.factionId, armedCard).damage;
   return {
     id: "aim",
     kind: "aim",
@@ -1500,10 +1581,10 @@ function renderMarchArrows(): void {
   // land". `.aiming` in src/style.css is the pointer half.
   const targeting = targetingLive();
   arrowGroup.classList.toggle("aiming", targeting);
-  const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
+  const realm = fullRealmOf(human.factionId, game().overlords, game().incorporated);
   const order = landingOrder();
   const specs: ArrowSpec[] = [];
-  for (const [key, m] of Object.entries(game.marches)) {
+  for (const [key, m] of Object.entries(game().marches)) {
     const against = realm.has(m.to);
     const ours = realm.has(m.from);
     specs.push({
@@ -1533,7 +1614,7 @@ function renderMarchArrows(): void {
   // the spears and is drawn over them wherever they meet. A demand of fealty
   // decides who owns a land; a raid decides a number on it, and the more
   // consequential of the two must not end up under the other.
-  for (const [key, claim] of Object.entries(game.claims)) {
+  for (const [key, claim] of Object.entries(game().claims)) {
     const against = realm.has(claim.to);
     const ours = realm.has(claim.from);
     // Says so when it is already going to come to nothing. The demand rides
@@ -1541,7 +1622,7 @@ function renderMarchArrows(): void {
     // the ordinary answer to one - so an arrow that still reads as a threat
     // after it has been answered is the map lying about the one thing it is
     // for.
-    const doomed = !claimWouldLand(viewOf(game), claim.actor, claim.to);
+    const doomed = !claimWouldLand(viewOf(game()), claim.actor, claim.to);
     specs.push({
       id: `claim:${key}`, kind: "claim", from: claim.from, to: claim.to,
       // A claim has no strength of its own: it is one declared thing, and the
@@ -1573,7 +1654,7 @@ function renderMarchArrows(): void {
   // Never while an aim is live: the arrow is on screen to be READ then, and an
   // arrow that is also a button would answer a click the player meant for the
   // land under it.
-  for (const [key, m] of Object.entries(game.marches)) {
+  for (const [key, m] of Object.entries(game().marches)) {
     const g = drawn.get(key);
     if (g === undefined) continue;
     const counterIndex = targeting ? null : counterFor(m);
@@ -1597,16 +1678,16 @@ function renderMarchArrows(): void {
  *  and would not meet this one at all. */
 function counterFor(m: March): number | null {
   const human = localHuman();
-  if (!human || !isLocalTurn() || !turnOpen(game) || resolving) return null;
+  if (!human || !isLocalTurn() || !turnOpen(game()) || resolving) return null;
   if (pendingHarvest !== null || discardMode()) return null;
-  const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
+  const realm = fullRealmOf(human.factionId, game().overlords, game().incorporated);
   if (!realm.has(m.to) || realm.has(m.from)) return null;
-  const v = viewOf(game);
+  const v = viewOf(game());
   if (!marchSourcesAgainst(v, human.factionId, m.from).includes(m.to)) return null;
   // The same narrowed set the hand renders from, so a turn re-opened by a raid
   // offers the counter-click and a turn spent for good does not.
   const set = playableSet(
-    v, human.factionId, human.hand, { repeatOnly: repeatOnlyOf(game) },
+    v, human.factionId, human.hand, { repeatOnly: repeatOnlyOf(game()) },
   );
   if (set.mode !== "play") return null;
   // What the card IS, never its name: Strong raid counters exactly as Raid
@@ -1786,11 +1867,11 @@ function flashMarchResolution(
  *  being replayed, and it comes in through the realm gate on its own. */
 function linkedLands(realm: ReadonlySet<string>): Set<string> {
   const linked = new Set(realm);
-  for (const march of Object.values(game.marches)) {
+  for (const march of Object.values(game().marches)) {
     if (realm.has(march.from) || realm.has(march.actor)) linked.add(march.to);
     if (realm.has(march.to)) linked.add(march.from);
   }
-  for (const claim of Object.values(game.claims)) {
+  for (const claim of Object.values(game().claims)) {
     if (realm.has(claim.actor)) linked.add(claim.to);
     if (realm.has(claim.to)) linked.add(claim.actor);
   }
@@ -1804,12 +1885,12 @@ function queueReplay(
 ): number {
   replayedIndices = new Set();
   const human = localHuman();
-  if (!human || game.phase !== "playing") return 0;
-  const realm = fullRealmOf(human.factionId, game.overlords, game.incorporated);
+  if (!human || game().phase !== "playing") return 0;
+  const realm = fullRealmOf(human.factionId, game().overlords, game().incorporated);
   const steps = buildReplaySteps(fresh, {
     localPlayerId: human.id, realm, linked: linkedLands(realm), ctx,
   });
-  const base = game.log.length - fresh.length;
+  const base = game().log.length - fresh.length;
   // The conquests this player still owes an answer about, in the order the
   // lands fell. Each is raised by the step that shows its land being taken,
   // so the question follows the picture of the thing it is asking about.
@@ -1866,7 +1947,7 @@ function queueTransferQuestion(pending: { from: string; to: string }): void {
     // The board may have moved since this was queued: the run ended, or the
     // question was answered by the other seat's copy arriving. Nothing owed.
     const still = localPendingTransfers()?.some((q) => q.to === pending.to);
-    if (still !== true || game.phase !== "playing") {
+    if (still !== true || game().phase !== "playing") {
       done();
       return;
     }
@@ -1886,7 +1967,7 @@ function runReplayStep(
   // The run may have ended, or a new game begun, while this step waited its
   // turn. The teardown paths clear the queue, but a step already running when
   // they do must not draw over the wrong screen.
-  if (game.phase !== "playing") {
+  if (game().phase !== "playing") {
     done();
     return;
   }
@@ -2063,7 +2144,7 @@ function hoverLines(region: Region): TooltipLine[] {
   // hover with no seat to answer from, so it gets the land's standing facts
   // and nothing that needs a human player to exist. Everything below this
   // point does.
-  if (game.phase === "pick-faction") {
+  if (game().phase === "pick-faction") {
     // What this land already stands in, on a map that may open with realms on
     // it. Two different sentences and they are not interchangeable: who holds
     // this land, which is why the map greys it and the click does nothing; and
@@ -2074,9 +2155,9 @@ function hoverLines(region: Region): TooltipLine[] {
     const segLine = (segs: Segment[]): void => {
       lines.push({ text: plainText(segs, richTextNames), segments: segs });
     };
-    if (isUnheld(region.faction, game.overlords, game.incorporated)) {
+    if (isUnheld(region.faction, game().overlords, game().incorporated)) {
       const holds = realmHoldingLine(
-        region.faction, game.overlords, game.incorporated,
+        region.faction, game().overlords, game().incorporated,
       );
       if (holds !== null) segLine(holds);
     } else {
@@ -2084,7 +2165,7 @@ function hoverLines(region: Region): TooltipLine[] {
       if (sworn !== null) segLine(sworn);
       lines.push({ text: "Begin only in a land that answers to nobody" });
     }
-    lines.push(...landFactsLines(viewOf(game), region.faction));
+    lines.push(...landFactsLines(viewOf(game()), region.faction));
   }
   if (!inPlay() || !human) return lines;
   const held = allegianceOf(region.faction, human.factionId);
@@ -2093,14 +2174,14 @@ function hoverLines(region: Region): TooltipLine[] {
   }
   // The same resolution `interceptClick` uses, or the lines below would answer
   // for a different faction than the click aims at on an absorbed land.
-  const f = politicalFactionForPolygon(region.faction, game.incorporated);
+  const f = politicalFactionForPolygon(region.faction, game().incorporated);
   // The respite note: part of what the badge implies - "this faction can be
   // taken at the gate" - is temporarily false, and this says until when. On
   // the human's own land it is the one surface carrying the fact at all.
-  lines.push(...respiteLines(game, human.factionId, f));
+  lines.push(...respiteLines(game(), human.factionId, f));
   // `region.faction`, not the resolved `f`: settlements belong to the land,
   // so an absorbed land must report its own count and not its absorber's.
-  lines.push(...settlementBlock(viewOf(game), region.faction));
+  lines.push(...settlementBlock(viewOf(game()), region.faction));
   // An armed card's preview aims at the POLYGON for attack, disease and
   // inward cards, the resolved faction for the political ones - the same id
   // the click will commit, through the same predicate.
@@ -2110,7 +2191,7 @@ function hoverLines(region: Region): TooltipLine[] {
       ? region.faction
       : f;
     lines.push(...targetImpactLines(
-      viewOf(game), human.factionId, cardId, aim,
+      viewOf(game()), human.factionId, cardId, aim,
     ));
   }
   // The badge's numbers itemised: the score over its max and the two gate
@@ -2124,17 +2205,17 @@ function hoverLines(region: Region): TooltipLine[] {
   // its independence three lines above "Nobody leads this land", on every land
   // a conquest had ever taken.
   lines.push(...defenseBreakdown(
-    viewOf(game), region.faction,
-    game.overlords.has(region.faction) && !takesNoTurn(game, region.faction),
+    viewOf(game()), region.faction,
+    game().overlords.has(region.faction) && !takesNoTurn(game(), region.faction),
   ));
   lines.push(...diseaseBreakdown(
-    viewOf(game), region.faction, (id) => factionById.get(id)?.name ?? id,
+    viewOf(game()), region.faction, (id) => factionById.get(id)?.name ?? id,
   ));
   // Who leads this land and what they have gathered. A vacant seat is the
   // whole reason a land takes no turn, so it is stated rather than left to be
   // inferred from the land never doing anything.
-  const v = viewOf(game);
-  const leader = rulerNameOf(game.rulers, region.faction);
+  const v = viewOf(game());
+  const leader = rulerNameOf(game().rulers, region.faction);
   lines.push({ text: "Leader", blockStart: true });
   if (leader === null) {
     lines.push({ text: "Nobody leads this land" });
@@ -2159,7 +2240,7 @@ function hoverLines(region: Region): TooltipLine[] {
   // The land's standing properties, last: they are true of the ground whoever
   // holds it, so they read as the footnote to everything above rather than as
   // part of this turn's arithmetic.
-  lines.push(...passiveLines(game.passives, region.faction));
+  lines.push(...passiveLines(game().passives, region.faction));
   return lines;
 }
 
@@ -2211,7 +2292,7 @@ function armedTargets(): string[] {
   if (!human) return [];
   if (armed === null) return [];
   const cardId = human.hand[armed];
-  const v = viewOf(game);
+  const v = viewOf(game());
   if (needsSource(cardId)) {
     return armedSource === null
       ? marchSourcesFor(v, human.factionId)
@@ -2230,20 +2311,20 @@ function applyTargeting(): void {
   // The lands a pick may not land on. Reuses the armed-card "you cannot aim
   // here" treatment rather than inventing a second vocabulary for the same
   // sentence - all of them mean "this click will do nothing".
-  const picking = game.phase === "pick-faction";
+  const picking = game().phase === "pick-faction";
   const takenByHost = picking && net.role === "guest" ? net.taken : null;
   for (const [id, el] of regionPaths) {
     const f = factionByRegion.get(id)!;
     // A polygon card lights the polygon itself; a faction card lights every
     // land of the target's realm through the political resolution.
-    const aim = polygonAim ? f : politicalFactionForPolygon(f, game.incorporated);
+    const aim = polygonAim ? f : politicalFactionForPolygon(f, game().incorporated);
     const valid = live && targets.has(aim);
     // A land already inside a realm has no seat to offer: `pickFaction` refuses
     // it, and a refusal the map did not telegraph reads as the map being
     // broken. The same predicate the engine uses, so the grey and the refusal
     // cannot disagree about which lands they mean.
     const sworn =
-      picking && !isUnheld(f, game.overlords, game.incorporated);
+      picking && !isUnheld(f, game().overlords, game().incorporated);
     el.classList.toggle("target-valid", valid);
     el.classList.toggle(
       "target-invalid", (live && !valid) || f === takenByHost || sworn,
@@ -2269,7 +2350,7 @@ function applyTargeting(): void {
 function pinnedFactionId(): string | null {
   return pinnedRegion === null
     ? null
-    : politicalFactionForPolygon(pinnedRegion.faction, game.incorporated);
+    : politicalFactionForPolygon(pinnedRegion.faction, game().incorporated);
 }
 
 /** The one place a faction highlight is applied. The map halo and the activity
@@ -2311,8 +2392,8 @@ function applyRealmHover(region: Region | null): void {
       ? pinned
         ? new Set([region.faction])
         : fullRealmOf(
-            realmRootOf(region.faction, game.overlords, game.incorporated),
-            game.overlords, game.incorporated,
+            realmRootOf(region.faction, game().overlords, game().incorporated),
+            game().overlords, game().incorporated,
           )
       : new Set<string>();
   // Everything else recedes while the pin holds. Without it the pin barely
@@ -2325,7 +2406,7 @@ function applyRealmHover(region: Region | null): void {
   // live, for the same reason the realm halo is.
   const holder =
     region && inPlay() && !targetingLive()
-      ? holderOf(region.faction, game.overlords, game.incorporated)
+      ? holderOf(region.faction, game().overlords, game().incorporated)
       : null;
   for (const [id, el] of regionPaths) {
     const f = factionByRegion.get(id)!;
@@ -2336,8 +2417,8 @@ function applyRealmHover(region: Region | null): void {
       "vassal-hover",
       region !== null &&
         id === region.id &&
-        game.overlords.has(region.faction) &&
-        !(region.faction in game.incorporated),
+        game().overlords.has(region.faction) &&
+        !(region.faction in game().incorporated),
     );
   }
   renderRealmHoverHalo(members);
@@ -2542,7 +2623,7 @@ function openHarvestModal(index: number): void {
 function commitHarvest(index: number, choice: HarvestChoice): void {
   hud.hideHarvestUi();
   pendingHarvest = null;
-  const before = game.log.length;
+  const before = game().log.length;
   const result = decide({
     kind: "harvest", cardIndex: index,
     cardId: localHuman().hand[index], choice,
@@ -2563,7 +2644,7 @@ function commitHarvest(index: number, choice: HarvestChoice): void {
  *  to be: the count is the state, and the map's own authoring order is a stable
  *  answer to "where does the next one go". */
 function revealFoundedSettlements(): void {
-  for (const [factionId, founded] of Object.entries(game.settlements)) {
+  for (const [factionId, founded] of Object.entries(game().settlements)) {
     for (const site of (sitesByFaction.get(factionId) ?? []).slice(0, founded)) {
       revealSettlement(site);
     }
@@ -2577,9 +2658,9 @@ function revealFoundedSettlements(): void {
  *  the same board either way, and every rules question still asks `game`. */
 function viewState(): GameState {
   if (net.role === "guest" && net.faction !== null) {
-    return { ...game, phase: guestPhaseView(game, net.faction) };
+    return { ...game(), phase: guestPhaseView(game(), net.faction) };
   }
-  return game;
+  return game();
 }
 
 /** `opts` is handed straight to `hud.update`, so `{ animate: false }` paints
@@ -2601,7 +2682,7 @@ function cueEndingIfAny(): void {
   if (phase === "victory") {
     cuedEndingPhase = phase;
     audio.cue(
-      game.log.some((e) => e.type === "unified") ? "fanfare-grand" : "victory",
+      game().log.some((e) => e.type === "unified") ? "fanfare-grand" : "victory",
     );
   } else if (phase === "defeat") {
     cuedEndingPhase = phase;
@@ -2614,7 +2695,7 @@ function cueEndingIfAny(): void {
 function refresh(opts?: { animate?: boolean }): void {
   // First, before anything renders: the ending overlay this repaint may be
   // about to raise reads a total that has to have stopped moving.
-  runClock.sample(game.phase);
+  runClock.sample(game().phase);
   // Then the ending's own sound, off the same settled phase.
   cueEndingIfAny();
   applyOwnership();
@@ -2646,7 +2727,7 @@ function refresh(opts?: { animate?: boolean }): void {
   // session, or one whose lobby is still being filled in - the status line
   // is the only place either of those speaks.
   netPanel.setVisible(
-    game.phase === "main-menu" ||
+    game().phase === "main-menu" ||
       (net.role !== "solo" && (net.session === null || !netStarted())),
   );
   applyHighlight(hoveredRegion, hoveredRegion?.faction ?? null);
@@ -2689,15 +2770,17 @@ function resumeChain(): void {
 }
 
 function stepAiChain(taken: number): void {
-  const next = taken > MAX_AI_TURNS ? null : oneAiSeat(game, rng, seats());
+  const next = taken > MAX_AI_TURNS ? null : oneAiSeat(game(), rng, seats());
   if (next === null) {
     if (taken > MAX_AI_TURNS) console.error("AI chain stalled - breaking");
     finishChain();
     return;
   }
-  game = next;
+  // One seat's whole turn, so the transition carries exactly what that seat
+  // appended. The push follows the commit because the wire is fed from the
+  // committed state, which is the same state this screen has just painted.
+  apply(() => next);
   if (net.role === "host") net.session?.pushUpdate();
-  refresh();
   // Through a macrotask, so a seat whose turn animated nothing does not
   // recurse into the next one on the same stack - a long chain of quiet
   // seats would otherwise nest as deep as it is long.
@@ -2708,7 +2791,7 @@ function finishChain(): void {
   // A remote seat holding the turn keeps input locked here, because the round
   // has not finished - it has moved elsewhere.
   resolving =
-    game.phase === "playing" && controllerOf(game.current) === "remote";
+    game().phase === "playing" && controllerOf(game().current) === "remote";
   refresh();
   updateWaitingStatus();
 }
@@ -2717,13 +2800,16 @@ function afterHumanAction(): void {
   // `advance` refuses while the turn is still open - a card that re-opened it
   // for another copy of itself has not finished - so this is safe to call from
   // every committed action rather than only from the ones that end a turn.
-  game = advance(game, rng);
+  //
+  // Input locks BEFORE the world moves, because the commit is a repaint: a
+  // paint that still reported the turn open would draw a live hand over a
+  // turn that has already been handed on.
+  resolving = true;
+  apply((g) => advance(g, rng));
   if (net.role === "host") net.session?.pushUpdate();
-  if (game.phase !== "playing" || controllerOf(game.current) === "local") {
+  if (game().phase !== "playing" || controllerOf(game().current) === "local") {
     // No AI chain behind this, so the replay is the only thing left to wait
     // for - the next seat is the player's own and its marches just landed.
-    resolving = true;
-    refresh();
     animations.onIdle(() => {
       resolving = false;
       refresh();
@@ -2731,8 +2817,6 @@ function afterHumanAction(): void {
     });
     return;
   }
-  resolving = true;
-  refresh();
   hud.afterPlayAnimation(() => {
     resumeChain();
   });
@@ -2744,11 +2828,11 @@ function afterHumanAction(): void {
  *  and the activity log already says what each of them did. */
 function updateWaitingStatus(): void {
   const remote =
-    game.phase === "playing" && controllerOf(game.current) === "remote";
+    game().phase === "playing" && controllerOf(game().current) === "remote";
   if (remote && net.role === "host") {
     // The faction alone: the name beside it comes from `playerNameOf`, the
     // same hook that names it in the log and the scoreboard.
-    hud.setWaiting(game.players[game.current].factionId);
+    hud.setWaiting(game().players[game().current].factionId);
     return;
   }
   hud.setWaiting(null);
@@ -2761,7 +2845,7 @@ function updateWaitingStatus(): void {
 function revealHarvestGains(since: number): void {
   const human = localHuman();
   if (!human) return;
-  const gained = game.log
+  const gained = game().log
     .slice(since)
     .filter((e) => e.type === "harvest-picked" && e.playerId === human.id)
     .map((e) => e.cardId)
@@ -2804,10 +2888,13 @@ function startStagingRun(): void {
   // once the run has ended), but a stray call must not leave a stale
   // continuation armed against the fresh game that follows.
   resolving = false;
-  game = startGame(newGame(
+  // A whole new world rather than a move played into the old one. Nobody
+  // watched it happen, so it commits with nothing presented - and it drops
+  // whatever the run being abandoned still had in flight.
+  transitions.replaceSettled(startGame(newGame(
     data.factions.map((f) => f.id), factionAdjacency, factionEthnicities,
     SITE_CAPS, DEFENSE_MAX,
-  ));
+  )));
   clearFoundedSettlements();
   // The harvest flow must not outlive its run: the overlay itself hides
   // on the phase change, this is the state behind it.
@@ -2857,7 +2944,7 @@ const hudCallbacks: HudCallbacks = {
       // Host-only for the reason DECISION_ROUTES writes down, gated here as
       // well as in CSS - the same pair Surrender uses.
       if (!decidedHere("keep-playing", net.role)) return;
-      if (game.phase !== "victory" || resolving || pendingHarvest !== null) {
+      if (game().phase !== "victory" || resolving || pendingHarvest !== null) {
         return;
       }
       disarm();
@@ -2875,7 +2962,7 @@ const hudCallbacks: HudCallbacks = {
       // The button is hidden from a guest as well (`.net-guest` in
       // style.css); this is the gate that does not depend on CSS.
       if (!decidedHere("surrender", net.role)) return;
-      if (game.phase !== "playing" || resolving || pendingHarvest !== null) {
+      if (game().phase !== "playing" || resolving || pendingHarvest !== null) {
         return;
       }
       disarm();
@@ -2889,7 +2976,7 @@ const hudCallbacks: HudCallbacks = {
       // a live hand behind it, and which card that hand still accepts is
       // `humanPlayableSet`'s answer rather than this gate's.
       if (
-        !isLocalTurn() || !turnOpen(game) || resolving ||
+        !isLocalTurn() || !turnOpen(game()) || resolving ||
         pendingHarvest !== null || localTransferPending()
       ) {
         return;
@@ -2955,7 +3042,7 @@ const hudCallbacks: HudCallbacks = {
       // turn still open is closed first, and that includes one a card
       // re-opened: `turnOpen`, never `playedThisTurn`, or giving up a granted
       // second raid would leave the turn open and `advance` refusing it.
-      if (!turnOpen(game)) {
+      if (!turnOpen(game())) {
         afterHumanAction();
         return;
       }
@@ -2974,7 +3061,7 @@ const hudCallbacks: HudCallbacks = {
     targetExplanations(cardId) {
       const human = localHuman();
       if (!human || !CARDS[cardId]?.targeted) return [];
-      const view = viewOf(game);
+      const view = viewOf(game());
       return explainTargetEligibility(
         targetEligibilityFor(view, human.factionId, cardId),
         (id) => factionById.get(id)?.name ?? id,
@@ -3006,16 +3093,16 @@ const hudCallbacks: HudCallbacks = {
     cardModifiers(cardId) {
       const human = localHuman();
       const lines = human
-        ? cardModifierLines(game, human.factionId, cardId)
+        ? cardModifierLines(game(), human.factionId, cardId)
         : [];
       // What a Plague is worth right now rides with its modifiers: the
       // stacks are on the map, the sum is not.
       return human && cardId === "plague"
-        ? [...plaguePreviewLines(viewOf(game), human.factionId), ...lines]
+        ? [...plaguePreviewLines(viewOf(game()), human.factionId), ...lines]
         : lines;
     },
     isDiscardMode() {
-      return game.players.length > 0 && discardMode();
+      return game().players.length > 0 && discardMode();
     },
     onHighlightFaction(factionId) {
       // Segments carry FACTION ids; applyRealmHover takes a Region, and the
@@ -3034,7 +3121,7 @@ const hudCallbacks: HudCallbacks = {
     // game; the guest learns its own seat from the start snapshot, which is
     // why this is a callback rather than a constant handed to createHud.
     localPlayerId() {
-      return game.players[localSeat]?.id ?? 1;
+      return game().players[localSeat]?.id ?? 1;
     },
     playerNameOf(factionId) {
       return playerNameOfFaction(factionId);
@@ -3135,21 +3222,20 @@ const deckScreen = createDeckScreen(app, {
       // staging area only - they carry the guest to the faction-pick screen,
       // and the host's start snapshot replaces every one of them.
       net.build = build;
-      game = chooseRules(game, rulesPrefs);
-      // The ground is the host's to roll. A local roll would show this player
-      // hills and rivers that the start snapshot then moves, so the staged
-      // state carries none and the picker's hover simply says nothing about
-      // the ground here.
-      game = { ...chooseBuild(game, build, rng), passives: {} };
       deckScreen.update(deckScreenView(false));
       netPanel.setStatus("Pick your land on the map.");
-      refresh();
+      // One transition, because the rules and the build are one answer to one
+      // screen: two would repaint the staging state half-picked. The ground is
+      // the host's to roll - a local roll would show this player hills and
+      // rivers that the start snapshot then moves, so the staged state carries
+      // none and the picker's hover simply says nothing about the ground here.
+      apply((g) => ({
+        ...chooseBuild(chooseRules(g, rulesPrefs), build, rng), passives: {},
+      }));
       return;
     }
-    game = chooseRules(game, rulesPrefs);
-    game = chooseBuild(game, build, rng);
     deckScreen.update(deckScreenView(false));
-    refresh();
+    apply((g) => chooseBuild(chooseRules(g, rulesPrefs), build, rng));
   },
 });
 
@@ -3171,13 +3257,17 @@ function attachHostWire(wire: Wire): void {
   stale?.close();
   let session: HostSession | null = null;
   const startedFaction =
-    net.guestSeat !== null ? game.players[net.guestSeat].factionId : null;
+    net.guestSeat !== null ? game().players[net.guestSeat].factionId : null;
   session = createHostSession(
     wire,
     {
-      getGame: () => game,
+      getGame: () => game(),
+      // The guest's play, arriving as a state the host must watch: it is a
+      // move made against the board this screen is showing, so it presents
+      // like any other. The push that follows it reads `getGame`, which is
+      // why the commit cannot wait for the advance below.
       setGame: (g) => {
-        game = g;
+        apply(() => g);
       },
       rng,
       name: netPanel.name(),
@@ -3199,12 +3289,12 @@ function attachHostWire(wire: Wire): void {
         // The guest is already on its deck screen, so the host cannot be left
         // on the main menu waiting to be told to press New game - it is the
         // one seat that has to pick before either of them can start.
-        if (!netStarted() && game.phase === "main-menu") startStagingRun();
+        if (!netStarted() && game().phase === "main-menu") startStagingRun();
         // A drop froze this screen (see onClosed); the rejoin thaws it back
         // to whatever the turn order actually says, which is the same rule
         // resumeChain settles on.
         resolving =
-          game.phase === "playing" && controllerOf(game.current) === "remote";
+          game().phase === "playing" && controllerOf(game().current) === "remote";
         refresh();
         updateWaitingStatus();
       },
@@ -3224,7 +3314,7 @@ function attachHostWire(wire: Wire): void {
         // The guest's play is already committed and pushed; this runs the
         // world on past it. `advance` no-ops while an unlimited turn is
         // still open, so a guest playing twice is not cut short here.
-        game = advance(game, rng);
+        apply((g) => advance(g, rng));
         resumeChain();
       },
       onClosed() {
@@ -3233,7 +3323,7 @@ function attachHostWire(wire: Wire): void {
         if (net.role !== "host" || net.session !== session) return;
         net.session = null;
         // Nothing may act while the two sides cannot agree on what happened.
-        resolving = game.phase === "playing";
+        resolving = game().phase === "playing";
         hud.setWaiting(null);
         netPanel.setVisible(true);
         // The join controls come back with the drop: this is a lobby again
@@ -3257,13 +3347,17 @@ function tryDeal(): void {
   if (net.role !== "host" || net.session === null) return;
   const pick = net.session.guestPick();
   if (net.hostPick === null || pick === null) return;
-  if (game.phase !== "pick-faction") return;
-  const dealt = dealNetGame(game, rng, {
+  if (game().phase !== "pick-faction") return;
+  const dealt = dealNetGame(game(), rng, {
     hostFactionId: net.hostPick,
     guestFactionId: pick.factionId,
     guestBuild: pick.build,
   });
-  game = dealt.state;
+  // A dealt game is a world arriving whole rather than a move played into
+  // the one before it, so it commits with nothing presented. Before
+  // `markStarted`, which builds the start snapshot out of the committed
+  // state: the guest must be sent the game, not the lobby it replaced.
+  transitions.replaceSettled(dealt.state);
   net.guestSeat = dealt.guestSeat;
   net.session.markStarted(pick.factionId);
   netPanel.setVisible(false);
@@ -3293,9 +3387,12 @@ function sendGuestAction(a: NetAction): void {
 function decide(d: Decision): DecisionResult {
   const result = commitDecision(
     {
-      role: net.role, localSeat, state: game, rng,
+      role: net.role, localSeat, state: game(), rng,
       send: sendGuestAction,
-      apply: (next) => { game = next; },
+      // The router decided what the world becomes; the queue is still how it
+      // gets there, so a decision presents itself exactly like every other
+      // move this screen makes.
+      apply: (next) => { apply(() => next); },
       pushUpdate: () => {
         if (net.role === "host") net.session?.pushUpdate();
       },
@@ -3360,13 +3457,13 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // a lobby has no state coming at all, and leaving THAT locked stranded
       // the guest on the faction pick with every map click swallowed and no
       // menu at that phase to escape by.
-      resolving = netStarted() && game.phase === "playing";
+      resolving = netStarted() && game().phase === "playing";
       // The staging screens are for a guest that arrived before the deal.
       // A rejoin mid-game must not walk them: the snapshot is the game, and
       // starting a local one here put the deck picker over the top of it.
-      if (!netStarted() && game.phase === "main-menu") {
-        game = startGame(game);
+      if (!netStarted() && game().phase === "main-menu") {
         deckScreen.update(deckScreenView(true));
+        apply((g) => startGame(g));
       }
       refresh();
     },
@@ -3375,7 +3472,7 @@ function attachGuestWire(wire: Wire, hostId: string): void {
       // The host's rules are the game's rules - there is one engine and it
       // is theirs. The deck screen redraws so the picker shows them.
       rulesPrefs = info.rules;
-      deckScreen.update(deckScreenView(game.phase === "deck-building"));
+      deckScreen.update(deckScreenView(game().phase === "deck-building"));
       net.taken = info.takenFactionId;
       if (info.takenFactionId !== null) {
         netPanel.setStatus("Host has picked their land.");
@@ -3387,29 +3484,29 @@ function attachGuestWire(wire: Wire, hostId: string): void {
     },
     onState(g, fid, source) {
       if (net.role !== "guest" || net.session !== session) return;
-      const before = game.log.length;
-      game = g;
+      const before = game().log.length;
       net.faction = fid;
       localSeat = Math.max(0, seatOfFaction(g, fid));
       resolving = false;
       netPanel.setVisible(false);
       // A whole game arriving at once - the deal, or a rejoin - is not a
-      // state this screen played into, so it is painted already-settled:
-      // an animating render flew every card in the log and dropped a round
-      // summary over a game that had been running for twenty turns.
-      // The local staging screens go with it; the snapshot IS the game.
+      // state this screen played into. The local staging screens go with it;
+      // the snapshot IS the game.
       deckScreen.update(deckScreenView(false));
       // The hello could not know a snapshot was coming, so it left the lobby
       // line up. Correct it now: the panel is hidden here, but a later drop
       // shows it again and it must not be advertising the deck screen.
       netPanel.setStatus(`Playing with ${net.session?.hostName() ?? "the host"}.`);
-      // A snapshot is a whole game arriving at once, so its log is history,
-      // not this screen's round: it paints with `animate: false`, which is
-      // also what keeps the replay quiet - `replayRound` only runs on an
-      // animating update, so a rejoining guest is never made to watch twenty
-      // turns of camera work.
-      refresh(source === "update" ? undefined : { animate: false });
-      if (source === "update") {
+      if (source !== "update") {
+        // A snapshot's log is history rather than this screen's round, so it
+        // is taken on in silence - an animating paint flew every card in it
+        // and dropped a round summary over a game twenty turns old.
+        adoptSnapshot(g);
+      } else {
+        // An update is the host's world moving under this screen while the
+        // player watches, so it presents: the events it carries are the ones
+        // the replay walks and the round summary is built from.
+        apply(() => g);
         // What a harvest gave arrives here rather than at the play, because
         // the play was resolved on the other machine. `revealHarvestGains`
         // reads the log for the LOCAL seat's gains, so an update carrying
@@ -3517,7 +3614,7 @@ const netPanel = createNetPanel(
   netStorage,
   "Player",
 );
-netPanel.setVisible(game.phase === "main-menu");
+netPanel.setVisible(game().phase === "main-menu");
 
 // An invite link opens straight into the join, so the second player never
 // has to find the panel. A booted URL is refused rather than half-honoured:
@@ -3532,12 +3629,12 @@ if (joinId !== null) {
   }
 }
 
-hud.update(game, { animate: boot === null });
+hud.update(game(), { animate: boot === null });
 // A boot that stopped short - an unknown faction id - leaves the phase at
 // deck-building, whose screen is hidden from page load. Without this the
 // page is a bare map with no way forward.
 if (boot !== null) {
-  deckScreen.update(deckScreenView(game.phase === "deck-building"));
+  deckScreen.update(deckScreenView(game().phase === "deck-building"));
 }
 
 window.addEventListener("keydown", (e) => {
@@ -3569,7 +3666,7 @@ function autoAimIfOnlyOne(index: number): boolean {
   if (!human) return false;
   const cardId = human.hand[index];
   if (!CARDS[cardId]?.targeted || needsSource(cardId)) return false;
-  const targets = validTargetsFor(viewOf(game), human.factionId, cardId);
+  const targets = validTargetsFor(viewOf(game()), human.factionId, cardId);
   if (targets.length !== 1) return false;
   decide({ kind: "play", cardIndex: index, cardId, targetId: targets[0] });
   return true;
@@ -3616,7 +3713,7 @@ svg.addEventListener("pointermove", (e) => {
   const human = localHuman();
   const legal =
     faction !== null && human !== undefined &&
-    marchTargetsFrom(viewOf(game), human.factionId, aiming.from).includes(faction)
+    marchTargetsFrom(viewOf(game()), human.factionId, aiming.from).includes(faction)
       ? faction
       : null;
   aiming = { ...aiming, at, over: legal };
@@ -3694,7 +3791,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
   },
   interceptClick(regionId) {
     if (resolving) return true; // swallow: no selection while the round resolves
-    if (game.phase === "pick-faction") {
+    if (game().phase === "pick-faction") {
       if (regionId === null) return true;
       const picked = regionById.get(regionId)!.faction;
       // Before the role branches, because it is true in all three: a land
@@ -3702,7 +3799,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       // asking. The map has greyed it and the hover has said why, so the click
       // is dropped here rather than reaching an engine call that would return
       // the same state and look like nothing happened.
-      if (!isUnheld(picked, game.overlords, game.incorporated)) return true;
+      if (!isUnheld(picked, game().overlords, game().incorporated)) return true;
       if (net.role === "host") {
         // A host cannot deal on the click: the other seat has not been
         // chosen yet. The pick is held, announced to the lobby, and the deal
@@ -3728,11 +3825,10 @@ const interaction = attachInteraction(svg, regionPaths, data, {
         guestPickFaction(picked);
         return true;
       }
-      game = pickFaction(game, picked, rng);
-      refresh();
+      apply((g) => pickFaction(g, picked, rng));
       return true;
     }
-    if (game.phase === "playing" && armed !== null) {
+    if (game().phase === "playing" && armed !== null) {
       const idx = armed;
       const cardId = localHuman().hand[idx];
       const raw = regionId !== null ? factionByRegion.get(regionId) : undefined;
@@ -3757,7 +3853,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
         ? undefined
         : aimsAtPolygons(cardId)
           ? raw
-          : politicalFactionForPolygon(raw, game.incorporated);
+          : politicalFactionForPolygon(raw, game().incorporated);
       const valid = faction !== undefined && armedTargets().includes(faction);
       const sourceId = armedSource;
       disarm();
