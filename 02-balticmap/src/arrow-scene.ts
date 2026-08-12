@@ -1,5 +1,6 @@
 import type { Crossing, Pt } from "./borders";
 import { pointAlong, spearFor, spearPolygon } from "./arrows";
+import { runAnimation } from "./animate";
 
 /** How an arrow is sized and placed on the border it crosses.
  *
@@ -134,7 +135,7 @@ export const ARROW_KINDS: Record<ArrowKind, ArrowKindDef> = {
   },
   ghost: {
     shape: "spear", className: "clash-flash", labelClass: "clash-label",
-    why: "A march that has already landed, fading on the border it crossed. Drawn alone in a layer of its own, so a live rebuild cannot wipe it halfway through the one thing the beat is showing; what keeps it from being read against the living is that the beat hides them while it runs.",
+    why: "A march that has already landed, fading on the border it crossed. Drawn in a layer of its own because its lifetime is the beat's rather than the board's - it outlives the state it was drawn from; what keeps it from being read against the living is that the beat hides them while it runs.",
   },
 };
 
@@ -196,23 +197,85 @@ const CLAIM_LABEL_STATION = 1.18;
  *  is nothing for a bare number to be confused with. */
 const BARE_NUMBER_WIDTH = 24;
 
-const svgEl = <K extends keyof SVGElementTagNameMap>(
-  name: K, attrs: Record<string, string | number> = {},
-): SVGElementTagNameMap[K] => {
-  const el = document.createElementNS(NS, name);
+/** How long an arrow takes to arrive, to leave, and to cross to a new lane.
+ *
+ *  Handed to `runAnimation`, which reports when each is really over. None of
+ *  these numbers may be copied into a second timer set to the same length. */
+export const ARROW_MOTION_MS = { enter: 220, exit: 260, lane: 200 };
+
+/** Far enough for a lane move to be worth showing. Below it the arrow is
+ *  standing where it stood and a slide would be a twitch. */
+const LANE_MOVE_MIN = 0.5;
+
+const setAttrs = (
+  el: Element, attrs: Record<string, string | number>,
+): void => {
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
-  return el;
 };
+
+const svgEl = <K extends keyof SVGElementTagNameMap>(
+  name: K,
+): SVGElementTagNameMap[K] =>
+  document.createElementNS(NS, name) as SVGElementTagNameMap[K];
+
+/** One arrow the host is holding between renders. */
+interface HeldArrow {
+  el: SVGGElement;
+  /** What the element was built as. A kind decides the element's whole shape,
+   *  so a key that changes kind is a different arrow wearing the same name. */
+  kind: ArrowKind;
+  /** Where its lane's tail sat last render, so a lane that moves is crossed
+   *  rather than jumped. */
+  ax: number;
+  ay: number;
+  /** The fade and the slide running on it. One of each at most: a second
+   *  animation of the same property would fight the first for the element. */
+  fade: { cancel(): void } | null;
+  slide: { cancel(): void } | null;
+}
+
+interface Scene {
+  /** The arrows on screen, by the caller's key. A key leaves this the instant
+   *  its arrow starts to go, never when the fade ends. */
+  held: Map<string, HeldArrow>;
+  /** The corpses still fading. They answer to no key any more, and the layout
+   *  steps over them rather than counting them as arrows in place. */
+  leaving: Set<ChildNode>;
+}
+
+/** What each host is holding, per host and not per module: the live arrows and
+ *  a beat's resolutions are two scenes, and a key drawn in one says nothing
+ *  about the other. */
+const SCENES = new WeakMap<SVGGElement, Scene>();
 
 /** Every arrow on the map, drawn from a description of what is happening.
  *
- *  Rebuilt whole: a march store this small is cheaper to redraw than to diff,
- *  and a stale arrow is a lie about what is coming. */
+ *  Retained by key rather than rebuilt: an arrow that is still in flight is
+ *  the SAME element from one render to the next, so it can fade in when it is
+ *  declared, cross to its new lane when the border it shares gets busier, and
+ *  fade out when it lands. Rebuilt whole, nothing survived a frame and nothing
+ *  could be animated at all - and a repaint that changed no arrow still tore
+ *  every one of them off the map and put them back.
+ *
+ *  The returned map is what is on the board NOW. A corpse mid-fade is in the
+ *  host and in no map: it is a picture of what just happened, and nothing may
+ *  bind behaviour to it. */
 export function renderArrowScene(
   host: SVGGElement, specs: readonly ArrowSpec[], ctx: SceneCtx,
 ): Map<string, SVGGElement> {
-  host.replaceChildren();
+  const scene = SCENES.get(host)
+    ?? { held: new Map<string, HeldArrow>(), leaving: new Set<ChildNode>() };
+  SCENES.set(host, scene);
   const drawn = new Map<string, SVGGElement>();
+  const ordered: SVGGElement[] = [];
+  const entered: HeldArrow[] = [];
+  const draw = (spec: ArrowSpec, lane: Lane): void => {
+    const held = place(scene, host, spec, lane);
+    if (held === null) return;
+    drawn.set(spec.id, held.el);
+    ordered.push(held.el);
+    if (held.el.parentNode !== host) entered.push(held);
+  };
   const byBorder = new Map<string, ArrowSpec[]>();
   const free: ArrowSpec[] = [];
   for (const spec of specs) {
@@ -237,12 +300,7 @@ export function renderArrowScene(
       cross,
       group.map((s) => ({ strength: s.strength, forward: s.from === a })),
     );
-    for (const lane of lanes) {
-      const g = drawArrow(group[lane.index], lane);
-      if (g === null) continue;
-      host.appendChild(g);
-      drawn.set(group[lane.index].id, g);
-    }
+    for (const lane of lanes) draw(group[lane.index], lane);
   }
   for (const spec of free) {
     // `at` and `freeAnchor` are read the same way whether the caller aimed a
@@ -251,48 +309,242 @@ export function renderArrowScene(
     const start = ctx.freeAnchor(spec.from);
     const end = spec.at;
     if (start === null || end === undefined) continue;
-    const lane = {
+    draw(spec, {
       index: 0, width: blockWidthFor(0),
       ax: start.x, ay: start.y, bx: end.x, by: end.y,
-    };
-    const g = drawArrow(spec, lane);
-    if (g === null) continue;
-    host.appendChild(g);
-    drawn.set(spec.id, g);
+    });
   }
+  for (const [key, held] of [...scene.held]) {
+    if (drawn.has(key)) continue;
+    // Dropped AT ONCE, before the fade is even started: the key is free the
+    // moment its arrow begins to leave, so an arrow declared again over the
+    // same border is handed a fresh element rather than the corpse of the one
+    // that just went.
+    scene.held.delete(key);
+    retire(scene, host, held);
+  }
+  arrange(host, ordered, scene);
+  for (const held of entered) enter(held);
   return drawn;
 }
 
-function drawArrow(spec: ArrowSpec, lane: Lane): SVGGElement | null {
-  const def = ARROW_KINDS[spec.kind];
-  const g = svgEl("g");
-  g.classList.add(def.className, `march-${spec.tone}`);
-  if (spec.doomed === true) g.classList.add("claim-doomed");
-  for (const [k, v] of Object.entries(spec.dataset ?? {})) g.dataset[k] = v;
+/** Puts one arrow where the lane says, reusing the element already standing
+ *  there. Returns it still detached when it is new: the enter fade waits until
+ *  `arrange` has put it in the host, because what it fades UP to is whatever
+ *  the stylesheet gives it once it is in the tree. */
+function place(
+  scene: Scene, host: SVGGElement, spec: ArrowSpec, lane: Lane,
+): HeldArrow | null {
+  const held = scene.held.get(spec.id);
+  let kept: HeldArrow | null = null;
+  if (held !== undefined) {
+    // Never the aim preview: it re-packs on every pointer move and has to
+    // track the cursor, so it is rebuilt and carries no transition at all.
+    //
+    // And never an element the host has stopped owning. A layer emptied from
+    // outside - a run ending, a beat clearing its ghosts - leaves nothing to
+    // update in place, and dressing a detached node draws an arrow nobody
+    // sees.
+    const reusable = spec.kind !== "aim" && held.kind === spec.kind
+      && held.el.parentNode === host;
+    if (reusable) kept = held;
+    else {
+      // Replaced, not retired: something is taking this key's place in the
+      // same breath, and two arrows for one key is one arrow too many.
+      scene.held.delete(spec.id);
+      discard(scene, held);
+    }
+  }
+  const el = kept?.el ?? svgEl("g");
+  if (!dressArrow(el, spec, lane)) {
+    // Nothing to draw at this width. An arrow already standing goes the way
+    // any departing arrow goes rather than blinking out.
+    if (kept !== null) {
+      scene.held.delete(spec.id);
+      retire(scene, host, kept);
+    }
+    return null;
+  }
+  if (kept === null) {
+    const fresh: HeldArrow = {
+      el, kind: spec.kind, ax: lane.ax, ay: lane.ay, fade: null, slide: null,
+    };
+    scene.held.set(spec.id, fresh);
+    return fresh;
+  }
+  const dx = kept.ax - lane.ax;
+  const dy = kept.ay - lane.ay;
+  kept.ax = lane.ax;
+  kept.ay = lane.ay;
+  if (Math.hypot(dx, dy) >= LANE_MOVE_MIN) {
+    kept.slide?.cancel();
+    kept.slide = transition(el, [
+      { transform: `translate(${dx}px, ${dy}px)` },
+      { transform: "translate(0px, 0px)" },
+    ], ARROW_MOTION_MS.lane);
+  }
+  return kept;
+}
 
+/** Runs one transition and hands the element back to the stylesheet when it is
+ *  over.
+ *
+ *  A filled animation outranks every rule in the stylesheet for as long as it
+ *  is alive, and an arrow's opacity is the stylesheet's business - a rival's
+ *  quarrel rests at 0.45, the focus dim at 0.12, the arrows behind a live aim
+ *  at 0.75. An enter fade left filling would pin all three at whatever it
+ *  ended on. */
+function transition(
+  el: Element, frames: Keyframe[], ms: number, onDone?: () => void,
+): { cancel(): void } {
+  const handle = runAnimation(el, frames, ms, () => {
+    handle.cancel();
+    onDone?.();
+  });
+  return handle;
+}
+
+/** The opacity the stylesheet gives this arrow, which is what a fade in ends
+ *  on and what a fade out starts from. Read off the element rather than
+ *  assumed to be 1: fading a rival's 0.45 arrow up to full and dropping it
+ *  back is a flash on every arrow that is not the player's own. */
+function restingOpacity(el: Element): number {
+  const raw = getComputedStyle(el).opacity;
+  const value = Number(raw);
+  return raw !== "" && Number.isFinite(value) ? value : 1;
+}
+
+function enter(held: HeldArrow): void {
+  // The aim preview arrives without one: it is under the cursor already.
+  if (held.kind === "aim") return;
+  held.fade?.cancel();
+  held.fade = transition(
+    held.el,
+    [{ opacity: 0 }, { opacity: restingOpacity(held.el) }],
+    ARROW_MOTION_MS.enter,
+  );
+}
+
+/** An arrow that is no longer on the board: it fades where it stood and is
+ *  taken out when the fade reports itself finished, never on a second clock. */
+function retire(scene: Scene, host: SVGGElement, held: HeldArrow): void {
+  if (held.kind === "aim" || held.el.parentNode !== host) {
+    discard(scene, held);
+    return;
+  }
+  held.slide?.cancel();
+  held.fade?.cancel();
+  const el = held.el;
+  // Out of hit-testing at once. A corpse answers to no key, so a click or a
+  // hover it took would be about an arrow that is no longer there. Inline
+  // because `.march-arrow` claims `pointer-events: auto` from the stylesheet.
+  el.style.pointerEvents = "none";
+  scene.leaving.add(el);
+  held.fade = transition(
+    el, [{ opacity: restingOpacity(el) }, { opacity: 0 }],
+    ARROW_MOTION_MS.exit,
+    () => {
+      scene.leaving.delete(el);
+      el.remove();
+    },
+  );
+}
+
+/** Gone now, with nothing to watch: an arrow being replaced in the same render,
+ *  or one whose host was emptied under it. */
+function discard(scene: Scene, held: HeldArrow): void {
+  held.slide?.cancel();
+  held.fade?.cancel();
+  scene.leaving.delete(held.el);
+  held.el.remove();
+}
+
+/** Puts the host's children in the order the specs were given in, which is
+ *  z-order: a claim is declared after the spears on its border so it is drawn
+ *  over them, and the aim preview after everything.
+ *
+ *  Only what is out of place is touched, and the corpses are stepped over
+ *  rather than counted - an arrow standing still through a repaint must not
+ *  move in the DOM, or it is a new element again in all but name. */
+function arrange(
+  host: SVGGElement, ordered: readonly SVGGElement[], scene: Scene,
+): void {
+  let at: ChildNode | null = host.firstChild;
+  for (const el of ordered) {
+    while (at !== null && at !== el && scene.leaving.has(at)) {
+      at = at.nextSibling;
+    }
+    if (at === el) {
+      at = el.nextSibling;
+      continue;
+    }
+    host.insertBefore(el, at);
+  }
+}
+
+/** The child at `index`, reused when it is already that kind of node.
+ *
+ *  Addressed by position because an arrow's parts are a fixed list: the shape,
+ *  then the label, then the landing-order chip. A render that changes nothing
+ *  must add and remove no nodes at all - the whole point of retaining the
+ *  arrow is lost if its insides are rebuilt underneath it. */
+function ensure<K extends keyof SVGElementTagNameMap>(
+  parent: Element, index: number, name: K,
+): SVGElementTagNameMap[K] {
+  const at = parent.children[index];
+  if (at !== undefined && at.tagName === name) {
+    return at as SVGElementTagNameMap[K];
+  }
+  const made = svgEl(name);
+  if (at === undefined) parent.appendChild(made);
+  else parent.replaceChild(made, at);
+  return made;
+}
+
+/** Drops whatever a previous render left past the parts this one used. */
+function trim(parent: Element, used: number): void {
+  while (parent.children.length > used) parent.lastElementChild?.remove();
+}
+
+/** The dataset the spec asks for, and nothing a previous render left behind. */
+function applyDataset(g: SVGGElement, data: Record<string, string>): void {
+  for (const name of g.getAttributeNames()) {
+    if (!name.startsWith("data-")) continue;
+    const key = name.slice(5).replace(/-([a-z])/g, (_, c: string) =>
+      c.toUpperCase());
+    if (!(key in data)) g.removeAttribute(name);
+  }
+  for (const [k, v] of Object.entries(data)) g.dataset[k] = v;
+}
+
+/** Draws the spec into the group, whether the group is new or has been
+ *  standing there for twenty renders. False where the geometry is degenerate,
+ *  and then nothing has been touched. */
+function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
+  const def = ARROW_KINDS[spec.kind];
+  let used = 0;
   if (def.shape === "spear") {
     const points = spearPolygon(
       lane.ax, lane.ay, lane.bx, lane.by, spearFor(lane.width),
     );
-    if (points === "") return null;
-    const poly = svgEl("polygon", { points });
+    if (points === "") return false;
+    const poly = ensure(g, used++, "polygon");
+    poly.setAttribute("points", points);
     if (spec.fill !== undefined) poly.setAttribute("fill", spec.fill);
-    g.appendChild(poly);
+    else poly.removeAttribute("fill");
   } else {
     const len = Math.hypot(lane.bx - lane.ax, lane.by - lane.ay);
-    if (len === 0) return null;
+    if (len === 0) return false;
     const ux = (lane.bx - lane.ax) / len;
     const uy = (lane.by - lane.ay) / len;
-    g.appendChild(svgEl("line", {
+    setAttrs(ensure(g, used++, "line"), {
       x1: lane.ax, y1: lane.ay, x2: lane.bx - ux * 8, y2: lane.by - uy * 8,
-    }));
+    });
     // A ring rather than a barb: a claim arrives and demands, it does not
     // strike, and the two must not be told apart by squinting at a dash.
-    const ring = svgEl("circle", {
-      cx: lane.bx - ux * 4, cy: lane.by - uy * 4, r: 6,
-    });
-    ring.classList.add("claim-head");
-    g.appendChild(ring);
+    const ring = ensure(g, used++, "circle");
+    setAttrs(ring, { cx: lane.bx - ux * 4, cy: lane.by - uy * 4, r: 6 });
+    ring.setAttribute("class", "claim-head");
   }
 
   if (spec.label !== undefined) {
@@ -304,13 +556,15 @@ function drawArrow(spec: ArrowSpec, lane: Lane): SVGGElement | null {
     const at = pointAlong(
       lane.ax, lane.ay, lane.bx, lane.by, spec.labelAt ?? station,
     );
-    const text = svgEl("text", { x: at.x, y: at.y });
-    text.classList.add(def.labelClass);
+    const text = ensure(g, used++, "text");
+    setAttrs(text, { x: at.x, y: at.y });
+    text.setAttribute("class", def.labelClass);
     if (spec.kind !== "claim") text.setAttribute("dominant-baseline", "middle");
-    text.textContent = spec.kind !== "claim" && lane.width < BARE_NUMBER_WIDTH
+    else text.removeAttribute("dominant-baseline");
+    const words = spec.kind !== "claim" && lane.width < BARE_NUMBER_WIDTH
       ? spec.label.replace(/ STR$/, "")
       : spec.label;
-    g.appendChild(text);
+    if (text.textContent !== words) text.textContent = words;
   }
 
   if (spec.chip !== undefined) {
@@ -324,19 +578,29 @@ function drawArrow(spec: ArrowSpec, lane: Lane): SVGGElement | null {
     const label = spec.chip.clash
       ? `${ordinal(spec.chip.order)} - clash` : ordinal(spec.chip.order);
     const width = 12 + label.length * 5.6;
-    const chip = svgEl("g");
-    chip.classList.add("march-order");
-    const bg = svgEl("rect", {
+    const chip = ensure(g, used++, "g");
+    chip.setAttribute("class", "march-order");
+    const bg = ensure(chip, 0, "rect");
+    setAttrs(bg, {
       x: at.x - width / 2, y: at.y - 9, width, height: 15, rx: 7.5,
     });
-    bg.classList.add("march-order-bg");
-    const text = svgEl("text", { x: at.x, y: at.y + 2 });
-    text.classList.add("march-order-text");
-    text.textContent = label;
-    chip.append(bg, text);
-    g.appendChild(chip);
+    bg.setAttribute("class", "march-order-bg");
+    const text = ensure(chip, 1, "text");
+    setAttrs(text, { x: at.x, y: at.y + 2 });
+    text.setAttribute("class", "march-order-text");
+    if (text.textContent !== label) text.textContent = label;
+    trim(chip, 2);
   }
-  return g;
+  trim(g, used);
+
+  // Set whole rather than toggled, so a class another surface put on the arrow
+  // - the counter cue, the aim's own validity - is gone by the time that
+  // surface is asked again. An arrow's classes say what it IS this render.
+  const classes = [def.className, `march-${spec.tone}`];
+  if (spec.doomed === true) classes.push("claim-doomed");
+  g.setAttribute("class", classes.join(" "));
+  applyDataset(g, spec.dataset ?? {});
+  return true;
 }
 
 /** "1st", "2nd", "3rd", "4th" - the landing order in words, so the number can

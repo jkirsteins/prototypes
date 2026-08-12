@@ -249,6 +249,12 @@ const ghostGroup = document.createElementNS(
 ghostGroup.classList.add("march-ghosts");
 svg.appendChild(ghostGroup);
 
+/** The counter click armed on each arrow, so the next render can take it off
+ *  again. The scene RETAINS its arrows, so an arming outlives the render that
+ *  put it there. Weak, because the arrow decides how long it lives: the scene
+ *  drops a departing one and the fade takes it off the map. */
+const armedArrows = new WeakMap<SVGGElement, AbortController>();
+
 // The arrow being aimed has no group of its own. It is a lane in `arrowGroup`
 // beside the arrows already crossing that border, because a preview laid out
 // on its own takes the whole border and covers them - and what a preview is
@@ -1708,13 +1714,21 @@ function renderMarchArrows(): void {
     const g = drawn.get(key);
     if (g === undefined) continue;
     const counterIndex = targeting ? null : counterFor(m);
-    if (counterIndex === null) continue;
+    // Asked of every arrow, not only of the ones that answer yes. The scene
+    // hands the same element back next render, so an arrow that has stopped
+    // being answerable has to be UNarmed - left armed it swallows a click
+    // meant for the land under it before deciding it has nothing to do.
+    if (counterIndex === null) {
+      armedArrows.get(g)?.abort();
+      armedArrows.delete(g);
+      continue;
+    }
     g.classList.add("march-counterable");
     armArrowAsCounter(g, m, counterIndex);
   }
-  // Every arrow on the map is new, including the one the pointer is resting
-  // on. Nothing will announce that, so the focus is re-derived here rather
-  // than waiting for a pointer event that may never come.
+  // The arrow under the pointer may have arrived, left or changed hands with
+  // nothing moving, and no pointer event is coming to say so. The focus is
+  // re-derived here rather than waited for.
   syncArrowFocus();
 }
 
@@ -1762,10 +1776,18 @@ function counterFor(m: March): number | null {
  *  swallowing that would put a dead zone over the most interesting part of
  *  the map. Only a real click stops propagation. */
 function armArrowAsCounter(g: SVGGElement, m: March, cardIndex: number): void {
+  // The arrow scene RETAINS its arrows, so this is the same element render
+  // after render and its last arming is still on it. Dropped before another
+  // is put on: two live handlers on one arrow answer one click twice, and the
+  // second one is aiming with a hand index from a board that has moved.
+  armedArrows.get(g)?.abort();
+  const armed = new AbortController();
+  armedArrows.set(g, armed);
+  const { signal } = armed;
   let start: { x: number; y: number } | null = null;
   g.addEventListener("pointerdown", (e) => {
     start = { x: e.clientX, y: e.clientY };
-  });
+  }, { signal });
   g.addEventListener("pointerup", (e) => {
     const from = start;
     start = null;
@@ -1785,7 +1807,7 @@ function armArrowAsCounter(g: SVGGElement, m: March, cardIndex: number): void {
     decide({
       kind: "play", cardIndex, cardId, targetId: m.from, sourceId: m.to,
     });
-  });
+  }, { signal });
 }
 
 /** How long a resolved march is shown before the map moves on. One number,
@@ -1839,11 +1861,11 @@ const beatLabelHooks: RichTextHooks = {
 function flashResolutions(
   list: readonly ResolutionArrow[], onDone: () => void,
 ): void {
-  // Redrawn on the border they crossed, alone in a layer of their own: a live
-  // rebuild landing mid-fade would take them off the screen halfway through
-  // the one thing the beat is showing. One `renderArrowScene` call for the
-  // whole list, because the scene replaces the layer's children - a second
-  // call would wipe the arrow the first one drew.
+  // Redrawn on the border they crossed, alone in a layer of their own: these
+  // outlive the state they were drawn from, which the live arrows never do.
+  // One `renderArrowScene` call for the whole list, because the scene holds
+  // exactly what the last call named - a second call would send the first
+  // call's arrows away again.
   const drawn = renderArrowScene(ghostGroup, list.map((res) => ({
     id: res.key, kind: "ghost" as const,
     from: res.from, to: res.to, strength: res.strength,
@@ -2621,9 +2643,9 @@ function setArrowFocus(next: { from: string; to: string } | null): void {
   applyArrowFocus();
 }
 
-/** Re-asks the question after the arrows have been rebuilt. Nothing moved, so
- *  no pointer event is coming: the arrow the player was pointing at is now a
- *  different element or no element at all, and only the point still means
+/** Re-asks the question after the scene has moved. Nothing the POINTER did
+ *  caused it, so no pointer event is coming: the arrow it was resting on may
+ *  have left, or one may have arrived under it, and only the point still means
  *  anything. */
 function syncArrowFocus(): void {
   setArrowFocus(pointerAt === null ? null : arrowAt(pointerAt.x, pointerAt.y));

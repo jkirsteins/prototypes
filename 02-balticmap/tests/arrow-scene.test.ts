@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
-  ARROW_KINDS, LAYOUT, blockWidthFor, borderKeyOf, laneWidths, layoutLanes,
-  renderArrowScene,
+  ARROW_KINDS, ARROW_MOTION_MS, LAYOUT, blockWidthFor, borderKeyOf, laneWidths,
+  layoutLanes, renderArrowScene,
   type ArrowSpec, type SceneCtx,
 } from "../src/arrow-scene";
 import type { Crossing } from "../src/borders";
@@ -188,11 +188,11 @@ describe("renderArrowScene", () => {
     expect(spread("m1")).toBeGreaterThan(spread("m2"));
   });
 
-  it("rebuilds from nothing, so a stale arrow cannot survive", () => {
+  it("says what is on the board now, never what is still fading off it", () => {
     const host = document.createElementNS(NS, "g") as SVGGElement;
     renderArrowScene(host, [march("m1", "a", "b", 1)], ctx);
-    renderArrowScene(host, [march("m2", "a", "b", 1)], ctx);
-    expect(host.children).toHaveLength(1);
+    const drawn = renderArrowScene(host, [march("m2", "a", "b", 1)], ctx);
+    expect([...drawn.keys()]).toEqual(["m2"]);
   });
 
   it("carries the caller's dataset onto the group", () => {
@@ -315,5 +315,130 @@ describe("renderArrowScene", () => {
     const drawn = renderArrowScene(host, [march("m1", "a", "b", 1)], none);
     expect(drawn.size).toBe(0);
     expect(host.children).toHaveLength(0);
+  });
+});
+
+/** The scene keeps its arrows between renders, which is what lets one fade in
+ *  when it is declared and out when it lands. happy-dom has no WAAPI, so
+ *  `runAnimation` falls back to a timer of exactly `ARROW_MOTION_MS` - these
+ *  drive that timer rather than waiting on a wall clock. */
+describe("renderArrowScene identity", () => {
+  const aim = (): ArrowSpec => ({
+    id: "aim", kind: "aim", from: "b", to: "a", strength: 1, tone: "ours",
+  });
+
+  it("hands back the same element for a key it drew last render", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const first = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx);
+    const again = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx);
+    expect(again.get("m1")).toBe(first.get("m1"));
+    expect(host.children).toHaveLength(1);
+  });
+
+  it("touches no node at all on a repaint that changes nothing", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    document.body.appendChild(host);
+    renderArrowScene(host, [
+      march("m1", "a", "b", 2), march("m2", "b", "a", 1),
+      { id: "c1", kind: "claim", from: "a", to: "c", strength: 1,
+        tone: "other", label: "SUBJUGATE" },
+    ], ctx);
+    const seen = new MutationObserver(() => {});
+    seen.observe(host, { childList: true, subtree: true });
+    renderArrowScene(host, [
+      march("m1", "a", "b", 2), march("m2", "b", "a", 1),
+      { id: "c1", kind: "claim", from: "a", to: "c", strength: 1,
+        tone: "other", label: "SUBJUGATE" },
+    ], ctx);
+    // Every arrow on the map used to be torn down and rebuilt here, which is
+    // why nothing on it could fade.
+    expect(seen.takeRecords()).toEqual([]);
+    seen.disconnect();
+    host.remove();
+  });
+
+  it("moves a surviving arrow into its new lane rather than rebuilding it", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const alone = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx);
+    const el = alone.get("m1");
+    const poly = el?.querySelector("polygon");
+    const wholeBlock = poly?.getAttribute("points");
+    const shared = renderArrowScene(host, [
+      march("m1", "a", "b", 1), march("m2", "b", "a", 1),
+    ], ctx);
+    expect(shared.get("m1")).toBe(el);
+    expect(el?.querySelector("polygon")).toBe(poly);
+    expect(poly?.getAttribute("points")).not.toBe(wholeBlock);
+  });
+
+  it("keeps a departed arrow until its fade reports itself finished", () => {
+    vi.useFakeTimers();
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const el = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx).get("m1");
+    renderArrowScene(host, [], ctx);
+    // Not gone the moment the state stopped naming it: a march that vanished
+    // on the frame it landed is the thing this whole scene exists to stop.
+    expect(host.contains(el as Node)).toBe(true);
+    vi.advanceTimersByTime(ARROW_MOTION_MS.exit - 1);
+    expect(host.contains(el as Node)).toBe(true);
+    vi.advanceTimersByTime(2);
+    expect(host.contains(el as Node)).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("gives a key that comes back a fresh arrow, not the corpse still fading", () => {
+    vi.useFakeTimers();
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const gone = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx).get("m1");
+    renderArrowScene(host, [], ctx);
+    const back = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx).get("m1");
+    expect(back).not.toBe(gone);
+    expect(host.contains(gone as Node)).toBe(true);
+    // The corpse's own fade ends and takes the corpse - and nothing else.
+    vi.advanceTimersByTime(ARROW_MOTION_MS.exit + 1);
+    expect(host.contains(gone as Node)).toBe(false);
+    expect(host.contains(back as Node)).toBe(true);
+    expect(renderArrowScene(host, [march("m1", "a", "b", 1)], ctx).get("m1"))
+      .toBe(back);
+    vi.useRealTimers();
+  });
+
+  it("rebuilds the aim preview, with no transition either way", () => {
+    vi.useFakeTimers();
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const first = renderArrowScene(host, [aim()], ctx).get("aim");
+    const second = renderArrowScene(host, [aim()], ctx).get("aim");
+    // It re-packs on every pointer move and has to track the cursor, so it is
+    // built anew and the one it replaces goes at once rather than fading.
+    expect(second).not.toBe(first);
+    expect(host.contains(first as Node)).toBe(false);
+    expect(host.children).toHaveLength(1);
+    renderArrowScene(host, [], ctx);
+    expect(host.contains(second as Node)).toBe(false);
+    expect(host.children).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  it("packs the aim beside a surviving arrow without disturbing it", () => {
+    vi.useFakeTimers();
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const raid = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx).get("m1");
+    const withAim = renderArrowScene(host, [march("m1", "a", "b", 1), aim()], ctx);
+    expect(withAim.get("m1")).toBe(raid);
+    // The preview is appended after the arrows it shares the border with, so
+    // it is drawn over them.
+    expect(host.children[1]).toBe(withAim.get("aim"));
+    vi.useRealTimers();
+  });
+
+  it("rebuilds a key whose host was emptied from outside", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const first = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx).get("m1");
+    // A run ending clears the layer without telling the scene. What is left
+    // is a detached element, and updating it would draw an arrow nobody sees.
+    host.replaceChildren();
+    const again = renderArrowScene(host, [march("m1", "a", "b", 1)], ctx).get("m1");
+    expect(again).not.toBe(first);
+    expect(host.children).toHaveLength(1);
   });
 });
