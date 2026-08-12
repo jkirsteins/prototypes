@@ -183,6 +183,7 @@ describe("afterPlayAnimation watchdog", () => {
       ask: (_t, done) => done(),
       summary: (_t, done) => hud.afterPlayAnimation(done),
       ending: (_t, done) => done(),
+      teardown: () => {},
     });
     const tr = (turn: number): Transition =>
       ({ next: { turn } as unknown as GameState, events: [], settled: false });

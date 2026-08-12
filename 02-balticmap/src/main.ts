@@ -402,6 +402,29 @@ const stages: Stages = {
     showEndingIfAny();
     done();
   },
+  teardown() {
+    // A world is being exchanged rather than moved on from, so everything the
+    // move it replaces put in motion or put on screen belongs to a board that
+    // no longer exists.
+    //
+    // The beats first: the steps of the superseded move are already on the
+    // animation queue and would otherwise go on gliding the camera, fading
+    // labels in and walking badges from scores this commit has just replaced -
+    // over a board that has nothing to do with them, and with the live arrows
+    // hidden until they drain. A step already RUNNING is left alone, because
+    // it owns DOM that its own `done` has to take back down.
+    animations.clear();
+    // Then the questions. Each of these is a modal about the discarded world:
+    // news the player can neither check nor act on, a boon offered for a play
+    // resolved in a world that is gone, a conquest whose two lands may not be
+    // where this state has them. The ask stage behind the commit raises again
+    // whatever the NEW world still owes, which is why the key goes too - held
+    // over, it would suppress the very question the exchange brings back.
+    hud.dropRoundNews();
+    hud.hideHarvestUi();
+    pendingHarvest = null;
+    transferAsked = null;
+  },
 };
 
 const transitions = createTransitionQueue(initialGame, stages);
@@ -460,24 +483,12 @@ function submitUpdate(next: GameState, events: GameEvent[]): void {
  *  The silence is the point: an animating paint flies every card in the log,
  *  so a guest rejoining a run twenty turns old would watch all of it. */
 function adoptSnapshot(state: GameState): void {
+  // The teardown and the ask both ride the replacement itself: a world
+  // arriving whole takes down the modals raised about the world it replaces,
+  // and its ask stage raises whatever this one owes - a rejoin's whole purpose
+  // is to bring back the question whose answer was lost with the connection.
+  // Nothing is owed here beyond the exchange, which is the point of the hook.
   transitions.replaceSettled(state, { animate: false });
-  // The board has been exchanged, so a modal about the one it replaced is a
-  // modal the player can neither check nor act on - and the stage holding it
-  // is inert by now anyway, dropped with the rest of the run.
-  hud.dropRoundNews();
-  // A settled transition runs no ask stage - there was nothing to watch
-  // happen - so a snapshot carrying a conquest question the local seat owes
-  // has to raise it here or nobody would, and the seat would sit locked
-  // behind a question with no modal. Nothing waits on the answer: the
-  // question outlived the move that asked it.
-  //
-  // The key goes first: a snapshot is a world EXCHANGE, so a key describing
-  // the world it replaced is stale by definition. It is a rejoin that makes
-  // this bite - an answer lost with the connection leaves the host still
-  // owing the same pair, and a key held over from before the drop would
-  // suppress the one question the rejoin exists to bring back.
-  transferAsked = null;
-  askTransfer(() => {});
   // The commit inside that call painted whatever the screen was still busy
   // with; this is the paint that hands the board back. Same debt every live
   // move owes - see `submitUpdate`.
@@ -3006,9 +3017,6 @@ function startStagingRun(): void {
     SITE_CAPS, DEFENSE_MAX,
   )));
   clearFoundedSettlements();
-  // The harvest flow must not outlive its run: the overlay itself hides
-  // on the phase change, this is the state behind it.
-  pendingHarvest = null;
   disarm();
   // A pin must not outlive the run it was set in: the fresh game re-colours
   // every polygon, and the held highlight would describe the last one.
@@ -4010,13 +4018,15 @@ const interaction = attachInteraction(svg, regionPaths, data, {
 if (boot !== null) {
   refresh();
   showEndingIfAny();
-  // A booted state runs NO transition - it is folded into `initialGame` - so
-  // no stage 3 ever asks, and a `?turns=` fast-forward lands on an unanswered
-  // conquest about a third of the time. Every gate that reads
-  // `localTransferPending` then returns in silence: no card can be played, no
-  // turn ended, and nothing on screen says why. The `adoptSnapshot`
-  // precedent, for the same reason - a state nobody watched happen still owes
-  // its questions.
+  // A booted state runs NO transition at all - it is folded into
+  // `initialGame`, ahead of the queue - so the ask stage every other world
+  // arriving whole gets is the one thing this path cannot inherit, and a
+  // `?turns=` fast-forward lands on an unanswered conquest about a third of
+  // the time. Every gate that reads `localTransferPending` then returns in
+  // silence: no card can be played, no turn ended, and nothing on screen says
+  // why. Same rule as the settled stages, asked here because there is no
+  // transition to ask it: a state nobody watched happen still owes its
+  // questions.
   //
   // On the SAME condition stage 3 stands down on: a run that has ended has no
   // board to move defenders on, and the question would be a slider reading

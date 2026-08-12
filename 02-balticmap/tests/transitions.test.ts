@@ -39,6 +39,7 @@ function recorder() {
     ask: hook("ask"),
     summary: hook("summary"),
     ending: hook("ending"),
+    teardown: () => { order.push("teardown"); },
   };
   const release = (name: keyof typeof holds) => {
     const fns = holds[name].splice(0, holds[name].length);
@@ -125,6 +126,7 @@ describe("the transition queue", () => {
       },
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(1), stages);
     qRef.value = q;
@@ -132,13 +134,19 @@ describe("the transition queue", () => {
     expect(seen).toEqual({ present: 1, ask: 2, askLatest: 2 });
   });
 
-  it("commits a settled transition and presents nothing", () => {
-    const { order, stages } = recorder();
+  it("commits a settled transition, asks what it owes, and presents nothing", () => {
+    const { order, stages, release } = recorder();
     const q = createTransitionQueue(st(1), stages);
     q.submit(tr(9, { settled: true }));
     expect(q.state().turn).toBe(9);
-    // Stages 1, 3 and 4 are skipped; the ending still gets its chance.
-    expect(order).toEqual(["commit:9", "ending"]);
+    // Stages 1 and 4 are skipped: nothing watched this happen, and a round of
+    // news is about a round somebody sat through. Stage 3 is NOT skipped - a
+    // state that arrived whole still owes its questions, and a conquest
+    // nobody is asked about locks the seat that owes it out of playing a card
+    // and out of ending its turn, with nothing on screen saying why.
+    expect(order).toEqual(["commit:9", "ask"]);
+    release("ask");
+    expect(order).toEqual(["commit:9", "ask", "ending"]);
   });
 
   it("answers with the newest submitted state while the screen still lags", () => {
@@ -186,6 +194,7 @@ describe("the transition queue", () => {
       ask: (_t, done) => done(),
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(1), stages);
     q.replaceSettled(st(2), { animate: false });
@@ -226,6 +235,21 @@ describe("the transition queue", () => {
     expect(q.state().turn).toBe(99);
   });
 
+  it("a settled replacement tears down the same presentation the cap does", () => {
+    // One hook, three doors: a snapshot, a rejoin and a buffer past the cap
+    // are the same act, so the screen throws away the same things on all of
+    // them. Written down here as an ordering because the doors used to
+    // compensate one at a time at their own call sites, and the one that
+    // forgot a step left a question stranded.
+    const { order, stages, release } = recorder();
+    const q = createTransitionQueue(st(1), stages);
+    q.submit(tr(2));
+    q.replaceSettled(st(99));
+    expect(order).toEqual(["present", "teardown", "commit:99", "ask"]);
+    release("ask");
+    expect(order).toEqual(["present", "teardown", "commit:99", "ask", "ending"]);
+  });
+
   it("busy() is true while a transition is in flight and false once the queue drains", () => {
     const { stages, release } = recorder();
     const q = createTransitionQueue(st(1), stages);
@@ -250,6 +274,7 @@ describe("the transition queue", () => {
       ask: () => { throw new Error("boom"); },
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
+      teardown: () => {},
     });
     expect(() => q.submit(tr(2))).not.toThrow();
     expect(q.state().turn).toBe(2); // commit already happened before ask threw
@@ -274,6 +299,7 @@ describe("the transition queue", () => {
       ask: (_t, done) => done(),
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(0), stages);
     let turn = 0;
@@ -310,6 +336,7 @@ describe("the buffer cap", () => {
       ask: (_t, done) => done(),
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(0), stages);
     q.submit(tr(1));
@@ -351,6 +378,7 @@ describe("the buffer cap", () => {
       // only be the superseded beat escaping past its own dead transition.
       summary: (_t, done) => { summaryCalls++; done(); },
       ending: (_t, done) => done(),
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(0), stages);
     q.submit(tr(1));
@@ -367,6 +395,83 @@ describe("the buffer cap", () => {
     expect(fired).toBe(0);
     expect(q.state().turn).toBe(14);
     expect(q.latest().turn).toBe(14);
+  });
+
+  it("raises the question the state it collapsed to owes, against the committed board", () => {
+    // The failure this pins is a hang rather than a blemish. The seat that
+    // owes an unanswered conquest can play no card, end no turn and use no
+    // shortcut, so a collapse that skipped the ask would leave a guest on
+    // turn, unable to act, with nothing on screen saying why - and the host
+    // waiting on that turn for good. The update that carries the local seat's
+    // own conquest is exactly the last of a burst: a march landing at its own
+    // turn start, which is where a burst of pushes stops.
+    //
+    // The question is asked ONCE, for the state that was collapsed to, and
+    // the board underneath it is that same state - the ask stage stands
+    // behind the commit, or the modal would name a conquest the state
+    // accessor says is not pending and the answer would be refused.
+    const asked: string[] = [];
+    const qRef = box<TransitionQueue>();
+    let presents = 0;
+    const held = box<() => void>();
+    const stages: Stages = {
+      present: (_t, done) => {
+        presents++;
+        if (presents === 1) { held.value = done; return; }
+        done();
+      },
+      commit: () => {},
+      ask: (t, done) => {
+        asked.push(`${turnOf(t.next)} on ${turnOf(qRef.value?.state() ?? st(-1))}`);
+        done();
+      },
+      summary: (_t, done) => done(),
+      ending: (_t, done) => done(),
+      teardown: () => {},
+    };
+    const q = createTransitionQueue(st(0), stages);
+    qRef.value = q;
+    q.submit(tr(1));
+    for (let turn = 2; turn <= 14; turn++) q.submit(tr(turn));
+    expect(asked).toEqual(["14 on 14"]);
+  });
+
+  it("tears the superseded presentation down, and does it before the commit", () => {
+    // Cancellation is not bookkeeping alone. The beats of the moves being
+    // dropped are already on the screen's own animation queue, and left there
+    // they go on gliding the camera, fading labels in and walking badges from
+    // scores this commit has already replaced - over a board that has nothing
+    // to do with them. The teardown hook is where a screen throws that away,
+    // and it runs BEFORE the commit so the question stage behind the commit
+    // is raised about the new world rather than suppressed by a key the old
+    // one left behind.
+    const queued: string[] = []; // stands in for the screen's animation queue
+    const order: string[] = [];
+    let presents = 0;
+    const held = box<() => void>();
+    const stages: Stages = {
+      present: (t, done) => {
+        presents++;
+        queued.push(`beats:${turnOf(t.next)}`);
+        if (presents === 1) { held.value = done; return; }
+        done();
+      },
+      commit: (t) => { order.push(`commit:${turnOf(t.next)}`); },
+      ask: (_t, done) => { order.push("ask"); done(); },
+      summary: (_t, done) => done(),
+      ending: (_t, done) => { order.push("ending"); done(); },
+      teardown: () => {
+        order.push("teardown");
+        queued.length = 0;
+      },
+    };
+    const q = createTransitionQueue(st(0), stages);
+    q.submit(tr(1));
+    for (let turn = 2; turn <= 13; turn++) q.submit(tr(turn));
+    expect(queued).toEqual(["beats:1"]); // the rest never started
+    q.submit(tr(14));
+    expect(queued).toEqual([]);
+    expect(order).toEqual(["teardown", "commit:14", "ask", "ending"]);
   });
 });
 
@@ -444,6 +549,7 @@ describe("the safety properties a superseded or double-fired callback must not b
       ask: (_t, done) => done(),
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(1), stages);
     q.submit(tr(2));
@@ -471,6 +577,7 @@ describe("the safety properties a superseded or double-fired callback must not b
       // `ask` running on leaves no second entry in `commits` at all.
       summary: (_t, done) => { summaryCalls++; done(); },
       ending: (_t, done) => done(),
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(1), stages);
     q.submit(tr(2));
@@ -491,7 +598,11 @@ describe("the safety properties a superseded or double-fired callback must not b
     // could never have covered, since there is no `done` on this edge to
     // hold the guard: something else - a repaint side effect, in the real
     // app - triggers the snapshot from directly inside `commit` itself.
-    let askCalls = 0;
+    //
+    // The ask stage is read by the state it was handed, never by a count: the
+    // replacement runs one of its own, so a counter alone could not tell the
+    // question this settled state owes from the dead transition's.
+    const asked: number[] = [];
     const queueRef = box<TransitionQueue>();
     const stages: Stages = {
       present: (_t, done) => done(),
@@ -500,14 +611,15 @@ describe("the safety properties a superseded or double-fired callback must not b
           queueRef.value?.replaceSettled(st(99));
         }
       },
-      ask: () => { askCalls++; },
+      ask: (t) => { asked.push(turnOf(t.next)); },
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(1), stages);
     queueRef.value = q;
     q.submit(tr(2));
-    expect(askCalls).toBe(0);
+    expect(asked).toEqual([99]);
     expect(q.state().turn).toBe(99);
   });
 
@@ -526,6 +638,7 @@ describe("the safety properties a superseded or double-fired callback must not b
       ask: (_t, done) => done(),
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(1), stages);
     q.submit(tr(2));
@@ -550,6 +663,7 @@ describe("the safety properties a superseded or double-fired callback must not b
       ask: (_t, done) => { askCalls++; done(); },
       summary: (_t, done) => done(),
       ending: (_t, done) => done(),
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(1), stages);
     q.submit(tr(2));
@@ -579,6 +693,7 @@ describe("the safety properties a superseded or double-fired callback must not b
       ask: (_t, done) => done(),
       summary: (_t, done) => done(),
       ending: (_t, done) => { endingDone.value = done; },
+      teardown: () => {},
     };
     const q = createTransitionQueue(st(1), stages);
     q.submit(tr(2));

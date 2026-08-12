@@ -39,6 +39,20 @@ export interface Stages {
   summary(t: Transition, done: () => void): void;
   /** Stage 5. The ending, if this transition ended the run. */
   ending(t: Transition, done: () => void): void;
+  /** Not a stage: what the screen must throw away when a world is REPLACED
+   *  rather than moved on from - a snapshot, a boot's history, a buffer past
+   *  the cap. Everything the superseded move put in motion or put on screen:
+   *  the beats it queued, the modals it raised, and any key remembering which
+   *  question it had already asked.
+   *
+   *  It runs before the replacement commits, so the ask stage behind that
+   *  commit raises what the NEW world owes rather than being suppressed by
+   *  what the old one had already asked. It is on this interface, and not at
+   *  the three call sites that replace a world, because those call sites drift:
+   *  each of them has to remember the same four things, and the one that
+   *  forgets leaves a question stranded and the seat unable to play or end its
+   *  turn, with nothing on screen saying why. */
+  teardown(): void;
 }
 
 export interface TransitionQueue {
@@ -71,7 +85,14 @@ export interface TransitionQueue {
    *  immediately. */
   replaceSettled(state: GameState, paint?: { animate?: boolean }): void;
   /** True while a transition is running or waiting to. Input gating asks
-   *  this rather than tracking flights of its own. */
+   *  this rather than tracking flights of its own.
+   *
+   *  The two clauses are not two cases: a queued transition always has one
+   *  running ahead of it, because `submit` drains on the spot and only a
+   *  running transition can hold the drain off. The queue is asked about all
+   *  the same, so this answers "is there anything the player has not been
+   *  shown" rather than a proxy for it that a future queue shape could make
+   *  false. */
   busy(): boolean;
   /** Runs `fn` once every transition submitted so far has finished all six
    *  stages. Fires immediately when the queue is already empty, so a caller
@@ -85,8 +106,10 @@ export interface TransitionQueue {
    *  waiter that unconditionally re-arms never returns, the same as
    *  `AnimationQueue.onIdle`. */
   onIdle(fn: () => void): void;
-  /** How many transitions are waiting behind the running one - the buffer the
-   *  cap is measured against. */
+  /** How many transitions are waiting behind the running one. The cap below
+   *  measures the queue directly rather than through this, so nothing in the
+   *  app reads it: it is here for tests, which is the only place the depth of
+   *  the backlog is a fact anybody checks. */
   pending(): number;
 }
 
@@ -99,10 +122,12 @@ export interface TransitionQueue {
  *  catches up. A player who was not looking gets the board as it stands rather
  *  than a five-minute replay, and the lag cannot grow without bound.
  *
- *  The screen that overflows is the one being pushed to: the host walks its
- *  AI seats one at a time and waits for each to finish showing itself, while
- *  the far end receives a whole round's updates as fast as the wire delivers
- *  them.
+ *  Every screen is capped, because every screen can be given moves faster than
+ *  it can show them. The AI chain paces itself - a seat is submitted by the
+ *  waiter the seat before it armed - but nothing else does: a guest receives a
+ *  whole round of updates as fast as the wire delivers them, and each action a
+ *  guest sends costs the HOST two submits, driven by that guest's clicks
+ *  rather than by the host's own presentation.
  *
  *  The collapse goes through `replaceSettled`, cancellation and all, so a
  *  screen is never shown a partial or out-of-order sequence and no superseded
@@ -112,14 +137,19 @@ export interface TransitionQueue {
 const BUFFER_CAP = 12;
 
 /** The stages a non-settled transition runs, in order. A settled transition
- *  (history arriving whole - a boot, a deal, a rejoin) skips straight to
- *  `commit`, since there is nothing to present: it was never watched happen.
+ *  (history arriving whole - a boot, a deal, a rejoin, a buffer past the cap)
+ *  presents nothing and shows no round summary, since it was never watched
+ *  happen - but it still runs `ask`, because a state nobody watched happen
+ *  still owes its questions. A conquest carried in on a snapshot is answered
+ *  by the seat that owns it or by nobody, and a seat owing an unasked question
+ *  can neither play a card nor end its turn.
+ *
  *  Typed against `keyof Stages` rather than `string` so indexing `stages` by
  *  a name drawn from this list needs no cast - a typo here is a compile
  *  error instead of a runtime "undefined is not a function" five tasks away. */
 const LIVE_STAGES: readonly (keyof Stages)[] =
   ["present", "commit", "ask", "summary", "ending"];
-const SETTLED_STAGES: readonly (keyof Stages)[] = ["commit", "ending"];
+const SETTLED_STAGES: readonly (keyof Stages)[] = ["commit", "ask", "ending"];
 
 /** `createTransitionQueue` runs each submitted transition through six stages
  *  - present, commit, ask, summary, ending, complete - never starting one
@@ -271,6 +301,17 @@ export function createTransitionQueue(
     // this snapshot replaces - the next AI seat, a repaint of a board that
     // no longer exists - would otherwise fire against the new world.
     idle.length = 0;
+    // What the dropped transitions had already put in motion or on screen goes
+    // with them, and it goes BEFORE the commit: a beat still running would
+    // draw the old board's news over the new board, and a question already
+    // asked about the old world would suppress the ask stage below. A hook
+    // that throws must not stop the replacement from committing - the state is
+    // the point, the teardown is hygiene.
+    try {
+      stages.teardown();
+    } catch {
+      // no recovery to attempt: the commit below is what the caller needs.
+    }
     // History arriving whole IS the authoritative world: everything
     // submitted before it has been dropped, so nothing may be made from it.
     latest = state;
