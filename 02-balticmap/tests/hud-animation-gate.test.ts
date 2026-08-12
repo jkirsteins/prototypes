@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 //
 // A dedicated file: module mocks are per-file, and every other HUD test
-// needs the real flyCard. This one exists solely to prove the turn gate in
-// Hud.afterPlayAnimation - that the human's turn ends when their card lands
-// and not before, and that it ends even if a flight's onDone is somehow lost
-// (the element got GC'd oddly, a listener threw, whatever).
+// needs the real flyCard. This one exists to prove the two halves of the turn
+// gate: Hud.afterPlayAnimation - that the human's turn ends when their card
+// lands and not before, and that it ends even if a flight's onDone is somehow
+// lost (the element got GC'd oddly, a listener threw, whatever) - and the
+// transition lifecycle above it, which is what holds the round while a beat
+// nobody played is still on the animation queue.
 //
 // `flyCard` is replaced with a flight that never reports itself finished
 // unless a test says so; the REAL animation queue is kept, because the order
@@ -37,6 +39,7 @@ vi.mock("../src/animate", async (importOriginal) => ({
 }));
 
 import { animations } from "../src/animate";
+import { createTransitionQueue, type Transition } from "../src/transitions";
 import { createHud, type HudCallbacks } from "../src/hud";
 import {
   newGame, startGame, chooseBuild, pickFaction, playCard, beginTurn,
@@ -156,6 +159,43 @@ describe("afterPlayAnimation watchdog", () => {
     expect(fn).not.toHaveBeenCalled(); // never inside its own call
     vi.advanceTimersByTime(0);
     expect(fn).toHaveBeenCalledOnce();
+  });
+
+  it("holds the next transition while a beat is queued, though no card flew", () => {
+    // The case a play-flight gate can never cover, and the one the old
+    // continuation got wrong: a beat nobody played - a turn-start replay step,
+    // the opening draw - is on the animation queue, and no card of the
+    // player's is in the air. Asked of the queue rather than of the flights,
+    // the next move waits; asked of the flights alone it starts at once and
+    // resolves the round over a replay still being drawn.
+    //
+    // The stages are the two lines `src/main.ts` gives them: stage 1 queues
+    // this move's beats and reports itself done when the queue drains, and
+    // stage 4 waits for the played card. Everything else is the real
+    // animation queue and the real HUD.
+    const { hud } = hosted();
+    const started: number[] = [];
+    const turnOf = (t: Transition) =>
+      (t.next as unknown as { turn: number }).turn;
+    const q = createTransitionQueue({ turn: 1 } as unknown as GameState, {
+      present: (t, done) => { started.push(turnOf(t)); animations.onIdle(done); },
+      commit: () => {},
+      ask: (_t, done) => done(),
+      summary: (_t, done) => hud.afterPlayAnimation(done),
+      ending: (_t, done) => done(),
+    });
+    const tr = (turn: number): Transition =>
+      ({ next: { turn } as unknown as GameState, events: [], settled: false });
+
+    hud.update(ready()); // the opening draw: a beat, and no play in the air
+    q.submit(tr(2));
+    q.submit(tr(3));
+    vi.advanceTimersByTime(10 * (STALLED_FLIGHT_MS + WATCHDOG_SLACK_MS));
+    expect(started).toEqual([2]);
+
+    stalled.shift()!(); // the draw lands, and the queue drains behind it
+    vi.advanceTimersByTime(1); // afterPlayAnimation's own macrotask
+    expect(started).toEqual([2, 3]);
   });
 
   it("releases a run that ended while a play was still queued", () => {

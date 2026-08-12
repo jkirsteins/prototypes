@@ -572,6 +572,19 @@ after on the damaged land's own line, formatted by `standingChangeText` in
 `src/view.ts`. This is the same convention as the map badges and the hover
 tooltip.
 
+**One modal per ROUND, and a round is several moves.** Each acting seat is its
+own transition with its own commit, so `hud.update` FOLDS its batch into
+`roundEvents` and raises nothing; `raiseRoundSummary` builds the one summary
+from all of it. It is called by stage 4 of the transition that hands the map
+back to a person (`handsBackToAPerson` in `src/main.ts`) and its `onDismiss` is
+that stage's `done`, so nothing resolves behind a modal about the round before
+it and no later batch can silently replace an earlier one. That replacement is
+what a repaint-raised modal did: five seats acted, the fifth overwrote the
+first, and only the last seat's news was ever read. The numbers still match the
+log, because the walk runs backwards from the state at raise time over exactly
+this batch - a whole AI round, which is the batch `tests/standings.test.ts`
+checks against the real stores.
+
 ## The activity log says what happened, and never hides your own turn
 
 The log carries the same numbers, from the same walk. `renderLog` runs

@@ -115,13 +115,41 @@ export interface HudCallbacks {
 
 export interface Hud {
   /** `animate: false` renders the state as already-settled: no card flies, no
-   *  line flashes, and no round summary is raised. It exists for the first
-   *  paint of a state the player did not play into - a `?turns=` boot - where
-   *  the whole log is "fresh" by definition, and the ordinary path would fly a
-   *  card per human event at once and then drop a round-summary modal over the
-   *  board a second after load, unasked. Every later update animates normally,
-   *  because `renderedEvents` has caught up by then. */
+   *  line flashes, and the batch is dropped rather than folded into the round's
+   *  news. It exists for the first paint of a state the player did not play
+   *  into - a `?turns=` boot - where the whole log is "fresh" by definition,
+   *  and the ordinary path would fly a card per human event at once and then
+   *  drop a round-summary modal over the board a second after load, unasked.
+   *  Every later update animates normally, because `renderedEvents` has caught
+   *  up by then.
+   *
+   *  An update NEVER raises a modal of its own. The round summary is
+   *  `raiseRoundSummary` and the postmortem is `showPostmortem`, both called by
+   *  the transition that caused them - a repaint happens several times per move
+   *  and cannot say which of them the player is owed an interruption for. */
   update(state: GameState, opts?: { animate?: boolean }): void;
+  /** Raises the one modal that speaks for everything folded in since the last
+   *  one, and answers whether anything went up. `onDismiss` fires when the
+   *  player closes it, and only then - it is the caller's stage releasing, so
+   *  nothing resolves behind the modal.
+   *
+   *  Every `update` FOLDS its batch in; this is what SHOWS it. The two are
+   *  separate because a round arrives as several moves - one per acting seat -
+   *  and the player is owed one modal for the round rather than one per seat.
+   *  See `roundEvents`. */
+  raiseRoundSummary(onDismiss: () => void): boolean;
+  /** Takes down a modal raised about a world that no longer exists, and
+   *  forgets everything folded in for the next one. For history arriving
+   *  whole: a snapshot exchanges the board, and news about the board it
+   *  replaced is a modal the player can neither check nor act on. */
+  dropRoundNews(): void;
+  /** Draws the run's ending and puts it on screen. Asked for explicitly rather
+   *  than derived from `state.phase` inside `update`, so an ending rises when
+   *  the move that ended the run has finished being shown - not on whichever
+   *  repaint first notices the phase, which is a repaint with beats, questions
+   *  and a summary still to come, and a board behind "View the map" that still
+   *  has marches standing on it. */
+  showPostmortem(state: GameState): void;
   /** The standings walk and the notice context for one batch of events.
    *
    *  Exists so the surface that PRESENTS a batch - the transition's present
@@ -147,10 +175,14 @@ export interface Hud {
    *   - a flight is in the air -> when it reports itself finished;
    *   - a flight is cancelled (a new game, the run ending) -> immediately.
    *  The HUD holds no duration of its own: it counts live flights and waits
-   *  for each one to report itself done, per the rule in AGENTS.md. A second
-   *  call replaces a still-pending one - only one human turn can be
-   *  resolving at a time, and the replaced continuation is by definition
-   *  stale. */
+   *  for each one to report itself done, plus a last-resort watchdog derived
+   *  from the flight's own `totalMs`, per the rule in AGENTS.md.
+   *
+   *  The card's flight and NOTHING else. Whether the round may resolve, and
+   *  what the player has read, are the transition lifecycle's questions -
+   *  this one is only "has the card landed", which is what stage 4 asks
+   *  before raising a modal that would otherwise cover it. Waiters queue, so
+   *  two callers both get their answer. */
   afterPlayAnimation(fn: () => void): void;
   /** Dims the activity log to the lines that name this faction; null clears.
    *  The mirror of `HudCallbacks.onHighlightFaction`, which lights the map from
@@ -1550,24 +1582,37 @@ export function createHud(
     noticeOverlay.classList.remove("hidden");
   }
 
+  /** The stage waiting on the modal on screen, or null when none is up. Fired
+   *  once, by the dismissal or by the teardown - a stage left holding is a
+   *  transition queue that never runs again. */
+  let summaryDismissed: (() => void) | null = null;
+
+  function releaseSummaryStage(): void {
+    const fn = summaryDismissed;
+    summaryDismissed = null;
+    fn?.();
+  }
+
   function dismissSummary(): void {
     noticeOverlay.classList.add("hidden");
     // A dismiss with the cursor still over a name must not leave its tip or
     // its map halo stuck on screen.
     cb.onHideTip?.();
     cb.onHighlightFaction?.(null);
-    // Releases the AI round a fizzle modal was holding. Unconditional is safe:
-    // an AI-round modal has no pending continuation and this no-ops, as does a
-    // second dismiss.
-    settleTurn();
+    // What the player has read is what releases the round: nothing resolves
+    // behind a modal about the round before it.
+    releaseSummaryStage();
   }
 
   function hideSummary(): void {
     noticeOverlay.classList.add("hidden");
     // Torn down rather than shown later. Both callers are ends - the run
-    // finishing, and a new game shrinking the log - and a summary about the
-    // previous run has nothing to say about either.
-    pendingSummary = null;
+    // finishing, and a new game shrinking the log - and news about the
+    // previous run has nothing to say about either. The stage still gets its
+    // release: a torn-down modal owes its caller an answer as much as a read
+    // one does.
+    roundEvents = [];
+    releaseSummaryStage();
   }
 
   /** Shared with the "Targeting me" log filter (isNoticeWorthy) so the two
@@ -1590,8 +1635,27 @@ export function createHud(
     };
   }
 
-  /** Player-affecting events interrupt once per AI round: build the whole
-   *  batch into a single summary and show it, if it has anything to say.
+  /** Everything folded in since the last modal was raised, in log order.
+   *
+   *  A round arrives as several moves - the seat that played, the advance, and
+   *  one per acting AI seat - and each is its own transition with its own
+   *  commit. Accumulating is what keeps "the AI's round is one modal, one line
+   *  per event" true across them: the alternative, a modal per move, either
+   *  asks the player to dismiss five in a row or lets the fifth silently
+   *  replace the first, which is what happened while the summary was raised
+   *  from the repaint.
+   *
+   *  Raw events rather than built summaries, because `buildRoundSummary`
+   *  groups, deduplicates and titles across a whole batch: merging five built
+   *  summaries would have to re-do all of that, and its headline choice reads
+   *  the batch as a whole. The numbers stay the log's own - `walkStandings`
+   *  runs backwards from the state at raise time, and
+   *  `tests/standings.test.ts` pins that walk against the real stores over
+   *  exactly this batch, a whole AI round. */
+  let roundEvents: GameEvent[] = [];
+
+  /** Player-affecting events interrupt once per AI round: everything folded in
+   *  becomes a single summary, shown if it has anything to say.
    *
    *  Muting the popup (LogPrefs.showPopups) narrows this rather than silencing
    *  it. A critical event - one that changes what the player is allowed to do
@@ -1600,30 +1664,27 @@ export function createHud(
    *  other news and nothing more. The activity log carries everything either
    *  way. Without this, a player who muted popups could be made someone's
    *  vassal and find out only by noticing their cards had stopped working. */
-  function showRoundSummaryIfAny(state: GameState, fresh: GameEvent[]): void {
-    if (state.phase !== "playing") return;
+  function raiseRoundSummary(onDismiss: () => void): boolean {
+    const state = lastState;
+    if (state === null || state.phase !== "playing") return false;
     const ctx = buildNoticeCtx(state);
-    if (ctx === null) return;
-    const summary = buildRoundSummary(fresh, ctx, {
+    if (ctx === null) return false;
+    // Taken, not read: a batch that has been made into a modal must not turn
+    // up again in the next one, whether or not it had anything to say.
+    const batch = roundEvents;
+    roundEvents = [];
+    const summary = buildRoundSummary(batch, ctx, {
       criticalOnly: !logPrefs.showPopups,
     }, localPlayerId());
-    if (summary === null) return;
-    // A pending play means one thing only: the local player's own played card
-    // is on screen or still queued to be. `animateEvents` skips every event
-    // with `playerId !== localPlayerId()` and the draw is deliberately
-    // untracked, so this is the honest test for "the turn this summary
-    // describes is not over yet" - read off the animation rather than from a
-    // predicate that re-guesses which events animate. A queued DRAW alone
-    // still does not park it.
-    //
-    // Nothing else parks it: the transition that carried these events showed
-    // everything it owed the player before this repaint ran, so the modal is
-    // already the round's epilogue rather than a cover over it.
-    if (playPending()) {
-      pendingSummary = summary;
-      return;
-    }
+    if (summary === null) return false;
+    // Nothing on screen may be replaced by this: the caller is a stage, and a
+    // stage runs only once the one before it released. A modal still up here
+    // would mean two stages in flight at once, so its waiter is released
+    // rather than dropped - a lost `done` wedges the queue for good.
+    releaseSummaryStage();
+    summaryDismissed = onDismiss;
     showRoundSummary(summary);
+    return true;
   }
 
   // Return dismisses the summary as well as Escape. Handled here rather than
@@ -2104,60 +2165,16 @@ export function createHud(
   let queuedPlayFlights = 0;
   const playPending = (): boolean =>
     liveFlights.size > 0 || queuedPlayFlights > 0;
-  let pendingContinuation: (() => void) | null = null;
+  /** Callers waiting for the played card to land - see `afterPlayAnimation`.
+   *  A list and not a slot: two of them waiting is two answers owed, and a
+   *  slot silently drops the first. */
+  const playWaiters: (() => void)[] = [];
   let watchdog: ReturnType<typeof setTimeout> | null = null;
-  /** A summary the human's OWN turn raised, held back until their card lands.
-   *  Null whenever nothing is waiting.
-   *
-   *  The wait is on `liveFlights`, never on a duration - the same clock
-   *  `afterPlayAnimation` runs on, per the rule in AGENTS.md. Raising it any
-   *  earlier fails twice over: `.notice-overlay` sits above `.flying-card`, so
-   *  the modal would cover the very card it is talking about; and the AI round
-   *  that follows calls `showRoundSummary` again, which would either overwrite
-   *  this one within the same tick or leave it standing after the opponents had
-   *  already moved. */
-  let pendingSummary: RoundSummary | null = null;
 
-  /** Guards the one onIdle re-arm below: settleTurn can be reached from a
-   *  flight's onDone, the queue draining and a phase change in the same
-   *  breath, and two armed waiters would raise the summary once and then let
-   *  the second waiter fall through to the continuation - the AI resuming
-   *  behind the very modal the first waiter raised. */
-  let idleSettleArmed = false;
-
-  function settleTurn(): void {
+  function releasePlayWaiters(): void {
     if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
-    if (pendingSummary !== null) {
-      // The replay owns the screen while the queue is busy: the summary is
-      // the round's epilogue, and raising it over the camera still visiting
-      // the events it describes would cover them. Waits on the queue itself,
-      // never on a copied duration.
-      if (animations.busy()) {
-        if (!idleSettleArmed) {
-          idleSettleArmed = true;
-          animations.onIdle(() => {
-            idleSettleArmed = false;
-            settleTurn();
-          });
-        }
-        return;
-      }
-      const summary = pendingSummary;
-      pendingSummary = null;
-      showRoundSummary(summary);
-      // The continuation stays armed on purpose. The AI must not take its turns
-      // behind a modal about the turn before it - `dismissSummary` calls back
-      // in here once the player has read it, and that is what releases them.
-      return;
-    }
-    // The same rule for a summary that never had to park: one raised straight
-    // from the repaint is still a modal about the turn before, and a
-    // continuation released under it is the AI moving behind it. Held rather
-    // than dropped - `dismissSummary` calls back in here.
-    if (!noticeOverlay.classList.contains("hidden")) return;
-    const fn = pendingContinuation;
-    pendingContinuation = null;
-    fn?.();
+    const waiting = playWaiters.splice(0, playWaiters.length);
+    for (const fn of waiting) fn();
   }
 
   function cancelLiveFlights(): void {
@@ -2177,15 +2194,15 @@ export function createHud(
    *  the duration copy AGENTS.md forbids. */
   function armFlightWatchdog(): void {
     if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
-    if (pendingContinuation === null || liveFlights.size === 0) return;
+    if (playWaiters.length === 0 || liveFlights.size === 0) return;
     const longestMs = Math.max(...[...liveFlights].map((f) => f.totalMs));
     watchdog = setTimeout(() => {
       // A flight past its deadline never reported itself done, so its queue
       // step is wedged too - cancel it (which fires its onDone, releasing the
-      // step) rather than settling around it, or the summary's own wait on
-      // the queue below would never end.
+      // step) rather than settling around it, or every stage waiting behind
+      // the animation queue would wait for good.
       for (const flight of [...liveFlights]) flight.cancel();
-      settleTurn();
+      releasePlayWaiters();
     }, longestMs + FLIGHT_WATCHDOG_SLACK_MS);
   }
 
@@ -2250,7 +2267,7 @@ export function createHud(
       ],
       () => {
         liveFlights.delete(flight);
-        if (!playPending()) settleTurn();
+        if (!playPending()) releasePlayWaiters();
         done();
       },
     );
@@ -2721,7 +2738,7 @@ export function createHud(
         // A run that ended, or a fresh game, must never leave afterPlayAnimation's
         // caller waiting forever on a flight that will now never land.
         cancelLiveFlights();
-        settleTurn();
+        releasePlayWaiters();
       }
       const ended = state.phase === "victory" || state.phase === "defeat";
       menu.classList.toggle("hidden", state.phase !== "main-menu");
@@ -2733,11 +2750,17 @@ export function createHud(
       discardPile.root.classList.toggle("hidden", state.phase !== "playing");
       hand.classList.toggle("hidden", state.phase !== "playing");
       logPanel.classList.toggle("hidden", state.phase !== "playing");
-      postmortem.classList.toggle("hidden", !ended);
-      // A run that is not over cannot have its result stood aside: without
-      // this the toggle survives into the next game and hides the screen it
-      // was meant to reveal.
-      if (!ended) setPostmortemAside(false);
+      // Taken DOWN here and put up only by `showPostmortem`: a repaint happens
+      // several times per move, and the first one to notice the phase is the
+      // commit - with the question this conquest raised, the round's summary
+      // and the marches still to be shown all behind it.
+      if (!ended) {
+        postmortem.classList.add("hidden");
+        // A run that is not over cannot have its result stood aside: without
+        // this the toggle survives into the next game and hides the screen it
+        // was meant to reveal.
+        setPostmortemAside(false);
+      }
       scoreboard.classList.toggle("hidden", state.phase !== "playing");
       milestonesBtn.classList.toggle("hidden", state.phase !== "playing");
       // Phase only: `.open` is what the button drives, and having the two
@@ -2787,17 +2810,24 @@ export function createHud(
         renderScoreboard(state);
         renderMilestones(state);
         const fresh = renderLog(state, animate);
-        // Animate first, decide second. `showRoundSummaryIfAny` asks whether a
-        // flight is in the air to know whether the turn it is describing has
-        // finished, so the local seat's own flights have to be queued by then
-        // or the answer is stale by one update.
         if (animate) {
           animateEvents(fresh);
-          showRoundSummaryIfAny(state, fresh);
+          // Folded in, never shown here: which move the player is owed an
+          // interruption for is the caller's question, and it asks it through
+          // `raiseRoundSummary`. A silent paint is history arriving whole and
+          // has nothing to interrupt for, so its batch is dropped rather than
+          // kept for the next modal.
+          roundEvents.push(...fresh);
+        } else {
+          roundEvents = [];
         }
-      } else if (ended) {
-        renderPostmortem(state);
       }
+    },
+    raiseRoundSummary,
+    dropRoundNews: hideSummary,
+    showPostmortem(state) {
+      renderPostmortem(state);
+      postmortem.classList.remove("hidden");
     },
     noticeWalk,
     setArmed(index, cardNameText, prompt) {
@@ -2814,15 +2844,14 @@ export function createHud(
       }
     },
     afterPlayAnimation(fn) {
-      if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
-      pendingContinuation = fn;
       // Nothing flew and nothing is coming - a forced discard, a play the
       // local seat did not make. Still asynchronous, so a caller's continuation
       // never runs inside its own call.
       if (!playPending()) {
-        setTimeout(settleTurn, 0);
+        setTimeout(fn, 0);
         return;
       }
+      playWaiters.push(fn);
       // A play still queued arms nothing yet: `animatePlay`'s step calls
       // `armFlightWatchdog` the moment its flight exists.
       armFlightWatchdog();

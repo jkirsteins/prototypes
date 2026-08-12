@@ -344,10 +344,12 @@ const initialGame: GameState = (() => {
  *  next one off for as long as it takes - which is the whole of the gate that
  *  used to be spelled out at every call site that resumed the AI.
  *
- *  `commit` is the whole of `refresh`. The round summary and the conquest
- *  question are still raised from inside it - `hud.update` and
- *  `askTransferIfPending` - so `ask`, `summary` and `ending` have nothing of
- *  their own yet. */
+ *  `commit` is the whole of `refresh`, and it raises nothing: the question
+ *  this move asked is `ask`, the round's news is `summary` and the run's
+ *  ending is `ending`, each held open until the player has answered or read
+ *  it. A repaint happens several times per move and cannot say which of them
+ *  the player is owed an interruption for, which is why none of the three is
+ *  derived from a repainted phase any more. */
 const stages: Stages = {
   present(t, done) {
     // This repaint moves nothing on the map - it draws the state already on
@@ -366,13 +368,38 @@ const stages: Stages = {
   commit(t) {
     refresh(t.paint);
   },
-  ask(_t, done) {
-    done();
+  ask(t, done) {
+    // A run that has ended has no board left to move defenders on: the phase
+    // change takes the modal down with it, so a question raised here could
+    // never be answered and would hold the queue - and the ending behind it -
+    // for good. The unanswered conquest is picked up again by the transition
+    // that hands the board back, which is `keep-playing`.
+    if (t.next.phase !== "playing") {
+      done();
+      return;
+    }
+    askTransfer(done);
   },
-  summary(_t, done) {
-    done();
+  summary(t, done) {
+    // Every commit folds its batch into the round's news; this is the stage
+    // that shows it, and only on the move that hands the map back to a
+    // person. A round is several transitions - the advance, then one per
+    // acting seat - and "one modal, one line per event" is a promise about
+    // the ROUND, so a seat mid-chain shows nothing and loses nothing.
+    if (!handsBackToAPerson(t.next)) {
+      done();
+      return;
+    }
+    // `.notice-overlay` sits above `.flying-card`, so a modal raised while the
+    // player's own card is still in the air covers the very card it is talking
+    // about. The wait is on the flight reporting itself finished, never on a
+    // duration copied from it.
+    hud.afterPlayAnimation(() => {
+      if (!hud.raiseRoundSummary(done)) done();
+    });
   },
   ending(_t, done) {
+    showEndingIfAny();
     done();
   },
 };
@@ -434,6 +461,16 @@ function submitUpdate(next: GameState, events: GameEvent[]): void {
  *  so a guest rejoining a run twenty turns old would watch all of it. */
 function adoptSnapshot(state: GameState): void {
   transitions.replaceSettled(state, { animate: false });
+  // The board has been exchanged, so a modal about the one it replaced is a
+  // modal the player can neither check nor act on - and the stage holding it
+  // is inert by now anyway, dropped with the rest of the run.
+  hud.dropRoundNews();
+  // A settled transition runs no ask stage - there was nothing to watch
+  // happen - so a snapshot carrying a conquest question the local seat owes
+  // has to raise it here or nobody would, and the seat would sit locked
+  // behind a question with no modal. Nothing waits on the answer: the
+  // question outlived the move that asked it.
+  askTransfer(() => {});
   // The commit inside that call painted whatever the screen was still busy
   // with; this is the paint that hands the board back. Same debt every live
   // move owes - see `submitUpdate`.
@@ -652,16 +689,6 @@ function humanBlockReason(cardId: string) {
   );
 }
 
-/** Puts the conquest transfer question up when the state carries one for the
- *  local seat. Idempotent: the modal is only raised once per pending
- *  question, and answering clears it.
- *
- *  Keyed by the LOCAL player's faction, which is the whole of the check: the
- *  store replicates whole, so a screen reading it without asking whose
- *  question it is raised the other human's conquest modal and answered it
- *  into a copy the next update threw away. */
-let transferAsked: string | null = null;
-
 /** Whether the LOCAL player owes an answer about a conquest. Asked wherever
  *  input has to wait on the modal, so the wait is the same question the modal
  *  is raised on rather than a second reading of the same store. */
@@ -676,26 +703,26 @@ function localPendingTransfers(): { from: string; to: string }[] | undefined {
   return me === undefined ? undefined : game().pendingTransfers[me];
 }
 
-function askTransferIfPending(): void {
+/** Stage 3: the conquest question, if this move left the local seat owing
+ *  one. `done` fires on the answer, so nothing resolves - and no summary
+ *  rises - over a question the player has not answered.
+ *
+ *  Keyed by the LOCAL player's faction, which is the whole of the check: the
+ *  store replicates whole, so a screen reading it without asking whose
+ *  question it is raised the other human's conquest modal and answered it
+ *  into a copy the next update threw away.
+ *
+ *  One stage, one question, and no guard against asking twice: a stage runs
+ *  once per transition, and each answer is a move of its own whose stage asks
+ *  the next conquest in the queue. */
+function askTransfer(done: () => void): void {
   // The front of the queue: one pair of lands per modal, in the order the
   // lands fell. Answering pops it and the next conquest raises its own.
   const pending = localPendingTransfers()?.[0];
   if (pending === undefined) {
-    transferAsked = null;
+    done();
     return;
   }
-  const key = `${pending.from}>${pending.to}`;
-  if (transferAsked === key) return;
-  transferAsked = key;
-  raiseTransferModal(pending);
-}
-
-/** Puts one conquest's question on screen. Raised by the commit that first
- *  carries the conquest, which is AFTER the transition's own present stage has
- *  shown the land being taken - the question follows the picture of the thing
- *  it is asking about, and the answer is committed against a state that has
- *  the conquest in it. */
-function raiseTransferModal(pending: { from: string; to: string }): void {
   const v = viewOf(game());
   hud.showTransferOffer(
     {
@@ -710,6 +737,7 @@ function raiseTransferModal(pending: { from: string; to: string }): void {
       onConfirm(amount) {
         hud.hideHarvestUi();
         decide({ kind: "transfer", amount });
+        done();
       },
     },
   );
@@ -2715,6 +2743,22 @@ function viewState(): GameState {
  *  an event replay step - see the `victory`/`defeat` rows of REPLAY_RULES. */
 let cuedEndingPhase: GameState["phase"] | null = null;
 
+/** Stage 5: the run's ending, sounded and put on screen, or nothing when the
+ *  run is still going. The LOCAL seat's ending - a guest whose realm was
+ *  swallowed is shown defeat while the host's screen plays victory.
+ *
+ *  Also the boot paint's, which is the one state on this page that runs no
+ *  transition: a `?turns=` boot can hand the page a run that has already
+ *  ended, and a map that has stopped with nothing over it saying why is worse
+ *  than the ending arriving unasked. */
+function showEndingIfAny(): void {
+  const view = viewState();
+  cueEndingIfAny();
+  if (view.phase === "victory" || view.phase === "defeat") {
+    hud.showPostmortem(view);
+  }
+}
+
 function cueEndingIfAny(): void {
   // The LOCAL seat's ending, not the host's: a guest whose realm was
   // swallowed hears defeat while the host's screen plays victory -
@@ -2735,11 +2779,10 @@ function cueEndingIfAny(): void {
 }
 
 function refresh(opts?: { animate?: boolean }): void {
-  // First, before anything renders: the ending overlay this repaint may be
-  // about to raise reads a total that has to have stopped moving.
+  // First, before anything renders: the ending stage this move may be about to
+  // reach reads a total that has to have stopped moving, and it reads it
+  // through the overlay this repaint draws.
   runClock.sample(game().phase);
-  // Then the ending's own sound, off the same settled phase.
-  cueEndingIfAny();
   applyOwnership();
   applyTargeting();
   revealFoundedSettlements();
@@ -2754,16 +2797,6 @@ function refresh(opts?: { animate?: boolean }): void {
   // defense score from three plays ago is worse than no panel.
   showPinnedLand(pinnedRegion);
   hud.update(viewState(), opts);
-  // A conquest the local player made and has not answered for: how many
-  // defenders march over with it. Raised here rather than at the play, because
-  // a land can also be walked into by a raid landing at turn start - one
-  // question, however the land was taken.
-  //
-  // The transition that carried the conquest showed it before this repaint
-  // ran, so the modal follows the animation explaining it rather than landing
-  // over it. Answering commits against the state under the map, which is why
-  // the question belongs to the commit and not to the beats before it.
-  askTransferIfPending();
   floatScoreMarks();
   // The menu carries the panel; so does a network game that has lost its
   // session, or one whose lobby is still being filled in - the status line
@@ -2835,11 +2868,11 @@ function finishChain(): void {
 /** After a completed human action: advance, then run every AI turn back to
  *  back (each AI plays or discards; the loop stops on an ending phase).
  *
- *  The AI chain does not start until the human's played card has finished
- *  flying and any modal about the turn before has been read
- *  (`hud.afterPlayAnimation`) - resolving it on a bare `setTimeout(0)` used to
- *  put the round-summary modal over a card the player was still watching
- *  move. */
+ *  The AI chain does not start until the transition carrying the advance has
+ *  finished every stage - the card in the air, the question it raised and the
+ *  modal about the turn before it all sit between the click and the first AI
+ *  seat, and they sit there because the lifecycle runs them, not because this
+ *  function remembers to wait. */
 function afterHumanAction(): void {
   // `advance` refuses while the turn is still open - a card that re-opened it
   // for another copy of itself has not finished - so this is safe to call from
@@ -2858,10 +2891,20 @@ function afterHumanAction(): void {
       finishChain();
       return;
     }
-    hud.afterPlayAnimation(() => {
-      resumeChain();
-    });
+    resumeChain();
   });
+}
+
+/** Whether this move hands the map back to a person - the local seat, or the
+ *  other human's. The round's news is read at the moment somebody can act on
+ *  it, so an AI seat mid-chain answers false and its news waits.
+ *
+ *  A person and not "the local player": on the host, a guest taking the turn
+ *  ends the host's round as surely as its own turn does, and the host would
+ *  otherwise hold a round of news until the other human had finished
+ *  thinking. */
+function handsBackToAPerson(next: GameState): boolean {
+  return next.phase === "playing" && controllerOf(next.current) !== "ai";
 }
 
 /** The status bar's "waiting for the other human" line. Only the host draws
@@ -2911,7 +2954,7 @@ function afterHumanPlay(): void {
   // The repaint waits for the card to land and for the queue behind it to
   // empty: `inputLocked` counts a flight in the air, so a paint made under
   // one would draw a live hand over a card the player is still watching.
-  hud.afterPlayAnimation(refreshWhenSettled);
+  refreshWhenSettled();
 }
 
 /** A fresh world on the deck screen: everything the New game click does once
@@ -2989,13 +3032,10 @@ const hudCallbacks: HudCallbacks = {
         return;
       }
       disarm();
-      // A conquest that WON the run can leave a defender transfer unanswered:
-      // the modal was raised on the victory repaint and then hidden by the
-      // phase change one line later, with the key still stamped. Clearing it
-      // is what lets `askTransferIfPending` raise the question again now that
-      // there is a board to answer it on - otherwise the player silently
-      // loses the defenders they were about to move.
-      transferAsked = null;
+      // A conquest that WON the run leaves its defender transfer unanswered -
+      // the ask stage stands down on an ended run, since there is no board to
+      // move them on. This decision is the move that gives one back, and its
+      // own ask stage puts the question the player still owes back on screen.
       decide({ kind: "keep-playing" });
     },
     onSurrender() {
@@ -3937,4 +3977,7 @@ const interaction = attachInteraction(svg, regionPaths, data, {
 // painted - ownership, realm outlines, threat badges, settlements - which the
 // first `hud.update` alone does not do. Running it here rather than beside
 // that update keeps it clear of every binding declared between the two.
-if (boot !== null) refresh();
+if (boot !== null) {
+  refresh();
+  showEndingIfAny();
+}

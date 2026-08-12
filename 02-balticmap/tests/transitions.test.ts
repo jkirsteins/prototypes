@@ -76,6 +76,32 @@ describe("the transition queue", () => {
     ]);
   });
 
+  it("raises the ending only once the beats, the question and the summary are done", () => {
+    // The run-ending move is the one that most obviously must not be shown
+    // out of order: an ending raised at the commit rises over the marches
+    // still landing and the conquest question still unanswered, and "View the
+    // map" behind it shows a board with arrows on it that never resolved.
+    // Stage 5 is last, so each stage in turn is enough to hold it.
+    const { order, stages, release } = recorder();
+    const q = createTransitionQueue(st(1), stages);
+    q.submit(tr(2, { events: [{ type: "victory" }] as never }));
+    expect(order).not.toContain("ending");
+    release("present"); // the marches have landed
+    expect(order).not.toContain("ending");
+    release("ask"); // the defenders are in
+    expect(order).not.toContain("ending");
+    release("summary"); // the round's news has been read
+    expect(order).toEqual([
+      "present", "commit:2", "ask", "summary", "ending",
+    ]);
+    // And the ending itself holds the queue: nothing runs behind a postmortem.
+    q.submit(tr(3));
+    expect(order.filter((o) => o === "present")).toHaveLength(1);
+    release("ending");
+    expect(order.filter((o) => o === "present")).toHaveLength(2);
+    release("present"); release("ask"); release("summary"); release("ending");
+  });
+
   it("commits a settled transition and presents nothing", () => {
     const { order, stages } = recorder();
     const q = createTransitionQueue(st(1), stages);

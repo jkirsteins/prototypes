@@ -114,6 +114,25 @@ function setup(opts?: {
 
 const q = (c: HTMLElement, sel: string) => c.querySelector(sel) as HTMLElement;
 
+/** The commit and the stage-4 raise together, which is how a round summary
+ *  reaches the screen: an update FOLDS its batch into the round's news and
+ *  shows nothing, and the transition that hands the map back to a person is
+ *  what raises the one modal for all of it (`src/main.ts`). Answers whether a
+ *  modal went up. */
+function showRound(
+  hud: Hud, g: GameState, onDismiss: () => void = () => {},
+): boolean {
+  hud.update(g);
+  return hud.raiseRoundSummary(onDismiss);
+}
+
+/** The commit and the stage-5 raise: the postmortem is asked for by the move
+ *  that ended the run, never derived from the phase by a repaint. */
+function showEnded(hud: Hud, g: GameState): void {
+  hud.update(g);
+  hud.showPostmortem(g);
+}
+
 function withHand(g: GameState, playerIdx: number, hand: string[]): GameState {
   const p = { ...g.players[playerIdx], hand };
   return { ...g, players: g.players.map((pl, i) => (i === playerIdx ? p : pl)) };
@@ -395,7 +414,7 @@ describe("createHud", () => {
   it("names the faction that unified the Balts", () => {
     const { container, hud } = setup();
     const g = playing();
-    hud.update({
+    showEnded(hud, {
       ...g,
       phase: "defeat",
       log: [
@@ -635,7 +654,7 @@ describe("activity log", () => {
     let g = withHand({ ...playing(), defense: { alpha: 0 } }, 0, ["raid"]);
     g = playCard(g, 0, seededRng(1), "alpha");
     g = beginTurn({ ...g, turn: g.turn + 1 }, seededRng(1));
-    hud.update(g);
+    showEnded(hud, g);
     const entries = [...container.querySelectorAll(".log-entry")] as HTMLElement[];
     const texts = entries.map((el) => el.textContent);
     // "reaches", not "falls on": it broke nothing, and the line under it says
@@ -899,7 +918,7 @@ describe("activity log filters", () => {
         { turn: 1, playerId: 2, type: "march-resolved" as const, cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 10 },
       ],
     };
-    hud.update(g);
+    showRound(hud, g);
     const noticed = q(container, ".notice-change").textContent;
     q(container, ".notice-continue").click();
     const logged = [...container.querySelectorAll(".log-entry")]
@@ -958,7 +977,7 @@ describe("activity log filters", () => {
         { turn: 1, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
       ],
     };
-    hud.update(g);
+    showRound(hud, g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe("You were subjugated");
     const lines = [...container.querySelectorAll(".notice-line")].map((el) => el.textContent);
@@ -987,7 +1006,7 @@ describe("activity log filters", () => {
         },
       ],
     };
-    hud.update(g);
+    showRound(hud, g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe("A vassal was lost");
   });
@@ -1009,7 +1028,7 @@ describe("activity log filters", () => {
         { turn: 1, playerId: 2, type: "released", targetFactionId: "delta", overlordFactionId: "beta" },
       ],
     };
-    hud.update(g);
+    showRound(hud, g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe("You were subjugated");
     const lines = [...container.querySelectorAll(".notice-line")].map((el) => el.textContent);
@@ -1029,7 +1048,7 @@ describe("activity log filters", () => {
         { turn: 1, playerId: 3, type: "released", targetFactionId: "beta", overlordFactionId: "alpha" },
       ],
     };
-    hud.update(g);
+    showRound(hud, g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe("Your overlord fell");
   });
@@ -1051,7 +1070,7 @@ describe("activity log filters", () => {
         },
       ],
     };
-    hud.update(g);
+    showRound(hud, g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe("You are free");
   });
@@ -1068,7 +1087,7 @@ describe("activity log filters", () => {
         { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 10 },
       ],
     };
-    hud.update(g);
+    showRound(hud, g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe("Your defenses are broken");
     const notes = [...container.querySelectorAll(".notice-footnote")].map((el) => el.textContent);
@@ -1187,7 +1206,7 @@ describe("card animations", () => {
         { turn: g.turn, playerId: 2, type: "subjugated", targetFactionId: "beta", overlordFactionId: "alpha" },
       ],
     };
-    hud.update(g);
+    showRound(hud, g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     const lines = [...container.querySelectorAll(".notice-line")].map((el) => el.textContent);
     expect(lines.join(" ")).toMatch(/fealty/i);
@@ -1315,7 +1334,7 @@ describe("afterPlayAnimation", () => {
    *  one flight per own `play` event in the fresh batch now, and a SECOND,
    *  fabricated play event would queue a second flight the AI-round gate
    *  never sees in real play - a human gets one play a turn - and its landing
-   *  would release the continuation `pendingSummary` was meant to hold. */
+   *  would release the stage the modal is meant to hold. */
   function withOwnFizzle(g: GameState): GameState {
     const last = g.log.length - 1;
     return {
@@ -1339,10 +1358,21 @@ describe("afterPlayAnimation", () => {
     };
   }
 
+  /** Stage 4, as `src/main.ts` spells it: the raise waits for the played card
+   *  to land, and the stage is released by the dismissal or by nothing going
+   *  up at all. `done` is the transition's own `done` - what stands between a
+   *  modal about this turn and the round after it resolving. */
+  function summaryStage(hud: Hud, done: () => void): void {
+    hud.afterPlayAnimation(() => {
+      if (!hud.raiseRoundSummary(done)) done();
+    });
+  }
+
   it("holds a fizzle modal until the played card has landed", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
     playedWithFizzle()(hud);
+    summaryStage(hud, () => {});
 
     // The overlay sits above the flying card, so showing it now would cover the
     // very card the player is being told about.
@@ -1353,27 +1383,27 @@ describe("afterPlayAnimation", () => {
     vi.useRealTimers();
   });
 
-  it("keeps the AI waiting behind a fizzle modal until Continue", () => {
+  it("keeps the round waiting behind a fizzle modal until Continue", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
     playedWithFizzle()(hud);
 
-    const fn = vi.fn();
-    hud.afterPlayAnimation(fn);
+    const done = vi.fn();
+    summaryStage(hud, done);
     vi.runAllTimers();
-    // The flight has landed and every timer has run, and the AI still has not
-    // moved: a modal about your turn must not have their turns resolving
+    // The flight has landed and every timer has run, and the stage is still
+    // held: a modal about your turn must not have the AI's turns resolving
     // behind it.
-    expect(fn).not.toHaveBeenCalled();
+    expect(done).not.toHaveBeenCalled();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
 
     (q(container, ".notice-continue") as HTMLButtonElement).click();
-    expect(fn).toHaveBeenCalledOnce();
+    expect(done).toHaveBeenCalledOnce();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
     vi.useRealTimers();
   });
 
-  it("does not hold the turn when the play raised nothing", () => {
+  it("does not hold the round when the play raised nothing", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
     let g = newPlaying();
@@ -1382,26 +1412,26 @@ describe("afterPlayAnimation", () => {
     g = withHand(g, 0, ["grow-crops"]);
     hud.update(playCard(g, 0, seededRng(1)));
 
-    const fn = vi.fn();
-    hud.afterPlayAnimation(fn);
+    const done = vi.fn();
+    summaryStage(hud, done);
     vi.runAllTimers();
-    expect(fn).toHaveBeenCalledOnce();
+    expect(done).toHaveBeenCalledOnce();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
     vi.useRealTimers();
   });
 
-  /** The pending summary must not outlive its run, and clearing it must not
-   *  swallow the continuation it was holding - `hideSummary` runs before
-   *  `cancelLiveFlights` for exactly this reason. */
-  it("a new game drops a pending fizzle and still releases the turn", () => {
+  /** The round's news must not outlive its run, and tearing it down must not
+   *  swallow the stage it was holding - a `done` that never fires is a
+   *  transition queue that never runs again. */
+  it("a new game drops a pending fizzle and still releases the stage", () => {
     vi.useFakeTimers();
     const { container, hud } = setup();
     playedWithFizzle()(hud);
 
-    const fn = vi.fn();
-    hud.afterPlayAnimation(fn);
+    const done = vi.fn();
+    summaryStage(hud, done);
     hud.update(newGame(FACTIONS));
-    expect(fn).toHaveBeenCalledOnce();
+    expect(done).toHaveBeenCalledOnce();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
     vi.runAllTimers();
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
@@ -1427,7 +1457,7 @@ describe("targeted plays in the log and the hand tips", () => {
 
     // A claim resolves like a raid: at the actor's own next turn.
     g = beginTurn({ ...g, turn: g.turn + 1 }, seededRng(1));
-    hud.update(g);
+    showEnded(hud, g);
     texts = [...container.querySelectorAll(".log-entry")].map(
       (el) => el.textContent,
     );
@@ -1620,7 +1650,7 @@ describe("hud v2", () => {
     g = withHand(g, 2, ["incorporate"]);
     g = playCard(g, 0, seededRng(1), "beta");
     expect(g.phase).toBe("defeat");
-    hud.update(g);
+    showEnded(hud, g);
     const pm = q(container, ".postmortem-overlay");
     expect(pm.classList.contains("hidden")).toBe(false);
     expect(q(container, ".pm-title").textContent).toBe("You lost");
@@ -1648,7 +1678,7 @@ describe("hud v2", () => {
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
     expect(g.phase).toBe("victory");
-    hud.update(g);
+    showEnded(hud, g);
     expect(q(container, ".pm-title").textContent).toBe("You won");
     expect(q(container, ".pm-cause").textContent).toBe(
       "You rule the Baltic - 11 of 20 lands",
@@ -1704,7 +1734,7 @@ describe("hud v2", () => {
   it("does not offer it twice: the bar moves once", () => {
     const { container, hud } = setup({ onKeepPlaying: vi.fn() });
     const ended = { ...wonBoard(), playingOn: true };
-    hud.update(ended);
+    showEnded(hud, ended);
     expect(q(container, ".pm-title").textContent).toBe("You won");
     expect(keepBtn(container).classList.contains("hidden")).toBe(true);
     // And the whole-map wording, which is the other half of the same fact.
@@ -1725,14 +1755,14 @@ describe("hud v2", () => {
       phase: "defeat",
       log: [...base.log, { turn: 3, playerId: 1, type: "surrendered" }],
     };
-    hud.update(g);
+    showEnded(hud, g);
     expect(q(container, ".pm-title").textContent).toBe("You won");
     expect(keepBtn(container).classList.contains("hidden")).toBe(true);
   });
 
   it("says how long the run took, on a win and on a loss alike", () => {
     const { container, hud } = setup({ elapsedMs: () => 192_000 });
-    hud.update(wonBoard());
+    showEnded(hud, wonBoard());
     expect(q(container, ".pm-elapsed").textContent).toBe("Run time - 3m 12s");
 
     let g = playing();
@@ -1746,7 +1776,7 @@ describe("hud v2", () => {
 
   it("says nothing about time where nothing is timing it", () => {
     const { container, hud } = setup();
-    hud.update(wonBoard());
+    showEnded(hud, wonBoard());
     expect(q(container, ".pm-elapsed").textContent).toBe("");
     // And the cause line is untouched by any of it - they are two elements.
     expect(q(container, ".pm-cause").textContent).toBe(
@@ -1889,7 +1919,7 @@ describe("notice modal", () => {
     const { container, hud } = setup();
     // An army walked in, so the line names the raid: this is the case that
     // used to be reported as a Subjugate on the surface the player reads.
-    hud.update(withEvents(playing(), [{
+    showRound(hud, withEvents(playing(), [{
       turn: 1, playerId: 2, type: "subjugated", targetFactionId: "gamma",
       overlordFactionId: "alpha", formerOverlordFactionId: "beta",
       via: "conquest", cardId: "raid",
@@ -1906,7 +1936,7 @@ describe("notice modal", () => {
 
   it("shows a modal when a vassal of yours walks through the independence gate", () => {
     const { container, hud } = setup();
-    hud.update(withEvents(playing(), [{
+    showRound(hud, withEvents(playing(), [{
       turn: 1, playerId: 3, type: "independence",
       targetFactionId: "gamma", overlordFactionId: "beta",
     }]));
@@ -1919,7 +1949,7 @@ describe("notice modal", () => {
 
   it("shows a mandatory modal when an AI subjugates you", () => {
     const { container, hud } = setup();
-    hud.update(withEvents(playing(), [subjugatedYou]));
+    showRound(hud, withEvents(playing(), [subjugatedYou]));
     const overlay = q(container, ".notice-overlay");
     expect(overlay.classList.contains("hidden")).toBe(false);
     expect(lineTexts(container)).toEqual(["Subjugate by Alpha - you owe fealty to them"]);
@@ -1938,7 +1968,7 @@ describe("notice modal", () => {
 
   it("puts both a subjugation and a release in one modal with one Continue", () => {
     const { container, hud } = setup();
-    hud.update(withEvents(playing(), [subjugatedYou, releasedYou]));
+    showRound(hud, withEvents(playing(), [subjugatedYou, releasedYou]));
     expect(lineTexts(container)).toEqual([
       "Subjugate by Alpha - you owe fealty to them",
       "The fall of your overlord to Gamma released you from vassalage, and none may subjugate you until turn 3",
@@ -1951,7 +1981,7 @@ describe("notice modal", () => {
   it("lists 2 hits in one update as 2 lines in a single modal, chained backwards", () => {
     const { container, hud } = setup();
     const g = { ...playing(), defense: { beta: 30 } };
-    hud.update(withEvents(g, [
+    showRound(hud, withEvents(g, [
       { turn: 1, playerId: 2, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "alpha", amount: 15 },
       { turn: 1, playerId: 3, type: "march-resolved", cardId: "raid", targetFactionId: "beta", sourceFactionId: "gamma", amount: 15 },
     ]));
@@ -1969,7 +1999,7 @@ describe("notice modal", () => {
   it("shows a rival's stack landing on your home, with the plague footnote", () => {
     const { container, hud } = setup();
     const g = { ...playing(), disease: { beta: { alpha: 1 } } };
-    hud.update(withEvents(g, [{
+    showRound(hud, withEvents(g, [{
       turn: 1, playerId: 2, type: "disease-spread", cardId: "spread-disease",
       targetFactionId: "beta", amount: 1,
     }]));
@@ -1987,7 +2017,7 @@ describe("notice modal", () => {
     const { container, hud } = setup({
       placeNameFactionIds: new Set(["alpha"]), onHighlightFaction,
     });
-    hud.update(withEvents(playing(), [{
+    showRound(hud, withEvents(playing(), [{
       turn: 1, playerId: 2, type: "play", cardId: "assassinate-ruler",
       targetFactionId: "beta", targetRuler: "Kaupo", successorRuler: "Dabrelis",
     }]));
@@ -2030,7 +2060,7 @@ describe("notice modal", () => {
 
   it("clears the overlay when a new game starts", () => {
     const { container, hud } = setup();
-    hud.update(withEvents(playing(), [subjugatedYou, releasedYou]));
+    showRound(hud, withEvents(playing(), [subjugatedYou, releasedYou]));
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     hud.update(playing()); // fresh game: shorter log resets renderLog
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(true);
@@ -2492,7 +2522,7 @@ describe("secret cards in the activity log", () => {
   it("names every secret card in the postmortem, with no reveal event at all", () => {
     const { container, hud } = setup();
     const g = playing();
-    hud.update({
+    showEnded(hud, {
       ...g,
       phase: "defeat",
       log: [...g.log, guard(2), {
@@ -2594,13 +2624,13 @@ describe("localPlayerId", () => {
       ({ ...g, phase: "defeat" as const });
 
     const theirs = setup({ localPlayerId: () => 2 });
-    theirs.hud.update(ended(withEvents(playing(), conceded)));
+    showEnded(theirs.hud, ended(withEvents(playing(), conceded)));
     expect(q(theirs.container, ".pm-cause").textContent).toContain(
       "Your opponent conceded",
     );
 
     const ours = setup();
-    ours.hud.update(ended(withEvents(playing(), conceded)));
+    showEnded(ours.hud, ended(withEvents(playing(), conceded)));
     expect(q(ours.container, ".pm-cause").textContent).toContain("You conceded");
   });
 });
@@ -2979,7 +3009,7 @@ describe("surrender", () => {
   it("postmortem names the concession instead of inventing a killer", () => {
     const { container, hud } = setup();
     const g = playing();
-    hud.update({
+    showEnded(hud, {
       ...g,
       phase: "defeat",
       log: [...g.log, { turn: 4, playerId: 1, type: "surrendered" }],
