@@ -43,8 +43,26 @@ export interface Stages {
 
 export interface TransitionQueue {
   /** The state on screen. Stays at the PREVIOUS state for the whole of a
-   *  transition, so a beat that has not run has drawn nothing. */
+   *  transition, so a beat that has not run has drawn nothing. For RENDERING,
+   *  and for nothing else - see `latest`. */
   state(): GameState;
+  /** The state after everything submitted so far, on screen or not. The
+   *  authoritative world: what the next move is made from and what the wire
+   *  carries.
+   *
+   *  It exists because `state()` lags by however long a transition takes to
+   *  show itself, and a mutation based on a lagging state is a mutation that
+   *  throws away everything submitted since. Two ways that bites, both real:
+   *  a move computed from the displayed state commits OVER the one still
+   *  being presented, erasing it from the board for good; and a snapshot sent
+   *  to another screen from the displayed state hands it a board older than
+   *  the one it already has, with no events to explain the difference.
+   *
+   *  So: mutations and the wire read this, rendering reads `state()`. They
+   *  are the same object whenever the queue is idle, which is most of the
+   *  time and is exactly why the distinction has to be written down rather
+   *  than noticed. */
+  latest(): GameState;
   /** Enqueue. Never blocks: a beat may submit a transition of its own and it
    *  simply lands behind the current one. */
   submit(t: Transition): void;
@@ -107,6 +125,11 @@ export function createTransitionQueue(
   initial: GameState, stages: Stages,
 ): TransitionQueue {
   let committed = initial;
+  /** The newest state submitted, which is `committed` plus everything still
+   *  waiting to be shown. Moved at SUBMIT time rather than at commit, because
+   *  the whole point of it is to answer for moves the screen has not caught
+   *  up with yet. */
+  let latest = initial;
   let generation = 0;
   let running: Transition | null = null;
   const queue: Transition[] = [];
@@ -211,7 +234,11 @@ export function createTransitionQueue(
     state() {
       return committed;
     },
+    latest() {
+      return latest;
+    },
     submit(t) {
+      latest = t.next;
       queue.push(t);
       drain();
     },
@@ -227,6 +254,9 @@ export function createTransitionQueue(
       // this snapshot replaces - the next AI seat, a repaint of a board that
       // no longer exists - would otherwise fire against the new world.
       idle.length = 0;
+      // History arriving whole IS the authoritative world: everything
+      // submitted before it has been dropped, so nothing may be made from it.
+      latest = state;
       const t: Transition = { next: state, events: [], settled: true, paint };
       running = t;
       runStage(t, generation, SETTLED_STAGES, 0);

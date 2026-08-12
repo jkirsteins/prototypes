@@ -350,13 +350,15 @@ const initialGame: GameState = (() => {
  *  their own yet. */
 const stages: Stages = {
   present(t, done) {
-    // The board this stage draws over is the one already on screen, so this
-    // repaint moves nothing on the map. What it moves is the HUD: `inputLocked`
-    // has answered true since the move was submitted, and until something
-    // repaints, a hand that is about to sit through a round of animation still
-    // looks live enough to click. Before the steps are queued, because
-    // `floatScoreMarks` runs on every repaint and drains what the replay
-    // claims.
+    // This repaint moves nothing on the map - it draws the state already on
+    // screen. What it moves is the HUD: `inputLocked` has answered true since
+    // the move was submitted, and until something repaints, a hand about to
+    // sit through a round of animation still looks live enough to click.
+    //
+    // It runs BEFORE `queueReplay` because `floatScoreMarks` drains the set of
+    // indices the replay claims on every repaint it runs in, and the set has
+    // to survive until the COMMIT's own repaint - which is the one that floats
+    // this batch, and must skip whatever the camera has just visited.
     refresh();
     queueReplay(t);
     animations.onIdle(done);
@@ -377,10 +379,25 @@ const stages: Stages = {
 
 const transitions = createTransitionQueue(initialGame, stages);
 
-/** The state on screen. Every reader in this file goes through here, and
- *  nothing in this file may assign it - `src/transitions.ts` owns it, so
- *  there is no local path that appends events without presenting them. */
+/** The state ON SCREEN, which is what everything that DRAWS reads. Nothing in
+ *  this file may assign it - `src/transitions.ts` owns it, so there is no
+ *  local path that appends events without presenting them.
+ *
+ *  It lags: for the whole of a transition it answers with the board the player
+ *  was last shown, not the one the move produced. Anything that MAKES a move,
+ *  or hands a state to the wire, reads `world()` instead. */
 const game = (): GameState => transitions.state();
+
+/** The authoritative world: everything submitted, drawn or not.
+ *
+ *  **A mutation is made from `world()`; only rendering reads `game()`.** This
+ *  is a standing rule and not a caution about a particular call site. A move
+ *  made from the displayed state is made from a board that has already been
+ *  overtaken, and committing it throws away every move submitted since - the
+ *  play the player is at that moment watching land. The two answer the same
+ *  object whenever the queue is idle, which is most of the time and is exactly
+ *  why this has to be written down rather than noticed. */
+const world = (): GameState => transitions.latest();
 
 /** The one way this file moves the world. `events` is the slice this call
  *  appended, so nothing downstream has to diff cursors to learn what
@@ -391,7 +408,7 @@ const game = (): GameState => transitions.state();
  *  `transitions.replaceSettled` (or `adoptSnapshot`), which presents nothing,
  *  because nobody watched it happen. */
 function apply(mutate: (g: GameState) => GameState): void {
-  const before = game();
+  const before = world();
   const next = mutate(before);
   submitUpdate(next, next.log.slice(before.log.length));
 }
@@ -1794,11 +1811,14 @@ function armArrowAsCounter(g: SVGGElement, m: March, cardIndex: number): void {
  *  never copied into a second timer. */
 const CLASH_FLASH_MS = 1200;
 
-/** Absolute log indices the replay gave a step of their own this refresh.
- *  The score floats skip these - the label already states the number, and one
- *  fact moving twice on screen reads as two facts. Rebuilt by `queueReplay`
- *  and drained by `floatScoreMarks`, which run back to back inside one
- *  `refresh`. */
+/** Absolute log indices the replay gave a step of their own. The score floats
+ *  skip these - the label already states the number, and one fact moving twice
+ *  on screen reads as two facts.
+ *
+ *  It is a handoff between two stages of one transition: `queueReplay` fills
+ *  it at `present` and `floatScoreMarks` drains it at the `commit` that floats
+ *  the same batch. Every repaint in between drains it as well, which is why
+ *  `present` repaints before it fills the set rather than after. */
 let replayedIndices = new Set<number>();
 
 /** How long a replay label holds the screen. One number, handed to
@@ -1974,10 +1994,13 @@ function runReplayStep(
   realm: ReadonlySet<string>,
   done: () => void,
 ): void {
-  // The run may have ended, or a new game begun, while this step waited its
+  // A new game, or the menu, replaced the board while this step waited its
   // turn. The teardown paths clear the queue, but a step already running when
-  // they do must not draw over the wrong screen.
-  if (game().phase !== "playing") {
+  // they do must not draw over the wrong screen. Asked of the SCREEN and not
+  // of the transition, because that is the question: whether there is still a
+  // run under this label. Whether the step's own batch was worth showing was
+  // settled in `queueReplay`, against the state those events land in.
+  if (!inPlay()) {
     done();
     return;
   }
@@ -2027,12 +2050,15 @@ function markReplayLand(polygon: string | undefined): () => void {
 }
 
 /** Walks the land's badge from the score it HAD to the score it has: the old
- *  number fades out, the new one fades in behind it.
+ *  number fades out, the new one fades in behind it. A number that changed
+ *  while the player was looking at it, rather than one that was always that.
  *
- *  The badge is drawn from the state, and by replay time the state has moved
- *  on - so it opens showing the outcome of an event the player has not been
- *  shown yet. Stepping it back and walking it forward is the difference
- *  between a number that changed and a number that was always that.
+ *  The badge is drawn from the displayed state, which is still the board
+ *  before this event - the commit is waiting on this step - so the walk starts
+ *  where the number already stands and ends where the commit will repaint it.
+ *  It is set explicitly all the same: the start of the walk is the `before`
+ *  the walk was computed from, and the badge under it must not be showing
+ *  anything else.
  *
  *  The defense score only. Disease is drawn as pips rather than a number, and
  *  a pip appearing is already a change the eye catches. */
@@ -2633,7 +2659,10 @@ function openHarvestModal(index: number): void {
 function commitHarvest(index: number, choice: HarvestChoice): void {
   hud.hideHarvestUi();
   pendingHarvest = null;
-  const before = game().log.length;
+  // Where the log stood before this play, off the authoritative world: the
+  // reveal below reads everything appended past it, and a cursor taken from
+  // the screen would re-announce whatever the queue had not shown yet.
+  const before = world().log.length;
   const result = decide({
     kind: "harvest", cardIndex: index,
     cardId: localHuman().hand[index], choice,
@@ -2775,21 +2804,23 @@ function resumeChain(): void {
 }
 
 function stepAiChain(taken: number): void {
-  const next = taken > MAX_AI_TURNS ? null : oneAiSeat(game(), rng, seats());
+  // The authoritative world: a seat plays out of the board as it stands, not
+  // out of the one the screen has caught up to.
+  const next = taken > MAX_AI_TURNS ? null : oneAiSeat(world(), rng, seats());
   if (next === null) {
     if (taken > MAX_AI_TURNS) console.error("AI chain stalled - breaking");
     finishChain();
     return;
   }
   // One seat's whole turn, so the transition carries exactly what that seat
-  // appended.
+  // appended. The push goes out with it rather than behind the animation: the
+  // wire carries the authoritative world, and holding it back would make the
+  // other screen wait on this one's camera.
   apply(() => next);
-  transitions.onIdle(() => {
-    // The push follows the commit because the wire is fed from the committed
-    // state, which is the same state this screen has just painted.
-    if (net.role === "host") net.session?.pushUpdate();
-    stepAiChain(taken + 1);
-  });
+  if (net.role === "host") net.session?.pushUpdate();
+  // The seat AFTER this one waits, because a round resolved faster than it is
+  // shown is a round drawn over the wrong board.
+  transitions.onIdle(() => stepAiChain(taken + 1));
 }
 
 /** The round has come back to a human. Nothing left to lock the screen with,
@@ -2813,9 +2844,14 @@ function afterHumanAction(): void {
   // `advance` refuses while the turn is still open - a card that re-opened it
   // for another copy of itself has not finished - so this is safe to call from
   // every committed action rather than only from the ones that end a turn.
+  //
+  // Made from the authoritative world, which is what makes it safe to run
+  // while the play it follows is still being shown: read off the screen it
+  // would advance the board as it stood BEFORE the card, and committing that
+  // would take the card back.
   apply((g) => advance(g, rng));
+  if (net.role === "host") net.session?.pushUpdate();
   transitions.onIdle(() => {
-    if (net.role === "host") net.session?.pushUpdate();
     if (game().phase !== "playing" || controllerOf(game().current) === "local") {
       // No AI chain behind this: the next seat is the player's own and its
       // marches have just been shown landing.
@@ -3259,15 +3295,20 @@ function attachHostWire(wire: Wire): void {
   stale?.close();
   let session: HostSession | null = null;
   const startedFaction =
-    net.guestSeat !== null ? game().players[net.guestSeat].factionId : null;
+    net.guestSeat !== null ? world().players[net.guestSeat].factionId : null;
   session = createHostSession(
     wire,
     {
-      getGame: () => game(),
-      // The guest's play, arriving as a state the host must watch: it is a
-      // move made against the board this screen is showing, so it presents
-      // like any other. The push that follows it reads `getGame`, which is
-      // why the commit cannot wait for the advance below.
+      // The AUTHORITATIVE world and never the drawn one. The session validates
+      // the guest's action against this, applies it to this, and sends this -
+      // all in one synchronous breath. Answering with the board on screen
+      // would validate a move against a state the host has already moved past,
+      // and then push that older board back at the guest with no events to
+      // explain it, undoing on their screen the play they had just made.
+      getGame: () => world(),
+      // The guest's play, arriving as a state the host must watch: a move made
+      // against the board this screen is showing, so it presents like any
+      // other.
       setGame: (g) => {
         apply(() => g);
       },
@@ -3315,14 +3356,11 @@ function attachHostWire(wire: Wire): void {
         // world on past it. `advance` no-ops while an unlimited turn is
         // still open, so a guest playing twice is not cut short here.
         //
-        // Both halves wait for the queue, and each for its own reason: the
-        // advance is made from the state the guest's play produced, which is
-        // the one still being shown, and the chain's first question is whose
-        // turn the advance handed it to.
-        transitions.onIdle(() => {
-          apply((g) => advance(g, rng));
-          transitions.onIdle(() => resumeChain());
-        });
+        // The advance is made from the authoritative world, so it needs no
+        // wait; the CHAIN does, because a seat may not be played until the
+        // one before it has been shown.
+        apply((g) => advance(g, rng));
+        transitions.onIdle(() => resumeChain());
       },
       onClosed() {
         // Not `net.role !== "host"` alone: a wire that died after its
@@ -3354,8 +3392,8 @@ function tryDeal(): void {
   if (net.role !== "host" || net.session === null) return;
   const pick = net.session.guestPick();
   if (net.hostPick === null || pick === null) return;
-  if (game().phase !== "pick-faction") return;
-  const dealt = dealNetGame(game(), rng, {
+  if (world().phase !== "pick-faction") return;
+  const dealt = dealNetGame(world(), rng, {
     hostFactionId: net.hostPick,
     guestFactionId: pick.factionId,
     guestBuild: pick.build,
@@ -3398,21 +3436,21 @@ function sendGuestAction(a: NetAction): void {
 function decide(d: Decision): DecisionResult {
   const result = commitDecision(
     {
-      role: net.role, localSeat, state: game(), rng,
+      // The authoritative world, which is what the rules are applied to and
+      // what a guest's copy is validated against. It is the displayed state
+      // in every case a person can actually reach - input is locked while the
+      // two differ - but a decision answered from a modal that outlived its
+      // repaint (a conquest transfer) is the case that would not be, and
+      // applying that answer to the older board would drop whatever the queue
+      // had shown in between.
+      role: net.role, localSeat, state: world(), rng,
       send: sendGuestAction,
       // The router decided what the world becomes; the queue is still how it
       // gets there, so a decision presents itself exactly like every other
       // move this screen makes.
       apply: (next) => { apply(() => next); },
-      // Behind the queue, because the wire is fed from the COMMITTED state:
-      // a push made while the move it carries is still being presented would
-      // send the board as it stood before it. Fires on the spot whenever the
-      // move had nothing to show, which is every play the local seat makes.
       pushUpdate: () => {
-        if (net.role !== "host") return;
-        transitions.onIdle(() => {
-          if (net.role === "host") net.session?.pushUpdate();
-        });
+        if (net.role === "host") net.session?.pushUpdate();
       },
     },
     d,
@@ -3505,7 +3543,11 @@ function attachGuestWire(wire: Wire, hostId: string): void {
     },
     onState(g, fid, source, newEvents) {
       if (net.role !== "guest" || net.session !== session) return;
-      const before = game().log.length;
+      // Where the log stood before this message, off the authoritative world
+      // rather than off the screen: two updates can arrive while the first is
+      // still being shown, and a cursor taken from the lagging state would
+      // reveal the earlier one's harvest cards a second time.
+      const before = world().log.length;
       net.faction = fid;
       localSeat = Math.max(0, seatOfFaction(g, fid));
       awaitingWire = false;

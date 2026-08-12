@@ -798,9 +798,19 @@ than a stack as deep as the round is long.
 transition's present stage has already shown the land being taken - so the
 modal follows the picture of the thing it asks about rather than landing over
 it. It cannot be raised any earlier than the commit: the answer is a
-`transferDefense` decision validated against the state accessor, and before
-the commit that accessor still says the conquest has not happened, so the
+`transferDefense` decision validated against the state it is applied to, and
+before the commit that state still says the conquest has not happened, so the
 defenders would silently never move.
+
+**Nothing resolves behind that modal, and it is worth knowing why, because
+the modal itself no longer holds anything back.** Two unrelated facts do. A
+conquest can only owe the LOCAL seat an answer at that seat's own turn start
+or on its own play - `pendingTransfers` is keyed by the taker - and the AI
+chain stops at any human seat, so a question of yours is never raised with
+seats still to play. And while one is owed, `localTransferPending()` refuses
+`onEndTurn` and `onPlayCard`, so the turn cannot be handed on with the
+question open. Take either away and the round resolves behind the modal
+again.
 
 An arrival that `metNothing` is passed over here for the reason
 `NOTICE_RULES` passes it over: the `subjugated` it caused names the same card

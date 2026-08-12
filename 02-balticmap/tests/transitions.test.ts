@@ -85,6 +85,41 @@ describe("the transition queue", () => {
     expect(order).toEqual(["commit:9", "ending"]);
   });
 
+  it("answers with the newest submitted state while the screen still lags", () => {
+    // The distinction the whole wire rides on: a move is made from `latest`
+    // and drawn from `state`. Read the wrong one and the next move is made
+    // from a board that has already been overtaken, throwing away everything
+    // submitted since - which is what a second play, or a push to another
+    // screen, would do.
+    const { stages, release } = recorder();
+    const q = createTransitionQueue(st(1), stages);
+    expect(q.latest().turn).toBe(1);
+    q.submit(tr(2));
+    q.submit(tr(3));
+    expect(q.state().turn).toBe(1);
+    expect(q.latest().turn).toBe(3);
+    release("present");
+    expect(q.state().turn).toBe(2);
+    expect(q.latest().turn).toBe(3);
+    release("ask"); release("summary"); release("ending");
+    release("present"); release("ask"); release("summary"); release("ending");
+    expect(q.state().turn).toBe(3);
+    expect(q.latest().turn).toBe(3);
+  });
+
+  it("a settled replacement is the authoritative state as well as the drawn one", () => {
+    const { stages, release } = recorder();
+    const q = createTransitionQueue(st(1), stages);
+    q.submit(tr(2));
+    q.submit(tr(5));
+    q.replaceSettled(st(99));
+    expect(q.latest().turn).toBe(99);
+    // The dropped transitions must not come back through the accessor a
+    // caller builds its next move from.
+    release("present"); release("ask"); release("summary"); release("ending");
+    expect(q.latest().turn).toBe(99);
+  });
+
   it("hands the commit the paint intent its own transition carried", () => {
     // The intent rides on the transition and not in a binding beside the
     // queue, so a silent paint cannot be inherited by the move after it.
