@@ -298,7 +298,15 @@ export interface ArrowCues {
 
 /** The one answer, in one order. A pin beats an aim: the pin is a narrowing the
  *  player asked for and holds, the aim is a question they are in the middle
- *  of. */
+ *  of.
+ *
+ *  The two never actually arrive together - the caller (`src/main.ts`) clears
+ *  a pin the moment a card is armed or played, so `pinnedOut` and `aiming`
+ *  are never both true in practice. The ordering still resolves them as if
+ *  they could: `emphasisFor` is a pure function of its cues and answers the
+ *  question it is asked, whether or not the caller can currently produce it -
+ *  the alternative is a contract that is only honest for the inputs one
+ *  caller happens to send today. */
 export function emphasisFor(cues: ArrowCues): ArrowEmphasis {
   if (cues.live) return "full";
   if (cues.anyFocus) return cues.onFocus ? "full" : "faded";

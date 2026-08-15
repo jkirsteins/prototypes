@@ -544,8 +544,9 @@ let hoveredRegion: Region | null = null; // region under the cursor, for hover r
 /** The land clicked to hold its faction's highlight, or null. A pin outranks
  *  the cursor: it exists so the activity log can be read, and reaching the log
  *  means dragging the cursor across lines whose faction names would each steal
- *  the highlight back. Suppressed, not cleared, while a card is armed -
- *  targeting cues own the map, and disarming brings the pin back. */
+ *  the highlight back. Cleared, not suppressed, the moment a card is armed or
+ *  played (`onPlayCard`'s `interaction.deselect()`) - a pin does not survive
+ *  an interaction, so targeting cues never have to arbitrate against one. */
 let pinnedRegion: Region | null = null;
 /** True while this screen must not act for a reason no queue can see: a
  *  guest's move gone to the host and not yet answered, and either side of a
@@ -2905,7 +2906,8 @@ function applyTargeting(): void {
     );
   }
   // Targeting cues win the map while armed - applyHighlight suppresses itself
-  // then. Disarming lands here too, and brings the pin, or the live hover, back.
+  // then. Disarming lands here too, and brings the live hover back - never the
+  // pin, which `onPlayCard` already let go of the moment this card was armed.
   applyHighlight(hoveredRegion, hoveredRegion?.faction ?? null);
   // Arming and disarming both land here without a full refresh, and the
   // badges, the arrows and the always-on realm outlines are all part of the
@@ -2973,8 +2975,15 @@ function applyRealmHover(region: Region | null): void {
   // Everything else recedes while the pin holds. Without it the pin barely
   // reads: a rival player's lands sit at .in-play's opacity, which is bright
   // enough that four realms compete with the one land being asked about.
-  svg.classList.toggle("pinning", pinned && inPlay() && !targetingLive());
-  syncArrowDimming(pinned && inPlay() && !targetingLive() ? region : null);
+  //
+  // No `!targetingLive()` term here any more: `pinned` already implies it. A
+  // pin does not survive an interaction - `onPlayCard` deselects before it
+  // arms or plays anything - so `pinnedRegion` is null for as long as a card
+  // is armed, and these two calls could never have fired mid-targeting to
+  // begin with. The rule that used to live in this guard now lives in
+  // `onPlayCard`'s `interaction.deselect()`.
+  svg.classList.toggle("pinning", pinned && inPlay());
+  syncArrowDimming(pinned && inPlay() ? region : null);
   // The polygon of the faction that holds the hovered land - who took it -
   // marked on its own, not its whole realm. Suppressed while targeting is
   // live, for the same reason the realm halo is.
@@ -3579,6 +3588,16 @@ const hudCallbacks: HudCallbacks = {
       // a live hand behind it, and which card that hand still accepts is
       // `humanPlayableSet`'s answer rather than this gate's.
       if (actionBlock("play") !== null) return;
+      // A pin does not survive an interaction. Every branch below either arms
+      // a targeted card, opens the harvest offer, discards or plays outright -
+      // and none of them is a question about a land the player pinned to read
+      // its log. The SAME route a deselect takes, so the hud's pinned state,
+      // the panel, the highlight and the arrow dim move together rather than
+      // three of the four moving and the fourth reading stale. This is also
+      // what keeps a pin and a live aim from ever coexisting: `emphasisFor`
+      // resolves a pin ahead of an aim, and that ordering is only honest
+      // because the two cannot both be true at once.
+      interaction.deselect();
       const human = localHuman();
       const cardId = human.hand[index];
       if (discardMode()) {
