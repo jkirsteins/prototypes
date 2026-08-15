@@ -69,27 +69,7 @@ jobs:
       - name: Build and assemble prototypes
         run: |
           set -euo pipefail
-          mkdir -p _site
-          for dir in [0-9][0-9]-*/; do
-            dir="${dir%/}"
-            num="${dir%%-*}"
-            echo "Building $dir -> _site/$num"
-            if [ -f "$dir/package.json" ]; then
-              (cd "$dir" && npm ci && npm run build)
-            elif [ -f "$dir/project.godot" ]; then
-              # --import first: a fresh checkout has no .godot/, and the export
-              # needs the import cache to exist before it can pack anything.
-              (cd "$dir" \
-                && mkdir -p dist \
-                && godot --headless --import \
-                && godot --headless --export-release Web dist/index.html)
-            else
-              echo "::error::$dir has neither package.json nor project.godot, so it cannot be built"
-              exit 1
-            fi
-            mkdir -p "_site/$num"
-            cp -R "$dir/dist/." "_site/$num/"
-          done
+          .github/scripts/build-prototypes.sh _site /prototypes/
           cp .github/pages-index.html _site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
