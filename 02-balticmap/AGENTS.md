@@ -161,6 +161,26 @@ forbids aiming up your own pyramid, so every AI target list has to come from
 `validTargetsFor`. `greatRaidPick` was scoring the bare border instead, and hung
 about one seeded run in ten the moment woken vassals started acting.
 
+Routing a picker through `validTargetsFor` is not only a narrowing. `attackReach`
+is `borderPolygonsOf` PLUS the actor's own vassals and grand-vassals, because a
+lord raids its vassals to hold them under the independence gate - so a picker
+moved onto it gains those targets as well as losing the illegal ones, which is
+what `raidPick` could always do.
+
+**And the freeze is guarded as a CLASS, not one picker at a time.**
+`endOrGiveUp` in `src/ai.ts` wraps the `endTurn` at the end of `aiTakeTurn`: if
+the turn still cannot be ended, the seat gives it up and `console.error`s what
+it proposed. The trigger is `turnOpen` after an `endTurn`, which is exactly
+"`advance` will refuse to move past this seat", so it fires on the states that
+freeze the run and on no others - a seat that merely has nothing to do ends
+through `discardCard` and never reaches it. It shouts because a silent recovery
+turns the next picker bug into mysteriously skipped turns nobody can diagnose,
+and it sets the flag locally because neither engine door is available:
+`discardCard` refuses whenever `playableSet` says `mode: "play"`, and weakening
+`endTurn` would let a PERSON skip a turn they could have played. A hung seat is
+the worst failure this app has - nothing is persisted, so the only way out is
+losing the run.
+
 Because a leaderless actor never gets a `beginTurn` of its own, anything that
 resolves at the actor's turn start is swept at the round wrap instead, or its
 arrow would stand on the map for the rest of the game.

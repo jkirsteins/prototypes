@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { POLICY_COVERAGE, chooseAction, aiTakeTurn } from "../src/ai";
 import {
-  chooseBuild, chooseRules, newGame, pickFaction, startGame,
+  advance, chooseBuild, chooseRules, newGame, pickFaction, startGame, turnOpen,
   type GameState,
 } from "../src/game";
 import { CARDS, type Strategy } from "../src/cards";
@@ -866,5 +866,75 @@ describe("aiTakeTurn under unlimited rules", () => {
     const after = aiTakeTurn(g, seededRng(1));
     expect(after.playedThisTurn).toBe(true);
     expect(after.players[0].hand).toEqual(["pay-military-tribute"]);
+  });
+});
+
+describe("no seat can hang the run", () => {
+  // The freeze this guards against is the worst failure this app has: nothing
+  // is persisted, so a player whose board stops has lost the run. The chain is
+  // `chooseAction` proposes something the rules refuse -> `playCard` or
+  // `discardCard` hands the state straight back -> `endTurn` refuses a standard
+  // turn that played nothing -> `advance` will not move past an open turn.
+  //
+  // The instance that made this reachable was `greatRaidPick` scoring the bare
+  // border, and it is fixed at the source. This pins the CLASS instead, through
+  // the one pathological state still constructible: an empty hand. There is
+  // nothing to play, so `playableSet` reports a discard of no cards,
+  // `chooseAction` proposes index 0 and `discardCard` refuses on the index. A
+  // seat with a REFUSED PLAY cannot be built any more - `cardBlockReason` keeps
+  // a targeted card with no legal target out of the playable set, so step 12's
+  // last resort cannot propose one - and that is the point of guarding on "the
+  // turn could not be ended" rather than on "a play was refused".
+  const emptyHanded = (): GameState => {
+    const g = base();
+    return {
+      ...g,
+      players: g.players.map((pl, i) =>
+        i === 1 ? { ...pl, hand: [], deck: [], discard: [] } : pl,
+      ),
+    };
+  };
+
+  it("a seat that cannot end its turn gives it up rather than freezing", () => {
+    const g = emptyHanded();
+    expect(g.rules.turn).not.toBe("unlimited");
+    const errors: unknown[][] = [];
+    const real = console.error;
+    console.error = (...args: unknown[]): void => void errors.push(args);
+    let after: GameState;
+    try {
+      after = aiTakeTurn(g, seededRng(1));
+    } finally {
+      console.error = real;
+    }
+    // The turn is spent, so `advance` can move on: this is the whole of it.
+    expect(after.playedThisTurn).toBe(true);
+    expect(turnOpen(after)).toBe(false);
+    expect(advance(after, seededRng(1)).current).not.toBe(g.current);
+    // And it SHOUTED. A silent give-up turns the next picker bug into
+    // mysteriously skipped turns nobody can diagnose.
+    expect(errors).toHaveLength(1);
+    expect(String(errors[0][0])).toContain("cannot end its turn");
+    expect(String(errors[0][0])).toContain(g.players[1].factionId);
+  });
+
+  it("says nothing when a seat legitimately has nothing to do", () => {
+    // A dead hand is not a hung seat: `chooseAction` returns a discard and
+    // `discardCard` spends the turn. The guard must not fire here, or the
+    // console fills with errors on an ordinary board.
+    const g = withHand(base(), ["pay-military-tribute"]);
+    const errors: unknown[][] = [];
+    const real = console.error;
+    console.error = (...args: unknown[]): void => void errors.push(args);
+    let after: GameState;
+    try {
+      after = aiTakeTurn(g, seededRng(1));
+    } finally {
+      console.error = real;
+    }
+    expect(after.playedThisTurn).toBe(true);
+    expect(errors).toHaveLength(0);
+    // Ended by a real discard through the engine, not by the guard.
+    expect(after.log.some((e) => e.type === "discard")).toBe(true);
   });
 });

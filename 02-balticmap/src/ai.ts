@@ -810,13 +810,24 @@ function warpathBuild(
  *  read - the AI must not score a fan the rules would not send.
  *
  *  The CANDIDATES come from `validTargetsFor`, the same way every other picker
- *  in this module gets its list, and never from the bare border. A seat that
- *  proposes a target the rules refuse hangs: `playCard` hands the state back
- *  unchanged, `aiTakeTurn` breaks on that and `endTurn` refuses a standard turn
- *  that played nothing, so `advance` will not move past the seat and the run
- *  stops. This was reachable the moment a VASSAL started taking turns, because
- *  a lord borders its vassal and the fattest fan on the board is often aimed
- *  straight up the actor's own chain, which `aimsUpOwnChain` forbids. */
+ *  in this module gets its list, and never from the bare border. That changes
+ *  the set in BOTH directions, and the widening is the half worth stating:
+ *
+ *  - It refuses what the rules refuse. A seat proposing a target the rules
+ *    will not take used to hang the run - `playCard` hands the state back
+ *    unchanged, `endTurn` refuses a standard turn that played nothing, and
+ *    `advance` will not move past an open turn. Reachable the moment a VASSAL
+ *    started taking turns, because a lord borders its vassal and the fattest
+ *    fan on the board is often aimed straight up the actor's own chain, which
+ *    `aimsUpOwnChain` forbids.
+ *  - It also OFFERS the actor's own vassals and grand-vassals, which the bare
+ *    border never did: `attackReach` is `borderPolygonsOf` plus the full realm
+ *    less what the actor holds outright. That is not a side effect to be
+ *    trimmed back - `raidPick` has always been able to aim there, and a lord
+ *    raiding its own vassal is the upkeep that holds it under the independence
+ *    gate. A Great raid that could not do what a Raid can was the inconsistency.
+ *
+ *  The second half is a live balance change and has not been measured. */
 function greatRaidPick(
   v: RulesView, actor: string,
 ): { target: string; arrows: number; damage: number } | null {
@@ -968,21 +979,69 @@ function pestilenceBuild(
  *  differently. */
 export const MAX_AI_PLAYS = 16;
 
+/** Ends the seat's turn, and if the rules will not let it end, gives it up -
+ *  loudly. The whole of the hung-seat guard, and it closes the failure as a
+ *  CLASS rather than one picker at a time.
+ *
+ *  `turnOpen` after an `endTurn` is precisely "advance will refuse to move past
+ *  this seat", so this fires on exactly the states that freeze the run and on
+ *  no others. A seat that simply has nothing to do never reaches it: an empty
+ *  playable set makes `chooseAction` return a discard, and `discardCard` spends
+ *  the turn.
+ *
+ *  Two reachable ways in, and neither can be recovered through the engine's own
+ *  doors, which is why the flag is set here:
+ *
+ *  - A picker proposes a target the rules refuse, so `playCard` hands the state
+ *    straight back. `discardCard` is no escape - it refuses whenever
+ *    `playableSet` reports `mode: "play"`, which is exactly this case.
+ *  - The seat's hand is empty, so the set is `discard` with nothing in it and
+ *    `discardCard` refuses on the index.
+ *
+ *  And `endTurn` is no escape either: it is the door every seat uses, a person's
+ *  included, and letting a standard turn end unplayed there would let a player
+ *  skip a turn they could have played. `endTurn` already carries this same
+ *  reasoning for a re-opened turn - "a seat holding a raid it cannot aim
+ *  anywhere sits there forever" - and this is that sentence for the first play.
+ *
+ *  It SHOUTS because a silent recovery turns the next picker bug into
+ *  mysteriously skipped turns nobody can diagnose. Reaching this is a bug in
+ *  whatever chose the action, not a rule of the game: the console line names the
+ *  seat and what it proposed so the picker can be found. */
+function endOrGiveUp(state: GameState, proposed: AiAction | null): GameState {
+  const ended = endTurn(state);
+  if (ended.phase !== "playing" || !turnOpen(ended)) return ended;
+  const p = ended.players[ended.current];
+  console.error(
+    `AI seat cannot end its turn - giving it up. turn ${ended.turn}, ` +
+      `${p?.factionId}, proposed ${JSON.stringify(proposed)}, ` +
+      `hand ${JSON.stringify(p?.hand)}`,
+  );
+  return { ...ended, playedThisTurn: true, repeatGroup: null };
+}
+
 /** One WHOLE turn for the current seat, in either mode - every caller wraps
  *  this in `advance`, so a partial turn here would stall the game. */
 export function aiTakeTurn(state: GameState, rng: Rng): GameState {
   if (state.rules.turn === "unlimited") {
     let g = state;
+    let refused: AiAction | null = null;
     for (let plays = 0; g.phase === "playing" && plays < MAX_AI_PLAYS; plays++) {
       const a = chooseAction(g);
       if (a.type === "discard") break;
       const next = playCard(g, a.cardIndex, rng, a.targetId, {
         ...(a.sourceId !== undefined ? { sourceId: a.sourceId } : {}),
       });
-      if (next === g) break; // a refused play must not spin
+      if (next === g) { // a refused play must not spin
+        refused = a;
+        break;
+      }
       g = next;
     }
-    return endTurn(g);
+    // Unlimited rules end a turn that played nothing, so the guard is inert
+    // here. It is asked anyway rather than only on the standard path: which
+    // rule axis is in force must not decide whether a hung seat is recoverable.
+    return endOrGiveUp(g, refused);
   }
   // The standard turn is one card - unless that card re-opened it for another
   // of its own kind, which is a question about the state after the play, not
@@ -992,6 +1051,7 @@ export function aiTakeTurn(state: GameState, rng: Rng): GameState {
   // state unchanged and stops it, so the rules end the run rather than a
   // count of plays; MAX_AI_PLAYS remains the belt-and-braces bound.
   let g = state;
+  let refused: AiAction | null = null;
   for (let plays = 0; g.phase === "playing" && plays < MAX_AI_PLAYS; plays++) {
     const a = chooseAction(g);
     const next = a.type === "discard"
@@ -999,12 +1059,17 @@ export function aiTakeTurn(state: GameState, rng: Rng): GameState {
       : playCard(g, a.cardIndex, rng, a.targetId, {
           ...(a.sourceId !== undefined ? { sourceId: a.sourceId } : {}),
         });
-    if (next === g) break;
+    if (next === g) {
+      refused = a;
+      break;
+    }
     g = next;
     if (!turnOpen(g)) break;
   }
   // Gives up whatever is left of a re-opened turn. A seat that stopped with a
   // repeat still on the table has decided it has no second play worth making,
-  // and `advance` will not move past a turn that is still open.
-  return endTurn(g);
+  // and `advance` will not move past a turn that is still open - and, if the
+  // rules will not let even that turn end, gives it up rather than freezing
+  // the run behind a seat that can never act.
+  return endOrGiveUp(g, refused);
 }
