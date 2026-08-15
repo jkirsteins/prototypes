@@ -1,9 +1,17 @@
 name: Deploy prototypes to GitHub Pages
 
 on:
+  # Every branch, not only main: a push to a branch publishes that branch's
+  # changed prototypes under preview/<slug>/ beside main's site. A push that
+  # touches no prototype publishes nothing at all, so a docs commit does not
+  # replace a preview somebody is playing.
   push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      prototypes:
+        description: "Prototype directories to preview, space separated. Empty means whatever this branch changed against main."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -22,23 +30,80 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.mode.outputs.deploy }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The merge base is what changed-prototypes.sh diffs against, and the
+          # default depth of 1 does not have one. Depth 0 is also what puts
+          # refs/remotes/origin/main in the checkout, which the worktree below
+          # and the cache key both name.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: "**/package-lock.json"
-      - name: Detect Godot prototypes
-        id: godot
+      - name: Decide what this run publishes
+        id: mode
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_PROTOTYPES: ${{ inputs.prototypes }}
         run: |
-          if ls [0-9][0-9]-*/project.godot >/dev/null 2>&1; then
+          set -euo pipefail
+          # Assigned first rather than echoed through a command substitution:
+          # `echo "sha=$(git rev-parse ...)"` succeeds with an empty sha when
+          # the rev-parse fails, and an empty sha is a cache key every run
+          # shares. An assignment carries the failure and set -e stops here.
+          main_sha=$(git rev-parse origin/main)
+          echo "sha=$main_sha" >> "$GITHUB_OUTPUT"
+          if [ "$REF_NAME" = "main" ]; then
+            echo "preview=false" >> "$GITHUB_OUTPUT"
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          slug=$(printf '%s' "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
+          dirs="$INPUT_PROTOTYPES"
+          if [ -z "$dirs" ]; then
+            dirs=$(.github/scripts/changed-prototypes.sh | tr '\n' ' ')
+          fi
+          if [ -z "${dirs// /}" ]; then
+            echo "::notice::no prototype changed on $REF_NAME, so nothing is published"
+            echo "preview=false" >> "$GITHUB_OUTPUT"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "preview=true" >> "$GITHUB_OUTPUT"
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
+          echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
+      - name: Restore main's built tree
+        id: mainsite
+        if: steps.mode.outputs.deploy == 'true'
+        uses: actions/cache@v4
+        with:
+          path: main-site
+          # main's sha says what is being built; the script hash says what
+          # builds it. Without the second half a branch editing the build
+          # script would save its own idea of main's site under the shared
+          # key, and the next branch to restore it would publish that over
+          # main. Branches that leave the script alone still share one entry.
+          key: site-main-${{ steps.mode.outputs.sha }}-${{ hashFiles('.github/scripts/build-prototypes.sh') }}
+      - name: Check out main beside the branch
+        if: steps.mode.outputs.deploy == 'true' && steps.mainsite.outputs.cache-hit != 'true'
+        run: git worktree add --detach main-tree origin/main
+      - name: Detect Godot prototypes on main
+        id: godot
+        if: steps.mode.outputs.deploy == 'true' && steps.mainsite.outputs.cache-hit != 'true'
+        run: |
+          if ls main-tree/[0-9][0-9]-*/project.godot >/dev/null 2>&1; then
             echo "needed=true" >> "$GITHUB_OUTPUT"
           else
             echo "needed=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Cache Godot
-        if: steps.godot.outputs.needed == 'true'
+        if: steps.mode.outputs.deploy == 'true' && steps.mainsite.outputs.cache-hit != 'true' && steps.godot.outputs.needed == 'true'
         id: godot-cache
         uses: actions/cache@v4
         with:
@@ -47,7 +112,7 @@ jobs:
             ~/.local/share/godot/export_templates
           key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
       - name: Install Godot
-        if: steps.godot.outputs.needed == 'true' && steps.godot-cache.outputs.cache-hit != 'true'
+        if: steps.mode.outputs.deploy == 'true' && steps.mainsite.outputs.cache-hit != 'true' && steps.godot.outputs.needed == 'true' && steps.godot-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
@@ -64,19 +129,45 @@ jobs:
           mv templates/* "$dest/"
           rm -rf godot.zip templates.tpz templates
       - name: Put Godot on PATH
-        if: steps.godot.outputs.needed == 'true'
+        if: steps.mode.outputs.deploy == 'true' && steps.mainsite.outputs.cache-hit != 'true' && steps.godot.outputs.needed == 'true'
         run: echo "$HOME/godot-bin" >> "$GITHUB_PATH"
-      - name: Build and assemble prototypes
+      - name: Build main's tree
+        if: steps.mode.outputs.deploy == 'true' && steps.mainsite.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          .github/scripts/build-prototypes.sh _site /prototypes/
-          cp .github/pages-index.html _site/index.html
+          (cd main-tree \
+            && "$GITHUB_WORKSPACE/.github/scripts/build-prototypes.sh" \
+                 "$GITHUB_WORKSPACE/main-site" /prototypes/)
+          cp main-tree/.github/pages-index.html main-site/index.html
+      - name: Assemble the site
+        if: steps.mode.outputs.deploy == 'true'
+        env:
+          PREVIEW: ${{ steps.mode.outputs.preview }}
+          SLUG: ${{ steps.mode.outputs.slug }}
+          DIRS: ${{ steps.mode.outputs.dirs }}
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp -R main-site/. _site/
+          if [ "$PREVIEW" != "true" ]; then exit 0; fi
+          # shellcheck disable=SC2086 - DIRS is a space-separated list on purpose
+          .github/scripts/build-prototypes.sh \
+            "_site/preview/$SLUG" "/prototypes/preview/$SLUG/" $DIRS
+          {
+            echo "### Preview"
+            for dir in $DIRS; do
+              num="${dir%%-*}"
+              echo "- https://jkirsteins.github.io/prototypes/preview/$SLUG/$num/"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-pages-artifact@v3
+        if: steps.mode.outputs.deploy == 'true'
         with:
           path: _site
 
   deploy:
     needs: build
+    if: needs.build.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
