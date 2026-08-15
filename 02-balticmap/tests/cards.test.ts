@@ -346,19 +346,19 @@ describe("builds and the neutral pool", () => {
     for (const id of spends) expect(repeatGroupOf(id)).not.toBeNull();
   });
 
-  it("pins the hostile set - every card that may not be aimed up your chain", () => {
+  it("pins the hostile set - every card that may not be aimed at your realm", () => {
     // A literal, so the set cannot grow or shrink without somebody reading the
     // rule it turns on: a card that does harm and is left OUT of this set can
-    // still be aimed at the actor's own overlord, and nothing else in the tree
-    // would say so. Untargeted plagues are in it too - they resolve over a set
-    // of lands rather than at one, and `plagueTargets` skips the same chain.
+    // still be aimed at the actor's own overlord or its siblings, and nothing
+    // else in the tree would say so. Untargeted plagues are in it too - they
+    // resolve over a set of lands rather than at one, and skip the same realm.
     const hostile = Object.keys(CARDS).filter(isHostileCard).sort();
     expect(hostile).toEqual([
       "assassinate-ruler", "foul-winds", "great-raid", "localized-outbreak",
       "plague", "raid", "spread-disease", "strong-raid", "subjugate",
     ]);
-    // Nothing that heals, builds or grows is hostile: a card aimed inward
-    // cannot be aimed up anything.
+    // Nothing that heals, builds or grows is hostile: a card aimed inward is
+    // aimed at your own realm by definition.
     for (const id of INWARD_CARDS) expect(isHostileCard(id)).toBe(false);
   });
 
