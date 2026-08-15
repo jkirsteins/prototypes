@@ -2308,6 +2308,14 @@ export function playCard(
     // statuses that said so go. What describes the ground - and the fact that
     // this land has no ambitions of its own - stays.
     passives = stripOnCapture(passives, target);
+    // The same rule as an army arriving: a land that has changed hands has a
+    // chief. Spelled at both doors rather than inside `stripOnCapture`,
+    // because stripping a status and seating a leader are two facts and one
+    // of them is about to be a whole seat's behaviour.
+    rulers = seatRuler(
+      rulers, state.ethnicities, target, state.turn,
+      seatingAbilities(players, target),
+    );
     players = updateFaction(players, target, (pl) => {
       const clean = stripTribute(pl);
       return {

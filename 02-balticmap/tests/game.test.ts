@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, beginTurn,
   playCard, discardCard, endTurn, advance, surrender, viewOf,
-  autoTransfer, transferDefense, transferLimit,
+  autoTransfer, transferDefense, transferLimit, takesNoTurn,
   OPENING_HAND, MAX_ACTIVE, TURNIP_HARVEST_THRESHOLD,
   victoryRealmSize, winSizeFor, keepPlaying, type GameState,
 } from "../src/game";
@@ -3358,6 +3358,18 @@ describe("a status that does something says so", () => {
     expect(batch[fired + 1]).toMatchObject({
       type: "subjugated", targetFactionId: "alpha", consequence: true,
     });
+  });
+
+  it("a land subjugated on the table wakes up too", () => {
+    const g: GameState = {
+      ...playingState(),
+      passives: { alpha: ["no-successor"] },
+    };
+    const after = playCard(
+      withHand(g, 0, ["assassinate-ruler"]), 0, rng(), "alpha",
+    );
+    expect(hasRuler(after.rulers, "alpha")).toBe(true);
+    expect(takesNoTurn(after, "alpha")).toBe(false);
   });
 
   it("names the march it clears when a passive-taken land had one aimed at its new lord", () => {
