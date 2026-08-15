@@ -20,6 +20,44 @@ So: **when you add a new prototype, add its `<li>` link to
 `.github/pages-index.html` in the same change.** Adding the directory is not the
 whole job. The same applies if a prototype is renamed or removed.
 
+## Previewing a branch
+
+A push to any branch other than main publishes that branch's changed
+prototypes to
+
+    https://jkirsteins.github.io/prototypes/preview/<branch-slug>/NN/
+
+beside main's site, which keeps serving `/prototypes/NN/` throughout. The
+trigger is `branches: ['**']`, not a bare `push:`, so a tag push does not fire
+it and cannot take the one preview slot. The slug is the branch name
+lowercased with anything outside `[a-z0-9-]` replaced by `-`.
+
+Which prototypes are built is `git diff` against the merge base with main,
+scoped to top-level `NN-*` directories - so a change under
+`02-balticmap/docs/` is a change to `02-balticmap` and previews it, same as
+touching its `src/`. What publishes nothing is a push that touches no `NN-*`
+directory at all: the repo root, `.github/`, a root-level doc.
+`gh workflow run pages.yml --ref <branch> -f prototypes=02-balticmap`
+overrides the diff if you want a preview of something you have not changed.
+
+A branch whose only changed prototypes are Godot also publishes nothing -
+Godot's export path is baked into `project.godot` with no per-run override, so
+there is nothing previewable left to build - rather than deploying an empty
+preview directory and a link that 404s. The run says so as a notice rather
+than failing.
+
+Three things follow from the fact that Pages publishes ONE artifact as the
+WHOLE site, and each of them will bite somebody:
+
+- **There is one preview slot.** The most recent preview push across all
+  branches is the one that is live, and this repo regularly has several
+  sessions working at once.
+- **A push to main wipes the live preview.** Main's run publishes main and
+  nothing else. Push the branch again to get the preview back; that is why
+  the trigger is a push rather than something you have to remember to run.
+- **The workflow used is the one on the branch.** A branch cut before branch
+  previews existed cannot preview itself until it is rebased.
+
 ## Running a dev server
 
 Run the prototype's own dev server, from its directory, only when you actually
@@ -52,6 +90,9 @@ in each prototype and assemble the `dist/` directories the way
   commit with it.
 - `vite.config.ts` must set `base: "/prototypes/NN/"` matching the directory
   number, or the deployed build will not load its assets.
+  CI passes `--base` explicitly for a branch preview, so the value in the file
+  is the default rather than the only value ever used. Do not read the flag in
+  `vite.config.ts`; the override belongs at the call site.
 - Prototype-specific instructions, specs and plans live under that prototype's
   own `docs/`. Read them before changing its code.
 
