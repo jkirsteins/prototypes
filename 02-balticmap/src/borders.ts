@@ -49,11 +49,36 @@ export function sharedVertices(a: Pt[][], b: Pt[][]): Pt[] {
   return out;
 }
 
-export interface Crossing {
-  /** A vertex OF the border, never a computed point: the centroid of a bent
-   *  border sits off it by up to 33 units on this map, so the nearest shared
-   *  vertex to that centroid is what an arrow is placed on. */
+/** One place on a border, with what an arrow standing there has room for. */
+export interface Station {
+  /** A real shared vertex, never a computed point. */
   at: Pt;
+  /** Its projection on the tangent, which is what a lane's offset is measured
+   *  in. */
+  s: number;
+  /** `reach` along the normal, into the second land. `-1` for a place the
+   *  second land cannot be reached from at all. */
+  into: number;
+  /** `reach` against the normal, into the first land. */
+  out: number;
+}
+
+/** How many stations one border is measured at. */
+const MAX_STATIONS = 32;
+
+export interface Crossing {
+  /** The roomiest station on this border: a real vertex OF it, never a
+   *  computed point. Not the vertex nearest the centroid of a bent border -
+   *  the centroid is a statement about where the middle of the frontier is
+   *  and says nothing about what land stands behind it. */
+  at: Pt;
+  /** Places along this border an arrow can stand, measured once when the
+   *  crossing is built. The scene picks one per lane and never sees a polygon.
+   *
+   *  Sampled rather than exhaustive: a border can share 183 vertices and each
+   *  measurement walks a couple of thousand edges twice, which would be paid on
+   *  the first paint of every border on the map. */
+  stations: Station[];
   /** Unit vector along the border, the axis lanes are laid out on. */
   tangent: Pt;
   /** Unit vector from the first land into the second. */
@@ -200,6 +225,65 @@ export function crossingBetween(a: Pt[][], b: Pt[][]): Crossing {
   return straitCrossing(a, b);
 }
 
+function projectOn(p: Pt, tangent: Pt): number {
+  return p.x * tangent.x + p.y * tangent.y;
+}
+
+/** Every place this border can be crossed, in order along the tangent. */
+function stationsAlong(
+  shared: Pt[], tangent: Pt, normal: Pt, a: Pt[][], b: Pt[][],
+): Station[] {
+  const back = { x: -normal.x, y: -normal.y };
+  const sorted = [...shared].sort(
+    (p, q) => projectOn(p, tangent) - projectOn(q, tangent),
+  );
+  const step = Math.max(1, Math.ceil(sorted.length / MAX_STATIONS));
+  // A station is a vertex of BOTH lands' own polygons, and at the two ends of
+  // a dead-straight border that vertex is also a corner of the far land lying
+  // exactly along the normal - `reach`'s own nudge cannot get off an edge it
+  // is nudging along. A whisker toward the middle of the frontier, on the
+  // tangent, clears that edge without moving the measurement off the normal
+  // it is taken along: the two axes are perpendicular by construction, so the
+  // depth `reach` reports is unchanged everywhere this bias is not needed.
+  const lo = projectOn(sorted[0], tangent);
+  const hi = projectOn(sorted[sorted.length - 1], tangent);
+  const mid = (lo + hi) / 2;
+  const list: Station[] = [];
+  for (let i = 0; i < sorted.length; i += step) {
+    const at = sorted[i];
+    const s = projectOn(at, tangent);
+    const bias = Math.sign(mid - s) * RAY_EPS;
+    const probe = { x: at.x + tangent.x * bias, y: at.y + tangent.y * bias };
+    list.push({
+      at,
+      s,
+      into: reach(probe, normal, b, ARROW_DEPTHS.head, ARROW_DEPTHS.inset),
+      out: reach(probe, back, a, ARROW_DEPTHS.tail, ARROW_DEPTHS.inset),
+    });
+  }
+  return list;
+}
+
+/** What a station is worth to an arrow: the smaller of its two rooms, with
+ *  "nowhere" scoring nothing rather than less than nothing. */
+function stationRoom(st: Station): number {
+  return Math.min(Math.max(st.into, 0), Math.max(st.out, 0));
+}
+
+/** The station an arrow standing alone should take: the roomiest, and the one
+ *  nearest the middle of the frontier where several are equally roomy. */
+function roomiest(list: Station[], centre: number): Station {
+  let best = list[0];
+  for (const st of list) {
+    const gain = stationRoom(st) - stationRoom(best);
+    if (gain > 1e-9) best = st;
+    else if (gain > -1e-9 && Math.abs(st.s - centre) < Math.abs(best.s - centre)) {
+      best = st;
+    }
+  }
+  return best;
+}
+
 function borderCrossing(shared: Pt[], a: Pt[][], b: Pt[][]): Crossing {
   const n = shared.length;
   const cx = shared.reduce((s, p) => s + p.x, 0) / n;
@@ -242,10 +326,17 @@ function borderCrossing(shared: Pt[], a: Pt[][], b: Pt[][]): Crossing {
     return s;
   };
   const sign: 1 | -1 = score(1) >= score(-1) ? 1 : -1;
+  const normal = { x: nx * sign, y: ny * sign };
+  const stations = stationsAlong(shared, tangent, normal, a, b);
   return {
-    at,
+    // The roomiest station, not the vertex nearest the centroid: the centroid
+    // is a statement about where the middle of the frontier is and says
+    // nothing about what is behind it, and on a quarter of this map's
+    // frontiers what is behind it is a pinch with no land either way.
+    at: roomiest(stations, projectOn({ x: cx, y: cy }, tangent)).at,
+    stations,
     tangent,
-    normal: { x: nx * sign, y: ny * sign },
+    normal,
     span: hi - lo,
     sea: false,
     gap: 0,
@@ -284,9 +375,17 @@ function singleVertexCrossing(at: Pt, a: Pt[][], b: Pt[][]): Crossing {
   const dy = by - ay;
   const d = Math.hypot(dx, dy) || 1;
   const normal = { x: dx / d, y: dy / d };
+  const tangent = { x: -normal.y, y: normal.x };
   return {
     at,
-    tangent: { x: -normal.y, y: normal.x },
+    stations: [{
+      at,
+      s: projectOn(at, tangent),
+      into: reach(at, normal, b, ARROW_DEPTHS.head, ARROW_DEPTHS.inset),
+      out: reach(at, { x: -normal.x, y: -normal.y }, a,
+        ARROW_DEPTHS.tail, ARROW_DEPTHS.inset),
+    }],
+    tangent,
     normal,
     span: 0,
     sea: false,
@@ -347,9 +446,13 @@ function straitCrossing(a: Pt[][], b: Pt[][]): Crossing {
   }
   const d = Math.hypot(dx, dy) || 1;
   const normal = { x: dx / d, y: dy / d };
+  const at = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 };
+  const across = (gap || 1) / 2 + ARROW_DEPTHS.seaClearance;
+  const tangent = { x: -normal.y, y: normal.x };
   return {
-    at: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 },
-    tangent: { x: -normal.y, y: normal.x },
+    at,
+    stations: [{ at, s: projectOn(at, tangent), into: across, out: across }],
+    tangent,
     normal,
     span: SEA_SPAN,
     sea: true,

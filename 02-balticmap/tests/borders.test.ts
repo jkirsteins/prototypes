@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  ringsOf, sharedVertices, crossingBetween, pointInRings, reach,
+  ringsOf, sharedVertices, crossingBetween, pointInRings, reach, ARROW_DEPTHS,
 } from "../src/borders";
 import { REGIONS } from "../src/regions";
 
@@ -192,6 +192,44 @@ describe("crossingBetween", () => {
     expect(c2.normal.x).toBeCloseTo(-c1.normal.x, 6);
     expect(c2.normal.y).toBeCloseTo(-c1.normal.y, 6);
   });
+
+  it("measures a station on the border, into both lands", () => {
+    const c = crossingBetween(LEFT, RIGHT);
+    expect(c.stations.length).toBeGreaterThan(0);
+    for (const st of c.stations) {
+      expect(st.at.x).toBeCloseTo(10, 6);
+      // 10 units of land each way, less the inset.
+      expect(st.into).toBeCloseTo(8, 3);
+      expect(st.out).toBeCloseTo(8, 3);
+    }
+  });
+
+  it("puts the crossing on the roomiest station", () => {
+    // A thin spur on RIGHT's side at the top of the border: the vertex at
+    // y=20 has almost nothing behind it, the one at y=0 has the whole square.
+    const spur = [[
+      { x: 10, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 19 },
+      { x: 11, y: 19 }, { x: 11, y: 20 }, { x: 10, y: 20 },
+    ]];
+    const c = crossingBetween(LEFT, spur);
+    expect(c.at.y).toBeLessThan(19);
+  });
+
+  it("keeps every station's projection ordered along the tangent", () => {
+    const c = crossingBetween(LEFT, RIGHT);
+    const ss = c.stations.map((st) => st.s);
+    expect([...ss].sort((a, b) => a - b)).toEqual(ss);
+  });
+
+  it("gives a strait one station spanning the water", () => {
+    const far = [[
+      { x: 40, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 20 }, { x: 40, y: 20 },
+    ]];
+    const c = crossingBetween(LEFT, far);
+    expect(c.stations).toHaveLength(1);
+    expect(c.stations[0].into).toBeCloseTo(30 / 2 + ARROW_DEPTHS.seaClearance, 6);
+    expect(c.stations[0].out).toBeCloseTo(30 / 2 + ARROW_DEPTHS.seaClearance, 6);
+  });
 });
 
 describe("every adjacency on every map", () => {
@@ -251,6 +289,45 @@ describe("every adjacency on every map", () => {
       // across water in each direction: Saaremaa in the Baltic, the Balearics
       // in Iberia. A fifth would mean the map data lost its shared topology.
       expect(seas.length, seas.join(", ")).toBe(4);
+    });
+  }
+});
+
+describe("stations on every adjacency of every map", () => {
+  for (const region of Object.values(REGIONS)) {
+    const rings = new Map(region.map.regions.map((r) => [r.id, ringsOf(r.path)]));
+
+    it(`${region.id}: every station's own measurement agrees with the map`, () => {
+      for (const r of region.map.regions) {
+        for (const adjId of r.adjacent) {
+          const a = rings.get(r.id);
+          const b = rings.get(adjId);
+          if (a === undefined || b === undefined) continue;
+          const c = crossingBetween(a, b);
+          const where = `${r.id} -> ${adjId}`;
+          expect(c.stations.length, where).toBeGreaterThan(0);
+          expect(c.stations.length, where).toBeLessThanOrEqual(32);
+          if (c.sea) continue;
+          for (const st of c.stations) {
+            // A measured depth is a depth at which the map agrees the point is
+            // on that land. This is the measurement checked by the predicate
+            // the rest of the file uses, which is what stops `reach` and the
+            // lane test in Task 4 drifting apart.
+            if (st.into > 0) {
+              expect(pointInRings({
+                x: st.at.x + c.normal.x * st.into,
+                y: st.at.y + c.normal.y * st.into,
+              }, b), `${where} into=${st.into}`).toBe(true);
+            }
+            if (st.out > 0) {
+              expect(pointInRings({
+                x: st.at.x - c.normal.x * st.out,
+                y: st.at.y - c.normal.y * st.out,
+              }, a), `${where} out=${st.out}`).toBe(true);
+            }
+          }
+        }
+      }
     });
   }
 });

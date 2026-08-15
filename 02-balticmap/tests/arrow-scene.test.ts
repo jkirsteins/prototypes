@@ -10,6 +10,7 @@ import type { Crossing } from "../src/borders";
 /** A border running up the y axis at x=0, with "across" pointing at +x. */
 const FLAT: Crossing = {
   at: { x: 0, y: 0 },
+  stations: [],
   tangent: { x: 0, y: 1 },
   normal: { x: 1, y: 0 },
   span: 200,
@@ -165,6 +166,7 @@ const NS = "http://www.w3.org/2000/svg";
 const ctx: SceneCtx = {
   crossingFor: (from, to) => ({
     at: { x: 0, y: 0 },
+    stations: [],
     tangent: { x: 0, y: 1 },
     // Every pair in these tests crosses west to east, and back the other way
     // when the caller names them the other way round.
