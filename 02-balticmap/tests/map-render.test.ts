@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { contrastRatio, inkFor, darkenColor } from "../src/map-render";
+import { contrastRatio, inkFor } from "../src/map-render";
 import { REGIONS } from "../src/regions";
 
 /** What a land nobody plays is painted, which is what an arrow crossing the

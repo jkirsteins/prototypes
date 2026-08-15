@@ -98,11 +98,11 @@ export interface Lane {
  *
  *  Two passes, and the second is the ordering rule. Each lane takes the FREE
  *  station nearest its own offset, so no arrow is pushed onto a worse place
- *  because its neighbour got there first - searching under a "must come after
- *  the last one" rule costs 2 lanes of 1,236 an end on the wrong land. Then the
- *  chosen stations are dealt out along the border, which costs nothing: it is
- *  the same SET, so the same arrows stand in the same places and only which
- *  arrow stands where changes. */
+ *  because its neighbour got there first - a search constrained to come after
+ *  the previous lane's station left 2 of 1,236 lanes with an end on the wrong
+ *  land. Then the chosen stations are dealt out along the border, which costs
+ *  nothing: it is the same SET, so the same arrows stand in the same places
+ *  and only which arrow stands where changes. */
 function stationsForBlock(
   cross: Crossing, offsets: readonly number[],
 ): Station[] {

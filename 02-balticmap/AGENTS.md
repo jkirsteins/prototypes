@@ -264,11 +264,26 @@ could forget the border, the lane or the ghost beside it.
 
 **The border is in the map data already.** Adjacent regions share EXACT
 vertices, so `crossingBetween` in `src/borders.ts` is a set intersection, not
-a geometry search. Three things about it are load-bearing:
+a geometry search. Four things about it are load-bearing:
 
-- **The crossing is a real border vertex**, the shared one nearest their
-  centroid, never a computed point. The centroid of a bent border sits up to
-  33 units off the border itself at the worst pair on this map.
+- **A border is a table of measured STATIONS**, up to 32 real vertices sampled
+  along it, each measured once for how much room `reach` finds into both
+  lands. `Crossing.at` is the roomiest of them - never a computed point, and
+  no longer the vertex nearest the border's centroid - and a lane STANDS on a
+  station rather than at an offset along the tangent, because the tangent is a
+  global fit to the whole border and the border bends locally under it: an
+  offset measured along that line is routinely off the border altogether,
+  sitting inside one of the two lands rather than on the line between them.
+  Measured: the old tangent-offset scheme left 50 of 1,236 lanes with an end
+  on the wrong land; standing lanes on stations instead cut that to 8, and it
+  is 0 today - `tests/borders.test.ts` asserts it across every adjacency on
+  both maps rather than allow-listing what is left.
+- **An arrow's depth is the room its own station has**, floored at
+  `ARROW_DEPTHS.min` so a cramped station still reads as an arrow instead of
+  overrunning the ground it stands on. The depths live in `src/borders.ts` as
+  `ARROW_DEPTHS`, not in `LAYOUT` (`src/arrow-scene.ts`), because how deep an
+  arrow may stand is a question about the ground, and the ground is what
+  `src/borders.ts` measures.
 - **The normal's direction is decided by a vote**, four probe distances in
   and out of both lands. The tangent is a global fit to the whole border and
   the border is locally bent under it, so one probe is ambiguous on 7 of the
@@ -343,7 +358,21 @@ is visible around both.
 
 **The ghost is laid out with the living, and that is what a beat needs.**
 What a landing left on the border is a `kind: "ghost"` spec in the same scene
-as every live arrow, so it takes a lane in the same block.
+as every live arrow, so it takes a lane in the same block. It states its own
+fill (`src/main.ts`: gold, red or a neutral brown, by `tone`) rather than
+leaving it to `.march-arrow`'s CSS - which a ghost, drawn as `.clash-flash`,
+does not even claim - because a ghost is the one arrow on the map its beat is
+actually about, not because it would otherwise inherit a rival's 0.45.
+
+**A faction colour used as a MARK goes through `inkFor`.** A rival's arrow
+(tone `other`) is filled with `arrowInkFor` in `src/main.ts`, which darkens
+the faction's own colour (`inkFor` in `src/map-render.ts`) until it reaches a
+3:1 contrast against the map's unowned fill, memoised per faction since the
+search inside `inkFor` walks up to a hundred steps. The map's palette is pale
+by design, so a faction colour used raw as a mark on it reads at about
+1.05:1 - not a mark at all. Used as a LAND's fill instead, a faction colour
+stays exactly as authored: `inkFor` is for something drawn ON the map, never
+for the ground itself.
 
 **An arrow arrives and leaves on the beat that explains it, never at the
 repaint behind it.** The displayed state lags the whole transition, so on its
@@ -381,17 +410,30 @@ identity a rebuild wipes nothing. A march this move declared cannot stand over
 the landing of the one before it, because it is on screen only from its own
 beat onward.
 
-**Everything that decides how an arrow LOOKS is on its spec.** `dressArrow`
-states an arrow's whole class attribute, which is what stops a stale cue
-surviving a render - so the hover's fade and the pin's dim are `ArrowSpec`
-fields (`faded`, `dimmed`), decided in `paintArrows` from the same dataset the
-hover and the pin were always answered from, and the surfaces that own those
-two questions repaint rather than write on the elements. No pass after the
-paint touches an arrow's OPACITY, which is what makes the ordering impossible
-to get wrong. Two classes are still written afterwards - `march-counterable`
-on an answerable arrow and `aim-valid` on the preview - and both are safe only
+**Everything that decides how an arrow LOOKS is on its spec.** How loud an
+arrow is drawn is exactly one field, `ArrowSpec.emphasis` (`full`, `back`,
+`dimmed` or `faded`), chosen once by `emphasisFor` from what the hover, the
+pin and a live aim have to say (`ArrowCues`) and written as a single class
+through `ARROW_EMPHASIS` - replacing the `faded` and `dimmed` booleans this
+used to be two of, and the four CSS rules on the same property that raced by
+specificity to decide between them: it had already produced a "faded" rival
+arrow drawn BRIGHTER than an unfaded one, and starting an aim raised every
+pin-dimmed arrow back up. `dressArrow` states an arrow's whole class
+attribute, which is what stops a stale cue surviving a render - the surfaces
+that own the hover and the pin repaint rather than write on the elements, and
+`paintArrows` derives every arrow's `emphasis` from the same dataset those two
+questions were always answered from. No pass after the paint touches an
+arrow's OPACITY, which is what makes the ordering impossible to get wrong.
+Two classes are still written afterwards - `march-counterable` on an
+answerable arrow and `aim-valid` on the preview - and both are safe only
 because neither declares an opacity. Give either one and it must move onto the
-spec with the other two.
+spec with the emphasis.
+
+A ghost and the aim preview answer `live` first and are always `full`: an
+arrow standing for the beat on screen, or the arrow a play is about to make,
+is never pushed back by a question about something else. An arrow landing
+where the player is aiming answers `atAimTarget` and stays `full` too, ahead
+of the plain `back` a live aim gives every other arrow on the map.
 
 It was a pass after the paint twice, and it failed differently each time.
 Written by the surfaces themselves, a repaint while a land was pinned
@@ -409,7 +451,7 @@ re-aims a fade already in flight, so taking a pin or moving the pointer onto
 another arrow during those 220ms still steps the opacity when the fade ends -
 up to 0.84 in the pin case. The window is small and the fix, if it is ever
 worth it, is to re-aim a live `held.fade` in `place` when a kept arrow's
-`faded` or `dimmed` has changed.
+`emphasis` has changed.
 
 **The aim preview shares the block with the arrows already crossing it.**
 `kind: "aim"` is a spec in the same scene as every live arrow (`src/main.ts`,
