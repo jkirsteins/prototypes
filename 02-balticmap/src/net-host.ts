@@ -124,7 +124,9 @@ export function createHostSession(
           wire.send({ type: "reject", reason: err });
           return;
         }
-        const next = applyNetAction(g, deps.rng, msg.action);
+        // The GUEST's seat, which `validateAction` has just pinned to the one
+        // the message claims. Never `g.current` - see NET_ACTION_RULES.
+        const next = applyNetAction(g, deps.rng, msg.action, seat);
         if (next === g) {
           wire.send({ type: "reject", reason: "the rules refused that move" });
           return;

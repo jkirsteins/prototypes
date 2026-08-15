@@ -1966,6 +1966,51 @@ describe("End turn button", () => {
     const card = container.querySelector(".card") as HTMLButtonElement;
     expect(card.disabled).toBe(true);
   });
+
+  it("draws a hand it will not take as a hand it will not take - every card", () => {
+    // The invariant behind a whole class of bug: a seat that cannot act must
+    // LOOK like a seat that cannot act. `isResolving` is the one predicate the
+    // HUD is given, so anything that refuses a click has to be inside it -
+    // when two of them (a harvest offer and an unanswered conquest) were
+    // spelled at the click handler instead, the hand rendered live, hovered,
+    // lifted, and silently swallowed every press with nothing on screen.
+    //
+    // So: no card is merely enabled-but-inert, and none is left looking live.
+    // Whichever way the predicate is fed, the fan and the button agree with it.
+    const { container, hud } = setup({
+      onEndTurn: vi.fn(), isResolving: () => true,
+    });
+    hud.update(unlimitedHudPlaying(), { animate: false });
+    const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) {
+      expect(card.disabled).toBe(true);
+      // `.unplayable` is what the player actually sees - `:disabled` alone is
+      // a filter subtle enough to read as a live card.
+      expect(card.classList.contains("unplayable")).toBe(true);
+    }
+    const btn = container.querySelector(".end-turn-btn") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it("takes the hand back the moment it stops resolving", () => {
+    // The other half, and the reason `inputLocked` is derived rather than
+    // stored: nothing repaints when it goes false, so a caller owes a paint on
+    // the way out. This pins that a repaint is all it takes.
+    let resolving = true;
+    const { container, hud } = setup({
+      onEndTurn: vi.fn(), isResolving: () => resolving,
+    });
+    const g = unlimitedHudPlaying();
+    hud.update(g, { animate: false });
+    expect((container.querySelector(".card") as HTMLButtonElement).disabled)
+      .toBe(true);
+    resolving = false;
+    hud.update(g, { animate: false });
+    const card = container.querySelector(".card") as HTMLButtonElement;
+    expect(card.disabled).toBe(false);
+    expect(card.classList.contains("unplayable")).toBe(false);
+  });
 });
 
 describe("notice modal", () => {

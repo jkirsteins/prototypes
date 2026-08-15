@@ -125,7 +125,14 @@ export function dealNetGame(
  *  kind was checked by nobody and found that out on somebody's board.
  *
  *  The SHARED checks - in play, a real seat, this seat's turn, a live turn
- *  stamp - stay in `validateAction`. This is the per-kind half. */
+ *  stamp - stay in `validateAction`. This is the per-kind half.
+ *
+ *  Both halves take the ACTING SEAT, and neither may re-derive it from
+ *  `state.current`. The two agree on every ordinary path, which is exactly why
+ *  a rule that reads the state instead reads correctly for months: a conquest
+ *  is queued at its taker's own turn start, and a play is made on its own
+ *  turn. They come apart the moment an answer outlives the board it was asked
+ *  about - see `transfer` below, and the note on `decide` in src/main.ts. */
 export const NET_ACTION_RULES: {
   [K in NetAction["type"]]: {
     validate(
@@ -133,6 +140,7 @@ export const NET_ACTION_RULES: {
     ): string | null;
     apply(
       state: GameState, rng: Rng, action: Extract<NetAction, { type: K }>,
+      seat: number,
     ): GameState;
   };
 } = {
@@ -206,10 +214,20 @@ export const NET_ACTION_RULES: {
       }
       return null;
     },
-    // The faction is read off the state rather than taken on trust: the
-    // shared checks have already pinned the sender to the seat on turn.
-    apply: (state, _rng, action) => transferDefense(
-      state, state.players[state.current].factionId, action.amount,
+    // The SENDER's faction, and never `state.players[state.current]`. The
+    // question was raised for one seat and has to be answered for that same
+    // seat, or the pop names a faction with no queue, `transferDefense` hands
+    // the state straight back, and the caller reads that identity return as
+    // "the rules refused" - for an answer the player gave correctly. The
+    // conquest then stays owed with no modal on screen and no way to raise
+    // one, which is a seat that can neither play a card nor end its turn.
+    //
+    // This used to lean on "the shared checks have already pinned the sender
+    // to the seat on turn". They do, on the wire. `commitDecision` runs them
+    // for a GUEST only, so on the two paths that matter here - solo and the
+    // host's own play - nothing pinned anything.
+    apply: (state, _rng, action, seat) => transferDefense(
+      state, state.players[seat].factionId, action.amount,
     ),
   },
   "end-turn": {
@@ -229,19 +247,42 @@ export function validateAction(
   if (seat < 0 || seat >= state.players.length) return "no such seat";
   if (state.current !== seat) return "not this seat's turn";
   if (turn !== state.turn) return "stale turn stamp";
+  return validateRules(state, seat, action);
+}
+
+/** The per-kind half ALONE - what the rules say about this move, with none of
+ *  the wire's race guards.
+ *
+ *  Separated because the two answer different questions and only one of them
+ *  travels. "Is it your turn" and "is your turn stamp current" are about a
+ *  message that crossed a wire and may have been overtaken; "does this seat
+ *  own a conquest that is waiting" is a rule, and it is just as true on a solo
+ *  screen. `commitDecision` ran neither locally, so a local answer the rules
+ *  would not take came back as the generic `RULES_REFUSED` - or, where the
+ *  engine clamps rather than refuses, was simply taken. The turn checks are
+ *  deliberately NOT included here: a conquest question is answered against the
+ *  board as it stands when the player answers it, which is not always still
+ *  the asker's turn. */
+export function validateRules(
+  state: GameState, seat: number, action: NetAction,
+): string | null {
+  if (seat < 0 || seat >= state.players.length) return "no such seat";
   const rule = NET_ACTION_RULES[action.type] as {
     validate(s: GameState, seat: number, a: NetAction): string | null;
   };
   return rule.validate(state, seat, action);
 }
 
+/** `seat` is who is ACTING, and it is required rather than derived: see the
+ *  note on `NET_ACTION_RULES`. The host passes the guest's seat when it
+ *  applies a guest's action, and its own when it plays. */
 export function applyNetAction(
-  state: GameState, rng: Rng, action: NetAction,
+  state: GameState, rng: Rng, action: NetAction, seat: number,
 ): GameState {
   const rule = NET_ACTION_RULES[action.type] as {
-    apply(s: GameState, rng: Rng, a: NetAction): GameState;
+    apply(s: GameState, rng: Rng, a: NetAction, seat: number): GameState;
   };
-  return rule.apply(state, rng, action);
+  return rule.apply(state, rng, action, seat);
 }
 
 export function buildUpdate(

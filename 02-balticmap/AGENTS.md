@@ -651,6 +651,43 @@ does:
   fell; one slot per faction asked about the first and dropped the other two,
   which then sent no defenders and said nothing about it.
 
+  **The answer is applied for the seat that was ASKED, never for
+  `state.current`.** `NET_ACTION_RULES.transfer` takes the acting seat, and
+  `applyNetAction` requires it rather than deriving it. The two agree on every
+  ordinary path - a conquest is queued at its taker's own turn start - which is
+  exactly why reading it off the board survived for months. They come apart the
+  moment an answer outlives the board it was asked about, and then the pop
+  names a faction with no queue, `transferDefense` hands its input straight
+  back, and `commitDecision` reads that identity return as `RULES_REFUSED` for
+  an answer the player gave correctly. `commitDecision` now runs `validateRules`
+  locally too - the per-kind half alone, no turn or stamp guard, since a modal
+  is legitimately answered after the board has moved - so a mismatch is a NAMED
+  refusal instead of a silent one. The guest had that check and the local seat
+  had none.
+
+  **And a question that is owed with nothing asking it raises itself.**
+  `reaskOwedQuestions`, off `refreshWhenSettled`, is the one reconciliation in
+  the app. Every other route to the modal is a one-shot - the `ask` stage and
+  the boot tail - so any way of losing an answer left the conquest owed and
+  unaskable, and `inputLocked` then refused every play and every end of turn,
+  which is what stopped a later transition ever running to notice. That is a
+  seat with no way out and nothing on screen: a real run reached it at turn 62
+  by taking two lands in one turn, answering the first question, and never
+  being shown the second. `askTransfer` also clears `transferAsked` on a
+  refusal now, because that latch is what turned one lost answer into a
+  permanent one.
+
+  **The turn-62 trigger itself was never reproduced**, and that is worth
+  saying rather than leaving a future reader to assume the wrong-faction pop
+  above was it. The chain was driven hard afterwards - two conquests in one
+  turn through the real `ask` stage, and boot-path chains of six to eleven
+  questions across a dozen seeds - and it held every time, on the code as it
+  stood. So the reconciliation is not decoration on a known cause: it is the
+  guard that makes the failure recoverable whatever the cause turns out to be,
+  and it is the reason the class is closed even though one instance is not
+  explained. If it ever fires in earnest, `askTransfer`'s `console.error` is
+  the thing to go looking for.
+
   **Arrivals resolve ONE AT A TIME, each against the board the last one
   left.** `resolveMarches` takes an `onArrival` sink and calls it at the
   moment a capture is decided, so the conquest - and the defenders it moves
@@ -953,11 +990,25 @@ somehow never reports itself finished.
 **"May the player act" is one predicate and not a flag.** `inputLocked` in
 `src/main.ts` is the whole of it: the transition queue is showing a move, an
 animation of this screen's own is still running, the other human holds the
-turn, or the wire owes this screen an answer (`awaitingWire`, which the network
-callbacks set and the answer clears - the one arm nothing else can see). Every
-surface that gates on it asks the same call, so the map, the arrows, the menu
-buttons and the End turn button cannot disagree about whether the round is
-still resolving.
+turn, the wire owes this screen an answer (`awaitingWire`, which the network
+callbacks set and the answer clears - the one arm nothing else can see), or
+this screen owes an answer itself - a harvest boon (`pendingHarvest`) or a
+conquest's defenders (`localTransferPending`). Every surface that gates on it
+asks the same call, so the map, the arrows, the menu buttons and the End turn
+button cannot disagree about whether the round is still resolving.
+
+**The last two arms were spelled at the call sites**, on `onPlayCard`,
+`onEndTurn` and the keydown handler, and that alone is how a locked seat came
+to look like a live one. `isResolving` hands the HUD this predicate and nothing
+else, so `renderHand` drew from four terms while the click was refused on six:
+at turn 62 of a real run every card rendered playable, hovered, lifted, and did
+nothing when pressed - no modal, no message, no line in the log, and no way
+back, because nothing is persisted. A question the player cannot answer has to
+be one the player can SEE, and the only way to guarantee that is to leave the
+renderer no term it cannot read. Anything new that refuses a click belongs in
+`inputLocked`, never beside it. `tests/hud.test.ts` pins the visible half: with
+`isResolving` true, every card is `disabled` AND `.unplayable`, and End turn is
+disabled - `:disabled` alone is a filter subtle enough to read as a live card.
 
 The one thing a derived answer costs, and it is a real cost: a paint made
 while it is true draws a locked screen, and nothing repaints when it goes
@@ -965,7 +1016,10 @@ false on its own. So every path out of the locked window repaints on its way
 out - `finishChain` and `afterHumanPlay` both wait for the animation queue to
 drain and then `refresh`. A stage of the lifecycle that leaves the screen
 locked with no repaint behind it is a hand that stays greyed until the player
-hovers something.
+hovers something. The two arms above are not owned by a queue, so they owe
+their paints by hand: `openHarvestModal` repaints on the way IN and its
+`onCancel` on the way out, and the conquest question is raised inside the `ask`
+stage, which has already painted twice behind it.
 
 ## Every visible sequence goes through one queue
 

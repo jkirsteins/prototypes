@@ -404,16 +404,61 @@ describe("applyNetAction", () => {
       defense: { alpha: 40, beta: 0 },
       pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
     };
-    const after = applyNetAction(g, rng, { type: "transfer", amount: 10 });
+    const after = applyNetAction(g, rng, { type: "transfer", amount: 10 }, 0);
     expect(after.defense.alpha).toBe(30);
     expect(after.defense.beta).toBe(10);
     expect(after.pendingTransfers).toEqual({});
   });
 
+  it("answers the SENDING seat's conquest, not the seat holding the turn", () => {
+    // The two are the same on every ordinary path - a conquest is queued at
+    // its taker's own turn start - which is why reading the faction off
+    // `state.current` survived. They diverge the moment the board moves
+    // between the modal opening and the answer landing, and then the pop names
+    // a faction with no queue, `transferDefense` hands the state back
+    // untouched, and `commitDecision` reads that as "the rules refused". The
+    // question stays owed, `transferAsked` suppresses it for good, and
+    // `localTransferPending` swallows every click with nothing on screen.
+    const rng = seededRng(5);
+    const base = freshGame(rng);
+    const g: GameState = {
+      ...base,
+      current: 1,
+      defenseMax: { alpha: 40, beta: 40 },
+      defense: { alpha: 40, beta: 0 },
+      pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
+    };
+    const after = applyNetAction(g, rng, { type: "transfer", amount: 10 }, 0);
+    expect(after).not.toBe(g);
+    expect(after.pendingTransfers).toEqual({});
+    expect(after.defense.alpha).toBe(30);
+    expect(after.defense.beta).toBe(10);
+  });
+
+  it("pops one entry per answer, so the second conquest is still owed", () => {
+    // A turn that took two lands owes two answers. The second is raised by the
+    // transition the FIRST answer creates, so an answer that pops nothing does
+    // not merely lose itself - it takes every question behind it as well.
+    const rng = seededRng(5);
+    const base = freshGame(rng);
+    const g: GameState = {
+      ...base,
+      current: 1,
+      defenseMax: { alpha: 40, beta: 40, gamma: 40, delta: 40 },
+      defense: { alpha: 40, beta: 0, gamma: 40, delta: 0 },
+      pendingTransfers: {
+        alpha: [{ from: "alpha", to: "beta" }, { from: "gamma", to: "delta" }],
+      },
+    };
+    const after = applyNetAction(g, rng, { type: "transfer", amount: 10 }, 0);
+    expect(after.pendingTransfers.alpha)
+      .toEqual([{ from: "gamma", to: "delta" }]);
+  });
+
   it("routes end-turn to endTurn only under unlimited rules (standard refuses)", () => {
     const rng = seededRng(5);
     const g = freshGame(rng);
-    expect(applyNetAction(g, rng, { type: "end-turn" })).toBe(g);
+    expect(applyNetAction(g, rng, { type: "end-turn" }, 0)).toBe(g);
   });
 
   it("passes the harvest pick through to playCard", () => {
@@ -422,7 +467,7 @@ describe("applyNetAction", () => {
     const next = applyNetAction(g, rng, {
       type: "play", cardIndex: 0, cardId: "turnip-harvest",
       harvest: { kind: "build", cardId: "war-council" },
-    });
+    }, 0);
     expect(next).not.toBe(g);
     expect(next.log.at(-1)).toMatchObject({
       type: "harvest-picked", cardId: "war-council",
@@ -436,7 +481,7 @@ describe("applyNetAction", () => {
     const next = applyNetAction(g, rng, {
       type: "play", cardIndex: 0, cardId: "turnip-harvest",
       harvest: { kind: "skip" },
-    });
+    }, 0);
     expect(next).not.toBe(g);
     expect(next.log.at(-1)).toMatchObject({
       type: "play", cardId: "turnip-harvest",

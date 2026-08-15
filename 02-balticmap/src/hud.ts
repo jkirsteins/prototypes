@@ -260,6 +260,14 @@ export interface Hud {
   ): void;
   /** Closes the harvest overlay. Safe when none is up. */
   hideHarvestUi(): void;
+  /** Whether the shared overlay - a harvest offer, a spend slider, a conquest
+   *  transfer - is on screen right now.
+   *
+   *  Asked by the one caller that has to tell "this question is being put to
+   *  the player" apart from "this question is owed and nothing is asking it".
+   *  The second is a bug state, and it used to be unrecoverable precisely
+   *  because nothing could name it. */
+  harvestUiOpen(): boolean;
   /** Shows each card a harvest just put in the deck, one at a time: it fades
    *  in over the board with a line saying what it is, holds, then flies into
    *  the deck pile. `onDone` fires once, after the last one lands - callers
@@ -1390,6 +1398,10 @@ export function createHud(
     // not strand its tip or its map halo.
     cb.onHideTip?.();
     cb.onHighlightFaction?.(null);
+  }
+
+  function harvestUiOpen(): boolean {
+    return !harvestOverlay.classList.contains("hidden");
   }
 
   /** How long a revealed card is held still before it flies to the deck. Long
@@ -3266,5 +3278,6 @@ export function createHud(
     showSpendOffer,
     showTransferOffer,
     hideHarvestUi,
+    harvestUiOpen,
   };
 }

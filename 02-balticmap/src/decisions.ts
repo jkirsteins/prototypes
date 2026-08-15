@@ -11,7 +11,7 @@ import type { Rng } from "./cards";
 import { advance, keepPlaying, surrender, type GameState } from "./game";
 import type { HarvestChoice } from "./harvest";
 import {
-  applyNetAction, validateAction, type NetAction,
+  applyNetAction, validateAction, validateRules, type NetAction,
 } from "./net-protocol";
 
 /** The seats a screen can tell apart. `remoteSeat` is the other human's, and
@@ -220,7 +220,17 @@ const RULES_REFUSED = "the rules refused that move";
  *
  *  A guest checks the move against its own replica before sending. The host
  *  would refuse the same move for the same reason, so asking here costs a
- *  round trip and tells the player why on the spot. */
+ *  round trip and tells the player why on the spot.
+ *
+ *  Solo and host check too, and that is not symmetry for its own sake. The
+ *  guest asked `validateAction` and the local seat asked NOTHING, so the only
+ *  answer a local caller could get out of a move the rules would not take was
+ *  `RULES_REFUSED` - and only where the engine happened to refuse by returning
+ *  its input. A conquest answered for a seat that owed nothing did exactly
+ *  that, and `askTransfer` could not tell it from success. The local check is
+ *  `validateRules`, the per-kind half alone: the turn and stamp guards are
+ *  about a message that crossed a wire and been overtaken, and a question
+ *  answered from a modal is legitimately answered after the board has moved. */
 export function commitDecision(
   deps: DecisionDeps, d: Decision,
 ): DecisionResult {
@@ -244,7 +254,9 @@ export function commitDecision(
     deps.send(action);
     return { outcome: "sent" };
   }
-  const next = applyNetAction(deps.state, deps.rng, action);
+  const local = validateRules(deps.state, deps.localSeat, action);
+  if (local !== null) return { outcome: "refused", reason: local };
+  const next = applyNetAction(deps.state, deps.rng, action, deps.localSeat);
   if (next === deps.state) return { outcome: "refused", reason: RULES_REFUSED };
   deps.apply(next);
   deps.pushUpdate();

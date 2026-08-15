@@ -548,20 +548,33 @@ let awaitingWire = false;
 
 /** Whether the local player may act right now.
  *
- *  One question with three sources, and none of them is a flag somebody has to
+ *  One question with six sources, and none of them is a flag somebody has to
  *  remember to clear: the transition queue is showing a move (so the board is
  *  mid-explanation, or about to be), an animation of this screen's own is
  *  still running (the played card is in the air), the other human holds the
- *  turn, or the wire owes this screen an answer. The hand is already inert
- *  whenever it is not the human's turn - `renderHand` sees to that - so this
- *  is what the map, the arrows and the menu buttons ask.
+ *  turn, the wire owes this screen an answer, or this screen owes an answer
+ *  itself - a harvest boon or a conquest's defenders. The hand is already
+ *  inert whenever it is not the human's turn - `renderHand` sees to that - so
+ *  this is what the map, the arrows and the menu buttons ask.
+ *
+ *  The last two used to be spelled at the CALL SITES instead, on `onPlayCard`,
+ *  `onEndTurn` and the keydown handler, and that is the whole of how a locked
+ *  seat came to look like a live one. `isResolving` hands the HUD this
+ *  predicate and nothing else, so the hand was drawn from four terms while the
+ *  click was refused on six: every card rendered playable, hovered, lifted,
+ *  and did nothing when pressed, with no modal and no line in the log. A
+ *  question the player cannot answer has to be a question the player can SEE,
+ *  and the cheapest way to guarantee that is to leave the renderer no term it
+ *  cannot read. Anything new that refuses a click belongs here, not beside it.
  *
  *  Every paint made while this is true draws a locked screen, so every path
  *  that leaves the locked window repaints on its way out: `finishChain` and
- *  `afterHumanPlay` wait for the animation queue and then refresh. */
+ *  `afterHumanPlay` wait for the animation queue and then refresh, and
+ *  `openHarvestModal` repaints on the way IN for the same reason. */
 function inputLocked(): boolean {
   return (
-    transitions.busy() || animations.busy() || awaitingWire || remoteHoldsTurn()
+    transitions.busy() || animations.busy() || awaitingWire ||
+    remoteHoldsTurn() || pendingHarvest !== null || localTransferPending()
   );
 }
 
@@ -586,8 +599,35 @@ function refreshWhenSettled(): void {
     animations.onIdle(() => {
       refresh();
       updateWaitingStatus();
+      reaskOwedQuestions();
     });
   });
+}
+
+/** A conquest question that is OWED with nothing on screen asking it, raised
+ *  again now that the queue is idle.
+ *
+ *  The one reconciliation in the app, and it is here because every other route
+ *  to the modal is a one-shot: `askTransfer` is called by the `ask` stage and
+ *  by the boot tail, and neither runs again on its own. So any way of losing
+ *  an answer - a refusal, a hook that threw and was released by `runStage`, an
+ *  overlay torn down by something that did not know what was on it - left the
+ *  question owed and unaskable, and `inputLocked` then refused every play and
+ *  every end of turn, which is what stopped a further transition ever running
+ *  to notice. A state nobody can act on has to be able to fix itself.
+ *
+ *  Guarded on the two states where the question is legitimately unanswered:
+ *  an overlay is already up (this one, or a harvest, or a spend slider - they
+ *  share it), and a guest's answer is out on the wire with the replica still
+ *  carrying the question. `awaitingWire` names that second one properly, which
+ *  is what `transferAsked` was reaching for. */
+function reaskOwedQuestions(): void {
+  if (game().phase !== "playing") return;
+  if (pendingHarvest !== null || hud.harvestUiOpen() || awaitingWire) return;
+  if (!localTransferPending()) return;
+  // No stage is holding this one, so it owes nobody a release - the same
+  // shape, and the same reason, as the boot tail's call.
+  askTransfer(() => {});
 }
 
 /** The seat this screen plays. 0 for solo and host; the guest learns its
@@ -855,7 +895,19 @@ function askTransfer(done: () => void): void {
     {
       onConfirm(amount) {
         hud.hideHarvestUi();
-        decide({ kind: "transfer", amount });
+        const result = decide({ kind: "transfer", amount });
+        // An answer that did not land leaves the conquest OWED, and the key
+        // must not outlive it: held, it suppresses the very question at every
+        // later `ask`, and since a seat owing one can neither play a card nor
+        // end its turn, no later `ask` ever runs either. That is a dead seat
+        // with nothing on screen to say why, and it is what this arm exists to
+        // make impossible. `refreshWhenSettled` raises the question again once
+        // the queue is idle.
+        if (result.outcome === "refused") {
+          transferAsked = null;
+          console.error("conquest transfer refused:", result.reason);
+        }
+        // The stage owes its release whichever way that went.
         done();
       },
     },
@@ -1999,7 +2051,7 @@ function paintArrows(): void {
 function counterFor(m: March): number | null {
   const human = localHuman();
   if (!human || !isLocalTurn() || !turnOpen(game()) || inputLocked()) return null;
-  if (pendingHarvest !== null || discardMode()) return null;
+  if (discardMode()) return null;
   const realm = fullRealmOf(human.factionId, game().overlords, game().incorporated);
   if (!realm.has(m.to) || realm.has(m.from)) return null;
   const v = viewOf(game());
@@ -3031,6 +3083,11 @@ function disarm(): void {
 function openHarvestModal(index: number): void {
   const human = localHuman();
   pendingHarvest = { index };
+  // `inputLocked` counts this now, and it is derived, so the hand under the
+  // overlay stays as it was last drawn unless something repaints it. The debt
+  // `refreshWhenSettled` pays on the way OUT of a locked window, paid here on
+  // the way in: no queue is busy at this point, so nothing else will.
+  refresh();
   hud.showHarvestOffer(
     { buildCards: buildListing(human), heldCards: destroyOffer(human) },
     {
@@ -3052,6 +3109,11 @@ function openHarvestModal(index: number): void {
       onCancel() {
         pendingHarvest = null;
         hud.hideHarvestUi();
+        // Backing out unlocks the seat, and `inputLocked` is derived: without
+        // this the hand stays drawn as it was under the overlay - greyed, over
+        // a turn the player may now play. The counterpart of the repaint
+        // `openHarvestModal` makes on the way in.
+        refreshWhenSettled();
       },
     },
   );
@@ -3398,9 +3460,7 @@ const hudCallbacks: HudCallbacks = {
       // Host-only for the reason DECISION_ROUTES writes down, gated here as
       // well as in CSS - the same pair Surrender uses.
       if (!decidedHere("keep-playing", net.role)) return;
-      if (game().phase !== "victory" || inputLocked() || pendingHarvest !== null) {
-        return;
-      }
+      if (game().phase !== "victory" || inputLocked()) return;
       disarm();
       // A conquest that WON the run leaves its defender transfer unanswered -
       // the ask stage stands down on an ended run, since there is no board to
@@ -3413,9 +3473,7 @@ const hudCallbacks: HudCallbacks = {
       // The button is hidden from a guest as well (`.net-guest` in
       // style.css); this is the gate that does not depend on CSS.
       if (!decidedHere("surrender", net.role)) return;
-      if (game().phase !== "playing" || inputLocked() || pendingHarvest !== null) {
-        return;
-      }
+      if (game().phase !== "playing" || inputLocked()) return;
       disarm();
       // The run is over for both of them, and the push `decide` makes is the
       // only one that will ever carry that - nothing advances behind it.
@@ -3426,12 +3484,7 @@ const hudCallbacks: HudCallbacks = {
       // `turnOpen`, not `playedThisTurn`: a play that re-opened the turn leaves
       // a live hand behind it, and which card that hand still accepts is
       // `humanPlayableSet`'s answer rather than this gate's.
-      if (
-        !isLocalTurn() || !turnOpen(game()) || inputLocked() ||
-        pendingHarvest !== null || localTransferPending()
-      ) {
-        return;
-      }
+      if (!isLocalTurn() || !turnOpen(game()) || inputLocked()) return;
       const human = localHuman();
       const cardId = human.hand[index];
       if (discardMode()) {
@@ -3480,12 +3533,9 @@ const hudCallbacks: HudCallbacks = {
       // The conquest question holds the turn the same way the harvest offer
       // does, and for a harder reason: it is answered by the seat on turn, so
       // a turn handed over with it open is a question nothing can answer.
-      if (
-        !isLocalTurn() || inputLocked() || pendingHarvest !== null ||
-        localTransferPending()
-      ) {
-        return;
-      }
+      // Both ride `inputLocked` rather than being restated here, so the button
+      // the player is looking at is disabled by the same fact that refuses it.
+      if (!isLocalTurn() || inputLocked()) return;
       disarm();
       // A turn with nothing left to close - a spent standard one - just HANDS
       // OVER: the round resolves on this click rather than the moment the card
@@ -4124,7 +4174,6 @@ window.addEventListener("keydown", (e) => {
   // would otherwise navigate back in some browsers, so it is taken outright.
   if (e.key === "e" || e.key === "E" || e.key === "Backspace") {
     e.preventDefault();
-    if (pendingHarvest !== null || localTransferPending()) return;
     hudCallbacks.onEndTurn?.();
     return;
   }
