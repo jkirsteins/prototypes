@@ -267,7 +267,7 @@ describe("the leader gate", () => {
 });
 
 describe("seatRuler", () => {
-  const ethnicities = { selonians: "selonian", jersikans: "latgalian" };
+  const ethnicities = { selonians: "selonians", jersikans: "latgalians" };
 
   it("seats a ruler on a vacant chair at turn 0 leadership", () => {
     const seated = seatRuler({}, ethnicities, "selonians", 7, []);
@@ -283,9 +283,13 @@ describe("seatRuler", () => {
   });
 
   it("does not take a name a living ruler already holds", () => {
-    const first = seatRuler({}, ethnicities, "selonians", 1, []);
-    const both = seatRuler(first, ethnicities, "jersikans", 1, []);
-    expect(rulerOf(both, "jersikans").name).not.toBe(rulerOf(both, "selonians").name);
+    // The name seatRuler would pick for Selonians on an empty board - forced
+    // into collision by seating a DIFFERENT faction under that exact name
+    // first, so the assertion below fails if the `taken` set is ever dropped.
+    const claimed = rulerNameFor("selonians", ethnicities.selonians, 1, new Set());
+    const occupied = { jersikans: { name: claimed, since: 1, leadership: 0 } };
+    const seated = seatRuler(occupied, ethnicities, "selonians", 1, []);
+    expect(rulerOf(seated, "selonians").name).not.toBe(claimed);
   });
 
   it("leaves an occupied chair exactly as it found it", () => {
