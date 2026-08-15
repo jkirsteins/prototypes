@@ -165,6 +165,16 @@ jobs:
         if: steps.mode.outputs.deploy == 'true' && steps.mainsite.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
+          # The worktree supplies main's SOURCE; the script that builds it
+          # comes from the branch this run is checked out on. So a branch that
+          # breaks build-prototypes.sh republishes main's own /prototypes/NN/
+          # from its broken script, at the real public URLs, on a run that
+          # otherwise goes green - one artifact is one whole site, and every
+          # run replaces all of it. Edit this script with that in mind: the
+          # branch you are testing it on is the branch that publishes main.
+          # The cache key covers the other half, that a branch's idea of main
+          # cannot be RESTORED by main or by a sibling. It cannot cover this
+          # half, because the run doing the damage is the one that built it.
           (cd main-tree \
             && "$GITHUB_WORKSPACE/.github/scripts/build-prototypes.sh" \
                  "$GITHUB_WORKSPACE/main-site" /prototypes/)
