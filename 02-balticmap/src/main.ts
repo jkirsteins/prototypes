@@ -544,9 +544,14 @@ let hoveredRegion: Region | null = null; // region under the cursor, for hover r
 /** The land clicked to hold its faction's highlight, or null. A pin outranks
  *  the cursor: it exists so the activity log can be read, and reaching the log
  *  means dragging the cursor across lines whose faction names would each steal
- *  the highlight back. Cleared, not suppressed, the moment a card is armed or
- *  played (`onPlayCard`'s `interaction.deselect()`) - a pin does not survive
- *  an interaction, so targeting cues never have to arbitrate against one. */
+ *  the highlight back. Cleared, not suppressed, at the two moments an
+ *  interaction can start: `onPlayCard`'s `interaction.deselect()` the instant
+ *  a card is armed, and `decide`'s the instant any decision commits - a
+ *  counter played straight off an arrow's own click arms nothing, so only the
+ *  second one ever reaches it. A pin does not survive an interaction, so
+ *  targeting cues never have to arbitrate against one - `end-turn` is the one
+ *  decision that keeps it, since the pin's whole reason to exist is reading
+ *  the log through the round that click is about to start. */
 let pinnedRegion: Region | null = null;
 /** True while this screen must not act for a reason no queue can see: a
  *  guest's move gone to the host and not yet answered, and either side of a
@@ -3588,15 +3593,19 @@ const hudCallbacks: HudCallbacks = {
       // a live hand behind it, and which card that hand still accepts is
       // `humanPlayableSet`'s answer rather than this gate's.
       if (actionBlock("play") !== null) return;
-      // A pin does not survive an interaction. Every branch below either arms
-      // a targeted card, opens the harvest offer, discards or plays outright -
-      // and none of them is a question about a land the player pinned to read
-      // its log. The SAME route a deselect takes, so the hud's pinned state,
-      // the panel, the highlight and the arrow dim move together rather than
+      // A pin does not survive an interaction, and this is the ARM half of
+      // that rule - `decide` is the other, for a decision committed with no
+      // arming step of its own. Every branch below either arms a targeted
+      // card, opens the harvest offer, discards or plays outright, and none
+      // of them is a question about a land the player pinned to read its log.
+      // The SAME route a deselect takes, so the hud's pinned state, the
+      // panel, the highlight and the arrow dim move together rather than
       // three of the four moving and the fourth reading stale. This is also
       // what keeps a pin and a live aim from ever coexisting: `emphasisFor`
       // resolves a pin ahead of an aim, and that ordering is only honest
-      // because the two cannot both be true at once.
+      // because the two cannot both be true at once - and it has to happen
+      // here, at arm time, because arming commits nothing and `decide` is not
+      // reached until a target is chosen.
       interaction.deselect();
       const human = localHuman();
       const cardId = human.hand[index];
@@ -4015,6 +4024,23 @@ function sendGuestAction(a: NetAction): void {
  *  something to do afterwards asks: a harvest's reveal happens on this screen
  *  when this screen played it, and arrives with the update when it did not. */
 function decide(d: Decision): DecisionResult {
+  // A pin does not survive an interaction, and this is the one place every
+  // decision a person makes is committed - so it is also the one place that
+  // can unpin for a call site that never arms anything, the way an arrow's
+  // own counter click plays a raid straight through `decide` with no card
+  // ever set as `armed`. `onPlayCard`'s own `interaction.deselect()` is not
+  // redundant with this one: it fires at ARM time, before `armed` goes
+  // non-null, which is what `applyRealmHover` relies on to answer "is a card
+  // being targeted" without also asking about the pin - arming commits
+  // nothing, so `decide` is never reached until a target is chosen, and a
+  // pin still standing for that whole window is the bug this exists to close.
+  //
+  // `end-turn` is the one kind excepted. The pin's own reason to exist,
+  // stated on `pinnedRegion` itself, is reading the activity log filtered to
+  // a realm - and the round that log fills with is the one about to run,
+  // behind this exact click. Clearing the pin here would drop the filter at
+  // the one moment it was pinned to watch.
+  if (d.kind !== "end-turn") interaction.deselect();
   const result = commitDecision(
     {
       // The authoritative world, which is what the rules are applied to and
