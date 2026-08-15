@@ -1148,12 +1148,10 @@ svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
 /* While an aim is live the arrows stay on screen and stop taking clicks: what
    is already flying at a land is half of what decides whether to send an army
    there, so hiding them is not an option, and every click on the map belongs
-   to the land under it until the aim is answered. Slightly back, because the
-   thing being chosen is the map. */
+   to the land under it until the aim is answered. */
 .march-arrows.aiming .march-arrow,
 .march-arrows.aiming .claim-arrow {
   pointer-events: none;
-  opacity: 0.75;
 }
 
 /* Pointing at an arrow asks "which two lands is this about". A land that is
@@ -1242,28 +1240,19 @@ svg.map.arrow-focused .river {
   opacity: 0.3;
 }
 
-/* Scoped under the state rather than written flat, because
-   `.march-arrow.march-other` further down this file sets a rival's arrow to
-   0.45 and would win the tie on source order - a "faded" rival arrow came out
-   BRIGHTER than an unfaded one. */
-svg.map.arrow-focused .march-arrow.arrow-faded,
-svg.map.arrow-focused .claim-arrow.arrow-faded {
-  opacity: 0.12;
-  filter: saturate(0);
-}
-
-/* And the one being pointed at comes to full. A rival's quarrel rests at 0.45
-   because it is information rather than a decision - but the moment it is the
-   thing under the pointer it IS the decision, and on a map that has just gone
-   grey around it, 45% was the faintest mark left. */
-svg.map.arrow-focused .march-arrow:not(.arrow-faded),
-svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
-  opacity: 1;
-}
-
 .march-arrow polygon {
   stroke: #fdfaf4;
-  stroke-width: 1.2;
+  stroke-width: 1.6px;
+  /* Screen pixels, not map units. The default view is a 2508-unit viewBox on a
+     1440px element, so a 1.2-unit casing is a 0.69px line: it delineates the
+     arrow when the player has zoomed in and disappears at the zoom the game is
+     played at. The ink handles pale ground and the casing handles dark ground,
+     so one of the two contrasts with anything an arrow can stand on.
+
+     This does not reopen the argument in src/arrows.ts for a filled polygon
+     over a stroked line with a marker-end: the SHAPE is still a polygon at
+     every zoom, and only its outline stops being drawn in map units. */
+  vector-effect: non-scaling-stroke;
   stroke-linejoin: round;
 }
 
@@ -1281,11 +1270,11 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
    darker outline read as "selected", which is a different sentence. */
 .march-arrow.march-counterable polygon {
   stroke: #fdfaf4;
-  stroke-width: 2.4;
+  stroke-width: 2.4px;
 }
 
 .march-arrow.march-counterable:hover polygon {
-  stroke-width: 3.4;
+  stroke-width: 3.4px;
   filter: brightness(1.12);
 }
 
@@ -1298,12 +1287,6 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
 /* Yours, in the same gold your realm outline is drawn in. */
 .march-arrow.march-ours polygon {
   fill: #d4af37;
-}
-
-/* A quarrel between two rivals: their own colour, faded, because it is
-   information rather than a decision. */
-.march-arrow.march-other {
-  opacity: 0.45;
 }
 
 /* A claim of fealty in flight. Dashed, with a ring for a head: nothing is
@@ -1334,11 +1317,30 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
   color: #6b2fa0;
 }
 
-/* An arrow a pin is not about. Faint rather than hidden: the board still has
-   to read as a whole while one land is being studied. */
+/* How loud an arrow is drawn. One class, chosen in `emphasisFor` - see
+   ARROW_EMPHASIS in src/arrow-scene.ts for what each one means. Four rules of
+   equal weight on the same property, so which one applies is decided in code
+   and never by specificity. */
+.march-arrow.arrow-full,
+.claim-arrow.arrow-full,
+.clash-flash.arrow-full {
+  opacity: 1;
+}
+
+.march-arrow.arrow-back,
+.claim-arrow.arrow-back {
+  opacity: 0.75;
+}
+
 .march-arrow.arrow-dim,
 .claim-arrow.arrow-dim {
   opacity: 0.16;
+}
+
+.march-arrow.arrow-faded,
+.claim-arrow.arrow-faded {
+  opacity: 0.12;
+  filter: saturate(0);
 }
 
 .claim-label {
@@ -1394,8 +1396,11 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
 
    No layer of its own: it is drawn among the live arrows so the border's lanes
    pack around it, which means `.march-arrows` already holds it and already
-   makes it inert. It is deliberately left out of the `.aiming` fade below -
-   the arrows step back while the preview is the thing being decided. */
+   makes it inert. Nothing here declares an opacity, and that is deliberate:
+   how loud any arrow is drawn is `emphasisFor`'s one answer written as an
+   `.arrow-*` class, and the preview answers `live` first, so it stays
+   `.arrow-full` while every other arrow on the map steps back to
+   `.arrow-back`. */
 .aim-arrow polygon {
   fill: none;
   stroke: #8a7f6f;
@@ -1531,7 +1536,10 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
    it. */
 .clash-flash polygon {
   stroke: #fdfaf4;
-  stroke-width: 1.2;
+  stroke-width: 1.6px;
+  /* Same reasoning as `.march-arrow polygon`: a ghost is read at whatever zoom
+     the player was already at, so its casing is screen pixels too. */
+  vector-effect: non-scaling-stroke;
   stroke-linejoin: round;
 }
 

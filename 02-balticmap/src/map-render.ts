@@ -90,6 +90,48 @@ export function brightenColor(hex: string, factor: number): string {
   return `#${channel(1)}${channel(3)}${channel(5)}`;
 }
 
+/** WCAG relative luminance of a "#rrggbb". */
+function luminance(hex: string): number {
+  const channel = (start: number): number => {
+    const v = parseInt(hex.slice(start, start + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
+
+/** How far apart two colours are to the eye, 1 (identical) to 21. */
+export function contrastRatio(a: string, b: string): number {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/** A faction colour turned into a mark that can be seen ON the map: darkened
+ *  until it reaches `target` against the colour behind it.
+ *
+ *  A faction's colour is what its LAND is painted, drawn from the same pale
+ *  palette as every other land, so used raw as a mark it contrasts with the
+ *  map by about 1.05 to 1. Darkening by a fixed factor answers for one palette
+ *  and not for the next map's; darkening to a target answers for both, and an
+ *  already-dark colour barely moves.
+ *
+ *  Steps of one percent so the answer is the same every time it is asked -
+ *  this is read on every repaint and an unstable ink would be a flicker.
+ *
+ *  The precondition, since the name says nothing about it: it only ever
+ *  DARKENS, so `against` has to be a light colour. Asked for a mark on a dark
+ *  ground it walks the whole way down and hands back black, which contrasts
+ *  with that ground less at every step. The map's palette is pale by design,
+ *  which is what makes one direction enough here; a dark surface wants a
+ *  lightening pass beside this one rather than this function. */
+export function inkFor(hex: string, against: string, target: number): string {
+  for (let percent = 100; percent > 2; percent--) {
+    const ink = darkenColor(hex, percent / 100);
+    if (contrastRatio(ink, against) >= target) return ink;
+  }
+  return "#000000";
+}
+
 function el<K extends string>(name: K): SVGElement {
   return document.createElementNS(SVG_NS, name) as SVGElement;
 }

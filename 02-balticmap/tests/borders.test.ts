@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { ringsOf, sharedVertices, crossingBetween, pointInRings } from "../src/borders";
+import {
+  ringsOf, sharedVertices, crossingBetween, pointInRings, reach, ARROW_DEPTHS,
+} from "../src/borders";
+import { layoutLanes, unitWidthFor } from "../src/arrow-scene";
 import { REGIONS } from "../src/regions";
 
 describe("ringsOf", () => {
@@ -58,6 +61,67 @@ describe("pointInRings", () => {
   it("is true inside and false outside", () => {
     expect(pointInRings({ x: 5, y: 10 }, LEFT)).toBe(true);
     expect(pointInRings({ x: 15, y: 10 }, LEFT)).toBe(false);
+  });
+});
+
+describe("reach", () => {
+  const EAST = { x: 1, y: 0 };
+  const WEST = { x: -1, y: 0 };
+
+  it("gives the whole of `want` where the land runs past it", () => {
+    // From the border into RIGHT: 10 units of land, asking for 6.
+    expect(reach({ x: 10, y: 10 }, EAST, RIGHT, 6, 2)).toBeCloseTo(6, 3);
+  });
+
+  it("stops short of the far edge by the inset", () => {
+    // RIGHT ends at x=20, so 10 units of land for a `want` of 30.
+    expect(reach({ x: 10, y: 10 }, EAST, RIGHT, 30, 2)).toBeCloseTo(8, 3);
+  });
+
+  it("measures backwards along a negative direction", () => {
+    expect(reach({ x: 10, y: 10 }, WEST, LEFT, 30, 2)).toBeCloseTo(8, 3);
+  });
+
+  it("is -1 where the ray meets the land nowhere inside `want`", () => {
+    // Facing away from RIGHT entirely.
+    expect(reach({ x: 10, y: 10 }, WEST, RIGHT, 30, 2)).toBe(-1);
+  });
+
+  it("is -1 where the land is further off than `want`", () => {
+    const far = [[
+      { x: 100, y: 0 }, { x: 110, y: 0 }, { x: 110, y: 20 }, { x: 100, y: 20 },
+    ]];
+    expect(reach({ x: 10, y: 10 }, EAST, far, 30, 2)).toBe(-1);
+  });
+
+  it("measures from a point already inside the land", () => {
+    // Five units in, fifteen to the far edge, less the inset.
+    expect(reach({ x: 15, y: 10 }, EAST, RIGHT, 30, 2)).toBeCloseTo(3, 3);
+  });
+
+  it("stops in the first body of land, not the one across the gap", () => {
+    // Two bars with a gap: [0,4] and [8,12]. An arrow crosses a border and
+    // stops in the land it enters; the far bar is across ground this arrow is
+    // not aimed at, and backing off from ITS end puts the tip in the gap.
+    const bars = [
+      [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 20 }, { x: 0, y: 20 }],
+      [{ x: 8, y: 0 }, { x: 12, y: 0 }, { x: 12, y: 20 }, { x: 8, y: 20 }],
+    ];
+    expect(reach({ x: 0, y: 10 }, EAST, bars, 30, 2)).toBeCloseTo(2, 3);
+  });
+
+  it("is -1 where the run is too short to stand in", () => {
+    // A two-unit sliver with a three-unit inset: there is land, and nowhere on
+    // it to put a tip.
+    const sliver = [[
+      { x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 20 }, { x: 0, y: 20 },
+    ]];
+    expect(reach({ x: 0, y: 10 }, EAST, sliver, 30, 3)).toBe(-1);
+  });
+
+  it("never returns more than `want` and never less than zero", () => {
+    expect(reach({ x: 10, y: 10 }, EAST, RIGHT, 4, 2)).toBeLessThanOrEqual(4);
+    expect(reach({ x: 19, y: 10 }, EAST, RIGHT, 30, 8)).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -129,6 +193,52 @@ describe("crossingBetween", () => {
     expect(c2.normal.x).toBeCloseTo(-c1.normal.x, 6);
     expect(c2.normal.y).toBeCloseTo(-c1.normal.y, 6);
   });
+
+  it("measures a station on the border, into both lands", () => {
+    const c = crossingBetween(LEFT, RIGHT);
+    expect(c.stations.length).toBeGreaterThan(0);
+    for (const st of c.stations) {
+      expect(st.at.x).toBeCloseTo(10, 6);
+      // 10 units of land each way, less the inset.
+      expect(st.into).toBeCloseTo(8, 3);
+      expect(st.out).toBeCloseTo(8, 3);
+    }
+  });
+
+  it("puts the crossing on the roomiest station", () => {
+    // A thin spur on RIGHT's side at the top of the border: the vertex at
+    // y=20 has almost nothing behind it, the one at y=0 has the whole square.
+    const spur = [[
+      { x: 10, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 19 },
+      { x: 11, y: 19 }, { x: 11, y: 20 }, { x: 10, y: 20 },
+    ]];
+    const c = crossingBetween(LEFT, spur);
+    expect(c.at.y).toBeLessThan(19);
+  });
+
+  it("keeps every station's projection ordered along the tangent", () => {
+    const c = crossingBetween(LEFT, RIGHT);
+    const ss = c.stations.map((st) => st.s);
+    expect([...ss].sort((a, b) => a - b)).toEqual(ss);
+  });
+
+  it("gives a strait a table of stations, every one spanning the water", () => {
+    const far = [[
+      { x: 40, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 20 }, { x: 40, y: 20 },
+    ]];
+    const c = crossingBetween(LEFT, far);
+    // More than one, so a block of arrows gets a place each: with a single
+    // station every lane after the first found none and was drawn at the land
+    // depths, standing in open water.
+    expect(c.stations.length).toBeGreaterThan(1);
+    for (const st of c.stations) {
+      expect(st.into).toBeCloseTo(30 / 2 + ARROW_DEPTHS.seaClearance, 6);
+      expect(st.out).toBeCloseTo(30 / 2 + ARROW_DEPTHS.seaClearance, 6);
+    }
+    const ss = c.stations.map((st) => st.s);
+    expect(new Set(ss).size).toBe(ss.length);
+    expect([...ss].sort((p, q) => p - q)).toEqual(ss);
+  });
 });
 
 describe("every adjacency on every map", () => {
@@ -188,6 +298,113 @@ describe("every adjacency on every map", () => {
       // across water in each direction: Saaremaa in the Baltic, the Balearics
       // in Iberia. A fifth would mean the map data lost its shared topology.
       expect(seas.length, seas.join(", ")).toBe(4);
+    });
+  }
+});
+
+describe("stations on every adjacency of every map", () => {
+  for (const region of Object.values(REGIONS)) {
+    const rings = new Map(region.map.regions.map((r) => [r.id, ringsOf(r.path)]));
+
+    it(`${region.id}: every station's own measurement agrees with the map`, () => {
+      for (const r of region.map.regions) {
+        for (const adjId of r.adjacent) {
+          const a = rings.get(r.id);
+          const b = rings.get(adjId);
+          if (a === undefined || b === undefined) continue;
+          const c = crossingBetween(a, b);
+          const where = `${r.id} -> ${adjId}`;
+          expect(c.stations.length, where).toBeGreaterThan(0);
+          expect(c.stations.length, where).toBeLessThanOrEqual(32);
+          if (c.sea) continue;
+          for (const st of c.stations) {
+            // A measured depth is a depth at which the map agrees the point is
+            // on that land. This is the measurement checked by the predicate
+            // the rest of the file uses, which is what stops `reach` and the
+            // lane test in Task 4 drifting apart.
+            if (st.into > 0) {
+              expect(pointInRings({
+                x: st.at.x + c.normal.x * st.into,
+                y: st.at.y + c.normal.y * st.into,
+              }, b), `${where} into=${st.into}`).toBe(true);
+            }
+            if (st.out > 0) {
+              expect(pointInRings({
+                x: st.at.x - c.normal.x * st.out,
+                y: st.at.y - c.normal.y * st.out,
+              }, a), `${where} out=${st.out}`).toBe(true);
+            }
+          }
+        }
+      }
+    });
+  }
+});
+
+describe("no arrow ends on a land it is not about", () => {
+  // Every `forward` flag in play, not just the all-attack case: a real border
+  // carries an answering raid beside the arrow it answers just as often as it
+  // carries a lone attack, and `layoutLanes` reads `into`/`out` the other way
+  // round for a backward lane. A block of all-forward lanes never touches
+  // that arm.
+  const SHAPES: readonly boolean[][] = [
+    [true],
+    [true, true],
+    [true, true, true],
+    [true, false],
+    [true, false, true],
+  ];
+
+  for (const region of Object.values(REGIONS)) {
+    const rings = new Map(region.map.regions.map((r) => [r.id, ringsOf(r.path)]));
+
+    it(`${region.id}: every lane of every block shape`, () => {
+      const stray: string[] = [];
+      for (const r of region.map.regions) {
+        for (const adjId of r.adjacent) {
+          const a = rings.get(r.id);
+          const b = rings.get(adjId);
+          if (a === undefined || b === undefined) continue;
+          const cross = crossingBetween(a, b);
+          if (cross.sea) continue;
+          for (const shape of SHAPES) {
+            const items = shape.map((forward) => ({ strength: 1, forward }));
+            const unit = unitWidthFor([{ span: cross.span, strengths: items.map(() => 1) }]);
+            for (const lane of layoutLanes(cross, items, unit)) {
+              const forward = shape[lane.index];
+              // A backward lane runs the border the other way: `ax/ay` is
+              // its base, inside the SECOND land, and `bx/by` its tip,
+              // inside the FIRST - the swap a sign or ternary bug confined
+              // to the backward arm would miss if every check here still
+              // pointed at forward's lands.
+              const baseRing = forward ? a : b;
+              const baseId = forward ? r.id : adjId;
+              const tipRing = forward ? b : a;
+              const tipId = forward ? adjId : r.id;
+              const tip = { x: lane.bx, y: lane.by };
+              const base = { x: lane.ax, y: lane.ay };
+              const where = `${r.id}|${adjId} shape=${shape.join(",")} lane=${lane.index} forward=${forward}`;
+              // Both halves of the invariant. The first is what the player
+              // reported; the second is what makes the first true rather than
+              // lucky.
+              if (!pointInRings(tip, tipRing)) stray.push(`${where}: tip off ${tipId}`);
+              if (!pointInRings(base, baseRing)) stray.push(`${where}: base off ${baseId}`);
+              for (const other of region.map.regions) {
+                if (other.id === r.id || other.id === adjId) continue;
+                const o = rings.get(other.id);
+                if (o === undefined) continue;
+                if (pointInRings(tip, o)) stray.push(`${where}: tip on ${other.id}`);
+                if (pointInRings(base, o)) stray.push(`${where}: base on ${other.id}`);
+              }
+            }
+          }
+        }
+      }
+      // Zero, with no allow-list. Three earlier versions of this design left a
+      // residual and each one turned out to be a defect in the design rather
+      // than a place the map cannot be drawn, so a list here is where the
+      // fourth would go to be forgotten.
+      expect(stray, stray.join("\n")).toEqual([]);
     });
   }
 });

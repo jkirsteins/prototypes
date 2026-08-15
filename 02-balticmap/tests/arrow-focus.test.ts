@@ -15,7 +15,7 @@
  *  through under happy-dom. Both of those are the browser pass's, per the rule
  *  in AGENTS.md, and the arming case below is the same repaint reached by a
  *  path this environment can actually drive. */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 
 const focused = (): boolean => svg.classList.contains("arrow-focused");
 const narrowed = (): number =>
@@ -95,6 +95,15 @@ describe("the arrow hover", () => {
  *  was fixed, arriving too late for the fade that was still bringing a new
  *  arrow in. */
 describe("the pin's dim", () => {
+  // Escape unpins when nothing is armed and is a no-op when nothing is
+  // pinned either, so it is a safe reset regardless of what the previous
+  // test left behind - a clean start each test needs, since `clickOn`
+  // toggles: a click while something (anything) is already selected
+  // deselects rather than reselecting the land it landed on.
+  beforeEach(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  });
+
   const clickOn = (el: Element): void => {
     el.dispatchEvent(new MouseEvent(
       "pointerdown", { bubbles: true, clientX: 10, clientY: 10 },
@@ -112,23 +121,65 @@ describe("the pin's dim", () => {
       return id !== "ravala" && id !== "harjumaa";
     })!;
 
-  it("survives a repaint of the arrows", () => {
+  it("does not survive a card being armed, and does not come back on disarm", () => {
     const land = elsewhere();
     clickOn(land);
     expect(marchArrow()?.classList.contains("arrow-dim")).toBe(true);
+    expect(land.classList.contains("selected")).toBe(true);
 
-    // Arming takes the dim off on purpose - the targeting cues own the map
-    // while a card is armed - and disarming repaints with the pin still held.
-    // That repaint is the one that used to un-dim the whole board.
+    // A pin does not survive an interaction: `onPlayCard` unpins through the
+    // same route a deselect takes the moment a card is armed, so the land is
+    // genuinely let go rather than merely receded for the length of
+    // targeting - and disarming has nothing left to bring back.
     const raid = [...document.querySelectorAll(".card")].find(
       (c) => c.querySelector(".card-name")?.textContent === "Raid",
     );
     (raid as HTMLElement).click();
     expect(arrows.classList.contains("aiming")).toBe(true);
+    expect(land.classList.contains("selected")).toBe(false);
+    expect(marchArrow()?.classList.contains("arrow-dim")).toBe(false);
+
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
 
-    expect(marchArrow()?.classList.contains("arrow-dim")).toBe(true);
-    clickOn(land);
+    expect(land.classList.contains("selected")).toBe(false);
     expect(marchArrow()?.classList.contains("arrow-dim")).toBe(false);
+    clickOn(land);
+    expect(marchArrow()?.classList.contains("arrow-dim")).toBe(true);
+  });
+
+  it("clears every surface that answers for the pin - the hud, the panel and the arrows - the moment a card is armed", () => {
+    const land = elsewhere();
+    clickOn(land);
+    expect(land.classList.contains("selected")).toBe(true);
+    expect(
+      document.querySelector(".pinned-panel:not(.pinned-tip)")
+        ?.classList.contains("hidden"),
+    ).toBe(false);
+    expect(
+      document.querySelector(".activity-log")?.classList.contains("filter-realm"),
+    ).toBe(true);
+    expect(marchArrow()?.classList.contains("arrow-dim")).toBe(true);
+
+    const raid = [...document.querySelectorAll(".card")].find(
+      (c) => c.querySelector(".card-name")?.textContent === "Raid",
+    );
+    (raid as HTMLElement).click();
+    expect(arrows.classList.contains("aiming")).toBe(true);
+
+    // Nothing is left half-cleared: the map's own selection, the docked panel
+    // that read the land's tooltip, the log's realm filter and the arrow's
+    // dim all move off the pin together, because they all read the same
+    // `pinnedRegion` that `onPlayCard` just let go of.
+    expect(land.classList.contains("selected")).toBe(false);
+    expect(
+      document.querySelector(".pinned-panel:not(.pinned-tip)")
+        ?.classList.contains("hidden"),
+    ).toBe(true);
+    expect(
+      document.querySelector(".activity-log")?.classList.contains("filter-realm"),
+    ).toBe(false);
+    expect(marchArrow()?.classList.contains("arrow-dim")).toBe(false);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   });
 });

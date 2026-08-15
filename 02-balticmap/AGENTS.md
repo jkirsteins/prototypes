@@ -264,11 +264,52 @@ could forget the border, the lane or the ghost beside it.
 
 **The border is in the map data already.** Adjacent regions share EXACT
 vertices, so `crossingBetween` in `src/borders.ts` is a set intersection, not
-a geometry search. Three things about it are load-bearing:
+a geometry search. Five things about it are load-bearing:
 
-- **The crossing is a real border vertex**, the shared one nearest their
-  centroid, never a computed point. The centroid of a bent border sits up to
-  33 units off the border itself at the worst pair on this map.
+- **A border is a table of measured STATIONS**, up to 32 real vertices sampled
+  along it, each measured once for how much room `reach` finds into both
+  lands. `reach` itself takes the FIRST run of land along the ray, capped at
+  `want` and backed off by `inset`, and answers `-1` for a place an arrow
+  cannot stand at all - never reached, or a run too short to stand in: an
+  arrow crosses a border and stops in the body of the land it enters, and a
+  later run is across a gap, on ground the arrow was never aimed at.
+  `Crossing.at` is the roomiest station - never a computed point, and no
+  longer the vertex nearest the border's centroid - and a lane STANDS on a
+  station rather than at an offset along the tangent, because the tangent is a
+  global fit to the whole border and the border bends locally under it: an
+  offset measured along that line is routinely off the border altogether,
+  sitting inside one of the two lands rather than on the line between them.
+  Measured: the old tangent-offset scheme left 50 of 1,236 lanes with an end
+  on the wrong land; standing lanes on stations instead cut that to 8, and it
+  is 0 today - `tests/borders.test.ts` asserts it across every adjacency on
+  both maps rather than allow-listing what is left.
+- **Each lane takes the nearest FREE station its neighbours leave it room
+  on**, among those where both `into` and `out` clear `ARROW_DEPTHS.min` -
+  never one an earlier lane in the same block has already taken, and never one
+  closer along the border to a station this block has taken than the two
+  lanes' half-widths. Stations here are routinely a fraction of a unit apart,
+  so nearest-to-my-own-offset alone drew 364 of 848 lane pairs closer together
+  than their own widths, the worst 24 units into each other. Where the border
+  offers no station that far off, the lane takes the nearest crossable one
+  anyway and the two overlap: correctness outranks packing, and a search made
+  to come after its neighbour unconditionally left 2 of 1,236 lanes with an
+  end on the wrong land. It is a greedy pass and not an optimal packing, so
+  128 pairs still overlap: most are ground the border does not have - the
+  overrun `blockMin` already trades for - and about 10 are the anchoring, one
+  lane taking the station nearest its OWN offset with no regard for where that
+  leaves the lanes after it. Every measurement of it so far used equal
+  strengths; a block of unequal widths leaks more, and the doc comment on
+  `stationsForBlock` says where to look. The stations a block ends up on are
+  then dealt out along the border in DECLARATION order, so the search decides
+  WHICH stations a block occupies and the second pass decides which arrow
+  stands on which of them, without disturbing the order the arrows were
+  declared in.
+- **An arrow's depth is the room its own station has**, floored at
+  `ARROW_DEPTHS.min` so a cramped station still reads as an arrow instead of
+  overrunning the ground it stands on. The depths live in `src/borders.ts` as
+  `ARROW_DEPTHS`, not in `LAYOUT` (`src/arrow-scene.ts`), because how deep an
+  arrow may stand is a question about the ground, and the ground is what
+  `src/borders.ts` measures.
 - **The normal's direction is decided by a vote**, four probe distances in
   and out of both lands. The tangent is a global fit to the whole border and
   the border is locally bent under it, so one probe is ambiguous on 7 of the
@@ -277,15 +318,25 @@ a geometry search. Three things about it are load-bearing:
 - **A strait is not a border.** Two lands that share no vertex face each
   other across water - Saaremaa and the Balearics, four ordered pairs per
   map - and their arrows SPAN the water instead of standing in the middle of
-  it.
+  it. It gets a station table like any other crossing, laid along the water
+  rather than measured off a border it does not have, every station carrying
+  `gap / 2 + seaClearance` both ways: open water is equally good everywhere,
+  and one station per crossing is what let the second arrow of a block find
+  none and be drawn at the LAND depths, a 64-unit arrow standing in the sea
+  with neither end on a coast. The table is what keeps `layoutLanes` one rule
+  rather than a sea arm beside a land one.
 
 **Width is strength MAP-WIDE, and the scale is one number per render.**
 `width = unit * sqrt(strength)`, where `unitWidthFor` picks the `unit` once
 for the whole scene: the most generous one every border can afford, the
 smallest of `blockWidthFor(span) / sum of sqrt(strength) on that border`.
-Position is still declaration order, packed edge to edge, and direction does
-not sort them - an answering raid stands beside the attack it answers, in the
-order the two were declared.
+Position is still declaration order along the border, and direction does not
+sort them - an answering raid stands beside the attack it answers, in the
+order the two were declared. Packed edge to edge as far as the ground allows:
+a lane stands on a station rather than at an exact offset, so the packing is
+the separation rule in the station bullet above, and where a block is wider
+than the crossable ground it stands on the border overruns rather than
+thinning the arrows past reading.
 
 Three things follow, and each is the reason for a part of the rule:
 
@@ -343,7 +394,31 @@ is visible around both.
 
 **The ghost is laid out with the living, and that is what a beat needs.**
 What a landing left on the border is a `kind: "ghost"` spec in the same scene
-as every live arrow, so it takes a lane in the same block.
+as every live arrow, so it takes a lane in the same block. It states its own
+fill (`src/main.ts`: gold, red or a neutral brown, by `tone`) rather than
+leaving it to `.march-arrow`'s CSS - which a ghost, drawn as `.clash-flash`,
+does not even claim - because a ghost is the one arrow on the map its beat is
+actually about.
+
+**A faction colour used as a MARK goes through `inkFor`.** A rival's arrow
+(tone `other`) is filled with `arrowInkFor` in `src/main.ts`, which darkens
+the faction's own colour (`inkFor` in `src/map-render.ts`) until it reaches a
+3:1 contrast against the map's unowned fill, memoised per faction since the
+search inside `inkFor` walks up to a hundred steps. The map's palette is pale
+by design, so a faction colour used raw as a mark on it reads at about
+1.05:1 - not a mark at all. Used as a LAND's fill instead, a faction colour
+stays exactly as authored: `inkFor` is for something drawn ON the map, never
+for the ground itself.
+
+**The casing is a screen-constant stroke.** `.march-arrow polygon` sets
+`vector-effect: non-scaling-stroke` on its `#fdfaf4` outline, so its width is
+screen pixels rather than map units: the default view is a 2508-unit viewBox
+on a roughly 1440px element, and a casing measured in map units would be a
+line well under a pixel wide at exactly the zoom the game is played at -
+present in the markup and invisible on screen. Paired with the ink rule
+above: the ink handles a pale land behind the arrow and the casing handles a
+dark one, so whichever ground an arrow crosses, one of the two contrasts
+with it.
 
 **An arrow arrives and leaves on the beat that explains it, never at the
 repaint behind it.** The displayed state lags the whole transition, so on its
@@ -381,17 +456,49 @@ identity a rebuild wipes nothing. A march this move declared cannot stand over
 the landing of the one before it, because it is on screen only from its own
 beat onward.
 
-**Everything that decides how an arrow LOOKS is on its spec.** `dressArrow`
-states an arrow's whole class attribute, which is what stops a stale cue
-surviving a render - so the hover's fade and the pin's dim are `ArrowSpec`
-fields (`faded`, `dimmed`), decided in `paintArrows` from the same dataset the
-hover and the pin were always answered from, and the surfaces that own those
-two questions repaint rather than write on the elements. No pass after the
-paint touches an arrow's OPACITY, which is what makes the ordering impossible
-to get wrong. Two classes are still written afterwards - `march-counterable`
-on an answerable arrow and `aim-valid` on the preview - and both are safe only
+**Everything that decides how an arrow LOOKS is on its spec.** How loud an
+arrow is drawn is exactly one field, `ArrowSpec.emphasis` (`full`, `back`,
+`dimmed` or `faded`), chosen once by `emphasisFor` from what the hover, the
+pin and a live aim have to say (`ArrowCues`) and written as a single class
+through `ARROW_EMPHASIS` - replacing the `faded` and `dimmed` booleans this
+used to be two of, and the four CSS rules on the same property that raced by
+specificity to decide between them: it had already produced a "faded" rival
+arrow drawn BRIGHTER than an unfaded one, and starting an aim raised every
+pin-dimmed arrow back up. `dressArrow` states an arrow's whole class
+attribute, which is what stops a stale cue surviving a render - the surfaces
+that own the hover and the pin repaint rather than write on the elements, and
+`paintArrows` derives every arrow's `emphasis` from the same dataset those two
+questions were always answered from. No pass after the paint touches an
+arrow's OPACITY, which is what makes the ordering impossible to get wrong.
+Two classes are still written afterwards - `march-counterable` on an
+answerable arrow and `aim-valid` on the preview - and both are safe only
 because neither declares an opacity. Give either one and it must move onto the
-spec with the other two.
+spec with the emphasis.
+
+A ghost and the aim preview answer `live` first and are always `full`: an
+arrow standing for the beat on screen, or the arrow a play is about to make,
+is never pushed back by a question about something else. An arrow landing
+where the player is aiming answers `atAimTarget` and stays `full` too, ahead
+of the plain `back` a live aim gives every other arrow on the map.
+
+**A pin does not survive an interaction**, and it takes two calls to say so,
+because the two moments are not the same moment. `onPlayCard` deselects the
+instant a card is ARMED, which is the one that closes the aim case: arming
+commits nothing, so `decide` is not reached until a target has been chosen,
+and the whole window in between is exactly when an aim is live. `decide()` -
+the one place this screen turns a `Decision` into a state change - clears the
+pin for every decision kind except `end-turn`, which keeps it deliberately so
+the round about to run can still be read through the log filter afterward;
+that arm is what covers a call site that arms nothing, the way an arrow's own
+counter click plays a raid straight through `decide` with no card ever set as
+`armed`. Together they are the cross-cutting rule the section above leans on:
+`emphasisFor` never has to arbitrate a pin against a live aim, because a pin
+cannot still be standing once an aim exists. The two used to be sorted out
+after the fact instead, and they could not both be right - a card armed while
+a land was pinned left the pin's dim and the aim's own back-step disagreeing
+about the same arrow. A new
+decision handler that reintroduces a stale pin is exactly the failure this
+closes.
 
 It was a pass after the paint twice, and it failed differently each time.
 Written by the surfaces themselves, a repaint while a land was pinned
@@ -409,7 +516,7 @@ re-aims a fade already in flight, so taking a pin or moving the pointer onto
 another arrow during those 220ms still steps the opacity when the fade ends -
 up to 0.84 in the pin case. The window is small and the fix, if it is ever
 worth it, is to re-aim a live `held.fade` in `place` when a kept arrow's
-`faded` or `dimmed` has changed.
+`emphasis` has changed.
 
 **The aim preview shares the block with the arrows already crossing it.**
 `kind: "aim"` is a spec in the same scene as every live arrow (`src/main.ts`,

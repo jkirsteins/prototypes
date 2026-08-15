@@ -1,11 +1,23 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import {
-  ARROW_KINDS, ARROW_MOTION_MS, LAYOUT, blockWidthFor, borderKeyOf,
-  laneWidthFor, layoutLanes, renderArrowScene, unitWidthFor,
-  type ArrowSpec, type SceneCtx,
+  ARROW_EMPHASIS, ARROW_KINDS, ARROW_MOTION_MS, LAYOUT, blockWidthFor,
+  borderKeyOf, emphasisFor, laneWidthFor, layoutLanes, renderArrowScene,
+  unitWidthFor, type ArrowCues, type ArrowSpec, type SceneCtx,
 } from "../src/arrow-scene";
-import type { Crossing } from "../src/borders";
+import {
+  ARROW_DEPTHS, crossingBetween, type Crossing, type Station,
+} from "../src/borders";
+
+/** A station table for a straight border, one station every `gap` units of
+ *  tangent, all with the same room. */
+const stationsFor = (
+  into: number, out: number, count = 9, gap = 12,
+): Station[] =>
+  Array.from({ length: count }, (_, i) => {
+    const s = (i - (count - 1) / 2) * gap;
+    return { at: { x: 0, y: s }, s, into, out };
+  });
 
 /** A border running up the y axis at x=0, with "across" pointing at +x. */
 const FLAT: Crossing = {
@@ -15,6 +27,7 @@ const FLAT: Crossing = {
   span: 200,
   sea: false,
   gap: 0,
+  stations: stationsFor(ARROW_DEPTHS.head, ARROW_DEPTHS.tail),
 };
 
 describe("blockWidthFor", () => {
@@ -125,16 +138,156 @@ describe("layoutLanes", () => {
     const [lane] = layoutLanes(
       FLAT, [{ strength: 1, forward: true }], aloneOn(FLAT, [1]),
     );
-    expect(lane.ax).toBeCloseTo(-LAYOUT.tailDepth, 6);
-    expect(lane.bx).toBeCloseTo(LAYOUT.headDepth, 6);
+    expect(lane.ax).toBeCloseTo(-ARROW_DEPTHS.tail, 6);
+    expect(lane.bx).toBeCloseTo(ARROW_DEPTHS.head, 6);
+  });
+
+  it("reaches only as far as its station has room", () => {
+    const shallow: Crossing = { ...FLAT, stations: stationsFor(20, ARROW_DEPTHS.tail) };
+    const [lane] = layoutLanes(
+      shallow, [{ strength: 1, forward: true }], aloneOn(shallow, [1]),
+    );
+    expect(lane.bx).toBeCloseTo(20, 6);
+    expect(lane.ax).toBeCloseTo(-ARROW_DEPTHS.tail, 6);
+  });
+
+  it("reads a backward lane's room the other way round", () => {
+    // `into` is room in the second land, so a lane running back into the FIRST
+    // land is bounded by `out` at its head.
+    const lopsided: Crossing = { ...FLAT, stations: stationsFor(30, 15) };
+    const [lane] = layoutLanes(
+      lopsided, [{ strength: 1, forward: false }], aloneOn(lopsided, [1]),
+    );
+    expect(lane.ax - lane.bx).toBeCloseTo(15 + 30, 6);
+    expect(lane.bx).toBeCloseTo(-15, 6);
+  });
+
+  it("floors a station too shallow to draw on", () => {
+    const pinch: Crossing = { ...FLAT, stations: stationsFor(3, 4) };
+    const [lane] = layoutLanes(
+      pinch, [{ strength: 1, forward: true }], aloneOn(pinch, [1]),
+    );
+    expect(lane.bx).toBeCloseTo(ARROW_DEPTHS.min, 6);
+    expect(lane.ax).toBeCloseTo(-ARROW_DEPTHS.min, 6);
+  });
+
+  it("gives each lane of a block its own station", () => {
+    const lanes = layoutLanes(FLAT, [
+      { strength: 1, forward: true }, { strength: 1, forward: true },
+      { strength: 1, forward: true },
+    ], aloneOn(FLAT, [1, 1, 1]));
+    const seen = lanes.map((l) => l.ay);
+    expect(new Set(seen).size).toBe(3);
+    // In order along the border, which is declaration order.
+    expect([...seen].sort((a, b) => a - b)).toEqual(seen);
+  });
+
+  it("deals the stations out along the border, in declaration order", () => {
+    // Lane 0 is offset furthest from the only two roomy stations, so a search
+    // that made each lane come after its neighbour would strand it. Both are
+    // used, and they are handed out in border order.
+    const two: Crossing = {
+      ...FLAT,
+      stations: [
+        { at: { x: 0, y: -6 }, s: -6, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail },
+        { at: { x: 0, y: 6 }, s: 6, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail },
+      ],
+    };
+    const lanes = layoutLanes(two, [
+      { strength: 1, forward: true }, { strength: 1, forward: true },
+    ], aloneOn(two, [1, 1]));
+    expect(lanes.map((l) => l.ay)).toEqual([-6, 6]);
+  });
+
+  it("skips a station that cannot be crossed", () => {
+    const holed: Crossing = {
+      ...FLAT,
+      stations: [
+        { at: { x: 0, y: -12 }, s: -12, into: -1, out: -1 },
+        { at: { x: 0, y: 0 }, s: 0, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail },
+        { at: { x: 0, y: 12 }, s: 12, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail },
+      ],
+    };
+    const lanes = layoutLanes(holed, [
+      { strength: 1, forward: true }, { strength: 1, forward: true },
+    ], aloneOn(holed, [1, 1]));
+    expect(lanes.map((l) => l.ay)).toEqual([0, 12]);
+  });
+
+  it("falls back to the tangent where a crossing has no stations", () => {
+    const bare: Crossing = { ...FLAT, stations: [] };
+    const [lane] = layoutLanes(
+      bare, [{ strength: 1, forward: true }], aloneOn(bare, [1]),
+    );
+    expect(lane.ax).toBeCloseTo(-ARROW_DEPTHS.tail, 6);
+    expect(lane.bx).toBeCloseTo(ARROW_DEPTHS.head, 6);
   });
 
   it("spans the water on a sea crossing instead of standing in it", () => {
-    const strait: Crossing = { ...FLAT, sea: true, gap: 100 };
+    const across = 100 / 2 + ARROW_DEPTHS.seaClearance;
+    const strait: Crossing = {
+      ...FLAT, sea: true, gap: 100,
+      stations: [{ at: { x: 0, y: 0 }, s: 0, into: across, out: across }],
+    };
     const [lane] = layoutLanes(
       strait, [{ strength: 1, forward: true }], aloneOn(strait, [1]),
     );
-    expect(lane.bx - lane.ax).toBeCloseTo(100 + LAYOUT.seaClearance * 2, 6);
+    expect(lane.bx - lane.ax).toBeCloseTo(100 + ARROW_DEPTHS.seaClearance * 2, 6);
+  });
+
+  it("spans the water on every lane of a sea block", () => {
+    // Through the REAL crossing, because the station table a strait is given
+    // is half of what makes this work and a hand-built one here would be
+    // checking the test's own copy of it. An attack and the counter answering
+    // it is the commonest block on the map: with a single station the counter
+    // found none, fell back to the land depths, and was drawn as a full-length
+    // arrow in the middle of the sea with neither end on a coast.
+    const west = [[
+      { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 60 }, { x: 0, y: 60 },
+    ]];
+    const east = [[
+      { x: 40, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 60 }, { x: 40, y: 60 },
+    ]];
+    const strait = crossingBetween(west, east);
+    expect(strait.sea).toBe(true);
+    const want = strait.gap + ARROW_DEPTHS.seaClearance * 2;
+    for (const shape of [[true, false], [true, false, true]]) {
+      const items = shape.map((forward) => ({ strength: 1, forward }));
+      const lanes = layoutLanes(strait, items, aloneOn(strait, items.map(() => 1)));
+      expect(lanes).toHaveLength(shape.length);
+      for (const lane of lanes) {
+        expect(Math.hypot(lane.bx - lane.ax, lane.by - lane.ay)).toBeCloseTo(want, 6);
+      }
+      // And each on its own place along the water, not stacked at the middle.
+      expect(new Set(lanes.map((l) => l.ay)).size).toBe(shape.length);
+    }
+  });
+
+  it("keeps two lanes at least their own widths apart along the border", () => {
+    // Stations half a unit apart, which is what this map's borders really look
+    // like where the outline is finely cut. Taking the free station nearest
+    // each lane's own offset and nothing else put two arrows closer together
+    // than their own widths on 364 of 848 lane pairs, the worst 24 units into
+    // each other - two arrows drawn on top of one another on a border the
+    // block is supposed to be packed along.
+    const crowded: Crossing = {
+      ...FLAT,
+      stations: Array.from({ length: 241 }, (_, i) => {
+        const s = (i - 120) * 0.5;
+        return { at: { x: 0, y: s }, s, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail };
+      }),
+    };
+    const lanes = layoutLanes(crowded, [
+      { strength: 1, forward: true }, { strength: 1, forward: false },
+      { strength: 1, forward: true },
+    ], aloneOn(crowded, [1, 1, 1]));
+    const centre = (lane: typeof lanes[number]): number => (lane.ay + lane.by) / 2;
+    for (let i = 1; i < lanes.length; i++) {
+      const apart = Math.abs(centre(lanes[i]) - centre(lanes[i - 1]));
+      expect(apart).toBeGreaterThanOrEqual(
+        (lanes[i].width + lanes[i - 1].width) / 2 - 1e-9,
+      );
+    }
   });
 
   it("keeps the caller's order", () => {
@@ -165,6 +318,10 @@ const NS = "http://www.w3.org/2000/svg";
 const ctx: SceneCtx = {
   crossingFor: (from, to) => ({
     at: { x: 0, y: 0 },
+    // A station every 12 units of tangent, roomy on both sides, so the render
+    // tests exercise the real station path - several lanes sharing a border
+    // still find their own place - rather than the tangent fallback.
+    stations: stationsFor(ARROW_DEPTHS.head, ARROW_DEPTHS.tail),
     tangent: { x: 0, y: 1 },
     // Every pair in these tests crosses west to east, and back the other way
     // when the caller names them the other way round.
@@ -190,6 +347,49 @@ describe("ARROW_KINDS", () => {
       expect(def.className.length).toBeGreaterThan(0);
       expect(def.labelClass.length).toBeGreaterThan(0);
       expect(def.why.length).toBeGreaterThan(20);
+    }
+  });
+});
+
+describe("emphasisFor", () => {
+  const cues = (over: Partial<ArrowCues> = {}): ArrowCues => ({
+    live: false, anyFocus: false, onFocus: false,
+    pinnedOut: false, aiming: false, atAimTarget: false, ...over,
+  });
+
+  it("leaves an arrow nothing is being asked about at full", () => {
+    expect(emphasisFor(cues())).toBe("full");
+  });
+
+  it("fades every arrow but the one under the pointer", () => {
+    expect(emphasisFor(cues({ anyFocus: true }))).toBe("faded");
+    expect(emphasisFor(cues({ anyFocus: true, onFocus: true }))).toBe("full");
+  });
+
+  it("dims what a pin is not about", () => {
+    expect(emphasisFor(cues({ pinnedOut: true }))).toBe("dimmed");
+  });
+
+  it("puts an aim ahead of nothing and a pin ahead of an aim", () => {
+    // Starting an aim must not un-dim what the pin put away.
+    expect(emphasisFor(cues({ pinnedOut: true, aiming: true }))).toBe("dimmed");
+    expect(emphasisFor(cues({ aiming: true }))).toBe("back");
+  });
+
+  it("keeps an arrow landing where the player is aiming at full", () => {
+    expect(emphasisFor(cues({ aiming: true, atAimTarget: true }))).toBe("full");
+  });
+
+  it("never quietens the arrow a beat is about, or the aim itself", () => {
+    expect(emphasisFor(cues({ live: true, anyFocus: true }))).toBe("full");
+    expect(emphasisFor(cues({ live: true, pinnedOut: true, aiming: true }))).toBe("full");
+  });
+
+  it("names a class for every emphasis and no two the same", () => {
+    const names = Object.values(ARROW_EMPHASIS).map((e) => e.className);
+    expect(new Set(names).size).toBe(names.length);
+    for (const e of Object.values(ARROW_EMPHASIS)) {
+      expect(e.why.length).toBeGreaterThan(20);
     }
   });
 });
@@ -247,15 +447,15 @@ describe("renderArrowScene", () => {
     expect([...drawn.keys()]).toEqual(["m2"]);
   });
 
-  it("dresses a brand new arrow with the cues that decide how faint it is", () => {
+  it("dresses a brand new arrow with the emphasis that decides how loud it is", () => {
     // The class has to be on the element the render that CREATES it, because
     // the enter fade rises to the opacity that element has once it is in the
-    // tree. A dim applied by a later pass is a dim the fade was never told
+    // tree. An emphasis applied by a later pass is one the fade was never told
     // about, and the arrow drops to it in the one frame the fade ends on.
     const host = document.createElementNS(NS, "g") as SVGGElement;
     const drawn = renderArrowScene(host, [
-      { ...march("m1", "a", "b", 1), dimmed: true },
-      { ...march("m2", "b", "a", 1), faded: true },
+      { ...march("m1", "a", "b", 1), emphasis: "dimmed" },
+      { ...march("m2", "b", "a", 1), emphasis: "faded" },
     ], ctx);
     expect(drawn.get("m1")?.classList.contains("arrow-dim")).toBe(true);
     expect(drawn.get("m2")?.classList.contains("arrow-faded")).toBe(true);
@@ -266,6 +466,15 @@ describe("renderArrowScene", () => {
     ], ctx);
     expect(again.get("m1")?.classList.contains("arrow-dim")).toBe(false);
     expect(again.get("m2")?.classList.contains("arrow-faded")).toBe(false);
+  });
+
+  it("writes the emphasis onto the arrow", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      { ...march("m1", "a", "b", 1), emphasis: "dimmed" },
+    ], ctx);
+    expect(drawn.get("m1")?.getAttribute("class"))
+      .toContain(ARROW_EMPHASIS.dimmed.className);
   });
 
   it("carries the caller's dataset onto the group", () => {

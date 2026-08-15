@@ -49,11 +49,42 @@ export function sharedVertices(a: Pt[][], b: Pt[][]): Pt[] {
   return out;
 }
 
-export interface Crossing {
-  /** A vertex OF the border, never a computed point: the centroid of a bent
-   *  border sits off it by up to 33 units on this map, so the nearest shared
-   *  vertex to that centroid is what an arrow is placed on. */
+/** One place on a border, with what an arrow standing there has room for. */
+export interface Station {
+  /** A real shared vertex, never a computed point. */
   at: Pt;
+  /** Its projection on the tangent, which is what a lane's offset is measured
+   *  in. */
+  s: number;
+  /** `reach` along the normal, into the second land. `-1` for a place the
+   *  second land cannot be reached from at all. */
+  into: number;
+  /** `reach` against the normal, into the first land. */
+  out: number;
+}
+
+/** How many stations one border is measured at. */
+const MAX_STATIONS = 32;
+
+export interface Crossing {
+  /** The roomiest station on this border: a real vertex OF it, never a
+   *  computed point. Not the vertex nearest the centroid of a bent border -
+   *  the centroid is a statement about where the middle of the frontier is
+   *  and says nothing about what land stands behind it. */
+  at: Pt;
+  /** Places along this border an arrow can stand, measured once when the
+   *  crossing is built. The scene picks one per lane and never sees a polygon.
+   *
+   *  Sampled rather than exhaustive: a border can share 183 vertices and each
+   *  measurement walks a couple of thousand edges twice, which would be paid on
+   *  the first paint of every border on the map.
+   *
+   *  A sea crossing has a table too, laid along the water rather than measured
+   *  off a border it does not have. One entry per place a lane may stand is
+   *  what keeps the scene one rule: a lane reads its depth off its station
+   *  whichever it is crossing, and a block that ran out of stations would be
+   *  drawn at the LAND depths in the middle of a strait. */
+  stations: Station[];
   /** Unit vector along the border, the axis lanes are laid out on. */
   tangent: Pt;
   /** Unit vector from the first land into the second. */
@@ -84,6 +115,111 @@ export function pointInRings(p: Pt, rings: Pt[][]): boolean {
   return inside;
 }
 
+/** How deep an arrow may go into a land, and how far past a coast it reaches
+ *  across water. Here rather than in `src/arrow-scene.ts` because the depth of
+ *  an arrow is a question about the GROUND, and the ground is measured on this
+ *  side: a station is built with these numbers as its ceiling, and the scene is
+ *  handed the answer rather than the polygons. */
+export const ARROW_DEPTHS = {
+  head: 34,
+  tail: 30,
+  seaClearance: 16,
+  /** Shortest an arrow's half may be drawn. Below this it stops reading as an
+   *  arrow, so the ground gets overrun instead - the trade `LAYOUT.blockMin`
+   *  already makes for width. */
+  min: 12,
+  /** How far short of the far edge a tip stops, so it stands ON the land
+   *  rather than exactly on its outline. */
+  inset: 2,
+};
+
+/** Nudge off the start point before casting. A station sits exactly on a
+ *  border vertex, which is on the outline of both lands, and a ray cast from
+ *  exactly there is a coin toss on which side it starts. */
+const RAY_EPS = 0.01;
+
+/** How far from `from` along `dir` an arrow may go and still END on this land,
+ *  capped at `want` and backed off by `inset`. `-1` where the ray meets the
+ *  land nowhere inside `want`.
+ *
+ *  Two preconditions, and only the first is visible in the signature. `dir`
+ *  must be a unit vector: the returned number is a distance in the map's own
+ *  user units, which is what the caller places an arrow with. And `from` must
+ *  not sit exactly on an edge running along `dir`, because the nudge below
+ *  steps ALONG such an edge instead of off it and the cast is then a coin toss
+ *  on which side it started - which is what `stationsAlong` spends its tangent
+ *  bias on, moving the probe a whisker perpendicular to the direction it
+ *  measures in so the depth is unchanged everywhere the bias is not needed.
+ *
+ *  Exact edge intersections rather than a sampled walk, because the shapes this
+ *  exists to detect are slivers and a walk in whole units steps straight over
+ *  them - the same argument that makes `sharedVertices` a set intersection
+ *  rather than a proximity search.
+ *
+ *  Whether the ray STARTS on the land is asked of `pointInRings` and not of the
+ *  parity of the hits: the hits say where inside-ness CHANGES, and two
+ *  point-in-polygon rules disagreeing about the same map is how a measurement
+ *  and the test that checks it end up contradicting each other.
+ *
+ *  When the ray already starts on the land, where this run of land BEGAN sits
+ *  behind `from`, not at it, so a second probe looks backward along `dir` for
+ *  that edge. Without it, a station planted deep inside a wide land and one
+ *  planted on a sliver too narrow for the inset read the same from where the
+ *  ray stands - both are simply "on" with nothing entering ahead of them -
+ *  and only the true run length tells the two apart.
+ *
+ *  `-1` is a real answer rather than an error. It is what lets the layout see
+ *  that a place on the border cannot be crossed and step around it, instead of
+ *  guessing a length there. */
+export function reach(
+  from: Pt, dir: Pt, rings: Pt[][], want: number, inset: number,
+): number {
+  const start = { x: from.x + dir.x * RAY_EPS, y: from.y + dir.y * RAY_EPS };
+  const hits: number[] = [];
+  let behind = Number.NEGATIVE_INFINITY;
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      const ex = b.x - a.x;
+      const ey = b.y - a.y;
+      const den = dir.x * ey - dir.y * ex;
+      if (den === 0) continue;
+      const t = ((a.x - start.x) * ey - (a.y - start.y) * ex) / den;
+      const u = ((a.x - start.x) * dir.y - (a.y - start.y) * dir.x) / den;
+      // `u < 1` and not `<= 1`: a vertex belongs to exactly one of the two
+      // edges that meet there, or every corner is counted twice and the
+      // inside-outside walk below flips itself back.
+      if (u < 0 || u >= 1) continue;
+      if (t > 0 && t <= want) hits.push(t);
+      // The nearest edge behind `start`: a candidate for where an already-on
+      // run of land began.
+      else if (t < 0 && t > behind) behind = t;
+    }
+  }
+  hits.sort((p, q) => p - q);
+  let on = pointInRings(start, rings);
+  let entered = on ? (behind > Number.NEGATIVE_INFINITY ? behind : 0) : -1;
+  let left = -1;
+  for (const t of hits) {
+    if (on) {
+      left = t;
+      break;
+    }
+    entered = t;
+    on = true;
+  }
+  // Never on this land inside `want`.
+  if (!on) return -1;
+  // The run outlasts `want`: nothing to back away from, so the arrow gets the
+  // whole depth it asked for.
+  if (left < 0) return want;
+  const tip = Math.min(want, left + RAY_EPS - inset);
+  // A run shorter than the inset. There is land here and nowhere on it to put
+  // a tip, which to the caller is the same answer as no land at all.
+  return tip <= entered ? -1 : Math.max(0, tip);
+}
+
 /** How far out the orientation vote probes. Four distances rather than one,
  *  and this is load-bearing: `tangent` is a GLOBAL fit to the whole border and
  *  the border is locally bent under it, so a single probe is ambiguous on 7 of
@@ -94,11 +230,89 @@ const PROBES = [6, 12, 24, 40];
  *  measure, so this is a constant rather than a number read off the map. */
 const SEA_SPAN = 70;
 
+/** How many places a strait offers a lane, spread evenly along `SEA_SPAN`.
+ *
+ *  Open water is equally good everywhere, so this is a count and not a
+ *  sampling cap the way `MAX_STATIONS` is: what the table buys is one station
+ *  per lane, and enough of them that a block of arrows never runs the border
+ *  out. A single station made the whole crossing one lane wide, and the second
+ *  arrow of a block - an attack and the counter answering it, the commonest
+ *  pair there is - found none and was drawn at the LAND depths, a 64-unit
+ *  arrow standing in open sea with neither end on a coast. */
+const SEA_STATIONS = 9;
+
 export function crossingBetween(a: Pt[][], b: Pt[][]): Crossing {
   const shared = sharedVertices(a, b);
   if (shared.length >= 2) return borderCrossing(shared, a, b);
   if (shared.length === 1) return singleVertexCrossing(shared[0], a, b);
   return straitCrossing(a, b);
+}
+
+function projectOn(p: Pt, tangent: Pt): number {
+  return p.x * tangent.x + p.y * tangent.y;
+}
+
+/** Every place this border can be crossed, in order along the tangent. */
+function stationsAlong(
+  shared: Pt[], tangent: Pt, normal: Pt, a: Pt[][], b: Pt[][],
+): Station[] {
+  const back = { x: -normal.x, y: -normal.y };
+  const sorted = [...shared].sort(
+    (p, q) => projectOn(p, tangent) - projectOn(q, tangent),
+  );
+  const step = Math.max(1, Math.ceil(sorted.length / MAX_STATIONS));
+  // A station is a vertex of BOTH lands' own polygons, and at the two ends of
+  // a dead-straight border that vertex is also a corner of the far land lying
+  // exactly along the normal - `reach`'s own nudge cannot get off an edge it
+  // is nudging along. A whisker toward the middle of the frontier, on the
+  // tangent, clears that edge without moving the measurement off the normal
+  // it is taken along: the two axes are perpendicular by construction, so the
+  // depth `reach` reports is unchanged everywhere this bias is not needed.
+  // `Math.sign` is 0 exactly at the midpoint, and a station can sit there -
+  // the `|| 1` is what keeps that one station leaning somewhere rather than
+  // landing back on the unbiased, possibly-ambiguous vertex.
+  const lo = projectOn(sorted[0], tangent);
+  const hi = projectOn(sorted[sorted.length - 1], tangent);
+  const mid = (lo + hi) / 2;
+  const list: Station[] = [];
+  for (let i = 0; i < sorted.length; i += step) {
+    const at = sorted[i];
+    const s = projectOn(at, tangent);
+    const bias = (Math.sign(mid - s) || 1) * RAY_EPS;
+    const probe = { x: at.x + tangent.x * bias, y: at.y + tangent.y * bias };
+    list.push({
+      at,
+      s,
+      into: reach(probe, normal, b, ARROW_DEPTHS.head, ARROW_DEPTHS.inset),
+      out: reach(probe, back, a, ARROW_DEPTHS.tail, ARROW_DEPTHS.inset),
+    });
+  }
+  return list;
+}
+
+/** What a station is worth to an arrow: the smaller of its two rooms, with
+ *  "nowhere" scoring nothing rather than less than nothing.
+ *
+ *  Exported because the layout falls back on the same score when no station on
+ *  a border can take an arrow of the minimum depth. Spelled twice, the crossing
+ *  and the scene could pick different places to stand the moment the score
+ *  changed. */
+export function stationRoom(st: Station): number {
+  return Math.min(Math.max(st.into, 0), Math.max(st.out, 0));
+}
+
+/** The station an arrow standing alone should take: the roomiest, and the one
+ *  nearest the middle of the frontier where several are equally roomy. */
+function roomiest(list: Station[], centre: number): Station {
+  let best = list[0];
+  for (const st of list) {
+    const gain = stationRoom(st) - stationRoom(best);
+    if (gain > 1e-9) best = st;
+    else if (gain > -1e-9 && Math.abs(st.s - centre) < Math.abs(best.s - centre)) {
+      best = st;
+    }
+  }
+  return best;
 }
 
 function borderCrossing(shared: Pt[], a: Pt[][], b: Pt[][]): Crossing {
@@ -120,7 +334,11 @@ function borderCrossing(shared: Pt[], a: Pt[][], b: Pt[][]): Crossing {
   const tangent = { x: Math.cos(th), y: Math.sin(th) };
   let lo = Number.POSITIVE_INFINITY;
   let hi = Number.NEGATIVE_INFINITY;
-  let at = shared[0];
+  // Where the orientation vote is cast from, and nothing else: the vertex
+  // nearest the middle of the frontier, which is the least likely place for
+  // the probes to be answered by some far corner of either land. Where an
+  // arrow STANDS is a different question, answered by `roomiest` below.
+  let voteAt = shared[0];
   let best = Number.POSITIVE_INFINITY;
   for (const p of shared) {
     const t = (p.x - cx) * tangent.x + (p.y - cy) * tangent.y;
@@ -129,7 +347,7 @@ function borderCrossing(shared: Pt[], a: Pt[][], b: Pt[][]): Crossing {
     const d = (p.x - cx) ** 2 + (p.y - cy) ** 2;
     if (d < best) {
       best = d;
-      at = p;
+      voteAt = p;
     }
   }
   const nx = -tangent.y;
@@ -137,16 +355,27 @@ function borderCrossing(shared: Pt[], a: Pt[][], b: Pt[][]): Crossing {
   const score = (sign: 1 | -1): number => {
     let s = 0;
     for (const d of PROBES) {
-      if (pointInRings({ x: at.x + nx * d * sign, y: at.y + ny * d * sign }, b)) s++;
-      if (pointInRings({ x: at.x - nx * d * sign, y: at.y - ny * d * sign }, a)) s++;
+      if (pointInRings(
+        { x: voteAt.x + nx * d * sign, y: voteAt.y + ny * d * sign }, b,
+      )) s++;
+      if (pointInRings(
+        { x: voteAt.x - nx * d * sign, y: voteAt.y - ny * d * sign }, a,
+      )) s++;
     }
     return s;
   };
   const sign: 1 | -1 = score(1) >= score(-1) ? 1 : -1;
+  const normal = { x: nx * sign, y: ny * sign };
+  const stations = stationsAlong(shared, tangent, normal, a, b);
   return {
-    at,
+    // The roomiest station, not the vertex nearest the centroid: the centroid
+    // is a statement about where the middle of the frontier is and says
+    // nothing about what is behind it, and on a quarter of this map's
+    // frontiers what is behind it is a pinch with no land either way.
+    at: roomiest(stations, projectOn({ x: cx, y: cy }, tangent)).at,
+    stations,
     tangent,
-    normal: { x: nx * sign, y: ny * sign },
+    normal,
     span: hi - lo,
     sea: false,
     gap: 0,
@@ -185,9 +414,24 @@ function singleVertexCrossing(at: Pt, a: Pt[][], b: Pt[][]): Crossing {
   const dy = by - ay;
   const d = Math.hypot(dx, dy) || 1;
   const normal = { x: dx / d, y: dy / d };
+  const tangent = { x: -normal.y, y: normal.x };
   return {
     at,
-    tangent: { x: -normal.y, y: normal.x },
+    // Probed from the vertex itself, where `stationsAlong` biases its probe a
+    // whisker along the tangent, and the asymmetry is deliberate. That bias
+    // exists for a station lying on an edge of the far land that runs along
+    // the normal, which a fitted border's end vertices do; here the normal is
+    // centroid to centroid and answers to no edge, and there is no border
+    // chain to slide along - a whisker off this one point would move the
+    // measurement off the only place the two lands actually touch.
+    stations: [{
+      at,
+      s: projectOn(at, tangent),
+      into: reach(at, normal, b, ARROW_DEPTHS.head, ARROW_DEPTHS.inset),
+      out: reach(at, { x: -normal.x, y: -normal.y }, a,
+        ARROW_DEPTHS.tail, ARROW_DEPTHS.inset),
+    }],
+    tangent,
     normal,
     span: 0,
     sea: false,
@@ -248,9 +492,29 @@ function straitCrossing(a: Pt[][], b: Pt[][]): Crossing {
   }
   const d = Math.hypot(dx, dy) || 1;
   const normal = { x: dx / d, y: dy / d };
+  const at = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 };
+  const across = (gap || 1) / 2 + ARROW_DEPTHS.seaClearance;
+  const tangent = { x: -normal.y, y: normal.x };
+  const base = projectOn(at, tangent);
+  const step = SEA_SPAN / (SEA_STATIONS - 1);
+  const stations: Station[] = [];
+  for (let i = 0; i < SEA_STATIONS; i++) {
+    const along = (i - (SEA_STATIONS - 1) / 2) * step;
+    stations.push({
+      at: { x: at.x + tangent.x * along, y: at.y + tangent.y * along },
+      s: base + along,
+      // The same room at every one of them. A land station's depth is what
+      // `reach` found behind it and differs vertex by vertex; a strait has
+      // nothing behind it either way but the far coast, and every place on
+      // the water is the same crossing.
+      into: across,
+      out: across,
+    });
+  }
   return {
-    at: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 },
-    tangent: { x: -normal.y, y: normal.x },
+    at,
+    stations,
+    tangent,
     normal,
     span: SEA_SPAN,
     sea: true,

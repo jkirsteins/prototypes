@@ -1,13 +1,18 @@
-import type { Crossing, Pt } from "./borders";
+import {
+  ARROW_DEPTHS, stationRoom, type Crossing, type Pt, type Station,
+} from "./borders";
 import { pointAlong, spearFor, spearPolygon } from "./arrows";
 import { runAnimation } from "./animate";
 
-/** How an arrow is sized and placed on the border it crosses.
+/** How an arrow is sized on the border it crosses. Depth lives in
+ *  `ARROW_DEPTHS` (`src/borders.ts`) instead, alongside the stations it is
+ *  measured against - the ground decides how deep an arrow may stand, and
+ *  the scene only fits its width into whatever the ground allows.
  *
  *  Opening values tuned by eye against the map's own scale, not derived. The
- *  map is 1000x1400 user units and a land is roughly 200 across, so a 64-unit
- *  arrow is a short step over the frontier rather than a march across a
- *  country. */
+ *  map is 1000x1400 user units and a land is roughly 200 across, so a block
+ *  of this width is a band standing on the frontier rather than a shape the
+ *  size of the land behind it. */
 export const LAYOUT = {
   /** Share of the border's extent the whole block of arrows may occupy. */
   blockShare: 0.55,
@@ -19,12 +24,6 @@ export const LAYOUT = {
   blockMax: 96,
   /** Narrowest a single arrow may be drawn. */
   laneMin: 14,
-  /** How far the arrow starts inside the land it leaves. */
-  tailDepth: 30,
-  /** How far the head reaches inside the land it is aimed at. */
-  headDepth: 34,
-  /** How far past each coast an arrow across water reaches. */
-  seaClearance: 16,
 };
 
 /** What one border has room for: the whole block of arrows crossing it. This
@@ -95,6 +94,105 @@ export interface Lane {
   bx: number; by: number;
 }
 
+/** Which stations a block of lanes stands on, in the order the lanes were
+ *  declared. Shorter than the lane list where the border cannot offer one per
+ *  lane; the caller falls back to the tangent for the rest.
+ *
+ *  Three preferences in a fixed order, and the order is the whole rule.
+ *
+ *  A lane wants a station it can cross AND one far enough along the border
+ *  from every station this block has already taken to fit both arrows beside
+ *  each other - half of its own width plus half of its neighbour's. Stations
+ *  on this map are routinely a fraction of a unit apart, so nearest-to-my-own-
+ *  offset alone put two lanes closer together than their own widths on 364 of
+ *  848 lane pairs, the worst pair 24 units into each other: arrows drawn one
+ *  on top of the other on a border the block was supposed to be packed along.
+ *
+ *  Failing that it takes the crossable station nearest its offset anyway, and
+ *  failing THAT the roomiest free one, because correctness outranks packing: a
+ *  lane must land somewhere it can actually cross from, and a search made to
+ *  come after its neighbour unconditionally left 2 of 1,236 lanes with an end
+ *  on the wrong land. Two arrows too close together is a picture that reads
+ *  badly; one arrow ending on a land it is not about is a picture that lies.
+ *
+ *  **This is a greedy pass and not an optimal packing**, and the difference is
+ *  measurable. 128 of the 1,648 lane pairs still overlap. Most of them are
+ *  ground the border does not have - its crossable stations span less than the
+ *  lanes need between them, which is the overrun `blockMin` already trades
+ *  for - but about 10 are the anchoring: the first lane takes the station
+ *  nearest its OWN offset without regard for where that leaves the lanes after
+ *  it, and a block shifted a station along would have fitted. `jarvamaa`
+ *  against `laanemaa` is one, its lanes 12.75 apart where they want 15, on
+ *  stations spanning 20.4.
+ *
+ *  And every measurement of this rule so far has been made with equal
+ *  strengths. A block whose lanes are different widths leaks more - 62 pairs
+ *  across both maps overlap on borders that had the room - because the width
+ *  a station was chosen against is the width of the lane that chose it, and
+ *  the block is dealt out along the border afterwards. That is where to look
+ *  first if this ever has to be tightened.
+ *
+ *  The chosen stations are then dealt out along the border, which costs
+ *  nothing: it is the same SET, so the same arrows stand in the same places
+ *  and only which arrow stands where changes. */
+function stationsForBlock(
+  cross: Crossing, offsets: readonly number[], widths: readonly number[],
+): Station[] {
+  const base = cross.at.x * cross.tangent.x + cross.at.y * cross.tangent.y;
+  const taken = new Set<number>();
+  const chosen: { station: Station; width: number }[] = [];
+  // Both ways, because an arrow has two ends and the short one is not always
+  // the end aimed at the target.
+  const crossable = (st: Station): boolean =>
+    st.into >= ARROW_DEPTHS.min && st.out >= ARROW_DEPTHS.min;
+  for (let lane = 0; lane < offsets.length; lane++) {
+    const want = base + offsets[lane];
+    const width = widths[lane];
+    const clear = (st: Station): boolean => chosen.every(
+      (other) => Math.abs(st.s - other.station.s) >= (width + other.width) / 2,
+    );
+    const nearest = (ok: (st: Station) => boolean): number => {
+      let found = -1;
+      let bestGap = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < cross.stations.length; i++) {
+        if (taken.has(i) || !ok(cross.stations[i])) continue;
+        const gap = Math.abs(cross.stations[i].s - want);
+        if (gap < bestGap) {
+          bestGap = gap;
+          found = i;
+        }
+      }
+      return found;
+    };
+    let index = nearest((st) => crossable(st) && clear(st));
+    if (index < 0) index = nearest(crossable);
+    if (index < 0) {
+      // Nothing free on this border can take an arrow of the minimum depth.
+      // The roomiest free station is still the best place to stand, and the
+      // floor in `layoutLanes` decides what gets overrun. Measured, no station
+      // table on either map is cramped enough to reach this on a land border,
+      // and a sea crossing cannot reach it at all - every one of its stations
+      // is `gap / 2 + seaClearance`, which clears the floor by construction.
+      // What DOES reach it is a block with more lanes than the border has
+      // stations: everything free has been taken, this stays -1, and the block
+      // comes back short.
+      let bestRoom = -1;
+      for (let i = 0; i < cross.stations.length; i++) {
+        if (taken.has(i)) continue;
+        const room = stationRoom(cross.stations[i]);
+        if (room > bestRoom) {
+          bestRoom = room;
+          index = i;
+        }
+      }
+    }
+    if (index < 0) break;
+    taken.add(index);
+    chosen.push({ station: cross.stations[index], width });
+  }
+  return chosen.map((c) => c.station).sort((p, q) => p.s - q.s);
+}
+
 /** Every arrow crossing one border, side by side along it, at the render's
  *  own scale (`unitWidthFor`).
  *
@@ -104,7 +202,15 @@ export interface Lane {
  *  is its strength and is the same on every border of the map.
  *
  *  Direction does not sort them: an answering raid stands beside the attack it
- *  answers, in the order the two were declared. */
+ *  answers, in the order the two were declared.
+ *
+ *  **A lane stands on a station rather than on a straight line.** The tangent
+ *  is a global fit and the border bends under it, so a lane offset along that
+ *  line is routinely not on the border at all - it is inside one of the two
+ *  lands, and no length of arrow drawn from there crosses anything. On a
+ *  straight border every station lies on the tangent anyway and nothing moves;
+ *  on a bent one the block follows the frontier, which is what an arrow
+ *  crossing that frontier should be doing. */
 export function layoutLanes(
   cross: Crossing,
   items: readonly { strength: number; forward: boolean }[],
@@ -112,25 +218,40 @@ export function layoutLanes(
 ): Lane[] {
   const widths = items.map((i) => laneWidthFor(i.strength, unit));
   const total = widths.reduce((s, w) => s + w, 0);
-  // A strait is not a border: there is no line to cross, so the arrow spans
-  // the water rather than standing in the middle of it.
-  const tail = cross.sea ? cross.gap / 2 + LAYOUT.seaClearance : LAYOUT.tailDepth;
-  const head = cross.sea ? cross.gap / 2 + LAYOUT.seaClearance : LAYOUT.headDepth;
-  const out: Lane[] = [];
+  const offsets: number[] = [];
   let cursor = -total / 2;
+  for (const width of widths) {
+    offsets.push(cursor + width / 2);
+    cursor += width;
+  }
+  const stations = stationsForBlock(cross, offsets, widths);
+  const out: Lane[] = [];
   for (let i = 0; i < items.length; i++) {
     const width = widths[i];
-    const centre = cursor + width / 2;
-    cursor += width;
-    const cx = cross.at.x + cross.tangent.x * centre;
-    const cy = cross.at.y + cross.tangent.y * centre;
-    const dir = items[i].forward ? 1 : -1;
+    const offset = offsets[i];
+    const found = stations[i] ?? null;
+    const centre = found?.at ?? {
+      x: cross.at.x + cross.tangent.x * offset,
+      y: cross.at.y + cross.tangent.y * offset,
+    };
+    const forward = items[i].forward;
+    // A station's `into` is room in the SECOND land whichever way the arrow
+    // runs, so a backward lane reads the two the other way round.
+    const ahead = found === null
+      ? ARROW_DEPTHS.head
+      : forward ? found.into : found.out;
+    const behind = found === null
+      ? ARROW_DEPTHS.tail
+      : forward ? found.out : found.into;
+    const head = Math.max(ahead, ARROW_DEPTHS.min);
+    const tail = Math.max(behind, ARROW_DEPTHS.min);
+    const dir = forward ? 1 : -1;
     const nx = cross.normal.x * dir;
     const ny = cross.normal.y * dir;
     out.push({
       index: i, width,
-      ax: cx - nx * tail, ay: cy - ny * tail,
-      bx: cx + nx * head, by: cy + ny * head,
+      ax: centre.x - nx * tail, ay: centre.y - ny * tail,
+      bx: centre.x + nx * head, by: centre.y + ny * head,
     });
   }
   return out;
@@ -174,6 +295,68 @@ export const ARROW_KINDS: Record<ArrowKind, ArrowKindDef> = {
   },
 };
 
+/** How loud an arrow is drawn. Exactly one applies, chosen in `emphasisFor`.
+ *
+ *  A scale and not a set of flags, because opacity is one property: it was
+ *  four CSS rules on the same element resolved by specificity, which had
+ *  already produced a "faded" rival arrow drawn BRIGHTER than an unfaded one,
+ *  and starting an aim raised every pin-dimmed arrow back up. What an arrow
+ *  looks like is decided here, once, and written as one class. */
+export type ArrowEmphasis = "full" | "back" | "dimmed" | "faded";
+
+export const ARROW_EMPHASIS: Record<ArrowEmphasis, {
+  className: string;
+  why: string;
+}> = {
+  full: {
+    className: "arrow-full",
+    why: "Nothing is narrowing the map, or this arrow is the thing being asked about: the one under the pointer, the one landing where the player is aiming, the aim itself, or the landing a beat is explaining.",
+  },
+  back: {
+    className: "arrow-back",
+    why: "An aim is live and this arrow is not part of it. Slightly back, because the thing being chosen is the map - but never away, because what is already flying at a land is half of the decision to send an army there.",
+  },
+  dimmed: {
+    className: "arrow-dim",
+    why: "A pin has narrowed the map to one realm and this arrow is no business of it. Faint rather than hidden: the board still has to read as a whole while one land is studied.",
+  },
+  faded: {
+    className: "arrow-faded",
+    why: "The pointer is resting on another arrow, and that arrow's two lands own the screen for as long as it does.",
+  },
+};
+
+/** What every surface that can quieten an arrow has to say about it. */
+export interface ArrowCues {
+  /** A ghost or the aim preview: something happening right now, never
+   *  quietened by a question about something else. */
+  live: boolean;
+  anyFocus: boolean;
+  onFocus: boolean;
+  pinnedOut: boolean;
+  aiming: boolean;
+  atAimTarget: boolean;
+}
+
+/** The one answer, in one order. A pin beats an aim: the pin is a narrowing the
+ *  player asked for and holds, the aim is a question they are in the middle
+ *  of.
+ *
+ *  The two never actually arrive together - the caller (`src/main.ts`) clears
+ *  a pin the moment a card is armed or played, so `pinnedOut` and `aiming`
+ *  are never both true in practice. The ordering still resolves them as if
+ *  they could: `emphasisFor` is a pure function of its cues and answers the
+ *  question it is asked, whether or not the caller can currently produce it -
+ *  the alternative is a contract that is only honest for the inputs one
+ *  caller happens to send today. */
+export function emphasisFor(cues: ArrowCues): ArrowEmphasis {
+  if (cues.live) return "full";
+  if (cues.anyFocus) return cues.onFocus ? "full" : "faded";
+  if (cues.pinnedOut) return "dimmed";
+  if (cues.aiming) return cues.atAimTarget ? "full" : "back";
+  return "full";
+}
+
 export interface ArrowSpec {
   /** The caller's handle. Behaviour is bound to the group this returns, so an
    *  id has to be stable for as long as the arrow is. */
@@ -202,19 +385,16 @@ export interface ArrowSpec {
   chip?: { order: number; clash: boolean };
   /** A claim already answered, drawn faded. */
   doomed?: boolean;
-  /** Receding because the pointer is resting on another arrow, and receding
-   *  because a pin has narrowed the map to a land this arrow is no business
-   *  of. Two cues another surface owns the meaning of, carried HERE rather
-   *  than written onto the element afterwards.
+  /** How loud this arrow is drawn, decided by `emphasisFor` from what the
+   *  hover, the pin and a live aim have to say about it.
    *
-   *  `dressArrow` states an arrow's whole class attribute, and `enter` fades a
+   *  Carried HERE rather than written onto the element afterwards, because
+   *  `dressArrow` states an arrow's whole class attribute and `enter` fades a
    *  new arrow up to the opacity the stylesheet gives it once it is in the
-   *  tree. A cue applied after the paint is therefore a cue the fade did not
-   *  know about: the arrow rose to its undimmed resting value and dropped to
-   *  the dim in the single frame the fade ended on. What an arrow looks like
-   *  is part of what it IS, so it is stated with everything else about it. */
-  faded?: boolean;
-  dimmed?: boolean;
+   *  tree. A cue applied after the paint is a cue the fade was not told about:
+   *  the arrow rose to full over 220ms and dropped to the dim in the single
+   *  frame the fade ended on. */
+  emphasis?: ArrowEmphasis;
   /** Written onto the group, for the hover, the pin and the counter click. */
   dataset?: Record<string, string>;
 }
@@ -490,10 +670,9 @@ function place(
  *  over.
  *
  *  A filled animation outranks every rule in the stylesheet for as long as it
- *  is alive, and an arrow's opacity is the stylesheet's business - a rival's
- *  quarrel rests at 0.45, the focus dim at 0.12, the arrows behind a live aim
- *  at 0.75. An enter fade left filling would pin all three at whatever it
- *  ended on. */
+ *  is alive, and an arrow's opacity is the stylesheet's business - full,
+ *  dimmed, faded or back, whatever its `emphasis` class declares. An enter
+ *  fade left filling would pin it at whatever it ended on. */
 function transition(
   el: Element, frames: Keyframe[], ms: number, onDone?: () => void,
 ): { cancel(): void } {
@@ -512,11 +691,11 @@ function transition(
  *  own fade before asking and gets the resting value, and `retire` asks before
  *  cancelling and gets the value on screen.
  *
- *  Read off the element rather than assumed to be 1 either way: fading a
- *  rival's 0.45 arrow up to full and dropping it back is a flash on every
- *  arrow that is not the player's own, and an arrow retired while it is still
- *  arriving - a counter declared and the turn ended behind it - would be
- *  snapped up to full before being faded out. */
+ *  Read off the element rather than assumed to be 1 either way: fading an
+ *  already-dimmed arrow up to full and dropping it back down is a flash on
+ *  every arrow whose resting opacity is not full, and an arrow retired while
+ *  it is still arriving - a counter declared and the turn ended behind it -
+ *  would be snapped up to full before being faded out. */
 function currentOpacity(el: Element): number {
   const raw = getComputedStyle(el).opacity;
   const value = Number(raw);
@@ -714,8 +893,7 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
   // fade can be aimed past.
   const classes = [def.className, `march-${spec.tone}`];
   if (spec.doomed === true) classes.push("claim-doomed");
-  if (spec.faded === true) classes.push("arrow-faded");
-  if (spec.dimmed === true) classes.push("arrow-dim");
+  classes.push(ARROW_EMPHASIS[spec.emphasis ?? "full"].className);
   setAttr(g, "class", classes.join(" "));
   applyDataset(g, spec.dataset ?? {});
   return true;

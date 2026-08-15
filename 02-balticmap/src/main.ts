@@ -1,5 +1,5 @@
 import type { Region } from "./types";
-import { renderMap, darkenColor, brightenColor } from "./map-render";
+import { renderMap, darkenColor, brightenColor, inkFor } from "./map-render";
 import {
   createTooltip, settlementTooltipText,
   type TooltipLine,
@@ -38,7 +38,7 @@ import {
 } from "./playability";
 import { armiesOn, axesOf, type March, type Marches } from "./marches";
 import { crossingBetween, ringsOf, type Crossing, type Pt } from "./borders";
-import { renderArrowScene, type ArrowSpec, type SceneCtx } from "./arrow-scene";
+import { emphasisFor, renderArrowScene, type ArrowSpec, type SceneCtx } from "./arrow-scene";
 import { animations, runAnimation } from "./animate";
 import {
   defenseMaxOf, defenseOf, gateBandOf, MIN_RAID_SPEND, type GateBand,
@@ -544,8 +544,14 @@ let hoveredRegion: Region | null = null; // region under the cursor, for hover r
 /** The land clicked to hold its faction's highlight, or null. A pin outranks
  *  the cursor: it exists so the activity log can be read, and reaching the log
  *  means dragging the cursor across lines whose faction names would each steal
- *  the highlight back. Suppressed, not cleared, while a card is armed -
- *  targeting cues own the map, and disarming brings the pin back. */
+ *  the highlight back. Cleared, not suppressed, at the two moments an
+ *  interaction can start: `onPlayCard`'s `interaction.deselect()` the instant
+ *  a card is armed, and `decide`'s the instant any decision commits - a
+ *  counter played straight off an arrow's own click arms nothing, so only the
+ *  second one ever reaches it. A pin does not survive an interaction, so
+ *  targeting cues never have to arbitrate against one - `end-turn` is the one
+ *  decision that keeps it, since the pin's whole reason to exist is reading
+ *  the log through the round that click is about to start. */
 let pinnedRegion: Region | null = null;
 /** True while this screen must not act for a reason no queue can see: a
  *  guest's move gone to the host and not yet answered, and either side of a
@@ -1046,6 +1052,27 @@ function fillFactionFor(factionId: string): string {
  *  describing a game that was not happening. Darker than the off-map neighbour
  *  grey, so the coast still reads as the edge of the world. */
 const UNOWNED_FILL = "#c3bfb6";
+
+/** How far a rival's arrow must stand out from the land it crosses. 3 is the
+ *  ordinary floor for a mark this size, and every faction colour on both maps
+ *  reaches it. */
+const ARROW_INK_CONTRAST = 3;
+
+/** Read on every repaint, and the search inside `inkFor` walks up to a hundred
+ *  steps, so the answer is kept. */
+const arrowInk = new Map<string, string>();
+
+function arrowInkFor(factionId: string): string {
+  const held = arrowInk.get(factionId);
+  if (held !== undefined) return held;
+  const ink = inkFor(
+    factionById.get(factionId)?.color ?? "#7a6a55",
+    UNOWNED_FILL,
+    ARROW_INK_CONTRAST,
+  );
+  arrowInk.set(factionId, ink);
+  return ink;
+}
 
 function applyOwnership(): void {
   const human = localHuman();
@@ -1968,10 +1995,11 @@ function paintArrows(): void {
       // raid on its own vassal reads - and that is an attack on your realm.
       tone: against ? "hostile" : ours ? "ours" : "other",
       // A quarrel between two rivals is drawn in the attacker's own colour, so
-      // whose army it is can be read off the map without hovering it.
-      fill: against || ours
-        ? undefined
-        : factionById.get(m.actor)?.color ?? "#7a6a55",
+      // whose army it is can be read off the map without hovering it - as INK
+      // rather than as the colour their land is painted. The palette a map's
+      // lands are drawn from is pale by design, and a mark in it reads against
+      // the map at about 1.05 to 1, which is not a mark.
+      fill: against || ours ? undefined : arrowInkFor(m.actor),
       label: `${m.damage} STR`,
       chip: order.get(key),
       dataset: {
@@ -2024,9 +2052,8 @@ function paintArrows(): void {
       strength: res.strength,
       tone: res.tone,
       // Stated rather than left to the stylesheet: the fills there are
-      // `.march-arrow`'s, and this is not one - a ghost that inherited them
-      // would also inherit a rival arrow's 0.45, which is the wrong thing for
-      // the only arrow on the map the beat is actually about.
+      // `.march-arrow`'s, and this is not one - a ghost states its own fill
+      // because it is the one arrow on the map its beat is actually about.
       fill: res.tone === "ours"
         ? "#d4af37"
         : res.tone === "hostile" ? "#992f27" : "#6b5d49",
@@ -2053,24 +2080,33 @@ function paintArrows(): void {
   // down a border painted the preview straight over the raid it was answering.
   const preview = aimSpec();
   if (preview !== null) specs.push(preview);
-  // What the hover and the pin have to say about each arrow, said as part of
-  // what the arrow IS. Asked of the spec's own dataset, which is where both
-  // questions were always answered from - the ends of the arrow and whose army
-  // it is - so every kind on the board is asked the same question, resolutions
-  // and the preview included.
+  // What the hover, the pin and a live aim have to say about each arrow, said
+  // as part of what the arrow IS. Asked of the spec's own dataset, which is
+  // where every one of these questions was always answered from - the ends of
+  // the arrow and whose army it is - so every kind on the board is asked the
+  // same question, resolutions and the preview included.
   //
   // Stated here and never written on afterwards, because a new arrow fades up
   // to the opacity it has the moment it enters the tree: applied after the
-  // paint, the dim was a value the fade had not been told about, and every
+  // paint, an emphasis is a value the fade had not been told about, and every
   // arrow declared while a land was pinned rose to full over 220ms and then
-  // dropped to 0.16 in the one frame the fade ended on.
+  // dropped to its dim in the one frame the fade ended on.
   const focus = effectiveArrowFocus();
   for (const spec of specs) {
     const ends = spec.dataset ?? {};
-    spec.faded = focus !== null
-      && !(ends.from === focus.from && ends.target === focus.to);
-    spec.dimmed = arrowDimLand !== null
-      && ends.actor !== arrowDimLand && ends.target !== arrowDimLand;
+    spec.emphasis = emphasisFor({
+      // A ghost stands for the landing its beat is explaining and the preview
+      // IS the question being asked, so neither is ever pushed back by a
+      // question about something else.
+      live: spec.kind === "ghost" || spec.kind === "aim",
+      anyFocus: focus !== null,
+      onFocus: ends.from === focus?.from && ends.target === focus?.to,
+      pinnedOut: arrowDimLand !== null
+        && ends.actor !== arrowDimLand && ends.target !== arrowDimLand,
+      aiming: targeting,
+      atAimTarget: aiming !== null && aiming.over !== null
+        && ends.target === aiming.over,
+    });
   }
   const drawn = renderArrowScene(arrowGroup, specs, sceneCtx);
   drawn.get("aim")?.classList.toggle(
@@ -2874,7 +2910,8 @@ function applyTargeting(): void {
     );
   }
   // Targeting cues win the map while armed - applyHighlight suppresses itself
-  // then. Disarming lands here too, and brings the pin, or the live hover, back.
+  // then. Disarming lands here too, and brings the live hover back - never the
+  // pin, which `onPlayCard` already let go of the moment this card was armed.
   applyHighlight(hoveredRegion, hoveredRegion?.faction ?? null);
   // Arming and disarming both land here without a full refresh, and the
   // badges, the arrows and the always-on realm outlines are all part of the
@@ -2942,8 +2979,15 @@ function applyRealmHover(region: Region | null): void {
   // Everything else recedes while the pin holds. Without it the pin barely
   // reads: a rival player's lands sit at .in-play's opacity, which is bright
   // enough that four realms compete with the one land being asked about.
-  svg.classList.toggle("pinning", pinned && inPlay() && !targetingLive());
-  syncArrowDimming(pinned && inPlay() && !targetingLive() ? region : null);
+  //
+  // No `!targetingLive()` term here any more: `pinned` already implies it. A
+  // pin does not survive an interaction - `onPlayCard` deselects before it
+  // arms or plays anything - so `pinnedRegion` is null for as long as a card
+  // is armed, and these two calls could never have fired mid-targeting to
+  // begin with. The rule that used to live in this guard now lives in
+  // `onPlayCard`'s `interaction.deselect()`.
+  svg.classList.toggle("pinning", pinned && inPlay());
+  syncArrowDimming(pinned && inPlay() ? region : null);
   // The polygon of the faction that holds the hovered land - who took it -
   // marked on its own, not its whole realm. Suppressed while targeting is
   // live, for the same reason the realm halo is.
@@ -3548,6 +3592,20 @@ const hudCallbacks: HudCallbacks = {
       // a live hand behind it, and which card that hand still accepts is
       // `humanPlayableSet`'s answer rather than this gate's.
       if (actionBlock("play") !== null) return;
+      // A pin does not survive an interaction, and this is the ARM half of
+      // that rule - `decide` is the other, for a decision committed with no
+      // arming step of its own. Every branch below either arms a targeted
+      // card, opens the harvest offer, discards or plays outright, and none
+      // of them is a question about a land the player pinned to read its log.
+      // The SAME route a deselect takes, so the hud's pinned state, the
+      // panel, the highlight and the arrow dim move together rather than
+      // three of the four moving and the fourth reading stale. This is also
+      // what keeps a pin and a live aim from ever coexisting: `emphasisFor`
+      // resolves a pin ahead of an aim, and that ordering is only honest
+      // because the two cannot both be true at once - and it has to happen
+      // here, at arm time, because arming commits nothing and `decide` is not
+      // reached until a target is chosen.
+      interaction.deselect();
       const human = localHuman();
       const cardId = human.hand[index];
       if (discardMode()) {
@@ -3965,6 +4023,23 @@ function sendGuestAction(a: NetAction): void {
  *  something to do afterwards asks: a harvest's reveal happens on this screen
  *  when this screen played it, and arrives with the update when it did not. */
 function decide(d: Decision): DecisionResult {
+  // A pin does not survive an interaction, and this is the one place every
+  // decision a person makes is committed - so it is also the one place that
+  // can unpin for a call site that never arms anything, the way an arrow's
+  // own counter click plays a raid straight through `decide` with no card
+  // ever set as `armed`. `onPlayCard`'s own `interaction.deselect()` is not
+  // redundant with this one: it fires at ARM time, before `armed` goes
+  // non-null, which is what `applyRealmHover` relies on to answer "is a card
+  // being targeted" without also asking about the pin - arming commits
+  // nothing, so `decide` is never reached until a target is chosen, and a
+  // pin still standing for that whole window is the bug this exists to close.
+  //
+  // `end-turn` is the one kind excepted. The pin's own reason to exist,
+  // stated on `pinnedRegion` itself, is reading the activity log filtered to
+  // a realm - and the round that log fills with is the one about to run,
+  // behind this exact click. Clearing the pin here would drop the filter at
+  // the one moment it was pinned to watch.
+  if (d.kind !== "end-turn") interaction.deselect();
   const result = commitDecision(
     {
       // The authoritative world, which is what the rules are applied to and
