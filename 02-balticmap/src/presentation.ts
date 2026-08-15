@@ -1,7 +1,8 @@
 /** What one event is SHOWN as, on THIS screen, and nothing else: the camera
  *  and the label a land gets, the badge stepping from the score it had to the
- *  score it has, the card flying out of the hand, the arrows a landing takes
- *  off the board and what it leaves on the border to say what got through.
+ *  score it has, the card flying out of the hand, the arrow a declaration
+ *  stands on a border, the arrows a landing takes off the board and what it
+ *  leaves there to say what got through.
  *
  *  Pure data out - no DOM, no rng, no clock - so the executor only spends
  *  queue steps on what this hands back, and the whole classification is
@@ -93,6 +94,23 @@ export type Beat =
       causedLabel: Segment[] | null;
       sound: SoundName | null;
       badges: BadgeWalk[];
+      /** Arrows this beat puts ON the board, by march id: the declaration
+       *  this beat is announcing, standing on its border as the sentence
+       *  about it is read.
+       *
+       *  Ids and not descriptions, exactly as `retires` is, because the arrow
+       *  a declaration creates is the same arrow the commit behind this beat
+       *  will paint - `march:<id>` either way, so the scene keeps one element
+       *  across the handover and the arrow does not fade in twice. What an id
+       *  names is the transition's own `marches`, which is the only place
+       *  that knows: this module classifies, and the state a beat is about is
+       *  not the one under the map yet.
+       *
+       *  Left to the state alone, an arrow appears at the commit - which
+       *  waits behind EVERY beat of the move. A round of raids then reads as
+       *  one label at a time followed by a burst of arrows, none of them
+       *  attached to the sentence that announced it. */
+      declares: number[];
       /** Arrows this beat takes off the board. They exit plain: a fade out
        *  and no label. A departed arrow is not the outcome - see
        *  `ResolutionArrow`. */
@@ -361,6 +379,9 @@ interface MapFrame {
   ): Segment[];
   /** Absent means `EVENT_SOUNDS[e.type]`. */
   sound?(e: GameEvent, cause: PresentCause | null): SoundName | null;
+  /** The arrows this event stands on the board, by march id - see
+   *  `Beat.declares`. Absent is none, which is every framed rule but one. */
+  declares?(e: GameEvent): number[];
 }
 
 /** One map beat, or none, under the two gates every framed rule shares. Kept
@@ -381,6 +402,7 @@ function framedBeats(e: GameEvent, ctx: PresentCtx, frame: MapFrame): Beat[] {
       ? EVENT_SOUNDS[e.type]
       : frame.sound(e, cause),
     badges,
+    declares: frame.declares?.(e) ?? [],
     retires: [],
     resolutions: [],
   }];
@@ -642,6 +664,12 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
     // screen no card flew, so an arrow arriving on the border in silence is
     // the rival's attack the player is never told about.
     sound: () => "march",
+    // And the arrow itself, which is the whole of what the sentence is
+    // about. A declaration allocates exactly one id and names it through the
+    // singular `marchId`; an event without one declared no arrow this screen
+    // could draw. The screen whose own play this was is suppressed above and
+    // sees the arrow at the commit, a beat behind its card landing.
+    declares: (e) => e.marchId === undefined ? [] : [e.marchId],
   }),
   "march-resolved": {
     kind: "presented",
@@ -694,6 +722,10 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
         ...beatLabels(e, ctx, label),
         sound: EVENT_SOUNDS[e.type],
         badges: badgeWalks(e, ctx),
+        // A landing creates no arrow: what it leaves on the border is a
+        // `resolution`, which is neither of the ones it spent and outlives
+        // none of them.
+        declares: [],
         // The arrows this landing spent, taken off the board while the beat
         // that explains them is on screen rather than at the repaint behind
         // it. They exit plain: the outcome is the resolution arrows' to say.

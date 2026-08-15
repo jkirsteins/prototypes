@@ -331,6 +331,30 @@ describe("presentEvents", () => {
     expect(presentEvents([e], ctxFor([e]))).toEqual([]);
   });
 
+  it("puts the arrow a declaration created on the beat that announces it", () => {
+    // The sentence and the arrow are one moment. Left to the state instead,
+    // the arrow waits for the commit behind EVERY beat of the move, so a
+    // round of declarations reads as one label at a time and then a burst of
+    // arrows after the last of them has been read.
+    const e: GameEvent = {
+      turn: 4, playerId: 3, type: "march-declared", cardId: "raid",
+      targetFactionId: "beta", sourceFactionId: "alpha", marchId: 12,
+    };
+    const beat = mapBeats(presentEvents([e], ctxFor([e])))[0];
+    expect(beat.declares).toEqual([12]);
+    // The arrow arrives; nothing leaves and nothing is standing over it.
+    expect(beat.retires).toEqual([]);
+    expect(beat.resolutions).toEqual([]);
+  });
+
+  it("declares nothing on a beat that is not an arrow arriving", () => {
+    // The symmetric half of `retires`: every other rule hands the arrows back
+    // untouched, so a beat cannot silently conjure one by forgetting a field.
+    const e = march();
+    const beat = mapBeats(presentEvents([e], ctxFor([e])))[0];
+    expect(beat.declares).toEqual([]);
+  });
+
   it("gives the wild-lands regrowth its passive cause, its rustle and its land", () => {
     const fresh: GameEvent[] = [
       {

@@ -32,7 +32,7 @@ import {
   armyCapOn, attackDamageFor, attackImpactOn, freeArmiesFor,
   miasmaHeld, omensHeld, freeSettlementsIn, settlementsIn,
 } from "./playability";
-import { armiesOn, axesOf, type March } from "./marches";
+import { armiesOn, axesOf, type March, type Marches } from "./marches";
 import { crossingBetween, ringsOf, type Crossing, type Pt } from "./borders";
 import { renderArrowScene, type ArrowSpec, type SceneCtx } from "./arrow-scene";
 import { animations, runAnimation } from "./animate";
@@ -1467,11 +1467,12 @@ function turnsUntilActs(factionId: string): number {
  *  difference - so numbering them 1st and 2nd described a sequence that never
  *  happens. That pair gets a clash marker instead (`drawClash`). */
 function landingOrder(): Map<string, { order: number; clash: boolean }> {
+  const marches = drawnMarches();
   const axisOf = (a: string, b: string): string => [a, b].sort().join("|");
   const pending: {
     key: string; to: string; from: string; axis: string; at: number;
   }[] = [];
-  for (const [key, m] of Object.entries(game().marches)) {
+  for (const [key, m] of Object.entries(marches)) {
     pending.push({
       key, to: m.to, from: m.from, axis: axisOf(m.from, m.to),
       at: m.expiry * 100 + turnsUntilActs(m.actor),
@@ -1492,10 +1493,10 @@ function landingOrder(): Map<string, { order: number; clash: boolean }> {
   // back, the leftover meets nobody and is not in a clash at all. Marking it
   // as one promised the player an answer that was never going to arrive.
   const keyOfMarch = new Map<March, string>(
-    Object.entries(game().marches).map(([key, m]) => [m, key]),
+    Object.entries(marches).map(([key, m]) => [m, key]),
   );
   const clashing = new Set<string>();
-  for (const axis of axesOf(game().marches)) {
+  for (const axis of axesOf(marches)) {
     for (let i = 0; i < Math.min(axis.fromA.length, axis.fromB.length); i++) {
       for (const m of [axis.fromA[i], axis.fromB[i]]) {
         const key = keyOfMarch.get(m);
@@ -1618,29 +1619,64 @@ function refreshAim(): void {
   renderMarchArrows();
 }
 
-/** The arrows a beat has taken off the board, by march key, and what that
- *  landing left on the border in their place.
+/** What the beats have done to the arrows since the last commit: the ones a
+ *  declaration stood on a border ahead of the state, the ones a landing took
+ *  off it, and what that landing left in their place.
  *
  *  Here rather than in the scene because they are a fact about the STATE being
- *  drawn, not about the drawing: a landing's beat runs before the commit that
- *  empties `game().marches`, so without this the arrow that just landed would
- *  stand on the map through the whole of the beat explaining it and leave at
- *  the repaint behind it. Read by `renderMarchArrows`, so every repaint that
- *  happens while the beat is up agrees with it.
+ *  drawn, not about the drawing. The displayed state lags the whole transition
+ *  (`game()` versus `world()` above), so on its own it is wrong at both ends
+ *  of a beat: a landing's beat runs before the commit that empties
+ *  `game().marches`, and a declaration's runs before the commit that fills it.
+ *  Without these, the arrow that just landed would stand on the map through
+ *  the whole of the beat explaining it, and the arrow just declared would be
+ *  missing from the whole of the beat announcing it and then arrive in a burst
+ *  with every other one of the move at the repaint behind them all. Read by
+ *  `drawnMarches`, so every repaint that happens while a beat is up agrees
+ *  with it.
  *
- *  The retirements outlive the beat and the resolutions do not. A retired
- *  march is gone from the state the commit is about to paint, so holding it
- *  past the beat costs nothing and dropping it early would bring the arrow
- *  back for the length of one repaint; a resolution is the beat's own picture
+ *  The declarations and the retirements outlive the beat; the resolutions do
+ *  not. Both of the first two are the state the commit is about to paint - a
+ *  retired march is gone from it and a declared one is in it - so holding them
+ *  past the beat costs nothing and dropping either early would flicker the
+ *  arrow for the length of one repaint. A resolution is the beat's own picture
  *  and leaves with it. */
+const beatDeclared = new Map<string, March>();
 const beatRetired = new Set<string>();
 let beatResolutions: readonly ResolutionArrow[] = [];
 
 /** Everything a beat is holding off the board or standing on it, dropped
- *  together: the commit behind the beat is painting a state that has neither. */
+ *  together: the commit behind the beat is painting a state that owns all of
+ *  it - the declared arrows among its marches, the retired ones gone - and the
+ *  resolutions were only ever the beat's. */
 function clearBeatArrows(): void {
+  beatDeclared.clear();
   beatRetired.clear();
   beatResolutions = [];
+}
+
+/** The marches ON THE MAP right now, which is not the same set as the ones in
+ *  the displayed state.
+ *
+ *  One answer, asked by everything that draws an arrow or reasons about the
+ *  arrows around it - the specs, the lane packing behind them and the landing
+ *  ordinals. Split, the chip on an arrow and the arrow itself were computed
+ *  from two different boards, which is a number promising a race against an
+ *  arrow the player cannot see. */
+function drawnMarches(): Marches {
+  const out: Record<string, March> = {};
+  for (const [key, m] of Object.entries(game().marches)) {
+    if (beatRetired.has(key)) continue;
+    out[key] = m;
+  }
+  // After the state's own, so a march the commit has already brought in wins
+  // over the copy a beat is still holding - the two are the same record, and
+  // this is the handover rather than a conflict.
+  for (const [key, m] of beatDeclared) {
+    if (beatRetired.has(key)) continue;
+    out[key] = out[key] ?? m;
+  }
+  return out;
 }
 
 /** Paints the arrows, then re-asks where the pointer is.
@@ -1688,12 +1724,13 @@ function paintArrows(): void {
   arrowGroup.classList.toggle("aiming", targeting);
   const realm = fullRealmOf(human.factionId, game().overlords, game().incorporated);
   const order = landingOrder();
+  // The board's arrows, which is the displayed state's plus and minus whatever
+  // the beats are holding - see `drawnMarches`. The two answers differ for
+  // exactly as long as a beat is up, and this and `landingOrder` above read
+  // the same one.
+  const marches = drawnMarches();
   const specs: ArrowSpec[] = [];
-  for (const [key, m] of Object.entries(game().marches)) {
-    // Already taken off the board by the beat that is showing it land. The
-    // state still holds it - the commit is waiting on that beat - so this is
-    // the one place the two answers differ.
-    if (beatRetired.has(key)) continue;
+  for (const [key, m] of Object.entries(marches)) {
     const against = realm.has(m.to);
     const ours = realm.has(m.from);
     specs.push({
@@ -1825,7 +1862,7 @@ function paintArrows(): void {
   // Never while an aim is live: the arrow is on screen to be READ then, and an
   // arrow that is also a button would answer a click the player meant for the
   // land under it.
-  for (const [key, m] of Object.entries(game().marches)) {
+  for (const [key, m] of Object.entries(marches)) {
     const g = drawn.get(`march:${key}`);
     if (g === undefined) continue;
     const counterIndex = targeting ? null : counterFor(m);
@@ -1957,23 +1994,34 @@ const beatLabelHooks: RichTextHooks = {
     applyHighlight(hoveredRegion, id ?? hoveredRegion?.faction ?? null),
 };
 
-/** What one beat does to the arrows: takes the ones its landing spent off the
- *  board, and stands what got through on the border in their place.
+/** What one beat does to the arrows, applied together with its label: stands
+ *  the ones its declaration created on their border, takes the ones its
+ *  landing spent off the board, and puts what got through in their place.
  *
- *  Both go through the ordinary repaint, so the arrows that leave fade where
- *  they stood and the ones that arrive fade in and take their lanes beside
- *  whatever else is crossing there. The departures are plain - no label, no
+ *  All three go through the ordinary repaint, so an arrow that arrives fades
+ *  in and takes its lane beside whatever else is crossing there, and one that
+ *  leaves fades out where it stood. The departures are plain - no label, no
  *  colour, nothing claiming to be the outcome - because the outcome is what
  *  the resolutions say: "1/3 DMG" in neutral ink, arithmetic rather than a
  *  score, since the scores on this map are the badges'.
  *
- *  `onDone` fires when the label has finished its own animation, which is what
- *  holds the resolution on screen - never a second timer set to the same
- *  length. The arrows are then dropped and fade out under whatever comes
- *  next. */
-function showResolution(
-  beat: Extract<Beat, { kind: "map" }>, onDone: () => void,
+ *  A declaration is looked up in the marches of the state the transition
+ *  lands in, handed down from `queueBeats`. It is the only place that knows
+ *  what a `declares` id names: the beat runs before the commit, so the arrow
+ *  is in no state this screen is drawing from yet. An id with nothing behind
+ *  it is skipped rather than guessed at - the beat still has its sentence.
+ *
+ *  `onDone` fires when the resolution label has finished its own animation,
+ *  which is what holds that arrow on screen - never a second timer set to the
+ *  same length. A declaration holds nothing: it is on the board for good and
+ *  the beat's own label is what the player is reading. */
+function showBeatArrows(
+  beat: Extract<Beat, { kind: "map" }>, declared: Marches, onDone: () => void,
 ): void {
+  for (const id of beat.declares) {
+    const m = declared[String(id)];
+    if (m !== undefined) beatDeclared.set(String(id), m);
+  }
   for (const id of beat.retires) beatRetired.add(String(id));
   beatResolutions = beat.resolutions;
   renderMarchArrows();
@@ -2089,21 +2137,33 @@ function queueBeats(t: Transition): void {
       hud.runHudBeat(beat);
       continue;
     }
-    animations.push((done) => runMapBeat(beat, done));
+    animations.push((done) => runMapBeat(beat, state.marches, done));
   }
   // Nothing is hidden while a beat runs, and that is deliberate. The arrows a
-  // beat leaves standing are the board as the player was last shown it - the
-  // state under the map lags the whole transition, so a march this move
-  // declared is not drawn yet and cannot stand over the landing of the one
-  // before it. What the beat's own landing spent is named by `Beat.retires`
-  // and fades out under the beat that explains it, and what it left behind
-  // takes a lane in the same block, so the two are told apart by where they
-  // stand rather than by everything else being taken away.
+  // beat leaves standing are the board as the player was last shown it, and
+  // every arrow that MOVES between one beat and the next is named by the beat
+  // that moves it: `Beat.declares` stands one on its border as the sentence
+  // announcing it is read, `Beat.retires` fades out the ones its landing
+  // spent, and what got through takes a lane in the same block. So the three
+  // are told apart by where they stand rather than by everything else being
+  // taken away, and the declarations of one move arrive one at a time under
+  // their own labels rather than all together at the repaint behind them.
+  //
+  // The state under the map still lags the whole transition, which is what
+  // makes that possible: an arrow this move declared is on screen because its
+  // OWN beat put it there, so it cannot stand over the landing of the one
+  // before it. The commit behind them all paints the same arrows again from
+  // the state, under the same `march:<id>` keys, so the scene keeps every
+  // element and nothing fades in twice.
 }
 
-/** One map beat: camera first, then the label, the badge walks, the
- *  resolution arrows and the sound together. `done` fires when the slowest of
- *  them reports itself finished - never on a timer.
+/** One map beat: camera first, then the label, the badge walks, the arrows
+ *  this beat puts on the border or takes off it, and the sound together.
+ *  `done` fires when the slowest of them reports itself finished - never on a
+ *  timer.
+ *
+ *  `declared` is the marches of the state this transition lands in, which is
+ *  where a `Beat.declares` id is looked up - see `showBeatArrows`.
  *
  *  A beat with NO label is ordinarily the player's own play landing
  *  (`beatLabels` in src/presentation.ts). They are already looking at the
@@ -2121,6 +2181,7 @@ function queueBeats(t: Transition): void {
  *  - it is the one DOM fact `src/presentation.ts` cannot know for itself. */
 function runMapBeat(
   beat: Extract<Beat, { kind: "map" }>,
+  declared: Marches,
   done: () => void,
 ): void {
   // A new game, or the menu, replaced the board while this beat waited its
@@ -2162,8 +2223,11 @@ function runMapBeat(
       return one;
     };
     walkBadges(beat.badges, waitFor());
-    if (beat.retires.length > 0 || beat.resolutions.length > 0) {
-      showResolution(beat, waitFor());
+    if (
+      beat.declares.length > 0 || beat.retires.length > 0
+      || beat.resolutions.length > 0
+    ) {
+      showBeatArrows(beat, declared, waitFor());
     }
     if (label !== null) showBeatLabel(label, beat.badges, waitFor());
     one();
