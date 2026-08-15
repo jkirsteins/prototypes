@@ -78,8 +78,61 @@ svg.map.dragging {
 
 .region {
   stroke: #7a6a55;
-  stroke-width: 0.8;
+  stroke-width: 1;
   transition: filter 120ms ease;
+}
+
+/* The land that carries the FILL draws no outline at all. Every border on this
+   map is a stroke-only copy above the fills - `.land-casing` then `.land-edge`,
+   built in map-render.ts - because a casing has to sit above the fill it bounds
+   and the dark line above the casing, and one element carrying both fill and
+   stroke cannot be in two places.
+
+   !important, and this much specificity, because it has to beat
+   `svg.map.arrow-focused .region:not(.arrow-end)` further down, which declares
+   its grey stroke !important of its own at (0,4,1). That rule is right and
+   stays: it restyles a land's OUTLINE, and the outline is the copy now, which
+   the copy matches and this element does not. */
+svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
+  stroke: none !important;
+}
+
+/* The pale halo under each land line. A cased line is how a cartographer parts
+   two fills of the same colour, and the grey middle is 21 lands of exactly one
+   colour: without it the only thing between two of them is a hairline of
+   #7a6a55, and the flat grey is a deliberate choice this has to work under.
+
+   It reads as a GAP between two tiles rather than an outline around one, which
+   is the whole difference. Widened instead of darkened on purpose - a heavier
+   line across 26 lands reads as a colouring book, so the contrast is bought
+   with the halo and not with ink.
+
+   No `.region` classes on this element, so nothing here follows a land's state
+   and the observer that syncs the line copies has nothing to do with it. When a
+   land is hovered or owned its heavier stroke simply covers more of the casing. */
+.land-casing {
+  fill: none;
+  stroke: #f2ece0;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* A realm member has no casing. Its outer edge is already cased by `.ru-casing`
+   under the realm band, and its inner lines are subdivisions rather than
+   frontiers - a pale halo along one would say the opposite of what the dashes
+   below say. */
+.land-casing.realm-member {
+  display: none;
+}
+
+.land-edges,
+.land-edge {
+  pointer-events: none;
+}
+
+.land-edge {
+  fill: none;
 }
 
 .region.hovered {
@@ -109,10 +162,11 @@ svg.map.dragging {
    realm" held almost nowhere. The masked copy is what lets both be true at
    once, and it is why the exception list is gone rather than extended.
 
-   :not(.realm-edge) is what keeps this off the copy - the copy carries the
-   region's classes verbatim so every other .region rule reaches it, and this
-   is the single rule that must not. */
-.region.realm-member:not(.realm-edge) {
+   .land-edge:not(.realm-edge) is what picks exactly one of a member's two
+   copies. Both carry the region's classes verbatim so every other .region rule
+   reaches both; this is the single rule that must reach only the unmasked one,
+   which is the copy that draws the whole outline and therefore the seams. */
+.region.realm-member.land-edge:not(.realm-edge) {
   stroke: #b9ab93 !important;
   stroke-width: 0.7 !important;
   stroke-dasharray: 4 3 !important;
@@ -912,8 +966,18 @@ svg.map.dragging {
   outline-offset: -2px;
 }
 
+/* `fill-opacity` and not `opacity`, which is the difference between fading a
+   land and fading everything that says where it ends. Element opacity took the
+   border down with the fill: a #7a6a55 line at 0.225 over a fill that had
+   itself composited to #e0e4e5 left about 3% contrast, which is a border
+   nobody can see.
+
+   It reaches further than this element. The stroke-only copies carry `.dimmed`
+   verbatim and they are what draws a land's outline now, so under element
+   opacity a dimmed land's copy faded too. `fill-opacity` is inert on a
+   `fill: none` copy, so one property answers both. */
 .region.dimmed {
-  opacity: 0.225;
+  fill-opacity: 0.225;
 }
 
 /* A land inside a rival PLAYER's realm. Dimmed - it is not yours - but well
@@ -922,7 +986,7 @@ svg.map.dragging {
    same 0.225 as the quiet lands, four rivals were indistinguishable from the
    twenty-one lands that will never take a turn. */
 .region.dimmed.in-play {
-  opacity: 0.72;
+  fill-opacity: 0.72;
 }
 
 /* Targeting cues live at the END of this file on purpose: while a card is
@@ -1103,10 +1167,12 @@ svg.map.dragging {
    sea rect beneath it, which dissolves the coastline and stops the map being a
    map. Repainting keeps the silhouette and takes the identity.
 
-   `.realm-edge` is excluded from the fill alone: the stroke-only copies must
-   keep `fill: none` or they paint their whole polygon. They do want the grey
-   stroke, because the copy is what draws a realm member's outline. */
-svg.map.arrow-focused .region:not(.arrow-end):not(.realm-edge) {
+   The copies are excluded from the fill alone: they must keep `fill: none` or
+   they paint their whole polygon, and this selector outranks the `fill: none`
+   on `.land-edge`. They do want the grey stroke, because a copy is what draws
+   every land's outline. */
+svg.map.arrow-focused
+  .region:not(.arrow-end):not(.realm-edge):not(.land-edge) {
   fill: #d9d9d9;
 }
 
@@ -2226,9 +2292,15 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
    about who is winning.
 
    The descendant selector is what carries this over every opacity rule above
-   it: `svg.map.pinning .region` outranks `.region.dimmed.in-play` and
-   `.region.realm-hover.dimmed` on specificity rather than on source order, so
-   it cannot be undone by a rule somebody adds later in this file. */
+   it: `svg.map.pinning .region` outranks them on specificity rather than on
+   source order, so it cannot be undone by a rule somebody adds later in this
+   file.
+
+   It no longer COMPETES with `.dimmed`, which fades the fill alone - the two
+   now multiply rather than one winning. That is the wanted answer either way:
+   the pin recedes a land whole, and a land that was also dimmed simply has
+   less fill left to recede. What survives at 0.2 is the border, which is the
+   one thing a pinned map still has to be readable as. */
 svg.map.pinning .region:not(.pinned-one) {
   opacity: 0.2;
 }
@@ -2252,8 +2324,9 @@ svg.map.pinning .realm-hover-halo {
   stroke-width: 1.4;
 }
 
+/* Undoes `.dimmed` and nothing else, so it names the property `.dimmed` sets. */
 .region.realm-hover.dimmed {
-  opacity: 1;
+  fill-opacity: 1;
 }
 
 .region.vassal-hover {
@@ -2270,8 +2343,9 @@ svg.map.pinning .realm-hover-halo {
   stroke-dasharray: none;
 }
 
+/* Undoes `.dimmed` and nothing else, so it names the property `.dimmed` sets. */
 .region.holder-hover.dimmed {
-  opacity: 1;
+  fill-opacity: 1;
 }
 
 /* `outerOutline` masks away everything inside the realm, seams and the inner
@@ -2791,13 +2865,17 @@ svg.map.pinning .realm-hover-halo {
 
    `!important` on the opacity for the same reason one rung down: an aimed land
    may also be `.target-invalid` at 0.07 while the drag is over it, and the
-   whole point is that the aim answers "here". */
+   whole point is that the aim answers "here".
+
+   BOTH properties, because the two fades it has to beat are no longer the same
+   one: `.target-invalid` fades the whole element, `.dimmed` fades the fill. */
 .region.aim-target,
 .region.aim-target.hovered,
 .region.aim-target.target-valid,
 .region.aim-target.target-invalid,
 .region.aim-target.dimmed {
   opacity: 1 !important;
+  fill-opacity: 1 !important;
   stroke: #8a2f27;
   stroke-width: 4.5;
   stroke-dasharray: none;

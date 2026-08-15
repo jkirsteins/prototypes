@@ -197,6 +197,7 @@ const data = regionDef.map;
 const {
   svg, regionPaths, revealSettlement, clearFoundedSettlements,
   realmOutlineGroup, realmUnionGroup, realmHoverGroup, realmEdgeGroup,
+  landCasingPaths, landEdgePaths,
   vassalOverlayGroup, peopleLabels, outerOutline, outsideMask,
 } = renderMap(data, app);
 
@@ -970,9 +971,19 @@ function applyOwnership(): void {
       "fill", grey ? UNOWNED_FILL : factionById.get(effective)!.color,
     );
     const owned = humanRealm.has(region.faction);
+    // A quiet land is NOT dimmed, and `grey` is why. It has already been
+    // flattened to one `UNOWNED_FILL` for the whole grey middle, which is the
+    // entire sentence "nobody is playing this"; fading it says the same thing
+    // twice and takes the ground with it. Measured: `#c3bfb6` at the old 0.225
+    // over the sea composites to `#e0e4e5`, LIGHTER than the `#d9d9d9` of the
+    // off-map neighbours, so playable land read as fainter than scenery - the
+    // exact relationship the comment on UNOWNED_FILL says it maintains.
+    //
+    // What is left is what `.dimmed` was built for: held, but not yours, among
+    // lands that still carry a real hue.
     el.classList.toggle(
       "dimmed",
-      inPlay() && !owned && !overlordRealm.has(region.faction),
+      inPlay() && !grey && !owned && !overlordRealm.has(region.faction),
     );
     // A land that belongs to a rival PLAYER's realm, by its realm root rather
     // than by itself: a quiet land somebody has subjugated is part of that
@@ -1158,22 +1169,35 @@ function renderRealmUnions(): void {
     band.setAttribute("stroke", darkenColor(factionById.get(root)!.color, 0.5));
     maskedPath(realmUnionGroup, d, unionMask).classList.add("ru-casing");
   }
-  // The pale dashed seam goes on the members themselves: a region's own stroke
-  // draws its whole outline, inner edges included, and that is now ALL it is
-  // allowed to draw - see the `.region.realm-member` rule. Everything the land
-  // says about itself is on its edge copy above, clipped to the realm's outer
-  // boundary.
+  // The pale dashed seam goes on the members themselves: the land-edge copy
+  // draws its whole outline, inner edges included, and for a member that is ALL
+  // it is allowed to draw - see the `.region.realm-member` rule. Everything the
+  // land says about itself is on the masked realm-edge copy, clipped to the
+  // realm's outer boundary.
+  //
+  // The casing goes with it. A member's outer edge is already cased by
+  // `.ru-casing` under the realm band, and its inner lines are subdivisions
+  // rather than frontiers - a pale halo along one would say the opposite of
+  // what the dashes say.
   for (const [id, el] of regionPaths) {
-    el.classList.toggle("realm-member", seamed.has(id));
+    const member = seamed.has(id);
+    el.classList.toggle("realm-member", member);
+    landCasingPaths.get(id)?.classList.toggle("realm-member", member);
   }
   syncRealmEdges();
 }
 
-/** Copies each region's classes and inline style onto its edge copy, so the
- *  copy is styled by the very same `.region.*` rules and cannot fall behind
+/** Copies each region's classes and inline style onto its stroke-only copies,
+ *  so they are styled by the very same `.region.*` rules and cannot fall behind
  *  them. A copy is not a mirror: there is no second list of colours anywhere,
- *  only this one assignment, and the one rule that must NOT reach the copy
- *  excludes it by name (`.region.realm-member:not(.realm-edge)`).
+ *  only this one assignment, and the one rule that must not reach both excludes
+ *  the masked half by name (`.region.realm-member.land-edge:not(.realm-edge)`).
+ *
+ *  Two copies per land, and they draw different things. `land-edge` is
+ *  unmasked and draws the land's WHOLE outline: for a realm member that is the
+ *  pale dashed seam, for everyone else it is the border. `realm-edge` exists
+ *  only for members and is clipped to the realm's outer edge, where the state
+ *  stroke can be drawn without running along a seam.
  *
  *  Driven by an observer rather than by calls at each of the four places that
  *  toggle a region class (`applyOwnership`, `applyTargeting`, `applyRealmHover`
@@ -1181,10 +1205,27 @@ function renderRealmUnions(): void {
  *  drift this codebase keeps writing tests against, and there is no test that
  *  can reach main.ts - so the sync is wired to the mutation itself. */
 function syncRealmEdges(): void {
-  for (const [id, edge] of realmEdgePaths) {
+  syncEdgeCopies(landEdgePaths, "land-edge");
+  syncEdgeCopies(realmEdgePaths, "realm-edge");
+}
+
+/** One land's classes onto one of its stroke-only copies, under `marker`.
+ *
+ *  `land-fill` is dropped on the way across, and that is the whole of what
+ *  keeps the scheme upright: it is the class the stroke suppression in
+ *  style.css hangs off, so a copy carrying it would draw no outline and the
+ *  land would have no border at all. Everything else goes over untouched - the
+ *  point of a copy is that there is no second list of colours anywhere. */
+function syncEdgeCopies(
+  copies: Map<string, SVGPathElement>, marker: string,
+): void {
+  for (const [id, edge] of copies) {
     const region = regionPaths.get(id);
     if (region === undefined) continue;
-    edge.setAttribute("class", `${region.getAttribute("class")} realm-edge`);
+    const carried = (region.getAttribute("class") ?? "")
+      .split(/\s+/)
+      .filter((c) => c !== "" && c !== "land-fill");
+    edge.setAttribute("class", `${carried.join(" ")} ${marker}`);
     // The inline style comes too, because a class is not always the whole
     // answer: `.region.owned` paints `var(--owned-stroke)`, and that custom
     // property is set per land in applyOwnership. Without it the copy resolved

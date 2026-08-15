@@ -24,7 +24,9 @@ describe("renderMap", () => {
     const container = document.createElement("div");
     const { svg, regionPaths } = renderMap(data, container);
     expect(container.contains(svg)).toBe(true);
-    const paths = svg.querySelectorAll("path.region");
+    // `.land-fill` and not `.region`: every land also has a stroke-only
+    // `.land-edge` copy carrying `.region`, so the bare class counts both.
+    const paths = svg.querySelectorAll("path.region.land-fill");
     expect(paths.length).toBe(26);
     expect(regionPaths.size).toBe(26);
     const kursa = regionPaths.get("kursa")!;
@@ -33,6 +35,36 @@ describe("renderMap", () => {
       (f) => f.id === "curonian-confederacy",
     )!;
     expect(kursa.getAttribute("fill")).toBe(curonians.color);
+  });
+
+  // The border is drawn by copies above the fills, never by the fill element:
+  // a casing has to sit above the fill it bounds and the dark line above the
+  // casing. The one thing that must not cross onto a copy is `land-fill`,
+  // which is what the stroke suppression in style.css hangs off - a copy
+  // carrying it draws no outline and the land loses its border entirely.
+  it("gives every land a casing and a line copy, and no copy is a land-fill", () => {
+    const container = document.createElement("div");
+    const { svg, landCasingPaths, landEdgePaths } = renderMap(data, container);
+    expect(landCasingPaths.size).toBe(26);
+    expect(landEdgePaths.size).toBe(26);
+    expect(svg.querySelectorAll("path.land-casing").length).toBe(26);
+    for (const edge of landEdgePaths.values()) {
+      expect(edge.classList.contains("region")).toBe(true);
+      expect(edge.classList.contains("land-fill")).toBe(false);
+    }
+    for (const casing of landCasingPaths.values()) {
+      expect(casing.classList.contains("region")).toBe(false);
+    }
+  });
+
+  // Document order is paint order in SVG, so this IS the casing: pale under
+  // dark. Reversed, the halo covers the line it exists to set off.
+  it("paints casings under lines, and both above the fills", () => {
+    const container = document.createElement("div");
+    const { svg } = renderMap(data, container);
+    const groups = [...svg.querySelectorAll("g")].map((g) => g.getAttribute("class"));
+    expect(groups.indexOf("regions")).toBeLessThan(groups.indexOf("land-casings"));
+    expect(groups.indexOf("land-casings")).toBeLessThan(groups.indexOf("land-edges"));
   });
 
   it("gives same-ethnicity lands different faction fills", () => {

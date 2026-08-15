@@ -17,6 +17,15 @@ export interface RenderResult {
   realmUnionGroup: SVGGElement;
   realmHoverGroup: SVGGElement;
   realmEdgeGroup: SVGGElement;
+  /** The pale halo under each land's line, keyed by region id. No region
+   *  classes and nothing syncs it; `renderRealmUnions` only decides which lands
+   *  show one, since a realm member's outer edge is cased by `.ru-casing`
+   *  already and its inner seams are subdivisions rather than frontiers. */
+  landCasingPaths: Map<string, SVGPathElement>;
+  /** Each land's own outline, above its casing, carrying that region's classes
+   *  verbatim so every stroke rule in style.css reaches it. `.region.land-fill`
+   *  draws no stroke of its own - see the comment there. */
+  landEdgePaths: Map<string, SVGPathElement>;
   vassalOverlayGroup: SVGGElement;
   /** Empty layer for the ruler's-seat keeps, above settlements and below
    *  labels; `renderSeatMarkers` in main.ts owns its contents. */
@@ -215,7 +224,11 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     const fill = factionColors.get(r.faction);
     if (!fill) throw new Error(`Unknown faction ${r.faction} for ${r.id}`);
     const p = el("path") as SVGPathElement;
-    p.classList.add("region");
+    // `land-fill` is what the stroke suppression in style.css hangs off. The
+    // outline is drawn by the copies below and NOT by this element, because a
+    // casing has to sit above the fill and the line above the casing, which one
+    // element carrying both cannot do.
+    p.classList.add("region", "land-fill");
     p.setAttribute("d", r.path);
     p.setAttribute("data-id", r.id);
     p.setAttribute("fill", fill);
@@ -223,6 +236,42 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     regionPaths.set(r.id, p);
   }
   svg.appendChild(regionsGroup);
+
+  // The pale halo under every land line. Static in every sense: one path per
+  // land, built once, carrying NONE of the region's classes - a casing is a
+  // cartographic constant rather than a cue, so the observer that syncs the
+  // line copies has nothing to do here. The only thing that varies is which
+  // lands have one, and `renderRealmUnions` decides that with the rest of the
+  // realm layers.
+  const landCasingGroup = el("g") as SVGGElement;
+  landCasingGroup.classList.add("land-casings");
+  const landCasingPaths = new Map<string, SVGPathElement>();
+  for (const r of data.regions) {
+    const p = el("path") as SVGPathElement;
+    p.classList.add("land-casing");
+    p.setAttribute("d", r.path);
+    landCasingGroup.appendChild(p);
+    landCasingPaths.set(r.id, p);
+  }
+  svg.appendChild(landCasingGroup);
+
+  // Every land's own outline, above its casing. Carries the region's classes
+  // verbatim - `syncLandEdges` in main.ts - so every threat, ownership, hover
+  // and targeting stroke in style.css lands here untouched, exactly as the
+  // masked realm-edge copies below already work. Unmasked: this draws the
+  // land's WHOLE outline, which for a realm member is the pale dashed seam and
+  // for everyone else is the border.
+  const landEdgeGroup = el("g") as SVGGElement;
+  landEdgeGroup.classList.add("land-edges");
+  const landEdgePaths = new Map<string, SVGPathElement>();
+  for (const r of data.regions) {
+    const p = el("path") as SVGPathElement;
+    p.classList.add("region", "land-edge");
+    p.setAttribute("d", r.path);
+    landEdgeGroup.appendChild(p);
+    landEdgePaths.set(r.id, p);
+  }
+  svg.appendChild(landEdgeGroup);
 
   // Above the fills, because it carries the state stroke - threat, ownership,
   // hover, targeting - that a realm member is no longer allowed to draw for
@@ -394,6 +443,7 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   return {
     svg, regionPaths, settlementDots, revealSettlement, clearFoundedSettlements,
     realmOutlineGroup, realmUnionGroup, realmHoverGroup, realmEdgeGroup,
+    landCasingPaths, landEdgePaths,
     vassalOverlayGroup, seatGroup, peopleLabels, outerOutline, outsideMask,
   };
 }
