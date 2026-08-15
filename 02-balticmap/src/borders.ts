@@ -245,6 +245,9 @@ function stationsAlong(
   // tangent, clears that edge without moving the measurement off the normal
   // it is taken along: the two axes are perpendicular by construction, so the
   // depth `reach` reports is unchanged everywhere this bias is not needed.
+  // `Math.sign` is 0 exactly at the midpoint, and a station can sit there -
+  // the `|| 1` is what keeps that one station leaning somewhere rather than
+  // landing back on the unbiased, possibly-ambiguous vertex.
   const lo = projectOn(sorted[0], tangent);
   const hi = projectOn(sorted[sorted.length - 1], tangent);
   const mid = (lo + hi) / 2;
@@ -252,7 +255,7 @@ function stationsAlong(
   for (let i = 0; i < sorted.length; i += step) {
     const at = sorted[i];
     const s = projectOn(at, tangent);
-    const bias = Math.sign(mid - s) * RAY_EPS;
+    const bias = (Math.sign(mid - s) || 1) * RAY_EPS;
     const probe = { x: at.x + tangent.x * bias, y: at.y + tangent.y * bias };
     list.push({
       at,
