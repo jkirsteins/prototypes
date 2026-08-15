@@ -102,14 +102,24 @@ describe("reach", () => {
     expect(reach({ x: 15, y: 10 }, EAST, RIGHT, 30, 2)).toBeCloseTo(3, 3);
   });
 
-  it("takes the far side of a sliver rather than stopping at the near one", () => {
-    // Two bars with a gap: [0,4] and [8,12]. From x=0 the honest answer is
-    // the end of the run the tip would land in.
+  it("stops in the first body of land, not the one across the gap", () => {
+    // Two bars with a gap: [0,4] and [8,12]. An arrow crosses a border and
+    // stops in the land it enters; the far bar is across ground this arrow is
+    // not aimed at, and backing off from ITS end puts the tip in the gap.
     const bars = [
       [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 20 }, { x: 0, y: 20 }],
       [{ x: 8, y: 0 }, { x: 12, y: 0 }, { x: 12, y: 20 }, { x: 8, y: 20 }],
     ];
-    expect(reach({ x: 0, y: 10 }, EAST, bars, 30, 2)).toBeCloseTo(10, 3);
+    expect(reach({ x: 0, y: 10 }, EAST, bars, 30, 2)).toBeCloseTo(2, 3);
+  });
+
+  it("is -1 where the run is too short to stand in", () => {
+    // A two-unit sliver with a three-unit inset: there is land, and nowhere on
+    // it to put a tip.
+    const sliver = [[
+      { x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 20 }, { x: 0, y: 20 },
+    ]];
+    expect(reach({ x: 0, y: 10 }, EAST, sliver, 30, 3)).toBe(-1);
   });
 
   it("never returns more than `want` and never less than zero", () => {
@@ -204,15 +214,26 @@ export function reach(
     }
   }
   hits.sort((p, q) => p - q);
-  let inside = pointInRings(start, rings);
-  let end = -1;
+  let on = pointInRings(start, rings);
+  let entered = on ? 0 : -1;
+  let left = -1;
   for (const t of hits) {
-    if (inside) end = t;
-    inside = !inside;
+    if (on) {
+      left = t;
+      break;
+    }
+    entered = t;
+    on = true;
   }
-  if (inside) return want;
-  if (end < 0) return -1;
-  return Math.max(0, Math.min(want, end + RAY_EPS - inset));
+  // Never on this land inside `want`.
+  if (entered < 0) return -1;
+  // The run outlasts `want`: nothing to back away from, so the arrow gets the
+  // whole depth it asked for.
+  if (left < 0) return want;
+  const tip = Math.min(want, left + RAY_EPS - inset);
+  // A run shorter than the inset. There is land here and nowhere on it to put
+  // a tip, which to the caller is the same answer as no land at all.
+  return tip <= entered ? -1 : Math.max(0, tip);
 }
 ```
 
@@ -600,6 +621,23 @@ and add the new behaviour:
     expect([...seen].sort((a, b) => a - b)).toEqual(seen);
   });
 
+  it("deals the stations out along the border, in declaration order", () => {
+    // Lane 0 is offset furthest from the only two roomy stations, so a search
+    // that made each lane come after its neighbour would strand it. Both are
+    // used, and they are handed out in border order.
+    const two: Crossing = {
+      ...FLAT,
+      stations: [
+        { at: { x: 0, y: -6 }, s: -6, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail },
+        { at: { x: 0, y: 6 }, s: 6, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail },
+      ],
+    };
+    const lanes = layoutLanes(two, [
+      { strength: 1, forward: true }, { strength: 1, forward: true },
+    ], aloneOn(two, [1, 1]));
+    expect(lanes.map((l) => l.ay)).toEqual([-6, 6]);
+  });
+
   it("skips a station that cannot be crossed", () => {
     const holed: Crossing = {
       ...FLAT,
@@ -665,31 +703,63 @@ import { ARROW_DEPTHS, type Crossing, type Pt, type Station } from "./borders";
 Replace `layoutLanes` with:
 
 ```ts
-/** The station a lane at this offset should stand on: the nearest one it can
- *  actually cross, taken at most once and in order, so the lanes keep their
- *  declaration order along the border and no two arrows stack.
+/** Which stations a block of lanes stands on, in the order the lanes were
+ *  declared. Shorter than the lane list where the border cannot offer one per
+ *  lane; the caller falls back to the tangent for the rest.
  *
- *  `null` where the border has nothing left to offer, which is the caller's
- *  cue to fall back to the tangent. */
-function stationAt(
-  cross: Crossing, offset: number, after: number,
-): { station: Station; index: number } | null {
+ *  Two passes, and the second is the ordering rule. Each lane takes the FREE
+ *  station nearest its own offset, so no arrow is pushed onto a worse place
+ *  because its neighbour got there first - searching under a "must come after
+ *  the last one" rule costs 2 lanes of 1,236 an end on the wrong land. Then the
+ *  chosen stations are dealt out along the border, which costs nothing: it is
+ *  the same SET, so the same arrows stand in the same places and only which
+ *  arrow stands where changes. */
+function stationsForBlock(
+  cross: Crossing, offsets: readonly number[],
+): Station[] {
   const base = cross.at.x * cross.tangent.x + cross.at.y * cross.tangent.y;
-  const want = base + offset;
-  let best: { station: Station; index: number } | null = null;
-  let bestGap = Number.POSITIVE_INFINITY;
-  for (let i = after + 1; i < cross.stations.length; i++) {
-    const station = cross.stations[i];
-    // Both ways, because an arrow has two ends and the one that is short is
-    // not always the one aimed at the target.
-    if (station.into < ARROW_DEPTHS.min || station.out < ARROW_DEPTHS.min) continue;
-    const gap = Math.abs(station.s - want);
-    if (gap < bestGap) {
-      bestGap = gap;
-      best = { station, index: i };
+  const taken = new Set<number>();
+  const chosen: Station[] = [];
+  for (const offset of offsets) {
+    let best: Station | null = null;
+    let bestIndex = -1;
+    let bestGap = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < cross.stations.length; i++) {
+      if (taken.has(i)) continue;
+      const station = cross.stations[i];
+      // Both ways, because an arrow has two ends and the short one is not
+      // always the end aimed at the target.
+      if (station.into < ARROW_DEPTHS.min || station.out < ARROW_DEPTHS.min) continue;
+      const gap = Math.abs(station.s - (base + offset));
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = station;
+        bestIndex = i;
+      }
     }
+    if (best === null) {
+      // Nothing on this border can take an arrow of the minimum depth. The
+      // roomiest free station is still the best place to stand, and the floor
+      // in `layoutLanes` decides what gets overrun. Measured, neither map
+      // reaches this arm; it is here for one that has not been drawn.
+      for (let i = 0; i < cross.stations.length; i++) {
+        if (taken.has(i)) continue;
+        const station = cross.stations[i];
+        const room = Math.min(Math.max(station.into, 0), Math.max(station.out, 0));
+        const bestRoom = best === null
+          ? -1
+          : Math.min(Math.max(best.into, 0), Math.max(best.out, 0));
+        if (room > bestRoom) {
+          best = station;
+          bestIndex = i;
+        }
+      }
+    }
+    if (best === null) break;
+    taken.add(bestIndex);
+    chosen.push(best);
   }
-  return best;
+  return chosen.sort((p, q) => p.s - q.s);
 }
 
 /** Every arrow crossing one border, side by side along it, at the render's
@@ -717,16 +787,19 @@ export function layoutLanes(
 ): Lane[] {
   const widths = items.map((i) => laneWidthFor(i.strength, unit));
   const total = widths.reduce((s, w) => s + w, 0);
-  const out: Lane[] = [];
+  const offsets: number[] = [];
   let cursor = -total / 2;
-  let taken = -1;
+  for (const width of widths) {
+    offsets.push(cursor + width / 2);
+    cursor += width;
+  }
+  const stations = stationsForBlock(cross, offsets);
+  const out: Lane[] = [];
   for (let i = 0; i < items.length; i++) {
     const width = widths[i];
-    const offset = cursor + width / 2;
-    cursor += width;
-    const found = stationAt(cross, offset, taken);
-    if (found !== null) taken = found.index;
-    const centre = found?.station.at ?? {
+    const offset = offsets[i];
+    const found = stations[i] ?? null;
+    const centre = found?.at ?? {
       x: cross.at.x + cross.tangent.x * offset,
       y: cross.at.y + cross.tangent.y * offset,
     };
@@ -735,10 +808,10 @@ export function layoutLanes(
     // runs, so a backward lane reads the two the other way round.
     const ahead = found === null
       ? ARROW_DEPTHS.head
-      : forward ? found.station.into : found.station.out;
+      : forward ? found.into : found.out;
     const behind = found === null
       ? ARROW_DEPTHS.tail
-      : forward ? found.station.out : found.station.into;
+      : forward ? found.out : found.into;
     const head = Math.max(ahead, ARROW_DEPTHS.min);
     const tail = Math.max(behind, ARROW_DEPTHS.min);
     const dir = forward ? 1 : -1;
@@ -795,16 +868,6 @@ git commit -m "feat(balticmap): an arrow stands where the border can be crossed"
 Append to `tests/borders.test.ts`:
 
 ```ts
-/** Ordered pairs where a lane at the edge of its block still reaches over a
- *  third land. Three frontiers, bent enough that the block runs past where the
- *  two lands actually meet. Named rather than counted: a fourth is a new
- *  defect and has to be looked at. */
-const KNOWN_STRAY = new Set([
-  "dainava|galinda", "galinda|dainava",
-  "leon|upper-march", "upper-march|leon",
-  "sobrarbe|upper-march", "upper-march|sobrarbe",
-]);
-
 describe("no arrow ends on a land it is not about", () => {
   for (const region of Object.values(REGIONS)) {
     const rings = new Map(region.map.regions.map((r) => [r.id, ringsOf(r.path)]));
@@ -826,22 +889,28 @@ describe("no arrow ends on a land it is not about", () => {
             for (const lane of layoutLanes(cross, items, unit)) {
               const tip = { x: lane.bx, y: lane.by };
               const base = { x: lane.ax, y: lane.ay };
+              const where = `${r.id}|${adjId} n=${count} lane=${lane.index}`;
+              // Both halves of the invariant. The first is what the player
+              // reported; the second is what makes the first true rather than
+              // lucky.
+              if (!pointInRings(tip, b)) stray.push(`${where}: tip off ${adjId}`);
+              if (!pointInRings(base, a)) stray.push(`${where}: base off ${r.id}`);
               for (const other of region.map.regions) {
                 if (other.id === r.id || other.id === adjId) continue;
                 const o = rings.get(other.id);
                 if (o === undefined) continue;
-                if (pointInRings(tip, o) || pointInRings(base, o)) {
-                  stray.push(`${r.id}|${adjId} n=${count} lane=${lane.index} on ${other.id}`);
-                }
+                if (pointInRings(tip, o)) stray.push(`${where}: tip on ${other.id}`);
+                if (pointInRings(base, o)) stray.push(`${where}: base on ${other.id}`);
               }
             }
           }
         }
       }
-      const unexpected = stray.filter(
-        (s) => !KNOWN_STRAY.has(s.slice(0, s.indexOf(" "))),
-      );
-      expect(unexpected, unexpected.join("\n")).toEqual([]);
+      // Zero, with no allow-list. Three earlier versions of this design left a
+      // residual and each one turned out to be a defect in the design rather
+      // than a place the map cannot be drawn, so a list here is where the
+      // fourth would go to be forgotten.
+      expect(stray, stray.join("\n")).toEqual([]);
     });
   }
 });
@@ -853,14 +922,15 @@ Extend the import with `layoutLanes` and `unitWidthFor` from
 - [ ] **Step 2: Run it**
 
 Run: `npx vitest run tests/borders.test.ts -t "no arrow ends"`
-Expected: PASS. If it fails with more than the known strays, the station
-selection in Task 3 is picking a station that cannot be crossed - check that
-`stationAt` filters on BOTH `into` and `out`.
+Expected: PASS, with no strays at all. Two likely causes if it does not:
+`reach` is taking the last run of land rather than the first (Task 1), or
+`stationsForBlock` is filtering on one of `into` / `out` rather than both.
 
 - [ ] **Step 3: Sanity-check the test can fail**
 
-Temporarily change `KNOWN_STRAY` to an empty set and re-run. Expected: FAIL,
-listing the 8 known lanes with the land each ends on. Put `KNOWN_STRAY` back.
+Temporarily make `reach` take the LAST run of land instead of the first (move
+the `break` out of the loop). Expected: FAIL, listing 22 lanes - 8 with an end
+on a third land and 14 with an end on no land at all. Put the `break` back.
 
 - [ ] **Step 4: Commit**
 
@@ -1451,7 +1521,7 @@ git commit -m "docs(balticmap): a station, a depth and one loudness"
 |---|---|
 | Part one 1, `reach` | 1 |
 | Part one 2, stations and `at` | 2 |
-| Part one 3, lanes on stations | 3 |
+| Part one 3, lanes on stations, both passes | 3 |
 | Part one 4, the floor and the fallback | 3 (the `Math.max` and the `found === null` arm) |
 | Part one, tests | 2 (station measurement), 4 (the invariant), 3 (lane arithmetic) |
 | Part two 5, quiet is a colour | 7 (the deleted `.march-other` rule) |

@@ -32,11 +32,10 @@ of arrows is centred, and how far each arrow in it reaches.
 **An arrow's tip is inside the land it aims at, and its base is inside the land
 it leaves.**
 
-Everything below serves that one sentence. What is ASSERTED is the half of it
-the player can see go wrong - that neither end stands on a third land - because
-the two maps have places where the polygons overlap or leave a hairline gap,
-and an end in nobody's land looks like an arrow crossing a border. An end on
-Selonia does not.
+Everything below serves that one sentence, and it holds outright: over every
+ordered land adjacency of both maps, drawn as a 1, 2 and 3 arrow block, no
+lane's tip is off its target, no lane's base is off its source, and neither end
+of any lane stands on a third land.
 
 Nothing below changes an arrow's width, its lane order, its identity across
 renders, or which border it crosses. A lane's position ALONG its border does
@@ -75,23 +74,35 @@ reach(from: Pt, dir: Pt, rings: Pt[][], want: number, inset: number): number
 ```
 
 How far from `from` along `dir` an arrow may go and still end on that land,
-never more than `want`, and `-1` where the ray meets that land nowhere within
-`want`. It intersects the line with every ring edge, walks the inside-intervals
-in order, and returns the end of the last run of land, less `inset`.
+never more than `want`, and `-1` where there is no such distance. It intersects
+the line with every ring edge, finds the FIRST run of land along the ray, and
+returns that run's end less `inset` - or `want` where the run outlasts `want`.
 
-Three things about it are load-bearing.
+Four things about it are load-bearing.
 
 - **Exact intersections, not a sampled walk.** The shapes this exists to detect
   are slivers, and a walk in 1-unit steps steps over them. It is the same
   argument that made `sharedVertices` a set intersection rather than a
   proximity search.
+- **The FIRST run of land, and not the last.** An arrow crosses a border and
+  stops in the body of land it enters; a later run is on the far side of a gap,
+  which is ground this arrow is not aimed at. This is not a subtlety. On
+  `dainava | galinda` the ray leaves Galinda at 21.8 and clips it again for a
+  tenth of a unit at 33.9, and backing off from THAT run's end by the inset
+  puts the tip at 32 - in the gap, standing on Suduva. Measured over both maps,
+  this single choice is the whole of the residual: last-run leaves 8 lanes
+  ending on a land they are not about and 14 ending on no land at all,
+  first-run leaves none.
 - **Whether the ray STARTS on the land is asked of `pointInRings`**, the
   predicate the rest of the file already uses; the edge hits only say where
   that changes. Two point-in-polygon rules disagreeing about the same map is
   how a measurement and the test that checks it end up contradicting each
   other.
-- **`-1` is a real answer and not an error.** It is what makes "this place on
-  the border cannot be crossed" a thing the layout can see and step around,
+- **`-1` is a real answer and not an error**, and it covers two cases: the land
+  is not reached within `want`, and the run is too short to stand in - shorter
+  than the inset, so there is no point on it to put a tip. Both mean the same
+  thing to the caller. It is what makes "this place on the border cannot be
+  crossed" a thing the layout can see and step around,
   rather than a length it has to guess at.
 
 Pure numbers, no DOM, for the reason the rest of that file is: `getBBox()` is a
@@ -123,8 +134,8 @@ Iberia.
 
 The sampling cap is what keeps this cheap. A border can share 183 vertices, and
 measuring all of them against two thousand edges twice over would be paid on
-every first paint of a border. Both maps' 206 adjacencies build in 180 ms
-total, which is also what makes the all-pairs test above worth running.
+every first paint of a border. Both maps' 206 adjacencies build in about 300 ms
+total, which is also what makes the all-pairs test worth running.
 
 The orientation vote keeps its current probe point - the centroid-nearest
 vertex - so the behaviour `tests/borders.test.ts` validates across all 103
@@ -134,18 +145,33 @@ station in both directions.
 
 ## 3. A lane stands at a station and reaches exactly as far as it has room
 
-`layoutLanes` stops computing `at + tangent * offset` and asks for the station
-nearest that offset, among those with at least `LAYOUT.depthMin` of room BOTH
-ways. Lanes are assigned in order and a station is taken at most once, so the
-lanes keep their declaration order along the border and no two arrows stack.
-The lane's `head` is that station's `into` and its `tail` is its `out`.
+`layoutLanes` stops computing `at + tangent * offset` and stands each lane on a
+station, in two passes:
+
+1. **Which stations.** Each lane in turn takes the free station nearest its
+   offset, among those with at least `LAYOUT.depthMin` of room BOTH ways. A
+   station is taken at most once, so no two arrows stack.
+2. **Which lane gets which.** The chosen stations are sorted along the tangent
+   and handed out in declaration order.
+
+The second pass is one line and it buys the whole ordering rule back. Searching
+under a "must come after the last one" constraint instead - the obvious single
+pass - forces a lane onto a worse station when its neighbour has taken the good
+one, and that costs 2 lanes of 1,236 ending on the wrong land. Choosing freely
+and then dealing the results out in order costs nothing: it is the same SET of
+stations, so the same arrows are drawn in the same places, and only which arrow
+stands where changes. Measured: 6 lanes came out in the wrong order along the
+border before the sort, and none after it.
+
+The lane's `head` is its station's `into` and its `tail` is its `out`.
 
 **Why the lane centre moves at all.** The tangent is a straight global fit and
 the border bends under it, so a lane 24 units off centre is routinely not on
 the border - it is inside one of the two lands, and no length of arrow drawn
-from there crosses anything. Measured over the same 1,236 lane cases, keeping
-the lane centres on the tangent line leaves 50 lanes whose tip or base is on
-the wrong land; standing them on stations leaves 8.
+from there crosses anything. Measured over the same 1,236 lane cases, with the
+same `reach`: keeping the lane centres on the tangent line and only clamping
+their depths leaves 81 lanes with an end off the land it belongs on. Standing
+them on stations leaves none.
 
 On a straight border every station lies on the tangent line anyway and nothing
 moves. On a bent one the block follows the frontier, which is what an arrow
@@ -157,15 +183,18 @@ crossings changes.
 
 ## 4. When no station qualifies
 
-The block falls back to `Crossing.at`, the roomiest station, and the depths are
-floored at `LAYOUT.depthMin` (12), with `inset` 2. This is the trade
+The lane takes the roomiest station that is still free anyway, and the depths
+are floored at `LAYOUT.depthMin` (12), with `inset` 2. A place with four units
+of land behind it is still a better place to stand than a point picked off a
+straight line, so the fallback is a worse station and never a different rule. This is the trade
 `LAYOUT.blockMin` already states in the same object: an arrow nobody can see is
 worse than one slightly wider than the ground it crosses.
 
 Measured, the fallback never has to lie: because a station qualifies only when
 it has 12 units both ways, **no lane on either map is drawn past a floor that
-its station could not pay for**. The floor is there for a map that has not been
-drawn yet.
+its station could not pay for**, and no block on either map runs out of
+qualifying stations. Both arms are there for a map that has not been drawn
+yet.
 
 ## Measurements
 
@@ -175,19 +204,21 @@ arrow block, 1,236 lanes in all:
 | | value |
 |---|---|
 | total arrow length, median | 64 (full: 30 + 34) |
-| p5 | 58.3 |
-| min | 42.3 |
-| lanes with an end on a land that is neither source nor target | 8 |
-| lanes with an end in nobody's land (a gap between polygons) | 14 |
+| p5 | 51.9 |
+| min | 29.1 |
+| **lanes with an end on a land that is neither source nor target** | **0** |
+| **lanes with an end off its own land at all** | **0** |
 | lanes sharing a station with a neighbour | 0 |
-| build time, both maps | 180 ms |
+| lanes out of declaration order along the border | 0 |
+| build time, both maps | 305 ms |
 
-The 8 are three frontiers bent enough that a lane at the edge of its block
-reaches over a third land, counted in both directions and at more than one
-block size: `dainava | galinda` over Suduva (2), `leon | upper-march` over
-Toledo (2), and `sobrarbe | upper-march` over Urgell (4). The test names them
-individually; a ninth has to be looked at. Today's layout has 50 such lanes, so
-this is the same defect reduced by six times rather than a defect introduced.
+Nothing is excluded and nothing is on a known-exceptions list. Three earlier
+versions of this design left a residual - 50 lanes, then 14, then 8 - and each
+time the residual turned out to be a defect in the measurement or the
+assignment rather than a place the map cannot be drawn: last-run `reach`
+accounted for the 8, and the come-after-your-neighbour station search for the
+last 2. The test asserts zero, so a map that cannot meet it fails rather than
+being added to a list.
 
 ## What does not change
 
@@ -211,16 +242,17 @@ this is the same defect reduced by six times rather than a defect introduced.
 the new assertions belong, beside the normal-direction one they are siblings
 of:
 
-- for every ordered land adjacency, drawn as a 1, 2 and 3 arrow block, neither
-  end of any lane stands on a land that is neither its source nor its target.
-  The 8 known lanes are named individually - `dainava | galinda`,
-  `leon | upper-march`, `sobrarbe | upper-march` - so a ninth fails rather than
-  joining a count;
+- for every ordered land adjacency, drawn as a 1, 2 and 3 arrow block, every
+  lane's tip is inside its target, every lane's base is inside its source, and
+  neither end stands on a third land. Zero exceptions and no allow-list: the
+  three residuals this design went through were each a defect in it, and a list
+  is where a fourth would have gone to be forgotten;
 - every station on every border has `into` and `out` that are either `-1` or a
   distance at which `pointInRings` agrees the point is on that land. This is
   the measurement checked against the map by the predicate the rest of the file
   uses, and it is what stops `reach` and the test above drifting apart;
-- no two lanes of one block share a station.
+- no two lanes of one block share a station, and the lanes come out in
+  declaration order along the border.
 
 `tests/arrow-scene.test.ts` covers the layout arithmetic on synthetic
 crossings: a lane whose station has 20 units of room comes back 20 long on that
