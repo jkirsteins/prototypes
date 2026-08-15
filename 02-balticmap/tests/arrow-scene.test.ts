@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import {
-  ARROW_KINDS, ARROW_MOTION_MS, LAYOUT, blockWidthFor, borderKeyOf,
-  laneWidthFor, layoutLanes, renderArrowScene, unitWidthFor,
-  type ArrowSpec, type SceneCtx,
+  ARROW_EMPHASIS, ARROW_KINDS, ARROW_MOTION_MS, LAYOUT, blockWidthFor,
+  borderKeyOf, emphasisFor, laneWidthFor, layoutLanes, renderArrowScene,
+  unitWidthFor, type ArrowCues, type ArrowSpec, type SceneCtx,
 } from "../src/arrow-scene";
 import { ARROW_DEPTHS, type Crossing, type Station } from "../src/borders";
 
@@ -294,6 +294,49 @@ describe("ARROW_KINDS", () => {
   });
 });
 
+describe("emphasisFor", () => {
+  const cues = (over: Partial<ArrowCues> = {}): ArrowCues => ({
+    live: false, anyFocus: false, onFocus: false,
+    pinnedOut: false, aiming: false, atAimTarget: false, ...over,
+  });
+
+  it("leaves an arrow nothing is being asked about at full", () => {
+    expect(emphasisFor(cues())).toBe("full");
+  });
+
+  it("fades every arrow but the one under the pointer", () => {
+    expect(emphasisFor(cues({ anyFocus: true }))).toBe("faded");
+    expect(emphasisFor(cues({ anyFocus: true, onFocus: true }))).toBe("full");
+  });
+
+  it("dims what a pin is not about", () => {
+    expect(emphasisFor(cues({ pinnedOut: true }))).toBe("dimmed");
+  });
+
+  it("puts an aim ahead of nothing and a pin ahead of an aim", () => {
+    // Starting an aim must not un-dim what the pin put away.
+    expect(emphasisFor(cues({ pinnedOut: true, aiming: true }))).toBe("dimmed");
+    expect(emphasisFor(cues({ aiming: true }))).toBe("back");
+  });
+
+  it("keeps an arrow landing where the player is aiming at full", () => {
+    expect(emphasisFor(cues({ aiming: true, atAimTarget: true }))).toBe("full");
+  });
+
+  it("never quietens the arrow a beat is about, or the aim itself", () => {
+    expect(emphasisFor(cues({ live: true, anyFocus: true }))).toBe("full");
+    expect(emphasisFor(cues({ live: true, pinnedOut: true, aiming: true }))).toBe("full");
+  });
+
+  it("names a class for every emphasis and no two the same", () => {
+    const names = Object.values(ARROW_EMPHASIS).map((e) => e.className);
+    expect(new Set(names).size).toBe(names.length);
+    for (const e of Object.values(ARROW_EMPHASIS)) {
+      expect(e.why.length).toBeGreaterThan(20);
+    }
+  });
+});
+
 describe("renderArrowScene", () => {
   it("draws one group per spec, keyed by id", () => {
     const host = document.createElementNS(NS, "g") as SVGGElement;
@@ -347,15 +390,15 @@ describe("renderArrowScene", () => {
     expect([...drawn.keys()]).toEqual(["m2"]);
   });
 
-  it("dresses a brand new arrow with the cues that decide how faint it is", () => {
+  it("dresses a brand new arrow with the emphasis that decides how loud it is", () => {
     // The class has to be on the element the render that CREATES it, because
     // the enter fade rises to the opacity that element has once it is in the
-    // tree. A dim applied by a later pass is a dim the fade was never told
+    // tree. An emphasis applied by a later pass is one the fade was never told
     // about, and the arrow drops to it in the one frame the fade ends on.
     const host = document.createElementNS(NS, "g") as SVGGElement;
     const drawn = renderArrowScene(host, [
-      { ...march("m1", "a", "b", 1), dimmed: true },
-      { ...march("m2", "b", "a", 1), faded: true },
+      { ...march("m1", "a", "b", 1), emphasis: "dimmed" },
+      { ...march("m2", "b", "a", 1), emphasis: "faded" },
     ], ctx);
     expect(drawn.get("m1")?.classList.contains("arrow-dim")).toBe(true);
     expect(drawn.get("m2")?.classList.contains("arrow-faded")).toBe(true);
@@ -366,6 +409,15 @@ describe("renderArrowScene", () => {
     ], ctx);
     expect(again.get("m1")?.classList.contains("arrow-dim")).toBe(false);
     expect(again.get("m2")?.classList.contains("arrow-faded")).toBe(false);
+  });
+
+  it("writes the emphasis onto the arrow", () => {
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      { ...march("m1", "a", "b", 1), emphasis: "dimmed" },
+    ], ctx);
+    expect(drawn.get("m1")?.getAttribute("class"))
+      .toContain(ARROW_EMPHASIS.dimmed.className);
   });
 
   it("carries the caller's dataset onto the group", () => {

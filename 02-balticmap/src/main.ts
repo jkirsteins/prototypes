@@ -38,7 +38,7 @@ import {
 } from "./playability";
 import { armiesOn, axesOf, type March, type Marches } from "./marches";
 import { crossingBetween, ringsOf, type Crossing, type Pt } from "./borders";
-import { renderArrowScene, type ArrowSpec, type SceneCtx } from "./arrow-scene";
+import { emphasisFor, renderArrowScene, type ArrowSpec, type SceneCtx } from "./arrow-scene";
 import { animations, runAnimation } from "./animate";
 import {
   defenseMaxOf, defenseOf, gateBandOf, MIN_RAID_SPEND, type GateBand,
@@ -2075,24 +2075,33 @@ function paintArrows(): void {
   // down a border painted the preview straight over the raid it was answering.
   const preview = aimSpec();
   if (preview !== null) specs.push(preview);
-  // What the hover and the pin have to say about each arrow, said as part of
-  // what the arrow IS. Asked of the spec's own dataset, which is where both
-  // questions were always answered from - the ends of the arrow and whose army
-  // it is - so every kind on the board is asked the same question, resolutions
-  // and the preview included.
+  // What the hover, the pin and a live aim have to say about each arrow, said
+  // as part of what the arrow IS. Asked of the spec's own dataset, which is
+  // where every one of these questions was always answered from - the ends of
+  // the arrow and whose army it is - so every kind on the board is asked the
+  // same question, resolutions and the preview included.
   //
   // Stated here and never written on afterwards, because a new arrow fades up
   // to the opacity it has the moment it enters the tree: applied after the
-  // paint, the dim was a value the fade had not been told about, and every
+  // paint, an emphasis is a value the fade had not been told about, and every
   // arrow declared while a land was pinned rose to full over 220ms and then
-  // dropped to 0.16 in the one frame the fade ended on.
+  // dropped to its dim in the one frame the fade ended on.
   const focus = effectiveArrowFocus();
   for (const spec of specs) {
     const ends = spec.dataset ?? {};
-    spec.faded = focus !== null
-      && !(ends.from === focus.from && ends.target === focus.to);
-    spec.dimmed = arrowDimLand !== null
-      && ends.actor !== arrowDimLand && ends.target !== arrowDimLand;
+    spec.emphasis = emphasisFor({
+      // A ghost stands for the landing its beat is explaining and the preview
+      // IS the question being asked, so neither is ever pushed back by a
+      // question about something else.
+      live: spec.kind === "ghost" || spec.kind === "aim",
+      anyFocus: focus !== null,
+      onFocus: ends.from === focus?.from && ends.target === focus?.to,
+      pinnedOut: arrowDimLand !== null
+        && ends.actor !== arrowDimLand && ends.target !== arrowDimLand,
+      aiming: targeting,
+      atAimTarget: aiming !== null && aiming.over !== null
+        && ends.target === aiming.over,
+    });
   }
   const drawn = renderArrowScene(arrowGroup, specs, sceneCtx);
   drawn.get("aim")?.classList.toggle(

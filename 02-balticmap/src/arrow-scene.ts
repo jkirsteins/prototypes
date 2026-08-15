@@ -253,6 +253,60 @@ export const ARROW_KINDS: Record<ArrowKind, ArrowKindDef> = {
   },
 };
 
+/** How loud an arrow is drawn. Exactly one applies, chosen in `emphasisFor`.
+ *
+ *  A scale and not a set of flags, because opacity is one property: it was
+ *  four CSS rules on the same element resolved by specificity, which had
+ *  already produced a "faded" rival arrow drawn BRIGHTER than an unfaded one,
+ *  and starting an aim raised every pin-dimmed arrow back up. What an arrow
+ *  looks like is decided here, once, and written as one class. */
+export type ArrowEmphasis = "full" | "back" | "dimmed" | "faded";
+
+export const ARROW_EMPHASIS: Record<ArrowEmphasis, {
+  className: string;
+  why: string;
+}> = {
+  full: {
+    className: "arrow-full",
+    why: "Nothing is narrowing the map, or this arrow is the thing being asked about: the one under the pointer, the one landing where the player is aiming, the aim itself, or the landing a beat is explaining.",
+  },
+  back: {
+    className: "arrow-back",
+    why: "An aim is live and this arrow is not part of it. Slightly back, because the thing being chosen is the map - but never away, because what is already flying at a land is half of the decision to send an army there.",
+  },
+  dimmed: {
+    className: "arrow-dim",
+    why: "A pin has narrowed the map to one realm and this arrow is no business of it. Faint rather than hidden: the board still has to read as a whole while one land is studied.",
+  },
+  faded: {
+    className: "arrow-faded",
+    why: "The pointer is resting on another arrow, and that arrow's two lands own the screen for as long as it does.",
+  },
+};
+
+/** What every surface that can quieten an arrow has to say about it. */
+export interface ArrowCues {
+  /** A ghost or the aim preview: something happening right now, never
+   *  quietened by a question about something else. */
+  live: boolean;
+  anyFocus: boolean;
+  onFocus: boolean;
+  pinnedOut: boolean;
+  aiming: boolean;
+  atAimTarget: boolean;
+}
+
+/** The one answer, in one order. A pin beats an aim: the pin is a narrowing the
+ *  player asked for and holds, the aim is a question they are in the middle
+ *  of. */
+export function emphasisFor(cues: ArrowCues): ArrowEmphasis {
+  if (cues.live) return "full";
+  if (cues.anyFocus) return cues.onFocus ? "full" : "faded";
+  if (cues.pinnedOut) return "dimmed";
+  if (cues.aiming) return cues.atAimTarget ? "full" : "back";
+  return "full";
+}
+
 export interface ArrowSpec {
   /** The caller's handle. Behaviour is bound to the group this returns, so an
    *  id has to be stable for as long as the arrow is. */
@@ -281,19 +335,16 @@ export interface ArrowSpec {
   chip?: { order: number; clash: boolean };
   /** A claim already answered, drawn faded. */
   doomed?: boolean;
-  /** Receding because the pointer is resting on another arrow, and receding
-   *  because a pin has narrowed the map to a land this arrow is no business
-   *  of. Two cues another surface owns the meaning of, carried HERE rather
-   *  than written onto the element afterwards.
+  /** How loud this arrow is drawn, decided by `emphasisFor` from what the
+   *  hover, the pin and a live aim have to say about it.
    *
-   *  `dressArrow` states an arrow's whole class attribute, and `enter` fades a
+   *  Carried HERE rather than written onto the element afterwards, because
+   *  `dressArrow` states an arrow's whole class attribute and `enter` fades a
    *  new arrow up to the opacity the stylesheet gives it once it is in the
-   *  tree. A cue applied after the paint is therefore a cue the fade did not
-   *  know about: the arrow rose to its undimmed resting value and dropped to
-   *  the dim in the single frame the fade ended on. What an arrow looks like
-   *  is part of what it IS, so it is stated with everything else about it. */
-  faded?: boolean;
-  dimmed?: boolean;
+   *  tree. A cue applied after the paint is a cue the fade was not told about:
+   *  the arrow rose to full over 220ms and dropped to the dim in the single
+   *  frame the fade ended on. */
+  emphasis?: ArrowEmphasis;
   /** Written onto the group, for the hover, the pin and the counter click. */
   dataset?: Record<string, string>;
 }
@@ -793,8 +844,7 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
   // fade can be aimed past.
   const classes = [def.className, `march-${spec.tone}`];
   if (spec.doomed === true) classes.push("claim-doomed");
-  if (spec.faded === true) classes.push("arrow-faded");
-  if (spec.dimmed === true) classes.push("arrow-dim");
+  classes.push(ARROW_EMPHASIS[spec.emphasis ?? "full"].className);
   setAttr(g, "class", classes.join(" "));
   applyDataset(g, spec.dataset ?? {});
   return true;

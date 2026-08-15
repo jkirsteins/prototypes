@@ -1148,12 +1148,10 @@ svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
 /* While an aim is live the arrows stay on screen and stop taking clicks: what
    is already flying at a land is half of what decides whether to send an army
    there, so hiding them is not an option, and every click on the map belongs
-   to the land under it until the aim is answered. Slightly back, because the
-   thing being chosen is the map. */
+   to the land under it until the aim is answered. */
 .march-arrows.aiming .march-arrow,
 .march-arrows.aiming .claim-arrow {
   pointer-events: none;
-  opacity: 0.75;
 }
 
 /* Pointing at an arrow asks "which two lands is this about". A land that is
@@ -1242,25 +1240,6 @@ svg.map.arrow-focused .river {
   opacity: 0.3;
 }
 
-/* Scoped under the state rather than written flat, because
-   `.march-arrow.march-other` further down this file sets a rival's arrow to
-   0.45 and would win the tie on source order - a "faded" rival arrow came out
-   BRIGHTER than an unfaded one. */
-svg.map.arrow-focused .march-arrow.arrow-faded,
-svg.map.arrow-focused .claim-arrow.arrow-faded {
-  opacity: 0.12;
-  filter: saturate(0);
-}
-
-/* And the one being pointed at comes to full. A rival's quarrel rests at 0.45
-   because it is information rather than a decision - but the moment it is the
-   thing under the pointer it IS the decision, and on a map that has just gone
-   grey around it, 45% was the faintest mark left. */
-svg.map.arrow-focused .march-arrow:not(.arrow-faded),
-svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
-  opacity: 1;
-}
-
 .march-arrow polygon {
   stroke: #fdfaf4;
   stroke-width: 1.6px;
@@ -1310,12 +1289,6 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
   fill: #d4af37;
 }
 
-/* A quarrel between two rivals: their own colour, faded, because it is
-   information rather than a decision. */
-.march-arrow.march-other {
-  opacity: 0.45;
-}
-
 /* A claim of fealty in flight. Dashed, with a ring for a head: nothing is
    marching, and an arrow that looked like an army would have the player
    reading strength into it. */
@@ -1344,11 +1317,30 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
   color: #6b2fa0;
 }
 
-/* An arrow a pin is not about. Faint rather than hidden: the board still has
-   to read as a whole while one land is being studied. */
+/* How loud an arrow is drawn. One class, chosen in `emphasisFor` - see
+   ARROW_EMPHASIS in src/arrow-scene.ts for what each one means. Four rules of
+   equal weight on the same property, so which one applies is decided in code
+   and never by specificity. */
+.march-arrow.arrow-full,
+.claim-arrow.arrow-full,
+.clash-flash.arrow-full {
+  opacity: 1;
+}
+
+.march-arrow.arrow-back,
+.claim-arrow.arrow-back {
+  opacity: 0.75;
+}
+
 .march-arrow.arrow-dim,
 .claim-arrow.arrow-dim {
   opacity: 0.16;
+}
+
+.march-arrow.arrow-faded,
+.claim-arrow.arrow-faded {
+  opacity: 0.12;
+  filter: saturate(0);
 }
 
 .claim-label {
