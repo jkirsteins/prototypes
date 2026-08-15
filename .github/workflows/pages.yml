@@ -24,7 +24,18 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  # Split so a branch preview queued behind another branch's build can never
+  # leave a push to main waiting behind it: GitHub cancels a PENDING run
+  # (even with cancel-in-progress: false) the moment a newer run queues on
+  # the same group, and a single shared "pages" group let a preview push
+  # cancel a queued main deploy, leaving the live site stale on a
+  # green-looking history. Splitting means a main run and a preview run can
+  # now deploy concurrently, and whichever lands last wins the artifact.
+  # That is safe in both orders: a preview run publishes main's tree PLUS
+  # the preview (main's half is correct either way), and a main run
+  # publishes main alone (which drops the live preview, already documented
+  # behaviour above).
+  group: pages-${{ github.ref_name == 'main' && 'main' || 'preview' }}
   cancel-in-progress: false
 
 env:

@@ -58,6 +58,23 @@ WHOLE site, and each of them will bite somebody:
 - **The workflow used is the one on the branch.** A branch cut before branch
   previews existed cannot preview itself until it is rebased.
 
+Branch deploys also depend on a repo SETTING, not just the workflow file:
+Settings > Environments > github-pages > Deployment branches and tags. The
+`deploy` job runs under that environment, and a branch with no matching
+policy fails there with `Branch "X" is not allowed to deploy to github-pages
+due to environment protection rules` - a build-job success followed by a
+deploy-job failure that reads exactly like a workflow bug and is not one.
+`main`, `*` and `*/*` are the policies this repo has configured.
+
+The slash rule is the part worth remembering: a deployment branch pattern's
+`*` and `**` do NOT cross a `/`, the opposite of how those wildcards read
+everywhere else in this file. `*` alone matches only a single-segment branch
+name, so `feature/branch-previews` needs the `*/*` policy on top of it, and a
+branch nested one level deeper (`a/b/c`) needs `*/*/*` and fails without it.
+Add the matching policy alongside a newly nested branch naming scheme, the
+same way `.github/pages-index.html` gets a new prototype's link in the same
+change.
+
 ## Running a dev server
 
 Run the prototype's own dev server, from its directory, only when you actually
