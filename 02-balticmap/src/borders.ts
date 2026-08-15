@@ -84,6 +84,105 @@ export function pointInRings(p: Pt, rings: Pt[][]): boolean {
   return inside;
 }
 
+/** How deep an arrow may go into a land, and how far past a coast it reaches
+ *  across water. Here rather than in `src/arrow-scene.ts` because the depth of
+ *  an arrow is a question about the GROUND, and the ground is measured on this
+ *  side: a station is built with these numbers as its ceiling, and the scene is
+ *  handed the answer rather than the polygons. */
+export const ARROW_DEPTHS = {
+  head: 34,
+  tail: 30,
+  seaClearance: 16,
+  /** Shortest an arrow's half may be drawn. Below this it stops reading as an
+   *  arrow, so the ground gets overrun instead - the trade `LAYOUT.blockMin`
+   *  already makes for width. */
+  min: 12,
+  /** How far short of the far edge a tip stops, so it stands ON the land
+   *  rather than exactly on its outline. */
+  inset: 2,
+};
+
+/** Nudge off the start point before casting. A station sits exactly on a
+ *  border vertex, which is on the outline of both lands, and a ray cast from
+ *  exactly there is a coin toss on which side it starts. */
+const RAY_EPS = 0.01;
+
+/** How far from `from` along `dir` an arrow may go and still END on this land,
+ *  capped at `want` and backed off by `inset`. `-1` where the ray meets the
+ *  land nowhere inside `want`.
+ *
+ *  `dir` must be a unit vector: the returned number is a distance in the map's
+ *  own user units, which is what the caller places an arrow with.
+ *
+ *  Exact edge intersections rather than a sampled walk, because the shapes this
+ *  exists to detect are slivers and a walk in whole units steps straight over
+ *  them - the same argument that makes `sharedVertices` a set intersection
+ *  rather than a proximity search.
+ *
+ *  Whether the ray STARTS on the land is asked of `pointInRings` and not of the
+ *  parity of the hits: the hits say where inside-ness CHANGES, and two
+ *  point-in-polygon rules disagreeing about the same map is how a measurement
+ *  and the test that checks it end up contradicting each other.
+ *
+ *  When the ray already starts on the land, where this run of land BEGAN sits
+ *  behind `from`, not at it, so a second probe looks backward along `dir` for
+ *  that edge. Without it, a station planted deep inside a wide land and one
+ *  planted on a sliver too narrow for the inset read the same from where the
+ *  ray stands - both are simply "on" with nothing entering ahead of them -
+ *  and only the true run length tells the two apart.
+ *
+ *  `-1` is a real answer rather than an error. It is what lets the layout see
+ *  that a place on the border cannot be crossed and step around it, instead of
+ *  guessing a length there. */
+export function reach(
+  from: Pt, dir: Pt, rings: Pt[][], want: number, inset: number,
+): number {
+  const start = { x: from.x + dir.x * RAY_EPS, y: from.y + dir.y * RAY_EPS };
+  const hits: number[] = [];
+  let behind = Number.NEGATIVE_INFINITY;
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      const ex = b.x - a.x;
+      const ey = b.y - a.y;
+      const den = dir.x * ey - dir.y * ex;
+      if (den === 0) continue;
+      const t = ((a.x - start.x) * ey - (a.y - start.y) * ex) / den;
+      const u = ((a.x - start.x) * dir.y - (a.y - start.y) * dir.x) / den;
+      // `u < 1` and not `<= 1`: a vertex belongs to exactly one of the two
+      // edges that meet there, or every corner is counted twice and the
+      // inside-outside walk below flips itself back.
+      if (u < 0 || u >= 1) continue;
+      if (t > 0 && t <= want) hits.push(t);
+      // The nearest edge behind `start`: a candidate for where an already-on
+      // run of land began.
+      else if (t < 0 && t > behind) behind = t;
+    }
+  }
+  hits.sort((p, q) => p - q);
+  let on = pointInRings(start, rings);
+  let entered = on ? (behind > Number.NEGATIVE_INFINITY ? behind : 0) : -1;
+  let left = -1;
+  for (const t of hits) {
+    if (on) {
+      left = t;
+      break;
+    }
+    entered = t;
+    on = true;
+  }
+  // Never on this land inside `want`.
+  if (!on) return -1;
+  // The run outlasts `want`: nothing to back away from, so the arrow gets the
+  // whole depth it asked for.
+  if (left < 0) return want;
+  const tip = Math.min(want, left + RAY_EPS - inset);
+  // A run shorter than the inset. There is land here and nowhere on it to put
+  // a tip, which to the caller is the same answer as no land at all.
+  return tip <= entered ? -1 : Math.max(0, tip);
+}
+
 /** How far out the orientation vote probes. Four distances rather than one,
  *  and this is load-bearing: `tangent` is a GLOBAL fit to the whole border and
  *  the border is locally bent under it, so a single probe is ambiguous on 7 of

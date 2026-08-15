@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { ringsOf, sharedVertices, crossingBetween, pointInRings } from "../src/borders";
+import {
+  ringsOf, sharedVertices, crossingBetween, pointInRings, reach,
+} from "../src/borders";
 import { REGIONS } from "../src/regions";
 
 describe("ringsOf", () => {
@@ -58,6 +60,67 @@ describe("pointInRings", () => {
   it("is true inside and false outside", () => {
     expect(pointInRings({ x: 5, y: 10 }, LEFT)).toBe(true);
     expect(pointInRings({ x: 15, y: 10 }, LEFT)).toBe(false);
+  });
+});
+
+describe("reach", () => {
+  const EAST = { x: 1, y: 0 };
+  const WEST = { x: -1, y: 0 };
+
+  it("gives the whole of `want` where the land runs past it", () => {
+    // From the border into RIGHT: 10 units of land, asking for 6.
+    expect(reach({ x: 10, y: 10 }, EAST, RIGHT, 6, 2)).toBeCloseTo(6, 3);
+  });
+
+  it("stops short of the far edge by the inset", () => {
+    // RIGHT ends at x=20, so 10 units of land for a `want` of 30.
+    expect(reach({ x: 10, y: 10 }, EAST, RIGHT, 30, 2)).toBeCloseTo(8, 3);
+  });
+
+  it("measures backwards along a negative direction", () => {
+    expect(reach({ x: 10, y: 10 }, WEST, LEFT, 30, 2)).toBeCloseTo(8, 3);
+  });
+
+  it("is -1 where the ray meets the land nowhere inside `want`", () => {
+    // Facing away from RIGHT entirely.
+    expect(reach({ x: 10, y: 10 }, WEST, RIGHT, 30, 2)).toBe(-1);
+  });
+
+  it("is -1 where the land is further off than `want`", () => {
+    const far = [[
+      { x: 100, y: 0 }, { x: 110, y: 0 }, { x: 110, y: 20 }, { x: 100, y: 20 },
+    ]];
+    expect(reach({ x: 10, y: 10 }, EAST, far, 30, 2)).toBe(-1);
+  });
+
+  it("measures from a point already inside the land", () => {
+    // Five units in, fifteen to the far edge, less the inset.
+    expect(reach({ x: 15, y: 10 }, EAST, RIGHT, 30, 2)).toBeCloseTo(3, 3);
+  });
+
+  it("stops in the first body of land, not the one across the gap", () => {
+    // Two bars with a gap: [0,4] and [8,12]. An arrow crosses a border and
+    // stops in the land it enters; the far bar is across ground this arrow is
+    // not aimed at, and backing off from ITS end puts the tip in the gap.
+    const bars = [
+      [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 20 }, { x: 0, y: 20 }],
+      [{ x: 8, y: 0 }, { x: 12, y: 0 }, { x: 12, y: 20 }, { x: 8, y: 20 }],
+    ];
+    expect(reach({ x: 0, y: 10 }, EAST, bars, 30, 2)).toBeCloseTo(2, 3);
+  });
+
+  it("is -1 where the run is too short to stand in", () => {
+    // A two-unit sliver with a three-unit inset: there is land, and nowhere on
+    // it to put a tip.
+    const sliver = [[
+      { x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 20 }, { x: 0, y: 20 },
+    ]];
+    expect(reach({ x: 0, y: 10 }, EAST, sliver, 30, 3)).toBe(-1);
+  });
+
+  it("never returns more than `want` and never less than zero", () => {
+    expect(reach({ x: 10, y: 10 }, EAST, RIGHT, 4, 2)).toBeLessThanOrEqual(4);
+    expect(reach({ x: 19, y: 10 }, EAST, RIGHT, 30, 8)).toBeGreaterThanOrEqual(0);
   });
 });
 
