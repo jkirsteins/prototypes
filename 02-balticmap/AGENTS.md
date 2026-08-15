@@ -264,12 +264,17 @@ could forget the border, the lane or the ghost beside it.
 
 **The border is in the map data already.** Adjacent regions share EXACT
 vertices, so `crossingBetween` in `src/borders.ts` is a set intersection, not
-a geometry search. Four things about it are load-bearing:
+a geometry search. Five things about it are load-bearing:
 
 - **A border is a table of measured STATIONS**, up to 32 real vertices sampled
   along it, each measured once for how much room `reach` finds into both
-  lands. `Crossing.at` is the roomiest of them - never a computed point, and
-  no longer the vertex nearest the border's centroid - and a lane STANDS on a
+  lands. `reach` itself takes the FIRST run of land along the ray, capped at
+  `want` and backed off by `inset`, and answers `-1` for a place an arrow
+  cannot stand at all - never reached, or a run too short to stand in: an
+  arrow crosses a border and stops in the body of the land it enters, and a
+  later run is across a gap, on ground the arrow was never aimed at.
+  `Crossing.at` is the roomiest station - never a computed point, and no
+  longer the vertex nearest the border's centroid - and a lane STANDS on a
   station rather than at an offset along the tangent, because the tangent is a
   global fit to the whole border and the border bends locally under it: an
   offset measured along that line is routinely off the border altogether,
@@ -278,6 +283,12 @@ a geometry search. Four things about it are load-bearing:
   on the wrong land; standing lanes on stations instead cut that to 8, and it
   is 0 today - `tests/borders.test.ts` asserts it across every adjacency on
   both maps rather than allow-listing what is left.
+- **Each lane takes the nearest FREE station**, among those where both `into`
+  and `out` clear `ARROW_DEPTHS.min` - never one an earlier lane in the same
+  block has already taken. The stations a block ends up on are then dealt out
+  along the border in DECLARATION order, so the search decides WHICH stations
+  a block occupies and the second pass decides which arrow stands on which of
+  them, without disturbing the order the arrows were declared in.
 - **An arrow's depth is the room its own station has**, floored at
   `ARROW_DEPTHS.min` so a cramped station still reads as an arrow instead of
   overrunning the ground it stands on. The depths live in `src/borders.ts` as
@@ -374,6 +385,16 @@ by design, so a faction colour used raw as a mark on it reads at about
 stays exactly as authored: `inkFor` is for something drawn ON the map, never
 for the ground itself.
 
+**The casing is a screen-constant stroke.** `.march-arrow polygon` sets
+`vector-effect: non-scaling-stroke` on its `#fdfaf4` outline, so its width is
+screen pixels rather than map units: the default view is a 2508-unit viewBox
+on a roughly 1440px element, and a casing measured in map units would be a
+line well under a pixel wide at exactly the zoom the game is played at -
+present in the markup and invisible on screen. Paired with the ink rule
+above: the ink handles a pale land behind the arrow and the casing handles a
+dark one, so whichever ground an arrow crosses, one of the two contrasts
+with it.
+
 **An arrow arrives and leaves on the beat that explains it, never at the
 repaint behind it.** The displayed state lags the whole transition, so on its
 own it is wrong at BOTH ends of a beat, and a beat therefore names every arrow
@@ -434,6 +455,18 @@ arrow standing for the beat on screen, or the arrow a play is about to make,
 is never pushed back by a question about something else. An arrow landing
 where the player is aiming answers `atAimTarget` and stays `full` too, ahead
 of the plain `back` a live aim gives every other arrow on the map.
+
+**A pin does not survive an interaction.** `decide()` in `src/main.ts` - the
+one place this screen turns a `Decision` into a state change - clears the pin
+for every decision kind except `end-turn`, which keeps it deliberately so the
+round about to run can still be read through the log filter afterward. This
+is the cross-cutting rule the section above leans on: `emphasisFor` never has
+to arbitrate a pin against a live aim, because a pin cannot still be standing
+once an aim exists. The two used to be sorted out after the fact instead, and
+they could not both be right - a card armed while a land was pinned left the
+pin's dim and the aim's own back-step disagreeing about the same arrow. A new
+decision handler that reintroduces a stale pin is exactly the failure this
+closes.
 
 It was a pass after the paint twice, and it failed differently each time.
 Written by the surfaces themselves, a repaint while a land was pinned

@@ -2052,9 +2052,8 @@ function paintArrows(): void {
       strength: res.strength,
       tone: res.tone,
       // Stated rather than left to the stylesheet: the fills there are
-      // `.march-arrow`'s, and this is not one - a ghost that inherited them
-      // would also inherit a rival arrow's 0.45, which is the wrong thing for
-      // the only arrow on the map the beat is actually about.
+      // `.march-arrow`'s, and this is not one - a ghost states its own fill
+      // because it is the one arrow on the map its beat is actually about.
       fill: res.tone === "ours"
         ? "#d4af37"
         : res.tone === "hostile" ? "#992f27" : "#6b5d49",
